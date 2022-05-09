@@ -6,7 +6,8 @@ nav_order: 2
 
 # Installation
 
-SLIDE is yet to offer any binaries or wrappers in any other languages; therefore, the only way to install SLIDE is to compile it from C++ source files. 
+Testing changes.
+DTWpp is yet to offer any binaries or wrappers in any other languages; therefore, the only way to install SLIDE is to compile it from C++ source files. 
 
 ## Building from the source
 
