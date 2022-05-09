@@ -7,5 +7,5 @@ nav_order: 1
 
 # Getting started
 
-[Installation](2_installation.md) \
-[Running the code](3_running.md) 
+[Installation](2_install.md) \
+[Running the code](3_run.md) 

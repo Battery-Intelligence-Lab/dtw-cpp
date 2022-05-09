@@ -71,7 +71,7 @@ It should be noted that in its current version the code only allows inputs in a 
 -  Second column [0, data[1], ..., data[n]].
 -  If desired, the csv filename can be used as a label for the data series.
 
-![](website_csv_demo.png){:width="30%" }
+![](website_csv_demo.png){:width="20%" }
 
 # Outputs
 

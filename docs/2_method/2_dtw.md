@@ -4,23 +4,12 @@ title: Goal
 nav_order: 2
 ---
 
-# Goal of Slide
+# Dynamic Time Warping
 
-<p style='text-align: justify;'>
-The main goal of Slide (Simulator for Lithium-Ion Degradation) is to allow fast simulation of degradation of li-ion batteries. Simulating 5000 full 1C cycles with a time resolution of 2 seconds (1C charge, 1C discharge) for one cell takes about 40 seconds. Including a CV phase on charge to a current limit of 0.05C increases the calculation time to 85 seconds.
+The potential approaches for time series clustering can be broadly defined as using a distance metric on the raw data (distance-based), or extracting features or models from the raw data and then clustering. Distance-based methods have many advantages. The most significant advantage is that using the raw data means the results are not biased as can be the case in methods using inputs extracted from the data, because the features or models extracted have to be chosen prior to the clustering process. However, there are also potential disadvantages. Primarily, an incorrect choice of distance-metric can lead to non-logical clusters and picking a correct distance metric can be a very complex task.
 
-The project uses the single particle model to simulate the main reaction in the battery. Various physics-based degradation models from literature have been implemented, and the user can select which degradation models to use. The parameters of the battery model, and of the different degradation models can be changed by the user.
+Dynamic time warping (DTW) was chosen as the most appropriate distance metric due to it's ability to handle different length inputs and robustness against time shifts, ensuring usage events don't have to occur at the same timestamp for their similarity to be recognised.
 
-Some degradation procedures have already been implemented, such as calendar ageing (resting a cell for a long time), cycle ageing (continuously charging and discharging) and drive cycle ageing (continuously repeating a given current profile). The settings of these basic procedures can be easily changed 
-(e.g. the user can choose whether to do a CC or CCCV charge and the voltage window to be used).
-
-The user can program his/her own degradation procedures similarly to the way a battery tester is programmed. 
-The code has functions implemented to do a CC or CV (dis)charge (or a combination of both) where the parameters such as the current, or the set voltage can be determined by the user. By calling these functions with different parameters, the user can specify his/her own degradation experiments. 
-Similarly, functions have been implemented to measure the (remaining) cell capacity, the OCV curves, do a pulse discharge test, etc., which the user can call do to regular check-ups during the degradation simulation.
-
-The C++ code writes its results in ```*.csv``` files. The results of the check-ups during the degradation experiments (e.g. capacity measurements) are written in separate files. When a cell is being cycled, the user can choose to record the cell current, voltage and temperature at a constant time interval (e.g. 5 seconds) in which case this data is also stored in csv files. MATLAB functions to read these results have been implemented as well. E.g. to read the results of the pre-defined ```calendar ageing``` function, 
-the user can run ```readCalendarAgeing.m```, which will plot the outcomes. 
-</p>
 
 ## Speed of calculation & data
 

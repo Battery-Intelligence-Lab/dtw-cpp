@@ -5,7 +5,7 @@ nav_order: 3
 ---
 
 
-# Mathematical background
+# Clusteing Method
 
 _Slide_ builds upon the spectral single particle model implemented by Adrien Bizeray, Jorn Reniers and David Howey, which is available on [GitHub](https://github.com/davidhowey/Spectral_li-ion_SPM). The reader is recommended to first familiarise with the spectral SPM before turning attention to Slide, which extends the spectral SPM with various degradation mechanisms.
 
