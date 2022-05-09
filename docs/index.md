@@ -52,29 +52,29 @@ The folder containing all the files should appear in your chosen directory.
 # Getting started
 
 Once the code is imported into the programming environment, there are several options within the code that can be altered for your requirements. These are detailed as follows:
--  <p style='text-align: justify;'> Path to read csv files from, *main.cpp line 29*
--  <p style='text-align: justify;'> To change the number of times the k-medoids algorithm is run with different initial conditions, *settings.hpp line 17*
--  <p style='text-align: justify;'> To change the maximum iterations for each run of the k-medoids algorithm , *settings.hpp line 18*
--  <p style='text-align: justify;'> To change the number of csv files read from the folder (i.e. how many data series you're clustering), *main.cpp line 30*
--  <p style='text-align: justify;'> To change the number of clusters, *main.cpp line 31*
--  <p style='text-align: justify;'> To use the csv filenames in the results, *settings.hpp, line 15*. Otherwise, series will be labelled 1 to x in order of being read from the folder
--  <p style='text-align: justify;'> To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment *main.cpp, line 42* but ensure you comment out again if changing the data read
--  <p style='text-align: justify;'> To change the warping window, *main.cpp line 48*. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function
--  <p style='text-align: justify;'> To calculate the entire DTW distance matrix (required for the MIP), uncomment *main.cpp line 90* 
-</p>
+- Path to read csv files from, *main.cpp line 29*.
+-  To change the number of times the k-medoids algorithm is run with different initial conditions, *settings.hpp line 17*.
+-  To change the maximum iterations for each run of the k-medoids algorithm , *settings.hpp line 18*.
+-  To change the number of csv files read from the folder (i.e. how many data series you're clustering), *main.cpp line 30*.
+-  To change the number of clusters, *main.cpp line 31*.
+-  To use the csv filenames in the results, *settings.hpp, line 15*. Otherwise, series will be labelled 1 to x in order of being read from the folder.
+-  To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment *main.cpp, line 42* but ensure you comment out again if changing the data read.
+-  To change the warping window, *main.cpp line 48*. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function.
+-  To calculate the entire DTW distance matrix (required for the MIP), uncomment *main.cpp line 90*.
+
 
 # Inputs
 
 It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in Excel for visual clarity:
--  <p style='text-align: justify;'> CSV format 
--  <p style='text-align: justify;'> First column [blank, 0, ..., n-1] where _n_ is the length of the data series
--  <p style='text-align: justify;'> Second column [0, data[1], ..., data[n]]
--  <p style='text-align: justify;'> If desired, the csv filename can be used as a label for the data series
+-  CSV format.
+-  First column [blank, 0, ..., n-1] where _n_ is the length of the data series.
+-  Second column [0, data[1], ..., data[n]].
+-  If desired, the csv filename can be used as a label for the data series.
 
 ![](website_csv_demo.png){:width="30%" }
 
 # Outputs
 
--  <p style='text-align: justify;'> All outputs go in the 'results' folder
--  <p style='text-align: justify;'> 'DTWdist_band_all' is the DTW matrix for each data series to every other data series
--  <p style='text-align: justify;'> 'dataOrder' shows which csv file links to which respective row/column in the 'DTWdist_band_all' matrix
+-  All outputs go in the 'results' folder.
+-  'DTWdist_band_all' is the DTW matrix for each data series to every other data series.
+-  'dataOrder' shows which csv file links to which respective row/column in the 'DTWdist_band_all' matrix.
