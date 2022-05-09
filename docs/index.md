@@ -7,8 +7,7 @@ nav_exclude: true
 <!--![](slide_logo.png){:width="80%" }-->
 
 
-About DTWpp
-===========================
+# About DTWpp
 
 _DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix, comparing all time series.
 
@@ -21,8 +20,8 @@ For more information and comments, please contact
 [rebecca.perriment@eng.ox.ac.uk](rebecca.perriment@eng.ox.ac.uk).
 
 
-Requirements
-============
+# Requirements
+
 You will need a C++ programming environment to edit, compile and run the code.
 Visual Studio Code is the environment used to develop the code, but other environments should work as well. Within Visual Studio Code, the extention C++ CMake tools for Windows is required.
 Your computer must also have a C++ compiler installed.
@@ -33,8 +32,8 @@ To run the MIP clustering, you will need to have installed MATLAB.
 The code has been tested using MATLAB R2020a, but should work with other releases with no or minor modifications.
 
  
-Installation
-============
+# Installation
+
 ### Option 1 - Downloading a .zip file ###
 [Download a .zip file of the code](https://github.com/Battery-Intelligence-Lab/DTWpp/archive/refs/heads/main.zip)
 
@@ -50,21 +49,22 @@ git clone https://github.com/Battery-Intelligence-Lab/DTWpp.git
 The folder containing all the files should appear in your chosen directory.
 
 
-Getting started
-===============
-Once the code is imported into the programming environment, there are several options within the code that can be altered for your requirements. These are detailed as follows:
--  <p style='text-align: justify;'> Path to read csv files from, _main.cpp line 29_
--  <p style='text-align: justify;'> To change the number of times the k-medoids algorithm is run with different initial conditions, _settings.hpp line 17_
--  <p style='text-align: justify;'> To change the maximum iterations for each run of the k-medoids algorithm , _settings.hpp line 18_
--  <p style='text-align: justify;'> To change the number of csv files read from the folder (i.e. how many data series you're clustering), _main.cpp line 30_
--  <p style='text-align: justify;'> To change the number of clusters, _main.cpp line 31_
--  <p style='text-align: justify;'> To use the csv filenames in the results, _settings.hpp, line 15_. Otherwise, series will be labelled 1 to x in order of being read from the folder
--  <p style='text-align: justify;'> To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment _main.cpp, line 42_ but ensure you comment out again if changing the data read
--  <p style='text-align: justify;'> To change the warping window, _main.cpp line 48_. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function
--  <p style='text-align: justify;'> To calculate the entire DTW distance matrix (required for the MIP), uncomment _main.cpp line 90_
+# Getting started
 
-Inputs
-=======
+Once the code is imported into the programming environment, there are several options within the code that can be altered for your requirements. These are detailed as follows:
+-  <p style='text-align: justify;'> Path to read csv files from, *main.cpp line 29*
+-  <p style='text-align: justify;'> To change the number of times the k-medoids algorithm is run with different initial conditions, *settings.hpp line 17*
+-  <p style='text-align: justify;'> To change the maximum iterations for each run of the k-medoids algorithm , *settings.hpp line 18*
+-  <p style='text-align: justify;'> To change the number of csv files read from the folder (i.e. how many data series you're clustering), *main.cpp line 30*
+-  <p style='text-align: justify;'> To change the number of clusters, *main.cpp line 31*
+-  <p style='text-align: justify;'> To use the csv filenames in the results, *settings.hpp, line 15*. Otherwise, series will be labelled 1 to x in order of being read from the folder
+-  <p style='text-align: justify;'> To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment *main.cpp, line 42* but ensure you comment out again if changing the data read
+-  <p style='text-align: justify;'> To change the warping window, *main.cpp line 48*. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function
+-  <p style='text-align: justify;'> To calculate the entire DTW distance matrix (required for the MIP), uncomment *main.cpp line 90* 
+</p>
+
+# Inputs
+
 It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in Excel for visual clarity:
 -  <p style='text-align: justify;'> CSV format 
 -  <p style='text-align: justify;'> First column [blank, 0, ..., n-1] where _n_ is the length of the data series
@@ -73,8 +73,8 @@ It should be noted that in its current version the code only allows inputs in a 
 
 ![](website_csv_demo.png){:width="30%" }
 
-Outputs
-=======
+# Outputs
+
 -  <p style='text-align: justify;'> All outputs go in the 'results' folder
 -  <p style='text-align: justify;'> 'DTWdist_band_all' is the DTW matrix for each data series to every other data series
 -  <p style='text-align: justify;'> 'dataOrder' shows which csv file links to which respective row/column in the 'DTWdist_band_all' matrix
