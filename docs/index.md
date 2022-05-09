@@ -10,31 +10,12 @@ nav_exclude: true
 About DTWpp
 ===========================
 
-_DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare similarity of the input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix comparing all time series.
+_DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix, comparing all time series.
 
-The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights to the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis.
+The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights into the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis. DTW is a powerful distance metric that can compare time series of varying lengths, while allowing shifts in the time axis to recognise similarity between time series even when the events are not at identical time stamps. For further infromation on DTW,  see [Dynamic Time Warping](../5_method/2_dtw.html).
 
-To cite this code, check the lastest release DOI at https://zenodo.org/badge/latestdoi/185216614.
-
-_Slide_ (simulator for lithium-ion degradation) is a code project mainly written in C++ to do fast simulations of degradation of lithium-ion batteries.
-Simulating 5000 1C CC cycles should take less than 1 minute; adding a CV phase doubles the calculation time to below 2 minutes. The project uses object oriented programming in C++, see documentation for more details. 
-
-The underlying battery model is the Single Particle Model (SPM) with a coupled bulk thermal model. 
-A spectral implementation of the SPM in MATLAB was developed by Bizeray and Howey and is [available separately on GitHub](https://github.com/davidhowey/Spectral_li-ion_SPM). _Slide_ adds various degradation models on top of the SPM. The equations were taken from literature and implemented in one large coupled model. Users can easily select which models they want to include in their simulations. They can set the values of the fitting parameters of those degradation models to fit their own data.
-
-_Slide_ is written to behave similarly to a battery tester. It offers functions to load cells with a constant current, a current profile or a constant voltage such that users can program their own degradation procedures. Some standard procedures have already been implemented (for calendar ageing and cycle ageing with regular CCCV cycles or with drive cycles). Also some reference performance tests have already been coded (to simulate a the capacity measurement, OCV curves, pulse discharge, etc.). Users can choose to store data points (current, voltage, temperature) at fixed time intervals during the degradation experiments, similar to how a battery tester stores such data.
-
-The results from the simulations are written to csv files. Users can write their own code to read and plot these results, but MATLAB-scripts are provided for this too.
-
-Detailed documentation is provided in the pdf documents. The code itself is also extensively documented.
-
-If you use _Slide_ in your work, please cite our paper:
-
-J.M. Reniers, G. Mulder, D.A. Howey, "Review and performance comparison of mechanical-chemical degradation models for lithium-ion batteries", Journal of The Electrochemical Society, 166(14), A3189, 2019, DOI [10.1149/2.0281914jes](https://doi.org/10.1149/2.0281914jes).
-
-This code has been developed at the Department of Engineering Science of 
-the University of Oxford. 
-For information about our lithium-ion battery research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
+This code has been developed at the Department of Engineering Science of the University of Oxford. 
+For information about our battery research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
 
 For more information and comments, please contact 
 [david.howey@eng.ox.ac.uk](david.howey@eng.ox.ac.uk).
@@ -43,33 +24,28 @@ For more information and comments, please contact
 Requirements
 ============
 You will need a C++ programming environment to edit, compile and run the code.
-Eclipse is the environment used to develop the code, but other environments should work as well.
+Visual Studio Code is the environment used to develop the code, but other environments should work as well. Within Visual Studio Code, the extention C++ CMake tools for Windows is required.
 Your computer must also have a C++ compiler installed.
-The code has been tested using g++.
+The code has been tested using Clang.
 Extensive guidelines on how to install those programs is provided in the documentation.
 
-To display the results, various MATLAB scripts are provided.
-To run those, you will need to have installed MATLAB. 
-The code has been tested using MATLAB R2018a, but should work with other releases with no or minor modifications.
-
-To calculate the spatial discretisation, two open-source MATLAB functions developped by others are being used.
-If you don't change the discretisation, you will not need them.
-If you do change the discretisation, please read the license files attached to those two functions ('license chebdif.txt' and 'lisence cumsummat.txt').
+To run the MIP clustering, you will need to have installed MATLAB. 
+The code has been tested using MATLAB R2020a, but should work with other releases with no or minor modifications.
 
  
 Installation
 ============
 ### Option 1 - Downloading a .zip file ###
-[Download a .zip file of the code](https://github.com/davidhowey/SLIDE/archive/master.zip)
+[Download a .zip file of the code](https://github.com/Battery-Intelligence-Lab/DTWpp/archive/refs/heads/main.zip)
 
 Then, unzip the folder in a chosen directory on your computer.
 
 ### Option 2 - Cloning the repository with Git ###
-To clone the repository, you will first need to have [Git][6] installed on 
+To clone the repository, you will first need to have Git installed on 
 your computer. Then, navigate to the directory where you want to clone the 
 repository in a terminal, and type:
 ```bash
-git clone https://github.com/davidhowey/SLIDE.git
+git clone https://github.com/Battery-Intelligence-Lab/DTWpp.git
 ```
 The folder containing all the files should appear in your chosen directory.
 
