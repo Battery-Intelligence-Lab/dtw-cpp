@@ -4,11 +4,15 @@ title: Index
 nav_exclude: true
 ---
 
-![](slide_logo.png){:width="80%" }
+<!--![](slide_logo.png){:width="80%" }-->
 
 
-About _Slide_
+About DTWpp
 ===========================
+
+_DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare similarity of the input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix comparing all time series.
+
+The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights to the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis.
 
 To cite this code, check the lastest release DOI at https://zenodo.org/badge/latestdoi/185216614.
 
