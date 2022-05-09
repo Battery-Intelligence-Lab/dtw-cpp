@@ -18,7 +18,7 @@ This code has been developed at the Department of Engineering Science of the Uni
 For information about our battery research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
 
 For more information and comments, please contact 
-[david.howey@eng.ox.ac.uk](david.howey@eng.ox.ac.uk).
+[rebecca.perriment@eng.ox.ac.uk](rebecca.perriment@eng.ox.ac.uk).
 
 
 Requirements
@@ -52,23 +52,29 @@ The folder containing all the files should appear in your chosen directory.
 
 Getting started
 ===============
-Detailed instructions on how to get started are in the documentation.
-You first have to import the code to your programming environment and make sure the settings are correct (e.g. to allow enough memory for the calculation).
-Then you can open main.cpp, which implements the main-function. In this function you choose what to simulate by uncommenting the thing you want to do (and commenting all other lines). 
-It is recommended to start with the CCCV-function, which simulates a few CCCV cycles.
-You will then have to build (or compile) the code, which might take a while the first time you do this.
-Now you can run the code (either locally in the programming environment or by running the executable which was created by the compiler).
-While the simulation is running, csv files with the results are written in one or multiple subfolders.
-When the simulation has finished, you can run the corresponding MATLAB-script (e.g. readCCCV.m) to plot the outcomes.
+Once the code is imported into the programming environment, there are several options within the code that can be altered for your requirements. These are detailed as follows:
+-  <p style='text-align: justify;'> Path to read csv files from, _main.cpp line 29_
+-  <p style='text-align: justify;'> To change the number of times the k-medoids algorithm is run with different initial conditions, _settings.hpp line 17_
+-  <p style='text-align: justify;'> To change the maximum iterations for each run of the k-medoids algorithm , _settings.hpp line 18_
+-  <p style='text-align: justify;'> To change the number of csv files read from the folder (i.e. how many data series you're clustering), _main.cpp line 30_
+-  <p style='text-align: justify;'> To change the number of clusters, _main.cpp line 31_
+-  <p style='text-align: justify;'> To use the csv filenames in the results, _settings.hpp, line 15_. Otherwise, series will be labelled 1 to x in order of being read from the folder
+-  <p style='text-align: justify;'> To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment _main.cpp, line 42_ but ensure you comment out again if changing the data read
+-  <p style='text-align: justify;'> To change the warping window, _main.cpp line 48_. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function
+-  <p style='text-align: justify;'> To calculate the entire DTW distance matrix (required for the MIP), uncomment _main.cpp line 90_
 
-Much more detailed documentation can be found in the documentation (from '1 Getting started' to '7 appendixes; debugging, basics of C++, object oriented programming'). These guides are mostly independent of each other, so you don't have to read all of them.
-Also the code itself is extensively commented, so you might not have to read the guides at all.
+Inputs
+======
+It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in Excel for visual clarity:
+-  <p style='text-align: justify;'> CSV format 
+-  <p style='text-align: justify;'> First column [blank, 0, ..., n-1] where _n_ is the length of the data series
+-  <p style='text-align: justify;'> Second column [0, data[1], ..., data[n]]
+-  <p style='text-align: justify;'> If desired, the csv filename can be used as a label for the data series
 
+![](website_csv_demo.png){:width="10%" }
 
-License
+Outputs
 =======
-This open-source C++ and MATLAB code is published under the BSD 3-clause License,
-please read `LICENSE.txt` file for more information.
-
-Two MATLAB functions used by the code to produce the spatial discretisation have been developed by others.
-They come with their own licence, see 'license chebdif.txt' and 'licence cumsummat.txt'.
+-  <p style='text-align: justify;'> All outputs go in the 'results' folder
+-  <p style='text-align: justify;'> 'DTWdist_band_all' is the DTW matrix for each data series to every other data series
+-  <p style='text-align: justify;'> 'dataOrder' shows which csv file links to which respective row/column in the 'DTWdist_band_all' matrix
