@@ -1,11 +1,11 @@
 ---
 layout: default
-title: Overview
+title: Method
 nav_order: 1
 ---
 
 
-# Overview
+# Method
 
 [Dynamic Time Warping](2_dtw.md) \
 [Clustering](3_mip.md) \
