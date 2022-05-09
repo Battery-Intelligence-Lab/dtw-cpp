@@ -64,14 +64,14 @@ Once the code is imported into the programming environment, there are several op
 -  <p style='text-align: justify;'> To calculate the entire DTW distance matrix (required for the MIP), uncomment _main.cpp line 90_
 
 Inputs
-======
+=======
 It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in Excel for visual clarity:
 -  <p style='text-align: justify;'> CSV format 
 -  <p style='text-align: justify;'> First column [blank, 0, ..., n-1] where _n_ is the length of the data series
 -  <p style='text-align: justify;'> Second column [0, data[1], ..., data[n]]
 -  <p style='text-align: justify;'> If desired, the csv filename can be used as a label for the data series
 
-![](website_csv_demo.png){:width="10%" }
+![](website_csv_demo.png){:width="30%" }
 
 Outputs
 =======
