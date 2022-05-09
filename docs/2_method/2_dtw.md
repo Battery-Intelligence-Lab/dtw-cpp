@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Goal
+title: Dynamic Time Warping
 nav_order: 2
 ---
 

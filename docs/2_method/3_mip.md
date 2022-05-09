@@ -1,6 +1,6 @@
 ---
 layout: default
-title: Preliminaries
+title: Clustering
 nav_order: 3
 ---
 
