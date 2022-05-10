@@ -11,7 +11,7 @@ nav_exclude: true
 
 _DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix, comparing all time series.
 
-The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights into the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis. DTW is a powerful distance metric that can compare time series of varying lengths, while allowing shifts in the time axis to recognise similarity between time series even when the events are not at identical time stamps. For further infromation on DTW,  see [Dynamic Time Warping](../5_method/2_dtw.html).
+The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights into the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis. DTW is a powerful distance metric that can compare time series of varying lengths, while allowing shifts in the time axis to recognise similarity between time series even when the events are not at identical time stamps. For further infromation on DTW,  see [Dynamic Time Warping](../2_method/2_dtw.html).
 
 This code has been developed at the Department of Engineering Science of the University of Oxford. 
 For information about our battery research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
@@ -65,7 +65,7 @@ Once the code is imported into the programming environment, there are several op
 
 # Inputs
 
-It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in Excel for visual clarity:
+It should be noted that in its current version the code only allows inputs in a specific format, as described below and shown in MS Excel for visual clarity:
 -  CSV format.
 -  First column [blank, 0, ..., n-1] where _n_ is the length of the data series.
 -  Second column [0, data[1], ..., data[n]].

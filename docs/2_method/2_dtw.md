@@ -8,7 +8,11 @@ nav_order: 2
 
 The potential approaches for time series clustering can be broadly defined as using a distance metric on the raw data (distance-based), or extracting features or models from the raw data and then clustering. Distance-based methods have many advantages. The most significant advantage is that using the raw data means the results are not biased as can be the case in methods using inputs extracted from the data, because the features or models extracted have to be chosen prior to the clustering process. However, there are also potential disadvantages. Primarily, an incorrect choice of distance-metric can lead to non-logical clusters and picking a correct distance metric can be a very complex task.
 
-Dynamic time warping (DTW) was chosen as the most appropriate distance metric due to it's ability to handle different length inputs and robustness against time shifts, ensuring usage events don't have to occur at the same timestamp for their similarity to be recognised. In some instances this can be disadvantageous if the time of occurance is important for your data. Therefore consideration of the 
+Dynamic time warping (DTW) was chosen as the most appropriate distance metric due to it's ability to handle different length inputs and robustness against time shifts, ensuring usage events don't have to occur at the same timestamp for their similarity to be recognised. In some instances this can be disadvantageous if the time of occurance is important for your data. Therefore consideration of the desired output is important.
+
+## DTW Algorithm
+Assuming two time series of differing lengths, where:
+$$\X=x_{1} + x_{2} + ... + x_{n}
 
 ## Speed of Calculation
 
