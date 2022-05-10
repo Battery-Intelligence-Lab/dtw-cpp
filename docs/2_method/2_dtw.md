@@ -17,6 +17,16 @@ $$X=x_{1} + x_{2} + ... + x_{n}$$
 
 $$Y=x_{1} + y_{2} + ... + y_{n}$$
 
+Dynamic programming is used to construct an $n$ by $m$ matrix where for each element a cumulative cost between the corresponding points $x_{i}$ and $y_{j}$ is calculated
+
+$$
+c(i,j) = (x_i-y_j)^2+\min\begin{cases}
+    c(i-1,j-1)\\
+    c(i-1,j)\\
+    c(i,j-1)
+    \end{cases}
+$$
+
 ## Speed of Calculation
 
 While there are other clustering algorithms available that handle time-series data with DTW, they are very slow and only allow short data series. DTWpp has been written specifically to quickly handle larger data series. This signficiant speed increase allows the whole DTW matrix to be calculated and then a global optimum for the clustering process can be found (more details in [Clustering](../2_method/3_mip.html)). Other time series clustering packages use k-means clustering which does not garuntee to find a global optimum.
