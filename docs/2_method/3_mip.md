@@ -27,7 +27,7 @@ $$ \sum_{i=1}^nA_{ij}=1$$
 
 2. Only $$k$$ rows have non-zero values
 
-$$ D_{ij} \le B_i $$
+$$ A_{ij} \le B_i $$
 
 With the cost function to be minimised:
 
