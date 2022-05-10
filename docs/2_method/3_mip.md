@@ -5,7 +5,7 @@ nav_order: 3
 ---
 
 
-# Clusteing Method
+# Clustering Method
 
 Mixed integer programming (MIP) can be used on a completed DTW distance matrix to cluster the data series. The output provides both the members of each cluster, where the number of clusters, $$k$$, is determined by the user. Each cluster is represented by a centroid, which is the member of the cluster the reduces the overall cost.
 
