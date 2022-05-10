@@ -7,29 +7,28 @@ nav_order: 3
 
 # Clusteing Method
 
-_Slide_ builds upon the spectral single particle model implemented by Adrien Bizeray, Jorn Reniers and David Howey, which is available on [GitHub](https://github.com/davidhowey/Spectral_li-ion_SPM). The reader is recommended to first familiarise with the spectral SPM before turning attention to Slide, which extends the spectral SPM with various degradation mechanisms.
+Mixed integer programming (MIP) can be used on a completed DTW distance matrix to cluster the data series. The output provides both the members of each cluster, where the number of clusters, $$k$$, is determined by the user. Each cluster is represented by a centroid, which is the member of the cluster the reduces the overall cost.
 
-There is one main mathematical difference. The spectral SPM used the *transformed concentration* $$u$$, which was obtained by multiplying the radius with the lithium concentration at that radius. The final equation of the state space model for solid diffusion of the spectral SPM was:
+The DTW distance matrix is a square matrix $D_{n\times n}$ where $n$ is the number of data series in the problem, so $$D_{ij}=C(i,j)$$. The problem formulation begins with a binary square matrix $$A_{n\times n}$$ where $$A_{ij}=1$$ if data series $$j$$ is in the cluster with centroid $$i$$ and 0 otherwise. $$B$$ is a $$1\times n$$ binary vector where
 
-$$\frac{\partial u_{2:N}}{\partial t} = D_{s,i}(T)Au_{2:N}  + Bj_i(t)$$
+$$
+B_{i} = \begin{cases}
+    1, \qquad \text {if centroid}\\
+    0, \qquad \text {otherwise}
+    \end{cases}
+$$
 
-Where $$u$$ is the transformed concentration at the inner nodes, $$D_{s,i}(T)$$ is the solid diffusion
-coefficient of electrode $$i$$ at temperature $$T$$, $$j_i(t)$$ is the current density on 
-electrode $$i$$ at time $$t$$ and $$A$$ and $$B$$ are the state space matrices. 
-Although the accuracy of this model is very high even for a low number of discretisation nodes ($$N$$),
-the matrix $$A$$ is full. This project adds one extra transformation to the eigenspace in order to 
-obtain a sparse (diagonal) state space matrix.
+$$\sum_{i=1}^n B_{i}=k$$
 
-Using the eigenvalue decomposition of $$A$$ we can write:
+The following constraints apply:
+1. Each SHS must be in 1 cluster 
 
-$$\frac{\partial u_{2:N}}{\partial t} = D_{s,i}(T)V^{-1}\Lambda Vu_{2:N}  + VBj_i(t)$$
+$$ \sum_{i=1}^nA_{ij}=1$$
 
-Using $$z_{2:N}=Vu_{2:N}$$ and $$\tilde{B}=VB$$  we can write:
+2. Only $k$ rows have non-zero values
 
-$$\frac{\partial z_{2:N}}{\partial t} = D_{s,i}(T)V^{-1}\Lambda Vz_{2:N}  + \tilde{B}j_i(t)$$
+$$ D_{ij} \le B_i $$
 
-This equation has the same format as the original equation, but the matrix $$\Lambda$$ is diagonal, which increases calculation speed and reduces numerical errors.
+With the cost function to be minimised:
 
-This transformation has one additional advantage. One of the eigenvectors represents a uniform concentration. This means that if we start with a uniform concentration, only one value of $$z$$ will be non-zero. 
-This also means that the corresponding eigenvalue in $$\Lambda$$ is 0 (the time derivative of a uniform
-concentration must be 0 if there is no external current $$j_i(t)$$ such that the amount of lithium is conserved.
+$$ F=\min \sum_{i} \sum_{j} D_{ij} \odot A_{ij}$$

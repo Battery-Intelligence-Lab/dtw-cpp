@@ -44,7 +44,7 @@ $$ C=c(n,m) $$
 
 ## Speed of Calculation
 
-While there are other clustering algorithms available that handle time-series data with DTW, they are very slow and only allow short data series. DTWpp has been written specifically to quickly handle larger data series. This signficiant speed increase allows the whole DTW matrix to be calculated and then a global optimum for the clustering process can be found (more details in [Clustering](../2_method/3_mip.html)). Other time series clustering packages use k-means clustering which does not garuntee to find a global optimum. This being said, DTW is still a computationally expensive distance metric ($$O(nm)$$ and very long data series may not be suitable. 
+While there are other clustering algorithms available that handle time-series data with DTW, they are very slow and only allow short data series. DTWpp has been written specifically to quickly handle larger data series. This signficiant speed increase allows the whole DTW matrix to be calculated and then a global optimum for the clustering process can be found (more details in [Clustering](../2_method/3_mip.html)). Other time series clustering packages use k-means clustering which does not garuntee to find a global optimum. This being said, DTW is still a computationally expensive distance metric ($$O(nm)$$) and very long data series may not be suitable. 
 
 ### Warping Window
 
