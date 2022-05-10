@@ -17,7 +17,7 @@ $$X=x_{1} + x_{2} + ... + x_{n}$$
 
 $$Y=x_{1} + y_{2} + ... + y_{n}$$
 
-Dynamic programming is used to construct an $n$ by $m$ matrix where for each element a cumulative cost between the corresponding points $x_{i}$ and $y_{j}$ is calculated
+Dynamic programming is used to construct an $n$ by $m$ matrix where for each element a cumulative cost between the corresponding points $$x_{i}$$ and $$y_{j}$$ is calculated
 
 $$
 c(i,j) = (x_i-y_j)^2+\min\begin{cases}
@@ -26,6 +26,20 @@ c(i,j) = (x_i-y_j)^2+\min\begin{cases}
     c(i,j-1)
     \end{cases}
 $$
+
+The min function allows the warping process to occur. The function finds if it is a lower cost to match the next value in $$Y$$ with the current value in $$X$$ or visa versa, or if the corresponding values of each are the lowest cost. This exemplifies DTWs one-to-many property. It is also important to note the monotonic  and continuity conditions on the warping path. 
+
+$$i_{t-1}\leq i_t \mbox{  and  } j_{t-1}\leq j_t$$
+
+The monotonic condition ensures only unidirectional, forward movement through relative time, i.e. $$x_{1}$$ could be mapped to $$y_{2}$$ but then $$x_{2}$$ could not be mapped to $$y_{1}$$. 
+
+$$i_t-i_{t-1}\leq 1 \mbox{  and  } j_t-j_{t-1}\leq 1$$
+
+The continuity condition ensures each point is mapped to at least one other point so there are no jumps in time.
+
+The min function dictates the optimal warping path through the matrix from $$(1,1)$$ to $$(n,m)$$, with the final DTW cost
+
+$$ C=c(n,m) $$
 
 ## Speed of Calculation
 
