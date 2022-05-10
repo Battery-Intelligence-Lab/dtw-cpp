@@ -12,7 +12,10 @@ Dynamic time warping (DTW) was chosen as the most appropriate distance metric du
 
 ## DTW Algorithm
 Assuming two time series of differing lengths, where:
-$$\X=x_{1} + x_{2} + ... + x_{n}$$
+
+$$X=x_{1} + x_{2} + ... + x_{n}$$
+
+$$Y=x_{1} + y_{2} + ... + y_{n}$$
 
 ## Speed of Calculation
 
