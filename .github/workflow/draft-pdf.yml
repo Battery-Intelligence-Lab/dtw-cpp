@@ -3,7 +3,7 @@ name: JossPaperCompilation
 on:
   push:
     branches:
-      - class_hierarchy_change
+      - main
 
 jobs:
   paper:
