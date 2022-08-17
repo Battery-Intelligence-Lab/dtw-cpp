@@ -1,6 +1,6 @@
 name: JossPaperCompilation
 
-on: push
+on: [push]
 
 jobs:
   paper:
