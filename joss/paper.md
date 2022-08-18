@@ -8,7 +8,7 @@ tags:
 authors:
   - name: Rebecca Perriment
     orcid: 0000-0003-2392-9771
-    affiliation: "1, 2" # (Multiple affiliations must be quoted)
+    affiliation: "1, 2" # (Multiple affiliations must be quoted) 
   - name: Volkan Kumtepeli
     orcid: 0000-0003-2392-9771
     affiliation: 1
