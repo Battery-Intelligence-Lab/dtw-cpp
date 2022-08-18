@@ -4,7 +4,9 @@ on:
   push:
     paths:
       - joss/**
-
+  pull_request:
+    paths: 
+    - 'joss/**'
 jobs:
   paper:
     runs-on: ubuntu-latest
