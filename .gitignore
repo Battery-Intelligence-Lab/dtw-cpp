@@ -30,3 +30,22 @@
 *.exe
 *.out
 *.app
+
+# User defined
+
+build/*
+bin/*
+cmake-build-debug/*
+.vscode/*
+*.pdb
+out/*
+.vs/*
+.editorconfig
+Release/*
+Debug/*
+*.ilk
+cmake-build-release/*
+cmake-build-debug/*
+cmake-build-relwithdebinfo/*
+build/*
+bin/*
