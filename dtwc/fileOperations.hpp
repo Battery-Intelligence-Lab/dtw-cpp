@@ -58,7 +58,7 @@ std::vector<Tdata> readFile(const T &name)
   return p;
 }
 
-template <typename Tdata>
+template <typename Tdata, bool Print = false>
 auto load_data(auto &path, int Ndata = maxValue<Tdata>)
 {
   std::cout << "Reading data:" << std::endl;
@@ -69,9 +69,14 @@ auto load_data(auto &path, int Ndata = maxValue<Tdata>)
 
   int i_data = 0;
   for (const auto &entry : fs::directory_iterator(path)) {
-    std::cout << entry.path() << "\t";
+
     auto p = readFile<Tdata>(entry.path());
-    std::cout << "Size: " << p.size() << " Capacity: " << p.capacity() << '\n';
+
+    if constexpr (Print) {
+      std::cout << entry.path() << '\t'
+                << "Size: " << p.size() << " Capacity: " << p.capacity() << '\n';
+    }
+
 
     assert(p.size() > 2);
 

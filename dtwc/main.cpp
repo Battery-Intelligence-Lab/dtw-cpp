@@ -38,7 +38,7 @@ int main()
   auto DTWdistByInd = [&DTWdist, p_vec = p_vec](int i, int j) {
     if (DTWdist(i, j) < 0) {
       if constexpr (settings::band == 0) {
-        DTWdist(j, i) = DTWdist(i, j) = dtwFun2<Tdata>(p_vec[i], p_vec[j]);
+        DTWdist(j, i) = DTWdist(i, j) = dtwFun_L<Tdata>(p_vec[i], p_vec[j]);
       } else {
         DTWdist(j, i) = DTWdist(i, j) = dtwFunBanded_Act<Tdata>(p_vec[i], p_vec[j], settings::band);
       }

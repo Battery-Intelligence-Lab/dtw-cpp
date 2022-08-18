@@ -13,6 +13,7 @@
 - [ ] JOSS paper  
 - [ ] Speed up the code
 - [ ] GPU programming 
+- [ ] dtwFun2 and dtwFun_short are giving slightly different results. 
 
 ### Low priority: 
 
