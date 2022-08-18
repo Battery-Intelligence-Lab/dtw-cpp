@@ -27,8 +27,6 @@
 #include "dataTypes.hpp"
 #include "fileOperations.hpp"
 
-//#include <Eigen/Dense>
-
 static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 
 
@@ -305,24 +303,34 @@ void fillDistanceMatrix(auto &DTWdistByInd, size_t N)
 
 void fillDistanceMatrix_new(auto &DTWdistByInd, size_t N)
 {
-  auto distanceAllTask = [&](int i_p) {
-    for (int i = 0; i <= i_p; i++)
-      DTWdistByInd(i_p, i);
+  // auto distanceAllTask = [&](int i_p) {
+  //   for (int i = 0; i <= i_p; i++)
+  //     DTWdistByInd(i_p, i);
 
-    auto i_p_p = N - i_p - 1;
-    for (int i = 0; i <= i_p_p; i++)
-      DTWdistByInd(i_p_p, i);
+  //   auto i_p_p = N - i_p - 1;
+  //   for (int i = 0; i <= i_p_p; i++)
+  //     DTWdistByInd(i_p_p, i);
+  // };
+
+
+  auto oneTask = [&, N = N](size_t i_linear) {
+    size_t i{ i_linear / N }, j{ i_linear % N };
+    if (i <= j)
+      DTWdistByInd(i, j);
   };
 
 
-  const int N_2 = (N + 1) / 2;
+  // const int N_2 = (N + 1) / 2;
 
   // auto range = stdv::iota(0, N_2);
 
-  std::vector<size_t> range(N_2);
+  // auto range = Range(N * N);
+
+
+  std::vector<size_t> range(N * N);
   std::iota(range.begin(), range.end(), 0);
 
-  std::for_each(ex::par_unseq, std::begin(range), std::end(range), distanceAllTask);
+  std::for_each(ex::par_unseq, range.begin(), range.end(), oneTask);
 
 
   // dtwc::run(distanceAllTask, N_2);

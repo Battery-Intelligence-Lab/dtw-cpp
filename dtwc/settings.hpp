@@ -6,7 +6,7 @@
 #include <filesystem>
 
 
-using Tdata = double; // Data type double or float.
+using Tdata = float; // Data type double or float.
 
 
 inline std::filesystem::path operator+(const std::filesystem::path &lhs, const std::string &rhs)

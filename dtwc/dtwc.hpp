@@ -2,6 +2,8 @@
 
 #pragma once
 
+
+#include "Range.hpp"
 #include "settings.hpp"
 #include "utility.hpp"
 #include "initialisation.hpp"
