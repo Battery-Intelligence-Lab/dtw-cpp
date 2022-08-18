@@ -11,7 +11,7 @@
 #include <thread>
 #include <iterator>
 #include <cassert>
-
+#include <ranges>
 #include "dtwc.hpp"
 
 
@@ -20,13 +20,10 @@ int main()
 
   using namespace dtwc;
 
-
   std::clock_t t_start(std::clock());
 
-  std::cout << ROOT_FOLDER << '\n';
 
-
-  auto [p_vec, p_names] = load_data<Tdata>(settings::path, settings::Ndata_max);
+  auto [p_vec, p_names] = load_data<Tdata, true>(settings::path, settings::Ndata_max);
 
 
   std::cout << "Data loading finished at " << get_duration(t_start) << "\n";
@@ -46,7 +43,7 @@ int main()
     return DTWdist(i, j);
   };
 
-  fillDistanceMatrix(DTWdistByInd, p_vec.size()); // Otherwise takes time.
+  fillDistanceMatrix_new(DTWdistByInd, p_vec.size()); // Otherwise takes time.
 
   std::string DistMatrixName = "DTW_matrix.csv";
   writeMatrix(DTWdist, DistMatrixName);

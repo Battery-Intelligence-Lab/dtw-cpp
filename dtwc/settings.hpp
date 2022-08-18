@@ -6,7 +6,7 @@
 #include <filesystem>
 
 
-using Tdata = float; // Data type double or float.
+using Tdata = double; // Data type double or float.
 
 
 inline std::filesystem::path operator+(const std::filesystem::path &lhs, const std::string &rhs)
@@ -25,7 +25,7 @@ const static fs::path root_folder = ROOT_FOLDER;
 const auto resultsPath = root_folder + "results/";
 constexpr bool isParallel = true;
 
-constexpr int numMaxParallelWorkers = 32;
+constexpr int numMaxParallelWorkers = 8;
 constexpr bool writeAsFileNames = true;
 
 constexpr bool isDebug = false;

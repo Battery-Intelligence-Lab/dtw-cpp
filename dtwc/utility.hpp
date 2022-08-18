@@ -6,6 +6,7 @@
 #include <vector>
 #include <array>
 
+#include <numeric>
 #include <fstream>
 #include <limits>
 #include <ctime>
@@ -32,6 +33,11 @@ static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 
 
 namespace dtwc {
+namespace stdr = std::ranges;
+namespace stdv = std::views;
+namespace ex = std::execution;
+
+
 template <typename Tfun>
 void run(Tfun task_indv, int i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
@@ -279,7 +285,25 @@ Tdata dtwFunBanded_Act(const std::vector<Tdata> &x, const std::vector<Tdata> &y,
 }
 
 
-void fillDistanceMatrix(auto &DTWdistByInd, int N)
+void fillDistanceMatrix(auto &DTWdistByInd, size_t N)
+{
+  auto distanceAllTask = [&](int i_p) {
+    for (size_t i = 0; i <= i_p; i++)
+      DTWdistByInd(i_p, i);
+
+    auto i_p_p = N - i_p - 1;
+    for (size_t i = 0; i <= i_p_p; i++)
+      DTWdistByInd(i_p_p, i);
+  };
+
+
+  const size_t N_2 = (N + 1) / 2;
+
+  dtwc::run(distanceAllTask, N_2);
+}
+
+
+void fillDistanceMatrix_new(auto &DTWdistByInd, size_t N)
 {
   auto distanceAllTask = [&](int i_p) {
     for (int i = 0; i <= i_p; i++)
@@ -293,7 +317,15 @@ void fillDistanceMatrix(auto &DTWdistByInd, int N)
 
   const int N_2 = (N + 1) / 2;
 
-  dtwc::run(distanceAllTask, N_2);
+  // auto range = stdv::iota(0, N_2);
+
+  std::vector<size_t> range(N_2);
+  std::iota(range.begin(), range.end(), 0);
+
+  std::for_each(ex::par_unseq, std::begin(range), std::end(range), distanceAllTask);
+
+
+  // dtwc::run(distanceAllTask, N_2);
 }
 
 }; // namespace dtwc
