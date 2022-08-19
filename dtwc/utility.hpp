@@ -227,6 +227,86 @@ Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 
 
 template <typename Tdata = float>
+Tdata dtwFunBanded_Act_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y, size_t band = 100)
+{
+
+
+  // Actual banding with skewness. New and light technique:
+  // This function uses L shaped method to compute distance but cannot backtrack.
+  // Be careful this is one sided band.
+
+  band *= 2; // Since it is one sided band
+  // Also puts the band to the short side. Not the long side. Long side could be beneficial but also not very good.
+
+
+  if (&x == &y) return 0; // If they are the same data then distance is 0.
+
+  const auto mx = x.size();
+  const auto my = y.size();
+
+  const auto &short_vec = (mx < my) ? x : y;
+  const auto &long_vec = (mx < my) ? y : x;
+
+
+  const auto m_short = short_vec.size();
+  const auto m_long = long_vec.size();
+
+  const auto band_size = std::min(band, m_short);
+
+  thread_local std::vector<Tdata> short_side(band_size);
+
+  short_side.resize(band_size);
+
+  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+
+  if ((m_short != 0) && (m_long != 0)) {
+    const auto diff = m_short - band_size;                                            // So we need to move this much.
+    const auto slope = static_cast<double>(diff) / (static_cast<double>(m_long) - 1); // This wont work with long size 1
+
+    double acc = 0; // Accumulate slope.
+
+    size_t shift = 0;
+
+    short_side[0] = distance(short_vec[0], long_vec[0]);
+
+    for (size_t i = 1; i < band_size; i++)
+      short_side[i] = short_side[i - 1] + distance(short_vec[i], long_vec[0]);
+
+
+    for (size_t j = 1; j < m_long; j++) {
+      acc += slope;
+      if (acc > 1.0) {
+        acc--;
+        shift++; // We need to shift one block now.
+
+        short_side[0] = std::min({ short_side[0], short_side[1] }) + distance(short_vec[shift], long_vec[j]);
+
+        for (size_t i = 1; i < (band_size - 1); i++)
+          short_side[i] = std::min({ short_side[i - 1], short_side[i], short_side[i + 1] }) + distance(short_vec[shift + i], long_vec[j]);
+
+
+        const size_t i = band_size - 1;
+        short_side[i] = std::min({ short_side[i - 1], short_side[i] }) + distance(short_vec[shift + i], long_vec[j]);
+
+      } else {
+        auto diag = short_side[0];
+        short_side[0] += distance(short_vec[shift], long_vec[j]);
+
+        for (size_t i = 1; i < band_size; i++) {
+          const auto next = std::min({ diag, short_side[i - 1], short_side[i] }) + distance(short_vec[shift + i], long_vec[j]);
+
+          diag = short_side[i];
+          short_side[i] = next;
+        }
+      }
+    }
+    return short_side[band_size - 1];
+  }
+  return maxValue<Tdata>;
+}
+
+
+template <typename Tdata = float>
 Tdata dtwFunBanded_Act(const std::vector<Tdata> &x, const std::vector<Tdata> &y, int band = 100)
 {
   // Actual banding with skewness.
@@ -303,16 +383,6 @@ void fillDistanceMatrix(auto &DTWdistByInd, size_t N)
 
 void fillDistanceMatrix_new(auto &DTWdistByInd, size_t N)
 {
-  // auto distanceAllTask = [&](int i_p) {
-  //   for (int i = 0; i <= i_p; i++)
-  //     DTWdistByInd(i_p, i);
-
-  //   auto i_p_p = N - i_p - 1;
-  //   for (int i = 0; i <= i_p_p; i++)
-  //     DTWdistByInd(i_p_p, i);
-  // };
-
-
   auto oneTask = [&, N = N](size_t i_linear) {
     size_t i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)

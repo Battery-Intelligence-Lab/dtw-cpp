@@ -37,7 +37,7 @@ int main()
       if constexpr (settings::band == 0) {
         DTWdist(j, i) = DTWdist(i, j) = dtwFun_L<Tdata>(p_vec[i], p_vec[j]);
       } else {
-        DTWdist(j, i) = DTWdist(i, j) = dtwFunBanded_Act<Tdata>(p_vec[i], p_vec[j], settings::band);
+        DTWdist(j, i) = DTWdist(i, j) = dtwFunBanded_Act_L<Tdata>(p_vec[i], p_vec[j], settings::band); // dtwFunBanded_Act_L faster and more accurate.
       }
     }
     return DTWdist(i, j);
