@@ -25,13 +25,13 @@ const static fs::path root_folder = ROOT_FOLDER;
 const auto resultsPath = root_folder + "results/";
 constexpr bool isParallel = true;
 
-constexpr int numMaxParallelWorkers = 8;
+constexpr int numMaxParallelWorkers = 32; // Change accordingly more cores than your computer has. It is limited to the maximum physical cores.
 constexpr bool writeAsFileNames = true;
 
 constexpr bool isDebug = false;
 
 
 const auto path = root_folder + "data/dummy";
-constexpr int Ndata_max = 50; // Maximum number of files loaded.
-constexpr int band = 0;       // Size of band to use (if no band put 0)
+constexpr int Ndata_max = 500; // Maximum number of files loaded.
+constexpr int band = 0;        // Size of band to use (if no band put 0)
 } // namespace settings
