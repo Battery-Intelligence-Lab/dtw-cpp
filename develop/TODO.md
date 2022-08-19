@@ -14,6 +14,7 @@
 - [ ] Speed up the code
 - [ ] GPU programming 
 - [ ] dtwFun2 and dtwFun_short are giving slightly different results. 
+- [ ] Lighter and faster DTW cost calculation + make the band from long side so it is more accurate. 
 
 ### Low priority: 
 
