@@ -1,19 +1,11 @@
+#include "dtwc.hpp"
+
 #include <iostream>
-#include <vector>
-#include <array>
-#include <limits>
 #include <ctime>
 #include <cstdlib>
 #include <cmath>
-#include <algorithm>
 #include <random>
 #include <string>
-#include <thread>
-#include <iterator>
-#include <cassert>
-#include <ranges>
-#include "dtwc.hpp"
-
 
 int main()
 {

@@ -7,9 +7,9 @@
  *      Author: Volkan Kumtepeli
  */
 
-#include <iterator>
-
 #pragma once
+
+#include <iterator>
 
 namespace dtwc {
 

@@ -2,6 +2,10 @@
 
 #pragma once
 
+#include "settings.hpp"
+#include "utility.hpp"
+#include "dataTypes.hpp"
+
 #include <vector>
 #include <filesystem>
 #include <cstdlib>
@@ -9,10 +13,7 @@
 #include <limits>
 #include <sstream>
 #include <fstream>
-
-#include "settings.hpp"
-#include "utility.hpp"
-#include "dataTypes.hpp"
+#include <cassert>
 
 
 namespace dtwc {

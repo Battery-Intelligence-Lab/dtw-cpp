@@ -2,6 +2,11 @@
 
 #pragma once
 
+#include "settings.hpp"
+#include "dataTypes.hpp"
+#include "fileOperations.hpp"
+
+
 #include <iostream>
 #include <vector>
 #include <array>
@@ -22,10 +27,6 @@
 #include <execution>
 #include <tuple>
 #include <iomanip>
-
-#include "settings.hpp"
-#include "dataTypes.hpp"
-#include "fileOperations.hpp"
 
 static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 
