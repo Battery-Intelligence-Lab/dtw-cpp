@@ -52,3 +52,6 @@ set_project_warnings(project_warnings)
 
 # # allow for static analysis options
 # include(cmake/StaticAnalyzers.cmake)
+
+add_subdirectory(extern/pybind11)
+pybind11_add_module(example python/dtwc-pybind11.cpp)
