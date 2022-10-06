@@ -1,6 +1,8 @@
 // Vk 2022.03.01
 // Timing functions
 
+#pragma once
+
 #include <ctime>
 #include <iostream>
 #include <cmath>

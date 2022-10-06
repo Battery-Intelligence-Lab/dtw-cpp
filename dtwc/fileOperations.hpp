@@ -60,7 +60,7 @@ std::vector<Tdata> readFile(const T &name)
 }
 
 template <typename Tdata, bool Print = false>
-auto load_data(auto &path, int Ndata = maxValue<Tdata>)
+auto load_data(auto &path, int Ndata = -1)
 {
   std::cout << "Reading data:" << std::endl;
 

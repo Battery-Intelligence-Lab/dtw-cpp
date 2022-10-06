@@ -63,48 +63,6 @@ public:
 };
 
 
-// template <typename Tdata>
-// class VecMatrix2
-// {
-//     using VarType = int;
-//     VarType m{}, n{};
-// public:
-
-//     std::unique_ptr<Tdata[]> data_ptr{};
-
-//     VecMatrix2(VarType m_, VarType n_)
-//         : m(m_), n(n_), data_ptr(new Tdata[m_ * n_]) {}
-
-//     inline void resize(VarType m_, VarType n_, Tdata x = 0)
-//     {
-//         if (m * n < m_ * n_) // Slower since we allocate exactly and vector allocates more than needed.
-//             data_ptr.reset(new Tdata[static_cast<int>(m_ * n_)]);
-
-//         m = m_;
-//         n = n_;
-//     }
-
-//     inline auto rows() { return m; }
-//     inline auto cols() { return n; }
-
-//     inline auto& operator()(VarType i, VarType j)
-//     {
-//         return data_ptr[i + j * m];
-//     }
-
-//     void print()
-//     {
-//         for (VarType i = 0; i < m; i++)
-//         {
-//             for (VarType j = 0; j < n; j++)
-//                 std::cout << this->operator()(i, j) << ' ';
-
-//             std::cout << '\n';
-//         }
-//     }
-
-// };
-
 template <typename Tdata>
 class BandMatrix
 {
@@ -164,8 +122,9 @@ private:
 
 public:
   VecMatrix<Tdata> CompactMat;
-  SkewedBandMatrix(VarType m_, VarType n_, VarType ku_, VarType kl_) : m(m_), ku(ku_), kl(kl_), m_n(static_cast<double>(m_) / static_cast<double>(n_)),
-                                                                       CompactMat(kl_ + ku_ + 1, n_) {}
+  SkewedBandMatrix(VarType m_, VarType n_, VarType ku_, VarType kl_)
+    : m(m_), ku(ku_), kl(kl_), m_n(static_cast<double>(m_) / static_cast<double>(n_)),
+      CompactMat(kl_ + ku_ + 1, n_) {}
 
   inline auto &operator()(VarType i, VarType j)
   {
