@@ -8,20 +8,22 @@
 #include <cmath>
 
 namespace dtwc {
-struct Duration
+struct Clock
 {
-  double d{ 0 };
+  std::clock_t tstart{ std::clock() };
+  Clock() = default;
+  auto now() const { return std::clock(); }
+  auto start() const { return tstart; }
+  double duration() const { return (now() - start()) / static_cast<double>(CLOCKS_PER_SEC); }
 };
 
-inline auto get_duration(auto t_start)
+inline std::ostream &operator<<(std::ostream &ofs, const Clock &clk)
 {
-  const double dr = (std::clock() - t_start) / (double)CLOCKS_PER_SEC;
-  return Duration{ dr };
-}
+  const auto duration = clk.duration();
+  ofs << std::floor(duration / 60) << ":"
+      << duration - std::floor(duration / 60) * 60
+      << " min:sec";
 
-std::ostream &operator<<(std::ostream &out, const Duration &obj)
-{
-  out << std::floor(obj.d / 60) << ":" << obj.d - std::floor(obj.d / 60) * 60;
-  return out;
+  return ofs;
 }
 } // namespace dtwc
