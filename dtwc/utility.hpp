@@ -5,6 +5,7 @@
 #include "settings.hpp"
 #include "dataTypes.hpp"
 #include "fileOperations.hpp"
+#include "Range.hpp"
 
 
 #include <iostream>
@@ -23,7 +24,6 @@
 #include <thread>
 #include <iterator>
 #include <memory>
-#include <ranges>
 #include <execution>
 #include <tuple>
 #include <iomanip>
@@ -32,45 +32,19 @@ static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 
 
 namespace dtwc {
-namespace stdr = std::ranges;
-namespace stdv = std::views;
+// namespace stdr = std::ranges;
+// namespace stdv = std::views;
 namespace ex = std::execution;
 
 
-template <typename Tfun>
-void run(Tfun task_indv, int i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
+void run(auto task_indv, int i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
+  auto range = Range(i_end);
 
-  auto task_par = [&](int i_begin, int i_end, int Nth) {
-    while (i_begin < i_end) {
-      task_indv(i_begin);
-      i_begin += Nth;
-    }
-  };
-
-  if constexpr (settings::isParallel) {
-    if (numMaxParallelWorkers <= 1) {
-      task_par(0, i_end, 1);
-    } else {
-      const unsigned int N_th_max = std::min(numMaxParallelWorkers, std::thread::hardware_concurrency());
-      std::vector<std::thread> threads;
-      threads.reserve(N_th_max);
-
-      for (unsigned int i_begin = 0; i_begin < N_th_max; i_begin++) // indices for the threads
-      {
-        // Multi threaded simul:
-
-        threads.emplace_back(task_par, i_begin, i_end, N_th_max);
-      }
-
-      for (auto &th : threads) {
-        if (th.joinable())
-          th.join();
-      }
-    }
-  } else {
-    task_par(0, i_end, 1);
-  }
+  if constexpr (settings::isParallel)
+    std::for_each(ex::par_unseq, range.begin(), range.end(), task_indv);
+  else
+    std::for_each(ex::seq, range.begin(), range.end(), task_indv);
 }
 
 
@@ -230,8 +204,6 @@ Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 template <typename Tdata = float>
 Tdata dtwFunBanded_Act_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y, size_t band = 100)
 {
-
-
   // Actual banding with skewness. New and light technique:
   // This function uses L shaped method to compute distance but cannot backtrack.
   // Be careful this is one sided band.
@@ -366,45 +338,13 @@ Tdata dtwFunBanded_Act(const std::vector<Tdata> &x, const std::vector<Tdata> &y,
 
 void fillDistanceMatrix(auto &DTWdistByInd, size_t N)
 {
-  auto distanceAllTask = [&](int i_p) {
-    for (size_t i = 0; i <= i_p; i++)
-      DTWdistByInd(i_p, i);
-
-    auto i_p_p = N - i_p - 1;
-    for (size_t i = 0; i <= i_p_p; i++)
-      DTWdistByInd(i_p_p, i);
-  };
-
-
-  const size_t N_2 = (N + 1) / 2;
-
-  dtwc::run(distanceAllTask, N_2);
-}
-
-
-void fillDistanceMatrix_new(auto &DTWdistByInd, size_t N)
-{
   auto oneTask = [&, N = N](size_t i_linear) {
     size_t i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)
       DTWdistByInd(i, j);
   };
 
-
-  // const int N_2 = (N + 1) / 2;
-
-  // auto range = stdv::iota(0, N_2);
-
-  // auto range = Range(N * N);
-
-
-  std::vector<size_t> range(N * N);
-  std::iota(range.begin(), range.end(), 0);
-
-  std::for_each(ex::par_unseq, range.begin(), range.end(), oneTask);
-
-
-  // dtwc::run(distanceAllTask, N_2);
+  dtwc::run(oneTask, N * N);
 }
 
 }; // namespace dtwc

@@ -32,6 +32,6 @@ constexpr bool isDebug = false;
 
 
 const auto path = root_folder + "data/dummy";
-constexpr int Ndata_max = 10; // Maximum number of files loaded.
+constexpr int Ndata_max = 25; // Maximum number of files loaded.
 constexpr int band = 0;       // Size of band to use (if no band put 0)
 } // namespace settings

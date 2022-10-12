@@ -35,7 +35,7 @@ int main()
     return DTWdist(i, j);
   };
 
-  fillDistanceMatrix_new(DTWdistByInd, p_vec.size()); // Otherwise takes time.
+  fillDistanceMatrix(DTWdistByInd, p_vec.size()); // Otherwise takes time.
 
   std::string DistMatrixName = "DTW_matrix.csv";
   writeMatrix(DTWdist, DistMatrixName);

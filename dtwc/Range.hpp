@@ -13,96 +13,62 @@
 
 namespace dtwc {
 
-struct RangeIterator
+class Index
 {
   /*
-    Adapted from: https://www.internalpointers.com/post/writing-custom-iterators-modern-cpp
-    https://stackoverflow.com/questions/12092448/code-for-a-basic-random-access-iterator-based-on-pointers
-  */
-  using value_type = int;
-  using iterator_category = std::random_access_iterator_tag; // Something is missing.
-  using difference_type = value_type;
+  Adapted from: https://stackoverflow.com/questions/61208870/how-to-write-a-random-access-custom-iterator-that-can-be-used-with-stl-algorithm
+*/
+  size_t ptr{};
 
-  using pointer = value_type *;
-  using reference = value_type &;
+public:
+  using iterator_category = std::random_access_iterator_tag;
+  using value_type = size_t;
+  using reference = size_t;
+  using pointer = size_t;
+  using difference_type = size_t;
 
-  value_type _n{ 0 };
+  Index() = default;
+  Index(size_t ptr) : ptr(ptr) {}
 
-  explicit RangeIterator(value_type i) : _n(i) {}
-  RangeIterator(const RangeIterator &rhs) : _n(rhs._n) {}
+  reference operator*() const { return ptr; }
+  pointer operator->() const { return ptr; }
 
-  reference operator*() { return _n; }
-  pointer operator->() { return &_n; }
-
-  // Prefix increment
-  inline RangeIterator &operator++()
+  Index &operator++()
   {
-    _n++;
+    ptr++;
+    return *this;
+  }
+  Index &operator--()
+  {
+    ptr--;
     return *this;
   }
 
-  inline RangeIterator &operator--()
-  {
-    --_n;
-    return *this;
-  }
+  difference_type operator-(const Index &it) const { return this->ptr - it.ptr; }
 
-  // Postfix increment
-  inline RangeIterator operator++(int)
-  {
-    RangeIterator tmp = *this;
-    ++(*this);
-    return tmp;
-  }
+  Index operator+(const difference_type &diff) const { return Index(ptr + diff); }
+  Index operator-(const difference_type &diff) const { return Index(ptr - diff); }
 
-  inline RangeIterator operator--(int)
-  {
-    RangeIterator tmp(*this);
-    --_n;
-    return tmp;
-  }
+  reference operator[](const difference_type &offset) const { return *(*this + offset); }
 
-  friend inline bool operator==(const RangeIterator &a, const RangeIterator &b) { return a._n == b._n; };
-  friend inline bool operator!=(const RangeIterator &a, const RangeIterator &b) { return a._n != b._n; };
-
-  inline RangeIterator &operator+=(difference_type rhs)
-  {
-    _n += rhs;
-    return *this;
-  }
-  inline RangeIterator &operator-=(difference_type rhs)
-  {
-    _n -= rhs;
-    return *this;
-  }
-
-  inline value_type operator[](difference_type rhs) { return rhs; }
-
-
-  inline difference_type operator-(const RangeIterator &rhs) const { return _n - rhs._n; }
-  inline RangeIterator operator+(difference_type rhs) const { return RangeIterator(_n + rhs); }
-  inline RangeIterator operator-(difference_type rhs) const { return RangeIterator(_n - rhs); }
-  friend inline RangeIterator operator+(difference_type lhs, const RangeIterator &rhs) { return RangeIterator(lhs + rhs._n); }
-  friend inline RangeIterator operator-(difference_type lhs, const RangeIterator &rhs) { return RangeIterator(lhs - rhs._n); }
-
-  // inline bool operator==(const RangeIterator &rhs) const { return _n == rhs._n; }
-  // inline bool operator!=(const RangeIterator &rhs) const { return _n != rhs._n; }
-  // inline bool operator>(const RangeIterator &rhs) const { return _n > rhs._n; }
-  // inline bool operator<(const RangeIterator &rhs) const { return _n < rhs._n; }
-  // inline bool operator>=(const RangeIterator &rhs) const { return _n >= rhs._n; }
-  // inline bool operator<=(const RangeIterator &rhs) const { return _n <= rhs._n; }
+  bool operator==(const Index &it) const { return this->ptr == it.ptr; }
+  bool operator!=(const Index &it) const { return this->ptr != it.ptr; }
+  bool operator<(const Index &it) const { return this->ptr < it.ptr; }
+  bool operator>(const Index &it) const { return this->ptr > it.ptr; }
+  bool operator>=(const Index &it) const { return !(this->ptr < it.ptr); }
+  bool operator<=(const Index &it) const { return !(this->ptr > it.ptr); }
 };
 
 class Range
 {
-  int n_begin{ 0 }, n_end{ 0 };
+  size_t x0{}, xN{};
 
 public:
-  explicit Range(int i) : n_end(i) {}
-  Range(int i_begin, int i_end) : n_begin(i_begin), n_end(i_end) {}
+  explicit Range(size_t xN) : xN{ xN } {}
+  Range(size_t x0, size_t xN) : x0{ x0 }, xN{ xN } {}
 
-  RangeIterator begin() { return RangeIterator(n_begin); }
-  RangeIterator end() { return RangeIterator(n_end); }
+  auto begin() { return Index(x0); }
+  auto end() { return Index(xN); }
 };
 
 } // namespace dtwc
