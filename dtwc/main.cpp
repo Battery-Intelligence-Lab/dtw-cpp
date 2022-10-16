@@ -9,12 +9,12 @@
 
 int main()
 {
-
   using namespace dtwc;
-
   dtwc::Clock clk;
 
-  auto [p_vec, p_names] = load_data<Tdata, true>(settings::path, settings::Ndata_max);
+  int Ndata_max = 10; // Load 10 data maximum.
+
+  auto [p_vec, p_names] = load_data<Tdata, true>(settings::path, Ndata_max);
 
   std::cout << "Data loading finished at " << clk << "\n";
 

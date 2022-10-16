@@ -1,6 +1,5 @@
 // cppimport
 #include <pybind11/pybind11.h>
-
 #include "../dtwc/dataTypes.hpp"
 
 
@@ -15,8 +14,9 @@ PYBIND11_MODULE(dtwcpy, m)
 {
   m.def("square", &square);
 
-  py::class_<VecMatrix<double>>(m, "VecMatrix")
-    .def(py::init<int>());
+
+  // py::class_<VecMatrix<double>>(m, "VecMatrix")
+  //   .def(py::init<int>());
 }
 /*
 <%

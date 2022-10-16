@@ -64,7 +64,6 @@ void test_DTWfunction()
 
 void test_initialisation()
 {
-
   // dtwc::Initialisation::init_random(p_vec, 3);
   // auto centroids_vec = dtwc::Initialisation::init_random(p_vec, 3);
   // auto centroids_vec = dtwc::Initialisation::init_Kmeanspp(p_vec, N_k, dtwFun2<Tdata>);

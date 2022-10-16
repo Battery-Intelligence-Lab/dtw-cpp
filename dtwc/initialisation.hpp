@@ -38,8 +38,8 @@ auto init_random(const std::vector<std::vector<Tdata>> &sequences, int N)
   return centroids_vec;
 }
 
-template <typename Tdata, typename DistFunType>
-auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, DistFunType &distance)
+template <typename Tdata>
+auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, auto &distanceFun)
 {
   // distance should be DTWlike function that take two sequences and give the distance between them.
   // First one is slected at random, others are selected based on distance.
@@ -62,7 +62,7 @@ auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, Dist
     centroids_ind[i] = gen;
     centroids_vec.push_back(sequences[gen]);
     for (size_t j = 0; j != sequences.size(); j++) {
-      const Tdata dist = distance(sequences[gen], sequences[j]);
+      const Tdata dist = distanceFun(sequences[gen], sequences[j]);
       distances[j] = std::min(distances[j], dist);
     }
 
@@ -75,27 +75,23 @@ auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, Dist
   return centroids_vec;
 }
 
-
-template <typename Tdata>
 auto init_random_ind(size_t seqSize, int N)
 {
   // N = number of clusters:
-  std::vector<int> centroids_ind;
-  std::vector<int> all_ind(seqSize);
+  std::vector<int> centroids_ind, all_ind(seqSize);
   std::iota(all_ind.begin(), all_ind.end(), 0);
   std::sample(all_ind.begin(), all_ind.end(), std::back_inserter(centroids_ind), N, randGenerator);
   return centroids_ind;
 }
 
-template <typename Tdata, typename DistFunType>
-auto init_Kmeanspp_ind(size_t seqSize, int N, DistFunType &distancebyInd)
+template <typename Tdata>
+auto init_Kmeanspp_ind(size_t seqSize, int N, auto &distancebyIndFunc)
 {
   // distance should be DTWlike function that take two sequences and give the distance between them.
   // First one is slected at random, others are selected based on distance.
   assert(N > 0);
 
-  if (N == 1)
-    return init_random_ind<Tdata>(seqSize, N);
+  if (N == 1) return init_random_ind(seqSize, N);
 
   // else
   std::vector<int> centroids_ind(N, -1);
@@ -108,7 +104,7 @@ auto init_Kmeanspp_ind(size_t seqSize, int N, DistFunType &distancebyInd)
   for (int i = 0; i < N - 1; i++) {
     centroids_ind[i] = gen;
     auto distTask = [&](int i_p) {
-      const Tdata dist = distancebyInd(gen, i_p);
+      const auto dist = distancebyIndFunc(gen, i_p);
       distances[i_p] = std::min(distances[i_p], dist);
     };
 

@@ -100,7 +100,6 @@ auto load_data(auto &path, int Ndata = -1)
 template <typename Tdata>
 void writeMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
 {
-
   std::ofstream myFile(settings::resultsPath + name, std::ios_base::out);
 
   for (int i = 0; i < matrix.rows(); i++) {
@@ -117,7 +116,6 @@ void writeMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
 template <typename Tdata>
 void readMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
 {
-
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
     std::cout << "File " << name << " is not found. Matrix will not be written.\n";
