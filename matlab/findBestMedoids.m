@@ -1,4 +1,9 @@
-function sol = findBestMedoids(distanceMat, Nc)
+function sol = findBestMedoids(distanceMat, Nc, verbosity)
+
+if(nargin<3)
+    verbosity = 0;
+end
+
 Nb = length(distanceMat); % Number of batteries. 
 w = binvar(Nb, Nb, 'full');
 
@@ -13,7 +18,7 @@ F = [F, sum(isCluster)== Nc];  % There should be Nc clusters.
 
 cost =  sum(w.*distanceMat,'all');
 
-yalmipStr = optimize(F,cost,sdpsettings('verbose',0,'gurobi.MIPGap',1e-6));
+yalmipStr = optimize(F,cost,sdpsettings('verbose',verbosity,'gurobi.MIPGap',1e-6));
 
 %%
 sol.yalmipStr = yalmipStr;

@@ -15,7 +15,7 @@ int main()
 
   using namespace dtwc;
   dtwc::Clock clk;
-  int Ndata_max = 10; // Load 10 data maximum.
+  int Ndata_max = 100; // Load 10 data maximum.
 
   auto [p_vec, p_names] = load_data<Tdata, true>(settings::path, Ndata_max);
 
@@ -41,7 +41,7 @@ int main()
   std::string DistMatrixName = "DTW_matrix.csv";
   writeMatrix(DTWdist, DistMatrixName);
   // DTWdist.print();
-  std::cout << "Finished all tasks in " << clk << "\n";
+  std::cout << "Finished calculating distances " << clk << "\n";
   std::cout << "Band used " << settings::band << "\n\n\n";
 
 
@@ -101,7 +101,7 @@ int main()
     model.setObjective(obj, GRB_MINIMIZE);
 
     // First optimize() call will fail - need to set NonConvex to 2
-
+    std::cout << "Finished setting up the MILP problem " << clk << "\n";
     model.optimize();
 
     for (auto &v_i : isCluster)
@@ -117,6 +117,8 @@ int main()
   } catch (...) {
     std::cout << "Exception during optimization" << std::endl;
   }
+
+  std::cout << "Finished all tasks " << clk << "\n";
 
 
 } //
