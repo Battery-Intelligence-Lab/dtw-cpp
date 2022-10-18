@@ -55,16 +55,13 @@ int main()
 
     // Create variables
 
-    std::vector<GRBVar> w_vec, isCluster;
+    GRBVar *isCluster = model.addVars(Nb, GRB_BINARY);
+
+    std::vector<GRBVar> w_vec;
     w_vec.reserve(Nb * Nb);
-    isCluster.reserve(Nb);
 
     for (size_t i{ 0 }; i < (Nb * Nb); i++)
       w_vec.push_back(model.addVar(0.0, 1.0, 0.0, GRB_BINARY, ""));
-
-    for (size_t i{ 0 }; i < Nb; i++)
-      isCluster.push_back(model.addVar(0.0, 1.0, 0.0, GRB_BINARY, ""));
-
 
     dtwc::VecMatrix<GRBVar> w(Nb, Nb, std::move(w_vec));
 
@@ -104,9 +101,9 @@ int main()
     std::cout << "Finished setting up the MILP problem " << clk << "\n";
     model.optimize();
 
-    for (auto &v_i : isCluster)
-      std::cout << v_i.get(GRB_StringAttr_VarName) << " "
-                << v_i.get(GRB_DoubleAttr_X) << '\n';
+    for (size_t i{ 0 }; i < Nb; i++)
+      std::cout << isCluster[i].get(GRB_StringAttr_VarName) << " "
+                << isCluster[i].get(GRB_DoubleAttr_X) << '\n';
 
 
     std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
