@@ -5,7 +5,6 @@ w = binvar(Nb, Nb, 'full');
 isCluster = binvar(Nb,1); 
 
 F = []; % Constraints
-%F = [F, 0 <= w <= 1];
 F = [F, sum(w,1) == 1]; % Only one cluster can be assigned. 
 F = [F, w <= repmat(isCluster,1,Nb)]; % if w of ith data is activated then it is a cluster. 
 

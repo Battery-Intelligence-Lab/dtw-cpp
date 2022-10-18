@@ -21,7 +21,6 @@ add_library(project_warnings INTERFACE)
 add_library(project_options INTERFACE)
 target_compile_features(project_options INTERFACE cxx_std_20)
 
-target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
 
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
   option(ENABLE_BUILD_WITH_TIME_TRACE "Enable -ftime-trace to generate time tracing .json files on clang" OFF)
@@ -65,29 +64,29 @@ message(STATUS "GUROBI LIBRARY START")
 message(STATUS ${GUROBI_LIBRARY})
 message(STATUS "GUROBI LIBRARY END")
 
+
+string(REPLACE "\\" "/" GRB_HOME $ENV{GUROBI_HOME})
+
 file(GLOB GRB_SRC_FILES
-  $ENV{GUROBI_HOME}/src/cpp/*.h
-  $ENV{GUROBI_HOME}/src/cpp/*.cpp
+  ${GRB_HOME}/src/cpp/*.h
+  ${GRB_HOME}/src/cpp/*.cpp
 )
 
 foreach(header ${GRB_SRC_FILES})
   # here replace / for linux and \ for windows
-  string(REPLACE "/" "_" header_path header)
-  string(TOUPPER header_path final_header_path)
-  file(APPEND headers_defines_file define
-    PATH_${final_header_path} ${CMAKE_CURRENT_SOURCE_DIR}/header)
+  message(STATUS ${header})
 endforeach(header)
 
 add_executable(dtwc++
   dtwc/main.cpp
-  ${SRC_FILES}
+  ${GRB_SRC_FILES}
 )
 
 target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  PUBLIC
-  ${GUROBI_CXX_LIBRARY}
   ${GUROBI_LIBRARY}
 )
+
+target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

@@ -22,6 +22,7 @@ public:
   VecMatrix(VarType m_) : m(m_), n(m_), data(m_ * m_) {} // Sequare matrix
   VecMatrix(VarType m_, VarType n_) : m(m_), n(n_), data(m_ * n_) {}
   VecMatrix(VarType m_, VarType n_, Tdata x) : m(m_), n(n_), data(m_ * n_, x) {}
+  VecMatrix(VarType m_, VarType n_, std::vector<Tdata> &&vec) : m(m_), n(n_), data(std::move(vec)) {}
 
   inline void resize(VarType m_, VarType n_, Tdata x = 0)
   {
