@@ -65,12 +65,12 @@ message(STATUS "GUROBI LIBRARY START")
 message(STATUS ${GUROBI_LIBRARY})
 message(STATUS "GUROBI LIBRARY END")
 
-file(GLOB SRC_FILES
+file(GLOB GRB_SRC_FILES
   $ENV{GUROBI_HOME}/src/cpp/*.h
   $ENV{GUROBI_HOME}/src/cpp/*.cpp
 )
 
-foreach(header ${HEADERS_FILES})
+foreach(header ${GRB_SRC_FILES})
   # here replace / for linux and \ for windows
   string(REPLACE "/" "_" header_path header)
   string(TOUPPER header_path final_header_path)
