@@ -56,28 +56,25 @@ int main()
     // Create variables
 
     GRBVar *isCluster = model.addVars(Nb, GRB_BINARY);
-
-    std::vector<GRBVar> w_vec;
-    w_vec.reserve(Nb * Nb);
-
-    for (size_t i{ 0 }; i < (Nb * Nb); i++)
-      w_vec.push_back(model.addVar(0.0, 1.0, 0.0, GRB_BINARY, ""));
-
-    dtwc::VecMatrix<GRBVar> w(Nb, Nb, std::move(w_vec));
+    GRBVar *w = model.addVars(Nb * Nb, GRB_BINARY);
+    std::cout << "Finished creating w and is Cluster " << clk << "\n";
 
 
     for (size_t i{ 0 }; i < Nb; i++) {
       GRBLinExpr lhs = 0;
       for (size_t j{ 0 }; j < Nb; j++) {
-        lhs += w(j, i);
+        lhs += w[j + i * Nb];
       }
       model.addConstr(lhs, '=', 1.0);
     }
+    std::cout << "Finished Only one cluster can be assigned " << clk << "\n";
 
-    for (size_t i{ 0 }; i < Nb; i++)
-      for (size_t j{ 0 }; j < Nb; j++)
-        model.addConstr(w(i, j) <= isCluster[i]);
 
+    for (size_t j{ 0 }; j < Nb; j++)
+      for (size_t i{ 0 }; i < Nb; i++)
+        model.addConstr(w[i + j * Nb] <= isCluster[i]);
+
+    std::cout << "Finished if w of ith data is activated then it is a cluster.  " << clk << "\n";
 
     {
       GRBLinExpr lhs = 0;
@@ -86,14 +83,17 @@ int main()
 
       model.addConstr(lhs == Nc); // There should be Nc clusters.
     }
+    std::cout << "Finished There should be Nc clusters.   " << clk << "\n";
 
 
     // Set objective
 
     GRBLinExpr obj = 0;
-    for (size_t i{ 0 }; i < Nb; i++)
-      for (size_t j{ 0 }; j < Nb; j++)
-        obj += w(i, j) * DTWdistByInd(i, j);
+    for (size_t j{ 0 }; j < Nb; j++)
+      for (size_t i{ 0 }; i < Nb; i++)
+        obj += w[i + j * Nb] * DTWdistByInd(i, j);
+
+    std::cout << "Finished OBJ.   " << clk << "\n";
 
     model.setObjective(obj, GRB_MINIMIZE);
 
