@@ -3,7 +3,6 @@
 #include <iostream>
 #include <cstdlib>
 #include <cmath>
-#include <random>
 #include <string>
 #include <vector>
 
@@ -24,11 +23,11 @@ int main()
   std::string DistMatrixName = "DTW_matrix.csv";
 
   prob.writeAllDistances(DistMatrixName);
-  prob.getDistanceMatrix().print();
+  // prob.getDistanceMatrix().print();
   std::cout << "Finished calculating distances " << clk << "\n";
   std::cout << "Band used " << settings::band << "\n\n\n";
 
-  prob.set_numberOfClusters(4); // 4 clusters.
+  prob.set_numberOfClusters(5); // 4 clusters.
 
   prob.clusterMIP();
 
