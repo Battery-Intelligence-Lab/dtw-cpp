@@ -19,7 +19,7 @@
 
 #include <vector>
 #include <string_view>
-
+#include <memory>
 
 namespace dtwc {
 template <typename Tdata>
@@ -29,7 +29,7 @@ class Problem
   std::vector<std::string> p_names;
   VecMatrix<Tdata> DTWdist;
 
-  size_t Nb;   // Number of data points
+  int Nb;   // Number of data points
   int Nc{ 4 }; // Number of clusters.
 
 public:
@@ -68,7 +68,6 @@ public:
 
   void writeAllDistances(const std::string &name) { writeMatrix(DTWdist, name); }
 
-
   void load_data_fromFolder(std::string_view folder_path, int Ndata = -1, bool print = false)
   {
     std::tie(p_vec, p_names) = load_data<Tdata>(folder_path, Ndata, print);
@@ -78,16 +77,15 @@ public:
   }
 
 
-  void clusterMIP()
+  void cluster_byMIP()
   {
     try {
       GRBEnv env = GRBEnv();
-
       GRBModel model = GRBModel(env);
 
       // Create variables
-      GRBVar *isCluster = model.addVars(Nb, GRB_BINARY);
-      GRBVar *w = model.addVars(Nb * Nb, GRB_BINARY);
+      std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_BINARY) };
+      std::unique_ptr<GRBVar[]> w{model.addVars(Nb * Nb, GRB_BINARY)};
 
       for (size_t i{ 0 }; i < Nb; i++) {
         GRBLinExpr lhs = 0;
@@ -110,17 +108,13 @@ public:
         model.addConstr(lhs == Nc); // There should be Nc clusters.
       }
 
-
       // Set objective
-
       GRBLinExpr obj = 0;
       for (size_t j{ 0 }; j < Nb; j++)
         for (size_t i{ 0 }; i < Nb; i++)
           obj += w[i + j * Nb] * DTWdistByInd(i, j);
 
       model.setObjective(obj, GRB_MINIMIZE);
-
-      // First optimize() call will fail - need to set NonConvex to 2
       std::cout << "Finished setting up the MILP problem." << std::endl;
 
       model.optimize();
@@ -132,12 +126,7 @@ public:
 
       std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
 
-
-      delete[] isCluster;
-      delete[] w;
-
-
-    } catch (GRBException e) {
+    } catch (GRBException& e) {
       std::cout << "Error code = " << e.getErrorCode() << std::endl;
       std::cout << e.getMessage() << std::endl;
     } catch (...) {

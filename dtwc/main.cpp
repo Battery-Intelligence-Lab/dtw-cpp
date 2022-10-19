@@ -29,7 +29,7 @@ int main()
 
   prob.set_numberOfClusters(5); // 4 clusters.
 
-  prob.clusterMIP();
+  prob.cluster_byMIP();
 
   std::cout << "Finished all tasks " << clk << "\n";
 } //

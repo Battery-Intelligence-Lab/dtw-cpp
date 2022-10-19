@@ -37,7 +37,7 @@ namespace dtwc {
 namespace ex = std::execution;
 
 
-void run(auto task_indv, int i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
+void run(auto task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
   auto range = Range(i_end);
 
