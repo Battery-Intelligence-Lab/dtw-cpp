@@ -108,6 +108,11 @@ int main()
 
     std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
 
+
+    delete[] isCluster;
+    delete[] w;
+
+
   } catch (GRBException e) {
     std::cout << "Error code = " << e.getErrorCode() << std::endl;
     std::cout << e.getMessage() << std::endl;
