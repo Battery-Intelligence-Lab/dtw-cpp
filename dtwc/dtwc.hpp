@@ -9,3 +9,4 @@
 #include "initialisation.hpp"
 #include "fileOperations.hpp"
 #include "timing.hpp"
+#include "Problem.hpp"
