@@ -29,7 +29,7 @@ class Problem
   std::vector<std::string> p_names;
   VecMatrix<Tdata> DTWdist;
 
-  int Nb;   // Number of data points
+  int Nb;      // Number of data points
   int Nc{ 4 }; // Number of clusters.
 
 public:
@@ -66,7 +66,7 @@ public:
     dtwc::run(oneTask, Nb * Nb);
   }
 
-  void writeAllDistances(const std::string &name) { writeMatrix(DTWdist, name); }
+  void writeDistanceMatrix(const std::string &name) { writeMatrix(DTWdist, name); }
 
   void load_data_fromFolder(std::string_view folder_path, int Ndata = -1, bool print = false)
   {
@@ -85,7 +85,7 @@ public:
 
       // Create variables
       std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_BINARY) };
-      std::unique_ptr<GRBVar[]> w{model.addVars(Nb * Nb, GRB_BINARY)};
+      std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
 
       for (size_t i{ 0 }; i < Nb; i++) {
         GRBLinExpr lhs = 0;
@@ -126,7 +126,7 @@ public:
 
       std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
 
-    } catch (GRBException& e) {
+    } catch (GRBException &e) {
       std::cout << "Error code = " << e.getErrorCode() << std::endl;
       std::cout << e.getMessage() << std::endl;
     } catch (...) {

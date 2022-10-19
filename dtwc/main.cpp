@@ -11,6 +11,7 @@ int main()
 {
   dtwc::Clock clk;
   int Ndata_max = 100; // Load 10 data maximum.
+  int Nc = 4;          // Number of clusters
 
   dtwc::Problem<Tdata> prob; // Create a problem.
 
@@ -22,14 +23,14 @@ int main()
 
   std::string DistMatrixName = "DTW_matrix.csv";
 
-  prob.writeAllDistances(DistMatrixName);
+  prob.writeDistanceMatrix(DistMatrixName);
   // prob.getDistanceMatrix().print();
   std::cout << "Finished calculating distances " << clk << "\n";
   std::cout << "Band used " << settings::band << "\n\n\n";
 
-  prob.set_numberOfClusters(5); // 4 clusters.
+  prob.set_numberOfClusters(Nc); // 4 clusters.
 
-  prob.cluster_byMIP();
+  prob.cluster_byMIP(); // Uses MILP to do clustering.
 
   std::cout << "Finished all tasks " << clk << "\n";
 } //
