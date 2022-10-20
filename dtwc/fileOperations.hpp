@@ -59,8 +59,8 @@ std::vector<Tdata> readFile(const T &name)
   return p;
 }
 
-template <typename Tdata, bool Print = false>
-auto load_data(auto &path, int Ndata = -1)
+template <typename Tdata>
+auto load_data(auto &path, int Ndata = -1, bool print = false)
 {
   std::cout << "Reading data:" << std::endl;
 
@@ -73,7 +73,7 @@ auto load_data(auto &path, int Ndata = -1)
 
     auto p = readFile<Tdata>(entry.path());
 
-    if constexpr (Print) {
+    if (print) {
       std::cout << entry.path() << '\t'
                 << "Size: " << p.size() << " Capacity: " << p.capacity() << '\n';
     }
