@@ -29,6 +29,9 @@ class Problem
   std::vector<std::string> p_names;
   VecMatrix<Tdata> DTWdist;
 
+  std::vector<int> centroids_ind; // indices of cluster centroids.
+  std::vector<int> clusters_ind;  // which point belongs to which cluster.
+
   int Nb;      // Number of data points
   int Nc{ 4 }; // Number of clusters.
 
@@ -40,6 +43,8 @@ public:
   auto set_numberOfClusters(int Nc_)
   {
     Nc = Nc_;
+    centroids_ind.clear();
+    clusters_ind.clear();
   }
 
 
@@ -119,12 +124,39 @@ public:
 
       model.optimize();
 
+
       for (size_t i{ 0 }; i < Nb; i++)
         std::cout << isCluster[i].get(GRB_StringAttr_VarName) << " "
                   << isCluster[i].get(GRB_DoubleAttr_X) << '\n';
 
-
       std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
+
+
+      for (int i{ 0 }; i < Nb; i++)
+        if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
+          centroids_ind.push_back(i);
+
+      std::cout << "Clusters: ";
+      for (auto ind : centroids_ind)
+        std::cout << p_names[ind] << ' ';
+
+      std::cout << '\n';
+
+
+      clusters_ind = std::vector<int>(Nb);
+
+
+      for (auto i : centroids_ind) {
+        std::cout << "Cluster " << p_names[i] << " has: ";
+        for (size_t j{ 0 }; j < Nb; j++)
+          if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
+            std::cout << p_names[j] << " ";
+            clusters_ind[j] = i;
+          }
+
+        std::cout << '\n';
+      }
+
 
     } catch (GRBException &e) {
       std::cout << "Error code = " << e.getErrorCode() << std::endl;
@@ -133,5 +165,30 @@ public:
       std::cout << "Exception during optimization" << std::endl;
     }
   }
+
+
+  void writeClusters(const std::string &name)
+  {
+    std::ofstream myFile(settings::resultsPath + name, std::ios_base::out);
+
+    myFile << "Clusters:\n";
+    for (int i{ 0 }; i < Nc; i++) {
+      if (i != 0)
+        myFile << ',';
+
+      myFile << p_names[centroids_ind[i]];
+    }
+
+    myFile << "\n\n";
+    myFile << "Data" << ',' << "its cluster\n";
+
+    for (int i{ 0 }; i < Nb; i++)
+      myFile << p_names[i] << ',' << p_names[clusters_ind[i]] << '\n';
+
+
+    myFile.close();
+  }
 };
+
+
 } // namespace dtwc

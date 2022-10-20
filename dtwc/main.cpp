@@ -32,5 +32,8 @@ int main()
 
   prob.cluster_byMIP(); // Uses MILP to do clustering.
 
+  std::string reportName = "DTW_MILP_results.csv";
+  prob.writeClusters(reportName);
+
   std::cout << "Finished all tasks " << clk << "\n";
 } //
