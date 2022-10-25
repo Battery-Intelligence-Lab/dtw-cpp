@@ -404,4 +404,10 @@ void fillDistanceMatrix(Tfun &DTWdistByInd, size_t N)
   dtwc::run(oneTask, N * N);
 }
 
+struct TestNumberOfThreads
+{
+  TestNumberOfThreads() { std::cout << "A thread is used;\n"; }
+};
+
+
 }; // namespace dtwc
