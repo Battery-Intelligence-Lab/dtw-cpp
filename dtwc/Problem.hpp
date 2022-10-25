@@ -60,9 +60,15 @@ public:
     return DTWdist(i, j);
   }
 
+  struct TestNumberOfThreads
+  {
+      TestNumberOfThreads() { std::cout << "A thread is used;\n";}
+  };
+
   void fillDistanceMatrix()
   {
     auto oneTask = [&, N = Nb](size_t i_linear) {
+      thread_local TestNumberOfThreads a{};
       size_t i{ i_linear / N }, j{ i_linear % N };
       if (i <= j)
         DTWdistByInd(i, j);
