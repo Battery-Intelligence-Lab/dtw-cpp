@@ -125,13 +125,11 @@ public:
 
       model.optimize();
 
+      // for (size_t i{ 0 }; i < Nb; i++)
+      //   std::cout << isCluster[i].get(GRB_StringAttr_VarName) << " "
+      //             << isCluster[i].get(GRB_DoubleAttr_X) << '\n';
 
-      for (size_t i{ 0 }; i < Nb; i++)
-        std::cout << isCluster[i].get(GRB_StringAttr_VarName) << " "
-                  << isCluster[i].get(GRB_DoubleAttr_X) << '\n';
-
-      std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
-
+      // std::cout << "Obj: " << model.get(GRB_DoubleAttr_ObjVal) << std::endl;
 
       for (int i{ 0 }; i < Nb; i++)
         if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
