@@ -83,7 +83,7 @@ namespace ex = std::execution;
 template <typename Tfun>
 void run_std(Tfun &task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
-  #if USE_STD_PAR_ALGORITMHS
+#if USE_STD_PAR_ALGORITMHS
 
   auto range = Range(i_end);
 
@@ -91,7 +91,7 @@ void run_std(Tfun &task_indv, size_t i_end, unsigned int numMaxParallelWorkers =
     std::for_each(ex::par_unseq, range.begin(), range.end(), task_indv);
   else
     std::for_each(ex::seq, range.begin(), range.end(), task_indv);
-    #endif
+#endif
 }
 
 
@@ -409,7 +409,7 @@ void fillDistanceMatrix(Tfun &DTWdistByInd, size_t N)
 
 struct TestNumberOfThreads
 {
-  TestNumberOfThreads() { std::cout << "A thread is used;\n"; }
+  TestNumberOfThreads() { std::cout << "A thread is created.\n"; }
 };
 
 
