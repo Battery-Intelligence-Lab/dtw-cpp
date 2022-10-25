@@ -19,7 +19,7 @@
   - [x] Old macOS integration is now working with GLOB to find paths for Gurobi. 
   - [x] TBB cannot be used so we are back to thrad-based parallelisation. 
   - [ ] Integration for M1/M2 chip machines.  
-- [ ] Time shows wrong. 
+- [ ] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
 
 ### Low priority: 
 
