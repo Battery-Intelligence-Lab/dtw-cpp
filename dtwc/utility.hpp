@@ -335,8 +335,8 @@ Tdata dtwFunBanded_Act(const std::vector<Tdata> &x, const std::vector<Tdata> &y,
   return z;
 }
 
-
-void fillDistanceMatrix(auto &DTWdistByInd, size_t N)
+template <typename Tfun>
+void fillDistanceMatrix(Tfun &DTWdistByInd, size_t N)
 {
   auto oneTask = [&, N = N](size_t i_linear) {
     size_t i{ i_linear / N }, j{ i_linear % N };
