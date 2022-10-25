@@ -36,8 +36,8 @@ namespace dtwc {
 // namespace stdv = std::views;
 namespace ex = std::execution;
 
-
-void run(auto task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
+template <typename Tfun>
+void run(Tfun& task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
   auto range = Range(i_end);
 

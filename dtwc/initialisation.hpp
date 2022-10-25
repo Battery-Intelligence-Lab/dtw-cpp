@@ -38,8 +38,8 @@ auto init_random(const std::vector<std::vector<Tdata>> &sequences, int N)
   return centroids_vec;
 }
 
-template <typename Tdata>
-auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, auto &distanceFun)
+template <typename Tdata, typename Tfun>
+auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, Tfun &distanceFun)
 {
   // distance should be DTWlike function that take two sequences and give the distance between them.
   // First one is slected at random, others are selected based on distance.
@@ -84,8 +84,8 @@ auto init_random_ind(size_t seqSize, int N)
   return centroids_ind;
 }
 
-template <typename Tdata>
-auto init_Kmeanspp_ind(size_t seqSize, int N, auto &distancebyIndFunc)
+template <typename Tdata, typename Tfun>
+auto init_Kmeanspp_ind(size_t seqSize, int N, Tfun &distancebyIndFunc)
 {
   // distance should be DTWlike function that take two sequences and give the distance between them.
   // First one is slected at random, others are selected based on distance.
