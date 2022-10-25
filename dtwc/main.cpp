@@ -25,7 +25,7 @@ int main()
 
   prob.writeDistanceMatrix(DistMatrixName);
   // prob.getDistanceMatrix().print();
-  std::cout << "Finished calculating distances " << clk << "\n";
+  std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << settings::band << "\n\n\n";
 
   prob.set_numberOfClusters(Nc); // 4 clusters.

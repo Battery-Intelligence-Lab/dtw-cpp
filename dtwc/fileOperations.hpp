@@ -59,8 +59,8 @@ std::vector<Tdata> readFile(const T &name)
   return p;
 }
 
-template <typename Tdata>
-auto load_data(auto &path, int Ndata = -1, bool print = false)
+template <typename Tdata, typename Tpath>
+auto load_data(Tpath &path, int Ndata = -1, bool print = false)
 {
   std::cout << "Reading data:" << std::endl;
 

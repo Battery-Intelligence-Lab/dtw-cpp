@@ -5,6 +5,8 @@
 #include <string>
 #include <filesystem>
 
+#define USE_STD_PAR_ALGORITMHS FALSE
+
 
 using Tdata = double; // Data type double or float.
 
