@@ -10,7 +10,7 @@
 int main()
 {
   dtwc::Clock clk;
-  int Ndata_max = 100; // Load 10 data maximum.
+  int Ndata_max = 100; // Load 100 data maximum.
   int Nc = 4;          // Number of clusters
 
   dtwc::Problem<Tdata> prob; // Create a problem.
@@ -28,12 +28,16 @@ int main()
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << settings::band << "\n\n\n";
 
-  prob.set_numberOfClusters(Nc); // 4 clusters.
 
-  prob.cluster_byMIP(); // Uses MILP to do clustering.
+  std::string reportName = "DTW_MILP_results";
 
-  std::string reportName = "DTW_MILP_results.csv";
-  prob.writeClusters(reportName);
+  // Calculate for Ncluster = 3,4,5;
+  for (int Ncluster = 3; Ncluster <= 5; Ncluster++) {
+    prob.set_numberOfClusters(Ncluster); // 4 clusters.
+    prob.cluster_byMIP();                // Uses MILP to do clustering.
+    prob.writeClusters(reportName);
+    prob.write_silhouettes();
+  }
 
   std::cout << "Finished all tasks " << clk << "\n";
 } //
