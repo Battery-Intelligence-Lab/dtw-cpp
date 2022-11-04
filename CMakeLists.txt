@@ -1,12 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 
-include(cmake/StandardProjectSettings.cmake)
-include(cmake/PreventInSourceBuilds.cmake)
-
 project(DTWC++ VERSION "2.0.0"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX)
+
+include(cmake/StandardProjectSettings.cmake)
+include(cmake/PreventInSourceBuilds.cmake)
+  
 
 option(CXX "enable C++ compilation" ON)
 
