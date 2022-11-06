@@ -20,6 +20,8 @@
   - [x] TBB cannot be used so we are back to thrad-based parallelisation. 
   - [ ] Integration for M1/M2 chip machines.  
 - [ ] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
+- [x] Clusters class is created to decouple representation of clusters. 
+- [x] mip.hpp and mip.cpp files are created to contain MIP functions.
 
 ### Low priority: 
 

@@ -77,6 +77,8 @@ endforeach(header)
 
 add_executable(dtwc++
   dtwc/main.cpp
+  dtwc/Problem.cpp
+  dtwc/mip.cpp
   ${GRB_SRC_FILES}
 )
 

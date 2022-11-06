@@ -50,7 +50,7 @@ auto init_Kmeanspp(const std::vector<std::vector<Tdata>> &sequences, int N, Tfun
 
   // else
   std::vector<std::vector<Tdata>> centroids_vec;
-  std::vector<int> centroids_ind(N, -1);
+  std::vector<unsigned int> centroids_ind(N, 0);
 
   std::vector<Tdata> distances(sequences.size(), std::numeric_limits<Tdata>::max());
 
