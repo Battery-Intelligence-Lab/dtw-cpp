@@ -72,7 +72,7 @@ public:
 
 
   void printClusters();
-  void writeClusters(std::string &file_name);
+  void writeClusters(std::string file_name);
   void writeMedoidMembers(int iter, int rep = 0);
 
   auto calculate_silhouette();

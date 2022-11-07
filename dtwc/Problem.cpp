@@ -74,7 +74,7 @@ void Problem::printClusters()
   }
 }
 
-void Problem::writeClusters(std::string &file_name)
+void Problem::writeClusters(std::string file_name)
 {
   file_name += "_" + std::to_string(Nc) + ".csv";
 
