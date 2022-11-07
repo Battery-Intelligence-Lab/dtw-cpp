@@ -76,7 +76,7 @@ void Problem::printClusters()
 
 void Problem::writeClusters(std::string file_name)
 {
-  file_name += "_" + std::to_string(Nc) + ".csv";
+  file_name += "_Nc_" + std::to_string(Nc) + ".csv";
 
   std::ofstream myFile(settings::resultsPath + file_name, std::ios_base::out);
 
