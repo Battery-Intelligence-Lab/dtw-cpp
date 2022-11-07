@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include "Clusters.hpp"
 #include "mip.hpp"
 #include "settings.hpp"
 #include "utility.hpp"
@@ -27,24 +26,32 @@ namespace dtwc {
 
 class Problem
 {
-  std::vector<std::vector<Tdata>> p_vec;
+  std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
-  VecMatrix<Tdata> DTWdist;
+  VecMatrix<data_t> DTWdist;
 
 
-  size_t Nb; // Number of data points
+  ind_t Nc{ 1 }; // Number of clusters.
+  ind_t Nb;      // Number of data points
 
 public:
-  Clusters clusters;
+  std::vector<ind_t> centroids_ind;                // indices of cluster centroids.
+  std::vector<ind_t> clusters_ind;                 // which point belongs to which cluster.
+  std::vector<std::vector<ind_t>> cluster_members; // Members of each clusters!
 
   // Getters and setters:
-
   auto &getDistanceMatrix() { return DTWdist; }
 
-  auto set_numberOfClusters(size_t Nc_) { clusters.set_size(Nc_); }
+  void clear_clusters();
+
+  auto set_numberOfClusters(ind_t Nc_)
+  {
+    assert(Nc_ > 0);
+    Nc = Nc_;
+  }
 
   auto size() const { return Nb; }
-  auto cluster_size() const { return clusters.size(); }
+  auto cluster_size() const { return Nc; }
 
   double DTWdistByInd(int i, int j);
   void fillDistanceMatrix();
@@ -55,11 +62,16 @@ public:
 
   void cluster_byMIP();
 
-void writeClusters(std::string &file_name) { clusters.write_wNames(file_name, p_names); }
+  void printClusters();
+  void writeClusters(std::string &file_name);
 
   auto calculate_silhouette();
 
   void write_silhouettes();
+
+  // Initialisation of clusters:
+  void init_random();
+  void init_Kmeanspp();
 };
 
 

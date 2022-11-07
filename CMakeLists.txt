@@ -80,6 +80,7 @@ add_executable(dtwc++
   dtwc/main.cpp
   dtwc/Problem.cpp
   dtwc/mip.cpp
+#  dtwc/initialisation.cpp
   ${GRB_SRC_FILES}
 )
 

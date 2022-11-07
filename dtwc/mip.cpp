@@ -22,13 +22,11 @@ namespace dtwc {
 
 void MIP_clustering_byGurobi(Problem &prob)
 {
-  auto &clusters = prob.clusters;
-
   const auto Nb = prob.size();
-  const auto Nc = clusters.size();
+  const auto Nc = prob.cluster_size();
 
-  clusters.clear();
-  
+  prob.clear_clusters();
+
   try {
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
@@ -69,20 +67,20 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    for (unsigned int i{ 0 }; i < Nb; i++)
+    for (ind_t i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
-        clusters.centroids_ind.push_back(i);
+        prob.centroids_ind.push_back(i);
 
 
-    clusters.clusters_ind = std::vector<unsigned int>(Nb);
+    prob.clusters_ind = std::vector<ind_t>(Nb);
 
-    unsigned int i_cluster = 0;
-    for (auto i : clusters.centroids_ind) {
-      clusters.cluster_members.emplace_back();
+    ind_t i_cluster = 0;
+    for (auto i : prob.centroids_ind) {
+      prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
         if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
-          clusters.clusters_ind[j] = i_cluster;
-          clusters.cluster_members.back().push_back(j);
+          prob.clusters_ind[j] = i_cluster;
+          prob.cluster_members.back().push_back(j);
         }
 
       i_cluster++;

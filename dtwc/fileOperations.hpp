@@ -20,16 +20,16 @@ namespace dtwc {
 
 namespace fs = std::filesystem;
 
-template <typename Tdata, typename Tpath>
-std::vector<std::vector<Tdata>> readCSVfromFolder(const Tpath &path)
+template <typename data_t, typename Tpath>
+std::vector<std::vector<data_t>> readCSVfromFolder(const Tpath &path)
 {
   auto Nfiles = (std::size_t)std::distance(fs::directory_iterator{ path }, fs::directory_iterator{});
-  std::vector<std::vector<Tdata>> allFiles(Nfiles);
+  std::vector<std::vector<data_t>> allFiles(Nfiles);
 }
 
 
-template <typename Tdata, typename T>
-std::vector<Tdata> readFile(const T &name)
+template <typename data_t, typename T>
+std::vector<data_t> readFile(const T &name)
 {
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
@@ -44,10 +44,10 @@ std::vector<Tdata> readFile(const T &name)
     if (c == '0')
       break;
 
-  Tdata x, y;
+  data_t x, y;
   // in >> y; // Read the 0.
 
-  std::vector<Tdata> p;
+  std::vector<data_t> p;
 
   p.reserve(10000);
 
@@ -59,19 +59,19 @@ std::vector<Tdata> readFile(const T &name)
   return p;
 }
 
-template <typename Tdata, typename Tpath>
+template <typename data_t, typename Tpath>
 auto load_data(Tpath &path, int Ndata = -1, bool print = false)
 {
   std::cout << "Reading data:" << std::endl;
 
   std::ofstream out(settings::resultsPath + "dataOrder.csv", std::ios_base::out);
-  std::vector<std::vector<Tdata>> p_vec;
+  std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
   int i_data = 0;
   for (const auto &entry : fs::directory_iterator(path)) {
 
-    auto p = readFile<Tdata>(entry.path());
+    auto p = readFile<data_t>(entry.path());
 
     if (print) {
       std::cout << entry.path() << '\t'
@@ -97,8 +97,8 @@ auto load_data(Tpath &path, int Ndata = -1, bool print = false)
 }
 
 
-template <typename Tdata>
-void writeMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
+template <typename data_t>
+void writeMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
 {
   std::ofstream myFile(settings::resultsPath + name, std::ios_base::out);
 
@@ -113,8 +113,8 @@ void writeMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
 }
 
 
-template <typename Tdata>
-void readMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
+template <typename data_t>
+void readMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
 {
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
@@ -122,7 +122,7 @@ void readMatrix(dtwc::VecMatrix<Tdata> &matrix, const std::string &name)
 
   matrix.data.clear();
   std::string x_str;
-  Tdata x;
+  data_t x;
   while (in >> x) {
     if (in.peek() == ',')
       in.ignore();

@@ -8,25 +8,25 @@
 
 namespace dtwc {
 
-template <typename Tdata>
-constexpr Tdata maxValue = std::numeric_limits<Tdata>::max();
+template <typename data_t>
+constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-template <typename Tdata>
+template <typename data_t>
 class VecMatrix
 {
   using VarType = int;
-  using data_type = Tdata;
+  using data_type = data_t;
   VarType m{}, n{};
 
 public:
-  std::vector<Tdata> data;
+  std::vector<data_t> data;
   VecMatrix() = default;
   VecMatrix(VarType m_) : m(m_), n(m_), data(m_ * m_) {} // Sequare matrix
   VecMatrix(VarType m_, VarType n_) : m(m_), n(n_), data(m_ * n_) {}
-  VecMatrix(VarType m_, VarType n_, Tdata x) : m(m_), n(n_), data(m_ * n_, x) {}
-  VecMatrix(VarType m_, VarType n_, std::vector<Tdata> &&vec) : m(m_), n(n_), data(std::move(vec)) {}
+  VecMatrix(VarType m_, VarType n_, data_t x) : m(m_), n(n_), data(m_ * n_, x) {}
+  VecMatrix(VarType m_, VarType n_, std::vector<data_t> &&vec) : m(m_), n(n_), data(std::move(vec)) {}
 
-  inline void resize(VarType m_, VarType n_, Tdata x = 0)
+  inline void resize(VarType m_, VarType n_, data_t x = 0)
   {
     m = m_;
     n = n_;
@@ -66,17 +66,17 @@ public:
 };
 
 
-template <typename Tdata>
+template <typename data_t>
 class BandMatrix
 {
 public:
-  VecMatrix<Tdata> CompactMat;
+  VecMatrix<data_t> CompactMat;
 
 private:
   using VarType = int;
   VarType m{}, ku{}, kl{};
 
-  Tdata fixedVal = maxValue<Tdata>;
+  data_t fixedVal = maxValue<data_t>;
 
 public:
   BandMatrix(VarType m_, VarType n_, VarType ku_, VarType kl_) : CompactMat(kl_ + ku_ + 1, n_), m(m_), ku(ku_), kl(kl_) {}
@@ -96,7 +96,7 @@ public:
   }
 
 
-  void resize(VarType m_, VarType n_, VarType ku_, VarType kl_, Tdata x = 0)
+  void resize(VarType m_, VarType n_, VarType ku_, VarType kl_, data_t x = 0)
   {
     m = m_;
     ku = ku_;
@@ -111,7 +111,7 @@ public:
 };
 
 
-template <typename Tdata>
+template <typename data_t>
 class SkewedBandMatrix
 {
 
@@ -121,10 +121,10 @@ private:
   double m_n; // m/n
   std::vector<std::array<int, 3>> access;
 
-  Tdata outBoundsVal = maxValue<Tdata>;
+  data_t outBoundsVal = maxValue<data_t>;
 
 public:
-  VecMatrix<Tdata> CompactMat;
+  VecMatrix<data_t> CompactMat;
   SkewedBandMatrix(VarType m_, VarType n_, VarType ku_, VarType kl_)
     : m(m_), ku(ku_), kl(kl_), m_n(static_cast<double>(m_) / static_cast<double>(n_)),
       CompactMat(kl_ + ku_ + 1, n_) {}
@@ -161,14 +161,14 @@ public:
 
     const auto val = this->operator()(i, j);
 
-    if (val < maxValue<Tdata> / 2)
+    if (val < maxValue<data_t> / 2)
       throw 1003; // Do not assign to an already assigned place.
 
     return this->operator()(i, j);
   }
 
 
-  void resize(VarType m_, VarType n_, VarType ku_, VarType kl_, Tdata x = 0)
+  void resize(VarType m_, VarType n_, VarType ku_, VarType kl_, data_t x = 0)
   {
     m = m_;
     ku = ku_;

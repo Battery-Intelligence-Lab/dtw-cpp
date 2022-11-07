@@ -8,7 +8,8 @@
 #define USE_STD_PAR_ALGORITMHS FALSE
 
 
-using Tdata = double; // Data type double or float.
+using data_t = double; // Data type double or float.
+using ind_t = unsigned int; // Data type for indices. 
 
 inline std::filesystem::path operator+(const std::filesystem::path &lhs, const std::string &rhs)
 { //!< To make path type compatible with strings.
@@ -25,7 +26,7 @@ const static fs::path root_folder = "../../";
 const auto resultsPath = root_folder + "results/";
 constexpr bool isParallel = true;
 
-constexpr int numMaxParallelWorkers = 32; // Change accordingly more cores than your computer has. It is limited to the maximum physical cores.
+constexpr int numMaxParallelWorkers = 1024; // Change accordingly more cores than your computer has. It is limited to the maximum physical cores.
 constexpr bool writeAsFileNames = true;
 
 constexpr bool isDebug = false;

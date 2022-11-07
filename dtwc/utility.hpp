@@ -1,4 +1,11 @@
-// Vk 2021.12.15
+/*
+ * utility.hpp
+ *
+ * utility functions
+
+ * Created on: 15 Dec 2021
+ * Author(s): Volkan Kumtepeli, Becky Perriment
+ */
 
 #pragma once
 
@@ -6,6 +13,7 @@
 #include "dataTypes.hpp"
 #include "fileOperations.hpp"
 #include "Range.hpp"
+#include "parallelisation.hpp"
 
 
 #include <iostream>
@@ -21,106 +29,22 @@
 #include <algorithm>
 #include <random>
 #include <string>
-#include <thread>
 #include <iterator>
 #include <memory>
-#include <execution>
 #include <tuple>
 #include <iomanip>
 
 static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 
-
 namespace dtwc {
 // namespace stdr = std::ranges;
 // namespace stdv = std::views;
 
-
-template <typename Tfun> // #TODO change with parallel algorithms.
-void run_legacy(Tfun task_indv, int i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
+template <typename data_t>
+data_t dtwFun2(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-
-  auto task_par = [&](int i_begin, int i_end, int Nth) {
-    while (i_begin < i_end) {
-      task_indv(i_begin);
-      i_begin += Nth;
-    }
-  };
-
-  if constexpr (settings::isParallel) {
-    if (numMaxParallelWorkers == 1)
-      task_par(0, i_end, 1);
-    else {
-      if (numMaxParallelWorkers < 1)
-        numMaxParallelWorkers = std::thread::hardware_concurrency();
-
-      const unsigned int N_th_max = std::min(numMaxParallelWorkers, std::thread::hardware_concurrency());
-
-      std::vector<std::thread> threads;
-      threads.reserve(N_th_max);
-
-      for (unsigned int i_begin = 0; i_begin < N_th_max; i_begin++) //!< indices for the threads
-      {
-        //!< Multi threaded simul:
-
-        threads.emplace_back(task_par, i_begin, i_end, N_th_max);
-      }
-
-      for (auto &th : threads) {
-        if (th.joinable())
-          th.join();
-      }
-    }
-  } else {
-    task_par(0, i_end, 1);
-  }
-}
-
-#if USE_STD_PAR_ALGORITMHS
-namespace ex = std::execution;
-#endif
-
-template <typename Tfun>
-void run_std(Tfun &task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
-{
-#if USE_STD_PAR_ALGORITMHS
-
-  auto range = Range(i_end);
-
-  if constexpr (settings::isParallel)
-    std::for_each(ex::par_unseq, range.begin(), range.end(), task_indv);
-  else
-    std::for_each(ex::seq, range.begin(), range.end(), task_indv);
-#endif
-}
-
-
-template <typename Tfun>
-void run(Tfun &task_indv, size_t i_end, unsigned int numMaxParallelWorkers = settings::numMaxParallelWorkers)
-{
-#if USE_STD_PAR_ALGORITMHS
-  // std::cout << "Standard algorithms parallelisation is being used." << std::endl;
-  run_std(task_indv, i_end, numMaxParallelWorkers);
-#else
-  // std::cout << "Thread-based parallelisation is being used." << std::endl;
-  run_legacy(task_indv, i_end, numMaxParallelWorkers);
-#endif
-}
-
-
-template <typename Tdata, typename Tsequence>
-void updateDBA(std::vector<Tdata> &mean, const std::vector<Tsequence> &sequences)
-{
-  std::vector<Tdata> newMean(mean.size());
-  std::vector<unsigned short> Nmean(mean.size());
-}
-
-
-template <typename Tdata>
-Tdata dtwFun2(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
-{
-  thread_local VecMatrix<Tdata> C(x.size(), y.size()); //
-  Tdata z = maxValue<Tdata>;
+  thread_local VecMatrix<data_t> C(x.size(), y.size()); //
+  data_t z = maxValue<data_t>;
 
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.
@@ -130,7 +54,7 @@ Tdata dtwFun2(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 
   C.resize(mx, my);
 
-  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((mx != 0) && (my != 0)) {
     C(0, 0) = distance(x[0], y[0]);
@@ -156,13 +80,13 @@ Tdata dtwFun2(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 }
 
 
-template <typename Tdata>
-Tdata dtwFun_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
+template <typename data_t>
+data_t dtwFun_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
   // This function uses L shaped method to compute distance but cannot backtrack.
   if (&x == &y) return 0; // If they are the same data then distance is 0.
 
-  thread_local std::vector<Tdata> short_side(10e3);
+  thread_local std::vector<data_t> short_side(10e3);
 
   const auto mx = x.size();
   const auto my = y.size();
@@ -176,7 +100,7 @@ Tdata dtwFun_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 
   short_side.resize(m_short);
 
-  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((m_short != 0) && (m_long != 0)) {
 
@@ -200,15 +124,15 @@ Tdata dtwFun_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 
     return short_side[m_short - 1];
   }
-  return maxValue<Tdata>;
+  return maxValue<data_t>;
 }
 
 
-template <typename Tdata>
-Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
+template <typename data_t>
+data_t dtwFun_short(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-  thread_local VecMatrix<Tdata> C(x.size(), y.size()); //
-  Tdata z = maxValue<Tdata>;
+  thread_local VecMatrix<data_t> C(x.size(), y.size()); //
+  data_t z = maxValue<data_t>;
 
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.
@@ -218,7 +142,7 @@ Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 
   C.resize(mx, my);
 
-  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((mx != 0) && (my != 0)) {
     C(0, 0) = distance(x[0], y[0]);
@@ -240,14 +164,14 @@ Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
     int i{ mx - 1 }, j{ my - 1 };
     int ord{ 0 };
     do {
-      std::array<Tdata, 3> distTemp{ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) };
+      std::array<data_t, 3> distTemp{ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) };
       ord = std::distance(distTemp.begin(), std::min_element(distTemp.begin(), distTemp.end()));
 
       i--;
     } while (ord == 0);
 
     do {
-      std::array<Tdata, 3> distTemp{ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) };
+      std::array<data_t, 3> distTemp{ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) };
       ord = std::distance(distTemp.begin(), std::min_element(distTemp.begin(), distTemp.end()));
 
       j--;
@@ -261,8 +185,8 @@ Tdata dtwFun_short(const std::vector<Tdata> &x, const std::vector<Tdata> &y)
 }
 
 
-template <typename Tdata = float>
-Tdata dtwFunBanded_Act_L(const std::vector<Tdata> &x, const std::vector<Tdata> &y, size_t band = 100)
+template <typename data_t = float>
+data_t dtwFunBanded_Act_L(const std::vector<data_t> &x, const std::vector<data_t> &y, size_t band = 100)
 {
   // Actual banding with skewness. New and light technique:
   // This function uses L shaped method to compute distance but cannot backtrack.
@@ -286,11 +210,11 @@ Tdata dtwFunBanded_Act_L(const std::vector<Tdata> &x, const std::vector<Tdata> &
 
   const auto band_size = std::min(band, m_short);
 
-  thread_local std::vector<Tdata> short_side(band_size);
+  thread_local std::vector<data_t> short_side(band_size);
 
   short_side.resize(band_size);
 
-  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((m_short != 0) && (m_long != 0)) {
     const auto diff = m_short - band_size;                                            // So we need to move this much.
@@ -335,24 +259,24 @@ Tdata dtwFunBanded_Act_L(const std::vector<Tdata> &x, const std::vector<Tdata> &
     }
     return short_side[band_size - 1];
   }
-  return maxValue<Tdata>;
+  return maxValue<data_t>;
 }
 
 
-template <typename Tdata = float>
-Tdata dtwFunBanded_Act(const std::vector<Tdata> &x, const std::vector<Tdata> &y, int band = 100)
+template <typename data_t = float>
+data_t dtwFunBanded_Act(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
 {
   // Actual banding with skewness.
-  static thread_local SkewedBandMatrix<Tdata> C(x.size(), y.size(), band, band); //
-  Tdata z = maxValue<Tdata>;
+  static thread_local SkewedBandMatrix<data_t> C(x.size(), y.size(), band, band); //
+  data_t z = maxValue<data_t>;
 
   const int mx = x.size();
   const int my = y.size();
 
   C.resize(mx, my, band, band);
 
-  std::fill(C.CompactMat.data.begin(), C.CompactMat.data.end(), maxValue<Tdata>);
-  auto distance = [](Tdata x, Tdata y) { return std::abs(x - y); };
+  std::fill(C.CompactMat.data.begin(), C.CompactMat.data.end(), maxValue<data_t>);
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((mx != 0) && (my != 0)) {
     auto slope = static_cast<double>(mx) / static_cast<double>(my);
