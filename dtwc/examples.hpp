@@ -17,12 +17,17 @@
 namespace dtwc::examples {
 
 
-void cluster_byKmeans_randomInit()
+void cluster_byKmeans_single()
 {
   dtwc::Clock clk; // Create a clock object
+  std::string reportName = "DTW_kMeans_results";
 
-  int Ndata_max = 100; // Load 100 data maximum.
-  auto Nc = 4;         // Number of clusters
+
+  int Ndata_max = 7; // Load 100 data maximum.
+  auto Nc = 2;       // Number of clusters
+
+  int N_repetition = 3;
+  int maxIter = 100;
 
   dtwc::Problem prob; // Create a problem.
 
@@ -30,33 +35,11 @@ void cluster_byKmeans_randomInit()
   std::cout << "Data loading finished at " << clk << "\n";
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
 
-  prob.init_random();
-
-  for (auto x : prob.centroids_ind)
-    std::cout << x << ',';
-  std::cout << '\n';
-
-  for (auto x : prob.clusters_ind)
-    std::cout << x << ',';
-  std::cout << '\n';
-
-  // // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
-  // prob.fillDistanceMatrix();
-
-  // std::string DistMatrixName = "DTW_matrix.csv";
-
-  // prob.writeDistanceMatrix(DistMatrixName);
-  // // prob.getDistanceMatrix().print();
-  // std::cout << "Finished calculating distances " << clk << std::endl;
-  // std::cout << "Band used " << settings::band << "\n\n\n";
-
-
-  // std::string reportName = "DTW_MILP_results";
-
-  // prob.cluster_byMIP();          // Uses MILP to do clustering.
-  // prob.writeClusters(reportName);
-  // prob.write_silhouettes();
+  prob.printClusters();           // Prints to screen.
+  prob.writeClusters(reportName); // Prints to file.
+  prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }
@@ -87,10 +70,11 @@ void cluster_byMIP_single()
 
   std::string reportName = "DTW_MILP_results";
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.cluster_byMIP();          // Uses MILP to do clustering.
-  prob.writeClusters(reportName);
-  prob.write_silhouettes();
+  prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
+  prob.cluster_by_MIP();          // Uses MILP to do clustering.
+  prob.printClusters();           // Prints to screen.
+  prob.writeClusters(reportName); // Prints to file.
+  prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }
@@ -124,9 +108,9 @@ void cluster_byMIP_multiple()
   for (auto nc : Nc) {
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
     prob.set_numberOfClusters(nc); // Nc = number of clusters.
-    prob.cluster_byMIP();          // Uses MILP to do clustering.
+    prob.cluster_by_MIP();         // Uses MILP to do clustering.
     prob.writeClusters(reportName);
-    prob.write_silhouettes();
+    prob.writeSilhouettes();
   }
 
   std::cout << "Finished all tasks " << clk << "\n";

@@ -139,4 +139,5 @@ void readMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
     throw 1;
 }
 
+
 } // namespace dtwc

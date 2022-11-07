@@ -14,6 +14,7 @@
 #include "fileOperations.hpp"
 #include "Range.hpp"
 #include "parallelisation.hpp"
+//#include "utility_deprecated.hpp"
 
 
 #include <iostream>
@@ -39,6 +40,8 @@ static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 namespace dtwc {
 // namespace stdr = std::ranges;
 // namespace stdv = std::views;
+
+class Problem;
 
 template <typename data_t>
 data_t dtwFun2(const std::vector<data_t> &x, const std::vector<data_t> &y)
@@ -336,5 +339,18 @@ struct TestNumberOfThreads
   TestNumberOfThreads() { std::cout << "A thread is created.\n"; }
 };
 
+
+template <typename Tdata>
+bool aremedoidsSame(const std::vector<Tdata> &m1, std::vector<Tdata> &m2)
+{
+  if (m1.size() != m2.size())
+    return false;
+
+  for (size_t i = 0; i != m1.size(); i++)
+    if (m1[i] != m2[i])
+      return false;
+
+  return true;
+}
 
 }; // namespace dtwc

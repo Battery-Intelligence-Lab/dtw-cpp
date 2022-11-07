@@ -33,7 +33,7 @@
 #include "fileOperations.hpp"
 
 
-namespace dwtc {
+namespace dtwc {
 
 template <typename Tdata, typename Tsequence>
 int getMedoidIndex(const std::vector<Tsequence> &sequences)
@@ -333,18 +333,6 @@ void updateDBA(std::vector<Tdata> &mean, const std::vector<Tsequence> &sequences
 //   return z;
 // }
 
-template <typename Tdata>
-bool aremedoidsSame(const std::vector<Tdata> &m1, std::vector<Tdata> &m2)
-{
-  if (m1.size() != m2.size())
-    return false;
-
-  for (size_t i = 0; i != m1.size(); i++)
-    if (m1[i] != m2[i])
-      return false;
-
-  return true;
-}
 
 void fillDistanceMatrix(auto &DTWdistByInd, int N)
 {
@@ -359,22 +347,7 @@ void fillDistanceMatrix(auto &DTWdistByInd, int N)
 
   const int N_2 = (N + 1) / 2;
 
-  dwtc::run(distanceAllTask, N_2);
-}
-
-auto findTotalCost(auto &closestCluster, auto &centroids_ind, auto &DTWdistByInd)
-{
-  double sum = 0;
-  for (size_t i = 0; i < closestCluster.size(); i++) {
-    const auto i_c = closestCluster[i];
-    const auto i_p = centroids_ind[i_c];
-    if constexpr (settings::isDebug)
-      std::cout << "Distance between " << i << " and closest cluster " << i_p
-                << " which is: " << DTWdistByInd(i, i_p) << "\n";
-    sum += DTWdistByInd(i, i_p) * DTWdistByInd(i, i_p);
-  }
-
-  return sum;
+  run(distanceAllTask, N_2);
 }
 
 template <typename Tdata, typename Tdist>
@@ -466,4 +439,4 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
 
   return std::tuple(status, total_cost);
 }
-}; // namespace dwtc
+}; // namespace dtwc

@@ -20,14 +20,13 @@
 #include <string_view>
 #include <memory>
 #include <limits>
+#include <utility>
 
 
 namespace dtwc {
 
 class Problem
 {
-  std::vector<std::vector<data_t>> p_vec;
-  std::vector<std::string> p_names;
   VecMatrix<data_t> DTWdist;
 
 
@@ -35,6 +34,9 @@ class Problem
   ind_t Nb;      // Number of data points
 
 public:
+  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::string> p_names;
+
   std::vector<ind_t> centroids_ind;                // indices of cluster centroids.
   std::vector<ind_t> clusters_ind;                 // which point belongs to which cluster.
   std::vector<std::vector<ind_t>> cluster_members; // Members of each clusters!
@@ -43,11 +45,19 @@ public:
   auto &getDistanceMatrix() { return DTWdist; }
 
   void clear_clusters();
+  void resize()
+  {
+    cluster_members.resize(Nc);
+    centroids_ind.resize(Nc);
+    clusters_ind.resize(Nb);
+  }
+
 
   auto set_numberOfClusters(ind_t Nc_)
   {
     assert(Nc_ > 0);
     Nc = Nc_;
+    resize();
   }
 
   auto size() const { return Nb; }
@@ -60,18 +70,32 @@ public:
 
   void load_data_fromFolder(std::string_view folder_path, int Ndata = -1, bool print = false);
 
-  void cluster_byMIP();
 
   void printClusters();
   void writeClusters(std::string &file_name);
+  void writeMedoidMembers(int iter, int rep = 0);
 
   auto calculate_silhouette();
 
-  void write_silhouettes();
+  void writeSilhouettes();
 
   // Initialisation of clusters:
   void init_random();
   void init_Kmeanspp();
+
+
+  // Clustering functions:
+  void cluster_by_MIP();
+  std::pair<int, double> cluster_by_kMedoidsPAM(int rep, int maxIter = 100);
+  void cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter = 100);
+
+  // Aux
+  double findTotalCost();
+  void assignClusters();
+  void distributeClusters();
+  void distanceInClusters();
+
+  void calculateMedoids();
 };
 
 

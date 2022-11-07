@@ -8,8 +8,8 @@
 #define USE_STD_PAR_ALGORITMHS FALSE
 
 
-using data_t = double; // Data type double or float.
-using ind_t = unsigned int; // Data type for indices. 
+using data_t = double;      // Data type double or float.
+using ind_t = unsigned int; // Data type for indices.
 
 inline std::filesystem::path operator+(const std::filesystem::path &lhs, const std::string &rhs)
 { //!< To make path type compatible with strings.

@@ -10,7 +10,7 @@
 
 int main()
 {
-  // Here are some examples. You can either take the contents of example functions into main or modify and run them. 
-  //dtwc::examples::cluster_byMIP_multiple();
-  dtwc::examples::cluster_byKmeans_randomInit();
-} 
+  // Here are some examples. You can either take the contents of example functions into main or modify and run them.
+  // dtwc::examples::cluster_byMIP_multiple();
+  dtwc::examples::cluster_byKmeans_single();
+}
