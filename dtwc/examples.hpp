@@ -23,10 +23,10 @@ void cluster_byKmeans_single()
   std::string reportName = "DTW_kMeans_results";
 
 
-  int Ndata_max = 7; // Load 100 data maximum.
-  auto Nc = 2;       // Number of clusters
+  int Ndata_max = 9; // Load 100 data maximum.
+  auto Nc = 3;       // Number of clusters
 
-  int N_repetition = 3;
+  int N_repetition = 5;
   int maxIter = 100;
 
   dtwc::Problem prob; // Create a problem.
@@ -36,6 +36,7 @@ void cluster_byKmeans_single()
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
   prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
+
 
   prob.printClusters();           // Prints to screen.
   prob.writeClusters(reportName); // Prints to file.

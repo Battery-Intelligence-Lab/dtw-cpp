@@ -59,17 +59,33 @@ void Problem::fillDistanceMatrix()
 void Problem::printClusters()
 {
   std::cout << "Clusters: ";
-  for (auto ind : centroids_ind)
-    std::cout << p_names[ind] << ' ';
+  for (auto ind : centroids_ind) {
+    if constexpr (settings::writeAsFileNames)
+      std::cout << p_names[ind] << ' ';
+
+    else
+      std::cout << ind << ' ';
+  }
 
   std::cout << '\n';
 
   for (size_t i{ 0 }; i < Nc; i++) {
     auto centroid = centroids_ind[i];
-    std::cout << "Cluster " << p_names[centroid] << " has: ";
 
-    for (auto member : cluster_members[i])
-      std::cout << p_names[member] << " ";
+    if constexpr (settings::writeAsFileNames)
+      std::cout << p_names[centroid] << " has: ";
+
+    else
+      std::cout << centroid << " has: ";
+
+
+    for (auto member : cluster_members[i]) {
+      if constexpr (settings::writeAsFileNames)
+        std::cout << p_names[member] << " ";
+
+      else
+        std::cout << member << " ";
+    }
     std::cout << '\n';
   }
 }
@@ -132,10 +148,9 @@ void Problem::writeSilhouettes()
 
 void Problem::init_random()
 {
-  std::uniform_int_distribution<ind_t> distrib(0, Nb - 1);
-
-  for (auto &centroid : centroids_ind)
-    centroid = distrib(randGenerator);
+  centroids_ind.clear();
+  auto range = Range(0, Nb);
+  std::sample(range.begin(), range.end(), std::back_inserter(centroids_ind), Nc, randGenerator);
 }
 
 void Problem::init_Kmeanspp()
@@ -197,26 +212,47 @@ void Problem::distanceInClusters()
 }
 
 
+// void Problem::calculateMedoids()
+// {
+//   auto findBetterMedoidTask = [&](int i_c) // i_c is cluster index
+//   {
+//     auto dist = [&](ind_t i_p) {
+//       data_t sum{ 0 };
+//       for (auto member : cluster_members[i_c])
+//         sum += DTWdistByInd(i_p, member);
+
+//       return sum;
+//     };
+
+//     auto compare = [&dist](auto i_1, auto i_2) { return dist(i_1) < dist(i_2); };
+
+//     const auto it = std::min_element(cluster_members[i_c].begin(), cluster_members[i_c].end(), compare);
+
+//     centroids_ind[i_c] = std::distance(cluster_members[i_c].begin(), it);
+//   };
+
+//   run(findBetterMedoidTask, Nc);
+// }
+
+
 void Problem::calculateMedoids()
 {
-  auto findBetterMedoidTask = [&](int i_c) // i_c is cluster index
+
+  std::vector<data_t> clusterCosts(centroids_ind.size(), maxValue<data_t>);
+  auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
   {
-    auto dist = [&](ind_t i_p) {
-      data_t sum{ 0 };
-      for (auto member : cluster_members[i_c])
-        sum += DTWdistByInd(i_p, member);
+    const auto i_c = clusters_ind[i_p];
+    data_t sum{ 0 };
+    for (auto member : cluster_members[i_c])
+      sum += DTWdistByInd(i_p, member);
 
-      return sum;
-    };
-
-    auto compare = [&dist](auto i_1, auto i_2) { return dist(i_1) < dist(i_2); };
-
-    const auto it = std::min_element(cluster_members[i_c].begin(), cluster_members[i_c].end(), compare);
-
-    centroids_ind[i_c] = std::distance(cluster_members[i_c].begin(), it);
+    if (sum < clusterCosts[i_c]) {
+      clusterCosts[i_c] = sum;
+      centroids_ind[i_c] = i_p;
+    }
   };
 
-  run(findBetterMedoidTask, Nc);
+  run(findBetterMedoidTask, Nb);
 }
 
 void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
@@ -282,6 +318,8 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
               << findTotalCost() << ".\n"; // Uses clusters_ind to find cost.
 
+    printClusters();
+
     writeMedoidMembers(i, rep);
 
     distanceInClusters(); // Just populates DTWdistByInd matrix ahead.
@@ -313,7 +351,7 @@ double Problem::findTotalCost()
       std::cout << "Distance between " << i << " and closest cluster " << i_p
                 << " which is: " << DTWdistByInd(i, i_p) << "\n";
 
-    sum += DTWdistByInd(i, i_p) * DTWdistByInd(i, i_p);
+    sum += DTWdistByInd(i, i_p); // #TODO should cost be square or like this?
   }
 
   return sum;

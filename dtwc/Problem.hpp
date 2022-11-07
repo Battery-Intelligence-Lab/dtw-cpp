@@ -65,6 +65,7 @@ public:
 
   double DTWdistByInd(int i, int j);
   void fillDistanceMatrix();
+  void printDistanceMatrix() { DTWdist.print(); }
 
   void writeDistanceMatrix(const std::string &name) { writeMatrix(DTWdist, name); }
 
