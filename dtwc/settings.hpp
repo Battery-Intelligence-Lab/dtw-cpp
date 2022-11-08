@@ -27,7 +27,7 @@ const auto resultsPath = root_folder + "results/";
 constexpr bool isParallel = true;
 
 constexpr int numMaxParallelWorkers = 1024; // Change accordingly more cores than your computer has. It is limited to the maximum physical cores.
-constexpr bool writeAsFileNames = false;
+constexpr bool writeAsFileNames = true;
 
 constexpr bool isDebug = false;
 
