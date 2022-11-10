@@ -112,6 +112,8 @@ void Problem::writeClusters(std::string file_name)
     myFile << p_names[i] << ',' << p_names[centroids_ind[clusters_ind[i]]] << '\n';
   }
 
+  myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
+
   myFile.close();
 }
 
