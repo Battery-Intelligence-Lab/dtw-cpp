@@ -106,7 +106,7 @@ $$
 Then the optimisation problem subject to the above-given constraints becomes:
 
 $$
-A^\star, B^\star = \argmin_{A,B} \sum_i \sum_j D_{ij} \times A_{ij} 
+A^\star, B^\star = \min_{A,B} \sum_i \sum_j D_{ij} \times A_{ij} 
 $$
 
 After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster.
