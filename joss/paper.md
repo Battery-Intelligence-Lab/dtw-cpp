@@ -34,43 +34,13 @@ The availability of time series data is rapdily increasing, and analysing and cl
 
 An example reference: [@kumtepeli2020energy].
 
+``DTW-C++`` is a package for time series analysis and clustering. As the availability of time series data across numerous fields continually increases, developing useful software to intepret and understand this data is essential. Clustering is a useful tool to enable interpretability of large datasets, however it is only effective if useful distance metrics are used. Dynamic time wapring (DTW) is a prominant distance metric for time series analysis, due its robustness against shifts in the time axis and ability to handle time series of different lengths. This allows recognition of similarity between time series even when the events are not at identical time stamps, emphasising on the shape of the time series rather than the time of occurance - if time of occurance is important in the clustering problem, the Euclidean distance as used in other pckages is a better choice. DTW notoriously suffers from slow computation due to it's quadratic complexity, previously making it an unsuitable choice for larger datasets. ``DTW-C++`` speeds up the computation of DTW distance, allowing application to longer time series and larger data sets. In addition, ``DTW-C++`` performs clustering of the time series based off the pairwise DTW distance by formulating the clustering problem as a mixed integer programming (MIP) problem. MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima.
+
 # Statement of need
 
 Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. 
 
-# Mathematical background old
-
-The potential approaches for time series clustering can be broadly defined as using a distance metric on the raw data (distance-based), or extracting features or models from the raw data and then clustering. Distance-based methods have many advantages. The most significant advantage is that using the raw data means the results are not biased as can be the case in methods using inputs extracted from the data, because the features or models extracted have to be chosen prior to the clustering process. However, there are also potential disadvantages. Primarily, an incorrect choice of distance-metric can lead to non-logical clusters and picking a correct distance metric can be a very complex task.
-
-Dynamic time warping (DTW) was chosen as the most appropriate distance metric due to it's ability to handle different length inputs and robustness against time shifts, ensuring usage events don't have to occur at the same timestamp for their similarity to be recognised. In some instances this can be disadvantageous if the time of occurance is important for your data. Therefore consideration of the desired output is important.
-
-$$X=x_{1} + x_{2} + ... + x_{n}$$
-
-$$Y=x_{1} + y_{2} + ... + y_{m}$$
-
-Dynamic programming is used to construct an $$n$$ by $$m$$ matrix where for each element a cumulative cost between the corresponding points $x_{i}$ and $y_{j}$ is calculated
-
-$$
-c(i,j) = (x_i-y_j)^2+\min\begin{cases}
-    c(i-1,j-1)\\
-    c(i-1,j)\\
-    c(i,j-1)
-    \end{cases}
-$$
-
-The min function allows the warping process to occur. The function finds if it is a lower cost to match the next value in $$Y$$ with the current value in $$X$$ or visa versa, or if the corresponding values of each are the lowest cost. This exemplifies DTWs one-to-many property. It is also important to note the monotonic  and continuity conditions on the warping path. 
-
-$$i_{t-1}\leq i_t \mbox{  and  } j_{t-1}\leq j_t$$
-
-The monotonic condition ensures only unidirectional, forward movement through relative time, i.e. $x_{1}$ could be mapped to $$y_{2}$$ but then $$x_{2}$$ could not be mapped to $$y_{1}$$. 
-
-$$i_t-i_{t-1}\leq 1 \mbox{  and  } j_t-j_{t-1}\leq 1$$
-
-The continuity condition ensures each point is mapped to at least one other point so there are no jumps in time.
-
-The min function dictates the optimal warping path through the matrix from $(1,1)$ to $(n,m)$, with the final DTW cost:
-
-$$ C=c(n,m) $$
+# Current ``DTW-C++`` functionality
 
 # Mathmatical background
 
@@ -140,6 +110,11 @@ A^\star, B^\star = \argmin_{A,B} \sum_i \sum_j D_{ij} \times A_{ij}
 $$
 
 After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster.
+
+
+# Future work
+
+
 
 # Acknowledgements
 
