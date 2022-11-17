@@ -30,9 +30,13 @@ Disclaimer: paper writing is still ongoing; please do not use this version as a 
 
 # Statement of need
 
-Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series {Aghabozorgi} which can induce bias into the clustering. Clustering applications range from energy 
+Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series {Aghabozorgi} which can induce bias into the clustering. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications.
+
+Speed comparison against tslearn and dtaidistance
 
 MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima.
+
+
 
 # Current ``DTW-C++`` functionality
 
@@ -118,4 +122,20 @@ We gratefully acknowledge the contributions by [Battery Intelligence Lab](https:
 
 
 # References
+
+# Notes
+
+JOSS requirements from paper:
+* What problem software is designed to solve
+* Who is the target audience
+
+
+Relevant papers:
+* Petitjean
+* Frind dtaidistance paper
+* Shakoe & Chiba 1978 Dynamic programming algorithm optimization for spokenword recognition
+
+Important points:
+* Solving the dtw problem alongside clustering problem allows for most effective parallelization increasing speed – task level parallelization
+* Made the problem memory efficient by using vector instead of matrix
 
