@@ -30,7 +30,7 @@ Disclaimer: paper writing is still ongoing; please do not use this version as a 
 
 # Statement of need
 
-Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series {Aghabozorgi} which can induce bias into the clustering. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications.
+Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series {Aghabozorgi} which can induce bias into the clustering. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
 
 Speed comparison against tslearn and dtaidistance
 
@@ -40,7 +40,9 @@ MIP is preferable to other DTW clustering packages which use k-based methods for
 
 # Current ``DTW-C++`` functionality
 
+Find clusters groupings and centers
 
+Silloutette score and elbow method (check with Volkan)
 
 # Mathmatical background
 
