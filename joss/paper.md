@@ -114,7 +114,9 @@ After solving this integer program, the non-zero entries of $B$ represent the ce
 
 # Future work
 
+Multi-dimensional time series
 
+More analysis and visulasion features
 
 # Acknowledgements
 
