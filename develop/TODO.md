@@ -22,6 +22,7 @@
 - [ ] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
 - [x] Clusters class is created to decouple representation of clusters. 
 - [x] mip.hpp and mip.cpp files are created to contain MIP functions.
+- [ ] Give error message if data could not be loaded. 
 
 ### Low priority: 
 
