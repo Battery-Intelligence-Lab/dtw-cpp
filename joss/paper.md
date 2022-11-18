@@ -72,6 +72,9 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
+![signals_warped](https://user-images.githubusercontent.com/93582518/202719364-876acf5d-43f6-4f9b-9879-b3f07195988a.png)
+![warping_path](https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png)
+
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
 
 ![distance_matrix_formation](https://user-images.githubusercontent.com/93582518/202716790-11704c18-99bc-4234-b5db-3b21940ad91d.PNG)
