@@ -74,6 +74,8 @@ The final element $C_{n,m}$ is then the total cost which gives the comparison me
 
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
 
+![distance_matrix_formation](https://user-images.githubusercontent.com/93582518/202716790-11704c18-99bc-4234-b5db-3b21940ad91d.PNG)
+
 Using this matrix, $D$, the series can be split into $k$ clusters with integer programming. The problem formulation begins with a $1\times p$ binary vector, $B$, defining if each series is a cluster centroid, in other words for the $i$th element of $B$, 
 
 $$
