@@ -113,11 +113,9 @@ $$
 After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster.
 
 
-# Future work
+# Example
 
-Multi-dimensional time series
 
-More analysis and visulasion features
 
 # Acknowledgements
 
