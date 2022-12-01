@@ -23,7 +23,7 @@ void cluster_byKmeans_single()
   std::string reportName = "DTW_kMeans_results";
 
 
-  int Ndata_max = 9; // Load 100 data maximum.
+  int Ndata_max = 200; // Load 100 data maximum.
   auto Nc = 3;       // Number of clusters
 
   int N_repetition = 5;
@@ -31,7 +31,7 @@ void cluster_byKmeans_single()
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("../../data/dummy", Ndata_max);
+  prob.load_data_fromFolder("../../data/UCR_UMD", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
@@ -50,12 +50,12 @@ void cluster_byMIP_single()
 {
   dtwc::Clock clk; // Create a clock object
 
-  int Ndata_max = 100; // Load 100 data maximum.
-  auto Nc = 4;         // Number of clusters
+  int Ndata_max = 200; // Load 100 data maximum.
+  auto Nc = 3;         // Number of clusters
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("../../data/dummy", Ndata_max);
+  prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_UMD", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating

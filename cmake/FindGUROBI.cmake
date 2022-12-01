@@ -14,7 +14,7 @@ find_path(
   PATH_SUFFIXES include)
 
 if(CXX)
-  if(MSVC)
+  if(FALSE) #
     # determine Visual Studio year
     if(MSVC_TOOLSET_VERSION EQUAL 142)
       set(MSVC_YEAR "2019")
