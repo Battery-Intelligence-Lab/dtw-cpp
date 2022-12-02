@@ -34,7 +34,7 @@ std::vector<data_t> readFile(const T &name)
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
   {
-    std::cerr << "Error in ReadCSVfiles::loadCSV_mat. File " << name << " could not be opened\n";
+    std::cerr << "Error in readFile. File " << name << " could not be opened.\n";
     throw 2;
   }
 
@@ -58,6 +58,7 @@ std::vector<data_t> readFile(const T &name)
 
   return p;
 }
+
 
 template <typename data_t, typename Tpath>
 auto load_data(Tpath &path, int Ndata = -1, bool print = false)
@@ -89,6 +90,57 @@ auto load_data(Tpath &path, int Ndata = -1, bool print = false)
     i_data++;
     if (i_data == Ndata)
       break;
+  }
+
+  std::cout << p_vec.size() << " battery data is read.\n";
+
+  return std::pair(p_vec, p_names);
+}
+
+template <typename data_t, typename Tpath>
+auto load_tsv(Tpath &file_path, int Ndata = -1, bool print = false)
+{
+  std::cout << "Reading data:" << std::endl;
+
+  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::string> p_names;
+
+  int i_data = 0;
+
+  std::ifstream in(file_path, std::ios_base::in);
+  if (!in.good()) // check if we could open the file
+  {
+    std::cerr << "Error in readFile. File " << file_path << " could not be opened.\n";
+    throw 2;
+  }
+
+
+  std::string line;
+
+
+  int n_rows{ 0 };
+  while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) //!< Read file.
+  {
+    n_rows++;
+    std::vector<data_t> p;
+    p.reserve(10000);
+    std::istringstream in_line(line);
+    double x_i;
+
+    in_line >> x_i; // Ignore first element since it is cluster no for verification.
+    while (in_line >> x_i) {
+      p.push_back(x_i);
+    }
+
+    p.shrink_to_fit();
+
+    if (print) {
+      std::cout << file_path << '\t' << "data: " << n_rows
+                << " Size: " << p.size() << " Capacity: " << p.capacity() << '\n';
+    }
+
+    p_vec.push_back(std::move(p));
+    p_names.push_back(std::to_string(n_rows));
   }
 
   std::cout << p_vec.size() << " battery data is read.\n";

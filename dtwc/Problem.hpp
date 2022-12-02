@@ -70,6 +70,16 @@ public:
   void writeDistanceMatrix(const std::string &name) { writeMatrix(DTWdist, name); }
 
   void load_data_fromFolder(std::string_view folder_path, int Ndata = -1, bool print = false);
+  void load_data_fromVec(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new)
+  {
+    p_vec = p_vec_new;
+    p_names = p_names_new;
+
+    Nb = p_vec.size();
+    DTWdist = dtwc::VecMatrix<data_t>(Nb, Nb, -1);
+
+    resize();
+  }
 
 
   void printClusters();
