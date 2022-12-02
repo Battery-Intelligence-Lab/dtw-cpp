@@ -50,12 +50,12 @@ void cluster_byMIP_single()
 {
   dtwc::Clock clk; // Create a clock object
 
-  int Ndata_max = 200; // Load 100 data maximum.
-  auto Nc = 3;         // Number of clusters
+  int Ndata_max = 300; // Load 100 data maximum.
+  auto Nc = 6;         // Number of clusters
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_UMD", Ndata_max);
+  prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_reformat/SyntheticControl", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating

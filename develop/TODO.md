@@ -31,7 +31,8 @@
 ### New ideas:
 - [ ] 2-D /N-D DTW
 - [ ] DTW for irregular data. 
-
+- [ ] only allow warping at 0 values
+- [ ] change no band input to -1 instead of 0 to allow users to have 0 warping (euclidean distance) if desired
 
 ### Formatting: 
 - [x] Include a clang-format file. 
