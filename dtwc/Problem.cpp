@@ -24,7 +24,6 @@
 
 namespace dtwc {
 
-
 void Problem::clear_clusters()
 {
   centroids_ind.clear();
@@ -59,33 +58,17 @@ void Problem::fillDistanceMatrix()
 void Problem::printClusters()
 {
   std::cout << "Clusters: ";
-  for (auto ind : centroids_ind) {
-    if constexpr (settings::writeAsFileNames)
-      std::cout << p_names[ind] << ' ';
-
-    else
-      std::cout << ind << ' ';
-  }
+  for (auto ind : centroids_ind)
+    std::cout << get_name(ind) << ' ';
 
   std::cout << '\n';
 
   for (size_t i{ 0 }; i < Nc; i++) {
-    auto centroid = centroids_ind[i];
+    std::cout << get_name(centroids_ind[i]) << " has: ";
 
-    if constexpr (settings::writeAsFileNames)
-      std::cout << p_names[centroid] << " has: ";
+    for (auto member : cluster_members[i])
+      std::cout << get_name(member) << " ";
 
-    else
-      std::cout << centroid << " has: ";
-
-
-    for (auto member : cluster_members[i]) {
-      if constexpr (settings::writeAsFileNames)
-        std::cout << p_names[member] << " ";
-
-      else
-        std::cout << member << " ";
-    }
     std::cout << '\n';
   }
 }
@@ -94,7 +77,7 @@ void Problem::writeClusters(std::string file_name)
 {
   file_name += "_Nc_" + std::to_string(Nc) + ".csv";
 
-  std::ofstream myFile(settings::resultsPath + file_name, std::ios_base::out);
+  std::ofstream myFile(output_folder + file_name, std::ios_base::out);
 
   myFile << "Clusters:\n";
 
@@ -128,6 +111,17 @@ void Problem::load_data_fromFolder(std::string_view folder_path, int Ndata, bool
   resize();
 }
 
+void Problem::load_data_fromVec(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new)
+{
+  p_vec = p_vec_new;
+  p_names = p_names_new;
+
+  Nb = p_vec.size();
+  DTWdist = dtwc::VecMatrix<data_t>(Nb, Nb, -1);
+
+  resize();
+}
+
 
 void Problem::writeSilhouettes()
 {
@@ -137,7 +131,7 @@ void Problem::writeSilhouettes()
 
   name += std::to_string(Nc) + ".csv";
 
-  std::ofstream myFile(settings::resultsPath + name, std::ios_base::out);
+  std::ofstream myFile(output_folder + name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
   for (size_t i{ 0 }; i < Nb; i++) {
@@ -289,7 +283,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
     }
   }
 
-  std::ofstream bestRepFile(settings::resultsPath + "bestRepetition.csv", std::ios_base::out);
+  std::ofstream bestRepFile(output_folder + "bestRepetition.csv", std::ios_base::out);
   bestRepFile << best_rep << '\n';
   bestRepFile.close();
 
@@ -302,16 +296,13 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  std::ofstream medoidsFile(settings::resultsPath + "medoids_rep_" + std::to_string(rep) + ".csv", std::ios_base::out);
+  std::ofstream medoidsFile(output_folder + "medoids_rep_" + std::to_string(rep) + ".csv", std::ios_base::out);
   for (int i = 0; i < maxIter; i++) {
 
     std::cout << "Medoids: ";
     for (auto medoid : centroids_ind) {
-      std::cout << medoid << ' ';
-      if constexpr (settings::writeAsFileNames)
-        medoidsFile << p_names[medoid] << ',';
-      else
-        medoidsFile << medoid << ',';
+      std::cout << get_name(medoid) << ' ';
+      medoidsFile << get_name(medoid) << ',';
     }
 
     medoidsFile << '\n';
@@ -359,20 +350,15 @@ double Problem::findTotalCost()
   return sum;
 }
 
-
 void Problem::writeMedoidMembers(int iter, int rep)
 {
   std::string name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                      + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  std::ofstream medoidMembers(settings::resultsPath + name, std::ios_base::out);
+  std::ofstream medoidMembers(output_folder + name, std::ios_base::out);
   for (auto &members : cluster_members) {
-    if constexpr (settings::writeAsFileNames)
-      for (auto member : members)
-        medoidMembers << p_names[member] << ',';
-    else
-      for (auto member : members)
-        medoidMembers << member << ',';
+    for (auto member : members)
+      medoidMembers << get_name(member) << ',';
     medoidMembers << '\n';
   }
   medoidMembers.close();

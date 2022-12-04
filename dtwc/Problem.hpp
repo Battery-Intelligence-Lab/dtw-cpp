@@ -31,9 +31,11 @@ class Problem
 
 
   ind_t Nc{ 1 }; // Number of clusters.
-  ind_t Nb;      // Number of data points
+  ind_t Nb{ 0 }; // Number of data points
 
 public:
+  bool writeAsFileNames{ settings::writeAsFileNames };
+  fs::path output_folder{ settings::resultsPath };
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
@@ -52,13 +54,14 @@ public:
     clusters_ind.resize(Nb);
   }
 
-
   auto set_numberOfClusters(ind_t Nc_)
   {
     assert(Nc_ > 0);
     Nc = Nc_;
     resize();
   }
+
+  std::string get_name(ind_t i) { return writeAsFileNames ? p_names[i] : std::to_string(i); }
 
   auto size() const { return Nb; }
   auto cluster_size() const { return Nc; }
@@ -67,19 +70,10 @@ public:
   void fillDistanceMatrix();
   void printDistanceMatrix() { DTWdist.print(); }
 
-  void writeDistanceMatrix(const std::string &name) { writeMatrix(DTWdist, name); }
+  void writeDistanceMatrix(const std::string &name) { writeMatrix(DTWdist, name, output_folder); }
 
   void load_data_fromFolder(std::string_view folder_path, int Ndata = -1, bool print = false);
-  void load_data_fromVec(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new)
-  {
-    p_vec = p_vec_new;
-    p_names = p_names_new;
-
-    Nb = p_vec.size();
-    DTWdist = dtwc::VecMatrix<data_t>(Nb, Nb, -1);
-
-    resize();
-  }
+  void load_data_fromVec(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new);
 
 
   void printClusters();

@@ -61,11 +61,11 @@ std::vector<data_t> readFile(const T &name)
 
 
 template <typename data_t, typename Tpath>
-auto load_data(Tpath &path, int Ndata = -1, bool print = false)
+auto load_data(Tpath &path, int Ndata = -1, bool print = false, fs::path out_folder = settings::resultsPath)
 {
   std::cout << "Reading data:" << std::endl;
 
-  std::ofstream out(settings::resultsPath + "dataOrder.csv", std::ios_base::out);
+  std::ofstream out(out_folder + "dataOrder.csv", std::ios_base::out);
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
@@ -150,9 +150,9 @@ auto load_tsv(Tpath &file_path, int Ndata = -1, bool print = false)
 
 
 template <typename data_t>
-void writeMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
+void writeMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name, fs::path out_folder = settings::resultsPath)
 {
-  std::ofstream myFile(settings::resultsPath + name, std::ios_base::out);
+  std::ofstream myFile(out_folder + name, std::ios_base::out);
 
   for (int i = 0; i < matrix.rows(); i++) {
     for (int j = 0; j < (matrix.cols() - 1); j++)

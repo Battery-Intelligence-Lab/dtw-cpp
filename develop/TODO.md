@@ -22,6 +22,9 @@
 - [ ] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
 - [x] Clusters class is created to decouple representation of clusters. 
 - [x] mip.hpp and mip.cpp files are created to contain MIP functions.
+- [x] settings::resultsPath is changed with out_folder member
+- [x] `get_name` function added to remove settings::writeAsFileNames)
+- [x] UCR_test_2018 is continuing. 
 
 ### Low priority: 
 
