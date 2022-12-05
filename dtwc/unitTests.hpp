@@ -41,7 +41,7 @@ void test_DTWfunction()
 
 
   // std::cout << "Test cost: " << dtwFun(p_vec[5], p_vec[0]) << '\n';
-  // std::cout << "Test cost: " << DTWdistByInd(5, 0) << '\n';
+  // std::cout << "Test cost: " << distByInd(5, 0) << '\n';
   // std::cout << "Test cost: " << dtwFun5(p_vec[5], p_vec[0]) << '\n';
 
 

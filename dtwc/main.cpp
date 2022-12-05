@@ -1,5 +1,6 @@
 #include "dtwc.hpp"
 #include "examples.hpp"
+#include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>
 #include <cstdlib>
@@ -15,27 +16,30 @@ int main()
   dtwc::Clock clk; // Create a clock object
   auto Nc = 3;     // Number of clusters
 
-  dtwc::Problem prob; // Create a problem.
 
-  auto [p_vec, p_names] = dtwc::load_tsv<data_t>("../../data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv");
+  dtwc::benchmarks::run_all();
 
-  prob.load_data_fromVec(std::move(p_vec), std::move(p_names));
+  /// dtwc::Problem prob; // Create a problem.
 
-  // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix("UMD_test_matrix.csv");
+  // auto [p_vec, p_names] = dtwc::load_tsv<data_t>("../../data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv");
 
-  std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << settings::band << "\n\n\n";
+  // prob.load_data_fromVec(std::move(p_vec), std::move(p_names));
+
+  // // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
+  // prob.fillDistanceMatrix();
+  // prob.writeDistanceMatrix("UMD_test_matrix.csv");
+
+  // std::cout << "Finished calculating distances " << clk << std::endl;
+  // std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-  std::string reportName = "DTW_MILP_results";
+  // std::string reportName = "DTW_MILP_results";
 
-  prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
-  prob.cluster_by_MIP();          // Uses MILP to do clustering.
-  prob.printClusters();           // Prints to screen.
-  prob.writeClusters(reportName); // Prints to file.
-  prob.writeSilhouettes();
+  // prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
+  // prob.cluster_by_MIP();          // Uses MILP to do clustering.
+  // prob.printClusters();           // Prints to screen.
+  // prob.writeClusters(reportName); // Prints to file.
+  // prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working

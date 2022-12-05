@@ -4,7 +4,7 @@
  * Encapsulating mixed-integer program functions in a class.
 
  *  Created on: 06 Nov 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ *  Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
 #include "mip.hpp"
@@ -22,7 +22,7 @@ namespace dtwc {
 
 void MIP_clustering_byGurobi(Problem &prob)
 {
-  const auto Nb = prob.size();
+  const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
 
   prob.clear_clusters();
@@ -60,7 +60,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBLinExpr obj = 0;
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.DTWdistByInd(i, j);
+        obj += w[i + j * Nb] * prob.distByInd(i, j);
 
     model.setObjective(obj, GRB_MINIMIZE);
     std::cout << "Finished setting up the MILP problem." << std::endl;

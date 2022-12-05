@@ -12,8 +12,112 @@
 #include "../dtwc/dtwc.hpp"
 
 #include <string>
+#include <vector>
+#include <map>
+#include <utility>
 
 namespace dtwc::benchmarks {
-inline void run_all() {}
+
+
+inline auto get_UCR_2018_files()
+{
+  std::vector<fs::path> UCR_list{};
+  std::map<std::string, int> Nc_list{};
+
+
+  std::ifstream summary_file(settings::root_folder / "data/benchmark/UCRArchive_2018/DataSummary.csv", std::ios_base::in);
+
+  std::string summary_line{}, summary_name;
+
+  int Nc_now;
+  char c{ '.' };
+
+  std::getline(summary_file, summary_line);
+
+  while (std::getline(summary_file, summary_line)) {
+    std::istringstream iss(summary_line);
+
+    for (int i = 0; i < 3; i++)
+      std::getline(iss, summary_name, ',');
+
+
+    for (int i = 0; i < 3; i++)
+      iss >> Nc_now >> c;
+
+    Nc_list[summary_name] = Nc_now;
+  }
+
+
+  auto directories = fs::recursive_directory_iterator(settings::root_folder / "data/benchmark/UCRArchive_2018");
+  for (const auto &entry : directories) {
+    if (entry.is_regular_file()) {                   // Check if the entry is a regular file
+      std::string file_path = entry.path().string(); // Get the file path as a string
+      // Check if the file path ends with "_TEST.tsv"
+      if (file_path.length() >= 9 && file_path.substr(file_path.length() - 9) == "_TEST.tsv") {
+        UCR_list.push_back(entry.path());
+      }
+    }
+  }
+
+
+  return std::pair(UCR_list, Nc_list);
+}
+
+inline void UCR_2018()
+{
+  auto [UCR_list, Nc_list] = get_UCR_2018_files();
+
+  dtwc::DataLoader dl;
+  dl.startColumn(1); // For not reading first column of *.tsv files;
+
+  fs::path out_folder = settings::resultsPath / "benchmark";
+
+  std::ofstream timing_file(out_folder / "timing_all.csv", std::ios_base::out);
+
+  timing_file << "Name,fillDistanceMatrix,MIPclustering,writeSilhouettes\n";
+  std::string reportName = "MILP_results";
+
+  for (auto &file_path : UCR_list) {
+    dl.path(file_path);
+    auto stem_str = file_path.stem().string();
+    dtwc::Problem prob{ stem_str, dl }; // Create a problem.
+    int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
+
+    assert(Nc != 0);
+
+    dtwc::Clock clk; // Create a clock object
+
+    prob.output_folder = out_folder;
+
+    prob.fillDistanceMatrix();
+    prob.writeDistanceMatrix();
+
+    auto time_1 = clk.duration();
+
+    std::cout << "Finished calculating distances " << clk << std::endl;
+    std::cout << "Band used " << settings::band << "\n\n\n";
+
+
+    prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+    prob.cluster_by_MIP();         // Uses MILP to do clustering.
+
+    auto time_2 = clk.duration();
+    std::cout << "Finished MIP clustering " << clk << '\n';
+    std::cout << "Band used " << settings::band << "\n\n\n";
+
+    prob.printClusters();           // Prints to screen.
+    prob.writeClusters(reportName); // Prints to file.
+    prob.writeSilhouettes();
+
+    auto time_3 = clk.duration();
+    timing_file << stem_str << ',' << time_1 << ',' << time_2 << ',' << time_3 << '\n';
+  }
+}
+
+
+inline void run_all()
+{
+  UCR_2018();
+}
 
 } // namespace dtwc::benchmarks
