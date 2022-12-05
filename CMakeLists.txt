@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(DTWC++ VERSION "2.0.0"
+project(DTWC++ VERSION "0.0.3"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX)
