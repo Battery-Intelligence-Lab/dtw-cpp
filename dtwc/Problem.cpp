@@ -149,7 +149,13 @@ void Problem::init_Kmeanspp()
   }
 }
 
-void Problem::cluster_by_MIP() { MIP_clustering_byGurobi(*this); }
+void Problem::cluster_by_MIP()
+{
+  if (settings::is_relaxed)
+    MIP_clustering_byGurobi_relaxed(*this);
+  else
+    MIP_clustering_byGurobi(*this);
+}
 
 void Problem::distributeClusters()
 {
