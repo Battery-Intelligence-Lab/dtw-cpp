@@ -63,6 +63,7 @@ inline auto get_UCR_2018_files()
   return std::pair(UCR_list, Nc_list);
 }
 
+
 inline void UCR_2018()
 {
   auto [UCR_list, Nc_list] = get_UCR_2018_files();
@@ -76,8 +77,13 @@ inline void UCR_2018()
 
   timing_file << "Name,fillDistanceMatrix,MIPclustering,writeSilhouettes\n";
   std::string reportName = "MILP_results";
+  // UCR_list
+  std::vector<fs::path> dataofInterest{
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv"),
+    //  (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+  };
 
-  for (auto &file_path : UCR_list) {
+  for (auto &file_path : dataofInterest) {
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ stem_str, dl }; // Create a problem.
