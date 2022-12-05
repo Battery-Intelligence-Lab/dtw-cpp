@@ -15,7 +15,6 @@ costs = zeros(Nc,1);
 medoids = zeros(Nc,1);
 for i=1:Nc
     clusters{i} = find(data(:,1)==i);
-
     cost_mat = distanceMat(clusters{i}, clusters{i});
 
     possible_cost = sum(cost_mat);
