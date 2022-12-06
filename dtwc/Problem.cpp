@@ -151,7 +151,9 @@ void Problem::init_Kmeanspp()
 
 void Problem::cluster_by_MIP()
 {
-  if (settings::is_relaxed)
+  if constexpr (settings::is_OSQP)
+    MIP_clustering_byOSQP(*this);
+  else if (settings::is_relaxed)
     MIP_clustering_byGurobi_relaxed(*this);
   else
     MIP_clustering_byGurobi(*this);

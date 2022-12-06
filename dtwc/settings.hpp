@@ -27,7 +27,7 @@ constexpr bool isDebug = false;
 
 
 constexpr bool is_relaxed = true;
-
+constexpr bool is_OSQP = true;
 
 const auto dataPath = root_folder / "data";
 constexpr int band = 0; // Size of band to use (if no band put 0)
