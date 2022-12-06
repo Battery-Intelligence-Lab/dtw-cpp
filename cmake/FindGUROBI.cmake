@@ -3,7 +3,7 @@ message(STATUS ${GRB_SEARCH_PATHS})
 
 find_library(
   GUROBI_LIBRARY
-  NAMES gurobi gurobi81 gurobi90 gurobi95
+  NAMES gurobi100 gurobi gurobi81 gurobi90 gurobi95 
   HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME}
   PATH_SUFFIXES lib)
 

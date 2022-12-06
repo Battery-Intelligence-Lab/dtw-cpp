@@ -18,11 +18,13 @@ auto silhouette(Problem &prob)
 {
   // For explanation, see: https://en.wikipedia.org/wiki/Silhouette_(clustering)
 
-  const auto Nb = prob.size();
-  const auto Nc = prob.cluster_size();
+  const auto Nb = prob.data.size();    // Number of profiles
+  const auto Nc = prob.cluster_size(); // Number of clusters
 
-  if (prob.centroids_ind.empty())
+  if (prob.centroids_ind.empty()) {
     std::cout << "Please cluster the data before calculating silhouette!\n";
+    throw 100;
+  }
 
   std::vector<double> silhouettes(Nb);
 
@@ -35,7 +37,7 @@ auto silhouette(Problem &prob)
       thread_local std::vector<double> mean_distances(Nc);
 
       for (size_t i = 0; i < Nb; i++)
-        mean_distances[prob.clusters_ind[i]] += prob.DTWdistByInd(i, i_b);
+        mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
 
       auto min = std::numeric_limits<double>::max();
       for (size_t i = 0; i < Nc; i++) // Finding means:

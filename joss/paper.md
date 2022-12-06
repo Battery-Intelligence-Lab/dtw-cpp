@@ -33,11 +33,15 @@ lusters, and the algorithm will then find the
 
 Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series {Aghabozorgi} which can induce bias into the clustering. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
 
-While there are other packages available for time series clustering, using DTW, ``DTW-C++`` offers signficant imporvements in both speed and memory use, allowing larger datasets to be clustered. This is done by task level parallelisation, allowing multiple pairwise comparsions between time series to be evaluated simulataneously, as well as more efficient memory management by solving the DTW using only the previous row rather than storing the entire warping matrix. This means that the warpnig path between each time series is not stored, but the this is not required for the clustering process - only the final cost is needed. In addition, MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima. MIP finds the global optimum in most cases, and in the rare event that the global optimum is not the gap between the best solution found and the global optimum is given.
+While there are other packages available for time series clustering, using DTW, ``DTW-C++`` offers signficant imporvements in both speed and memory use, allowing larger datasets to be clustered. This is done by task level parallelisation, allowing multiple pairwise comparsions between time series to be evaluated simulataneously, as well as more efficient memory management by solving the DTW using only the preceding vector rather than storing the entire warping matrix. This means that the warpnig path between each time series is not stored, but the this is not required for the clustering process - only the final cost is needed. In addition, MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima. MIP finds the global optimum in most cases, and in the rare event that the global optimum is not the gap between the best solution found and the global optimum is given.
 
 Speed comparison against tslearn and dtaidistance
 
 # Current ``DTW-C++`` functionality
+
+Loads all data from CSV files
+
+Produces distance matrix - pairwaise comparsion between each time series in the dataset. Potential to use band (ref Sakoe Chiba band paper)
 
 Find clusters groupings and centers
 
@@ -72,7 +76,7 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
-![signals_warped](https://user-images.githubusercontent.com/93582518/202719364-876acf5d-43f6-4f9b-9879-b3f07195988a.png)
+![signals_warped](https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png)
 ![warping_path](https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png)
 
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
