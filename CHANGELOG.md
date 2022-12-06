@@ -9,7 +9,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## New features
 * UCR_test_2018 data integration for benchmarking. 
-* 
+* OSQP support is added with totally unimodular matrices solution. 
 
 
 ## Notable Bug-fixes

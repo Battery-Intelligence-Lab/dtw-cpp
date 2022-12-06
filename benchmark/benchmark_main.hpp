@@ -79,8 +79,8 @@ inline void UCR_2018()
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv"),
-    //  (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
   };
 
   for (auto &file_path : dataofInterest) {
