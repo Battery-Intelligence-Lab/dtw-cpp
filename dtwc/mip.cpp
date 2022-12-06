@@ -127,9 +127,6 @@ void MIP_clustering_byOSQP(Problem &prob)
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
 
-    // Additional settings by Vk:
-    settings->max_iter = 100000;
-
     // --------------------------------
 
     // Populate data
@@ -146,6 +143,9 @@ void MIP_clustering_byOSQP(Problem &prob)
     // Define solver settings as default
     if (settings) osqp_set_default_settings(settings);
 
+    // Additional settings by Vk:
+    settings->max_iter = 100000;
+
     // Setup workspace
     exitflag = osqp_setup(&work, data, settings);
 
@@ -157,9 +157,11 @@ void MIP_clustering_byOSQP(Problem &prob)
     for (ind_t i{ 0 }; i < Nb; i++) {
       auto isCentroid_i = work->solution->x[Nb * Nb + i];
 
-      if (isCentroid_i > 0.9)
+      if (isCentroid_i > 0.75) {
         prob.centroids_ind.push_back(i);
-      else if (isCentroid_i > 0.1) // Should not happen!
+        if (isCentroid_i < 0.9)
+          std::cout << "OSQP may not have the most accurate solution ever for centroid " << isCentroid_i << '\n';
+      } else if (isCentroid_i > 0.25) // Should not happen!
       {
         std::cerr << "Centroid " << i << " has value of " << isCentroid_i << " which should not happen for turtley unimodular matrices!\n";
         throw 10000; // #TODO more meaningful error codes?
@@ -172,10 +174,12 @@ void MIP_clustering_byOSQP(Problem &prob)
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
-        if (work->solution->x[i + j * Nb] > 0.9) {
+        if (work->solution->x[i + j * Nb] > 0.75) {
+          if (work->solution->x[i + j * Nb] < 0.9)
+            std::cout << "OSQP may not have the most accurate solution ever for weight " << work->solution->x[i + j * Nb] << '\n';
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);
-        } else if (work->solution->x[i + j * Nb] > 0.9) {
+        } else if (work->solution->x[i + j * Nb] > 0.25) {
           std::cerr << "Weight " << i + j * Nb << " has value of " << work->solution->x[i + j * Nb] << " which should not happen for turtley unimodular matrices!\n";
           throw 10000; // #TODO more meaningful error codes?
         }
@@ -331,9 +335,12 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     model.optimize();
 
     for (ind_t i{ 0 }; i < Nb; i++)
-      if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
+      if (isCluster[i].get(GRB_DoubleAttr_X) > 0.9)
         prob.centroids_ind.push_back(i);
-
+      else if (isCluster[i].get(GRB_DoubleAttr_X) > 0.1) {
+        std::cerr << "Cluster " << i << " has value of " << isCluster[i].get(GRB_DoubleAttr_X) << " which should not happen for turtley unimodular matrices!\n";
+        throw 10000; // #TODO more meaningful error codes?
+      }
 
     prob.clusters_ind = std::vector<ind_t>(Nb);
 
@@ -341,9 +348,12 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
-        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
+        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.9) {
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);
+        } else if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.1) {
+          std::cerr << "Weight " << i + j * Nb << " has value of " << w[i + j * Nb].get(GRB_DoubleAttr_X) << " which should not happen for turtley unimodular matrices!\n";
+          throw 10000; // #TODO more meaningful error codes?
         }
 
       i_cluster++;
