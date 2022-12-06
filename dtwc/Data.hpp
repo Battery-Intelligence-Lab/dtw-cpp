@@ -32,7 +32,7 @@ struct Data
     assert(p_vec_new.size() == p_names_new.size());
     p_vec = std::move(p_vec_new);
     p_names = std::move(p_names_new);
-    Nb = p_vec.size();
+    Nb = static_cast<ind_t>(p_vec.size());
   }
 };
 

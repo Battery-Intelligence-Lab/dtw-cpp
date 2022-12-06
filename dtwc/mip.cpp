@@ -50,8 +50,9 @@ void MIP_clustering_byOSQP(Problem &prob)
     auto l = new c_float[m];
     auto u = new c_float[m];
 
-    int i = 0;
-    int i_until = (Nb * Nb + Nb + Nb * Nb);
+
+    size_t i = 0;
+    size_t i_until = (Nb * Nb + Nb + Nb * Nb);
     for (; i < i_until; i++) {
       l[i] = 0.0;
       u[i] = 1.0;
@@ -76,8 +77,8 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     A_p[0] = 0;
 
-    for (int j_out = 0; j_out < (Nb + 1); j_out++) // Columns
-      for (int j_in = 0; j_in < Nb; j_in++)        // inner block
+    for (size_t j_out = 0; j_out < (Nb + 1); j_out++) // Columns
+      for (size_t j_in = 0; j_in < Nb; j_in++)        // inner block
       {
         auto j = j_out * Nb + j_in;
 
@@ -154,6 +155,10 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Solve Problem
     osqp_solve(work);
+
+
+    // for (size_t i = 0; i < work->data->n; i++)
+    //   std::cout << work->solution->x[i] << '\n';
 
 
     // ----- Retrieve solutions START ------

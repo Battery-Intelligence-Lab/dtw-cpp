@@ -7,8 +7,8 @@ end
 Nb = length(distanceMat); % Number of batteries. 
 
 
-is_w_binVar = false;
-is_isCluster_binVar = false;
+is_w_binVar = true;
+is_isCluster_binVar = true;
 F = []; % Constraints
 
 if(is_w_binVar)

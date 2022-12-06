@@ -3,7 +3,7 @@
 clear variables; close all; clc; 
 
 
-distanceMat = readmatrix('DTW_matrix.csv');
+distanceMat = readmatrix('DTWdist_band_100.csv');
 assert(size(distanceMat,1) == size(distanceMat,2)); % See if it is square
 
 tic; 
