@@ -145,6 +145,9 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Additional settings by Vk:
     settings->max_iter = 100000;
+    settings->eps_abs = 1e-4;
+    settings->eps_rel = 1e-4;
+
 
     // Setup workspace
     exitflag = osqp_setup(&work, data, settings);

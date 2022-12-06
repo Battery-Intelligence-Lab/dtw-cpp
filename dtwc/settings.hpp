@@ -26,7 +26,7 @@ constexpr bool writeAsFileNames = true;
 constexpr bool isDebug = false;
 
 
-constexpr bool is_relaxed = true;
+constexpr bool is_relaxed = false;
 constexpr bool is_OSQP = true;
 
 const auto dataPath = root_folder / "data";
