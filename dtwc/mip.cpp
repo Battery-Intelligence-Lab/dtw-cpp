@@ -25,6 +25,7 @@ namespace dtwc {
 void MIP_clustering_byOSQP(Problem &prob)
 {
 
+  std::cout << "OSQP has been called!" << std::endl;
   // This is not an actual MIP solver; however, it relies on problem having turtley unimodular matrices!
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
@@ -126,133 +127,264 @@ void MIP_clustering_byOSQP(Problem &prob)
     OSQPSettings *settings = (OSQPSettings *)c_malloc(sizeof(OSQPSettings));
     OSQPData *data = (OSQPData *)c_malloc(sizeof(OSQPData));
 
-    // Populate data
+    // Additional settings by Vk:
+    settings->max_iter = 100000;
+
+    // ---------------------------------
+    // ---------------------------------  // Populate data
     if (data) {
-      data->n = n;
-      data->m = m;
       data->P = csc_matrix(data->n, data->n, P_nnz, P_x, P_i, P_p);
       data->q = q;
       data->A = csc_matrix(data->m, data->n, A_nnz, A_x, A_i, A_p);
       data->l = l;
       data->u = u;
+  }
+  // Deffne solver settings as dedault
+}
+dow 10000; // #TODO more
+eaningful error codes ? = ifs : tt > (N b);
+
+fr(auto i
+   : prob.centroids_ind)
+{
+  prob.cluster_members.emplace_back();
+  prob.clusters_ind[j] = i_cluster;
+  prob.cluster_members.back().push_back(j);
+  err << "Weight " << i + j Nb << " has value of " << work->solution->x[i + j * Nb] << " which should not happen for turtley unimodular matrices!\n";
+  throw 10000; // #TODO more meaningful error codes?
+  -ln workspace
+    sqp_cleanup(work);
+  data)
+  {
+    ee(data);
+  }
+  -cac h(...)
+  {
+
+
+    r
+      / if
+
+      izet i{
+        // '=', 1.0);
+      };
+    -j < Nb;j
+  ++)
+for (size_t i{ 0 }; i < Nb; i++)
+            model.addConstr(w[i + j * Nb] <= isCluster[i]);
+    {
+      _ lGBLinExpr lhs = 0;
+    for (size_
     }
+    < b / GRBLinExpr lhs = 0;
+    for (size_t i{ 0 }; i < Nb; i++)
+      lhsodel.addConstr(lhs == Nc); // There should be Nc clusters.
+    / o
+    {
+      w[i + j * Nb] * prob.di stByI if
 
-    // Define solver settings as default
-    if (settings) osqp_set_default_settings(settings);
-
-    // Setup workspace
-    exitflag = osqp_setup(&work, data, settings);
-
-    // Solve Problem
-    osqp_solve(work);
-
-
-    // ----- Retrieve solutions START ------
-    for (ind_t i{ 0 }; i < Nb; i++) {
-      auto isCentroid_i = work->solution->x[Nb * Nb + i];
-
-      if (isCentroid_i > 0.9)
-        prob.centroids_ind.push_back(i);
-      else if (isCentroid_i > 0.1) // Should not happen!
+                      di (siz) 0tt
       {
-        std::cerr << "Centroid " << i << " has value of " << isCentroid_i << " which should not happen for turtley unimodular matrices!\n";
-        throw 10000; // #TODO more meaningful error codes?
+        "OSQP   
+          m " <<z;d ::ndli0}i<Nij}          if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
+        {
+          prob.centroids_ind.push_back(i);
+          ob.ce // ctor<ind_t>(Nb);
+            ;
+          csem embers.ce_back();
+  fo       j++) r (size_t j{ 0 }; j < Nb; j++)
+              if (w[i +          prob.clusters_ind[j] = i_cluster;
+        }
+        i_cluster++;
       }
+
+      st d::cout << "Error code = " << e.getErrorCode() << std::endl
+                 << e.getMessage() << std::endl;
+    }
+    catch (...)
+    {
+      std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
     }
 
+    rMIP lustering_byGurobi_rela MIP _clustering_byGurobi_relaxed(Problem & prob)
+      co nst auto Nb = prob.data.size();
+  }
+  onst auto Nc = prob.cluster_size();
+  ob.clear_clusters();
+  {
+
+
+    G RBE nv e
+      // Create variables
+      st d::unique_ptr<GRVar[]>
+        isCluster{ model.addVars(Nb, GRB_CONTINUOUS) };
+    r std::
+      u nique_ptr<GRBVar[]>
+        w
+    {      model.addVars(
+  fo    r (size_t
+  i{     0 }; i < Nb; i++) {
+              GRBLinxr   for e_t j{ 0 };
+              j < Nb; j++)
+              {
+                lhs += w[j + i * Nb];
+                model.addConstr(w[j + i * Nb] <= 1); // For relaxed version.
+              }
+
+              model.addConstr(lhs, '=', 1.0);
+    }
+        for (size_t j{ 0 }; j < Nb; j++)
+      for (size_t i{ 0 }; i < Nb; i++)
+      model.  addConst(w[i + j * Nb] <= isCluster[i]);
+     {
+        BLinExpr lhs = 0;
+        r(size_t i{ 0 }; i < Nb; i++)
+        {
+          lhs += isCluster[i];
+          model.addConstr(isCluster[i] <= 1); // For relaxed version.
+          model.addConstr(isCluster[i] >= 0); // For relaxed version.
+        }
+
+        model.addConstr(lhs == Nc); // There  should be Nc clusters.
+        GRBLinExpr obj = 0;
+        for (size_t i{ 0 }; i < Nb; i++)
+    }
+          obj += w[i + j * Nb] * prob.distByInd(i, j);
+    std::cout << "Finished setting up the MILP problem." << std::endl;
+    {
+        moptimize();
+        for (ind_t i{
+               0 };
+             i < Nb;
+             i++)
+          if (is
+                luster[i]
+                  .get(GRB_DoubleAttr_X)
+              > 0.5)
+            prob.centroids_ind.push_back(i);
+        ind_ i_cluster = 0;
+        for (auto i : prob.centroids_ind) {
+          prob.cluster_members.em
+            place_back();
+          for (size_t j{ 0 }; j < Nb; j++)
+            if (w
+                  [i + j * Nb]
+                    .get(GRB_DoubleAttr_X)
+                > 0.5) {
+              prob.clusters_ind[j] = i_cluster;
+              prob.cluster_members.back().push_back(j);
+            }
+
+          i_cluster++;
+        }
+
+
+        std::cout << "Error code = " << e.getErrorCode() << std::endl
+                  << e.getMessage() << std::endl;
+  } catch (...) {
+        std::cout << "Unnown Exception during Gurobi opt  }
+ }
+      
+        
+             // namespace dtwc // n Nb; j++)
+              if (w[i + j *wcb].get(GRB_DoubleAttr_X) > 0.5) {
+        proa.clusters_ind[j] = i_clusterc
+                                 eprob.cluster_members.back()
+                                   .push_back();
+              }
+
+            i_clusterdt;
+tione
+
+          catch (GRBException &e)
+          {
+        std::cout << "Error code = " << e.getErrorCode << e.getMessage() << std::endl;
+          }
+          catch (...w
+          {
+        {
+          problem." << std::endl;
+            moptimize();
+          for (ind_t i{
+                 0 };
+               i < Nb;
+               i++)
+            if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
+              prob.centroids_ind.push_back(i);
+
+          ind_ i_cluster = 0;
+          for (auto i : prob.centroids_ind) {
+            prob.cluster_members.emplace_back();
+            for (size_t j{ 0 }; j < Nb; j++)
+              if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
+              std:
+                .c : ustcrs_ind[j] = i_cluster;
+                prob.cluster_oembersuback().push_back(j);
+              }
+
+            i_cluster++;
+          }
+
+          catch (GRBException &e)
+          {
+            std::cout << "Error code = t << e.getErrorCode() << std::endl
+                      << e.getMessage() << "Unknown E
+          }
+          catch (...) xception during Gurobi opti isati n " << sts::tndd;
+        }
+}
+
+  
+       // namespace dtwc // n Nb; j++)
+        if (w[i + j *wcb]:get(GRB_D:ubleAttr_X) > 0.5) {
+        croa.clusoers_und[j] = i_clusterc
+                                 eprob.cluster_tembers.back()
+                                   .push_back();
+        }
+
+      i_clusterdt;
+    }
+
+    catch (GRBExcept on &e)
+    {
+      std::cout << "Error code = " << e.getErrorCode() << std::endl
+                << e.getMessag
+        < " << std::endl;
+    }
+    catch (...w
+    {
+      std::cout << "Unknown Exception during Gurobi optimisation" << std::endlUnknown Exception during Gurobi optimisation " << std::endl;
+    }
+  }
+}
+
+// namespace dtwc // nwcace dtwcc
     prob.clusters_ind = std::vector<ind_t>(Nb);
 
     ind_t i_cluster = 0;
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
-        if (work->solution->x[i + j * Nb] > 0.9) {
+        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);
-        } else if (work->solution->x[i + j * Nb] > 0.9) {
-          std::cerr << "Weight " << i + j * Nb << " has value of " << work->solution->x[i + j * Nb] << " which should not happen for turtley unimodular matrices!\n";
-          throw 10000; // #TODO more meaningful error codes?
         }
 
       i_cluster++;
     }
-    // ----------  Retrieve solutions END ---------
 
-
-    // Clean workspace
-    // osqp_cleanup(work);
-    if (data) {
-      if (data->A) c_free(data->A);
-      if (data->P) c_free(data->P);
-      c_free(data);
-    }
-    if (settings) c_free(settings);
-
-
-  } catch (...) {
-    std::cout << "OSQP problem" << std::endl;
-  }
-}
-
-
-void MIP_clustering_byGurobi(Problem &prob)
-{
-  const auto Nb = prob.data.size();
-  const auto Nc = prob.cluster_size();
-
-  prob.clear_clusters();
-
-  try {
-    GRBEnv env = GRBEnv();
-    GRBModel model = GRBModel(env);
-
-    // Create variables
-    std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_BINARY) };
-    std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
-
-    for (size_t i{ 0 }; i < Nb; i++) {
-      GRBLinExpr lhs = 0;
-      for (size_t j{ 0 }; j < Nb; j++) {
-        lhs += w[j + i * Nb];
-      }
-      model.addConstr(lhs, '=', 1.0);
-    }
-
-
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
-        model.addConstr(w[i + j * Nb] <= isCluster[i]);
-
+    catch (GRBException &e)
     {
-      GRBLinExpr lhs = 0;
-      for (size_t i{ 0 }; i < Nb; i++)
-        lhs += isCluster[i];
-
-      model.addConstr(lhs == Nc); // There should be Nc clusters.
+      std::cout << "Error code = " << e.getErrorCode() << std::endl
+                << e.getMessage() << std::endl;
     }
+    catch (...)
+    {
+      std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
+    }
+  }
 
-    // Set objective
-    GRBLinExpr obj = 0;
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
-
-    model.setObjective(obj, GRB_MINIMIZE);
-    std::cout << "Finished setting up the MILP problem." << std::endl;
-
-    model.optimize();
-
-    for (ind_t i{ 0 }; i < Nb; i++)
-      if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
-        prob.centroids_ind.push_back(i);
-
-
-    prob.clusters_ind = std::vector<ind_t>(Nb);
-
-    ind_t i_cluster = 0;
-    for (auto i : prob.centroids_ind) {
-      prob.cluster_members.emplace_back();
-      for (size_t j{ 0 }; j < Nb; j++)
+  // namespace dtwc // nwcace dtwc
         if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);
@@ -269,84 +401,6 @@ void MIP_clustering_byGurobi(Problem &prob)
   }
 }
 
-
-void MIP_clustering_byGurobi_relaxed(Problem &prob)
-{
-  const auto Nb = prob.data.size();
-  const auto Nc = prob.cluster_size();
-
-  prob.clear_clusters();
-
-  try {
-    GRBEnv env = GRBEnv();
-    GRBModel model = GRBModel(env);
-
-    // Create variables
-    std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_CONTINUOUS) };
-    std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_CONTINUOUS) };
-
-    for (size_t i{ 0 }; i < Nb; i++) {
-      GRBLinExpr lhs = 0;
-      for (size_t j{ 0 }; j < Nb; j++) {
-        lhs += w[j + i * Nb];
-        model.addConstr(w[j + i * Nb] <= 1); // For relaxed version.
-        model.addConstr(w[j + i * Nb] >= 0); // For relaxed version.
-      }
-      model.addConstr(lhs, '=', 1.0);
-    }
-
-
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
-        model.addConstr(w[i + j * Nb] <= isCluster[i]);
-
-    {
-      GRBLinExpr lhs = 0;
-      for (size_t i{ 0 }; i < Nb; i++) {
-        lhs += isCluster[i];
-        model.addConstr(isCluster[i] <= 1); // For relaxed version.
-        model.addConstr(isCluster[i] >= 0); // For relaxed version.
-      }
-
-      model.addConstr(lhs == Nc); // There should be Nc clusters.
-    }
-
-    // Set objective
-    GRBLinExpr obj = 0;
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
-
-    model.setObjective(obj, GRB_MINIMIZE);
-    std::cout << "Finished setting up the MILP problem." << std::endl;
-
-    model.optimize();
-
-    for (ind_t i{ 0 }; i < Nb; i++)
-      if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
-        prob.centroids_ind.push_back(i);
-
-
-    prob.clusters_ind = std::vector<ind_t>(Nb);
-
-    ind_t i_cluster = 0;
-    for (auto i : prob.centroids_ind) {
-      prob.cluster_members.emplace_back();
-      for (size_t j{ 0 }; j < Nb; j++)
-        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
-          prob.clusters_ind[j] = i_cluster;
-          prob.cluster_members.back().push_back(j);
-        }
-
-      i_cluster++;
-    }
-
-  } catch (GRBException &e) {
-    std::cout << "Error code = " << e.getErrorCode() << std::endl
-              << e.getMessage() << std::endl;
-  } catch (...) {
-    std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
-  }
-}
+} // namespace dtwc
 
 } // namespace dtwc
