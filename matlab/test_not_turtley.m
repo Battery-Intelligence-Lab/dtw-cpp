@@ -3,11 +3,13 @@
 clear variables; close all; clc; 
 
 
+Nc = 10;
+
 distanceMat = readmatrix('AllGestureWiimoteX_TEST_distanceMatrix.csv');
 assert(size(distanceMat,1) == size(distanceMat,2)); % See if it is square
 
 tic; 
-sol = findBestMedoids(distanceMat, 4, 2);
+sol = findBestMedoids(distanceMat, Nc, 2);
 
 toc
 
