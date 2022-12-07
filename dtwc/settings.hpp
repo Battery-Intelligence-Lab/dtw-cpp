@@ -26,8 +26,8 @@ constexpr bool writeAsFileNames = true;
 constexpr bool isDebug = false;
 
 
-constexpr bool is_relaxed = false;
-constexpr bool is_OSQP = true;
+constexpr bool is_relaxed = true;
+constexpr bool is_OSQP = false;
 
 const auto dataPath = root_folder / "data";
 constexpr int band = 0; // Size of band to use (if no band put 0)
