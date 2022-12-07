@@ -76,7 +76,7 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
-![warping_signals](https://user-images.githubusercontent.com/93582518/206199528-29489727-e4d3-4067-bcc0-e5ae11c43820.PNG)
+![DTW example for two time series showing a) the one-to-many mapping and b) the warping bath between the timer series](https://user-images.githubusercontent.com/93582518/206199528-29489727-e4d3-4067-bcc0-e5ae11c43820.PNG)
 
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
 
