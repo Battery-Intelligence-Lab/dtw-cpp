@@ -76,9 +76,6 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
-![DTW alignment between two time series](https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png) ![DTW warping path between two time series](https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png)
-
-
 <p float="left">
   <img src="https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png" alt="DTW alignment between two time series" width="40%"/>
   <img src="https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png" alt="DTW warping path between two time series" width="40%"/>
@@ -118,7 +115,9 @@ $$
 A_{ij} \le B_i \quad \forall i,j \in [1,p]
 $$
 
-![cluster_matrix_formation](https://user-images.githubusercontent.com/93582518/206009830-2279fe75-4fde-46d2-ba39-f1bcbb8ec856.PNG)
+<img src="https://ibb.co/p0mVF9Y" alt="Cluster matrix (A) formation" width="40%"/>
+
+![cluster_matrix_formation2](https://user-images.githubusercontent.com/93582518/206171442-ba6044a5-656a-491f-bb78-98564a0475a1.PNG)
 
 Then the optimisation problem subject to the above-given constraints becomes:
 
