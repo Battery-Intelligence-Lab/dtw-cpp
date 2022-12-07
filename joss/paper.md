@@ -100,6 +100,7 @@ $$
 A binary square matrix $A_{p\times p}$ is then constructed, where $A_{ij}=1$ if time series $j$ is a member of the $i$ th cluster centroid, and 0 otherwise.
 
 The following constraints apply:
+
 * Each time series must be in one and only one cluster 
 
 $$
@@ -127,7 +128,7 @@ Finding global optimality can increase the computation time, depending on the nu
 
 # Comparison
 
-We have compared our library to two other standard DTW clustering packages, DTAIDistance and TSlearn. The datasets used are time series from the UCR Time Series Classification Archive [ref], cosisting of 128 time series datasets with up to 16,800 data series of lengths up to 2,844.
+We have compared our library to two other standard DTW clustering packages, DTAIDistance and TSlearn. The datasets used are time series from the UCR Time Series Classification Archive (@UCRArchive2018), cosisting of 128 time series datasets with up to 16,800 data series of lengths up to 2,844.
 
                                | DTW-C++               || DTAISDistance              || Tslearn  |
 Dataset                        | Time (s) | Memory (MB) | Time (s)      | Memory (MB) | Time (s) | Memory (MB)
