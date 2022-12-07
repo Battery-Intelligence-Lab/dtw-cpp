@@ -35,7 +35,6 @@ Clustering time series is becoming increasingly popular as data availability inc
 
 While there are other packages available for time series clustering using DTW, namely @Petitjean2011 and @meert2020wannesm, ``DTW-C++`` offers signficant imporvements in both speed and memory use, allowing larger datasets to be clustered. This is done by task level parallelisation, allowing multiple pairwise comparsions between time series to be evaluated simulataneously, as well as more efficient memory management by solving the DTW distance using only the preceding vector rather than storing the entire warping matrix. This means that the warpnig path between each time series is not stored, but the this is not required for the clustering process - only the final cost is needed. In addition, MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima. MIP finds the global optimum in most cases, and in the rare event that the global optimum is not the gap between the best solution found and the global optimum is given.
 
-Speed comparison against tslearn and dtaidistance
 
 # Current ``DTW-C++`` functionality
 
@@ -45,7 +44,7 @@ The main features of ``DTW-C++`` are as follows:
 * Produce a distance matrix - pairwaise comparsion between each time series in the dataset.
 * Option to band the warping potnential of the DTW alignment, as originally detialed in @Sakoe1978. This can speed up the computation time of the DTW cost as well as being a useful constraint for some time series clustering scenarios (e.g. if event must occur within a certian time window to be considered similar).
 * Find clusters groupings and centeroids fro a predefined $k$ or a range of $k$ values, using either MIP or k-Medoids, as described below in [Mathmatical background](#mathmatical background).
-* Output the final clusteing cost, as well as a sillouette score (@Shahapure2020) for each $k$ value if running for multiple $k$ values.
+* Output the final clustering cost, as well as a sillouette score (@Shahapure2020) for each $k$ value if running for multiple $k$ values.
 
 # Mathmatical background
 
@@ -77,10 +76,7 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
-<p float="left">
-  <img src="https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png" alt="DTW alignment between two time series" width="40%"/>
-  <img src="https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png" alt="DTW warping path between two time series" width="40%"/>
-</p>
+![warping_signals](https://user-images.githubusercontent.com/93582518/206199528-29489727-e4d3-4067-bcc0-e5ae11c43820.PNG)
 
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
 
@@ -115,8 +111,6 @@ $$
 $$
 A_{ij} \le B_i \quad \forall i,j \in [1,p]
 $$
-
-<img src="https://ibb.co/p0mVF9Y" alt="Cluster matrix (A) formation" width="40%"/>
 
 ![MIP cluster matrix $A$ formation for an example scenario with 5 time series and 2 clusters. The clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.](https://user-images.githubusercontent.com/93582518/206171442-ba6044a5-656a-491f-bb78-98564a0475a1.PNG)
 
