@@ -253,21 +253,6 @@ We have compared our library to two other standard DTW clustering packages, DTAI
 
 We gratefully acknowledge the contributions by [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members. 
 
-# Notes
-
-JOSS requirements from paper:
-* What problem software is designed to solve
-* Who is the target audience
-
-
-Relevant papers:
-* Petitjean
-* Frind dtaidistance paper
-* Shakoe & Chiba 1978 Dynamic programming algorithm optimization for spokenword recognition
-
-Important points:
-* Solving the dtw problem alongside clustering problem allows for most effective parallelization increasing speed – task level parallelization
-* Made the problem memory efficient by using vector instead of matrix
 
 # References
 
