@@ -83,7 +83,7 @@ The final element $C_{n,m}$ is then the total cost which gives the comparison me
 
 The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
 
-![distance_matrix_formation](https://user-images.githubusercontent.com/93582518/202716790-11704c18-99bc-4234-b5db-3b21940ad91d.PNG)
+![Distance matrix formation for $p$ time series](https://user-images.githubusercontent.com/93582518/202716790-11704c18-99bc-4234-b5db-3b21940ad91d.PNG)
 
 Using this matrix, $D$, the series can be split into $k$ clusters with integer programming. The problem formulation begins with a $1\times p$ binary vector, $B$, defining if each series is a cluster centroid, in other words for the $i$th element of $B$, 
 
@@ -117,7 +117,7 @@ $$
 
 <img src="https://ibb.co/p0mVF9Y" alt="Cluster matrix (A) formation" width="40%"/>
 
-![cluster_matrix_formation2](https://user-images.githubusercontent.com/93582518/206171442-ba6044a5-656a-491f-bb78-98564a0475a1.PNG)
+![MIP cluster matrix $A$ formation for an example scenario with 5 time series and 2 clusters. The clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.](https://user-images.githubusercontent.com/93582518/206171442-ba6044a5-656a-491f-bb78-98564a0475a1.PNG)
 
 Then the optimisation problem subject to the above-given constraints becomes:
 
@@ -125,7 +125,8 @@ $$
 A^\star, B^\star = \min_{A,B} \sum_i \sum_j D_{ij} \times A_{ij} 
 $$
 
-After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster.
+After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in Figure 3, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.
+
 
 Finding global optimality can increase the computation time, depending on the number of time series within the dataset and DTW distances. Therefore there is also a built in feature to cluster using k-Medoids, as is used in other packages such as DTAIDistance. k-Medoids is often quicker as it is an iterative method, however it is subject to getting stuck in local optima. The table in [Comparison](#comparison) shows the timing and memory performance of both MIP clustering and k-Medoids clustering cmpared to other packages.
 
