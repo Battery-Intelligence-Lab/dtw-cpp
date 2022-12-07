@@ -31,7 +31,7 @@ lusters, and the algorithm will then find the
 
 # Statement of need
 
-Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series @Aghabozorgi2015 which can induce bias into the clustering. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
+Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series which can induce bias into the clustering (@Aghabozorgi2015). Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW_C++`` can handle the large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
 
 While there are other packages available for time series clustering using DTW, namely @Petitjean2011 and @meert2020wannesm, ``DTW-C++`` offers signficant imporvements in both speed and memory use, allowing larger datasets to be clustered. This is done by task level parallelisation, allowing multiple pairwise comparsions between time series to be evaluated simulataneously, as well as more efficient memory management by solving the DTW distance using only the preceding vector rather than storing the entire warping matrix. This means that the warpnig path between each time series is not stored, but the this is not required for the clustering process - only the final cost is needed. In addition, MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima. MIP finds the global optimum in most cases, and in the rare event that the global optimum is not the gap between the best solution found and the global optimum is given.
 
@@ -39,13 +39,12 @@ Speed comparison against tslearn and dtaidistance
 
 # Current ``DTW-C++`` functionality
 
-Loads all data from CSV files
-
-Produces distance matrix - pairwaise comparsion between each time series in the dataset. Potential to use band (ref Sakoe Chiba band paper)
-
-Find clusters groupings and centers
-
-Silloutette score and elbow method (check with Volkan)
+The main features of ``DTW-C++`` are as follows:
+* Load all time series data from CSV files, as detailed in [Dynamic Time Warping](../docs/2_method/2_dtw.html).
+* Produce a distance matrix - pairwaise comparsion between each time series in the dataset.
+* Option to band the warping potnential of the DTW alignment, as originally detialed in @Sakoe1978. This can speed up the computation time of the DTW cost as well as being a useful constraint for some time series clustering scenarios (e.g. if event must occur within a certian time window to be considered similar).
+* Find clusters groupings and centeroids fro a predefined $k$ or a range of $k$ values, using either MIP or k-Medoids, as described below in [Mathmatical background](#mathmatical background).
+* Output the final clusteing cost, as well as a sillouette score (@Shahapure2020) for each $k$ value if running for multiple $k$ values.
 
 # Mathmatical background
 
