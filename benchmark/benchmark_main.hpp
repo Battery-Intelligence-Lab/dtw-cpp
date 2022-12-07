@@ -78,20 +78,23 @@ inline void UCR_2018()
   timing_file << "Name,fillDistanceMatrix,MIPclustering,writeSilhouettes\n";
   std::string reportName = "MILP_results";
   // UCR_list
-  std::vector<fs::path> dataofInterest{
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
-    //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/Plane/Plane_TEST.tsv"),
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+  // std::vector<fs::path> dataofInterest{
+  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+  //   //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/Plane/Plane_TEST.tsv"),
+  //   (settings::root_folder / "data/benchmark/UCRArchive_2018/PLAID/PLAID_TEST.tsv"),
+  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
-  };
-
-  for (auto &file_path : dataofInterest) {
+  // };
+  size_t solved = 0;
+  for (auto &file_path : UCR_list) {
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ stem_str, dl }; // Create a problem.
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
+
+    std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
     assert(Nc != 0);
 
     dtwc::Clock clk; // Create a clock object

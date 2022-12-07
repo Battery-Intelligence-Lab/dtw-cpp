@@ -340,6 +340,9 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     model.setObjective(obj, GRB_MINIMIZE);
     std::cout << "Finished setting up the MILP problem." << std::endl;
 
+    model.set(GRB_IntParam_Method, 1); // Set to dual simplex?
+    // model.set(GRB_IntParam_Presolve, 2);
+
     model.optimize();
 
     for (ind_t i{ 0 }; i < Nb; i++)
