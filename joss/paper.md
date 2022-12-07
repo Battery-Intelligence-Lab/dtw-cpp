@@ -40,6 +40,7 @@ Speed comparison against tslearn and dtaidistance
 # Current ``DTW-C++`` functionality
 
 The main features of ``DTW-C++`` are as follows:
+
 * Load all time series data from CSV files, as detailed in [Dynamic Time Warping](../docs/2_method/2_dtw.html).
 * Produce a distance matrix - pairwaise comparsion between each time series in the dataset.
 * Option to band the warping potnential of the DTW alignment, as originally detialed in @Sakoe1978. This can speed up the computation time of the DTW cost as well as being a useful constraint for some time series clustering scenarios (e.g. if event must occur within a certian time window to be considered similar).
@@ -59,6 +60,7 @@ y=(y_1, y_2, ..., y_m).
 $$
 
 The cost is the sum of the Euclidean distance between each point and the matched point in the other vector. The following constraints must be met:
+
 * The first and last elements of each series must be matched.
 * Only unidirectional forward movement through relative time is allowed, i.e.\ $x_1$ may be mapped to $y_2$ but $x_2$ may not be mapped to $y_1$ (monotonicity).
 * Each point is mapped to at least one other point, i.e.\ there are no jumps in time (continuity).
