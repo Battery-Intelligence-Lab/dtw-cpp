@@ -129,7 +129,7 @@ Finding global optimality can increase the computation time, depending on the nu
 
 We have compared our library to two other standard DTW clustering packages, DTAIDistance and TSlearn. The datasets used are time series from the UCR Time Series Classification Archive (@UCRArchive2018), cosisting of 128 time series datasets with up to 16,800 data series of lengths up to 2,844.
 
-                               | DTW-C++               || DTAISDistance              || Tslearn  |
+|                              | DTW-C++               || DTAIDistance               || TSlearn  |
 Dataset                        | Time (s) | Memory (MB) | Time (s)      | Memory (MB) | Time (s) | Memory (MB)
 ------------------------------ | -------- | ----------- | ------------- | ----------- | ---------|---------------
 ACSF1                          |          |             | 14.51         | 18.14       | 389.88   | 1691.47    
