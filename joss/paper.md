@@ -76,6 +76,7 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
+<img src="(https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png)" alt="DTW alignment between two time series" width="50%"/>
 ![signals_warped](https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png)
 ![warping_path](https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png)
 
