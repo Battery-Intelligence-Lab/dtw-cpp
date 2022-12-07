@@ -76,6 +76,9 @@ $$
 
 The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
 
+![DTW alignment between two time series](https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png) ![DTW warping path between two time series](https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png)
+
+
 <p float="left">
   <img src="https://user-images.githubusercontent.com/93582518/203316240-e927ff9c-38c1-420d-8455-a5443a2ff72f.png" alt="DTW alignment between two time series" width="40%"/>
   <img src="https://user-images.githubusercontent.com/93582518/202719474-ccddf8ad-4044-453c-a607-d1f7d7ce045b.png" alt="DTW warping path between two time series" width="40%"/>
@@ -253,9 +256,6 @@ Yoga                           |          |             | 631.11        | 194.70
 
 We gratefully acknowledge the contributions by [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members. 
 
-
-# References
-
 # Notes
 
 JOSS requirements from paper:
@@ -271,4 +271,8 @@ Relevant papers:
 Important points:
 * Solving the dtw problem alongside clustering problem allows for most effective parallelization increasing speed – task level parallelization
 * Made the problem memory efficient by using vector instead of matrix
+
+# References
+
+
 
