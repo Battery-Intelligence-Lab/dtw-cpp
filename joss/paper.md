@@ -131,10 +131,9 @@ After solving this integer program, the non-zero entries of $B$ represent the ce
 
 We have compared our library to two other standard DTW clustering packages, DTAIDistance and TSlearn.
 
-|                                | DTW-C++               || DTAISDistance              || Tslearn               ||
-| ------------------------------ | -------- | ----------- | ------------- | ----------- | -------- |-------------|
+| Package                        | DTW-C++               || DTAISDistance              || Tslearn               ||
 | Dataset                        | Time (s) | Memory (MB) | Time (s)      | Memory (MB) | Time (s) | Memory (MB) |
-|================================|==========|=============|===============|=============|==========|=============|
+| ------------------------------ | -------- | ----------- | ------------- | ----------- | -------- |-------------|
 | ACSF1                          |          |             | 14.51         | 18.14       | 389.88   | 1691.47 |
 | Adiac                          |          |             | 3.87          | 4.34        | 172.45   | 15.58 |
 | ArrowHead                      |          |             | 0.91          | 1.22        | 60.84    | 99.72 |
