@@ -53,6 +53,15 @@ void Problem::fillDistanceMatrix()
   };
 
   run(oneTask, data.size() * data.size());
+  maxDistance();
+}
+
+data_t Problem::maxDistance()
+{
+  if (maxDist < 0)
+    maxDist = *std::max_element(distMat.data.begin(), distMat.data.end());
+
+  return maxDist;
 }
 
 void Problem::printClusters()

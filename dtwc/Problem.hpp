@@ -31,6 +31,7 @@ class Problem
 {
   ind_t Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
+  data_t maxDist{ -1 };
 
 public:
   bool writeAsFileNames{ settings::writeAsFileNames };
@@ -76,7 +77,11 @@ public:
 
   std::string get_name(ind_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
 
-  double distByInd(int i, int j);
+  data_t maxDistance();
+
+
+  data_t distByInd(int i, int j);
+  data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 10.0 / (maxDistance()); };
   void fillDistanceMatrix();
   void printDistanceMatrix() { getDistanceMatrix().print(); }
 

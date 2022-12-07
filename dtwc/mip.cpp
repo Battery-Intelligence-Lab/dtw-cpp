@@ -114,7 +114,7 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        q[i + j * Nb] = prob.distByInd(i, j);
+        q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
 
     for (size_t i{ 0 }; i < Nb; i++)
@@ -253,17 +253,24 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBLinExpr obj = 0;
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
+        obj += w[i + j * Nb] * prob.distByInd_scaled(i, j);
 
     model.setObjective(obj, GRB_MINIMIZE);
+
+    // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
+    // model.set(GRB_IntParam_Method, 1);       // simplex
+    // model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
+    model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
+
+
     std::cout << "Finished setting up the MILP problem." << std::endl;
+
 
     model.optimize();
 
     for (ind_t i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
-
 
     prob.clusters_ind = std::vector<ind_t>(Nb);
 
@@ -335,12 +342,16 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     GRBLinExpr obj = 0;
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
+        obj += w[i + j * Nb] * prob.distByInd_scaled(i, j); // Some scaling!
 
     model.setObjective(obj, GRB_MINIMIZE);
     std::cout << "Finished setting up the MILP problem." << std::endl;
 
-    model.set(GRB_IntParam_Method, 1); // Set to dual simplex?
+    model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
+
+    // model.set(GRB_IntParam_Method, 1);       // Set to dual simplex?
+    // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
+
     // model.set(GRB_IntParam_Presolve, 2);
 
     model.optimize();
@@ -374,7 +385,8 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     std::cout << "Error code = " << e.getErrorCode() << std::endl
               << e.getMessage() << std::endl;
   } catch (...) {
-    std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
+    std::cout << "Unknown Exception during Gurobi relaxed, try regular Gurobi optimisation" << std::endl;
+    MIP_clustering_byGurobi(prob);
   }
 }
 

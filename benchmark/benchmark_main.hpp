@@ -93,8 +93,14 @@ inline void UCR_2018()
     dtwc::Problem prob{ stem_str, dl }; // Create a problem.
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
-
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
+    solved++;
+    // if (solved < 25) // We already calculated this part
+    //   continue;
+
+    if (prob.data.size() > 4200) // DOnt calculate large data it is not good. For example Crop.
+      continue;
+
     assert(Nc != 0);
 
     dtwc::Clock clk; // Create a clock object
@@ -103,6 +109,7 @@ inline void UCR_2018()
 
     prob.fillDistanceMatrix();
     prob.writeDistanceMatrix();
+
 
     auto time_1 = clk.duration();
 
