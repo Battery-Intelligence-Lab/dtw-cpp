@@ -125,8 +125,7 @@ $$
 
 After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in Figure 3, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.
 
-
-Finding global optimality can increase the computation time, depending on the number of time series within the dataset and DTW distances. Therefore there is also a built in feature to cluster using k-Medoids, as is used in other packages such as DTAIDistance. k-Medoids is often quicker as it is an iterative method, however it is subject to getting stuck in local optima. The table in [Comparison](#comparison) shows the timing and memory performance of both MIP clustering and k-Medoids clustering cmpared to other packages.
+Finding global optimality can increase the computation time, depending on the number of time series within the dataset and DTW distances. Therefore there is also a built in feature to cluster using k-Medoids, as is used in other packages such as DTAIDistance (@meert2020wannesm). k-Medoids is often quicker as it is an iterative method, however it is subject to getting stuck in local optima. The table in [Comparison](#comparison) shows the timing and memory performance of both MIP clustering and k-Medoids clustering cmpared to other packages.
 
 # Comparison
 
@@ -248,6 +247,11 @@ We have compared our library to two other standard DTW clustering packages, DTAI
 | Worms                          |             |             |                   |             | 1.96         | 0.93        |          |             |
 | WormsTwoClass                  |             |             |                   |             | 1.95         | 0.92        |          |             |
 | Yoga                           |             |             |                   |             | 631.11       | 194.70      |          |             |
+
+General notes:
+
+* DTW calculation much faster, therefore datasets with long time series are much quicker in our package even with MIP
+* MIP is slower when there are more time series as the clustering optimisaiton becomes harder. Data to follow showing our results with k-Medoids which should outperform DTAIDistance when using same cluster assignment due to quicker DTW
 
 # Acknowledgements
 
