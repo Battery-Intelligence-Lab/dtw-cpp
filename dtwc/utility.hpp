@@ -14,7 +14,7 @@
 #include "fileOperations.hpp"
 #include "Range.hpp"
 #include "parallelisation.hpp"
-//#include "utility_deprecated.hpp"
+// #include "utility_deprecated.hpp"
 
 
 #include <iostream>
@@ -103,7 +103,7 @@ data_t dtwFun_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
   short_side.resize(m_short);
 
-  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
+  auto distance = [](data_t x, data_t y) { return std::abs(x - y) * std::abs(x - y); };
 
   if ((m_short != 0) && (m_long != 0)) {
 
