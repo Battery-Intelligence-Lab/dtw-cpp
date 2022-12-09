@@ -19,4 +19,4 @@ for name in meta.index:
     #find n_clusters random numbers as starting centroids
     init_centroids[name] = random.sample(range(len(df.index)),n_clusters)
     
-pd.DataFrame(dict([(a,pd.Series(b)) for a,b in init_centroids.items()])).to_csv(main_path + '/data/benchmark/UCR_centroids/init_centroids.csv')
+pd.DataFrame(dict([(a,pd.Series(b)) for a,b in init_centroids.items()])).to_csv(main_path + '/data/benchmark/init_centroids.csv')

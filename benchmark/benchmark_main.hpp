@@ -25,8 +25,8 @@ inline auto get_UCR_2018_files()
   std::map<std::string, int> Nc_list{};
 
 
-  std::ifstream summary_file(settings::root_folder / "data/benchmark/UCRArchive_2018/DataSummary.csv", std::ios_base::in);
-
+  std::ifstream summary_file(settings::root_folder / "data/benchmark/UCR_DataSummary.csv", std::ios_base::in);
+  // #TODO addwarning i fi
   std::string summary_line{}, summary_name;
 
   int Nc_now;
@@ -81,16 +81,16 @@ inline void UCR_2018()
   std::vector<fs::path> dataofInterest{
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
     //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/Plane/Plane_TEST.tsv"),
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/Adiac/Adiac_TEST.tsv"),
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
   size_t solved = 0;
-  for (auto &file_path : dataofInterest) {
+  for (auto &file_path : UCR_list) {
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
-    dtwc::Problem prob{ stem_str, dl }; // Create a problem.
+    dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
@@ -98,8 +98,10 @@ inline void UCR_2018()
     // if (solved < 25) // We already calculated this part
     //   continue;
 
-    if (prob.data.size() > 4200) // DOnt calculate large data it is not good. For example Crop.
+    if (prob.data.size() > 1000) // DOnt calculate large data it is not good. For example Crop.
       continue;
+
+    prob.set_numberOfClusters(Nc); // Nc = number of clusters.
 
     dtwc::Clock clk; // Create a clock object
 
@@ -115,8 +117,8 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-    prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
-    prob.cluster_by_kMedoidsPAM(1); // Uses MILP to do clustering.
+    // prob.cluster_by_kMedoidsPAM_repetetive(2);
+    prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';

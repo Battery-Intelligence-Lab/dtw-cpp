@@ -12,7 +12,7 @@
 #include "settings.hpp"
 #include "utility.hpp"
 #include "fileOperations.hpp"
-//#include "initialisation.hpp"
+// #include "initialisation.hpp"
 #include "timing.hpp"
 #include "scores.hpp"
 #include "time_warping.hpp"
@@ -256,7 +256,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
     }
   }
 
-  std::ofstream bestRepFile(output_folder / "bestRepetition.csv", std::ios_base::out);
+  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition.csv"), std::ios_base::out);
   bestRepFile << best_rep << '\n';
   bestRepFile.close();
 
@@ -269,7 +269,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  std::ofstream medoidsFile(output_folder / ("medoids_rep_" + std::to_string(rep) + ".csv"), std::ios_base::out);
+  std::ofstream medoidsFile(output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv"), std::ios_base::out);
   for (int i = 0; i < maxIter; i++) {
 
     std::cout << "Medoids: ";
@@ -286,7 +286,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
 
     printClusters();
 
-    writeMedoidMembers(i, rep);
+    // writeMedoidMembers(i, rep);
 
     distanceInClusters(); // Just populates distByInd matrix ahead.
     calculateMedoids();   // Changes centroids_ind
