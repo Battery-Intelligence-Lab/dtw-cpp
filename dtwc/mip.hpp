@@ -21,7 +21,10 @@
 
 namespace dtwc {
 class Problem;
-void MIP_clustering_byGurobi(Problem &prob);
 
+void MIP_clustering_byGurobi(Problem &prob);
+void MIP_clustering_byGurobi_relaxed(Problem &prob);
+
+void MIP_clustering_byOSQP(Problem &prob);
 
 } // namespace dtwc

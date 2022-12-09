@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(DTWC++ VERSION "2.0.0"
+project(DTWC++ VERSION "0.0.3"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
-  LANGUAGES CXX)
+  LANGUAGES C CXX)
 
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
@@ -41,6 +41,8 @@ include_directories(${GUROBI_INCLUDE_DIRS})
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
+
+add_subdirectory(external/osqp)
 
 # # sanitizer options if supported by compiler
 # include(cmake/Sanitizers.cmake)
@@ -89,6 +91,7 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   ${GUROBI_LIBRARY}
+  osqpstatic
 )
 
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

@@ -3,7 +3,7 @@ message(STATUS ${GRB_SEARCH_PATHS})
 
 find_library(
   GUROBI_LIBRARY
-  NAMES gurobi gurobi81 gurobi90 gurobi95
+  NAMES gurobi100 gurobi gurobi81 gurobi90 gurobi95 
   HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME}
   PATH_SUFFIXES lib)
 
@@ -14,7 +14,7 @@ find_path(
   PATH_SUFFIXES include)
 
 if(CXX)
-  if(MSVC)
+  if(FALSE) #
     # determine Visual Studio year
     if(MSVC_TOOLSET_VERSION EQUAL 142)
       set(MSVC_YEAR "2019")
