@@ -54,6 +54,7 @@ public:
 
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
+  auto readDistanceMatrix(const fs::path &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
   auto cluster_size() const { return Nc; }
   auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.

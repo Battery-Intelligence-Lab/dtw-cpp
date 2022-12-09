@@ -201,7 +201,7 @@ void writeMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name, fs::p
 }
 
 template <typename data_t>
-void readMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
+void readMatrix(dtwc::VecMatrix<data_t> &matrix, const fs::path &name)
 {
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
@@ -217,10 +217,8 @@ void readMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name)
     matrix.data.push_back(x);
   }
 
-
   if (matrix.size() != matrix.data.size())
     std::cout << "Warning! Given file and sizes are not compatible.\n";
-
 
   if (matrix.data.size() < matrix.size())
     throw 1;

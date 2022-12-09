@@ -84,10 +84,10 @@ inline void cluster_byMIP_multiple()
 
   std::cout << "Data loading finished at " << clk << "\n";
 
-  // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
+  // prob.readDistanceMatrix("../matlab/DTWdist_band_all.csv"); // Comment out if recalculating the matrix.
   prob.fillDistanceMatrix();
   prob.writeDistanceMatrix();
-  // prob.getDistanceMatrix().print();
+  // prob.printDistanceMatrix();
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << settings::band << "\n\n\n";
 
