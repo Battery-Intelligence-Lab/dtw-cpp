@@ -101,8 +101,6 @@ inline void UCR_2018()
     if (prob.data.size() > 4200) // DOnt calculate large data it is not good. For example Crop.
       continue;
 
-    assert(Nc != 0);
-
     dtwc::Clock clk; // Create a clock object
 
     prob.output_folder = out_folder;
@@ -117,15 +115,15 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-    prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-    prob.cluster_by_MIP();         // Uses MILP to do clustering.
+    prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
+    prob.cluster_by_kMedoidsPAM(1); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
     std::cout << "Band used " << settings::band << "\n\n\n";
 
-    prob.printClusters();           // Prints to screen.
-    prob.writeClusters(reportName); // Prints to file.
+    prob.printClusters(); // Prints to screen.
+    prob.writeClusters(); // Prints to file.
     prob.writeSilhouettes();
 
     auto time_3 = clk.duration();

@@ -21,7 +21,6 @@
 
 namespace dtwc {
 
-
 void MIP_clustering_byOSQP(Problem &prob)
 {
 
@@ -50,21 +49,22 @@ void MIP_clustering_byOSQP(Problem &prob)
     auto l = new c_float[m];
     auto u = new c_float[m];
 
+    {
+      size_t i = 0;
+      size_t i_until = (Nb * Nb + Nb + Nb * Nb);
+      for (; i < i_until; i++) {
+        l[i] = 0.0;
+        u[i] = 1.0;
+      }
 
-    size_t i = 0;
-    size_t i_until = (Nb * Nb + Nb + Nb * Nb);
-    for (; i < i_until; i++) {
-      l[i] = 0.0;
-      u[i] = 1.0;
+      i_until += Nb;
+      for (; i < i_until; i++)
+        l[i] = u[i] = 1.0;
+
+      i_until += 1;
+      for (; i < i_until; i++)
+        l[i] = u[i] = Nc;
     }
-
-    i_until += Nb;
-    for (; i < i_until; i++)
-      l[i] = u[i] = 1.0;
-
-    i_until += 1;
-    for (; i < i_until; i++)
-      l[i] = u[i] = Nc;
 
 
     c_int A_nnz = (Nb * Nb + Nb) + 2 * Nb * Nb + (Nb * Nb + Nb);
@@ -100,7 +100,7 @@ void MIP_clustering_byOSQP(Problem &prob)
           A_i[A_p[j] + 0] = j;
           A_x[A_p[j] + 0] = 1;
 
-          for (int k = 0; k < Nb; k++) {
+          for (size_t k = 0; k < Nb; k++) {
             A_i[A_p[j] + 1 + k] = n + j_in + k * Nb;
             A_x[A_p[j] + 1 + k] = 1;
           }
@@ -208,7 +208,7 @@ void MIP_clustering_byOSQP(Problem &prob)
 
 
   } catch (...) {
-    std::cout << "OSQP problem" << std::endl;
+    std::cout << "OSQP problem occured" << std::endl;
   }
 }
 
@@ -260,7 +260,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
     // model.set(GRB_IntParam_Method, 1);       // simplex
     // model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
-    model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
+    // model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
 
 
     std::cout << "Finished setting up the MILP problem." << std::endl;

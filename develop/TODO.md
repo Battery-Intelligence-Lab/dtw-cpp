@@ -24,10 +24,23 @@
   - [ ] dtwclust in R
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
+  - [ ] OSQP is added. 
+- [ ] Exploration of totally unimodular matrices. 
+- [ ] Creating DTW objects taking distance/band as a policy-based design 
+- [ ] TestNumberOfThreads should be an atomic counter instead of printing. 
+- [ ] Doxygen website? 
+- [ ] Remove unnecessary warping functions. 
+- [ ] Fix warnings. Especially, we should not get warnings from external libraries. 
+- [ ] Make Gurobi dependency optional. (Now it cannot be disabled. )
+- [ ] Consider including Eigen library for matrix operations / linear system solution. 
+- [ ] w based DTW. 
+- [ ] Reading memoisation matrix distMat from file instead of re-calculating DTW every time. 
 
 ### Low priority: 
 - N.A.
 
+### Open questions:
+- [ ] How to create a user interface so that they can use examples as helper functions? There are many parameters. Maybe config file? 
 
 ### New ideas:
 - [ ] 2-D /N-D DTW
