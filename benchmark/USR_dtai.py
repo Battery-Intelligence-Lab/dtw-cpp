@@ -25,14 +25,14 @@ for fname in glob.glob(path):
 
     name = fname[34:-1]
     
-    df = pd.read_csv('../data/benchmark/UCRArchive_2018/' + str(name) + '/' + str(name) + '_TEST.tsv', sep='\t', header=None, index_col=0)
-    n_clusters = meta.loc[name]['Class']
-    
-    if name != 'Adiac':
+    if name != 'Plane':
         continue
     
     if df.isnull().values.any():
         continue
+    
+    df = pd.read_csv('../data/benchmark/UCRArchive_2018/' + str(name) + '/' + str(name) + '_TEST.tsv', sep='\t', header=None, index_col=0)
+    n_clusters = meta.loc[name]['Class']
     
     #read inital centroids
     init_centroids_df = pd.read_csv('../data/benchmark/UCR_centroids/init_centroids.csv', usecols=[name])

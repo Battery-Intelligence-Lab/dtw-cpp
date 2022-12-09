@@ -80,7 +80,7 @@ data_t dtwFun_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
   short_side.resize(m_short);
 
   auto distance = [](data_t x, data_t y) {
-    return std::abs(x - y); };
+    return std::abs(x - y)*std::abs(x - y); };
 
   if ((m_short != 0) && (m_long != 0)) {
     short_side[0] = distance(short_vec[0], long_vec[0]);
