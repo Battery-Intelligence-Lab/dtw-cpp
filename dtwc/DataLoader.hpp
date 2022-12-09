@@ -28,6 +28,11 @@ class DataLoader
 public:
   DataLoader() = default;
   DataLoader(const fs::path &path_) { this->path(path_); }
+  DataLoader(const fs::path &path_, int Ndata_)
+  {
+    this->path(path_);
+    this->n_data(Ndata_);
+  }
 
   // Some methods for chaining:
   DataLoader &startColumn(int N)

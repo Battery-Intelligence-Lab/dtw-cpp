@@ -17,87 +17,76 @@
 namespace dtwc::examples {
 
 
-void cluster_byKmeans_single()
+inline void cluster_byKmeans_single()
 {
   dtwc::Clock clk; // Create a clock object
-  std::string reportName = "DTW_kMeans_results";
+  std::string probName = "DTW_kMeans_results";
 
-
-  int Ndata_max = 200; // Load 100 data maximum.
-  auto Nc = 3;         // Number of clusters
+  auto Nc = 3; // Number of clusters
 
   int N_repetition = 5;
   int maxIter = 100;
 
-  dtwc::Problem prob; // Create a problem.
+  dtwc::DataLoader dl{ settings::dataPath / "dummy" };
+  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
-  // prob.load_data_fromFolder("../../data/UCR_UMD", Ndata_max);
-  // std::cout << "Data loading finished at " << clk << "\n";
+  dtwc::Problem prob{ probName, dl }; // Create a problem.
 
-  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  // prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
+  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
 
+  prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
 
-  // prob.printClusters();           // Prints to screen.
-  // prob.writeClusters(reportName); // Prints to file.
-  // prob.writeSilhouettes();
-
-  // std::cout << "Finished all tasks " << clk << "\n";
-}
-
-
-void cluster_byMIP_single()
-{
-  dtwc::Clock clk; // Create a clock object
-
-  int Ndata_max = 300; // Load 100 data maximum.
-  auto Nc = 6;         // Number of clusters
-
-  dtwc::Problem prob; // Create a problem.
-
-  // prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_reformat/SyntheticControl", Ndata_max);
-  std::cout << "Data loading finished at " << clk << "\n";
-
-  // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
-  prob.fillDistanceMatrix();
-
-  std::string DistMatrixName = "DTW_matrix.csv";
-
-  prob.writeDistanceMatrix(DistMatrixName);
-  // prob.getDistanceMatrix().print();
-  std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << settings::band << "\n\n\n";
-
-
-  std::string reportName = "DTW_MILP_results";
-
-  prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
-  prob.cluster_by_MIP();          // Uses MILP to do clustering.
-  prob.printClusters();           // Prints to screen.
-  prob.writeClusters(reportName); // Prints to file.
+  prob.printClusters(); // Prints to screen.
+  prob.writeClusters(); // Prints to file.
   prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }
 
-void cluster_byMIP_multiple()
+
+inline void cluster_byMIP_single()
+{
+  dtwc::Clock clk; // Create a clock object
+
+  int Ndata_max = 300; // Load 300 data maximum.
+  auto Nc = 6;         // Number of clusters
+
+  dtwc::DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+
+  dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
+
+  std::cout << "Data loading finished at " << clk << "\n";
+
+  prob.fillDistanceMatrix();
+  prob.writeDistanceMatrix();
+
+  std::cout << "Finished calculating distances " << clk << std::endl;
+  std::cout << "Band used " << settings::band << "\n\n\n";
+
+  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.cluster_by_MIP();         // Uses MILP to do clustering.
+  prob.printClusters();          // Prints to screen.
+  prob.writeClusters();          // Prints to file.
+  prob.writeSilhouettes();
+
+  std::cout << "Finished all tasks " << clk << "\n";
+}
+
+inline void cluster_byMIP_multiple()
 {
   dtwc::Clock clk; // Create a clock object
 
   int Ndata_max = 100;         // Load 100 data maximum.
   auto Nc = dtwc::Range(3, 6); // Clustering for Nc = 3,4,5. Range function like Python so 6 is not included.
 
-  dtwc::Problem prob; // Create a problem.
+  dtwc::DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+  dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
 
-  // prob.load_data_fromFolder("../../data/dummy", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
   prob.fillDistanceMatrix();
-
-  std::string DistMatrixName = "DTW_matrix.csv";
-
-  prob.writeDistanceMatrix(DistMatrixName);
+  prob.writeDistanceMatrix();
   // prob.getDistanceMatrix().print();
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << settings::band << "\n\n\n";
@@ -110,7 +99,7 @@ void cluster_byMIP_multiple()
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
     prob.set_numberOfClusters(nc); // Nc = number of clusters.
     prob.cluster_by_MIP();         // Uses MILP to do clustering.
-    prob.writeClusters(reportName);
+    prob.writeClusters();
     prob.writeSilhouettes();
   }
 

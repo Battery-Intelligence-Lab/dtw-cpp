@@ -15,6 +15,7 @@
 //#include "initialisation.hpp"
 #include "timing.hpp"
 #include "scores.hpp"
+#include "time_warping.hpp"
 
 #include <vector>
 #include <string_view>
@@ -82,10 +83,9 @@ void Problem::printClusters()
   }
 }
 
-void Problem::writeClusters(std::string file_name)
+void Problem::writeClusters()
 {
-  file_name = name + "_" + file_name + "_Nc_" + std::to_string(Nc) + ".csv";
-
+  auto file_name = name + "_Nc_" + std::to_string(Nc) + ".csv";
 
   std::ofstream myFile(output_folder / file_name, std::ios_base::out);
 
@@ -115,11 +115,11 @@ void Problem::writeSilhouettes()
 {
   auto silhouettes = scores::silhouette(*this);
 
-  std::string name{ this->name + "_silhouettes_" };
+  std::string silhouette_name{ name + "_silhouettes_Nc_" };
 
-  name += std::to_string(Nc) + ".csv";
+  silhouette_name += std::to_string(Nc) + ".csv";
 
-  std::ofstream myFile(output_folder / name, std::ios_base::out);
+  std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
   for (size_t i{ 0 }; i < data.size(); i++) {
@@ -325,10 +325,10 @@ double Problem::findTotalCost()
 
 void Problem::writeMedoidMembers(int iter, int rep)
 {
-  std::string name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
-                     + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
+  const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
+                                  + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  std::ofstream medoidMembers(output_folder / name, std::ios_base::out);
+  std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
   for (auto &members : cluster_members) {
     for (auto member : members)
       medoidMembers << get_name(member) << ',';

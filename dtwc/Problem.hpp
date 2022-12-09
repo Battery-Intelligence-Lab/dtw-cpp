@@ -89,7 +89,7 @@ public:
   void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
 
   void printClusters();
-  void writeClusters(std::string file_name);
+  void writeClusters();
 
   void writeMedoidMembers(int iter, int rep = 0);
 

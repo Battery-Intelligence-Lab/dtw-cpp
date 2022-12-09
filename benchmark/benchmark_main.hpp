@@ -78,16 +78,16 @@ inline void UCR_2018()
   timing_file << "Name,fillDistanceMatrix,MIPclustering,writeSilhouettes\n";
   std::string reportName = "MILP_results";
   // UCR_list
-  // std::vector<fs::path> dataofInterest{
-  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
-  //   //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/Plane/Plane_TEST.tsv"),
-  //   (settings::root_folder / "data/benchmark/UCRArchive_2018/PLAID/PLAID_TEST.tsv"),
-  //   // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+  std::vector<fs::path> dataofInterest{
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/Plane/Plane_TEST.tsv"),
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
-  // };
+  };
   size_t solved = 0;
-  for (auto &file_path : UCR_list) {
+  for (auto &file_path : dataofInterest) {
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ stem_str, dl }; // Create a problem.
@@ -100,8 +100,6 @@ inline void UCR_2018()
 
     if (prob.data.size() > 4200) // DOnt calculate large data it is not good. For example Crop.
       continue;
-
-    assert(Nc != 0);
 
     dtwc::Clock clk; // Create a clock object
 
@@ -117,15 +115,15 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-    prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-    prob.cluster_by_MIP();         // Uses MILP to do clustering.
+    prob.set_numberOfClusters(Nc);  // Nc = number of clusters.
+    prob.cluster_by_kMedoidsPAM(1); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
     std::cout << "Band used " << settings::band << "\n\n\n";
 
-    prob.printClusters();           // Prints to screen.
-    prob.writeClusters(reportName); // Prints to file.
+    prob.printClusters(); // Prints to screen.
+    prob.writeClusters(); // Prints to file.
     prob.writeSilhouettes();
 
     auto time_3 = clk.duration();
