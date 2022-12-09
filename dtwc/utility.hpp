@@ -323,12 +323,12 @@ data_t dtwFunBanded_Act(const std::vector<data_t> &x, const std::vector<data_t> 
 }
 
 template <typename Tfun>
-void fillDistanceMatrix(Tfun &DTWdistByInd, size_t N)
+void fillDistanceMatrix(Tfun &distByInd, size_t N)
 {
   auto oneTask = [&, N = N](size_t i_linear) {
     size_t i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)
-      DTWdistByInd(i, j);
+      distByInd(i, j);
   };
 
   dtwc::run(oneTask, N * N);

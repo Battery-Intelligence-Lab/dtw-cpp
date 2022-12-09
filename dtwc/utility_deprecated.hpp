@@ -334,15 +334,15 @@ void updateDBA(std::vector<Tdata> &mean, const std::vector<Tsequence> &sequences
 // }
 
 
-void fillDistanceMatrix(auto &DTWdistByInd, int N)
+void fillDistanceMatrix(auto &distByInd, int N)
 {
   auto distanceAllTask = [&](int i_p) {
     for (int i = 0; i <= i_p; i++)
-      DTWdistByInd(i_p, i);
+      distByInd(i_p, i);
 
     auto i_p_p = N - i_p - 1;
     for (int i = 0; i <= i_p_p; i++)
-      DTWdistByInd(i_p_p, i);
+      distByInd(i_p_p, i);
   };
 
   const int N_2 = (N + 1) / 2;
@@ -351,7 +351,7 @@ void fillDistanceMatrix(auto &DTWdistByInd, int N)
 }
 
 template <typename Tdata, typename Tdist>
-auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centroids_ind, Tdist DTWdistByInd, std::vector<std::string> &p_names, int rep, int maxIter = 100)
+auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centroids_ind, Tdist distByInd, std::vector<std::string> &p_names, int rep, int maxIter = 100)
 {
   std::vector<unsigned short> closestCluster(p_vec.size());
   std::vector<std::vector<int>> clusterMembers(centroids_ind.size()); //
@@ -362,7 +362,7 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
   {
     double cost = std::numeric_limits<double>::max();
     for (size_t i = 0; i < centroids_ind.size(); i++) {
-      auto new_cost = DTWdistByInd(i_p, centroids_ind[i]);
+      auto new_cost = distByInd(i_p, centroids_ind[i]);
 
       if (new_cost < cost) {
         cost = new_cost;
@@ -375,7 +375,7 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
     const int clusterNo = closestCluster[i_p];
     for (auto otherPointInd : clusterMembers[clusterNo])
       if (i_p <= otherPointInd)
-        DTWdistByInd(i_p, otherPointInd);
+        distByInd(i_p, otherPointInd);
   };
 
   auto distributeClusters = [&clusterMembers, &closestCluster]() {
@@ -391,7 +391,7 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
     const auto i_c = closestCluster[i_p];
     Tdata sum{ 0 };
     for (auto member : clusterMembers[i_c])
-      sum += DTWdistByInd(i_p, member);
+      sum += distByInd(i_p, member);
 
     if (sum < clusterCosts[i_c]) {
       clusterCosts[i_c] = sum;
@@ -400,7 +400,7 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
   };
 
   int status = -1;
-  std::ofstream medoidsFile(settings::resultsPath + "medoids_rep_" + std::to_string(rep) + ".csv", std::ios_base::out);
+  std::ofstream medoidsFile(settings::resultsPath / "medoids_rep_" + std::to_string(rep) + ".csv", std::ios_base::out);
   for (int i = 0; i < maxIter; i++) {
     std::cout << "Medoids: ";
     for (auto medoid : centroids_ind) {
@@ -416,11 +416,11 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
     run(assignClustersTask, p_vec.size()); // uses centroids_ind sets closestCluster
     distributeClusters();                  // uses closestCluster populates clusterMembers.
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
-              << findTotalCost(closestCluster, centroids_ind, DTWdistByInd) << ".\n"; // Uses closestCluster to find cost.
+              << findTotalCost(closestCluster, centroids_ind, distByInd) << ".\n"; // Uses closestCluster to find cost.
 
     writeMedoidMembers(clusterMembers, p_names, i, rep);
 
-    run(distanceInClustersTask, p_vec.size()); // Just populates DTWdistByInd matrix ahead.
+    run(distanceInClustersTask, p_vec.size()); // Just populates distByInd matrix ahead.
     run(findBetterMedoidTask, p_vec.size());   // Changes centroids_ind
 
     if (aremedoidsSame(oldmedoids, centroids_ind)) {
@@ -431,7 +431,7 @@ auto kMedoidsPAM(std::vector<std::vector<Tdata>> &p_vec, std::vector<int> &centr
     oldmedoids = centroids_ind;
   }
 
-  auto total_cost = findTotalCost(closestCluster, centroids_ind, DTWdistByInd);
+  auto total_cost = findTotalCost(closestCluster, centroids_ind, distByInd);
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
   medoidsFile << "Procedure is completed with cost: " << total_cost << '\n';
 

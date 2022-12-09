@@ -37,10 +37,7 @@ public:
   inline auto cols() const { return n; }
   inline auto size() const { return m * n; }
 
-  inline auto &operator()(VarType i, VarType j)
-  {
-    return data[i + j * m];
-  }
+  inline auto &operator()(VarType i, VarType j) { return data[i + j * m]; }
 
   void print()
   {
@@ -51,18 +48,6 @@ public:
       std::cout << '\n';
     }
   }
-
-  // void initialise_from_file(std::string path)
-  // {
-
-  //     auto p = readFile<data_type>(path);
-
-  //     if ((m * n) != p.size())
-  //         std::cout << "Warning! Given file and sizes are not compatible.\n";
-
-  //     std::swap(data, p);
-
-  // }
 };
 
 
@@ -104,10 +89,7 @@ public:
     CompactMat.resize(kl_ + ku_ + 1, n_, x);
   }
 
-  void print()
-  {
-    CompactMat.print();
-  }
+  void print() { CompactMat.print(); }
 };
 
 
@@ -131,7 +113,6 @@ public:
 
   inline auto &operator()(VarType i, VarType j)
   {
-
     const VarType j_mod = std::round(m_n * j);
     return CompactMat(ku + i - j_mod, j);
   }
@@ -177,10 +158,7 @@ public:
     CompactMat.resize(kl_ + ku_ + 1, n_, x);
   }
 
-  void print()
-  {
-    CompactMat.print();
-  }
+  void print() { CompactMat.print(); }
 };
 
 } // namespace dtwc

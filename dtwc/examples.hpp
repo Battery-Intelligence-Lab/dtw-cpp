@@ -24,25 +24,25 @@ void cluster_byKmeans_single()
 
 
   int Ndata_max = 200; // Load 100 data maximum.
-  auto Nc = 3;       // Number of clusters
+  auto Nc = 3;         // Number of clusters
 
   int N_repetition = 5;
   int maxIter = 100;
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("../../data/UCR_UMD", Ndata_max);
-  std::cout << "Data loading finished at " << clk << "\n";
+  // prob.load_data_fromFolder("../../data/UCR_UMD", Ndata_max);
+  // std::cout << "Data loading finished at " << clk << "\n";
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
+  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  // prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
 
 
-  prob.printClusters();           // Prints to screen.
-  prob.writeClusters(reportName); // Prints to file.
-  prob.writeSilhouettes();
+  // prob.printClusters();           // Prints to screen.
+  // prob.writeClusters(reportName); // Prints to file.
+  // prob.writeSilhouettes();
 
-  std::cout << "Finished all tasks " << clk << "\n";
+  // std::cout << "Finished all tasks " << clk << "\n";
 }
 
 
@@ -55,7 +55,7 @@ void cluster_byMIP_single()
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_reformat/SyntheticControl", Ndata_max);
+  // prob.load_data_fromFolder("Z:/Projects/BBOXX_becky/UCR_reformat/SyntheticControl", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
@@ -89,7 +89,7 @@ void cluster_byMIP_multiple()
 
   dtwc::Problem prob; // Create a problem.
 
-  prob.load_data_fromFolder("../../data/dummy", Ndata_max);
+  // prob.load_data_fromFolder("../../data/dummy", Ndata_max);
   std::cout << "Data loading finished at " << clk << "\n";
 
   // // readMatrix(DTWdist, "../matlab/DTWdist_band_all.csv"); // Comment out if recalculating
