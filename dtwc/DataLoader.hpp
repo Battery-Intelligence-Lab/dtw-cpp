@@ -28,6 +28,11 @@ class DataLoader
 public:
   DataLoader() = default;
   DataLoader(const fs::path &path_) { this->path(path_); }
+  DataLoader(const fs::path &path_, int Ndata_)
+  {
+    this->path(path_);
+    this->n_data(Ndata_);
+  }
 
   // Some methods for chaining:
   DataLoader &startColumn(int N)
@@ -72,7 +77,7 @@ public:
     else
       std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose > 0, start_row, start_col, delimiter);
 
-    d.Nb = d.p_vec.size();
+    d.Nb = static_cast<ind_t>(d.p_vec.size());
     return d;
   }
 };

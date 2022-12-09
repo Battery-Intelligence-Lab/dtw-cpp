@@ -12,9 +12,10 @@
 #include "settings.hpp"
 #include "utility.hpp"
 #include "fileOperations.hpp"
-//#include "initialisation.hpp"
+// #include "initialisation.hpp"
 #include "timing.hpp"
 #include "scores.hpp"
+#include "time_warping.hpp"
 
 #include <vector>
 #include <string_view>
@@ -53,6 +54,15 @@ void Problem::fillDistanceMatrix()
   };
 
   run(oneTask, data.size() * data.size());
+  maxDistance();
+}
+
+data_t Problem::maxDistance()
+{
+  if (maxDist < 0)
+    maxDist = *std::max_element(distMat.data.begin(), distMat.data.end());
+
+  return maxDist;
 }
 
 void Problem::printClusters()
@@ -73,10 +83,9 @@ void Problem::printClusters()
   }
 }
 
-void Problem::writeClusters(std::string file_name)
+void Problem::writeClusters()
 {
-  file_name = name + "_" + file_name + "_Nc_" + std::to_string(Nc) + ".csv";
-
+  auto file_name = name + "_Nc_" + std::to_string(Nc) + ".csv";
 
   std::ofstream myFile(output_folder / file_name, std::ios_base::out);
 
@@ -106,11 +115,11 @@ void Problem::writeSilhouettes()
 {
   auto silhouettes = scores::silhouette(*this);
 
-  std::string name{ this->name + "_silhouettes_" };
+  std::string silhouette_name{ name + "_silhouettes_Nc_" };
 
-  name += std::to_string(Nc) + ".csv";
+  silhouette_name += std::to_string(Nc) + ".csv";
 
-  std::ofstream myFile(output_folder / name, std::ios_base::out);
+  std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
   for (size_t i{ 0 }; i < data.size(); i++) {
@@ -247,7 +256,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
     }
   }
 
-  std::ofstream bestRepFile(output_folder / "bestRepetition.csv", std::ios_base::out);
+  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition.csv"), std::ios_base::out);
   bestRepFile << best_rep << '\n';
   bestRepFile.close();
 
@@ -260,7 +269,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  std::ofstream medoidsFile(output_folder / ("medoids_rep_" + std::to_string(rep) + ".csv"), std::ios_base::out);
+  std::ofstream medoidsFile(output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv"), std::ios_base::out);
   for (int i = 0; i < maxIter; i++) {
 
     std::cout << "Medoids: ";
@@ -277,7 +286,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
 
     printClusters();
 
-    writeMedoidMembers(i, rep);
+    // writeMedoidMembers(i, rep);
 
     distanceInClusters(); // Just populates distByInd matrix ahead.
     calculateMedoids();   // Changes centroids_ind
@@ -316,10 +325,10 @@ double Problem::findTotalCost()
 
 void Problem::writeMedoidMembers(int iter, int rep)
 {
-  std::string name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
-                     + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
+  const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
+                                  + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  std::ofstream medoidMembers(output_folder / name, std::ios_base::out);
+  std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
   for (auto &members : cluster_members) {
     for (auto member : members)
       medoidMembers << get_name(member) << ',';

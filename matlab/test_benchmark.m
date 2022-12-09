@@ -5,7 +5,7 @@ file = '../data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv';
 
 data = readmatrix(file,'FileType','text', 'Delimiter','\t');
 
-distanceMat = readmatrix("UMD_test_matrix.csv"); % DTW distances calculated by C++ 
+distanceMat = readmatrix("DTWdist_band_100.csv"); % DTW distances calculated by C++ 
 %%
 
 Nc = data(end,1); % Number of clusters. 

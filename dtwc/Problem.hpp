@@ -31,6 +31,7 @@ class Problem
 {
   ind_t Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
+  data_t maxDist{ -1 };
 
 public:
   bool writeAsFileNames{ settings::writeAsFileNames };
@@ -53,6 +54,7 @@ public:
 
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
+  auto readDistanceMatrix(const fs::path &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
   auto cluster_size() const { return Nc; }
   auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
@@ -76,7 +78,11 @@ public:
 
   std::string get_name(ind_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
 
-  double distByInd(int i, int j);
+  data_t maxDistance();
+
+
+  data_t distByInd(int i, int j);
+  data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 10.0 / (maxDistance()); };
   void fillDistanceMatrix();
   void printDistanceMatrix() { getDistanceMatrix().print(); }
 
@@ -84,7 +90,7 @@ public:
   void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
 
   void printClusters();
-  void writeClusters(std::string file_name);
+  void writeClusters();
 
   void writeMedoidMembers(int iter, int rep = 0);
 

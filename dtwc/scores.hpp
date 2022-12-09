@@ -21,12 +21,13 @@ auto silhouette(Problem &prob)
   const auto Nb = prob.data.size();    // Number of profiles
   const auto Nc = prob.cluster_size(); // Number of clusters
 
+  std::vector<double> silhouettes(Nb);
+
   if (prob.centroids_ind.empty()) {
     std::cout << "Please cluster the data before calculating silhouette!\n";
-    throw 100;
+    return silhouettes;
   }
 
-  std::vector<double> silhouettes(Nb);
 
   auto oneTask = [&, N = Nb](size_t i_b) {
     auto i_c = prob.clusters_ind[i_b];

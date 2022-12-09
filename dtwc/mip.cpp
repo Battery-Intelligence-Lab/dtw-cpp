@@ -21,7 +21,6 @@
 
 namespace dtwc {
 
-
 void MIP_clustering_byOSQP(Problem &prob)
 {
 
@@ -50,20 +49,22 @@ void MIP_clustering_byOSQP(Problem &prob)
     auto l = new c_float[m];
     auto u = new c_float[m];
 
-    int i = 0;
-    int i_until = (Nb * Nb + Nb + Nb * Nb);
-    for (; i < i_until; i++) {
-      l[i] = 0.0;
-      u[i] = 1.0;
+    {
+      size_t i = 0;
+      size_t i_until = (Nb * Nb + Nb + Nb * Nb);
+      for (; i < i_until; i++) {
+        l[i] = 0.0;
+        u[i] = 1.0;
+      }
+
+      i_until += Nb;
+      for (; i < i_until; i++)
+        l[i] = u[i] = 1.0;
+
+      i_until += 1;
+      for (; i < i_until; i++)
+        l[i] = u[i] = Nc;
     }
-
-    i_until += Nb;
-    for (; i < i_until; i++)
-      l[i] = u[i] = 1.0;
-
-    i_until += 1;
-    for (; i < i_until; i++)
-      l[i] = u[i] = Nc;
 
 
     c_int A_nnz = (Nb * Nb + Nb) + 2 * Nb * Nb + (Nb * Nb + Nb);
@@ -76,8 +77,8 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     A_p[0] = 0;
 
-    for (int j_out = 0; j_out < (Nb + 1); j_out++) // Columns
-      for (int j_in = 0; j_in < Nb; j_in++)        // inner block
+    for (size_t j_out = 0; j_out < (Nb + 1); j_out++) // Columns
+      for (size_t j_in = 0; j_in < Nb; j_in++)        // inner block
       {
         auto j = j_out * Nb + j_in;
 
@@ -99,7 +100,7 @@ void MIP_clustering_byOSQP(Problem &prob)
           A_i[A_p[j] + 0] = j;
           A_x[A_p[j] + 0] = 1;
 
-          for (int k = 0; k < Nb; k++) {
+          for (size_t k = 0; k < Nb; k++) {
             A_i[A_p[j] + 1 + k] = n + j_in + k * Nb;
             A_x[A_p[j] + 1 + k] = 1;
           }
@@ -113,7 +114,7 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        q[i + j * Nb] = prob.distByInd(i, j);
+        q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
 
     for (size_t i{ 0 }; i < Nb; i++)
@@ -154,6 +155,10 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Solve Problem
     osqp_solve(work);
+
+
+    // for (size_t i = 0; i < work->data->n; i++)
+    //   std::cout << work->solution->x[i] << '\n';
 
 
     // ----- Retrieve solutions START ------
@@ -203,7 +208,7 @@ void MIP_clustering_byOSQP(Problem &prob)
 
 
   } catch (...) {
-    std::cout << "OSQP problem" << std::endl;
+    std::cout << "OSQP problem occured" << std::endl;
   }
 }
 
@@ -248,17 +253,24 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBLinExpr obj = 0;
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
+        obj += w[i + j * Nb] * prob.distByInd_scaled(i, j);
 
     model.setObjective(obj, GRB_MINIMIZE);
+
+    // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
+    // model.set(GRB_IntParam_Method, 1);       // simplex
+    // model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
+    // model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
+
+
     std::cout << "Finished setting up the MILP problem." << std::endl;
+
 
     model.optimize();
 
     for (ind_t i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
-
 
     prob.clusters_ind = std::vector<ind_t>(Nb);
 
@@ -330,10 +342,17 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     GRBLinExpr obj = 0;
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd(i, j);
+        obj += w[i + j * Nb] * prob.distByInd_scaled(i, j); // Some scaling!
 
     model.setObjective(obj, GRB_MINIMIZE);
     std::cout << "Finished setting up the MILP problem." << std::endl;
+
+    model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
+
+    // model.set(GRB_IntParam_Method, 1);       // Set to dual simplex?
+    // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
+
+    // model.set(GRB_IntParam_Presolve, 2);
 
     model.optimize();
 
@@ -366,7 +385,8 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     std::cout << "Error code = " << e.getErrorCode() << std::endl
               << e.getMessage() << std::endl;
   } catch (...) {
-    std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
+    std::cout << "Unknown Exception during Gurobi relaxed, try regular Gurobi optimisation" << std::endl;
+    MIP_clustering_byGurobi(prob);
   }
 }
 

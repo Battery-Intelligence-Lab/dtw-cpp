@@ -15,7 +15,7 @@ fprintf('Cost: %4.6f\n',sol.cost);
 
 
 %% OSQP formulation
-N_dist = 10;
+%N_dist = 10;
 distanceMat2 = distanceMat(1:N_dist,1:N_dist);
 
 Nc = 4;
