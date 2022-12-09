@@ -3,9 +3,10 @@
 import pandas as pd
 import glob
 import time
-from tslearn.clustering import TimeSeriesKMeans
 import numpy as np #numbas dependancy of numpy version 1.2 or less
+from tslearn.clustering import TimeSeriesKMeans
 import tracemalloc
+import csv
 
 timings_ts = {}
 memory_ts = {}
@@ -44,3 +45,11 @@ for fname in glob.glob(path):
         f.write('\n')
     
     print(towrite)
+    
+with open('ts_timings.csv','w') as f:
+    w = csv.writer(f)
+    w.writerows(timings_ts.items())
+    
+with open('ts_memory.csv','w') as f:
+    w = csv.writer(f)
+    w.writerows(memory_ts.items())
