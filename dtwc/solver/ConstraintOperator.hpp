@@ -40,7 +40,7 @@ struct ConstraintOperator
 
       sum += x_in[i];
 
-      if (i % N && i != 0) {
+      if (((i + 1) % N) == 0) {
         x_out[2 * N * N + i_sum] = sum;
         sum = 0;
         i_sum++;
@@ -66,7 +66,7 @@ struct ConstraintOperator
       x_out[i] = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i_repeat];
     }
 
-    for (size_t i = 0; i < N * N; i++) {
+    for (size_t i = 0; i < N; i++) {
       data_t sum = 0;
       for (size_t j = 0; j < N * N; j += N)
         sum += x_in[N * N + i + j];

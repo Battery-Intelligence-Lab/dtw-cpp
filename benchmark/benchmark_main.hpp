@@ -26,10 +26,16 @@ inline auto get_UCR_2018_files()
 
 
   std::ifstream summary_file(settings::root_folder / "data/benchmark/UCR_DataSummary.csv", std::ios_base::in);
-  // #TODO addwarning i fi
+
+  if (!summary_file.is_open()) {
+    std::cerr << settings::root_folder / "data/benchmark/UCR_DataSummary.csv"
+              << " could not be opened!\n";
+    throw 11;
+  }
+
   std::string summary_line{}, summary_name;
 
-  int Nc_now;
+  int Nc_now{};
   char c{ '.' };
 
   std::getline(summary_file, summary_line);
@@ -43,6 +49,12 @@ inline auto get_UCR_2018_files()
 
     for (int i = 0; i < 3; i++)
       iss >> Nc_now >> c;
+
+
+    if (Nc_now == 0) {
+      std::cerr << summary_name << " cluster info could not be read!\n";
+      throw 11;
+    }
 
     Nc_list[summary_name] = Nc_now;
   }
@@ -79,9 +91,9 @@ inline void UCR_2018()
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
     //   (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/Adiac/Adiac_TEST.tsv"),
+    // (settings::root_folder / "data/benchmark/UCRArchive_2018/Adiac/Adiac_TEST.tsv"),
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 

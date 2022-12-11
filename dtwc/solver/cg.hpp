@@ -22,8 +22,8 @@
 
 namespace dtwc::solver {
 
-auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vector<data_t> &zk, std::vector<data_t> &yk,
-           std::vector<data_t> &q, ConstraintOperator &op, double rho, double sigma)
+inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vector<data_t> &zk, std::vector<data_t> &yk,
+                  std::vector<data_t> &q, ConstraintOperator &op, double rho, double sigma)
 {
 
   const auto Nx = xk.size();
@@ -55,13 +55,13 @@ auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vector<data_
     p_now[i] = r_prev[i];
   }
 
-  size_t Niter{ 500 };
+  size_t Niter{ 10000 };
   bool flag = false;
 
   for (size_t i_iter = 0; i_iter < Niter; i_iter++) {
     const auto r_prev_sqr = std::inner_product(r_prev.begin(), r_prev.end(), r_prev.begin(), 0.0);
-
-    if (r_prev_sqr <= 1e-28) {
+    // std::cout << "r_prev_sqr : " << r_prev_sqr << '\n';
+    if (r_prev_sqr <= 1e-18) {
       flag = true;
       break;
     }
