@@ -53,12 +53,12 @@ void MIP_clustering_byOSLP(Problem &prob)
 
     // ----- Retrieve solutions START ------
     for (ind_t i{ 0 }; i < Nb; i++) {
-      auto isCentroid_i = w_sol[Nb * Nb + i];
+      auto isCentroid_i = w_sol[i * (Nb + 1)];
 
       if (isCentroid_i > 0.75) {
         prob.centroids_ind.push_back(i);
         if (isCentroid_i < 0.9)
-          std::cout << "OSQP may not have the most accurate solution ever for centroid " << isCentroid_i << '\n';
+          std::cout << "OSLP may not have the most accurate solution ever for centroid " << isCentroid_i << '\n';
       } else if (isCentroid_i > 0.25) // Should not happen!
       {
         std::cerr << "Centroid " << i << " has value of " << isCentroid_i << " which should not happen for turtley unimodular matrices!\n";

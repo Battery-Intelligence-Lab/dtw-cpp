@@ -39,10 +39,10 @@ class LP
 
 public:
   size_t maxIterations{ 15000 }; // Default 4000
-  size_t numItrConv{ 200 };      // Check convergence every 200 iteration.
+  size_t numItrConv{ 50 };       // Check convergence every 200 iteration.
 
-  double epsAbs{ 1e-5 };
-  double epsRel{ 1e-5 };
+  double epsAbs{ 1e-4 };
+  double epsRel{ 1e-4 };
   double rho{ 1 };
   double alpha{ 1.6 };
   double delta{ 1e-6 };

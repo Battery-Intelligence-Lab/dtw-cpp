@@ -4,7 +4,7 @@ import pandas as pd
 import glob
 import time
 from tslearn.clustering import TimeSeriesKMeans
-import numpy as np #numbas dependancy of numpy version 1.2 or less
+import numpy as np #numbas dependency of numpy version 1.2 or less
 import tracemalloc
 
 timings_ts = {}

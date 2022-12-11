@@ -82,7 +82,7 @@ public:
 
 
   data_t distByInd(int i, int j);
-  data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 10.0 / (maxDistance()); };
+  data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 2.0 / (maxDistance()); };
   void fillDistanceMatrix();
   void printDistanceMatrix() { getDistanceMatrix().print(); }
 
