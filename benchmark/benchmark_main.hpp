@@ -87,7 +87,7 @@ inline void UCR_2018()
 
   };
   size_t solved = 0;
-  for (auto &file_path : UCR_list) {
+  for (auto &file_path : dataofInterest) {
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.

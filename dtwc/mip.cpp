@@ -11,6 +11,7 @@
 #include "Problem.hpp"
 #include "settings.hpp"
 #include "utility.hpp"
+#include "solver/LP.hpp"
 #include "gurobi_c++.h"
 #include "osqp.h"
 
@@ -20,6 +21,74 @@
 #include <limits>
 
 namespace dtwc {
+
+void MIP_clustering_byOSLP(Problem &prob)
+{
+  // This is not an actual MIP solver; however, it relies on problem having turtley unimodular matrices!
+  // This is hand-written version of OSQP removing the Q part.
+  std::cout << "OSLP has been called!" << std::endl;
+
+  const auto Nb = prob.data.size();
+  const auto Nc = prob.cluster_size();
+  prob.clear_clusters();
+
+  thread_local dtwc::solver::LP lp;
+
+  thread_local std::vector<double> w_sol, q;
+  w_sol.resize(Nb * Nb);
+  q.resize(Nb * Nb);
+
+
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      q[i + j * Nb] = prob.distByInd_scaled(i, j);
+
+
+  std::fill(w_sol.begin(), w_sol.end(), 0.0);
+
+  try {
+    lp.maxIterations = 15000;
+    lp.numItrConv = 200;
+    lp.solve(w_sol, q, Nb, Nc);
+
+    // ----- Retrieve solutions START ------
+    for (ind_t i{ 0 }; i < Nb; i++) {
+      auto isCentroid_i = w_sol[Nb * Nb + i];
+
+      if (isCentroid_i > 0.75) {
+        prob.centroids_ind.push_back(i);
+        if (isCentroid_i < 0.9)
+          std::cout << "OSQP may not have the most accurate solution ever for centroid " << isCentroid_i << '\n';
+      } else if (isCentroid_i > 0.25) // Should not happen!
+      {
+        std::cerr << "Centroid " << i << " has value of " << isCentroid_i << " which should not happen for turtley unimodular matrices!\n";
+        throw 10000; // #TODO more meaningful error codes?
+      }
+    }
+
+    prob.clusters_ind = std::vector<ind_t>(Nb);
+
+    ind_t i_cluster = 0;
+    for (auto i : prob.centroids_ind) {
+      prob.cluster_members.emplace_back();
+      for (size_t j{ 0 }; j < Nb; j++)
+        if (w_sol[i + j * Nb] > 0.75) {
+          if (w_sol[i + j * Nb] < 0.9)
+            std::cout << "OSQP may not have the most accurate solution ever for weight " << w_sol[i + j * Nb] << '\n';
+          prob.clusters_ind[j] = i_cluster;
+          prob.cluster_members.back().push_back(j);
+        } else if (w_sol[i + j * Nb] > 0.25) {
+          std::cerr << "Weight " << i + j * Nb << " has value of " << w_sol[i + j * Nb] << " which should not happen for turtley unimodular matrices!\n";
+          throw 10000; // #TODO more meaningful error codes?
+        }
+
+      i_cluster++;
+    }
+  } catch (...) {
+    std::cout << "Exception during OSLP optimisation" << std::endl;
+  }
+}
+
 
 void MIP_clustering_byOSQP(Problem &prob)
 {

@@ -42,6 +42,7 @@ constexpr bool isDebug = false;
 // MIP solution settings. Default = false, false;
 constexpr bool is_relaxed = false;
 constexpr bool is_OSQP = false;
+constexpr bool is_OSLP = true;
 
 constexpr int band = 0; // Size of band to use (if no band put 0)
 } // namespace dtwc::settings

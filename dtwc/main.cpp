@@ -16,9 +16,9 @@ int main()
 
   // dtwc::examples::cluster_byKmeans_single();
   // dtwc::examples::cluster_byMIP_single();
-  dtwc::examples::cluster_byMIP_multiple();
+  // dtwc::examples::cluster_byMIP_multiple();
 
-  // dtwc::benchmarks::run_all();
+  dtwc::benchmarks::run_all();
   std::cout << "Finished all tasks " << clk << "\n";
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
 }

@@ -27,4 +27,6 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob);
 
 void MIP_clustering_byOSQP(Problem &prob);
 
+void MIP_clustering_byOSLP(Problem &prob);
+
 } // namespace dtwc
