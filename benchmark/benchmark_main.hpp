@@ -28,7 +28,7 @@ inline auto get_UCR_2018_files()
   std::ifstream summary_file(settings::root_folder / "data/benchmark/UCR_DataSummary.csv", std::ios_base::in);
 
   if (!summary_file.is_open()) {
-    std::cerr << settings::root_folder / "data/benchmark/UCR_DataSummary.csv"
+    std::cerr << fs::absolute(settings::root_folder / "data/benchmark/UCR_DataSummary.csv")
               << " could not be opened!\n";
     throw 11;
   }
