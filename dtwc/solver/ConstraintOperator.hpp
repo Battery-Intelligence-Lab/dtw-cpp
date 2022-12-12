@@ -16,6 +16,8 @@
 
 #include <vector>
 #include <string>
+#include <numeric>
+#include <algorithm>
 
 namespace dtwc::solver {
 
@@ -54,6 +56,29 @@ struct ConstraintOperator
     x_out[2 * N * N + N] = sum;
   }
 
+
+  double A(size_t i, std::vector<data_t> &x_in)
+  {
+    // x_in size is assumed to be N^2;
+    const auto Nout = get_Nm(); // x_out size;
+
+    // Slower if used in V.
+    if (i < N * N)
+      return x_in[i];
+    else if (i < 2 * N * N)
+      return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
+    else if (i < 2 * N * N + N) {
+      const auto i_basic = i - (2 * N * N);
+      return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
+    } else if (i == (2 * N * N + N)) {
+      data_t sum = 0;
+      for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
+      return sum;
+    }
+
+    throw 12345;
+  }
+
   auto At(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
   {
     // x_in size is assumed to be 2*N^2 + N + 1;
@@ -72,6 +97,66 @@ struct ConstraintOperator
         sum += x_in[N * N + i + j];
 
       x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
+    }
+  }
+
+
+  // auto AtA(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
+  // {
+
+
+  //   if (i < N * N)
+  //     return x_in[i];
+  //   else if (i < 2 * N * N)
+  //     return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
+  //   else if (i < 2 * N * N + N) {
+  //     const auto i_basic = i - (2 * N * N);
+  //     return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
+  //   } else if (i == (2 * N * N + N)) {
+  //     data_t sum = 0;
+  //     for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
+  //     return sum;
+  //   }
+
+  //   - x_in[N * N + i]
+
+  //    x_out.resize(Nout);
+
+  //   size_t i_repeat = 0;
+  //   for (size_t i = 0; i < N * N; i++) {
+  //     if (i % N == 0 && i != 0) i_repeat++;
+  //     x_out[i] = x_in[i] +x_in[i] - x_in[(i % N) * (N + 1)] + std::accumulate(x_in.begin() + i_repeat * N, x_in.begin() + (i_repeat + 1) * N, 0.0);;
+  //   }
+
+  //   for (size_t i = 0; i < N; i++) {
+  //     data_t sum = 0;
+  //     for (size_t j = 0; j < N * N; j += N)
+  //       sum += x_in[N * N + i + j];
+
+  //     x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
+  //   }
+  // }
+
+
+  template <typename Tfun> // Takes a temporary object.
+  auto At(std::vector<data_t> &x_out, Tfun &&x_in)
+  {
+    // x_in size is assumed to be 2*N^2 + N + 1;
+    const auto Nout = get_Nx(); // x_out size;
+    x_out.resize(Nout);
+
+    size_t i_repeat = 0;
+    for (size_t i = 0; i < N * N; i++) {
+      if (i % N == 0 && i != 0) i_repeat++;
+      x_out[i] = x_in(i) - x_in(N * N + i) + x_in(2 * N * N + i_repeat);
+    }
+
+    for (size_t i = 0; i < N; i++) {
+      data_t sum = 0;
+      for (size_t j = 0; j < N * N; j += N)
+        sum += x_in(N * N + i + j);
+
+      x_out[(i % N) * (N + 1)] += x_in(2 * N * N + N) + sum;
     }
   }
 
