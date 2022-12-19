@@ -1,10 +1,10 @@
-title: DTWpp
+title: DTWC++
 description: Official documentation of DTWpp software.
-remote_theme: rundocs/jekyll-rtd-theme
+remote_theme: Battery-Intelligence-Lab/bil-jekyll-rtd-theme
 
 # Theme settings:
-site_author: DTWpp authors
-repo_url: "https://github.com/davidhowey/SLIDE/"
+site_author: DTWC++ authors
+repo_url: "https://github.com/Battery-Intelligence-Lab/dtw-cpp/"
 edit_on_github: true
 github_docs_folder: true
 sticky_navigation: true
