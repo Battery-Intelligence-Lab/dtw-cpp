@@ -55,7 +55,7 @@ inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vecto
   auto r_prev_sqr = std::inner_product(r_now.begin(), r_now.end(), r_now.begin(), 0.0);
   for (size_t i_iter = 0; i_iter < Niter; i_iter++) {
     // std::cout << "r_prev_sqr : " << r_prev_sqr << '\n';
-    if (r_prev_sqr <= 1e-16) {
+    if (r_prev_sqr <= 1e-14) {
       flag = true;
       break;
     }

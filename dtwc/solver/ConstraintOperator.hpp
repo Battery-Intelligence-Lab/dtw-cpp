@@ -23,7 +23,12 @@ namespace dtwc::solver {
 
 struct ConstraintOperator
 {
-  size_t N{}; // Number of time-series data.
+  size_t N{ 0 }; // Number of time-series data.
+  std::vector<std::array<size_t, 2>> fixed_variables;
+
+  ConstraintOperator() = default;
+  explicit ConstraintOperator(size_t N_) : N(N_) {}
+
 
   auto get_Nm() const { return 2 * N * N + N + 1; }
   auto get_Nx() const { return N * N; }
@@ -186,6 +191,14 @@ struct ConstraintOperator
       x_out[2 * N * N + i] = 1.0;
 
     x_out[2 * N * N + N] = Nc;
+
+    for (auto ind_val : fixed_variables) {
+      // This loop is for fixing any variables to a certain values.
+      const auto ind = ind_val[0];
+      const auto val = ind_val[1];
+
+      x_out[ind] = val;
+    }
   }
 };
 } // namespace dtwc::solver

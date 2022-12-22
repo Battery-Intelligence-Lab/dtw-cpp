@@ -33,23 +33,25 @@ void MIP_clustering_byOSLP(Problem &prob)
   prob.clear_clusters();
 
   thread_local dtwc::solver::LP lp;
+  lp.setSize(Nb, Nc);
 
-  thread_local std::vector<double> w_sol, q;
-  w_sol.resize(Nb * Nb);
-  q.resize(Nb * Nb);
+  // Alias variables.
+  auto &q = lp.getQvec();
+  auto &w_sol = lp.getSolution();
 
+  std::fill(w_sol.begin(), w_sol.end(), 0.0);
 
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)
       q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
-
-  std::fill(w_sol.begin(), w_sol.end(), 0.0);
-
+  lp.maxIterations = 15000;
+  lp.numItrConv = 200;
+  lp.epsAbs = 1e-2;
+  lp.epsRel = 1e-2;
   try {
-    lp.maxIterations = 15000;
-    lp.numItrConv = 200;
-    lp.solve(w_sol, q, Nb, Nc);
+
+    lp.int_solve();
 
     // ----- Retrieve solutions START ------
     for (ind_t i{ 0 }; i < Nb; i++) {
@@ -215,8 +217,8 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Additional settings by Vk:
     settings->max_iter = 100000;
-    settings->eps_abs = 1e-4;
-    settings->eps_rel = 1e-4;
+    settings->eps_abs = 1e-3;
+    settings->eps_rel = 1e-3;
 
 
     // Setup workspace
