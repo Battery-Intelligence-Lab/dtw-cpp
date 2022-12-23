@@ -1,5 +1,5 @@
 /*
- * mip.hpp
+ * mip.cpp
  *
  * Encapsulating mixed-integer program functions in a class.
 

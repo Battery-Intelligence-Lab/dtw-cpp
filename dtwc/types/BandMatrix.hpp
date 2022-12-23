@@ -1,3 +1,13 @@
+/*
+ * BandMatrix.hpp
+ *
+ * Encapsulating mixed-integer program functions in a class.
+
+ *  Created on: 06 Nov 2022
+ *  Author(s): Volkan Kumtepeli, Becky Perriment
+ */
+
+
 #pragma once
 
 #include "types_util.hpp"

@@ -1,4 +1,11 @@
-// Vk: 2022.01.21
+/*
+ * settings.hpp
+ *
+ * This file contains time warping functions
+ *
+ * Created on: 21 Jan 2022
+ * Author(s): Volkan Kumtepeli, Becky Perriment
+ */
 
 #pragma once
 

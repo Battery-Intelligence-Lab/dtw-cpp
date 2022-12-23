@@ -1,11 +1,17 @@
-// Vk: 2022.01.21
+/*
+ * fileOperations.hpp
+ *
+ * Functions for file operations
+ *
+ *  Created on: 21 Jan 2022
+ *  Author(s): Volkan Kumtepeli, Becky Perriment
+ */
+
 
 #pragma once
 
 #include "settings.hpp"
 #include "utility.hpp"
-#include "dataTypes.hpp"
-
 
 #include <vector>
 #include <filesystem>

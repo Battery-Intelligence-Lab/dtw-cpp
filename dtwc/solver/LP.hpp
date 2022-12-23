@@ -14,7 +14,6 @@
 #include "ConstraintOperator.hpp"
 #include "../settings.hpp"
 #include "../utility.hpp"
-#include "../dataTypes.hpp"
 #include "solver_util.hpp"
 
 
