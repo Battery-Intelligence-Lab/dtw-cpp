@@ -10,12 +10,11 @@
 #pragma once
 
 #include "settings.hpp"
-#include "dataTypes.hpp"
+#include "types/types.hpp"
 #include "fileOperations.hpp"
-#include "Range.hpp"
 #include "parallelisation.hpp"
 
-//#include "utility_deprecated.hpp"
+// #include "utility_deprecated.hpp"
 
 
 #include <iostream>

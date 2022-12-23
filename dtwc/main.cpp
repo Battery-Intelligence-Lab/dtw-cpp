@@ -77,28 +77,76 @@ int main()
   // 0.6141
   // 6.0854
 
-  op.A(x_out_Nm, x_in_Nx);
-  op.At(x_out_Nx, x_in_Nm);
+  // op.A(x_out_Nm, x_in_Nx);
+  // op.At(x_out_Nx, x_in_Nm);
 
-  std::cout << "x_out_Nm: ";
-  for (auto x : x_out_Nm)
-    std::cout << x << ", ";
+  // std::cout << "x_out_Nm: ";
+  // for (auto x : x_out_Nm)
+  //   std::cout << x << ", ";
 
-  std::cout << '\n';
+  // std::cout << '\n';
 
-  std::cout << "x_out_Nx: ";
-  for (auto x : x_out_Nx)
-    std::cout << x << ", ";
+  // std::cout << "x_out_Nx: ";
+  // for (auto x : x_out_Nx)
+  //   std::cout << x << ", ";
 
-  std::cout << '\n';
+  // std::cout << '\n';
 
-  op.V(x_out_Nx, x_in_Nx, 1, 1);
-  std::cout << "x_out_V: ";
-  for (auto x : x_out_Nx)
-    std::cout << x << ", ";
+  // op.V(x_out_Nx, x_in_Nx, 1, 1);
+  // std::cout << "x_out_V: ";
+  // for (auto x : x_out_Nx)
+  //   std::cout << x << ", ";
 
 
-  dtwc::benchmarks::run_all();
+  dtwc::Problem prob;
+
+  prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv");
+  prob.getDistanceMatrix().resize(6, 6);
+
+  const auto Nb = prob.getDistanceMatrix().rows();
+  prob.data.Nb = Nb;
+
+
+  dtwc::solver::LP lp;
+  lp.maxIterations = 15000;
+  lp.numItrConv = 50;
+  lp.epsAbs = 1e-3;
+  lp.epsRel = 1e-3;
+
+  lp.setSize(Nb, 2);
+
+
+  auto &q = lp.getQvec();
+
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      q[i + j * Nb] = prob.distByInd_scaled(i, j);
+
+
+  lp.int_solve();
+
+  auto &w_sol = lp.getSolution();
+
+  for (size_t j{ 0 }; j < Nb; j++) {
+    for (size_t i{ 0 }; i < Nb; i++)
+      std::cout << w_sol[i + j * Nb] << ' ';
+
+    std::cout << '\n';
+  }
+
+  lp.round();
+
+  std::cout << "cost: " << lp.cost() << '\n';
+
+  for (size_t j{ 0 }; j < Nb; j++) {
+    for (size_t i{ 0 }; i < Nb; i++)
+      std::cout << w_sol[i + j * Nb] << ' ';
+
+    std::cout << '\n';
+  }
+
+
+  // dtwc::benchmarks::run_all();
   std::cout << "Finished all tasks " << clk << "\n";
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
 }

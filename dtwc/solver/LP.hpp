@@ -178,17 +178,22 @@ public:
 
 
 private:
-  void recursive_solve(IntSolution &bestSolution, std::vector<std::vector<ind_t>> &possible_now, size_t i_pos, size_t Nc_remaining_now)
+  void recursive_solve(IntSolution &bestSolution, size_t i_pos, size_t Nc_remaining_now)
   {
-    if (i_pos == possible_now.size()) {
+
+    if (i_pos == N) {
       std::cerr << "No more possibilities but integer solver failed!\n";
       throw 10101010;
     }
 
-    auto &possibilities = possible_now[i_pos];
+    std::vector<ind_t> possibilities;
+    for (size_t i = i_pos * N; i < ((i_pos + 1) * N); i++)
+      if (vX[i] > 1e-4)
+        possibilities.push_back(i);
+
 
     if (possibilities.empty()) {
-      recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now);
+      recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now);
       return;
     }
 
@@ -217,9 +222,9 @@ private:
           bestSolution.vX_opt = vX;
         } else {
           if (possibilities[i] % (N + 1) == 0) // It is a diagonal.
-            recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now - 1);
+            recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now - 1);
           else
-            recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now);
+            recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now);
         }
 
       for (size_t j = 0; j < possibilities.size(); j++)
@@ -228,6 +233,17 @@ private:
   }
 
 public:
+  void round()
+  {
+    //<! Round numbers to make them integer:
+    for (auto &x : vX)
+      if (is_one(x))
+        x = 1;
+      else if (is_zero(x))
+        x = 0;
+  }
+
+
   ConvergenceFlag int_solve()
   {
     // solve ensuring that decision variables are integer.
@@ -239,14 +255,6 @@ public:
     // Solution converged but it is not integer now!
     // #TODO figure out why this happens for totally unimodular matrices...
     // Probably not exactly totally unimodular. Especially Nc constraint is dangerous.
-    std::vector<std::vector<ind_t>> possible;
-    for (size_t i = 0; i < N; i++) {
-      possible.emplace_back();
-      for (size_t j = 0; j < N; j++)
-        if (vX[i * N + j] > 1e-4)
-          possible.back().push_back(i * N + j);
-    }
-
 
     auto Nc_remaining = Nc;
     for (size_t i = 0; i < N * N; i += N + 1)
@@ -258,7 +266,7 @@ public:
     bestSolution.cost = std::numeric_limits<data_t>::max();
 
     size_t i_pos = 0;
-    recursive_solve(bestSolution, possible, i_pos, Nc_remaining);
+    recursive_solve(bestSolution, i_pos, Nc_remaining);
 
     vX = bestSolution.vX_opt;
     return ConvergenceFlag::conv_problem;

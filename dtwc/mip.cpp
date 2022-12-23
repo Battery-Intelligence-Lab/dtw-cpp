@@ -49,6 +49,7 @@ void MIP_clustering_byOSLP(Problem &prob)
   lp.numItrConv = 50;
   lp.epsAbs = 1e-3;
   lp.epsRel = 1e-3;
+
   try {
 
     lp.int_solve();
