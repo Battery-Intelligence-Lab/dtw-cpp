@@ -9,7 +9,15 @@
 
 #pragma once
 
+#include "../settings.hpp"
+
+#include <limits>
+#include <array>
+#include <vector>
+
 namespace dtwc::solver {
+
+constexpr data_t int_threshold = 0.05;
 
 enum class ConvergenceFlag {
   error_sizeNotSet = -1, //<! Problem size is not set!
@@ -18,12 +26,21 @@ enum class ConvergenceFlag {
   conv_fail = 2          //<! No convergence
 };
 
-template <typename Tdata>
-inline bool is_integer(Tdata x)
+template <typename T>
+inline bool is_one(T x) { return x > (1 - int_threshold); }
+
+template <typename T>
+inline bool is_zero(T x) { return x < int_threshold; }
+
+template <typename T>
+inline bool is_integer(T x) { return is_one(x) || is_zero(x); }
+
+struct IntSolution
 {
-  constexpr data_t threshold = 0.02;
-  return x < threshold || x < (1 - threshold);
-}
+  std::vector<std::array<size_t, 2Ui64>> fix_var;
+  data_t cost{ std::numeric_limits<data_t>::max() };
+  std::vector<data_t> vX_opt;
+};
 
 
 } // namespace dtwc::solver

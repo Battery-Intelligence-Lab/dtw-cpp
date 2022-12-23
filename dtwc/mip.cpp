@@ -46,28 +46,18 @@ void MIP_clustering_byOSLP(Problem &prob)
       q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
   lp.maxIterations = 15000;
-  lp.numItrConv = 200;
-  lp.epsAbs = 1e-2;
-  lp.epsRel = 1e-2;
+  lp.numItrConv = 50;
+  lp.epsAbs = 1e-3;
+  lp.epsRel = 1e-3;
   try {
 
     lp.int_solve();
 
     // ----- Retrieve solutions START ------
     for (ind_t i{ 0 }; i < Nb; i++) {
-      auto isCentroid_i = w_sol[i * (Nb + 1)];
-
-      if (isCentroid_i > 0.75) {
+      if (solver::is_one(w_sol[i * (Nb + 1)]))
         prob.centroids_ind.push_back(i);
-        if (isCentroid_i < 0.9)
-          std::cout << "OSLP may not have the most accurate solution ever for centroid " << isCentroid_i << '\n';
-      } else if (isCentroid_i > 0.25) // Should not happen!
-      {
-        std::cerr << "Centroid " << i << " has value of " << isCentroid_i << " which should not happen for turtley unimodular matrices!\n";
-        throw 10000; // #TODO more meaningful error codes?
-      }
     }
-
     prob.clusters_ind = std::vector<ind_t>(Nb);
 
     ind_t i_cluster = 0;
@@ -296,7 +286,6 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBModel model = GRBModel(env);
 
     // Create variables
-    std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_BINARY) };
     std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
 
     for (size_t i{ 0 }; i < Nb; i++) {
@@ -310,12 +299,11 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     for (size_t j{ 0 }; j < Nb; j++)
       for (size_t i{ 0 }; i < Nb; i++)
-        model.addConstr(w[i + j * Nb] <= isCluster[i]);
-
+        model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
     {
       GRBLinExpr lhs = 0;
       for (size_t i{ 0 }; i < Nb; i++)
-        lhs += isCluster[i];
+        lhs += w[i * (Nb + 1)];
 
       model.addConstr(lhs == Nc); // There should be Nc clusters.
     }
@@ -330,9 +318,9 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
     // model.set(GRB_IntParam_Method, 1);       // simplex
-    // model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
+    model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
     // model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
-
+    // model.set(GRB_IntParam_Cuts, 3); // More cuts? -> not very effective.
 
     std::cout << "Finished setting up the MILP problem." << std::endl;
 
@@ -340,7 +328,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     model.optimize();
 
     for (ind_t i{ 0 }; i < Nb; i++)
-      if (isCluster[i].get(GRB_DoubleAttr_X) > 0.5)
+      if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
 
     prob.clusters_ind = std::vector<ind_t>(Nb);

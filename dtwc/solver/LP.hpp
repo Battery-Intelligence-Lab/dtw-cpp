@@ -78,7 +78,7 @@ public:
   auto &getSolution() { return vX; }
   auto &getQvec() { return q; }
 
-  data_t cost() { return std::inner_product(q.begin(), q.end(), vX.begin()); }
+  data_t cost() { return std::inner_product(q.begin(), q.end(), vX.begin(), 0.0); }
 
   bool isSolutionInteger()
   {
@@ -177,6 +177,57 @@ public:
   }
 
 
+private:
+  void recursive_solve(IntSolution &bestSolution, std::vector<std::vector<ind_t>> &possible_now, size_t i_pos, size_t Nc_remaining_now)
+  {
+    if (i_pos == possible_now.size()) {
+      std::cerr << "No more possibilities but integer solver failed!\n";
+      throw 10101010;
+    }
+
+    auto &possibilities = possible_now[i_pos];
+
+    if (possibilities.empty()) {
+      recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now);
+      return;
+    }
+
+
+    for (size_t i = 0; i < possibilities.size(); i++) {
+      // Only i'th element is one others are zero.
+
+      if (possibilities[i] % (N + 1) == 0 && Nc_remaining_now == 0) // It is a diagonal.
+        continue;
+
+
+      for (size_t j = 0; j < possibilities.size(); j++) {
+        if (i == j)
+          op.fixed_variables.push_back({ possibilities[j], 1 });
+        else
+          op.fixed_variables.push_back({ possibilities[j], 0 });
+      }
+
+      solve();
+      const auto cost_now = cost();
+
+      if (cost_now < bestSolution.cost)
+        if (isSolutionInteger()) {
+          bestSolution.cost = cost_now;
+          bestSolution.fix_var = op.fixed_variables;
+          bestSolution.vX_opt = vX;
+        } else {
+          if (possibilities[i] % (N + 1) == 0) // It is a diagonal.
+            recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now - 1);
+          else
+            recursive_solve(bestSolution, possible_now, i_pos + 1, Nc_remaining_now);
+        }
+
+      for (size_t j = 0; j < possibilities.size(); j++)
+        op.fixed_variables.pop_back(); // Remove the variables added by this step!
+    }
+  }
+
+public:
   ConvergenceFlag int_solve()
   {
     // solve ensuring that decision variables are integer.
@@ -187,23 +238,30 @@ public:
 
     // Solution converged but it is not integer now!
     // #TODO figure out why this happens for totally unimodular matrices...
-
-    auto recursive_solver = [&]() {
-      for (size_t i = 0; i < N; i++) {
-        auto ind = i * (N + 1);
-        if (!is_integer(vX[ind])) {
-          op.fixed_variables.push_back({ ind, 0 }); // we made that variable 0.
-          solve();
-
-          const auto isInt_0 = isSolutionInteger();
-
-          op.fixed_variables.back()[1] = 1;
-          solve();
-          const auto cost_1 = cost();
-          const auto isInt_1 = isSolutionInteger();
-        }
-      }
+    // Probably not exactly totally unimodular. Especially Nc constraint is dangerous.
+    std::vector<std::vector<ind_t>> possible;
+    for (size_t i = 0; i < N; i++) {
+      possible.emplace_back();
+      for (size_t j = 0; j < N; j++)
+        if (vX[i * N + j] > 1e-4)
+          possible.back().push_back(i * N + j);
     }
+
+
+    auto Nc_remaining = Nc;
+    for (size_t i = 0; i < N * N; i += N + 1)
+      if (is_one(vX[i]))
+        Nc_remaining--; // Okay this one is probably 1.
+
+
+    IntSolution bestSolution;
+    bestSolution.cost = std::numeric_limits<data_t>::max();
+
+    size_t i_pos = 0;
+    recursive_solve(bestSolution, possible, i_pos, Nc_remaining);
+
+    vX = bestSolution.vX_opt;
+    return ConvergenceFlag::conv_problem;
   }
 };
 
