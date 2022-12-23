@@ -13,7 +13,6 @@ namespace dtwc {
 template <typename data_t>
 class SkewedBandMatrix
 {
-
 private:
   using VarType = int;
   VarType m{}, ku{}, kl{};
