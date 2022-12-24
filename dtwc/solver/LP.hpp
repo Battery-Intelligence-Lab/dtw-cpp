@@ -179,7 +179,6 @@ public:
 private:
   void recursive_solve(IntSolution &bestSolution, size_t i_pos)
   {
-    std::cout << "i_pos: " << i_pos << '\n';
     if (i_pos == N) {
       std::cerr << "No more possibilities but integer solver failed!\n";
       throw 10101010;
@@ -197,6 +196,9 @@ private:
         possibilities.push_back(i_pos * N + i);
 
 
+    std::sort(possibilities.begin(), possibilities.end(), [this](ind_t a, ind_t b) { return q[a] > q[b]; });
+
+
     if (possibilities.empty()) {
       recursive_solve(bestSolution, i_pos + 1);
       return;
@@ -204,6 +206,7 @@ private:
 
 
     for (size_t i = 0; i < possibilities.size(); i++) {
+      std::cout << "i_pos: " << i_pos << " Possibility: " << i << " of " << possibilities.size() << '\n';
       // Only i'th element is one others are zero.
       for (size_t j = 0; j < possibilities.size(); j++) {
         if (i == j)
