@@ -100,13 +100,18 @@ int main()
 
   dtwc::Problem prob;
 
-  prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv");
-  prob.getDistanceMatrix().resize(6, 6);
+  // prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv");
+  prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "AllGestureWiimoteX_dist_50.csv");
+
+
+  prob.getDistanceMatrix().resize(50, 50);
 
   const auto Nb = prob.getDistanceMatrix().rows();
   prob.data.Nb = Nb;
 
-  prob.set_numberOfClusters(2);
+  size_t Nc = 5;
+
+  prob.set_numberOfClusters(Nc);
 
   // dtwc::MIP_clustering_byGurobi_relaxed(prob);
   // dtwc::MIP_clustering_byOSQP(prob);
@@ -115,11 +120,10 @@ int main()
   dtwc::solver::LP lp;
   lp.maxIterations = 15000;
   lp.numItrConv = 50;
-  lp.epsAbs = 1e-4;
-  lp.epsRel = 1e-4;
+  lp.epsAbs = 1e-3;
+  lp.epsRel = 1e-3;
 
-  lp.setSize(Nb, 2);
-
+  lp.setSize(Nb, Nc);
 
   auto &q = lp.getQvec();
 
@@ -134,28 +138,22 @@ int main()
       w_sol[i + j * Nb] = 1;
 
   lp.int_solve();
-
-
-  for (size_t j{ 0 }; j < Nb; j++) {
-    for (size_t i{ 0 }; i < Nb; i++)
-      std::cout << w_sol[i + j * Nb] << ' ';
-
-    std::cout << '\n';
-  }
-
-  lp.round();
-
   std::cout << "cost: " << lp.cost() << '\n';
 
+  std::cout << "Finished all tasks " << clk << "\n";
+
+  std::ofstream w_sol_out(dtwc::settings::resultsPath / "test" / "AllGestureWiimoteX_sol_250.csv");
+
   for (size_t j{ 0 }; j < Nb; j++) {
     for (size_t i{ 0 }; i < Nb; i++)
-      std::cout << w_sol[i + j * Nb] << ' ';
+      w_sol_out << w_sol[i + j * Nb] << ',';
 
-    std::cout << '\n';
+    w_sol_out << '\n';
   }
 
 
   dtwc::benchmarks::run_all();
-  std::cout << "Finished all tasks " << clk << "\n";
+
+
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
 }

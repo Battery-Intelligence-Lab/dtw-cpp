@@ -79,10 +79,7 @@ public:
 
   data_t cost() { return std::inner_product(q.begin(), q.end(), vX.begin(), 0.0); }
 
-  bool isSolutionInteger()
-  {
-    return std::all_of(vX.cbegin(), vX.cend(), is_integer<data_t>);
-  }
+  inline bool isSolutionInteger() { return std::all_of(vX.cbegin(), vX.cend(), is_integer<data_t>); }
 
   ConvergenceFlag solve()
   {
@@ -180,8 +177,8 @@ private:
   void recursive_solve(IntSolution &bestSolution, size_t i_pos)
   {
     if (i_pos == N) {
-      std::cerr << "No more possibilities but integer solver failed!\n";
-      throw 10101010;
+      std::cout << "i_pos reached maximum value so it is reset to 0.\n";
+      i_pos = 0;
     }
 
     ind_t Nc_now = 0;
@@ -192,17 +189,22 @@ private:
 
     std::vector<ind_t> possibilities;
     for (size_t i = 0; i < N; i++)
-      if (is_one(vX[i * (N + 1)]) || Nc_remaining_now > 0) // It is only a possibility that cluster is active or we have remaining clusters to open.
-        possibilities.push_back(i_pos * N + i);
-
-
-    std::sort(possibilities.begin(), possibilities.end(), [this](ind_t a, ind_t b) { return q[a] > q[b]; });
-
+      if (!is_one(vX[i_pos * N + i]) && !is_zero(vX[i_pos * N + i]))
+        if (is_one(vX[i * (N + 1)]) || Nc_remaining_now > 0) // It is only a possibility that cluster is active or we have remaining clusters to open.
+          possibilities.push_back(i_pos * N + i);
 
     if (possibilities.empty()) {
       recursive_solve(bestSolution, i_pos + 1);
       return;
     }
+
+    std::sort(possibilities.begin(), possibilities.end(), [this](ind_t a, ind_t b) { return q[a] > q[b]; });
+
+    // std::stable_sort(possibilities.begin(),
+    //                  possibilities.end(),
+    //                  [this](ind_t a, ind_t b) {
+    //                    return std::abs(vX[a] - 0.5) < std::abs(vX[b] - 0.5); // Look who is closer to 0.5.
+    //                  });
 
 
     for (size_t i = 0; i < possibilities.size(); i++) {
@@ -257,6 +259,10 @@ public:
     // Solution converged but it is not integer now!
     // #TODO figure out why this happens for totally unimodular matrices...
     // Probably not exactly totally unimodular. Especially Nc constraint is dangerous.
+
+    for (size_t i = 0; i < vX.size(); i++)
+      if (!is_integer(vX[i]))
+        std::cout << i << '\n';
 
     IntSolution bestSolution;
     bestSolution.cost = std::numeric_limits<data_t>::max();
