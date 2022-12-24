@@ -208,8 +208,8 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Additional settings by Vk:
     settings->max_iter = 100000;
-    settings->eps_abs = 1e-3;
-    settings->eps_rel = 1e-3;
+    settings->eps_abs = 1e-6;
+    settings->eps_rel = 1e-6;
 
 
     // Setup workspace
@@ -217,11 +217,6 @@ void MIP_clustering_byOSQP(Problem &prob)
 
     // Solve Problem
     osqp_solve(work);
-
-
-    // for (size_t i = 0; i < work->data->n; i++)
-    //   std::cout << work->solution->x[i] << '\n';
-
 
     // ----- Retrieve solutions START ------
     for (ind_t i{ 0 }; i < Nb; i++) {
@@ -267,8 +262,6 @@ void MIP_clustering_byOSQP(Problem &prob)
       c_free(data);
     }
     if (settings) c_free(settings);
-
-
   } catch (...) {
     std::cout << "OSQP problem occured" << std::endl;
   }
@@ -415,6 +408,10 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     // model.set(GRB_IntParam_Presolve, 2);
 
     model.optimize();
+
+    std::vector<double> test;
+    for (size_t i{ 0 }; i < Nb * Nb; i++)
+      test.push_back(w[i].get(GRB_DoubleAttr_X));
 
     for (ind_t i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.9)

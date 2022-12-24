@@ -106,12 +106,17 @@ int main()
   const auto Nb = prob.getDistanceMatrix().rows();
   prob.data.Nb = Nb;
 
+  prob.set_numberOfClusters(2);
+
+  // dtwc::MIP_clustering_byGurobi_relaxed(prob);
+  // dtwc::MIP_clustering_byOSQP(prob);
+
 
   dtwc::solver::LP lp;
   lp.maxIterations = 15000;
   lp.numItrConv = 50;
-  lp.epsAbs = 1e-3;
-  lp.epsRel = 1e-3;
+  lp.epsAbs = 1e-4;
+  lp.epsRel = 1e-4;
 
   lp.setSize(Nb, 2);
 
@@ -123,9 +128,13 @@ int main()
       q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
 
+  auto &w_sol = lp.getSolution();
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      w_sol[i + j * Nb] = 1;
+
   lp.int_solve();
 
-  auto &w_sol = lp.getSolution();
 
   for (size_t j{ 0 }; j < Nb; j++) {
     for (size_t i{ 0 }; i < Nb; i++)
@@ -146,7 +155,7 @@ int main()
   }
 
 
-  // dtwc::benchmarks::run_all();
+  dtwc::benchmarks::run_all();
   std::cout << "Finished all tasks " << clk << "\n";
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
 }

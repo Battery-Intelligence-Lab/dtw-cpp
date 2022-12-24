@@ -17,7 +17,7 @@
 
 namespace dtwc::solver {
 
-constexpr data_t int_threshold = 0.05;
+constexpr data_t int_threshold = 0.01;
 
 enum class ConvergenceFlag {
   error_sizeNotSet = -1, //<! Problem size is not set!

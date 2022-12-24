@@ -177,33 +177,34 @@ public:
 
 
 private:
-  void recursive_solve(IntSolution &bestSolution, size_t i_pos, size_t Nc_remaining_now)
+  void recursive_solve(IntSolution &bestSolution, size_t i_pos)
   {
-
+    std::cout << "i_pos: " << i_pos << '\n';
     if (i_pos == N) {
       std::cerr << "No more possibilities but integer solver failed!\n";
       throw 10101010;
     }
 
+    ind_t Nc_now = 0;
+    for (size_t i = 0; i < N; i += N + 1)
+      Nc_now += is_one(vX[i]); // Count clusters.
+
+    const auto Nc_remaining_now = Nc - Nc_now;
+
     std::vector<ind_t> possibilities;
-    for (size_t i = i_pos * N; i < ((i_pos + 1) * N); i++)
-      if (vX[i] > 1e-4)
-        possibilities.push_back(i);
+    for (size_t i = 0; i < N; i++)
+      if (is_one(vX[i * (N + 1)]) || Nc_remaining_now > 0) // It is only a possibility that cluster is active or we have remaining clusters to open.
+        possibilities.push_back(i_pos * N + i);
 
 
     if (possibilities.empty()) {
-      recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now);
+      recursive_solve(bestSolution, i_pos + 1);
       return;
     }
 
 
     for (size_t i = 0; i < possibilities.size(); i++) {
       // Only i'th element is one others are zero.
-
-      if (possibilities[i] % (N + 1) == 0 && Nc_remaining_now == 0) // It is a diagonal.
-        continue;
-
-
       for (size_t j = 0; j < possibilities.size(); j++) {
         if (i == j)
           op.fixed_variables.push_back({ possibilities[j], 1 });
@@ -212,6 +213,7 @@ private:
       }
 
       solve();
+      round();
       const auto cost_now = cost();
 
       if (cost_now < bestSolution.cost)
@@ -219,12 +221,8 @@ private:
           bestSolution.cost = cost_now;
           bestSolution.fix_var = op.fixed_variables;
           bestSolution.vX_opt = vX;
-        } else {
-          if (possibilities[i] % (N + 1) == 0) // It is a diagonal.
-            recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now - 1);
-          else
-            recursive_solve(bestSolution, i_pos + 1, Nc_remaining_now);
-        }
+        } else
+          recursive_solve(bestSolution, i_pos + 1);
 
       for (size_t j = 0; j < possibilities.size(); j++)
         op.fixed_variables.pop_back(); // Remove the variables added by this step!
@@ -248,6 +246,8 @@ public:
     // solve ensuring that decision variables are integer.
     auto flag = solve(); // First run solve
 
+    round();
+
     if (flag != ConvergenceFlag::conv_problem || isSolutionInteger())
       return flag; // Solve didn't converge...  or it converged and it is integer.
 
@@ -255,17 +255,11 @@ public:
     // #TODO figure out why this happens for totally unimodular matrices...
     // Probably not exactly totally unimodular. Especially Nc constraint is dangerous.
 
-    auto Nc_remaining = Nc;
-    for (size_t i = 0; i < N * N; i += N + 1)
-      if (is_one(vX[i]))
-        Nc_remaining--; // Okay this one is probably 1.
-
-
     IntSolution bestSolution;
     bestSolution.cost = std::numeric_limits<data_t>::max();
 
     size_t i_pos = 0;
-    recursive_solve(bestSolution, i_pos, Nc_remaining);
+    recursive_solve(bestSolution, i_pos);
 
     vX = bestSolution.vX_opt;
     return ConvergenceFlag::conv_problem;
