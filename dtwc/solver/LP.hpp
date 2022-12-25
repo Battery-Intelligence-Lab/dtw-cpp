@@ -34,7 +34,6 @@ class LP
   size_t N{ 0 }, Nc{ 0 };
 
   std::vector<data_t> vXX, vX;
-  std::vector<data_t> vXP;              //<! Previous iteration of vX
   std::vector<data_t> vZ, vY, vZZ, vZP; // #TODO, vZZ last N+1 term is known and constant.
 
   std::vector<data_t> q; // q vector;
@@ -66,7 +65,6 @@ public:
 
     q.resize(Nx());
     vX.resize(Nx());
-    vXP.resize(Nx());
     vXX.resize(Nx());
     vZ.resize(Nm());
     vY.resize(Nm());
@@ -89,7 +87,7 @@ public:
     }
     const auto epsAdmm = std::min(epsAbs, epsRel) * EPS_ADMM_FACTOR;
     auto rhoA = rho; // adaptive rho
-
+    bool flag_ADMM = true;
     for (size_t i_iter = 0; i_iter < maxIterations; i_iter++) {
 
       if (adapt_rho && ((rhoA * factor_rho < rho) || (rhoA > factor_rho * rho)))
@@ -98,11 +96,7 @@ public:
       cg_lp(vXX, vX, vZ, vY, q, op, rho, sigma);
       op.A(vZZ, vXX);
 
-      std::copy(vX.begin(), vX.end(), vXP.begin()); // vXP(:) = vX;
       std::copy(vZ.begin(), vZ.end(), vZP.begin()); // vZP(:) = vZ;
-
-      for (size_t i = 0; i != vXX.size(); i++)
-        vX[i] = alpha * vXX[i] + (1.0 - alpha) * vX[i];
 
       for (size_t i = 0; i != vZZ.size(); i++)
         vZ[i] = alpha * vZZ[i] + (1.0 - alpha) * vZ[i] + (1.0 / rho) * vY[i];
@@ -112,9 +106,25 @@ public:
       for (size_t i = 0; i < vZZ.size(); i++)
         vY[i] += rho * (alpha * vZZ[i] + (1.0 - alpha) * vZP[i] - vZ[i]);
 
+      if (i_iter % numItrConv == 0) {
+        // Also check ADMM convergence not to store previous X and Z values:
+        flag_ADMM = true;
+        for (size_t i = 0; i != vXX.size(); i++) {
+          const auto dvX = alpha * (vXX[i] - vX[i]);
+          vX[i] += dvX;
+          flag_ADMM &= std::abs(dvX) < epsAdmm;
+        }
+
+      } else {
+        for (size_t i = 0; i != vXX.size(); i++)
+          vX[i] += alpha * (vXX[i] - vX[i]);
+      }
+
 
       if (i_iter % numItrConv == 0) // Check convergence every time to time.
       {
+
+
         double normResPrim{ 0 }, normResDual{ 0 }, maxNormPrim{ 0 }, maxNormDual{ 0 };
 
         for (size_t i = 0; i != Nm(); i++) {
@@ -145,14 +155,6 @@ public:
 
         if ((normResPrim < epsPrim) && (normResDual < epsDual))
           return ConvergenceFlag::conv_problem; // Problem converged yay!
-
-        bool flag_ADMM = true;
-
-        for (size_t i = 0; i != vX.size(); i++)
-          if (std::abs(vX[i] - vXP[i]) > epsAdmm) {
-            flag_ADMM = false;
-            break;
-          }
 
         if (flag_ADMM)
           for (size_t i = 0; i != vZ.size(); i++)
