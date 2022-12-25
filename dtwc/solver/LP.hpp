@@ -113,24 +113,20 @@ public:
         vY[i] += rho * (alpha * vZZ[i] + (1.0 - alpha) * vZP[i] - vZ[i]);
 
 
-      thread_local std::vector<data_t> temp_Nm, temp_Nx; // Temporary matrices.
-      temp_Nm.resize(Nm());
-      temp_Nx.resize(Nx());
-
       if (i_iter % numItrConv == 0) // Check convergence every time to time.
       {
         double normResPrim{ 0 }, normResDual{ 0 }, maxNormPrim{ 0 }, maxNormDual{ 0 };
 
-        op.A(temp_Nm, vX);
         for (size_t i = 0; i != Nm(); i++) {
-          normResPrim = std::max(normResPrim, std::abs(temp_Nm[i] - vZ[i]));
-          maxNormPrim = std::max({ maxNormPrim, std::abs(temp_Nm[i]), std::abs(vZ[i]) });
+          const auto temp_Nm_i = op.A(i, vX);
+          normResPrim = std::max(normResPrim, std::abs(temp_Nm_i - vZ[i]));
+          maxNormPrim = std::max({ maxNormPrim, std::abs(temp_Nm_i), std::abs(vZ[i]) });
         }
 
-        op.At(temp_Nx, vY);
         for (size_t i = 0; i != Nx(); i++) {
-          normResDual = std::max(normResDual, std::abs(temp_Nx[i] + q[i]));
-          maxNormDual = std::max({ maxNormDual, std::abs(temp_Nx[i]), q[i] }); // std::abs(q[i])
+          const auto At_vY_i = op.At(i, vY);
+          normResDual = std::max(normResDual, std::abs(At_vY_i + q[i]));
+          maxNormDual = std::max({ maxNormDual, std::abs(At_vY_i), q[i] }); // std::abs(q[i])
         }
 
         std::cout << "Iter: " << i_iter << " normResPrim: "
@@ -191,11 +187,11 @@ private:
 
     std::sort(possibilities.begin(), possibilities.end(), [this](ind_t a, ind_t b) { return q[a] > q[b]; });
 
-    std::stable_sort(possibilities.begin(),
-                     possibilities.end(),
-                     [this](ind_t a, ind_t b) {
-                       return std::abs(vX[a] - 0.5) < std::abs(vX[b] - 0.5); // Look who is closer to 0.5.
-                     });
+    // std::stable_sort(possibilities.begin(),
+    //                  possibilities.end(),
+    //                  [this](ind_t a, ind_t b) {
+    //                    return std::abs(vX[a] - 0.5) < std::abs(vX[b] - 0.5); // Look who is closer to 0.5.
+    //                  });
 
 
     for (size_t i = 0; i < possibilities.size(); i++) {

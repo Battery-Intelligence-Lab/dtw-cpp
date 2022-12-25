@@ -106,6 +106,23 @@ struct ConstraintOperator
   }
 
 
+  data_t At(size_t i, std::vector<data_t> &x_in)
+  {
+    // x_in size is assumed to be 2*N^2 + N + 1;
+    // i/N should be size_t.
+    data_t x_out_i = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i / N];
+
+    if (i % (N + 1) == 0) {
+      x_out_i += x_in[2 * N * N + N];
+
+      for (size_t j = 0; j < N * N; j += N)
+        x_out_i += x_in[N * N + i / (N + 1) + j];
+    }
+
+    return x_out_i;
+  }
+
+
   // auto AtA(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
   // {
 

@@ -117,42 +117,42 @@ int main()
   // dtwc::MIP_clustering_byOSQP(prob);
 
 
-  // dtwc::solver::LP lp;
-  // lp.maxIterations = 15000;
-  // lp.numItrConv = 50;
-  // lp.epsAbs = 1e-3;
-  // lp.epsRel = 1e-3;
+  dtwc::solver::LP lp;
+  lp.maxIterations = 15000;
+  lp.numItrConv = 50;
+  lp.epsAbs = 1e-3;
+  lp.epsRel = 1e-3;
 
-  // lp.setSize(Nb, Nc);
+  lp.setSize(Nb, Nc);
 
-  // auto &q = lp.getQvec();
+  auto &q = lp.getQvec();
 
-  // for (size_t j{ 0 }; j < Nb; j++)
-  //   for (size_t i{ 0 }; i < Nb; i++)
-  //     q[i + j * Nb] = prob.distByInd_scaled(i, j);
-
-
-  // auto &w_sol = lp.getSolution();
-  // for (size_t j{ 0 }; j < Nb; j++)
-  //   for (size_t i{ 0 }; i < Nb; i++)
-  //     w_sol[i + j * Nb] = 1;
-
-  // lp.int_solve();
-  // std::cout << "cost: " << lp.cost() << '\n';
-
-  // std::cout << "Finished all tasks " << clk << "\n";
-
-  // std::ofstream w_sol_out(dtwc::settings::resultsPath / "test" / "AllGestureWiimoteX_sol_250.csv");
-
-  // for (size_t j{ 0 }; j < Nb; j++) {
-  //   for (size_t i{ 0 }; i < Nb; i++)
-  //     w_sol_out << w_sol[i + j * Nb] << ',';
-
-  //   w_sol_out << '\n';
-  // }
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
 
-  dtwc::benchmarks::run_all();
+  auto &w_sol = lp.getSolution();
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      w_sol[i + j * Nb] = 1;
+
+  lp.int_solve();
+  std::cout << "cost: " << lp.cost() << '\n';
+
+  std::cout << "Finished all tasks " << clk << "\n";
+
+  std::ofstream w_sol_out(dtwc::settings::resultsPath / "test" / "AllGestureWiimoteX_sol_250.csv");
+
+  for (size_t j{ 0 }; j < Nb; j++) {
+    for (size_t i{ 0 }; i < Nb; i++)
+      w_sol_out << w_sol[i + j * Nb] << ',';
+
+    w_sol_out << '\n';
+  }
+
+
+  // dtwc::benchmarks::run_all();
 
 
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
