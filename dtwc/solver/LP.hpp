@@ -99,8 +99,8 @@ public:
 
       flag_ADMM = true; // Also check ADMM convergence not to store previous X and Z values:
       for (size_t i = 0; i != Nx(); i++) {
-        const auto dvX = alpha * (vXX[i] - vX[i]);
-        vX[i] += dvX;
+        const auto dvX = (vXX[i] - vX[i]);
+        vX[i] += alpha * dvX;
         flag_ADMM &= std::abs(dvX) < epsAdmm;
       }
 
@@ -118,13 +118,12 @@ public:
 
       if (i_iter % numItrConv == 0) // Check convergence every time to time.
       {
-
         double normResPrim{ 0 }, normResDual{ 0 }, maxNormPrim{ 0 }, maxNormDual{ 0 };
 
         for (size_t i = 0; i != Nm(); i++) {
-          const auto temp_Nm_i = op.A(i, vX);
-          normResPrim = std::max(normResPrim, std::abs(temp_Nm_i - vZ[i]));
-          maxNormPrim = std::max({ maxNormPrim, std::abs(temp_Nm_i), std::abs(vZ[i]) });
+          const auto A_vX_i = op.A(i, vX);
+          normResPrim = std::max(normResPrim, std::abs(A_vX_i - vZ[i]));
+          maxNormPrim = std::max({ maxNormPrim, std::abs(A_vX_i), std::abs(vZ[i]) });
         }
 
         for (size_t i = 0; i != Nx(); i++) {
