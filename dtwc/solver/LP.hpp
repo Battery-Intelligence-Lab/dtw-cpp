@@ -89,16 +89,12 @@ public:
       std::cout << "Size is not set!\n";
       return ConvergenceFlag::error_sizeNotSet;
     }
+
     const auto epsAdmm = std::min(epsAbs, epsRel) * EPS_ADMM_FACTOR;
-    auto rhoA = rho; // adaptive rho
     bool flag_ADMM = true;
     for (size_t i_iter = 0; i_iter < maxIterations; i_iter++) {
 
-      if (adapt_rho && ((rhoA * factor_rho < rho) || (rhoA > factor_rho * rho)))
-        rho = rhoA;
-
       op.At(r_now, [this](size_t i) { return rho * vZ[i] - vY[i]; });
-
       cg_lp(vXX, vX, r_now, q, op, rho, sigma);
       op.A(vZZ, vXX);
 
@@ -151,7 +147,10 @@ public:
         if (adapt_rho) {
           const auto numeratorVal = normResPrim * maxNormDual;
           const auto denominatorVal = normResDual * maxNormPrim;
-          rhoA = std::clamp(rho * std::sqrt(numeratorVal / denominatorVal), MIN_VAL_RHO, MAX_VAL_RHO);
+          const auto rhoA = std::clamp(rho * std::sqrt(numeratorVal / denominatorVal), MIN_VAL_RHO, MAX_VAL_RHO);
+
+          if ((rhoA * factor_rho < rho) || (rhoA > factor_rho * rho))
+            rho = rhoA;
         }
 
         // Check termination:
