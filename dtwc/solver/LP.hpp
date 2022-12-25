@@ -174,13 +174,8 @@ public:
 
 
 private:
-  void recursive_solve(IntSolution &bestSolution, size_t i_pos)
+  void recursive_solve(IntSolution &bestSolution)
   {
-    if (i_pos == N) {
-      std::cout << "i_pos reached maximum value so it is reset to 0.\n";
-      i_pos = 0;
-    }
-
     ind_t Nc_now = 0;
     for (size_t i = 0; i < N; i += N + 1)
       Nc_now += is_one(vX[i]); // Count clusters.
@@ -188,49 +183,55 @@ private:
     const auto Nc_remaining_now = Nc - Nc_now;
 
     std::vector<ind_t> possibilities;
-    for (size_t i = 0; i < N; i++)
-      if (!is_one(vX[i_pos * N + i]) && !is_zero(vX[i_pos * N + i]))
-        if (is_one(vX[i * (N + 1)]) || Nc_remaining_now > 0) // It is only a possibility that cluster is active or we have remaining clusters to open.
-          possibilities.push_back(i_pos * N + i);
-
-    if (possibilities.empty()) {
-      recursive_solve(bestSolution, i_pos + 1);
-      return;
-    }
+    for (size_t i_pos = 0; i_pos < N; i_pos++)
+      for (size_t i = 0; i < N; i++)
+        if (!is_one(vX[i_pos * N + i]) && !is_zero(vX[i_pos * N + i]))
+          if (is_one(vX[i * (N + 1)]) || Nc_remaining_now > 0) // It is only a possibility that cluster is active or we have remaining clusters to open.
+            possibilities.push_back(i_pos * N + i);
 
     std::sort(possibilities.begin(), possibilities.end(), [this](ind_t a, ind_t b) { return q[a] > q[b]; });
 
-    // std::stable_sort(possibilities.begin(),
-    //                  possibilities.end(),
-    //                  [this](ind_t a, ind_t b) {
-    //                    return std::abs(vX[a] - 0.5) < std::abs(vX[b] - 0.5); // Look who is closer to 0.5.
-    //                  });
+    std::stable_sort(possibilities.begin(),
+                     possibilities.end(),
+                     [this](ind_t a, ind_t b) {
+                       return std::abs(vX[a] - 0.5) < std::abs(vX[b] - 0.5); // Look who is closer to 0.5.
+                     });
 
 
     for (size_t i = 0; i < possibilities.size(); i++) {
-      std::cout << "i_pos: " << i_pos << " Possibility: " << i << " of " << possibilities.size() << '\n';
-      // Only i'th element is one others are zero.
-      for (size_t j = 0; j < possibilities.size(); j++) {
-        if (i == j)
-          op.fixed_variables.push_back({ possibilities[j], 1 });
-        else
-          op.fixed_variables.push_back({ possibilities[j], 0 });
-      }
+      std::cout << " Possibility: " << i << " of " << possibilities.size() << '\n';
 
-      solve();
-      round();
-      const auto cost_now = cost();
+      for (auto ind : possibilities) {
+        // Solve for 0
+        op.fixed_variables.push_back({ ind, 0 });
+        solve();
+        round();
 
-      if (cost_now < bestSolution.cost)
-        if (isSolutionInteger()) {
-          bestSolution.cost = cost_now;
-          bestSolution.fix_var = op.fixed_variables;
-          bestSolution.vX_opt = vX;
-        } else
-          recursive_solve(bestSolution, i_pos + 1);
+        auto cost_now = cost();
+        if (cost_now < bestSolution.cost)
+          if (isSolutionInteger()) {
+            bestSolution.cost = cost_now;
+            bestSolution.fix_var = op.fixed_variables;
+            bestSolution.vX_opt = vX;
+          } else
+            recursive_solve(bestSolution);
 
-      for (size_t j = 0; j < possibilities.size(); j++)
+        // Solve for 1
+        op.fixed_variables.back()[1] = 1;
+        solve();
+        round();
+
+        cost_now = cost();
+        if (cost_now < bestSolution.cost)
+          if (isSolutionInteger()) {
+            bestSolution.cost = cost_now;
+            bestSolution.fix_var = op.fixed_variables;
+            bestSolution.vX_opt = vX;
+          } else
+            recursive_solve(bestSolution);
+
         op.fixed_variables.pop_back(); // Remove the variables added by this step!
+      }
     }
   }
 
@@ -260,15 +261,10 @@ public:
     // #TODO figure out why this happens for totally unimodular matrices...
     // Probably not exactly totally unimodular. Especially Nc constraint is dangerous.
 
-    for (size_t i = 0; i < vX.size(); i++)
-      if (!is_integer(vX[i]))
-        std::cout << i << '\n';
-
     IntSolution bestSolution;
     bestSolution.cost = std::numeric_limits<data_t>::max();
 
-    size_t i_pos = 0;
-    recursive_solve(bestSolution, i_pos);
+    recursive_solve(bestSolution);
 
     vX = bestSolution.vX_opt;
     return ConvergenceFlag::conv_problem;
