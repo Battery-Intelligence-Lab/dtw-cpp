@@ -34,8 +34,8 @@ class LP
   size_t N{ 0 }, Nc{ 0 };
 
   std::vector<data_t> vXX, vX;
-  std::vector<data_t> vZ, vY, vZZ, vZP; // #TODO, vZZ last N+1 term is known and constant.
-  std::vector<data_t> r_now;            // Residuals now.
+  std::vector<data_t> vZ, vY, vZZ; // #TODO, vZZ last N+1 term is known and constant.
+  std::vector<data_t> r_now;       // Residuals now.
 
   std::vector<data_t> q; // q vector;
 
@@ -73,7 +73,6 @@ public:
     vZ.resize(Nm());
     vY.resize(Nm());
     vZZ.resize(Nm());
-    vZP.resize(Nm());
   }
 
   auto &getSolution() { return vX; }
@@ -101,16 +100,6 @@ public:
       cg_lp(vXX, r_now, op, rho, sigma);
       op.A(vZZ, vXX);
 
-      std::copy(vZ.begin(), vZ.end(), vZP.begin()); // vZP(:) = vZ;
-
-      for (size_t i = 0; i != Nm(); i++)
-        vZ[i] += alpha * (vZZ[i] - vZ[i]) + vY[i] / rho;
-
-      op.clamp(vZ, Nc);
-
-      for (size_t i = 0; i < Nm(); i++)
-        vY[i] += rho * (alpha * (vZZ[i] - vZP[i]) + vZP[i] - vZ[i]);
-
       if (i_iter % numItrConv == 0) {
         // Also check ADMM convergence not to store previous X and Z values:
         flag_ADMM = true;
@@ -120,9 +109,28 @@ public:
           flag_ADMM &= std::abs(dvX) < epsAdmm;
         }
 
+        for (size_t i = 0; i != Nm(); i++) {
+          const auto ZPi = vZ[i];
+          const auto temp = alpha * (vZZ[i] - ZPi);
+          vZ[i] = op.clamp(vZ[i] + temp + vY[i] / rho, Nc, i);
+
+          const auto dvZ = ZPi - vZ[i];
+          vY[i] += rho * (temp + dvZ);
+          flag_ADMM &= std::abs(dvZ) < epsAdmm;
+        }
+
+        if (flag_ADMM) return ConvergenceFlag::conv_admm;
+
       } else {
         for (size_t i = 0; i != vXX.size(); i++)
           vX[i] += alpha * (vXX[i] - vX[i]);
+
+        for (size_t i = 0; i != Nm(); i++) {
+          const auto ZPi = vZ[i];
+          const auto temp = alpha * (vZZ[i] - ZPi);
+          vZ[i] = op.clamp(vZ[i] + temp + vY[i] / rho, Nc, i);
+          vY[i] += rho * (temp + ZPi - vZ[i]);
+        }
       }
 
 
@@ -162,15 +170,6 @@ public:
 
         if ((normResPrim < epsPrim) && (normResDual < epsDual))
           return ConvergenceFlag::conv_problem; // Problem converged yay!
-
-        if (flag_ADMM)
-          for (size_t i = 0; i != vZ.size(); i++)
-            if (std::abs(vZ[i] - vZP[i]) > epsAdmm) {
-              flag_ADMM = false;
-              break;
-            }
-
-        if (flag_ADMM) return ConvergenceFlag::conv_admm;
       }
     }
 

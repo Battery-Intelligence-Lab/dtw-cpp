@@ -234,5 +234,24 @@ struct ConstraintOperator
       x_out[ind] = val;
     }
   }
+
+  data_t clamp(data_t x_out_i, int Nc, size_t i)
+  {
+    if (i < 2 * N * N)
+      x_out_i = std::clamp(x_out_i, 0.0, 1.0);
+    else if (i < (2 * N * N + N)) // Equality constraints:
+      return 1.0;
+    else
+      return Nc;
+
+    for (auto ind_val : fixed_variables) {
+      // This loop is for fixing any variables to a certain values.
+      if (ind_val[0] == i) {
+        x_out_i = ind_val[1];
+        break;
+      }
+    }
+    return x_out_i;
+  }
 };
 } // namespace dtwc::solver
