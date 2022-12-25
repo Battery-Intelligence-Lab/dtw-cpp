@@ -93,20 +93,23 @@ public:
     const auto epsAdmm = std::min(epsAbs, epsRel) * EPS_ADMM_FACTOR;
     bool flag_ADMM = true;
     for (size_t i_iter = 0; i_iter < maxIterations; i_iter++) {
-
       op.At(r_now, [this](size_t i) { return rho * vZ[i] - vY[i]; });
-      cg_lp(vXX, vX, r_now, q, op, rho, sigma);
+
+      for (size_t i = 0; i != Nx(); i++)
+        r_now[i] += sigma * vX[i] - q[i]; // r_prev = sigma*xk - q  + op_At(rho*zk - yk,N);
+
+      cg_lp(vXX, r_now, op, rho, sigma);
       op.A(vZZ, vXX);
 
       std::copy(vZ.begin(), vZ.end(), vZP.begin()); // vZP(:) = vZ;
 
-      for (size_t i = 0; i != vZZ.size(); i++)
-        vZ[i] = alpha * vZZ[i] + (1.0 - alpha) * vZ[i] + (1.0 / rho) * vY[i];
+      for (size_t i = 0; i != Nm(); i++)
+        vZ[i] += alpha * (vZZ[i] - vZ[i]) + vY[i] / rho;
 
       op.clamp(vZ, Nc);
 
-      for (size_t i = 0; i < vZZ.size(); i++)
-        vY[i] += rho * (alpha * vZZ[i] + (1.0 - alpha) * vZP[i] - vZ[i]);
+      for (size_t i = 0; i < Nm(); i++)
+        vY[i] += rho * (alpha * (vZZ[i] - vZP[i]) + vZP[i] - vZ[i]);
 
       if (i_iter % numItrConv == 0) {
         // Also check ADMM convergence not to store previous X and Z values:

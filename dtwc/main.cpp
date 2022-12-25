@@ -119,9 +119,9 @@ int main()
 
   dtwc::solver::LP lp;
   lp.maxIterations = 15000;
-  lp.numItrConv = 50;
-  lp.epsAbs = 1e-3;
-  lp.epsRel = 1e-3;
+  lp.numItrConv = 10;
+  lp.epsAbs = 1e-4;
+  lp.epsRel = 1e-4;
 
   lp.setSize(Nb, Nc);
 
@@ -130,7 +130,6 @@ int main()
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)
       q[i + j * Nb] = prob.distByInd_scaled(i, j);
-
 
   auto &w_sol = lp.getSolution();
   for (size_t j{ 0 }; j < Nb; j++)
