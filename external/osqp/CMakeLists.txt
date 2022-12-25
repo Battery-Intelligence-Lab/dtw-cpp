@@ -15,6 +15,7 @@ endif()
 # Export compile commands
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+
 # Set the output folder where your program will be created
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BINARY_DIR}/out)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/out)

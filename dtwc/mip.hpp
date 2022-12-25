@@ -12,7 +12,6 @@
 #include "Problem.hpp"
 #include "settings.hpp"
 #include "utility.hpp"
-#include "gurobi_c++.h"
 
 #include <vector>
 #include <string_view>
