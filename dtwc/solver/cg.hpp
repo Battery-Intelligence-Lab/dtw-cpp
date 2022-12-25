@@ -22,7 +22,7 @@
 
 namespace dtwc::solver {
 
-inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vector<data_t> &zk, std::vector<data_t> &yk,
+inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vector<data_t> &r_now,
                   std::vector<data_t> &q, ConstraintOperator &op, double rho, double sigma)
 {
 
@@ -30,19 +30,15 @@ inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &xk, std::vecto
   const auto N = op.N;
   const auto Nm = 2 * N * N + N + 1;
 
-  thread_local std::vector<data_t> r_now, p_now;
+  thread_local std::vector<data_t> p_now;
   thread_local std::vector<data_t> temp_Nx(Nx); // Temporary matrices in size Nm and Nx;
   // Make sure everything is in right size.
   xkp1.resize(Nx);
-  r_now.resize(Nx);
   p_now.resize(Nx);
-
   temp_Nx.resize(Nx);
 
   // Initialise xk+1 with zeros:
   std::fill_n(xkp1.begin(), Nx, 0.0);
-  op.At(r_now, [rho, &zk, &yk](size_t i) { return rho * zk[i] - yk[i]; });
-
 
   for (size_t i = 0; i < Nx; i++) {
     r_now[i] += sigma * xk[i] - q[i]; // r_prev = sigma*xk - q  + op_At(rho*zk - yk,N);

@@ -35,6 +35,7 @@ class LP
 
   std::vector<data_t> vXX, vX;
   std::vector<data_t> vZ, vY, vZZ, vZP; // #TODO, vZZ last N+1 term is known and constant.
+  std::vector<data_t> r_now;            // Residuals now.
 
   std::vector<data_t> q; // q vector;
 
@@ -66,6 +67,9 @@ public:
     q.resize(Nx());
     vX.resize(Nx());
     vXX.resize(Nx());
+    r_now.resize(Nx());
+
+
     vZ.resize(Nm());
     vY.resize(Nm());
     vZZ.resize(Nm());
@@ -93,7 +97,9 @@ public:
       if (adapt_rho && ((rhoA * factor_rho < rho) || (rhoA > factor_rho * rho)))
         rho = rhoA;
 
-      cg_lp(vXX, vX, vZ, vY, q, op, rho, sigma);
+      op.At(r_now, [this](size_t i) { return rho * vZ[i] - vY[i]; });
+
+      cg_lp(vXX, vX, r_now, q, op, rho, sigma);
       op.A(vZZ, vXX);
 
       std::copy(vZ.begin(), vZ.end(), vZP.begin()); // vZP(:) = vZ;
@@ -123,7 +129,6 @@ public:
 
       if (i_iter % numItrConv == 0) // Check convergence every time to time.
       {
-
 
         double normResPrim{ 0 }, normResDual{ 0 }, maxNormPrim{ 0 }, maxNormDual{ 0 };
 
