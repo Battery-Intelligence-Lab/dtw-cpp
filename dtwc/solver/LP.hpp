@@ -34,8 +34,8 @@ class LP
   size_t N{ 0 }, Nc{ 0 };
 
   std::vector<data_t> vXX, vX;
-  std::vector<data_t> vZ, vY, vZZ; // #TODO, vZZ last N+1 term is known and constant.
-  std::vector<data_t> r_now;       // Residuals now.
+  std::vector<data_t> vZ, vY; //
+  std::vector<data_t> r_now;  // Residuals now.
 
   std::vector<data_t> q; // q vector;
 
@@ -69,10 +69,8 @@ public:
     vXX.resize(Nx());
     r_now.resize(Nx());
 
-
     vZ.resize(Nm());
     vY.resize(Nm());
-    vZZ.resize(Nm());
   }
 
   auto &getSolution() { return vX; }
@@ -98,41 +96,25 @@ public:
         r_now[i] += sigma * vX[i] - q[i]; // r_prev = sigma*xk - q  + op_At(rho*zk - yk,N);
 
       cg_lp(vXX, r_now, op, rho, sigma);
-      op.A(vZZ, vXX);
 
-      if (i_iter % numItrConv == 0) {
-        // Also check ADMM convergence not to store previous X and Z values:
-        flag_ADMM = true;
-        for (size_t i = 0; i != vXX.size(); i++) {
-          const auto dvX = alpha * (vXX[i] - vX[i]);
-          vX[i] += dvX;
-          flag_ADMM &= std::abs(dvX) < epsAdmm;
-        }
-
-        for (size_t i = 0; i != Nm(); i++) {
-          const auto ZPi = vZ[i];
-          const auto temp = alpha * (vZZ[i] - ZPi);
-          vZ[i] = op.clamp(vZ[i] + temp + vY[i] / rho, Nc, i);
-
-          const auto dvZ = ZPi - vZ[i];
-          vY[i] += rho * (temp + dvZ);
-          flag_ADMM &= std::abs(dvZ) < epsAdmm;
-        }
-
-        if (flag_ADMM) return ConvergenceFlag::conv_admm;
-
-      } else {
-        for (size_t i = 0; i != vXX.size(); i++)
-          vX[i] += alpha * (vXX[i] - vX[i]);
-
-        for (size_t i = 0; i != Nm(); i++) {
-          const auto ZPi = vZ[i];
-          const auto temp = alpha * (vZZ[i] - ZPi);
-          vZ[i] = op.clamp(vZ[i] + temp + vY[i] / rho, Nc, i);
-          vY[i] += rho * (temp + ZPi - vZ[i]);
-        }
+      flag_ADMM = true; // Also check ADMM convergence not to store previous X and Z values:
+      for (size_t i = 0; i != Nx(); i++) {
+        const auto dvX = alpha * (vXX[i] - vX[i]);
+        vX[i] += dvX;
+        flag_ADMM &= std::abs(dvX) < epsAdmm;
       }
 
+      for (size_t i = 0; i != Nm(); i++) {
+        const auto ZPi = vZ[i];
+        const auto temp = alpha * (op.A(i, vXX) - ZPi);
+        vZ[i] = op.clamp(vZ[i] + temp + vY[i] / rho, Nc, i);
+
+        const auto dvZ = ZPi - vZ[i];
+        vY[i] += rho * (temp + dvZ);
+        flag_ADMM &= std::abs(dvZ) < epsAdmm;
+      }
+
+      if (flag_ADMM) return ConvergenceFlag::conv_admm;
 
       if (i_iter % numItrConv == 0) // Check convergence every time to time.
       {
