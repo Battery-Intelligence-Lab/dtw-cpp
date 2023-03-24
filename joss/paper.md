@@ -1,9 +1,6 @@
 ---
 title: 'DTW-C++: A C++ software for fast Dynamic Time Wrapping Clustering'
 tags:
-  - lead-acid batteries
-  - degradation
-  - solar house systems
   - C++
 authors:
   - name: Volkan Kumtepeli
