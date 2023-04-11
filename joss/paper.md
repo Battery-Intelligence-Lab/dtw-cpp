@@ -110,7 +110,7 @@ $$
 A_{ij} \le B_i \quad \forall i,j \in [1,p]
 $$
 
-Then the optimisation problem subject to the above-given constraints becomes:
+Then the optimisation problem subject to the above-given constraints becomes: 
 
 $$
 A^\star, B^\star = \min_{A,B} \sum_i \sum_j D_{ij} \times A_{ij} 
