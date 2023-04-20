@@ -87,7 +87,7 @@ inline void UCR_2018()
 
   };
   size_t solved = 0;
-  for (auto &file_path : UCR_list) {
+  for (auto &file_path :  UCR_list ) { //dataofInterest
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.
@@ -98,8 +98,8 @@ inline void UCR_2018()
     // if (solved < 25) // We already calculated this part
     //   continue;
 
-    // if (prob.data.size() > 1000) // DOnt calculate large data it is not good. For example Crop.
-    //   continue;
+    if (prob.data.size() > 5000) // DOnt calculate large data it is not good. For example Crop.
+      continue;
 
     prob.set_numberOfClusters(Nc); // Nc = number of clusters.
 
@@ -107,8 +107,8 @@ inline void UCR_2018()
 
     prob.output_folder = out_folder;
 
-    //prob.fillDistanceMatrix();
-    //prob.writeDistanceMatrix();
+    prob.fillDistanceMatrix();
+    prob.writeDistanceMatrix();
 
 
     auto time_1 = clk.duration();
@@ -117,8 +117,8 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-     prob.cluster_by_kMedoidsPAM_repetetive(1);
-    //prob.cluster_by_MIP(); // Uses MILP to do clustering.
+     //prob.cluster_by_kMedoidsPAM_repetetive(1);
+    prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
    // std::cout << "Finished MIP clustering " << clk << '\n';
