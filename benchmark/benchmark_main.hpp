@@ -95,10 +95,10 @@ inline void UCR_2018()
 
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
     solved++;
-    // if (solved < 25) // We already calculated this part
-    //   continue;
+    if (solved < 123) // We already calculated this part
+      continue;
 
-    if (prob.data.size() > 5000) // DOnt calculate large data it is not good. For example Crop.
+    if (prob.data.size() > 4000) // DOnt calculate large data it is not good. For example Crop.
       continue;
 
     prob.set_numberOfClusters(Nc); // Nc = number of clusters.
@@ -121,11 +121,11 @@ inline void UCR_2018()
     prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
-   // std::cout << "Finished MIP clustering " << clk << '\n';
+    //std::cout << "Finished MIP clustering " << clk << '\n';
    // std::cout << "Band used " << settings::band << "\n\n\n";
 
     //prob.printClusters(); // Prints to screen.
-   // prob.writeClusters(); // Prints to file.
+    //prob.writeClusters(); // Prints to file.
    // prob.writeSilhouettes();
 
     auto time_3 = clk.duration();

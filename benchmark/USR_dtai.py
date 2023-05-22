@@ -25,11 +25,11 @@ for fname in glob.glob(path):
 
     name = fname[34:-1]
     
-    if name != 'Plane':
+    if name != 'ShakeGestureWiimoteZ':
         continue
     
-    if df.isnull().values.any():
-        continue
+    # if df.isnull().values.any():
+    #     continue
     
     df = pd.read_csv('../data/benchmark/UCRArchive_2018/' + str(name) + '/' + str(name) + '_TEST.tsv', sep='\t', header=None, index_col=0)
     n_clusters = meta.loc[name]['Class']
@@ -38,7 +38,12 @@ for fname in glob.glob(path):
     init_centroids_df = pd.read_csv('../data/benchmark/UCR_centroids/init_centroids.csv', usecols=[name])
     init_centroids = [int(x) for x in init_centroids_df[name].to_list() if str(x) != 'nan']
     
-    df_np = df.to_numpy()
+    #df_np = df.to_numpy()
+    df_np = []
+    for index, rows in df.iterrows():
+        a=rows.dropna()
+        a=a.values
+        df_np.append(a)
 
     tracemalloc.start() #memory tracking
     t = time.time()     #time tracking
