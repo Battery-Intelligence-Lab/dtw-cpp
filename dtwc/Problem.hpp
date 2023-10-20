@@ -52,6 +52,8 @@ public:
     distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1);
   }
 
+  void refreshDistanceMatrix(){ distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1);}
+
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
   auto readDistanceMatrix(const fs::path &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
