@@ -54,6 +54,7 @@ set_project_warnings(project_warnings)
 
 include(cmake/Dependencies.cmake) # Include external projects
 add_subdirectory(external/osqp)
+add_subdirectory(dtwc/solver)
 
 # # sanitizer options if supported by compiler
 # include(cmake/Sanitizers.cmake)
@@ -114,6 +115,7 @@ target_link_libraries(dtwc++
   eigen
   range-v3
   fmt
+  solvers
 )
 
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
