@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include <Eigen/Dense>
 
 int main()
 {
@@ -18,17 +19,17 @@ int main()
   dtwc::Clock clk; // Create a clock object
 
   // Define A matrix
-  MatrixXd A(2, 4);
+  Eigen::MatrixXd A(2, 4);
   A << -4, 6, 1, 0,
     1, 1, 0, 1;
 
   // Define b vector
-  VectorXd b(2);
+  Eigen::VectorXd b(2);
   b << 5,
     5;
 
   // Define c vector
-  VectorXd c(4);
+  Eigen::VectorXd c(4);
   c << 1, -2, 0, 0;
 
   // Output the values to verify
@@ -40,8 +41,10 @@ int main()
             << c << std::endl;
 
 
-  MatrixXd t = gomoryAlgorithm(A, b, c);
-  auto [solution, copt] = getResults(t);
+  dtwc::solver::Simplex mySimplexProblem(A, b, c);
+  mySimplexProblem.gomoryAlgorithm();
+
+  auto [solution, copt] = mySimplexProblem.getResults();
 
   fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 

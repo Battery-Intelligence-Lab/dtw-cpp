@@ -272,101 +272,98 @@ std::tuple<MatrixXd, bool, bool> simplex(MatrixXd &A, VectorXd &b, VectorXd &c)
   startPhaseTwo(startPhaseTwo.rows() - 1, startPhaseTwo.cols() - 1) = -lastRowSum;
 
   // Phase II
-  auto [phaseTwoTableau, optimal2, unbounded2] = simplexAlgorithmTableau(startPhaseTwo); // Assuming this function is defined
+  auto [phaseTwoTableau, optimal2, unbounded2] = simplexAlgorithmTableau(startPhaseTwo);
   return { phaseTwoTableau, unbounded2, false };
-}
-
-std::pair<std::vector<double>, double> getResults(const MatrixXd &finalTableau)
-{
-  int n = finalTableau.cols() - 1;
-
-  std::vector<double> solution(n);
-  for (int k = 0; k < n; ++k) {
-    const auto basicRowNo = getRow(finalTableau, k);
-    solution[k] = (basicRowNo != -1) ? finalTableau(basicRowNo, Eigen::last) : 0.0;
-  }
-
-  return { solution, -finalTableau(Eigen::last, Eigen::last) }; // Solution and optimal cost
-}
-
-
-std::tuple<int, MatrixXd, VectorXd, VectorXd, MatrixXd>
-  gomory(MatrixXd &A, VectorXd &b, VectorXd &c)
-{
-  int m = A.rows(), n = A.cols();
-
-  fmt::println("==================================");
-  fmt::println("Problem with {} variables and {} constraints", n, m);
-
-  MatrixXd tableau;
-  bool unbounded, infeasible;
-  std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
-
-  auto [solution, copt] = getResults(tableau); // Assuming getResults is defined
-
-  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
-
-  if (unbounded) {
-    fmt::println("Unbounded problem");
-    return { 0, MatrixXd(), VectorXd(), VectorXd(), MatrixXd() };
-  }
-
-  if (infeasible) {
-    fmt::println("Infeasible problem");
-    return { 0, {}, {}, {}, {} };
-  }
-
-  std::vector<int> fractionalMask;
-
-  for (int i = 0; i < (tableau.rows() - 1); i++)
-    if (isFractional(tableau(i, Eigen::last))) // Scan last column
-      fractionalMask.push_back(i);
-
-  int nGomory = fractionalMask.size();
-  MatrixXd gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
-  VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
-
-  MatrixXd newA(m + nGomory, n + nGomory);
-  VectorXd newb(m + nGomory);
-  VectorXd newc(n + nGomory);
-
-  newA << A, MatrixXd::Zero(m, nGomory),
-    gamma, MatrixXd::Identity(nGomory, nGomory);
-
-  newb << b, bplus;
-
-  newc << c, VectorXd::Zero(nGomory);
-
-  fmt::println("Number of Gomory cuts: {}", nGomory);
-
-  return { nGomory, newA, newb, newc, tableau };
-}
-
-MatrixXd gomoryAlgorithm(MatrixXd A, VectorXd b, VectorXd c)
-{
-  int nGomory = -1;
-  MatrixXd tableu;
-  while (nGomory != 0)
-    std::tie(nGomory, A, b, c, tableu) = gomory(A, b, c);
-
-  return tableu; // This returns the matrix A. Adjust as needed.
 }
 
 
 class Simplex
 {
-  double EPS_ADMM_FACTOR{ 1e-2 };
+  // -1 means None.
   size_t N{ 0 }, Nc{ 0 };
   int mtab{}, ntab{};
-  MatrixXd tableu;
+  MatrixXd tableau;
+  MatrixXd A;    // A*x = b
+  VectorXd b, c; // c*x = cost.
+  int nGomory{ -1 };
 
 public:
   size_t maxIterations{ 15000 }; // Default 4000
   size_t numItrConv{ 50 };       // Check convergence every 200 iteration.
 
-  // data_t cost() { return std::inner_product(q.begin(), q.end(), vX.begin(), 0.0); }
+  Simplex(MatrixXd A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
 
-  // inline bool isSolutionInteger() { return std::all_of(vX.cbegin(), vX.cend(), is_integer<data_t>); }
+
+  void gomory()
+  {
+    fmt::println("==================================");
+    fmt::println("Problem with {} variables and {} constraints", A.cols(), A.rows());
+
+    bool unbounded{}, infeasible{};
+    std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
+
+    auto [solution, copt] = getResults(); // Assuming getResults is defined
+
+    fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
+
+    if (unbounded) {
+      fmt::println("Unbounded problem");
+      nGomory = 0;
+      return;
+    }
+
+    if (infeasible) {
+      fmt::println("Infeasible problem");
+      nGomory = 0;
+      return;
+    }
+
+    std::vector<int> fractionalMask;
+
+    for (int i = 0; i < (tableau.rows() - 1); i++)
+      if (isFractional(tableau(i, Eigen::last))) // Scan last column
+        fractionalMask.push_back(i);
+
+    nGomory = fractionalMask.size();
+    fmt::println("Number of Gomory cuts: {}", nGomory);
+
+    MatrixXd gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
+    VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
+
+    MatrixXd newA(A.rows() + nGomory, A.cols() + nGomory);
+    VectorXd newb(A.rows() + nGomory);
+    VectorXd newc(A.cols() + nGomory);
+
+    newA << A, MatrixXd::Zero(A.rows(), nGomory),
+      gamma, MatrixXd::Identity(nGomory, nGomory);
+
+    newb << b, bplus;
+
+    newc << c, VectorXd::Zero(nGomory);
+
+    A = newA;
+    b = newb;
+    c = newc;
+  }
+
+  void gomoryAlgorithm()
+  {
+    while (nGomory != 0) gomory();
+  }
+
+  std::pair<std::vector<double>, double> getResults() const
+  {
+    int n = tableau.cols() - 1; // finalTableau
+
+    std::vector<double> solution(n);
+    for (int k = 0; k < n; ++k) {
+      const auto basicRowNo = getRow(tableau, k);
+      solution[k] = (basicRowNo != -1) ? tableau(basicRowNo, Eigen::last) : 0.0;
+    }
+
+    return { solution, -tableau(Eigen::last, Eigen::last) }; // Solution and optimal cost
+  }
+
 
   ConvergenceFlag solve()
   {
