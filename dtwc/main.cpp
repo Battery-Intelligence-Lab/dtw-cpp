@@ -1,6 +1,7 @@
 #include "dtwc.hpp"
 #include "examples.hpp"
 #include "solver/LP.hpp"
+#include "solver/Simplex.hpp"
 #include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>
@@ -12,143 +13,113 @@
 
 int main()
 {
+
   // Here are some examples. You can either take the contents of example functions into main or modify and run them.
   dtwc::Clock clk; // Create a clock object
+
+  // Define A matrix
+  MatrixXd A(2, 4);
+  A << -4, 6, 1, 0,
+    1, 1, 0, 1;
+
+  // Define b vector
+  VectorXd b(2);
+  b << 5,
+    5;
+
+  // Define c vector
+  VectorXd c(4);
+  c << 1, -2, 0, 0;
+
+  // Output the values to verify
+  std::cout << "Matrix A:\n"
+            << A << std::endl;
+  std::cout << "Vector b:\n"
+            << b << std::endl;
+  std::cout << "Vector c:\n"
+            << c << std::endl;
+
+
+  MatrixXd t = gomoryAlgorithm(A, b, c);
+  auto [solution, copt] = getResults(t);
+
+  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
   // dtwc::examples::cluster_byKmeans_single();
   // dtwc::examples::cluster_byMIP_single();
   // dtwc::examples::cluster_byMIP_multiple();
 
-  dtwc::solver::ConstraintOperator op(3);
+  // int Ndata_max = 300; // Load 300 data maximum.
+  // auto Nc = 2;         // Number of clusters
 
-  std::vector<double> x_in_Nx{ 0.4273, 0.9873, 0.9884, 0.6498, 0.8156, 0.1178, 0.1487, 0.0820, 0.9530 };
+  // dtwc::DataLoader dl{ dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv" };
 
-  std::vector<double> x_in_Nm{ 0.1952, 0.0419, 0.0609, 0.0216, 0.2926, 0.8275, 0.9503, 0.6279, 0.0015, 0.8404, 0.2998, 0.5949, 0.5313, 0.0954, 0.2934, 0.9077, 0.7570, 0.7960, 0.8599, 0.8053, 0.5468, 0.5003 };
+  // dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
 
-  std::vector<double> x_out_Nm, x_out_Nx;
+  // std::cout << "Data loading finished at " << clk << "\n";
 
+  // prob.fillDistanceMatrix();
+  // prob.writeDistanceMatrix();
 
-  // Result for operator At:
+  // std::cout << "Finished calculating distances " << clk << std::endl;
+  // std::cout << "Band used " << dtwc::settings::band << "\n\n\n";
 
-  //   2.9944
-  // 0.6020
-  // 0.3259
-  // 0.2956
-  // 2.6550
-  // 1.3394
-  // 0.5894
-  // 0.4177
-  // 1.9369
+  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  // prob.cluster_by_MIP();         // Uses MILP to do clustering.
+  // prob.printClusters();          // Prints to screen.
+  // prob.writeClusters();          // Prints to file.
+  // prob.writeSilhouettes();
 
-  // result for operator At
-  //       0.4273
-  //   0.9873
-  //   0.9884
-  //   0.6498
-  //   0.8156
-  //   0.1178
-  //   0.1487
-  //   0.0820
-  //   0.9530
-  //        0
-  //  -0.1717
-  //  -0.0354
-  //  -0.2225
-  //        0
-  //   0.8352
-  //   0.2786
-  //   0.7336
-  //        0
-  //   2.4030
-  //   1.5832
-  //   1.1837
-  //   2.1959
+  // std::cout << "Finished all tasks " << clk << "\n";
+
+  // prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "AllGestureWiimoteX_dist_50.csv");
 
 
-  // v for rho 1, sigma 1
+  // prob.getDistanceMatrix().resize(50, 50);
 
-  // 5.5096
-  // 4.5493
-  // 4.4152
-  // 3.1053
-  // 5.9722
-  // 0.9836
-  // 1.2025
-  // 0.6141
-  // 6.0854
+  // const auto Nb = prob.getDistanceMatrix().rows();
+  // prob.data.Nb = Nb;
 
-  // op.A(x_out_Nm, x_in_Nx);
-  // op.At(x_out_Nx, x_in_Nm);
+  // size_t Nc = 5;
 
-  // std::cout << "x_out_Nm: ";
-  // for (auto x : x_out_Nm)
-  //   std::cout << x << ", ";
+  // prob.set_numberOfClusters(Nc);
 
-  // std::cout << '\n';
-
-  // std::cout << "x_out_Nx: ";
-  // for (auto x : x_out_Nx)
-  //   std::cout << x << ", ";
-
-  // std::cout << '\n';
-
-  // op.V(x_out_Nx, x_in_Nx, 1, 1);
-  // std::cout << "x_out_V: ";
-  // for (auto x : x_out_Nx)
-  //   std::cout << x << ", ";
+  // // dtwc::MIP_clustering_byGurobi_relaxed(prob);
+  // // dtwc::MIP_clustering_byOSQP(prob);
 
 
-  dtwc::Problem prob;
+  // dtwc::solver::LP lp;
+  // lp.maxIterations = 15000;
+  // lp.numItrConv = 10;
+  // lp.epsAbs = 1e-4;
+  // lp.epsRel = 1e-4;
 
-  // prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv");
-  prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "AllGestureWiimoteX_dist_50.csv");
+  // lp.setSize(Nb, Nc);
 
+  // auto &q = lp.getQvec();
 
-  prob.getDistanceMatrix().resize(50, 50);
+  // for (size_t j{ 0 }; j < Nb; j++)
+  //   for (size_t i{ 0 }; i < Nb; i++)
+  //     q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
-  const auto Nb = prob.getDistanceMatrix().rows();
-  prob.data.Nb = Nb;
+  // auto &w_sol = lp.getSolution();
+  // for (size_t j{ 0 }; j < Nb; j++)
+  //   for (size_t i{ 0 }; i < Nb; i++)
+  //     w_sol[i + j * Nb] = 1;
 
-  size_t Nc = 5;
-
-  prob.set_numberOfClusters(Nc);
-
-  // dtwc::MIP_clustering_byGurobi_relaxed(prob);
-  // dtwc::MIP_clustering_byOSQP(prob);
-
-
-  dtwc::solver::LP lp;
-  lp.maxIterations = 15000;
-  lp.numItrConv = 10;
-  lp.epsAbs = 1e-4;
-  lp.epsRel = 1e-4;
-
-  lp.setSize(Nb, Nc);
-
-  auto &q = lp.getQvec();
-
-  for (size_t j{ 0 }; j < Nb; j++)
-    for (size_t i{ 0 }; i < Nb; i++)
-      q[i + j * Nb] = prob.distByInd_scaled(i, j);
-
-  auto &w_sol = lp.getSolution();
-  for (size_t j{ 0 }; j < Nb; j++)
-    for (size_t i{ 0 }; i < Nb; i++)
-      w_sol[i + j * Nb] = 1;
-
-  lp.int_solve();
-  std::cout << "cost: " << lp.cost() << '\n';
+  // lp.int_solve();
+  // std::cout << "cost: " << lp.cost() << '\n';
 
   std::cout << "Finished all tasks " << clk << "\n";
 
-  std::ofstream w_sol_out(dtwc::settings::resultsPath / "test" / "AllGestureWiimoteX_sol_250.csv");
+  // std::ofstream w_sol_out(dtwc::settings::resultsPath / "test" / "AllGestureWiimoteX_sol_250.csv");
 
-  for (size_t j{ 0 }; j < Nb; j++) {
-    for (size_t i{ 0 }; i < Nb; i++)
-      w_sol_out << w_sol[i + j * Nb] << ',';
+  // for (size_t j{ 0 }; j < Nb; j++) {
+  //   for (size_t i{ 0 }; i < Nb; i++)
+  //     w_sol_out << w_sol[i + j * Nb] << ',';
 
-    w_sol_out << '\n';
-  }
+  //   w_sol_out << '\n';
+  // }
 
 
   // dtwc::benchmarks::run_all();

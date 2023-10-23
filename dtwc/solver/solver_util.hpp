@@ -17,6 +17,7 @@
 
 namespace dtwc::solver {
 
+
 constexpr data_t int_threshold = 0.01;
 
 enum class ConvergenceFlag {
