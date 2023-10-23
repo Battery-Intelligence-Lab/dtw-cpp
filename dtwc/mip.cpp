@@ -12,6 +12,7 @@
 #include "settings.hpp"
 #include "utility.hpp"
 #include "solver/LP.hpp"
+#include "solver/Simplex.hpp"
 #include "osqp.h"
 
 #include <vector>
@@ -21,11 +22,22 @@
 
 namespace dtwc {
 
+void MIP_clustering_bySimplex(Problem &prob)
+{
+  std::cout << "Simplex is being called!" << std::endl;
+
+  const auto Nb = prob.data.size();
+  const auto Nc = prob.cluster_size();
+  prob.clear_clusters();
+
+  thread_local dtwc::solver::Simplex simplexSolver(Nb, Nc);
+}
+
 void MIP_clustering_byOSLP(Problem &prob)
 {
   // This is not an actual MIP solver; however, it relies on problem having turtley unimodular matrices!
   // This is hand-written version of OSQP removing the Q part.
-  std::cout << "OSLP has been called!" << std::endl;
+  std::cout << "OSLP is being called!" << std::endl;
 
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
