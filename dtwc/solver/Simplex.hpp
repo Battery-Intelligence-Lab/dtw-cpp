@@ -59,29 +59,18 @@ int getRow(const MatrixXd &tableau, int index)
   return rowIndex;
 }
 
-MatrixXd pivoting(const MatrixXd &tableau, int p, int q)
+void pivoting(MatrixXd &tableau, int p, int q)
 {
-  int m = tableau.rows(), n = tableau.cols();
-
-  // Check the provided pivot indices
-  if (q >= m)
-    throw std::runtime_error(fmt::format("The row of the pivot ({}) must be between 0 and {}", q, m - 1));
-
-  if (p >= n)
-    throw std::runtime_error(fmt::format("The column of the pivot ({}) must be between 0 and {}", p, n - 1));
-
+  // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
   const double thepivot = tableau(q, p);
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
-  MatrixXd newtableau = MatrixXd::Zero(m, n);
-  newtableau.row(q) = tableau.row(q) / thepivot;
+  tableau.row(q) /= thepivot; // Make (p,q) one.
 
-  for (int i = 0; i < m; ++i)
+  for (int i = 0; i < tableau.rows(); ++i)
     if (i != q)
-      newtableau.row(i) = tableau.row(i) - tableau(i, p) * newtableau.row(q);
-
-  return newtableau;
+      tableau.row(i) -= tableau(i, p) * tableau.row(q);
 }
 
 std::tuple<int, int, bool, bool> simplexTableau(const MatrixXd &tableau)
@@ -136,7 +125,7 @@ std::tuple<MatrixXd, bool, bool> simplexAlgorithmTableau(const MatrixXd &input_t
     if (optimal) return { tableau, true, false };
     if (!bounded) return { tableau, false, true };
 
-    tableau = pivoting(tableau, colPivot, rowPivot);
+    pivoting(tableau, colPivot, rowPivot);
   }
 }
 
@@ -226,7 +215,7 @@ std::tuple<MatrixXd, bool, bool> simplex(MatrixXd &A, VectorXd &b, VectorXd &c)
       }
 
     if (colpivot != -1) {
-      phaseOneTableau = pivoting(phaseOneTableau, colpivot, rowpivotIndex); // Assuming pivoting is defined
+      pivoting(phaseOneTableau, colpivot, rowpivotIndex);
       basicRows[colpivot] = rowpivotIndex;
       basicRows[auxiliaryColumn] = -1;
     } else {
