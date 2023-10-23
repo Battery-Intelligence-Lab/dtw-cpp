@@ -294,81 +294,85 @@ public:
   Simplex(MatrixXd A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
 
 
-  void gomory()
-  {
-    fmt::println("==================================");
-    fmt::println("Problem with {} variables and {} constraints", A.cols(), A.rows());
-
-    bool unbounded{}, infeasible{};
-    std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
-
-    auto [solution, copt] = getResults(); // Assuming getResults is defined
-
-    fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
-
-    if (unbounded) {
-      fmt::println("Unbounded problem");
-      nGomory = 0;
-      return;
-    }
-
-    if (infeasible) {
-      fmt::println("Infeasible problem");
-      nGomory = 0;
-      return;
-    }
-
-    std::vector<int> fractionalMask;
-
-    for (int i = 0; i < (tableau.rows() - 1); i++)
-      if (isFractional(tableau(i, Eigen::last))) // Scan last column
-        fractionalMask.push_back(i);
-
-    nGomory = fractionalMask.size();
-    fmt::println("Number of Gomory cuts: {}", nGomory);
-
-    MatrixXd gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
-    VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
-
-    MatrixXd newA(A.rows() + nGomory, A.cols() + nGomory);
-    VectorXd newb(A.rows() + nGomory);
-    VectorXd newc(A.cols() + nGomory);
-
-    newA << A, MatrixXd::Zero(A.rows(), nGomory),
-      gamma, MatrixXd::Identity(nGomory, nGomory);
-
-    newb << b, bplus;
-
-    newc << c, VectorXd::Zero(nGomory);
-
-    A = newA;
-    b = newb;
-    c = newc;
-  }
+  void gomory();
 
   void gomoryAlgorithm()
   {
     while (nGomory != 0) gomory();
   }
 
-  std::pair<std::vector<double>, double> getResults() const
-  {
-    int n = tableau.cols() - 1; // finalTableau
+  std::pair<std::vector<double>, double> getResults() const;
 
-    std::vector<double> solution(n);
-    for (int k = 0; k < n; ++k) {
-      const auto basicRowNo = getRow(tableau, k);
-      solution[k] = (basicRowNo != -1) ? tableau(basicRowNo, Eigen::last) : 0.0;
-    }
-
-    return { solution, -tableau(Eigen::last, Eigen::last) }; // Solution and optimal cost
-  }
-
-
-  ConvergenceFlag solve()
-  {
-  }
+  // ConvergenceFlag solve()
+  // {
+  // }
 };
 
+
+std::pair<std::vector<double>, double> Simplex::getResults() const
+{
+  int n = tableau.cols() - 1; // finalTableau
+
+  std::vector<double> solution(n);
+  for (int k = 0; k < n; ++k) {
+    const auto basicRowNo = getRow(tableau, k);
+    solution[k] = (basicRowNo != -1) ? tableau(basicRowNo, Eigen::last) : 0.0;
+  }
+
+  return { solution, -tableau(Eigen::last, Eigen::last) }; // Solution and optimal cost
+}
+
+
+void Simplex::gomory()
+{
+  fmt::println("==================================");
+  fmt::println("Problem with {} variables and {} constraints", A.cols(), A.rows());
+
+  bool unbounded{}, infeasible{};
+  std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
+
+  auto [solution, copt] = getResults(); // Assuming getResults is defined
+
+  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
+
+  if (unbounded) {
+    fmt::println("Unbounded problem");
+    nGomory = 0;
+    return;
+  }
+
+  if (infeasible) {
+    fmt::println("Infeasible problem");
+    nGomory = 0;
+    return;
+  }
+
+  std::vector<int> fractionalMask;
+
+  for (int i = 0; i < (tableau.rows() - 1); i++)
+    if (isFractional(tableau(i, Eigen::last))) // Scan last column
+      fractionalMask.push_back(i);
+
+  nGomory = fractionalMask.size();
+  fmt::println("Number of Gomory cuts: {}", nGomory);
+
+  MatrixXd gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
+  VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
+
+  MatrixXd newA(A.rows() + nGomory, A.cols() + nGomory);
+  VectorXd newb(A.rows() + nGomory);
+  VectorXd newc(A.cols() + nGomory);
+
+  newA << A, MatrixXd::Zero(A.rows(), nGomory),
+    gamma, MatrixXd::Identity(nGomory, nGomory);
+
+  newb << b, bplus;
+
+  newc << c, VectorXd::Zero(nGomory);
+
+  A = newA;
+  b = newb;
+  c = newc;
+}
 
 } // namespace dtwc::solver
