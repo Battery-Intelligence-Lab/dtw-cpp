@@ -8,8 +8,6 @@
  */
 
 
-#pragma once
-
 #include "Simplex.hpp"
 
 #include "../settings.hpp"
