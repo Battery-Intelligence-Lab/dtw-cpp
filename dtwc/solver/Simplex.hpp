@@ -32,21 +32,14 @@
 #include <limits>
 
 
+namespace dtwc {
+class Problem;
+}
+
 namespace dtwc::solver {
 
 using Eigen::MatrixXd, Eigen::VectorXd;
 
-int getRow(const MatrixXd &tableau, int index);
-
-void inline pivoting(MatrixXd &tableau, int p, int q);
-
-std::tuple<int, int, bool, bool> inline simplexTableau(const MatrixXd &tableau);
-
-std::tuple<MatrixXd, bool, bool> inline simplexAlgorithmTableau(const MatrixXd &input_tableau);
-
-MatrixXd inline createTableau(const MatrixXd &A, const VectorXd &b, VectorXd &c);
-
-std::tuple<MatrixXd, bool, bool> inline simplex(MatrixXd &A, VectorXd &b, VectorXd &c);
 
 class Simplex
 {
@@ -65,6 +58,7 @@ public:
   Simplex(MatrixXd A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
   Simplex() = default;
   Simplex(int Nb, int Nc);
+  Simplex(Problem &prob);
 
   void gomory();
 
@@ -80,5 +74,17 @@ public:
   // }
 };
 
+
+int getRow(const MatrixXd &tableau, int index);
+
+void inline pivoting(MatrixXd &tableau, int p, int q);
+
+std::tuple<int, int, bool, bool> inline simplexTableau(const MatrixXd &tableau);
+
+std::tuple<MatrixXd, bool, bool> inline simplexAlgorithmTableau(const MatrixXd &input_tableau);
+
+MatrixXd inline createTableau(const MatrixXd &A, const VectorXd &b, VectorXd &c);
+
+std::tuple<MatrixXd, bool, bool> inline simplex(MatrixXd &A, VectorXd &b, VectorXd &c);
 
 } // namespace dtwc::solver

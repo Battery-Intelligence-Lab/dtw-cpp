@@ -52,4 +52,9 @@ constexpr bool is_OSQP = false;
 constexpr bool is_OSLP = false;
 
 constexpr int band = 0; // Size of band to use (if no band put 0)
+
+
+constexpr bool debug_Simplex = false;
+
+
 } // namespace dtwc::settings

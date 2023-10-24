@@ -15,6 +15,7 @@
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"
+#include "../Problem.hpp"
 
 #include <vector>
 #include <string>
@@ -280,7 +281,8 @@ void Simplex::gomory()
 
   auto [solution, copt] = getResults(); // Assuming getResults is defined
 
-  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
+  if constexpr (settings::debug_Simplex)
+    fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
   if (unbounded) {
     fmt::println("Unbounded problem");
@@ -328,5 +330,58 @@ Simplex::Simplex(int Nb, int Nc)
   // Create Simplex type problem with Nb = number of batteries and Nc = number of clusters.
 }
 
+
+Simplex::Simplex(Problem &prob)
+{
+  const auto Nb = prob.data.size();
+  const auto Nc = prob.cluster_size();
+
+
+  const auto Neq = Nb + 1;
+  const auto Nineq = Nb * (Nb - 1);
+  const auto Nconstraints = Neq + Nineq;
+
+  const auto Nvar_original = Nb * Nb;
+  const auto N_slack = Nineq;
+  const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
+
+  A = MatrixXd::Zero(Nconstraints, Nvar);
+  b = VectorXd::Zero(Nconstraints);
+  c = VectorXd::Zero(Nvar);
+
+  // Create A matrix:
+  A.bottomRightCorner(N_slack, N_slack) = MatrixXd::Identity(N_slack, N_slack);
+
+  for (int i = 0; i < Nb; ++i) {
+    A(0, i * (Nb + 1)) = 1.0;                                // Sum of diagonals is Nc
+    A.block(1, Nb * i, Nb, Nb) = MatrixXd::Identity(Nb, Nb); // Every element belongs to one cluster.
+
+    // ---------------
+    int shift = 0;
+    for (int j = 0; j < Nb; j++) {
+      const int block_begin_row = Nb + 1 + (Nb - 1) * i;
+      const int block_begin_col = Nb * i;
+      if (i == j) {
+        A.block(block_begin_row, block_begin_col + j, Nb - 1, 1) = -1 * MatrixXd::Ones(Nb - 1, 1);
+        shift = 1;
+      } else
+        A(block_begin_row + j - shift, block_begin_col + j) = 1;
+    }
+  }
+
+  // Create b matrix:
+  b(0) = Nc;
+  for (int i = 0; i < Nb; ++i)
+    b(i + 1) = 1;
+
+
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      c[i + j * Nb] = prob.distByInd_scaled(i, j);
+
+  // c.head(Nvar_original) << 0, 1.0000, 0.4506, 0.5304, 0.5203, 0.8338, 1.0000, 0, 0.7494, 0.5562, 0.5515, 0.6977, 0.4506, 0.7494, 0, 0.5154, 0.7408, 0.8127, 0.5304, 0.5562, 0.5154, 0, 0.2434, 0.7068, 0.5203, 0.5515, 0.7408, 0.2434, 0, 0.6054, 0.8338, 0.6977, 0.8127, 0.7068, 0.6054, 0;
+
+  std::cout << c << std::endl;
+}
 
 } // namespace dtwc::solver

@@ -28,4 +28,6 @@ void MIP_clustering_byOSQP(Problem &prob);
 
 void MIP_clustering_byOSLP(Problem &prob);
 
+void MIP_clustering_bySimplex(Problem &prob);
+
 } // namespace dtwc
