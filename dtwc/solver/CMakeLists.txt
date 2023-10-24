@@ -5,9 +5,6 @@ target_sources(solvers
   PRIVATE
     Simplex.cpp
   PUBLIC
-    cg.hpp
-    ConstraintOperator.hpp
-    LP.hpp
     Simplex.hpp
     solver_util.hpp
   )

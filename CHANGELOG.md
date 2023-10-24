@@ -4,6 +4,22 @@
 
 This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed). 
 
+
+<br/><br/>
+# DTWC v0.0.4
+
+## New features
+* OSQP support is removed. 
+* Simplex method is added. 
+
+
+## Notable Bug-fixes
+* N/A
+
+## API changes
+* N/A
+
+
 <br/><br/>
 # DTWC v0.0.3
 

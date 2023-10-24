@@ -53,7 +53,6 @@ include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
 include(cmake/Dependencies.cmake) # Include external projects
-add_subdirectory(external/osqp)
 add_subdirectory(dtwc/solver)
 
 # # sanitizer options if supported by compiler
@@ -111,7 +110,6 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   ${GUROBI_LIBRARY}
-  osqpstatic
   eigen
   range-v3
   fmt

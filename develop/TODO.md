@@ -28,7 +28,7 @@
   - [ ] dtwclust in R
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
-  - [ ] OSQP is added. 
+  - [ ] Simplex is added. 
 - [ ] Exploration of totally unimodular matrices. 
 - [ ] Creating DTW objects taking distance/band as a policy-based design 
 - [ ] TestNumberOfThreads should be an atomic counter instead of printing. 

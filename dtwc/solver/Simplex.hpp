@@ -10,8 +10,6 @@
 
 #pragma once
 
-#include "cg.hpp"
-#include "ConstraintOperator.hpp"
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"

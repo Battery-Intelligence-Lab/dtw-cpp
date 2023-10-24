@@ -1,6 +1,5 @@
 #include "dtwc.hpp"
 #include "examples.hpp"
-#include "solver/LP.hpp"
 #include "solver/Simplex.hpp"
 #include "../benchmark/benchmark_main.hpp"
 
@@ -110,30 +109,6 @@ int main()
   // prob.set_numberOfClusters(Nc);
 
   // // dtwc::MIP_clustering_byGurobi_relaxed(prob);
-  // // dtwc::MIP_clustering_byOSQP(prob);
-
-
-  // dtwc::solver::LP lp;
-  // lp.maxIterations = 15000;
-  // lp.numItrConv = 10;
-  // lp.epsAbs = 1e-4;
-  // lp.epsRel = 1e-4;
-
-  // lp.setSize(Nb, Nc);
-
-  // auto &q = lp.getQvec();
-
-  // for (size_t j{ 0 }; j < Nb; j++)
-  //   for (size_t i{ 0 }; i < Nb; i++)
-  //     q[i + j * Nb] = prob.distByInd_scaled(i, j);
-
-  // auto &w_sol = lp.getSolution();
-  // for (size_t j{ 0 }; j < Nb; j++)
-  //   for (size_t i{ 0 }; i < Nb; i++)
-  //     w_sol[i + j * Nb] = 1;
-
-  // lp.int_solve();
-  // std::cout << "cost: " << lp.cost() << '\n';
 
   std::cout << "Finished all tasks " << clk << "\n";
 
