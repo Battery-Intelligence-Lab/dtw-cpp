@@ -28,17 +28,21 @@ namespace dtwc {
 void MIP_clustering_bySimplex(Problem &prob)
 {
   std::cout << "Simplex is being called!" << std::endl;
+  dtwc::Clock clk; // Create a clock object
+
   prob.clear_clusters();
 
   thread_local dtwc::solver::Simplex simplexSolver(prob);
+
+  std::cout << "Problem formulation finished in " << clk << '\n';
   simplexSolver.gomoryAlgorithm();
+  std::cout << "Problem solution finished in " << clk << '\n';
 
   auto [solution, copt] = simplexSolver.getResults();
 
   fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
   const auto Nb = prob.data.size();
-  const auto Nc = prob.cluster_size();
 
   for (ind_t i{ 0 }; i < Nb; i++)
     if (solution[i * (Nb + 1)] > 0.5)

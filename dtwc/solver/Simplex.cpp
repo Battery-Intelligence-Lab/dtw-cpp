@@ -374,14 +374,9 @@ Simplex::Simplex(Problem &prob)
   for (int i = 0; i < Nb; ++i)
     b(i + 1) = 1;
 
-
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)
       c[i + j * Nb] = prob.distByInd_scaled(i, j);
-
-  // c.head(Nvar_original) << 0, 1.0000, 0.4506, 0.5304, 0.5203, 0.8338, 1.0000, 0, 0.7494, 0.5562, 0.5515, 0.6977, 0.4506, 0.7494, 0, 0.5154, 0.7408, 0.8127, 0.5304, 0.5562, 0.5154, 0, 0.2434, 0.7068, 0.5203, 0.5515, 0.7408, 0.2434, 0, 0.6054, 0.8338, 0.6977, 0.8127, 0.7068, 0.6054, 0;
-
-  std::cout << c << std::endl;
 }
 
 } // namespace dtwc::solver
