@@ -165,19 +165,16 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
   if (isInfeasible) return { phaseOneTableau, false, true }; // Infeasible problem
 
   std::vector<int> basicRows(m + n);
-  for (int k = 0; k < m + n; ++k)
-    basicRows[k] = getRow(phaseOneTableau, k);
-
   std::set<int> basicIndices;
-  for (int i = 0; i < basicRows.size(); ++i)
-    if (basicRows[i] != -1)
-      basicIndices.insert(i);
-
   std::set<int> tobeCleaned;
-  for (int i = n; i < n + m; ++i)
-    if (basicIndices.find(i) != basicIndices.end())
-      tobeCleaned.insert(i);
 
+  for (int k = 0; k < m + n; ++k) {
+    basicRows[k] = getRow(phaseOneTableau, k);
+    if (basicRows[k] != -1) {
+      basicIndices.insert(k);
+      if (k >= n) tobeCleaned.insert(k); // If k>= n are basic indices then clean them.
+    }
+  }
 
   while (!tobeCleaned.empty()) {
     int auxiliaryColumn = *tobeCleaned.begin();
@@ -206,9 +203,8 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       basicRows[auxiliaryColumn] = -1;
     } else {
       phaseOneTableau.conservativeResize(phaseOneTableau.rows() - 1, phaseOneTableau.cols());
-      for (int k = 0; k < m + n; ++k) {
+      for (int k = 0; k < m + n; ++k)
         basicRows[k] = getRow(phaseOneTableau, k);
-      }
     }
   }
 
@@ -225,7 +221,7 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
 
   // Calculate last row
   std::vector<int> basicIndicesList, nonbasicIndicesList;
-  for (int i = 0; i < basicRows.size(); ++i) {
+  for (int i = 0; i < n; ++i) {
     if (basicRows[i] != -1)
       basicIndicesList.push_back(i);
     else
@@ -234,8 +230,10 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
 
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
-    for (int j : basicIndicesList)
+    for (int j : basicIndicesList) {
+      //  std::cout << "Value: " << phaseTwoTableau(basicRows[j], k) << '\n';
       sumVal += c(j) * phaseTwoTableau(basicRows[j], k);
+    }
 
     phaseTwoTableau(phaseTwoTableau.rows() - 1, k) = c(k) - sumVal;
   }

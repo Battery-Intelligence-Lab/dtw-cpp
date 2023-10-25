@@ -47,29 +47,31 @@ int main()
 
   // fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
-  int Ndata_max = 100; // Load 300 data maximum.
-  auto Nc = 4;         // Number of clusters
 
-  dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy", Ndata_max };
+  // int Ndata_max = 100; // Load 300 data maximum.
+  // auto Nc = 4;         // Number of clusters
 
-  dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
+  // dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy", Ndata_max };
 
-  std::cout << "Data loading finished at " << clk << "\n";
+  // dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
+
+  // std::cout << "Data loading finished at " << clk << "\n";
 
 
-  // prob.fillDistanceMatrix();
-  // prob.writeDistanceMatrix();
-  prob.readDistanceMatrix(dtwc::settings::resultsPath / "DTW_MILP_results_distanceMatrix.csv");
+  // // prob.fillDistanceMatrix();
+  // // prob.writeDistanceMatrix();
+  // prob.readDistanceMatrix(dtwc::settings::resultsPath / "DTW_MILP_results_distanceMatrix.csv");
 
-  std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << dtwc::settings::band << "\n\n\n";
+  // std::cout << "Finished calculating distances " << clk << std::endl;
+  // std::cout << "Band used " << dtwc::settings::band << "\n\n\n";
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.cluster_by_MIP();         // Uses MILP to do clustering.
+  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  // prob.cluster_by_MIP();         // Uses MILP to do clustering.
 
-  prob.printClusters(); // Prints to screen.
-  prob.writeClusters(); // Prints to file.
-  prob.writeSilhouettes();
+  // prob.printClusters(); // Prints to screen.
+  // prob.writeClusters(); // Prints to file.
+  // prob.writeSilhouettes();
+
 
   // dtwc::examples::cluster_byKmeans_single();
   //  dtwc::examples::cluster_byMIP_single();
@@ -111,6 +113,7 @@ int main()
   // prob.set_numberOfClusters(Nc);
 
   // // dtwc::MIP_clustering_byGurobi_relaxed(prob);
+  dtwc::benchmarks::run_all();
 
   std::cout << "Finished all tasks " << clk << "\n";
 
@@ -122,9 +125,6 @@ int main()
 
   //   w_sol_out << '\n';
   // }
-
-
-  // dtwc::benchmarks::run_all();
 
 
   //  dtwc::examples::cluster_byKmeans_single(); // -> Not properly working
