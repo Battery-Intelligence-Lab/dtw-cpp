@@ -70,11 +70,9 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
   const int mtab = tableau.rows(), ntab = tableau.cols();
   const int m = mtab - 1, n = ntab - 1;
 
-  // VectorXd reducedCost = tableau.row(mtab - 1).head(ntab - 1);
-
   // Find the first negative cost, if there are none, then table is optimal.
   int p = -1;
-  for (int i = 0; i < n; i++)
+  for (int i = 0; i < n; i++) // Reduced cost. 
     if (tableau(Eigen::last, i) < -epsilon) {
       p = i;
       break;
@@ -175,6 +173,10 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       if (k >= n) tobeCleaned.insert(k); // If k>= n are basic indices then clean them.
     }
   }
+
+  int ZeroCount = phaseOneTableau.unaryExpr([](double elem) { return isAround(elem,0.0); }).count();
+
+  std::cout << "Table:\n" << phaseOneTableau.rows() << 'x' << phaseOneTableau.cols() << " : " << ZeroCount << '\n';
 
   while (!tobeCleaned.empty()) {
     int auxiliaryColumn = *tobeCleaned.begin();
@@ -314,13 +316,6 @@ void Simplex::gomory()
   b = newb;
   c = newc;
 }
-
-
-Simplex::Simplex(int Nb, int Nc)
-{
-  // Create Simplex type problem with Nb = number of batteries and Nc = number of clusters.
-}
-
 
 Simplex::Simplex(Problem &prob)
 {

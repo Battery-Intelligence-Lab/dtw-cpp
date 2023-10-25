@@ -23,6 +23,7 @@
 
 #include <tuple>
 #include <Eigen/Dense>
+#include <Eigen/Sparse>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <stdexcept>
@@ -52,39 +53,22 @@ class Simplex
   int nGomory{ -1 };
 
 public:
-  size_t maxIterations{ 15000 }; // Default 4000
-  size_t numItrConv{ 50 };       // Check convergence every 200 iteration.
-
   Simplex(MatrixType A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
   Simplex() = default;
-  Simplex(int Nb, int Nc);
   Simplex(Problem &prob);
 
   void gomory();
-
-  void gomoryAlgorithm()
-  {
-    while (nGomory != 0) gomory();
-  }
+  void gomoryAlgorithm()  {    while (nGomory != 0) gomory();  }
 
   std::pair<std::vector<double>, double> getResults() const;
-
-  // ConvergenceFlag solve()
-  // {
-  // }
 };
 
 
 int getRow(const MatrixType &tableau, int index);
-
 void inline pivoting(MatrixType &tableau, int p, int q);
-
 std::tuple<int, int, bool, bool> inline simplexTableau(const MatrixType &tableau);
-
 std::pair<bool, bool> inline simplexAlgorithmTableau(MatrixType &input_tableau);
-
 MatrixType inline createTableau(const MatrixType &A, const VectorXd &b, VectorXd &c);
-
 std::tuple<MatrixType, bool, bool> inline simplex(MatrixType &A, VectorXd &b, VectorXd &c);
 
 } // namespace dtwc::solver
