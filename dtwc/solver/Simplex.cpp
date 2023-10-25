@@ -32,9 +32,7 @@
 
 namespace dtwc::solver {
 
-using Eigen::MatrixXd, Eigen::VectorXd;
-
-int getRow(const MatrixXd &tableau, int index)
+int getRow(const MatrixType &tableau, int index)
 {
   if (index < 0 || index >= (tableau.cols() - 1)) // Check if index is in the valid range
     throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", index, tableau.cols() - 2));
@@ -53,7 +51,7 @@ int getRow(const MatrixXd &tableau, int index)
   return rowIndex;
 }
 
-void pivoting(MatrixXd &tableau, int p, int q)
+void pivoting(MatrixType &tableau, int p, int q)
 {
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
   const double thepivot = tableau(q, p);
@@ -67,7 +65,7 @@ void pivoting(MatrixXd &tableau, int p, int q)
       tableau.row(i) -= tableau(i, p) * tableau.row(q);
 }
 
-std::tuple<int, int, bool, bool> simplexTableau(const MatrixXd &tableau)
+std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
 {
   int mtab = tableau.rows(), ntab = tableau.cols();
   int m = mtab - 1, n = ntab - 1;
@@ -105,9 +103,9 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixXd &tableau)
   return std::make_tuple(p, q, false, true);
 }
 
-std::tuple<MatrixXd, bool, bool> simplexAlgorithmTableau(const MatrixXd &input_tableau)
+std::tuple<MatrixType, bool, bool> simplexAlgorithmTableau(const MatrixType &input_tableau)
 {
-  MatrixXd tableau = input_tableau;
+  MatrixType tableau = input_tableau;
 
   while (true) {
     auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(tableau);
@@ -119,13 +117,13 @@ std::tuple<MatrixXd, bool, bool> simplexAlgorithmTableau(const MatrixXd &input_t
   }
 }
 
-MatrixXd createTableau(const MatrixXd &A, const VectorXd &b, VectorXd &c)
+MatrixType createTableau(const MatrixType &A, const VectorXd &b, VectorXd &c)
 {
   const int m = A.rows(), n = A.cols();
-  MatrixXd tableau(m + 1, n + m + 1);
+  MatrixType tableau(m + 1, n + m + 1);
 
   tableau.block(0, 0, m, n) = A;
-  tableau.block(0, n, m, m) = MatrixXd::Identity(m, m);
+  tableau.block(0, n, m, m) = MatrixType::Identity(m, m);
   tableau.block(0, n + m, m, 1) = b;
 
   // Set the first n columns of the last row
@@ -141,7 +139,7 @@ MatrixXd createTableau(const MatrixXd &A, const VectorXd &b, VectorXd &c)
   return tableau;
 }
 
-std::tuple<MatrixXd, bool, bool> simplex(MatrixXd &A, VectorXd &b, VectorXd &c)
+std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd &c)
 {
   // bool unbounded{}, optimal{};
   const int m = A.rows(), n = A.cols();
@@ -159,7 +157,7 @@ std::tuple<MatrixXd, bool, bool> simplex(MatrixXd &A, VectorXd &b, VectorXd &c)
       b(i) = -b(i);
     }
 
-  MatrixXd tableau = createTableau(A, b, c);
+  MatrixType tableau = createTableau(A, b, c);
 
   auto [phaseOneTableau, optimal, unbounded] = simplexAlgorithmTableau(tableau);
 
@@ -216,10 +214,10 @@ std::tuple<MatrixXd, bool, bool> simplex(MatrixXd &A, VectorXd &b, VectorXd &c)
     }
   }
 
-  MatrixXd leftPart = phaseOneTableau.leftCols(n);
-  MatrixXd rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
+  MatrixType leftPart = phaseOneTableau.leftCols(n);
+  MatrixType rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
 
-  MatrixXd startPhaseTwo(leftPart.rows(), leftPart.cols() + rightPart.cols());
+  MatrixType startPhaseTwo(leftPart.rows(), leftPart.cols() + rightPart.cols());
   startPhaseTwo << leftPart, rightPart;
 
   // Reset basicRows for startPhaseTwo
@@ -303,15 +301,15 @@ void Simplex::gomory()
   nGomory = fractionalMask.size();
   fmt::println("Number of Gomory cuts: {}", nGomory);
 
-  MatrixXd gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
+  MatrixType gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
   VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
 
-  MatrixXd newA(A.rows() + nGomory, A.cols() + nGomory);
+  MatrixType newA(A.rows() + nGomory, A.cols() + nGomory);
   VectorXd newb(A.rows() + nGomory);
   VectorXd newc(A.cols() + nGomory);
 
-  newA << A, MatrixXd::Zero(A.rows(), nGomory),
-    gamma, MatrixXd::Identity(nGomory, nGomory);
+  newA << A, MatrixType::Zero(A.rows(), nGomory),
+    gamma, MatrixType::Identity(nGomory, nGomory);
 
   newb << b, bplus;
 
@@ -343,16 +341,16 @@ Simplex::Simplex(Problem &prob)
   const auto N_slack = Nineq;
   const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
 
-  A = MatrixXd::Zero(Nconstraints, Nvar);
+  A = MatrixType::Zero(Nconstraints, Nvar);
   b = VectorXd::Zero(Nconstraints);
   c = VectorXd::Zero(Nvar);
 
   // Create A matrix:
-  A.bottomRightCorner(N_slack, N_slack) = MatrixXd::Identity(N_slack, N_slack);
+  A.bottomRightCorner(N_slack, N_slack) = MatrixType::Identity(N_slack, N_slack);
 
   for (int i = 0; i < Nb; ++i) {
-    A(0, i * (Nb + 1)) = 1.0;                                // Sum of diagonals is Nc
-    A.block(1, Nb * i, Nb, Nb) = MatrixXd::Identity(Nb, Nb); // Every element belongs to one cluster.
+    A(0, i * (Nb + 1)) = 1.0;                                  // Sum of diagonals is Nc
+    A.block(1, Nb * i, Nb, Nb) = MatrixType::Identity(Nb, Nb); // Every element belongs to one cluster.
 
     // ---------------
     int shift = 0;
@@ -360,7 +358,7 @@ Simplex::Simplex(Problem &prob)
       const int block_begin_row = Nb + 1 + (Nb - 1) * i;
       const int block_begin_col = Nb * i;
       if (i == j) {
-        A.block(block_begin_row, block_begin_col + j, Nb - 1, 1) = -1 * MatrixXd::Ones(Nb - 1, 1);
+        A.block(block_begin_row, block_begin_col + j, Nb - 1, 1) = -1 * MatrixType::Ones(Nb - 1, 1);
         shift = 1;
       } else
         A(block_begin_row + j - shift, block_begin_col + j) = 1;

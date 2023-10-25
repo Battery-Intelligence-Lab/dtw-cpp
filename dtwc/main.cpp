@@ -56,8 +56,10 @@ int main()
 
   std::cout << "Data loading finished at " << clk << "\n";
 
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
+
+  // prob.fillDistanceMatrix();
+  // prob.writeDistanceMatrix();
+  prob.readDistanceMatrix(dtwc::settings::resultsPath / "DTW_MILP_results_distanceMatrix.csv");
 
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << dtwc::settings::band << "\n\n\n";

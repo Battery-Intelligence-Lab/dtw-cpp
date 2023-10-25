@@ -164,7 +164,7 @@ void Problem::cluster_by_MIP()
   // if (settings::is_relaxed)
   //   MIP_clustering_byGurobi_relaxed(*this);
   // else
-  //   MIP_clustering_byGurobi(*this);
+  // MIP_clustering_byGurobi(*this);
 }
 
 void Problem::distributeClusters()

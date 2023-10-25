@@ -134,6 +134,8 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
+  auto myAbsPath = fs::absolute(file_path);
+
   std::ifstream in(file_path, std::ios_base::in);
   if (!in.good()) // check if we could open the file
   {
