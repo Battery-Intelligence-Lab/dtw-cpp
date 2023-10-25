@@ -67,15 +67,15 @@ void pivoting(MatrixType &tableau, int p, int q)
 
 std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
 {
-  int mtab = tableau.rows(), ntab = tableau.cols();
-  int m = mtab - 1, n = ntab - 1;
+  const int mtab = tableau.rows(), ntab = tableau.cols();
+  const int m = mtab - 1, n = ntab - 1;
 
-  VectorXd reducedCost = tableau.row(mtab - 1).head(ntab - 1);
+  // VectorXd reducedCost = tableau.row(mtab - 1).head(ntab - 1);
 
   // Find the first negative cost, if there are none, then table is optimal.
   int p = -1;
-  for (int i = 0; i < reducedCost.size(); i++)
-    if (reducedCost(i) < -epsilon) {
+  for (int i = 0; i < n; i++)
+    if (tableau(Eigen::last, i) < -epsilon) {
       p = i;
       break;
     }
@@ -103,15 +103,13 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
   return std::make_tuple(p, q, false, true);
 }
 
-std::tuple<MatrixType, bool, bool> simplexAlgorithmTableau(const MatrixType &input_tableau)
+std::pair<bool, bool> simplexAlgorithmTableau(MatrixType &tableau)
 {
-  MatrixType tableau = input_tableau;
-
   while (true) {
     auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(tableau);
 
-    if (optimal) return { tableau, true, false };
-    if (!bounded) return { tableau, false, true };
+    if (optimal) return { true, false };
+    if (!bounded) return { false, true };
 
     pivoting(tableau, colPivot, rowPivot);
   }
@@ -157,11 +155,11 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       b(i) = -b(i);
     }
 
-  MatrixType tableau = createTableau(A, b, c);
+  MatrixType phaseOneTableau = createTableau(A, b, c);
 
-  auto [phaseOneTableau, optimal, unbounded] = simplexAlgorithmTableau(tableau);
+  auto [optimal, unbounded] = simplexAlgorithmTableau(phaseOneTableau);
 
-  if (unbounded) return { tableau, true, false };
+  if (unbounded) return { phaseOneTableau, true, false };
 
   const auto isInfeasible = phaseOneTableau(Eigen::last, Eigen::last) < -epsilon;
   if (isInfeasible) return { phaseOneTableau, false, true }; // Infeasible problem
@@ -217,13 +215,13 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
   MatrixType leftPart = phaseOneTableau.leftCols(n);
   MatrixType rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
 
-  MatrixType startPhaseTwo(leftPart.rows(), leftPart.cols() + rightPart.cols());
-  startPhaseTwo << leftPart, rightPart;
+  MatrixType phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
+  phaseTwoTableau << leftPart, rightPart;
 
-  // Reset basicRows for startPhaseTwo
+  // Reset basicRows for startPhaseTwo -> phaseTwoTableau
   basicRows.resize(n);
   for (int k = 0; k < n; ++k)
-    basicRows[k] = getRow(startPhaseTwo, k);
+    basicRows[k] = getRow(phaseTwoTableau, k);
 
   // Calculate last row
   std::vector<int> basicIndicesList, nonbasicIndicesList;
@@ -237,19 +235,19 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
     for (int j : basicIndicesList)
-      sumVal += c(j) * startPhaseTwo(basicRows[j], k);
+      sumVal += c(j) * phaseTwoTableau(basicRows[j], k);
 
-    startPhaseTwo(startPhaseTwo.rows() - 1, k) = c(k) - sumVal;
+    phaseTwoTableau(phaseTwoTableau.rows() - 1, k) = c(k) - sumVal;
   }
 
   double lastRowSum = 0.0;
   for (int j : basicIndicesList)
-    lastRowSum += c(j) * startPhaseTwo(basicRows[j], startPhaseTwo.cols() - 1);
+    lastRowSum += c(j) * phaseTwoTableau(basicRows[j], phaseTwoTableau.cols() - 1);
 
-  startPhaseTwo(startPhaseTwo.rows() - 1, startPhaseTwo.cols() - 1) = -lastRowSum;
+  phaseTwoTableau(phaseTwoTableau.rows() - 1, phaseTwoTableau.cols() - 1) = -lastRowSum;
 
   // Phase II
-  auto [phaseTwoTableau, optimal2, unbounded2] = simplexAlgorithmTableau(startPhaseTwo);
+  auto [optimal2, unbounded2] = simplexAlgorithmTableau(phaseTwoTableau); // it was startPhaseTwo
   return { phaseTwoTableau, unbounded2, false };
 }
 
@@ -275,11 +273,6 @@ void Simplex::gomory()
   bool unbounded{}, infeasible{};
   std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
 
-  auto [solution, copt] = getResults(); // Assuming getResults is defined
-
-  if constexpr (settings::debug_Simplex)
-    fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
-
   if (unbounded) {
     fmt::println("Unbounded problem");
     nGomory = 0;
@@ -291,6 +284,10 @@ void Simplex::gomory()
     nGomory = 0;
     return;
   }
+
+  auto [solution, copt] = getResults(); // Assuming getResults is defined
+  if constexpr (settings::debug_Simplex)
+    fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
   std::vector<int> fractionalMask;
 

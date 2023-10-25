@@ -81,7 +81,7 @@ void inline pivoting(MatrixType &tableau, int p, int q);
 
 std::tuple<int, int, bool, bool> inline simplexTableau(const MatrixType &tableau);
 
-std::tuple<MatrixType, bool, bool> inline simplexAlgorithmTableau(const MatrixType &input_tableau);
+std::pair<bool, bool> inline simplexAlgorithmTableau(MatrixType &input_tableau);
 
 MatrixType inline createTableau(const MatrixType &A, const VectorXd &b, VectorXd &c);
 
