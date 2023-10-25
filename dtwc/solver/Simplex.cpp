@@ -9,6 +9,7 @@
 
 
 #include "Simplex.hpp"
+#include "SimplexTable.hpp"
 
 #include "../settings.hpp"
 #include "../utility.hpp"
@@ -72,7 +73,7 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
 
   // Find the first negative cost, if there are none, then table is optimal.
   int p = -1;
-  for (int i = 0; i < n; i++) // Reduced cost. 
+  for (int i = 0; i < n; i++) // Reduced cost.
     if (tableau(Eigen::last, i) < -epsilon) {
       p = i;
       break;
@@ -174,9 +175,10 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
     }
   }
 
-  int ZeroCount = phaseOneTableau.unaryExpr([](double elem) { return isAround(elem,0.0); }).count();
+  int ZeroCount = phaseOneTableau.unaryExpr([](double elem) { return isAround(elem, 0.0); }).count();
 
-  std::cout << "Table:\n" << phaseOneTableau.rows() << 'x' << phaseOneTableau.cols() << " : " << ZeroCount << '\n';
+  std::cout << "Table:\n"
+            << phaseOneTableau.rows() << 'x' << phaseOneTableau.cols() << " : " << ZeroCount << '\n';
 
   while (!tobeCleaned.empty()) {
     int auxiliaryColumn = *tobeCleaned.begin();

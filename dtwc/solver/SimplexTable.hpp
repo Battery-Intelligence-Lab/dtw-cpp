@@ -1,7 +1,7 @@
 /*
  * SimplexSolver.hpp
  *
- * Sparse implementation of a Simplex table. 
+ * Sparse implementation of a Simplex table.
 
  *  Created on: 22 Oct 2023
  *   Author(s): Volkan Kumtepeli, Becky Perriment
@@ -32,15 +32,18 @@ namespace dtwc::solver {
 
 class SimplexTable
 {
-    std::vector<int> basicVariables; 
-    std::vector<std::map<int,double>> innerTable;   
-    std::vector<double> reducedCosts; 
-    std::vector<double> constraintValues;
-    double negativeObjective{};  
+  // Table is   mtab x ntab
+  // Inner table is m x n
+  std::vector<std::map<int, double>> innerTable; // Each is a column
+  std::vector<double> reducedCosts, rhs;
+  double negativeObjective{};
 
+  int mtab{}, ntab{};
 
+public:
+  SimplexTable() = default;
+  SimplexTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(ntab_ - 1), reducedCosts(ntab_ - 1), rhs(mtab_ - 1) {}
 };
 
 
-
-}
+} // namespace dtwc::solver
