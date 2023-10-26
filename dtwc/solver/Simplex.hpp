@@ -13,7 +13,7 @@
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"
-
+#include "SimplexTable.hpp"
 
 #include <vector>
 #include <string>
@@ -52,13 +52,18 @@ class Simplex
   VectorXd b, c; // c*x = cost.
   int nGomory{ -1 };
 
+  SimplexTable table;
+
 public:
   Simplex(MatrixType A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
   Simplex() = default;
   Simplex(Problem &prob);
 
   void gomory();
-  void gomoryAlgorithm()  {    while (nGomory != 0) gomory();  }
+  void gomoryAlgorithm()
+  {
+    while (nGomory != 0) gomory();
+  }
 
   std::pair<std::vector<double>, double> getResults() const;
 };

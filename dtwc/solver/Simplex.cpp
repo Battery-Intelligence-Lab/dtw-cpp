@@ -324,7 +324,6 @@ Simplex::Simplex(Problem &prob)
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
 
-
   const auto Neq = Nb + 1;
   const auto Nineq = Nb * (Nb - 1);
   const auto Nconstraints = Neq + Nineq;

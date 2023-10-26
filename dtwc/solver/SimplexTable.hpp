@@ -43,6 +43,25 @@ class SimplexTable
 public:
   SimplexTable() = default;
   SimplexTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(ntab_ - 1), reducedCosts(ntab_ - 1), rhs(mtab_ - 1) {}
+
+  void createTableau(int Nb, int Nc)
+  {
+    const auto Neq = Nb + 1;
+    const auto Nineq = Nb * (Nb - 1);
+    const auto Nconstraints = Neq + Nineq;
+
+    const auto Nvar_original = Nb * Nb;
+    const auto N_slack = Nineq;
+    const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
+
+
+    *this = SimplexTable(Nconstraints + 1, Nvar + Nconstraints + 1);
+
+    negativeObjective = -(Nb + Nc);
+    rhs[0] = Nc;
+    for (int i = 0; i < Nb; ++i)
+      rhs[i + 1] = 1;
+  }
 };
 
 

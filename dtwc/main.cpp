@@ -8,31 +8,33 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include <map>
+#include <unordered_map>
 
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include "solver/EqualityConstraints.hpp"
+
 int main()
 {
 
-    // Define A matrix using triplet format for setting non-zero entries
-    typedef Eigen::Triplet<double> T;
-    std::vector<T> tripletList;
-    tripletList.reserve(4); // number of non-zero elements in A
+  dtwc::solver::SparseMatrix vk(8, 8);
 
-    tripletList.push_back(T(0,0,-4));  // row 0, col 0, value -4
-    tripletList.push_back(T(0,1,6));   // row 0, col 1, value 6
-    tripletList.push_back(T(0,2,1));   // row 0, col 2, value 1
-    tripletList.push_back(T(1,0,1));   // row 1, col 0, value 1
-    tripletList.push_back(T(1,1,1));   // row 1, col 1, value 1
-    tripletList.push_back(T(1,3,1));   // row 1, col 3, value 1
+  vk(3, 4) = 10;
+  vk(5, 6) = 20;
 
-    Eigen::SparseMatrix<double> A(2, 4);
-    A.setFromTriplets(tripletList.begin(), tripletList.end());
+  vk.print();
 
-    std::cout << A << '\n';
 
-    A.row(1)  += A.row(2);
+  vk(3, 4) = 1e-9;
+
+  vk.print();
+
+  vk.compress();
+
+  vk.print();
+  // Define A matrix using triplet format for setting non-zero entries
 
 
   // Here are some examples. You can either take the contents of example functions into main or modify and run them.
@@ -134,7 +136,7 @@ int main()
   // prob.set_numberOfClusters(Nc);
 
   // // dtwc::MIP_clustering_byGurobi_relaxed(prob);
- // dtwc::benchmarks::run_all();
+  // dtwc::benchmarks::run_all();
 
   std::cout << "Finished all tasks " << clk << "\n";
 
