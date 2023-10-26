@@ -1,5 +1,5 @@
 /*
- * SimplexSolver.hpp
+ * Simplex.hpp
  *
  * LP solution
 
@@ -53,6 +53,8 @@ class Simplex
   int nGomory{ -1 };
 
   SimplexTable table;
+  EqualityConstraints eq;
+
 
 public:
   Simplex(MatrixType A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}

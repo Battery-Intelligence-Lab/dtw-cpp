@@ -1,14 +1,14 @@
 /*
- * SimplexSolver.cpp
+ * SparseSimplex.cpp
  *
  * LP solution
 
- *  Created on: 22 Oct 2023
+ *  Created on: 26 Oct 2023
  *   Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
 
-#include "Simplex.hpp"
+#include "SparseSimplex.hpp"
 #include "SimplexTable.hpp"
 
 #include "../settings.hpp"
@@ -23,7 +23,6 @@
 #include <cmath>
 
 #include <tuple>
-#include <Eigen/Dense>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <stdexcept>
@@ -33,53 +32,34 @@
 
 namespace dtwc::solver {
 
-int getRow(const MatrixType &tableau, int index)
-{
-  if (index < 0 || index >= (tableau.cols() - 1)) // Check if index is in the valid range
-    throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", index, tableau.cols() - 2));
-
-  int rowIndex = -1; // Using -1 to represent None
-  // So this is checking there is one and only one 1.0 element! -> #TODO change with something keeping book of basic variables in future.
-  for (int j = 0; j < tableau.rows(); ++j)
-    if (!isAround(tableau(j, index), 0)) // The entry is non zero
-    {
-      if (rowIndex == -1 && isAround(tableau(j, index), 1.0)) // The entry is one, and the index has not been found yet.
-        rowIndex = j;
-      else
-        return -1;
-    }
-
-  return rowIndex;
-}
-
-void pivoting(MatrixType &tableau, int p, int q)
+void pivoting(SimplexTable &table, int p, int q)
 {
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-  const double thepivot = tableau(q, p);
+  const double thepivot = table(q, p);
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
-  tableau.row(q) /= thepivot; // Make (p,q) one.
+  table.row(q) /= thepivot; // Make (p,q) one.
 
-  for (int i = 0; i < tableau.rows(); ++i)
+  for (int i = 0; i < table.rows(); ++i)
     if (i != q)
-      tableau.row(i) -= tableau(i, p) * tableau.row(q);
+      table.row(i) -= table(i, p) * table.row(q);
 }
 
-std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
+std::tuple<int, int, bool, bool> simplexTableau(const SimplexTable &table)
 {
-  const int mtab = tableau.rows(), ntab = tableau.cols();
+  const int mtab = table.rows(), ntab = table.cols();
   const int m = mtab - 1, n = ntab - 1;
 
   // Find the first negative cost, if there are none, then table is optimal.
   int p = -1;
   for (int i = 0; i < n; i++) // Reduced cost.
-    if (tableau(Eigen::last, i) < -epsilon) {
+    if (table(Eigen::last, i) < -epsilon) {
       p = i;
       break;
     }
 
-  if (p == -1) // The tableau is optimal
+  if (p == -1) // The table is optimal
     return std::make_tuple(-1, -1, true, true);
 
   double vkTolerance = 1e-10;
@@ -88,55 +68,55 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
   int q{ -1 }; // row of min step. -1 means unbounded.
 
   for (int k = 0; k < m; k++)
-    if (tableau(k, p) > vkTolerance) {
-      const auto step = tableau(k, Eigen::last) / tableau(k, p); // tableau(k,p) = minus(d)
+    if (table(k, p) > vkTolerance) {
+      const auto step = table(k, Eigen::last) / table(k, p); // table(k,p) = minus(d)
       if (step < minStep) {
         minStep = step;
         q = k;
       }
     }
 
-  if (q == -1) // The tableau is unbounded
+  if (q == -1) // The table is unbounded
     return std::make_tuple(-1, -1, false, false);
 
   return std::make_tuple(p, q, false, true);
 }
 
-std::pair<bool, bool> simplexAlgorithmTableau(MatrixType &tableau)
+std::pair<bool, bool> simplexAlgorithmTableau(SimplexTable &table)
 {
   while (true) {
-    auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(tableau);
+    auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(table);
 
     if (optimal) return { true, false };
     if (!bounded) return { false, true };
 
-    pivoting(tableau, colPivot, rowPivot);
+    pivoting(table, colPivot, rowPivot);
   }
 }
 
-MatrixType createTableau(const MatrixType &A, const VectorXd &b, VectorXd &c)
+SimplexTable createTableau(const SimplexTable &A, const VectorXd &b, VectorXd &c)
 {
   const int m = A.rows(), n = A.cols();
-  MatrixType tableau(m + 1, n + m + 1);
+  SimplexTable table(m + 1, n + m + 1);
 
-  tableau.block(0, 0, m, n) = A;
-  tableau.block(0, n, m, m) = MatrixType::Identity(m, m);
-  tableau.block(0, n + m, m, 1) = b;
+  table.block(0, 0, m, n) = A;
+  table.block(0, n, m, m) = SimplexTable::Identity(m, m);
+  table.block(0, n + m, m, 1) = b;
 
   // Set the first n columns of the last row
   for (int k = 0; k < n; ++k)
-    tableau.row(m)(k) = -tableau.block(0, k, m, 1).sum();
+    table.row(m)(k) = -table.block(0, k, m, 1).sum();
 
   // Set columns n through n+m of the last row to 0.0
-  tableau.block(m, n, 1, m).setZero();
+  table.block(m, n, 1, m).setZero();
 
   // Set the last element of the last row
-  tableau(m, n + m) = -tableau.block(0, n + m, m, 1).sum();
+  table(m, n + m) = -table.block(0, n + m, m, 1).sum();
 
-  return tableau;
+  return table;
 }
 
-std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd &c)
+std::tuple<SimplexTable, bool, bool> simplex(SimplexTable &A, VectorXd &b, VectorXd &c)
 {
   // bool unbounded{}, optimal{};
   const int m = A.rows(), n = A.cols();
@@ -154,7 +134,7 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       b(i) = -b(i);
     }
 
-  MatrixType phaseOneTableau = createTableau(A, b, c);
+  SimplexTable phaseOneTableau = createTableau(A, b, c);
 
   auto [optimal, unbounded] = simplexAlgorithmTableau(phaseOneTableau);
 
@@ -168,7 +148,7 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
   std::set<int> tobeCleaned;
 
   for (int k = 0; k < m + n; ++k) {
-    basicRows[k] = getRow(phaseOneTableau, k);
+    basicRows[k] = phaseOneTableau.getRow(k);
     if (basicRows[k] != -1) {
       basicIndices.insert(k);
       if (k >= n) tobeCleaned.insert(k); // If k>= n are basic indices then clean them.
@@ -208,20 +188,20 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
     } else {
       phaseOneTableau.conservativeResize(phaseOneTableau.rows() - 1, phaseOneTableau.cols());
       for (int k = 0; k < m + n; ++k)
-        basicRows[k] = getRow(phaseOneTableau, k);
+        basicRows[k] = phaseOneTableau.getRow(k);
     }
   }
 
-  MatrixType leftPart = phaseOneTableau.leftCols(n);
-  MatrixType rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
+  SimplexTable leftPart = phaseOneTableau.leftCols(n);
+  SimplexTable rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
 
-  MatrixType phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
+  SimplexTable phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
   phaseTwoTableau << leftPart, rightPart;
 
   // Reset basicRows for startPhaseTwo -> phaseTwoTableau
   basicRows.resize(n);
   for (int k = 0; k < n; ++k)
-    basicRows[k] = getRow(phaseTwoTableau, k);
+    basicRows[k] = phaseTwoTableau.getRow(k);
 
   // Calculate last row
   std::vector<int> basicIndicesList, nonbasicIndicesList;
@@ -253,27 +233,25 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
   return { phaseTwoTableau, unbounded2, false };
 }
 
-std::pair<std::vector<double>, double> Simplex::getResults() const
+std::pair<std::vector<double>, double> SparseSimplex::getResults() const
 {
-  int n = tableau.cols() - 1; // finalTableau
+  int n = table.cols() - 1; // finalTableau
 
   std::vector<double> solution(n);
-  for (int k = 0; k < n; ++k) {
-    const auto basicRowNo = getRow(tableau, k);
-    solution[k] = (basicRowNo != -1) ? tableau(basicRowNo, Eigen::last) : 0.0;
-  }
+  for (int k = 0; k < n; ++k)
+    solution[k] = table.getValue(k);
 
-  return { solution, -tableau(Eigen::last, Eigen::last) }; // Solution and optimal cost
+  return { solution, table.getObjective() }; // Solution and optimal cost
 }
 
 
-void Simplex::gomory()
+void SparseSimplex::gomory()
 {
   fmt::println("==================================");
-  fmt::println("Problem with {} variables and {} constraints", A.cols(), A.rows());
+  fmt::println("Problem with {} variables and {} constraints", eq.cols(), eq.rows());
 
   bool unbounded{}, infeasible{};
-  std::tie(tableau, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
+  std::tie(table, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
 
   if (unbounded) {
     fmt::println("Unbounded problem");
@@ -293,75 +271,38 @@ void Simplex::gomory()
 
   std::vector<int> fractionalMask;
 
-  for (int i = 0; i < (tableau.rows() - 1); i++)
-    if (isFractional(tableau(i, Eigen::last))) // Scan last column
+  for (int i = 0; i < (table.rows() - 1); i++)
+    if (isFractional(table.getRHS(i))) // Scan last column
       fractionalMask.push_back(i);
 
   nGomory = fractionalMask.size();
   fmt::println("Number of Gomory cuts: {}", nGomory);
 
-  MatrixType gamma = tableau(fractionalMask, Eigen::seqN(0, tableau.cols() - 1)).array().floor();
-  VectorXd bplus = tableau(fractionalMask, tableau.cols() - 1).array().floor();
+  SimplexTable gamma = table(fractionalMask, Eigen::seqN(0, table.cols() - 1)).array().floor();
+  VectorXd bplus = table(fractionalMask, table.cols() - 1).array().floor();
 
-  MatrixType newA(A.rows() + nGomory, A.cols() + nGomory);
+  SimplexTable newA(A.rows() + nGomory, A.cols() + nGomory);
   VectorXd newb(A.rows() + nGomory);
-  VectorXd newc(A.cols() + nGomory);
 
-  newA << A, MatrixType::Zero(A.rows(), nGomory),
-    gamma, MatrixType::Identity(nGomory, nGomory);
+  newA << A, SimplexTable::Zero(A.rows(), nGomory),
+    gamma, SimplexTable::Identity(nGomory, nGomory);
 
   newb << b, bplus;
 
-  newc << c, VectorXd::Zero(nGomory);
 
   A = newA;
   b = newb;
-  c = newc;
+  c.resize(A.cols() + nGomory); // add zeros
 }
 
-Simplex::Simplex(Problem &prob)
+SparseSimplex::SparseSimplex(Problem &prob)
 {
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
 
   eq = defaultConstraints(Nb, Nc);
 
-  const auto Neq = Nb + 1;
-  const auto Nineq = Nb * (Nb - 1);
-  const auto Nconstraints = Neq + Nineq;
-
-  const auto Nvar_original = Nb * Nb;
-  const auto N_slack = Nineq;
-  const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
-
-  A = MatrixType::Zero(Nconstraints, Nvar);
-  b = VectorXd::Zero(Nconstraints);
-  c = VectorXd::Zero(Nvar);
-
-  // Create A matrix:
-  A.bottomRightCorner(N_slack, N_slack) = MatrixType::Identity(N_slack, N_slack);
-
-  for (int i = 0; i < Nb; ++i) {
-    A(0, i * (Nb + 1)) = 1.0;                                  // Sum of diagonals is Nc
-    A.block(1, Nb * i, Nb, Nb) = MatrixType::Identity(Nb, Nb); // Every element belongs to one cluster.
-
-    // ---------------
-    int shift = 0;
-    for (int j = 0; j < Nb; j++) {
-      const int block_begin_row = Nb + 1 + (Nb - 1) * i;
-      const int block_begin_col = Nb * i;
-      if (i == j) {
-        A.block(block_begin_row, block_begin_col + j, Nb - 1, 1) = -1 * MatrixType::Ones(Nb - 1, 1);
-        shift = 1;
-      } else
-        A(block_begin_row + j - shift, block_begin_col + j) = 1;
-    }
-  }
-
-  // Create b matrix:
-  b(0) = Nc;
-  for (int i = 0; i < Nb; ++i)
-    b(i + 1) = 1;
+  c.resize(Nb * Nb);
 
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)

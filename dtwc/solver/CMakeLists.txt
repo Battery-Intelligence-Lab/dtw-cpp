@@ -4,9 +4,11 @@ add_library(solvers OBJECT)
 target_sources(solvers
   PRIVATE
     Simplex.cpp
+    SparseSimplex.cpp
   PUBLIC
+    solver_util.hpp 
     Simplex.hpp
-    solver_util.hpp
+    SparseSimplex.hpp
   )
 
 target_include_directories(solvers PUBLIC .)

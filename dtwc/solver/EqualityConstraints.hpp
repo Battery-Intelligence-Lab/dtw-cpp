@@ -94,6 +94,9 @@ public:
   double &coeff_b(int x) { return b[x]; }
 
   void print_A() { A.print(); }
+
+  int rows() { return m; }
+  int cols() { return n; }
 };
 
 EqualityConstraints inline defaultConstraints(int Nb, int Nc)
