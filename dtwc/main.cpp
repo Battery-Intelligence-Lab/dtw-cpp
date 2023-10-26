@@ -19,21 +19,12 @@
 int main()
 {
 
-  dtwc::solver::SparseMatrix vk(8, 8);
 
-  vk(3, 4) = 10;
-  vk(5, 6) = 20;
+  auto eq = dtwc::solver::defaultConstraints(4, 5);
 
-  vk.print();
+  eq.print_A();
 
 
-  vk(3, 4) = 1e-9;
-
-  vk.print();
-
-  vk.compress();
-
-  vk.print();
   // Define A matrix using triplet format for setting non-zero entries
 
 

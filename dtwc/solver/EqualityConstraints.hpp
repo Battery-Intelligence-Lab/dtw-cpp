@@ -26,6 +26,8 @@
 #include <set>
 #include <limits>
 #include <map>
+#include <iomanip>
+
 
 namespace dtwc::solver {
 
@@ -69,7 +71,7 @@ struct SparseMatrix
     for (int i = 0; i < m; i++) {
       for (int j = 0; j < n; j++) {
         if (j != 0) std::cout << ',';
-        std::cout << (*this)(i, j);
+        std::cout << std::setw(3) << (*this)(i, j);
       }
       std::cout << '\n';
     }
@@ -90,6 +92,8 @@ public:
 
   double &coeff_A(int x, int y) { return A(x, y); }
   double &coeff_b(int x) { return b[x]; }
+
+  void print_A() { A.print(); }
 };
 
 EqualityConstraints inline defaultConstraints(int Nb, int Nc)
@@ -102,7 +106,6 @@ EqualityConstraints inline defaultConstraints(int Nb, int Nc)
   const auto N_slack = Nineq;
   const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
 
-
   auto eq = EqualityConstraints(Nconstraints, Nvar);
   // Create b matrix:
   eq.coeff_b(0) = Nc;
@@ -110,29 +113,30 @@ EqualityConstraints inline defaultConstraints(int Nb, int Nc)
     eq.coeff_b(i + 1) = 1;
 
   // Create A matrix:
+  for (int i = 0; i < Nineq; i++)
+    eq.coeff_A(Neq + i, Nvar_original + i) = 1;
 
+  for (int i = 0; i < Nb; ++i) {
+    eq.coeff_A(0, i * (Nb + 1)) = 1.0; // Sum of diagonals is Nc
 
-    //   A.bottomRightCorner(N_slack, N_slack) = MatrixType::Identity(N_slack, N_slack);
+    for (int j = 0; j < Nb; j++)
+      eq.coeff_A(1 + j, Nb * i + j) = 1; // Every element belongs to one cluster.
 
-  //   for (int i = 0; i < Nb; ++i) {
-  //     A(0, i * (Nb + 1)) = 1.0;                                  // Sum of diagonals is Nc
-  //     A.block(1, Nb * i, Nb, Nb) = MatrixType::Identity(Nb, Nb); // Every element belongs to one cluster.
+    // ---------------
+    int shift = 0;
+    for (int j = 0; j < Nb; j++) {
+      const int block_begin_row = Nb + 1 + (Nb - 1) * i;
+      const int block_begin_col = Nb * i;
+      if (i == j) {
+        for (int k = 0; k < (Nb - 1); k++)
+          eq.coeff_A(block_begin_row + k, block_begin_col + j) = -1;
+        shift = 1;
+      } else
+        eq.coeff_A(block_begin_row + j - shift, block_begin_col + j) = 1;
+    }
+  }
 
-  //     // ---------------
-  //     int shift = 0;
-  //     for (int j = 0; j < Nb; j++) {
-  //       const int block_begin_row = Nb + 1 + (Nb - 1) * i;
-  //       const int block_begin_col = Nb * i;
-  //       if (i == j) {
-  //         A.block(block_begin_row, block_begin_col + j, Nb - 1, 1) = -1 * MatrixType::Ones(Nb - 1, 1);
-  //         shift = 1;
-  //       } else
-  //         A(block_begin_row + j - shift, block_begin_col + j) = 1;
-  //     }
-  //   }
-
-
-  return EqualityConstraints{};
+  return eq;
 };
 
 } // namespace dtwc::solver
