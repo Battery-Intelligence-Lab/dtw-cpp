@@ -23,6 +23,8 @@ class Problem;
 
 void MIP_clustering_byGurobi(Problem &prob);
 void MIP_clustering_byGurobi_relaxed(Problem &prob);
-void MIP_clustering_bySimplex(Problem &prob);
+
+void MIP_clustering_bySparseSimplex(Problem &prob);
+void MIP_clustering_byDenseSimplex(Problem &prob);
 
 } // namespace dtwc

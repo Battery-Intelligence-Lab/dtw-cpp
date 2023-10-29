@@ -12,6 +12,7 @@
 #include "settings.hpp"
 #include "utility.hpp"
 #include "solver/Simplex.hpp"
+#include "solver/SparseSimplex.hpp"
 
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -23,6 +24,7 @@
 
 namespace dtwc {
 
+template <typename T>
 void MIP_clustering_bySimplex(Problem &prob)
 {
   std::cout << "Simplex is being called!" << std::endl;
@@ -30,7 +32,7 @@ void MIP_clustering_bySimplex(Problem &prob)
 
   prob.clear_clusters();
 
-  thread_local dtwc::solver::Simplex simplexSolver(prob);
+  thread_local auto simplexSolver = T(prob);
 
   std::cout << "Problem formulation finished in " << clk << '\n';
   simplexSolver.gomoryAlgorithm();
@@ -59,6 +61,16 @@ void MIP_clustering_bySimplex(Problem &prob)
 
     i_cluster++;
   }
+}
+
+void MIP_clustering_bySparseSimplex(Problem &prob)
+{
+  MIP_clustering_bySimplex<dtwc::solver::SparseSimplex>(prob);
+}
+
+void MIP_clustering_byDenseSimplex(Problem &prob)
+{
+  MIP_clustering_bySimplex<dtwc::solver::Simplex>(prob);
 }
 
 
