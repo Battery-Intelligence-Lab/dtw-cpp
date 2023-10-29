@@ -1,6 +1,7 @@
 #include "dtwc.hpp"
 #include "examples.hpp"
 #include "solver/Simplex.hpp"
+#include "solver/SparseSimplex.hpp"
 #include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>
@@ -15,43 +16,22 @@
 #include <Eigen/Sparse>
 
 #include "solver/EqualityConstraints.hpp"
+#include "solver/test.hpp"
+
 
 int main()
 {
+  auto [eq, c] = dtwc::solver::get_prob_small();
 
+  dtwc::solver::SparseSimplex prob_small(eq, c);
 
-  auto eq = dtwc::solver::defaultConstraints(4, 5);
-
-  eq.A.print();
-
+  prob_small.gomoryAlgorithm();
 
   // Define A matrix using triplet format for setting non-zero entries
 
 
   // Here are some examples. You can either take the contents of example functions into main or modify and run them.
   dtwc::Clock clk; // Create a clock object
-
-  // // Define A matrix
-  // Eigen::MatrixXd A(2, 4);
-  // A << -4, 6, 1, 0,
-  //   1, 1, 0, 1;
-
-  // // Define b vector
-  // Eigen::VectorXd b(2);
-  // b << 5,
-  //   5;
-
-  // // Define c vector
-  // Eigen::VectorXd c(4);
-  // c << 1, -2, 0, 0;
-
-  // // Output the values to verify
-  // std::cout << "Matrix A:\n"
-  //           << A << std::endl;
-  // std::cout << "Vector b:\n"
-  //           << b << std::endl;
-  // std::cout << "Vector c:\n"
-  //           << c << std::endl;
 
 
   // dtwc::solver::Simplex mySimplexProblem(A, b, c);

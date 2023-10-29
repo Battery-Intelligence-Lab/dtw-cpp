@@ -104,16 +104,52 @@ std::tuple<int, int, bool, bool> SimplexTable::simplexTableau()
 
 void SimplexTable::pivoting(int p, int q)
 {
+  // p column, q = row.
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-  // const double thepivot = table(q, p);
-  // if (isAround(thepivot, 0.0))
-  //   throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
+  const double thepivot = innerTable[p][q];
+  if (isAround(thepivot, 0.0))
+    throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
-  // table.row(q) /= thepivot; // Make (p,q) one.
+  auto &pivotCol = innerTable[p]; //
 
-  // for (int i = 0; i < table.rows(); ++i)
-  //   if (i != q)
-  //     table.row(i) -= table(i, p) * table.row(q);
+  for (int i = 0; i < innerTable.size(); i++) {
+    if (i == p) continue; // Dont delete the pivot column yet.
+
+    auto currentCol_q = innerTable[i].find(q);
+    if (currentCol_q != innerTable[i].end()) // We have a row like that!
+    {
+      (currentCol_q->second) /= thepivot; // Normalise by pivot;
+
+      reducedCosts[i] -= reducedCosts[p] * (currentCol_q->second); // Remove from last row.
+
+      for (auto itr = innerTable[p].begin(); itr != innerTable[p].end(); ++itr)
+        if (itr->first != q) {
+          auto it_now = innerTable[i].find(itr->first);
+          if (it_now != innerTable[i].end()) // If that row exists only then subtract otherwise equate.
+            (it_now->second) -= (itr->second) * (currentCol_q->second);
+          else
+            innerTable[i][itr->first] = -(itr->second) * (currentCol_q->second);
+        }
+
+      std::erase_if(innerTable[i], [](const auto &item) {
+        auto const &[key, value] = item;
+        return isAround(value, 0.0); // Remove zero elements to make it compact.
+      });
+    }
+  }
+
+  rhs[q] /= thepivot;
+  // We always have RHS.
+  for (auto [key, val] : innerTable[p])
+    if (key != q)
+      rhs[key] -= val * rhs[q];
+
+  negativeObjective -= rhs[q] * reducedCosts[p];
+
+  // Deal with the pivot column now.
+  innerTable[p].clear();
+  innerTable[p][q] = 1;
+  reducedCosts[p] = 0;
 }
 
 
