@@ -13,7 +13,6 @@
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"
-#include "SimplexTable.hpp"
 
 #include <vector>
 #include <string>
@@ -51,10 +50,6 @@ class Simplex
   MatrixType A;  // A*x = b
   VectorXd b, c; // c*x = cost.
   int nGomory{ -1 };
-
-  SimplexTable table;
-  EqualityConstraints eq;
-
 
 public:
   Simplex(MatrixType A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}

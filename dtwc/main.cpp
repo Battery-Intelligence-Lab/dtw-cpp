@@ -22,7 +22,7 @@ int main()
 
   auto eq = dtwc::solver::defaultConstraints(4, 5);
 
-  eq.print_A();
+  eq.A.print();
 
 
   // Define A matrix using triplet format for setting non-zero entries

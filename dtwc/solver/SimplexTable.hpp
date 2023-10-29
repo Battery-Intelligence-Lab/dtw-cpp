@@ -1,5 +1,5 @@
 /*
- * SimplexSolver.hpp
+ * SimplexTable.hpp
  *
  * Sparse implementation of a Simplex table.
 
@@ -15,7 +15,6 @@
 #include "solver_util.hpp"
 #include "EqualityConstraints.hpp"
 
-
 #include <vector>
 #include <string>
 #include <numeric>
@@ -24,8 +23,6 @@
 
 #include <tuple>
 #include <stdexcept>
-#include <set>
-#include <limits>
 #include <map>
 
 
@@ -48,44 +45,51 @@ public:
   int rows() const { return mtab; }
   int cols() const { return ntab; }
 
-
-  void createTableau(int Nb, int Nc)
+  void clear()
   {
-    const auto Neq = Nb + 1;
-    const auto Nineq = Nb * (Nb - 1);
-    const auto Nconstraints = Neq + Nineq;
+    rhs.clear();
+    reducedCosts.clear();
 
-    const auto Nvar_original = Nb * Nb;
-    const auto N_slack = Nineq;
-    const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
-
-
-    *this = SimplexTable(Nconstraints + 1, Nvar + Nconstraints + 1);
-
-    negativeObjective = -(Nb + Nc);
-    rhs[0] = Nc;
-    for (int i = 0; i < Nb; ++i)
-      rhs[i + 1] = 1;
+    for (auto &map : innerTable) // Should not remove allocated memory for maps.
+      map.clear();
   }
 
-  int getRow(int col) const
+  void createPhaseOneTableau(const EqualityConstraints &eq)
   {
-    if (col < 0 || col >= (ntab - 1)) // Check if index is in the valid range
-      throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", col, ntab - 2));
+    // Table size (m + 1, m + n + 1)
+    // table.block(0, 0, m, n) = A;
+    // table.block(0, n, m, m) = SimplexTable::Identity(m, m);
+    // table.block(0, n + m, m, 1) = b;
 
-    int rowIndex = -1; // Using -1 to represent None
-    // So this is checking there is one and only one 1.0 element! -> #TODO change with something keeping book of basic variables in future.
-    for (auto [key, value] : innerTable[col])
-      if (!isAround(value, 0)) // The entry is non zero
-      {
-        if (rowIndex == -1 && isAround(value, 1.0)) // The entry is one, and the index has not been found yet.
-          rowIndex = key;
-        else
-          return -1;
-      }
+    // // Set the first n columns of the last row
+    // for (int k = 0; k < n; ++k)
+    //   table.row(m)(k) = -table.block(0, k, m, 1).sum();
 
-    return rowIndex;
+    // // Set columns n through n+m of the last row to 0.0
+    // table.block(m, n, 1, m).setZero();
+
+    // // Set the last element of the last row
+    // table(m, n + m) = -table.block(0, n + m, m, 1).sum();
+
+    const int m = eq.A.rows(), n = eq.A.cols();
+    clear();                  // Clear the things.
+    innerTable.resize(m + n); // Adding m auxillary variables.
+    rhs = eq.b;
+    reducedCosts.resize(n + m, 0.0); // Set columns n through n+m of the last row to 0.0
+
+    for (const auto [key, val] : eq.A.data) {
+      const auto [i, j] = key;
+      innerTable[j][i] = val;
+      reducedCosts[j] -= val; // Set the first n columns of the last row
+    }
+
+    for (int i = 0; i < m; i++)
+      innerTable[n + i][i] = 1.0;
+
+    negativeObjective = -std::reduce(rhs.begin(), rhs.end());
   }
+
+  int getRow(int col) const;
 
   double getObjective() const { return -negativeObjective; }
 
@@ -97,19 +101,23 @@ public:
 
   double getRHS(int k) const { return rhs[k]; }
 
-  void pivoting(int p, int q)
-  {
-    // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-    const double thepivot = table(q, p);
-    if (isAround(thepivot, 0.0))
-      throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
+  double getReducedCost(int k) const { return reducedCosts[k]; }
 
-    table.row(q) /= thepivot; // Make (p,q) one.
+  double inner(int i, int j) { return innerTable[j][i]; }
 
-    for (int i = 0; i < table.rows(); ++i)
-      if (i != q)
-        table.row(i) -= table(i, p) * table.row(q);
-  }
+
+  double &setReducedCost(int k) { return reducedCosts[k]; }
+  void setNegativeObjective(double val) { negativeObjective = val; }
+
+  int findNegativeCost();
+
+  int findMinStep(int p);
+
+  std::tuple<int, int, bool, bool> simplexTableau();
+
+  void pivoting(int p, int q);
+
+  std::pair<bool, bool> simplexAlgorithmTableau();
 };
 
 

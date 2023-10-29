@@ -32,176 +32,81 @@
 
 namespace dtwc::solver {
 
-void pivoting(SimplexTable &table, int p, int q)
-{
-  // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-  const double thepivot = table(q, p);
-  if (isAround(thepivot, 0.0))
-    throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
-  table.row(q) /= thepivot; // Make (p,q) one.
-
-  for (int i = 0; i < table.rows(); ++i)
-    if (i != q)
-      table.row(i) -= table(i, p) * table.row(q);
-}
-
-std::tuple<int, int, bool, bool> simplexTableau(const SimplexTable &table)
-{
-  const int mtab = table.rows(), ntab = table.cols();
-  const int m = mtab - 1, n = ntab - 1;
-
-  // Find the first negative cost, if there are none, then table is optimal.
-  int p = -1;
-  for (int i = 0; i < n; i++) // Reduced cost.
-    if (table(Eigen::last, i) < -epsilon) {
-      p = i;
-      break;
-    }
-
-  if (p == -1) // The table is optimal
-    return std::make_tuple(-1, -1, true, true);
-
-  double vkTolerance = 1e-10;
-  // Calculate the maximum step that can be done along the basic direction d[p]
-  double minStep = std::numeric_limits<double>::infinity();
-  int q{ -1 }; // row of min step. -1 means unbounded.
-
-  for (int k = 0; k < m; k++)
-    if (table(k, p) > vkTolerance) {
-      const auto step = table(k, Eigen::last) / table(k, p); // table(k,p) = minus(d)
-      if (step < minStep) {
-        minStep = step;
-        q = k;
-      }
-    }
-
-  if (q == -1) // The table is unbounded
-    return std::make_tuple(-1, -1, false, false);
-
-  return std::make_tuple(p, q, false, true);
-}
-
-std::pair<bool, bool> simplexAlgorithmTableau(SimplexTable &table)
-{
-  while (true) {
-    auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(table);
-
-    if (optimal) return { true, false };
-    if (!bounded) return { false, true };
-
-    pivoting(table, colPivot, rowPivot);
-  }
-}
-
-SimplexTable createTableau(const SimplexTable &A, const VectorXd &b, VectorXd &c)
-{
-  const int m = A.rows(), n = A.cols();
-  SimplexTable table(m + 1, n + m + 1);
-
-  table.block(0, 0, m, n) = A;
-  table.block(0, n, m, m) = SimplexTable::Identity(m, m);
-  table.block(0, n + m, m, 1) = b;
-
-  // Set the first n columns of the last row
-  for (int k = 0; k < n; ++k)
-    table.row(m)(k) = -table.block(0, k, m, 1).sum();
-
-  // Set columns n through n+m of the last row to 0.0
-  table.block(m, n, 1, m).setZero();
-
-  // Set the last element of the last row
-  table(m, n + m) = -table.block(0, n + m, m, 1).sum();
-
-  return table;
-}
-
-std::tuple<SimplexTable, bool, bool> simplex(SimplexTable &A, VectorXd &b, VectorXd &c)
+std::tuple<bool, bool> SparseSimplex::simplex()
 {
   // bool unbounded{}, optimal{};
-  const int m = A.rows(), n = A.cols();
-
-  if (b.rows() != m)
-    throw std::runtime_error(fmt::format("Incompatible sizes: A is {}x{}, b is of length {}, and should be {}", m, n, b.rows(), m));
-
-  if (c.size() != n)
-    throw std::runtime_error(fmt::format("Incompatible sizes: A is {}x{}, c is of length {}, and should be {}", m, n, c.size(), n));
+  const int m = eq.A.rows(), n = eq.A.cols();
 
   // Ensure all elements of b are non-negative
   for (int i = 0; i < m; ++i)
-    if (b(i) < 0) {
-      A.row(i) = -A.row(i);
-      b(i) = -b(i);
+    if (eq.b[i] < 0) {
+      eq.b[i] = -eq.b[i];
+      for (auto it = eq.A.row_begin(i), it_end = eq.A.row_end(i); it != it_end; ++it)
+        it->second = -it->second;
     }
 
-  SimplexTable phaseOneTableau = createTableau(A, b, c);
+  table.createPhaseOneTableau(eq);
 
-  auto [optimal, unbounded] = simplexAlgorithmTableau(phaseOneTableau);
+  auto [optimal, unbounded] = table.simplexAlgorithmTableau();
 
-  if (unbounded) return { phaseOneTableau, true, false };
-
-  const auto isInfeasible = phaseOneTableau(Eigen::last, Eigen::last) < -epsilon;
-  if (isInfeasible) return { phaseOneTableau, false, true }; // Infeasible problem
+  if (unbounded) return { true, false };
+  if (table.getObjective() > epsilon) return { false, true }; // Infeasible problem
 
   std::vector<int> basicRows(m + n);
   std::set<int> basicIndices;
   std::set<int> tobeCleaned;
 
   for (int k = 0; k < m + n; ++k) {
-    basicRows[k] = phaseOneTableau.getRow(k);
+    basicRows[k] = table.getRow(k);
     if (basicRows[k] != -1) {
       basicIndices.insert(k);
       if (k >= n) tobeCleaned.insert(k); // If k>= n are basic indices then clean them.
     }
   }
 
-  int ZeroCount = phaseOneTableau.unaryExpr([](double elem) { return isAround(elem, 0.0); }).count();
+  // while (!tobeCleaned.empty()) {
+  //   int auxiliaryColumn = *tobeCleaned.begin();
+  //   tobeCleaned.erase(tobeCleaned.begin());
 
-  std::cout << "Table:\n"
-            << phaseOneTableau.rows() << 'x' << phaseOneTableau.cols() << " : " << ZeroCount << '\n';
+  //   int rowpivotIndex = basicRows[auxiliaryColumn];
+  //   VectorXd rowpivot = phaseOneTableau.row(rowpivotIndex);
 
-  while (!tobeCleaned.empty()) {
-    int auxiliaryColumn = *tobeCleaned.begin();
-    tobeCleaned.erase(tobeCleaned.begin());
+  //   std::vector<int> originalNonbasic;
+  //   for (int i = 0; i < n; ++i)
+  //     if (basicIndices.find(i) == basicIndices.end())
+  //       originalNonbasic.push_back(i);
 
-    int rowpivotIndex = basicRows[auxiliaryColumn];
-    VectorXd rowpivot = phaseOneTableau.row(rowpivotIndex);
+  //   int colpivot = -1;
+  //   double maxVal = std::numeric_limits<double>::epsilon();
 
-    std::vector<int> originalNonbasic;
-    for (int i = 0; i < n; ++i)
-      if (basicIndices.find(i) == basicIndices.end())
-        originalNonbasic.push_back(i);
+  //   for (int col : originalNonbasic)
+  //     if (std::abs(rowpivot(col)) > maxVal) {
+  //       maxVal = std::abs(rowpivot(col));
+  //       colpivot = col;
+  //     }
 
-    int colpivot = -1;
-    double maxVal = std::numeric_limits<double>::epsilon();
+  //   if (colpivot != -1) {
+  //     pivoting(phaseOneTableau, colpivot, rowpivotIndex);
+  //     basicRows[colpivot] = rowpivotIndex;
+  //     basicRows[auxiliaryColumn] = -1;
+  //   } else {
+  //     phaseOneTableau.conservativeResize(phaseOneTableau.rows() - 1, phaseOneTableau.cols());
+  //     for (int k = 0; k < m + n; ++k)
+  //       basicRows[k] = phaseOneTableau.getRow(k);
+  //   }
+  // }
 
-    for (int col : originalNonbasic)
-      if (std::abs(rowpivot(col)) > maxVal) {
-        maxVal = std::abs(rowpivot(col));
-        colpivot = col;
-      }
+  // SimplexTable leftPart = phaseOneTableau.leftCols(n);
+  // SimplexTable rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
 
-    if (colpivot != -1) {
-      pivoting(phaseOneTableau, colpivot, rowpivotIndex);
-      basicRows[colpivot] = rowpivotIndex;
-      basicRows[auxiliaryColumn] = -1;
-    } else {
-      phaseOneTableau.conservativeResize(phaseOneTableau.rows() - 1, phaseOneTableau.cols());
-      for (int k = 0; k < m + n; ++k)
-        basicRows[k] = phaseOneTableau.getRow(k);
-    }
-  }
-
-  SimplexTable leftPart = phaseOneTableau.leftCols(n);
-  SimplexTable rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
-
-  SimplexTable phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
-  phaseTwoTableau << leftPart, rightPart;
+  // SimplexTable phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
+  // phaseTwoTableau << leftPart, rightPart;
 
   // Reset basicRows for startPhaseTwo -> phaseTwoTableau
   basicRows.resize(n);
   for (int k = 0; k < n; ++k)
-    basicRows[k] = phaseTwoTableau.getRow(k);
+    basicRows[k] = table.getRow(k);
 
   // Calculate last row
   std::vector<int> basicIndicesList, nonbasicIndicesList;
@@ -215,22 +120,22 @@ std::tuple<SimplexTable, bool, bool> simplex(SimplexTable &A, VectorXd &b, Vecto
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
     for (int j : basicIndicesList) {
-      //  std::cout << "Value: " << phaseTwoTableau(basicRows[j], k) << '\n';
-      sumVal += c(j) * phaseTwoTableau(basicRows[j], k);
+      sumVal += c[j] * table.inner(basicRows[j], k);
     }
 
-    phaseTwoTableau(phaseTwoTableau.rows() - 1, k) = c(k) - sumVal;
+    table.setReducedCost(k) = c[k] - sumVal;
   }
 
   double lastRowSum = 0.0;
   for (int j : basicIndicesList)
-    lastRowSum += c(j) * phaseTwoTableau(basicRows[j], phaseTwoTableau.cols() - 1);
+    lastRowSum += c[j] * table.getRHS(basicRows[j]);
 
-  phaseTwoTableau(phaseTwoTableau.rows() - 1, phaseTwoTableau.cols() - 1) = -lastRowSum;
+
+  table.setNegativeObjective(-lastRowSum);
 
   // Phase II
-  auto [optimal2, unbounded2] = simplexAlgorithmTableau(phaseTwoTableau); // it was startPhaseTwo
-  return { phaseTwoTableau, unbounded2, false };
+  auto [optimal2, unbounded2] = table.simplexAlgorithmTableau(); // it was startPhaseTwo
+  return { unbounded2, false };
 }
 
 std::pair<std::vector<double>, double> SparseSimplex::getResults() const
@@ -248,10 +153,10 @@ std::pair<std::vector<double>, double> SparseSimplex::getResults() const
 void SparseSimplex::gomory()
 {
   fmt::println("==================================");
-  fmt::println("Problem with {} variables and {} constraints", eq.cols(), eq.rows());
+  fmt::println("Problem with {} variables and {} constraints", eq.A.cols(), eq.A.rows());
 
   bool unbounded{}, infeasible{};
-  std::tie(table, unbounded, infeasible) = simplex(A, b, c); // Assuming simplex is defined
+  std::tie(unbounded, infeasible) = simplex(); // Assuming simplex is defined
 
   if (unbounded) {
     fmt::println("Unbounded problem");
@@ -269,30 +174,29 @@ void SparseSimplex::gomory()
   if constexpr (settings::debug_Simplex)
     fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
-  std::vector<int> fractionalMask;
 
-  for (int i = 0; i < (table.rows() - 1); i++)
-    if (isFractional(table.getRHS(i))) // Scan last column
-      fractionalMask.push_back(i);
+  int m_now = eq.A.rows();
+  int n_now = eq.A.cols();
 
-  nGomory = fractionalMask.size();
+  nGomory = 0;
+  for (int i = 0; i < (table.rows() - 1); i++) {
+    double rhs_now = table.getRHS(i);
+    if (isFractional(rhs_now)) // Scan last column
+    {
+      eq.A(m_now + nGomory, n_now + nGomory) = 1.0; // Slack variable for new row.
+
+      for (auto it = eq.A.row_begin(i), it_end = eq.A.row_end(i); it != it_end; ++it)
+        eq.A(m_now + nGomory, (it->first).col) = std::floor(it->second); // gamma
+
+      eq.b.emplace_back(std::floor(rhs_now));
+      nGomory++; // One more gomory cut.
+    }
+  }
+
+  eq.A.expand(m_now + nGomory, n_now + nGomory);
+
+  c.resize(n_now + nGomory); // add zeros
   fmt::println("Number of Gomory cuts: {}", nGomory);
-
-  SimplexTable gamma = table(fractionalMask, Eigen::seqN(0, table.cols() - 1)).array().floor();
-  VectorXd bplus = table(fractionalMask, table.cols() - 1).array().floor();
-
-  SimplexTable newA(A.rows() + nGomory, A.cols() + nGomory);
-  VectorXd newb(A.rows() + nGomory);
-
-  newA << A, SimplexTable::Zero(A.rows(), nGomory),
-    gamma, SimplexTable::Identity(nGomory, nGomory);
-
-  newb << b, bplus;
-
-
-  A = newA;
-  b = newb;
-  c.resize(A.cols() + nGomory); // add zeros
 }
 
 SparseSimplex::SparseSimplex(Problem &prob)

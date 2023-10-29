@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 
+
 #include <tuple>
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -39,16 +40,16 @@ class SparseSimplex
 {
   using VectorType = std::vector<double>;
   // -1 means None.
-  VectorType c; // c*x = cost.
   int nGomory{ -1 };
 
   SimplexTable table;
   EqualityConstraints eq;
+  VectorType c; // c*x = cost.
 
 public:
-  // SparseSimplex(MatrixType A_, VectorXd b_, VectorXd c_) : A(A_), b(b_), c(c_) {}
   SparseSimplex() = default;
   SparseSimplex(Problem &prob);
+  SparseSimplex(EqualityConstraints &eq_, const VectorType &c_) : eq(eq_), c(c_) {}
 
   void gomory();
   void gomoryAlgorithm()
@@ -57,13 +58,7 @@ public:
   }
 
   std::pair<std::vector<double>, double> getResults() const;
+  std::tuple<bool, bool> simplex();
 };
-
-
-void inline pivoting(SimplexTable &tableau, int p, int q);
-std::tuple<int, int, bool, bool> inline simplexTableau(const SimplexTable &tableau);
-std::pair<bool, bool> inline simplexAlgorithmTableau(SimplexTable &input_tableau);
-SimplexTable inline createTableau(const SimplexTable &A, const VectorType &b, VectorType &c);
-std::tuple<SimplexTable, bool, bool> inline simplex(EqualityConstraints &eq, VectorType &c);
 
 } // namespace dtwc::solver
