@@ -97,6 +97,8 @@ std::tuple<bool, bool> SparseSimplex::simplex()
   //   }
   // }
 
+  table.removeColumns(n, n + m);
+
   // SimplexTable leftPart = phaseOneTableau.leftCols(n);
   // SimplexTable rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
 
@@ -185,8 +187,12 @@ void SparseSimplex::gomory()
     {
       eq.A(m_now + nGomory, n_now + nGomory) = 1.0; // Slack variable for new row.
 
-      for (auto it = eq.A.row_begin(i), it_end = eq.A.row_end(i); it != it_end; ++it)
-        eq.A(m_now + nGomory, (it->first).col) = std::floor(it->second); // gamma
+      for (auto j = 0; j < eq.A.cols(); j++) {
+        auto val = std::floor(table.inner(i, j)); // gamma
+
+        if (!isAround(val))
+          eq.A(m_now + nGomory, j) = val;
+      }
 
       eq.b.emplace_back(std::floor(rhs_now));
       nGomory++; // One more gomory cut.

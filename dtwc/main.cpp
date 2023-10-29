@@ -26,6 +26,10 @@ int main()
   dtwc::solver::SparseSimplex prob_small(eq, c);
 
   prob_small.gomoryAlgorithm();
+  auto [solution_small, copt_small] = prob_small.getResults();
+
+  fmt::println("Solution: {} and Copt = [{}]\n", solution_small, copt_small);
+
 
   // Define A matrix using triplet format for setting non-zero entries
 

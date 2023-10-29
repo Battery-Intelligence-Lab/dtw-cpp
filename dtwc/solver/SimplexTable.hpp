@@ -54,6 +54,16 @@ public:
       map.clear();
   }
 
+  void removeColumns(int a, int b)
+  {
+    // Removes columns [a, b)
+    innerTable.erase(innerTable.begin() + a, innerTable.begin() + b);
+    reducedCosts.erase(reducedCosts.begin() + a, reducedCosts.begin() + b);
+
+    ntab -= (b - a);
+  }
+
+
   void createPhaseOneTableau(const EqualityConstraints &eq)
   {
     // Table size (m + 1, m + n + 1)
@@ -72,6 +82,8 @@ public:
     // table(m, n + m) = -table.block(0, n + m, m, 1).sum();
 
     const int m = eq.A.rows(), n = eq.A.cols();
+    mtab = m + 1;
+    ntab = m + n + 1;
     clear();                  // Clear the things.
     innerTable.resize(m + n); // Adding m auxillary variables.
     rhs = eq.b;
