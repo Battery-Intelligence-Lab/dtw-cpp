@@ -45,9 +45,10 @@ std::tuple<bool, bool> SparseSimplex::simplex()
       for (auto it = eq.A.row_begin(i), it_end = eq.A.row_end(i); it != it_end; ++it)
         it->second = -it->second;
     }
-
+  std::cout << "Creating Phase-I table." << std::endl;
   table.createPhaseOneTableau(eq);
 
+  std::cout << "Running algorithm with Phase-I table." << std::endl;
   auto [optimal, unbounded] = table.simplexAlgorithmTableau();
 
   if (unbounded) return { true, false };
@@ -64,6 +65,9 @@ std::tuple<bool, bool> SparseSimplex::simplex()
       if (k >= n) tobeCleaned.insert(k); // If k>= n are basic indices then clean them.
     }
   }
+
+  if (!tobeCleaned.empty())
+    throw "There are things to be cleaned!\n";
 
   // while (!tobeCleaned.empty()) {
   //   int auxiliaryColumn = *tobeCleaned.begin();
@@ -97,33 +101,26 @@ std::tuple<bool, bool> SparseSimplex::simplex()
   //   }
   // }
 
+  std::cout << "Creating Phase-II table." << std::endl;
+
   table.removeColumns(n, n + m);
 
-  // SimplexTable leftPart = phaseOneTableau.leftCols(n);
-  // SimplexTable rightPart = phaseOneTableau.rightCols(phaseOneTableau.cols() - n - m);
-
-  // SimplexTable phaseTwoTableau(leftPart.rows(), leftPart.cols() + rightPart.cols());
-  // phaseTwoTableau << leftPart, rightPart;
-
-  // Reset basicRows for startPhaseTwo -> phaseTwoTableau
   basicRows.resize(n);
   for (int k = 0; k < n; ++k)
     basicRows[k] = table.getRow(k);
 
   // Calculate last row
   std::vector<int> basicIndicesList, nonbasicIndicesList;
-  for (int i = 0; i < n; ++i) {
+  for (int i = 0; i < n; ++i)
     if (basicRows[i] != -1)
       basicIndicesList.push_back(i);
     else
       nonbasicIndicesList.push_back(i);
-  }
 
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
-    for (int j : basicIndicesList) {
+    for (int j : basicIndicesList)
       sumVal += c[j] * table.inner(basicRows[j], k);
-    }
 
     table.setReducedCost(k) = c[k] - sumVal;
   }
@@ -132,10 +129,10 @@ std::tuple<bool, bool> SparseSimplex::simplex()
   for (int j : basicIndicesList)
     lastRowSum += c[j] * table.getRHS(basicRows[j]);
 
-
   table.setNegativeObjective(-lastRowSum);
 
   // Phase II
+  std::cout << "Running algorithm with Phase-II table." << std::endl;
   auto [optimal2, unbounded2] = table.simplexAlgorithmTableau(); // it was startPhaseTwo
   return { unbounded2, false };
 }

@@ -110,10 +110,9 @@ void SimplexTable::pivoting(int p, int q)
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
-  auto &pivotCol = innerTable[p]; //
 
-  for (int i = 0; i < innerTable.size(); i++) {
-    if (i == p) continue; // Dont delete the pivot column yet.
+  auto oneTask = [this, thepivot, p, q](int i) {
+    if (i == p) return; // Dont delete the pivot column yet.
 
     auto currentCol_q = innerTable[i].find(q);
     if (currentCol_q != innerTable[i].end()) // We have a row like that!
@@ -122,13 +121,13 @@ void SimplexTable::pivoting(int p, int q)
 
       reducedCosts[i] -= reducedCosts[p] * (currentCol_q->second); // Remove from last row.
 
-      for (auto itr = innerTable[p].begin(); itr != innerTable[p].end(); ++itr)
-        if (itr->first != q) {
-          auto it_now = innerTable[i].find(itr->first);
+      for (auto [key, val] : innerTable[p]) // pivot Column
+        if (key != q) {
+          auto it_now = innerTable[i].find(key);
           if (it_now != innerTable[i].end()) // If that row exists only then subtract otherwise equate.
-            (it_now->second) -= (itr->second) * (currentCol_q->second);
+            (it_now->second) -= val * (currentCol_q->second);
           else
-            innerTable[i][itr->first] = -(itr->second) * (currentCol_q->second);
+            innerTable[i][key] = -val * (currentCol_q->second);
         }
 
       std::erase_if(innerTable[i], [](const auto &item) {
@@ -136,7 +135,9 @@ void SimplexTable::pivoting(int p, int q)
         return isAround(value, 0.0); // Remove zero elements to make it compact.
       });
     }
-  }
+  };
+
+  dtwc::run(oneTask, innerTable.size());
 
   rhs[q] /= thepivot;
   // We always have RHS.

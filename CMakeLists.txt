@@ -17,7 +17,7 @@ endif()
 
 
 
-set(DTWC_ENABLE_GUROBI OFF)
+set(DTWC_ENABLE_GUROBI ON)
 
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake

@@ -94,8 +94,8 @@ inline void UCR_2018()
     //(settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/Adiac/Adiac_TEST.tsv"),
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    //(settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
   size_t solved = 0;
