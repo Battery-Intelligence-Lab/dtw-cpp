@@ -43,7 +43,7 @@ class SparseSimplex
   // -1 means None.
   int nGomory{ -1 };
   int Nb{}, Nc{};
-  SimplexTable table;
+  SimplexRowTable table;
   EqualityConstraints eq;
   VectorType c; // c*x = cost.
 

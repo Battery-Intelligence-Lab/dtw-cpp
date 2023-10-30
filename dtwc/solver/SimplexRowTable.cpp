@@ -28,6 +28,7 @@
 #include <set>
 #include <limits>
 #include <map>
+#include <execution>
 
 
 namespace dtwc::solver {
@@ -75,26 +76,34 @@ int SimplexRowTable::findNegativeCost()
 
 int SimplexRowTable::findMinStep(int p)
 {
-  constexpr double tol = 1e-10;
-  // Calculate the maximum step that can be done along the basic direction d[p]
-  double minStep = std::numeric_limits<double>::infinity();
-  int q{ -1 }; // row of min step. -1 means unbounded.
 
-  for (int i = 0; i < innerTable.size(); i++) {
-    auto it = innerTable[i].find(p);
-    if (it != innerTable[i].end()) {
-      auto [k, minus_d] = (*it);
-      if (minus_d > tol) {
-        const auto step = rhs[i] / minus_d;
-        if (step < minStep) {
-          minStep = step;
-          q = i;
+  // Calculate the maximum step that can be done along the basic direction d[p]
+
+  constexpr double tol = 1e-10;
+  using StepIndexPair = std::pair<double, int>;
+  StepIndexPair initial = { std::numeric_limits<double>::infinity(), -1 }; // row of min step. -1 means unbounded.
+
+  auto result = std::transform_reduce(
+    std::execution::par, // Use parallel execution policy
+    innerTable.begin(),
+    innerTable.end(),
+    initial,
+    [](const StepIndexPair &a, const StepIndexPair &b) -> StepIndexPair {
+      return (a.first < b.first) ? a : b;
+    },
+    [p, tol, this](const auto &row) -> StepIndexPair {
+      auto it = row.find(p);
+      if (it != row.end()) {
+        auto [k, minus_d] = *it;
+        if (minus_d > tol) {
+          int rowIndex = std::distance(innerTable.begin(), std::find(innerTable.begin(), innerTable.end(), row));
+          return { rhs[rowIndex] / minus_d, rowIndex };
         }
       }
-    }
-  }
+      return { std::numeric_limits<double>::infinity(), -1 };
+    });
 
-  return q;
+  return result.second;
 }
 
 std::tuple<int, int, bool, bool> SimplexRowTable::simplexTableau()
