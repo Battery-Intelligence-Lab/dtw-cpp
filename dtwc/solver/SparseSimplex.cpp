@@ -45,16 +45,16 @@ void SparseSimplex::warmStartPhaseOne()
       table.pivoting(p, q);
   }
 
-  const int slack_begin = (Nb * Nb) + (Nb - 1);
-  const int slack_end = (Nb * Nb) + (Nb - 1) * Nb;
+  // const int slack_begin = (Nb * Nb) + (Nb - 1);
+  // const int slack_end = (Nb * Nb) + (Nb - 1) * Nb;
 
-  for (int p = slack_begin; p < slack_end; p++) { // Make slack variables one.
-    const int q = table.findMinStep(p);
-    if (q != -1)
-      table.pivoting(p, q);
+  // for (int p = slack_begin; p < slack_end; p++) { // Make slack variables one.
+  //   const int q = table.findMinStep(p);
+  //   if (q != -1)
+  //     table.pivoting(p, q);
 
-    std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
-  }
+  //   std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
+  // }
 
 
   std::cout << "Warmstart ended in " << clk << std::endl;
@@ -75,7 +75,7 @@ std::tuple<bool, bool> SparseSimplex::simplex()
     }
   std::cout << "Creating Phase-I table." << std::endl;
   table.createPhaseOneTableau(eq);
-  // warmStartPhaseOne();
+  warmStartPhaseOne();
 
   std::cout << "Running algorithm with Phase-I table." << std::endl;
   auto [optimal, unbounded] = table.simplexAlgorithmTableau();

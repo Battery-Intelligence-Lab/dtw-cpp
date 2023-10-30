@@ -175,7 +175,7 @@ void SimplexRowTable::pivoting(int p, int q)
     });
   };
 
-  dtwc::run(oneTask, innerTable.size(), 1);
+  dtwc::run(oneTask, innerTable.size());
 }
 
 

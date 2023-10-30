@@ -38,6 +38,8 @@ int SimplexTable::getRow(int col) const
   if (col < 0 || col >= (ntab - 1)) // Check if index is in the valid range
     throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", col, ntab - 2));
 
+  if (!isAround(reducedCosts[col], 0.0)) return -1;
+
   int rowIndex = -1; // Using -1 to represent None
   // So this is checking there is one and only one 1.0 element! -> #TODO change with something keeping book of basic variables in future.
   for (auto [key, value] : innerTable[col])
