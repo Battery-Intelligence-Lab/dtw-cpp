@@ -14,6 +14,7 @@
 #include "../utility.hpp"
 #include "solver_util.hpp"
 #include "SimplexTable.hpp"
+#include "SimplexRowTable.hpp"
 
 #include <vector>
 #include <string>
@@ -41,8 +42,8 @@ class SparseSimplex
   using VectorType = std::vector<double>;
   // -1 means None.
   int nGomory{ -1 };
-
-  SimplexTable table;
+  int Nb{}, Nc{};
+  SimplexRowTable table;
   EqualityConstraints eq;
   VectorType c; // c*x = cost.
 
@@ -59,6 +60,7 @@ public:
 
   std::pair<std::vector<double>, double> getResults() const;
   std::tuple<bool, bool> simplex();
+  void warmStartPhaseOne(); // Warm-starts Phase-I as we know a feasible solution.
 };
 
 } // namespace dtwc::solver

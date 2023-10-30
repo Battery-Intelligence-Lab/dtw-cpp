@@ -6,6 +6,7 @@ target_sources(solvers
     Simplex.cpp
     SparseSimplex.cpp
     SimplexTable.cpp
+    SimplexRowTable.cpp
   PUBLIC
     solver_util.hpp 
     Simplex.hpp
@@ -13,6 +14,7 @@ target_sources(solvers
     SparseSimplex.hpp
     EqualityConstraints.hpp
     SimplexTable.hpp
+    SimplexRowTable.hpp
   )
 
 target_include_directories(solvers PUBLIC .)

@@ -1,5 +1,5 @@
 /*
- * SimplexTable.cpp
+ * SimplexRowTable.cpp
  *
  * Sparse implementation of a Simplex table.
 
@@ -8,7 +8,7 @@
  */
 
 
-#include "SimplexTable.hpp"
+#include "SimplexRowTable.hpp"
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"
@@ -33,27 +33,33 @@
 namespace dtwc::solver {
 
 
-int SimplexTable::getRow(int col) const
+int SimplexRowTable::getRow(int col) const
 {
   if (col < 0 || col >= (ntab - 1)) // Check if index is in the valid range
     throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", col, ntab - 2));
 
   int rowIndex = -1; // Using -1 to represent None
   // So this is checking there is one and only one 1.0 element! -> #TODO change with something keeping book of basic variables in future.
-  for (auto [key, value] : innerTable[col])
-    if (!isAround(value, 0)) // The entry is non zero
-    {
-      if (rowIndex == -1 && isAround(value, 1.0)) // The entry is one, and the index has not been found yet.
-        rowIndex = key;
-      else
-        return -1;
+
+  if (!isAround(reducedCosts[col], 0.0)) return -1;
+
+  for (int row = 0; row < innerTable.size(); row++) {
+    auto it = innerTable[row].find(col);
+    if (it != innerTable[row].end()) {
+      if (!isAround(it->second, 0)) // The entry is non zero
+      {
+        if (rowIndex == -1 && isAround(it->second, 1.0)) // The entry is one, and the index has not been found yet.
+          rowIndex = row;
+        else
+          return -1;
+      }
     }
+  }
 
   return rowIndex;
 }
 
-
-int SimplexTable::findNegativeCost()
+int SimplexRowTable::findNegativeCost()
 {
   // Returns -1 if table is optimal otherwise first negative reduced cost.
   // Find the first negative cost, if there are none, then table is optimal.
@@ -67,26 +73,31 @@ int SimplexTable::findNegativeCost()
   return p;
 }
 
-int SimplexTable::findMinStep(int p)
+int SimplexRowTable::findMinStep(int p)
 {
   constexpr double tol = 1e-10;
   // Calculate the maximum step that can be done along the basic direction d[p]
   double minStep = std::numeric_limits<double>::infinity();
   int q{ -1 }; // row of min step. -1 means unbounded.
 
-  for (auto [k, minus_d] : innerTable[p])
-    if (minus_d > tol) {
-      const auto step = rhs[k] / minus_d;
-      if (step < minStep) {
-        minStep = step;
-        q = k;
+  for (int i = 0; i < innerTable.size(); i++) {
+    auto it = innerTable[i].find(p);
+    if (it != innerTable[i].end()) {
+      auto [k, minus_d] = (*it);
+      if (minus_d > tol) {
+        const auto step = rhs[i] / minus_d;
+        if (step < minStep) {
+          minStep = step;
+          q = i;
+        }
       }
     }
+  }
 
   return q;
 }
 
-std::tuple<int, int, bool, bool> SimplexTable::simplexTableau()
+std::tuple<int, int, bool, bool> SimplexRowTable::simplexTableau()
 {
   // Find the first negative cost, if there are none, then table is optimal.
   const int p = findNegativeCost();
@@ -102,61 +113,73 @@ std::tuple<int, int, bool, bool> SimplexTable::simplexTableau()
   return std::make_tuple(p, q, false, true);
 }
 
-
-void SimplexTable::pivoting(int p, int q)
+void SimplexRowTable::pivoting(int p, int q)
 {
   // p column, q = row.
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-  const double thepivot = innerTable[p][q];
+  const double thepivot = innerTable[q][p];
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
+  auto &pivotRow = innerTable[q];
 
-  auto oneTask = [this, thepivot, p, q](int i) {
-    if (i == p) return; // Dont delete the pivot column yet.
+  const auto reducedcost_p = reducedCosts[p];
+  rhs[q] /= thepivot;
+  negativeObjective -= rhs[q] * reducedcost_p;
 
-    auto currentCol_q = innerTable[i].find(q);
+  for (auto &[key, val] : pivotRow) // Make the pivot row normalised.
+  {
+    val /= thepivot;
+    reducedCosts[key] -= reducedcost_p * val; // Remove from last row.
+  }
 
-    if (currentCol_q != innerTable[i].end()) // We have a row like that!
-    {
-      (currentCol_q->second) /= thepivot; // Normalise by pivot;
+  auto oneTask = [this, thepivot, p, q, pivotRow](int i) {
+    if (q == i) return; // Do not process pivot row.
 
-      reducedCosts[i] -= reducedCosts[p] * (currentCol_q->second); // Remove from last row.
+    auto &rowNow = innerTable[i];
 
-      for (auto [key, val] : innerTable[p]) // pivot Column
-        if (key != q) {
-          auto it_now = innerTable[i].find(key);
-          if (it_now != innerTable[i].end()) // If that row exists only then subtract otherwise equate.
-            (it_now->second) -= val * (currentCol_q->second);
-          else
-            innerTable[i][key] = -val * (currentCol_q->second);
-        }
+    auto it_p = rowNow.find(p);
+    if (it_p == rowNow.end()) return;
 
-      std::erase_if(innerTable[i], [](const auto &item) {
-        auto const &[key, value] = item;
-        return isAround(value, 0.0); // Remove zero elements to make it compact.
-      });
+    const auto p_val = it_p->second;
+    auto it_now = rowNow.begin();
+    auto it_pivot = pivotRow.begin();
+
+    rhs[i] -= p_val * rhs[q];
+
+    while (it_now != rowNow.end() && it_pivot != pivotRow.end()) {
+      const auto [key_piv, val_piv] = (*it_pivot);
+      auto &[key_now, val_now] = (*it_now);
+
+      if (key_now < key_piv)
+        ++it_now;
+      else if (key_now == key_piv) {
+        val_now -= p_val * val_piv;
+        ++it_now;
+        ++it_pivot;
+      } else {
+        rowNow.insert(it_now, { key_piv, -(p_val * val_piv) });
+        ++it_pivot;
+      }
     }
+
+    while (it_pivot != pivotRow.end()) {
+      rowNow[it_pivot->first] = -it_pivot->second;
+      ++it_pivot;
+    }
+
+
+    std::erase_if(rowNow, [](const auto &item) {
+      auto const &[key, value] = item;
+      return isAround(value, 0.0); // Remove zero elements to make it compact.
+    });
   };
 
-  dtwc::run(oneTask, innerTable.size());
-
-  rhs[q] /= thepivot;
-  // We always have RHS.
-  for (auto [key, val] : innerTable[p])
-    if (key != q)
-      rhs[key] -= val * rhs[q];
-
-  negativeObjective -= rhs[q] * reducedCosts[p];
-
-  // Deal with the pivot column now.
-  innerTable[p].clear();
-  innerTable[p][q] = 1;
-  reducedCosts[p] = 0;
+  dtwc::run(oneTask, innerTable.size(), 1);
 }
 
 
-std::pair<bool, bool> SimplexTable::simplexAlgorithmTableau()
+std::pair<bool, bool> SimplexRowTable::simplexAlgorithmTableau()
 {
   size_t iter{};
   double duration_table{}, duration_pivoting{};

@@ -20,6 +20,13 @@ struct Clock
     std::chrono::duration<double> elapsed_seconds = now() - start();
     return elapsed_seconds.count();
   }
+
+  static void print_duration(std::ostream &ofs, double duration)
+  {
+    ofs << std::floor(duration / 60) << ":"
+        << duration - std::floor(duration / 60) * 60
+        << " min:sec\n";
+  }
 };
 
 inline std::ostream &operator<<(std::ostream &ofs, const Clock &clk)

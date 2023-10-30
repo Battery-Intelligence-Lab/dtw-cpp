@@ -1,7 +1,7 @@
 /*
- * SimplexTable.hpp
+ * SimplexRowTable.hpp
  *
- * Sparse implementation of a Simplex table.
+ * Sparse implementation of a Simplex table but this time each row.
 
  *  Created on: 22 Oct 2023
  *   Author(s): Volkan Kumtepeli, Becky Perriment
@@ -28,11 +28,11 @@
 
 namespace dtwc::solver {
 
-class SimplexTable
+class SimplexRowTable
 {
   // Table is   mtab x ntab
   // Inner table is m x n
-  std::vector<std::map<int, double>> innerTable; // Each is a column
+  std::vector<std::map<int, double>> innerTable; // Each is a row
   std::vector<double> reducedCosts, rhs;
   std::vector<int> rowIndices;
   double negativeObjective{};
@@ -40,9 +40,9 @@ class SimplexTable
   int mtab{}, ntab{};
 
 public:
-  SimplexTable() = default;
-  SimplexTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(ntab_ - 1),
-                                       reducedCosts(ntab_ - 1), rhs(mtab_ - 1), rowIndices(ntab_ - 1) {}
+  SimplexRowTable() = default;
+  SimplexRowTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(mtab - 1),
+                                          reducedCosts(ntab_ - 1), rhs(mtab_ - 1), rowIndices(ntab_ - 1) {}
 
   int rows() const { return mtab; }
   int cols() const { return ntab; }
@@ -60,9 +60,13 @@ public:
   void removeColumns(int a, int b)
   {
     // Removes columns [a, b)
-    innerTable.erase(innerTable.begin() + a, innerTable.begin() + b);
-    reducedCosts.erase(reducedCosts.begin() + a, reducedCosts.begin() + b);
+    for (auto &row : innerTable) {
+      auto itBegin = row.lower_bound(a);
+      auto itEnd = row.upper_bound(b);
+      row.erase(itBegin, itEnd);
+    }
 
+    reducedCosts.erase(reducedCosts.begin() + a, reducedCosts.begin() + b);
     ntab -= (b - a);
   }
 
@@ -71,7 +75,7 @@ public:
   {
     // Table size (m + 1, m + n + 1)
     // table.block(0, 0, m, n) = A;
-    // table.block(0, n, m, m) = SimplexTable::Identity(m, m);
+    // table.block(0, n, m, m) = SimplexRowTable::Identity(m, m);
     // table.block(0, n + m, m, 1) = b;
 
     // // Set the first n columns of the last row
@@ -87,19 +91,19 @@ public:
     const int m = eq.A.rows(), n = eq.A.cols();
     mtab = m + 1;
     ntab = m + n + 1;
-    clear();                  // Clear the things.
-    innerTable.resize(m + n); // Adding m auxillary variables.
+    clear();              // Clear the things.
+    innerTable.resize(m); // Adding m auxillary variables.
     rhs = eq.b;
     reducedCosts.resize(n + m, 0.0); // Set columns n through n+m of the last row to 0.0
 
     for (const auto [key, val] : eq.A.data) {
       const auto [i, j] = key;
-      innerTable[j][i] = val;
+      innerTable[i][j] = val;
       reducedCosts[j] -= val; // Set the first n columns of the last row
     }
 
     for (int i = 0; i < m; i++)
-      innerTable[n + i][i] = 1.0;
+      innerTable[i][n + i] = 1.0;
 
     negativeObjective = -std::reduce(rhs.begin(), rhs.end());
   }
@@ -118,7 +122,7 @@ public:
 
   double getReducedCost(int k) const { return reducedCosts[k]; }
 
-  double inner(int i, int j) { return innerTable[j][i]; }
+  double inner(int i, int j) { return innerTable[i][j]; }
 
 
   double &setReducedCost(int k) { return reducedCosts[k]; }

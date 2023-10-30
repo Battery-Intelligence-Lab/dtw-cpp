@@ -32,6 +32,34 @@
 
 namespace dtwc::solver {
 
+void SparseSimplex::warmStartPhaseOne()
+{
+  if (Nb == 0 || Nc == 0) return; // it is not defined by clustering problem so we dont know what to do.
+  dtwc::Clock clk{};
+  std::cout << "Warmstart starting!" << std::endl;
+  // Just activate first Nc variables as clusters and fill all to the first cluster.
+  for (int i = 0; i < Nb; i++) {
+    const int p = (i < Nc) ? (i * (Nb + 1)) : i;
+    const int q = table.findMinStep(p);
+    if (q != -1)
+      table.pivoting(p, q);
+  }
+
+  const int slack_begin = (Nb * Nb) + (Nb - 1);
+  const int slack_end = (Nb * Nb) + (Nb - 1) * Nb;
+
+  for (int p = slack_begin; p < slack_end; p++) { // Make slack variables one.
+    const int q = table.findMinStep(p);
+    if (q != -1)
+      table.pivoting(p, q);
+
+    std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
+  }
+
+
+  std::cout << "Warmstart ended in " << clk << std::endl;
+};
+
 
 std::tuple<bool, bool> SparseSimplex::simplex()
 {
@@ -47,6 +75,7 @@ std::tuple<bool, bool> SparseSimplex::simplex()
     }
   std::cout << "Creating Phase-I table." << std::endl;
   table.createPhaseOneTableau(eq);
+  // warmStartPhaseOne();
 
   std::cout << "Running algorithm with Phase-I table." << std::endl;
   auto [optimal, unbounded] = table.simplexAlgorithmTableau();
@@ -204,8 +233,8 @@ void SparseSimplex::gomory()
 
 SparseSimplex::SparseSimplex(Problem &prob)
 {
-  const auto Nb = prob.data.size();
-  const auto Nc = prob.cluster_size();
+  Nb = prob.data.size();
+  Nc = prob.cluster_size();
 
   eq = defaultConstraints(Nb, Nc);
 
@@ -215,5 +244,6 @@ SparseSimplex::SparseSimplex(Problem &prob)
     for (size_t i{ 0 }; i < Nb; i++)
       c[i + j * Nb] = prob.distByInd_scaled(i, j);
 }
+
 
 } // namespace dtwc::solver
