@@ -10,7 +10,36 @@
 
 #pragma once
 
+#include "solver_util.hpp"
+
 namespace dtwc::solver {
+
+struct Element
+{
+  int index;
+  double value;
+};
+
+struct CompElementIndices
+{
+  bool operator()(const Element &c1, const Element &c2) const
+  {
+    return (c1.index < c2.index);
+  }
+};
+
+struct CompElementValuesAndIndices
+{
+  // To move the "zero" values to the end of the vector to be removed.
+  bool operator()(const Element &c1, const Element &c2) const
+  {
+    const auto c1_zero = isAround(c1.value);
+    const auto c2_zero = isAround(c2.value);
+
+    return (c1_zero < c2_zero) || (c1_zero == c2_zero && c1.index < c2.index);
+  }
+};
+
 
 struct Coordinate
 {
@@ -33,4 +62,4 @@ struct ColumnMajor
   }
 };
 
-}
+} // namespace dtwc::solver

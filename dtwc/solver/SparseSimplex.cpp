@@ -53,7 +53,8 @@ void SparseSimplex::warmStartPhaseOne()
   //   if (q != -1)
   //     table.pivoting(p, q);
 
-  //   std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
+  //   if (p % 100 == 0)
+  //     std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
   // }
 
 
