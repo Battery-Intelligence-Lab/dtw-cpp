@@ -16,8 +16,11 @@ namespace dtwc::solver {
 
 struct Element
 {
-  int index;
-  double value;
+  int index{};
+  double value{};
+
+  Element() = default;
+  Element(int index_, double value_) : index(index_), value(value_) { } 
 };
 
 struct CompElementIndices

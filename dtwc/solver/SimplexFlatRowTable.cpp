@@ -45,26 +45,36 @@ int SimplexFlatRowTable::getRow(int col) const
   if (!isAround(reducedCosts[col], 0.0)) return rowIndex;
 
   for (int row = 0; row < innerTable.size(); row++) {
-    const auto &vec = innerTable[row];
-    auto it = std::lower_bound(vec.begin(), vec.end(), col, [](const Element &elem, int idx) {
-      return elem.index < idx;
-    });
-
-    if (it != vec.end() && it->index == col) {
-      if (!isAround(it->value, 0)) // The entry is non-zero
-      {
-        if (rowIndex == -1 && isAround(it->value, 1.0)) // The entry is one, and the index has not been found yet.
+    for (const auto [key, val] : innerTable[row])
+      if (key == col) {                           // The entry is non-zero
+        if (rowIndex == -1 && isAround(val, 1.0)) // The entry is one, and the index has not been found yet.
           rowIndex = row;
         else
           return -1;
-      }
-    }
+      } else if (key > col)
+        break;
   }
 
   return rowIndex;
 }
 
-int SimplexFlatRowTable::findNegativeCost()
+int SimplexFlatRowTable::findMostNegativeCost() const
+{
+  // Returns -1 if table is optimal, otherwise the index of the most negative reduced cost.
+  int p = -1;
+  double mostNegativeValue = -epsilon; // start with a small negative threshold value
+
+  for (int i = 0; i < reducedCosts.size(); i++) {
+    if (reducedCosts[i] < mostNegativeValue) {
+      mostNegativeValue = reducedCosts[i];
+      p = i;
+    }
+  }
+
+  return p;
+}
+
+int SimplexFlatRowTable::findNegativeCost() const
 {
   // Returns -1 if table is optimal otherwise first negative reduced cost.
   // Find the first negative cost, if there are none, then table is optimal.
@@ -78,7 +88,7 @@ int SimplexFlatRowTable::findNegativeCost()
   return p;
 }
 
-int SimplexFlatRowTable::findMinStep(int p)
+int SimplexFlatRowTable::findMinStep(int p) const
 {
 
   // Calculate the maximum step that can be done along the basic direction d[p]
@@ -96,17 +106,19 @@ int SimplexFlatRowTable::findMinStep(int p)
       return (a.first < b.first) ? a : b;
     },
     [p, tol, this](const auto &row) -> StepIndexPair {
-      auto it = std::lower_bound(row.begin(), row.end(), p, [](const Element &elem, int idx) {
-        return elem.index < idx;
-      });
+      double minus_d = -1;
+      for (const auto [key, val] : row)
+        if (key == p) {
+          minus_d = val;
+          break;
+        } else if (key > p)
+          break;
 
-      if (it != row.end() && it->index == p) {
-        auto [k, minus_d] = *it;
-        if (minus_d > tol) {
-          int rowIndex = (&row - &innerTable[0]);
-          return { rhs[rowIndex] / minus_d, rowIndex };
-        }
+      if (minus_d > tol) {
+        int rowIndex = (&row - &innerTable[0]);
+        return { rhs[rowIndex] / minus_d, rowIndex };
       }
+
       return { std::numeric_limits<double>::infinity(), -1 };
     });
 
@@ -154,13 +166,14 @@ void SimplexFlatRowTable::pivoting(int p, int q)
 
     auto &rowNow = innerTable[i];
 
-    auto it_p = std::lower_bound(rowNow.begin(), rowNow.end(), p, [](const Element &elem, int idx) {
-      return elem.index < idx;
-    });
+    double p_val;
+    for (const auto [key, val] : rowNow)
+      if (key == p) {
+        p_val = val;
+        break;
+      } else if (key > p)
+        return;
 
-    if (it_p == rowNow.end() || it_p->index != p) return;
-
-    const auto p_val = it_p->value;
     rhs[i] -= p_val * rhs[q];
 
 
@@ -220,7 +233,7 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
 
 
     if (iter % 100 == 0) {
-      std::cout << "Iteration " << iter << " is finished!" << std::endl;
+      std::cout << "Iteration " << iter << " is finished!\n";
       std::cout << "Duration table: ";
       dtwc::Clock::print_duration(std::cout, duration_table);
       std::cout << "Duration pivoting: ";
@@ -234,7 +247,7 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
         innerSize += map.size();
       }
 
-      std::cout << "Inner size: " << innerSize << '\n';
+      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size() << '\n';
     }
 
     iter++;

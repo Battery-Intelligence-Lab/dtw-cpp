@@ -32,12 +32,11 @@ class SimplexRowTable
 {
   // Table is   mtab x ntab
   // Inner table is m x n
+  int mtab{}, ntab{};
   std::vector<std::map<int, double>> innerTable; // Each is a row
   std::vector<double> reducedCosts, rhs;
   std::vector<int> rowIndices;
   double negativeObjective{};
-
-  int mtab{}, ntab{};
 
 public:
   SimplexRowTable() = default;

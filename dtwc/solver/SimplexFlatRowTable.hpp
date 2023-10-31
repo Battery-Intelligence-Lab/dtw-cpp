@@ -43,7 +43,7 @@ class SimplexFlatRowTable
 
 public:
   SimplexFlatRowTable() = default;
-  SimplexFlatRowTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(mtab - 1),
+  SimplexFlatRowTable(int mtab_, int ntab_) : mtab{ mtab_ }, ntab{ ntab_ }, innerTable(mtab_ - 1),
                                               reducedCosts(ntab_ - 1), rhs(mtab_ - 1) {}
 
   int rows() const { return mtab; }
@@ -104,7 +104,7 @@ public:
 
     for (const auto [key, val] : eq.A.data) {
       const auto [i, j] = key;
-      innerTable[i].emplace_back(j, val);
+      innerTable[i].push_back(Element{ j, val });
       reducedCosts[j] -= val; // Set the first n columns of the last row
     }
 
@@ -134,15 +134,13 @@ public:
 
   double getReducedCost(int k) const { return reducedCosts[k]; }
 
-  double inner(int i, int j)
+  double inner(int i, int j) const
   {
-    const auto &vec = innerTable[i];
-    auto it = std::lower_bound(vec.begin(), vec.end(), j, [](const Element &elem, int idx) {
-      return elem.index < idx;
-    });
-
-    if (it != vec.end() && it->index == j)
-      return it->value;
+    for (const auto [key, val] : innerTable[i])
+      if (key == j)
+        return val;
+      else if (key > j)
+        return 0.0;
 
     return 0.0;
   }
@@ -151,9 +149,9 @@ public:
   double &setReducedCost(int k) { return reducedCosts[k]; }
   void setNegativeObjective(double val) { negativeObjective = val; }
 
-  int findNegativeCost();
-
-  int findMinStep(int p);
+  int findNegativeCost() const;
+  int findMostNegativeCost() const;
+  int findMinStep(int p) const;
 
   std::tuple<int, int, bool, bool> simplexTableau();
 
