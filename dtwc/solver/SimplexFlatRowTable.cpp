@@ -98,7 +98,7 @@ int SimplexFlatRowTable::findMinStep(int p) const
   StepIndexPair initial = { std::numeric_limits<double>::infinity(), -1 }; // row of min step. -1 means unbounded.
 
   auto result = std::transform_reduce(
-    std::execution::par, // Use parallel execution policy
+    std::execution::par_unseq, // Use parallel execution policy
     innerTable.begin(),
     innerTable.end(),
     initial,
@@ -161,10 +161,8 @@ void SimplexFlatRowTable::pivoting(int p, int q)
     reducedCosts[key] -= reducedcost_p * val; // Remove from last row.
   }
 
-  auto oneTask = [this, thepivot, p, q, pivotRow](int i) {
-    if (q == i) return; // Do not process pivot row.
-
-    auto &rowNow = innerTable[i];
+  auto oneTask = [this, thepivot, p, q, &pivotRow](auto &rowNow) {
+    if (&rowNow == &pivotRow) return; // Do not process pivot row.
 
     double p_val;
     for (const auto [key, val] : rowNow)
@@ -174,13 +172,13 @@ void SimplexFlatRowTable::pivoting(int p, int q)
       } else if (key > p)
         return;
 
-    rhs[i] -= p_val * rhs[q];
+    const int rowIndex = &rowNow - &innerTable[0];
 
+    rhs[rowIndex] -= p_val * rhs[q];
 
     auto N_now = rowNow.size();
     auto N_piv = pivotRow.size();
     size_t i_now{}, i_piv{};
-
 
     while (i_now != N_now && i_piv != N_piv) {
       const auto [key_piv, val_piv] = pivotRow[i_piv];
@@ -210,7 +208,7 @@ void SimplexFlatRowTable::pivoting(int p, int q)
       rowNow.pop_back();
   };
 
-  dtwc::run(oneTask, innerTable.size());
+  std::for_each(std::execution::par_unseq, innerTable.begin(), innerTable.end(), oneTask);
 }
 
 
