@@ -16,6 +16,7 @@
 #include "SimplexTable.hpp"
 #include "SimplexRowTable.hpp"
 #include "SimplexFlatRowTable.hpp"
+#include "SimplexFlatTable.hpp"
 
 #include <vector>
 #include <string>
@@ -44,7 +45,7 @@ class SparseSimplex
   // -1 means None.
   int nGomory{ -1 };
   int Nb{}, Nc{};
-  SimplexFlatRowTable table;
+  SimplexFlatTable table;
   EqualityConstraints eq;
   VectorType c; // c*x = cost.
 

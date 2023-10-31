@@ -8,6 +8,8 @@ target_sources(solvers
     SimplexTable.cpp
     SimplexRowTable.cpp
     SimplexFlatRowTable.cpp
+    SimplexFlatTable.cpp
+
   PUBLIC
     solver_util.hpp 
     Simplex.hpp
@@ -17,6 +19,8 @@ target_sources(solvers
     SimplexTable.hpp
     SimplexRowTable.hpp
     SimplexFlatRowTable.hpp
+    SimplexFlatTable.hpp
+
   )
 
 target_include_directories(solvers PUBLIC .)
