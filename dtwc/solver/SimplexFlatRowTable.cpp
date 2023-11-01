@@ -92,8 +92,6 @@ int SimplexFlatRowTable::findMinStep(int p) const
 {
 
   // Calculate the maximum step that can be done along the basic direction d[p]
-
-  constexpr double tol = 1e-10;
   using StepIndexPair = std::pair<double, int>;
   StepIndexPair initial = { std::numeric_limits<double>::infinity(), -1 }; // row of min step. -1 means unbounded.
 
@@ -105,7 +103,7 @@ int SimplexFlatRowTable::findMinStep(int p) const
     [](const StepIndexPair &a, const StepIndexPair &b) -> StepIndexPair {
       return (a.first < b.first) ? a : b;
     },
-    [p, tol, this](const auto &row) -> StepIndexPair {
+    [p, this](const auto &row) -> StepIndexPair {
       double minus_d = -1;
       for (const auto [key, val] : row)
         if (key == p) {
@@ -114,7 +112,7 @@ int SimplexFlatRowTable::findMinStep(int p) const
         } else if (key > p)
           break;
 
-      if (minus_d > tol) {
+      if (minus_d > epsilon) {
         int rowIndex = (&row - &innerTable[0]);
         return { rhs[rowIndex] / minus_d, rowIndex };
       }
@@ -216,8 +214,13 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
 {
   size_t iter{};
   double duration_table{}, duration_pivoting{};
+ // static std::vector<int> colNumbers;
+   // colNumbers.reserve(rhs.size());
+    
+
   while (true) {
     dtwc::Clock clk;
+    //colNumbers.clear();
     auto [colPivot, rowPivot, optimal, bounded] = simplexTableau();
     duration_table += clk.duration();
 
@@ -230,7 +233,7 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
     duration_pivoting += clk.duration();
 
 
-    if (iter % 100 == 0) {
+    if (iter % 500 == 0) {
       std::cout << "Iteration " << iter << " is finished!\n";
       std::cout << "Duration table: ";
       dtwc::Clock::print_duration(std::cout, duration_table);
@@ -245,7 +248,8 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
         innerSize += map.size();
       }
 
-      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size() << '\n';
+      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size() 
+                << " per " << innerTable.size() << '\n';
     }
 
     iter++;

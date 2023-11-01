@@ -232,9 +232,13 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       nonbasicIndicesList.push_back(i);
   }
 
+  int rows_c = c.rows();
+  int cols_c = c.cols();
+  std::cout << "Basic indices: \n";
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
     for (int j : basicIndicesList) {
+      std::cout << j << '\n';
       //  std::cout << "Value: " << phaseTwoTableau(basicRows[j], k) << '\n';
       sumVal += c(j) * phaseTwoTableau(basicRows[j], k);
     }

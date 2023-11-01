@@ -31,7 +31,6 @@ if(NOT TARGET Catch2::Catch2WithMain)
   )
 endif()
 
-
 # CPMAddPackage("gh:fmtlib/fmt#10.1.1") #fmt library
 # fmt library:
 CPMAddPackage(

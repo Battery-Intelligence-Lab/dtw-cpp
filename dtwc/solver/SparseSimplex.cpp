@@ -45,17 +45,17 @@ void SparseSimplex::warmStartPhaseOne()
       table.pivoting(p, q);
   }
 
-  const int slack_begin = (Nb * Nb) + (Nb - 1);
-  const int slack_end = (Nb * Nb) + (Nb - 1) * Nb;
+  // const int slack_begin = (Nb * Nb) + (Nb - 1);
+  // const int slack_end = (Nb * Nb) + (Nb - 1) * Nb;
 
-  for (int p = slack_begin; p < slack_end; p++) { // Make slack variables one.
-    const int q = table.findMinStep(p);
-    if (q != -1)
-      table.pivoting(p, q);
+  // for (int p = slack_begin; p < slack_end; p++) { // Make slack variables one.
+  //   const int q = table.findMinStep(p);
+  //   if (q != -1)
+  //     table.pivoting(p, q);
 
-    if (p % 100 == 0)
-      std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
-  }
+  //   if (p % 100 == 0)
+  //     std::cout << "Pivoting variable " << p << " of " << slack_end << std::endl;
+  // }
 
   std::cout << "Warmstart ended in " << clk << std::endl;
 };
@@ -75,7 +75,7 @@ std::tuple<bool, bool> SparseSimplex::simplex()
     }
   std::cout << "Creating Phase-I table." << std::endl;
   table.createPhaseOneTableau(eq);
-  warmStartPhaseOne();
+  //warmStartPhaseOne();
 
   std::cout << "Running algorithm with Phase-I table." << std::endl;
   auto [optimal, unbounded] = table.simplexAlgorithmTableau();
@@ -148,15 +148,19 @@ std::tuple<bool, bool> SparseSimplex::simplex()
 
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
-    for (int j : basicIndicesList)
+    for (int j : basicIndicesList) {
+      if (j >= c.size()) break; // Because after this is zero.
       sumVal += c[j] * table.inner(basicRows[j], k);
-
-    table.setReducedCost(k) = c[k] - sumVal;
+    }
+    const auto c_k = (k < c.size()) ? c[k] : 0.0;
+    table.setReducedCost(k) = c_k - sumVal;
   }
 
   double lastRowSum = 0.0;
-  for (int j : basicIndicesList)
+  for (int j : basicIndicesList) {
+    if (j >= c.size()) break; // Because after this is zero.
     lastRowSum += c[j] * table.getRHS(basicRows[j]);
+  }
 
   table.setNegativeObjective(-lastRowSum);
 
