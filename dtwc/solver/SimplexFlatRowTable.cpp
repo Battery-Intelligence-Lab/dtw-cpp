@@ -233,7 +233,7 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
     duration_pivoting += clk.duration();
 
 
-    if (iter % 500 == 0) {
+    if (iter % 100 == 0) {
       std::cout << "Iteration " << iter << " is finished!\n";
       std::cout << "Duration table: ";
       dtwc::Clock::print_duration(std::cout, duration_table);

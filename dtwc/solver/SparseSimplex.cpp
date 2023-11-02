@@ -75,7 +75,7 @@ std::tuple<bool, bool> SparseSimplex::simplex()
     }
   std::cout << "Creating Phase-I table." << std::endl;
   table.createPhaseOneTableau(eq);
-  //warmStartPhaseOne();
+  // warmStartPhaseOne();
 
   std::cout << "Running algorithm with Phase-I table." << std::endl;
   auto [optimal, unbounded] = table.simplexAlgorithmTableau();

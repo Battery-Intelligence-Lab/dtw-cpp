@@ -104,13 +104,33 @@ std::tuple<int, int, bool, bool> simplexTableau(const MatrixType &tableau)
 
 std::pair<bool, bool> simplexAlgorithmTableau(MatrixType &tableau)
 {
+  size_t iter{};
+  double duration_table{}, duration_pivoting{};
+  dtwc::Clock clk;
   while (true) {
     auto [colPivot, rowPivot, optimal, bounded] = simplexTableau(tableau);
-
+    duration_table += clk.duration();
     if (optimal) return { true, false };
     if (!bounded) return { false, true };
+    duration_pivoting += clk.duration();
+
 
     pivoting(tableau, colPivot, rowPivot);
+
+        if (iter % 100 == 0) {
+      std::cout << "Iteration " << iter << " is finished!\n";
+      std::cout << "Duration table: ";
+      dtwc::Clock::print_duration(std::cout, duration_table);
+      std::cout << "Duration pivoting: ";
+      dtwc::Clock::print_duration(std::cout, duration_pivoting);
+
+      duration_table = 0;
+      duration_pivoting = 0;
+
+
+    }
+
+    iter++;
   }
 }
 
@@ -175,11 +195,6 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
     }
   }
 
-  int ZeroCount = phaseOneTableau.unaryExpr([](double elem) { return isAround(elem, 0.0); }).count();
-
-  std::cout << "Table:\n"
-            << phaseOneTableau.rows() << 'x' << phaseOneTableau.cols() << " : " << ZeroCount << '\n';
-
   while (!tobeCleaned.empty()) {
     int auxiliaryColumn = *tobeCleaned.begin();
     tobeCleaned.erase(tobeCleaned.begin());
@@ -232,14 +247,9 @@ std::tuple<MatrixType, bool, bool> simplex(MatrixType &A, VectorXd &b, VectorXd 
       nonbasicIndicesList.push_back(i);
   }
 
-  int rows_c = c.rows();
-  int cols_c = c.cols();
-  std::cout << "Basic indices: \n";
   for (int k : nonbasicIndicesList) {
     double sumVal = 0.0;
     for (int j : basicIndicesList) {
-      std::cout << j << '\n';
-      //  std::cout << "Value: " << phaseTwoTableau(basicRows[j], k) << '\n';
       sumVal += c(j) * phaseTwoTableau(basicRows[j], k);
     }
 
