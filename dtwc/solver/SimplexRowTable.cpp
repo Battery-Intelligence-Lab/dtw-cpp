@@ -84,7 +84,7 @@ int SimplexRowTable::findMinStep(int p)
   StepIndexPair initial = { std::numeric_limits<double>::infinity(), -1 }; // row of min step. -1 means unbounded.
 
   auto result = std::transform_reduce(
-    std::execution::par, // Use parallel execution policy
+    std::execution::par_unseq, // Use parallel execution policy
     innerTable.begin(),
     innerTable.end(),
     initial,

@@ -233,24 +233,24 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
     duration_pivoting += clk.duration();
 
 
-    // if (iter % 100 == 0) {
-    //   std::cout << "Iteration " << iter << " is finished!\n";
-    //   std::cout << "Duration table: ";
-    //   dtwc::Clock::print_duration(std::cout, duration_table);
-    //   std::cout << "Duration pivoting: ";
-    //   dtwc::Clock::print_duration(std::cout, duration_pivoting);
+    if (iter % 500 == 0) {
+      std::cout << "Iteration " << iter << " is finished!\n";
+      std::cout << "Duration table: ";
+      dtwc::Clock::print_duration(std::cout, duration_table);
+      std::cout << "Duration pivoting: ";
+      dtwc::Clock::print_duration(std::cout, duration_pivoting);
 
-    //   duration_table = 0;
-    //   duration_pivoting = 0;
+      duration_table = 0;
+      duration_pivoting = 0;
 
-    //   size_t innerSize = 0;
-    //   for (auto &map : innerTable) {
-    //     innerSize += map.size();
-    //   }
+      size_t innerSize = 0;
+      for (auto &map : innerTable) {
+        innerSize += map.size();
+      }
 
-    //   std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
-    //             << " per " << innerTable.size() << '\n';
-    // }
+      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
+                << " per " << innerTable.size() << '\n';
+    }
 
     iter++;
   }
