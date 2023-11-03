@@ -162,13 +162,12 @@ void SimplexFlatRowTable::pivoting(int p, int q)
   auto oneTask = [this, thepivot, p, q, &pivotRow](auto &rowNow) {
     if (&rowNow == &pivotRow) return; // Do not process pivot row.
 
-    double p_val;
-    for (const auto [key, val] : rowNow)
-      if (key == p) {
-        p_val = val;
-        break;
-      } else if (key > p)
-        return;
+    auto it_p = std::lower_bound(rowNow.begin(), rowNow.end(), p, [](const Element &elem, int idx) {
+      return elem.index < idx;
+    });
+
+    if (it_p == rowNow.end() || it_p->index != p) return;
+    const auto p_val = it_p->value;
 
     const int rowIndex = &rowNow - &innerTable[0];
 
@@ -214,13 +213,13 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
 {
   size_t iter{};
   double duration_table{}, duration_pivoting{};
- // static std::vector<int> colNumbers;
-   // colNumbers.reserve(rhs.size());
-    
+  // static std::vector<int> colNumbers;
+  // colNumbers.reserve(rhs.size());
+
 
   while (true) {
     dtwc::Clock clk;
-    //colNumbers.clear();
+    // colNumbers.clear();
     auto [colPivot, rowPivot, optimal, bounded] = simplexTableau();
     duration_table += clk.duration();
 
@@ -248,7 +247,7 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
         innerSize += map.size();
       }
 
-      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size() 
+      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
                 << " per " << innerTable.size() << '\n';
     }
 

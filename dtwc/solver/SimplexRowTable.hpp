@@ -108,7 +108,6 @@ public:
   }
 
   int getRow(int col) const;
-
   double getObjective() const { return -negativeObjective; }
 
   double getValue(int k) const

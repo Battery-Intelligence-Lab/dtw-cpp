@@ -115,9 +115,7 @@ public:
 
     std::for_each(innerTable.begin(), innerTable.end(), [](auto &elemVec) {
       std::sort(elemVec.begin(), elemVec.end(), CompElementIndices{});
-    }
-
-    );
+    });
   }
 
   int getRow(int col) const;
@@ -134,7 +132,7 @@ public:
 
   double getReducedCost(int k) const { return reducedCosts[k]; }
 
-  double inner(int i, int j) const
+  double inner(int i, int j)
   {
     for (const auto [key, val] : innerTable[i])
       if (key == j)
@@ -144,7 +142,6 @@ public:
 
     return 0.0;
   }
-
 
   double &setReducedCost(int k) { return reducedCosts[k]; }
   void setNegativeObjective(double val) { negativeObjective = val; }
