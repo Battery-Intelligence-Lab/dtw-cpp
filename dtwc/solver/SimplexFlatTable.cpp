@@ -39,21 +39,9 @@ int SimplexFlatTable::getRow(int col) const
   if (col < 0 || col >= (ntab - 1)) // Check if index is in the valid range
     throw std::runtime_error(fmt::format("The index of the variable ({}) must be between 0 and {}", col, ntab - 2));
 
-  int rowIndex = -1; // Using -1 to represent None
   // So this is checking there is one and only one 1.0 element! -> #TODO change with something keeping book of basic variables in future.
-
-  if (!isAround(reducedCosts[col], 0.0)) return rowIndex;
-
-  for (auto [key, value] : innerTable[col])
-    if (!isAround(value, 0)) // The entry is non zero
-    {
-      if (rowIndex == -1 && isAround(value, 1.0)) // The entry is one, and the index has not been found yet.
-        rowIndex = key;
-      else
-        return -1;
-    }
-
-  return rowIndex;
+  const bool isBasic = isAround(reducedCosts[col], 0.0) && innerTable[col].size() == 1 && isAround(innerTable[col][0].value, 1);
+  return isBasic ? innerTable[col][0].index : -1; // Using -1 to represent None
 }
 
 int SimplexFlatTable::findNegativeCost()
@@ -137,12 +125,13 @@ void SimplexFlatTable::pivoting(int p, int q)
     auto N_piv = pivotCol.size();
     size_t i_now{}, i_piv{};
 
-
     while (i_now != N_now && i_piv != N_piv) {
       const auto [key_piv, val_piv] = pivotCol[i_piv];
       auto &[key_now, val_now] = colNow[i_now];
 
       if (key_now == q)
+        ++i_now;
+      else if (key_piv == q)
         ++i_piv;
       else if (key_now < key_piv)
         ++i_now;

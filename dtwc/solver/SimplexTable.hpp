@@ -62,28 +62,12 @@ public:
     // Removes columns [a, b)
     innerTable.erase(innerTable.begin() + a, innerTable.begin() + b);
     reducedCosts.erase(reducedCosts.begin() + a, reducedCosts.begin() + b);
-
     ntab -= (b - a);
   }
 
 
   void createPhaseOneTableau(const EqualityConstraints &eq)
   {
-    // Table size (m + 1, m + n + 1)
-    // table.block(0, 0, m, n) = A;
-    // table.block(0, n, m, m) = SimplexTable::Identity(m, m);
-    // table.block(0, n + m, m, 1) = b;
-
-    // // Set the first n columns of the last row
-    // for (int k = 0; k < n; ++k)
-    //   table.row(m)(k) = -table.block(0, k, m, 1).sum();
-
-    // // Set columns n through n+m of the last row to 0.0
-    // table.block(m, n, 1, m).setZero();
-
-    // // Set the last element of the last row
-    // table(m, n + m) = -table.block(0, n + m, m, 1).sum();
-
     const int m = eq.A.rows(), n = eq.A.cols();
     mtab = m + 1;
     ntab = m + n + 1;
