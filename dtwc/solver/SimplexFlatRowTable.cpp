@@ -88,12 +88,14 @@ int SimplexFlatRowTable::findNegativeCost() const
   return p;
 }
 
-int SimplexFlatRowTable::findMinStep(int p) const
+int SimplexFlatRowTable::findMinStep(int p)
 {
-
   // Calculate the maximum step that can be done along the basic direction d[p]
   using StepIndexPair = std::pair<double, int>;
+
+
   StepIndexPair initial = { std::numeric_limits<double>::infinity(), -1 }; // row of min step. -1 means unbounded.
+
 
   auto result = std::transform_reduce(
     std::execution::par_unseq, // Use parallel execution policy
@@ -104,18 +106,19 @@ int SimplexFlatRowTable::findMinStep(int p) const
       return (a.first < b.first) ? a : b;
     },
     [p, this](const auto &row) -> StepIndexPair {
+      const int rowIndex = (&row - &innerTable[0]);
       double minus_d = -1;
-      for (const auto [key, val] : row)
-        if (key == p) {
-          minus_d = val;
+      for (int colIndex{}; colIndex < row.size(); colIndex++)
+        if (row[colIndex].index == p) {
+          pivotRows[rowIndex] = { colIndex, row[colIndex].value };
+          minus_d = row[colIndex].value;
           break;
-        } else if (key > p)
+        } else if (row[colIndex].index > p)
           break;
 
-      if (minus_d > epsilon) {
-        int rowIndex = (&row - &innerTable[0]);
+
+      if (minus_d > epsilon)
         return { rhs[rowIndex] / minus_d, rowIndex };
-      }
 
       return { std::numeric_limits<double>::infinity(), -1 };
     });
@@ -131,6 +134,8 @@ std::tuple<int, int, bool, bool> SimplexFlatRowTable::simplexTableau()
   if (p == -1) // The table is optimal
     return std::make_tuple(-1, -1, true, true);
 
+  pivotRows.clear(); // Prep for findMinStep;
+  pivotRows.resize(innerTable.size(), { -1, -1 });
   const int q = findMinStep(p);
 
   if (q == -1) // The table is unbounded
@@ -143,7 +148,7 @@ void SimplexFlatRowTable::pivoting(int p, int q)
 {
   // p column, q = row.
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
-  const double thepivot = inner(q, p);
+  const double thepivot = pivotRows[q].value;
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
@@ -162,14 +167,10 @@ void SimplexFlatRowTable::pivoting(int p, int q)
   auto oneTask = [this, thepivot, p, q, &pivotRow](auto &rowNow) {
     if (&rowNow == &pivotRow) return; // Do not process pivot row.
 
-    auto it_p = std::lower_bound(rowNow.begin(), rowNow.end(), p, [](const Element &elem, int idx) {
-      return elem.index < idx;
-    });
-
-    if (it_p == rowNow.end() || it_p->index != p) return;
-    const auto p_val = it_p->value;
-
     const int rowIndex = &rowNow - &innerTable[0];
+
+    if (pivotRows[rowIndex].index == -1) return;
+    const auto p_val = pivotRows[rowIndex].value;
 
     rhs[rowIndex] -= p_val * rhs[q];
 
@@ -232,24 +233,24 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
     duration_pivoting += clk.duration();
 
 
-    if (iter % 100 == 0) {
-      std::cout << "Iteration " << iter << " is finished!\n";
-      std::cout << "Duration table: ";
-      dtwc::Clock::print_duration(std::cout, duration_table);
-      std::cout << "Duration pivoting: ";
-      dtwc::Clock::print_duration(std::cout, duration_pivoting);
+    // if (iter % 100 == 0) {
+    //   std::cout << "Iteration " << iter << " is finished!\n";
+    //   std::cout << "Duration table: ";
+    //   dtwc::Clock::print_duration(std::cout, duration_table);
+    //   std::cout << "Duration pivoting: ";
+    //   dtwc::Clock::print_duration(std::cout, duration_pivoting);
 
-      duration_table = 0;
-      duration_pivoting = 0;
+    //   duration_table = 0;
+    //   duration_pivoting = 0;
 
-      size_t innerSize = 0;
-      for (auto &map : innerTable) {
-        innerSize += map.size();
-      }
+    //   size_t innerSize = 0;
+    //   for (auto &map : innerTable) {
+    //     innerSize += map.size();
+    //   }
 
-      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
-                << " per " << innerTable.size() << '\n';
-    }
+    //   std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
+    //             << " per " << innerTable.size() << '\n';
+    // }
 
     iter++;
   }

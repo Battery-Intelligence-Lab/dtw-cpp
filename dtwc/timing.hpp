@@ -11,9 +11,9 @@
 namespace dtwc {
 struct Clock
 {
-  std::chrono::time_point<std::chrono::steady_clock> tstart{ std::chrono::steady_clock::now() };
+  std::chrono::time_point<std::chrono::high_resolution_clock> tstart{ std::chrono::high_resolution_clock::now() };
   Clock() = default;
-  auto now() const { return std::chrono::steady_clock::now(); }
+  auto now() const { return std::chrono::high_resolution_clock::now(); }
   auto start() const { return tstart; }
   double duration() const
   {

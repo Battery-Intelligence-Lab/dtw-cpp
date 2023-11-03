@@ -39,6 +39,8 @@ class SimplexFlatRowTable
   std::vector<double> reducedCosts, rhs;
   double negativeObjective{};
 
+  std::vector<Element> pivotRows; // Literal Index of pivotRow / value of pivot col there.
+
   int mtab{}, ntab{};
 
 public:
@@ -130,7 +132,7 @@ public:
 
   int findNegativeCost() const;
   int findMostNegativeCost() const;
-  int findMinStep(int p) const;
+  int findMinStep(int p);
 
   std::tuple<int, int, bool, bool> simplexTableau();
 
