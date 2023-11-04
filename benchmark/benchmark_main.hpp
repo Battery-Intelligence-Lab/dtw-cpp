@@ -93,8 +93,8 @@ inline void UCR_2018()
   std::vector<fs::path> dataofInterest{
     //(settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
     // (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/DistalPhalanxOutlineAgeGroup/DistalPhalanxOutlineAgeGroup_TEST.tsv"),
+    //(settings::root_folder / "data/benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
+    (settings::root_folder / "data/benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
     //(settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
     //(settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 

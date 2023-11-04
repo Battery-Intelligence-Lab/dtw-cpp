@@ -170,40 +170,53 @@ void SimplexFlatRowTable::pivoting(int p, int q)
     const int rowIndex = &rowNow - &innerTable[0];
 
     if (pivotRows[rowIndex].index == -1) return;
+
+
     const auto p_val = pivotRows[rowIndex].value;
 
     rhs[rowIndex] -= p_val * rhs[q];
 
-    auto N_now = rowNow.size();
-    auto N_piv = pivotRow.size();
+
+    const auto N_now = rowNow.size();
+    const auto N_piv = pivotRow.size();
+
+    thread_local std::vector<Element> temporary;
+    temporary.clear();
+
+    // if ((N_now + N_piv) > temporary.capacity())
+    //   temporary.reserve(2 * (N_now + N_piv));
+
     size_t i_now{}, i_piv{};
 
     while (i_now != N_now && i_piv != N_piv) {
-      const auto [key_piv, val_piv] = pivotRow[i_piv];
-      auto &[key_now, val_now] = rowNow[i_now];
+      const auto &eNow = rowNow[i_now];
+      const auto &ePiv = pivotRow[i_piv];
 
-      if (key_now < key_piv)
+      if (eNow.index < ePiv.index) {
+        temporary.push_back(eNow);
         ++i_now;
-      else if (key_now == key_piv) {
-        val_now -= p_val * val_piv;
+      } else if (eNow.index == ePiv.index) {
+        const auto new_value = eNow.value - p_val * ePiv.value;
+        if (!isAround(new_value))
+          temporary.emplace_back(Element{ eNow.index, new_value });
+
         ++i_now;
         ++i_piv;
       } else {
-        rowNow.emplace_back(key_piv, -p_val * val_piv);
+        temporary.emplace_back(ePiv.index, -p_val * ePiv.value);
         ++i_piv;
       }
     }
 
+    while (i_now != N_now)
+      temporary.push_back(rowNow[i_now++]);
+
     while (i_piv != N_piv) {
-      const auto [key_piv, val_piv] = pivotRow[i_piv];
-      rowNow.emplace_back(key_piv, -p_val * val_piv);
-      ++i_piv;
+      const auto &ePiv = pivotRow[i_piv++];
+      temporary.emplace_back(ePiv.index, -p_val * ePiv.value);
     }
 
-    std::sort(rowNow.begin(), rowNow.end(), CompElementValuesAndIndices{}); // Places zero values to end.
-
-    while (!rowNow.empty() && isAround(rowNow.back().value)) // Remove zeroes from end.
-      rowNow.pop_back();
+    std::swap(temporary, rowNow);
   };
 
   std::for_each(std::execution::par_unseq, innerTable.begin(), innerTable.end(), oneTask);
