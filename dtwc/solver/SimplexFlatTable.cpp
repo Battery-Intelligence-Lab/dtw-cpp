@@ -123,38 +123,41 @@ void SimplexFlatTable::pivoting(int p, int q)
 
     auto N_now = colNow.size();
     auto N_piv = pivotCol.size();
+
+    thread_local std::vector<Element> temporary;
+    temporary.clear();
     size_t i_now{}, i_piv{};
 
     while (i_now != N_now && i_piv != N_piv) {
-      const auto [key_piv, val_piv] = pivotCol[i_piv];
-      auto &[key_now, val_now] = colNow[i_now];
+      const auto &eNow = colNow[i_now];
+      const auto &ePiv = pivotCol[i_piv];
 
-      if (key_now == q)
-        ++i_now;
-      else if (key_piv == q)
+      if (ePiv.index == q)
         ++i_piv;
-      else if (key_now < key_piv)
+      else if (eNow.index < ePiv.index) {
+        temporary.push_back(eNow);
         ++i_now;
-      else if (key_now == key_piv) {
-        val_now -= q_val * val_piv;
+      } else if (eNow.index == ePiv.index) {
+        const auto new_value = eNow.value - q_val * ePiv.value;
+        if (!isAround(new_value))
+          temporary.emplace_back(Element{ eNow.index, new_value });
         ++i_now;
         ++i_piv;
       } else {
-        colNow.emplace_back(key_piv, -q_val * val_piv);
+        temporary.emplace_back(ePiv.index, -q_val * ePiv.value);
         ++i_piv;
       }
     }
 
+    while (i_now != N_now)
+      temporary.push_back(colNow[i_now++]);
+
     while (i_piv != N_piv) {
-      const auto [key_piv, val_piv] = pivotCol[i_piv];
-      colNow.emplace_back(key_piv, -q_val * val_piv);
-      ++i_piv;
+      const auto &ePiv = pivotCol[i_piv++];
+      temporary.emplace_back(ePiv.index, -q_val * ePiv.value);
     }
 
-    std::sort(colNow.begin(), colNow.end(), CompElementValuesAndIndices{}); // Places zero values to end.
-
-    while (!colNow.empty() && isAround(colNow.back().value)) // Remove zeroes from end.
-      colNow.pop_back();
+    std::swap(temporary, colNow);
   };
 
   dtwc::run(oneTask, innerTable.size(), 1);
@@ -192,7 +195,7 @@ std::pair<bool, bool> SimplexFlatTable::simplexAlgorithmTableau()
     duration_pivoting += clk.duration();
 
 
-    if (iter % 100 == 0) {
+    if (iter % 500 == 0) {
       std::cout << "Iteration " << iter << " is finished!" << std::endl;
       std::cout << "Duration table: ";
       dtwc::Clock::print_duration(std::cout, duration_table);
@@ -207,7 +210,8 @@ std::pair<bool, bool> SimplexFlatTable::simplexAlgorithmTableau()
         innerSize += map.size();
       }
 
-      std::cout << "Inner size: " << innerSize << '\n';
+      std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
+                << " per " << innerTable.size() << '\n';
     }
 
     iter++;
