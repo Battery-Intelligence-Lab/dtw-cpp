@@ -101,13 +101,12 @@ void SimplexFlatTable::pivoting(int p, int q)
   if (isAround(thepivot, 0.0))
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
 
+  auto &pivotCol = innerTable[p];
 
-  auto oneTask = [this, thepivot, p, q](int i) {
-    if (i == p) return; // Dont delete the pivot column yet.
+  auto oneTask = [this, thepivot, p, q, &pivotCol](auto &colNow) {
+    if (&colNow == &pivotCol) return; // Do not process pivot row.
 
-
-    auto &colNow = innerTable[i];
-    auto &pivotCol = innerTable[p];
+    const int colIndex = &colNow - &innerTable[0];
 
     auto it_q = std::lower_bound(colNow.begin(), colNow.end(), q, [](const Element &elem, int idx) {
       return elem.index < idx;
@@ -119,7 +118,7 @@ void SimplexFlatTable::pivoting(int p, int q)
 
     const auto q_val = (it_q->value);
 
-    reducedCosts[i] -= reducedCosts[p] * q_val; // Remove from last row.
+    reducedCosts[colIndex] -= reducedCosts[p] * q_val; // Remove from last row.
 
     auto N_now = colNow.size();
     auto N_piv = pivotCol.size();
@@ -160,7 +159,7 @@ void SimplexFlatTable::pivoting(int p, int q)
     std::swap(temporary, colNow);
   };
 
-  dtwc::run(oneTask, innerTable.size(), 1);
+  std::for_each(std::execution::par_unseq, innerTable.begin(), innerTable.end(), oneTask);
 
   rhs[q] /= thepivot;
   // We always have RHS.
@@ -171,8 +170,8 @@ void SimplexFlatTable::pivoting(int p, int q)
   negativeObjective -= rhs[q] * reducedCosts[p];
 
   // Deal with the pivot column now.
-  innerTable[p].clear();
-  innerTable[p].emplace_back(q, 1);
+  pivotCol.clear();
+  pivotCol.emplace_back(q, 1);
   reducedCosts[p] = 0;
 }
 
