@@ -44,13 +44,13 @@ int SimplexFlatTable::getRow(int col) const
   return isBasic ? innerTable[col][0].index : -1; // Using -1 to represent None
 }
 
-int SimplexFlatTable::findNegativeCost()
+int SimplexFlatTable::findNegativeCost() const
 {
   // Returns -1 if table is optimal otherwise first negative reduced cost.
   // Find the first negative cost, if there are none, then table is optimal.
   int p = -1;
   for (int i = 0; i < reducedCosts.size(); i++) // Reduced cost.
-    if (reducedCosts[i] < -epsilon) {
+    if (reducedCosts[i] < -epsilon / 2) {
       p = i;
       break;
     }
@@ -58,15 +58,30 @@ int SimplexFlatTable::findNegativeCost()
   return p;
 }
 
-int SimplexFlatTable::findMinStep(int p)
+int SimplexFlatTable::findMostNegativeCost() const
+{
+  // Returns -1 if table is optimal, otherwise the index of the most negative reduced cost.
+  int p = -1;
+  double mostNegativeValue = -epsilon; // start with a small negative threshold value
+
+  for (int i = 0; i < reducedCosts.size(); i++) {
+    if (reducedCosts[i] < mostNegativeValue) {
+      mostNegativeValue = reducedCosts[i];
+      p = i;
+    }
+  }
+
+  return p;
+}
+
+int SimplexFlatTable::findMinStep(int p) const
 {
   // Calculate the maximum step that can be done along the basic direction d[p]
-  constexpr double tol = 1e-10;
   double minStep = std::numeric_limits<double>::infinity();
   int q{ -1 }; // row of min step. -1 means unbounded.
 
   for (auto [k, minus_d] : innerTable[p])
-    if (minus_d > tol) {
+    if (minus_d > epsilon) {
       const auto step = rhs[k] / minus_d;
       if (step < minStep) {
         minStep = step;
@@ -98,12 +113,25 @@ void SimplexFlatTable::pivoting(int p, int q)
   // p column, q = row.
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
   const double thepivot = inner(q, p);
-  if (isAround(thepivot, 0.0))
+  if (isAround(thepivot, 0.0)) {
+
+    std::cout << "The pivot is too close to zero for (" << q << "," << p << ')' << std::endl;
+    for (auto elem : innerTable[p])
+      std::cout << "(" << elem.index << ',' << elem.value << ")\n";
+
+    std::cout << std::endl;
+
     throw std::runtime_error(fmt::format("The pivot is too close to zero: {}", thepivot));
+  }
 
   auto &pivotCol = innerTable[p];
 
   auto oneTask = [this, thepivot, p, q, &pivotCol](auto &colNow) {
+    // if (!std::is_sorted(colNow.begin(), colNow.end(), CompElementIndices{})) {
+    //   std::cout << "Series is not sorted" << std::endl;
+    //   throw "Given column is not sorted!";
+    // }
+
     if (&colNow == &pivotCol) return; // Do not process pivot row.
 
     const int colIndex = &colNow - &innerTable[0];
@@ -120,6 +148,11 @@ void SimplexFlatTable::pivoting(int p, int q)
 
     reducedCosts[colIndex] -= reducedCosts[p] * q_val; // Remove from last row.
 
+    if (reducedCosts[colIndex] < -1e20) {
+      std::cout << "Reduced cost is too low!  " << reducedCosts[colIndex] << std::endl;
+      throw "Reduced cost is too low!!!!\n";
+    }
+
     auto N_now = colNow.size();
     auto N_piv = pivotCol.size();
 
@@ -134,7 +167,8 @@ void SimplexFlatTable::pivoting(int p, int q)
       if (ePiv.index == q)
         ++i_piv;
       else if (eNow.index < ePiv.index) {
-        temporary.push_back(eNow);
+        if (!isAround(eNow.value))
+          temporary.push_back(eNow);
         ++i_now;
       } else if (eNow.index == ePiv.index) {
         const auto new_value = eNow.value - q_val * ePiv.value;
@@ -143,17 +177,22 @@ void SimplexFlatTable::pivoting(int p, int q)
         ++i_now;
         ++i_piv;
       } else {
-        temporary.emplace_back(ePiv.index, -q_val * ePiv.value);
+        const auto new_value = -q_val * ePiv.value;
+        if (!isAround(new_value))
+          temporary.emplace_back(ePiv.index, new_value);
         ++i_piv;
       }
     }
 
     while (i_now != N_now)
-      temporary.push_back(colNow[i_now++]);
+      if (!isAround(colNow[i_now].value))
+        temporary.push_back(colNow[i_now++]);
 
     while (i_piv != N_piv) {
       const auto &ePiv = pivotCol[i_piv++];
-      temporary.emplace_back(ePiv.index, -q_val * ePiv.value);
+      const auto new_value = -q_val * ePiv.value;
+      if (!isAround(new_value))
+        temporary.emplace_back(ePiv.index, new_value);
     }
 
     std::swap(temporary, colNow);
@@ -164,8 +203,10 @@ void SimplexFlatTable::pivoting(int p, int q)
   rhs[q] /= thepivot;
   // We always have RHS.
   for (auto [key, val] : innerTable[p])
-    if (key != q)
-      rhs[key] -= val * rhs[q];
+    if (key != q) {
+      const auto new_value = rhs[key] - val * rhs[q];
+      rhs[key] = new_value; // isAround(new_value) ? 0.0 : new_value;
+    }
 
   negativeObjective -= rhs[q] * reducedCosts[p];
 
@@ -211,6 +252,9 @@ std::pair<bool, bool> SimplexFlatTable::simplexAlgorithmTableau()
 
       std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
                 << " per " << innerTable.size() << '\n';
+
+
+      std::cout << "Minimum reduced cost: " << *std::min_element(reducedCosts.begin(), reducedCosts.end()) << '\n';
     }
 
     iter++;

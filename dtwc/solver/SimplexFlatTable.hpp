@@ -126,8 +126,9 @@ public:
   double &setReducedCost(int k) { return reducedCosts[k]; }
   void setNegativeObjective(double val) { negativeObjective = val; }
 
-  int findNegativeCost();
-  int findMinStep(int p);
+  int findNegativeCost() const;
+  int findMinStep(int p) const;
+  int findMostNegativeCost() const;
 
   void pivoting(int p, int q);
   std::tuple<int, int, bool, bool> simplexTableau();

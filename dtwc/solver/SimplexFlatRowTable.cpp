@@ -129,7 +129,7 @@ int SimplexFlatRowTable::findMinStep(int p)
 std::tuple<int, int, bool, bool> SimplexFlatRowTable::simplexTableau()
 {
   // Find the first negative cost, if there are none, then table is optimal.
-  const int p = findNegativeCost();
+  const int p = findMostNegativeCost();
 
   if (p == -1) // The table is optimal
     return std::make_tuple(-1, -1, true, true);
