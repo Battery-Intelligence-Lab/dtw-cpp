@@ -15,7 +15,8 @@
 #include "../settings.hpp"
 #include "../utility.hpp"
 #include "solver_util.hpp"
-
+#include <Eigen/Dense>
+#include <Eigen/Sparse>
 
 #include <vector>
 #include <string>
