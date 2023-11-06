@@ -40,6 +40,7 @@ class SimplexFlatTable
   double negativeObjective{};
 
   int mtab{}, ntab{};
+  int iLastPivot{ -1 }; // Last pivoted column
 
 public:
   SimplexFlatTable() = default;
@@ -122,11 +123,10 @@ public:
     return 0.0;
   }
 
-
   double &setReducedCost(int k) { return reducedCosts[k]; }
   void setNegativeObjective(double val) { negativeObjective = val; }
 
-  int findNegativeCost() const;
+  int findNegativeCost();
   int findMinStep(int p) const;
   int findMostNegativeCost() const;
 

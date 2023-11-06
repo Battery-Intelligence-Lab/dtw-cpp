@@ -90,6 +90,8 @@ int SimplexFlatRowTable::findNegativeCost() const
 
 int SimplexFlatRowTable::findMinStep(int p)
 {
+  pivotRows.clear(); // Prep for findMinStep;
+  pivotRows.resize(innerTable.size(), { -1, -1 });
   // Calculate the maximum step that can be done along the basic direction d[p]
   using StepIndexPair = std::pair<double, int>;
 
@@ -103,7 +105,10 @@ int SimplexFlatRowTable::findMinStep(int p)
     innerTable.end(),
     initial,
     [](const StepIndexPair &a, const StepIndexPair &b) -> StepIndexPair {
-      return (a.first < b.first) ? a : b;
+      if (isAround(a.first, b.first, 1e-12))
+        return (a.second < b.second) ? a : b;
+      else
+        return (a.first < b.first) ? a : b;
     },
     [p, this](const auto &row) -> StepIndexPair {
       const int rowIndex = (&row - &innerTable[0]);
@@ -129,13 +134,13 @@ int SimplexFlatRowTable::findMinStep(int p)
 std::tuple<int, int, bool, bool> SimplexFlatRowTable::simplexTableau()
 {
   // Find the first negative cost, if there are none, then table is optimal.
-  const int p = findMostNegativeCost();
-
+  std::uniform_real_distribution<double> dist(0.0, 1.0);
+  // Find the first negative cost, if there are none, then table is optimal.
+  // const int p = (dist(randGenerator) < 0.5) ? findNegativeCost() : findMostNegativeCost();
+  const int p = findNegativeCost();
   if (p == -1) // The table is optimal
     return std::make_tuple(-1, -1, true, true);
 
-  pivotRows.clear(); // Prep for findMinStep;
-  pivotRows.resize(innerTable.size(), { -1, -1 });
   const int q = findMinStep(p);
 
   if (q == -1) // The table is unbounded
@@ -146,6 +151,7 @@ std::tuple<int, int, bool, bool> SimplexFlatRowTable::simplexTableau()
 
 void SimplexFlatRowTable::pivoting(int p, int q)
 {
+  constexpr double tol_sparsity = epsilon / 1000;
   // p column, q = row.
   // Make p,q element one and eliminate all other nonzero elements in that column by basic row operations.
   const double thepivot = pivotRows[q].value;
@@ -171,10 +177,9 @@ void SimplexFlatRowTable::pivoting(int p, int q)
 
     if (pivotRows[rowIndex].index == -1) return;
 
-
     const auto p_val = pivotRows[rowIndex].value;
 
-    rhs[rowIndex] -= p_val * rhs[q];
+    rhs[rowIndex] = std::max(rhs[rowIndex] - p_val * rhs[q], 0.0);
 
 
     const auto N_now = rowNow.size();
@@ -182,9 +187,7 @@ void SimplexFlatRowTable::pivoting(int p, int q)
 
     thread_local std::vector<Element> temporary;
     temporary.clear();
-
-    // if ((N_now + N_piv) > temporary.capacity())
-    //   temporary.reserve(2 * (N_now + N_piv));
+    temporary.reserve(N_now);
 
     size_t i_now{}, i_piv{};
 
@@ -197,13 +200,15 @@ void SimplexFlatRowTable::pivoting(int p, int q)
         ++i_now;
       } else if (eNow.index == ePiv.index) {
         const auto new_value = eNow.value - p_val * ePiv.value;
-        if (!isAround(new_value))
+        if (!isAround(new_value, 0.0, tol_sparsity))
           temporary.emplace_back(Element{ eNow.index, new_value });
 
         ++i_now;
         ++i_piv;
       } else {
-        temporary.emplace_back(ePiv.index, -p_val * ePiv.value);
+        const auto new_value = -p_val * ePiv.value;
+        if (!isAround(new_value, 0.0, tol_sparsity))
+          temporary.emplace_back(ePiv.index, new_value);
         ++i_piv;
       }
     }
@@ -213,7 +218,9 @@ void SimplexFlatRowTable::pivoting(int p, int q)
 
     while (i_piv != N_piv) {
       const auto &ePiv = pivotRow[i_piv++];
-      temporary.emplace_back(ePiv.index, -p_val * ePiv.value);
+      const auto new_value = -p_val * ePiv.value;
+      if (!isAround(new_value, 0.0, tol_sparsity))
+        temporary.emplace_back(ePiv.index, new_value);
     }
 
     std::swap(temporary, rowNow);
@@ -263,6 +270,9 @@ std::pair<bool, bool> SimplexFlatRowTable::simplexAlgorithmTableau()
 
       std::cout << "Inner size per row: " << (double)innerSize / innerTable.size()
                 << " per " << innerTable.size() << '\n';
+
+      std::cout << "Minimum reduced cost: " << *std::min_element(reducedCosts.begin(), reducedCosts.end()) << '\n';
+      std::cout << "Minimum rhs: " << *std::min_element(rhs.begin(), rhs.end()) << '\n';
     }
 
     iter++;

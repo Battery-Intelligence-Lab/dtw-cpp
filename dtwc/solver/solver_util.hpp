@@ -21,7 +21,10 @@ namespace dtwc::solver {
 constexpr data_t int_threshold = 0.01;
 constexpr double epsilon = 1e-8;
 
-bool inline isAround(double x, double y = 0.0) { return std::abs(x - y) <= epsilon; }
+bool inline isAround(double x, double y = 0.0, double tolerance = epsilon)
+{
+  return std::abs(x - y) <= tolerance;
+}
 bool inline isFractional(double x) { return std::abs(x - std::round(x)) > epsilon; }
 
 enum class ConvergenceFlag {
