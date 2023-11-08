@@ -54,11 +54,8 @@ public:
   SparseSimplex(Problem &prob);
   SparseSimplex(EqualityConstraints &eq_, const VectorType &c_) : eq(eq_), c(c_) {}
 
-  void gomory();
-  void gomoryAlgorithm()
-  {
-    while (nGomory != 0) gomory();
-  }
+  void gomoryCut();
+  void gomoryAlgorithm();
 
   std::pair<std::vector<double>, double> getResults() const;
   std::tuple<bool, bool> simplex();

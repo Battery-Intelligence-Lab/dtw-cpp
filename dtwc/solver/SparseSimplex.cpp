@@ -184,7 +184,7 @@ std::pair<std::vector<double>, double> SparseSimplex::getResults() const
 }
 
 
-void SparseSimplex::gomory()
+void SparseSimplex::gomoryAlgorithm()
 {
   fmt::println("==================================");
   fmt::println("Problem with {} variables and {} constraints", eq.A.cols(), eq.A.rows());
@@ -208,9 +208,13 @@ void SparseSimplex::gomory()
   if constexpr (settings::debug_Simplex)
     fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
 
+  gomoryCut();
+}
 
-  int m_now = eq.A.rows();
-  int n_now = eq.A.cols();
+void SparseSimplex::gomoryCut()
+{
+  const int m_now = eq.A.rows();
+  const int n_now = eq.A.cols();
 
   nGomory = 0;
   for (int i = 0; i < (table.rows() - 1); i++) {
@@ -234,6 +238,7 @@ void SparseSimplex::gomory()
   eq.A.expand(m_now + nGomory, n_now + nGomory);
 
   c.resize(n_now + nGomory); // add zeros
+
   fmt::println("Number of Gomory cuts: {}", nGomory);
 }
 
