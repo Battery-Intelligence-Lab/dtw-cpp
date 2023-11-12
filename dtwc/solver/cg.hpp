@@ -22,39 +22,32 @@
 
 namespace dtwc::solver {
 
-inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &r_now,
+inline auto cg_lp(Eigen::VectorXd &xkp1, Eigen::VectorXd &r_now,
                   ConstraintOperator &op, double rho, double sigma)
 {
 
   const auto Nx = op.get_Nx();
-  const auto N = op.N;
-  const auto Nm = 2 * N * N + N + 1;
 
-  thread_local std::vector<data_t> p_now;
-  thread_local std::vector<data_t> temp_Nx(Nx); // Temporary matrices in size Nm and Nx;
-  // Make sure everything is in right size.
-  xkp1.resize(Nx);
-  temp_Nx.resize(Nx);
+  thread_local Eigen::VectorXd p_now;
+  thread_local Eigen::VectorXd temp_Nx(Nx); // Temporary matrices in size Nm and Nx;
 
-  // Initialise xk+1 with zeros:
-  std::fill_n(xkp1.begin(), Nx, 0.0);
+  xkp1.setZero(); // Initialise xk+1 with zeros:
 
   p_now = r_now;
 
   size_t Niter{ 10000 };
   bool flag = false;
 
-  auto r_prev_sqr = std::inner_product(r_now.begin(), r_now.end(), r_now.begin(), 0.0);
+  auto r_prev_sqr = r_now.squaredNorm();
   for (size_t i_iter = 0; i_iter < Niter; i_iter++) {
-    // std::cout << "r_prev_sqr : " << r_prev_sqr << '\n';
     if (r_prev_sqr <= 1e-12) {
       flag = true;
       break;
     }
 
-    op.V(temp_Nx, p_now, rho, sigma); // op_V(p_now,rho,sigma,N)
+    temp_Nx = (rho * (op.A.transpose() * (op.A * p_now))).eval() + sigma * p_now; // op.V
 
-    const auto p_norm_sqr = std::inner_product(p_now.begin(), p_now.end(), temp_Nx.begin(), 0.0);
+    const auto p_norm_sqr = p_now.dot(temp_Nx);
     const auto alpha = r_prev_sqr / p_norm_sqr;
 
     double r_next_sqr = 0.0;
@@ -63,14 +56,11 @@ inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &r_now,
       r_next_sqr += r_now[i] * r_now[i];
     }
 
-    for (size_t i = 0; i < Nx; i++)
-      xkp1[i] += alpha * p_now[i];
+    xkp1 += alpha * p_now;
 
     const auto beta = r_next_sqr / r_prev_sqr;
     r_prev_sqr = r_next_sqr;
-
-    for (size_t i = 0; i < Nx; i++)
-      p_now[i] = r_now[i] + beta * p_now[i];
+    p_now = r_now + beta * p_now;
   }
 
   if (!flag)

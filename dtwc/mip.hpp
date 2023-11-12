@@ -27,4 +27,6 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob);
 void MIP_clustering_bySparseSimplex(Problem &prob);
 void MIP_clustering_byDenseSimplex(Problem &prob);
 
+void MIP_clustering_byOSLP(Problem &prob);
+
 } // namespace dtwc

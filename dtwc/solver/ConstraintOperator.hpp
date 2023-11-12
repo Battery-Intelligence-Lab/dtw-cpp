@@ -12,7 +12,8 @@
 
 #include "../settings.hpp"
 #include "../utility.hpp"
-
+#include "EqualityConstraints.hpp"
+#include <Eigen/Sparse>
 
 #include <vector>
 #include <string>
@@ -20,238 +21,68 @@
 #include <algorithm>
 
 namespace dtwc::solver {
+using Eigen::VectorXd;
 
 struct ConstraintOperator
 {
-  size_t N{ 0 }; // Number of time-series data.
-  std::vector<std::array<size_t, 2>> fixed_variables;
+  using SpVectorType = Eigen::SparseVector<double>;
+  using SpMatrixType = Eigen::SparseMatrix<double>;
+
+  size_t Nb{}, Nc{}; // Number of time-series data.
+
+  SpVectorType b;
+  SpMatrixType A;
 
   ConstraintOperator() = default;
-  explicit ConstraintOperator(size_t N_) : N(N_) {}
-
-
-  auto get_Nm() const { return 2 * N * N + N + 1; }
-  auto get_Nx() const { return N * N; }
-
-  auto A(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
+  explicit ConstraintOperator(size_t Nb_, size_t Nc_) : Nb(Nb_), Nc(Nc_)
   {
-    // x_in size is assumed to be N^2;
-    const auto Nout = get_Nm(); // x_out size;
-    x_out.resize(Nout);
+    const auto Neq = Nb + 1;
+    const auto Nineq = Nb * (Nb - 1);
+    const auto Nconstraints = Neq + Nineq;
 
-    data_t sum = 0;
-    size_t i_sum = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      x_out[i] = x_in[i];
-      x_out[N * N + i] = -x_in[i] + x_in[(i % N) * (N + 1)];
+    const auto Nvar_original = Nb * Nb;
+    const auto N_slack = Nineq;
+    const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
 
-      sum += x_in[i];
+    std::vector<Eigen::Triplet<double>> triplets;
+    b = SpVectorType(Nconstraints);
+    b.reserve(Nb + 1);
 
-      if (((i + 1) % N) == 0) {
-        x_out[2 * N * N + i_sum] = sum;
-        sum = 0;
-        i_sum++;
+    auto eq = EqualityConstraints(Nconstraints, Nvar);
+    // Create b matrix:
+    b.coeffRef(0) = Nc;
+    for (int i = 0; i < Nb; ++i)
+      b.coeffRef(i + 1) = 1;
+
+    // Create A matrix:
+    for (int i = 0; i < Nineq; i++)
+      triplets.emplace_back(Neq + i, Nvar_original + i, 1.0);
+
+    for (int i = 0; i < Nb; ++i) {
+      triplets.emplace_back(0, i * (Nb + 1), 1.0); // Sum of diagonals is Nc
+
+      for (int j = 0; j < Nb; j++)
+        triplets.emplace_back(1 + j, Nb * i + j, 1.0); // Every element belongs to one cluster.
+
+      // ---------------
+      int shift = 0;
+      for (int j = 0; j < Nb; j++) {
+        const int block_begin_row = Nb + 1 + (Nb - 1) * i;
+        const int block_begin_col = Nb * i;
+        if (i == j) {
+          for (int k = 0; k < (Nb - 1); k++)
+            triplets.emplace_back(block_begin_row + k, block_begin_col + j, -1.0);
+          shift = 1;
+        } else
+          triplets.emplace_back(block_begin_row + j - shift, block_begin_col + j, 1.0);
       }
     }
 
-    sum = 0;
-    for (size_t i = 0; i < N * N; i += N + 1)
-      sum += x_in[i];
-
-    x_out[2 * N * N + N] = sum;
+    A = SpMatrixType(Nconstraints, Nvar);
+    A.setFromTriplets(triplets.begin(), triplets.end());
   }
 
-
-  double A(size_t i, std::vector<data_t> &x_in)
-  {
-    // x_in size is assumed to be N^2;
-    const auto Nout = get_Nm(); // x_out size;
-
-    // Slower if used in V.
-    if (i < N * N)
-      return x_in[i];
-    else if (i < 2 * N * N)
-      return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
-    else if (i < 2 * N * N + N) {
-      const auto i_basic = i - (2 * N * N);
-      return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
-    } else if (i == (2 * N * N + N)) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
-      return sum;
-    }
-
-    throw 12345;
-  }
-
-  auto At(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
-  {
-    // x_in size is assumed to be 2*N^2 + N + 1;
-    const auto Nout = get_Nx(); // x_out size;
-    x_out.resize(Nout);
-
-    size_t i_repeat = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      if (i % N == 0 && i != 0) i_repeat++;
-      x_out[i] = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i_repeat];
-    }
-
-    for (size_t i = 0; i < N; i++) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N)
-        sum += x_in[N * N + i + j];
-
-      x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
-    }
-  }
-
-
-  data_t At(size_t i, std::vector<data_t> &x_in)
-  {
-    // x_in size is assumed to be 2*N^2 + N + 1;
-    // i/N should be size_t.
-    data_t x_out_i = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i / N];
-
-    if (i % (N + 1) == 0) {
-      x_out_i += x_in[2 * N * N + N];
-
-      for (size_t j = 0; j < N * N; j += N)
-        x_out_i += x_in[N * N + i / (N + 1) + j];
-    }
-
-    return x_out_i;
-  }
-
-  template <typename Tfun>
-  data_t At(size_t i, Tfun &&x_in)
-  {
-    // x_in size is assumed to be 2*N^2 + N + 1;
-    // i/N should be size_t.
-    data_t x_out_i = x_in(i) - x_in(N * N + i) + x_in(2 * N * N + i / N);
-
-    if (i % (N + 1) == 0) {
-      x_out_i += x_in(2 * N * N + N);
-
-      for (size_t j = 0; j < N * N; j += N)
-        x_out_i += x_in(N * N + i / (N + 1) + j);
-    }
-
-    return x_out_i;
-  }
-
-
-  // auto AtA(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
-  // {
-
-
-  //   if (i < N * N)
-  //     return x_in[i];
-  //   else if (i < 2 * N * N)
-  //     return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
-  //   else if (i < 2 * N * N + N) {
-  //     const auto i_basic = i - (2 * N * N);
-  //     return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
-  //   } else if (i == (2 * N * N + N)) {
-  //     data_t sum = 0;
-  //     for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
-  //     return sum;
-  //   }
-
-  //   - x_in[N * N + i]
-
-  //    x_out.resize(Nout);
-
-  //   size_t i_repeat = 0;
-  //   for (size_t i = 0; i < N * N; i++) {
-  //     if (i % N == 0 && i != 0) i_repeat++;
-  //     x_out[i] = x_in[i] +x_in[i] - x_in[(i % N) * (N + 1)] + std::accumulate(x_in.begin() + i_repeat * N, x_in.begin() + (i_repeat + 1) * N, 0.0);;
-  //   }
-
-  //   for (size_t i = 0; i < N; i++) {
-  //     data_t sum = 0;
-  //     for (size_t j = 0; j < N * N; j += N)
-  //       sum += x_in[N * N + i + j];
-
-  //     x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
-  //   }
-  // }
-
-
-  template <typename Tfun> // Takes a temporary object.
-  auto At(std::vector<data_t> &x_out, Tfun &&x_in)
-  {
-    // x_in size is assumed to be 2*N^2 + N + 1;
-    const auto Nout = get_Nx(); // x_out size;
-    x_out.resize(Nout);
-
-    size_t i_repeat = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      if (i % N == 0 && i != 0) i_repeat++;
-      x_out[i] = x_in(i) - x_in(N * N + i) + x_in(2 * N * N + i_repeat);
-    }
-
-    for (size_t i = 0; i < N; i++) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N)
-        sum += x_in(N * N + i + j);
-
-      x_out[(i % N) * (N + 1)] += x_in(2 * N * N + N) + sum;
-    }
-  }
-
-  auto V(std::vector<data_t> &x_out, std::vector<data_t> &x_in, double rho, double sigma)
-  {
-    // x_in size is assumed to be N^2;
-    const auto Nout = get_Nx();   // x_out size;
-    const auto Ninter = get_Nm(); // intermediate size.
-
-    thread_local std::vector<data_t> x_inter(Ninter); // Intermediate state.
-
-    A(x_inter, x_in);
-    At(x_out, x_inter);
-
-    for (size_t i = 0; i < Nout; i++)
-      x_out[i] = rho * x_out[i] + sigma * x_in[i];
-  }
-
-  auto clamp(std::vector<data_t> &x_out, int Nc)
-  {
-    for (size_t i = 0; i != 2 * N * N; i++)
-      x_out[i] = std::clamp(x_out[i], 0.0, 1.0);
-
-
-    // Equality constraints:
-    for (size_t i = 0; i != N; i++)
-      x_out[2 * N * N + i] = 1.0;
-
-    x_out[2 * N * N + N] = Nc;
-
-    for (auto ind_val : fixed_variables) {
-      // This loop is for fixing any variables to a certain values.
-      const auto ind = ind_val[0];
-      const auto val = ind_val[1];
-
-      x_out[ind] = val;
-    }
-  }
-
-  data_t clamp(data_t x_out_i, int Nc, size_t i)
-  {
-    if (i < 2 * N * N)
-      x_out_i = std::clamp(x_out_i, 0.0, 1.0);
-    else if (i < (2 * N * N + N)) // Equality constraints:
-      return 1.0;
-    else
-      return Nc;
-
-    for (auto ind_val : fixed_variables) {
-      // This loop is for fixing any variables to a certain values.
-      if (ind_val[0] == i) {
-        x_out_i = ind_val[1];
-        break;
-      }
-    }
-    return x_out_i;
-  }
+  auto get_Nm() const { return A.rows(); }
+  auto get_Nx() const { return A.cols(); }
 };
 } // namespace dtwc::solver
