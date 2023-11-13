@@ -12,7 +12,8 @@
 
 #include "../settings.hpp"
 #include "../utility.hpp"
-
+#include "solver_util.hpp"
+#include "sparse_util.hpp"
 
 #include <vector>
 #include <string>
@@ -23,15 +24,63 @@ namespace dtwc::solver {
 
 struct ConstraintOperator
 {
-  size_t N{ 0 }; // Number of time-series data.
-  std::vector<std::array<size_t, 2>> fixed_variables;
+  size_t N{ 0 };                          // Number of time-series data.
+  std::vector<std::vector<Element>> Amat; // Each is a column
+  std::vector<double> b;
+
+  int Nb{}, Nc{}; // Number of time-series data.
 
   ConstraintOperator() = default;
-  explicit ConstraintOperator(size_t N_) : N(N_) {}
+  explicit ConstraintOperator(int Nb_, int Nc_) : Nb(Nb_), Nc(Nc_)
+  {
+    const auto Neq = Nb + 1;
+    const auto Nineq = Nb * (Nb - 1);
+    const auto Nconstraints = Neq + Nineq;
+
+    const auto Nvar_original = Nb * Nb;
+    const auto N_slack = Nineq;
+    const auto Nvar = Nvar_original + N_slack; // x1--xN^2  + s_slack
+
+    b.resize(Nconstraints);
+    Amat.resize(Nvar);
+
+    // Create b matrix:
+    b[0] = Nc;
+    for (int i = 0; i < Nb; ++i)
+      b[i + 1] = 1;
+
+    // Create A matrix:
+    for (int i = 0; i < Nineq; i++)
+      Amat[Nvar_original + i].emplace_back(Neq + i, 1.0);
+
+    for (int i = 0; i < Nb; ++i) {
+      Amat[i * (Nb + 1)].emplace_back(0, 1.0); // Sum of diagonals is Nc
+
+      for (int j = 0; j < Nb; j++)
+        Amat[Nb * i + j].emplace_back(1 + j, 1.0); // Every element belongs to one cluster.
+
+      // ---------------
+      int shift = 0;
+      for (int j = 0; j < Nb; j++) {
+        const int block_begin_row = Nb + 1 + (Nb - 1) * i;
+        const int block_begin_col = Nb * i;
+        if (i == j) {
+          for (int k = 0; k < (Nb - 1); k++)
+            Amat[block_begin_col + j].emplace_back(block_begin_row + k, -1.0);
+          shift = 1;
+        } else
+          Amat[block_begin_col + j].emplace_back(block_begin_row + j - shift, 1.0);
+      }
+    }
+
+    std::for_each(Amat.begin(), Amat.end(), [](auto &elemVec) {
+      std::sort(elemVec.begin(), elemVec.end(), CompElementIndices{});
+    });
+  }
 
 
-  auto get_Nm() const { return 2 * N * N + N + 1; }
-  auto get_Nx() const { return N * N; }
+  auto get_Nm() const { return b.size(); }
+  auto get_Nx() const { return Amat.size(); }
 
   auto A(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
   {
@@ -39,49 +88,25 @@ struct ConstraintOperator
     const auto Nout = get_Nm(); // x_out size;
     x_out.resize(Nout);
 
-    data_t sum = 0;
-    size_t i_sum = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      x_out[i] = x_in[i];
-      x_out[N * N + i] = -x_in[i] + x_in[(i % N) * (N + 1)];
+    std::fill_n(x_out.begin(), Nout, 0.0); // Zero out the vector.
 
-      sum += x_in[i];
-
-      if (((i + 1) % N) == 0) {
-        x_out[2 * N * N + i_sum] = sum;
-        sum = 0;
-        i_sum++;
-      }
-    }
-
-    sum = 0;
-    for (size_t i = 0; i < N * N; i += N + 1)
-      sum += x_in[i];
-
-    x_out[2 * N * N + N] = sum;
+    for (size_t i{}; i < x_in.size(); i++)
+      for (const auto [row, val] : Amat[i])
+        x_out[row] += val * x_in[i];
   }
 
 
-  double A(size_t i, std::vector<data_t> &x_in)
+  data_t A(size_t i, std::vector<data_t> &x_in)
   {
     // x_in size is assumed to be N^2;
-    const auto Nout = get_Nm(); // x_out size;
+    data_t x_out_i = 0;
 
-    // Slower if used in V.
-    if (i < N * N)
-      return x_in[i];
-    else if (i < 2 * N * N)
-      return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
-    else if (i < 2 * N * N + N) {
-      const auto i_basic = i - (2 * N * N);
-      return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
-    } else if (i == (2 * N * N + N)) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
-      return sum;
-    }
+    for (size_t i{}; i < x_in.size(); i++)
+      for (const auto [row, val] : Amat[i])
+        if (row == i)
+          x_out_i += val * x_in[i];
 
-    throw 12345;
+    return x_out_i;
   }
 
   auto At(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
@@ -89,20 +114,11 @@ struct ConstraintOperator
     // x_in size is assumed to be 2*N^2 + N + 1;
     const auto Nout = get_Nx(); // x_out size;
     x_out.resize(Nout);
+    std::fill_n(x_out.begin(), Nout, 0.0); // Zero out the vector.
 
-    size_t i_repeat = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      if (i % N == 0 && i != 0) i_repeat++;
-      x_out[i] = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i_repeat];
-    }
-
-    for (size_t i = 0; i < N; i++) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N)
-        sum += x_in[N * N + i + j];
-
-      x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
-    }
+    for (size_t i{}; i < x_out.size(); i++)
+      for (const auto [col, val] : Amat[i])
+        x_out[i] += val * x_in[col];
   }
 
 
@@ -110,14 +126,9 @@ struct ConstraintOperator
   {
     // x_in size is assumed to be 2*N^2 + N + 1;
     // i/N should be size_t.
-    data_t x_out_i = x_in[i] - x_in[N * N + i] + x_in[2 * N * N + i / N];
-
-    if (i % (N + 1) == 0) {
-      x_out_i += x_in[2 * N * N + N];
-
-      for (size_t j = 0; j < N * N; j += N)
-        x_out_i += x_in[N * N + i / (N + 1) + j];
-    }
+    data_t x_out_i = 0;
+    for (const auto [col, val] : Amat[i])
+      x_out_i += val * x_in[col];
 
     return x_out_i;
   }
@@ -127,54 +138,12 @@ struct ConstraintOperator
   {
     // x_in size is assumed to be 2*N^2 + N + 1;
     // i/N should be size_t.
-    data_t x_out_i = x_in(i) - x_in(N * N + i) + x_in(2 * N * N + i / N);
-
-    if (i % (N + 1) == 0) {
-      x_out_i += x_in(2 * N * N + N);
-
-      for (size_t j = 0; j < N * N; j += N)
-        x_out_i += x_in(N * N + i / (N + 1) + j);
-    }
+    data_t x_out_i = 0;
+    for (const auto [col, val] : Amat[i])
+      x_out_i += val * x_in(col);
 
     return x_out_i;
   }
-
-
-  // auto AtA(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
-  // {
-
-
-  //   if (i < N * N)
-  //     return x_in[i];
-  //   else if (i < 2 * N * N)
-  //     return -x_in[i - N * N] + x_in[(i % N) * (N + 1)];
-  //   else if (i < 2 * N * N + N) {
-  //     const auto i_basic = i - (2 * N * N);
-  //     return std::accumulate(x_in.begin() + i_basic * N, x_in.begin() + (i_basic + 1) * N, 0.0);
-  //   } else if (i == (2 * N * N + N)) {
-  //     data_t sum = 0;
-  //     for (size_t j = 0; j < N * N; j += N + 1) sum += x_in[j];
-  //     return sum;
-  //   }
-
-  //   - x_in[N * N + i]
-
-  //    x_out.resize(Nout);
-
-  //   size_t i_repeat = 0;
-  //   for (size_t i = 0; i < N * N; i++) {
-  //     if (i % N == 0 && i != 0) i_repeat++;
-  //     x_out[i] = x_in[i] +x_in[i] - x_in[(i % N) * (N + 1)] + std::accumulate(x_in.begin() + i_repeat * N, x_in.begin() + (i_repeat + 1) * N, 0.0);;
-  //   }
-
-  //   for (size_t i = 0; i < N; i++) {
-  //     data_t sum = 0;
-  //     for (size_t j = 0; j < N * N; j += N)
-  //       sum += x_in[N * N + i + j];
-
-  //     x_out[(i % N) * (N + 1)] += x_in[2 * N * N + N] + sum;
-  //   }
-  // }
 
 
   template <typename Tfun> // Takes a temporary object.
@@ -183,20 +152,11 @@ struct ConstraintOperator
     // x_in size is assumed to be 2*N^2 + N + 1;
     const auto Nout = get_Nx(); // x_out size;
     x_out.resize(Nout);
+    std::fill_n(x_out.begin(), Nout, 0.0); // Zero out the vector.
 
-    size_t i_repeat = 0;
-    for (size_t i = 0; i < N * N; i++) {
-      if (i % N == 0 && i != 0) i_repeat++;
-      x_out[i] = x_in(i) - x_in(N * N + i) + x_in(2 * N * N + i_repeat);
-    }
-
-    for (size_t i = 0; i < N; i++) {
-      data_t sum = 0;
-      for (size_t j = 0; j < N * N; j += N)
-        sum += x_in(N * N + i + j);
-
-      x_out[(i % N) * (N + 1)] += x_in(2 * N * N + N) + sum;
-    }
+    for (size_t i{}; i < x_out.size(); i++)
+      for (const auto [col, val] : Amat[i])
+        x_out[i] += val * x_in(col);
   }
 
   auto V(std::vector<data_t> &x_out, std::vector<data_t> &x_in, double rho, double sigma)
@@ -214,44 +174,14 @@ struct ConstraintOperator
       x_out[i] = rho * x_out[i] + sigma * x_in[i];
   }
 
-  auto clamp(std::vector<data_t> &x_out, int Nc)
+  void clamp(std::vector<data_t> &x_out, int Nc)
   {
-    for (size_t i = 0; i != 2 * N * N; i++)
-      x_out[i] = std::clamp(x_out[i], 0.0, 1.0);
-
-
-    // Equality constraints:
-    for (size_t i = 0; i != N; i++)
-      x_out[2 * N * N + i] = 1.0;
-
-    x_out[2 * N * N + N] = Nc;
-
-    for (auto ind_val : fixed_variables) {
-      // This loop is for fixing any variables to a certain values.
-      const auto ind = ind_val[0];
-      const auto val = ind_val[1];
-
-      x_out[ind] = val;
-    }
+    x_out = b;
   }
 
   data_t clamp(data_t x_out_i, int Nc, size_t i)
   {
-    if (i < 2 * N * N)
-      x_out_i = std::clamp(x_out_i, 0.0, 1.0);
-    else if (i < (2 * N * N + N)) // Equality constraints:
-      return 1.0;
-    else
-      return Nc;
-
-    for (auto ind_val : fixed_variables) {
-      // This loop is for fixing any variables to a certain values.
-      if (ind_val[0] == i) {
-        x_out_i = ind_val[1];
-        break;
-      }
-    }
-    return x_out_i;
+    return b[i];
   }
 };
 } // namespace dtwc::solver

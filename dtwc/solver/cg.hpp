@@ -27,8 +27,6 @@ inline auto cg_lp(std::vector<data_t> &xkp1, std::vector<data_t> &r_now,
 {
 
   const auto Nx = op.get_Nx();
-  const auto N = op.N;
-  const auto Nm = 2 * N * N + N + 1;
 
   thread_local std::vector<data_t> p_now;
   thread_local std::vector<data_t> temp_Nx(Nx); // Temporary matrices in size Nm and Nx;
