@@ -29,7 +29,7 @@ namespace dtwc::solver {
 class LP
 {
   double EPS_ADMM_FACTOR{ 1e-2 };
-  double MIN_VAL_RHO{ 1e-3 };
+  double MIN_VAL_RHO{ 1e-6 };
   double MAX_VAL_RHO{ 1e6 };
 
   size_t N{ 0 }, Nc{ 0 };
@@ -48,7 +48,7 @@ public:
 
   double epsAbs{ 1e-4 };
   double epsRel{ 1e-4 };
-  double rho{ 1 };
+  double rho{ 0.1 };
   double alpha{ 1.6 };
   double delta{ 1e-6 };
   double sigma{ 1e-6 };
