@@ -102,7 +102,8 @@ void MIP_clustering_byOSLP(Problem &prob)
   lp.epsAbs = 1e-4;
   lp.epsRel = 1e-4;
 
-  lp.solve();
+  // lp.solve();
+  lp.solve_LU();
 
   extract_solution(prob, lp.getSolution());
 }

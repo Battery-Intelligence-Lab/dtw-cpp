@@ -78,6 +78,17 @@ public:
 
   // inline bool isSolutionInteger() { return std::all_of(vX.cbegin(), vX.cend(), is_integer<data_t>); }
 
+  void solve_LU()
+  {
+    if (N == 0 || Nc == 0) {
+      std::cout << "Size is not set!\n";
+      return;
+    }
+
+    op.A.
+  }
+
+
   ConvergenceFlag solve()
   {
     if (N == 0 || Nc == 0) {
