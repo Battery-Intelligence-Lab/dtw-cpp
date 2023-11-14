@@ -97,7 +97,7 @@ void MIP_clustering_byOSLP(Problem &prob)
     for (size_t i{ 0 }; i < Nb; i++)
       q[i + j * Nb] = prob.distByInd_scaled(i, j);
 
-  lp.maxIterations = 3000;
+  lp.maxIterations = 10000;
   lp.numItrConv = 200;
   lp.epsAbs = 1e-4;
   lp.epsRel = 1e-4;

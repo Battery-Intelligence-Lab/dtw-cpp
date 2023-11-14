@@ -78,9 +78,8 @@ struct ConstraintOperator
     });
   }
 
-
-  auto get_Nm() const { return b.size(); }
   auto get_Nx() const { return Amat.size(); }
+  auto get_Nm() const { return b.size() + get_Nx(); }
 
   auto A(std::vector<data_t> &x_out, std::vector<data_t> &x_in)
   {
@@ -93,6 +92,8 @@ struct ConstraintOperator
     for (size_t i{}; i < x_in.size(); i++)
       for (const auto [row, val] : Amat[i])
         x_out[row] += val * x_in[i];
+
+    std::copy(x_in.begin(), x_in.end(), x_out.begin() + b.size());
   }
 
 
@@ -100,6 +101,8 @@ struct ConstraintOperator
   {
     // x_in size is assumed to be N^2;
     data_t x_out_i = 0;
+
+    if (i >= b.size()) return x_in[i - b.size()];
 
     for (size_t i{}; i < x_in.size(); i++)
       for (const auto [row, val] : Amat[i])
@@ -116,9 +119,11 @@ struct ConstraintOperator
     x_out.resize(Nout);
     std::fill_n(x_out.begin(), Nout, 0.0); // Zero out the vector.
 
-    for (size_t i{}; i < x_out.size(); i++)
+    for (size_t i{}; i < x_out.size(); i++) {
+      x_out[i] += x_in[i + b.size()];
       for (const auto [col, val] : Amat[i])
         x_out[i] += val * x_in[col];
+    }
   }
 
 
@@ -126,7 +131,7 @@ struct ConstraintOperator
   {
     // x_in size is assumed to be 2*N^2 + N + 1;
     // i/N should be size_t.
-    data_t x_out_i = 0;
+    data_t x_out_i = x_in[i + b.size()];
     for (const auto [col, val] : Amat[i])
       x_out_i += val * x_in[col];
 
@@ -138,7 +143,7 @@ struct ConstraintOperator
   {
     // x_in size is assumed to be 2*N^2 + N + 1;
     // i/N should be size_t.
-    data_t x_out_i = 0;
+    data_t x_out_i = x_in(i + b.size());
     for (const auto [col, val] : Amat[i])
       x_out_i += val * x_in(col);
 
@@ -154,9 +159,11 @@ struct ConstraintOperator
     x_out.resize(Nout);
     std::fill_n(x_out.begin(), Nout, 0.0); // Zero out the vector.
 
-    for (size_t i{}; i < x_out.size(); i++)
+    for (size_t i{}; i < x_out.size(); i++) {
+      x_out[i] += x_in(i + b.size());
       for (const auto [col, val] : Amat[i])
         x_out[i] += val * x_in(col);
+    }
   }
 
   auto V(std::vector<data_t> &x_out, std::vector<data_t> &x_in, double rho, double sigma)
@@ -176,12 +183,16 @@ struct ConstraintOperator
 
   void clamp(std::vector<data_t> &x_out, int Nc)
   {
-    x_out = b;
+    std::copy(b.begin(), b.end(), x_out.begin());
+
+    std::transform(x_out.begin() + b.size(), x_out.end(), x_out.begin() + b.size(), [](double value) {
+      return std::clamp(value, 0.0, 1.0);
+    });
   }
 
   data_t clamp(data_t x_out_i, int Nc, size_t i)
   {
-    return b[i];
+    return (i < b.size()) ? b[i] : std::clamp(x_out_i, 0.0, 1.0);
   }
 };
 } // namespace dtwc::solver
