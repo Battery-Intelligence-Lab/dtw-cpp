@@ -114,6 +114,10 @@ target_link_libraries(dtwc++
   range-v3
   fmt
   solvers
+  highs::highs
 )
+
+target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS})
+
 
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

@@ -37,3 +37,15 @@ CPMAddPackage(
   NAME fmt
   URL "https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz"
 )
+
+# HiGHS library:
+include(FetchContent)
+
+FetchContent_Declare(
+    highs
+    GIT_REPOSITORY "https://github.com/ERGO-Code/HiGHS.git"
+    GIT_TAG        "bazel"
+)
+set(FAST_BUILD ON CACHE INTERNAL "Fast Build")
+
+FetchContent_MakeAvailable(highs)
