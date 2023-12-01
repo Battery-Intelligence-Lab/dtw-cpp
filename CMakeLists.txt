@@ -103,6 +103,12 @@ add_executable(dtwc++
   dtwc/mip_Gurobi.cpp
 #  dtwc/initialisation.cpp
   ${GRB_SRC_FILES}
+
+)
+
+target_sources(dtwc++
+PUBLIC
+dtwc/parallelisation.hpp
 )
 
 target_link_libraries(dtwc++
@@ -110,10 +116,10 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   ${GUROBI_LIBRARY}
+  solvers
   eigen
   range-v3
   fmt
-  solvers
   highs::highs
 )
 

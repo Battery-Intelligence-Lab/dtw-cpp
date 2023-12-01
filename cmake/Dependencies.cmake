@@ -7,11 +7,13 @@ include(cmake/CPM.cmake)
 CPMAddPackage(
   NAME range-v3
   URL "https://github.com/ericniebler/range-v3/archive/refs/tags/0.12.0.tar.gz"
-  DOWNLOAD_ONLY YES
+  DOWNLOAD_ONLY YES 
 )
 
-add_library(range-v3 INTERFACE)
-target_include_directories(range-v3 SYSTEM INTERFACE ${range-v3_SOURCE_DIR}/include)
+if(range-v3_ADDED) 
+add_library(range-v3 INTERFACE IMPORTED)
+target_include_directories(range-v3 INTERFACE ${range-v3_SOURCE_DIR}/include)
+endif()
 
 # Eigen library:
 CPMAddPackage(
@@ -39,13 +41,8 @@ CPMAddPackage(
 )
 
 # HiGHS library:
-include(FetchContent)
-
-FetchContent_Declare(
-    highs
-    GIT_REPOSITORY "https://github.com/ERGO-Code/HiGHS.git"
-    GIT_TAG        "bazel"
+CPMAddPackage(
+    NAME highs
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.6.0.tar.gz"
 )
 set(FAST_BUILD ON CACHE INTERNAL "Fast Build")
-
-FetchContent_MakeAvailable(highs)
