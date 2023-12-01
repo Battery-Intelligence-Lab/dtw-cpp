@@ -26,24 +26,9 @@
 
 namespace dtwc {
 
-template <typename T>
-void MIP_clustering_bySimplex(Problem &prob)
+void extract_solution(Problem &prob, auto &solution)
 {
-  std::cout << "Simplex is being called!" << std::endl;
-  dtwc::Clock clk; // Create a clock object
-
   prob.clear_clusters();
-
-  thread_local auto simplexSolver = T(prob);
-
-  std::cout << "Problem formulation finished in " << clk << '\n';
-  simplexSolver.gomoryAlgorithm();
-  std::cout << "Problem solution finished in " << clk << '\n';
-
-  auto [solution, copt] = simplexSolver.getResults();
-
-  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
-
   const auto Nb = prob.data.size();
 
   for (ind_t i{ 0 }; i < Nb; i++)
@@ -63,6 +48,27 @@ void MIP_clustering_bySimplex(Problem &prob)
 
     i_cluster++;
   }
+}
+
+template <typename T>
+void MIP_clustering_bySimplex(Problem &prob)
+{
+  std::cout << "Simplex is being called!" << std::endl;
+  dtwc::Clock clk; // Create a clock object
+
+  prob.clear_clusters();
+
+  thread_local auto simplexSolver = T(prob);
+
+  std::cout << "Problem formulation finished in " << clk << '\n';
+  simplexSolver.gomoryAlgorithm();
+  std::cout << "Problem solution finished in " << clk << '\n';
+
+  auto [solution, copt] = simplexSolver.getResults();
+
+  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
+
+  extract_solution(prob, solution);
 }
 
 void MIP_clustering_bySparseSimplex(Problem &prob)
@@ -202,26 +208,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
   std::cout << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n';
   std::cout << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
 
-  // Get the solution values and basis
-  const HighsSolution &solution = highs.getSolution();
-
-  for (ind_t i{ 0 }; i < Nb; i++)
-    if (solution.col_value[i * (Nb + 1)] > 0.5)
-      prob.centroids_ind.push_back(i);
-
-  prob.clusters_ind = std::vector<ind_t>(Nb);
-
-  ind_t i_cluster = 0;
-  for (auto i : prob.centroids_ind) {
-    prob.cluster_members.emplace_back();
-    for (size_t j{ 0 }; j < Nb; j++)
-      if (solution.col_value[i * Nb + j] > 0.5) {
-        prob.clusters_ind[j] = i_cluster;
-        prob.cluster_members.back().push_back(j);
-      }
-
-    i_cluster++;
-  }
+  // Get the solution values
+  extract_solution(prob, highs.getSolution().col_value);
 }
 
 } // namespace dtwc

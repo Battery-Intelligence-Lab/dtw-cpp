@@ -16,9 +16,10 @@
 #include <array>
 #include <random>
 
-#define USE_STD_PAR_ALGORITMHS FALSE // On some computer it does not create thread so we are bound to manual thread creating.
 
 namespace dtwc {
+#define USE_STD_PAR_ALGORITMHS TRUE // On some computer it does not create thread so we are bound to manual thread creating.
+
 // Data type settings:
 using data_t = double;      // Data type double or float.
 using ind_t = unsigned int; // Data type for indices.

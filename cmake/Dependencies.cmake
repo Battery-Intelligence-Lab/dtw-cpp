@@ -27,7 +27,7 @@ target_include_directories(eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
 if(NOT TARGET Catch2::Catch2WithMain)
   CPMAddPackage(
     NAME Catch2
-    URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.3.2.tar.gz"
+    URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.4.0.tar.gz"
   )
 endif()
 

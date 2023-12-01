@@ -81,10 +81,10 @@ template <typename Tfun>
 void run(Tfun &task_indv, size_t i_end, ind_t numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
 #if USE_STD_PAR_ALGORITMHS
-  // std::cout << "Standard algorithms parallelisation is being used." << std::endl;
+  std::cout << "Standard algorithms parallelisation is being used." << std::endl;
   run_std(task_indv, i_end, numMaxParallelWorkers);
 #else
-  // std::cout << "Thread-based parallelisation is being used." << std::endl;
+  std::cout << "Thread-based parallelisation is being used." << std::endl;
   run_legacy(task_indv, i_end, numMaxParallelWorkers);
 #endif
 }
