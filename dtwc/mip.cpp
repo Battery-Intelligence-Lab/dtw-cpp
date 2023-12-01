@@ -75,7 +75,6 @@ void MIP_clustering_byDenseSimplex(Problem &prob)
   MIP_clustering_bySimplex<dtwc::solver::Simplex>(prob);
 }
 
-
 void MIP_clustering_byHiGHS(Problem &prob)
 {
   std::cout << "HiGS is being called!" << std::endl;
@@ -110,7 +109,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
   model.lp_.col_upper_.clear();
   model.lp_.col_upper_.resize(Nvar, 1.0);
 
-
   model.lp_.row_lower_.clear();
   model.lp_.row_lower_.resize(Nconstraints, -1.0);
 
@@ -122,12 +120,9 @@ void MIP_clustering_byHiGHS(Problem &prob)
   for (int i = 0; i < Nb; ++i)
     model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
 
-  //
-  // Here the orientation of the matrix is column-wise
-  model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
-  // a_start_ has num_col_1 entries, and the last entry is the number
-  // of nonzeros in A, allowing the number of nonzeros in the last
-  // column to be defined
+
+  model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
+
   const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
 
   model.lp_.a_matrix_.start_.clear();
@@ -162,61 +157,43 @@ void MIP_clustering_byHiGHS(Problem &prob)
     }
   }
 
-  std::sort(triplets.begin(), triplets.end(), solver::ColumnMajor{});
+  std::sort(triplets.begin(), triplets.end(), solver::RowMajor{});
 
-  int current_row{ -1 }, i_row{};
+  int current{ -1 }, i_now{};
 
   for (const auto triplet : triplets) {
 
-    if (current_row != triplet.row) {
-      model.lp_.a_matrix_.start_.push_back(i_row);
-      current_row = triplet.row;
+    if (current != triplet.col) {
+      model.lp_.a_matrix_.start_.push_back(i_now);
+      current = triplet.col;
     }
 
-
     //  std::cout << "Triplet: (" << triplet.row << ", " << triplet.col << ", " << triplet.val << ")\n";
-    model.lp_.a_matrix_.index_.push_back(triplet.col);
+    model.lp_.a_matrix_.index_.push_back(triplet.row);
     model.lp_.a_matrix_.value_.push_back(triplet.val);
-    i_row++;
+    i_now++;
   }
 
-  model.lp_.a_matrix_.start_.push_back(i_row);
+  model.lp_.a_matrix_.start_.push_back(i_now);
 
-  // Test.
-
+  // Now indicate that all the variables must take integer values
+  model.lp_.integrality_.clear();
+  model.lp_.integrality_.resize(model.lp_.num_col_, HighsVarType::kInteger);
 
   // Create a Highs instance
   Highs highs;
-  HighsStatus return_status;
-  //
-  // Pass the model to HiGHS
-  return_status = highs.passModel(model);
+
+  HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   assert(return_status == HighsStatus::kOk);
-  // If a user passes a model with entries in
-  // model.lp_.a_matrix_.value_ less than (the option)
-  // small_matrix_value in magnitude, they will be ignored. A logging
-  // message will indicate this, and passModel will return
-  // HighsStatus::kWarning
-  //
-  // Get a const reference to the LP data in HiGHS
-  const HighsLp &lp = highs.getLp();
 
-
-  // Now indicate that all the variables must take integer values
-  model.lp_.integrality_.resize(lp.num_col_);
-  for (int col = 0; col < lp.num_col_; col++)
-    model.lp_.integrality_[col] = HighsVarType::kInteger;
-
-  highs.passModel(model);
-  // Solve the model
-  return_status = highs.run();
+  return_status = highs.run(); // Solve the model
   assert(return_status == HighsStatus::kOk);
 
   // Get the model status
   const HighsModelStatus &model_status = highs.getModelStatus();
   assert(model_status == HighsModelStatus::kOptimal);
   std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
-  //
+
   // Get the solution information
   const HighsInfo &info = highs.getInfo();
   std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n';
@@ -246,6 +223,5 @@ void MIP_clustering_byHiGHS(Problem &prob)
     i_cluster++;
   }
 }
-
 
 } // namespace dtwc

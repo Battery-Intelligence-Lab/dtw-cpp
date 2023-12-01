@@ -161,8 +161,8 @@ void Problem::init_Kmeanspp()
 void Problem::cluster_by_MIP()
 {
   MIP_clustering_byHiGHS(*this);
-  //   MIP_clustering_byDenseSimplex(*this);
-  //   MIP_clustering_bySparseSimplex(*this);
+  //     MIP_clustering_byDenseSimplex(*this);
+  //     MIP_clustering_bySparseSimplex(*this);
 
   // if (settings::is_relaxed)
   //   MIP_clustering_byGurobi_relaxed(*this);
