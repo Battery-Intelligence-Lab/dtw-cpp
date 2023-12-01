@@ -83,41 +83,108 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   prob.clear_clusters();
 
-  using std::cout;
-  using std::endl;
+  const auto Nb = prob.data.size();
+  const auto Nc = prob.cluster_size();
 
-  // Create and populate a HighsModel instance for the LP
-  //
-  // Min    f  =  x_0 +  x_1 + 3
-  // s.t.                x_1 <= 7
-  //        5 <=  x_0 + 2x_1 <= 15
-  //        6 <= 3x_0 + 2x_1
-  // 0 <= x_0 <= 4; 1 <= x_1
-  //
-  // Although the first constraint could be expressed as an upper
-  // bound on x_1, it serves to illustrate a non-trivial packed
-  // column-wise matrix.
-  //
+  const auto Neq = Nb + 1;
+  const auto Nineq = Nb * (Nb - 1);
+  const auto Nconstraints = Neq + Nineq;
+
+  const auto Nvar = Nb * Nb;
+
   HighsModel model;
-  model.lp_.num_col_ = 2;
-  model.lp_.num_row_ = 3;
+  model.lp_.num_col_ = Nvar;
+  model.lp_.num_row_ = Nconstraints;
   model.lp_.sense_ = ObjSense::kMinimize;
-  model.lp_.offset_ = 3;
-  model.lp_.col_cost_ = { 1.0, 1.0 };
-  model.lp_.col_lower_ = { 0.0, 1.0 };
-  model.lp_.col_upper_ = { 4.0, 1.0e30 };
-  model.lp_.row_lower_ = { -1.0e30, 5.0, 6.0 };
-  model.lp_.row_upper_ = { 7.0, 15.0, 1.0e30 };
+  model.lp_.offset_ = 0;
+
+  // Initialise q vector for cost.
+  model.lp_.col_cost_.resize(Nvar);
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      model.lp_.col_cost_[i + j * Nb] = prob.distByInd_scaled(i, j);
+
+  model.lp_.col_lower_.clear();
+  model.lp_.col_lower_.resize(Nvar, 0.0);
+
+  model.lp_.col_upper_.clear();
+  model.lp_.col_upper_.resize(Nvar, 1.0);
+
+
+  model.lp_.row_lower_.clear();
+  model.lp_.row_lower_.resize(Nconstraints, -1.0);
+
+  model.lp_.row_upper_.clear();
+  model.lp_.row_upper_.resize(Nconstraints, 0.0);
+
+  model.lp_.row_upper_[0] = model.lp_.row_lower_[0] = Nc;
+
+  for (int i = 0; i < Nb; ++i)
+    model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
+
   //
   // Here the orientation of the matrix is column-wise
-  model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
+  model.lp_.a_matrix_.format_ = MatrixFormat::kRowwise;
   // a_start_ has num_col_1 entries, and the last entry is the number
   // of nonzeros in A, allowing the number of nonzeros in the last
   // column to be defined
-  model.lp_.a_matrix_.start_ = { 0, 2, 5 };
-  model.lp_.a_matrix_.index_ = { 1, 2, 0, 1, 2 };
-  model.lp_.a_matrix_.value_ = { 1.0, 3.0, 1.0, 2.0, 2.0 };
-  //
+  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
+
+  model.lp_.a_matrix_.start_.clear();
+  model.lp_.a_matrix_.index_.clear();
+  model.lp_.a_matrix_.value_.clear();
+
+  model.lp_.a_matrix_.start_.reserve(numel + 1);
+  model.lp_.a_matrix_.index_.reserve(numel);
+  model.lp_.a_matrix_.value_.reserve(numel);
+
+  std::vector<solver::Triplet> triplets;
+
+  triplets.reserve(numel);
+
+  for (int i = 0; i < Nb; ++i) {
+    triplets.emplace_back(0, i * (Nb + 1), 1.0); // Sum of diagonals is Nc
+
+    for (int j = 0; j < Nb; j++)
+      triplets.emplace_back(1 + j, Nb * i + j, 1.0); // Every element belongs to one cluster.
+
+    // ---------------
+    int shift = 0;
+    for (int j = 0; j < Nb; j++) {
+      const int block_begin_row = Nb + 1 + (Nb - 1) * i;
+      const int block_begin_col = Nb * i;
+      if (i == j) {
+        for (int k = 0; k < (Nb - 1); k++)
+          triplets.emplace_back(block_begin_row + k, block_begin_col + j, -1);
+        shift = 1;
+      } else
+        triplets.emplace_back(block_begin_row + j - shift, block_begin_col + j, 1);
+    }
+  }
+
+  std::sort(triplets.begin(), triplets.end(), solver::ColumnMajor{});
+
+  int current_row{ -1 }, i_row{};
+
+  for (const auto triplet : triplets) {
+
+    if (current_row != triplet.row) {
+      model.lp_.a_matrix_.start_.push_back(i_row);
+      current_row = triplet.row;
+    }
+
+
+    //  std::cout << "Triplet: (" << triplet.row << ", " << triplet.col << ", " << triplet.val << ")\n";
+    model.lp_.a_matrix_.index_.push_back(triplet.col);
+    model.lp_.a_matrix_.value_.push_back(triplet.val);
+    i_row++;
+  }
+
+  model.lp_.a_matrix_.start_.push_back(i_row);
+
+  // Test.
+
+
   // Create a Highs instance
   Highs highs;
   HighsStatus return_status;
@@ -133,46 +200,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   //
   // Get a const reference to the LP data in HiGHS
   const HighsLp &lp = highs.getLp();
-  //
-  // Solve the model
-  return_status = highs.run();
-  assert(return_status == HighsStatus::kOk);
-  //
-  // Get the model status
-  const HighsModelStatus &model_status = highs.getModelStatus();
-  assert(model_status == HighsModelStatus::kOptimal);
-  cout << "Model status: " << highs.modelStatusToString(model_status) << endl;
-  //
-  // Get the solution information
-  const HighsInfo &info = highs.getInfo();
-  cout << "Simplex iteration count: " << info.simplex_iteration_count << endl;
-  cout << "Objective function value: " << info.objective_function_value << endl;
-  cout << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << endl;
-  cout << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << endl;
-  cout << "Basis: " << highs.basisValidityToString(info.basis_validity) << endl;
-  const bool has_values = info.primal_solution_status;
-  const bool has_duals = info.dual_solution_status;
-  const bool has_basis = info.basis_validity;
-  //
-  // Get the solution values and basis
-  const HighsSolution &solution = highs.getSolution();
-  const HighsBasis &basis = highs.getBasis();
-  //
-  // Report the primal and solution values and basis
-  for (int col = 0; col < lp.num_col_; col++) {
-    cout << "Column " << col;
-    if (has_values) cout << "; value = " << solution.col_value[col];
-    if (has_duals) cout << "; dual = " << solution.col_dual[col];
-    if (has_basis) cout << "; status: " << highs.basisStatusToString(basis.col_status[col]);
-    cout << endl;
-  }
-  for (int row = 0; row < lp.num_row_; row++) {
-    cout << "Row    " << row;
-    if (has_values) cout << "; value = " << solution.row_value[row];
-    if (has_duals) cout << "; dual = " << solution.row_dual[row];
-    if (has_basis) cout << "; status: " << highs.basisStatusToString(basis.row_status[row]);
-    cout << endl;
-  }
+
 
   // Now indicate that all the variables must take integer values
   model.lp_.integrality_.resize(lp.num_col_);
@@ -183,16 +211,39 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Solve the model
   return_status = highs.run();
   assert(return_status == HighsStatus::kOk);
-  // Report the primal solution values
-  for (int col = 0; col < lp.num_col_; col++) {
-    cout << "Column " << col;
-    if (info.primal_solution_status) cout << "; value = " << solution.col_value[col];
-    cout << endl;
-  }
-  for (int row = 0; row < lp.num_row_; row++) {
-    cout << "Row    " << row;
-    if (info.primal_solution_status) cout << "; value = " << solution.row_value[row];
-    cout << endl;
+
+  // Get the model status
+  const HighsModelStatus &model_status = highs.getModelStatus();
+  assert(model_status == HighsModelStatus::kOptimal);
+  std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
+  //
+  // Get the solution information
+  const HighsInfo &info = highs.getInfo();
+  std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n';
+  std::cout << "Objective function value: " << info.objective_function_value << '\n';
+  std::cout << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n';
+  std::cout << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n';
+  std::cout << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
+
+  // Get the solution values and basis
+  const HighsSolution &solution = highs.getSolution();
+
+  for (ind_t i{ 0 }; i < Nb; i++)
+    if (solution.col_value[i * (Nb + 1)] > 0.5)
+      prob.centroids_ind.push_back(i);
+
+  prob.clusters_ind = std::vector<ind_t>(Nb);
+
+  ind_t i_cluster = 0;
+  for (auto i : prob.centroids_ind) {
+    prob.cluster_members.emplace_back();
+    for (size_t j{ 0 }; j < Nb; j++)
+      if (solution.col_value[i * Nb + j] > 0.5) {
+        prob.clusters_ind[j] = i_cluster;
+        prob.cluster_members.back().push_back(j);
+      }
+
+    i_cluster++;
   }
 }
 

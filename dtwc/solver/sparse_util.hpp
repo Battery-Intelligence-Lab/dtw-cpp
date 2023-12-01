@@ -20,7 +20,7 @@ struct Element
   double value{};
 
   Element() = default;
-  Element(int index_, double value_) : index(index_), value(value_) { } 
+  Element(int index_, double value_) : index(index_), value(value_) {}
 };
 
 struct CompElementIndices
@@ -49,9 +49,15 @@ struct Coordinate
   int row{}, col{}; // Row and column of the value
 };
 
+struct Triplet
+{
+  int row{}, col{}; // Row and column of the value
+  double val{};
+};
+
 struct RowMajor
 {
-  bool operator()(const Coordinate &c1, const Coordinate &c2) const
+  bool operator()(const auto &c1, const auto &c2) const
   {
     return (c1.col < c2.col) || (c1.col == c2.col && c1.row < c2.row);
   }
@@ -59,10 +65,11 @@ struct RowMajor
 
 struct ColumnMajor
 {
-  bool operator()(const Coordinate &c1, const Coordinate &c2) const
+  bool operator()(const auto &c1, const auto &c2) const
   {
     return (c1.row < c2.row) || (c1.row == c2.row && c1.col < c2.col);
   }
 };
+
 
 } // namespace dtwc::solver
