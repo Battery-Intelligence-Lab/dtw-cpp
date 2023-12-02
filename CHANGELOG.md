@@ -11,6 +11,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 ## New features
 * OSQP support is removed. 
 * Simplex method is added. 
+* HiGHS solver is added. 
 
 
 ## Notable Bug-fixes

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-project(DTWC++ VERSION "0.0.3"
+project(DTWC++ VERSION "0.0.4"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES C CXX)
@@ -15,10 +15,7 @@ if(CXX)
   enable_language(CXX)
 endif()
 
-
-
 set(DTWC_ENABLE_GUROBI ON)
-
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
@@ -39,14 +36,9 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 
 # # enable cache system
 # include(cmake/Cache.cmake)
-# include(cmake/FindGUROBI.cmake)
+include(cmake/FindGUROBI.cmake)
 
 
-if(DTWC_ENABLE_GUROBI)
-
-find_package(GUROBI REQUIRED)
-include_directories(${GUROBI_INCLUDE_DIRS})
-endif()
 
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
@@ -55,46 +47,7 @@ set_project_warnings(project_warnings)
 include(cmake/Dependencies.cmake) # Include external projects
 add_subdirectory(dtwc/solver)
 
-# # sanitizer options if supported by compiler
-# include(cmake/Sanitizers.cmake)
-# enable_sanitizers(project_options)
 
-# enable doxygen
-# include(cmake/Doxygen.cmake)
-# enable_doxygen(src doxygen)
-
-# # allow for static analysis options
-# include(cmake/StaticAnalyzers.cmake)
-
-
-
-if(DTWC_ENABLE_GUROBI)
-
-message(STATUS "GUROBI CXX LIBRARY START")
-message(STATUS ${GUROBI_CXX_LIBRARY})
-message(STATUS "GUROBI CXX LIBRARY END")
-
-message(STATUS "GUROBI CXX DEBUG LIBRARY START")
-message(STATUS ${GUROBI_CXX_DEBUG_LIBRARY})
-message(STATUS "GUROBI CXX DEBUG LIBRARY END")
-
-message(STATUS "GUROBI LIBRARY START")
-message(STATUS ${GUROBI_LIBRARY})
-message(STATUS "GUROBI LIBRARY END")
-
-string(REPLACE "\\" "/" GRB_HOME ${GUROBI_INCLUDE_DIRS}/../)
-
-file(GLOB GRB_SRC_FILES
-  ${GRB_HOME}/src/cpp/*.h
-  ${GRB_HOME}/src/cpp/*.cpp
-)
-
-foreach(header ${GRB_SRC_FILES})
-  # here replace / for linux and \ for windows
-  message(STATUS ${header})
-endforeach(header)
-add_definitions(-DDTWC_ENABLE_GUROBI)  
-endif()
 
 add_executable(dtwc++
   dtwc/main.cpp
@@ -102,7 +55,6 @@ add_executable(dtwc++
   dtwc/mip.cpp
   dtwc/mip_Gurobi.cpp
 #  dtwc/initialisation.cpp
-  ${GRB_SRC_FILES}
   dtwc/parallelisation.hpp
 )
 
@@ -111,13 +63,18 @@ target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  ${GUROBI_LIBRARY}
   solvers
   eigen
   range-v3
   fmt
   highs::highs
 )
+
+if(Gurobi_FOUND)
+message("Gurobi is found!")
+add_definitions(-DDTWC_ENABLE_GUROBI) 
+target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
+endif()
 
 
 target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})

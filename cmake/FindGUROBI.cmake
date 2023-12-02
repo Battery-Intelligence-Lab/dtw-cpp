@@ -1,58 +1,123 @@
-file(GLOB GRB_SEARCH_PATHS "/Library/gurobi*/*/")
-message(STATUS ${GRB_SEARCH_PATHS})
+# This file is adapted from https://gitlab.inf.unibe.ch/CGG-public/cmake-library/-/blob/master/finders/FindGurobi.cmake
+# Once done this will define
+#  Gurobi_FOUND - System has Gurobi
+#  Targets:
+#       Gurobi::GurobiC   - only the C interface
+#       Gurobi::GurobiCXX - C and C++ interface
 
-find_library(
-  GUROBI_LIBRARY
-  NAMES gurobi100 gurobi gurobi81 gurobi90 gurobi95 
-  HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME}
-  PATH_SUFFIXES lib)
+find_path(GUROBI_HOME
+          NAMES include/gurobi_c++.h
+          PATHS
+          $ENV{GUROBI_HOME}
+          "/opt/gurobi/linux64/"
+          NO_DEFAULT_PATH # avoid finding /usr
+          )
 
-find_path(
-  GUROBI_INCLUDE_DIRS
-  NAMES "gurobi_c.h"
-  HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME} ${GRB_SEARCH_PATHS}
-  PATH_SUFFIXES include)
+find_path(GUROBI_INCLUDE_DIR
+    NAMES gurobi_c++.h
+    HINTS
+    "${GUROBI_HOME}/include"
+    )
+mark_as_advanced(GUROBI_INCLUDE_DIR)
 
-if(CXX)
-  if(FALSE) #
-    # determine Visual Studio year
-    if(MSVC_TOOLSET_VERSION EQUAL 142)
-      set(MSVC_YEAR "2019")
-    elseif(MSVC_TOOLSET_VERSION EQUAL 141)
-      set(MSVC_YEAR "2017")
-    elseif(MSVC_TOOLSET_VERSION EQUAL 140)
-      set(MSVC_YEAR "2015")
-    endif()
+set(GUROBI_BIN_DIR "${GUROBI_HOME}/bin")
+set(GUROBI_LIB_DIR "${GUROBI_HOME}/lib")
 
-    if(MT)
-      set(M_FLAG "mt")
-    else()
-      set(M_FLAG "md")
-    endif()
-
-    message(STATUS "CXX START")
-    message(STATUS gurobi_c++${M_FLAG}${MSVC_YEAR})
-
-    find_library(
-      GUROBI_CXX_LIBRARY
-      NAMES gurobi_c++${M_FLAG}${MSVC_YEAR}
-      HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME} ${GRB_SEARCH_PATHS}
-      PATH_SUFFIXES lib)
-    find_library(
-      GUROBI_CXX_DEBUG_LIBRARY
-      NAMES gurobi_c++${M_FLAG}d${MSVC_YEAR}
-      HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME} ${GRB_SEARCH_PATHS}
-      PATH_SUFFIXES lib)
-  else()
-    find_library(
-      GUROBI_CXX_LIBRARY
-      NAMES gurobi_c++
-      HINTS ${GUROBI_DIR} $ENV{GUROBI_HOME} ${GRB_SEARCH_PATHS}
-      PATH_SUFFIXES lib)
-    set(GUROBI_CXX_DEBUG_LIBRARY ${GUROBI_CXX_LIBRARY})
-  endif()
+if (WIN32)
+    file(GLOB GUROBI_LIBRARY_LIST
+        RELATIVE ${GUROBI_BIN_DIR}
+        ${GUROBI_BIN_DIR}/gurobi*.dll
+        )
+else()
+    file(GLOB GUROBI_LIBRARY_LIST
+        RELATIVE ${GUROBI_LIB_DIR}
+        ${GUROBI_LIB_DIR}/libgurobi*.so
+        )
 endif()
 
+# Ignore libgurobiXY_light.so, libgurobi.so (without version):
+string(REGEX MATCHALL
+    "gurobi([0-9]+)\\..*"
+    GUROBI_LIBRARY_LIST
+    "${GUROBI_LIBRARY_LIST}"
+    )
+
+string(REGEX REPLACE
+    ".*gurobi([0-9]+)\\..*"
+    "\\1"
+    GUROBI_LIBRARY_VERSIONS
+    "${GUROBI_LIBRARY_LIST}")
+list(LENGTH GUROBI_LIBRARY_VERSIONS GUROBI_NUMVER)
+
+if (GUROBI_NUMVER EQUAL 0)
+    message(STATUS "Found no Gurobi library version, GUROBI_HOME = ${GUROBI_HOME}.")
+elseif (GUROBI_NUMVER EQUAL 1)
+    list(GET GUROBI_LIBRARY_VERSIONS 0 GUROBI_LIBRARY_VERSION)
+else()
+    # none or more than one versioned library -let's try without suffix,
+    # maybe the user added a symlink to the desired library
+    message(STATUS "Found more than one Gurobi library version (${GUROBI_LIBRARY_VERSIONS}), trying without suffix. Set GUROBI_LIBRARY if you want to pick a certain one.")
+    set(GUROBI_LIBRARY_VERSION "")
+endif()
+
+if (WIN32)
+    find_library(GUROBI_LIBRARY
+        NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
+        PATHS
+        ${GUROBI_BIN_DIR}
+    )
+    find_library(GUROBI_IMPLIB
+        NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
+        PATHS
+        ${GUROBI_LIB_DIR}
+    )
+    mark_as_advanced(GUROBI_IMPLIB)
+else ()
+    find_library(GUROBI_LIBRARY
+        NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
+        PATHS
+        ${GUROBI_LIB_DIR}
+    )
+endif()
+mark_as_advanced(GUROBI_LIBRARY)
+
+if(GUROBI_LIBRARY AND NOT TARGET Gurobi::GurobiC)
+    add_library(Gurobi::GurobiC SHARED IMPORTED)
+    target_include_directories(Gurobi::GurobiC INTERFACE ${GUROBI_INCLUDE_DIR})
+    set_target_properties(Gurobi::GurobiC PROPERTIES IMPORTED_LOCATION ${GUROBI_LIBRARY})
+    if (GUROBI_IMPLIB)
+        set_target_properties(Gurobi::GurobiC PROPERTIES IMPORTED_IMPLIB ${GUROBI_IMPLIB})
+    endif()
+endif()
+
+# Gurobi ships with some compiled versions of its C++ library for specific
+# compilers, however it also comes with the source code. We will compile
+# the source code outselves -- this is much safer, as it guarantees the same
+# compiler version and flags.
+# (Note: doing this is motivated by actual sometimes-subtle ABI compatibility bugs)
+
+find_path(GUROBI_SRC_DIR NAMES "Model.h" PATHS "${GUROBI_HOME}/src/cpp/")
+mark_as_advanced(GUROBI_SRC_DIR)
+
+file(GLOB GUROBI_CXX_SRC CONFIGURE_DEPENDS ${GUROBI_SRC_DIR}/*.cpp)
+if(TARGET Gurobi::GurobiC AND GUROBI_CXX_SRC AND NOT TARGET Gurobi::GurobiCXX)
+    add_library(GurobiCXX STATIC EXCLUDE_FROM_ALL ${GUROBI_CXX_SRC})
+    add_library(Gurobi::GurobiCXX ALIAS GurobiCXX)
+
+    if(MSVC)
+        target_compile_definitions(GurobiCXX PRIVATE "WIN64")
+    endif()
+
+    target_include_directories(GurobiCXX PUBLIC ${GUROBI_INCLUDE_DIR})
+    target_link_libraries(GurobiCXX PUBLIC Gurobi::GurobiC)
+    # We need to be able to link this into a shared library:
+    set_target_properties(GurobiCXX PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+endif()
+
+# legacy support:
+set(GUROBI_INCLUDE_DIRS "${GUROBI_INCLUDE_DIR}")
+set(GUROBI_LIBRARIES Gurobi::GurobiC Gurobi::GurobiCXX)
+
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(GUROBI DEFAULT_MSG GUROBI_LIBRARY
-  GUROBI_INCLUDE_DIRS)
+find_package_handle_standard_args(Gurobi  DEFAULT_MSG GUROBI_LIBRARY GUROBI_INCLUDE_DIR GUROBI_SRC_DIR)
