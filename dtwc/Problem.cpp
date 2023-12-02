@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <iostream>
 #include <string>
+#include <limits>
 
 namespace dtwc {
 
@@ -205,8 +206,8 @@ void Problem::distanceInClusters()
 
 void Problem::calculateMedoids()
 {
-
-  std::vector<data_t> clusterCosts(centroids_ind.size(), maxValue<data_t>);
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
+  std::vector<data_t> clusterCosts(centroids_ind.size(), maxValue);
   auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
   {
     const auto i_c = clusters_ind[i_p];

@@ -19,7 +19,7 @@ private:
   double m_n; // m/n
   std::vector<std::array<int, 3>> access;
 
-  data_t outBoundsVal = maxValue<data_t>;
+  data_t outBoundsVal = std::numeric_limits<data_t>::max();
 
 public:
   VecMatrix<data_t> CompactMat;
@@ -58,7 +58,7 @@ public:
 
     const auto val = this->operator()(i, j);
 
-    if (val < maxValue<data_t> / 2)
+    if (val < std::numeric_limits<data_t>::max() / 2)
       throw 1003; // Do not assign to an already assigned place.
 
     return this->operator()(i, j);

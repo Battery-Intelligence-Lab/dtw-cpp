@@ -29,7 +29,7 @@ private:
   using VarType = int;
   VarType m{}, ku{}, kl{};
 
-  data_t fixedVal = maxValue<data_t>;
+  data_t fixedVal = std::numeric_limits<data_t>::max();
 
 public:
   BandMatrix(VarType m_, VarType n_, VarType ku_, VarType kl_) : CompactMat(kl_ + ku_ + 1, n_), m(m_), ku(ku_), kl(kl_) {}

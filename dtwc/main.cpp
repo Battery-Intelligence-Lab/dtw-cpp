@@ -10,9 +10,9 @@
 #include "solver/EqualityConstraints.hpp"
 #include "solver/test.hpp"
 
-
 int main()
 {
+
   // auto [eq, c] = dtwc::solver::get_prob_small();
 
   // dtwc::solver::SparseSimplex prob_small(eq, c);

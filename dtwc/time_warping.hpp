@@ -12,6 +12,7 @@
 #include "settings.hpp"
 
 #include <vector>
+#include <limits>
 
 namespace dtwc {
 
@@ -19,7 +20,7 @@ template <typename data_t>
 data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
   thread_local VecMatrix<data_t> C(x.size(), y.size()); //
-  data_t z = maxValue<data_t>;
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.
 
@@ -50,7 +51,7 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
     return C(mx - 1, my - 1);
   }
 
-  return z;
+  return maxValue;
 }
 
 
@@ -59,7 +60,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
   // This function uses L shaped method to compute distance but cannot backtrack.
   if (&x == &y) return 0; // If they are the same data then distance is 0.
-
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   thread_local std::vector<data_t> short_side(data_t(10e3));
 
   const auto mx = x.size();
@@ -96,7 +97,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
     return short_side[m_short - 1];
   }
-  return maxValue<data_t>;
+  return maxValue;
 }
 
 template <typename data_t = float>
@@ -104,14 +105,14 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
 {
   // Actual banding with skewness.
   static thread_local SkewedBandMatrix<data_t> C(x.size(), y.size(), band, band); //
-  data_t z = maxValue<data_t>;
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const int mx = x.size();
   const int my = y.size();
 
   C.resize(mx, my, band, band);
 
-  std::fill(C.CompactMat.data.begin(), C.CompactMat.data.end(), maxValue<data_t>);
+  std::fill(C.CompactMat.data.begin(), C.CompactMat.data.end(), maxValue);
   auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
   if ((mx != 0) && (my != 0)) {
@@ -151,6 +152,6 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
     return C.at(mx - 1, my - 1);
   }
 
-  return z;
+  return maxValue;
 }
 } // namespace dtwc
