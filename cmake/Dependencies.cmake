@@ -22,7 +22,7 @@ CPMAddPackage(
   DOWNLOAD_ONLY YES
 )
 
-add_library(eigen INTERFACE)
+add_library(eigen INTERFACE IMPORTED)
 target_include_directories(eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
 
 # Catch2 library:

@@ -16,6 +16,8 @@
 
 #include <vector>
 
+#include <Eigen/Dense>
+
 
 namespace dtwc {
 

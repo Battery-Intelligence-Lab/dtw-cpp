@@ -130,8 +130,8 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
 
-    // prob.cluster_by_kMedoidsPAM_repetetive(2);
-    prob.cluster_by_MIP(); // Uses MILP to do clustering.
+    prob.cluster_by_kMedoidsPAM_repetetive(2);
+    // prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';

@@ -103,13 +103,9 @@ add_executable(dtwc++
   dtwc/mip_Gurobi.cpp
 #  dtwc/initialisation.cpp
   ${GRB_SRC_FILES}
-
+  dtwc/parallelisation.hpp
 )
 
-target_sources(dtwc++
-PUBLIC
-dtwc/parallelisation.hpp
-)
 
 target_link_libraries(dtwc++
   PRIVATE
@@ -123,7 +119,8 @@ target_link_libraries(dtwc++
   highs::highs
 )
 
-target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS})
+
+target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
 
 
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

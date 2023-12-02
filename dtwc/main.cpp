@@ -18,6 +18,8 @@
 #include "solver/EqualityConstraints.hpp"
 #include "solver/test.hpp"
 
+#include <range/v3/all.hpp>
+
 
 int main()
 {

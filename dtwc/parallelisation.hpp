@@ -11,11 +11,6 @@
 
 #include "settings.hpp"
 
-// #include <range/v3/all.hpp>
-
-
-#include <vector>
-#include <thread>
 #include <execution>
 #include <algorithm>
 
@@ -24,10 +19,10 @@ namespace dtwc {
 namespace ex = std::execution;
 
 template <typename Tfun>
-void run_std(Tfun &task_indv, size_t i_end)
+void run_std(Tfun &task_indv, size_t i_end, bool isParallel = settings::isParallel)
 {
   auto range = Range(i_end);
-  if constexpr (settings::isParallel)
+  if (isParallel)
     std::for_each(ex::par_unseq, range.begin(), range.end(), task_indv);
   else
     std::for_each(ex::seq, range.begin(), range.end(), task_indv);
