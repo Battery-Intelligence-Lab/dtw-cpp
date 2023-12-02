@@ -13,11 +13,10 @@
 - [ ] JOSS paper  
 - [ ] Speed up the code
 - [ ] GPU programming 
-- [ ] dtwFun2 and dtwFun_short are giving slightly different results. 
 - [ ] Lighter and faster DTW cost calculation + make the band from long side so it is more accurate. 
 - [ ] macOS integration:
   - [ ] Integration for M1/M2 chip machines.  
-- [ ] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
+- [x] Time shows wrong on macOS with std::clock. Therefore moving to chrono library.
 - [x] Clusters class is created to decouple representation of clusters. 
 - [x] mip.hpp and mip.cpp files are created to contain MIP functions.
 - [ ] Give error message if data could not be loaded. 
@@ -29,11 +28,11 @@
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
   - [ ] Simplex is added. 
-- [ ] Exploration of totally unimodular matrices. 
+  - [ ] HiGHS is added.
+- [x] Exploration of totally unimodular matrices. -> Not totally unimodular. 
 - [ ] Creating DTW objects taking distance/band as a policy-based design 
-- [ ] TestNumberOfThreads should be an atomic counter instead of printing. 
-- [ ] Doxygen website? 
-- [ ] Remove unnecessary warping functions. 
+- [x] Doxygen website? 
+- [x] Remove unnecessary warping functions. 
 - [ ] Fix warnings. Especially, we should not get warnings from external libraries. 
 - [ ] Make Gurobi dependency optional. (Now it cannot be disabled. )
 - [ ] Consider including Eigen library for matrix operations / linear system solution. 

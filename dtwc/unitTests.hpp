@@ -35,9 +35,9 @@ void test_DTWfunction()
   // std::cout << "Ground truth:\n";
 
   // std::cout << "Test cost dtwFun: " << dtwFun(p_vec[0], p_vec[5]) << '\n';
-  // //std::cout << "Test cost dtwFun2: " << dtwFun2(p_vec[0], p_vec[5]) << '\n';
+  // //std::cout << "Test cost dtwFull: " << dtwFull(p_vec[0], p_vec[5]) << '\n';
   // std::cout << "Test cost dtwFun5: " << dtwFun5(p_vec[0], p_vec[5]) << '\n';
-  // std::cout << "Test cost dtwFunBanded_Act: " << dtwFunBanded_Act(p_vec[0], p_vec[5], 400) << '\n';
+  // std::cout << "Test cost dtwBanded: " << dtwBanded(p_vec[0], p_vec[5], 400) << '\n';
 
 
   // std::cout << "Test cost: " << dtwFun(p_vec[5], p_vec[0]) << '\n';
@@ -45,7 +45,7 @@ void test_DTWfunction()
   // std::cout << "Test cost: " << dtwFun5(p_vec[5], p_vec[0]) << '\n';
 
 
-  // std::cout << "Test cost: " << dtwFun2(p_vec[0], p_vec[0]) << '\n';
+  // std::cout << "Test cost: " << dtwFull(p_vec[0], p_vec[0]) << '\n';
 
 
   // std::cout << "Test cost: " << dtwFun_recursive(p_vec[0], p_vec[5]) << '\n';
@@ -54,8 +54,8 @@ void test_DTWfunction()
   // std::cout << "Test cost: " << dtwFun3_1(p_vec[0], p_vec[5]) << '\n'; // Slower compared to vector allocation.
   // std::cout << "Test cost: " << dtwFunBanded_2(p_vec[0], p_vec[5], 500) << '\n';
 
-  // std::cout << "Test cost dtwFunBanded_Act buggy: " << dtwFunBanded_Act(p_vec[0], p_vec[3], 500) << '\n';
-  // std::cout << "Test cost dtwFunBanded_Act buggy: " << dtwFunBanded_Act(p_vec[9], p_vec[3], 300) << '\n';
+  // std::cout << "Test cost dtwBanded buggy: " << dtwBanded(p_vec[0], p_vec[3], 500) << '\n';
+  // std::cout << "Test cost dtwBanded buggy: " << dtwBanded(p_vec[9], p_vec[3], 300) << '\n';
   // std::cout << "Test cost dtwFun buggy: " << dtwFun(p_vec[9], p_vec[3]) << '\n';
   // std::cout << "Test cost dtwFunBanded_Act2 buggy: " << dtwFunBanded_Act2(p_vec[9], p_vec[3], 300) << '\n';
   // std::cout << "Test cost dtwFunBanded_Itakura buggy: " << dtwFunBanded_Itakura(p_vec[9], p_vec[3], 300) << '\n';
@@ -66,7 +66,7 @@ void test_initialisation()
 {
   // dtwc::Initialisation::init_random(p_vec, 3);
   // auto centroids_vec = dtwc::Initialisation::init_random(p_vec, 3);
-  // auto centroids_vec = dtwc::Initialisation::init_Kmeanspp(p_vec, N_k, dtwFun2<data_t>);
+  // auto centroids_vec = dtwc::Initialisation::init_Kmeanspp(p_vec, N_k, dtwFull<data_t>);
 }
 
 } // namespace dtwc::test

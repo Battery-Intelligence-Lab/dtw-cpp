@@ -44,7 +44,7 @@ DTWC with a better interface for other people's use.
 
 ## New features / updates
 - Scores file with silhouette score is added. 
-- `dtwFun_L` (L = light) is added for reducing memory requirements substantially.  
+- `dtwFull_L` (L = light) is added for reducing memory requirements substantially.  
 
 ## API changes
 - Problem class for a better interface. 

@@ -14,9 +14,6 @@
 #include "fileOperations.hpp"
 #include "parallelisation.hpp"
 
-// #include "utility_deprecated.hpp"
-
-
 #include <iostream>
 #include <vector>
 #include <array>
@@ -48,12 +45,6 @@ void fillDistanceMatrix(Tfun &distByInd, size_t N)
 
   dtwc::run(oneTask, N * N);
 }
-
-struct TestNumberOfThreads
-{
-  TestNumberOfThreads() { std::cout << "A thread is created.\n"; }
-};
-
 
 template <typename Tdata>
 bool aremedoidsSame(const std::vector<Tdata> &m1, std::vector<Tdata> &m2)

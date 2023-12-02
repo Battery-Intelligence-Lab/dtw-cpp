@@ -59,7 +59,7 @@ Once the code is imported into the programming environment, there are several op
 -  To change the number of clusters, *main.cpp line 31*.
 -  To use the csv filenames in the results, *settings.hpp, line 15*. Otherwise, series will be labelled 1 to x in order of being read from the folder.
 -  To decrease the runtime of the code, it is possible to store all the DTW distances as you repeatedly run the code and then this matrix of DTW distances can be read each time rather than recalculating. To do this, uncomment *main.cpp, line 42* but ensure you comment out again if changing the data read.
--  To change the warping window, *main.cpp line 48*. If no warping window is desired, the dtwFun2 function can be called in place of the dtwFunBanded_Act function.
+-  To change the warping window, *main.cpp line 48*. If no warping window is desired, the dtwFull function can be called in place of the dtwBanded function.
 -  To calculate the entire DTW distance matrix (required for the MIP), uncomment *main.cpp line 90*.
 
 

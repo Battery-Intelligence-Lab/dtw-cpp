@@ -35,11 +35,10 @@ void Problem::clear_clusters()
 double Problem::distByInd(int i, int j)
 {
   if (distMat(i, j) < 0) {
-    if constexpr (settings::band == 0) {
-      distMat(j, i) = distMat(i, j) = dtwFun2<data_t>(p_vec(i), p_vec(j));
-    } else {
-      distMat(j, i) = distMat(i, j) = dtwFunBanded_Act<data_t>(p_vec(i), p_vec(j), settings::band); // dtwFunBanded_Act_L faster and more accurate.
-    }
+    if constexpr (settings::band == 0)
+      distMat(j, i) = distMat(i, j) = dtwFull<data_t>(p_vec(i), p_vec(j));
+    else
+      distMat(j, i) = distMat(i, j) = dtwBanded<data_t>(p_vec(i), p_vec(j), settings::band);
   }
   return distMat(i, j);
 }
@@ -47,7 +46,6 @@ double Problem::distByInd(int i, int j)
 void Problem::fillDistanceMatrix()
 {
   auto oneTask = [&, N = data.size()](size_t i_linear) {
-    thread_local TestNumberOfThreads a{};
     size_t i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)
       distByInd(i, j);
