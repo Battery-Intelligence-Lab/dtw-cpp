@@ -2,7 +2,6 @@
 
 #pragma once
 
-#include "utility.hpp"
 #include "initialisation.hpp"
 
 #include <iostream>

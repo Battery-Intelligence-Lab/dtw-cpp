@@ -24,4 +24,4 @@ target_sources(solvers
   )
 
 target_include_directories(solvers PUBLIC .)
-target_link_libraries(solvers PRIVATE eigen fmt range-v3)
+target_link_libraries(solvers PRIVATE eigen fmt range-v3 highs::highs)

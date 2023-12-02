@@ -10,10 +10,8 @@
 #include "Problem.hpp"
 #include "mip.hpp"
 #include "settings.hpp"
-#include "utility.hpp"
 #include "fileOperations.hpp"
-// #include "initialisation.hpp"
-#include "timing.hpp"
+#include "parallelisation.hpp"
 #include "scores.hpp"
 #include "time_warping.hpp"
 
@@ -22,6 +20,9 @@
 #include <memory>
 #include <limits>
 #include <utility>
+#include <algorithm>
+#include <iostream>
+#include <string>
 
 namespace dtwc {
 
@@ -90,18 +91,16 @@ void Problem::writeClusters()
   myFile << "Clusters:\n";
 
   for (size_t i{ 0 }; i < Nc; i++) {
-    if (i != 0)
-      myFile << ',';
+    if (i != 0) myFile << ',';
 
     myFile << p_names(centroids_ind[i]);
   }
 
-  myFile << "\n\n";
-  myFile << "Data" << ',' << "its cluster\n";
+  myFile << "\n\n"
+         << "Data" << ',' << "its cluster\n";
 
-  for (size_t i{ 0 }; i < data.size(); i++) {
+  for (size_t i{ 0 }; i < data.size(); i++)
     myFile << p_names(i) << ',' << p_names(centroids_ind[clusters_ind[i]]) << '\n';
-  }
 
   myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
 
@@ -120,9 +119,8 @@ void Problem::writeSilhouettes()
   std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
-  for (size_t i{ 0 }; i < data.size(); i++) {
+  for (size_t i{ 0 }; i < data.size(); i++)
     myFile << p_names(i) << ',' << silhouettes[i] << '\n';
-  }
 
   myFile.close();
 }
@@ -131,7 +129,7 @@ void Problem::writeSilhouettes()
 void Problem::init_random()
 {
   centroids_ind.clear();
-  auto range = Range(0, data.size());
+  auto range = Range(data.size());
   std::sample(range.begin(), range.end(), std::back_inserter(centroids_ind), Nc, randGenerator);
 }
 
@@ -140,7 +138,7 @@ void Problem::init_Kmeanspp()
   // First cluster is slected at random, others are selected based on distance.
   centroids_ind.clear();
 
-  std::uniform_int_distribution<ind_t> d(0, data.size() - 1);
+  std::uniform_int_distribution<size_t> d(0, data.size() - 1);
   centroids_ind.push_back(d(randGenerator));
 
   std::vector<data_t> distances(data.size(), std::numeric_limits<data_t>::max());
@@ -158,14 +156,14 @@ void Problem::init_Kmeanspp()
 
 void Problem::cluster_by_MIP()
 {
-  MIP_clustering_byHiGHS(*this);
-  //     MIP_clustering_byDenseSimplex(*this);
-  //     MIP_clustering_bySparseSimplex(*this);
+  // MIP_clustering_byHiGHS(*this);
+  //      MIP_clustering_byDenseSimplex(*this);
+  //      MIP_clustering_bySparseSimplex(*this);
 
   // if (settings::is_relaxed)
   //   MIP_clustering_byGurobi_relaxed(*this);
   // else
-  // MIP_clustering_byGurobi(*this);
+  MIP_clustering_byGurobi(*this);
 }
 
 void Problem::distributeClusters()
@@ -173,7 +171,7 @@ void Problem::distributeClusters()
   for (auto &member : cluster_members)
     member.clear();
 
-  for (ind_t i = 0; i < clusters_ind.size(); i++)
+  for (size_t i = 0; i < clusters_ind.size(); i++)
     cluster_members[clusters_ind[i]].push_back(i);
 }
 
@@ -244,7 +242,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
     auto [status, total_cost] = cluster_by_kMedoidsPAM(i_rand, maxIter);
 
     if (status == 0)
-      std::cout << "Metoids are same for last two iterations, algorithm is converged!\n";
+      std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
     else if (status == -1)
       std::cout << "Maximum iteration is reached before metoids are converged!\n";
 
@@ -262,7 +260,6 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
 
   std::cout << "Best repetition: " << best_rep << '\n';
 }
-
 
 std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
 {

@@ -5,20 +5,10 @@
 #include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>
-#include <cstdlib>
-#include <cmath>
-#include <string>
-#include <vector>
-#include <map>
-#include <unordered_map>
 
-#include <Eigen/Dense>
-#include <Eigen/Sparse>
 
 #include "solver/EqualityConstraints.hpp"
 #include "solver/test.hpp"
-
-#include <range/v3/all.hpp>
 
 
 int main()

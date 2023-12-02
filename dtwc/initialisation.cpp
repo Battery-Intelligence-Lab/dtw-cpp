@@ -1,44 +1,30 @@
 /*
  * initialisation.cpp
  *
- * Source file for initialisation functions. 
+ * Source file for initialisation functions.
 
  *  Created on: 06 Nov 2022
  *   Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
-#include "utility.hpp"
+#include "settings.hpp"
 
 #include <iostream>
 #include <vector>
-#include <array>
-#include <filesystem>
-#include <fstream>
-#include <limits>
-#include <ctime>
-#include <cstdlib>
-#include <cmath>
-#include <algorithm>
+#include <numeric>
 #include <random>
-#include <string>
-#include <thread>
-#include <iterator>
-#include <memory>
-
-#include <cassert>
-
 
 namespace dtwc::initialisation {
 
-template <typename data_t>
-auto init_random(const std::vector<std::vector<data_t>> &sequences, int N)
-{
-  // N = number of clusters:
-  std::vector<std::vector<data_t>> centroids_vec;
-  std::sample(sequences.begin(), sequences.end(), std::back_inserter(centroids_vec), 5, randGenerator);
+// template <typename data_t>
+// auto init_random(const std::vector<std::vector<data_t>> &sequences, int N)
+// {
+//   // N = number of clusters:
+//   std::vector<std::vector<data_t>> centroids_vec;
+//   std::sample(sequences.begin(), sequences.end(), std::back_inserter(centroids_vec), 5, randGenerator);
 
-  return centroids_vec;
-}
+//   return centroids_vec;
+// }
 
 template <typename data_t, typename Tfun>
 auto init_Kmeanspp(const std::vector<std::vector<data_t>> &sequences, int N, Tfun &distanceFun)
@@ -52,7 +38,7 @@ auto init_Kmeanspp(const std::vector<std::vector<data_t>> &sequences, int N, Tfu
 
   // else
   std::vector<std::vector<data_t>> centroids_vec;
-  std::vector<ind_t> centroids_ind(N, 0);
+  std::vector<size_t> centroids_ind(N, 0);
 
   std::vector<data_t> distances(sequences.size(), std::numeric_limits<data_t>::max());
 
@@ -77,13 +63,13 @@ auto init_Kmeanspp(const std::vector<std::vector<data_t>> &sequences, int N, Tfu
   return centroids_vec;
 }
 
-std::vector<ind_t> init_random_ind(size_t seqSize, int Nc)
+std::vector<size_t> init_random_ind(size_t seqSize, int Nc)
 {
   // N = number of clusters:
-  std::vector<ind_t> centroids_ind, all_ind(seqSize);
+  std::vector<size_t> centroids_ind, all_ind(seqSize);
   std::iota(all_ind.begin(), all_ind.end(), 0);
   std::sample(all_ind.begin(), all_ind.end(), std::back_inserter(centroids_ind), Nc, randGenerator);
   return centroids_ind;
 }
 
-} // namespace dtwc::Initialisation
+} // namespace dtwc::initialisation

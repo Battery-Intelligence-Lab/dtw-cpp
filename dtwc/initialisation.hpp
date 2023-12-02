@@ -1,7 +1,7 @@
 /*
  * initialisation.cpp
  *
- * Header file for initialisation functions. 
+ * Header file for initialisation functions.
 
  *  Created on: 19 Jan 2021
  *   Author(s): Volkan Kumtepeli, Becky Perriment
@@ -9,26 +9,11 @@
 
 #pragma once
 
-#include "utility.hpp"
+#include "settings.hpp"
 
-#include <iostream>
 #include <vector>
-#include <array>
-#include <filesystem>
-#include <fstream>
-#include <limits>
-#include <ctime>
-#include <cstdlib>
-#include <cmath>
-#include <algorithm>
 #include <random>
-#include <string>
-#include <thread>
-#include <iterator>
-#include <memory>
-
-#include <cassert>
-
+#include <numeric>
 
 namespace dtwc::initialisation {
 
@@ -54,7 +39,7 @@ auto init_Kmeanspp(const std::vector<std::vector<data_t>> &sequences, int Nc, Tf
 
   // else
   std::vector<std::vector<data_t>> centroids_vec;
-  std::vector<ind_t> centroids_ind(Nc, 0);
+  std::vector<size_t> centroids_ind(Nc, 0);
 
   std::vector<data_t> distances(sequences.size(), std::numeric_limits<data_t>::max());
 
@@ -79,7 +64,7 @@ auto init_Kmeanspp(const std::vector<std::vector<data_t>> &sequences, int Nc, Tf
   return centroids_vec;
 }
 
-std::vector<ind_t> init_random_ind(size_t Nb, int Nc);
+std::vector<size_t> init_random_ind(size_t Nb, int Nc);
 
 
 template <typename data_t, typename Tfun>
@@ -92,7 +77,7 @@ auto init_Kmeanspp_ind(size_t Nb, int Nc, Tfun &distancebyIndFunc)
   if (Nc == 1) return init_random_ind(Nb, Nc);
 
   // else
-  std::vector<ind_t> centroids_ind(Nc);
+  std::vector<size_t> centroids_ind(Nc);
   std::vector<data_t> distances(Nb, std::numeric_limits<data_t>::max());
 
   int gen{ -1 };
@@ -117,4 +102,4 @@ auto init_Kmeanspp_ind(size_t Nb, int Nc, Tfun &distancebyIndFunc)
 }
 
 
-} // namespace dtwc::Initialisation
+} // namespace dtwc::initialisation

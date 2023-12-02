@@ -11,7 +11,7 @@
 #pragma once
 
 #include "settings.hpp"
-#include "utility.hpp"
+#include "types/types.hpp"
 
 #include <vector>
 #include <filesystem>

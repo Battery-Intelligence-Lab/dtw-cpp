@@ -17,7 +17,7 @@ endif()
 
 
 
-set(DTWC_ENABLE_GUROBI OFF)
+set(DTWC_ENABLE_GUROBI ON)
 
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
@@ -111,7 +111,7 @@ target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  #${GUROBI_LIBRARY}
+  ${GUROBI_LIBRARY}
   solvers
   eigen
   range-v3

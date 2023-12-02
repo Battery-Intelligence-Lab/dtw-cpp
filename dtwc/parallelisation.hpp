@@ -30,7 +30,7 @@ void run_std(Tfun &task_indv, size_t i_end, bool isParallel = settings::isParall
 
 
 template <typename Tfun>
-void run(Tfun &task_indv, size_t i_end, ind_t numMaxParallelWorkers = settings::numMaxParallelWorkers)
+void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
   std::cout << "Standard algorithms parallelisation is being used." << std::endl;
   run_std(task_indv, i_end);

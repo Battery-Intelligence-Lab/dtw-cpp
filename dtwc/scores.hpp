@@ -10,7 +10,9 @@
 #pragma once
 
 #include "Problem.hpp"
-#include "utility.hpp"
+#include "parallelisation.hpp"
+
+#include <iostream>
 
 namespace dtwc::scores {
 

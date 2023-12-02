@@ -12,15 +12,11 @@
 #include <string>
 #include <filesystem>
 #include <iostream>
-#include <vector>
-#include <array>
 #include <random>
-
 
 namespace dtwc {
 // Data type settings:
-using data_t = double;      // Data type double or float.
-using ind_t = unsigned int; // Data type for indices.
+using data_t = double; // Data type double or float.
 // Random number settings:
 static std::mt19937 randGenerator(5); // std::mt19937{ std::random_device{}() }
 // Future settings

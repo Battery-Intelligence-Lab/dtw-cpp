@@ -1,5 +1,11 @@
-// Vk 2022.03.01
-// Timing functions
+/*
+ * timing.hpp
+ *
+ * Timing functions
+ *
+ * Created on: 01 Mar 2022
+ * Author(s): Volkan Kumtepeli, Becky Perriment
+ */
 
 #pragma once
 

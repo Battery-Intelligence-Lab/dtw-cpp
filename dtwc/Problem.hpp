@@ -11,25 +11,22 @@
 
 #include "mip.hpp"
 #include "settings.hpp"
-#include "utility.hpp"
 #include "fileOperations.hpp"
-//#include "initialisation.hpp"
+// #include "initialisation.hpp"
 #include "timing.hpp"
 #include "Data.hpp"
 #include "DataLoader.hpp"
 
 #include <vector>
 #include <string_view>
-#include <memory>
 #include <limits>
-#include <utility>
 
 
 namespace dtwc {
 
 class Problem
 {
-  ind_t Nc{ 1 }; // Number of clusters.
+  size_t Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
   data_t maxDist{ -1 };
 
@@ -39,9 +36,9 @@ public:
   std::string name{}; // Problem name
   Data data;
 
-  std::vector<ind_t> centroids_ind;                // indices of cluster centroids.
-  std::vector<ind_t> clusters_ind;                 // which point belongs to which cluster.
-  std::vector<std::vector<ind_t>> cluster_members; // Members of each clusters!
+  std::vector<size_t> centroids_ind;                // indices of cluster centroids.
+  std::vector<size_t> clusters_ind;                 // which point belongs to which cluster.
+  std::vector<std::vector<size_t>> cluster_members; // Members of each clusters!
 
 
   // Constructors:
@@ -52,7 +49,7 @@ public:
     distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1);
   }
 
-  void refreshDistanceMatrix(){ distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1);}
+  void refreshDistanceMatrix() { distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1); }
 
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
@@ -71,14 +68,14 @@ public:
     clusters_ind.resize(data.size());
   }
 
-  auto set_numberOfClusters(ind_t Nc_)
+  auto set_numberOfClusters(size_t Nc_)
   {
     assert(Nc_ > 0);
     Nc = Nc_;
     resize();
   }
 
-  std::string get_name(ind_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
+  std::string get_name(size_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
 
   data_t maxDistance();
 

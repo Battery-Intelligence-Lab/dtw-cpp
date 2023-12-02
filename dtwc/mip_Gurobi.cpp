@@ -11,7 +11,6 @@
 #include "mip.hpp"
 #include "Problem.hpp"
 #include "settings.hpp"
-#include "utility.hpp"
 
 #include <vector>
 #include <string_view>
@@ -82,13 +81,13 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    for (ind_t i{ 0 }; i < Nb; i++)
+    for (size_t i{ 0 }; i < Nb; i++)
       if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
 
-    prob.clusters_ind = std::vector<ind_t>(Nb);
+    prob.clusters_ind = std::vector<size_t>(Nb);
 
-    ind_t i_cluster = 0;
+    size_t i_cluster = 0;
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
@@ -176,7 +175,7 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     for (size_t i{ 0 }; i < Nb * Nb; i++)
       test.push_back(w[i].get(GRB_DoubleAttr_X));
 
-    for (ind_t i{ 0 }; i < Nb; i++)
+    for (size_t i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.9)
         prob.centroids_ind.push_back(i);
       else if (isCluster[i].get(GRB_DoubleAttr_X) > 0.1) {
@@ -184,9 +183,9 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
         throw 10000; // #TODO more meaningful error codes?
       }
 
-    prob.clusters_ind = std::vector<ind_t>(Nb);
+    prob.clusters_ind = std::vector<size_t>(Nb);
 
-    ind_t i_cluster = 0;
+    size_t i_cluster = 0;
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
       for (size_t j{ 0 }; j < Nb; j++)
