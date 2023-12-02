@@ -43,12 +43,4 @@ inline bool is_zero(T x) { return x < int_threshold; }
 template <typename T>
 inline bool is_integer(T x) { return is_one(x) || is_zero(x); }
 
-struct IntSolution
-{
-  std::vector<std::array<size_t, 2Ui64>> fix_var;
-  data_t cost{ std::numeric_limits<data_t>::max() };
-  std::vector<data_t> vX_opt;
-};
-
-
 } // namespace dtwc::solver

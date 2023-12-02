@@ -53,6 +53,9 @@ struct Triplet
 {
   int row{}, col{}; // Row and column of the value
   double val{};
+
+  Triplet() = default;
+  Triplet(int row_, int col_, double val_) : row(row_), col(col_), val(val_) {}
 };
 
 struct RowMajor

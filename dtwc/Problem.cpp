@@ -291,7 +291,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
     distanceInClusters(); // Just populates distByInd matrix ahead.
     calculateMedoids();   // Changes centroids_ind
 
-    if (aremedoidsSame(oldmedoids, centroids_ind)) {
+    if (oldmedoids == centroids_ind) {
       status = 0;
       break;
     }
