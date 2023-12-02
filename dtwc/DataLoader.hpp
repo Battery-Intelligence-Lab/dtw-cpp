@@ -10,11 +10,14 @@
 
 #pragma once
 
-#include "settings.hpp"
-#include "fileOperations.hpp"
-#include "Data.hpp"
+#include "Data.hpp"           // for Data
+#include "fileOperations.hpp" // for load_batch_file, load_folder
+#include "settings.hpp"       // for data_t
 
-#include <vector>
+#include <cstddef>    // for size_t
+#include <filesystem> // for path, is_directory, operator==, direct...
+#include <tuple>      // for tie, tuple
+#include <vector>     // for vector
 
 namespace dtwc {
 

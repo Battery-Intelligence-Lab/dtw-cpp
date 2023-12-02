@@ -12,8 +12,11 @@
 
 #include "settings.hpp"
 
-#include <vector>
-#include <string>
+#include <cstddef> // for size_t
+#include <cassert> // for assert
+#include <string>  // for string
+#include <utility> // for move
+#include <vector>  // for vector
 
 namespace dtwc {
 

@@ -23,18 +23,26 @@ public:
   VecMatrix(VarType m_, VarType n_, data_t x) : m(m_), n(n_), data(m_ * n_, x) {}
   VecMatrix(VarType m_, VarType n_, std::vector<data_t> &&vec) : m(m_), n(n_), data(std::move(vec)) {}
 
-  inline void resize(VarType m_, VarType n_, data_t x = 0)
+  void resize(VarType m_, VarType n_, data_t x = 0)
   {
     m = m_;
     n = n_;
     data.resize(m_ * n_, x);
   }
 
-  inline auto rows() const { return m; }
-  inline auto cols() const { return n; }
-  inline auto size() const { return m * n; }
+  void reset(VarType m_, VarType n_, data_t x = 0)
+  {
+    data.clear();
+    resize(m_, n_, x);
+  }
 
-  inline auto &operator()(VarType i, VarType j) { return data[i + j * m]; }
+
+
+  auto rows() const { return m; }
+  auto cols() const { return n; }
+  auto size() const { return m * n; }
+
+  auto &operator()(VarType i, VarType j) { return data[i + j * m]; }
 
   void print()
   {

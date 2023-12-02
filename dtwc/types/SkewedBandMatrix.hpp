@@ -4,6 +4,7 @@
 #include <iostream>
 #include <string>
 #include <cmath>
+#include <array>
 
 namespace dtwc {
 

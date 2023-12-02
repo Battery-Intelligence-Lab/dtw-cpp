@@ -9,18 +9,20 @@
 
 #pragma once
 
-#include "mip.hpp"
-#include "settings.hpp"
-#include "fileOperations.hpp"
-// #include "initialisation.hpp"
-#include "timing.hpp"
-#include "Data.hpp"
-#include "DataLoader.hpp"
+#include "Data.hpp"            // for Data
+#include "DataLoader.hpp"      // for DataLoader
+#include "fileOperations.hpp"  // for writeMatrix, readMatrix
+#include "settings.hpp"        // for data_t, resultsPath, writeAsFileNames
+#include "types/VecMatrix.hpp" // for VecMatrix
 
-#include <vector>
-#include <string_view>
-#include <limits>
-
+#include <cstddef>     // for size_t
+#include <filesystem>  // for operator/, path
+#include <ostream>     // for operator<<, basic_ostream, ofstream
+#include <string>      // for char_traits, operator+, operator<<
+#include <string_view> // for string_view
+#include <utility>     // for pair
+#include <vector>      // for vector, allocator
+#include <type_traits> // std::decay_t
 
 namespace dtwc {
 
@@ -32,7 +34,7 @@ class Problem
 
 public:
   bool writeAsFileNames{ settings::writeAsFileNames };
-  fs::path output_folder{ settings::resultsPath };
+  std::decay_t<decltype(settings::resultsPath)> output_folder{ settings::resultsPath };
   std::string name{}; // Problem name
   Data data;
 
@@ -40,20 +42,20 @@ public:
   std::vector<size_t> clusters_ind;                 // which point belongs to which cluster.
   std::vector<std::vector<size_t>> cluster_members; // Members of each clusters!
 
-
   // Constructors:
   Problem() = default;
   Problem(std::string_view name_) : name{ name_ } {}
-  Problem(std::string_view name_, DataLoader &loader_) : name{ name_ }, data{ loader_.load() }
+  Problem(std::string_view name_, DataLoader &loader_)
+    : name{ name_ }, data{ loader_.load() }
   {
-    distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1);
+    refreshDistanceMatrix();
   }
 
-  void refreshDistanceMatrix() { distMat = dtwc::VecMatrix<data_t>(data.size(), data.size(), -1); }
+  void refreshDistanceMatrix() { distMat.reset(data.size(), data.size(), -1); }
 
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
-  auto readDistanceMatrix(const fs::path &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
+  auto readDistanceMatrix(const auto &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
   auto cluster_size() const { return Nc; }
   auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
@@ -68,9 +70,8 @@ public:
     clusters_ind.resize(data.size());
   }
 
-  auto set_numberOfClusters(size_t Nc_)
+  void set_numberOfClusters(size_t Nc_)
   {
-    assert(Nc_ > 0);
     Nc = Nc_;
     resize();
   }
@@ -78,7 +79,6 @@ public:
   std::string get_name(size_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
 
   data_t maxDistance();
-
 
   data_t distByInd(int i, int j);
   data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 2.0 / (maxDistance()); };

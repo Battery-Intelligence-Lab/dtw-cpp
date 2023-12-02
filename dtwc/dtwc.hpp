@@ -12,6 +12,6 @@
 
 #include "settings.hpp"
 #include "fileOperations.hpp"
-#include "timing.hpp"
 #include "Problem.hpp"
 #include "DataLoader.hpp"
+#include "utility.hpp"

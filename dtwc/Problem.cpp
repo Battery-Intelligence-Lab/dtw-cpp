@@ -8,22 +8,23 @@
  */
 
 #include "Problem.hpp"
-#include "mip.hpp"
-#include "settings.hpp"
-#include "fileOperations.hpp"
-#include "parallelisation.hpp"
-#include "scores.hpp"
-#include "time_warping.hpp"
+#include "mip.hpp"             // for MIP_clustering_byGurobi
+#include "parallelisation.hpp" // for run
+#include "scores.hpp"          // for silhouette
+#include "settings.hpp"        // for data_t, randGenerator, band, isDebug
+#include "time_warping.hpp"    // for dtwBanded, dtwFull
+#include "types/Range.hpp"     // for Range
 
-#include <vector>
-#include <string_view>
-#include <memory>
-#include <limits>
-#include <utility>
-#include <algorithm>
-#include <iostream>
-#include <string>
-#include <limits>
+#include <algorithm> // for max_element, min, min_element, sample
+#include <iomanip>   // for operator<<, setprecision
+#include <iostream>  // for cout
+#include <iterator>  // for back_insert_iterator, back_inserter
+#include <limits>    // for numeric_limits
+#include <new>       // for bad_alloc
+#include <random>    // for mt19937, discrete_distribution, unifo...
+#include <string>    // for allocator, char_traits, operator+
+#include <utility>   // for pair
+#include <vector>    // for vector, operator==
 
 namespace dtwc {
 

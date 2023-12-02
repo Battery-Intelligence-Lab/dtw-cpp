@@ -10,6 +10,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include "types/Range.hpp"
 
 #include <execution>
 #include <algorithm>

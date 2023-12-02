@@ -13,3 +13,4 @@
 #include "types/types.hpp"
 #include "fileOperations.hpp"
 #include "parallelisation.hpp"
+#include "timing.hpp"

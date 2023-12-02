@@ -9,10 +9,13 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "types/types.hpp"
 
-#include <vector>
-#include <limits>
+#include <cstdlib>   // for abs, size_t
+#include <algorithm> // for min, max, fill
+#include <cmath>     // for floor, round
+#include <limits>    // for numeric_limits
+#include <vector>    // for vector
 
 namespace dtwc {
 

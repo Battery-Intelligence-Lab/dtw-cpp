@@ -10,21 +10,23 @@
 
 #pragma once
 
-#include "settings.hpp"
-#include "types/types.hpp"
+#include "settings.hpp" // for resultsPath
 
-#include <vector>
-#include <filesystem>
-#include <cstdlib>
-#include <string>
-#include <limits>
-#include <sstream>
+#include <cassert>    // for assert
+#include <chrono>     // for filesystem
+#include <cstdlib>    // for size_t
+#include <filesystem> // for operator<<, path, operator/, directory_iterator
+#include <iostream>   // for operator<<, ifstream, basic_ostream, operator>>
+#include <string>     // for string, getline, to_string
+#include <utility>    // for pair
+#include <vector>     // for vector
 #include <fstream>
-#include <cassert>
 
 namespace dtwc {
 
 namespace fs = std::filesystem;
+template <typename data_t>
+class VecMatrix;
 
 inline void ignoreBOM(std::ifstream &in)
 {
