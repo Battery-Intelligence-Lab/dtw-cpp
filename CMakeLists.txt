@@ -48,6 +48,8 @@ add_executable(dtwc_main
 target_link_libraries(dtwc_main
   PRIVATE
   dtwc++
+  project_warnings
+  project_options
 )
 
 enable_testing()
