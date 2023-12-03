@@ -44,7 +44,6 @@ CPMAddPackage(
 CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.6.0.tar.gz"
-    EXCLUDE_FROM_ALL YES
     SYSTEM
     OPTIONS 
         "HIGHS_BUILD_SHARED NO"
@@ -52,5 +51,3 @@ CPMAddPackage(
         "HIGHS_BUILD_TESTS NO"
 )
 set(FAST_BUILD ON CACHE INTERNAL "Fast Build")
-# Use SYSTEM keyword with target_include_directories to suppress warnings
-target_include_directories(highs SYSTEM PUBLIC ${HIGHS_INCLUDE_DIRS})
