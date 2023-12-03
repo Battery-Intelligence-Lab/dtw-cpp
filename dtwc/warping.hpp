@@ -1,5 +1,5 @@
 /*
- * time_warping.hpp
+ * warping.hpp
  *
  * This file contains time warping functions
 

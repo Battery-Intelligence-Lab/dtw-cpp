@@ -12,7 +12,7 @@
 #include "parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
-#include "time_warping.hpp"    // for dtwBanded, dtwFull
+#include "warping.hpp"         // for dtwBanded, dtwFull
 #include "types/Range.hpp"     // for Range
 
 #include <algorithm> // for max_element, min, min_element, sample
