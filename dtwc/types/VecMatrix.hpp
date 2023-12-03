@@ -5,13 +5,15 @@
 #include <limits>
 #include <string>
 #include <cmath>
+#include <cstdlib>
+#include <cstddef>
 
 namespace dtwc {
 
 template <typename data_t>
 class VecMatrix
 {
-  using VarType = int;
+  using VarType = ssize_t;
   using data_type = data_t;
   VarType m{}, n{};
 
@@ -35,7 +37,6 @@ public:
     data.clear();
     resize(m_, n_, x);
   }
-
 
 
   auto rows() const { return m; }

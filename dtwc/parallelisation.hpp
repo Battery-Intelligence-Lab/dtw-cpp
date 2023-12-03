@@ -34,6 +34,6 @@ template <typename Tfun>
 void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = settings::numMaxParallelWorkers)
 {
   std::cout << "Standard algorithms parallelisation is being used." << std::endl;
-  run_std(task_indv, i_end);
+  run_std(task_indv, i_end, numMaxParallelWorkers > 1);
 }
 } // namespace dtwc

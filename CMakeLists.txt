@@ -8,7 +8,6 @@ project(DTWC++ VERSION "0.0.4"
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
   
-
 option(CXX "enable C++ compilation" ON)
 
 if(CXX)
@@ -16,6 +15,7 @@ if(CXX)
 endif()
 
 set(DTWC_ENABLE_GUROBI ON)
+set(DTWC_ENABLE_IWYU OFF)
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
 add_library(project_warnings INTERFACE)
@@ -38,8 +38,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
 # include(cmake/Cache.cmake)
 include(cmake/FindGUROBI.cmake)
 
-
-
 # standard compiler warnings
 include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
@@ -48,16 +46,18 @@ include(cmake/Dependencies.cmake) # Include external projects
 add_subdirectory(dtwc/solver)
 
 
-
 add_executable(dtwc++
   dtwc/main.cpp
   dtwc/Problem.cpp
   dtwc/mip.cpp
   dtwc/mip_Gurobi.cpp
-#  dtwc/initialisation.cpp
   dtwc/parallelisation.hpp
 )
 
+if(DTWC_ENABLE_IWYU)
+  find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
+  set_property(TARGET dtwc++ PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
+endif()
 
 target_link_libraries(dtwc++
   PRIVATE
@@ -69,15 +69,12 @@ target_link_libraries(dtwc++
   fmt
   highs::highs
 )
-
-if(Gurobi_FOUND)
-message("Gurobi is found!")
-add_definitions(-DDTWC_ENABLE_GUROBI) 
-target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
+if(DTWC_ENABLE_GUROBI AND Gurobi_FOUND)
+  message("Gurobi is found!")
+  add_definitions(-DDTWC_ENABLE_GUROBI) 
+  target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
 endif()
 
 
 target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
-
-
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

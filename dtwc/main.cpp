@@ -1,7 +1,5 @@
 #include "dtwc.hpp"
 #include "examples.hpp"
-#include "solver/Simplex.hpp"
-#include "solver/SparseSimplex.hpp"
 #include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>
@@ -12,7 +10,6 @@
 
 int main()
 {
-
   // auto [eq, c] = dtwc::solver::get_prob_small();
 
   // dtwc::solver::SparseSimplex prob_small(eq, c);

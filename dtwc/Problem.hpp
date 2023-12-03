@@ -28,7 +28,7 @@ namespace dtwc {
 
 class Problem
 {
-  size_t Nc{ 1 }; // Number of clusters.
+  ssize_t Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
   data_t maxDist{ -1 };
 
@@ -38,9 +38,9 @@ public:
   std::string name{}; // Problem name
   Data data;
 
-  std::vector<size_t> centroids_ind;                // indices of cluster centroids.
-  std::vector<size_t> clusters_ind;                 // which point belongs to which cluster.
-  std::vector<std::vector<size_t>> cluster_members; // Members of each clusters!
+  std::vector<int> centroids_ind;                // indices of cluster centroids.
+  std::vector<int> clusters_ind;                 // which point belongs to which cluster.
+  std::vector<std::vector<int>> cluster_members; // Members of each clusters!
 
   // Constructors:
   Problem() = default;
@@ -70,7 +70,7 @@ public:
     clusters_ind.resize(data.size());
   }
 
-  void set_numberOfClusters(size_t Nc_)
+  void set_numberOfClusters(ssize_t Nc_)
   {
     Nc = Nc_;
     resize();
@@ -118,7 +118,7 @@ public:
   {
     std::ofstream out(out_folder / (name + "_dataOrder.csv"), std::ios_base::out);
 
-    for (size_t i = 0; i < data.size(); i++)
+    for (int i = 0; i < data.size(); i++)
       out << i << ',' << p_names(i) << '\n';
 
     out.close();

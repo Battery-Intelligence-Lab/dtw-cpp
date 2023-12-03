@@ -31,7 +31,7 @@ auto silhouette(Problem &prob)
   }
 
 
-  auto oneTask = [&, N = Nb](size_t i_b) {
+  auto oneTask = [&](size_t i_b) {
     auto i_c = prob.clusters_ind[i_b];
 
     if (prob.cluster_members[i_c].size() == 1)
@@ -39,11 +39,11 @@ auto silhouette(Problem &prob)
     else {
       thread_local std::vector<double> mean_distances(Nc);
 
-      for (size_t i = 0; i < Nb; i++)
+      for (int i = 0; i < Nb; i++)
         mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
 
       auto min = std::numeric_limits<double>::max();
-      for (size_t i = 0; i < Nc; i++) // Finding means:
+      for (int i = 0; i < Nc; i++) // Finding means:
         if (i == i_c)
           mean_distances[i] /= (prob.cluster_members[i].size() - 1);
         else {

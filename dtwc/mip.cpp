@@ -7,6 +7,8 @@
  *  Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
+#include "Data.hpp"        // for Data
+#include "sparse_util.hpp" // for Triplet, RowMajor
 #include "mip.hpp"
 #include "Problem.hpp"
 #include "settings.hpp"
@@ -18,9 +20,11 @@
 #include <fmt/ranges.h>
 
 #include <vector>
-#include <string_view>
-#include <memory>
-#include <limits>
+#include <cassert>   // for assert
+#include <cstddef>   // for size_t
+#include <algorithm> // for sort
+#include <iostream>  // for operator<<, basic_ostream, ost...
+#include <string>    // for operator<<
 #include <Highs.h>
 
 
@@ -31,16 +35,16 @@ void extract_solution(Problem &prob, auto &solution)
   prob.clear_clusters();
   const auto Nb = prob.data.size();
 
-  for (size_t i{ 0 }; i < Nb; i++)
+  for (int i{ 0 }; i < Nb; i++)
     if (solution[i * (Nb + 1)] > 0.5)
       prob.centroids_ind.push_back(i);
 
-  prob.clusters_ind = std::vector<size_t>(Nb);
+  prob.clusters_ind.resize(Nb);
 
-  size_t i_cluster = 0;
+  int i_cluster = 0;
   for (auto i : prob.centroids_ind) {
     prob.cluster_members.emplace_back();
-    for (size_t j{ 0 }; j < Nb; j++)
+    for (int j{ 0 }; j < Nb; j++)
       if (solution[i * Nb + j] > 0.5) {
         prob.clusters_ind[j] = i_cluster;
         prob.cluster_members.back().push_back(j);
@@ -105,8 +109,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Initialise q vector for cost.
   model.lp_.col_cost_.resize(Nvar);
-  for (size_t j{ 0 }; j < Nb; j++)
-    for (size_t i{ 0 }; i < Nb; i++)
+  for (int j{ 0 }; j < Nb; j++)
+    for (int i{ 0 }; i < Nb; i++)
       model.lp_.col_cost_[i + j * Nb] = prob.distByInd_scaled(i, j);
 
   model.lp_.col_lower_.clear();
@@ -123,7 +127,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   model.lp_.row_upper_[0] = model.lp_.row_lower_[0] = Nc;
 
-  for (size_t i = 0; i < Nb; ++i)
+  for (int i = 0; i < Nb; ++i)
     model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
 
 
@@ -143,15 +147,15 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   triplets.reserve(numel);
 
-  for (size_t i = 0; i < Nb; ++i) {
+  for (int i = 0; i < Nb; ++i) {
     triplets.emplace_back(0, i * (Nb + 1), 1.0); // Sum of diagonals is Nc
 
-    for (size_t j = 0; j < Nb; j++)
+    for (int j = 0; j < Nb; j++)
       triplets.emplace_back(1 + j, Nb * i + j, 1.0); // Every element belongs to one cluster.
 
     // ---------------
     int shift = 0;
-    for (size_t j = 0; j < Nb; j++) {
+    for (int j = 0; j < Nb; j++) {
       const int block_begin_row = Nb + 1 + (Nb - 1) * i;
       const int block_begin_col = Nb * i;
       if (i == j) {
@@ -190,10 +194,15 @@ void MIP_clustering_byHiGHS(Problem &prob)
   Highs highs;
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
-  assert(return_status == HighsStatus::kOk);
-
+  if (return_status != HighsStatus::kOk) {
+    std::cout << "Passing the model to HiGHS was unsuccessful!\n";
+    return;
+  }
   return_status = highs.run(); // Solve the model
-  assert(return_status == HighsStatus::kOk);
+  if (return_status != HighsStatus::kOk) {
+    std::cout << "Solving the model with HiGHS was unsuccessful!\n";
+    return;
+  }
 
   // Get the model status
   const HighsModelStatus &model_status = highs.getModelStatus();

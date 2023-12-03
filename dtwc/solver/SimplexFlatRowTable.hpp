@@ -34,14 +34,13 @@ namespace dtwc::solver {
 class SimplexFlatRowTable
 {
   // Table is   mtab x ntab
+  int mtab{}, ntab{};
   // Inner table is m x n
   std::vector<std::vector<Element>> innerTable; // Each is a row
   std::vector<double> reducedCosts, rhs;
   double negativeObjective{};
 
   std::vector<Element> pivotRows; // Literal Index of pivotRow / value of pivot col there.
-
-  int mtab{}, ntab{};
 
 public:
   SimplexFlatRowTable() = default;

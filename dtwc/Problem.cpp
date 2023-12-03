@@ -74,7 +74,7 @@ void Problem::printClusters()
 
   std::cout << '\n';
 
-  for (size_t i{ 0 }; i < Nc; i++) {
+  for (int i{ 0 }; i < Nc; i++) {
     std::cout << get_name(centroids_ind[i]) << " has: ";
 
     for (auto member : cluster_members[i])
@@ -92,7 +92,7 @@ void Problem::writeClusters()
 
   myFile << "Clusters:\n";
 
-  for (size_t i{ 0 }; i < Nc; i++) {
+  for (int i{ 0 }; i < Nc; i++) {
     if (i != 0) myFile << ',';
 
     myFile << p_names(centroids_ind[i]);
@@ -101,7 +101,7 @@ void Problem::writeClusters()
   myFile << "\n\n"
          << "Data" << ',' << "its cluster\n";
 
-  for (size_t i{ 0 }; i < data.size(); i++)
+  for (int i{ 0 }; i < data.size(); i++)
     myFile << p_names(i) << ',' << p_names(centroids_ind[clusters_ind[i]]) << '\n';
 
   myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
@@ -121,7 +121,7 @@ void Problem::writeSilhouettes()
   std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
-  for (size_t i{ 0 }; i < data.size(); i++)
+  for (int i{ 0 }; i < data.size(); i++)
     myFile << p_names(i) << ',' << silhouettes[i] << '\n';
 
   myFile.close();
@@ -149,7 +149,7 @@ void Problem::init_Kmeanspp()
     distances[i_p] = std::min(distances[i_p], distByInd(centroids_ind.back(), i_p));
   };
 
-  for (size_t i = 1; i < Nc; i++) {
+  for (int i = 1; i < Nc; i++) {
     dtwc::run(distTask, data.size());
     std::discrete_distribution<> dd(distances.begin(), distances.end());
     centroids_ind.push_back(dd(randGenerator));
@@ -310,7 +310,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
 double Problem::findTotalCost()
 {
   double sum = 0;
-  for (size_t i = 0; i < data.size(); i++) {
+  for (int i = 0; i < data.size(); i++) {
     const auto i_p = centroids_ind[clusters_ind[i]];
     if constexpr (settings::isDebug)
       std::cout << "Distance between " << i << " and closest cluster " << i_p

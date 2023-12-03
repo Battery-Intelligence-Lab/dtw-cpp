@@ -34,12 +34,12 @@ namespace dtwc::solver {
 class SimplexFlatTable
 {
   // Table is   mtab x ntab
+  int mtab{}, ntab{};
   // Inner table is m x n
   std::vector<std::vector<Element>> innerTable; // Each is a column
   std::vector<double> reducedCosts, rhs;
   double negativeObjective{};
 
-  int mtab{}, ntab{};
   int iLastPivot{ -1 }; // Last pivoted column
 
 public:

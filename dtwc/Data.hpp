@@ -25,7 +25,7 @@ struct Data
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
-  size_t Nb{ 0 }; // Number of data points
+  ssize_t Nb{ 0 }; // Number of data points
   auto size() const { return Nb; }
 
   Data() = default;
@@ -34,7 +34,7 @@ struct Data
     assert(p_vec_new.size() == p_names_new.size());
     p_vec = std::move(p_vec_new);
     p_names = std::move(p_names_new);
-    Nb = static_cast<size_t>(p_vec.size());
+    Nb = std::ssize(p_vec);
   }
 };
 
