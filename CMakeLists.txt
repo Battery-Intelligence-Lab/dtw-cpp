@@ -5,6 +5,8 @@ project(DTWC++ VERSION "0.0.4"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES C CXX)
 
+enable_language(CXX)
+
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
   
@@ -50,5 +52,6 @@ target_link_libraries(dtwc_main
   project_options
 )
 
+enable_testing()
 include(cmake/Coverage.cmake)
 add_subdirectory(tests)
