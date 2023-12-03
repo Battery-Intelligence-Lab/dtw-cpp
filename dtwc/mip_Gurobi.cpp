@@ -42,21 +42,21 @@ void MIP_clustering_byGurobi(Problem &prob)
     // Create variables
     std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
 
-    for (size_t i{ 0 }; i < Nb; i++) {
+    for (int i{ 0 }; i < Nb; i++) {
       GRBLinExpr lhs = 0;
-      for (size_t j{ 0 }; j < Nb; j++) {
+      for (int j{ 0 }; j < Nb; j++) {
         lhs += w[j + i * Nb];
       }
       model.addConstr(lhs, '=', 1.0);
     }
 
 
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
+    for (int j{ 0 }; j < Nb; j++)
+      for (int i{ 0 }; i < Nb; i++)
         model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
     {
       GRBLinExpr lhs = 0;
-      for (size_t i{ 0 }; i < Nb; i++)
+      for (int i{ 0 }; i < Nb; i++)
         lhs += w[i * (Nb + 1)];
 
       model.addConstr(lhs == Nc); // There should be Nc clusters.
@@ -64,8 +64,8 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Set objective
     GRBLinExpr obj = 0;
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
+    for (int j{ 0 }; j < Nb; j++)
+      for (int i{ 0 }; i < Nb; i++)
         obj += w[i + j * Nb] * prob.distByInd_scaled(i, j);
 
     model.setObjective(obj, GRB_MINIMIZE);
@@ -81,16 +81,16 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    for (size_t i{ 0 }; i < Nb; i++)
+    for (int i{ 0 }; i < Nb; i++)
       if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
 
-    prob.clusters_ind = std::vector<size_t>(Nb);
+    prob.clusters_ind.resize(Nb);
 
     size_t i_cluster = 0;
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
-      for (size_t j{ 0 }; j < Nb; j++)
+      for (int j{ 0 }; j < Nb; j++)
         if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);
@@ -127,9 +127,9 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     std::unique_ptr<GRBVar[]> isCluster{ model.addVars(Nb, GRB_CONTINUOUS) };
     std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_CONTINUOUS) };
 
-    for (size_t i{ 0 }; i < Nb; i++) {
+    for (int i{ 0 }; i < Nb; i++) {
       GRBLinExpr lhs = 0;
-      for (size_t j{ 0 }; j < Nb; j++) {
+      for (int j{ 0 }; j < Nb; j++) {
         lhs += w[j + i * Nb];
         model.addConstr(w[j + i * Nb] <= 1); // For relaxed version.
         model.addConstr(w[j + i * Nb] >= 0); // For relaxed version.
@@ -138,13 +138,13 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     }
 
 
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
+    for (int j{ 0 }; j < Nb; j++)
+      for (int i{ 0 }; i < Nb; i++)
         model.addConstr(w[i + j * Nb] <= isCluster[i]);
 
     {
       GRBLinExpr lhs = 0;
-      for (size_t i{ 0 }; i < Nb; i++) {
+      for (int i{ 0 }; i < Nb; i++) {
         lhs += isCluster[i];
         model.addConstr(isCluster[i] <= 1); // For relaxed version.
         model.addConstr(isCluster[i] >= 0); // For relaxed version.
@@ -155,8 +155,8 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
 
     // Set objective
     GRBLinExpr obj = 0;
-    for (size_t j{ 0 }; j < Nb; j++)
-      for (size_t i{ 0 }; i < Nb; i++)
+    for (int j{ 0 }; j < Nb; j++)
+      for (int i{ 0 }; i < Nb; i++)
         obj += w[i + j * Nb] * prob.distByInd_scaled(i, j); // Some scaling!
 
     model.setObjective(obj, GRB_MINIMIZE);
@@ -172,10 +172,10 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
     model.optimize();
 
     std::vector<double> test;
-    for (size_t i{ 0 }; i < Nb * Nb; i++)
+    for (int i{ 0 }; i < Nb * Nb; i++)
       test.push_back(w[i].get(GRB_DoubleAttr_X));
 
-    for (size_t i{ 0 }; i < Nb; i++)
+    for (int i{ 0 }; i < Nb; i++)
       if (isCluster[i].get(GRB_DoubleAttr_X) > 0.9)
         prob.centroids_ind.push_back(i);
       else if (isCluster[i].get(GRB_DoubleAttr_X) > 0.1) {
@@ -183,12 +183,12 @@ void MIP_clustering_byGurobi_relaxed(Problem &prob)
         throw 10000; // #TODO more meaningful error codes?
       }
 
-    prob.clusters_ind = std::vector<size_t>(Nb);
+    prob.clusters_ind.resize(Nb);
 
-    size_t i_cluster = 0;
+    int i_cluster = 0;
     for (auto i : prob.centroids_ind) {
       prob.cluster_members.emplace_back();
-      for (size_t j{ 0 }; j < Nb; j++)
+      for (int j{ 0 }; j < Nb; j++)
         if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.9) {
           prob.clusters_ind[j] = i_cluster;
           prob.cluster_members.back().push_back(j);

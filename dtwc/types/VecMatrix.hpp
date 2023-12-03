@@ -13,7 +13,7 @@ namespace dtwc {
 template <typename data_t>
 class VecMatrix
 {
-  using VarType = ssize_t;
+  using VarType = int;
   using data_type = data_t;
   VarType m{}, n{};
 

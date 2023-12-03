@@ -28,7 +28,7 @@ namespace dtwc {
 
 class Problem
 {
-  ssize_t Nc{ 1 }; // Number of clusters.
+  int Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
   data_t maxDist{ -1 };
 
@@ -70,7 +70,7 @@ public:
     clusters_ind.resize(data.size());
   }
 
-  void set_numberOfClusters(ssize_t Nc_)
+  void set_numberOfClusters(int Nc_)
   {
     Nc = Nc_;
     resize();

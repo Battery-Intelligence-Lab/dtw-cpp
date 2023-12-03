@@ -25,7 +25,7 @@ struct Data
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
-  ssize_t Nb{ 0 }; // Number of data points
+  int Nb{ 0 }; // Number of data points
   auto size() const { return Nb; }
 
   Data() = default;
