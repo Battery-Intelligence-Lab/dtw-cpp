@@ -8,12 +8,6 @@ project(DTWC++ VERSION "0.0.4"
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
   
-option(CXX "enable C++ compilation" ON)
-
-if(CXX)
-  enable_language(CXX)
-endif()
-
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_IWYU OFF)
 
@@ -43,38 +37,18 @@ include(cmake/CompilerWarnings.cmake)
 set_project_warnings(project_warnings)
 
 include(cmake/Dependencies.cmake) # Include external projects
-add_subdirectory(dtwc/solver)
+add_subdirectory(dtwc)
 
-
-add_executable(dtwc++
+add_executable(dtwc_main
   dtwc/main.cpp
-  dtwc/Problem.cpp
-  dtwc/mip.cpp
-  dtwc/mip_Gurobi.cpp
-  dtwc/parallelisation.hpp
 )
 
-if(DTWC_ENABLE_IWYU)
-  find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
-  set_property(TARGET dtwc++ PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
-endif()
-
-target_link_libraries(dtwc++
+target_link_libraries(dtwc_main
   PRIVATE
+  dtwc++
   project_warnings
   project_options
-  solvers
-  eigen
-  range-v3
-  fmt
-  highs::highs
 )
-if(DTWC_ENABLE_GUROBI AND Gurobi_FOUND)
-  message("Gurobi is found!")
-  add_definitions(-DDTWC_ENABLE_GUROBI) 
-  target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
-endif()
 
-
-target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
-target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
+include(cmake/Coverage.cmake)
+add_subdirectory(tests)
