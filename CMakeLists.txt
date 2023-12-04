@@ -1,57 +1,69 @@
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.21)
+
+# This CMake file is adapted from https://github.com/cpp-best-practices/cmake_template
+
+# This template attempts to be "fetch_content"-able
+# so that it works well with tools like CPM or other
+# manual dependency management
+
+# Only set the cxx_standard if it is not set by someone else
+if (NOT DEFINED CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 20)
+endif()
+
+# strongly encouraged to enable this globally to avoid conflicts between
+# -Wpedantic being enabled and -std=c++20 and -std=gnu++20 for example
+# when compiling with PCH enabled
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 project(DTWC++ VERSION "0.0.4"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
-  LANGUAGES C CXX)
+  LANGUAGES CXX C)
 
-enable_language(CXX)
-
-include(cmake/StandardProjectSettings.cmake)
+include(cmake/ProjectOptions.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
-  
-set(DTWC_ENABLE_GUROBI ON)
-set(DTWC_ENABLE_IWYU OFF)
 
-# Link this 'library' to use the warnings specified in CompilerWarnings.cmake
-add_library(project_warnings INTERFACE)
+dtwc_setup_options()
 
-# Link this 'library' to set the c++ standard / compile-time options requested
-add_library(project_options INTERFACE)
-target_compile_features(project_options INTERFACE cxx_std_20)
-
-if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-  option(ENABLE_BUILD_WITH_TIME_TRACE "Enable -ftime-trace to generate time tracing .json files on clang" OFF)
-
-  if(ENABLE_BUILD_WITH_TIME_TRACE)
-    add_compile_definitions(project_options INTERFACE -ftime-trace)
-  endif()
-endif()
-
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/cmake)
-
-# # enable cache system
-# include(cmake/Cache.cmake)
-include(cmake/FindGUROBI.cmake)
-
-# standard compiler warnings
-include(cmake/CompilerWarnings.cmake)
-set_project_warnings(project_warnings)
-
+dtwc_global_options()
 include(cmake/Dependencies.cmake) # Include external projects
+dtwc_setup_dependencies()
+
+dtwc_local_options()
+
+# don't know if this should be set globally from here or not... (I also don't know)
+set(CMAKE_CXX_VISIBILITY_PRESET hidden)
+
+target_compile_features(dtwc_options INTERFACE cxx_std_${CMAKE_CXX_STANDARD})
+
+add_library(dtwc::dtwc_options ALIAS dtwc_options)
+add_library(dtwc::dtwc_warnings ALIAS dtwc_warnings)
+
 add_subdirectory(dtwc)
 
-add_executable(dtwc_main
-  dtwc/main.cpp
-)
+# Don't even look at tests if we're not top level
+if(NOT PROJECT_IS_TOP_LEVEL)
+  return()
+endif()
 
-target_link_libraries(dtwc_main
-  PRIVATE
-  dtwc++
-  project_warnings
-  project_options
-)
+# # Adding the tests:
+# include(CTest)
 
-enable_testing()
-include(cmake/Coverage.cmake)
-add_subdirectory(tests)
+# if(BUILD_TESTING)
+#   #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
+#   include(cmake/Coverage.cmake)
+#   add_subdirectory(tests)
+# endif()
+
+
+# If MSVC is being used, and ASAN is enabled, we need to set the debugger environment
+# so that it behaves well with MSVC's debugger, and we can run the target from visual studio
+if(MSVC)
+  get_all_installable_targets(all_targets)
+  message("all_targets=${all_targets}")
+  set_target_properties(${all_targets} PROPERTIES VS_DEBUGGER_ENVIRONMENT "PATH=$(VC_ExecutablePath_x64);%PATH%")
+endif()
+
+# set the startup project for the "play" button in MSVC
+set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT dtwc_main)

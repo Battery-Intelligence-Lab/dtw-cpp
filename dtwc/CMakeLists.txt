@@ -12,15 +12,15 @@ target_sources(dtwc++
 
 target_include_directories(dtwc++ PUBLIC .)
 
-if(DTWC_ENABLE_IWYU)
-  find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
-  set_property(TARGET dtwc++ PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
-endif()
+# if(DTWC_ENABLE_IWYU)
+#   find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
+#   set_property(TARGET dtwc++ PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
+# endif()
 
 target_link_libraries(dtwc++
   PRIVATE
-  project_warnings
-  project_options
+  dtwc_project_warnings
+  dtwc_project_options
   solvers
   eigen
   range-v3
@@ -34,6 +34,9 @@ if(DTWC_ENABLE_GUROBI AND Gurobi_FOUND)
   target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
 endif()
 
-
 target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
+
+add_executable(dtwc_main
+  main.cpp
+)
