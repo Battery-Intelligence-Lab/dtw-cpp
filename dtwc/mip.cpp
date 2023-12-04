@@ -178,7 +178,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
       current = triplet.col;
     }
 
-    //  std::cout << "Triplet: (" << triplet.row << ", " << triplet.col << ", " << triplet.val << ")\n";
+    std::cout << "Triplet: (" << triplet.row << ", " << triplet.col << ", " << triplet.val << ")\n";
     model.lp_.a_matrix_.index_.push_back(triplet.row);
     model.lp_.a_matrix_.value_.push_back(triplet.val);
     i_now++;

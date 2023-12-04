@@ -43,7 +43,7 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 
 enable_testing()
 
-add_subdirectory(dtwc bin)
+add_subdirectory(dtwc)
 
 
 
