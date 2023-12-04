@@ -12,15 +12,10 @@ target_sources(dtwc++
 
 target_include_directories(dtwc++ PUBLIC .)
 
-# if(DTWC_ENABLE_IWYU)
-#   find_program(iwyu_path NAMES include-what-you-use iwyu REQUIRED)
-#   set_property(TARGET dtwc++ PROPERTY CXX_INCLUDE_WHAT_YOU_USE ${iwyu_path})
-# endif()
-
 target_link_libraries(dtwc++
   PRIVATE
-  dtwc_project_warnings
-  dtwc_project_options
+  project_warnings
+  project_options
   solvers
   eigen
   range-v3
@@ -39,4 +34,11 @@ target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
 
 add_executable(dtwc_main
   main.cpp
+)
+
+target_link_libraries(dtwc_main
+  PRIVATE
+  dtwc++
+  project_warnings
+  project_options
 )
