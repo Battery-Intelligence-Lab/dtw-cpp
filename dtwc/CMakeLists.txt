@@ -23,11 +23,15 @@ target_link_libraries(dtwc++
   highs::highs
 )
 
-if(DTWC_ENABLE_GUROBI AND Gurobi_FOUND)
-  message("Gurobi is found!")
-  add_definitions(-DDTWC_ENABLE_GUROBI) 
-  target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
+if(DTWC_ENABLE_GUROBI)
+  message(STATUS "Gurobi is enabled!")
+  if(Gurobi_FOUND)
+    message(STATUS "Gurobi is found!")
+    add_definitions(-DDTWC_ENABLE_GUROBI) 
+    target_link_libraries(dtwc++ PRIVATE Gurobi::GurobiCXX)
+  endif()
 endif()
+
 
 target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")

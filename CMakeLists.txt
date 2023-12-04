@@ -24,6 +24,9 @@ project(DTWC++ VERSION "0.0.4"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 
+
+set(DTWC_ENABLE_GUROBI ON)
+include(cmake/FindGUROBI.cmake)
 # include(cmake/ProjectOptions.cmake)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
