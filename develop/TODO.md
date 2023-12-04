@@ -8,6 +8,8 @@
 
 ### Current priority: 
 
+- [ ] CMake files arranging:
+  - [ ] HiGHS 1.6.0 does not always work. Also it does not work in debug mode due to iterator level. 
 - [ ] Commenting
 - [ ] MATLAB / Python integration
 - [ ] JOSS paper  
