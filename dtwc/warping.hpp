@@ -107,52 +107,44 @@ template <typename data_t = float>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
 {
   // Actual banding with skewness.
-  static thread_local SkewedBandMatrix<data_t> C(x.size(), y.size(), band, band); //
+  static thread_local VecMatrix<data_t> C(x.size(), y.size()); //
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const int mx = x.size();
   const int my = y.size();
 
-  C.resize(mx, my, band, band);
+  const auto &short_vec = (mx < my) ? x : y;
+  const auto &long_vec = (mx < my) ? y : x;
 
-  std::fill(C.CompactMat.data.begin(), C.CompactMat.data.end(), maxValue);
-  auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
+  const int m_short = short_vec.size();
+  const int m_long = long_vec.size();
+
+  C.resize(m_short, m_long);
+
+  std::fill(C.data.begin(), C.data.end(), maxValue);
+  auto distance = [](data_t xi, data_t yi) { return std::abs(xi - yi); };
 
   if ((mx != 0) && (my != 0)) {
-    const auto slope = static_cast<double>(mx) / static_cast<double>(my);
+    C(0, 0) = distance(short_vec[0], long_vec[0]);
 
-    C(0, 0) = distance(x[0], y[0]);
+    const int i_end0 = std::min(m_short, band + 1);
+    for (int i = 1; i < i_end0; i++)
+      C(i, 0) = C(i - 1, 0) + distance(short_vec[i], long_vec[0]);
 
-    for (int i = 1; i < std::min(mx, band + 1); i++)
-      C(i, 0) = C.at(i - 1, 0) + distance(x[i], y[0]);
-
-    const int band_my = std::floor(band / slope);
-    for (int j = 1; j < std::min(my, band_my + 1); j++)
-      C(0, j) = C.at(0, j - 1) + distance(x[0], y[j]);
-
-    for (int j = 1; j < my; j++) {
-      const int j_mod = std::round(j * slope);
-
-      int i = std::max(1, j_mod - band);
-      {
-        const auto minimum = std::min({ C.at(i, j - 1), C.at(i - 1, j - 1) });
-        C(i, j) = minimum + distance(x[i], y[j]);
-      }
-
-      for (i++; i < std::min(mx - 1, j_mod + band); i++) {
-        const auto minimum = std::min({ C.at(i - 1, j), C.at(i, j - 1), C.at(i - 1, j - 1) });
-        C(i, j) = minimum + distance(x[i], y[j]);
-      }
+    const int j_end0 = std::min(m_long, band + 1); // #TODO enough until slope.
+    for (int j = 1; j < j_end0; j++)
+      C(0, j) = C(0, j - 1) + distance(short_vec[0], long_vec[j]);
 
 
-      {
-        const auto minimum = std::min({ C.at(i - 1, j), C.at(i - 1, j - 1) });
-        C(i, j) = minimum + distance(x[i], y[j]);
+    for (int j = 1; j < m_long; j++) {
+      const int i_begin(std::max(j - band, 1)), i_end(std::min(j + band, m_short));
+      for (int i = i_begin; i < i_end; i++) {
+        const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
+        C(i, j) = minimum + distance(short_vec[i], long_vec[j]);
       }
     }
 
-
-    return C.at(mx - 1, my - 1);
+    return C(m_short - 1, m_long - 1);
   }
 
   return maxValue;

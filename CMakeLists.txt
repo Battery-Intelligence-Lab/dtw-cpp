@@ -70,14 +70,14 @@ add_subdirectory(dtwc)
 #   return()
 # endif()
 
-# # # Adding the tests:
-# # include(CTest)
-
-# # if(BUILD_TESTING)
-# #   #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
-# #   include(cmake/Coverage.cmake)
-# #   add_subdirectory(tests)
-# # endif()
+# Adding the tests:
+include(CTest)
+enable_testing()
+if(BUILD_TESTING)
+  #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
+  include(cmake/Coverage.cmake)
+  add_subdirectory(tests)
+endif()
 
 
 # # If MSVC is being used, and ASAN is enabled, we need to set the debugger environment
