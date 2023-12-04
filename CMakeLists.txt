@@ -6,6 +6,9 @@ cmake_minimum_required(VERSION 3.21)
 # so that it works well with tools like CPM or other
 # manual dependency management
 
+# Define the root path
+add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
+
 # Only set the cxx_standard if it is not set by someone else
 if (NOT DEFINED CMAKE_CXX_STANDARD)
   set(CMAKE_CXX_STANDARD 20)
@@ -38,6 +41,8 @@ target_compile_features(project_options INTERFACE cxx_std_20)
 enable_testing()
 
 add_subdirectory(dtwc bin)
+
+
 
 # dtwc_setup_options()
 

@@ -30,7 +30,7 @@ namespace dtwc::settings {
 // Filesystem settings:
 namespace fs = std::filesystem;
 
-const static fs::path root_folder = "../../";
+const static fs::path root_folder = DTWC_ROOT_FOLDER;
 
 const auto resultsPath = root_folder / "results/";
 const auto dataPath = root_folder / "data";
