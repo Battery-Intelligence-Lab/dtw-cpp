@@ -59,7 +59,7 @@ The DTW distance is the sum of the Euclidean distance between each point and its
     $y_1$ (monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
 
-![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (\emph{left}). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (\emph{right}).](../media/Merged_document.png)
+![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (right). \label{fig:warping_signals}](../media/Merged_document.png)
 
 \begin{figure}
     \centering
