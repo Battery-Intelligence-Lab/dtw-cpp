@@ -1,9 +1,6 @@
 ---
 title: 'DTW-C++: A C++ software for fast Dynamic Time Wrapping Clustering'
 tags:
-  - lead-acid batteries
-  - degradation
-  - solar house systems
   - C++
 authors:
   - name: Volkan Kumtepeli
@@ -62,9 +59,7 @@ The DTW distance is the sum of the Euclidean distance between each point and its
     $y_1$ (monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
 
-![signals_warped](https://github.com/Battery-Intelligence-Lab/dtw-cpp/assets/93582518/8fcdc644-5d6d-4c57-8fca-2edd2e9fd735)
-
-![warping_path](https://github.com/Battery-Intelligence-Lab/dtw-cpp/assets/93582518/8450b8f3-080c-4928-b623-3a33810fc261)
+![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (\emph{left}). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (\emph{right}).](../media/Merged_document.png)
 
 \begin{figure}
     \centering
