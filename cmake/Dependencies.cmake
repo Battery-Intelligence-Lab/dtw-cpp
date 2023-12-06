@@ -1,5 +1,5 @@
 # This cmake file is to add external dependency projects.
-# Adapted from https://github.com/cpp-best-practices/cmake_template/tree/main
+# Adapted from https://github.com/cpp-best-practices/cmake_tecomplate/tree/main
 include(cmake/CPM.cmake)
 
 # Done as a function so that updates to variables like
@@ -39,6 +39,8 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.4.0.tar.gz"
+      OPTIONS 
+      "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
   endif()
 
@@ -51,16 +53,10 @@ function(dtwc_setup_dependencies)
   endif()
 
   if(NOT TARGET highs::highs)# HiGHS library:
-  include(FetchContent)
-
-  FetchContent_Declare(
-      highs
-      GIT_REPOSITORY "https://github.com/ERGO-Code/HiGHS.git"
-      GIT_TAG        "bazel"
-  )
-  set(FAST_BUILD ON CACHE INTERNAL "Fast Build")
-  
-  FetchContent_MakeAvailable(highs)
-
+  CPMAddPackage(
+    NAME highs
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.5.1.tar.gz"
+    OPTIONS
+    "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
   endif()
 endfunction()
