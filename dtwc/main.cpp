@@ -78,7 +78,7 @@ int main()
 
   // std::cout << "Finished all tasks " << clk << "\n";
 
-  dtwc::benchmarks::run_all();
+  //dtwc::benchmarks::run_all();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }
