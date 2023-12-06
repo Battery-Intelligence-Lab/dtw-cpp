@@ -56,7 +56,9 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.5.1.tar.gz"
+    SYSTEM
     OPTIONS
     "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
   endif()
+  
 endfunction()
