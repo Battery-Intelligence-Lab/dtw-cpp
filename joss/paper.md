@@ -356,6 +356,152 @@ Table: Speed comparison of \texttt{DTW-C++} using MIP and k-Medoids, DTAIDistanc
 | WormsTwoClass                  | 77                    | 900                   | 2.5413          | 2.05345               | 2.154319         |             |
 | Yoga                           | 3000                  | 426                   | 1221.19         | 544.997               | 631.1096         |             |
 
+\begin{longtable}[c]{p{.30\textwidth} | p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth}}
+\setcounter{LTchunksize}{100}
+\kill
+
+\caption{Speed comparison of \texttt{DTW-C++} using MIP and k-Medoids, DTAIDistance and TSlearn on all datasets in the UCR Time Series Classification Archive.} \\
+
+& Number of time series & Length of time series & DTW-C++ MIP (s) & DTW-C++ k-Medoids (s) & DTAIDistance (s) & TSlearn (s) \\
+\hline
+\endfirsthead
+
+& Number of time series & Length of time series & DTW-C++ MIP (s) & DTW-C++ k-Medoids (s) & DTAIDistance (s) & TSlearn (s) \\
+\hline
+\endhead
+
+ACSF1                          & 100                & 1460   & 10.3943     & 10.038            & 14.50846     & 389.8806 \\
+Adiac                          & 391                & 176    & 29.304      & 1.26198           & 3.874026     & 172.4454 \\
+AllGestureWiimoteX             & 700                & Vary   & 200.949     & 2.08638           & 10.82009     &          \\
+AllGestureWiimoteY             & 700                & Vary   & 104.812     & 2.73356           & 5.791508     &          \\
+AllGestureWiimoteZ             & 700                & Vary   & 63.5701     & 1.38316           & 5.431429     &          \\
+ArrowHead                      & 175                & 251    & 2.27864     & 0.897899          & 0.913173     & 60.84465 \\
+Beef                           & 30                 & 470    & 0.148394    & 0.214371          & 0.180589     & 9.44669  \\
+BeetleFly                      & 20                 & 512    & 0.107265    & 0.127118          & 0.077477     & 13.51861 \\
+BirdChicken                    & 20                 & 512    & 0.121148    & 0.132698          & 0.072962     & 7.080103 \\
+BME                            & 150                & 128    & 2.54826     & 0.231731          & 0.245758     & 28.88994 \\
+Car                            & 60                 & 577    & 0.764395    & 0.402418          & 0.49119      & 53.99938 \\
+CBF                            & 900                & 128    & 52.708      & 2.69667           & 7.495611     & 264.24   \\
+Chinatown                      & 343                & 24     & 9.61945     & 0.136138          & 0.286097     & 12.98259 \\
+ChlorineConcentration          & 3840               & 166    & 18894.9     & 70.1711           & 201.1307     & 1890.485 \\
+CinCECGTorso                   & 1380               & 1639   & 3008.41     & 1104.24           & 1955.915     & 28990.66 \\
+Coffee                         & 28                 & 286    & 0.091578    & 0.101924          & 0.058483     & 4.686621 \\
+Computers                      & 250                & 720    & 16.1162     & 10.5249           & 12.81184     & 860.0778 \\
+CricketX                       & 390                & 300    & 13.4394     & 1.85138           & 6.000062     & 173.9918 \\
+CricketY                       & 390                & 300    & 13.0524     & 1.87443           & 5.811014     & 192.1667 \\
+CricketZ                       & 390                & 300    & 13.9427     & 1.95588           & 5.861976     & 279.3739 \\
+Crop                           & 16800              & 46     &             & 77.5763           & 6563.978     & 9618.363 \\
+DiatomSizeReduction            & 306                & 345    & 11.6206     & 2.72367           & 4.685899     & 227.1111 \\
+DistalPhalanxOutlineAgeGroup   & 139                & 80     & 0.871482    & 0.114135          & 0.161292     & 5.294581 \\
+DistalPhalanxOutlineCorrect    & 276                & 80     & 5.43763     & 0.420276          & 0.373589     & 8.474895 \\
+DistalPhalanxTW                & 139                & 80     & 1.70307     & 0.127389          & 0.140715     & 5.276537 \\
+DodgerLoopDay                  & 80                 & 288    & 0.408889    & 0.242574          & 0.248893     &          \\
+DodgerLoopGame                 & 138                & 288    & 1.55933     & 0.709293          & 0.759482     &          \\
+DodgerLoopWeekend              & 138                & 288    & 1.5386      & 0.864304          & 0.763335     &          \\
+Earthquakes                    & 139                & 512    & 3.17021     & 2.40538           & 2.475174     &          \\
+ECG200                         & 100                & 96     & 0.56719     & 0.171865          & 0.082707     &          \\
+ECG5000                        & 4500               & 140    &             & 53.3946           & 206.1784     &          \\
+ECGFiveDays                    & 861                & 136    & 366.465     & 4.1557            & 6.770701     &          \\
+ElectricDevices                & 7711               & 96     &             & 60.5279           & 408.6165     &          \\
+EOGHorizontalSignal            & 362                & 1250   & 81.7745     & 27.6169           & 82.88655     &          \\
+EOGVerticalSignal              & 362                & 1250   & 85.8957     & 30.2248           & 85.22367     &          \\
+EthanolLevel                   & 500                & 1751   & 325.686     & 198.929           & 302.3411     &          \\
+FaceAll                        & 1690               & 131    & 2118.18     & 3.9713            & 34.63922     &          \\
+FaceFour                       & 88                 & 350    & 0.668328    & 0.53225           & 0.442447     &          \\
+FacesUCR                       & 2050               & 131    & 1882.32     & 6.43057           & 47.43581     &          \\
+FiftyWords                     & 455                & 270    & 21.3023     & 2.50822           & 9.540631     &          \\
+Fish                           & 175                & 463    & 3.62051     & 1.06903           & 2.695585     &          \\
+FordA                          & 1320               & 500    & 703.644     & 132.113           & 168.9301     &          \\
+FordB                          & 810                & 500    & 347.998     & 57.843            & 65.1031      &          \\
+FreezerRegularTrain            & 2850               & 301    & 735.378     & 190.672           & 300.8929     &          \\
+FreezerSmallTrain              & 2850               & 301    & 730.621     & 252.548           & 296.348      &          \\
+Fungi                          & 186                & 201    & 1.99303     & 0.569607          & 0.744395     &          \\
+GestureMidAirD1                & 130                & Vary   & 1.09427     & 0.313373          & 0.367755     &          \\
+GestureMidAirD2                & 130                & Vary   & 0.948828    & 0.282304          & 0.364915     &          \\
+GestureMidAirD3                & 130                & Vary   & 0.777829    & 0.338532          & 0.360999     &          \\
+GesturePebbleZ1                & 172                & Vary   & 3.99312     & 0.378018          & 0.592169     &          \\
+GesturePebbleZ2                & 158                & Vary   & 4.81083     & 0.344109          & 0.589917     &          \\
+GunPoint                       & 150                & 150    & 1.35765     & 0.29607           & 0.341601     &          \\
+GunPointAgeSpan                & 316                & 150    & 7.86469     & 1.11579           & 1.061542     &          \\
+GunPointMaleVersusFemale       & 316                & 150    & 7.95605     & 0.745125          & 1.15842      &          \\
+GunPointOldVersusYoung         & 315                & 150    & 7.77761     & 0.773618          & 1.09943      &          \\
+Ham                            & 105                & 431    & 1.27085     & 0.972879          & 1.009123     &          \\
+HandOutlines                   & 370                & 2709   & 383.677     & 280.885           & 415.8791     &          \\
+Haptics                        & 308                & 1092   & 65.493      & 24.0428           & 45.48866     &          \\
+Herring                        & 64                 & 512    & 0.623086    & 0.533143          & 0.533707     &          \\
+HouseTwenty                    & 119                & 2000   & 23.7889     & 19.1              & 22.04339     &          \\
+InlineSkate                    & 550                & 1882   & 412.36      & 198.895           & 423.3659     &          \\
+InsectEPGRegularTrain          & 249                & 601    & 12.2515     & 5.62819           & 8.897502     &          \\
+InsectEPGSmallTrain            & 249                & 601    & 11.6215     & 5.31629           & 8.943162     &          \\
+InsectWingbeatSound            & 1980               & 256    & 93853.4     & 20.0948           & 117.4865     &          \\
+ItalyPowerDemand               & 1029               & 24     & 56.7128     & 0.871386          & 2.074309     &          \\
+LargeKitchenAppliances         & 375                & 720    & 44.5535     & 25.5697           & 31.76365     &          \\
+Lightning2                     & 61                 & 637    & 0.844298    & 0.943195          & 0.77562      &          \\
+Lightning7                     & 73                 & 319    & 0.518613    & 0.245382          & 0.290609     &          \\
+Mallat                         & 2345               & 1024   & 2948.67     & 516.964           & 2251.27      &          \\
+Meat                           & 60                 & 448    & 0.484361    & 0.268107          & 0.355596     &          \\
+MedicalImages                  & 760                & 99     & 92.8507     & 1.19697           & 3.664919     &          \\
+MelbournePedestrian            & 2439               & 24     & 144.153     & 2.36702           & 27.96836     &          \\
+MiddlePhalanxOutlineAgeGroup   & 154                & 80     & 1.3446      & 0.122859          & 0.152365     &          \\
+MiddlePhalanxOutlineCorrect    & 291                & 80     & 7.59361     & 0.251781          & 0.404614     &          \\
+MiddlePhalanxTW                & 154                & 80     & 4.56761     & 0.173091          & 0.172191     &          \\
+MixedShapesRegularTrain        & 2425               & 1024   & 2811.82     & 1221.93           & 2367.125     &          \\
+MixedShapesSmallTrain          & 2425               & 1024   & 2793.7      & 934.047           & 2369.322     &          \\
+MoteStrain                     & 1252               & 84     & 131.375     & 4.10743           & 6.979077     &          \\
+NonInvasiveFetalECGThorax1     & 1965               & 750    & 52599       & 128.662           & 941.9007     &          \\
+NonInvasiveFetalECGThorax2     & 1965               & 750    & 4905.43     & 115.551           & 950.9619     &          \\
+OliveOil                       & 30                 & 570    & 0.196972    & 0.406894          & 0.211004     &          \\
+OSULeaf                        & 242                & 427    & 20.9774     & 2.79601           & 4.513287     &          \\
+PhalangesOutlinesCorrect       & 858                & 80     & 39.8342     & 1.58711           & 3.595135     &          \\
+Phoneme                        & 1896               & 1024   & 46549       & 198.36            & 1560.56      &          \\
+PickupGestureWiimoteZ          & 50                 & Vary   & 0.142592    & 0.085126          & 0.072093     &          \\
+PigAirwayPressure              & 208                & 2000   & 84.5969     & 56.658            & 73.22682     &          \\
+PigArtPressure                 & 208                & 2000   & 78.9084     & 41.8304           & 71.07334     &          \\
+PigCVP                         & 208                & 2000   & 73.4538     & 51.724            & 69.45288     &          \\
+PLAID                          & 537                & Vary   & 35.9025     & 6.0825            & 18.25728     &          \\
+Plane                          & 105                & 144    & 0.515582    & 0.132734          & 0.201192     &          \\
+PowerCons                      & 180                & 144    & 4.85703     & 0.368735          & 0.364681     &          \\
+ProximalPhalanxOutlineAgeGroup & 205                & 80     & 6.29439     & 0.141562          & 0.220177     &          \\
+ProximalPhalanxOutlineCorrect  & 291                & 80     & 7.70703     & 0.234308          & 0.466041     &          \\
+ProximalPhalanxTW              & 205                & 80     & 6.66169     & 0.188157          & 0.231558     &          \\
+RefrigerationDevices           & 375                & 720    & 36.8233     & 20.3085           & 28.38962     &          \\
+Rock                           & 50                 & 2844   & 8.7356      & 7.90198           & 8.94623      &          \\
+ScreenType                     & 375                & 720    & 38.5828     & 16.1376           & 28.46865     &          \\
+SemgHandGenderCh2              & 600                & 1500   & 335.918     & 315.171           & 325.3503     &          \\
+SemgHandMovementCh2            & 450                & 1500   & 177.672     & 107.214           & 181.079      &          \\
+SemgHandSubjectCh2             & 450                & 1500   & 186.388     & 96.7203           & 177.5783     &          \\
+ShakeGestureWiimoteZ           & 50                 & Vary   & 0.173276    & 0.141293          & 0.076811     &          \\
+ShapeletSim                    & 180                & 500    & 4.83641     & 3.37486           & 3.450108     &          \\
+ShapesAll                      & 600                & 512    & 67.5375     & 15.1164           & 44.40931     &          \\
+SmallKitchenAppliances         & 375                & 720    & 41.7491     & 23.7893           & 30.08536     &          \\
+SmoothSubspace                 & 150                & 15     & 5.48273     & 0.108177          & 0.100557     &          \\
+SonyAIBORobotSurface1          & 601                & 70     & 45.182      & 0.763845          & 1.43163      &          \\
+SonyAIBORobotSurface2          & 953                & 65     & 83.0127     & 1.42315           & 3.08514      &          \\
+StarLightCurves                & 8236               & 1024   &             & 18551.7           & 27558.11     &          \\
+Strawberry                     & 370                & 235    & 16.4157     & 3.40908           & 3.515086     &          \\
+SwedishLeaf                    & 625                & 128    & 54.7593     & 1.07994           & 4.134455     &          \\
+Symbols                        & 995                & 398    & 177.772     & 30.3962           & 63.36334     &          \\
+SyntheticControl               & 300                & 60     & 4.76377     & 0.237314          & 0.409787     &          \\
+ToeSegmentation1               & 228                & 277    & 15.5281     & 1.31453           & 1.779399     &          \\
+ToeSegmentation2               & 130                & 343    & 1.71634     & 0.984133          & 0.938638     &          \\
+Trace                          & 100                & 275    & 0.729685    & 0.298243          & 0.353099     &          \\
+TwoLeadECG                     & 1139               & 82     & 86.9761     & 2.78576           & 5.642078     &          \\
+TwoPatterns                    & 4000               & 128    & 15892.5     & 36.3566           & 138.4134     &          \\
+UMD                            & 144                & 150    & 1.29514     & 0.183408          & 0.26445      &          \\
+UWaveGestureLibraryAll         & 3582               & 945    &             & 1194.61           & 4436.893     &          \\
+UWaveGestureLibraryX           & 3582               & 315    &             & 122.541           & 524.8729     &          \\
+UWaveGestureLibraryY           & 3582               & 315    &             & 113.072           & 532.3661     &          \\
+UWaveGestureLibraryZ           & 3582               & 315    &             & 107.301           & 525.2477     &          \\
+Wafer                          & 6164               & 152    &             & 178.151           & 406.4461     &          \\
+Wine                           & 54                 & 234    & 0.215293    & 0.145209          & 0.130907     &          \\
+WordSynonyms                   & 638                & 270    & 1525.07     & 3.00847           & 13.84392     &          \\
+Worms                          & 77                 & 900    & 2.61596     & 1.6201            & 1.9559       &          \\
+WormsTwoClass                  & 77                 & 900    & 2.5413      & 2.05345           & 2.154319     &          \\
+Yoga                           & 3000               & 426    & 1221.19     & 544.997           & 631.1096     &          \\
+
+
+\label{tab:big_table}
+\end{longtable}
 
 # References
 
