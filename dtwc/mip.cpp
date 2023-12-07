@@ -7,8 +7,8 @@
  *  Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
-#include "Data.hpp"        // for Data
-#include "sparse_util.hpp" // for Triplet, RowMajor
+#include "Data.hpp"               // for Data
+#include "solver/sparse_util.hpp" // for Triplet, RowMajor
 #include "mip.hpp"
 #include "Problem.hpp"
 #include "settings.hpp"

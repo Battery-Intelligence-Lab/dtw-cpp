@@ -1,6 +1,6 @@
-add_subdirectory(solver)
 
-add_library(dtwc++ STATIC)
+add_library(dtwc++ OBJECT)
+add_subdirectory(solver)
 
 target_sources(dtwc++
   PRIVATE
@@ -16,7 +16,6 @@ target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  solvers
   eigen
   range-v3
   fmt
