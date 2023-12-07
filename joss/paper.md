@@ -118,7 +118,7 @@ The optimisation problem to solve, subject to the above constraints, is
     A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij}.
 \end{equation}
 
-After solving this integer program, the non-zero diagonal entries of ($A$) represent the centroids, and the non-zero elements in the corresponding columns in ($A$) represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
+This integer program is solved using Gurobi [@gurobi] or HiGHS [@Huangfu2018]. After solving this integer program, the non-zero diagonal entries of ($A$) represent the centroids, and the non-zero elements in the corresponding columns in ($A$) represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
 
 Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
 
