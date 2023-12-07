@@ -6,15 +6,6 @@
 
 int main()
 {
-  // auto [eq, c] = dtwc::solver::get_prob_small();
-
-  // dtwc::solver::SparseSimplex prob_small(eq, c);
-
-  // prob_small.gomoryAlgorithm();
-  // auto [solution_small, copt_small] = prob_small.getResults();
-
-  // fmt::println("Solution: {} and Copt = [{}]\n", solution_small, copt_small);
-
   // Here are some examples. You can either take the contents of example functions into main or modify and run them.
   dtwc::Clock clk; // Create a clock object
 

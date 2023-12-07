@@ -1,5 +1,5 @@
 
-add_library(dtwc++ OBJECT)
+add_library(dtwc++ STATIC)
 
 target_sources(dtwc++
   PRIVATE
@@ -15,8 +15,8 @@ target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  eigen
-  range-v3
+  # eigen
+  # range-v3
   fmt
   highs::highs
 )
