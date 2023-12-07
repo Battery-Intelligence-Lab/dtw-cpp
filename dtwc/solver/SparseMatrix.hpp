@@ -66,7 +66,5 @@ struct SparseMatrix
 
   auto row_begin(int i) { return data.lower_bound({ i, 0 }); }
   auto row_end(int i) { return data.lower_bound({ i + 1, 0 }); }
-
-  // std::span<std::pair<Coordinate, double>> row_range(int i) { return std::span<std::pair<Coordinate, double>>{ row_begin(i), row_end(i) }; }
 };
 } // namespace dtwc::solver
