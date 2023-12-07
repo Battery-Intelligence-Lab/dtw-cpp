@@ -94,7 +94,7 @@ Using this matrix, ($D$), the time series can be split into ($k$) separate clust
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
 
-1. Only \(k\) series can be centroids,
+1. Only ($k$) series can be centroids,
 
 $$
 \sum_{i=1}^p A_{ii}=k.
