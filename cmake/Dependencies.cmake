@@ -38,7 +38,7 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
-      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.4.0.tar.gz"
+      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.3.2.tar.gz"
       OPTIONS 
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )

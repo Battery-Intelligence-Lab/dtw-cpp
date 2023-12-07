@@ -42,12 +42,12 @@ jobs:
           - CC: clang-15
             CXX: clang++-15
             compiler: clang-15
-          - CC: clang-16
-            CXX: clang++-16
-            compiler: clang-16
-          - CC: clang-17
-            CXX: clang++-17
-            compiler: clang-17
+          # - CC: clang-16  -> we don't have these as package. 
+          #   CXX: clang++-16
+          #   compiler: clang-16
+          # - CC: clang-17
+          #   CXX: clang++-17
+          #   compiler: clang-17
     steps:
       - uses: actions/checkout@v3
 
