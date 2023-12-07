@@ -29,8 +29,8 @@
   - [ ] dtwclust in R
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
-  - [ ] Simplex is added. 
-  - [ ] HiGHS is added.
+  - [ ] Simplex is added. -> temporarily removed.
+  - [x] HiGHS is added.
 - [x] Exploration of totally unimodular matrices. -> Not totally unimodular. 
 - [ ] Creating DTW objects taking distance/band as a policy-based design 
 - [x] Doxygen website? 

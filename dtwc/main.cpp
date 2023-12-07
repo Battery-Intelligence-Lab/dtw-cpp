@@ -4,10 +4,6 @@
 
 #include <iostream>
 
-
-#include "solver/EqualityConstraints.hpp"
-#include "solver/test.hpp"
-
 int main()
 {
   // auto [eq, c] = dtwc::solver::get_prob_small();
@@ -78,7 +74,7 @@ int main()
 
   // std::cout << "Finished all tasks " << clk << "\n";
 
-  //dtwc::benchmarks::run_all();
+  // dtwc::benchmarks::run_all();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }

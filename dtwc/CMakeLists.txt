@@ -1,6 +1,5 @@
 
 add_library(dtwc++ OBJECT)
-add_subdirectory(solver)
 
 target_sources(dtwc++
   PRIVATE

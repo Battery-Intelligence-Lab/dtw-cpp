@@ -1,5 +1,5 @@
 /*
- * sparse_util.hpp
+ * element_types.hpp
  *
  * Helper class for sparse matrix utilities.
 
@@ -10,7 +10,7 @@
 
 #pragma once
 
-#include "solver_util.hpp"
+#include "types_util.hpp"
 
 namespace dtwc::solver {
 
@@ -21,6 +21,20 @@ struct Element
 
   Element() = default;
   Element(int index_, double value_) : index(index_), value(value_) {}
+};
+
+struct Coordinate
+{
+  int row{}, col{}; // Row and column of the value
+};
+
+struct Triplet
+{
+  int row{}, col{}; // Row and column of the value
+  double val{};
+
+  Triplet() = default;
+  Triplet(int row_, int col_, double val_) : row(row_), col(col_), val(val_) {}
 };
 
 struct CompElementIndices
@@ -43,21 +57,6 @@ struct CompElementValuesAndIndices
   }
 };
 
-
-struct Coordinate
-{
-  int row{}, col{}; // Row and column of the value
-};
-
-struct Triplet
-{
-  int row{}, col{}; // Row and column of the value
-  double val{};
-
-  Triplet() = default;
-  Triplet(int row_, int col_, double val_) : row(row_), col(col_), val(val_) {}
-};
-
 struct RowMajor
 {
   bool operator()(const auto &c1, const auto &c2) const
@@ -73,6 +72,5 @@ struct ColumnMajor
     return (c1.row < c2.row) || (c1.row == c2.row && c1.col < c2.col);
   }
 };
-
 
 } // namespace dtwc::solver
