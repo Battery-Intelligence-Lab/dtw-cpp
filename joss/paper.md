@@ -356,6 +356,9 @@ Table: Speed comparison of \texttt{DTW-C++} using MIP and k-Medoids, DTAIDistanc
 | WormsTwoClass                  | 77                    | 900                   | 2.5413          | 2.05345               | 2.154319         |             |
 | Yoga                           | 3000                  | 426                   | 1221.19         | 544.997               | 631.1096         |             |
 
+\begin{landscape}
+\scriptsize
+
 \begin{longtable}[c]{p{.30\textwidth} | p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth} p{.11\textwidth}}
 \setcounter{LTchunksize}{100}
 \kill
@@ -502,6 +505,8 @@ Yoga                           & 3000               & 426    & 1221.19     & 544
 
 \label{tab:big_table}
 \end{longtable}
+
+\end{landscape}
 
 # References
 
