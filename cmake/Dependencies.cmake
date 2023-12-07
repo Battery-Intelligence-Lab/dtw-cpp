@@ -52,13 +52,27 @@ function(dtwc_setup_dependencies)
   )
   endif()
 
+  # HiGHS library:
+  # include(FetchContent)
+
+  # FetchContent_Declare(
+  #     highs
+  #     GIT_REPOSITORY "https://github.com/ERGO-Code/HiGHS.git"
+  #     GIT_TAG        "bazel"
+  #     SYSTEM
+  #     OPTIONS
+  #     "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF"
+  # )
+  # set(FAST_BUILD ON CACHE INTERNAL "Fast Build")
+
+  #FetchContent_MakeAvailable(highs)
   if(NOT TARGET highs::highs)# HiGHS library:
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.5.1.tar.gz"
     SYSTEM
     OPTIONS
-    "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
+    "FAST_BUILD ON" "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
   endif()
-  
+
 endfunction()

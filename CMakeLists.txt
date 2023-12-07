@@ -26,11 +26,11 @@ project(DTWC++ VERSION "0.0.4"
 
 
 set(DTWC_ENABLE_GUROBI ON)
+include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 # include(cmake/ProjectOptions.cmake)
 include(cmake/StandardProjectSettings.cmake)
 include(cmake/PreventInSourceBuilds.cmake)
-include(cmake/Dependencies.cmake) # Include external projects
 dtwc_setup_dependencies()
 
 

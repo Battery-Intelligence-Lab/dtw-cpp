@@ -33,7 +33,7 @@ if(DTWC_ENABLE_GUROBI)
 endif()
 
 
-target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
+target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
 
 add_executable(dtwc_main

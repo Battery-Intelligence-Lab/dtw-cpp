@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-add_library(solvers OBJECT)
+add_library(solvers)
 
 target_sources(solvers
   PRIVATE
