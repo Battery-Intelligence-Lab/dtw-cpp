@@ -2,6 +2,11 @@
 title: 'DTW-C++: A C++ software for fast Dynamic Time Wrapping Clustering'
 tags:
   - C++
+  - Dynamic time warping
+  - Clustering
+  - k-Medoids
+  - Mixed integer programming
+  - Dynamic programming
 authors:
   - name: Volkan Kumtepeli
     orcid: 0000-0003-2392-9771
@@ -27,9 +32,11 @@ We present an approach for computationally efficient dynamic time warping (DTW) 
 
 # Statement of need
 
-Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series which can induce bias into the clustering [@Aghabozorgi2015]. Time series clustering applications range from energy to find consumption patterns, to detecting brainactivity in medical applications, to discovering patterns in stock price trends in the fincance industry. ``DTW-C++`` is written to handle large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
+Clustering time series is becoming increasingly popular as data availability increases; however as the data avilability increases, so does the complexity of the clustering problem. Most time series clustering objectives currently depend on dimension reduction techniques or finding features from the time series which can induce bias into the clustering [@Aghabozorgi2015]. Dynamic time warping [@Sakoe1978DynamicRecognition] is a well-known technique for manipulating time series to enable comparisons between datasets, using  local warping (stretching or compressing along the time axis) of the elements within each time series to find an optimal alignment between series. This emphasises the similarity of the shapes of the respective time series, rather than the exact alignment of specific features. Unfortunately, DTW does not scale well in computational speed as the length and number of time series to be compared increases---the computational complexity grows quadratically with the total number of data points. This complexity is a barrier to DTW being widely implemented in time series clustering  [@Rajabi2020ASegmentation]. ``DTW-C++`` is written to handle large time series datasets, working on the raw data rather than reduced dimension data or selected features from the time series, across the various applications. 
 
 While there are other packages available for time series clustering using DTW, namely [@Petitjean2011] and [@meert2020wannesm], ``DTW-C++`` offers signficant imporvements in both speed and memory use, allowing larger datasets to be clustered. This is done by task level parallelisation, allowing multiple pairwise comparsions between time series to be evaluated simulataneously, as well as more efficient memory management by solving the DTW distance using only the preceding vector rather than storing the entire warping matrix. This means that the warping path between each time series is not stored, but this is not required for the clustering process - only the final cost is needed. In addition, MIP is preferable to other DTW clustering packages which use k-based methods for clustering, as k-based methods are suseptible to sticking in local optima. MIP finds the global optimum in most cases, and in the rare event that the global optimum is not found, the gap between the best solution found and the global optimum is given.
+
+Time series clustering applications range from energy to find consumption patterns, to detecting brain activity in medical applications, to discovering patterns in stock price trends in the fincance industry. The target audience for this software can therefore range acorss multiple disciplines, intended for any user with a requirement for time-series clustering.
 
 
 # Current ``DTW-C++`` functionality
@@ -59,7 +66,7 @@ The DTW distance is the sum of the Euclidean distance between each point and its
     $y_1$ (monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
 
-![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (right). \label{fig:warping_signals}](../media/Merged_document.png)
+![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (right). \label{fig:warping_signals}](../media/Merged_document.pdf)
 
 Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in ``DTW-C++``, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an \(n\) by \(m\) matrix \(C^{n\times m}\) is calculated, where each element represents the cumulative cost between series up to the points \(x_i\) and \(y_j\):
 
@@ -78,11 +85,11 @@ For the clustering problem, only this final cost for each pairwise comparison is
 
 The DTW distance \(C_{x,y}\) is found for each pairwise comparison. As shown in Fig.\ \ref{fig:c_to_d}, pairwise distances are then stored in a separate symmetric matrix, \(D^{p\times p}\), where \(p\) is the total number of time series in the clustering exercise. In other words, the element \(d_{i,j}\) gives the distance between time series \(i\) and \(j\).
 
-![The DTW costs of all the pairwise comparisons between time series in the dataset are combined to make a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.PNG)
+![The DTW costs of all the pairwise comparisons between time series in the dataset are combined to make a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
 
 Using this matrix, \(D\), the time series can be split into \(k\) separate clusters with integer programming. The problem formulation begins with a binary square matrix \(A^{p\times p}\), where \(A_{ij}=1\) if time series \(j\) is a member of the \(i\)th cluster centroid, and 0 otherwise, as shown in Fig.\ \autoref{fig:A_matrix}.
 
-![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.png)
+![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg)
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
 
