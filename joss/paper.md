@@ -167,13 +167,13 @@ Table: Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids
 | StarLightCurves            | 8236                  | 1024                  | N/A             | **18551.7**           | 27558.1           | 33                 |
 | UWaveGestureLibraryAll     | 3582                  | 945                   | N/A             | **1194.6**            | 4436.9            | 73                 |
 
+As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\% of the datasets, and all 13 datasets where \texttt{DTAIDistance} was faster were cases where the entire clustering process was completed in 1.06 seconds or less. Across the whole collection of datasets, \texttt{DTW-C++} was on average 32% faster. When looking at larger datasets with $N > 1000$, \texttt{DTW-C++} is on average 65% faster. In all apart from 2 of the 115 cases where \texttt{DTW-C++} is the fastest, it uses the k-medoids algorithm. This is however to be expected as the latter is an iterative clustering method and therefore does not compute all DTW distances. \autoref{fig:k_med} clearly shows the increasing superiority of \texttt{DTW-C++} as the number of time series increases. In this comparison, both algorithms use k-medoids, so the speed improvement is due to faster dynamic time warping. 
+
+![\texttt{DTW-C++} k-medoids  clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn (1).pdf)
 
 # Acknowledgements
 
 We gratefully acknowledge the contributions by [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members, and thank BBOXX for project funding and access to data. This work was also funded by the UKRI PFER Energy Superhub Oxford demonstrator and the ``Data-driven exploration of the carbon emissions impact of grid energy storage deployment and dispatch'' project (EP/W027321/1).
-
-
-# References
 
 
 # Appendix
@@ -313,4 +313,6 @@ Table: Speed comparison of \texttt{DTW-C++} using MIP and k-Medoids, DTAIDistanc
 | WormsTwoClass                  | 77                    | 900                   | 2.5413          | 2.05345               | 2.154319         |             |
 | Yoga                           | 3000                  | 426                   | 1221.19         | 544.997               | 631.1096         |             |
 
+
+# References
 
