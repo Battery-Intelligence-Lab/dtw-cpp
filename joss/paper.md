@@ -42,6 +42,7 @@ Time series clustering applications range from energy to find consumption patter
 # Current ``DTW-C++`` functionality
 
 The current functionality of the software is as follows:
+
 * Calculate DTW pairwise distances between time series, using a vector based approach to reduce memory use. There is also the option to use a Sakoe-Chiba band to restrict warping in the DTW distance calculation [@Sakoe1978DynamicRecognition]. This speeds up the computation time as well as being a useful constraint for some time series clustering scenarios (e.g., if an event must occur within a certain time window to be considered similar).
 * Produce a distance matrix containing all pairwise comparisons between each time series in the dataset.
 * Split all time series into a predefined number of clusters, with a representative centroid time series for each cluster. This can be done using MIP or k-medoids clustering, depending on user choice.
@@ -50,7 +51,7 @@ The current functionality of the software is as follows:
 
 # Mathmatical background
 
-Consider a time series to be a vector of some arbitrary length. Consider that we have \(p\) such vectors in total, each possibly differing in length. To find a subset of \(k\) clusters within the set of \(p\) vectors using MIP formulation, we must first make $\frac{1}{2} {p \choose 2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance. Consider two time series \(x\) and \(y\) of differing lengths \(n\) and \(m\) respectively,
+Consider a time series to be a vector of some arbitrary length. Consider that we have ($p$) such vectors in total, each possibly differing in length. To find a subset of ($k$) clusters within the set of ($p$) vectors using MIP formulation, we must first make $\frac{1}{2} {p \choose 2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance. Consider two time series ($x$) and ($y$) of differing lengths ($n$) and ($m$) respectively,
 
 $$
 x=(x_1, x_2, ..., x_n)
@@ -59,16 +60,16 @@ $$
 y=(y_1, y_2, ..., y_m).
 $$
 
-The DTW distance is the sum of the Euclidean distance between each point and its matched point(s) in the other vector, as shown in Fig.\ \autoref{fig:warping_signals}. The following constraints must be met: 
+The DTW distance is the sum of the Euclidean distance between each point and its matched point(s) in the other vector, as shown in \autoref{fig:warping_signals}. The following constraints must be met: 
 
 1. The first and last elements of each series must be matched.
 2. Only unidirectional forward movement through relative time is allowed, i.e., if $x_1$ is mapped to $y_2$ then $x_2$ may not be mapped to
     $y_1$ (monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
 
-![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$ (right). \label{fig:warping_signals}](../media/Merged_document.pdf)
+![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{14,13}$ (right). \label{fig:warping_signals}](../media/Merged_document.pdf)
 
-Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in ``DTW-C++``, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an \(n\) by \(m\) matrix \(C^{n\times m}\) is calculated, where each element represents the cumulative cost between series up to the points \(x_i\) and \(y_j\):
+Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in ``DTW-C++``, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an ($n$) by ($m$) matrix $C^{n\times m}$ is calculated, where each element represents the cumulative cost between series up to the points $x_i$ and $y_j$:
 
 \begin{equation}
     \label{c}
@@ -79,33 +80,33 @@ Finding the optimal warping arrangement is an optimisation problem that can be s
     \end{cases}
 \end{equation}
 
-The final element \(c_{n,m}\) is then the total cost, $C_{x,y}$, which provides the comparison metric between the two series $x$ and $y$. Fig.\ \autoref{fig:warping_signals} shows an example of this cost matrix $C$ and the warping path through it.
+The final element \(c_{n,m}\) is then the total cost, $C_{x,y}$, which provides the comparison metric between the two series $x$ and $y$. \autoref{fig:warping_signals} shows an example of this cost matrix $C$ and the warping path through it.
 
-For the clustering problem, only this final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for k-medoids clustering. The memory complexity of the cost matrix $C$ is $O(nm)$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $C$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in Eq.\ \autoref{c}.
+For the clustering problem, only this final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for k-medoids clustering. The memory complexity of the cost matrix $C$ is $O(nm)$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $C$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
 
-The DTW distance \(C_{x,y}\) is found for each pairwise comparison. As shown in Fig.\ \ref{fig:c_to_d}, pairwise distances are then stored in a separate symmetric matrix, \(D^{p\times p}\), where \(p\) is the total number of time series in the clustering exercise. In other words, the element \(d_{i,j}\) gives the distance between time series \(i\) and \(j\).
+The DTW distance $C_{x,y}$ is found for each pairwise comparison. As shown in \ref{fig:c_to_d}, pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where ($p$) is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the distance between time series ($i$) and ($j$).
 
 ![The DTW costs of all the pairwise comparisons between time series in the dataset are combined to make a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
 
-Using this matrix, \(D\), the time series can be split into \(k\) separate clusters with integer programming. The problem formulation begins with a binary square matrix \(A^{p\times p}\), where \(A_{ij}=1\) if time series \(j\) is a member of the \(i\)th cluster centroid, and 0 otherwise, as shown in Fig.\ \autoref{fig:A_matrix}.
+Using this matrix, ($D$), the time series can be split into ($k$) separate clusters with integer programming. The problem formulation begins with a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series ($j$) is a member of the $i$th cluster centroid, and 0 otherwise, as shown in \autoref{fig:A_matrix}.
 
 ![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg)
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
 
-* Only \(k\) series can be centroids,
+1. Only \(k\) series can be centroids,
 
 $$
 \sum_{i=1}^p A_{ii}=k.
 $$
 
-* Each time series must be in one and only one cluster,
+2. Each time series must be in one and only one cluster,
 
 $$
 \sum_{i=1}^pA_{ij}=1  \quad \forall j \in [1,p].
 $$
 
-* In any row, there can only be non-zero entries if the corresponding diagonal entry is non-zero, so a time series can only be in a cluster where the row corresponds to a centroid time series,
+3. In any row, there can only be non-zero entries if the corresponding diagonal entry is non-zero, so a time series can only be in a cluster where the row corresponds to a centroid time series,
 
 $$
 A_{ij} \le A_{ii} \quad \forall i,j \in [1,p].
@@ -117,100 +118,9 @@ The optimisation problem to solve, subject to the above constraints, is
     A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij}.
 \end{equation}
 
-After solving this integer program, the non-zero diagonal entries of \(A\) represent the centroids, and the non-zero elements in the corresponding columns in \(A\) represent the members of that cluster. In the example in Fig.\ \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
+After solving this integer program, the non-zero diagonal entries of ($A$) represent the centroids, and the non-zero elements in the corresponding columns in ($A$) represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
 
 Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
-
-
-
-
-
-
-
-Consider a time series to be a vector of some arbitrary length. Consider that we have $p$ such vectors in total, each possibly differing in length. To find a subset of $k$ clusters within the set of $p$ vectors we must first make $\frac{(^p C_2)}{2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. This requires a distance metric to be defined, and dynamic time warping uses local warping (stretching or compressing along the time axis) of the elements within each vector to find optimal alignment (i.e., with minimum cost/distance) between each pair of vectors. 
-
-Comparing two short time series $x$ and $y$ of differing lengths $n$ and $m$
-
-$$
-x=(x_1, x_2, ..., x_n)
-$$
-
-$$
-y=(y_1, y_2, ..., y_m).
-$$
-
-The cost is the sum of the Euclidean distance between each point and the matched point in the other vector. The following constraints must be met:
-
-* The first and last elements of each series must be matched.
-* Only unidirectional forward movement through relative time is allowed, i.e.\ $x_1$ may be mapped to $y_2$ but $x_2$ may not be mapped to $y_1$ (monotonicity).
-* Each point is mapped to at least one other point, i.e.\ there are no jumps in time (continuity).
-
-Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. For each pairwise comparison, an $n$ by $m$ matrix $C_{n\times m}$ is calculated, where each element represents the cumulative cost between series up to the points $x_i$ and $y_j$:
-
-$$
-C_{i,j} = (x_i-y_j)^2+\min\begin{cases}
-C_{i-1,j-1}\\
-C_{i-1,j}\\
-C_{i,j-1}
-\end{cases}
-$$
-
-The final element $C_{n,m}$ is then the total cost which gives the comparison metric between the two series.
-
-![DTW example for two time series showing a) the one-to-many mapping and b) the warping bath between the timer series](https://user-images.githubusercontent.com/93582518/206199528-29489727-e4d3-4067-bcc0-e5ae11c43820.PNG)
-
-The matrix $C$ is calculated for all pairwise comparisons. The total costs (final element) for each pairwise comparison are stored in a separate symmetric matrix, $D_{p\times p}$ where $p$ is the total number of time series in the clustering exercise. In other words, the element $D_{i,j}$ gives the distance between time series $i$ and $j$.
-
-![Distance matrix formation for $p$ time series](https://user-images.githubusercontent.com/93582518/202716790-11704c18-99bc-4234-b5db-3b21940ad91d.PNG)
-
-Using this matrix, $D$, the series can be split into $k$ clusters with integer programming. The problem formulation begins with a $1\times p$ binary vector, $B$, defining if each series is a cluster centroid, in other words for the $i$th element of $B$, 
-
-$$
-B_i = \begin{cases}
-1, \qquad \text {if centroid}\\
-0, \qquad \text {otherwise}
-\end{cases}
-$$
-
-Only $k$ series can be centroids, therefore
-
-$$
-\sum_{i=1}^p B_i=k
-$$
-
-A binary square matrix $A_{p\times p}$ is then constructed, where $A_{ij}=1$ if time series $j$ is a member of the $i$ th cluster centroid, and 0 otherwise.
-
-The following constraints apply:
-
-* Only \(k\) series can be centroids,
-
-$$
-\sum_{i=1}^p A_{ii}=k.
-$$
-
-* Each time series must be in one and only one cluster,
-
-$$
-\sum_{i=1}^pA_{ij}=1  \quad \forall j \in [1,p].
-$$
-
-* In any row, there can only be non-zero entries if the corresponding diagonal entry is non-zero, so a time series can only be in a cluster where the row corresponds to a centroid time series,
-
-$$
-A_{ij} \le A_{ii} \quad \forall i,j \in [1,p].
-$$
-
-![MIP cluster matrix $A$ formation for an example scenario with 5 time series and 2 clusters. The clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.](https://user-images.githubusercontent.com/93582518/206171442-ba6044a5-656a-491f-bb78-98564a0475a1.PNG)
-
-Then the optimisation problem subject to the above-given constraints becomes:
-
-$$
-A^\star, B^\star = \min_{A,B} \sum_i \sum_j D_{ij} \times A_{ij} 
-$$
-
-After solving this integer program, the non-zero entries of $B$ represent the centroids and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in Figure 3, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centorids.
-
-Finding global optimality can increase the computation time, depending on the number of time series within the dataset and DTW distances. Therefore there is also a built in feature to cluster using k-Medoids, as is used in other packages such as DTAIDistance (@meert2020wannesm). k-Medoids is often quicker as it is an iterative method, however it is subject to getting stuck in local optima. The table in [Comparison](#comparison) shows the timing and memory performance of both MIP clustering and k-Medoids clustering cmpared to other packages.
 
 # Comparison
 
