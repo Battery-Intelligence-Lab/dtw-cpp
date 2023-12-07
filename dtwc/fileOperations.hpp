@@ -21,6 +21,8 @@
 #include <utility>    // for pair
 #include <vector>     // for vector
 #include <fstream>
+#include <string>
+#include <sstream>
 
 namespace dtwc {
 

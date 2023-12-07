@@ -3,8 +3,8 @@ name: Ubuntu unit
 on:
   push:
     branches:
-      - master
-      #- develop
+      - main
+      - develop
   pull_request:
     branches:
       - '**'
@@ -30,24 +30,24 @@ jobs:
           - CC: gcc-13
             CXX: g++-13
             compiler: gcc-13 g++-13
-          - CC: clang-12
-            CXX: clang++-12
-            compiler: clang-12
-          - CC: clang-13
-            CXX: clang++-13
-            compiler: clang-13
-          - CC: clang-14
-            CXX: clang++-14
-            compiler: clang-14
+          # - CC: clang-12  -> error: call to consteval function 'std::chrono::hh_mm_ss::_S_fractional_width' is not a constant expression
+          #   CXX: clang++-12
+          #   compiler: clang-12
+          # - CC: clang-13
+          #   CXX: clang++-13
+          #   compiler: clang-13
+          # - CC: clang-14
+          #   CXX: clang++-14
+          #   compiler: clang-14
           - CC: clang-15
             CXX: clang++-15
             compiler: clang-15
-          - CC: clang-16
-            CXX: clang++-16
-            compiler: clang-16
-          - CC: clang-17
-            CXX: clang++-17
-            compiler: clang-17
+          # - CC: clang-16  -> we don't have these as package. 
+          #   CXX: clang++-16
+          #   compiler: clang-16
+          # - CC: clang-17
+          #   CXX: clang++-17
+          #   compiler: clang-17
     steps:
       - uses: actions/checkout@v3
 

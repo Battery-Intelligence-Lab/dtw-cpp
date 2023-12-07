@@ -8,13 +8,11 @@
  */
 
 #include "Data.hpp"        // for Data
-#include "sparse_util.hpp" // for Triplet, RowMajor
+#include "types/types.hpp" // for Triplet, RowMajor
 #include "mip.hpp"
 #include "Problem.hpp"
 #include "settings.hpp"
 #include "timing.hpp"
-#include "solver/Simplex.hpp"
-#include "solver/SparseSimplex.hpp"
 
 #include <fmt/core.h>
 #include <fmt/ranges.h>
@@ -52,37 +50,6 @@ void extract_solution(Problem &prob, auto &solution)
 
     i_cluster++;
   }
-}
-
-template <typename T>
-void MIP_clustering_bySimplex(Problem &prob)
-{
-  std::cout << "Simplex is being called!" << std::endl;
-  dtwc::Clock clk; // Create a clock object
-
-  prob.clear_clusters();
-
-  thread_local auto simplexSolver = T(prob);
-
-  std::cout << "Problem formulation finished in " << clk << '\n';
-  simplexSolver.gomoryAlgorithm();
-  std::cout << "Problem solution finished in " << clk << '\n';
-
-  auto [solution, copt] = simplexSolver.getResults();
-
-  fmt::println("Solution: {} and Copt = [{}]\n", solution, copt);
-
-  extract_solution(prob, solution);
-}
-
-void MIP_clustering_bySparseSimplex(Problem &prob)
-{
-  MIP_clustering_bySimplex<dtwc::solver::SparseSimplex>(prob);
-}
-
-void MIP_clustering_byDenseSimplex(Problem &prob)
-{
-  MIP_clustering_bySimplex<dtwc::solver::Simplex>(prob);
 }
 
 void MIP_clustering_byHiGHS(Problem &prob)

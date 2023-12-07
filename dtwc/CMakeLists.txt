@@ -1,4 +1,3 @@
-add_subdirectory(solver)
 
 add_library(dtwc++ STATIC)
 
@@ -16,9 +15,8 @@ target_link_libraries(dtwc++
   PRIVATE
   project_warnings
   project_options
-  solvers
-  eigen
-  range-v3
+  # eigen
+  # range-v3
   fmt
   highs::highs
 )
@@ -33,7 +31,7 @@ if(DTWC_ENABLE_GUROBI)
 endif()
 
 
-target_include_directories(dtwc++ PRIVATE ${HIGHS_INCLUDE_DIRS} ${range-v3_INCLUDE_DIRS})
+target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
 
 add_executable(dtwc_main
