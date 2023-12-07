@@ -90,7 +90,7 @@ The DTW distance $C_{x,y}$ is found for each pairwise comparison. As shown in \r
 
 Using this matrix, ($D$), the time series can be split into ($k$) separate clusters with integer programming. The problem formulation begins with a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series ($j$) is a member of the $i$th cluster centroid, and 0 otherwise, as shown in \autoref{fig:A_matrix}.
 
-![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=80% }
+![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
 
@@ -166,6 +166,49 @@ Table: Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids
 | SmallKitchenAppliances     | 375                   | 720                   | 41.7            | **23.8**              | 30.1              | 21                 |
 | StarLightCurves            | 8236                  | 1024                  | N/A             | **18551.7**           | 27558.1           | 33                 |
 | UWaveGestureLibraryAll     | 3582                  | 945                   | N/A             | **1194.6**            | 4436.9            | 73                 |
+
+
+\begin{table}[]
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l|p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}}
+                           & Number of time series    & Length of time series    & DTW-C++ MIP (s) & DTW-C++ k-Medoids (s) & DTAI Distance (s) & Time decrease (\%) \\
+\hline
+CinCECGTorso               & 1380 & 1639 & 3008.4      & \textbf{1104.2}   & 1955.9       & 44                 \\
+Computers                  & 250  & 720  & 16.1        & \textbf{10.5}     & 12.8         & 18                 \\
+Earthquakes                & 139  & 512  & 3.2         & \textbf{2.4}      & 2.5          & 3                  \\
+EOGHorizontalSignal        & 362  & 1250 & 81.8        & \textbf{27.6}     & 82.9         & 67                 \\
+EOGVerticalSignal          & 362  & 1250 & 85.9        & \textbf{30.2}     & 85.2         & 65                 \\
+EthanolLevel               & 500  & 1751 & 325.7       & \textbf{198.9}    & 302.3        & 34                 \\
+HandOutlines               & 370  & 2709 & 383.7       & \textbf{280.9}    & 415.9        & 32                 \\
+Haptics                    & 308  & 1092 & 65.5        & \textbf{24.0}     & 45.5         & 47                 \\
+HouseTwenty                & 119  & 2000 & 23.8        & \textbf{19.1}     & 22.0         & 13                 \\
+InlineSkate                & 550  & 1882 & 412.4       & \textbf{198.9}    & 423.4        & 53                 \\
+InsectEPGRegularTrain      & 249  & 601  & 12.3        & \textbf{5.6}      & 8.9          & 37                 \\
+InsectEPGSmallTrain        & 249  & 601  & 11.6        & \textbf{5.3}      & 8.9          & 41                 \\
+LargeKitchenAppliances     & 375  & 720  & 44.6        & \textbf{25.6}     & 31.8         & 20                 \\
+Mallat                     & 2345 & 1024 & 2948.7      & \textbf{517.0}    & 2251.3       & 77                 \\
+MixedShapesRegularTrain    & 2425 & 1024 & 2811.8      & \textbf{1221.9}   & 2367.1       & 48                 \\
+MixedShapesSmallTrain      & 2425 & 1024 & 2793.7      & \textbf{934.0}    & 2369.3       & 61                 \\
+NonInvasiveFetalECGThorax1 & 1965 & 750  & 52599.0     & \textbf{128.7}    & 941.9        & 86                 \\
+NonInvasiveFetalECGThorax2 & 1965 & 750  & 4905.4      & \textbf{115.6}    & 951.0        & 88                 \\
+Phoneme                    & 1896 & 1024 & 46549.0     & \textbf{198.4}    & 1560.6       & 87                 \\
+PigAirwayPressure          & 208  & 2000 & 84.6        & \textbf{56.7}     & 73.2         & 23                 \\
+PigArtPressure             & 208  & 2000 & 78.9        & \textbf{41.8}     & 71.1         & 41                 \\
+PigCVP                     & 208  & 2000 & 73.5        & \textbf{51.7}     & 69.5         & 26                 \\
+RefrigerationDevices       & 375  & 720  & 36.8        & \textbf{20.3}     & 28.4         & 28                 \\
+ScreenType                 & 375  & 720  & 38.6        & \textbf{16.1}     & 28.5         & 43                 \\
+SemgHandGenderCh2          & 600  & 1500 & 335.9       & \textbf{315.2}    & 325.4        & 3                  \\
+SemgHandMovementCh2        & 450  & 1500 & 177.7       & \textbf{107.2}    & 181.1        & 41                 \\
+SemgHandSubjectCh2         & 450  & 1500 & 186.4       & \textbf{96.7}     & 177.6        & 46                 \\
+ShapesAll                  & 600  & 512  & 67.5        & \textbf{15.1}     & 44.4         & 66                 \\
+SmallKitchenAppliances     & 375  & 720  & 41.7        & \textbf{23.8}     & 30.1         & 21                 \\
+StarLightCurves            & 8236 & 1024 & N/A         & \textbf{18551.7}  & 27558.1      & 33                 \\
+UWaveGestureLibraryAll     & 3582 & 945  & N/A         & \textbf{1194.6}   & 4436.9       & 73                
+\end{tabular}}
+\caption{Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$.}
+\label{tab:small_table}
+\end{table}
+
 
 As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\% of the datasets, and all 13 datasets where \texttt{DTAIDistance} was faster were cases where the entire clustering process was completed in 1.06 seconds or less. Across the whole collection of datasets, \texttt{DTW-C++} was on average 32% faster. When looking at larger datasets with $N > 1000$, \texttt{DTW-C++} is on average 65% faster. In all apart from 2 of the 115 cases where \texttt{DTW-C++} is the fastest, it uses the k-medoids algorithm. This is however to be expected as the latter is an iterative clustering method and therefore does not compute all DTW distances. \autoref{fig:k_med} clearly shows the increasing superiority of \texttt{DTW-C++} as the number of time series increases. In this comparison, both algorithms use k-medoids, so the speed improvement is due to faster dynamic time warping. 
 
