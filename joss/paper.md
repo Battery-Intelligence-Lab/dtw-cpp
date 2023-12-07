@@ -127,6 +127,8 @@ Finding global optimality can increase the computation time, depending on the nu
 We compared our approach with two other DTW clustering packages, \texttt{DTAIDistance} [@Meert2020Dtaidistance] and \texttt{TSlearn} [@Tavenard2020TslearnData]. The datasets used for the comparison are from the UCR Time Series Classification Archive [@Dau2018TheArchive], and consist of 128 time series datasets with up to 16,800 data series of lengths up to 2,844. The full results can be found in the Appendix. Benchmarking against  \texttt{TSlearn}  was stopped after the first 22 datasets because the results were consistently over 20 times slower than \texttt{DTW-C++}. Table \ref{tab:small_table} shows the results for datasets downselected to have a number of time series ($N$) greater than 100 and a length of each time series greater than 500 points. This is because \texttt{DTW-C++} is aimed at larger datasets where the speed improvements are more relevant.
 
 <font size= "2">
+  
+Table: Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$. \label{tab}
 
 |                            | Number of time series | Length of time series | DTW-C++ MIP (s) | DTW-C++ k-Medoids (s) | DTAI Distance (s) | Time decrease (%)  |
 |----------------------------|-----------------------|-----------------------|-----------------|-----------------------|-------------------|--------------------|
@@ -161,7 +163,8 @@ We compared our approach with two other DTW clustering packages, \texttt{DTAIDis
 | SmallKitchenAppliances     | 375                   | 720                   | 41.7            | **23.8**              | 30.1              | 21                 |
 | StarLightCurves            | 8236                  | 1024                  | N/A             | **18551.7**           | 27558.1           | 33                 |
 | UWaveGestureLibraryAll     | 3582                  | 945                   | N/A             | **1194.6**            | 4436.9            | 73                 |
-[Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$. \label{tab}]
+
+
 </font>
 
 # Acknowledgements
