@@ -35,7 +35,16 @@ enable_testing()
 
 add_subdirectory(dtwc bin)
 
+add_executable(dtwc_main
+  dtwc/main.cpp
+)
 
+target_link_libraries(dtwc_main
+  PRIVATE
+  dtwc++
+  project_warnings
+  project_options
+)
 
 # dtwc_setup_options()
 

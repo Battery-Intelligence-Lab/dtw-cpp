@@ -21,6 +21,8 @@ target_link_libraries(dtwc++
   highs::highs
 )
 
+set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 20)
+
 if(DTWC_ENABLE_GUROBI)
   message(STATUS "Gurobi is enabled!")
   if(Gurobi_FOUND)
@@ -33,14 +35,3 @@ endif()
 
 target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
-
-add_executable(dtwc_main
-  main.cpp
-)
-
-target_link_libraries(dtwc_main
-  PRIVATE
-  dtwc++
-  project_warnings
-  project_options
-)
