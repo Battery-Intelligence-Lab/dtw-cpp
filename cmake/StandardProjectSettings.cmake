@@ -21,9 +21,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # when compiling with PCH enabled
 set(CMAKE_CXX_EXTENSIONS OFF)
 # Only set the cxx_standard if it is not set by someone else
-if (NOT DEFINED CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_VERBOSE_MAKEFILE ON)
+ 
 
 
 # Enhance error reporting and compiler messages
