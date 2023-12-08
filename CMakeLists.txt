@@ -6,30 +6,20 @@ cmake_minimum_required(VERSION 3.21)
 # so that it works well with tools like CPM or other
 # manual dependency management
 
-# Define the root path
-add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
-
-# Only set the cxx_standard if it is not set by someone else
-if (NOT DEFINED CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 20)
-endif()
-
-# strongly encouraged to enable this globally to avoid conflicts between
-# -Wpedantic being enabled and -std=c++20 and -std=gnu++20 for example
-# when compiling with PCH enabled
-set(CMAKE_CXX_EXTENSIONS OFF)
-
 project(DTWC++ VERSION "0.0.4"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 
+# Define the root path
+add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
+include(cmake/StandardProjectSettings.cmake)
 
 set(DTWC_ENABLE_GUROBI ON)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 # include(cmake/ProjectOptions.cmake)
-include(cmake/StandardProjectSettings.cmake)
+
 include(cmake/PreventInSourceBuilds.cmake)
 dtwc_setup_dependencies()
 
