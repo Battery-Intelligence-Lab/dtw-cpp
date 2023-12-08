@@ -6,47 +6,46 @@ nav_order: 2
 
 # Dynamic Time Warping
 
-The potential approaches for time series clustering can be broadly defined as using a distance metric on the raw data (distance-based), or extracting features or models from the raw data and then clustering. Distance-based methods have many advantages. The most significant advantage is that using the raw data means the results are not biased as can be the case in methods using inputs extracted from the data, because the features or models extracted have to be chosen prior to the clustering process. However, there are also potential disadvantages. Primarily, an incorrect choice of distance-metric can lead to non-logical clusters and picking a correct distance metric can be a very complex task.
-
-Dynamic time warping (DTW) was chosen as the most appropriate distance metric due to it's ability to handle different length inputs and robustness against time shifts, ensuring usage events don't have to occur at the same timestamp for their similarity to be recognised. In some instances this can be disadvantageous if the time of occurance is important for your data. Therefore consideration of the desired output is important.
+Dynamic time warping is a well-known technique for manipulating time series to enable comparisons between datasets, using  local warping (stretching or compressing along the time axis) of the elements within each time series to find an optimal alignment between series. Unlike traditional distance measures such as Euclidean distance, the local warping of DTW can capture similarities that linear alignment methods might miss. By emphasising shape similarity rather than strict temporal alignment, DTW proves particularly useful in scenarios where the timing of occurrences holds lesser importance for the analysis.
 
 ## DTW Algorithm
 
-Assuming two time series of differing lengths, where:
-
-$$X=x_{1} + x_{2} + ... + x_{n}$$
-
-$$Y=x_{1} + y_{2} + ... + y_{m}$$
-
-Dynamic programming is used to construct an $$n$$ by $$m$$ matrix where for each element a cumulative cost between the corresponding points $$x_{i}$$ and $$y_{j}$$ is calculated
+Consider a time series to be a vector of some arbitrary length. Consider that we have ($p$) such vectors in total, each possibly differing in length. To find a subset of ($k$) clusters within the set of ($p$) vectors using MIP formulation, we must first make $\frac{1}{2} {p \choose 2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance. Consider two time series ($x$) and ($y$) of differing lengths ($n$) and ($m$) respectively,
 
 $$
-c(i,j) = (x_i-y_j)^2+\min\begin{cases}
-    c(i-1,j-1)\\
-    c(i-1,j)\\
-    c(i,j-1)
+x=(x_1, x_2, ..., x_n)
+$$
+$$
+y=(y_1, y_2, ..., y_m).
+$$
+
+The DTW distance is the sum of the Euclidean distance between each point and its matched point(s) in the other vector, as shown in \autoref{fig:warping_signals}. The following constraints must be met: 
+
+1. The first and last elements of each series must be matched.
+2. Only unidirectional forward movement through relative time is allowed, i.e., if $x_1$ is mapped to $y_2$ then $x_2$ may not be mapped to
+    $y_1$ (monotonicity). 
+3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
+
+![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{14,13}$ (right). \label{fig:warping_signals}](../media/Merged_document.pdf)
+
+Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in ''DTW-C++``, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an ($n$) by ($m$) matrix $C^{n\times m}$ is calculated, where each element represents the cumulative cost between series up to the points $x_i$ and $y_j$:
+
+\begin{equation}
+    \label{c}
+    c_{i,j} = (x_i-y_j)^2+\min\begin{cases}
+    c_{i-1,j-1}\\
+    c_{i-1,j}\\
+    c_{i,j-1}
     \end{cases}
-$$
+\end{equation}
 
-The min function allows the warping process to occur. The function finds if it is a lower cost to match the next value in $$Y$$ with the current value in $$X$$ or visa versa, or if the corresponding values of each are the lowest cost. This exemplifies DTWs one-to-many property. It is also important to note the monotonic  and continuity conditions on the warping path. 
+The final element $c_{n,m}$ is then the total cost, $C_{x,y}$, which provides the comparison metric between the two series $x$ and $y$. \autoref{fig:warping_signals} shows an example of this cost matrix $C$ and the warping path through it.
 
-$$i_{t-1}\leq i_t \mbox{  and  } j_{t-1}\leq j_t$$
+For the clustering problem, only this final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for k-medoids clustering. The memory complexity of the cost matrix $C$ is $O(nm)$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $C$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
 
-The monotonic condition ensures only unidirectional, forward movement through relative time, i.e. $$x_{1}$$ could be mapped to $$y_{2}$$ but then $$x_{2}$$ could not be mapped to $$y_{1}$$. 
-
-$$i_t-i_{t-1}\leq 1 \mbox{  and  } j_t-j_{t-1}\leq 1$$
-
-The continuity condition ensures each point is mapped to at least one other point so there are no jumps in time.
-
-The min function dictates the optimal warping path through the matrix from $$(1,1)$$ to $$(n,m)$$, with the final DTW cost:
-
-$$ C=c(n,m) $$
-
-## Speed of Calculation
-
-While there are other clustering algorithms available that handle time-series data with DTW, they are very slow and only allow short data series. DTWpp has been written specifically to quickly handle larger data series. This signficiant speed increase allows the whole DTW matrix to be calculated and then a global optimum for the clustering process can be found (more details in [Clustering](../2_method/3_mip.html)). Other time series clustering packages use k-means clustering which does not garuntee to find a global optimum. This being said, DTW is still a computationally expensive distance metric ($$O(nm)$$) and very long data series may not be suitable. 
+The DTW distance $C_{x,y}$ is found for each pairwise comparison. Pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where ($p$) is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the distance between time series ($i$) and ($j$).
 
 ### Warping Window
 
-For longer time series it is possible to speed up the DTW calculation by using a 'wapring window'. This works by restricting which data elements on one seies can be mapped to another based on their proximity. For example, if you have two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$y_{1}$$ can only by mapped to $$y_{1}$$ to $$y_{11}$$. The stricter the wapring window, the greater the increase in speed. However, the data being used must be carefully considered to assertain if this will negatively impact the results.
+For longer time series it is possible to speed up the DTW calculation by using a 'wapring window'. This works by restricting which data elements on one seies can be mapped to another based on their proximity. For example, if you have two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$x_{1}$$ can only by mapped to $$y_{1}$$ to $$y_{11}$$. The stricter the wapring window, the greater the increase in speed. However, the data being used must be carefully considered to assertain if this will negatively impact the results. Due to teh fast computation of DTW in Readers are referred [here](https://ieeexplore.ieee.org/abstract/document/1163055) for detailed information on the warping window. 
 
