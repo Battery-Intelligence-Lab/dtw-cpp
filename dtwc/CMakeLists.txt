@@ -24,16 +24,6 @@ target_sources(dtwc++
 
 target_include_directories(dtwc++ PUBLIC .)
 
-target_link_libraries(dtwc++
-  PRIVATE
-  project_warnings
-  project_options
-  # eigen
-  # range-v3
-  fmt
-  highs::highs
-)
-
 set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 20)
 
 if(DTWC_ENABLE_GUROBI)
@@ -48,3 +38,11 @@ endif()
 
 target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
+
+target_link_libraries(dtwc++
+  PRIVATE
+  fmt
+  highs::highs
+  project_warnings
+  project_options
+)
