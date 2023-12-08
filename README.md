@@ -6,16 +6,10 @@ DTW-C++
 ![Website](https://img.shields.io/website?url=https%3A%2F%2FBattery-Intelligence-Lab.github.io%2Fdtw-cpp%2F)
 [![codecov](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp/branch/main/graph/badge.svg?token=K739SRV4QG)](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp)
 ![Website](https://img.shields.io/website?url=https%3A%2F%2FBattery-Intelligence-Lab.github.io%2Fdtw-cpp%2F)
-
 ![Contributors](https://img.shields.io/github/contributors/Battery-Intelligence-Lab/dtw-cpp)
 ![Last update](https://img.shields.io/github/last-commit/Battery-Intelligence-Lab/dtw-cpp/develop)
-
 ![Forks](https://img.shields.io/github/forks/Battery-Intelligence-Lab/dtw-cpp)
-![Stars](https://github.com/Battery-Intelligence-Lab/dtw-cpp/develop)
-
-![Contributors](https://img.shields.io/github/contributors/Battery-Intelligence-Lab/dtw-cpp)
-![Last update](https://img.shields.io/github/last-commit/Battery-Intelligence-Lab/dtw-cpp/develop)
-
+![Stars](https://img.shields.io/github/stars/Battery-Intelligence-Lab/dtw-cpp/)
 ![Issues](https://img.shields.io/github/issues/Battery-Intelligence-Lab/dtw-cpp)
 ![Last update](https://img.shields.io/github/last-commit/Battery-Intelligence-Lab/dtw-cpp/develop)
 
