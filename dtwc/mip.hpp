@@ -13,7 +13,6 @@ namespace dtwc {
 class Problem;
 
 void MIP_clustering_byGurobi(Problem &prob);
-
 void MIP_clustering_byHiGHS(Problem &prob);
 
 } // namespace dtwc

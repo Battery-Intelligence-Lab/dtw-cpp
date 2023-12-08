@@ -13,6 +13,8 @@
 #include "parallelisation.hpp"
 
 #include <iostream>
+#include <vector>
+#include <cstddef>
 
 namespace dtwc::scores {
 

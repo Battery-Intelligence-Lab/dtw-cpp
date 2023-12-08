@@ -11,10 +11,10 @@
 
 #include "dtwc.hpp"
 
-#include <filesystem>       // for operator/, path
-#include <iostream>         // for operator<<, ostream, basic_ostream, cout
-#include <string>           // for allocator, string, char_traits
-#include <string_view>      // for string_view
+#include <filesystem>  // for operator/, path
+#include <iostream>    // for operator<<, ostream, basic_ostream, cout
+#include <string>      // for allocator, string, char_traits
+#include <string_view> // for string_view
 
 namespace dtwc::examples {
 

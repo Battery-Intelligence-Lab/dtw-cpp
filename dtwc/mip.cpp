@@ -17,14 +17,14 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 
+#include <Highs.h>
+
 #include <vector>
 #include <cassert>   // for assert
 #include <cstddef>   // for size_t
 #include <algorithm> // for sort
 #include <iostream>  // for operator<<, basic_ostream, ost...
 #include <string>    // for operator<<
-#include <Highs.h>
-
 
 namespace dtwc {
 

@@ -7,6 +7,19 @@ target_sources(dtwc++
   mip.cpp
   mip_Gurobi.cpp
   parallelisation.hpp
+  PUBLIC
+  Data.hpp
+  DataLoader.hpp
+  dtwc.hpp
+  initialisation.hpp
+  mip.hpp
+  parallelisation.hpp
+  Problem.hpp
+  scores.hpp
+  settings.hpp
+  timing.hpp
+  utility.hpp
+  warping.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC .)
