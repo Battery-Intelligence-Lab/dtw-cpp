@@ -25,7 +25,6 @@ target_sources(dtwc++
 
 target_include_directories(dtwc++ PUBLIC .)
 
-set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 20)
 
 if(DTWC_ENABLE_GUROBI)
   message(STATUS "Gurobi is enabled!")
@@ -47,4 +46,4 @@ target_link_libraries(dtwc++
   project_options
 )
 
-target_compile_options(dtwc++ PRIVATE cxx_std_20)
+set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 20)
