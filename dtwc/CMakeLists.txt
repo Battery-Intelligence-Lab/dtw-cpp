@@ -37,7 +37,6 @@ endif()
 
 
 target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
-target_compile_definitions(dtwc++ PRIVATE ROOT_FOLDER="${PROJECT_SOURCE_DIR}")
 
 target_link_libraries(dtwc++
   PRIVATE
@@ -46,3 +45,5 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
 )
+
+target_compile_options(dtwc++ PUBLIC cxx_std_20)
