@@ -1,3 +1,4 @@
+cmake_minimum_required(VERSION 3.21)
 
 add_library(dtwc++ STATIC)
 
@@ -46,4 +47,4 @@ target_link_libraries(dtwc++
   project_options
 )
 
-target_compile_options(dtwc++ PUBLIC cxx_std_20)
+target_compile_options(dtwc++ PRIVATE cxx_std_20)
