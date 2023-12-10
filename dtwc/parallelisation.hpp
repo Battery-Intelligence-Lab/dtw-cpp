@@ -15,7 +15,7 @@
 // #include <execution>
 // #include <algorithm>
 #include <cstddef>
-#include "omp.h"
+#include <omp.h>
 
 
 namespace dtwc {
