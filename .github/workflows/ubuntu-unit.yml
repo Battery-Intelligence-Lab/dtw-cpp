@@ -56,6 +56,7 @@ jobs:
 
       - name: install compiler
         run: sudo apt install ${{matrix.compiler}}
+      - run: sudo apt install libomp-dev
 
       - name: make build directory
         run: mkdir build_dir
