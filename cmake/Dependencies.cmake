@@ -60,7 +60,7 @@ function(dtwc_setup_dependencies)
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
-    "ZLIB OFF" "FAST_BUILD ON" "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF" "CMAKE_CXX_STANDARD 20")
+    "ZLIB OFF" "FAST_BUILD ON" "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
   endif()
 
 endfunction()

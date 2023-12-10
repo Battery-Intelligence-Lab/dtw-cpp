@@ -28,7 +28,8 @@
 
 namespace dtwc {
 
-void extract_solution(Problem &prob, auto &solution)
+template <typename T>
+void extract_solution(Problem &prob, const T &solution)
 {
   prob.clear_clusters();
   const auto Nb = prob.data.size();

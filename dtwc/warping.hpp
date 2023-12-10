@@ -22,7 +22,7 @@ namespace dtwc {
 template <typename data_t>
 data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-  thread_local VecMatrix<data_t> C(std::ssize(x), std::ssize(y)); //
+  thread_local VecMatrix<data_t> C(x.size(), y.size()); //
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.

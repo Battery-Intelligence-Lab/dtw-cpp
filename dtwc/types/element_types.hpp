@@ -59,7 +59,8 @@ struct CompElementValuesAndIndices
 
 struct RowMajor
 {
-  bool operator()(const auto &c1, const auto &c2) const
+  template <typename T>
+  bool operator()(const T &c1, const T &c2) const
   {
     return (c1.col < c2.col) || (c1.col == c2.col && c1.row < c2.row);
   }
@@ -67,7 +68,8 @@ struct RowMajor
 
 struct ColumnMajor
 {
-  bool operator()(const auto &c1, const auto &c2) const
+  template <typename T>
+  bool operator()(const T &c1, const T &c2) const
   {
     return (c1.row < c2.row) || (c1.row == c2.row && c1.col < c2.col);
   }

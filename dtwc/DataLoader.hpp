@@ -79,7 +79,7 @@ public:
     else
       std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose > 0, start_row, start_col, delimiter);
 
-    d.Nb = std::ssize(d.p_vec);
+    d.Nb = static_cast<int>(d.p_vec.size());
     return d;
   }
 };

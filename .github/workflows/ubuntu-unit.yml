@@ -30,7 +30,7 @@ jobs:
           - CC: gcc-13
             CXX: g++-13
             compiler: gcc-13 g++-13
-          - CC: clang-12 # -> error: call to consteval function 'std::chrono::hh_mm_ss::_S_fractional_width' is not a constant expression
+          - CC: clang-12
             CXX: clang++-12
             compiler: clang-12 libomp-12-dev
           - CC: clang-13
