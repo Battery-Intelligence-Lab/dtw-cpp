@@ -46,4 +46,9 @@ target_link_libraries(dtwc++
   project_options
 )
 
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
 set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 20)
