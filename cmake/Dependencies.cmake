@@ -63,4 +63,15 @@ function(dtwc_setup_dependencies)
     "ZLIB OFF" "FAST_BUILD ON" "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF")
   endif()
 
+  if (NOT TARGET CLI11::CLI11)
+  CPMAddPackage(
+    NAME CLI11
+    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.3.2.tar.gz"
+    DOWNLOAD_ONLY YES 
+  )
+  add_library(CLI11::CLI11 INTERFACE IMPORTED)
+  set_target_properties(CLI11::CLI11 PROPERTIES
+    INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
+endif()
+
 endfunction()

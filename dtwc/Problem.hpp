@@ -14,6 +14,7 @@
 #include "fileOperations.hpp"  // for writeMatrix, readMatrix
 #include "settings.hpp"        // for data_t, resultsPath, writeAsFileNames
 #include "types/VecMatrix.hpp" // for VecMatrix
+// #include "enums/enums.hpp"     // for using Enum types.
 
 #include <cstddef>     // for size_t
 #include <filesystem>  // for operator/, path

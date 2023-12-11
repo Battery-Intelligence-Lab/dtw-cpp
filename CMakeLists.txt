@@ -46,6 +46,18 @@ target_link_libraries(dtwc_main
   project_options
 )
 
+add_executable(dtwc_cl
+  dtwc/dtwc_cl.cpp
+)
+
+target_link_libraries(dtwc_cl
+  PRIVATE
+  dtwc++
+  CLI11::CLI11
+  project_warnings
+  project_options
+)
+
 # dtwc_setup_options()
 
 # dtwc_global_options()

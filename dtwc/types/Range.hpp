@@ -64,6 +64,7 @@ class Range
   size_t x0{}, xN{};
 
 public:
+  Range() = default; // Default constructor 0,0;
   explicit Range(size_t xN) : xN{ xN } {}
   Range(size_t x0, size_t xN) : x0{ x0 }, xN{ xN } {}
 
