@@ -14,7 +14,7 @@
 #include "fileOperations.hpp"  // for writeMatrix, readMatrix
 #include "settings.hpp"        // for data_t, resultsPath, writeAsFileNames
 #include "types/VecMatrix.hpp" // for VecMatrix
-// #include "enums/enums.hpp"     // for using Enum types.
+#include "enums/enums.hpp"     // for using Enum types.
 
 #include <cstddef>     // for size_t
 #include <filesystem>  // for operator/, path
@@ -32,9 +32,18 @@ class Problem
   int Nc{ 1 }; // Number of clusters.
   VecMatrix<data_t> distMat;
   data_t maxDist{ -1 };
+  Solver mipSolver{ settings::DEFAULT_MIP_SOLVER };
+
+  // Private functions:
+  std::pair<int, double> cluster_by_kMedoidsPAM_single(int rep);
 
 public:
   bool writeAsFileNames{ settings::writeAsFileNames };
+  Method method{ Method::Kmedoids };
+  int maxIter{ 100 };    // Maximum number of iteration for iterative-methods
+  int N_repetition{ 1 }; // Repetition for iterative-methods.
+
+
   std::decay_t<decltype(settings::resultsPath)> output_folder{ settings::resultsPath };
   std::string name{}; // Problem name
   Data data;
@@ -66,18 +75,12 @@ public:
 
   void clear_clusters();
 
-  void resize()
-  {
-    cluster_members.resize(Nc);
-    centroids_ind.resize(Nc);
-    clusters_ind.resize(data.size());
-  }
 
-  void set_numberOfClusters(int Nc_)
-  {
-    Nc = Nc_;
-    resize();
-  }
+  void resize();
+
+  void set_numberOfClusters(int Nc_);
+
+  bool set_solver(dtwc::Solver solver_);
 
   std::string get_name(size_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
 
@@ -105,11 +108,13 @@ public:
   void init_Kmeanspp();
 
   // Clustering functions:
+  void cluster();
   void cluster_by_MIP();
-  std::pair<int, double> cluster_by_kMedoidsPAM(int rep, int maxIter = 100);
-  void cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter = 100);
+  void cluster_by_kMedoidsPAM();
 
-  // Aux
+  void cluster_and_process();
+
+  // Auxillary
   double findTotalCost();
   void assignClusters();
   void distributeClusters();

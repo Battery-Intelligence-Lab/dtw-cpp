@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include "enums/enums.hpp"
+
 #include <string>
 #include <filesystem>
 #include <iostream>
@@ -37,5 +39,8 @@ constexpr bool writeAsFileNames = true; // If true it writes the file names as r
 constexpr bool isDebug = false;
 
 constexpr int band = 0; // Size of band to use (if no band put 0)
+
+constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
+constexpr dtwc::Method DEFAULT_CLUSTERING_METHOD = dtwc::Method::Kmedoids;
 
 } // namespace dtwc::settings

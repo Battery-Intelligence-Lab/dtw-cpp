@@ -14,5 +14,5 @@ namespace dtwc {
 enum class Solver {
   Gurobi, //<! Gurobi solver for MIP solution
   HiGHS   //<! HiGHS solver for MIP solution.
-
+};
 }

@@ -35,6 +35,37 @@ void Problem::clear_clusters()
   cluster_members.clear();
 }
 
+void Problem::resize()
+{
+  cluster_members.resize(Nc);
+  centroids_ind.resize(Nc);
+  clusters_ind.resize(data.size());
+}
+
+void Problem::set_numberOfClusters(int Nc_)
+{
+  Nc = Nc_;
+  resize();
+}
+
+bool Problem::set_solver(Solver solver_)
+{
+  if (solver_ == Solver::Gurobi) {
+#ifdef DTWC_ENABLE_GUROBI
+    mipSolver = Solver::Gurobi;
+    return true;
+#else
+    std::cout << "Solver Gurobi is not available; therefore using default solver\n";
+    mipSolver = settings::DEFAULT_MIP_SOLVER;
+    return false;
+#endif
+  }
+
+  mipSolver = solver_;
+  return true;
+}
+
+
 double Problem::distByInd(int i, int j)
 {
   if (distMat(i, j) < 0) {
@@ -128,6 +159,28 @@ void Problem::writeSilhouettes()
 }
 
 
+void Problem::cluster()
+{
+  switch (method) {
+  case Method::Kmedoids:
+    cluster_by_kMedoidsPAM();
+    break;
+  case Method::MIP:
+    cluster_by_MIP();
+    break;
+  }
+}
+
+
+void Problem::cluster_and_process()
+{
+  cluster();
+  printClusters(); // Prints to screen.
+  writeDistanceMatrix();
+  writeClusters(); // Prints to file.
+  writeSilhouettes();
+}
+
 void Problem::init_random()
 {
   centroids_ind.clear();
@@ -158,8 +211,14 @@ void Problem::init_Kmeanspp()
 
 void Problem::cluster_by_MIP()
 {
-  MIP_clustering_byHiGHS(*this);
-  // MIP_clustering_byGurobi(*this);
+  switch (mipSolver) {
+  case Solver::Gurobi:
+    MIP_clustering_byGurobi(*this);
+    break;
+  case Solver::HiGHS:
+    MIP_clustering_byHiGHS(*this);
+    break;
+  }
 }
 
 void Problem::distributeClusters()
@@ -219,7 +278,7 @@ void Problem::calculateMedoids()
   run(findBetterMedoidTask, data.size());
 }
 
-void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
+void Problem::cluster_by_kMedoidsPAM()
 {
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
@@ -235,7 +294,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
     std::cout << "Start clustering:\n";
 
 
-    auto [status, total_cost] = cluster_by_kMedoidsPAM(i_rand, maxIter);
+    auto [status, total_cost] = cluster_by_kMedoidsPAM_single(i_rand);
 
     if (status == 0)
       std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
@@ -257,7 +316,7 @@ void Problem::cluster_by_kMedoidsPAM_repetetive(int N_repetition, int maxIter)
   std::cout << "Best repetition: " << best_rep << '\n';
 }
 
-std::pair<int, double> Problem::cluster_by_kMedoidsPAM(int rep, int maxIter)
+std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 {
   auto oldmedoids = centroids_ind;
 

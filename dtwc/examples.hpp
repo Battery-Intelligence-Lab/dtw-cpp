@@ -18,7 +18,6 @@
 
 namespace dtwc::examples {
 
-
 inline void cluster_byKmeans_single()
 {
   dtwc::Clock clk; // Create a clock object
@@ -26,17 +25,16 @@ inline void cluster_byKmeans_single()
 
   auto Nc = 3; // Number of clusters
 
-  int N_repetition = 5;
-  int maxIter = 100;
-
   dtwc::DataLoader dl{ settings::dataPath / "dummy" };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
+  prob.maxIter = 100;
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.N_repetition = 5;
 
-  prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
+  prob.cluster_by_kMedoidsPAM();
 
   prob.printClusters(); // Prints to screen.
   prob.writeClusters(); // Prints to file.
@@ -54,22 +52,21 @@ inline void cluster_byMIP_single()
   auto Nc = 6;         // Number of clusters
 
   dtwc::DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
 
   std::cout << "Data loading finished at " << clk << "\n";
 
   prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
 
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << settings::band << "\n\n\n";
 
+  prob.method = Method::MIP;
+
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.cluster_by_MIP();         // Uses MILP to do clustering.
-  prob.printClusters();          // Prints to screen.
-  prob.writeClusters();          // Prints to file.
-  prob.writeSilhouettes();
+  prob.cluster_and_process();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }
@@ -82,6 +79,8 @@ inline void cluster_byMIP_multiple()
   auto Nc = dtwc::Range(3, 6); // Clustering for Nc = 3,4,5. Range function like Python so 6 is not included.
 
   dtwc::DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+
   dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
 
   std::cout << "Data loading finished at " << clk << "\n";

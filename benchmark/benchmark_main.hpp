@@ -121,7 +121,6 @@ inline void UCR_2018()
     prob.output_folder = out_folder;
 
     prob.fillDistanceMatrix();
-    prob.writeDistanceMatrix();
 
 
     auto time_1 = clk.duration();
@@ -129,8 +128,9 @@ inline void UCR_2018()
     std::cout << "Finished calculating distances " << clk << std::endl;
     std::cout << "Band used " << settings::band << "\n\n\n";
 
+    prob.N_repetition = 2;
 
-    prob.cluster_by_kMedoidsPAM_repetetive(2);
+    prob.cluster_by_kMedoidsPAM();
     // prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     auto time_2 = clk.duration();
@@ -138,6 +138,7 @@ inline void UCR_2018()
     std::cout << "Band used " << settings::band << "\n\n\n";
 
     prob.printClusters(); // Prints to screen.
+    prob.writeDistanceMatrix();
     prob.writeClusters(); // Prints to file.
     prob.writeSilhouettes();
 
