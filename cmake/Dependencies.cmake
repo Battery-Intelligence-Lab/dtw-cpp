@@ -45,12 +45,12 @@ function(dtwc_setup_dependencies)
   endif()
 
 
-  if(NOT TARGET fmt) # fmt library:
-  CPMAddPackage(
-    NAME fmt
-    URL "https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz"
-  )
-  endif()
+  # if(NOT TARGET fmt) # fmt library:
+  # CPMAddPackage(
+  #   NAME fmt
+  #   URL "https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz"
+  # )
+  # endif()
 
   # HiGHS library:
   if(NOT TARGET highs::highs)# HiGHS library:

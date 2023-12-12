@@ -14,9 +14,6 @@
 #include "settings.hpp"
 #include "timing.hpp"
 
-#include <fmt/core.h>
-#include <fmt/ranges.h>
-
 #include <Highs.h>
 
 #include <vector>

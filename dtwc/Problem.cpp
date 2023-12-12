@@ -234,15 +234,24 @@ void Problem::assignClusters()
 {
   auto assignClustersTask = [&](int i_p) // i_p -> index of points
   {
-    auto dist = [&](int i_c) { return distByInd(i_p, i_c); };
-    auto compare = [&dist](auto i_1, auto i_2) { return dist(i_1) < dist(i_2); };
-    auto it = std::min_element(centroids_ind.begin(), centroids_ind.end(), compare);
-    clusters_ind[i_p] = std::distance(centroids_ind.begin(), it);
+    double minDist{ 1e9 };
+    int minInd{}, c_ind{};
+    for (auto i_c : centroids_ind) { // #TODO test if runs correctly as we changed previous algorithm.
+      const auto distNew = distByInd(i_p, i_c);
+      if (distNew < minDist) {
+        minDist = distNew;
+        minInd = c_ind;
+      }
+      c_ind++;
+    }
+
+    clusters_ind[i_p] = minInd;
   };
 
   clusters_ind.resize(data.size()); // Resize before assigning.
-
   run(assignClustersTask, data.size());
+  std::cout << "Test 3" << std::endl;
+
   distributeClusters();
 }
 
@@ -289,7 +298,7 @@ void Problem::cluster_by_kMedoidsPAM()
     // init_Kmeanspp(); // Use not random init.
 
     std::cout << "Metoid initialisation is finished. "
-              << Nc << " metoids are initialised.\n";
+              << Nc << " medoids are initialised.\n";
 
     std::cout << "Start clustering:\n";
 
@@ -299,7 +308,7 @@ void Problem::cluster_by_kMedoidsPAM()
     if (status == 0)
       std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
     else if (status == -1)
-      std::cout << "Maximum iteration is reached before metoids are converged!\n";
+      std::cout << "Maximum iteration is reached before medoids are converged!\n";
 
     std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
 
@@ -321,7 +330,16 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  std::ofstream medoidsFile(output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv"), std::ios_base::out);
+  const auto outPath = output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv");
+  std::ofstream medoidsFile(outPath, std::ios_base::out);
+
+  if (!medoidsFile.good()) {
+    std::cout << "Failed to open file in path: " << outPath << '\n'
+              << "Program is exiting." << std::endl;
+
+    throw 1;
+  }
+
   for (int i = 0; i < maxIter; i++) {
 
     std::cout << "Medoids: ";
@@ -333,13 +351,12 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
     medoidsFile << '\n';
 
     assignClusters();
+    std::cout << "Test 1" << std::endl;
+
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
               << findTotalCost() << ".\n"; // Uses clusters_ind to find cost.
 
     printClusters();
-
-    // writeMedoidMembers(i, rep);
-
     distanceInClusters(); // Just populates distByInd matrix ahead.
     calculateMedoids();   // Changes centroids_ind
 

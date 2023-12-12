@@ -23,9 +23,9 @@ void run_openmp(Tfun &task_indv, size_t i_end, bool isParallel = true)
 {
   if (isParallel) {
 #pragma omp parallel for schedule(dynamic) // As some take less time static scheduling is 2x slower.
-    for (int i = 0; i < i_end; i++) {
+    for (int i = 0; i < i_end; i++)
       task_indv(i);
-    }
+
   } else
     for (int i = 0; i < i_end; i++)
       task_indv(i);
@@ -35,7 +35,6 @@ void run_openmp(Tfun &task_indv, size_t i_end, bool isParallel = true)
 template <typename Tfun>
 void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 32)
 {
-  std::cout << "Standard algorithms parallelisation is being used." << std::endl;
   run_openmp(task_indv, i_end, numMaxParallelWorkers != 1);
 }
 } // namespace dtwc

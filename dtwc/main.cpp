@@ -6,66 +6,27 @@
 
 int main()
 {
-  // Here are some examples. You can either take the contents of example functions into main or modify and run them.
+  using namespace dtwc;
+
   dtwc::Clock clk; // Create a clock object
+  std::string probName = "DTW_kMeans_results";
 
+  auto Nc = 3; // Number of clusters
 
-  // int Ndata_max = 100; // Load 300 data maximum.
-  // auto Nc = 4;         // Number of clusters
+  dtwc::DataLoader dl{ settings::dataPath / "dummy" };
+  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
-  // dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy", Ndata_max };
+  dtwc::Problem prob{ probName, dl }; // Create a problem.
+  prob.maxIter = 100;
 
-  // dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
+  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.N_repetition = 5;
 
-  // std::cout << "Data loading finished at " << clk << "\n";
+  prob.cluster_by_kMedoidsPAM();
 
-
-  // // // prob.fillDistanceMatrix();
-  // // // prob.writeDistanceMatrix();
-  // prob.readDistanceMatrix(dtwc::settings::resultsPath / "DTW_MILP_results_distanceMatrix.csv");
-
-  // std::cout << "Finished calculating distances " << clk << std::endl;
-  // std::cout << "Band used " << dtwc::settings::band << "\n\n\n";
-
-  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  // prob.cluster_by_MIP();         // Uses MILP to do clustering.
-
-  // prob.printClusters(); // Prints to screen.
-  // // // prob.writeClusters(); // Prints to file.
-  // // // prob.writeSilhouettes();
-
-
-  // dtwc::examples::cluster_byKmeans_single();
-  //  dtwc::examples::cluster_byMIP_single();
-  // dtwc::examples::cluster_byMIP_multiple();
-
-  // int Ndata_max = 300; // Load 300 data maximum.
-  // auto Nc = 2; // Number of clusters
-
-  // // dtwc::DataLoader dl{ dtwc::settings::dataPath / "test" / "nonUnimodular_1_Nc_2.csv" };
-
-  // dtwc::Problem prob("DTW_MILP_results"); // Create a problem.
-  // prob.readDistanceMatrix(dtwc::settings::dataPath / "test" / "AllGestureWiimoteX_dist_50.csv");
-
-  // prob.getDistanceMatrix().resize(50, 50);
-
-  // std::cout << "Data loading finished at " << clk << "\n";
-
-  // prob.fillDistanceMatrix();
-  // prob.writeDistanceMatrix();
-
-  // std::cout << "Finished calculating distances " << clk << std::endl;
-  // std::cout << "Band used " << dtwc::settings::band << "\n\n\n";
-
-  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  // prob.cluster_by_MIP();         // Uses MILP to do clustering.
-  // prob.printClusters();          // Prints to screen.
-  // prob.writeClusters();          // Prints to file.
-  // prob.writeSilhouettes();
-
-  // std::cout << "Finished all tasks " << clk << "\n";
-
-  // dtwc::benchmarks::run_all();
+  prob.printClusters(); // Prints to screen.
+  prob.writeClusters(); // Prints to file.
+  prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }

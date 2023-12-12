@@ -42,5 +42,5 @@ constexpr int band = 0; // Size of band to use (if no band put 0)
 
 constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
 constexpr dtwc::Method DEFAULT_CLUSTERING_METHOD = dtwc::Method::Kmedoids;
-
+constexpr int DEFAULT_MAX_ITER = 100;
 } // namespace dtwc::settings

@@ -40,7 +40,6 @@ target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 
 target_link_libraries(dtwc++
   PRIVATE
-  fmt
   highs::highs
   project_warnings
   project_options
