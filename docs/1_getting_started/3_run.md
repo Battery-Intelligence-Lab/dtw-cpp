@@ -5,5 +5,5 @@ nav_order: 3
 ---
 
 
-# Running DTWpp
+# Running DTWC++
 

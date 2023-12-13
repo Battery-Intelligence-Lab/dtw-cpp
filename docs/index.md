@@ -4,12 +4,9 @@ title: Index
 nav_exclude: true
 ---
 
-<!--![](slide_logo.png){:width="80%" }-->
+# About DTWC++
 
-
-# About DTWpp
-
-_DTWpp_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix, comparing all time series.
+_DTWC++_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. To perform clustering of the time series, mixed integer programming (MIP) is performed on the distance matrix, comparing all time series.
 
 The availability of time series data is rapdily increasing, and analysing and clustering the raw time series data can provide great insights into the data without inflicting biases by extracting features. However clustering time series can become very complex due to their potentially large size, variable lengths and shifts in the time axis. DTW is a powerful distance metric that can compare time series of varying lengths, while allowing shifts in the time axis to recognise similarity between time series even when the events are not at identical time stamps. For further infromation on DTW,  see [Dynamic Time Warping](../2_method/2_dtw.html).
 
@@ -35,7 +32,7 @@ The code has been tested using MATLAB R2020a, but should work with other release
 # Installation
 
 ### Option 1 - Downloading a .zip file ###
-[Download a .zip file of the code](https://github.com/Battery-Intelligence-Lab/DTWpp/archive/refs/heads/main.zip)
+[Download a .zip file of the code](https://github.com/Battery-Intelligence-Lab/dtw-cpp/archive/refs/heads/main.zip)
 
 Then, unzip the folder in a chosen directory on your computer.
 
@@ -44,7 +41,7 @@ To clone the repository, you will first need to have Git installed on
 your computer. Then, navigate to the directory where you want to clone the 
 repository in a terminal, and type:
 ```bash
-git clone https://github.com/Battery-Intelligence-Lab/DTWpp.git
+git clone https://github.com/Battery-Intelligence-Lab/dtw-cpp.git
 ```
 The folder containing all the files should appear in your chosen directory.
 
