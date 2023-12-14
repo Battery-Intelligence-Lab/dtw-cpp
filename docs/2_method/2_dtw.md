@@ -37,6 +37,14 @@ c_{i-1,j-1} & c_{i-1,j} & c_{i,j-1}
 \right\}
 \]
 
+$$
+c_{i,j} = (x_i-y_j)^2+\min \begin{cases}
+    c_{i-1,j-1}\\
+    c_{i-1,j}\\
+    c_{i,j-1}
+    \end{cases}
+$$
+
 The final element $$c_{n,m}$$ is then the total cost, $$C_{x,y}$$, which provides the comparison metric between the two series $$x$$ and $$y$$. \autoref{fig:warping_signals} shows an example of this cost matrix $$C$$ and the warping path through it.
 
 For the clustering problem, only this final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for k-medoids clustering. The memory complexity of the cost matrix $$C$$ is $$O(nm)$$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $$C$$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $$c_{i-1,j-1}$$, $$c_{i-1,j}$$, $$c_{i,j-1}$$).
