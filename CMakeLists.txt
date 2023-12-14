@@ -16,6 +16,7 @@ add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
 include(cmake/StandardProjectSettings.cmake)
 
 set(DTWC_ENABLE_GUROBI OFF)
+set(DTWC_ENABLE_HIGHS OFF)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 # include(cmake/ProjectOptions.cmake)

@@ -53,7 +53,7 @@ function(dtwc_setup_dependencies)
   # endif()
 
   # HiGHS library:
-  if(NOT TARGET highs::highs)# HiGHS library:
+  if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.6.0.tar.gz"
@@ -69,6 +69,7 @@ function(dtwc_setup_dependencies)
     URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.3.2.tar.gz"
     DOWNLOAD_ONLY YES 
   )
+
   add_library(CLI11::CLI11 INTERFACE IMPORTED)
   set_target_properties(CLI11::CLI11 PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")

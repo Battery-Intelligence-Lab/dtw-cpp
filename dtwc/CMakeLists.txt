@@ -35,12 +35,16 @@ if(DTWC_ENABLE_GUROBI)
   endif()
 endif()
 
+if(DTWC_ENABLE_HIGHS)
+  add_definitions(-DDTWC_ENABLE_HIGHS) 
+  target_link_libraries(dtwc++ PRIVATE highs::highs)
+endif()
+
 
 target_include_directories(dtwc++ PRIVATE ${range-v3_INCLUDE_DIRS} )
 
 target_link_libraries(dtwc++
   PRIVATE
-  highs::highs
   project_warnings
   project_options
 )

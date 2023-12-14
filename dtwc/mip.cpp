@@ -14,7 +14,9 @@
 #include "settings.hpp"
 #include "timing.hpp"
 
+#ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>
+#endif
 
 #include <vector>
 #include <cassert>   // for assert
@@ -66,6 +68,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   const auto Nvar = Nb * Nb;
 
+#ifdef DTWC_ENABLE_HIGHS
   HighsModel model;
   model.lp_.num_col_ = Nvar;
   model.lp_.num_row_ = Nconstraints;
@@ -183,6 +186,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Get the solution values
   extract_solution(prob, highs.getSolution().col_value);
+#endif
 }
 
 } // namespace dtwc
