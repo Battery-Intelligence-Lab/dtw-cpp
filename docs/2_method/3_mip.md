@@ -11,7 +11,7 @@ Mixed integer programming (MIP) can be used on a completed DTW distance matrix t
 
 All pairwise DTW distances are stored in a separate symmetric matrix, $(D^{p\times p})$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the distance between time series $i$ and $j$.
 
-Using this matrix, $D$, the time series can be split into $k$ separate clusters with integer programming. The problem formulation begins with a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series $j$ is a member of the $i$th cluster centroid, and 0 otherwise, as shown below.
+Using this matrix, $D$, the time series can be split into $k$ separate clusters with integer programming. The problem formulation begins with a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series $j$ is a member of the $i$ th cluster centroid, and 0 otherwise, as shown below.
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
 
@@ -27,7 +27,9 @@ $$
 A^{*} = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij}.
 $$
 
-After solving this integer program, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in Fig.\ \ref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
+After solving this integer program, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example below, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
 
-Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, described in [k-Medoids Clustering](link to that). The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
+![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/media/cluster_matrix_formation4.svg)
+
+Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, described in [k-Medoids Clustering](link to that). The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using *DTW-C++* compared to other packages.
 
