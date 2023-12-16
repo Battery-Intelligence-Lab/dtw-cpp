@@ -70,7 +70,7 @@ double Problem::distByInd(int i, int j)
 {
   if (distMat(i, j) < 0) {
     if constexpr (settings::band == 0)
-      distMat(j, i) = distMat(i, j) = dtwFull<data_t>(p_vec(i), p_vec(j));
+      distMat(j, i) = distMat(i, j) = dtwFull_L<data_t>(p_vec(i), p_vec(j));
     else
       distMat(j, i) = distMat(i, j) = dtwBanded<data_t>(p_vec(i), p_vec(j), settings::band);
   }
