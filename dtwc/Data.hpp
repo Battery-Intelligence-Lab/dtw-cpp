@@ -31,7 +31,9 @@ struct Data
   Data() = default;
   Data(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new)
   {
-    assert(p_vec_new.size() == p_names_new.size());
+    if (p_vec_new.size() != p_names_new.size())
+      throw std::runtime_error("Data and name vectors should be of the same size");
+
     p_vec = std::move(p_vec_new);
     p_names = std::move(p_names_new);
     Nb = static_cast<int>(p_vec.size());

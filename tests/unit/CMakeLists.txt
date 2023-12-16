@@ -1,3 +1,5 @@
 # Add executables and tests with coverage flags applied
 add_executable_with_coverage_and_test(unit_test_warping)
 add_executable_with_coverage_and_test(unit_test_Problem)
+add_executable_with_coverage_and_test(unit_test_Clock)
+add_executable_with_coverage_and_test(unit_test_Data)

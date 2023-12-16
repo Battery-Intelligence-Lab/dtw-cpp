@@ -25,7 +25,6 @@ void run_openmp(Tfun &task_indv, size_t i_end, bool isParallel = true)
 #pragma omp parallel for schedule(dynamic) // As some take less time static scheduling is 2x slower.
     for (int i = 0; i < i_end; i++)
       task_indv(i);
-
   } else
     for (int i = 0; i < i_end; i++)
       task_indv(i);
