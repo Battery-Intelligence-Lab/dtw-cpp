@@ -1,5 +1,4 @@
 #include "dtwc.hpp"
-#include "examples.hpp"
 #include "../benchmark/benchmark_main.hpp"
 
 #include <iostream>

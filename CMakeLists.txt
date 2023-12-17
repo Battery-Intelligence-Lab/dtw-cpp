@@ -15,6 +15,8 @@ project(DTWC++ VERSION "0.0.4"
 add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
 include(cmake/StandardProjectSettings.cmake)
 
+set(BUILD_EXAMPLES OFF)
+
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_HIGHS ON)
 include(cmake/Dependencies.cmake) # Include external projects
@@ -64,4 +66,9 @@ if(BUILD_TESTING)
   #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
   include(cmake/Coverage.cmake)
   add_subdirectory(tests)
+endif()
+
+
+if(BUILD_EXAMPLES)
+  add_subdirectory(examples)
 endif()
