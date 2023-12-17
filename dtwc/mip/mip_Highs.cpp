@@ -1,18 +1,18 @@
 /*
- * mip.cpp
+ * mip_Highs.cpp
  *
- * Encapsulating mixed-integer program functions in a class.
+ * Encapsulating mixed-integer program functions
 
  *  Created on: 06 Nov 2022
  *  Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
-#include "Data.hpp"        // for Data
-#include "types/types.hpp" // for Triplet, RowMajor
 #include "mip.hpp"
-#include "Problem.hpp"
-#include "settings.hpp"
-#include "timing.hpp"
+#include "../Data.hpp"        // for Data
+#include "../types/types.hpp" // for Triplet, RowMajor
+#include "../Problem.hpp"
+#include "../settings.hpp"
+#include "../timing.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>
@@ -67,7 +67,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   const auto Nconstraints = Neq + Nineq;
 
   const auto Nvar = Nb * Nb;
-
+  std::cout << "Test 1" << std::endl;
 #ifdef DTWC_ENABLE_HIGHS
   HighsModel model;
   model.lp_.num_col_ = Nvar;
@@ -75,14 +75,20 @@ void MIP_clustering_byHiGHS(Problem &prob)
   model.lp_.sense_ = ObjSense::kMinimize;
   model.lp_.offset_ = 0;
 
+  std::cout << "Test 2" << std::endl;
+
   // Initialise q vector for cost.
   model.lp_.col_cost_.resize(Nvar);
+  std::cout << "Test 2.1" << std::endl;
+
   for (int j{ 0 }; j < Nb; j++)
     for (int i{ 0 }; i < Nb; i++)
       model.lp_.col_cost_[i + j * Nb] = prob.distByInd_scaled(i, j);
 
+
   model.lp_.col_lower_.clear();
   model.lp_.col_lower_.resize(Nvar, 0.0);
+  std::cout << "Test 3" << std::endl;
 
   model.lp_.col_upper_.clear();
   model.lp_.col_upper_.resize(Nvar, 1.0);
@@ -94,6 +100,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   model.lp_.row_upper_.resize(Nconstraints, 0.0);
 
   model.lp_.row_upper_[0] = model.lp_.row_lower_[0] = Nc;
+  std::cout << "Test 4" << std::endl;
 
   for (int i = 0; i < Nb; ++i)
     model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
@@ -106,6 +113,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   model.lp_.a_matrix_.start_.clear();
   model.lp_.a_matrix_.index_.clear();
   model.lp_.a_matrix_.value_.clear();
+  std::cout << "Test 5" << std::endl;
 
   model.lp_.a_matrix_.start_.reserve(numel + 1);
   model.lp_.a_matrix_.index_.reserve(numel);
@@ -114,6 +122,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   std::vector<solver::Triplet> triplets;
 
   triplets.reserve(numel);
+  std::cout << "Test 6" << std::endl;
 
   for (int i = 0; i < Nb; ++i) {
     triplets.emplace_back(0, i * (Nb + 1), 1.0); // Sum of diagonals is Nc
@@ -134,6 +143,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
         triplets.emplace_back(block_begin_row + j - shift, block_begin_col + j, 1);
     }
   }
+  std::cout << "Test 7" << std::endl;
 
   std::sort(triplets.begin(), triplets.end(), solver::RowMajor{});
 
@@ -150,31 +160,37 @@ void MIP_clustering_byHiGHS(Problem &prob)
     model.lp_.a_matrix_.value_.push_back(triplet.val);
     i_now++;
   }
+  std::cout << "Test 8" << std::endl;
 
   model.lp_.a_matrix_.start_.push_back(i_now);
 
   // Now indicate that all the variables must take integer values
   model.lp_.integrality_.clear();
   model.lp_.integrality_.resize(model.lp_.num_col_, HighsVarType::kInteger);
+  std::cout << "Test 9" << std::endl;
 
   // Create a Highs instance
   Highs highs;
+  std::cout << "Test 10" << std::endl;
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   if (return_status != HighsStatus::kOk) {
-    std::cout << "Passing the model to HiGHS was unsuccessful!\n";
+    std::cout << "Passing the model to HiGHS was unsuccessful!" << std::endl;
     return;
   }
+
   return_status = highs.run(); // Solve the model
   if (return_status != HighsStatus::kOk) {
-    std::cout << "Solving the model with HiGHS was unsuccessful!\n";
+    std::cout << "Solving the model with HiGHS was unsuccessful!" << std::endl;
     return;
   }
+  std::cout << "Test 11" << std::endl;
 
   // Get the model status
   const HighsModelStatus &model_status = highs.getModelStatus();
   assert(model_status == HighsModelStatus::kOptimal);
   std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
+  std::cout << "Test 12" << std::endl;
 
   // Get the solution information
   const HighsInfo &info = highs.getInfo();
@@ -183,9 +199,12 @@ void MIP_clustering_byHiGHS(Problem &prob)
   std::cout << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n';
   std::cout << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n';
   std::cout << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
+  std::cout << "Test 13" << std::endl;
 
   // Get the solution values
   extract_solution(prob, highs.getSolution().col_value);
+#else
+  std::cout << "Highs solver is not activated but is being used!" << std::endl;
 #endif
 }
 

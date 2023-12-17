@@ -1,7 +1,7 @@
 /*
  * element_types.hpp
  *
- * Helper class for sparse matrix utilities.
+ * Helper classes for sparse matrix utilities.
 
  *  Created on: 29 Oct 2023
  *   Author(s): Volkan Kumtepeli, Becky Perriment

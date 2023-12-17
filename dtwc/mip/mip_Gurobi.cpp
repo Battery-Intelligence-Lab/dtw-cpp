@@ -9,8 +9,8 @@
  */
 
 #include "mip.hpp"
-#include "Problem.hpp"
-#include "settings.hpp"
+#include "../Problem.hpp"
+#include "../settings.hpp"
 
 #include <vector>
 #include <string_view>
@@ -105,6 +105,8 @@ void MIP_clustering_byGurobi(Problem &prob)
   } catch (...) {
     std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
   }
+#else
+  std::cout << "Gurobi solver is not activated but is being used!" << std::endl;
 #endif
 }
 
