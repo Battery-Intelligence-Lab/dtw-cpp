@@ -75,7 +75,6 @@ public:
 
   void clear_clusters();
 
-
   void resize();
 
   void set_numberOfClusters(int Nc_);
@@ -122,15 +121,7 @@ public:
 
   void calculateMedoids();
 
-  void writeDataOrder(fs::path out_folder = settings::resultsPath)
-  {
-    std::ofstream out(out_folder / (name + "_dataOrder.csv"), std::ios_base::out);
-
-    for (int i = 0; i < data.size(); i++)
-      out << i << ',' << p_names(i) << '\n';
-
-    out.close();
-  }
+  void writeDataOrder(fs::path out_folder = settings::resultsPath);
 };
 
 

@@ -250,7 +250,6 @@ void Problem::assignClusters()
 
   clusters_ind.resize(data.size()); // Resize before assigning.
   run(assignClustersTask, data.size());
-  std::cout << "Test 3" << std::endl;
 
   distributeClusters();
 }
@@ -404,6 +403,16 @@ void Problem::writeMedoidMembers(int iter, int rep)
     medoidMembers << '\n';
   }
   medoidMembers.close();
+}
+
+void Problem::writeDataOrder(fs::path out_folder)
+{
+  std::ofstream out(out_folder / (name + "_dataOrder.csv"), std::ios_base::out);
+
+  for (int i = 0; i < data.size(); i++)
+    out << i << ',' << p_names(i) << '\n';
+
+  out.close();
 }
 
 } // namespace dtwc

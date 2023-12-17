@@ -1,10 +1,14 @@
-/*
- * warping.hpp
+/**
+ * @file warping.hpp
+ * @brief Time warping functions.
  *
- * This file contains time warping functions
-
- *  Created on: 08 Dec 2022
- *  Author(s): Volkan Kumtepeli, Becky Perriment
+ * This file contains functions for dynamic time warping, which is a method to
+ * compare two temporal sequences that may vary in time or speed. It includes
+ * different versions of the algorithm for full, light (L), and banded computations.
+ *
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 08 Dec 2022
  */
 
 #pragma once
@@ -19,6 +23,14 @@
 
 namespace dtwc {
 
+/**
+ * @brief Computes the full dynamic time warping distance between two sequences.
+ *
+ * @tparam data_t Data type of the elements in the sequences.
+ * @param x First sequence.
+ * @param y Second sequence.
+ * @return The dynamic time warping distance.
+ */
 template <typename data_t>
 data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
@@ -57,11 +69,20 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
   return maxValue;
 }
 
-
+/**
+ * @brief Computes the dynamic time warping distance using the light method.
+ *
+ * This function uses the light method for computation but cannot backtrack.
+ * It only uses one vector to traverse instead of matrices.
+ *
+ * @tparam data_t Data type of the elements in the sequences.
+ * @param x First sequence.
+ * @param y Second sequence.
+ * @return The dynamic time warping distance.
+ */
 template <typename data_t>
 data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-  // This function uses L shaped method to compute distance but cannot backtrack.
   if (&x == &y) return 0; // If they are the same data then distance is 0.
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   thread_local std::vector<data_t> short_side(data_t(10e3));
@@ -103,6 +124,19 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
   return maxValue;
 }
 
+
+/**
+ * @brief Computes the banded dynamic time warping distance between two sequences.
+ *
+ * This version of the algorithm introduces banding to limit the computation to
+ * a certain vicinity around the diagonal, reducing computational complexity.
+ *
+ * @tparam data_t Data type of the elements in the sequences.
+ * @param x First sequence.
+ * @param y Second sequence.
+ * @param band The bandwidth parameter that controls the vicinity around the diagonal.
+ * @return The dynamic time warping distance.
+ */
 template <typename data_t = float>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
 {
