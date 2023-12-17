@@ -1,7 +1,8 @@
 option (DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 # Setup macro for coverage testing for GCC or Clang
-macro(add_executable_with_coverage_and_test TARGET_NAME)
-    add_executable(${TARGET_NAME} "${TARGET_NAME}.cpp")
+macro(add_executable_with_coverage_and_test TARGET_PATH)
+    get_filename_component(TARGET_NAME ${TARGET_PATH} NAME_WE)
+    add_executable(${TARGET_NAME} ${TARGET_PATH})
     target_link_libraries(${TARGET_NAME} PRIVATE dtwc++ Catch2::Catch2WithMain)
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME} WORKING_DIRECTORY bin)
     if (DTWC_ENABLE_COVERAGE)
