@@ -16,6 +16,9 @@ add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
 include(cmake/StandardProjectSettings.cmake)
 
 set(BUILD_EXAMPLES OFF)
+set(BUILD_TESTING ON)
+set(BUILD_BENCHMARK ON)
+
 
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_HIGHS ON)
@@ -71,4 +74,8 @@ endif()
 
 if(BUILD_EXAMPLES)
   add_subdirectory(examples)
+endif()
+
+if(BUILD_BENCHMARK)
+  add_subdirectory(benchmark)
 endif()

@@ -9,15 +9,15 @@
 
 #pragma once
 
-#include "../dtwc/dtwc.hpp"
+#include <dtwc.hpp>
 
 #include <string>
 #include <vector>
 #include <map>
 #include <utility>
+#include <filesystem>
 
-namespace dtwc::benchmarks {
-
+using namespace dtwc;
 
 inline auto get_UCR_2018_files()
 {
@@ -148,9 +148,7 @@ inline void UCR_2018()
 }
 
 
-inline void run_all()
+int main()
 {
   UCR_2018();
 }
-
-} // namespace dtwc::benchmarks
