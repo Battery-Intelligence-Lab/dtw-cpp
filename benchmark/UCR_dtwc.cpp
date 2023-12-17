@@ -1,5 +1,5 @@
 /*
- * benchmark_main.hpp
+ * UCR_dtwc.cpp
  *
  *  Benchmark file
  *
