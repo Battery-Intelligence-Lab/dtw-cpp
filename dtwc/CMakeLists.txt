@@ -7,7 +7,7 @@ add_subdirectory(mip)
 target_sources(dtwc++
   PRIVATE
   Problem.cpp
-  parallelisation.hpp
+  initialisation.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
