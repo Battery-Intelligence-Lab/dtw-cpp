@@ -150,5 +150,7 @@ inline void UCR_2018()
 
 int main()
 {
+  dtwc::Clock clk; // Create a clock object
   UCR_2018();
+  std::cout << "Finished benchmarking " << clk << "\n";
 }

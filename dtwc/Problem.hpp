@@ -15,6 +15,7 @@
 #include "settings.hpp"        // for data_t, resultsPath, writeAsFileNames
 #include "types/VecMatrix.hpp" // for VecMatrix
 #include "enums/enums.hpp"     // for using Enum types.
+#include "initialisation.hpp"  // for init functions
 
 #include <cstddef>     // for size_t
 #include <filesystem>  // for operator/, path
@@ -24,6 +25,7 @@
 #include <utility>     // for pair
 #include <vector>      // for vector, allocator
 #include <type_traits> // std::decay_t
+#include <functional>  // std::function
 
 namespace dtwc {
 
@@ -42,7 +44,9 @@ public:
   Method method{ Method::Kmedoids };
   int maxIter{ 100 };    // Maximum number of iteration for iterative-methods
   int N_repetition{ 1 }; // Repetition for iterative-methods.
+  int band{ settings::band };
 
+  std::function<void(Problem &)> init_fun{ init::random }; // Initialisation function.
 
   std::decay_t<decltype(settings::resultsPath)> output_folder{ settings::resultsPath };
   std::string name{}; // Problem name
@@ -69,6 +73,7 @@ public:
   template <typename T>
   auto readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
+  auto size() const { return data.size(); }
   auto cluster_size() const { return Nc; }
   auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
   auto &p_vec(size_t i) { return data.p_vec[i]; }     // Alias not to write data. everytime.
@@ -78,6 +83,7 @@ public:
   void resize();
 
   void set_numberOfClusters(int Nc_);
+  void set_clusters(std::vector<int> &candidate_centroids);
 
   bool set_solver(dtwc::Solver solver_);
 
@@ -103,8 +109,9 @@ public:
   void writeSilhouettes();
 
   // Initialisation of clusters:
-  void init_random();
-  void init_Kmeanspp();
+  void init_random() { init::random(*this); }
+  void init_Kmeanspp() { init::Kmeanspp(*this); }
+  void init() { init_fun(*this); }
 
   // Clustering functions:
   void cluster();
@@ -120,8 +127,6 @@ public:
   void distanceInClusters();
 
   void calculateMedoids();
-
-  void writeDataOrder(fs::path out_folder = settings::resultsPath);
 };
 
 

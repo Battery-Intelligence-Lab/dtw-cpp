@@ -14,6 +14,8 @@
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "warping.hpp"         // for dtwBanded, dtwFull
 #include "types/Range.hpp"     // for Range
+#include "initialisation.hpp"  // For initialisation functions
+
 
 #include <algorithm> // for max_element, min, min_element, sample
 #include <iomanip>   // for operator<<, setprecision
@@ -48,6 +50,14 @@ void Problem::set_numberOfClusters(int Nc_)
   resize();
 }
 
+void Problem::set_clusters(std::vector<int> &candidate_centroids)
+{
+  if (candidate_centroids.size() != Nc)
+    throw std::runtime_error("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
+
+  centroids_ind = candidate_centroids;
+}
+
 bool Problem::set_solver(Solver solver_)
 {
   if (solver_ == Solver::Gurobi) {
@@ -69,7 +79,7 @@ bool Problem::set_solver(Solver solver_)
 double Problem::distByInd(int i, int j)
 {
   if (distMat(i, j) < 0) {
-    if constexpr (settings::band == 0)
+    if (band == 0)
       distMat(j, i) = distMat(i, j) = dtwFull_L<data_t>(p_vec(i), p_vec(j));
     else
       distMat(j, i) = distMat(i, j) = dtwBanded<data_t>(p_vec(i), p_vec(j), settings::band);
@@ -181,34 +191,6 @@ void Problem::cluster_and_process()
   writeSilhouettes();
 }
 
-void Problem::init_random()
-{
-  centroids_ind.clear();
-  auto range = Range(data.size());
-  std::sample(range.begin(), range.end(), std::back_inserter(centroids_ind), Nc, randGenerator);
-}
-
-void Problem::init_Kmeanspp()
-{
-  // First cluster is slected at random, others are selected based on distance.
-  centroids_ind.clear();
-
-  std::uniform_int_distribution<size_t> d(0, data.size() - 1);
-  centroids_ind.push_back(d(randGenerator));
-
-  std::vector<data_t> distances(data.size(), std::numeric_limits<data_t>::max());
-
-  auto distTask = [&](int i_p) {
-    distances[i_p] = std::min(distances[i_p], distByInd(centroids_ind.back(), i_p));
-  };
-
-  for (int i = 1; i < Nc; i++) {
-    dtwc::run(distTask, data.size());
-    std::discrete_distribution<> dd(distances.begin(), distances.end());
-    centroids_ind.push_back(dd(randGenerator));
-  }
-}
-
 void Problem::cluster_by_MIP()
 {
   switch (mipSolver) {
@@ -293,8 +275,7 @@ void Problem::cluster_by_kMedoidsPAM()
 
   for (int i_rand = 0; i_rand < N_repetition; i_rand++) {
     std::cout << "Metoid initialisation is started.\n";
-    init_random(); // Use random initialisation
-    // init_Kmeanspp(); // Use not random init.
+    init();
 
     std::cout << "Metoid initialisation is finished. "
               << Nc << " medoids are initialised.\n";
@@ -326,6 +307,9 @@ void Problem::cluster_by_kMedoidsPAM()
 
 std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 {
+
+  if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
+
   auto oldmedoids = centroids_ind;
 
   int status = -1;
