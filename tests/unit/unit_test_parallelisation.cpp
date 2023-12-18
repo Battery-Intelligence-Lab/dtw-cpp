@@ -13,6 +13,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <vector>
+#include <atomic>
 
 TEST_CASE("Parallel Execution", "[run_openmp]")
 {
