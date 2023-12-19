@@ -10,6 +10,7 @@ target_sources(mip-solvers
   )
 
 target_include_directories(mip-solvers PUBLIC .)
+target_link_libraries(mip-solvers PRIVATE eigen)
 
 if(DTWC_ENABLE_GUROBI)
   message(STATUS "Gurobi is enabled!")

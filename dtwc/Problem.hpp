@@ -26,13 +26,16 @@
 #include <vector>      // for vector, allocator
 #include <type_traits> // std::decay_t
 #include <functional>  // std::function
+#include <iostream>
+
+#include <Eigen/Dense> //
 
 namespace dtwc {
 
 class Problem
 {
   int Nc{ 1 }; // Number of clusters.
-  VecMatrix<data_t> distMat;
+  Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> distMat;
   data_t maxDist{ -1 };
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER };
 
@@ -65,7 +68,12 @@ public:
     refreshDistanceMatrix();
   }
 
-  void refreshDistanceMatrix() { distMat.reset(data.size(), data.size(), -1); }
+  auto size() const { return data.size(); }
+  auto cluster_size() const { return Nc; }
+  auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
+  auto &p_vec(size_t i) { return data.p_vec[i]; }     // Alias not to write data. everytime.
+
+  void refreshDistanceMatrix() { distMat.setConstant(size(), size(), -1); }
 
   // Getters and setters:
   auto &getDistanceMatrix() { return distMat; }
@@ -73,18 +81,11 @@ public:
   template <typename T>
   auto readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
-  auto size() const { return data.size(); }
-  auto cluster_size() const { return Nc; }
-  auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
-  auto &p_vec(size_t i) { return data.p_vec[i]; }     // Alias not to write data. everytime.
-
   void clear_clusters();
-
   void resize();
 
   void set_numberOfClusters(int Nc_);
   void set_clusters(std::vector<int> &candidate_centroids);
-
   bool set_solver(dtwc::Solver solver_);
 
   std::string get_name(size_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
@@ -94,7 +95,7 @@ public:
   data_t distByInd(int i, int j);
   data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 2.0 / (maxDistance()); };
   void fillDistanceMatrix();
-  void printDistanceMatrix() { getDistanceMatrix().print(); }
+  void printDistanceMatrix() { std::cout << getDistanceMatrix() << '\n'; }
 
   void writeDistanceMatrix(const std::string &name_) { writeMatrix(getDistanceMatrix(), name_, output_folder); }
   void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }

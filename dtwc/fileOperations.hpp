@@ -23,6 +23,10 @@
 #include <fstream>
 #include <string>
 #include <sstream>
+#include <stdexcept> // for std::runtime_error
+
+
+#include <Eigen/Dense>
 
 namespace dtwc {
 
@@ -190,50 +194,45 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
 }
 
 
-template <typename data_t>
-void writeMatrix(dtwc::VecMatrix<data_t> &matrix, const std::string &name, fs::path out_folder = settings::resultsPath)
+template <typename matrix_t>
+void writeMatrix(const matrix_t &matrix, const std::string &name, fs::path out_folder = settings::resultsPath)
 {
   std::ofstream myFile(out_folder / name, std::ios_base::out);
 
   if (!myFile.good()) // check if we could open the file
   {
-    std::cerr << "Error in writeMatrix. File " << out_folder / name << " could not be opened.\n"
-              << "Please ensure that you have the folder " << out_folder << " and file is not open in any other program.\n";
-    throw 2;
+    // std::runtime_error("Error in writeMatrix. File " + std::to_string(out_folder / name) +
+    //                    " could not be opened.\n"
+    //                    "Please ensure that you have the folder "
+    //                    + std::to_string(out_folder)
+    //                    + " and file is not open in any other program.\n");
   }
 
-  for (int i = 0; i < matrix.rows(); i++) {
-    for (int j = 0; j < (matrix.cols() - 1); j++)
-      myFile << matrix(i, j) << ',';
-
-    myFile << matrix(i, (matrix.cols() - 1)) << '\n';
-  }
-
+  myFile << matrix;
   myFile.close();
 }
 
 template <typename data_t>
-void readMatrix(dtwc::VecMatrix<data_t> &matrix, const fs::path &name)
+void readMatrix(Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> &matrix, const fs::path &name)
 {
+  using Eigen::Dynamic;
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
     std::cout << "File " << name << " is not found. Matrix will not be written.\n";
 
-  matrix.data.clear();
-  std::string x_str;
-  data_t x;
+  std::vector<data_t> data;
+  data_t x{};
   while (in >> x) {
     if (in.peek() == ',')
       in.ignore();
 
-    matrix.data.push_back(x);
+    data.push_back(x);
   }
 
-  if (matrix.size() != matrix.data.size())
-    std::cout << "Warning! Given file and sizes are not compatible.\n";
+  if (matrix.size() != data.size())
+    std::runtime_error("readMatrix has failed! Given file and sizes are not compatible.\n");
 
-  if (matrix.data.size() < matrix.size())
-    throw 1;
+  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::ColMajor>>(data.data(), matrix.rows(), matrix.cols());
 }
 
 

@@ -41,7 +41,7 @@ void Problem::resize()
 {
   cluster_members.resize(Nc);
   centroids_ind.resize(Nc);
-  clusters_ind.resize(data.size());
+  clusters_ind.resize(size());
 }
 
 void Problem::set_numberOfClusters(int Nc_)
@@ -102,7 +102,7 @@ void Problem::fillDistanceMatrix()
 data_t Problem::maxDistance()
 {
   if (maxDist < 0)
-    maxDist = *std::max_element(distMat.data.begin(), distMat.data.end());
+    maxDist = distMat.maxCoeff();
 
   return maxDist;
 }

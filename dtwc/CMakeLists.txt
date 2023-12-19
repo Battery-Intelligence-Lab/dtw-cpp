@@ -20,6 +20,8 @@ target_sources(dtwc++
   timing.hpp
   utility.hpp
   warping.hpp
+  fileOperations.hpp
+  DataLoader.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC . ${range-v3_INCLUDE_DIRS})
