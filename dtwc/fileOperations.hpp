@@ -31,8 +31,6 @@
 namespace dtwc {
 
 namespace fs = std::filesystem;
-template <typename data_t>
-class VecMatrix;
 
 inline void ignoreBOM(std::ifstream &in)
 {

@@ -9,13 +9,12 @@
 
 #pragma once
 
-#include "Data.hpp"            // for Data
-#include "DataLoader.hpp"      // for DataLoader
-#include "fileOperations.hpp"  // for writeMatrix, readMatrix
-#include "settings.hpp"        // for data_t, resultsPath, writeAsFileNames
-#include "types/VecMatrix.hpp" // for VecMatrix
-#include "enums/enums.hpp"     // for using Enum types.
-#include "initialisation.hpp"  // for init functions
+#include "Data.hpp"           // for Data
+#include "DataLoader.hpp"     // for DataLoader
+#include "fileOperations.hpp" // for writeMatrix, readMatrix
+#include "settings.hpp"       // for data_t, resultsPath, writeAsFileNames
+#include "enums/enums.hpp"    // for using Enum types.
+#include "initialisation.hpp" // for init functions
 
 #include <cstddef>     // for size_t
 #include <filesystem>  // for operator/, path
@@ -34,8 +33,9 @@ namespace dtwc {
 
 class Problem
 {
+  using distMat_t = Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic>;
   int Nc{ 1 }; // Number of clusters.
-  Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> distMat;
+  distMat_t distMat;
   data_t maxDist{ -1 };
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER };
 
