@@ -24,16 +24,16 @@ function(dtwc_setup_dependencies)
   # endif()
 
 
-  # if(NOT TARGET eigen) # Eigen library:
-  # CPMAddPackage(
-  #   NAME eigen
-  #   URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz"
-  #   DOWNLOAD_ONLY YES
-  # )
+  if(NOT TARGET eigen) # Eigen library:
+  CPMAddPackage(
+    NAME eigen
+    URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz"
+    DOWNLOAD_ONLY YES
+  )
 
-  # add_library(eigen INTERFACE IMPORTED)
-  # target_include_directories(eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
-  # endif()
+  add_library(eigen INTERFACE IMPORTED)
+  target_include_directories(eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
+  endif()
 
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(

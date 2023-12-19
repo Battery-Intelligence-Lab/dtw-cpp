@@ -13,13 +13,13 @@
 
 #pragma once
 
-#include "types/types.hpp"
-
 #include <cstdlib>   // for abs, size_t
-#include <algorithm> // for min, max, fill
+#include <algorithm> // for min, max
 #include <cmath>     // for floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+
+#include <Eigen/Dense>
 
 namespace dtwc {
 
@@ -34,7 +34,7 @@ namespace dtwc {
 template <typename data_t>
 data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-  thread_local VecMatrix<data_t> C(x.size(), y.size()); //
+  thread_local Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.
@@ -141,7 +141,7 @@ template <typename data_t = float>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
 {
   // Actual banding with skewness.
-  static thread_local VecMatrix<data_t> C(x.size(), y.size()); //
+  thread_local Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> C; //
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const int mx = x.size();
@@ -154,8 +154,8 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
   const int m_long = long_vec.size();
 
   C.resize(m_short, m_long);
+  C.setConstant(maxValue);
 
-  std::fill(C.data.begin(), C.data.end(), maxValue);
   auto distance = [](data_t xi, data_t yi) { return std::abs(xi - yi); };
 
   if ((mx != 0) && (my != 0)) {

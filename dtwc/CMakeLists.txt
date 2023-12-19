@@ -29,6 +29,8 @@ target_link_libraries(dtwc++
   mip-solvers
   project_warnings
   project_options
+  PUBLIC 
+  eigen
 )
 
 find_package(OpenMP)

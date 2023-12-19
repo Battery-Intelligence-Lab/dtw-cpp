@@ -278,10 +278,8 @@ void Problem::cluster_by_kMedoidsPAM()
     init();
 
     std::cout << "Metoid initialisation is finished. "
-              << Nc << " medoids are initialised.\n";
-
-    std::cout << "Start clustering:\n";
-
+              << Nc << " medoids are initialised.\n"
+              << "Start clustering:\n";
 
     auto [status, total_cost] = cluster_by_kMedoidsPAM_single(i_rand);
 
@@ -387,16 +385,6 @@ void Problem::writeMedoidMembers(int iter, int rep)
     medoidMembers << '\n';
   }
   medoidMembers.close();
-}
-
-void Problem::writeDataOrder(fs::path out_folder)
-{
-  std::ofstream out(out_folder / (name + "_dataOrder.csv"), std::ios_base::out);
-
-  for (int i = 0; i < data.size(); i++)
-    out << i << ',' << p_names(i) << '\n';
-
-  out.close();
 }
 
 } // namespace dtwc
