@@ -37,7 +37,6 @@ const static fs::path root_folder(DTWC_ROOT_FOLDER); //!< Root folder for defini
 const auto resultsPath = root_folder / "results/";
 const auto dataPath = root_folder / "data";
 
-constexpr bool writeAsFileNames = true; // If true it writes the file names as report. Otherwise numbers.
 constexpr bool isDebug = false;
 
 constexpr int band = 0; // Size of band to use (if no band put 0)
