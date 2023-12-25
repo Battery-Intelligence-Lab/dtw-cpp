@@ -8,6 +8,7 @@
  */
 
 #include "Problem.hpp"
+#include "fileOperations.hpp"
 // #include "mip.hpp"             // for MIP_clustering_byGurobi
 // #include "parallelisation.hpp" // for run
 #include "scores.hpp" // for silhouette
@@ -133,7 +134,7 @@ void Problem::writeMedoidMembers(int iter, int rep)
 
 void Problem::writeDistanceMatrix(const std::string &name_)
 {
-  // ddd
+  writeMatrix(getDistanceMatrix(), name_, output_folder);
 }
 
 

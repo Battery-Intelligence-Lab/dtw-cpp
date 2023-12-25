@@ -1,9 +1,16 @@
 #include "dtwc.hpp"
 #include <iostream>
+#include <fstream>
+#include <string_view>
 
 int main()
 {
   using namespace dtwc;
+  Eigen::Array<float, Eigen::Dynamic, Eigen::Dynamic> x;
+  dtwc::readMatrix(x, settings::resultsPath / "DTW_kMeans_results_distanceMatrix.csv");
+
+
+  std::cout << x << std::endl;
 
   dtwc::Clock clk; // Create a clock object
   std::string probName = "DTW_kMeans_results";
@@ -22,12 +29,13 @@ int main()
   prob.set_solver(dtwc::Solver::Gurobi);
 
   prob.fillDistanceMatrix();
+  prob.writeDistanceMatrix();
 
-  prob.cluster_by_MIP();
+  // prob.cluster_by_MIP();
 
-  prob.printClusters(); // Prints to screen.
-  prob.writeClusters(); // Prints to file.
-  prob.writeSilhouettes();
+  // prob.printClusters(); // Prints to screen.
+  // prob.writeClusters(); // Prints to file.
+  // prob.writeSilhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }

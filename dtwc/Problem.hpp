@@ -81,7 +81,7 @@ public:
   auto &getDistanceMatrix() { return distMat; }
 
   template <typename T>
-  auto readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
+  void readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
   void clear_clusters();
   void resize();
@@ -110,8 +110,6 @@ public:
   void writeSilhouettes();
 
   // Initialisation of clusters:
-  void init_random() { init::random(*this); }
-  void init_Kmeanspp() { init::Kmeanspp(*this); }
   void init() { init_fun(*this); }
 
   // Clustering functions:
