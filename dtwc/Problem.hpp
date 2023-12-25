@@ -12,7 +12,7 @@
 #include "Data.hpp"           // for Data
 #include "DataLoader.hpp"     // for DataLoader
 #include "fileOperations.hpp" // for writeMatrix, readMatrix
-#include "settings.hpp"       // for data_t, resultsPath, writeAsFileNames
+#include "settings.hpp"       // for data_t, resultsPath
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 
@@ -42,8 +42,10 @@ class Problem
   // Private functions:
   std::pair<int, double> cluster_by_kMedoidsPAM_single(int rep);
 
+  void writeBestRep(int best_rep);
+  void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
+
 public:
-  bool writeAsFileNames{ settings::writeAsFileNames };
   Method method{ Method::Kmedoids };
   int maxIter{ 100 };    // Maximum number of iteration for iterative-methods
   int N_repetition{ 1 }; // Repetition for iterative-methods.
@@ -70,8 +72,8 @@ public:
 
   auto size() const { return data.size(); }
   auto cluster_size() const { return Nc; }
-  auto &p_names(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
-  auto &p_vec(size_t i) { return data.p_vec[i]; }     // Alias not to write data. everytime.
+  auto &get_name(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
+  auto &p_vec(size_t i) { return data.p_vec[i]; }      // Alias not to write data. everytime.
 
   void refreshDistanceMatrix() { distMat.setConstant(size(), size(), -1); }
 
@@ -88,8 +90,6 @@ public:
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);
 
-  std::string get_name(size_t i) { return writeAsFileNames ? p_names(i) : std::to_string(i); }
-
   data_t maxDistance();
 
   data_t distByInd(int i, int j);
@@ -97,7 +97,7 @@ public:
   void fillDistanceMatrix();
   void printDistanceMatrix() { std::cout << getDistanceMatrix() << '\n'; }
 
-  void writeDistanceMatrix(const std::string &name_) { writeMatrix(getDistanceMatrix(), name_, output_folder); }
+  void writeDistanceMatrix(const std::string &name_);
   void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
 
   void printClusters();

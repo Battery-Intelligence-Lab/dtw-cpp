@@ -7,7 +7,9 @@ add_subdirectory(mip)
 target_sources(dtwc++
   PRIVATE
   Problem.cpp
+  Problem_IO.cpp
   initialisation.cpp
+  scores.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp

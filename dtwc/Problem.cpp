@@ -22,7 +22,6 @@
 #include <iostream>  // for cout
 #include <iterator>  // for back_insert_iterator, back_inserter
 #include <limits>    // for numeric_limits
-#include <new>       // for bad_alloc
 #include <random>    // for mt19937, discrete_distribution, unifo...
 #include <string>    // for allocator, char_traits, operator+
 #include <utility>   // for pair
@@ -105,67 +104,6 @@ data_t Problem::maxDistance()
     maxDist = distMat.maxCoeff();
 
   return maxDist;
-}
-
-void Problem::printClusters()
-{
-  std::cout << "Clusters: ";
-  for (auto ind : centroids_ind)
-    std::cout << get_name(ind) << ' ';
-
-  std::cout << '\n';
-
-  for (int i{ 0 }; i < Nc; i++) {
-    std::cout << get_name(centroids_ind[i]) << " has: ";
-
-    for (auto member : cluster_members[i])
-      std::cout << get_name(member) << " ";
-
-    std::cout << '\n';
-  }
-}
-
-void Problem::writeClusters()
-{
-  auto file_name = name + "_Nc_" + std::to_string(Nc) + ".csv";
-
-  std::ofstream myFile(output_folder / file_name, std::ios_base::out);
-
-  myFile << "Clusters:\n";
-
-  for (int i{ 0 }; i < Nc; i++) {
-    if (i != 0) myFile << ',';
-
-    myFile << p_names(centroids_ind[i]);
-  }
-
-  myFile << "\n\n"
-         << "Data" << ',' << "its cluster\n";
-
-  for (int i{ 0 }; i < data.size(); i++)
-    myFile << p_names(i) << ',' << p_names(centroids_ind[clusters_ind[i]]) << '\n';
-
-  myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
-
-  myFile.close();
-}
-
-
-void Problem::writeSilhouettes()
-{
-  auto silhouettes = scores::silhouette(*this);
-
-  std::string silhouette_name{ name + "_silhouettes_Nc_" };
-
-  silhouette_name += std::to_string(Nc) + ".csv";
-
-  std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
-
-  myFile << "Silhouettes:\n";
-  for (int i{ 0 }; i < data.size(); i++)
-    myFile << p_names(i) << ',' << silhouettes[i] << '\n';
-
-  myFile.close();
 }
 
 
@@ -296,40 +234,25 @@ void Problem::cluster_by_kMedoidsPAM()
     }
   }
 
-  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition.csv"), std::ios_base::out);
-  bestRepFile << best_rep << '\n';
-  bestRepFile.close();
-
-  std::cout << "Best repetition: " << best_rep << '\n';
+  writeBestRep(best_rep);
 }
 
 std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 {
-
   if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
 
   auto oldmedoids = centroids_ind;
 
   int status = -1;
-  const auto outPath = output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv");
-  std::ofstream medoidsFile(outPath, std::ios_base::out);
-
-  if (!medoidsFile.good()) {
-    std::cout << "Failed to open file in path: " << outPath << '\n'
-              << "Program is exiting." << std::endl;
-
-    throw 1;
-  }
+  std::vector<std::vector<int>> centroids_all;
 
   for (int i = 0; i < maxIter; i++) {
 
     std::cout << "Medoids: ";
-    for (auto medoid : centroids_ind) {
+    for (auto medoid : centroids_ind)
       std::cout << get_name(medoid) << ' ';
-      medoidsFile << get_name(medoid) << ',';
-    }
 
-    medoidsFile << '\n';
+    centroids_all.push_back(centroids_ind);
 
     assignClusters();
     std::cout << "Test 1" << std::endl;
@@ -349,12 +272,9 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
     oldmedoids = centroids_ind;
   }
 
-  auto total_cost = findTotalCost();
+  const double total_cost = findTotalCost();
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
-  medoidsFile << "Procedure is completed with cost: " << total_cost << '\n';
-
-  medoidsFile.close();
-
+  writeMedoids(centroids_all, rep, total_cost);
   return std::pair(status, total_cost);
 }
 
@@ -371,20 +291,6 @@ double Problem::findTotalCost()
   }
 
   return sum;
-}
-
-void Problem::writeMedoidMembers(int iter, int rep)
-{
-  const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
-                                  + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
-
-  std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
-  for (auto &members : cluster_members) {
-    for (auto member : members)
-      medoidMembers << get_name(member) << ',';
-    medoidMembers << '\n';
-  }
-  medoidMembers.close();
 }
 
 } // namespace dtwc
