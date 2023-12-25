@@ -75,17 +75,4 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  if (NOT TARGET csv)
-  CPMAddPackage(
-    NAME csv
-    URL "https://github.com/vincentlaucsb/csv-parser/archive/refs/tags/2.1.2.tar.gz"
-    DOWNLOAD_ONLY YES 
-  )
-
-  add_library(csv::csv INTERFACE IMPORTED)
-  set_target_properties(csv::csv PROPERTIES
-    INTERFACE_INCLUDE_DIRECTORIES "${csv_SOURCE_DIR}/single_include")
-
-  endif()
-
 endfunction()
