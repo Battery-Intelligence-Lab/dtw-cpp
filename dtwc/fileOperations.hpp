@@ -179,16 +179,16 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
 }
 
 
-template <typename matrix_t>
-void writeMatrix(const matrix_t &matrix, const std::string &name, fs::path out_folder = settings::resultsPath)
+template <typename matrix_t, typename path_t>
+void writeMatrix(const matrix_t &matrix, const path_t &path)
 {
-  std::ofstream myFile(out_folder / name, std::ios_base::out);
+  std::ofstream myFile(path, std::ios_base::out);
 
   if (!myFile.good()) // check if we could open the file
   {
-    std::cerr << "Error in writeMatrix. File " << (out_folder / name)
+    std::cerr << "Error in writeMatrix. File " << path
               << " could not be opened. Please ensure that you have the folder "
-              << out_folder << " and file is not open in any other program.\n";
+              << " and file is not open in any other program.\n";
     std::runtime_error("");
   }
 
@@ -220,7 +220,9 @@ void readMatrix(Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> &matrix, co
     ++rows;
   }
 
-  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::RowMajor>>(data.data(), rows, data.size() / rows);
+  const size_t cols = data.empty() ? 0 : (data.size() / rows);
+
+  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::RowMajor>>(data.data(), rows, cols);
 }
 
 
