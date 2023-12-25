@@ -48,6 +48,7 @@ target_link_libraries(dtwc_main
   dtwc++
   project_warnings
   project_options
+  csv::csv
 )
 
 add_executable(dtwc_cl
