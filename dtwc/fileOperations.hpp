@@ -24,7 +24,7 @@
 #include <string>
 #include <sstream>
 #include <stdexcept> // for std::runtime_error
-
+#include <array>
 
 #include <Eigen/Dense>
 
@@ -34,30 +34,17 @@ namespace fs = std::filesystem;
 
 inline void ignoreBOM(std::ifstream &in)
 {
-  char c = '.';
-  do {
-    in >> c;
-  } while (c < 45); //!< Ignore byte order mark (BOM) at the beginning
+  std::array<char, 3> bom;
+  in.read(bom.data(), bom.size());
 
-  in.putback(c);
-}
-
-
-template <typename data_t>
-void generic_reader(fs::path path)
-{
-  std::ifstream in(path, std::ios_base::in);
-  if (!in.good()) // check if we could open the file
-  {
-    std::cerr << "Error in generic_reader. File " << path << " could not be opened.\n";
-    throw 2;
+  //!< Check if BOM (0xEF, 0xBB, 0xBF) is present
+  if (!(bom[0] == '\xEF' && bom[1] == '\xBB' && bom[2] == '\xBF')) {
+    //<! If BOM is not present, rewind the stream
+    in.clear();  // Clear EOF flag if end of file was reached
+    in.seekg(0); // Go back to the start of the file
   }
-
-  ignoreBOM(in);
-
-  std::vector<data_t> p;
-  std::vector<size_t> rowStarts;
 }
+
 
 template <typename data_t>
 auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char delimiter = ',')
@@ -66,7 +53,7 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
   if (!in.good()) // check if we could open the file
   {
     std::cerr << "Error in readFile. File " << name << " could not be opened.\n";
-    throw 2;
+    std::runtime_error("");
   }
 
   ignoreBOM(in);
@@ -192,45 +179,50 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
 }
 
 
-template <typename matrix_t>
-void writeMatrix(const matrix_t &matrix, const std::string &name, fs::path out_folder = settings::resultsPath)
+template <typename matrix_t, typename path_t>
+void writeMatrix(const matrix_t &matrix, const path_t &path)
 {
-  std::ofstream myFile(out_folder / name, std::ios_base::out);
+  std::ofstream myFile(path, std::ios_base::out);
 
   if (!myFile.good()) // check if we could open the file
   {
-    // std::runtime_error("Error in writeMatrix. File " + std::to_string(out_folder / name) +
-    //                    " could not be opened.\n"
-    //                    "Please ensure that you have the folder "
-    //                    + std::to_string(out_folder)
-    //                    + " and file is not open in any other program.\n");
+    std::cerr << "Error in writeMatrix. File " << path
+              << " could not be opened. Please ensure that you have the folder "
+              << " and file is not open in any other program.\n";
+    std::runtime_error("");
   }
 
-  myFile << matrix;
+  Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n");
+  myFile << matrix.format(CSVFormat);
   myFile.close();
 }
 
 template <typename data_t>
 void readMatrix(Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> &matrix, const fs::path &name)
 {
+  // Adapted from: https://stackoverflow.com/questions/34247057/how-to-read-csv-file-and-assign-to-eigen-matrix/39146048#39146048
   using Eigen::Dynamic;
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
-    std::cout << "File " << name << " is not found. Matrix will not be written.\n";
+    std::cout << "File " << name << " is not found. Matrix will not be read." << std::endl;
 
   std::vector<data_t> data;
+  std::string line;
   data_t x{};
-  while (in >> x) {
-    if (in.peek() == ',')
-      in.ignore();
 
-    data.push_back(x);
+  size_t rows = 0;
+  while (std::getline(in, line)) {
+    std::stringstream lineStream(line);
+    std::string cell;
+    while (std::getline(lineStream, cell, ','))
+      data.push_back(std::stod(cell));
+
+    ++rows;
   }
 
-  if (matrix.size() != data.size())
-    std::runtime_error("readMatrix has failed! Given file and sizes are not compatible.\n");
+  const size_t cols = data.empty() ? 0 : (data.size() / rows);
 
-  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::ColMajor>>(data.data(), matrix.rows(), matrix.cols());
+  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::RowMajor>>(data.data(), rows, cols);
 }
 
 

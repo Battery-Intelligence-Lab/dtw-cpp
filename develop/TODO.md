@@ -8,8 +8,9 @@
 
 ### Current priority: 
 
-- [ ] CMake files arranging:
-  - [ ] HiGHS 1.6.0 does not always work. Also it does not work in debug mode due to iterator level. 
+- [ ] Modernise `*.csv` reading interface, allow for rowwise or columnwise data. 
+- [x] CMake files arranging:
+  - [x] HiGHS 1.6.0 does not always work. Also it does not work in debug mode due to iterator level. 
 - [ ] Commenting
 - [ ] MATLAB / Python integration
 - [ ] JOSS paper  
@@ -29,7 +30,7 @@
   - [ ] dtwclust in R
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
-  - [ ] Simplex is added. -> temporarily removed.
+  - [ ] Simplex is being added. -> temporarily removed.
   - [x] HiGHS is added.
 - [x] Exploration of totally unimodular matrices. -> Not totally unimodular. 
 - [ ] Creating DTW objects taking distance/band as a policy-based design 

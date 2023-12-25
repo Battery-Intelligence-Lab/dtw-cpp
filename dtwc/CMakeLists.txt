@@ -7,7 +7,9 @@ add_subdirectory(mip)
 target_sources(dtwc++
   PRIVATE
   Problem.cpp
+  Problem_IO.cpp
   initialisation.cpp
+  scores.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
@@ -39,5 +41,3 @@ find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
 endif()
-
-#set_property(TARGET dtwc++ PROPERTY CXX_STANDARD 17)
