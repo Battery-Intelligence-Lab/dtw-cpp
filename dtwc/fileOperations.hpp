@@ -24,7 +24,6 @@
 #include <string>
 #include <sstream>
 #include <stdexcept> // for std::runtime_error
-#include <array>
 
 #include <Eigen/Dense>
 
@@ -32,17 +31,19 @@ namespace dtwc {
 
 namespace fs = std::filesystem;
 
-inline void ignoreBOM(std::ifstream &in)
+inline void ignoreBOM(std::istream &in)
 {
-  std::array<char, 3> bom;
-  in.read(bom.data(), bom.size());
-
-  //!< Check if BOM (0xEF, 0xBB, 0xBF) is present
-  if (!(bom[0] == '\xEF' && bom[1] == '\xBB' && bom[2] == '\xBF')) {
-    //<! If BOM is not present, rewind the stream
-    in.clear();  // Clear EOF flag if end of file was reached
-    in.seekg(0); // Go back to the start of the file
+  char BOMchars[] = { '\xEF', '\xBB', '\xBF' };
+  int seek = 0;
+  char c = '.';
+  while (in >> c) {
+    if (BOMchars[seek] != c) {
+      in.putback(c);
+      break;
+    }
+    seek++;
   }
+  in.clear(); // Clear EOF flag if end of file was reached
 }
 
 
