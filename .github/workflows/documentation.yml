@@ -61,8 +61,8 @@ jobs:
       
       - name: upload coverage results
         run: |
-          lcov --directory ./dtwc --capture --output-file coverage.info
-          lcov --remove coverage.info '/usr/*' '*/tests/*' '*/catch2/*' --output-file coverage.info
+          lcov --directory ./tests --capture --output-file coverage.info
+          lcov --remove coverage.info '*/tests/*' '*/eigen-src/*' '/_deps/*' '/usr/*' '*/catch2/*' --output-file coverage.info
           lcov --list coverage.info
           bash <(curl https://codecov.io/bash) -f coverage.info
         env:
