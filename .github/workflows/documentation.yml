@@ -2,8 +2,7 @@ name: Build, test and generate docs
 on:
   push:
     branches:
-      - main
-      - develop
+      - main # Due to protection of branches only main can push docs
     # paths:
     #   - 'dtwc/**'
     #   - 'docs/**'
