@@ -20,6 +20,7 @@
 #include <random>
 #include <algorithm>
 #include <iterator>
+#include <set>
 
 using Catch::Matchers::WithinAbs;
 
@@ -103,6 +104,7 @@ TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
   fs::remove(tempFilePath); // Clean up the test file
 }
 
+
 TEST_CASE("Load batch file", "[fileOperations]")
 {
   std::string tempFileName = "test_matrix";
@@ -177,4 +179,88 @@ TEST_CASE("Load batch file", "[fileOperations]")
 
   fs::remove(tempFileName + ".csv"); // Clean up the test files
   fs::remove(tempFileName + ".tsv"); // Clean up the test files
+}
+
+TEST_CASE("Load folder", "[fileOperations]")
+{
+  // Generate data:
+  const int N_data = GENERATE(1, 2, 10, 100);  // Size of the outer vector
+  const int L_data = GENERATE(1, 2, 10, 1000); // Maximum size of the inner vectors
+
+  std::vector<std::vector<double>> random_data;
+  std::random_device rd;
+  std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, L_data);
+  std::uniform_int_distribution<> distString(97, 122);
+
+  int stringLength = 10;
+
+  for (int i = 0; i < N_data; ++i) {
+    int innerSize = dis(gen); // Random size for the inner vector
+    std::vector<double> innerVector;
+
+    for (int j = 0; j < innerSize; ++j)
+      innerVector.push_back(dis(gen)); // Generate random number
+
+    random_data.push_back(std::move(innerVector));
+  }
+
+  // Create random names:
+  std::vector<std::string> uniqueNames;
+  {
+    std::set<std::string> tempNames;
+    while (tempNames.size() < static_cast<size_t>(N_data)) {
+      std::string str;
+      for (int j = 0; j < stringLength; ++j) {
+        char randomChar = static_cast<char>(distString(gen));
+        str.push_back(randomChar);
+      }
+      tempNames.insert(str);
+    }
+
+    std::move(tempNames.begin(), tempNames.end(), std::back_inserter(uniqueNames));
+  }
+
+  // write the files
+  fs::create_directory("CSV");
+  fs::create_directory("TSV");
+  for (int i = 0; i < N_data; ++i) {
+    std::ofstream out_csv("CSV/" + uniqueNames[i] + ".csv", std::ios_base::out);
+    std::ofstream out_tsv("TSV/" + uniqueNames[i] + ".tsv", std::ios_base::out);
+
+    for (size_t j{}; j < random_data[i].size(); ++j) {
+      out_csv << j << ',' << random_data[i][j] << '\n';
+      out_tsv << j << '\t' << random_data[i][j] << '\n';
+    }
+  } // Auto close at the end thanks to the destructor.
+
+  // ----- now testing -----
+  SECTION("csv batch load")
+  {
+    fs::path pth = "CSV";
+    int start_row{ 0 }, start_col{ 1 };
+    char delimiter{ ',' };
+    auto [p_vec, p_names] = load_folder<double>(pth, N_data, false, start_row, start_col, delimiter);
+
+    for (size_t i{}; i < N_data; i++)
+      REQUIRE(p_names[i] == uniqueNames[i]);
+
+    REQUIRE(p_vec == random_data);
+  }
+
+  SECTION("tsv batch load")
+  {
+    fs::path pth = "TSV";
+    int start_row{ 0 }, start_col{ 1 };
+    char delimiter{ '\t' };
+    auto [p_vec, p_names] = load_folder<double>(pth, N_data, false, start_row, start_col, delimiter);
+
+    for (size_t i{}; i < N_data; i++)
+      REQUIRE(p_names[i] == uniqueNames[i]);
+
+    REQUIRE(p_vec == random_data);
+  }
+
+  fs::remove_all("CSV"); // Clean up the test files
+  fs::remove_all("TSV"); // Clean up the test files
 }
