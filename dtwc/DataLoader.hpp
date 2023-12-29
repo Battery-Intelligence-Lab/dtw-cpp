@@ -23,9 +23,9 @@ namespace dtwc {
 
 class DataLoader
 {
-  int start_col{ 0 }, start_row{ 0 }, Ndata{ -1 }, verbose{ 0 };
-  char delimiter{ ',' };
-  fs::path data_path;
+  int start_col{ 0 }, start_row{ 0 }, Ndata{ -1 }, verbose{ 1 };
+  char delim{ ',' };
+  fs::path data_path{ "." };
 
 public:
   DataLoader() = default;
@@ -35,6 +35,14 @@ public:
     this->path(path_);
     this->n_data(Ndata_);
   }
+
+  // Get methods:
+  auto startColumn() { return start_col; }
+  auto startRow() { return start_row; }
+  auto n_data() { return Ndata; }
+  auto delimiter() { return delim; }
+  auto path() { return data_path; }
+  auto verbosity() { return verbose; }
 
   // Some methods for chaining:
   DataLoader &startColumn(int N)
@@ -55,12 +63,20 @@ public:
     return *this;
   }
 
+  DataLoader &delimiter(char delim_)
+  {
+    delim = delim_;
+    return *this;
+  }
+
   DataLoader &path(const fs::path &data_path_)
   {
     data_path = data_path_;
 
-    if (data_path_.extension() == ".tsv")
-      delimiter = '\t';
+    if (data_path_.extension() == ".csv")
+      delim = ',';
+    else if (data_path_.extension() == ".tsv")
+      delim = '\t';
 
     return *this;
   }
@@ -75,9 +91,9 @@ public:
   {
     Data d;
     if (fs::is_directory(data_path))
-      std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, Ndata, verbose > 0, start_row, start_col, delimiter);
+      std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, Ndata, verbose, start_row, start_col, delim);
     else
-      std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose > 0, start_row, start_col, delimiter);
+      std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose, start_row, start_col, delim);
 
     d.Nb = static_cast<int>(d.p_vec.size());
     return d;
