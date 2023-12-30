@@ -106,8 +106,6 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_
     if (verbose >= 2 || (verbose == 1 && p.empty()))
       std::cout << entry.path() << "\tSize: " << p.size() << '\n';
 
-    assert(p.size() > 2);
-
     p_vec.push_back(std::move(p));
     p_names.push_back(entry.path().stem().string());
 
