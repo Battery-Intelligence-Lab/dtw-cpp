@@ -115,44 +115,11 @@ TEST_CASE("Load batch file", "[fileOperations]")
   const int N_data = GENERATE(1, 2, 10, 1000); // Size of the outer vector
   const int L_data = GENERATE(1, 2, 10, 1000); // Maximum size of the inner vectors
 
-  std::vector<std::vector<double>> random_data;
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_int_distribution<> dis(0, L_data);
-
-
-  for (int i = 0; i < N_data; ++i) {
-    int innerSize = dis(gen); // Random size for the inner vector
-    std::vector<double> innerVector;
-
-    for (int j = 0; j < innerSize; ++j)
-      innerVector.push_back(dis(gen)); // Generate random number
-
-    random_data.push_back(std::move(innerVector));
-  }
+  const auto random_data = test_util::get_random_data<double>(N_data, L_data);
 
   // write the files
-  {
-    std::ofstream out_csv(tempFileName + ".csv", std::ios_base::out);
-    std::ofstream out_tsv(tempFileName + ".tsv", std::ios_base::out);
-
-
-    for (const auto &innerVector : random_data) {
-      for (size_t i = 0; i < innerVector.size(); i++) {
-        if (i != 0) {
-          out_csv << ',';
-          out_tsv << '\t';
-        }
-
-        out_csv << innerVector[i];
-        out_tsv << innerVector[i];
-      }
-
-      out_csv << '\n';
-      out_tsv << '\n';
-    }
-  } // Auto close at the end thanks to the destructor.
-
+  test_util::write_data_to_file(tempFileName + ".csv", random_data, ',');
+  test_util::write_data_to_file(tempFileName + ".tsv", random_data, '\t');
 
   // ----- now testing -----
   SECTION("csv batch load")

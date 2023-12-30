@@ -83,4 +83,20 @@ inline void write_data_to_folder(std::string folder_name, const std::vector<std:
   }
 }
 
+template <typename data_t>
+inline void write_data_to_file(std::string file_name, const std::vector<std::vector<data_t>> &random_data, char delimiter = ',')
+{
+  std::ofstream out(file_name, std::ios_base::out);
+
+  for (const auto &innerVector : random_data) {
+    for (size_t i = 0; i < innerVector.size(); i++) {
+      if (i != 0) out << delimiter;
+
+      out << innerVector[i];
+    }
+
+    out << '\n';
+  }
+}
+
 } // namespace dtwc::test_util
