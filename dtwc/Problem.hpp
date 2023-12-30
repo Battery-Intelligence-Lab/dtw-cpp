@@ -78,8 +78,6 @@ public:
   void refreshDistanceMatrix() { distMat.setConstant(size(), size(), -1); }
 
   // Getters and setters:
-  auto &getDistanceMatrix() { return distMat; }
-
   template <typename T>
   void readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
 
@@ -95,7 +93,7 @@ public:
   data_t distByInd(int i, int j);
   data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 2.0 / (maxDistance()); };
   void fillDistanceMatrix();
-  void printDistanceMatrix() { std::cout << getDistanceMatrix() << '\n'; }
+  void printDistanceMatrix() { std::cout << distMat << '\n'; }
 
   void writeDistanceMatrix(const std::string &name_);
   void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }

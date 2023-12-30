@@ -122,7 +122,7 @@ void Problem::writeMedoidMembers(int iter, int rep)
 
 void Problem::writeDistanceMatrix(const std::string &name_)
 {
-  writeMatrix(getDistanceMatrix(), output_folder / name_);
+  writeMatrix(distMat, output_folder / name_);
 }
 
 
