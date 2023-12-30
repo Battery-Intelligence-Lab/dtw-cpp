@@ -75,4 +75,9 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
+  CPMAddPackage(
+    NAME armadillo
+    URL "https://sourceforge.net/projects/arma/files/armadillo-12.6.7.tar.xz"
+  )
+
 endfunction()
