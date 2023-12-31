@@ -10,7 +10,7 @@
 #include "Problem.hpp"
 #include "fileOperations.hpp"
 #include "scores.hpp"   // for silhouette
-#include "settings.hpp" // for data_t, randGenerator, band, isDebug
+#include "settings.hpp" // for data_t, randGenerator, band
 
 #include <iomanip>  // for operator<<, setprecision
 #include <iostream> // for cout^

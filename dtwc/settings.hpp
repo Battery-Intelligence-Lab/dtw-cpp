@@ -28,7 +28,6 @@ static std::mt19937 randGenerator(29); // std::mt19937{ std::random_device{}() }
 
 
 namespace dtwc::settings {
-
 // Filesystem settings:
 namespace fs = std::filesystem; //!< std::filesystem alias.
 
@@ -40,7 +39,6 @@ const auto dataPath = root_folder / "data";
 constexpr bool isDebug = false;
 
 constexpr int band = 0; // Size of band to use (if no band put 0)
-
 
 // Default settings:
 constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
