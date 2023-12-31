@@ -92,7 +92,7 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
 
 
 template <typename data_t, typename Tpath>
-auto load_folder(Tpath &folder_path, int Ndata = -1, bool print = false, int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
   std::cout << "Reading data:" << std::endl;
 
@@ -104,10 +104,8 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, bool print = false, int sta
 
     auto p = readFile<data_t>(entry.path(), start_row, start_col, delimiter);
 
-    if (print || p.empty())
+    if (verbose >= 2 || (verbose == 1 && p.empty()))
       std::cout << entry.path() << "\tSize: " << p.size() << '\n';
-
-    assert(p.size() > 2);
 
     p_vec.push_back(std::move(p));
     p_names.push_back(entry.path().stem().string());
@@ -122,7 +120,7 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, bool print = false, int sta
 }
 
 template <typename data_t>
-auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
   std::cout << "Reading data:" << std::endl;
 
@@ -168,7 +166,7 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
 
     p.shrink_to_fit();
 
-    if (print || p.empty()) // It should say if p is empty!
+    if (verbose >= 2 || (verbose == 1 && p.empty()))
       std::cout << file_path << '\t' << "data: " << n_rows << " Size: " << p.size() << '\n';
 
     p_vec.push_back(std::move(p));
