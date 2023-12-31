@@ -77,9 +77,12 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Initialise q vector for cost.
   model.lp_.col_cost_.resize(Nvar);
 
+  if (!prob.isDistanceMatrixFilled()) prob.fillDistanceMatrix();
+  const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0); // In case no distance is set.
+
   for (int j{ 0 }; j < Nb; j++)
     for (int i{ 0 }; i < Nb; i++)
-      model.lp_.col_cost_[i + j * Nb] = prob.distByInd_scaled(i, j);
+      model.lp_.col_cost_[i + j * Nb] = prob.distByInd(i, j) / scaling_factor;
 
 
   model.lp_.col_lower_.clear();

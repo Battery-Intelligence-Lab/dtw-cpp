@@ -23,5 +23,5 @@ endif()
 
 if(DTWC_ENABLE_HIGHS)
   target_compile_definitions(mip-solvers PUBLIC DTWC_ENABLE_HIGHS)
-  target_link_libraries(mip-solvers PRIVATE highs::highs)
+  target_link_libraries(mip-solvers PRIVATE highs::highs armadillo)
 endif()

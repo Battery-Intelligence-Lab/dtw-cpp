@@ -44,9 +44,9 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     for (int i{ 0 }; i < Nb; i++) {
       GRBLinExpr lhs = 0;
-      for (int j{ 0 }; j < Nb; j++) {
+      for (int j{ 0 }; j < Nb; j++)
         lhs += w[j + i * Nb];
-      }
+
       model.addConstr(lhs, '=', 1.0);
     }
 
@@ -54,6 +54,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     for (int j{ 0 }; j < Nb; j++)
       for (int i{ 0 }; i < Nb; i++)
         model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
+
     {
       GRBLinExpr lhs = 0;
       for (int i{ 0 }; i < Nb; i++)
@@ -62,22 +63,20 @@ void MIP_clustering_byGurobi(Problem &prob)
       model.addConstr(lhs == Nc); // There should be Nc clusters.
     }
 
+    if (!prob.isDistanceMatrixFilled()) prob.fillDistanceMatrix();
+    const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0);
     // Set objective
     GRBLinExpr obj = 0;
     for (int j{ 0 }; j < Nb; j++)
       for (int i{ 0 }; i < Nb; i++)
-        obj += w[i + j * Nb] * prob.distByInd_scaled(i, j);
+        obj += w[i + j * Nb] * prob.distByInd(i, j) / scaling_factor;
 
     model.setObjective(obj, GRB_MINIMIZE);
 
-    // model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
-    // model.set(GRB_IntParam_Method, 1);       // simplex
+    model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
     model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
-    // model.set(GRB_IntParam_Threads, 3); // Set to dual simplex?
-    // model.set(GRB_IntParam_Cuts, 3); // More cuts? -> not very effective.
 
     std::cout << "Finished setting up the MILP problem." << std::endl;
-
 
     model.optimize();
 

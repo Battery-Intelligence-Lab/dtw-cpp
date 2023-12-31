@@ -44,7 +44,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
 }
 
 
-void Problem::printClusters()
+void Problem::printClusters() const
 {
   std::cout << "Clusters: ";
   for (auto ind : centroids_ind)
@@ -105,7 +105,7 @@ void Problem::writeSilhouettes()
   myFile.close();
 }
 
-void Problem::writeMedoidMembers(int iter, int rep)
+void Problem::writeMedoidMembers(int iter, int rep) const
 {
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
@@ -120,7 +120,7 @@ void Problem::writeMedoidMembers(int iter, int rep)
 }
 
 
-void Problem::writeDistanceMatrix(const std::string &name_)
+void Problem::writeDistanceMatrix(const std::string &name_) const
 {
   writeMatrix(distMat, output_folder / name_);
 }

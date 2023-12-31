@@ -27,18 +27,23 @@
 #include <functional>  // std::function
 #include <iostream>
 
+#include <armadillo>
 #include <Eigen/Dense> //
+
 
 namespace dtwc {
 
 class Problem
 {
-  using distMat_t = Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic>;
+public:
+  using distMat_t = arma::Mat<double>;
+
+private:
   int Nc{ 1 }; // Number of clusters.
   distMat_t distMat;
-  data_t maxDist{ -1 };
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER };
 
+  bool is_distMat_filled{ false };
   // Private functions:
   std::pair<int, double> cluster_by_kMedoidsPAM_single(int rep);
 
@@ -72,10 +77,12 @@ public:
 
   auto size() const { return data.size(); }
   auto cluster_size() const { return Nc; }
-  auto &get_name(size_t i) { return data.p_names[i]; } // Alias not to write data. everytime.
-  auto &p_vec(size_t i) { return data.p_vec[i]; }      // Alias not to write data. everytime.
+  auto &get_name(size_t i) { return data.p_names[i]; }             // Alias not to write data. everytime.
+  auto const &get_name(size_t i) const { return data.p_names[i]; } // Alias not to write data. everytime.
 
-  void refreshDistanceMatrix() { distMat.setConstant(size(), size(), -1); }
+  auto &p_vec(size_t i) { return data.p_vec[i]; } // Alias not to write data. everytime.
+
+  void refreshDistanceMatrix();
 
   // Getters and setters:
   template <typename T>
@@ -88,23 +95,20 @@ public:
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);
 
-  data_t maxDistance();
-
+  data_t maxDistance() const { return distMat.max(); }
   data_t distByInd(int i, int j);
-  data_t distByInd_scaled(int i, int j) { return distByInd(i, j) * 2.0 / (maxDistance()); };
+  bool isDistanceMatrixFilled() const { return is_distMat_filled; }
+
   void fillDistanceMatrix();
-  void printDistanceMatrix() { std::cout << distMat << '\n'; }
+  void printDistanceMatrix() const;
 
-  void writeDistanceMatrix(const std::string &name_);
-  void writeDistanceMatrix() { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
+  void writeDistanceMatrix(const std::string &name_) const;
+  void writeDistanceMatrix() const { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
 
-  void printClusters();
+  void printClusters() const;
   void writeClusters();
 
-  void writeMedoidMembers(int iter, int rep = 0);
-
-  auto calculate_silhouette();
-
+  void writeMedoidMembers(int iter, int rep = 0) const;
   void writeSilhouettes();
 
   // Initialisation of clusters:

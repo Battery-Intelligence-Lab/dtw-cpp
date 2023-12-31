@@ -74,6 +74,15 @@ bool Problem::set_solver(Solver solver_)
   return true;
 }
 
+void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
+
+void Problem::refreshDistanceMatrix()
+{
+  distMat.set_size(size(), size());
+  distMat.fill(-1);
+  is_distMat_filled = false;
+}
+
 
 double Problem::distByInd(int i, int j)
 {
@@ -94,16 +103,10 @@ void Problem::fillDistanceMatrix()
       distByInd(i, j);
   };
 
+  std::cout << "Distance matrix is being filled!" << std::endl;
   run(oneTask, data.size() * data.size());
-  maxDistance();
-}
-
-data_t Problem::maxDistance()
-{
-  if (maxDist < 0)
-    maxDist = distMat.maxCoeff();
-
-  return maxDist;
+  is_distMat_filled = true;
+  std::cout << "Distance matrix has been filled!" << std::endl;
 }
 
 

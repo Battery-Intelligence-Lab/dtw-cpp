@@ -16,11 +16,11 @@
 
 #include <string>
 #include <sstream>
+#include <armadillo>
 
 using Catch::Matchers::WithinAbs;
 
 using namespace dtwc;
-using namespace Eigen;
 
 TEST_CASE("ignoreBOM test", "[file_operations]")
 {
@@ -66,35 +66,35 @@ TEST_CASE("Write and Read Eigen Matrices", "[fileOperations]")
   auto M = GENERATE(1, 2, 3, 5, 10, 20, 50, 100);
   auto N = GENERATE(1, 2, 3, 5, 10, 20, 50, 100);
 
-  Eigen::ArrayXXd matrix = MatrixXd::Random(M, N);
+  Problem::distMat_t matrix(M, N, arma::fill::randu);
   fs::path tempFilePath = "test_matrix.csv";
 
   dtwc::writeMatrix(matrix, tempFilePath);
 
-  Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> readMat;
+  Problem::distMat_t readMat;
 
   dtwc::readMatrix(readMat, tempFilePath);
 
-  REQUIRE(readMat.isApprox(matrix, 1e-3));
+  REQUIRE(arma::approx_equal(readMat, matrix, "absdiff", 1e-3));
   fs::remove(tempFilePath); // Clean up the test file
 }
 
 TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
 {
-  Eigen::ArrayXXd matrix;
+  Problem::distMat_t matrix;
   fs::path tempFilePath = "test_matrix.csv";
 
   dtwc::writeMatrix(matrix, tempFilePath);
 
-  REQUIRE(matrix.rows() == 0);
-  REQUIRE(matrix.cols() == 0);
+  REQUIRE(matrix.n_rows == 0);
+  REQUIRE(matrix.n_cols == 0);
 
-  Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> readMat;
+  Problem::distMat_t readMat;
 
   dtwc::readMatrix(readMat, tempFilePath);
 
-  REQUIRE(readMat.rows() == 0);
-  REQUIRE(readMat.cols() == 0);
+  REQUIRE(readMat.n_rows == 0);
+  REQUIRE(readMat.n_cols == 0);
 
   fs::remove(tempFilePath); // Clean up the test file
 }

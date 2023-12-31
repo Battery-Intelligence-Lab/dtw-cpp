@@ -26,6 +26,7 @@
 #include <stdexcept> // for std::runtime_error
 
 #include <Eigen/Dense>
+#include <armadillo>
 
 namespace dtwc {
 
@@ -183,47 +184,13 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, bool print = false, in
 template <typename matrix_t, typename path_t>
 void writeMatrix(const matrix_t &matrix, const path_t &path)
 {
-  std::ofstream myFile(path, std::ios_base::out);
-
-  if (!myFile.good()) // check if we could open the file
-  {
-    std::cerr << "Error in writeMatrix. File " << path
-              << " could not be opened. Please ensure that you have the folder "
-              << " and file is not open in any other program.\n";
-    std::runtime_error("");
-  }
-
-  Eigen::IOFormat CSVFormat(Eigen::StreamPrecision, Eigen::DontAlignCols, ", ", "\n");
-  myFile << matrix.format(CSVFormat);
-  myFile.close();
+  matrix.save(path.string(), arma::csv_ascii);
 }
 
 template <typename data_t>
-void readMatrix(Eigen::Array<data_t, Eigen::Dynamic, Eigen::Dynamic> &matrix, const fs::path &name)
+void readMatrix(arma::Mat<data_t> &matrix, const fs::path &name)
 {
-  // Adapted from: https://stackoverflow.com/questions/34247057/how-to-read-csv-file-and-assign-to-eigen-matrix/39146048#39146048
-  using Eigen::Dynamic;
-  std::ifstream in(name, std::ios_base::in);
-  if (!in.good()) // check if we could open the file
-    std::cout << "File " << name << " is not found. Matrix will not be read." << std::endl;
-
-  std::vector<data_t> data;
-  std::string line;
-  data_t x{};
-
-  size_t rows = 0;
-  while (std::getline(in, line)) {
-    std::stringstream lineStream(line);
-    std::string cell;
-    while (std::getline(lineStream, cell, ','))
-      data.push_back(std::stod(cell));
-
-    ++rows;
-  }
-
-  const size_t cols = data.empty() ? 0 : (data.size() / rows);
-
-  matrix = Eigen::Map<Eigen::Array<data_t, Dynamic, Dynamic, Eigen::RowMajor>>(data.data(), rows, cols);
+  matrix.load(name.string(), arma::csv_ascii);
 }
 
 
