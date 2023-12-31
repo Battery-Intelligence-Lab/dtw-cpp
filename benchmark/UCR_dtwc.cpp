@@ -7,8 +7,6 @@
  *   Author(s): Volkan Kumtepeli, Rebecca Perriment
  */
 
-#pragma once
-
 #include <dtwc.hpp>
 
 #include <string>

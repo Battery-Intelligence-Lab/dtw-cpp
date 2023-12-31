@@ -7,8 +7,6 @@
  *   Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
-#pragma once
-
 #include "initialisation.hpp"
 #include "settings.hpp"        // for randGenerator
 #include "parallelisation.hpp" // for run
