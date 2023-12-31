@@ -28,8 +28,6 @@
 #include <iostream>
 
 #include <armadillo>
-#include <Eigen/Dense> //
-
 
 namespace dtwc {
 
@@ -77,10 +75,11 @@ public:
 
   auto size() const { return data.size(); }
   auto cluster_size() const { return Nc; }
-  auto &get_name(size_t i) { return data.p_names[i]; }             // Alias not to write data. everytime.
-  auto const &get_name(size_t i) const { return data.p_names[i]; } // Alias not to write data. everytime.
+  auto &get_name(size_t i) { return data.p_names[i]; }
+  auto const &get_name(size_t i) const { return data.p_names[i]; }
 
-  auto &p_vec(size_t i) { return data.p_vec[i]; } // Alias not to write data. everytime.
+  auto &p_vec(size_t i) { return data.p_vec[i]; }
+  auto const &p_vec(size_t i) const { return data.p_vec[i]; }
 
   void refreshDistanceMatrix();
 

@@ -258,7 +258,6 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
     centroids_all.push_back(centroids_ind);
 
     assignClusters();
-    std::cout << "Test 1" << std::endl;
 
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
               << findTotalCost() << ".\n"; // Uses clusters_ind to find cost.
