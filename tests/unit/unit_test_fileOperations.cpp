@@ -60,7 +60,7 @@ TEST_CASE("ignoreBOM test", "[file_operations]")
   }
 }
 
-TEST_CASE("Write and Read Eigen Matrices", "[fileOperations]")
+TEST_CASE("Write and Read Distance Matrices", "[fileOperations]")
 {
   // Write and read different length matrices.
   auto M = GENERATE(1, 2, 3, 5, 10, 20, 50, 100);
