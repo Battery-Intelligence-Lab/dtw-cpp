@@ -38,7 +38,7 @@
 - [x] Remove unnecessary warping functions. 
 - [ ] Fix warnings. Especially, we should not get warnings from external libraries. 
 - [ ] Make Gurobi dependency optional. (Now it cannot be disabled. )
-- [ ] Consider including Eigen library for matrix operations / linear system solution. 
+- [x] Consider including Eigen library for matrix operations / linear system solution. 
 - [ ] w based DTW. 
 - [ ] Reading memoisation matrix distMat from file instead of re-calculating DTW every time. 
 

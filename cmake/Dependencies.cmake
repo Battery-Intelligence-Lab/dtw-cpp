@@ -10,31 +10,6 @@ function(dtwc_setup_dependencies)
   # For each dependency, see if it's
   # already been provided to us by a parent project
 
-  # if(NOT TARGET range-v3)  # Range-v3 library:
-  # CPMAddPackage(
-  #   NAME range-v3
-  #   URL "https://github.com/ericniebler/range-v3/archive/refs/tags/0.12.0.tar.gz"
-  #   DOWNLOAD_ONLY YES 
-  # )
-
-  # if(range-v3_ADDED) 
-  # add_library(range-v3 INTERFACE IMPORTED)
-  # target_include_directories(range-v3 INTERFACE ${range-v3_SOURCE_DIR}/include)
-  # endif()
-  # endif()
-
-
-  if(NOT TARGET eigen) # Eigen library:
-  CPMAddPackage(
-    NAME eigen
-    URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz"
-    DOWNLOAD_ONLY YES
-  )
-
-  add_library(eigen INTERFACE IMPORTED)
-  target_include_directories(eigen SYSTEM INTERFACE ${eigen_SOURCE_DIR})
-  endif()
-
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
@@ -43,7 +18,6 @@ function(dtwc_setup_dependencies)
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
   endif()
-
 
   # if(NOT TARGET fmt) # fmt library:
   # CPMAddPackage(

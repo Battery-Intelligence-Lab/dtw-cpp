@@ -35,7 +35,6 @@ target_link_libraries(dtwc++
   project_options
   PUBLIC 
   armadillo
-  eigen
 )
 
 find_package(OpenMP)

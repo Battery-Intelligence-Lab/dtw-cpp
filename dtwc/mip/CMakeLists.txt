@@ -10,7 +10,7 @@ target_sources(mip-solvers
   )
 
 target_include_directories(mip-solvers PUBLIC .)
-target_link_libraries(mip-solvers PRIVATE eigen)
+target_link_libraries(mip-solvers PRIVATE armadillo)
 
 if(DTWC_ENABLE_GUROBI)
   message(STATUS "Gurobi is enabled!")
@@ -23,5 +23,5 @@ endif()
 
 if(DTWC_ENABLE_HIGHS)
   target_compile_definitions(mip-solvers PUBLIC DTWC_ENABLE_HIGHS)
-  target_link_libraries(mip-solvers PRIVATE highs::highs armadillo)
+  target_link_libraries(mip-solvers PRIVATE highs::highs)
 endif()

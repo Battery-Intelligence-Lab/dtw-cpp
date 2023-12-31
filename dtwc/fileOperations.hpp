@@ -25,7 +25,6 @@
 #include <sstream>
 #include <stdexcept> // for std::runtime_error
 
-#include <Eigen/Dense>
 #include <armadillo>
 
 namespace dtwc {
@@ -179,8 +178,8 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
 }
 
 
-template <typename matrix_t, typename path_t>
-void writeMatrix(const matrix_t &matrix, const path_t &path)
+template <typename data_t>
+void writeMatrix(const arma::Mat<data_t> &matrix, const fs::path &path)
 {
   matrix.save(path.string(), arma::csv_ascii);
 }
