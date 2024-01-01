@@ -7,18 +7,19 @@
  *  Author(s): Volkan Kumtepeli, Becky Perriment
  */
 
-#include "dtwc_cl.hpp"
 #include "dtwc.hpp"
+
 #include <iostream>
 #include <string>
 #include <CLI/CLI.hpp>
 
+// Declarations of the auxillary functions:
+dtwc::Range str_to_range(std::string str);
 
 int main(int argc, char **argv)
 {
   auto app_description = "A C++ library for fast Dynamic Time Wrapping Clustering";
   auto default_name = "DTWC++_results";
-
 
   // Input parameters:
   std::string Nc_str;
@@ -39,7 +40,7 @@ int main(int argc, char **argv)
 
   std::cout << "Arguments are parsed." << std::endl;
 
-  auto Nc = dtwc::cli_util::str_to_range(Nc_str);
+  auto Nc = str_to_range(Nc_str);
   dtwc::Clock clk; // Create a clock object
 
   dtwc::DataLoader dl{ inputPath };
@@ -57,4 +58,26 @@ int main(int argc, char **argv)
   }
 
   std::cout << "Finished all tasks " << clk << std::endl;
+}
+
+// Definitions of the auxillary functions:
+dtwc::Range str_to_range(std::string str)
+{
+  dtwc::Range range{};
+  try {
+    size_t pos = str.find("..");
+    if (pos != std::string::npos) {
+      const int start = std::stoi(str.substr(0, pos));
+      const int end = std::stoi(str.substr(pos + 2)) + 1;
+      range = dtwc::Range(start, end);
+    } else {
+      const int number = std::stoi(str);
+      range = dtwc::Range(number, number + 1);
+    }
+
+  } catch (const std::exception &e) {
+    std::cerr << "Error processing input: " << e.what() << std::endl;
+  }
+
+  return range;
 }
