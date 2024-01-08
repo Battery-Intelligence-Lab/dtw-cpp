@@ -1,16 +1,20 @@
 ---
 layout: default
-title: Installation
+title: Dependencies
 nav_order: 2
 ---
 
-# Installation
+# Dependencies
 
-DTWC++ is yet to offer any binaries or wrappers in any other languages; therefore, the only way to install DTWC++ is to compile it from C++ source files. 
+Here is given the list of dependencies that needs to be installed to use DTWC++ software. 
 
-## Building from the source
+## CMake
 
-DTWC++ aims to be compatible with different compilers and platforms. You may easily install DTWC++ using CMake (although it is not an absolute requirement). Therefore, you need a suitable C++ compiler (preferably [GCC](https://gcc.gnu.org/)) and [CMake](https://cmake.org/) to follow this installation guide.   
+CMake is 
+
+
+
+
 
 
 ### Linux
@@ -33,7 +37,7 @@ cmake -G "Unix Makefiles" ..
 ```
 4. Compile the files:
 ```bash
-cmake --build . # Assuming that you are still in the build folder. 
+cmake --build . -j16 # Assuming that you are still in the build folder. 
 ```
 
 ```note
@@ -107,4 +111,3 @@ For a visual guide see the video: https://www.youtube.com/watch?v=yNmeG6Wom1o
 ### macOS:
 
 For a visual guide see the video: https://www.youtube.com/watch?v=ZcL-NmckTxQ
-

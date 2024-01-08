@@ -82,14 +82,11 @@ public:
   auto const &p_vec(size_t i) const { return data.p_vec[i]; }
 
   void refreshDistanceMatrix();
-
-  // Getters and setters:
-  template <typename T>
-  void readDistanceMatrix(const T &distMat_path) { readMatrix(distMat, distMat_path); } // Reads distance matrix from file.
-
   void clear_clusters();
   void resize();
 
+  // Getters and setters:
+  void readDistanceMatrix(const fs::path &distMat_path);
   void set_numberOfClusters(int Nc_);
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);

@@ -135,4 +135,13 @@ void Problem::writeBestRep(int best_rep)
   std::cout << "Best repetition: " << best_rep << '\n';
 }
 
+void Problem::readDistanceMatrix(const fs::path &distMat_path)
+{
+  try {
+    readMatrix(distMat, distMat_path);
+  } catch (...) {
+    std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
+  }
+} // Reads distance matrix from file.
+
 } // namespace dtwc

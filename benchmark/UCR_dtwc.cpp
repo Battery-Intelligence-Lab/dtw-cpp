@@ -102,6 +102,8 @@ inline void UCR_2018()
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.
+    prob.output_folder = out_folder;
+
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
@@ -116,12 +118,9 @@ inline void UCR_2018()
 
     dtwc::Clock clk; // Create a clock object
 
-    prob.output_folder = out_folder;
-
     prob.fillDistanceMatrix();
 
-
-    auto time_1 = clk.duration();
+    const auto time_1 = clk.duration();
 
     std::cout << "Finished calculating distances " << clk << std::endl;
     std::cout << "Band used " << settings::band << "\n\n\n";
@@ -131,7 +130,7 @@ inline void UCR_2018()
     prob.cluster_by_kMedoidsPAM();
     // prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
-    auto time_2 = clk.duration();
+    const auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
     std::cout << "Band used " << settings::band << "\n\n\n";
 
@@ -140,7 +139,7 @@ inline void UCR_2018()
     prob.writeClusters(); // Prints to file.
     prob.writeSilhouettes();
 
-    auto time_3 = clk.duration();
+    const auto time_3 = clk.duration();
     timing_file << stem_str << ',' << time_1 << ',' << time_2 << ',' << time_3 << '\n';
   }
 }

@@ -1,11 +1,13 @@
 ---
 layout: default
-title: Getting Started
+title: Getting started
 nav_order: 1
 ---
 
 
 # Getting started
 
-[Installation](2_install.md) \
+To get started simply follow the instructions for your choice of usage. 
+
+[Installation](install.md) \
 [Running the code](3_run.md) 

@@ -77,11 +77,11 @@ int main(int argc, char **argv)
   prob.N_repetition = N_repetition;
   prob.output_folder = outPath;
   prob.band = bandWidth;
-  try {
-    prob.readDistanceMatrix(distMatPath);
-  } catch (const std::exception &e) {
-    std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
-  }
+  // try {
+  //   prob.readDistanceMatrix(distMatPath);
+  // } catch (const std::exception &e) {
+  //   std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
+  // }
 
 
   if (solver == "HiGHS" || solver == "highs")
