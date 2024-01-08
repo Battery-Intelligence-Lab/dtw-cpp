@@ -15,10 +15,9 @@ project(DTWC++ VERSION "0.0.4"
 add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
 include(cmake/StandardProjectSettings.cmake)
 
-set(BUILD_EXAMPLES OFF)
-set(BUILD_TESTING ON)
-set(BUILD_BENCHMARK ON)
-
+option(BUILD_EXAMPLES OFF)
+option(BUILD_TESTING ON)
+option(BUILD_BENCHMARK ON)
 
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_HIGHS ON)
