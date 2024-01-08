@@ -102,7 +102,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
   for (int i = 0; i < Nb; ++i)
     model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
 
-
   model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
 
   const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
