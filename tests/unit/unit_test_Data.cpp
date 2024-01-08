@@ -50,7 +50,6 @@ TEST_CASE("Data class functionality", "[Data]")
     Data data;
     data.p_vec = { { 1 }, { 2, 3 }, { 4, 5, 6 } };
     data.p_names = { "A", "B", "C" };
-    data.Nb = static_cast<int>(data.p_vec.size());
 
     REQUIRE(data.size() == 3);
   }
