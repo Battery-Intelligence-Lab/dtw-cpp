@@ -229,12 +229,11 @@ void Problem::cluster_by_kMedoidsPAM()
     else if (status == -1)
       std::cout << "Maximum iteration is reached before medoids are converged!\n";
 
-    std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
-
     if (total_cost < best_cost) {
       best_cost = total_cost;
       best_rep = i_rand;
     }
+    std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
   }
 
   writeBestRep(best_rep);

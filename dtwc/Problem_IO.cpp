@@ -128,7 +128,7 @@ void Problem::writeDistanceMatrix(const std::string &name_) const
 
 void Problem::writeBestRep(int best_rep)
 {
-  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition.csv"), std::ios_base::out);
+  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv"), std::ios_base::out);
   bestRepFile << best_rep << '\n';
   bestRepFile.close();
 
