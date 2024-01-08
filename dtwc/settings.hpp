@@ -21,27 +21,59 @@
 namespace dtwc {
 // Data type settings:
 
-using data_t = double; // Default data type double or float.
+/// @brief Alias for the default data type used throughout the code.
+/// @note The default data type can be either double or float, depending on precision requirements.
+using data_t = double;
+
 // Random number settings:
-static std::mt19937 randGenerator(29); // std::mt19937{ std::random_device{}() }
+
+/// @brief Mersenne Twister random number generator.
+/// @details This random number generator is used for all random number generation in the code.
+///          The seed value is fixed to 29 for reproducibility.
+///          To use a non-deterministic seed, replace '29' with 'std::random_device{}()'.
+static std::mt19937 randGenerator(29);
 } // namespace dtwc
 
 
 namespace dtwc::settings {
 // Filesystem settings:
-namespace fs = std::filesystem; //!< std::filesystem alias.
 
-const static fs::path root_folder(DTWC_ROOT_FOLDER); //!< Root folder for defining data and results folders.
+/// @brief Namespace alias for std::filesystem.
+namespace fs = std::filesystem;
 
+/// @brief Path to the root folder.
+/// @details This path is used to define subdirectories for data and results.
+///          The root folder path is obtained from the DTWC_ROOT_FOLDER macro
+///          which leads to the path of the top-level CMakeLists.txt.
+const static fs::path root_folder(DTWC_ROOT_FOLDER);
+
+/// @brief Path to the results directory.
+/// @details Concatenates the root folder path with a subdirectory named "results".
 const auto resultsPath = root_folder / "results/";
+
+/// @brief Path to the data directory.
+/// @details Concatenates the root folder path with a subdirectory named "data".
 const auto dataPath = root_folder / "data";
 
+/// @brief Flag for debug mode for developers.
+/// @details When set to true, the program may output additional debug information.
 constexpr bool isDebug = false;
 
-constexpr int band = 0; // Size of band to use (if no band put 0)
+/// @brief Size of the band to be used.
+/// @details If no band is required, this value should be set to 0.
+constexpr int band = 0;
 
 // Default settings:
+
+/// @brief Default mixed-integer programming solver.
+/// @note Please do not modify here, you can modify the relevant Problem class member to use a different MIP solver.
 constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
+
+/// @brief Default method for clustering.
+/// @note Please do not modify here, you can modify the relevant Problem class member to use a different clustering method.
 constexpr dtwc::Method DEFAULT_CLUSTERING_METHOD = dtwc::Method::Kmedoids;
+
+/// @brief Default maximum number of iterations.
+/// @details Used in iterative algorithms where a limit on iterations is necessary.
 constexpr int DEFAULT_MAX_ITER = 100;
 } // namespace dtwc::settings

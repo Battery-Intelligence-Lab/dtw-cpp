@@ -1,12 +1,11 @@
-/*
- * Data.hpp
+/**
+ * _Data.hpp_
  *
- * Encapsulating DTWC data in a class.
-
- *  Created on: 04 Dec 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @brief Encapsulating DTWC data in a class.
+ *
+ * @author Volkan Kumtepeli, Becky Perriment
+ * @date Created on: 04 Dec 2022
  */
-
 
 #pragma once
 
@@ -20,13 +19,16 @@
 
 namespace dtwc {
 
+/**
+ * @brief Struct to encapsulate DTWC data
+ */
+
 struct Data
 {
-  std::vector<std::vector<data_t>> p_vec;
-  std::vector<std::string> p_names;
+  std::vector<std::vector<data_t>> p_vec; //!< Vector of data vectors
+  std::vector<std::string> p_names;       //!< Vector of data point names
 
-  int Nb{ 0 }; // Number of data points
-  auto size() const { return Nb; }
+  auto size() const { return static_cast<int>(p_vec.size()); } //!< Returns number of data points
 
   Data() = default;
   Data(std::vector<std::vector<data_t>> &&p_vec_new, std::vector<std::string> &&p_names_new)
@@ -36,7 +38,6 @@ struct Data
 
     p_vec = std::move(p_vec_new);
     p_names = std::move(p_names_new);
-    Nb = static_cast<int>(p_vec.size());
   }
 };
 
