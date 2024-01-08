@@ -46,27 +46,25 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
   auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
-  if ((mx != 0) && (my != 0)) {
-    C(0, 0) = distance(x[0], y[0]);
+  if ((mx == 0) || (my == 0)) return maxValue;
 
-    for (int i = 1; i < mx; i++)
-      C(i, 0) = C(i - 1, 0) + distance(x[i], y[0]); // j = 0
+  C(0, 0) = distance(x[0], y[0]);
 
-    for (int j = 1; j < my; j++)
-      C(0, j) = C(0, j - 1) + distance(x[0], y[j]); // i = 0
+  for (int i = 1; i < mx; i++)
+    C(i, 0) = C(i - 1, 0) + distance(x[i], y[0]); // j = 0
+
+  for (int j = 1; j < my; j++)
+    C(0, j) = C(0, j - 1) + distance(x[0], y[j]); // i = 0
 
 
-    for (int j = 1; j < my; j++) {
-      for (int i = 1; i < mx; i++) {
-        const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
-        C(i, j) = minimum + distance(x[i], y[j]);
-      }
+  for (int j = 1; j < my; j++) {
+    for (int i = 1; i < mx; i++) {
+      const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
+      C(i, j) = minimum + distance(x[i], y[j]);
     }
-
-    return C(mx - 1, my - 1);
   }
 
-  return maxValue;
+  return C(mx - 1, my - 1);
 }
 
 /**
@@ -87,41 +85,33 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   thread_local std::vector<data_t> short_side(data_t(10e3));
 
-  const auto mx = x.size();
-  const auto my = y.size();
-
-  const auto &short_vec = (mx < my) ? x : y;
-  const auto &long_vec = (mx < my) ? y : x;
-
-
-  const auto m_short = short_vec.size();
-  const auto m_long = long_vec.size();
+  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
+  const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
 
   short_side.resize(m_short);
 
   auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
 
-  if ((m_short != 0) && (m_long != 0)) {
-    short_side[0] = distance(short_vec[0], long_vec[0]);
+  if ((m_short == 0) || (m_long == 0)) return maxValue;
 
-    for (size_t i = 1; i < m_short; i++)
-      short_side[i] = short_side[i - 1] + distance(short_vec[i], long_vec[0]);
+  short_side[0] = distance(short_vec[0], long_vec[0]);
 
-    for (size_t j = 1; j < m_long; j++) {
-      auto diag = short_side[0];
-      short_side[0] += distance(short_vec[0], long_vec[j]);
+  for (size_t i = 1; i < m_short; i++)
+    short_side[i] = short_side[i - 1] + distance(short_vec[i], long_vec[0]);
 
-      for (size_t i = 1; i < m_short; i++) {
-        const auto next = std::min({ diag, short_side[i - 1], short_side[i] }) + distance(short_vec[i], long_vec[j]);
+  for (size_t j = 1; j < m_long; j++) {
+    auto diag = short_side[0];
+    short_side[0] += distance(short_vec[0], long_vec[j]);
 
-        diag = short_side[i];
-        short_side[i] = next;
-      }
+    for (size_t i = 1; i < m_short; i++) {
+      const auto next = std::min({ diag, short_side[i - 1], short_side[i] }) + distance(short_vec[i], long_vec[j]);
+
+      diag = short_side[i];
+      short_side[i] = next;
     }
-
-    return short_side[m_short - 1];
   }
-  return maxValue;
+
+  return short_side.back();
 }
 
 
@@ -140,47 +130,42 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 template <typename data_t = float>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
 {
-  // Actual banding with skewness.
+  // Actual banding with skewness. Uses Sakoe-Chiba band.
+  // Reference: H. Sakoe and S. Chiba, "Dynamic programming algorithm optimization
+  //            for spoken word recognition". IEEE Transactions on Acoustics,
+  //            Speech, and Signal Processing, 26(1), 43-49 (1978).
   thread_local arma::Mat<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  const int mx = x.size();
-  const int my = y.size();
-
-  const auto &short_vec = (mx < my) ? x : y;
-  const auto &long_vec = (mx < my) ? y : x;
-
-  const int m_short = short_vec.size();
-  const int m_long = long_vec.size();
+  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
+  const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
 
   C.resize(m_short, m_long);
   C.fill(maxValue);
 
   auto distance = [](data_t xi, data_t yi) { return std::abs(xi - yi); };
 
-  if ((mx != 0) && (my != 0)) {
-    C(0, 0) = distance(short_vec[0], long_vec[0]);
+  if ((m_short == 0) || (m_long == 0)) return maxValue;
 
-    const int i_end0 = std::min(m_short, band + 1);
-    for (int i = 1; i < i_end0; i++)
-      C(i, 0) = C(i - 1, 0) + distance(short_vec[i], long_vec[0]);
+  C(0, 0) = distance(short_vec[0], long_vec[0]);
 
-    const int j_end0 = std::min(m_long, band + 1); // #TODO enough until slope.
-    for (int j = 1; j < j_end0; j++)
-      C(0, j) = C(0, j - 1) + distance(short_vec[0], long_vec[j]);
+  const int i_end0 = std::min(m_short, band + 1);
+  for (int i = 1; i < i_end0; i++)
+    C(i, 0) = C(i - 1, 0) + distance(short_vec[i], long_vec[0]);
+
+  const int j_end0 = std::min(m_long, band + 1); // #TODO enough until slope.
+  for (int j = 1; j < j_end0; j++)
+    C(0, j) = C(0, j - 1) + distance(short_vec[0], long_vec[j]);
 
 
-    for (int j = 1; j < m_long; j++) {
-      const int i_begin(std::max(j - band, 1)), i_end(std::min(j + band, m_short));
-      for (int i = i_begin; i < i_end; i++) {
-        const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
-        C(i, j) = minimum + distance(short_vec[i], long_vec[j]);
-      }
+  for (int j = 1; j < m_long; j++) {
+    const int i_begin(std::max(j - band, 1)), i_end(std::min(j + band, m_short));
+    for (int i = i_begin; i < i_end; i++) {
+      const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
+      C(i, j) = minimum + distance(short_vec[i], long_vec[j]);
     }
-
-    return C(m_short - 1, m_long - 1);
   }
 
-  return maxValue;
+  return C(m_short - 1, m_long - 1);
 }
 } // namespace dtwc
