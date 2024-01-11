@@ -138,7 +138,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
+  const int m_short(short_vec.size()), m_long(long_vec.size());
 
   C.resize(m_short, m_long);
   C.fill(maxValue);
@@ -166,6 +166,6 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
     }
   }
 
-  return C(m_short - 1, m_long - 1);
+   return C(m_short - 1, m_long - 1);
 }
 } // namespace dtwc
