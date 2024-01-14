@@ -7,44 +7,39 @@
 
 int main()
 {
-  using namespace dtwc;
-  arma::mat X;
-  X.load("data_1.csv", arma::csv_ascii);
+  std::cout << "Main has started!" << std::endl;
+  {
+    std::vector<double> x{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 }, y{ 1, 2, 3, 4, 5, 6 };
+    dtwc::dtwBanded(x, y, 2);
+  }
+  std::cout << "dtwBanded has finished!" << std::endl;
 
-  std::cout << "Armadillo mat:" << std::endl;
-  std::cout << X << "\n\n\n";
+  // using namespace dtwc;
 
-  arma::mat Y;
-  Y.load("data_2.tsv", arma::auto_detect);
+  // dtwc::Clock clk; // Create a clock object
+  // std::string probName = "DTW_kMeans_results";
 
-  std::cout << "Tab Armadillo mat:" << std::endl;
-  std::cout << Y << "\n\n\n";
+  // auto Nc = 3; // Number of clusters
 
+  // dtwc::DataLoader dl{ settings::dataPath / "dummy" };
+  // dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
-  dtwc::Clock clk; // Create a clock object
-  std::string probName = "DTW_kMeans_results";
+  // dtwc::Problem prob{ probName, dl }; // Create a problem.
+  // prob.maxIter = 100;
 
-  auto Nc = 3; // Number of clusters
+  // prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  // prob.N_repetition = 5;
 
-  dtwc::DataLoader dl{ settings::dataPath / "dummy" };
-  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+  // prob.set_solver(dtwc::Solver::Gurobi);
 
-  dtwc::Problem prob{ probName, dl }; // Create a problem.
-  prob.maxIter = 100;
+  // prob.fillDistanceMatrix();
+  // // prob.writeDistanceMatrix();
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.N_repetition = 5;
+  // // prob.cluster_by_MIP();
 
-  prob.set_solver(dtwc::Solver::Gurobi);
+  // // prob.printClusters(); // Prints to screen.
+  // // prob.writeClusters(); // Prints to file.
+  // // prob.writeSilhouettes();
 
-  prob.fillDistanceMatrix();
-  // prob.writeDistanceMatrix();
-
-  // prob.cluster_by_MIP();
-
-  // prob.printClusters(); // Prints to screen.
-  // prob.writeClusters(); // Prints to file.
-  // prob.writeSilhouettes();
-
-  std::cout << "Finished all tasks " << clk << "\n";
+  // std::cout << "Finished all tasks " << clk << "\n";
 }
