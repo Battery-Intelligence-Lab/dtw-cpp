@@ -77,14 +77,16 @@ jobs:
       # JOSS Paper Compilation Steps
       - name: Build draft PDF for JOSS paper
         uses: openjournals/openjournals-draft-action@master
-        if: github.ref == 'refs/heads/main'
         with:
           journal: joss
           paper-path: joss/paper.md
+
+      - name: Create directory for JOSS paper
+        run: mkdir -p _site/pub
+
       - name: Move JOSS paper to documentation
-        if: github.ref == 'refs/heads/main'
-        run: mv joss/paper.pdf _site/joss/paper.pdf
-        
+        run: mv joss/paper.pdf _site/pub/joss.pdf
+
       # Upload the website:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
