@@ -138,8 +138,10 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
  * @return The dynamic time warping distance.
  */
 template <typename data_t = float>
-data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = 100)
+data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = settings::DEFAULT_BAND_LENGTH)
 {
+  if (band < 0) return dtwFull_L<data_t>(x, y); //<! Band is negative, so returning full dtw.
+
   thread_local arma::Mat<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 

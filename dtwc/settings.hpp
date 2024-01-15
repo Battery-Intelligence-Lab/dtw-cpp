@@ -59,9 +59,9 @@ const auto dataPath = root_folder / "data";
 /// @details When set to true, the program may output additional debug information.
 constexpr bool isDebug = false;
 
-/// @brief Size of the band to be used.
-/// @details If no band is required, this value should be set to 0.
-constexpr int band = 0;
+/// @brief Default band length.
+/// @details If no band is required, this value should be set to -1.
+constexpr int DEFAULT_BAND_LENGTH = -1;
 
 // Default settings:
 

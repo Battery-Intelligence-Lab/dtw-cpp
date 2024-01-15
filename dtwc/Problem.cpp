@@ -83,15 +83,11 @@ void Problem::refreshDistanceMatrix()
   is_distMat_filled = false;
 }
 
-
 double Problem::distByInd(int i, int j)
 {
-  if (distMat(i, j) < 0) {
-    if (band == 0)
-      distMat(j, i) = distMat(i, j) = dtwFull_L(p_vec(i), p_vec(j));
-    else
-      distMat(j, i) = distMat(i, j) = dtwBanded(p_vec(i), p_vec(j), settings::band);
-  }
+  if (distMat(i, j) < 0)
+    distMat(j, i) = distMat(i, j) = dtwBanded(p_vec(i), p_vec(j), band);
+
   return distMat(i, j);
 }
 

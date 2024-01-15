@@ -50,19 +50,19 @@ private:
 
 public:
   Method method{ Method::Kmedoids };
-  int maxIter{ 100 };    // Maximum number of iteration for iterative-methods
-  int N_repetition{ 1 }; // Repetition for iterative-methods.
-  int band{ settings::band };
+  int maxIter{ 100 };                        //<! Maximum number of iteration for iterative-methods
+  int N_repetition{ 1 };                     //<! Repetition for iterative-methods.
+  int band{ settings::DEFAULT_BAND_LENGTH }; //<! band length for Sakoe-Chiba band, -1 if full dtw is needed.
 
   std::function<void(Problem &)> init_fun{ init::random }; // Initialisation function.
 
   std::decay_t<decltype(settings::resultsPath)> output_folder{ settings::resultsPath };
-  std::string name{}; // Problem name
+  std::string name{}; //<! Problem name
   Data data;
 
-  std::vector<int> centroids_ind;                // indices of cluster centroids.
-  std::vector<int> clusters_ind;                 // which point belongs to which cluster.
-  std::vector<std::vector<int>> cluster_members; // Members of each clusters!
+  std::vector<int> centroids_ind;                //<! indices of cluster centroids.
+  std::vector<int> clusters_ind;                 //<! which point belongs to which cluster.
+  std::vector<std::vector<int>> cluster_members; //<! Members of each clusters!
 
   // Constructors:
   Problem() = default;
