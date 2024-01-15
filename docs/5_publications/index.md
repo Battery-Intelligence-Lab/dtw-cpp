@@ -6,4 +6,4 @@ nav_order: 1
 
 Here you may find any related references and publications
 
-[JOSS paper](joss_paper.md)
+[JOSS article](joss_paper.md)
