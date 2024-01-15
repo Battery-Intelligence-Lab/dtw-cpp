@@ -25,7 +25,7 @@ jobs:
         run: mkdir build_dir
 
       - name: cmake configure
-        run: cmake .. -DCMAKE_BUILD_TYPE=Debug
+        run: cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_ENABLE_COVERAGE:BOOL=TRUE -DDTWC_BUILD_TESTING=ON
         working-directory: build_dir
 
       - name: cmake build

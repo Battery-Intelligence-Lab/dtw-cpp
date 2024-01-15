@@ -15,8 +15,8 @@ project(DTWC++ VERSION "0.0.4"
 add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
 include(cmake/StandardProjectSettings.cmake)
 
-option(BUILD_EXAMPLES OFF)
-option(BUILD_TESTING OFF)
+option(DTWC_BUILD_EXAMPLES OFF)
+option(DTWC_BUILD_TESTING OFF)
 option(BUILD_BENCHMARK OFF)
 
 set(DTWC_ENABLE_GUROBI ON)
@@ -65,14 +65,14 @@ target_link_libraries(dtwc_cl
 # Adding the tests:
 include(CTest)
 enable_testing()
-if(BUILD_TESTING)
+if(DTWC_BUILD_TESTING)
   #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
   include(cmake/Coverage.cmake)
   add_subdirectory(tests)
 endif()
 
 
-if(BUILD_EXAMPLES)
+if(DTWC_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
