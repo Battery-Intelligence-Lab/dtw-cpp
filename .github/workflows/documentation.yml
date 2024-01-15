@@ -82,7 +82,7 @@ jobs:
           paper-path: joss/paper.md
 
       - name: Create directory for JOSS paper
-        run: mkdir -p _site/pub
+        run: sudo mkdir -p _site/pub
 
       - name: Move JOSS paper to documentation
         run: mv joss/paper.pdf _site/pub/joss.pdf
