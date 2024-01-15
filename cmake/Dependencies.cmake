@@ -51,7 +51,7 @@ function(dtwc_setup_dependencies)
 
   CPMAddPackage(
     NAME armadillo
-    URL "https://sourceforge.net/projects/arma/files/armadillo-12.6.7.tar.xz/download"
+    URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/12.6.x/armadillo-code-12.6.x.tar.gz"
     OPTIONS
     "BUILD_SMOKE_TEST OFF"
   )
