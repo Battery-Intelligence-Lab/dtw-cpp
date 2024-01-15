@@ -4,8 +4,7 @@
  *
  * Contains the definition and implementation of a Clock structure for timing purposes.
  *
- * @author Volkan Kumtepeli
- * @author Becky Perriment
+ * @author Volkan Kumtepeli, Becky Perriment
  * @date 01 Mar 2022
  */
 

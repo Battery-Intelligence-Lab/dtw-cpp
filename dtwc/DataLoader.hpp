@@ -3,7 +3,7 @@
  * @brief Encapsulating DTWC data loading configurations in a class.
  * Uses method chaining for easier input taking.
  * @author Volkan Kumtepeli, Becky Perriment
- * @date Created on: 04 Dec 2022
+ * @date 04 Dec 2022
  */
 
 #pragma once
@@ -109,9 +109,7 @@ public:
 
   /**
    * @brief Load data
-   *
-   * Calls appropriate loader based on path being file or folder.
-   *
+   * @details Calls appropriate loader based on path being file or folder.
    * @return Loaded data
    */
   Data load()

@@ -1,10 +1,12 @@
-/*
- * Problem.cpp
+/**
+ * @file Problem.cpp
+ * @brief Implementation of the DTWC (Dynamic Time Warping Clustering) problem encapsulated in a class.
  *
- * Encapsulating DTWC problem in a class.
-
- *  Created on: 06 Nov 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @details This file includes the implementation of the Problem class, which contains methods for clustering,
+ * initializing clusters, calculating distances, and other functionalities related to the DTWC problem.
+ *
+ * @date Created on: 06 Nov 2022
+ * @author Volkan Kumtepeli, Becky Perriment
  */
 
 #include "Problem.hpp"
@@ -29,6 +31,11 @@
 
 namespace dtwc {
 
+/**
+ * @brief Clears existing cluster information.
+ *
+ * @details Resets the centroids indices, cluster indices, and members of each cluster to their default states.
+ */
 void Problem::clear_clusters()
 {
   centroids_ind.clear();
@@ -36,6 +43,12 @@ void Problem::clear_clusters()
   cluster_members.clear();
 }
 
+/**
+ * @brief Resizes data structures based on the current number of clusters.
+ *
+ * @details Adjusts the size of cluster_members, centroids_ind, and clusters_ind arrays based on the current
+ * value of Nc (number of clusters).
+ */
 void Problem::resize()
 {
   cluster_members.resize(Nc);
@@ -43,12 +56,23 @@ void Problem::resize()
   clusters_ind.resize(size());
 }
 
+/**
+ * @brief Sets the number of clusters for the problem.
+ *
+ * @param Nc_ The number of clusters to set.
+ * @throws std::runtime_error if the size of candidate_centroids is not equal to Nc.
+ */
 void Problem::set_numberOfClusters(int Nc_)
 {
   Nc = Nc_;
   resize();
 }
 
+/**
+ * @brief Sets the initial centroids for clustering.
+ *
+ * @param candidate_centroids A vector containing the indices of candidate centroids.
+ */
 void Problem::set_clusters(std::vector<int> &candidate_centroids)
 {
   if (candidate_centroids.size() != Nc)
@@ -57,6 +81,13 @@ void Problem::set_clusters(std::vector<int> &candidate_centroids)
   centroids_ind = candidate_centroids;
 }
 
+/**
+ * @brief Sets the solver to be used for clustering.
+ *
+ * @param solver_ The solver to use.
+ * @return True if the solver is set successfully,
+ * False otherwise (e.g., if Gurobi is not available and a default solver is used instead).
+ */
 bool Problem::set_solver(Solver solver_)
 {
   if (solver_ == Solver::Gurobi) {
@@ -74,8 +105,17 @@ bool Problem::set_solver(Solver solver_)
   return true;
 }
 
+/**
+ * @brief Prints the current distance matrix to the standard output.
+ * @details Outputs the distance matrix in a human-readable format, useful for debugging and verification.
+ */
 void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
 
+/**
+ * @brief Refreshes the distance matrix.
+ * @details Resets the distance matrix and marks it as not filled. This is necessary when the data has changed,
+ * requiring a re-calculation of distances.
+ */
 void Problem::refreshDistanceMatrix()
 {
   distMat.set_size(size(), size());
@@ -83,6 +123,12 @@ void Problem::refreshDistanceMatrix()
   is_distMat_filled = false;
 }
 
+/**
+ *@brief Retrieves or calculates the distance between two points by their indices.
+ *@param i Index of the first point.
+ *@param j Index of the second point.
+ *@return The distance between the two points.
+ */
 double Problem::distByInd(int i, int j)
 {
   if (distMat(i, j) < 0)
@@ -91,6 +137,10 @@ double Problem::distByInd(int i, int j)
   return distMat(i, j);
 }
 
+/**
+ * @brief Fills the distance matrix by computing distances between all pairs of points.
+ * @details Populates the distance matrix using the DTW banded algorithm. This operation is parallelized for efficiency.
+ */
 void Problem::fillDistanceMatrix()
 {
   auto oneTask = [&, N = data.size()](size_t i_linear) {
@@ -105,7 +155,10 @@ void Problem::fillDistanceMatrix()
   std::cout << "Distance matrix has been filled!" << std::endl;
 }
 
-
+/**
+ * @brief Performs clustering based on the specified method.
+ * @details Chooses between different clustering methods (K-medoids or MIP) and performs the clustering accordingly.
+ */
 void Problem::cluster()
 {
   switch (method) {
@@ -118,7 +171,10 @@ void Problem::cluster()
   }
 }
 
-
+/**
+ * @brief Executes the clustering process and additional post-processing tasks.
+ * @details Performs clustering, then prints and writes the cluster results, including silhouettes, to files.
+ */
 void Problem::cluster_and_process()
 {
   cluster();
@@ -128,6 +184,10 @@ void Problem::cluster_and_process()
   writeSilhouettes();
 }
 
+/**
+ *@brief Clusters the data using Mixed Integer Programming (MIP) based on the chosen solver.
+ *@details Uses either Gurobi or HiGHS solver for MIP clustering, depending on the solver set in the Problem instance.
+ */
 void Problem::cluster_by_MIP()
 {
   switch (mipSolver) {
@@ -140,6 +200,10 @@ void Problem::cluster_by_MIP()
   }
 }
 
+/**
+ * @brief Distributes the data points into their respective clusters.
+ * @details Assigns each data point to the cluster of the nearest centroid, then updates the cluster_members array.
+ */
 void Problem::distributeClusters()
 {
   for (auto &member : cluster_members)
@@ -149,6 +213,10 @@ void Problem::distributeClusters()
     cluster_members[clusters_ind[i]].push_back(i);
 }
 
+/**
+ * @brief Assigns each data point to the nearest cluster centroid.
+ * @details Iterates over each data point, calculating its distance to each centroid, and assigns it to the nearest one.
+ */
 void Problem::assignClusters()
 {
   auto assignClustersTask = [&](int i_p) // i_p -> index of points
@@ -173,6 +241,11 @@ void Problem::assignClusters()
   distributeClusters();
 }
 
+/**
+ * @brief Calculates the pairwise distances within each cluster.
+ * @details Iterates through each data point, determining its cluster and calculating the distance to other points
+ * within the same cluster. This method populates the distance matrix with these intra-cluster distances.
+ */
 void Problem::distanceInClusters()
 {
   auto distanceInClustersTask = [&](int i_p) {
@@ -185,6 +258,11 @@ void Problem::distanceInClusters()
   run(distanceInClustersTask, data.size());
 }
 
+/**
+ * @brief Calculates and updates the medoids of each cluster.
+ * @details This function iterates through each data point and calculates the total cost of designating that point
+ * as the medoid of its cluster. The point with the minimum total cost is set as the new medoid for that cluster.
+ */
 void Problem::calculateMedoids()
 {
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
@@ -205,6 +283,11 @@ void Problem::calculateMedoids()
   run(findBetterMedoidTask, data.size());
 }
 
+/**
+ * @brief Performs the clustering using the k-Medoids PAM (Partitioning Around Medoids) algorithm.
+ * @details Executes the PAM clustering algorithm with multiple repetitions, each time initializing medoids randomly.
+ * The repetition yielding the lowest total cost is chosen as the best solution.
+ */
 void Problem::cluster_by_kMedoidsPAM()
 {
   int best_rep = 0;
@@ -235,6 +318,13 @@ void Problem::cluster_by_kMedoidsPAM()
   writeBestRep(best_rep);
 }
 
+/**
+ * @brief Executes a single iteration of the k-Medoids PAM clustering.
+ * @details This function performs a single iteration of the k-Medoids PAM algorithm, updating the medoids and clusters,
+ * and calculating the total cost for this iteration.
+ * @param rep The current repetition number.
+ * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
+ */
 std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 {
   if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
@@ -275,6 +365,12 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
   return std::pair(status, total_cost);
 }
 
+/**
+ * @brief Calculates the total cost of the current clustering solution.
+ * @details Computes the sum of the distances between each point and its closest medoid.
+ * This serves as a measure of the quality of the current clustering solution.
+ * @return The total cost of the clustering.
+ */
 double Problem::findTotalCost()
 {
   double sum = 0;

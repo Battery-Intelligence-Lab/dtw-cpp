@@ -119,7 +119,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 /**
  * @brief Computes the banded dynamic time warping distance between two sequences.
  *
- * This version of the algorithm introduces banding to limit the computation to
+ * @details This version of the algorithm introduces banding to limit the computation to
  * a certain vicinity around the diagonal, reducing computational complexity.
  *
  * Actual banding with skewness. Uses Sakoe-Chiba band.

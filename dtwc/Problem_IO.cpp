@@ -1,10 +1,12 @@
-/*
- * Problem_IO.cpp
+/**
+ * @file Problem_IO.cpp
+ * @brief Implementation of input/output functions for the Problem class.
  *
- * IO functions for Problem class.
-
- *  Created on: 25 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @details These functions handle the writing of medoids, clusters, silhouettes, and
+ * distance matrices to files, as well as reading distance matrices from files.
+ *
+ * @date 25 Dec 2023
+ * @author Volkan Kumtepeli, Becky Perriment
  */
 
 #include "Problem.hpp"
@@ -20,6 +22,12 @@
 
 namespace dtwc {
 
+/**
+ *  @brief Writes the medoids and their corresponding total cost to a CSV file.
+ *  @param centroids_all A vector of vectors containing all centroid indices.
+ *  @param rep The current repetition number.
+ *  @param total_cost The total cost associated with the medoids.
+ */
 void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost)
 {
   const auto outPath = output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv");
@@ -43,7 +51,10 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
   medoidsFile.close();
 }
 
-
+/**
+ *  @brief Prints cluster information to the standard output.
+ *  @details Displays each centroid and its members.
+ */
 void Problem::printClusters() const
 {
   std::cout << "Clusters: ";
@@ -62,6 +73,10 @@ void Problem::printClusters() const
   }
 }
 
+/**
+ *  @brief Writes cluster information to a CSV file.
+ *  @details The file includes cluster centroids and members, and the total cost.
+ */
 void Problem::writeClusters()
 {
   const auto file_name = name + "_Nc_" + std::to_string(Nc) + ".csv";
@@ -87,7 +102,10 @@ void Problem::writeClusters()
   myFile.close();
 }
 
-
+/**
+ *  @brief Writes silhouette scores for each data point to a CSV file.
+ *  @details Calculates silhouette scores using the 'scores::silhouette' function.
+ */
 void Problem::writeSilhouettes()
 {
   const auto silhouettes = scores::silhouette(*this);
@@ -105,6 +123,11 @@ void Problem::writeSilhouettes()
   myFile.close();
 }
 
+/**
+ *  @brief Writes the members of each medoid to a CSV file.
+ *  @param iter The current iteration number.
+ *  @param rep The current repetition number.
+ */
 void Problem::writeMedoidMembers(int iter, int rep) const
 {
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
@@ -119,13 +142,19 @@ void Problem::writeMedoidMembers(int iter, int rep) const
   medoidMembers.close();
 }
 
-
+/**
+ *  @brief Writes the distance matrix to a file.
+ *  @param name_ The name of the output file.
+ */
 void Problem::writeDistanceMatrix(const std::string &name_) const
 {
   writeMatrix(distMat, output_folder / name_);
 }
 
-
+/**
+ *  @brief Writes the number of the best repetition to a file and prints it to the console.
+ *  @param best_rep The best repetition number.
+ */
 void Problem::writeBestRep(int best_rep)
 {
   std::ofstream bestRepFile(output_folder / (name + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv"), std::ios_base::out);
@@ -135,6 +164,11 @@ void Problem::writeBestRep(int best_rep)
   std::cout << "Best repetition: " << best_rep << '\n';
 }
 
+/**
+ *  @brief Reads the distance matrix from a file.
+ *  @details If the matrix cannot be read, continues without it.
+ *  @param distMat_path The file path of the distance matrix.
+ */
 void Problem::readDistanceMatrix(const fs::path &distMat_path)
 {
   try {
@@ -142,6 +176,6 @@ void Problem::readDistanceMatrix(const fs::path &distMat_path)
   } catch (...) {
     std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
   }
-} // Reads distance matrix from file.
+}
 
 } // namespace dtwc

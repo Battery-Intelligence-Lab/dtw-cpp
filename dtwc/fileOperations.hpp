@@ -1,12 +1,16 @@
-/*
- * fileOperations.hpp
+/**
+ * @file fileOperations.hpp
+ * @brief Functions for file operations
  *
- * Functions for file operations
+ * @details This header file declares various functions for performing file operations such as
+ * reading and writing data to/from files. It includes functions to handle comma-separated values (CSV) files,
+ * read data into vectors or Armadillo matrices, and save matrices to files.
+ * It provides the functionality to ignore Byte Order Marks (BOM) in text files,
+ * read specific rows and columns from files, and handle data from directories or batch files.
  *
- *  Created on: 21 Jan 2022
- *  Author(s): Volkan Kumtepeli, Becky Perriment
+ * @date 21 Jan 2022
+ * @author Volkan Kumtepeli, Becky Perriment
  */
-
 
 #pragma once
 
@@ -31,6 +35,11 @@ namespace dtwc {
 
 namespace fs = std::filesystem;
 
+/**
+ * @brief Ignores Byte Order Mark (BOM) in UTF-8 encoded files.
+ *
+ * @param in Reference to the input stream to process.
+ */
 inline void ignoreBOM(std::istream &in)
 {
   char BOMchars[] = { '\xEF', '\xBB', '\xBF' };
@@ -46,7 +55,16 @@ inline void ignoreBOM(std::istream &in)
   in.clear(); // Clear EOF flag if end of file was reached
 }
 
-
+/**
+ * @brief Reads a file and returns the data as a vector of a specified type.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @param name Path of the file to read.
+ * @param start_row Starting row index for reading the data (default is 0).
+ * @param start_col Starting column index for reading the data (default is 0).
+ * @param delimiter Delimiter character used in the file (default is ',').
+ * @return std::vector<data_t> A vector containing the read data.
+ */
 template <typename data_t>
 auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
@@ -89,7 +107,19 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
   return p;
 }
 
-
+/**
+ * @brief Loads all files from a given folder and returns their data as vectors along with file names.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @tparam Tpath Type of the folder path (auto-deduced).
+ * @param folder_path Path of the folder containing the files.
+ * @param Ndata Maximum number of data points to read from each file (default is -1, read all data).
+ * @param verbose Verbosity level for logging output (default is 1).
+ * @param start_row Starting row index for reading the data (default is 0).
+ * @param start_col Starting column index for reading the data (default is 0).
+ * @param delimiter Delimiter character used in the files (default is ',').
+ * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
+ */
 template <typename data_t, typename Tpath>
 auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
@@ -118,6 +148,18 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_
   return std::pair(p_vec, p_names);
 }
 
+/**
+ * @brief Loads batch data from a single file and returns the data as vectors.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @param file_path Path of the file containing batch data.
+ * @param Ndata Maximum number of data points to read (default is -1, read all data).
+ * @param verbose Verbosity level for logging output (default is 1).
+ * @param start_row Starting row index for reading the data (default is 0).
+ * @param start_col Starting column index for reading the data (default is 0).
+ * @param delimiter Delimiter character used in the file (default is ',').
+ * @return std::pair<std::vector<std::vector<data_t>>, std::vectorstd::string> A pair containing vectors of data and corresponding identifiers.
+ */
 template <typename data_t>
 auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
@@ -177,18 +219,28 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   return std::pair(p_vec, p_names);
 }
 
-
+/**
+ * @brief Writes an Armadillo matrix to a file in CSV format.
+ * @tparam data_t The data type of the elements in the matrix.
+ * @param matrix The Armadillo matrix to be written to file.
+ * @param path Path of the file where the matrix will be saved.
+ */
 template <typename data_t>
 void writeMatrix(const arma::Mat<data_t> &matrix, const fs::path &path)
 {
   matrix.save(path.string(), arma::csv_ascii);
 }
 
+/**
+ * @brief Reads a CSV file into an Armadillo matrix.
+ * @tparam data_t The data type of the elements in the matrix.
+ * @param matrix Reference to an Armadillo matrix where the data will be loaded.
+ * @param name Path of the CSV file to read.
+ */
 template <typename data_t>
 void readMatrix(arma::Mat<data_t> &matrix, const fs::path &name)
 {
   matrix.load(name.string(), arma::csv_ascii);
 }
-
 
 } // namespace dtwc
