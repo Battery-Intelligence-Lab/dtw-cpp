@@ -1,10 +1,12 @@
-/*
- * Problem.hpp
+/**
+ * @file Problem.hpp
+ * @brief Encapsulates the DTWC (Dynamic Time Warping Clustering) problem in a class.
  *
- * Encapsulating DTWC problem in a class.
-
- *  Created on: 19 Oct 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @details This file contains the definition of the Problem class used in DTWC applications.
+ * It includes various methods for manipulating and analyzing clusters.
+ *
+ * @date Created on 19 Oct 2022
+ * @author Volkan Kumtepeli, Becky Perriment
  */
 
 #pragma once
@@ -31,17 +33,27 @@
 
 namespace dtwc {
 
+/**
+ * @class Problem
+ * @brief Class representing a problem in DTWC.
+ *
+ * @details This class encapsulates all the functionalities and data structures required to solve
+ * a dynamic time warping clustering problem. It includes methods for initialising clusters,
+ * calculating distances, clustering, and writing results.
+ */
 class Problem
 {
 public:
   using distMat_t = arma::Mat<double>;
+  using path_t = std::decay_t<decltype(settings::resultsPath)>;
 
 private:
-  int Nc{ 1 }; // Number of clusters.
-  distMat_t distMat;
-  Solver mipSolver{ settings::DEFAULT_MIP_SOLVER };
+  int Nc{ 1 };                                      /*!< Number of clusters. */
+  distMat_t distMat;                                /*!< Distance matrix. */
+  Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
 
-  bool is_distMat_filled{ false };
+  bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
+
   // Private functions:
   std::pair<int, double> cluster_by_kMedoidsPAM_single(int rep);
 
@@ -49,20 +61,20 @@ private:
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
 
 public:
-  Method method{ Method::Kmedoids };
-  int maxIter{ 100 };                        //<! Maximum number of iteration for iterative-methods
-  int N_repetition{ 1 };                     //<! Repetition for iterative-methods.
-  int band{ settings::DEFAULT_BAND_LENGTH }; //<! band length for Sakoe-Chiba band, -1 if full dtw is needed.
+  Method method{ Method::Kmedoids };         /*!< Clustering method. */
+  int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
+  int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
+  int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
 
-  std::function<void(Problem &)> init_fun{ init::random }; // Initialisation function.
+  std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
-  std::decay_t<decltype(settings::resultsPath)> output_folder{ settings::resultsPath };
-  std::string name{}; //<! Problem name
-  Data data;
+  path_t output_folder{ settings::resultsPath }; /*!< Output folder for results. */
+  std::string name{};                            /*!< Problem name. */
+  Data data;                                     /*!< Data associated with the problem. */
 
-  std::vector<int> centroids_ind;                //<! indices of cluster centroids.
-  std::vector<int> clusters_ind;                 //<! which point belongs to which cluster.
-  std::vector<std::vector<int>> cluster_members; //<! Members of each clusters!
+  std::vector<int> centroids_ind;                //!< indices of cluster centroids.
+  std::vector<int> clusters_ind;                 //!< Indicator of which point belongs to which cluster.
+  std::vector<std::vector<int>> cluster_members; //!< Members of each cluster. */
 
   // Constructors:
   Problem() = default;

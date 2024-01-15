@@ -7,7 +7,6 @@
 
 int main()
 {
-
   using namespace dtwc;
 
   dtwc::Clock clk; // Create a clock object
