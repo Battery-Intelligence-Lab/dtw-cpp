@@ -73,6 +73,17 @@ jobs:
         run: genhtml coverage.info -o Coverage
         working-directory: build_dir
       - run: sudo mv ./build_dir/Coverage ./_site/Coverage
+
+      # JOSS Paper Compilation Steps
+      - name: Build draft PDF for JOSS paper
+        uses: openjournals/openjournals-draft-action@master
+        if: github.ref == 'refs/heads/main'
+        with:
+          journal: joss
+          paper-path: joss/paper.md
+      - name: Move JOSS paper to documentation
+        if: github.ref == 'refs/heads/main'
+        run: mv joss/paper.pdf _site/joss/paper.pdf
         
       # Upload the website:
       - name: Upload artifact
