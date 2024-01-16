@@ -6,15 +6,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 
 <br/><br/>
-# DTWC v0.0.4
+# DTWC v0.1.0
 
 ## New features
-* OSQP support is removed. 
-* HiGHS solver is added. 
+* HiGHS solver is added for open-source alternative to Gurobi. 
+* Command line interface is added. 
+* Documentation is improved.
+
 
 
 ## Notable Bug-fixes
-* N/A
+* Sakoe-Chiba band implementation is now more accurate. 
 
 ## API changes
 * Replaced `VecMatrix<data_t>` class with `arma::Mat<data_t>`. 
@@ -23,14 +25,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Required C++ standard is reduced from C++20 to C++17 as it was causing `call to consteval function 'std::chrono::hh_mm_ss::_S_fractional_width' is not a constant expression` error for clang versions older than clang-15.
 * std::execution-based parallelisation replaced with OpenMP.
 
+## Developer updates: 
+* The software is now being tested via Catch2 library. 
 
 <br/><br/>
 # DTWC v0.0.3
 
 ## New features
 * UCR_test_2018 data integration for benchmarking. 
-* OSQP support is added with totally unimodular matrices solution. 
-
 
 ## Notable Bug-fixes
 * N/A

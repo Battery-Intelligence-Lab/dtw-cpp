@@ -11,9 +11,7 @@ DTWC++ is yet to offer any binaries or wrappers in any other languages; therefor
 - Use DTWC++ as an external library in your C++ project by linking `dtwc++` target in your  .
 - Use DTWC++ from command line interface (CLI), by using `dtwc_cl` executable after compilation. 
 - Edit `main.cpp` in `dtwc` folder and use `dtwc_main` executable after compilation using the examples in `examples` folder or []. 
-
   - As a subdirectory: Download the source code in your folder of preference, use `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library 
-
 
 
 ## Building from the source
@@ -41,7 +39,7 @@ cmake -G "Unix Makefiles" ..
 ```
 4. Compile the files:
 ```bash
-cmake --build . # Assuming that you are still in the build folder. 
+cmake --build . -j32 # Assuming that you are still in the build folder. 
 ```
 
 ```note
@@ -50,7 +48,6 @@ Then the executable will be ready to run at ```../Release/dtwc_main```. By defau
 
 ```cmake --build . -DCMAKE_BUILD_TYPE=Debug```
 ```
-
 
 ### Windows
 
@@ -71,48 +68,3 @@ cmake -G "Visual Studio 16 2019" ..  # if you use Visual Studio's compiler.
     If you are using Visual Studio Community, you may also open the folder in Visual Studio directly, without using CMake. 
     See [here](https://docs.microsoft.com/en-us/visualstudio/ide/develop-code-in-visual-studio-without-projects-or-solutions?view=vs-2019) for detailed explanation.
 ```
-
-
-## Gurobi Installation: 
-
-### Linux: 
-
-1. Download the installation file. Then extract it to a folder (preferably opt folder) using the following command:
-
-```bash
-tar xvfz gurobi9.5.2_linux64.tar.gz  -C /opt/
-```
-
-2. Then add necessary variables to the end of your `~/.bashrc` file. 
-
-```bash
-export GUROBI_HOME=/opt/gurobi952/linux64
-export PATH=$GUROBI_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$GUROBI_HOME/lib:$LD_LIBRARY_PATH
-```
-
-3. Don't forget to source your `~/.bashrc` file.
-
-```bash
-source ~/.bashrc
-```
-
-4. Then you need to add a license. Please obtain an academic license from the Gurobi website. Then use `grbgetkey` command to validate your license. 
-
-```bash
-grbgetkey HERE-SHOULD-BE-YOUR-LICENSE-KEY
-```
-
-5. To test if the installation went correctly, use command line: 
-
-```bash
-gurobi_cl $GUROBI_HOME/examples/data/afiro.mps
-```
-
-For a visual guide see the video: https://www.youtube.com/watch?v=yNmeG6Wom1o
-
-
-### macOS:
-
-For a visual guide see the video: https://www.youtube.com/watch?v=ZcL-NmckTxQ
-
