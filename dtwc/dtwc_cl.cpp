@@ -24,16 +24,16 @@ int main(int argc, char **argv)
   // Input parameters:
   std::string Nc_str;
   std::string probName{ "dtwc" };
-  std::string inputPath{ "." };
+  std::string inputPath{ "../data/dummy" };
   std::string outPath{ "." };
   std::string method{ "kMedoids" };
   std::string solver{ "HiGHS" };
   std::string distMatPath{ "" };
 
   int maxIter{ dtwc::settings::DEFAULT_MAX_ITER };
-  int skipRows{}, skipCols{};
+  int skipRows{1}, skipCols{1};
   int N_repetition{ 1 };
-  int bandWidth{};
+  int bandWidth{-1};
 
   CLI::App app{ app_description };
 
@@ -54,9 +54,15 @@ int main(int argc, char **argv)
 
   CLI11_PARSE(app, argc, argv);
 
+  // Check if no arguments were provided
+  // if (argc == 1) {
+  //   std::cout << app.help() << std::endl;
+  //   return EXIT_SUCCESS;
+  // }
+
   std::cout << "Arguments are parsed." << std::endl;
 
-  auto Nc = str_to_range(Nc_str);
+  auto Nc = dtwc::Range(3,5); //str_to_range(Nc_str);
   dtwc::Clock clk; // Create a clock object
 
   std::cout << "Nc_str : " << Nc_str << '\n';
