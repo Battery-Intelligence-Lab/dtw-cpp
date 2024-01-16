@@ -143,6 +143,8 @@ double Problem::distByInd(int i, int j)
  */
 void Problem::fillDistanceMatrix()
 {
+  if (isDistanceMatrixFilled()) return;
+
   auto oneTask = [&, N = data.size()](size_t i_linear) {
     size_t i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)
