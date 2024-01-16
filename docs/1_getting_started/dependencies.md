@@ -12,6 +12,7 @@ Dependencies that needs to be installed by the user if they do not exist:
 - CMake
 - OpenMP
 - A suitable compiler (Clang, GCC, MSVC, etc.)
+- Gurobi (optional, if not installed HiGHS will be used as MIP solver)
 
 Dependencies that are installed by the CPM package manager: 
 - HiGHS 
