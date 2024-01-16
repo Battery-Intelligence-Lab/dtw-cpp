@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Direct use
-nav_order: 2
+nav_order: 4
 ---
 
 # Direct use

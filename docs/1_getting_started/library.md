@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Including in an existing project
-nav_order: 3
+nav_order: 7
 ---
 
 

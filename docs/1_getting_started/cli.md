@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Command line interface (CLI)
-nav_order: 3
+nav_order: 6
 ---
 
 

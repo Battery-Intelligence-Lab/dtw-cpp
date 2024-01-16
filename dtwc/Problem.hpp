@@ -103,6 +103,12 @@ public:
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);
 
+  void set_data(dtwc::Data data_)
+  {
+    data = data_;
+    refreshDistanceMatrix();
+  }
+
   data_t maxDistance() const { return distMat.max(); }
   data_t distByInd(int i, int j);
   bool isDistanceMatrixFilled() const { return is_distMat_filled; }

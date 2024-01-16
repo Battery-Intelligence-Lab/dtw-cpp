@@ -12,9 +12,6 @@ DTWC++ is yet to offer any binaries or wrappers in any other languages; therefor
 - Use DTWC++ from command line interface (CLI), by using `dtwc_cl` executable after compilation. 
 - Edit `main.cpp` in `dtwc` folder and use `dtwc_main` executable after compilation using the examples in `examples` folder or []. 
 
-
-
-
   - As a subdirectory: Download the source code in your folder of preference, use `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library 
 
 
