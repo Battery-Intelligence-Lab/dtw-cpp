@@ -8,7 +8,7 @@ nav_order: 4
 
 Although DTWC++ is not recommended to be directly used, it is the easiest way to use the library. 
 
-- Install [the dependencies](dependencies.md),
+- Install [the dependencies](dependencies.md).
 - Download the source code and extract it if it is zipped.
 - Dump your data into `data` folder in one of the [supported data formats](supported_data.md).
 - Edit `main.cpp` in `dtwc` folder using the examples in `examples` folder or [examples page](examples.md).
