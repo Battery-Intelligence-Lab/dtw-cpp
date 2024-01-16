@@ -50,9 +50,13 @@ int main(int argc, char **argv)
   app.add_option("--bandwidth,--bandw,--bandlength", bandWidth, "Width of the band used.");
   app.add_option("--distMat,--distance_matrix,--distances", distMatPath, "Path for distance matrix.");
 
-  std::cout << "Arguments are being parsed." << std::endl;
-
   CLI11_PARSE(app, argc, argv);
+
+  // Check if no arguments were provided
+  if (argc == 1) {
+    std::cout << app.help() << std::endl;
+    return EXIT_SUCCESS;
+  }
 
   std::cout << "Arguments are parsed." << std::endl;
 
@@ -106,6 +110,8 @@ int main(int argc, char **argv)
   }
 
   std::cout << "Finished all tasks " << clk << std::endl;
+
+  return EXIT_SUCCESS;
 }
 
 // Definitions of the auxillary functions:
