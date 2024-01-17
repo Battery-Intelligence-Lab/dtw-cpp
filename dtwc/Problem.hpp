@@ -59,6 +59,7 @@ private:
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
+  void distanceInClusters();
 
 public:
   Method method{ Method::Kmedoids };         /*!< Clustering method. */
@@ -72,9 +73,8 @@ public:
   std::string name{};                            /*!< Problem name. */
   Data data;                                     /*!< Data associated with the problem. */
 
-  std::vector<int> centroids_ind;                //!< indices of cluster centroids.
-  std::vector<int> clusters_ind;                 //!< Indicator of which point belongs to which cluster.
-  std::vector<std::vector<int>> cluster_members; //!< Members of each cluster. */
+  std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Np]
+  std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
   Problem() = default;
@@ -132,8 +132,6 @@ public:
   // Auxillary
   double findTotalCost();
   void assignClusters();
-  void distributeClusters();
-  void distanceInClusters();
 
   void calculateMedoids();
 };

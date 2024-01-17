@@ -88,12 +88,9 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     int i_cluster = 0;
     for (auto i : prob.centroids_ind) {
-      prob.cluster_members.emplace_back();
       for (int j{ 0 }; j < Nb; j++)
-        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5) {
+        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
           prob.clusters_ind[j] = i_cluster;
-          prob.cluster_members.back().push_back(j);
-        }
 
       i_cluster++;
     }

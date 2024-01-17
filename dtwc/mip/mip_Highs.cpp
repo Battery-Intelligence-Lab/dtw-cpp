@@ -41,12 +41,9 @@ void extract_mip_solution(Problem &prob, const T &solution)
 
   int i_cluster = 0;
   for (auto i : prob.centroids_ind) {
-    prob.cluster_members.emplace_back();
     for (int j{ 0 }; j < Nb; j++)
-      if (solution[i * Nb + j] > 0.5) {
+      if (solution[i * Nb + j] > 0.5)
         prob.clusters_ind[j] = i_cluster;
-        prob.cluster_members.back().push_back(j);
-      }
 
     i_cluster++;
   }

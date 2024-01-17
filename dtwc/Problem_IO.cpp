@@ -9,8 +9,9 @@
 
 #include "Problem.hpp"
 #include "fileOperations.hpp"
-#include "scores.hpp"   // for silhouette
-#include "settings.hpp" // for data_t, randGenerator, band
+#include "scores.hpp"      // for silhouette
+#include "settings.hpp"    // for data_t, randGenerator, band
+#include "types/Range.hpp" // for Range
 
 #include <iomanip>  // for operator<<, setprecision
 #include <iostream> // for cout^
@@ -52,11 +53,12 @@ void Problem::printClusters() const
 
   std::cout << '\n';
 
-  for (int i{ 0 }; i < Nc; i++) {
-    std::cout << get_name(centroids_ind[i]) << " has: ";
+  for (const auto i_c : Range(Nc)) {
+    std::cout << get_name(centroids_ind[i_c]) << " has: ";
 
-    for (auto member : cluster_members[i])
-      std::cout << get_name(member) << " ";
+    for (const auto i_p : Range(size()))
+      if (clusters_ind[i_p] == centroids_ind[i_c])
+        std::cout << get_name(i_p) << " ";
 
     std::cout << '\n';
   }
@@ -111,11 +113,14 @@ void Problem::writeMedoidMembers(int iter, int rep) const
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
   std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
-  for (auto &members : cluster_members) {
-    for (auto member : members)
-      medoidMembers << get_name(member) << ',';
+  for (const auto i_c : Range(Nc)) {
+    for (const auto i_p : Range(size()))
+      if (clusters_ind[i_p] == centroids_ind[i_c])
+        medoidMembers << get_name(i_p) << ',';
+
     medoidMembers << '\n';
   }
+
   medoidMembers.close();
 }
 
