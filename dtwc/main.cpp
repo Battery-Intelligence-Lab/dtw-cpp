@@ -24,10 +24,9 @@ int main()
   prob.set_solver(dtwc::Solver::Gurobi); // MIP solver type.
   prob.band = -1;                        // Sakoe chiba band length.
 
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
-
   prob.cluster_by_MIP();
+
+  prob.writeDistanceMatrix();
 
   prob.printClusters(); // Prints to screen.
   prob.writeClusters(); // Prints to file.

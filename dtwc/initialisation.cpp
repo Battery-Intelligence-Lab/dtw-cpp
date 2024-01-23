@@ -59,7 +59,6 @@ void random(Problem &prob)
 
   std::vector<int> candidate_centroids;
   candidate_centroids.reserve(prob.cluster_size());
-  prob.clear_clusters();
   auto range = Range(prob.size());
   std::sample(range.begin(), range.end(), std::back_inserter(candidate_centroids), Nc, randGenerator);
 
@@ -87,7 +86,7 @@ void Kmeanspp(Problem &prob)
   if (Nc <= 0)
     throw std::runtime_error("init::Kmeanspp has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
 
-  prob.clear_clusters();
+  prob.centroids_ind.clear();
 
   std::uniform_int_distribution<size_t> d(0, prob.size() - 1);
   std::vector<int> candidate_centroids;

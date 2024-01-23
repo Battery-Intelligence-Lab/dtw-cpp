@@ -24,16 +24,16 @@ int main(int argc, char **argv)
   // Input parameters:
   std::string Nc_str;
   std::string probName{ "dtwc" };
-  std::string inputPath{ "." };
+  std::string inputPath{ "../data/dummy" };
   std::string outPath{ "." };
   std::string method{ "kMedoids" };
   std::string solver{ "HiGHS" };
   std::string distMatPath{ "" };
 
   int maxIter{ dtwc::settings::DEFAULT_MAX_ITER };
-  int skipRows{}, skipCols{};
+  int skipRows{0}, skipCols{0};
   int N_repetition{ 1 };
-  int bandWidth{};
+  int bandWidth{-1};
 
   CLI::App app{ app_description };
 
@@ -60,7 +60,7 @@ int main(int argc, char **argv)
 
   std::cout << "Arguments are parsed." << std::endl;
 
-  auto Nc = str_to_range(Nc_str);
+  auto Nc = str_to_range(Nc_str); // dtwc::Range(3,5); 
   dtwc::Clock clk; // Create a clock object
 
   std::cout << "Nc_str : " << Nc_str << '\n';
@@ -81,11 +81,12 @@ int main(int argc, char **argv)
   prob.N_repetition = N_repetition;
   prob.output_folder = outPath;
   prob.band = bandWidth;
-  // try {
-  //   prob.readDistanceMatrix(distMatPath);
-  // } catch (const std::exception &e) {
-  //   std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
-  // }
+  try {
+    if(distMatPath != "")
+      prob.readDistanceMatrix(distMatPath);
+  } catch (const std::exception &e) {
+    std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
+  }
 
 
   if (solver == "HiGHS" || solver == "highs")

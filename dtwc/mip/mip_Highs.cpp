@@ -30,7 +30,7 @@ namespace dtwc {
 template <typename T>
 void extract_mip_solution(Problem &prob, const T &solution)
 {
-  prob.clear_clusters();
+  prob.centroids_ind.clear();
   const auto Nb = prob.data.size();
 
   for (int i{ 0 }; i < Nb; i++)
@@ -39,17 +39,10 @@ void extract_mip_solution(Problem &prob, const T &solution)
 
   prob.clusters_ind.resize(Nb);
 
-  int i_cluster = 0;
-  for (auto i : prob.centroids_ind) {
-    prob.cluster_members.emplace_back();
+  for (auto i : prob.centroids_ind) 
     for (int j{ 0 }; j < Nb; j++)
-      if (solution[i * Nb + j] > 0.5) {
-        prob.clusters_ind[j] = i_cluster;
-        prob.cluster_members.back().push_back(j);
-      }
-
-    i_cluster++;
-  }
+      if (solution[i * Nb + j] > 0.5)
+        prob.clusters_ind[j] = i;
 }
 
 void MIP_clustering_byHiGHS(Problem &prob)
@@ -57,7 +50,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
   std::cout << "HiGS is being called!" << std::endl;
   dtwc::Clock clk; // Create a clock object
 
-  prob.clear_clusters();
 #ifdef DTWC_ENABLE_HIGHS
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();

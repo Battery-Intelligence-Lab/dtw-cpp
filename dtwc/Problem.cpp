@@ -51,9 +51,8 @@ void Problem::clear_clusters()
  */
 void Problem::resize()
 {
-  cluster_members.resize(Nc);
-  centroids_ind.resize(Nc);
   clusters_ind.resize(size());
+  centroids_ind.resize(Nc);
 }
 
 /**
@@ -145,8 +144,8 @@ void Problem::fillDistanceMatrix()
 {
   if (isDistanceMatrixFilled()) return;
 
-  auto oneTask = [&, N = data.size()](size_t i_linear) {
-    size_t i{ i_linear / N }, j{ i_linear % N };
+  auto oneTask = [&, N = data.size()](int i_linear) {
+    int i{ i_linear / N }, j{ i_linear % N };
     if (i <= j)
       distByInd(i, j);
   };
@@ -156,7 +155,6 @@ void Problem::fillDistanceMatrix()
   is_distMat_filled = true;
   std::cout << "Distance matrix has been filled!" << std::endl;
 }
-
 /**
  * @brief Performs clustering based on the specified method.
  * @details Chooses between different clustering methods (K-medoids or MIP) and performs the clustering accordingly.
@@ -221,26 +219,16 @@ void Problem::distributeClusters()
  */
 void Problem::assignClusters()
 {
-  auto assignClustersTask = [&](int i_p) // i_p -> index of points
+  auto assignClustersTask = [this](int i_p) // i_p and i_c in [0, Np]
   {
-    double minDist{ 1e9 };
-    int minInd{}, c_ind{};
-    for (auto i_c : centroids_ind) { // #TODO test if runs correctly as we changed previous algorithm.
-      const auto distNew = distByInd(i_p, i_c);
-      if (distNew < minDist) {
-        minDist = distNew;
-        minInd = c_ind;
-      }
-      c_ind++;
-    }
-
-    clusters_ind[i_p] = minInd;
+    clusters_ind[i_p] = *std::min_element(
+      centroids_ind.begin(),
+      centroids_ind.end(),
+      [this, i_p](int i_c1, int ic2) { return distByInd(i_p, i_c1) < distByInd(i_p, ic2); });
   };
 
   clusters_ind.resize(data.size()); // Resize before assigning.
   run(assignClustersTask, data.size());
-
-  distributeClusters();
 }
 
 /**
@@ -250,14 +238,14 @@ void Problem::assignClusters()
  */
 void Problem::distanceInClusters()
 {
-  auto distanceInClustersTask = [&](int i_p) {
-    const int clusterNo = clusters_ind[i_p];
-    for (auto otherPointInd : cluster_members[clusterNo])
-      if (i_p <= otherPointInd)
-        distByInd(i_p, otherPointInd);
+  auto distanceInClustersTask = [&, N = size()](int i_p) {
+    const int clusterNo{ clusters_ind[i_p] };
+    for (int i{ i_p }; i < N; i++)
+      if (clusters_ind[i] == clusterNo) // If they are in the same cluster
+        distByInd(i_p, i);
   };
 
-  run(distanceInClustersTask, data.size());
+  run(distanceInClustersTask, size());
 }
 
 /**
@@ -267,8 +255,8 @@ void Problem::distanceInClusters()
  */
 void Problem::calculateMedoids()
 {
-  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
-  std::vector<data_t> clusterCosts(centroids_ind.size(), maxValue);
+  std::vector<double> pointCosts(size());
+
   auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
   {
     const auto i_c = clusters_ind[i_p];
@@ -350,7 +338,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
               << findTotalCost() << ".\n"; // Uses clusters_ind to find cost.
 
     printClusters();
-    distanceInClusters(); // Just populates distByInd matrix ahead.
+    distanceInClusters(); // Just populates distance matrix ahead.
     calculateMedoids();   // Changes centroids_ind
 
     if (oldmedoids == centroids_ind) {
@@ -377,12 +365,11 @@ double Problem::findTotalCost()
 {
   double sum = 0;
   for (int i = 0; i < data.size(); i++) {
-    const auto i_p = centroids_ind[clusters_ind[i]];
     if constexpr (settings::isDebug)
-      std::cout << "Distance between " << i << " and closest cluster " << i_p
-                << " which is: " << distByInd(i, i_p) << "\n";
+      std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
+                << " which is: " << distByInd(i, clusters_ind[i]) << "\n";
 
-    sum += distByInd(i, i_p); // #TODO should cost be square or like this?
+    sum += distByInd(i, clusters_ind[i]); // #TODO should cost be square or like this?
   }
 
   return sum;

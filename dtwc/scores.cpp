@@ -47,27 +47,27 @@ std::vector<double> silhouette(Problem &prob)
   }
 
   auto oneTask = [&](size_t i_b) {
-    auto i_c = prob.clusters_ind[i_b];
+    // auto i_c = prob.clusters_ind[i_b];
 
-    if (prob.cluster_members[i_c].size() == 1)
-      silhouettes[i_b] = 0;
-    else {
-      thread_local std::vector<double> mean_distances(Nc);
+    // if (prob.cluster_members[i_c].size() == 1)
+    //   silhouettes[i_b] = 0;
+    // else {
+    //   thread_local std::vector<double> mean_distances(Nc);
 
-      for (int i = 0; i < Nb; i++)
-        mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
+    //   for (int i = 0; i < Nb; i++)
+    //     mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
 
-      auto min = std::numeric_limits<double>::max();
-      for (int i = 0; i < Nc; i++) // Finding means:
-        if (i == i_c)
-          mean_distances[i] /= (prob.cluster_members[i].size() - 1);
-        else {
-          mean_distances[i] /= prob.cluster_members[i].size();
-          min = std::min(min, mean_distances[i]);
-        }
+    //   auto min = std::numeric_limits<double>::max();
+    //   for (int i = 0; i < Nc; i++) // Finding means:
+    //     if (i == i_c)
+    //       mean_distances[i] /= (prob.cluster_members[i].size() - 1);
+    //     else {
+    //       mean_distances[i] /= prob.cluster_members[i].size();
+    //       min = std::min(min, mean_distances[i]);
+    //     }
 
-      silhouettes[i_b] = (min - mean_distances[i_c]) / std::max(min, mean_distances[i_c]);
-    }
+    //   silhouettes[i_b] = (min - mean_distances[i_c]) / std::max(min, mean_distances[i_c]);
+    // }
   };
 
   dtwc::run(oneTask, Nb);

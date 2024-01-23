@@ -8,6 +8,7 @@
 
 ### Current priority: 
 
+- [ ] If you accidentally compile with amd64_x86 you get bad_alloc due to the insufficient RAM in 32-bit computer. So, put a warning for that. 
 - [ ] Modernise `*.csv` reading interface, allow for rowwise or columnwise data. 
 - [x] CMake files arranging:
   - [x] HiGHS 1.6.0 does not always work. Also it does not work in debug mode due to iterator level. 
