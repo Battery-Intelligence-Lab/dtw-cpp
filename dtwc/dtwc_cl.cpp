@@ -31,7 +31,7 @@ int main(int argc, char **argv)
   std::string distMatPath{ "" };
 
   int maxIter{ dtwc::settings::DEFAULT_MAX_ITER };
-  int skipRows{1}, skipCols{1};
+  int skipRows{0}, skipCols{0};
   int N_repetition{ 1 };
   int bandWidth{-1};
 
