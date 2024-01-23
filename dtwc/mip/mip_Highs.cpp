@@ -30,7 +30,6 @@ namespace dtwc {
 template <typename T>
 void extract_mip_solution(Problem &prob, const T &solution)
 {
-  prob.clear_clusters();
   const auto Nb = prob.data.size();
 
   for (int i{ 0 }; i < Nb; i++)
@@ -54,7 +53,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
   std::cout << "HiGS is being called!" << std::endl;
   dtwc::Clock clk; // Create a clock object
 
-  prob.clear_clusters();
 #ifdef DTWC_ENABLE_HIGHS
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();

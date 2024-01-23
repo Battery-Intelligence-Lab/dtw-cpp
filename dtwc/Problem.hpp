@@ -94,7 +94,6 @@ public:
   auto const &p_vec(size_t i) const { return data.p_vec[i]; }
 
   void refreshDistanceMatrix();
-  void clear_clusters();
   void resize();
 
   // Getters and setters:

@@ -33,8 +33,6 @@ void MIP_clustering_byGurobi(Problem &prob)
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
 
-  prob.clear_clusters();
-
   try {
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);

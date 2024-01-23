@@ -26,10 +26,9 @@ int main()
   prob.set_solver(dtwc::Solver::Gurobi);
   prob.band = 5;
 
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
+  prob.cluster_by_kMedoidsPAM();
 
-  prob.cluster_by_MIP();
+  prob.writeDistanceMatrix();
 
   prob.printClusters(); // Prints to screen.
   prob.writeClusters(); // Prints to file.

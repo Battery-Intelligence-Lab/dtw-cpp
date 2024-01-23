@@ -82,7 +82,7 @@ void Problem::writeClusters()
          << "Data" << ',' << "its cluster\n";
 
   for (int i{ 0 }; i < data.size(); i++)
-    myFile << get_name(i) << ',' << get_name(centroids_ind[clusters_ind[i]]) << '\n';
+    myFile << get_name(i) << ',' << get_name(clusters_ind[i]) << '\n';
 
   myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
 
