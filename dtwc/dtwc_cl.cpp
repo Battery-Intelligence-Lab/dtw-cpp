@@ -55,14 +55,14 @@ int main(int argc, char **argv)
   CLI11_PARSE(app, argc, argv);
 
   // Check if no arguments were provided
-  // if (argc == 1) {
-  //   std::cout << app.help() << std::endl;
-  //   return EXIT_SUCCESS;
-  // }
+  if (argc == 1) {
+    std::cout << app.help() << std::endl;
+    return EXIT_SUCCESS;
+  }
 
   std::cout << "Arguments are parsed." << std::endl;
 
-  auto Nc = dtwc::Range(3,5); //str_to_range(Nc_str);
+  auto Nc = str_to_range(Nc_str); // dtwc::Range(3,5); 
   dtwc::Clock clk; // Create a clock object
 
   std::cout << "Nc_str : " << Nc_str << '\n';
@@ -83,11 +83,12 @@ int main(int argc, char **argv)
   prob.N_repetition = N_repetition;
   prob.output_folder = outPath;
   prob.band = bandWidth;
-  // try {
-  //   prob.readDistanceMatrix(distMatPath);
-  // } catch (const std::exception &e) {
-  //   std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
-  // }
+  try {
+    if(distMatPath != "")
+      prob.readDistanceMatrix(distMatPath);
+  } catch (const std::exception &e) {
+    std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
+  }
 
 
   if (solver == "HiGHS" || solver == "highs")
