@@ -30,6 +30,7 @@ namespace dtwc {
 template <typename T>
 void extract_mip_solution(Problem &prob, const T &solution)
 {
+  prob.centroids_ind.clear();
   const auto Nb = prob.data.size();
 
   for (int i{ 0 }; i < Nb; i++)
@@ -38,14 +39,10 @@ void extract_mip_solution(Problem &prob, const T &solution)
 
   prob.clusters_ind.resize(Nb);
 
-  int i_cluster = 0;
-  for (auto i : prob.centroids_ind) {
+  for (auto i : prob.centroids_ind) 
     for (int j{ 0 }; j < Nb; j++)
       if (solution[i * Nb + j] > 0.5)
-        prob.clusters_ind[j] = i_cluster;
-
-    i_cluster++;
-  }
+        prob.clusters_ind[j] = i;
 }
 
 void MIP_clustering_byHiGHS(Problem &prob)

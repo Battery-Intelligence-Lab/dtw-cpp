@@ -32,6 +32,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
+  prob.centroids_ind.clear();
 
   try {
     GRBEnv env = GRBEnv();
@@ -84,14 +85,10 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     prob.clusters_ind.resize(Nb);
 
-    int i_cluster = 0;
-    for (auto i : prob.centroids_ind) {
+    for (auto i : prob.centroids_ind)
       for (int j{ 0 }; j < Nb; j++)
         if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
-          prob.clusters_ind[j] = i_cluster;
-
-      i_cluster++;
-    }
+          prob.clusters_ind[j] = i;
 
   } catch (GRBException &e) {
     std::cout << "Error code = " << e.getErrorCode() << std::endl

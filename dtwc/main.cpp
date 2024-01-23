@@ -26,7 +26,7 @@ int main()
   prob.set_solver(dtwc::Solver::Gurobi);
   prob.band = 5;
 
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_MIP();
 
   prob.writeDistanceMatrix();
 
