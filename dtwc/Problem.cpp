@@ -32,18 +32,6 @@
 namespace dtwc {
 
 /**
- * @brief Clears existing cluster information.
- *
- * @details Resets the centroids indices, cluster indices, and members of each cluster to their default states.
- */
-void Problem::clear_clusters()
-{
-  centroids_ind.clear();
-  clusters_ind.clear();
-  cluster_members.clear();
-}
-
-/**
  * @brief Resizes data structures based on the current number of clusters.
  *
  * @details Adjusts the size of cluster_members, centroids_ind, and clusters_ind arrays based on the current
@@ -200,18 +188,6 @@ void Problem::cluster_by_MIP()
   }
 }
 
-/**
- * @brief Distributes the data points into their respective clusters.
- * @details Assigns each data point to the cluster of the nearest centroid, then updates the cluster_members array.
- */
-void Problem::distributeClusters()
-{
-  for (auto &member : cluster_members)
-    member.clear();
-
-  for (size_t i = 0; i < clusters_ind.size(); i++)
-    cluster_members[clusters_ind[i]].push_back(i);
-}
 
 /**
  * @brief Assigns each data point to the nearest cluster centroid.
@@ -259,18 +235,29 @@ void Problem::calculateMedoids()
 
   auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
   {
-    const auto i_c = clusters_ind[i_p];
-    data_t sum{ 0 };
-    for (auto member : cluster_members[i_c])
-      sum += distByInd(i_p, member);
+    const auto clusterNo = clusters_ind[i_p];
+    double sum{ 0 };
 
-    if (sum < clusterCosts[i_c]) {
-      clusterCosts[i_c] = sum;
-      centroids_ind[i_c] = i_p;
-    }
+    for (const auto i : Range(size()))
+      if (clusters_ind[i] == clusterNo)
+        sum += distByInd(i_p, i);
+
+    pointCosts[i_p] = sum;
   };
 
-  run(findBetterMedoidTask, data.size());
+  run(findBetterMedoidTask, size());
+
+  for (const auto i : Range(Nc)) {
+    const auto centroidNow = centroids_ind[i];
+    double minCost{ std::numeric_limits<double>::max() };
+    int minInd{};
+
+    for (const auto i_p : Range(size()))
+      if ((clusters_ind[i_p] == centroidNow) && (pointCosts[i_p] < minCost))
+        std::tie(minCost, minInd) = std::tie(pointCosts[i_p], i_p);
+
+    centroids_ind[i] = minInd;
+  }
 }
 
 /**
