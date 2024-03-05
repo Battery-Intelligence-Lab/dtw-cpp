@@ -15,12 +15,12 @@ DTW-C++
 ![GitHub all releases](https://img.shields.io/github/downloads/Battery-Intelligence-Lab/dtw-cpp/total) 
 [![](https://img.shields.io/badge/license-BSD--3--like-5AC451.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/LICENSE)
 
-In this `readme.md` a summary is given. You may find the detailed documentation [here](https://Battery-Intelligence-Lab.github.io/dtw-cpp/).  
-If you are affected by the sudden change of main branch, please switch to [dtw-cpp_v0.0.2]([https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/dtw-cpp_v2](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/dtwc_0_0_2)) branch. 
+There is separate [detailed documentation](https://Battery-Intelligence-Lab.github.io/dtw-cpp/) available for this project; this `readme.md` file only gives a short summary.  
+If you have any issues running the code in the main branch, please switch to the [dtw-cpp_v0.0.2](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/dtwc_0_0_2) branch instead.
 
 Introduction
 ===========================
-DTW-C++ is a dynamic time warping (DTW) and clustering library, written in C++, for time series data. The user can input multiple time series (potentially of variable lengths), and the number of desired clusters (if known), or a range of possible cluster numbers (if the specific number is not known). DTW-C++ can cluster time series data using k-medoids or mixed integer programming (MIP); k-medoids is generally quicker, but may be subject getting stuck in local optima, whereas MIP can find globally optimal clusters.
+DTW-C++ is a dynamic time warping (DTW) and clustering library for time series data, written in C++. Users can input multiple time series and find clusters of similar time series. Time series may be the same lengths, or different lengths. The number of clusters to find may be fixed, or a range of numbers to try may be specified. DTW-C++ finds clusters in time series data using k-medoids or mixed integer programming (MIP); k-medoids is generally faster, but may get stuck in local optima; MIP can find globally optimal clusters.
 <p align="center"><img src="https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/media/Merged_document.png" alt="DTW" width="60%"/></center></p>
 
 Contributors
