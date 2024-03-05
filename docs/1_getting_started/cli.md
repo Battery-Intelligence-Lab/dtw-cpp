@@ -34,7 +34,7 @@ DTW-C++ provides a command line interface (CLI) for easy interaction. Below are 
 ```
 
 
-# Example usage: 
+## Example usage
 
 The following instruction will, as an example, read in data from the file `dummy`, search for 5 clusters, skip the first row and column in the datasets, terminate after 5 repetitions, and use the mixed integer programming method.
 
