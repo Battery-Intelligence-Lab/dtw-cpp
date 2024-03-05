@@ -39,7 +39,7 @@ $$
 
 The final element $$c_{n,m}$$ is then the total cost, $$C_{x,y}$$, which provides the comparison metric between the two series $$x$$ and $$y$$. Below is an example of this cost matrix $$C$$ and the warping path through it.
 
-![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right).](dtw_image.png)
+As an example, below are two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW. On the right is the cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$.
 
 <img src="dtw_image.png" alt="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right)." caption="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right).">
 
