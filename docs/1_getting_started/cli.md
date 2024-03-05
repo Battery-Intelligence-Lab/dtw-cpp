@@ -7,17 +7,17 @@ nav_order: 6
 
 # Command line interface (CLI)
 
-It is possible to use DTWC++ from command line after a successful compilation. Please compile the software using instructions in [running](run.md) page and use `bin/dtwc_cl` executable after compilation. This executable will provide you all the command line interface (CLI) functions. For calling it from any folder you may add `/bin` folder into your path. Alternatively, you may just copy the executable into your folder of choice. 
+It is possible to use DTW-C++ from the command line after successfully compiling the code. Please compile the software using [these instructions](run.md) and run the `bin/dtwc_cl` executable. This will provide you with all the command line interface (CLI) functions. To call the CLI from any other folder, you need to add the `/bin` folder into your path. Alternatively, you can just copy the executable into any folder of your choice. 
 
 ## Features
-- **Multiple Clustering Methods**: Supports kMedoids and MIP methods.
-- **Customizable Iterations**: Users can set maximum iterations for iterative algorithms.
-- **Flexible Input Handling**: Allows skipping rows and columns in input data.
-- **Multiple Solver Support**: Includes support for HiGHS and Gurobi solvers.
+- **Multiple clustering methods**: Supports the k-medoids and MIP methods.
+- **Customizable iterations**: Users can set the maximum number of iterations for the k-medoids algorithm.
+- **Flexible input handling**: Allows users to skip rows and columns in input data.
+- **Multiple solver support**: Includes support for [HiGHS](https://highs.dev) and [Gurobi](https://www.gurobi.com) solvers.
 
 ## Available options
 
-The application provides a command line interface (CLI) for easy interaction. Below are the available command line options:
+DTW-C++ provides a command line interface (CLI) for easy interaction. Below are the available command line options:
 
 ```bash
 --Nc, --clusters, --number_of_clusters <string>: Set the number of clusters in the format i..j or a single number i.
@@ -35,6 +35,8 @@ The application provides a command line interface (CLI) for easy interaction. Be
 
 
 # Example usage: 
+
+The following instruction will, as an example, read in data from the file `dummy`, search for 5 clusters, skip the first row and column in the datasets, terminate after 5 repetitions, and use the mixed integer programming method.
 
 ```
 dtwc_cl.exe -i "../data/dummy" --Nc=5 --skipRows 1 --skipCols 1 --Nrep=5 --method=mip
