@@ -4,12 +4,12 @@ title: Index
 nav_exclude: true
 ---
 
-# About DTWC++
+# About DTW-C++
 
-_DTWC++_ is a package for time series analysis and clustering. The algorithm ultisies dynamic time warping (DTW) as a distance metric to compare the similarity of input time series. For the clustering method, users can choose between using mixed integer programming (MIP) or k-Medoids. Please read through the following documentation to learn how to use the software. It is reccomended to use the software through the command line interface, however direct use of the code is also an option.
+_DTW-C++_ is a package for time series comparison and clustering. The algorithm uses [dynamic time warping (DTW)](https://en.wikipedia.org/wiki/Dynamic_time_warping) to calculate distance metrics between pairs of input time series. For clustering, users can choose between a method based on either mixed integer programming or k-medoids. Please read through the  documentation on this website to learn how to use DTW-C++. It is recommended to use the software through the command line interface, however direct calling of the code is also possible.
 
 This code has been developed at the Department of Engineering Science of the University of Oxford. 
-For information about our battery research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
+For information about our research, visit the [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) website. 
 
-For more information and comments, please contact 
+For more information or comments on this code, please contact 
 [rebecca.perriment@eng.ox.ac.uk](rebecca.perriment@eng.ox.ac.uk).
