@@ -6,15 +6,15 @@ nav_order: 3
 
 # Dependencies
 
-Here is given the list of dependencies that needs to be installed to use DTWC++ software. 
+There are several pre-requisite installations required to compile and run DTW-C++.
 
-Dependencies that needs to be installed by the user if they do not exist:
+The following dependencies need to be installed by the user if they do not already exist:
 - CMake
 - OpenMP
 - A suitable compiler (Clang, GCC, MSVC, etc.)
-- Gurobi (optional, if not installed HiGHS will be used as MIP solver)
+- Gurobi (optional, if not installed then HiGHS will be used as the MIP solver)
 
-Dependencies that are installed by the CPM package manager: 
+The following dependencies are installed by the CPM package manager: 
 - HiGHS 
 - CLI11
 - Catch2 (for testing)
@@ -23,13 +23,15 @@ See `cmake/Dependencies.cmake` for a detailed list of libraries/packages install
 
 ## CMake
 
-CMake is a metabuild system required to provide the correct compilation commands to the compiler you may follow the official guidelines to download it for your preference of operating system. 
+CMake is a metabuild system required to provide the correct compilation commands to the compiler. Please follow the official guidelines to download it for your preference of operating system. 
 
-## Gurobi Installation: 
+## Gurobi
 
-### Linux: 
+Gurobi is a powerful optimisation solver that is free for academic use. If you do not wish to use Gurobi, HiGHS will be used instead.
 
-1. Download the installation file. Then extract it to a folder (preferably opt folder) using the following command:
+### Linux installation
+
+1. Download the installation file. Then extract it to a folder (preferably the `opt` folder) using the following command:
 
 ```bash
 tar xvfz gurobi9.5.2_linux64.tar.gz  -C /opt/
@@ -49,21 +51,21 @@ export LD_LIBRARY_PATH=$GUROBI_HOME/lib:$LD_LIBRARY_PATH
 source ~/.bashrc
 ```
 
-4. Then you need to add a license. Please obtain an academic license from the Gurobi website. Then use `grbgetkey` command to validate your license. 
+4. Then you need to add a licence. If you are an academic, obtain an academic licence from the Gurobi website. Then use `grbgetkey` command to validate your licence. 
 
 ```bash
 grbgetkey HERE-SHOULD-BE-YOUR-LICENSE-KEY
 ```
 
-5. To test if the installation went correctly, use command line: 
+5. To test if the installation was correct, use the command: 
 
 ```bash
 gurobi_cl $GUROBI_HOME/examples/data/afiro.mps
 ```
 
-For a visual guide see the video: https://www.youtube.com/watch?v=yNmeG6Wom1o
+There is a [visual guide](https://www.youtube.com/watch?v=yNmeG6Wom1o) available for Linux installation.
 
 
-### macOS:
+### macOS installation
 
-For a visual guide see the video: https://www.youtube.com/watch?v=ZcL-NmckTxQ
+There is a [visual guide](https://www.youtube.com/watch?v=ZcL-NmckTxQ) available for macOS installation.
