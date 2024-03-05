@@ -41,6 +41,8 @@ The final element $$c_{n,m}$$ is then the total cost, $$C_{x,y}$$, which provide
 
 ![Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right).](dtw_image.png)
 
+<img src="dtw_image.png" alt="Two time series with DTW pairwise alignment between each element, showing one-to-many mapping properties of DTW (left). Cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at $$C_{14,13}$$ (right).">
+
 For the clustering problem, only this final cost for each pairwise comparison is required; the actual warping path (or mapping of each point in one time series to the other) is superfluous for k-medoids clustering. The memory complexity of the cost matrix $$C$$ is $$O(nm)$$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $$C$$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $$c_{i-1,j-1}$$, $$c_{i-1,j}$$, $$c_{i,j-1}$$).
 
 The DTW distance $$C_{x,y}$$ is found for each pairwise comparison. Pairwise distances are then stored in a separate symmetric matrix, $$D^{p\times p}$$, where ($$p$$) is the total number of time series in the clustering exercise. In other words, the element $$d_{i,j}$$ gives the distance between time series ($$i$$) and ($$j$$).
