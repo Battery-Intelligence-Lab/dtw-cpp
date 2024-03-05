@@ -35,7 +35,7 @@ $$
 
 After solving this integer program, the non-zero diagonal entries of $$A$$ represent the centroids, and the non-zero elements in the corresponding columns in $$A$$ represent the members of that cluster. In the example below, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
 
-<img src="https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/media/cluster_matrix_formation4.svg" alt="Example output from the clustering process, where an entry of 1 indicates that time series $$j$$ belongs to cluster with centroid i." title="A matrix">
+![Example output from the clustering process, where an entry of 1 indicates that time series $$j$$ belongs to cluster with centroid i.](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/2_method/cluster_matrix_formation4.svg)
 
 Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, described in [k-Medoids Clustering](link to that). The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using *DTW-C++* compared to other packages.
 
