@@ -42,7 +42,7 @@ cmake -G "Unix Makefiles" ..
 cmake --build . -j32 # Assuming that you are still in the build folder. 
 ```
 ```note
-Then the executable will be ready to run at ```../Release/dtwc_main```. By default ```CMAKE_BUILD_TYPE``` is set to ```Release```. If you want, you may also use one of the other options such as ```Debug```, ```Release```, ```RelWithDebInfo```, ```MinSizeRel```. To build using an alternative build type you may explicitly define a ```CMAKE_BUILD_TYPE``` variable. For example, for building with debug mode you may use the command below. For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
+After this, executable will be ready to run at ```../Release/dtwc_main```. By default ```CMAKE_BUILD_TYPE``` is set to ```Release```. If you want, you may also use one of the other options such as ```Debug```, ```Release```, ```RelWithDebInfo```, ```MinSizeRel```. To build using an alternative build type you may explicitly define a ```CMAKE_BUILD_TYPE``` variable. For example, for building with debug mode you may use the command below. For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
 
 ```
 cmake --build . -DCMAKE_BUILD_TYPE=Debug
@@ -64,6 +64,6 @@ cmake -G "Visual Studio 16 2019" ..  # if you use Visual Studio's compiler.
 ```
 
 ```note
-    If you are using Visual Studio Community, you may also open the folder in Visual Studio directly, without using CMake. 
-    See [here](https://docs.microsoft.com/en-us/visualstudio/ide/develop-code-in-visual-studio-without-projects-or-solutions?view=vs-2019) for detailed explanation.
+If you are using Visual Studio Community, you may also open the folder in Visual Studio directly, without using CMake. 
+See [here](https://docs.microsoft.com/en-us/visualstudio/ide/develop-code-in-visual-studio-without-projects-or-solutions?view=vs-2019) for detailed explanation.
 ```
