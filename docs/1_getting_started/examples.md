@@ -6,9 +6,9 @@ nav_order: 8
 
 # Examples 
 
-Here will be some Google Colab files as example. 
+<!--- Here will be some Google Colab files as example. -->
 
-K-medoids example code: 
+Example code using k-mediods for clustering:
 
 ```cpp
 #include <dtwc.hpp>
@@ -46,7 +46,7 @@ int main()
 ```
 
 
-Multiple MIP example code: 
+Example code using multiple MIP for clustering:
 
 ```cpp
 #include <dtwc.hpp>
