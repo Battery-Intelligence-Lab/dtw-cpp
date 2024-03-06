@@ -32,36 +32,27 @@ Gurobi is a powerful optimisation solver that is free for academic use. If you d
 ### Linux installation
 
 1. Download the installation file. Then extract it to a folder (preferably the `opt` folder) using the following command:
-
-```bash
-tar xvfz gurobi9.5.2_linux64.tar.gz  -C /opt/
-```
-
+    ```bash
+    tar xvfz gurobi9.5.2_linux64.tar.gz  -C /opt/
+    ```
 2. Then add necessary variables to the end of your `~/.bashrc` file. 
-
-```bash
-export GUROBI_HOME=/opt/gurobi952/linux64
-export PATH=$GUROBI_HOME/bin:$PATH
-export LD_LIBRARY_PATH=$GUROBI_HOME/lib:$LD_LIBRARY_PATH
-```
-
+    ```bash
+    export GUROBI_HOME=/opt/gurobi952/linux64
+    export PATH=$GUROBI_HOME/bin:$PATH
+    export LD_LIBRARY_PATH=$GUROBI_HOME/lib:$LD_LIBRARY_PATH
+    ```
 3. Don't forget to source your `~/.bashrc` file.
-
-```bash
-source ~/.bashrc
-```
-
+    ```bash
+    source ~/.bashrc
+    ```
 4. Then you need to add a licence. If you are an academic, obtain an academic licence from the Gurobi website. Then use `grbgetkey` command to validate your licence. 
-
-```bash
-grbgetkey HERE-SHOULD-BE-YOUR-LICENSE-KEY
-```
-
+    ```bash
+    grbgetkey HERE-SHOULD-BE-YOUR-LICENSE-KEY
+    ```
 5. To test if the installation was correct, use the command: 
-
-```bash
-gurobi_cl $GUROBI_HOME/examples/data/afiro.mps
-```
+    ```bash
+    gurobi_cl $GUROBI_HOME/examples/data/afiro.mps
+    ```
 
 There is a [visual guide](https://www.youtube.com/watch?v=yNmeG6Wom1o) available for Linux installation.
 
