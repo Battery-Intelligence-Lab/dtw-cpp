@@ -43,10 +43,9 @@ Generally, both GCC and CMake are installed by default on Linux platforms. Howev
     ```
 
 ```note
-After this, executable will be ready to run at ```../Release/dtwc_main```. By default ```CMAKE_BUILD_TYPE``` is set to ```Release```. If desired, you may also use one of the other options such as ```Debug```, ```Release```, ```RelWithDebInfo```, ```MinSizeRel```. To build using an alternative build type you must explicitly define a ```CMAKE_BUILD_TYPE``` variable. For example, for building with debug mode, use the command below. For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
-```
-cmake --build . -DCMAKE_BUILD_TYPE=Debug
-```
+After this, executable will be ready to run at ```../Release/dtwc_main```. By default ```CMAKE_BUILD_TYPE``` is set to ```Release```. If desired, you may also use one of the other options such as ```Debug```, ```Release```, ```RelWithDebInfo```, ```MinSizeRel```. To build using an alternative build type you must explicitly define a ```CMAKE_BUILD_TYPE``` variable. For example, for building with debug mode, use the command:
+```cmake --build . -DCMAKE_BUILD_TYPE=Debug```
+For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
 ```
 
 ### Windows
