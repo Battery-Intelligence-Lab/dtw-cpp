@@ -1,5 +1,5 @@
 ---
-title: 'DTW-C++: A C++ software for fast Dynamic Time Wrapping Clustering'
+title: 'DTW-C++: Fast dynamic time warping and clustering in C++'
 tags:
   - C++
   - Dynamic time warping
@@ -20,13 +20,11 @@ authors:
 affiliations:
   - name: Department of Engineering Science, University of Oxford, OX1 3PJ, Oxford, UK
     index: 1
-date: 17 Aug 2022
+date: 7 Mar 2024
 bibliography: paper.bib
 ---
 
 # Summary
-
-Disclaimer: paper writing is still ongoing; please do not use this version as a reference. 
 
 We present an approach for computationally efficient dynamic time warping (DTW) and clustering of time-series data. The method frames the dynamic warping of time series datasets as an optimisation problem solved using dynamic programming, and then clusters time series data by solving a second optimisation problem using mixed-integer programming (MIP). There is also an option to use k-medoids clustering for increased speed, when a certificate for global optimality is not essential. The improved efficiency of our approach is due to task-level parallelisation of the clustering alongside DTW. Our approach was tested using the UCR Time Series Archive, and was found to be, on average, 33% faster than the next fastest option when using the same clustering method. This increases to 64% faster when considering only larger datasets (with more than 1000 time series). The MIP clustering is most effective on small numbers of longer time series, because the DTW computation is faster than other approaches, but the clustering problem becomes increasingly computationally expensive as the number of time series to be clustered increases.
 
