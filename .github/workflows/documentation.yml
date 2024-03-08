@@ -88,7 +88,7 @@ jobs:
         run: sudo mv ./joss/paper.pdf ./_site/pub/joss.pdf
       
       - name: Copy media folder
-        run: sudo cp ./media ./_site/
+        run: sudo cp -r ./media ./_site/
 
       # Upload the website:
       - name: Upload artifact
