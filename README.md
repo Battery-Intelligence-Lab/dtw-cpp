@@ -20,7 +20,7 @@ There is separate [detailed documentation](https://Battery-Intelligence-Lab.gith
 Introduction
 ===========================
 DTW-C++ is a dynamic time warping (DTW) and clustering library for time series data, written in C++. Users can input multiple time series and find clusters of similar time series. Time series may be the same lengths, or different lengths. The number of clusters to find may be fixed, or a range of numbers to try may be specified. DTW-C++ finds clusters in time series data using k-medoids or mixed integer programming (MIP); k-medoids is generally faster, but may get stuck in local optima; MIP can find globally optimal clusters.
-<p align="center"><img src="https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/media/Merged_document.png" alt="DTW" width="60%"/></center></p>
+<p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
 
 Contributors
 ===========================
