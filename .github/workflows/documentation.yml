@@ -34,6 +34,8 @@ jobs:
           doxyfile-path: 'docs/Doxyfile'
       - run: sudo sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
       - run: sudo mv ./build/Doxygen/html ./_site/Doxygen
+      - run: sudo cp -r ./media ./_site/Doxygen #Copy media folder into Doxygen folder. 
+
       # Create a coverage report and upload to the website! 
       - name: update
         run: sudo apt update
@@ -87,9 +89,6 @@ jobs:
       - name: Move JOSS paper to documentation
         run: sudo mv ./joss/paper.pdf ./_site/pub/joss.pdf
       
-      - name: Copy media folder
-        run: sudo cp -r ./media ./_site/
-
       # Upload the website:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v1
