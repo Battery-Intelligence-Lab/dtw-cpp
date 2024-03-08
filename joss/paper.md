@@ -172,7 +172,7 @@ As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\
 
 The comparison of all datasets in the UCR Time Series Classification Archive can be found in reference [@kumtepeli2023fast].
 
-![\texttt{DTW-C++} k-medoids  clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn (1).pdf){ width=80% }
+![\texttt{DTW-C++} k-medoids  clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn.pdf){ width=80% }
 
 # Acknowledgements
 
