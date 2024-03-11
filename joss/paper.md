@@ -27,7 +27,7 @@ bibliography: paper.bib
 
 # Summary
 
-Time-series data analysis is of interest in a huge number of different applications, from finding patterns of energy consumption, to detecting brain activity, to discovering stock price trends. Unsupervised learning methods can help analysts unlock patterns in data, and an important example method is clustering. However, clustering of time series data can be computationally expensive for large datasets. We present an approach for computationally efficient dynamic time warping (DTW) and clustering of time-series data. The method frames the dynamic warping of time series datasets as an optimisation problem solved using dynamic programming, and then clusters time series data by solving a second optimisation problem using mixed-integer programming (MIP). There is also an option to use k-medoids clustering for increased speed, when a certificate for global optimality is not essential. The increased speed of our approach is due to task-level parallelisation and memory efficiency improvements. The approach was tested using the UCR Time Series Archive, and was found to be on average 33% faster than the next fastest option when using the same clustering method. This increases to 64% faster when considering only larger datasets (with more than 1000 time series). The MIP clustering is most effective on small numbers of longer time series, because the DTW computation is faster than other approaches, but the clustering problem becomes increasingly computationally expensive as the number of time series increases.
+Time-series data analysis is of interest in a huge number of different applications, from finding patterns of energy consumption, to detecting brain activity, to discovering stock price trends. Unsupervised learning methods can help analysts unlock patterns in data, and an important example method is clustering. However, clustering of time series data can be computationally expensive for large datasets. We present an approach for computationally efficient dynamic time warping (DTW) and clustering of time-series data. The method frames the dynamic warping of time series datasets as an optimisation problem solved using dynamic programming, and then clusters time series data by solving a second optimisation problem using integer programming. There is also an option to use k-medoids clustering for increased speed, when a certificate for global optimality is not essential. The increased speed of our approach is due to task-level parallelisation and memory efficiency improvements. The approach was tested using the UCR Time Series Archive, and was found to be on average 33% faster than the next fastest option when using the same clustering method. This increases to 64% faster when considering only larger datasets (with more than 1000 time series). The integer programming clustering is most effective on small numbers of longer time series, because the DTW computation is faster than other approaches, but the clustering problem becomes increasingly computationally expensive as the number of time series increases.
 
 # Statement of need
 
@@ -38,7 +38,7 @@ In contrast to existing tools available for time series clustering using DTW, su
 1. task-level parallelisation, where multiple pairwise comparisons between time series can be evaluated simultaneously, and,
 2. improved memory management---since the clustering algorithm only needs the final distance computed between pairwise time series, the DTW distance computation stores only the most recent previous vector, rather than the entire warping matrix.
 
-In addition, `DTW-C++` offers the option of clustering using a new algorithm (described below) based on MIP. The advantage of this over k-based methods is that it guarantees finding a global optimal solution in most cases,  and in the rare event that the global optimum cannot be found, the gap between the best solution found, and the global optimum is given.
+In addition, `DTW-C++` offers the option of clustering using a new algorithm (described below) based on integer programming. The advantage of this over k-based methods is that it guarantees finding a global optimal solution in most cases,  and in the rare event that the global optimum cannot be found, the gap between the best solution found, and the global optimum is given.
 
 # Current ``DTW-C++`` functionality
 
@@ -46,7 +46,7 @@ The current functionality of the software is as follows:
 
 * Calculate DTW pairwise distances between time series, using a vector based approach, to reduce memory use. There is also the option to use a Sakoe-Chiba band to restrict warping in the DTW distance calculation [@Sakoe1978]. This speeds up the computation time, as well as being a useful constraint for some time series clustering scenarios (e.g., if an event must occur within a certain time window to be considered similar).
 * Produce a distance matrix containing all pairwise comparisons between each time series in the dataset.
-* Split all time series into a predefined number of clusters, with a representative centroid time series for each cluster. This can be done using MIP or k-medoids clustering, depending on user choice.
+* Split all time series into a predefined number of clusters, with a representative centroid time series for each cluster. This can be done using integer programming or k-medoids clustering, depending on user choice.
 * Output the clustering cost, which is the sum of distances between every time series within each cluster and its cluster centroid.
 * Find the silhouette score and elbow score for the clusters in order to aid the user decision on how many clusters, $k$, to include.
 
@@ -54,7 +54,7 @@ The current functionality of the software is as follows:
 
 ## Dynamic time warping
 
-Consider a time series to be a vector of some arbitrary length. Consider that we have $p$ such vectors in total, each possibly differing in length. To find a subset of $k$ clusters within the set of $p$ vectors using MIP formulation, we must first make $\frac{1}{2} {p \choose 2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance. Consider two time series $x$ and $y$ of differing lengths $n$ and $m$ respectively,
+Consider a time series to be a vector of some arbitrary length. Consider that we have $p$ such vectors in total, each possibly differing in length. To find a subset of $k$ clusters within the set of $p$ vectors using integer programming formulation, we must first make $\frac{1}{2} {p \choose 2}$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance. Consider two time series $x$ and $y$ of differing lengths $n$ and $m$ respectively,
 
 $$
 x=(x_1, x_2, ..., x_n)
@@ -125,7 +125,7 @@ The optimisation problem to solve, subject to the above constraints, is
 
 This integer program is solved using Gurobi [@gurobi] or HiGHS [@Huangfu2018]. After solving this integer program, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
 
-Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both MIP clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
+Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both integer programming clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
 
 # Comparison
 
@@ -134,7 +134,7 @@ We compared our approach with two other DTW clustering packages, \texttt{DTAIDis
 \begin{table}[]
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{l|p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}}
-                           & Number of time series    & Length of time series    & DTW-C++ MIP (s) & DTW-C++ k-Medoids (s) & DTAI Distance (s) & Time decrease (\%) \\
+                           & Number of time series    & Length of time series    & DTW-C++ IP (s) & DTW-C++ k-Medoids (s) & DTAI Distance (s) & Time decrease (\%) \\
 \hline
 CinCECGTorso               & 1380 & 1639 & 3008.4      & \textbf{1104.2}   & 1955.9       & 44                 \\
 Computers                  & 250  & 720  & 16.1        & \textbf{10.5}     & 12.8         & 18                 \\
@@ -168,14 +168,14 @@ SmallKitchenAppliances     & 375  & 720  & 41.7        & \textbf{23.8}     & 30.
 StarLightCurves            & 8236 & 1024 & N/A         & \textbf{18551.7}  & 27558.1      & 33                 \\
 UWaveGestureLibraryAll     & 3582 & 945  & N/A         & \textbf{1194.6}   & 4436.9       & 73                
 \end{tabular}}
-\caption{Computational time comparison of \texttt{DTW-C++} using MIP and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$.}
+\caption{Computational time comparison of \texttt{DTW-C++} using integer programming and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$.}
 \label{tab:small_table}
 \end{table}
 
 
 As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\% of the datasets, and all 13 datasets where \texttt{DTAIDistance} was faster were cases where the entire clustering process was completed in 1.06 seconds or less. Across the whole collection of datasets, \texttt{DTW-C++} was on average 32% faster. When looking at larger datasets with $N > 1000$, \texttt{DTW-C++} is on average 65% faster. In all, apart from 2 of the 115 cases where \texttt{DTW-C++} is the fastest, it uses the k-medoids algorithm. This is however to be expected as the latter is an iterative clustering method and therefore does not compute all DTW distances. \autoref{fig:k_med} clearly shows the increasing superiority of \texttt{DTW-C++} as the number of time series increases. In this comparison, both algorithms use k-medoids, so the speed improvement is due to faster dynamic time warping.
 
-\texttt{DTW-C++} MIP was on average 16 times slower than \texttt{DTAIDistance} over all samples and as the number of time series increases, MIP clustering becomes increasingly slower. This is to be expected because the computational complexity of the MIP clustering optimisation increases significantly as the number of time series in the clustering problem increases. However, as the length of the time series increases, the performance of MIP converges to the speed of \texttt{DTAIDistance}, while finding global optimality. This confirms the improved performance of DTW in \texttt{DTW-C++}. Therefore, the MIP approach is recommended for occasions when the time series to be clustered are very long, but the number of time series is smaller.
+\texttt{DTW-C++} IP was on average 16 times slower than \texttt{DTAIDistance} over all samples and as the number of time series increases, integer programming clustering becomes increasingly slower. This is to be expected because the computational complexity of the integer programming clustering optimisation increases significantly as the number of time series in the clustering problem increases. However, as the length of the time series increases, the performance of integer programming converges to the speed of \texttt{DTAIDistance}, while finding global optimality. This confirms the improved performance of DTW in \texttt{DTW-C++}. Therefore, the integer programming approach is recommended for occasions when the time series to be clustered are very long, but the number of time series is smaller.
 
 The comparison of all datasets in the UCR Time Series Classification Archive can be found in reference [@kumtepeli2023fast].
 
