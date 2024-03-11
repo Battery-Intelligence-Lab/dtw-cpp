@@ -181,7 +181,7 @@ The comparison of all datasets in the UCR Time Series Classification Archive can
 
 ![\texttt{DTW-C++} k-medoids  clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn.pdf){ width=80% }
 
-![Change in computational time of \texttt{DTW-C++} using IP DTW clustering compared to \texttt{DTAIDistance} as the number of time series in the datasets to be clustered increases and the length of time series in the datasets increases.](../media/mip_speed.pdf){ width=80%}
+![Change in computational time of \texttt{DTW-C++} using IP DTW clustering compared to \texttt{DTAIDistance} as the number of time series in the datasets to be clustered increases and the length of time series in the datasets increases.](../media/ip_speed.pdf){ width=80%}
 
 # Acknowledgements
 
