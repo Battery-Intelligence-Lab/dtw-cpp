@@ -168,18 +168,20 @@ SmallKitchenAppliances     & 375  & 720  & 41.7        & \textbf{23.8}     & 30.
 StarLightCurves            & 8236 & 1024 & N/A         & \textbf{18551.7}  & 27558.1      & 33                 \\
 UWaveGestureLibraryAll     & 3582 & 945  & N/A         & \textbf{1194.6}   & 4436.9       & 73                
 \end{tabular}}
-\caption{Computational time comparison of \texttt{DTW-C++} using integer programming and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$.}
+\caption{Computational time comparison of \texttt{DTW-C++} using integer programming and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$. The fastest result for each dataset is bold.}
 \label{tab:small_table}
 \end{table}
 
 
 As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\% of the datasets, and all 13 datasets where \texttt{DTAIDistance} was faster were cases where the entire clustering process was completed in 1.06 seconds or less. Across the whole collection of datasets, \texttt{DTW-C++} was on average 32% faster. When looking at larger datasets with $N > 1000$, \texttt{DTW-C++} is on average 65% faster. In all, apart from 2 of the 115 cases where \texttt{DTW-C++} is the fastest, it uses the k-medoids algorithm. This is however to be expected as the latter is an iterative clustering method and therefore does not compute all DTW distances. \autoref{fig:k_med} clearly shows the increasing superiority of \texttt{DTW-C++} as the number of time series increases. In this comparison, both algorithms use k-medoids, so the speed improvement is due to faster dynamic time warping.
 
-\texttt{DTW-C++} IP was on average 16 times slower than \texttt{DTAIDistance} over all samples and as the number of time series increases, integer programming clustering becomes increasingly slower. This is to be expected because the computational complexity of the integer programming clustering optimisation increases significantly as the number of time series in the clustering problem increases. However, as the length of the time series increases, the performance of integer programming converges to the speed of \texttt{DTAIDistance}, while finding global optimality. This confirms the improved performance of DTW in \texttt{DTW-C++}. Therefore, the integer programming approach is recommended for occasions when the time series to be clustered are very long, but the number of time series is smaller.
+\texttt{DTW-C++} IP was on average 16 times slower than \texttt{DTAIDistance} over all samples and as the number of time series increases, integer programming clustering becomes increasingly slower, as demonstrated in Fig. 5. This is to be expected because the computational complexity of the integer programming clustering optimisation increases significantly as the number of time series in the clustering problem increases. However, as the length of the time series increases, the performance of integer programming converges to the speed of \texttt{DTAIDistance}, while finding global optimality. This confirms the improved performance of DTW in \texttt{DTW-C++}. Therefore, the integer programming approach is recommended for occasions when the time series to be clustered are very long, but the number of time series is smaller.
 
 The comparison of all datasets in the UCR Time Series Classification Archive can be found in reference [@kumtepeli2023fast].
 
 ![\texttt{DTW-C++} k-medoids  clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn.pdf){ width=80% }
+
+![Change in computational time of \texttt{DTW-C++} using IP DTW clustering compared to \texttt{DTAIDistance} as the number of time series in the datasets to be clustered increases and the length of time series in the datasets increases.](../media/mip_speed.pdf){ width=80%}
 
 # Acknowledgements
 
