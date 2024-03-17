@@ -18,6 +18,7 @@
 #include <iostream>
 #include <vector>
 #include <cstddef>
+#include <utility> // for pair
 
 namespace dtwc::scores {
 
@@ -36,41 +37,47 @@ namespace dtwc::scores {
  */
 std::vector<double> silhouette(Problem &prob)
 {
-  const auto Nb = prob.data.size();    //!< Number of profiles
+  const auto Nb = prob.size();         //!< Number of profiles
   const auto Nc = prob.cluster_size(); //!< Number of clusters
 
-  std::vector<double> silhouettes(Nb);
+  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
   if (prob.centroids_ind.empty()) {
     std::cout << "Please cluster the data before calculating silhouette!" << std::endl;
     return silhouettes;
   }
 
+  prob.fillDistanceMatrix(); //!< We need all pairwise distance for silhouette score.
+
   auto oneTask = [&](size_t i_b) {
-    // auto i_c = prob.clusters_ind[i_b];
+    const auto i_c = prob.clusters_ind[i_b];
 
-    // if (prob.cluster_members[i_c].size() == 1)
-    //   silhouettes[i_b] = 0;
-    // else {
-    //   thread_local std::vector<double> mean_distances(Nc);
+    thread_local std::vector<std::pair<int, double>> mean_distances(Nc);
+    mean_distances.assign(Nc, { 0, 0 });
 
-    //   for (int i = 0; i < Nb; i++)
-    //     mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
+    for (auto i : Range(prob.size())) {
+      mean_distances[prob.clusters_ind[i]].first++;
+      mean_distances[prob.clusters_ind[i]].second += prob.distByInd(i, i_b);
+    }
 
-    //   auto min = std::numeric_limits<double>::max();
-    //   for (int i = 0; i < Nc; i++) // Finding means:
-    //     if (i == i_c)
-    //       mean_distances[i] /= (prob.cluster_members[i].size() - 1);
-    //     else {
-    //       mean_distances[i] /= prob.cluster_members[i].size();
-    //       min = std::min(min, mean_distances[i]);
-    //     }
 
-    //   silhouettes[i_b] = (min - mean_distances[i_c]) / std::max(min, mean_distances[i_c]);
-    // }
+    if (mean_distances[i_c].first == 1) // If the profile is the only member of the cluster
+      silhouettes[i_b] = 0;
+    else {
+      auto min = std::numeric_limits<double>::max();
+      for (int i = 0; i < Nc; i++) // Finding means:
+        if (i == i_c)
+          mean_distances[i].second /= (mean_distances[i].first - 1);
+        else {
+          mean_distances[i].second /= mean_distances[i].first;
+          min = std::min(min, mean_distances[i].second);
+        }
+
+      silhouettes[i_b] = (min - mean_distances[i_c].second) / std::max(min, mean_distances[i_c].second);
+    }
   };
 
-  dtwc::run(oneTask, Nb);
+  dtwc::run(oneTask, prob.size());
 
   return silhouettes;
 }

@@ -73,7 +73,7 @@ public:
   std::string name{};                            /*!< Problem name. */
   Data data;                                     /*!< Data associated with the problem. */
 
-  std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Np]
+  std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
@@ -97,6 +97,8 @@ public:
   void resize();
 
   // Getters and setters:
+  int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
+
   void readDistanceMatrix(const fs::path &distMat_path);
   void set_numberOfClusters(int Nc_);
   void set_clusters(std::vector<int> &candidate_centroids);

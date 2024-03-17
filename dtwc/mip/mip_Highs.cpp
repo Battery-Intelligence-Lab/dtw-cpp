@@ -33,15 +33,15 @@ void extract_mip_solution(Problem &prob, const T &solution)
   prob.centroids_ind.clear();
   const auto Nb = prob.data.size();
 
-  for (int i{ 0 }; i < Nb; i++)
+  for (auto i : Range(Nb))
     if (solution[i * (Nb + 1)] > 0.5)
       prob.centroids_ind.push_back(i);
 
   prob.clusters_ind.resize(Nb);
 
-  for (auto i : prob.centroids_ind) 
-    for (int j{ 0 }; j < Nb; j++)
-      if (solution[i * Nb + j] > 0.5)
+  for (auto i : Range(prob.cluster_size()))
+    for (auto j : Range(Nb))
+      if (solution[prob.centroids_ind[i] * Nb + j] > 0.5)
         prob.clusters_ind[j] = i;
 }
 
@@ -173,11 +173,11 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Get the solution information
   const HighsInfo &info = highs.getInfo();
-  std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n';
-  std::cout << "Objective function value: " << info.objective_function_value << '\n';
-  std::cout << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n';
-  std::cout << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n';
-  std::cout << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
+  std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n'
+            << "Objective function value: " << info.objective_function_value << '\n'
+            << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n'
+            << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n'
+            << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
 
   // Get the solution values
   extract_mip_solution(prob, highs.getSolution().col_value);

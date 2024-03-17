@@ -40,7 +40,7 @@ namespace dtwc {
 void Problem::resize()
 {
   clusters_ind.resize(size());
-  centroids_ind.resize(Nc);
+  centroids_ind.resize(cluster_size());
 }
 
 /**
@@ -195,12 +195,12 @@ void Problem::cluster_by_MIP()
  */
 void Problem::assignClusters()
 {
-  auto assignClustersTask = [this](int i_p) // i_p and i_c in [0, Np]
+  auto assignClustersTask = [this](int i_p) //!< i_p  and i_c in [0, Np)
   {
-    clusters_ind[i_p] = *std::min_element(
-      centroids_ind.begin(),
-      centroids_ind.end(),
-      [this, i_p](int i_c1, int ic2) { return distByInd(i_p, i_c1) < distByInd(i_p, ic2); });
+    auto minIt = std::min_element(centroids_ind.begin(), centroids_ind.end(), [this, i_p](int ic_1, int ic_2) {
+      return distByInd(i_p, ic_1) < distByInd(i_p, ic_2);
+    });
+    clusters_ind[i_p] = std::distance(centroids_ind.begin(), minIt);
   };
 
   clusters_ind.resize(data.size()); // Resize before assigning.
@@ -231,15 +231,14 @@ void Problem::distanceInClusters()
  */
 void Problem::calculateMedoids()
 {
-  std::vector<double> pointCosts(size());
+  static std::vector<double> pointCosts(size()), clusterCosts(cluster_size());
+  pointCosts.resize(size());
 
   auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
   {
-    const auto clusterNo = clusters_ind[i_p];
     double sum{ 0 };
-
     for (const auto i : Range(size()))
-      if (clusters_ind[i] == clusterNo)
+      if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
         sum += distByInd(i_p, i);
 
     pointCosts[i_p] = sum;
@@ -247,17 +246,12 @@ void Problem::calculateMedoids()
 
   run(findBetterMedoidTask, size());
 
-  for (const auto i : Range(Nc)) {
-    const auto centroidNow = centroids_ind[i];
-    double minCost{ std::numeric_limits<double>::max() };
-    int minInd{};
-
-    for (const auto i_p : Range(size()))
-      if ((clusters_ind[i_p] == centroidNow) && (pointCosts[i_p] < minCost))
-        std::tie(minCost, minInd) = std::tie(pointCosts[i_p], i_p);
-
-    centroids_ind[i] = minInd;
-  }
+  clusterCosts.assign(cluster_size(), std::numeric_limits<double>::max());
+  for (const auto i : Range(size()))
+    if (pointCosts[i] < clusterCosts[clusters_ind[i]]) {
+      clusterCosts[clusters_ind[i]] = pointCosts[i];
+      centroids_ind[clusters_ind[i]] = i;
+    }
 }
 
 /**
@@ -351,12 +345,12 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 double Problem::findTotalCost()
 {
   double sum = 0;
-  for (int i = 0; i < data.size(); i++) {
+  for (int i : Range(size())) {
     if constexpr (settings::isDebug)
       std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
-                << " which is: " << distByInd(i, clusters_ind[i]) << "\n";
+                << " which is: " << distByInd(i, centroid_of(i)) << "\n";
 
-    sum += distByInd(i, clusters_ind[i]); // #TODO should cost be square or like this?
+    sum += distByInd(i, centroid_of(i)); // #TODO should cost be square or like this?
   }
 
   return sum;

@@ -58,7 +58,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
  */
 void Problem::printClusters() const
 {
-  std::cout << "Clusters: ";
+  std::cout << "Clusters centroids: ";
   for (auto ind : centroids_ind)
     std::cout << get_name(ind) << ' ';
 
@@ -68,7 +68,7 @@ void Problem::printClusters() const
     std::cout << get_name(centroids_ind[i_c]) << " has: ";
 
     for (const auto i_p : Range(size()))
-      if (clusters_ind[i_p] == centroids_ind[i_c])
+      if (clusters_ind[i_p] == i_c)
         std::cout << get_name(i_p) << " ";
 
     std::cout << '\n';
@@ -85,7 +85,7 @@ void Problem::writeClusters()
 
   std::ofstream myFile(output_folder / file_name, std::ios_base::out);
 
-  myFile << "Clusters:\n";
+  myFile << "Cluster centroids:\n";
 
   for (int i{ 0 }; i < Nc; i++) {
     if (i != 0) myFile << ',';
@@ -96,8 +96,8 @@ void Problem::writeClusters()
   myFile << "\n\n"
          << "Data" << ',' << "its cluster\n";
 
-  for (int i{ 0 }; i < data.size(); i++)
-    myFile << get_name(i) << ',' << get_name(clusters_ind[i]) << '\n';
+  for (int i : Range(size()))
+    myFile << get_name(i) << ',' << get_name(centroid_of(i)) << '\n';
 
   myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
 
@@ -114,12 +114,12 @@ void Problem::writeSilhouettes()
 
   std::string silhouette_name{ name + "_silhouettes_Nc_" };
 
-  silhouette_name += std::to_string(Nc) + ".csv";
+  silhouette_name += std::to_string(cluster_size()) + ".csv";
 
   std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
-  for (int i{ 0 }; i < data.size(); i++)
+  for (auto i : Range(size()))
     myFile << get_name(i) << ',' << silhouettes[i] << '\n';
 
   myFile.close();
@@ -136,9 +136,9 @@ void Problem::writeMedoidMembers(int iter, int rep) const
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
   std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
-  for (const auto i_c : Range(Nc)) {
+  for (const auto i_c : Range(cluster_size())) {
     for (const auto i_p : Range(size()))
-      if (clusters_ind[i_p] == centroids_ind[i_c])
+      if (clusters_ind[i_p] == i_c)
         medoidMembers << get_name(i_p) << ',';
 
     medoidMembers << '\n';
