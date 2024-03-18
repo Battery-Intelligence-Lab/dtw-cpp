@@ -79,3 +79,14 @@ endif()
 if(BUILD_BENCHMARK)
   add_subdirectory(benchmark)
 endif()
+
+find_package(pybind11 QUIET)
+
+if(pybind11_FOUND)
+    pybind11_add_module(dtwcpp 
+            python/py_main.cpp)
+
+    target_link_libraries(dtwcpp PRIVATE dtwc++ project_warnings project_options armadillo)
+else()
+    message(STATUS "pybind11 not found. Skipping the dtwcpp module.")
+endif()

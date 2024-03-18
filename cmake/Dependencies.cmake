@@ -55,5 +55,4 @@ function(dtwc_setup_dependencies)
     OPTIONS
     "BUILD_SMOKE_TEST OFF"
   )
-
 endfunction()
