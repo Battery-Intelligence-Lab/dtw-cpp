@@ -2,7 +2,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/numpy.h>
 
-#include "../dtwc/Problem.hpp"
+#include "../dtwc/dtwc.hpp"
 
 #include <vector>
 #include <string>
@@ -47,4 +47,23 @@ PYBIND11_MODULE(dtwcpp, m)
     .def("findTotalCost", &Problem::findTotalCost)
     .def("assignClusters", &Problem::assignClusters)
     .def("calculateMedoids", &Problem::calculateMedoids);
+
+
+  py::class_<DataLoader>(m, "DataLoader")
+    .def(py::init<>())
+    .def(py::init<const std::filesystem::path &>())
+    .def(py::init<const std::filesystem::path &, int>())
+    .def("startColumn", (int(DataLoader::*)()) & DataLoader::startColumn)
+    .def("startRow", (int(DataLoader::*)()) & DataLoader::startRow)
+    .def("n_data", (int(DataLoader::*)()) & DataLoader::n_data)
+    .def("delimiter", (char(DataLoader::*)()) & DataLoader::delimiter)
+    .def("path", (std::filesystem::path(DataLoader::*)()) & DataLoader::path)
+    .def("verbosity", (int(DataLoader::*)()) & DataLoader::verbosity)
+    .def("startColumn", (DataLoader & (DataLoader::*)(int)) & DataLoader::startColumn)
+    .def("startRow", (DataLoader & (DataLoader::*)(int)) & DataLoader::startRow) // Added missing function signature
+    .def("n_data", &DataLoader::n_data)
+    .def("delimiter", &DataLoader::delimiter)
+    .def("path", &DataLoader::path)
+    .def("verbosity", &DataLoader::verbosity)
+    .def("load", &DataLoader::load);
 }

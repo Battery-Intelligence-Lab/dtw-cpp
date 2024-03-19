@@ -82,4 +82,73 @@ std::vector<double> silhouette(Problem &prob)
   return silhouettes;
 }
 
+/**
+ * @brief Calculates the Davies-Bouldin index for a given clustering problem.
+ *
+ * The Davies-Bouldin index is a measure of the average similarity between clusters and the
+ * dissimilarity between clusters. It is used to evaluate the quality of a clustering solution,
+ * with a lower value indicating better separation between clusters.
+ *
+ * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
+ * @return double The Davies-Bouldin index.
+ *
+ * @note Requires that the data has already been clustered; if not, it will prompt the user to cluster the data first.
+ * @see https://en.wikipedia.org/wiki/Davies%E2%80%93Bouldin_index for more information on the Davies-Bouldin index.
+ */
+// double daviesBouldinIndex(Problem &prob)
+// {
+//   const auto Nc = prob.cluster_size(); //!< Number of clusters
+
+//   if (prob.centroids_ind.empty()) {
+//     std::cout << "Please cluster the data before calculating the Davies-Bouldin index!" << std::endl;
+//     return 0.0;
+//   }
+
+//   prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
+
+//   std::vector<double> clusterSimilarities(Nc, 0.0);    //!< Similarities between clusters
+//   std::vector<double> clusterDissimilarities(Nc, 0.0); //!< Dissimilarities between clusters
+
+//   // Calculate the similarity and dissimilarity for each cluster
+//   for (int i = 0; i < Nc; i++) {
+//     double maxSimilarity = std::numeric_limits<double>::lowest();
+
+//     for (int j = 0; j < Nc; j++) {
+//       if (i != j) {
+//         double similarity = (prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[i]) + prob.distByInd(prob.centroids_ind[j], prob.centroids_ind[j])) / prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+
+//         if (similarity > maxSimilarity) {
+//           maxSimilarity = similarity;
+//         }
+//       }
+//     }
+
+//     clusterSimilarities[i] = maxSimilarity;
+//   }
+
+//   // Calculate the dissimilarity for each cluster
+//   for (int i = 0; i < Nc; i++) {
+//     double sumDissimilarity = 0.0;
+
+//     for (int j = 0; j < Nc; j++) {
+//       if (i != j) {
+//         sumDissimilarity += prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+//       }
+//     }
+
+//     clusterDissimilarities[i] = sumDissimilarity / (Nc - 1);
+//   }
+
+//   // Calculate the Davies-Bouldin index
+//   double daviesBouldinIndex = 0.0;
+
+//   for (int i = 0; i < Nc; i++) {
+//     daviesBouldinIndex += clusterSimilarities[i] + clusterDissimilarities[i];
+//   }
+
+//   daviesBouldinIndex /= Nc;
+
+//   return daviesBouldinIndex;
+// }
+
 } // namespace dtwc::scores
