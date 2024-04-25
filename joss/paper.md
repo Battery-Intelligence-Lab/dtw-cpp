@@ -99,7 +99,7 @@ Using this distance matrix, $D$, the full set of time series can be split into $
 As each centroid has to be in its own cluster, non-zero diagonal entries in $A$ represent centroids. Our objective is to find $A$, and this may be formulated as an optimisation problem
 
 \begin{equation}
-    A^\star = {\rm argmin}_{A} \sum_i \sum_j D_{ij} \times A_{ij},
+    A^\star = \underset{\rm argmin}{A} \sum_i \sum_j D_{ij} \times A_{ij},
 \end{equation}
 
 subject to the following constrants:
