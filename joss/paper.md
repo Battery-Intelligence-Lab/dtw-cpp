@@ -86,45 +86,40 @@ The final element in the matrix $c_{n,m}$ is then the total cost, and this provi
 
 ## Clustering 
 
-For the clustering algorithm, only the final cost for each pairwise comparison is required; the actual warping path (i.e., mapping between time series) is superfluous. The memory complexity of the cost matrix $C$ is $\mathcal{O}(nm)$, so as the length of the time series increases, the memory required increases greatly. Therefore, significant reductions in memory can be made by not storing the entire $C$ matrix. When the warping path is not required, only a vector containing the previous row for the current step of the dynamic programming sub-problem is required (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
+For the clustering algorithm, only the final cost for each pairwise comparison is required; the actual warping path (i.e., mapping between time series) is superfluous. The memory complexity of the cost matrix $C$ is $\mathcal{O}(nm)$, so as the length of the time series grows, the memory required greatly increases. Therefore, significant reductions in memory use can be made by not storing the entire cost matrix. Since the warping path is not required, we only need to store a vector containing the previous row relating to the current step of the dynamic programming sub-problem (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
 
-The DTW distance $C_{x,y}$ is found for each pairwise comparison. As shown in \ref{fig:c_to_d}, pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the distance between time series $i$ and $j$.
+We now introduce the notation $C_{x,y}=c_{n,m}$ to denote the final (scalar) cost relating to the pairwise comparison between time series $x$ and $y$, given by the final element in the cost matrix, as previously discussed. To cluster several time series, this cost is first computed for every pairwise comparison between every time series. As shown in \autoref{fig:c_to_d}, all of the pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the cost between time series $i$ and $j$.
 
-![The DTW costs of all the pairwise comparisons between time series in the dataset are combined to make a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
+![The individual DTW costs from each pairwise comparison between time series in the dataset are all combined to form a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
 
-Using this matrix, $D$, the time series can be split into $k$ separate clusters with integer programming. The problem formulation begins with a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series $j$ is a member of the $i$th cluster centroid, and 0 otherwise, as shown in \autoref{fig:A_matrix}.
+Using this distance matrix, $D$, the full set of time series can be split into $k$ separate clusters with integer programming. The problem formulation begins by considering a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series $j$ is a member of the $i$th cluster centroid, and 0 otherwise, as shown in \autoref{fig:A_matrix}.
 
-![Example output from the clustering process, where an entry of 1 indicates that time series $j$ belongs to cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
+![Example clustering matrix, where an entry of 1 indicates that time series $j$ belongs to the cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
 
-As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. In summary, the following constraints apply: 
+As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. Our objective is then to find the matrix $A$, and this may be formulated as an optimisation problem
+\begin{equation}
+    A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij},
+\end{equation}
+subject to the following constrants:
 
 1. Only $k$ series can be centroids,
-
 $$
 \sum_{i=1}^p A_{ii}=k.
 $$
 
-2. Each time series must be in one and only one cluster,
-
+2. Each time series must be a member of one and only one cluster,
 $$
 \sum_{i=1}^pA_{ij}=1  \quad \forall j \in [1,p].
 $$
 
 3. In any row, there can only be non-zero entries if the corresponding diagonal entry is non-zero, so a time series can only be in a cluster where the row corresponds to a centroid time series,
-
 $$
 A_{ij} \le A_{ii} \quad \forall i,j \in [1,p].
 $$
 
-The optimisation problem to solve, subject to the above constraints, is
+This integer program is solved in `DTW-C++` using Gurobi [@gurobi] or HiGHS [@Huangfu2018]. After solution, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold type face entries indicating the centroids.
 
-\begin{equation}
-    A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij}.
-\end{equation}
-
-This integer program is solved using Gurobi [@gurobi] or HiGHS [@Huangfu2018]. After solving this integer program, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold time series being the centroids.
-
-Finding global optimality can increase the computation time, depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both integer programming clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
+Finding a globally optimal solution with this method can result in increased computation times depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both integer programming clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
 
 # Comparison
 
