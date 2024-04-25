@@ -86,9 +86,9 @@ The final element in the matrix $c_{n,m}$ is then the total cost, and this provi
 
 ## Clustering 
 
-For the clustering algorithm, only the final cost for each pairwise comparison is required; the actual warping path (i.e., mapping between time series) is superfluous. The memory complexity of the cost matrix $C$ is $\mathcal{O}(nm)$, so as the length of the time series grows, the memory required greatly increases. Therefore, significant reductions in memory use can be made by not storing the entire cost matrix. Since the warping path is not required, we only need to store a vector containing the previous row relating to the current step of the dynamic programming sub-problem (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
+For the clustering algorithm, only the final cost for each pairwise comparison is required; the actual warping path (i.e., mapping between time series) is superfluous. The memory complexity of the cost matrix $C$ is $\mathcal{O}(nm)$, so as the length of the time series grows, the memory required greatly increases. Therefore, significant reductions in memory use can be achieved by not storing the entire cost matrix. Since the warping path is not required, we only need to store a vector containing the previous row relating to the current step of the dynamic programming sub-problem (i.e., the previous three values $c_{i-1,j-1}$, $c_{i-1,j}$, $c_{i,j-1}$), as indicated in \autoref{c}.
 
-We now introduce the notation $C_{x,y}=c_{n,m}$ to denote the final (scalar) cost relating to the pairwise comparison between time series $x$ and $y$, given by the final element in the cost matrix, as previously discussed. To cluster several time series, this cost is first computed for every pairwise comparison between every time series. As shown in \autoref{fig:c_to_d}, all of the pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ gives the cost between time series $i$ and $j$.
+We now introduce the notation $d_{x,y}=c_{n,m}$ to denote the final (scalar) cost relating to the pairwise comparison between time series $x$ and $y$, given by the final element in the cost matrix relating to the $x$ and $y$ time series. To cluster several time series, this cost is first computed for every pairwise comparison between every time series. As shown in \autoref{fig:c_to_d}, all of the pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ in this matrix gives the cost between time series $i$ and $j$.
 
 ![The individual DTW costs from each pairwise comparison between time series in the dataset are all combined to form a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
 
@@ -96,11 +96,12 @@ Using this distance matrix, $D$, the full set of time series can be split into $
 
 ![Example clustering matrix, where an entry of 1 indicates that time series $j$ belongs to the cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
 
-As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. Our objective is then to find the matrix $A$, and this may be formulated as an optimisation problem
+As each centroid has to be in its own cluster, non-zero diagonal entries in $A$ represent centroids. Our objective is to find $A$, and this may be formulated as an optimisation problem
 
 \begin{equation}
     A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij},
 \end{equation}
+
 subject to the following constrants:
 
 1. Only $k$ series can be centroids,
@@ -124,7 +125,7 @@ Finding a globally optimal solution with this method can result in increased com
 
 # Comparison
 
-We compared our approach with two other DTW clustering packages, \texttt{DTAIDistance} [@meert2020wannesm] and \texttt{TSlearn} [@Tavenard2020] using data from the UCR Time Series Classification Archive [@Dau2018], which consists of 128 time series datasets with up to 16,800 data series of lengths up to 2,844. The full results can be found in the Appendix. Benchmarking against  \texttt{TSlearn}  was stopped after the first 22 datasets because the results were consistently over 20 times slower than \texttt{DTW-C++}. \autoref{tab:small_table} shows the results for datasets downselected to have the number of time series, $N$, greater than 100, and the length of each time series greater than 500 points. This is because \texttt{DTW-C++} is aimed at larger datasets where the speed improvements are more relevant.
+We compared our approach with two other DTW clustering packages, \texttt{DTAIDistance} [@meert2020wannesm] and \texttt{TSlearn} [@Tavenard2020] using data from the UCR Time Series Classification Archive [@Dau2018], which consists of 128 time series datasets with up to 16,800 data series of lengths up to 2,844. Benchmarking against  \texttt{TSlearn}  was stopped after the first 22 datasets because the results were consistently over 20 times slower than \texttt{DTW-C++}. \autoref{tab:small_table} shows the results for datasets downselected to have the number of time series, $N$, greater than 100, and the length of each time series greater than 500 points. This is because \texttt{DTW-C++} is aimed at larger datasets where the speed improvements are more relevant.
 
 \begin{table}[]
 \resizebox{\textwidth}{!}{%
@@ -172,7 +173,7 @@ As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\
 
 With respect to clustering, \texttt{DTW-C++} with integer programming was on average 16 times slower than \texttt{DTAIDistance} over all samples, and as the number of time series increases, integer programming clustering becomes increasingly slower (\autoref{fig:speed_IP}). This is to be expected because the computational complexity of the integer programming optimisation increases significantly as the number of time series in the clustering problem increases. However, as the lengths of each time series increase, the performance of integer programming converges to the speed of \texttt{DTAIDistance}, and the former finds globally optimal results. Therefore, the integer programming approach is recommended for occasions when the individual time series to be clustered are very long, but the number of individual time series is small (e.g., fewer than 1000).
 
-The performance comparison on all datasets in the UCR Time Series Classification Archive can be found in reference [@kumtepeli2023fast].
+The performance comparison on all datasets in the UCR Time Series Classification Archive can be found in  [@kumtepeli2023fast].
 
 ![\texttt{DTW-C++} with k-medoids clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn.pdf){ width=80% }
 
