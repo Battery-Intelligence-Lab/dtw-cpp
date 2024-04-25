@@ -69,7 +69,7 @@ The DTW distance is the sum of the Euclidean distance between each point and its
 2. Only unidirectional forward movement through relative time is allowed, i.e., if $x_1$ is mapped to $y_2$ then $x_2$ may not be mapped to $y_1$ (monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (continuity).
 
-![(a) Two time series with DTW pairwise alignment between each point, showing the one-to-many mapping properties of DTW. (b) Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{13,12}$. \label{fig:warping_signals}](../media/warping_path-imageonline.co-merged.png)
+![(a) Two time series with DTW pairwise alignment between each point, showing the one-to-many mapping properties of DTW. (b) Cost matrix $C$ for the two time series, showing the warping path and final DTW cost at $C_{14,13}$. \label{fig:warping_signals}](../media/warping_merged_cropped.pdf)
 
 Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in ``DTW-C++``, it is useful to first examine the full cost matrix solution, as follows. For each pairwise comparison, an $n$ by $m$ matrix $C^{n\times m}$ is calculated, where each element represents the cumulative cost between series up to the points $x_i$ and $y_j$:
 
@@ -90,11 +90,11 @@ For the clustering algorithm, only the final cost for each pairwise comparison i
 
 We now introduce the notation $d_{x,y}=c_{n,m}$ to denote the final (scalar) cost relating to the pairwise comparison between time series $x$ and $y$, given by the final element in the cost matrix relating to the $x$ and $y$ time series. To cluster several time series, this cost is first computed for every pairwise comparison between every time series. As shown in \autoref{fig:c_to_d}, all of the pairwise distances are then stored in a separate symmetric matrix, $D^{p\times p}$, where $p$ is the total number of time series in the clustering exercise. In other words, the element $d_{i,j}$ in this matrix gives the cost between time series $i$ and $j$.
 
-![The individual DTW costs from each pairwise comparison between time series in the dataset are all combined to form a distance matrix $D$. \label{fig:c_to_d}](../media/distance_matrix_formation_vector.pdf)
+![The individual DTW costs from each pairwise comparison between time series in the dataset are all combined to form a distance matrix $D$. \label{fig:c_to_d}](../media/c_to_d_cropped.pdf)
 
 Using this distance matrix, $D$, the full set of time series can be split into $k$ separate clusters with integer programming. The problem formulation begins by considering a binary square matrix $A^{p\times p}$, where $A_{ij}=1$ if time series $j$ is a member of the $i$th cluster centroid, and 0 otherwise, as shown in \autoref{fig:A_matrix}.
 
-![Example clustering matrix, where an entry of 1 indicates that time series $j$ belongs to the cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
+![Example clustering matrix, where an entry of 1 indicates that time series $j$ belongs to the cluster with centroid $i$. \label{fig:A_matrix}](../media/clustering_cropped.pdf){ width=70% }
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in $A$ represent centroids. Our objective is to find $A$, and this may be formulated as an optimisation problem
 
@@ -173,7 +173,7 @@ As can be seen in these results, \texttt{DTW-C++} is the fastest package for 90\
 
 With respect to clustering, \texttt{DTW-C++} with integer programming was on average 16 times slower than \texttt{DTAIDistance} over all samples, and as the number of time series increases, integer programming clustering becomes increasingly slower (\autoref{fig:speed_IP}). This is to be expected because the computational complexity of the integer programming optimisation increases significantly as the number of time series in the clustering problem increases. However, as the lengths of each time series increase, the performance of integer programming converges to the speed of \texttt{DTAIDistance}, and the former finds globally optimal results. Therefore, the integer programming approach is recommended for occasions when the individual time series to be clustered are very long, but the number of individual time series is small (e.g., fewer than 1000).
 
-The performance comparison on all datasets in the UCR Time Series Classification Archive can be found in  [@kumtepeli2023fast].
+The performance comparison on all datasets in the UCR Time Series Classification Archive and any updated benchmarking tests can be found in the repository.
 
 ![\texttt{DTW-C++} with k-medoids clustering becomes increasingly faster compared to \texttt{DTAIDistance} as the number of time series increases. \label{fig:k_med}](../media/k_med_speed_nn.pdf){ width=80% }
 
