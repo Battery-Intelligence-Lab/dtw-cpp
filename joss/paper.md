@@ -97,6 +97,7 @@ Using this distance matrix, $D$, the full set of time series can be split into $
 ![Example clustering matrix, where an entry of 1 indicates that time series $j$ belongs to the cluster with centroid $i$. \label{fig:A_matrix}](../media/cluster_matrix_formation4.svg){ width=70% }
 
 As each centroid has to be in its own cluster, non-zero diagonal entries in  $A$ represent centroids. Our objective is then to find the matrix $A$, and this may be formulated as an optimisation problem
+
 \begin{equation}
     A^\star = \min_{A} \sum_i \sum_j D_{ij} \times A_{ij},
 \end{equation}
