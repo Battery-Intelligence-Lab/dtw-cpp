@@ -3,14 +3,13 @@ name: macOS unit
 on:
   push:
     branches:
-    #  - main
+      # - main
       - develop
   pull_request:
     branches:
       - '**'
 
 jobs:
-
   build-and-test:
     name: macOS unit
     runs-on: macos-latest
@@ -18,20 +17,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - name: install openmp
-        run: brew reinstall libomp & brew link libomp --force
-      
-      - name: make build directory
+      - name: Install libomp without linking
+        run: |
+          brew reinstall libomp
+          echo "export LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
+          echo "export CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
+
+      - name: Make build directory
         run: mkdir build_dir
 
-      - name: cmake configure
+      - name: CMake configure
         run: cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
         working-directory: build_dir
 
-      - name: cmake build
+      - name: CMake build
         run: cmake --build . --parallel 2
         working-directory: build_dir
 
-      - name: cmake test
+      - name: CMake test
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
