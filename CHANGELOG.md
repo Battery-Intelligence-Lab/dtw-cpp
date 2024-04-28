@@ -6,13 +6,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 
 <br/><br/>
-# DTWC v0.1.0
+# DTWC v1.0.0
 
 ## New features
-* HiGHS solver is added for open-source alternative to Gurobi. 
+* HiGHS solver is added for open-source alternative to Gurobi (which is now not necessary for compilation and can be enabled by necessary flags). 
 * Command line interface is added. 
-* Documentation is improved.
-
+* Documentation is improved (Doxygen website).
 
 
 ## Notable Bug-fixes
@@ -44,9 +43,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * `std::filesystem::path operator+` was unnecessary and removed. 
 
 <br/><br/>
-# DTWC v0.0.2
+# DTWC v0.1.0
 
-DTWC with a better interface for other people's use. 
+A user interface is created for other people's use. 
 
 ## New features / updates
 - Scores file with silhouette score is added. 
