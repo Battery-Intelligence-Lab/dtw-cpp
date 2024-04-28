@@ -20,20 +20,29 @@ jobs:
       - name: Install libomp without linking
         run: |
           brew reinstall libomp
-          echo "export LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
-          echo "export CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
+          echo "LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
 
       - name: Make build directory
         run: mkdir build_dir
 
       - name: CMake configure
-        run: cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
+        run: |
+          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
+          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
+          cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
         working-directory: build_dir
 
       - name: CMake build
-        run: cmake --build . --parallel 2
+        run: |
+          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
+          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
+          cmake --build . --parallel 2
         working-directory: build_dir
 
       - name: CMake test
-        run: ctest -j2 -C Debug --output-on-failure
+        run: |
+          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
+          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
+          ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
