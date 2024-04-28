@@ -1,16 +1,14 @@
-name: Ubuntu unit
-# adapted from: https://github.com/trase-cpp/trase/tree/master/.github/workflows
+name: Ubuntu unit # adapted from: https://github.com/trase-cpp/trase/tree/master/.github/workflows
 on:
   push:
     branches:
-   #   - main
+      # - main
       - develop
   pull_request:
     branches:
       - '**'
 
 jobs:
-
   build-and-test:
     name: Ubuntu unit ${{matrix.CC}}
     runs-on: ubuntu-latest
@@ -45,11 +43,21 @@ jobs:
           - CC: clang-16
             CXX: clang++-16
             compiler: clang-16 libomp-16-dev
+          - CC: clang-17
+            CXX: clang++-17
+            compiler: clang-17 libomp-17-dev
     steps:
       - uses: actions/checkout@v4
 
       - name: update
         run: sudo apt update
+
+      - name: Install Clang 16 or 17
+        if: matrix.CC == 'clang-16' || matrix.CC == 'clang-17'
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh $(echo "${{ matrix.CC }}" | cut -d '-' -f 2)
 
       - name: install compiler
         run: sudo apt install ${{matrix.compiler}}
