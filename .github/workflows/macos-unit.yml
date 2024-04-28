@@ -19,30 +19,29 @@ jobs:
       
       - name: Install libomp without linking
         run: |
-          brew reinstall libomp
-          echo "LDFLAGS=-L/opt/homebrew/opt/libomp/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I/opt/homebrew/opt/libomp/include" >> $GITHUB_ENV
+          xcode-select --install 
+          brew install libomp
+          export CC=/usr/bin/clang
+          export CXX=/usr/bin/clang++
+          export CPPFLAGS="$CPPFLAGS -Xpreprocessor -fopenmp"
+          export CFLAGS="$CFLAGS -I/usr/local/opt/libomp/include"
+          export CXXFLAGS="$CXXFLAGS -I/usr/local/opt/libomp/include"
+          export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/opt/libomp/lib -L/usr/local/opt/libomp/lib -lomp"
 
       - name: Make build directory
         run: mkdir build_dir
 
       - name: CMake configure
         run: |
-          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
-          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
           cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
         working-directory: build_dir
 
       - name: CMake build
         run: |
-          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
-          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
           cmake --build . --parallel 2
         working-directory: build_dir
 
       - name: CMake test
         run: |
-          export LDFLAGS=-L/opt/homebrew/opt/libomp/lib
-          export CPPFLAGS=-I/opt/homebrew/opt/libomp/include
           ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
