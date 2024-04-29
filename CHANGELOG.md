@@ -26,9 +26,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Developer updates: 
 * The software is now being tested via Catch2 library. 
+* Dependabot is added. 
 
 <br/><br/>
-# DTWC v0.0.3
+# DTWC v0.3.0
 
 ## New features
 * UCR_test_2018 data integration for benchmarking. 
@@ -43,7 +44,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * `std::filesystem::path operator+` was unnecessary and removed. 
 
 <br/><br/>
-# DTWC v0.1.0
+# DTWC v0.2.0
 
 A user interface is created for other people's use. 
 
@@ -67,7 +68,7 @@ A user interface is created for other people's use.
   * Required C++ standard is upgraded from C++17 to C++20. 
 
 <br/><br/>
-# DTWC v0.0.1
+# DTWC v0.1.0
 
 This is the initial release of DTWC. 
 

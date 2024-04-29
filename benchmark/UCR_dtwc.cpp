@@ -97,6 +97,9 @@ inline void UCR_2018()
     //(settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
+
+  dataofInterest = UCR_list; // Comment this out to do an individual testing.
+
   size_t solved = 0;
   for (auto &file_path : dataofInterest) {
     dl.path(file_path);
@@ -108,10 +111,8 @@ inline void UCR_2018()
 
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
     solved++;
-    // if (solved < 25) // We already calculated this part
-    //   continue;
 
-    if (prob.data.size() > 1000) // DOnt calculate large data it is not good. For example Crop.
+    if (prob.data.size() > 1000) // Don't calculate large data it is not good. For example Crop.
       continue;
 
     prob.set_numberOfClusters(Nc); // Nc = number of clusters.
