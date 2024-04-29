@@ -20,12 +20,10 @@ jobs:
       - name: Install libomp without linking
         run: |
           brew install libomp
-          export CC=/usr/bin/clang
-          export CXX=/usr/bin/clang++
-          export CPPFLAGS="$CPPFLAGS -Xpreprocessor -fopenmp"
-          export CFLAGS="$CFLAGS -I/usr/local/opt/libomp/include"
-          export CXXFLAGS="$CXXFLAGS -I/usr/local/opt/libomp/include"
-          export LDFLAGS="$LDFLAGS -Wl,-rpath,/usr/local/opt/libomp/lib -L/usr/local/opt/libomp/lib -lomp"
+          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
+          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
+          echo "LDFLAGS=\"-L$(brew --prefix llvm)/lib\"" >> $GITHUB_ENV
+          echo "CPPFLAGS=\"-I$(brew --prefix llvm)/include\"" >> $GITHUB_ENV
 
       - name: Make build directory
         run: mkdir build_dir
