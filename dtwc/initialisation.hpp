@@ -1,10 +1,11 @@
-/*
- * initialisation.hpp
+/**
+ * @file initialisation.hpp
+ * @brief Header file for initialisation functions.
  *
- * Header file for initialisation functions.
-
- *  Created on: 19 Jan 2021
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * This file contains the declarations of initialisation functions for the dtwc namespace.
+ *
+ * @date 19 Jan 2021
+ * @authors Volkan Kumtepeli, Becky Perriment
  */
 
 #pragma once
@@ -12,7 +13,7 @@
 namespace dtwc {
 class Problem;
 namespace init {
-  void random(Problem &prob);   // Random centroids initialisation
-  void Kmeanspp(Problem &prob); // Kmeanspp centroids initialisation
+  void random(Problem &prob);   //!< This function initializes the centroids randomly.
+  void Kmeanspp(Problem &prob); //!< This function initializes the centroids using the K-means++ algorithm.
 } // namespace init
 } // namespace dtwc

@@ -1,10 +1,12 @@
-/*
- * dtwc_cl.cpp
+/**
+ * @file dtwc_cl.cpp
+ * @brief Command line interface for DTWC++
  *
- * Command line interface for DTWC++
+ * This file contains the implementation of the command line interface for DTWC++.
+ * It provides a command line interface for users to interact with the DTWC++ library.
  *
- * Created on: 11 Dec 2023
- *  Author(s): Volkan Kumtepeli, Becky Perriment
+ * @date 11 Dec 2023
+ * @authors Volkan Kumtepeli, Becky Perriment
  */
 
 #include "dtwc.hpp"
@@ -31,9 +33,9 @@ int main(int argc, char **argv)
   std::string distMatPath{ "" };
 
   int maxIter{ dtwc::settings::DEFAULT_MAX_ITER };
-  int skipRows{0}, skipCols{0};
+  int skipRows{ 0 }, skipCols{ 0 };
   int N_repetition{ 1 };
-  int bandWidth{-1};
+  int bandWidth{ -1 };
 
   CLI::App app{ app_description };
 
@@ -60,8 +62,8 @@ int main(int argc, char **argv)
 
   std::cout << "Arguments are parsed." << std::endl;
 
-  auto Nc = str_to_range(Nc_str); // dtwc::Range(3,5); 
-  dtwc::Clock clk; // Create a clock object
+  auto Nc = str_to_range(Nc_str); //!< dtwc::Range(3,5);
+  dtwc::Clock clk;                //!< Create a clock object
 
   std::cout << "Nc_str : " << Nc_str << '\n';
   std::cout << "name : " << probName << '\n';
@@ -72,9 +74,9 @@ int main(int argc, char **argv)
   std::cout << "Max iteration : " << maxIter << std::endl;
 
   dtwc::DataLoader dl{ inputPath };
-  dl.startColumn(skipCols).startRow(skipRows); // Since dummy files are in Pandas format skip first row/column.
+  dl.startColumn(skipCols).startRow(skipRows); //!< Since dummy files are in Pandas format skip first row/column.
 
-  dtwc::Problem prob{ probName, dl }; // Create a problem.
+  dtwc::Problem prob{ probName, dl }; //!< Create a problem.
   std::cout << "Data loading finished at " << clk << "\n";
 
   prob.maxIter = maxIter;
@@ -82,7 +84,7 @@ int main(int argc, char **argv)
   prob.output_folder = outPath;
   prob.band = bandWidth;
   try {
-    if(distMatPath != "")
+    if (distMatPath != "")
       prob.readDistanceMatrix(distMatPath);
   } catch (const std::exception &e) {
     std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
@@ -106,7 +108,7 @@ int main(int argc, char **argv)
 
   for (auto nc : Nc) {
     std::cout << "\n\nClustering by " << method << " for Number of clusters : " << nc << std::endl;
-    prob.set_numberOfClusters(nc); // Nc = number of clusters.
+    prob.set_numberOfClusters(nc); //!< Nc = number of clusters.
     prob.cluster_and_process();
   }
 

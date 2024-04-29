@@ -11,6 +11,8 @@
 #include "mip.hpp"
 #include "../Problem.hpp"
 #include "../settings.hpp"
+#include "../types/types.hpp" // for Range
+
 
 #include <vector>
 #include <string_view>
@@ -30,8 +32,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 {
 #ifdef DTWC_ENABLE_GUROBI
 
-  const auto Nb = prob.data.size();
-  const auto Nc = prob.cluster_size();
+  const auto Nb(prob.size()), Nc(prob.cluster_size());
   prob.centroids_ind.clear();
 
   try {
@@ -41,22 +42,22 @@ void MIP_clustering_byGurobi(Problem &prob)
     // Create variables
     std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
 
-    for (int i{ 0 }; i < Nb; i++) {
+    for (auto i : Range(Nb)) {
       GRBLinExpr lhs = 0;
-      for (int j{ 0 }; j < Nb; j++)
+      for (auto j : Range(Nb))
         lhs += w[j + i * Nb];
 
       model.addConstr(lhs, '=', 1.0);
     }
 
 
-    for (int j{ 0 }; j < Nb; j++)
-      for (int i{ 0 }; i < Nb; i++)
+    for (auto j : Range(Nb))
+      for (auto i : Range(Nb))
         model.addConstr(w[i + j * Nb] <= w[i * (Nb + 1)]);
 
     {
       GRBLinExpr lhs = 0;
-      for (int i{ 0 }; i < Nb; i++)
+      for (auto i : Range(Nb))
         lhs += w[i * (Nb + 1)];
 
       model.addConstr(lhs == Nc); // There should be Nc clusters.
@@ -66,8 +67,8 @@ void MIP_clustering_byGurobi(Problem &prob)
     const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0);
     // Set objective
     GRBLinExpr obj = 0;
-    for (int j{ 0 }; j < Nb; j++)
-      for (int i{ 0 }; i < Nb; i++)
+    for (auto j : Range(Nb))
+      for (auto i : Range(Nb))
         obj += w[i + j * Nb] * prob.distByInd(i, j) / scaling_factor;
 
     model.setObjective(obj, GRB_MINIMIZE);
@@ -79,15 +80,15 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
-    for (int i{ 0 }; i < Nb; i++)
+    for (auto i : Range(Nb))
       if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(i);
 
     prob.clusters_ind.resize(Nb);
 
-    for (auto i : prob.centroids_ind)
-      for (int j{ 0 }; j < Nb; j++)
-        if (w[i + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
+    for (auto i : Range(prob.cluster_size()))
+      for (auto j : Range(Nb))
+        if (w[prob.centroids_ind[i] + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
           prob.clusters_ind[j] = i;
 
   } catch (GRBException &e) {

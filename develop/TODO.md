@@ -8,13 +8,15 @@
 
 ### Current priority: 
 
+- [ ] Numpy-like arrays for multi-dimensional DTW.
 - [ ] If you accidentally compile with amd64_x86 you get bad_alloc due to the insufficient RAM in 32-bit computer. So, put a warning for that. 
 - [ ] Modernise `*.csv` reading interface, allow for rowwise or columnwise data. 
 - [x] CMake files arranging:
   - [x] HiGHS 1.6.0 does not always work. Also it does not work in debug mode due to iterator level. 
 - [ ] Commenting
 - [ ] MATLAB / Python integration
-- [ ] JOSS paper  
+ - [ ] Pybind11 usage for Python integration.
+- [x] JOSS paper  
 - [ ] Speed up the code
 - [ ] GPU programming 
 - [ ] Lighter and faster DTW cost calculation + make the band from long side so it is more accurate. 
@@ -26,8 +28,8 @@
 - [ ] Give error message if data could not be loaded. 
 - Benchmarking:
   - [x] UCR_test_2018 is continuing. 
-  - [ ] USR_dtai.py
-  - [ ] TSlearn 
+  - [x] USR_dtai.py
+  - [x] TSlearn 
   - [ ] dtwclust in R
 - [ ] Encapsulating Data and related functions in one folder. 
 - [ ] Open-source solver addition. 
@@ -38,7 +40,7 @@
 - [x] Doxygen website? 
 - [x] Remove unnecessary warping functions. 
 - [ ] Fix warnings. Especially, we should not get warnings from external libraries. 
-- [ ] Make Gurobi dependency optional. (Now it cannot be disabled. )
+- [x] Make Gurobi dependency optional. (Now it cannot be disabled. )
 - [x] Consider including Eigen library for matrix operations / linear system solution. 
 - [ ] w based DTW. 
 - [ ] Reading memoisation matrix distMat from file instead of re-calculating DTW every time. 

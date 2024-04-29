@@ -1,3 +1,5 @@
+#include <stdexcept> // Add missing include directive for the <stdexcept> header file
+
 /**
  * @file initialisation.cpp
  *

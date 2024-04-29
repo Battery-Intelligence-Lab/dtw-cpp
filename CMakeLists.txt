@@ -6,7 +6,7 @@ cmake_minimum_required(VERSION 3.21)
 # so that it works well with tools like CPM or other
 # manual dependency management
 
-project(DTWC++ VERSION "0.1.0"
+project(DTWC++ VERSION "1.0.0"
   DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
@@ -78,4 +78,15 @@ endif()
 
 if(BUILD_BENCHMARK)
   add_subdirectory(benchmark)
+endif()
+
+find_package(pybind11 QUIET)
+
+if(pybind11_FOUND)
+    pybind11_add_module(dtwcpp 
+            python/py_main.cpp)
+
+    target_link_libraries(dtwcpp PRIVATE dtwc++ project_warnings project_options armadillo)
+else()
+    message(STATUS "pybind11 not found. Skipping the dtwcpp module.")
 endif()

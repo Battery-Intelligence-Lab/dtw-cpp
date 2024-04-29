@@ -3,6 +3,15 @@
 - Do not use "using" in global namespace.
 - First include standard headers then our headers.
 
+## Versioning: 
+
+We use semantic versioning with MAJOR.MINOR.PATCH where:
+
+- PATCH: Backwards compatible bug fix without introducing a new feature. 
+- MINOR: Backwards compatible new feature. 
+- MAJOR: Incompatible changes, especially on API. 
+
+See [this link](https://www.youtube.com/watch?v=xvPiZyx0cDc) for a detailed tutorial on versioning. 
 
 ### Commenting: 
 

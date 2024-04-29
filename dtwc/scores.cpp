@@ -18,6 +18,7 @@
 #include <iostream>
 #include <vector>
 #include <cstddef>
+#include <utility> // for pair
 
 namespace dtwc::scores {
 
@@ -36,43 +37,118 @@ namespace dtwc::scores {
  */
 std::vector<double> silhouette(Problem &prob)
 {
-  const auto Nb = prob.data.size();    //!< Number of profiles
+  const auto Nb = prob.size();         //!< Number of profiles
   const auto Nc = prob.cluster_size(); //!< Number of clusters
 
-  std::vector<double> silhouettes(Nb);
+  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
   if (prob.centroids_ind.empty()) {
     std::cout << "Please cluster the data before calculating silhouette!" << std::endl;
     return silhouettes;
   }
 
+  prob.fillDistanceMatrix(); //!< We need all pairwise distance for silhouette score.
+
   auto oneTask = [&](size_t i_b) {
-    // auto i_c = prob.clusters_ind[i_b];
+    const auto i_c = prob.clusters_ind[i_b];
 
-    // if (prob.cluster_members[i_c].size() == 1)
-    //   silhouettes[i_b] = 0;
-    // else {
-    //   thread_local std::vector<double> mean_distances(Nc);
+    thread_local std::vector<std::pair<int, double>> mean_distances(Nc);
+    mean_distances.assign(Nc, { 0, 0 });
 
-    //   for (int i = 0; i < Nb; i++)
-    //     mean_distances[prob.clusters_ind[i]] += prob.distByInd(i, i_b);
+    for (auto i : Range(prob.size())) {
+      mean_distances[prob.clusters_ind[i]].first++;
+      mean_distances[prob.clusters_ind[i]].second += prob.distByInd(i, i_b);
+    }
 
-    //   auto min = std::numeric_limits<double>::max();
-    //   for (int i = 0; i < Nc; i++) // Finding means:
-    //     if (i == i_c)
-    //       mean_distances[i] /= (prob.cluster_members[i].size() - 1);
-    //     else {
-    //       mean_distances[i] /= prob.cluster_members[i].size();
-    //       min = std::min(min, mean_distances[i]);
-    //     }
 
-    //   silhouettes[i_b] = (min - mean_distances[i_c]) / std::max(min, mean_distances[i_c]);
-    // }
+    if (mean_distances[i_c].first == 1) // If the profile is the only member of the cluster
+      silhouettes[i_b] = 0;
+    else {
+      auto min = std::numeric_limits<double>::max();
+      for (int i = 0; i < Nc; i++) // Finding means:
+        if (i == i_c)
+          mean_distances[i].second /= (mean_distances[i].first - 1);
+        else {
+          mean_distances[i].second /= mean_distances[i].first;
+          min = std::min(min, mean_distances[i].second);
+        }
+
+      silhouettes[i_b] = (min - mean_distances[i_c].second) / std::max(min, mean_distances[i_c].second);
+    }
   };
 
-  dtwc::run(oneTask, Nb);
+  dtwc::run(oneTask, prob.size());
 
   return silhouettes;
 }
+
+/**
+ * @brief Calculates the Davies-Bouldin index for a given clustering problem.
+ *
+ * The Davies-Bouldin index is a measure of the average similarity between clusters and the
+ * dissimilarity between clusters. It is used to evaluate the quality of a clustering solution,
+ * with a lower value indicating better separation between clusters.
+ *
+ * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
+ * @return double The Davies-Bouldin index.
+ *
+ * @note Requires that the data has already been clustered; if not, it will prompt the user to cluster the data first.
+ * @see https://en.wikipedia.org/wiki/Davies%E2%80%93Bouldin_index for more information on the Davies-Bouldin index.
+ */
+// double daviesBouldinIndex(Problem &prob)
+// {
+//   const auto Nc = prob.cluster_size(); //!< Number of clusters
+
+//   if (prob.centroids_ind.empty()) {
+//     std::cout << "Please cluster the data before calculating the Davies-Bouldin index!" << std::endl;
+//     return 0.0;
+//   }
+
+//   prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
+
+//   std::vector<double> clusterSimilarities(Nc, 0.0);    //!< Similarities between clusters
+//   std::vector<double> clusterDissimilarities(Nc, 0.0); //!< Dissimilarities between clusters
+
+//   // Calculate the similarity and dissimilarity for each cluster
+//   for (int i = 0; i < Nc; i++) {
+//     double maxSimilarity = std::numeric_limits<double>::lowest();
+
+//     for (int j = 0; j < Nc; j++) {
+//       if (i != j) {
+//         double similarity = (prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[i]) + prob.distByInd(prob.centroids_ind[j], prob.centroids_ind[j])) / prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+
+//         if (similarity > maxSimilarity) {
+//           maxSimilarity = similarity;
+//         }
+//       }
+//     }
+
+//     clusterSimilarities[i] = maxSimilarity;
+//   }
+
+//   // Calculate the dissimilarity for each cluster
+//   for (int i = 0; i < Nc; i++) {
+//     double sumDissimilarity = 0.0;
+
+//     for (int j = 0; j < Nc; j++) {
+//       if (i != j) {
+//         sumDissimilarity += prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+//       }
+//     }
+
+//     clusterDissimilarities[i] = sumDissimilarity / (Nc - 1);
+//   }
+
+//   // Calculate the Davies-Bouldin index
+//   double daviesBouldinIndex = 0.0;
+
+//   for (int i = 0; i < Nc; i++) {
+//     daviesBouldinIndex += clusterSimilarities[i] + clusterDissimilarities[i];
+//   }
+
+//   daviesBouldinIndex /= Nc;
+
+//   return daviesBouldinIndex;
+// }
 
 } // namespace dtwc::scores
