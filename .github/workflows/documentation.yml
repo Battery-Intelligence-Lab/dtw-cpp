@@ -29,7 +29,7 @@ jobs:
       - run: sudo rm -rf build
       - run: mkdir build
       - name: Create Doxygen Files
-        uses: mattnotmitt/doxygen-action@v1.9.5
+        uses: mattnotmitt/doxygen-action@v1.9.8
         with:
           doxyfile-path: 'docs/Doxyfile'
       - run: sudo sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
