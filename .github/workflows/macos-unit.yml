@@ -19,11 +19,7 @@ jobs:
       
       - name: Install libomp without linking
         run: |
-          brew install libomp
-          echo "CC=$(brew --prefix llvm)/bin/clang" >> $GITHUB_ENV
-          echo "CXX=$(brew --prefix llvm)/bin/clang++" >> $GITHUB_ENV
-          echo "LDFLAGS=\"-L$(brew --prefix llvm)/lib\"" >> $GITHUB_ENV
-          echo "CPPFLAGS=\"-I$(brew --prefix llvm)/include\"" >> $GITHUB_ENV
+          brew install libomp llvm && brew link --force libomp
 
       - name: Make build directory
         run: mkdir build_dir
