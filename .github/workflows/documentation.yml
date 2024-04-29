@@ -20,7 +20,7 @@ jobs:
       - name: Checkout current branch
         uses: actions/checkout@v4
       - name: Setup Pages
-        uses: actions/configure-pages@v2
+        uses: actions/configure-pages@v5
       - name: Build master with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
