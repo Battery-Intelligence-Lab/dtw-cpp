@@ -91,7 +91,7 @@ jobs:
       
       # Upload the website:
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v1
+        uses: actions/upload-pages-artifact@v3
 
   # Publication job
   publish:
