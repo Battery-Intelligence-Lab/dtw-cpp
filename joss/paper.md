@@ -181,7 +181,7 @@ The performance comparison on all datasets in the UCR Time Series Classification
 
 # Acknowledgements
 
-We are grateful for discussions of this topic with [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members, and thank BBOXX for project funding and access to data. This work was also funded by the UKRI PFER Energy Superhub Oxford demonstrator and the ``Data-driven exploration of the carbon emissions impact of grid energy storage deployment and dispatch'' project (EP/W027321/1).
+We are grateful for discussions of this topic with [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members, and thank BBOXX for project funding and access to data. This work was also funded by the UKRI PFER Energy Superhub Oxford demonstrator and the ``Data-driven exploration of the carbon emissions impact of grid energy storage deployment and dispatch'' project (EP/W027321/1). The authors would like to particularly thank Dau, Keogh, et al. for their extensive efforts in compiling a diverse range of datasets for the UCR Time Series Classification Archive.
 
 # References
 
