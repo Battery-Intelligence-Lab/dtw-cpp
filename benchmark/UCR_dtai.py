@@ -21,11 +21,11 @@ meta = pd.read_csv("../data/benchmark/UCR_DataSummary.csv", index_col="Name")
 
 path = "../data/benchmark/UCRArchive_2018/"
 
-# make text file to store timing and memory data
+# make text file to store timing data
 with open("results_dtai.txt", mode="w") as f:
     f.write("DTAI Results \n")
 
-# go through each time series collection and cluster with dtai, recording time and memory
+# go through each time series collection and cluster with dtai, recording time
 for fname in glob.glob(path + "/*/"):
     name = fname[34:-1]
 
@@ -47,9 +47,9 @@ for fname in glob.glob(path + "/*/"):
 
     df_np = df.to_numpy()
 
-    tracemalloc.start()  # memory tracking
+    #tracemalloc.start()  # memory tracking - removed for fair comparison between packages
     t = time.time()  # time tracking
-
+    
     dtai_res = clustering.KMedoids(
         dtw.distance_matrix_fast, {}, k=n_clusters, initial_medoids=init_centroids
     ).fit(list(df_np))
@@ -57,12 +57,13 @@ for fname in glob.glob(path + "/*/"):
     t2 = time.time()
     timings_dtai[name] = t2 - t
 
-    memory_dtai[name] = tracemalloc.get_traced_memory()[1]
-    tracemalloc.stop()
+    # memory_dtai[name] = tracemalloc.get_traced_memory()[1]
+    # tracemalloc.stop()
 
     towrite = str("{0}, {1}, {2}").format(name, timings_dtai[name], memory_dtai[name])
     with open("results_dtai.txt", mode="a") as f:
         f.write(towrite)
         f.write("\n")
 
-    print(towrite)
+    print(timings_dtai,end='\n')
+
