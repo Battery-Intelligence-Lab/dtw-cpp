@@ -33,7 +33,7 @@ Time-series data analysis is of interest in a huge number of different applicati
 
 The target audience for this software is very broad, since clustering of time series data is relevant in many applications from energy to finance and medicine. However, as data availability increases, so does the complexity of the clustering problem. Most time series clustering algorithms depend on dimension reduction or feature extraction techniques to enable scaling to large datasets, but this can induce bias in the clustering [@Aghabozorgi2015]. Dynamic time warping [@Sakoe1978] is a well-known technique for manipulating time series to enable comparisons between datasets, using local warping (stretching or compressing along the time axis) of the elements within each time series to find an optimal alignment between series. This emphasises the similarity of the shapes of the respective time series rather than the exact alignment of specific features. Unfortunately, DTW does not scale well in computational speed as the length and number of time series to be compared increases---the computational complexity grows quadratically with the total number of data points. This is a barrier to DTW being widely implemented in large-scale time series clustering  [@Rajabi2020]. In response, `DTW-C++` was written to handle large time series efficiently, directly processing the raw data rather than first extracting features. 
 
-In contrast to existing tools available for time series clustering using DTW, such as `DTAIDistance` [@meert2020wannesm] and `TSlearn` [@Tavenard2020], `DTW-C++` offers significant improvements in speed and memory use, enabling larger datasets to be clustered. This is achieved by
+In contrast to existing tools available for time series clustering using DTW, such as `DTAIDistance` [@meert2022wannesm] and `TSlearn` [@Tavenard2020], `DTW-C++` offers significant improvements in speed and memory use, enabling larger datasets to be clustered. This is achieved by
 
 1. task-level parallelisation, where multiple pairwise comparisons between time series can be evaluated simultaneously, and,
 2. improved memory management---since the clustering algorithm only needs the final distance computed between pairwise time series, the DTW distance computation stores only the most recent previous vector, rather than the entire warping matrix.
@@ -121,16 +121,16 @@ $$
 
 This integer program is solved in `DTW-C++` using Gurobi [@gurobi] or HiGHS [@Huangfu2018]. After solution, the non-zero diagonal entries of $A$ represent the centroids, and the non-zero elements in the corresponding columns in $A$ represent the members of that cluster. In the example in \autoref{fig:A_matrix}, the clusters are time series 1, **2**, 5 and 3, **4** with the bold type face entries indicating the centroids.
 
-Finding a globally optimal solution with this method can result in increased computation times depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2020wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both integer programming clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
+Finding a globally optimal solution with this method can result in increased computation times depending on the number of time series within the dataset and the DTW distances. Therefore, there is also a built-in option to cluster using k-medoids, as used in other packages such as \texttt{DTAIDistance} [@meert2022wannesm]. The k-medoids method is often quicker as it is an iterative approach, however it is subject to getting stuck in local optima. The results in the next section show the timing and memory performance of both integer programming clustering and k-medoids clustering using \texttt{DTW-C++} compared to other packages.
 
 # Comparison
 
-We compared our approach with two other DTW clustering packages, \texttt{DTAIDistance} [@meert2020wannesm] and \texttt{TSlearn} [@Tavenard2020] using data from the UCR Time Series Classification Archive [@Dau2018], which consists of 128 time series datasets with up to 16,800 data series of lengths up to 2,844. Benchmarking against  \texttt{TSlearn}  was stopped after the first 22 datasets because the results were consistently over 20 times slower than \texttt{DTW-C++}. \autoref{tab:small_table} shows the results for datasets downselected to have the number of time series, $N$, greater than 100, and the length of each time series greater than 500 points. This is because \texttt{DTW-C++} is aimed at larger datasets where the speed improvements are more relevant.
+We compared our approach with two other DTW clustering packages, \texttt{DTAIDistance} [@meert2022wannesm] and \texttt{TSlearn} [@Tavenard2020] using data from the UCR Time Series Classification Archive [@UCRArchive2018, @dau2019ucr], which consists of 128 time series datasets with up to 16,800 data series of lengths up to 2,844. Benchmarking against  \texttt{TSlearn}  was stopped after the first 22 datasets because the results were consistently over 20 times slower than \texttt{DTW-C++}. \autoref{tab:small_table} shows the results for datasets downselected to have the number of time series, $N$, greater than 100, and the length of each time series greater than 500 points. This is because \texttt{DTW-C++} is aimed at larger datasets where the speed improvements are more relevant.
 
 \begin{table}[]
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{l|p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}p{.125\textwidth}}
-                           & Number of time series    & Length of time series    & DTW-C++ IP (s) & DTW-C++ k-Medoids (s) & DTAI Distance (s) & Time decrease (\%) \\
+                           & Number of time series    & Length of time series    & DTW-C++ IP (s) & DTW-C++ k-Medoids (s) & DTAI Distance* (s) & Time decrease (\%) \\
 \hline
 CinCECGTorso               & 1380 & 1639 & 3008.4      & \textbf{1104.2}   & 1955.9       & 44                 \\
 Computers                  & 250  & 720  & 16.1        & \textbf{10.5}     & 12.8         & 18                 \\
@@ -162,7 +162,8 @@ SemgHandSubjectCh2         & 450  & 1500 & 186.4       & \textbf{96.7}     & 177
 ShapesAll                  & 600  & 512  & 67.5        & \textbf{15.1}     & 44.4         & 66                 \\
 SmallKitchenAppliances     & 375  & 720  & 41.7        & \textbf{23.8}     & 30.1         & 21                 \\
 StarLightCurves            & 8236 & 1024 & N/A         & \textbf{18551.7}  & 27558.1      & 33                 \\
-UWaveGestureLibraryAll     & 3582 & 945  & N/A         & \textbf{1194.6}   & 4436.9       & 73                
+UWaveGestureLibraryAll     & 3582 & 945  & N/A         & \textbf{1194.6}   & 4436.9       & 73                 \\ \hline
+\multicolumn{7}{l}{*Benchmark results for Python libraries \textit{may} include an overhead of 10\% due to the usage of the \textit{tracemalloc} library.}                                                                                                                                   
 \end{tabular}}
 \caption{Computational time comparison between \texttt{DTW-C++} using integer programming and k-medoids, vs.\ \texttt{DTAIDistance}, and \texttt{TSlearn}, on datasets in the UCR Time Series Classification Archive where $N>100$ and $L>500$. The fastest result for each dataset is in bold type.}
 \label{tab:small_table}
@@ -181,7 +182,7 @@ The performance comparison on all datasets in the UCR Time Series Classification
 
 # Acknowledgements
 
-We are grateful for discussions of this topic with [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members, and thank BBOXX for project funding and access to data. This work was also funded by the UKRI PFER Energy Superhub Oxford demonstrator and the ``Data-driven exploration of the carbon emissions impact of grid energy storage deployment and dispatch'' project (EP/W027321/1). The authors would like to particularly thank Dau, Keogh, et al. for their extensive efforts in compiling a diverse range of datasets for the UCR Time Series Classification Archive.
+We are grateful for discussions of this topic with [Battery Intelligence Lab](https://howey.eng.ox.ac.uk) members, and thank BBOXX for project funding and access to data. This work was also funded by the UKRI PFER Energy Superhub Oxford demonstrator and the ``Data-driven exploration of the carbon emissions impact of grid energy storage deployment and dispatch'' project (EP/W027321/1). The authors would like to particularly thank Dau, Keogh, et al. for their extensive efforts in compiling a diverse range of datasets for the [UCR Time Series Classification Archive](https://www.cs.ucr.edu/~eamonn/time_series_data_2018/).
 
 # References
 
