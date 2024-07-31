@@ -19,6 +19,20 @@ jobs:
     steps:
       - name: Checkout current branch
         uses: actions/checkout@v4
+      
+      # Copy additional markdown files to the Jekyll source directory
+      - name: Copy CONTRIBUTING.md
+        run: sudo cp ./CONTRIBUTING.md ./docs/7_develop/
+      - name: Copy conventions.md
+        run: sudo cp ./develop/conventions.md ./docs/7_develop/
+      - name: Copy contributors.md
+        run: sudo cp ./develop/contributors.md ./docs/7_develop/
+
+      # Update links in markdown files
+      - name: Update links in markdown files
+        run: |
+          find ./docs/7_develop/ -type f -name '*.md' -exec sed -i 's/](develop\//](/g' {} +
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Build master with Jekyll
@@ -35,6 +49,7 @@ jobs:
       - run: sudo sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
       - run: sudo mv ./build/Doxygen/html ./_site/Doxygen
       - run: sudo cp -r ./media ./_site/Doxygen #Copy media folder into Doxygen folder. 
+      
 
       # Create a coverage report and upload to the website! 
       - name: update

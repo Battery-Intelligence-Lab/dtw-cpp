@@ -1,9 +1,28 @@
-## Coding Conventions:
+---
+layout: default
+title: Coding conventions
+nav_order: 3
+---
 
-- Do not use "using" in global namespace.
-- First include standard headers then our headers.
+# Coding conventions
 
-## Versioning: 
+- Avoid using "using" in the global namespace.
+- Include project-specific headers before standard headers.
+- Use descriptive names for variables.
+- Break down complex conditionals into multiple statements.
+- Minimise nested statements.
+
+### Code editor
+
+We recommend using [Visual Studio Code (VS Code)](https://learn.microsoft.com/dotnet/core/tutorials/with-visual-studio-code). Enable `format on save` to automatically enforce `.clang-format`.
+
+## Copyright
+- Verify that the code and libraries do not violate any copyright conditions.
+- Our software is licensed under a non-copyleft license, and we aim to avoid incorporating copyleft libraries.
+- Report any copyright violations by opening an issue immediately. We will remove any infringing content as soon as possible.
+- Using AI tools to help write code is acceptable as long as it is thoroughly reviewed by a human developer and does not infringe on copyrights.
+
+## Versioning
 
 We use semantic versioning with MAJOR.MINOR.PATCH where:
 
@@ -11,10 +30,12 @@ We use semantic versioning with MAJOR.MINOR.PATCH where:
 - MINOR: Backwards compatible new feature. 
 - MAJOR: Incompatible changes, especially on API. 
 
-See [this link](https://www.youtube.com/watch?v=xvPiZyx0cDc) for a detailed tutorial on versioning. 
+For a detailed tutorial on versioning, see [this video](https://www.youtube.com/watch?v=xvPiZyx0cDc).
 
-### Commenting: 
+## Issue management
 
-We have recently activated our Doxygen pages and realised that not all comments in our source files are Doxygen compatible. However, we are trying our best to adapt our comments. Please feel free to fix any imcompatible comments you see. 
+As a small library developed by a small team, we review issues informally. To avoid duplicate efforts, please comment on the issue you are working on.
 
-- Please see the commenting guidelines in https://doxygen.nl/manual/docblocks.html 
+## Commenting
+
+We are transitioning to Doxygen-compatible comments. Feel free to update any incompatible comments you encounter. Refer to the [Doxygen guidelines](https://doxygen.nl/manual/docblocks.html) for commenting best practices.
