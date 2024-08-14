@@ -13,28 +13,22 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
-      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.3.2.tar.gz"
+      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.7.0.tar.gz"
       OPTIONS 
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
   endif()
 
-  # if(NOT TARGET fmt) # fmt library:
-  # CPMAddPackage(
-  #   NAME fmt
-  #   URL "https://github.com/fmtlib/fmt/archive/refs/tags/10.1.1.tar.gz"
-  # )
-  # endif()
-
   # HiGHS library:
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.6.0.tar.gz"
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.7.2.tar.gz"
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
-    "ZLIB OFF" "FAST_BUILD ON" "BUILD_TESTING OFF" "BUILD_EXAMPLES OFF" "BUILD_SHARED_LIBS OFF")
+    "CI OFF"
+    )
   endif()
 
   if (NOT TARGET CLI11::CLI11)
@@ -44,7 +38,7 @@ function(dtwc_setup_dependencies)
     DOWNLOAD_ONLY YES 
   )
 
-  add_library(CLI11::CLI11 INTERFACE IMPORTED)
+   add_library(CLI11::CLI11 INTERFACE IMPORTED)
   set_target_properties(CLI11::CLI11 PROPERTIES
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()

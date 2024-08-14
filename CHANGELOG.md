@@ -22,7 +22,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Dependency updates:
 * Required C++ standard is reduced from C++20 to C++17 as it was causing `call to consteval function 'std::chrono::hh_mm_ss::_S_fractional_width' is not a constant expression` error for clang versions older than clang-15.
-* std::execution-based parallelisation replaced with OpenMP.
 
 ## Developer updates: 
 * The software is now being tested via Catch2 library. 

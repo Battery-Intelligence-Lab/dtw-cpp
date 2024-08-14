@@ -15,23 +15,23 @@
 #include <vector>
 #include <atomic>
 
-TEST_CASE("Parallel Execution", "[run_openmp]")
+TEST_CASE("Parallel Execution", "[run_std]")
 {
   std::vector<int> results(100, 0);
   auto task = [&](int i) { results[i] = 1; };
 
-  dtwc::run_openmp(task, results.size(), true);
+  dtwc::run_std(task, results.size(), true);
 
   for (int res : results)
     REQUIRE(res == 1);
 }
 
-TEST_CASE("Sequential Execution", "[run_openmp]")
+TEST_CASE("Sequential Execution", "[run_std]")
 {
   std::vector<int> results(100, 0);
   auto task = [&](int i) { results[i] = 1; };
 
-  dtwc::run_openmp(task, results.size(), false);
+  dtwc::run_std(task, results.size(), false);
 
   for (int res : results) {
     REQUIRE(res == 1);
@@ -57,20 +57,20 @@ TEST_CASE("Functionality of run", "[run]")
   }
 }
 
-TEST_CASE("Correct Number of Iterations", "[run_openmp]")
+TEST_CASE("Correct Number of Iterations", "[run_std]")
 {
   std::atomic<int> count = 0;
   auto task = [&](int) { count++; };
 
-  dtwc::run_openmp(task, 50, true);
+  dtwc::run_std(task, 50, true);
   REQUIRE(count == 50);
 }
 
-TEST_CASE("Boundary Conditions", "[run_openmp]")
+TEST_CASE("Boundary Conditions", "[run_std]")
 {
   int count = 0;
   auto task = [&](int) { count++; };
 
-  dtwc::run_openmp(task, 0, true);
+  dtwc::run_std(task, 0, true);
   REQUIRE(count == 0);
 }
