@@ -50,7 +50,8 @@ namespace fs = std::filesystem;
 /// @details This path is used to define subdirectories for data and results.
 ///          The root folder path is obtained from the DTWC_ROOT_FOLDER macro
 ///          which leads to the path of the top-level CMakeLists.txt.
-const static fs::path root_folder(DTWC_ROOT_FOLDER);
+const static fs::path root_folder{ CURRENT_ROOT_FOLDER };
+const static fs::path dtwc_folder{ DTWC_ROOT_FOLDER };
 
 /// @brief Path to the results directory.
 /// @details Concatenates the root folder path with a subdirectory named "results".
@@ -59,6 +60,7 @@ const auto resultsPath = root_folder / "results/";
 /// @brief Path to the data directory.
 /// @details Concatenates the root folder path with a subdirectory named "data".
 const auto dataPath = root_folder / "data";
+const auto dtwc_dataPath = dtwc_folder / "data";
 
 /// @brief Flag for debug mode for developers.
 /// @details When set to true, the program may output additional debug information.

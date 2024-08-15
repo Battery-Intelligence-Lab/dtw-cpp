@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.21)
 add_library(mip-solvers OBJECT)
 
+target_compile_definitions(mip-solvers PUBLIC CURRENT_ROOT_FOLDER="${CURRENT_ROOT_FOLDER}")
+target_compile_definitions(mip-solvers PUBLIC DTWC_ROOT_FOLDER="${DTWC_ROOT_FOLDER}")
+
 target_sources(mip-solvers
   PRIVATE
     mip_Gurobi.cpp

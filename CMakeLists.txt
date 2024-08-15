@@ -11,7 +11,8 @@ project(DTWC++ VERSION "1.0.0"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 
-set(DTWC_ROOT_FOLDER "${CMAKE_SOURCE_DIR}" CACHE STRING "Root folder for DTWC project") 
+set(CURRENT_ROOT_FOLDER "${CMAKE_SOURCE_DIR}" CACHE STRING "Root folder for main project") 
+set(DTWC_ROOT_FOLDER "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "Root folder for DTWC project") 
 
 include(cmake/StandardProjectSettings.cmake)
 

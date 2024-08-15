@@ -26,6 +26,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 ## Developer updates: 
 * The software is now being tested via Catch2 library. 
 * Dependabot is added. 
+* `CURRENT_ROOT_FOLDER` and `DTWC_ROOT_FOLDER` are seperated as DTW-C++ library can be included by other libraries. 
 
 <br/><br/>
 # DTWC v0.3.0
