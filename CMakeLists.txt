@@ -11,13 +11,12 @@ project(DTWC++ VERSION "1.0.0"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 
-# Define the root path
-add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}")
+add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}") # Define the root path
 include(cmake/StandardProjectSettings.cmake)
 
 option(DTWC_BUILD_EXAMPLES OFF)
 option(DTWC_BUILD_TESTING OFF)
-option(BUILD_BENCHMARK OFF)
+option(DTWC_BUILD_BENCHMARK OFF)
 
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_HIGHS ON)
@@ -66,27 +65,16 @@ target_link_libraries(dtwc_cl
 include(CTest)
 enable_testing()
 if(DTWC_BUILD_TESTING)
-  #message(AUTHOR_WARNING "Building Tests. Be sure to check out test/constexpr_tests.cpp for constexpr testing")
   include(cmake/Coverage.cmake)
   add_subdirectory(tests)
 endif()
-
 
 if(DTWC_BUILD_EXAMPLES)
   add_subdirectory(examples)
 endif()
 
-if(BUILD_BENCHMARK)
+if(DTWC_BUILD_BENCHMARK)
   add_subdirectory(benchmark)
 endif()
 
-find_package(pybind11 QUIET)
-
-if(pybind11_FOUND)
-    pybind11_add_module(dtwcpp 
-            python/py_main.cpp)
-
-    target_link_libraries(dtwcpp PRIVATE dtwc++ project_warnings project_options armadillo)
-else()
-    message(STATUS "pybind11 not found. Skipping the dtwcpp module.")
-endif()
+cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")

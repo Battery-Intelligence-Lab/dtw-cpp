@@ -9,6 +9,11 @@ include(cmake/CPM.cmake)
 function(dtwc_setup_dependencies)
   # For each dependency, see if it's
   # already been provided to us by a parent project
+  CPMAddPackage(
+    NAME CPMLicenses.cmake 
+    GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
+    VERSION 0.0.7
+  )
 
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
@@ -27,7 +32,7 @@ function(dtwc_setup_dependencies)
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
-    "CI OFF"
+    "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF"
     )
   endif()
 
@@ -49,4 +54,5 @@ function(dtwc_setup_dependencies)
     OPTIONS
     "BUILD_SMOKE_TEST OFF"
   )
+
 endfunction()
