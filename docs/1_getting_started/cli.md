@@ -7,7 +7,7 @@ nav_order: 6
 
 # Command line interface (CLI)
 
-It is possible to use DTW-C++ from the command line after successfully compiling the code. Please compile the software using [these instructions](run.md) and run the `bin/dtwc_cl` executable. This will provide you with all the command line interface (CLI) functions. To call the CLI from any other folder, you need to add the `/bin` folder into your path. Alternatively, you can just copy the executable into any folder of your choice. 
+It is possible to use DTW-C++ from the command line after successfully compiling the code. Please compile the software using [these instructions](1_installation.md) and run the `bin/dtwc_cl` executable. This will provide you with all the command line interface (CLI) functions. To call the CLI from any other folder, you need to add the `/bin` folder into your path. Alternatively, you can just copy the executable into any folder of your choice. 
 
 ## Features
 - **Multiple clustering methods**: Supports the k-medoids and MIP methods.

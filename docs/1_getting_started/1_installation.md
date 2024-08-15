@@ -4,19 +4,28 @@ title: Running
 nav_order: 2
 ---
 
-# Running DTW-C++ 
+# Using DTW-C++ 
 
 DTW-C++ does not offer any binaries or wrappers in other languages at the moment. Therefore, the only way to use DTW-C++ is to compile it from C++ source files. With the appropriate compilers and dependencies installed you can easily compile DTW-C++ and use it, for example:
 
-- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project.
-- Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
 - Edit `main.cpp` in the `dtwc` folder and use the `dtwc_main` executable after compilation using the examples in `examples` folder. 
-- As a subdirectory: Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library.
+- Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
+- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. However, it should be noted that including DTWC++ may make the predefined path variables such as `dtwc::settings::dataPath` invalid. Therefore, you may manually define the required paths depending on the structure of your folders. 
+
+# Dependencies
+
+DTW-C++ aims to 
+
+
+
 
 
 ## Building from the source
 
-DTW-C++ aims to be compatible with different compilers and platforms. You may easily install DTW-C++ using CMake (although it is not an absolute requirement). Therefore, you need a suitable C++ compiler (preferably [GCC](https://gcc.gnu.org/)) and [CMake](https://cmake.org/) to follow this installation guide.   
+DTW-C++ aims to be compatible with different compilers and platforms. 
+
+
+You may easily install DTW-C++ using CMake (although it is not an absolute requirement). Therefore, you need a suitable C++ compiler (preferably [GCC](https://gcc.gnu.org/)) and [CMake](https://cmake.org/) to follow this installation guide.   
 
 
 ### Linux
