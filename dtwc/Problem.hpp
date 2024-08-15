@@ -5,8 +5,9 @@
  * @details This file contains the definition of the Problem class used in DTWC applications.
  * It includes various methods for manipulating and analyzing clusters.
  *
- * @date Created on 19 Oct 2022
- * @author Volkan Kumtepeli, Becky Perriment
+ * @date 19 Oct 2022
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once

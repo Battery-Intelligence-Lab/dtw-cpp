@@ -2,7 +2,7 @@
  * @file warping.hpp
  * @brief Time warping functions.
  *
- * This file contains functions for dynamic time warping, which is a method to
+ * @details This file contains functions for dynamic time warping, which is a method to
  * compare two temporal sequences that may vary in time or speed. It includes
  * different versions of the algorithm for full, light (L), and banded computations.
  *

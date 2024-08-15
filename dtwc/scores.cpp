@@ -8,7 +8,8 @@
  * a common method to evaluate the validity of a clustering solution.
  *
  * @date 06 Nov 2022
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #include "scores.hpp"

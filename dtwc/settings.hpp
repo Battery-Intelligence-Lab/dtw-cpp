@@ -2,14 +2,19 @@
  * @file settings.hpp
  * @brief This file contains settings and configurations for DTWC++ library.
  *
- * It includes settings for data types, random number generation, filesystem paths,
+ * @details It includes settings for data types, random number generation, filesystem paths,
  * debugging options, and default algorithmic settings.
  *
  * @date 21 Jan 2022
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once
+
+#ifndef DTWC_ROOT_FOLDER
+#define DTWC_ROOT_FOLDER "."
+#endif
 
 #include "enums/enums.hpp"
 

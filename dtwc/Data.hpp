@@ -1,9 +1,10 @@
 /**
- * Data.hpp
+ * @file Data.hpp
  *
  * @brief Encapsulating DTWC data in a class.
  *
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 04 Dec 2022
  */
 

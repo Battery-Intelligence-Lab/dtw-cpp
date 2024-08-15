@@ -1,12 +1,10 @@
-/*
- * element_types.hpp
- *
- * Helper classes for sparse matrix utilities.
-
- *  Created on: 29 Oct 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file element_types.hpp
+ * @brief Helper classes for sparse matrix utilities.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 29 Oct 2023
  */
-
 
 #pragma once
 

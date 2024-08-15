@@ -9,7 +9,8 @@
  * read specific rows and columns from files, and handle data from directories or batch files.
  *
  * @date 21 Jan 2022
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once

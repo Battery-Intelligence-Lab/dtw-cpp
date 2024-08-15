@@ -1,9 +1,10 @@
-/*
- * unit_test_Data.cpp
+/**
+ * @file unit_test_Data.cpp
+ * @brief Unit test file for Data class
  *
- * Unit test file for time Data class
- *  Created on: 16 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 16 Dec 2023
  */
 
 #include <dtwc.hpp>

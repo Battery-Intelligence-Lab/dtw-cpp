@@ -1,9 +1,10 @@
-/*
- * test_util.hpp
+/**
+ * @file test_util.hpp
+ * @brief Auxillary functions for testing
  *
- * Auxillary functions for testing
- *  Created on: 29 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 29 Dec 2023
  */
 
 #pragma once

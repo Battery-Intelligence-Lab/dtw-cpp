@@ -7,7 +7,8 @@
  * the level of parallelism. Functions are templated to support various task types.
  *
  * @date 15 Dec 2021
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once

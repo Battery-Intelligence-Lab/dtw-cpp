@@ -1,10 +1,9 @@
-/*
- * mip.hpp
- *
- * Encapsulating mixed-integer program functions in a class.
-
- *  Created on: 06 Nov 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file mip.hpp
+ * @brief Collecting mixed-integer program functions.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 06 Nov 2022
  */
 
 #pragma once

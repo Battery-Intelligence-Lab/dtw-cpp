@@ -1,9 +1,10 @@
-/*
- * unit_test_DataLoader.cpp
+/**
+ * @file unit_test_DataLoader.cpp
+ * @brief Unit test file for time DataLoader class
  *
- * Unit test file for time DataLoader class
- *  Created on: 29 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 29 Dec 2023
  */
 
 #include <dtwc.hpp>

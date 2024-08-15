@@ -1,9 +1,10 @@
-/*
- * unit_test_warping.cpp
+/**
+ * @file unit_test_warping.cpp
+ * @brief Unit test file for time warping functions
  *
- * Unit test file for time warping functions
- *  Created on: 03 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 03 Dec 2023
  */
 
 #include <dtwc.hpp>

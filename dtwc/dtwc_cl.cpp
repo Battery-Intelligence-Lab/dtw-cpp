@@ -2,11 +2,12 @@
  * @file dtwc_cl.cpp
  * @brief Command line interface for DTWC++
  *
- * This file contains the implementation of the command line interface for DTWC++.
+ * @details This file contains the implementation of the command line interface for DTWC++.
  * It provides a command line interface for users to interact with the DTWC++ library.
  *
  * @date 11 Dec 2023
- * @authors Volkan Kumtepeli, Becky Perriment
+ * @authors Volkan Kumtepeli
+ * @authors Becky Perriment
  */
 
 #include "dtwc.hpp"
