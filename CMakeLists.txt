@@ -11,7 +11,8 @@ project(DTWC++ VERSION "1.0.0"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 
-add_definitions(-DDTWC_ROOT_FOLDER="${CMAKE_SOURCE_DIR}") # Define the root path
+set(DTWC_ROOT_FOLDER "${CMAKE_SOURCE_DIR}" CACHE STRING "Root folder for DTWC project") 
+
 include(cmake/StandardProjectSettings.cmake)
 
 option(DTWC_BUILD_EXAMPLES OFF)
@@ -36,6 +37,7 @@ target_compile_features(project_options INTERFACE cxx_std_17)
 enable_testing()
 
 add_subdirectory(dtwc bin)
+
 
 add_executable(dtwc_main
   dtwc/main.cpp

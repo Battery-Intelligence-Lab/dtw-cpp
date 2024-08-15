@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
 add_library(dtwc++ STATIC)
+target_compile_definitions(dtwc++ PUBLIC DTWC_ROOT_FOLDER="${DTWC_ROOT_FOLDER}")
 
 add_subdirectory(mip)
 
@@ -36,3 +37,4 @@ target_link_libraries(dtwc++
   PUBLIC 
   armadillo
 )
+
