@@ -22,6 +22,7 @@ The following dependencies need to be manually installed by the user if they do 
 - [CMake](https://cmake.org/)
 - A suitable compiler (Clang, GCC, MSVC, etc.)
 - Gurobi (optional, if not installed then HiGHS will be used as the MIP solver)
+- [OpenMP](https://www.openmp.org/) this should come with GCC and MSVC libraries; however to install it with Clang, you may install `libomp-xx-dev` where `xx` is your clang version. 
 
 The following dependencies are installed by the CPM package manager: 
 - [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi. 
@@ -90,6 +91,7 @@ In case you encounter sudden crash of the program, you may also try to complile 
 xcode-select --install
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 brew install cmake
+brew install libomp llvm && brew link --force libomp
 ```
 3. Clone the repository using the following command or download it as a [*.zip file](https://github.com/battery-intelligence-lab/dtw-cpp/archive/refs/heads/main.zip): 
     ```bash
