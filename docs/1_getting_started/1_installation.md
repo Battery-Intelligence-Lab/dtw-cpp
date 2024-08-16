@@ -12,7 +12,7 @@ DTW-C++ does not offer any binaries or wrappers in other languages at the moment
 - Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
 - Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. However, it should be noted that including DTWC++ may make the predefined path variables such as `dtwc::settings::dataPath` invalid. Therefore, you may manually define the required paths depending on the structure of your folders. 
 
-# Dependencies
+## Dependencies
 
 DTW-C++ aims to be easily compilable and usable; therefore, it includes only a few libraries where most of the dependencies are automatically installed.  
 
@@ -30,20 +30,20 @@ The following dependencies are installed by the CPM package manager:
 - [Catch2](https://github.com/catchorg/Catch2/) (for testing)
 - [Armadillo](https://arma.sourceforge.net/) (for matrix reading)
 
-## CMake and compilers
+### CMake and compilers
 
 [CMake](https://cmake.org/) is a metabuild system required to provide the correct compilation commands to the compiler. It will be explained how to install CMake and compilers depending on your operating system below. 
 
-## Gurobi
+### Gurobi
 
 Gurobi is a powerful optimisation solver that is free for academic use. If you do not wish to use Gurobi, HiGHS will be used instead. Please see the following guidelines for installation on [Ubuntu](https://www.youtube.com/watch?v=yNmeG6Wom1o), [macOS](https://www.youtube.com/watch?v=ZcL-NmckTxQ), [Windows](https://www.youtube.com/watch?v=z7t0p5J9YcQ), and [further information](https://support.gurobi.com/hc/en-us/sections/360010017231-Platforms-and-Installation)
 
 
-# Building from the source
+## Building from the source
 
 DTW-C++ aims to be compatible with different compilers and platforms. You may easily install DTW-C++ using CMake (although it is not an absolute requirement). Therefore, you need a suitable C++ compiler (preferably [GCC](https://gcc.gnu.org/)) and [CMake](https://cmake.org/) to follow this installation guide.   
 
-## Linux (Debian / Ubuntu 20.04+)
+### Linux (Debian / Ubuntu 20.04+)
 
 Here we present the default compilation comments targetting new Ubuntu versions above 20.04. As long as there is `CMake 3.21` and a `C++17` capable compiler is installed DTW-C++ should work. However, the compilers installed with default commands in older Ubuntu versions may be older compilers that do not support some of the functionalities in this code directly. Therefore, please refer to [install a newer version of GCC](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) for Ubuntu versions 18.04 or below.
 
@@ -83,7 +83,7 @@ Here we present the default compilation comments targetting new Ubuntu versions 
 In case you encounter sudden crash of the program, you may also try to complile the program with ```--config Debug```, where you can receive a better message for the crash. For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
 ```
 
-## macOS 
+### macOS 
 
 1. Install the latest version of [Xcode](https://developer.apple.com/support/xcode/).
 2. Install command line tools, [Homebrew](https://brew.sh/) and CMake by executing following commands on the terminal: 
@@ -122,7 +122,7 @@ brew install libomp llvm && brew link --force libomp
 In case you encounter sudden crash of the program, you may also try to complile the program with ```--config Debug```, where you can receive a better message for the crash. For further information on using CMake, please refer to the [CMake guide](https://cmake.org/cmake/help/git-stage/index.html).
 ```
 
-## Windows
+### Windows
 
 On Windows platforms, you probably need to install CMake and a C++ compiler:
 
