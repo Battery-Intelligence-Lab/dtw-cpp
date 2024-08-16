@@ -20,7 +20,8 @@
  * are defined elsewhere and are being properly included in this file.
  *
  * @date 19 Jan 2021
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #include "initialisation.hpp"

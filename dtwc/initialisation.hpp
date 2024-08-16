@@ -5,7 +5,8 @@
  * This file contains the declarations of initialisation functions for the dtwc namespace.
  *
  * @date 19 Jan 2021
- * @authors Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once

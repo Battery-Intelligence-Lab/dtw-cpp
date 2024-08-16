@@ -2,9 +2,10 @@
  * @file timing.hpp
  * @brief Timing functions
  *
- * Contains the definition and implementation of a Clock structure for timing purposes.
+ * @details Contains the definition and implementation of a Clock structure for timing purposes.
  *
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 01 Mar 2022
  */
 

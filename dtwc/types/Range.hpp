@@ -1,10 +1,8 @@
-/*
- * Range.hpp
- *
- *  A basic Range class not to create vector for Iota
- *
- *  Created on: 18 Aug 2022
- *      Author: Volkan Kumtepeli
+/**
+ * @file Range.hpp
+ * @brief A basic Range class not to create vector for Iota
+ * @author Volkan Kumtepeli
+ * @date 18 Aug 2022
  */
 
 #pragma once

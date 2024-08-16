@@ -1,10 +1,9 @@
-/*
- * types_util.hpp
- *
- * Utility functions for types
-
- *  Created on: 19 Dec 2022
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file types_util.hpp
+ * @brief Utility functions for types
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 19 Dec 2022
  */
 
 #pragma once

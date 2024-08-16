@@ -1,11 +1,9 @@
-/*
- * dtwc.hpp
- *
- * Main file to include to use DTWC++ library.
- * Please only include this file.
- *
- * Created on: 15 Dec 2021
- *  Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file dtwc.hpp
+ * @brief Main header to include to use DTWC++ library. Please only include this file.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 15 Dec 2021
  */
 
 #pragma once

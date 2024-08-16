@@ -22,11 +22,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Dependency updates:
 * Required C++ standard is reduced from C++20 to C++17 as it was causing `call to consteval function 'std::chrono::hh_mm_ss::_S_fractional_width' is not a constant expression` error for clang versions older than clang-15.
-* std::execution-based parallelisation replaced with OpenMP.
+* `OpenMP` for parallelisation is adopted as `Apple-clang` does not support `std::execution`. 
 
 ## Developer updates: 
 * The software is now being tested via Catch2 library. 
 * Dependabot is added. 
+* `CURRENT_ROOT_FOLDER` and `DTWC_ROOT_FOLDER` are seperated as DTW-C++ library can be included by other libraries. 
 
 <br/><br/>
 # DTWC v0.3.0

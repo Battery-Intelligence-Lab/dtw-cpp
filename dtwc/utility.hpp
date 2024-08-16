@@ -2,7 +2,7 @@
  * @file utility.hpp
  * @brief Utility functions and common includes.
  *
- * This file acts as a central inclusion point for commonly used utilities and types
+ * @details This file acts as a central inclusion point for commonly used utilities and types
  * in the project. It includes settings, custom types, file operations, parallelization,
  * and timing functionalities.
  *

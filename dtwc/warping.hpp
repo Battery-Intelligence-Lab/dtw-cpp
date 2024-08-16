@@ -2,7 +2,7 @@
  * @file warping.hpp
  * @brief Time warping functions.
  *
- * This file contains functions for dynamic time warping, which is a method to
+ * @details This file contains functions for dynamic time warping, which is a method to
  * compare two temporal sequences that may vary in time or speed. It includes
  * different versions of the algorithm for full, light (L), and banded computations.
  *
@@ -84,7 +84,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
   if (&x == &y) return 0; // If they are the same data then distance is 0.
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
-  thread_local std::vector<data_t> short_side(data_t(10e3));
+  thread_local static std::vector<data_t> short_side(10000);
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
   const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
@@ -105,7 +105,11 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
     short_side[0] += distance(short_vec[0], long_vec[j]);
 
     for (size_t i = 1; i < m_short; i++) {
-      const auto next = std::min({ diag, short_side[i - 1], short_side[i] }) + distance(short_vec[i], long_vec[j]);
+      const data_t min1 = std::min(short_side[i - 1], short_side[i]);
+      const auto shr = short_vec.at(i);
+      const auto lng = long_vec.at(j);
+      const data_t dist = std::abs(shr - lng);
+      const data_t next = std::min(diag, min1) + dist;
 
       diag = short_side[i];
       short_side[i] = next;

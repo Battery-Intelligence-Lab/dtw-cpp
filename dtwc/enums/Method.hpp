@@ -1,10 +1,9 @@
-/*
- * Method.hpp
- *
- * Method enum for classification method
-
- *  Created on: 11 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file Method.hpp
+ * @brief Method enum for classification method.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 11 Dec 2023
  */
 
 #pragma once

@@ -1,10 +1,9 @@
-/*
- * mip_Highs.cpp
- *
- * Encapsulating mixed-integer program functions
-
- *  Created on: 06 Nov 2022
- *  Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file mip_Highs.cpp
+ * @brief Encapsulating mixed-integer program functions using Highs solver.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 06 Nov 2022
  */
 
 #include "mip.hpp"

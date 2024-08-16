@@ -5,8 +5,9 @@
  * @details This file includes the implementation of the Problem class, which contains methods for clustering,
  * initializing clusters, calculating distances, and other functionalities related to the DTWC problem.
  *
- * @date Created on: 06 Nov 2022
- * @author Volkan Kumtepeli, Becky Perriment
+ * @date 06 Nov 2022
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #include "Problem.hpp"

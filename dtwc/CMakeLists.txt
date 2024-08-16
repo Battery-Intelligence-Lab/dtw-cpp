@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 add_library(dtwc++ STATIC)
+target_compile_definitions(dtwc++ PUBLIC DTWC_ROOT_FOLDER="${DTWC_ROOT_FOLDER}")
+target_compile_definitions(dtwc++ PUBLIC CURRENT_ROOT_FOLDER="${CURRENT_ROOT_FOLDER}")
 
 add_subdirectory(mip)
 
@@ -39,5 +41,6 @@ target_link_libraries(dtwc++
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
+  message("OpenMP is found!")
   target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
 endif()

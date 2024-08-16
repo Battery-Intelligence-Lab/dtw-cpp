@@ -1,11 +1,9 @@
-/*
- * mip.cpp
- *
- * Encapsulating Gurobi-related mixed-integer programming functions in a class.
-
- *  Created on: 25 Dec 2022
- *  Author(s): Volkan Kumtepeli, Becky Perriment
- *
+/**
+ * @file mip_Gurobi.cpp
+ * @brief Encapsulating Gurobi-related mixed-integer programming functions in a class.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 25 Dec 2022
  */
 
 #include "mip.hpp"
@@ -19,13 +17,9 @@
 #include <memory>
 #include <limits>
 
-
 #ifdef DTWC_ENABLE_GUROBI
-
 #include "gurobi_c++.h"
-
 #endif
-
 
 namespace dtwc {
 void MIP_clustering_byGurobi(Problem &prob)

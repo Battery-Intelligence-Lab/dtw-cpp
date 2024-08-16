@@ -2,7 +2,8 @@
  * @file DataLoader.hpp
  * @brief Encapsulating DTWC data loading configurations in a class.
  * Uses method chaining for easier input taking.
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  * @date 04 Dec 2022
  */
 

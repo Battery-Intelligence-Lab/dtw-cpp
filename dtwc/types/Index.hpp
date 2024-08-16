@@ -1,10 +1,9 @@
-/*
- * Index.hpp
- *
- *  A basic Index class for Range class
- *
- *  Created on: 18 Aug 2022
- *      Author: Volkan Kumtepeli
+/**
+ * @file Index.hpp
+ * @brief A basic Index class for Range class
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 18 Aug 2022
  */
 
 #pragma once

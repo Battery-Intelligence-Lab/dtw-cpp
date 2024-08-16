@@ -1,9 +1,10 @@
-/*
- * unit_test_Clock.cpp
+/**
+ * @file unit_test_Clock.cpp
+ * @brief Unit test file for time Clock class
  *
- * Unit test file for time Clock class
- *  Created on: 16 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 16 Dec 2023
  */
 
 #include <dtwc.hpp>

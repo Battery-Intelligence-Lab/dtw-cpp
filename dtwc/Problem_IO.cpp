@@ -6,7 +6,8 @@
  * distance matrices to files, as well as reading distance matrices from files.
  *
  * @date 25 Dec 2023
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #include "Problem.hpp"
@@ -65,7 +66,7 @@ void Problem::printClusters() const
   std::cout << '\n';
 
   for (const auto i_c : Range(Nc)) {
-    std::cout << get_name(centroids_ind[i_c]) << " has: ";
+    std::cout << "The cluster with centroid " << get_name(centroids_ind[i_c]) << " has following members: ";
 
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)

@@ -1,9 +1,10 @@
-/*
- * unit_test_fileOperations.cpp
+/**
+ * @file unit_test_fileOperations.cpp
+ * @brief Unit test file for file reading functions
  *
- * Unit test file for file reading functions
- *  Created on: 25 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 25 Dec 2023
  */
 
 #include <dtwc.hpp>

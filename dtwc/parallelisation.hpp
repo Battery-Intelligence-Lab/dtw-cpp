@@ -2,12 +2,13 @@
  * @file parallelisation.hpp
  * @brief Header for parallelisation functions.
  *
- * @details This header file provides functionalities for parallelising tasks using OpenMP.
+ * @details This header file provides functionalities for parallelising tasks using standard parallelisation.
  * It includes functions for running individual tasks in parallel and adjusting
  * the level of parallelism. Functions are templated to support various task types.
  *
  * @date 15 Dec 2021
- * @author Volkan Kumtepeli, Becky Perriment
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
  */
 
 #pragma once

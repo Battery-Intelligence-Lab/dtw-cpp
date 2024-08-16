@@ -1,10 +1,9 @@
-/*
- * Solver.hpp
- *
- * Solver enum for MIP solver selection
-
- *  Created on: 11 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+/**
+ * @file Solver.hpp
+ * @brief Solver enum for MIP solver selection.
+ * @author Volkan Kumtepeli
+ * @author Becky Perriment
+ * @date 11 Dec 2023
  */
 
 #pragma once
