@@ -8,6 +8,9 @@ nav_order: 8
 
 <!--- Here will be some Google Colab files as example. -->
 
+You may directly edit `main.cpp` and use these examples. 
+
+## k-medoids clustering
 Example code using k-mediods for clustering:
 
 ```cpp
@@ -45,7 +48,7 @@ int main()
 }
 ```
 
-
+## MIP clustering
 Example code using multiple MIP for clustering:
 
 ```cpp

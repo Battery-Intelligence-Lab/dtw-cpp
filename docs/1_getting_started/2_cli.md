@@ -1,7 +1,7 @@
 ---
 layout: default
 title: Command line interface (CLI)
-nav_order: 6
+nav_order: 2
 ---
 
 
@@ -38,7 +38,7 @@ DTW-C++ provides a command line interface (CLI) for easy interaction. Below are 
 
 The following instruction will, as an example, read in data from the file `dummy`, search for 5 clusters, skip the first row and column in the datasets, terminate after 5 repetitions, and use the mixed integer programming method.
 
-```
+```bash
 dtwc_cl.exe -i "../data/dummy" --Nc=5 --skipRows 1 --skipCols 1 --Nrep=5 --method=mip
 ```
 
