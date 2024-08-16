@@ -39,3 +39,8 @@ target_link_libraries(dtwc++
   armadillo
 )
 
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+  message("OpenMP is found!")
+  target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
+endif()
