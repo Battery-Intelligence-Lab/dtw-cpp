@@ -25,7 +25,7 @@ set(DTWC_ENABLE_HIGHS ON)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 
-include(cmake/PreventInSourceBuilds.cmake)
+# include(cmake/PreventInSourceBuilds.cmake)
 dtwc_setup_dependencies()
 
 # Link this 'library' to use the warnings specified in CompilerWarnings.cmake
