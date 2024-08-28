@@ -13,7 +13,7 @@ authors:
     orcid: 0000-0003-2392-9771
     affiliation: 1
   - name: Rebecca Perriment
-    orcid: 0000-0003-2392-9771
+    orcid: 0009-0003-2781-0724
     affiliation: 1
   - name: David A. Howey
     orcid: 0000-0002-0620-3955
