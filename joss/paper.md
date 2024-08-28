@@ -102,7 +102,7 @@ As each centroid has to be in its own cluster, non-zero diagonal entries in $A$ 
     A^\star = \underset{A}{\rm argmin} \sum_i \sum_j D_{ij} \times A_{ij},
 \end{equation}
 
-subject to the following constrants:
+subject to the following constraints:
 
 1. Only $k$ series can be centroids,
 $$
