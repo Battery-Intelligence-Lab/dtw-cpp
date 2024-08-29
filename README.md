@@ -15,7 +15,7 @@ DTW-C++
 ![GitHub all releases](https://img.shields.io/github/downloads/Battery-Intelligence-Lab/dtw-cpp/total) 
 [![](https://img.shields.io/badge/license-BSD--3--like-5AC451.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/LICENSE)
 
-There is separate [detailed documentation](https://Battery-Intelligence-Lab.github.io/dtw-cpp/) available for this project; this `readme.md` file only gives a short summary. If you have any issues running the code in the main branch, please switch to the [dtw-cpp_v0.0.2](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/dtwc_0_0_2) branch instead.
+There is separate [detailed documentation](https://Battery-Intelligence-Lab.github.io/dtw-cpp/) available for this project; this `readme.md` file only gives a short summary. 
 
 Introduction
 ===========================

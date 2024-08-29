@@ -13,7 +13,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Command line interface is added. 
 * Documentation is improved (Doxygen website).
 
-
 ## Notable Bug-fixes
 * Sakoe-Chiba band implementation is now more accurate. 
 
