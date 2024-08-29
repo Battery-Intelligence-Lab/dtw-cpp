@@ -126,7 +126,7 @@ class CMakeBuild(build_ext):
 # logic and declaration, and simpler if you include description/version in a file.
 setup(
     name="dtwcpp",
-    version="0.1.0",
+    version="1.0.0",
     author="Volkan Kumtepeli",
     author_email="volkan.kumtepeli@gmail.com",
     description="A test project using pybind11 and CMake",
