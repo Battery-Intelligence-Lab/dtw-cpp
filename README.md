@@ -2,6 +2,9 @@ DTW-C++
 ===========================
 [![DOI](https://joss.theoj.org/papers/10.21105/joss.06881/status.svg)](https://doi.org/10.21105/joss.06881)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.13551469.svg)](https://doi.org/10.5281/zenodo.13551469)
+[![Website](https://img.shields.io/website?url=https%3A%2F%2FBattery-Intelligence-Lab.github.io%2Fdtw-cpp%2F)](https://Battery-Intelligence-Lab.github.io/dtw-cpp/)
+
+
 
 [![Ubuntu unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/Ubuntu%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
 [![macOS unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/macOS%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
@@ -22,8 +25,34 @@ There is separate [detailed documentation](https://Battery-Intelligence-Lab.gith
 
 Introduction
 ===========================
-DTW-C++ is a dynamic time warping (DTW) and clustering library for time series data, written in C++. Users can input multiple time series and find clusters of similar time series. Time series may be the same lengths, or different lengths. The number of clusters to find may be fixed, or a range of numbers to try may be specified. DTW-C++ finds clusters in time series data using k-medoids or mixed integer programming (MIP); k-medoids is generally faster, but may get stuck in local optima; MIP can find globally optimal clusters.
+DTW-C++ is a C++ library for dynamic time warping (DTW) and clustering of time series data. Users can input multiple time series and find clusters of similar time series. The time series can have the same or different lengths. The number of clusters to find can be fixed or specified as a range to try. DTW-C++ finds clusters in time series data using k-medoids or mixed integer programming (MIP). K-medoids is generally faster but may get stuck in local optima, while MIP can give guarantees about globally optimal clusters.
 <p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
+
+Citation
+===========================
+
+APA style: 
+```
+Kumtepeli, V., Perriment, R., & Howey, D. A. (2024). DTW-C++: Fast dynamic time warping and clustering of time series data. Journal of Open Source Software, 9(101), 6881. https://doi.org/10.21105/joss.06881
+```
+
+BibTeX: 
+```
+@article{Kumtepeli2024,
+author = {Kumtepeli, Volkan and Perriment, Rebecca and Howey, David A.},
+doi = {10.21105/joss.06881},
+journal = {Journal of Open Source Software},
+month = sep,
+number = {101},
+pages = {6881},
+title = {{DTW-C++: Fast dynamic time warping and clustering of time series data}},
+url = {https://joss.theoj.org/papers/10.21105/joss.06881},
+volume = {9},
+year = {2024}
+}
+```
+
+
 
 Contributors
 ===========================
