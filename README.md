@@ -52,6 +52,74 @@ year = {2024}
 }
 ```
 
+<div class="tabs">
+    <input type="radio" id="tab1" name="tabs" checked>
+    <label for="tab1">MLA</label>
+    <div class="tab">
+        <pre>
+Author's Last Name, First Name. "Title of Article." Title of Journal, vol. #, no. #, Publication Date, pp. Page Range. Database Name, DOI or URL.
+        </pre>
+    </div>
+
+    <input type="radio" id="tab2" name="tabs">
+    <label for="tab2">APA</label>
+    <div class="tab">
+        <pre>
+Author's Last Name, F. M. (Year). Article title. Journal Title, Volume(Issue), Page Range. https://doi.org/DOI
+        </pre>
+    </div>
+
+    <input type="radio" id="tab3" name="tabs">
+    <label for="tab3">Chicago</label>
+    <div class="tab">
+        <pre>
+Author's Last Name, First Name. "Article Title." Journal Title Volume, no. Issue (Year): Page Range. https://doi.org/DOI.
+        </pre>
+    </div>
+
+    <input type="radio" id="tab4" name="tabs">
+    <label for="tab4">Harvard</label>
+    <div class="tab">
+        <pre>
+Author's Last Name, First Initial(s). Year. Title of Paper. Title of Journal, Volume Number(Issue Number), Page Numbers.
+        </pre>
+    </div>
+
+    <input type="radio" id="tab5" name="tabs">
+    <label for="tab5">Vancouver</label>
+    <div class="tab">
+        <pre>
+Author(s). Title of article. Abbreviated Journal Title. Year;Volume(Issue):Page numbers.
+        </pre>
+    </div>
+
+    <input type="radio" id="tab6" name="tabs">
+    <label for="tab6">IEEE</label>
+    <div class="tab">
+        <pre>
+Author's Last Name, First Initial(s), "Title of Article," Journal Title, vol. Volume Number, no. Issue Number, pp. Page Numbers, Year.
+        </pre>
+    </div>
+
+    <input type="radio" id="tab7" name="tabs">
+    <label for="tab7">BibTeX</label>
+    <div class="tab">
+        <pre>
+@article{citation_key,
+  author = {Author's Last Name, First Name},
+  title = {Title of Article},
+  journal = {Journal Title},
+  year = {Year},
+  volume = {Volume},
+  number = {Issue},
+  pages = {Page Range},
+  url = {DOI or URL}
+}
+        </pre>
+    </div>
+</div>
+
+
 Contributors
 ===========================
 <!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section --><!-- prettier-ignore-start --><!-- markdownlint-disable -->
