@@ -1,0 +1,40 @@
+cff-version: "1.2.0"
+authors:
+- family-names: Kumtepeli
+  given-names: Volkan
+  orcid: "https://orcid.org/0000-0003-2392-9771"
+- family-names: Perriment
+  given-names: Rebecca
+  orcid: "https://orcid.org/0009-0003-2781-0724"
+- family-names: Howey
+  given-names: David A.
+  orcid: "https://orcid.org/0000-0002-0620-3955"
+doi: 10.5281/zenodo.13551469
+message: If you use this software, please cite our article in the
+  Journal of Open Source Software.
+preferred-citation:
+  authors:
+  - family-names: Kumtepeli
+    given-names: Volkan
+    orcid: "https://orcid.org/0000-0003-2392-9771"
+  - family-names: Perriment
+    given-names: Rebecca
+    orcid: "https://orcid.org/0009-0003-2781-0724"
+  - family-names: Howey
+    given-names: David A.
+    orcid: "https://orcid.org/0000-0002-0620-3955"
+  date-published: 2024-09-06
+  doi: 10.21105/joss.06881
+  issn: 2475-9066
+  issue: 101
+  journal: Journal of Open Source Software
+  publisher:
+    name: Open Journals
+  start: 6881
+  title: "DTW-C++: Fast dynamic time warping and clustering of time
+    series data"
+  type: article
+  url: "https://joss.theoj.org/papers/10.21105/joss.06881"
+  volume: 9
+title: "DTW-C++: Fast dynamic time warping and clustering of time series
+  data"

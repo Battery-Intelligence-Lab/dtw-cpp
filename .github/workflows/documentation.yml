@@ -91,18 +91,18 @@ jobs:
         working-directory: build_dir
       - run: sudo mv ./build_dir/Coverage ./_site/Coverage
 
-      # JOSS Paper Compilation Steps
-      - name: Build draft PDF for JOSS paper
-        uses: openjournals/openjournals-draft-action@master
-        with:
-          journal: joss
-          paper-path: joss/paper.md
+      # # JOSS Paper Compilation Steps
+      # - name: Build draft PDF for JOSS paper
+      #   uses: openjournals/openjournals-draft-action@master
+      #   with:
+      #     journal: joss
+      #     paper-path: joss/paper.md
 
-      - name: Create directory for JOSS paper
-        run: sudo mkdir -p ./_site/pub
+      # - name: Create directory for JOSS paper
+      #   run: sudo mkdir -p ./_site/pub
 
-      - name: Move JOSS paper to documentation
-        run: sudo mv ./joss/paper.pdf ./_site/pub/joss.pdf
+      # - name: Move JOSS paper to documentation
+      #   run: sudo mv ./joss/paper.pdf ./_site/pub/joss.pdf
       
       # Upload the website:
       - name: Upload artifact
