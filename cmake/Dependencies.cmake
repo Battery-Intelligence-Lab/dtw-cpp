@@ -18,7 +18,7 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
-      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.7.0.tar.gz"
+      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.12.0.tar.gz"
       OPTIONS 
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
@@ -28,7 +28,7 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.7.2.tar.gz"
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.12.0.tar.gz"
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
@@ -39,7 +39,7 @@ function(dtwc_setup_dependencies)
   if (NOT TARGET CLI11::CLI11)
   CPMAddPackage(
     NAME CLI11
-    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.3.2.tar.gz"
+    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.1.tar.gz"
     DOWNLOAD_ONLY YES 
   )
 
@@ -50,7 +50,7 @@ function(dtwc_setup_dependencies)
 
   CPMAddPackage(
     NAME armadillo
-    URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/12.6.x/armadillo-code-12.6.x.tar.gz"
+    URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/15.2.x/armadillo-code-15.2.x.tar.gz"
     OPTIONS
     "BUILD_SMOKE_TEST OFF"
   )
