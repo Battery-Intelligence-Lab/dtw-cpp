@@ -151,6 +151,30 @@ TEST_CASE("Load batch file", "[fileOperations]")
   fs::remove(tempFileName + ".tsv"); // Clean up the test files
 }
 
+TEST_CASE("readFile throws on missing file", "[fileOperations]")
+{
+  fs::path nonExistentFile = "this_file_does_not_exist_12345.csv";
+
+  // Ensure the file doesn't exist
+  if (fs::exists(nonExistentFile)) {
+    fs::remove(nonExistentFile);
+  }
+
+  REQUIRE_THROWS_AS(readFile<double>(nonExistentFile), std::runtime_error);
+}
+
+TEST_CASE("load_batch_file throws on missing file", "[fileOperations]")
+{
+  fs::path nonExistentFile = "this_batch_file_does_not_exist_12345.csv";
+
+  // Ensure the file doesn't exist
+  if (fs::exists(nonExistentFile)) {
+    fs::remove(nonExistentFile);
+  }
+
+  REQUIRE_THROWS_AS(load_batch_file<double>(nonExistentFile), std::runtime_error);
+}
+
 TEST_CASE("Load folder", "[fileOperations]")
 {
   // Generate data:

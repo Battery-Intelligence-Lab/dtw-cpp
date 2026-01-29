@@ -19,7 +19,7 @@
 TEST_CASE("Parallel Execution", "[run_openmp]")
 {
   std::vector<int> results(100, 0);
-  auto task = [&](int i) { results[i] = 1; };
+  auto task = [&](size_t i) { results[i] = 1; };
 
   dtwc::run_openmp(task, results.size(), true);
 
@@ -30,7 +30,7 @@ TEST_CASE("Parallel Execution", "[run_openmp]")
 TEST_CASE("Sequential Execution", "[run_openmp]")
 {
   std::vector<int> results(100, 0);
-  auto task = [&](int i) { results[i] = 1; };
+  auto task = [&](size_t i) { results[i] = 1; };
 
   dtwc::run_openmp(task, results.size(), false);
 
@@ -42,7 +42,7 @@ TEST_CASE("Sequential Execution", "[run_openmp]")
 TEST_CASE("Functionality of run", "[run]")
 {
   std::vector<int> results(100, 0);
-  auto task = [&](int i) { results[i] = 1; };
+  auto task = [&](size_t i) { results[i] = 1; };
 
   // Test with parallel execution
   dtwc::run(task, results.size(), 32);
@@ -58,10 +58,29 @@ TEST_CASE("Functionality of run", "[run]")
   }
 }
 
+TEST_CASE("numMaxParallelWorkers controls thread count", "[run]")
+{
+  std::vector<int> results(100, 0);
+  auto task = [&](size_t i) { results[i] = 1; };
+
+  // Test with different worker counts
+  dtwc::run(task, results.size(), 2);
+  for (int res : results) {
+    REQUIRE(res == 1);
+  }
+
+  // Reset and test with 4 workers
+  std::fill(results.begin(), results.end(), 0);
+  dtwc::run(task, results.size(), 4);
+  for (int res : results) {
+    REQUIRE(res == 1);
+  }
+}
+
 TEST_CASE("Correct Number of Iterations", "[run_openmp]")
 {
   std::atomic<int> count = 0;
-  auto task = [&](int) { count++; };
+  auto task = [&](size_t) { count++; };
 
   dtwc::run_openmp(task, 50, true);
   REQUIRE(count == 50);
@@ -70,7 +89,7 @@ TEST_CASE("Correct Number of Iterations", "[run_openmp]")
 TEST_CASE("Boundary Conditions", "[run_openmp]")
 {
   int count = 0;
-  auto task = [&](int) { count++; };
+  auto task = [&](size_t) { count++; };
 
   dtwc::run_openmp(task, 0, true);
   REQUIRE(count == 0);

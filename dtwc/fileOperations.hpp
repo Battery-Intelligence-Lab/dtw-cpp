@@ -72,8 +72,7 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
   std::ifstream in(name, std::ios_base::in);
   if (!in.good()) // check if we could open the file
   {
-    std::cerr << "Error in readFile. File " << name << " could not be opened.\n";
-    std::runtime_error("");
+    throw std::runtime_error("Error in readFile: File " + name.string() + " could not be opened.");
   }
 
   ignoreBOM(in);
@@ -174,8 +173,7 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   std::ifstream in(file_path, std::ios_base::in);
   if (!in.good()) // check if we could open the file
   {
-    std::cerr << "Error in readFile. File " << file_path << " could not be opened.\n";
-    throw 2;
+    throw std::runtime_error("Error in load_batch_file: File " + file_path.string() + " could not be opened.");
   }
 
   std::string line;

@@ -55,7 +55,7 @@ Bindings must call stable core APIs (or a small C API shim), not internal templa
 - Use std::span / pointer+len for series views in hot paths
 - Avoid allocations in inner loops; use scratch buffers passed explicitly or thread-local pools
 - Provide deterministic RNG seeding options (do not hard-code a single global seed)
-- Keep the TODO.md list for future self. 
+- Keep the TODO.md list with short- and long-term milestones for future self. 
 - Update tests, add rigorous tests with new code. Always verify your results.
 
 ## Performance guidelines

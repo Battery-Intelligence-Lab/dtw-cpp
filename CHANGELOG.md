@@ -2,8 +2,27 @@
 
 [TOC]
 
-This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed). 
+This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
 
+
+<br/><br/>
+# Unreleased
+
+## Notable Bug-fixes
+* **CRITICAL**: Fixed `readFile()` in fileOperations.hpp where `std::runtime_error` was constructed but not thrown, causing silent failures when files could not be opened.
+* Fixed `load_batch_file()` to throw proper `std::runtime_error` instead of throwing an integer (`throw 2`).
+* Fixed signed/unsigned mismatch in parallelisation.hpp where `int` loop variable was compared against `size_t` bound.
+* Fixed `numMaxParallelWorkers` parameter in `run()` function which was previously ignored; now properly sets OpenMP thread count.
+
+## Improvements
+* OpenMP is now properly optional with `#ifdef _OPENMP` guards and serial fallback.
+* Added bounds checking for loop indices to prevent undefined behavior with very large iteration counts.
+* Added unit tests for exception throwing on missing files.
+
+## Developer updates
+* Added cpp-style.md documenting C++ coding conventions.
+* Added python-style.md documenting Python coding conventions.
+* Added TODO.md for development task tracking.
 
 <br/><br/>
 # DTWC v1.0.0
