@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+## New features
+* Added `rapidcsv` library for robust multi-column CSV parsing.
+* New functions in fileOperations.hpp:
+  - `readCSV()` - Read multi-column CSV files into 2D vectors
+  - `readTimeSeriesCSV()` - Read CSV files where each row is a time series
+  - `readCSVColumn()` - Read a single column from a CSV file
+
 ## Notable Bug-fixes
 * **CRITICAL**: Fixed `readFile()` in fileOperations.hpp where `std::runtime_error` was constructed but not thrown, causing silent failures when files could not be opened.
 * Fixed `load_batch_file()` to throw proper `std::runtime_error` instead of throwing an integer (`throw 2`).
@@ -18,11 +25,24 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * OpenMP is now properly optional with `#ifdef _OPENMP` guards and serial fallback.
 * Added bounds checking for loop indices to prevent undefined behavior with very large iteration counts.
 * Added unit tests for exception throwing on missing files.
+* Removed compile-time path dependencies (`DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER`). Paths now default to current working directory and can be configured at runtime via `Problem::output_folder` or explicit `DataLoader` paths.
+
+## API changes
+* **New**: Added `settings::paths` namespace with runtime-configurable paths:
+  - `settings::paths::dataPath` - Data directory (default: `./data`)
+  - `settings::paths::resultsPath` - Results directory (default: `./results/`)
+  - `settings::paths::setDataPath(path)` - Set data path at runtime
+  - `settings::paths::setResultsPath(path)` - Set results path at runtime
+* **Deprecated**: `settings::resultsPath`, `settings::dataPath`, `settings::dtwc_dataPath` are now deprecated aliases pointing to the new `settings::paths::` variables.
+
+## Dependency updates
+* Added `rapidcsv` v8.84 (BSD 3-Clause license) for CSV parsing.
 
 ## Developer updates
 * Added cpp-style.md documenting C++ coding conventions.
 * Added python-style.md documenting Python coding conventions.
 * Added TODO.md for development task tracking.
+* Removed `DTWC_ROOT_FOLDER` and `CURRENT_ROOT_FOLDER` CMake cache variables and compile definitions.
 
 <br/><br/>
 # DTWC v1.0.0

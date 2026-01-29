@@ -12,10 +12,6 @@
 
 #pragma once
 
-#ifndef DTWC_ROOT_FOLDER
-#define DTWC_ROOT_FOLDER "."
-#endif
-
 #include "enums/enums.hpp"
 
 #include <string>
@@ -46,21 +42,53 @@ namespace dtwc::settings {
 /// @brief Namespace alias for std::filesystem.
 namespace fs = std::filesystem;
 
-/// @brief Path to the root folder.
-/// @details This path is used to define subdirectories for data and results.
-///          The root folder path is obtained from the DTWC_ROOT_FOLDER macro
-///          which leads to the path of the top-level CMakeLists.txt.
-const static fs::path root_folder{ CURRENT_ROOT_FOLDER };
-const static fs::path dtwc_folder{ DTWC_ROOT_FOLDER };
-
-/// @brief Path to the results directory.
-/// @details Concatenates the root folder path with a subdirectory named "results".
-const auto resultsPath = root_folder / "results/";
+/// @brief Runtime-configurable paths for data and results directories.
+/// @details Use these paths throughout the library. They can be set at runtime
+///          via the setter functions or by direct assignment, enabling Python/MATLAB
+///          bindings to configure paths before use.
+namespace paths {
 
 /// @brief Path to the data directory.
-/// @details Concatenates the root folder path with a subdirectory named "data".
-const auto dataPath = root_folder / "data";
-const auto dtwc_dataPath = dtwc_folder / "data";
+/// @details Defaults to "./data" relative to current working directory.
+///          Can be set at runtime via setDataPath() or direct assignment.
+inline fs::path dataPath = fs::path{ "." } / "data";
+
+/// @brief Path to the results/output directory.
+/// @details Defaults to "./results/" relative to current working directory.
+///          Can be set at runtime via setResultsPath() or direct assignment.
+inline fs::path resultsPath = fs::path{ "." } / "results/";
+
+/// @brief Set the data directory path.
+/// @param path New path (as fs::path).
+inline void setDataPath(const fs::path &path) { dataPath = path; }
+
+/// @brief Set the data directory path from C-string.
+/// @param path New path (as C-string).
+inline void setDataPath(const char *path) { dataPath = fs::path(path); }
+
+/// @brief Set the results directory path.
+/// @param path New path (as fs::path).
+inline void setResultsPath(const fs::path &path) { resultsPath = path; }
+
+/// @brief Set the results directory path from C-string.
+/// @param path New path (as C-string).
+inline void setResultsPath(const char *path) { resultsPath = fs::path(path); }
+
+} // namespace paths
+
+// Legacy path aliases (deprecated - use settings::paths:: instead)
+
+/// @deprecated Use settings::paths::resultsPath instead.
+[[deprecated("Use settings::paths::resultsPath instead")]]
+inline const fs::path &resultsPath = paths::resultsPath;
+
+/// @deprecated Use settings::paths::dataPath instead.
+[[deprecated("Use settings::paths::dataPath instead")]]
+inline const fs::path &dataPath = paths::dataPath;
+
+/// @deprecated Use settings::paths::dataPath instead.
+[[deprecated("Use settings::paths::dataPath instead")]]
+inline const fs::path &dtwc_dataPath = paths::dataPath;
 
 /// @brief Flag for debug mode for developers.
 /// @details When set to true, the program may output additional debug information.

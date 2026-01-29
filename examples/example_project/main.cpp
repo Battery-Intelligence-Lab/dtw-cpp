@@ -1,4 +1,5 @@
 #include "dtwc.hpp"
+#include <filesystem>
 
 int main()
 {
@@ -8,14 +9,11 @@ int main()
   auto Nc = 3;        // Number of clusters
   int Ndata_max = 20; // Load maximum 20 of data.
 
-  // For path, we have several predefined variables:
-  // dtwc::settings::dtwc_folder   = source folder of the DTW-C++ library
-  // dtwc::settings::dtwc_dataPath = data folder inside the source folder of DTW-C++ library.
-  // dtwc::settings::root_folder   = folder with the main CMakeLists.txt, hence your main project folder.
-  // dtwc::settings::dataPath      = data folder inside your main project folder, hence if you have `data` folder inside your main.
+  // Optional: Set data path if not running from project root
+  // dtwc::settings::paths::setDataPath("/path/to/your/data");
 
-  // Here as we use the "dummy" data inside dtwc library, we use `dtwc_dataPath`
-  dtwc::DataLoader dl{ dtwc::settings::dtwc_dataPath / "dummy", Ndata_max };
+  // Use the configurable data path (defaults to "./data")
+  dtwc::DataLoader dl{ dtwc::settings::paths::dataPath / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.

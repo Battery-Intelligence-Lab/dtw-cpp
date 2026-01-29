@@ -55,4 +55,18 @@ function(dtwc_setup_dependencies)
     "BUILD_SMOKE_TEST OFF"
   )
 
+  # RapidCSV - header-only CSV parser (BSD 3-Clause license)
+  if (NOT TARGET rapidcsv::rapidcsv)
+    CPMAddPackage(
+      NAME rapidcsv
+      GITHUB_REPOSITORY d99kris/rapidcsv
+      VERSION 8.84
+      DOWNLOAD_ONLY YES
+    )
+
+    add_library(rapidcsv::rapidcsv INTERFACE IMPORTED)
+    set_target_properties(rapidcsv::rapidcsv PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${rapidcsv_SOURCE_DIR}/src")
+  endif()
+
 endfunction()

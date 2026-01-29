@@ -2,14 +2,11 @@
 
 This file tracks ongoing development tasks and future work items.
 
-**Last Updated:** 2026-01-29 (Build verified, all 9 tests passing)
+**Last Updated:** 2026-01-29 (Session 3 - Path refactoring complete, all 9 tests passing)
 
 ---
 
-## Current Sprint: Milestone 0 + 1 (Hygiene & Bug Fixes)
-
-### In Progress
-- [ ] Verify build and tests pass
+## Current Sprint: Milestone 0 + 1 (Hygiene & Bug Fixes) - COMPLETE
 
 ### Completed
 - [x] Create cpp-style.md
@@ -21,9 +18,12 @@ This file tracks ongoing development tasks and future work items.
 - [x] Fix Bug #3: numMaxParallelWorkers ignored
 - [x] Add tests for exception handling
 - [x] Update CHANGELOG.md
+- [x] **PR 1.4**: Remove DTWC_ROOT_FOLDER runtime dependency
+- [x] **PR 1.5**: Add rapidcsv (v8.84) for multi-column CSV support
+- [x] **PR 1.6**: Refactor to `settings::paths` namespace with runtime-settable paths
 
-### Pending
-- [ ] Make OpenMP properly optional via CMake (DTWC_ENABLE_OPENMP option)
+### Deferred
+- [ ] Make OpenMP properly optional via CMake option (already works via `#ifdef _OPENMP`)
 
 ---
 
@@ -35,8 +35,8 @@ This file tracks ongoing development tasks and future work items.
 | #6 | fileOperations.hpp | 178 | Medium | `throw 2;` instead of proper exception | **FIXED** |
 | #2 | parallelisation.hpp | 41, 44 | Medium | `int` loop var vs `size_t` bound | **FIXED** |
 | #3 | parallelisation.hpp | 63 | Medium | `numMaxParallelWorkers` parameter ignored | **FIXED** |
-| #4 | settings.hpp | 53-54 | Medium | Build-time `DTWC_ROOT_FOLDER` dependency | Deferred |
-| #5 | fileOperations.hpp | 103 | Low | Single-column CSV only | Deferred |
+| #4 | settings.hpp | 53-54 | Medium | Build-time `DTWC_ROOT_FOLDER` dependency | **FIXED** |
+| #5 | fileOperations.hpp | 103 | Low | Single-column CSV only | **FIXED** (rapidcsv) |
 
 ---
 

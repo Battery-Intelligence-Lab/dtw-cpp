@@ -23,7 +23,10 @@ int main()
 
   auto Nc = 3; // Number of clusters
 
-  dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy" };
+  // Optional: Set data path if not running from project root
+  // dtwc::settings::paths::setDataPath("/path/to/your/data");
+
+  dtwc::DataLoader dl{ dtwc::settings::paths::dataPath / "dummy" };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.

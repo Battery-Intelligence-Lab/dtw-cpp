@@ -17,6 +17,19 @@ using Catch::Matchers::WithinAbs;
 
 using namespace dtwc;
 
+// Use compile-time test data directory if available, otherwise fall back to relative path
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+// Initialize settings::paths::dataPath from compile-time definition for tests
+struct TestPathInitializer {
+  TestPathInitializer() {
+    dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
+  }
+};
+static TestPathInitializer testPathInit;
+
 TEST_CASE("dtwFull_test", "[dtwFull]")
 {
   dtwc::Clock clk; // Create a clock object
@@ -28,7 +41,7 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
   constexpr int maxIter = 100;
   constexpr int Ndata_max = 10;
 
-  dtwc::DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.

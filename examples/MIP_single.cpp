@@ -23,7 +23,10 @@ int main()
   int Ndata_max = 300; // Load 300 data maximum.
   auto Nc = 6;         // Number of clusters
 
-  dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy", Ndata_max };
+  // Optional: Set data path if not running from project root
+  // dtwc::settings::paths::setDataPath("/path/to/your/data");
+
+  dtwc::DataLoader dl{ dtwc::settings::paths::dataPath / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.

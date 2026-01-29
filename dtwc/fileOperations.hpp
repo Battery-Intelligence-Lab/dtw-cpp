@@ -31,6 +31,7 @@
 #include <stdexcept> // for std::runtime_error
 
 #include <armadillo>
+#include <rapidcsv.h>
 
 namespace dtwc {
 
@@ -240,6 +241,141 @@ template <typename data_t>
 void readMatrix(arma::Mat<data_t> &matrix, const fs::path &name)
 {
   matrix.load(name.string(), arma::csv_ascii);
+}
+
+// ============================================================================
+// RapidCSV-based functions for robust multi-column CSV parsing
+// ============================================================================
+
+/**
+ * @brief Reads a multi-column CSV file and returns data as a 2D vector using rapidcsv.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @param file_path Path of the CSV file to read.
+ * @param has_header Whether the first row is a header (default is false).
+ * @param has_row_names Whether the first column contains row names (default is false).
+ * @param delimiter Delimiter character used in the file (default is ',').
+ * @return std::vector<std::vector<data_t>> A 2D vector where each inner vector is a row.
+ */
+template <typename data_t>
+auto readCSV(const fs::path &file_path, bool has_header = false, bool has_row_names = false, char delimiter = ',')
+{
+  if (!fs::exists(file_path)) {
+    throw std::runtime_error("Error in readCSV: File " + file_path.string() + " does not exist.");
+  }
+
+  rapidcsv::LabelParams labels(
+    has_header ? 0 : -1,    // Row header index (-1 = no header)
+    has_row_names ? 0 : -1  // Column header index (-1 = no row names)
+  );
+  rapidcsv::SeparatorParams sep(delimiter);
+
+  rapidcsv::Document doc(file_path.string(), labels, sep);
+
+  std::vector<std::vector<data_t>> result;
+  const size_t numRows = doc.GetRowCount();
+  result.reserve(numRows);
+
+  for (size_t i = 0; i < numRows; ++i) {
+    result.push_back(doc.GetRow<data_t>(i));
+  }
+
+  return result;
+}
+
+/**
+ * @brief Reads a multi-column CSV file where each row is a time series.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @param file_path Path of the CSV file to read.
+ * @param max_rows Maximum number of rows to read (-1 = all rows).
+ * @param has_header Whether the first row is a header (default is false).
+ * @param label_col Column index containing labels (-1 = no labels, use row numbers).
+ * @param delimiter Delimiter character used in the file (default is ',').
+ * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> Data and names.
+ */
+template <typename data_t>
+auto readTimeSeriesCSV(const fs::path &file_path, int max_rows = -1, bool has_header = false,
+                       int label_col = -1, char delimiter = ',')
+{
+  if (!fs::exists(file_path)) {
+    throw std::runtime_error("Error in readTimeSeriesCSV: File " + file_path.string() + " does not exist.");
+  }
+
+  rapidcsv::LabelParams labels(has_header ? 0 : -1, -1);
+  rapidcsv::SeparatorParams sep(delimiter);
+
+  rapidcsv::Document doc(file_path.string(), labels, sep);
+
+  std::vector<std::vector<data_t>> p_vec;
+  std::vector<std::string> p_names;
+
+  const size_t numRows = doc.GetRowCount();
+  const size_t rowsToRead = (max_rows < 0) ? numRows : std::min(static_cast<size_t>(max_rows), numRows);
+
+  p_vec.reserve(rowsToRead);
+  p_names.reserve(rowsToRead);
+
+  for (size_t i = 0; i < rowsToRead; ++i) {
+    auto row = doc.GetRow<std::string>(i);
+
+    // Extract name from label column or use row number
+    std::string name;
+    if (label_col >= 0 && static_cast<size_t>(label_col) < row.size()) {
+      name = row[label_col];
+    } else {
+      name = std::to_string(i + 1);
+    }
+    p_names.push_back(name);
+
+    // Convert remaining columns to data
+    std::vector<data_t> series;
+    series.reserve(row.size());
+    for (size_t j = 0; j < row.size(); ++j) {
+      if (static_cast<int>(j) == label_col) continue; // Skip label column
+      try {
+        if constexpr (std::is_same_v<data_t, double>) {
+          series.push_back(std::stod(row[j]));
+        } else if constexpr (std::is_same_v<data_t, float>) {
+          series.push_back(std::stof(row[j]));
+        } else if constexpr (std::is_same_v<data_t, int>) {
+          series.push_back(std::stoi(row[j]));
+        } else {
+          series.push_back(static_cast<data_t>(std::stod(row[j])));
+        }
+      } catch (const std::exception &) {
+        // Skip non-numeric values
+      }
+    }
+    p_vec.push_back(std::move(series));
+  }
+
+  return std::pair(std::move(p_vec), std::move(p_names));
+}
+
+/**
+ * @brief Reads a single column from a CSV file.
+ *
+ * @tparam data_t The data type of the elements to be read.
+ * @param file_path Path of the CSV file to read.
+ * @param column Column index to read (0-based).
+ * @param has_header Whether the first row is a header (default is false).
+ * @param delimiter Delimiter character used in the file (default is ',').
+ * @return std::vector<data_t> A vector containing the column data.
+ */
+template <typename data_t>
+auto readCSVColumn(const fs::path &file_path, size_t column, bool has_header = false, char delimiter = ',')
+{
+  if (!fs::exists(file_path)) {
+    throw std::runtime_error("Error in readCSVColumn: File " + file_path.string() + " does not exist.");
+  }
+
+  rapidcsv::LabelParams labels(has_header ? 0 : -1, -1);
+  rapidcsv::SeparatorParams sep(delimiter);
+
+  rapidcsv::Document doc(file_path.string(), labels, sep);
+
+  return doc.GetColumn<data_t>(column);
 }
 
 } // namespace dtwc

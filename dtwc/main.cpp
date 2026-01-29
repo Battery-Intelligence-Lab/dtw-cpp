@@ -12,7 +12,8 @@ int main()
 
   auto Nc = 3;        // Number of clusters
   int Ndata_max = 20; // Load maximum 20 of data.
-  dtwc::DataLoader dl{ dtwc::settings::dataPath / "dummy", Ndata_max };
+  // Note: Run this from the project root directory, or specify an absolute path
+  dtwc::DataLoader dl{ std::filesystem::path("data") / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.

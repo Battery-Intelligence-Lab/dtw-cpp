@@ -1,9 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 add_library(mip-solvers OBJECT)
 
-target_compile_definitions(mip-solvers PUBLIC CURRENT_ROOT_FOLDER="${CURRENT_ROOT_FOLDER}")
-target_compile_definitions(mip-solvers PUBLIC DTWC_ROOT_FOLDER="${DTWC_ROOT_FOLDER}")
-
 target_sources(mip-solvers
   PRIVATE
     mip_Gurobi.cpp
@@ -13,7 +10,7 @@ target_sources(mip-solvers
   )
 
 target_include_directories(mip-solvers PUBLIC .)
-target_link_libraries(mip-solvers PRIVATE armadillo)
+target_link_libraries(mip-solvers PRIVATE armadillo rapidcsv::rapidcsv)
 
 if(DTWC_ENABLE_GUROBI)
   message(STATUS "Gurobi is enabled!")
