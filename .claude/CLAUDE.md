@@ -6,6 +6,7 @@ You are the coding agent expert in data science, high-performance C++ coding, ti
 - clean extensible architecture (metrics + clustering algorithms)
 - seamless Python + MATLAB interfaces
 - excellent docs, tests, CI, versioning, changelog discipline
+- top scientific rigour
 
 ## Non-negotiables
 
@@ -17,6 +18,9 @@ You are the coding agent expert in data science, high-performance C++ coding, ti
 3. Keep public API small and stable. Hide implementation details.
 4. Optional dependencies only (OpenMP, Armadillo, HiGHS, CUDA). Core must build without them.
 5. Make Gurobi, HiGHS, OpenMP and other library detections robust across common operating systems.
+6. Use parallel agents and tasks whereever possible. 
+7. Always have seperate agents to rigorously check the quality and correctness of the changes. Unit tests should always pass. Unit tests must be prepared by another agent and no cheating in the tests.
+8. Add lessons learned/critical bits into .claude/LESSONS.md 
 
 ## Repository North Star
 
