@@ -1,8 +1,15 @@
 {
+  "env": {
+    "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "64000"
+  },
   "permissions": {
     "allow": [
       "Bash(cmake:*)",
-      "Bash(ctest:*)"
+      "Bash(ctest:*)",
+      "Bash(xargs:*)",
+      "Bash(grep:*)",
+      "Bash(git -C . log --oneline -10)"
     ]
   }
 }

@@ -62,7 +62,58 @@ This file tracks ongoing development tasks and future work items.
 - [ ] Optimize distance matrix builder
 - [ ] Microbenchmarks
 
-### Milestone 5: Clustering & Evaluation
+### Milestone 5: LP Relaxation & Tiered MIP Solving
+*(See `.claude/UNIMODULAR.md` for full research report)*
+
+The k-medoids constraint matrix is NOT totally unimodular, but LP relaxation
+is often naturally integer (especially for well-separated clusters). Strategy:
+
+- [ ] Add LP-relaxation-first mode to HiGHS solver (skip integrality constraints)
+- [ ] Add LP-relaxation-first mode to Gurobi solver
+- [ ] Implement integrality check on LP solution (tolerance-based)
+- [ ] Add branching priority on facility (diagonal) variables in Gurobi
+- [ ] Warm-start MIP from PAM solution (provide upper bound)
+- [ ] Report LP lower bound; skip MIP if PAM matches LP bound
+- [ ] Implement tiered strategy: LP -> branch on A[i,i] -> full MIP fallback
+- [ ] Add solver strategy enum (LP_Only, LP_then_MIP, MIP_Direct)
+- [ ] Tests: verify LP = MIP for well-separated clusters
+- [ ] Tests: verify tiered strategy finds optimal for hard instances
+
+### Milestone 6: DTW with Missing Data
+*(See `.claude/MISSING.md` for full literature review and implementation plan)*
+
+**Phase 1: Foundation**
+- [ ] Add `is_missing()` utility and `MISSING` constant (NaN-based)
+- [ ] Add `MissingStrategy` enum (Error, ZeroCost, ZeroCostNorm, Interpolate, Skip)
+- [ ] Add `DTWOptions` struct (band, missing strategy, min_coverage)
+- [ ] Unit tests for missing value detection
+
+**Phase 2: Core DTW Modifications**
+- [ ] Modify `dtwFull` to handle zero-cost missing data
+- [ ] Modify `dtwFull_L` to handle zero-cost missing data
+- [ ] Modify `dtwBanded` to handle zero-cost missing data
+- [ ] Add unified `dtw()` dispatcher based on DTWOptions
+- [ ] Comprehensive unit tests with known expected values
+
+**Phase 3: Normalization**
+- [ ] Implement `ZeroCostNorm` with path-length normalization
+- [ ] Implement `min_coverage` threshold (maxValue for low overlap)
+- [ ] Tests comparing normalized vs unnormalized results
+
+**Phase 4: Imputation Utilities**
+- [ ] `interpolate_linear()` -- in-place, handles interior gaps
+- [ ] `interpolate_spline()` -- cubic spline, in-place
+- [ ] `MissingStrategy::Interpolate` dispatches interpolation before DTW
+- [ ] Imputation correctness tests
+
+**Phase 5: Problem Class Integration**
+- [ ] Add `DTWOptions` member to `Problem` class
+- [ ] Modify `distByInd()` to pass options through to DTW
+- [ ] Coverage-based distance masking in distance matrix
+- [ ] Modify CSV loader to insert NaN for non-numeric values
+- [ ] Integration tests: clustering on data with missing values
+
+### Milestone 7: Clustering Algorithms & Evaluation
 - [ ] Define clustering interface
 - [ ] Refactor K-medoids (PAM)
 - [ ] Implement CLARA
@@ -70,7 +121,7 @@ This file tracks ongoing development tasks and future work items.
 - [ ] Davies-Bouldin index
 - [ ] Calinski-Harabasz index
 
-### Milestone 6: Python Bindings
+### Milestone 8: Python Bindings
 - [ ] Modernize build (scikit-build-core)
 - [ ] Expose core DTW functions
 - [ ] Add OOP classes (DTW, KMedoids, CLARA)
@@ -78,13 +129,13 @@ This file tracks ongoing development tasks and future work items.
 - [ ] pytest suite
 - [ ] CI wheel builds
 
-### Milestone 7: MATLAB Interface
+### Milestone 9: MATLAB Interface
 - [ ] Create MEX wrapper
 - [ ] MATLAB OOP wrappers (mirrors Python)
 - [ ] MATLAB documentation
 - [ ] MATLAB tests
 
-### Milestone 8: GPU/CUDA (Deferred)
+### Milestone 10: GPU/CUDA (Deferred)
 - [ ] Backend abstraction layer
 - [ ] CUDA distance matrix computation
 - [ ] Thrust-based reductions
