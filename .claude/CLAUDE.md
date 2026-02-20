@@ -21,6 +21,7 @@ You are the coding agent expert in data science, high-performance C++ coding, ti
 6. Use parallel agents and tasks whereever possible. 
 7. Always have seperate agents to rigorously check the quality and correctness of the changes. Unit tests should always pass. Unit tests must be prepared by another agent and no cheating in the tests.
 8. Add lessons learned/critical bits into .claude/LESSONS.md 
+9. Do not miss any citations for info you found, always keep a list of citations for relevant parts in .claude/CITATIONS.md
 
 ## Repository North Star
 

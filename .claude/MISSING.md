@@ -6,7 +6,7 @@
 
 The probability of a value being missing is independent of both observed and unobserved values. Example: a sensor randomly drops packets due to network congestion unrelated to the measured phenomenon.
 
-**Impact on DTW:** Simplest case. Both imputation and modified-DTW approaches work well. The expected DTW distance with imputed values is an unbiased estimator of the true distance, provided the imputation method is unbiased.
+**Impact on DTW:** Simplest case. Both imputation and modified-DTW approaches work well. Note that even with unbiased imputation, DTW distance on imputed data is not an unbiased estimator of the true DTW distance (DTW is non-linear, so Jensen's inequality applies). However, the bias is typically small for smooth signals with small gaps.
 
 ### 1.2 Missing at Random (MAR)
 
@@ -119,7 +119,9 @@ else:
 
 Core idea: missing positions get zero local cost but the warping path restrictions ensure meaningful alignment. Path-length normalization accounts for varying numbers of non-missing comparisons.
 
-Open-source implementation available: https://github.com/aras-y/DTW_with_missing_values
+Open-source implementation available: [GitHub](https://github.com/aras-y/DTW_with_missing_values)
+
+**Important distinction:** DTW-AROW is NOT equivalent to simple zero-cost DTW. DTW-AROW constrains each missing value to match with exactly one sample in the other series (one-to-one alignment for missing positions), preventing the warping path from exploiting missing regions via many-to-one mappings. Simple zero-cost DTW is less restrictive and may produce lower (more biased) distances.
 
 #### DTW-CAI (Yurtman et al., 2023)
 
@@ -163,6 +165,14 @@ Only align observed subsequences. Break each series into observed segments and c
 - **Pros:** Only uses real data; no imputation bias
 - **Cons:** Complex when multiple gaps exist. May compare incomparable portions.
 
+#### Related: ERP and LCSS (Alternative Elastic Distances with Native Gap Handling)
+
+**ERP (Edit Distance with Real Penalties)** (Chen and Ng, 2004): Assigns a fixed penalty for matching a point against a gap reference value. Unlike DTW, ERP IS a proper metric, making it theoretically preferable when metric properties matter (e.g., for the integrality gap bounds in the MIP formulation). Complexity: O(mn).
+
+**LCSS (Longest Common Subsequence for time series)** (Vlachos et al., 2002): Allows some points to be unmatched entirely (with an epsilon threshold). Naturally handles noisy/missing data by not requiring every point to be matched. Returns a similarity score rather than a distance.
+
+Both are worth considering as alternatives to DTW when missing data is prevalent, though they change the distance semantics.
+
 ### 2C. Probabilistic Approaches
 
 #### Uncertainty-DTW (Wang and Koniusz, 2022)
@@ -201,7 +211,7 @@ Ensemble of Gaussian mixture models with informative priors that naturally handl
 
 ### 3.1 Metric Properties
 
-Standard DTW already fails to be a proper metric (Marteau, 2009; Herrmann, 2023). It is at best a symmetric premetric (non-negative, symmetric, but fails triangle inequality).
+Standard DTW already fails to be a proper metric (Marteau, 2009; Jain, 2018). It is at best a symmetric premetric (non-negative, symmetric, but fails triangle inequality).
 
 With missing data, the situation worsens:
 
@@ -215,7 +225,7 @@ With missing data, the situation worsens:
 
 ### 3.2 Implications for k-Medoids Clustering
 
-**Good news:** k-medoids (PAM) does NOT require a metric. It only requires d(x,y) >= 0 with d(x,x) = 0 (Jiang et al., 2021).
+**Good news:** k-medoids (PAM) does NOT require a metric. It only requires d(x,y) >= 0 with d(x,x) = 0. Finite convergence of PAM follows trivially from the finite configuration space and strict cost decrease per swap. Statistical consistency of k-medoids for non-metric dissimilarities is established by Jiang and Arias-Castro (2021).
 
 PAM convergence is guaranteed as long as:
 
@@ -257,7 +267,7 @@ However, clustering **quality** may degrade: noisy distance estimates from high 
 
 ### Core DTW with Missing Data
 
-1. **Yurtman, A., Soenen, J., Meert, W., Blockeel, H.** (2023). "Estimating Dynamic Time Warping Distance Between Time Series with Missing Data." ECML PKDD 2023, LNAI 14169, pp. 224-240. **[Most relevant paper]** Proposes DTW-AROW and DTW-CAI. Open-source code available. GitHub: https://github.com/aras-y/DTW_with_missing_values
+1. **Yurtman, A., Soenen, J., Meert, W., Blockeel, H.** (2023). "Estimating Dynamic Time Warping Distance Between Time Series with Missing Data." ECML PKDD 2023, LNCS 14173. **[Most relevant paper]** Proposes DTW-AROW and DTW-CAI. Open-source code: [GitHub](https://github.com/aras-y/DTW_with_missing_values)
 
 2. **Tormene, P., Giorgino, T., Quaglini, S., Stefanelli, M.** (2009). "Matching Incomplete Time Series with Dynamic Time Warping." Artificial Intelligence in Medicine, 45, 11-34. **[Foundational]** Open-end DTW for truncated series.
 
@@ -271,9 +281,9 @@ However, clustering **quality** may degrade: noisy distance estimates from high 
 
 ### DTW Metric Properties
 
-6. **Marteau, P.F.** (2009). "On the Metric Properties of Dynamic Time Warping." IEEE ICPR. Shows DTW violates triangle inequality.
+6. **Marteau, P.F.** (2009). "Time Warp Edit Distance with Stiffness Adjustment for Time Series Matching." IEEE TPAMI 31(2), 306-318. Documents DTW's failure of triangle inequality; proposes TWED as a metric alternative.
 
-7. **Herrmann, M.** (2023). "Semi-Metrification of the Dynamic Time Warping Distance." arXiv:1808.09964. Converting DTW to a semi-metric.
+7. **Jain, B.J.** (2018). "Semi-Metrification of the Dynamic Time Warping Distance." arXiv:1808.09964. Converting DTW to a semi-metric while preserving warping invariance.
 
 ### Kernel and Embedding Approaches
 
@@ -281,7 +291,7 @@ However, clustering **quality** may degrade: noisy distance estimates from high 
 
 ### k-Medoids Theory
 
-9. **Jiang, H., Jang, J., Kpotufe, S.** (2021). "On the Consistency of Metric and Non-Metric K-medoids." AISTATS 2021. k-medoids consistency even for non-metric dissimilarities.
+9. **Jiang, H. and Arias-Castro, E.** (2021). "On the Consistency of Metric and Non-Metric K-medoids." AISTATS 2021 (PMLR 130:2485-2493). k-medoids consistency even for non-metric dissimilarities.
 
 ### DTW-Based Imputation
 
@@ -305,17 +315,22 @@ However, clustering **quality** may degrade: noisy distance estimates from high 
 
 ```cpp
 #include <cmath>
+#include <cstring>   // std::memcpy
+#include <cstdint>   // uint64_t
 #include <limits>
 
 namespace dtwc {
-    constexpr data_t MISSING = std::numeric_limits<data_t>::quiet_NaN();
+    // Note: quiet_NaN() is constexpr in C++23; use inline const for C++17 portability
+    inline const data_t MISSING = std::numeric_limits<data_t>::quiet_NaN();
 
     inline bool is_missing(data_t v) noexcept {
+        static_assert(sizeof(data_t) == 8, "is_missing assumes 64-bit double");
 #ifdef __FAST_MATH__
-        // Bitwise NaN check for -ffast-math compatibility
-        union { data_t f; uint64_t i; } u = {v};
-        return (u.i & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
-            && (u.i & 0x000FFFFFFFFFFFFFULL) != 0;
+        // -ffast-math can break std::isnan; use bitwise check via memcpy (no UB)
+        uint64_t bits;
+        std::memcpy(&bits, &v, sizeof(bits));
+        return (bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
+            && (bits & 0x000FFFFFFFFFFFFFULL) != 0;
 #else
         return std::isnan(v);
 #endif
@@ -373,9 +388,14 @@ for (int j = 1; j < my; j++) {
 }
 ```
 
-Boundary conditions need the same treatment:
+**Critical: the `is_missing` check MUST happen BEFORE the distance function call.** If NaN is passed to `std::abs(NaN - y)`, the result is NaN, which propagates through the entire cost matrix silently.
+
+Boundary conditions (including C(0,0)) need the same treatment:
 
 ```cpp
+// C(0, 0):
+C(0, 0) = (is_missing(x[0]) || is_missing(y[0])) ? 0 : distance(x[0], y[0]);
+
 // First column:
 for (int i = 1; i < mx; i++) {
     data_t cost = (is_missing(x[i]) || is_missing(y[0])) ? 0 : distance(x[i], y[0]);
@@ -393,7 +413,7 @@ for (int j = 1; j < my; j++) {
 
 When missing values are present, raw accumulated cost is not comparable across pairs with different missing patterns. Two approaches:
 
-**Approach A: Approximate normalization** (recommended for dtwFull_L):
+**Approach A: Heuristic normalization** (simple but crude; suitable for dtwFull_L where backtracking is unavailable):
 
 ```cpp
 int missing_in_x = std::count_if(x.begin(), x.end(), is_missing);
@@ -402,7 +422,9 @@ double coverage = 1.0 - (double)(missing_in_x + missing_in_y) / (mx + my);
 return (coverage > min_coverage) ? C(mx-1, my-1) / coverage : maxValue;
 ```
 
-**Approach B: Exact path tracking** (for dtwFull with backtracking):
+**Caveat:** This heuristic does not account for the alignment of missing positions between the two series. If missing positions coincide (both series missing at the same timestamps), the effective coverage along the warping path is much lower than the formula suggests. Use with caution and prefer Approach B when accuracy matters.
+
+**Approach B: Exact path tracking** (for dtwFull with backtracking, recommended when accuracy matters):
 
 Maintain a parallel count matrix tracking non-missing comparisons along the optimal path. Doubles memory but gives exact normalization.
 
@@ -548,7 +570,7 @@ Missing data at the tail is equivalent to a shorter query. Missing values within
 | --- | --- | --- |
 | Zero-Cost DTW + Normalization | **Primary (Tier 1)** | Default for all missing data scenarios |
 | Linear Interpolation | **Secondary (Tier 2)** | Pre-processing utility, user's choice |
-| DTW-AROW | Reference | Equivalent to our zero-cost approach |
+| DTW-AROW | Reference | Stricter than zero-cost (one-to-one missing alignment); consider for Phase 3+ |
 | DTW-CAI | Future | When dataset-level imputation is needed |
 | Uncertainty-DTW | Future/Research | When per-point confidence is available |
 | GP-DTW | Not recommended | Too expensive for clustering workloads |

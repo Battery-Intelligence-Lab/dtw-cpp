@@ -9,7 +9,20 @@
       "Bash(ctest:*)",
       "Bash(xargs:*)",
       "Bash(grep:*)",
-      "Bash(git -C . log --oneline -10)"
+      "Bash(git -C . log --oneline -10)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:hal.science)",
+      "WebFetch(domain:ampl.com)",
+      "WebFetch(domain:www.gurobi.com)",
+      "WebFetch(domain:docs.gurobi.com)",
+      "WebFetch(domain:ergo-code.github.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:theses.hal.science)",
+      "WebFetch(domain:documentation.aimms.com)",
+      "Bash(uv run python:*)",
+      "Bash(uv run:*)",
+      "Bash(python:*)"
     ]
   }
 }
