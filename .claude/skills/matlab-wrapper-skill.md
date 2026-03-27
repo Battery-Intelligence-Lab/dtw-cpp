@@ -104,6 +104,9 @@ Use a handle map to track C++ objects from MATLAB:
 namespace {
 
 // Handle registry: maps uint64 handles to C++ objects
+// CRITICAL: MATLAB stores handles as double. double has 53 bits of mantissa,
+// so handles above 2^53 (~9e15) silently lose precision. The counter below
+// will never reach 2^53 in practice, but we add a static_assert guard.
 template <typename T>
 class HandleManager {
     static std::unordered_map<uint64_t, std::shared_ptr<T>> handles_;
@@ -111,6 +114,12 @@ class HandleManager {
 public:
     static uint64_t create(std::shared_ptr<T> obj) {
         uint64_t h = ++next_handle_;
+        // Guard: double can only represent integers exactly up to 2^53
+        static_assert(sizeof(double) == 8, "double must be 64-bit");
+        if (h > (1ULL << 53)) {
+            mexErrMsgIdAndTxt("wrapper:handleOverflow",
+                "Handle counter exceeded 2^53 — double precision limit");
+        }
         handles_[h] = std::move(obj);
         return h;
     }
@@ -124,6 +133,10 @@ public:
 
     static void destroy(uint64_t h) {
         handles_.erase(h);
+    }
+
+    static void clear() {
+        handles_.clear();
     }
 };
 
@@ -232,12 +245,21 @@ void mexFunction(int nlhs, mxArray* plhs[],
         return;
     }
     if (cmd == "ClassName_methodName") {
-        uint64_t h = static_cast<uint64_t>(mxGetScalar(prhs[1]));
-        auto& obj = HandleManager<Namespace::ClassName>::get(h);
-        // Convert input args from prhs[2], prhs[3], ...
-        // Call method
-        auto result = obj->methodName(/* converted args */);
-        // Convert result to plhs[0]
+        // Apply longjmp-safe pattern to EVERY dispatch (see CRITICAL section below)
+        std::string error_msg;
+        try {
+            uint64_t h = static_cast<uint64_t>(mxGetScalar(prhs[1]));
+            auto& obj = HandleManager<Namespace::ClassName>::get(h);
+            // Convert input args from prhs[2], prhs[3], ...
+            auto result = obj->methodName(/* converted args */);
+            // Convert result to plhs[0]
+        } catch (const std::exception& e) {
+            error_msg = e.what();
+        } catch (...) {
+            error_msg = "Unknown C++ exception";
+        }
+        if (!error_msg.empty())
+            mexErrMsgIdAndTxt("wrapper:cppException", "%s", error_msg.c_str());
         return;
     }
 
@@ -251,18 +273,42 @@ void mexFunction(int nlhs, mxArray* plhs[],
 }
 ```
 
-### Exception handling
+### CRITICAL: Exception handling (longjmp-safe pattern)
 
-**Every** MEX command dispatch should be wrapped in a try/catch to convert C++ exceptions to MATLAB errors:
+**Every** MEX command dispatch must be wrapped in try/catch. However, `mexErrMsgIdAndTxt` calls `longjmp` internally, which **skips C++ destructors** (stack unwinding). If you call it inside a try/catch block, any RAII objects (shared_ptr, string, vector) in that scope will leak.
+
+**WRONG — destructors skipped:**
 ```cpp
 try {
-    // ... method call ...
+    auto result = obj->expensiveMethod();  // RAII objects on stack
+    mexErrMsgIdAndTxt("...", "...");  // longjmp skips destructors!
 } catch (const std::exception& e) {
-    mexErrMsgIdAndTxt("wrapper:cppException", "%s", e.what());
-} catch (...) {
-    mexErrMsgIdAndTxt("wrapper:cppException", "Unknown C++ exception");
+    mexErrMsgIdAndTxt("...", "%s", e.what());  // longjmp skips catch-scope destructors!
 }
 ```
+
+**CORRECT — capture error, exit scope, then call mexErrMsgIdAndTxt:**
+```cpp
+std::string error_msg;
+try {
+    // All C++ objects with destructors live here
+    auto result = obj->expensiveMethod();
+    // ... convert result to plhs[0] ...
+} catch (const std::exception& e) {
+    error_msg = e.what();
+} catch (...) {
+    error_msg = "Unknown C++ exception";
+}
+// Now OUTSIDE the try/catch — all C++ destructors have run
+if (!error_msg.empty()) {
+    mexErrMsgIdAndTxt("wrapper:cppException", "%s", error_msg.c_str());
+}
+```
+
+**Apply this pattern to EVERY command dispatch in the MEX gateway.** The pattern ensures:
+1. All C++ RAII objects are destroyed before longjmp
+2. The error message is captured by value (not a dangling pointer)
+3. `mexErrMsgIdAndTxt` is only called after normal scope exit
 
 ### Cleanup on MEX unload
 
@@ -284,11 +330,12 @@ if (!cleanup_registered) {
 
 ### Enum string-to-C++ lookup:
 ```cpp
+// NOTE: Throw C++ exceptions from helper functions — NOT mexErrMsgIdAndTxt.
+// The outer try/catch will convert them to MEX errors via the longjmp-safe pattern.
 Namespace::EnumName string_to_EnumName(const std::string& s) {
     if (s == "Value1") return Namespace::EnumName::Value1;
     if (s == "Value2") return Namespace::EnumName::Value2;
-    mexErrMsgIdAndTxt("wrapper:badEnum", "Unknown EnumName value: %s", s.c_str());
-    return {}; // unreachable
+    throw std::invalid_argument("Unknown EnumName value: " + s);
 }
 
 std::string EnumName_to_string(Namespace::EnumName e) {
@@ -590,6 +637,124 @@ Before finishing, verify the mapping is complete and consistent:
 7. **Handle cleanup** — destructors are called when MATLAB objects go out of scope
 8. **Error handling** — C++ exceptions become `mexErrMsgIdAndTxt` with descriptive IDs
 
+## Step 8: MATLAB save/load Support
+
+For handle classes wrapping C++ objects, implement `saveobj`/`loadobj` so users can `save`/`load` objects to `.mat` files:
+
+```matlab
+methods
+    function s = saveobj(obj)
+        %SAVEOBJ Serialize to struct for save().
+        s.prop1 = obj.PropName;
+        s.prop2 = obj.OtherProp;
+        % Only save properties that can reconstruct the object.
+        % Do NOT save the ObjectHandle — it is transient.
+    end
+end
+
+methods (Static)
+    function obj = loadobj(s)
+        %LOADOBJ Reconstruct from saved struct.
+        obj = packagename.ClassName();
+        obj.PropName = s.prop1;
+        obj.OtherProp = s.prop2;
+    end
+end
+```
+
+**Rules:**
+- Save only MATLAB-native types (double, string, cell, struct) — not the C++ handle
+- The loaded object creates a fresh C++ object and re-applies saved properties
+- Document which properties survive save/load in the class help text
+
+## IMPORTANT: OpenMP Restrictions in MEX
+
+If the C++ library uses OpenMP internally (e.g., for parallel distance matrix computation):
+
+1. **MATLAB manages its own thread pool** — OpenMP threads inside MEX can conflict. Set thread count conservatively:
+```cpp
+// At the top of mexFunction, limit OpenMP threads:
+#ifdef _OPENMP
+    omp_set_num_threads(std::min(omp_get_max_threads(), 4));  // conservative default
+#endif
+```
+
+2. **Do NOT use `omp_set_nested(true)`** — nested parallelism in MEX is unreliable
+
+3. **On macOS**: MATLAB ships its own `libomp.dylib` which may conflict with the system/Homebrew one. Link statically or use `-Xclang -fopenmp` with MATLAB's own copy.
+
+4. **Thread-local storage**: With OpenMP enabled, each OpenMP worker gets its own `thread_local` buffer. This is correct behavior but increases memory usage proportionally to thread count.
+
+5. **Graceful fallback**: Always compile MEX with OpenMP **optional**. The C++ code should have serial fallbacks when OpenMP is unavailable:
+```cpp
+#ifdef _OPENMP
+    #pragma omp parallel for schedule(dynamic)
+#endif
+    for (int i = 0; i < n; ++i) { /* ... */ }
+```
+
+## Cross-Language Reference: Side-by-Side Examples
+
+When generating bindings, produce a side-by-side usage example showing the same workflow in C++, Python, and MATLAB. This serves as both documentation and a consistency check.
+
+### Example (DTW clustering workflow):
+
+**C++:**
+```cpp
+#include "dtwc/dtwc.hpp"
+using namespace dtwc;
+
+DataLoader loader;
+loader.path("data/ECG200").startColumn(1).delimiter(',');
+Data data = loader.load();
+
+Problem prob("ECG200", loader);
+prob.method = Method::Kmedoids;
+prob.maxIter = 100;
+prob.band = 10;
+prob.fillDistanceMatrix();
+prob.cluster();
+auto sil = scores::silhouette(prob);
+```
+
+**Python:**
+```python
+import dtwc
+
+loader = dtwc.DataLoader()
+loader.path = "data/ECG200"
+loader.startColumn = 1
+loader.delimiter = ","
+data = loader.load()
+
+prob = dtwc.Problem("ECG200", loader)
+prob.method = dtwc.Method.Kmedoids
+prob.maxIter = 100
+prob.band = 10
+prob.fillDistanceMatrix()
+prob.cluster()
+sil = dtwc.silhouette(prob)
+```
+
+**MATLAB:**
+```matlab
+loader = dtwc.DataLoader();
+loader.path = 'data/ECG200';
+loader.startColumn = 1;
+loader.delimiter = ',';
+data = loader.load();
+
+prob = dtwc.Problem('ECG200', loader);
+prob.method = dtwc.Method.Kmedoids;
+prob.maxIter = 100;
+prob.band = 10;
+prob.fillDistanceMatrix();
+prob.cluster();
+sil = dtwc.silhouette(prob);
+```
+
+Notice: The three versions are nearly identical — same class names, same method names, same property names. Only language syntax differs. **This is the goal.**
+
 ## Common Pitfalls to Avoid
 
 1. **Memory leaks** — Always pair `ClassName_new` with `ClassName_delete` in the destructor
@@ -602,3 +767,6 @@ Before finishing, verify the mapping is complete and consistent:
 8. **Name collisions** — Use `+packagename` namespace to avoid conflicts with MATLAB built-ins
 9. **Copy semantics** — MATLAB uses value semantics by default; use `handle` base class for C++ object wrappers
 10. **1-indexed vs 0-indexed** — Convert all indices at the MEX boundary (MATLAB is 1-based, C++ is 0-based)
+11. **mexErrMsgIdAndTxt inside try/catch** — Calls `longjmp`, skipping C++ destructors. Always capture error, exit scope, THEN call
+12. **Handle stored as double** — `uint64_t` handles above 2^53 lose precision when stored in MATLAB `double`. Use the guarded HandleManager
+13. **OpenMP in MEX** — Limit thread count; avoid nested parallelism; handle macOS `libomp` conflicts

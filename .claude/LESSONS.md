@@ -42,6 +42,47 @@ Standard DTW violates the triangle inequality. This means:
 - Both produce equivalent results because D is symmetric for DTW
 - For non-symmetric D, the implementations would give different results
 
+## Cross-Language Bindings (Python / MATLAB)
+
+### mexErrMsgIdAndTxt uses longjmp — skips C++ destructors
+- **CRITICAL**: Calling `mexErrMsgIdAndTxt` inside a try/catch block leaks all RAII objects in scope
+- The function calls `longjmp` internally, which bypasses C++ stack unwinding
+- **Fix**: Capture the error string into a local `std::string`, exit the try/catch scope (allowing destructors to run), THEN call `mexErrMsgIdAndTxt`
+- This applies to ALL `mexErr*` functions, not just `mexErrMsgIdAndTxt`
+
+### pybind11 GIL release is essential for expensive C++ methods
+- Any method running longer than ~10ms should release the GIL via `py::call_guard<py::gil_scoped_release>()`
+- Without GIL release, `fillDistanceMatrix()` and `cluster()` freeze ALL Python threads
+- pybind11's `std::function` wrapper automatically re-acquires the GIL when calling back into Python, so releasing the GIL on the outer method is safe even if it invokes a Python callback through `std::function`
+
+### Reference-returning methods create dangling pointers in pybind11
+- Methods like `p_vec(size_t i)` returning `const std::vector<double>&` can dangle if the parent C++ object is GC'd
+- Use `py::return_value_policy::reference_internal` to tie the returned reference's lifetime to the parent
+- When in doubt, return by value (copy) — slight overhead but always safe
+
+### MATLAB handles stored as double lose precision above 2^53
+- MATLAB represents everything as double; uint64 handles above 2^53 (~9e15) silently corrupt
+- In practice the counter never reaches 2^53, but add a runtime guard
+
+### Armadillo ↔ MATLAB is zero-copy but dangerous for writes
+- Both use column-major storage, so sharing memory via `const_cast<double*>` works for read-only
+- But any Armadillo operation that triggers reallocation writes into MATLAB memory — undefined behavior
+- Always use the copy version (`mxArray_to_arma`) for any mutable operations
+
+### CasADi's cross-language philosophy works well
+- Same class names (PascalCase), same method names (camelCase) across C++/Python/MATLAB
+- Python gets snake_case aliases as a bonus, but camelCase is the primary for consistency
+- CasADi uses SWIG; for just 2 target languages, hand-written pybind11 + MEX is simpler and more maintainable
+
+### dtwBanded template default is float, not double
+- `dtwBanded<data_t = float>` — must explicitly instantiate `dtwBanded<double>` for the project's `data_t = double`
+- Easy to miss; always check template defaults against the project's type aliases
+
+### OpenMP inside MEX needs careful management
+- MATLAB manages its own thread pool; OpenMP threads can conflict
+- On macOS, MATLAB ships its own `libomp.dylib` which conflicts with system/Homebrew copies
+- Always limit `omp_set_num_threads` conservatively in MEX; never enable nested parallelism
+
 ## Research Process
 
 ### Always verify citations with a separate review agent

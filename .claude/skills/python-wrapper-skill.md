@@ -112,6 +112,61 @@ PYBIND11_MODULE(module_name, m) {
 }
 ```
 
+### CRITICAL: GIL release for expensive computations
+
+Any C++ method that may run for more than a few milliseconds **must** release the Python GIL so other Python threads are not blocked. Use `py::call_guard<py::gil_scoped_release>()`:
+
+```cpp
+// GOOD — releases GIL during expensive C++ computation
+.def("fillDistanceMatrix", &Problem::fillDistanceMatrix,
+     py::call_guard<py::gil_scoped_release>(),
+     "Fill the full distance matrix (releases GIL)")
+
+.def("cluster", &Problem::cluster,
+     py::call_guard<py::gil_scoped_release>(),
+     "Run clustering (releases GIL)")
+```
+
+**Rules for GIL release:**
+- Release for: distance matrix computation, clustering, any O(n²) or worse methods
+- Do NOT release for: simple getters/setters, size(), name queries
+- Do NOT release for methods that call back into Python (e.g., if `init_fun` is a Python callable) — this will deadlock. For such methods, acquire the GIL inside the callback:
+```cpp
+// For methods that may invoke Python callbacks during execution:
+.def("cluster", [](Problem& self) {
+    // If init_fun might be a Python callable, we need careful GIL handling
+    py::gil_scoped_release release;
+    // BUT: if self.init_fun calls Python, it must re-acquire GIL internally
+    // pybind11's std::function wrapper handles this automatically
+    self.cluster();
+})
+```
+
+**Note on `std::function` callbacks and GIL**: When pybind11 wraps a Python callable into a `std::function`, the wrapper **automatically acquires the GIL** before calling the Python function. So it is safe to release the GIL on the outer method even if it eventually calls back into Python through a `std::function` field.
+
+### CRITICAL: Lifetime management for reference-returning methods
+
+Methods that return references to internal data (e.g., `const std::vector<double>& p_vec(size_t i)`) can create **dangling references** if the parent object is garbage-collected while Python still holds the returned value.
+
+**Use `py::return_value_policy::reference_internal`** — this tells pybind11 to keep the parent alive as long as the returned reference exists:
+
+```cpp
+// DANGEROUS — dangling reference if Problem is GC'd
+.def("p_vec", [](const Problem& self, size_t i) { return self.p_vec(i); })
+
+// SAFE — keeps Problem alive while the returned list exists
+.def("p_vec", [](const Problem& self, size_t i) { return self.p_vec(i); },
+     py::return_value_policy::reference_internal,
+     py::arg("index"))
+
+// SAFEST — return a copy (slight overhead, but no lifetime issues)
+.def("p_vec", [](const Problem& self, size_t i) -> std::vector<double> {
+    return self.p_vec(i);  // returns by value = copy
+}, py::arg("index"))
+```
+
+**Decision rule**: Use `reference_internal` for frequently-accessed large data. Use copy for small data or when the reference pattern is complex. When in doubt, **copy is always safe**.
+
 ### Type conversion rules (apply consistently):
 
 | C++ Type | pybind11 Handling |
@@ -296,6 +351,46 @@ class ClassName:
         return self._cpp.doSomething(x)
 ```
 
+### Copy and pickle support
+
+For classes that hold meaningful state, implement `__copy__`, `__deepcopy__`, and pickle support:
+
+```python
+import copy
+
+class ClassName:
+    # ... existing methods ...
+
+    def __copy__(self):
+        """Shallow copy — creates a new C++ object with same configuration."""
+        new = ClassName.__new__(ClassName)
+        new._cpp = _cpp.ClassName()  # new C++ object
+        # Copy all configurable properties
+        for prop in ['prop1', 'prop2']:
+            setattr(new, prop, getattr(self, prop))
+        return new
+
+    def __deepcopy__(self, memo):
+        """Deep copy — same as shallow since C++ objects own their data."""
+        return copy.copy(self)
+
+    def __getstate__(self):
+        """Pickle support — serialize to dict of Python-native types."""
+        return {
+            'prop1': self.prop1,
+            'prop2': self.prop2,
+            # Only serialize properties that can reconstruct the object
+        }
+
+    def __setstate__(self, state):
+        """Unpickle — reconstruct C++ object from saved state."""
+        self._cpp = _cpp.ClassName()
+        for key, value in state.items():
+            setattr(self, key, value)
+```
+
+**When to implement**: Only for classes where copy/pickle semantics are meaningful (e.g., `Problem`, `DataLoader`). Skip for lightweight wrappers or enum-like types.
+
 ### Convenience functions at module level:
 ```python
 def dtw_full(x: NDArray[np.float64], y: NDArray[np.float64]) -> float:
@@ -442,6 +537,122 @@ Before finishing, verify the mapping is complete and consistent:
    - `py::return_value_policy::copy` for value returns
    - Default (automatic) for most cases
 
+## Step 8: Generate Type Stub File (.pyi)
+
+Create a `.pyi` type stub file alongside the compiled module so IDEs provide autocomplete and type checking:
+
+```python
+# _core.pyi — Type stubs for the compiled C++ module
+from typing import List, Optional, Callable, overload
+import numpy.typing as npt
+
+class Problem:
+    @overload
+    def __init__(self) -> None: ...
+    @overload
+    def __init__(self, name: str) -> None: ...
+
+    method: Method
+    maxIter: int
+    band: int
+    N_repetition: int
+    name: str
+
+    def cluster(self) -> None: ...
+    def fillDistanceMatrix(self) -> None: ...
+    def size(self) -> int: ...
+    # ... all other methods with type annotations
+
+class DataLoader:
+    def __init__(self, path: str = "") -> None: ...
+    def load(self) -> Data: ...
+    # ... builder methods
+
+class Data:
+    def __init__(self, data: List[List[float]], names: List[str]) -> None: ...
+    def size(self) -> int: ...
+
+class Method:
+    Kmedoids: Method
+    MIP: Method
+
+class Solver:
+    Gurobi: Solver
+    HiGHS: Solver
+
+def dtw_full(x: List[float], y: List[float]) -> float: ...
+def dtw_banded(x: List[float], y: List[float], band: int) -> float: ...
+def silhouette(problem: Problem) -> List[float]: ...
+```
+
+**Rules:**
+- One `.pyi` file per compiled module (e.g., `_core.pyi` for `_core.so`)
+- Include all classes, functions, enums with full type annotations
+- Use `@overload` for methods with multiple signatures
+- Place in the same directory as the compiled `.so`/`.pyd` file
+
+## Cross-Language Reference: Side-by-Side Examples
+
+When generating bindings, produce a side-by-side usage example showing the same workflow in C++, Python, and MATLAB. This serves as both documentation and a consistency check.
+
+### Example (DTW clustering workflow):
+
+**C++:**
+```cpp
+#include "dtwc/dtwc.hpp"
+using namespace dtwc;
+
+DataLoader loader;
+loader.path("data/ECG200").startColumn(1).delimiter(',');
+Data data = loader.load();
+
+Problem prob("ECG200", loader);
+prob.method = Method::Kmedoids;
+prob.maxIter = 100;
+prob.band = 10;
+prob.fillDistanceMatrix();
+prob.cluster();
+auto sil = scores::silhouette(prob);
+```
+
+**Python:**
+```python
+import dtwc
+
+loader = dtwc.DataLoader()
+loader.path = "data/ECG200"
+loader.startColumn = 1
+loader.delimiter = ","
+data = loader.load()
+
+prob = dtwc.Problem("ECG200", loader)
+prob.method = dtwc.Method.Kmedoids
+prob.maxIter = 100
+prob.band = 10
+prob.fillDistanceMatrix()
+prob.cluster()
+sil = dtwc.silhouette(prob)
+```
+
+**MATLAB:**
+```matlab
+loader = dtwc.DataLoader();
+loader.path = 'data/ECG200';
+loader.startColumn = 1;
+loader.delimiter = ',';
+data = loader.load();
+
+prob = dtwc.Problem('ECG200', loader);
+prob.method = dtwc.Method.Kmedoids;
+prob.maxIter = 100;
+prob.band = 10;
+prob.fillDistanceMatrix();
+prob.cluster();
+sil = dtwc.silhouette(prob);
+```
+
+Notice: The three versions are nearly identical — same class names, same method names, same property names. Only language syntax differs. **This is the goal.**
+
 ## Common Pitfalls to Avoid
 
 1. **Missing `#include <pybind11/stl.h>`** — needed for automatic STL conversions
@@ -452,3 +663,7 @@ Before finishing, verify the mapping is complete and consistent:
 6. **Armadillo column-major vs NumPy row-major** — always transpose or copy correctly
 7. **Lifetime issues** — use `py::keep_alive<>()` when Python objects reference C++ data
 8. **Not exposing `__init__` with kwargs** — Python users expect keyword arguments
+9. **Missing GIL release** — expensive C++ computations freeze all Python threads; use `py::call_guard<py::gil_scoped_release>()`
+10. **Dangling references** — methods returning `const&` to internal data need `reference_internal` policy or copy
+11. **Global mutable state** — static RNG, global paths etc. are NOT thread-safe with GIL released; document or protect with mutex
+12. **Missing .pyi stubs** — without stubs, IDEs cannot provide autocomplete for compiled modules
