@@ -15,3 +15,4 @@
 #include "scores.hpp"
 #include "utility.hpp"
 #include "warping.hpp"
+#include "algorithms/fast_pam.hpp"

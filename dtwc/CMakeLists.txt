@@ -10,11 +10,13 @@ target_sources(dtwc++
   Problem_IO.cpp
   initialisation.cpp
   scores.cpp
+  algorithms/fast_pam.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
   dtwc.hpp
   initialisation.hpp
+  algorithms/fast_pam.hpp
   parallelisation.hpp
   Problem.hpp
   scores.hpp
