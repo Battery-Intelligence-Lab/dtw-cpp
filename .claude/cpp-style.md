@@ -98,8 +98,8 @@ Use `namespace fs = std::filesystem;` at namespace scope.
 - Maximum ~6 explicit instantiations (3 constraints x 2 scalar types)
 
 ### ScratchMatrix Pattern
-- Use `ScratchMatrix<T>` (row-major vector + stride) instead of `arma::Mat` for scratch buffers
-- Row-major layout ensures contiguous access in DTW inner loop
+- Use `ScratchMatrix<T>` (column-major vector + stride) instead of `arma::Mat` for scratch buffers
+- Column-major layout ensures contiguous access in DTW inner loop (matches Armadillo convention)
 - Use `thread_local ScratchMatrix<T>` for per-thread scratch space
 - For banded DTW, use rolling buffer of width `2*band+1` (not full matrix)
 
