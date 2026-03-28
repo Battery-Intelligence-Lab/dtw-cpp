@@ -14,9 +14,11 @@ target_sources(dtwc++
   algorithms/fast_pam.cpp
   core/pruned_distance_matrix.cpp
   PUBLIC
+  # Top-level headers
   Data.hpp
   DataLoader.hpp
   dtwc.hpp
+  fileOperations.hpp
   initialisation.hpp
   parallelisation.hpp
   Problem.hpp
@@ -24,18 +26,29 @@ target_sources(dtwc++
   settings.hpp
   timing.hpp
   utility.hpp
+  # DTW implementations
   warping.hpp
   warping_ddtw.hpp
   warping_wdtw.hpp
   warping_adtw.hpp
   soft_dtw.hpp
-  fileOperations.hpp
-  DataLoader.hpp
+  # Core types
+  core/clustering_result.hpp
+  core/distance_matrix.hpp
+  core/distance_metric.hpp
+  core/dtw.hpp
+  core/dtw_options.hpp
   core/lower_bounds.hpp
+  core/lower_bound_impl.hpp
   core/pruned_distance_matrix.hpp
+  core/scratch_matrix.hpp
+  core/time_series.hpp
+  core/z_normalize.hpp
+  # Algorithm headers
+  algorithms/fast_pam.hpp
 )
 
-target_include_directories(dtwc++ PUBLIC . ${range-v3_INCLUDE_DIRS})
+target_include_directories(dtwc++ PUBLIC .)
 
 target_link_libraries(dtwc++
   PRIVATE
@@ -48,6 +61,6 @@ target_link_libraries(dtwc++
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)
-  message("OpenMP is found!")
+  message(STATUS "OpenMP found")
   target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
 endif()

@@ -18,6 +18,7 @@
 #include "settings.hpp"       // for data_t, resultsPath
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
+#include "core/dtw_options.hpp" // for DTWVariant
 
 #include <cstddef>     // for size_t
 #include <filesystem>  // for operator/, path
@@ -48,12 +49,18 @@ public:
   using distMat_t = core::DenseDistanceMatrix;
   using path_t = std::decay_t<decltype(settings::resultsPath)>;
 
+  /// DTW distance function type: computes distance between two series.
+  using dtw_fn_t = std::function<data_t(const std::vector<data_t> &, const std::vector<data_t> &)>;
+
 private:
   int Nc{ 1 };                                      /*!< Number of clusters. */
   distMat_t distMat;                                /*!< Distance matrix. */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
+  dtw_fn_t dtw_fn_;                                 /*!< DTW distance function (set by rebind_dtw_fn). */
 
   bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
+
+  void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
 
   // Private functions:
   std::pair<int, double> cluster_by_kMedoidsLloyd_single(int rep);
@@ -67,6 +74,7 @@ public:
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
+  core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
@@ -78,12 +86,12 @@ public:
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
-  Problem() = default;
-  Problem(std::string_view name_) : name{ name_ } {}
+  Problem() { rebind_dtw_fn(); }
+  Problem(std::string_view name_) : name{ name_ } { rebind_dtw_fn(); }
   Problem(std::string_view name_, DataLoader &loader_)
     : name{ name_ }, data{ loader_.load() }
   {
-    refreshDistanceMatrix();
+    refreshDistanceMatrix(); // also calls rebind_dtw_fn()
   }
 
   auto size() const { return data.size(); }
@@ -110,6 +118,10 @@ public:
     data = data_;
     refreshDistanceMatrix();
   }
+
+  /// Set DTW variant and rebind the distance function.
+  void set_variant(core::DTWVariant v);
+  void set_variant(core::DTWVariantParams params);
 
   data_t maxDistance() const { return distMat.max(); }
   data_t distByInd(int i, int j);

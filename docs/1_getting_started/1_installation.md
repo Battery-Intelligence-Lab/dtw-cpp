@@ -24,11 +24,11 @@ The following dependencies need to be manually installed by the user if they do 
 - Gurobi (optional, if not installed then HiGHS will be used as the MIP solver)
 - [OpenMP](https://www.openmp.org/) this should come with GCC and MSVC libraries; however to install it with Clang, you may install `libomp-xx-dev` where `xx` is your clang version. 
 
-The following dependencies are installed by the CPM package manager: 
-- [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi. 
+The following dependencies are installed by the CPM package manager:
+- [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi.
 - [CLI11](https://github.com/CLIUtils/CLI11) (for command line interface)
 - [Catch2](https://github.com/catchorg/Catch2/) (for testing)
-- [Armadillo](https://arma.sourceforge.net/) (for matrix reading)
+- [RapidCSV](https://github.com/d99kris/rapidcsv) (for CSV/TSV parsing)
 
 ### CMake and compilers
 

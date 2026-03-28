@@ -21,7 +21,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # -Wpedantic being enabled and -std=c++20 and -std=gnu++20 for example
 # when compiling with PCH enabled
 set(CMAKE_CXX_EXTENSIONS OFF)
-# Only set the cxx_standard if it is not set by someone else
+# Set C++ standard globally — needed for OBJECT libraries (mip-solvers) that
+# don't transitively inherit target_compile_features from the main target.
 set(CMAKE_CXX_STANDARD 17)
 #set(CMAKE_VERBOSE_MAKEFILE ON) -> activate if compilation command for every file is needed.
  

@@ -6,8 +6,11 @@ cmake_minimum_required(VERSION 3.21)
 # so that it works well with tools like CPM or other
 # manual dependency management
 
-project(DTWC++ VERSION "1.0.0"
-  DESCRIPTION "A C++ library for fast Dynamic Time Wrapping Clustering"
+# Read version from single source of truth
+file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DTWC_VERSION_STRING)
+
+project(DTWC++ VERSION "${DTWC_VERSION_STRING}"
+  DESCRIPTION "A C++ library for fast Dynamic Time Warping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
 

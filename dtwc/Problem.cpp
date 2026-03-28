@@ -16,6 +16,9 @@
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "warping.hpp"         // for dtwBanded, dtwFull
+#include "warping_ddtw.hpp"    // for ddtwBanded
+#include "warping_wdtw.hpp"    // for wdtwBanded
+#include "warping_adtw.hpp"    // for adtwBanded
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 
@@ -109,6 +112,48 @@ void Problem::refreshDistanceMatrix()
 {
   distMat.resize(size());
   is_distMat_filled = false;
+  rebind_dtw_fn();
+}
+
+/**
+ * @brief Rebind the DTW distance function based on current variant_params and band.
+ */
+void Problem::rebind_dtw_fn()
+{
+  using namespace core;
+  switch (variant_params.variant) {
+  case DTWVariant::DDTW:
+    dtw_fn_ = [b = band](const auto &x, const auto &y) { return ddtwBanded(x, y, b); };
+    break;
+  case DTWVariant::WDTW: {
+    const auto g = static_cast<data_t>(variant_params.wdtw_g);
+    dtw_fn_ = [b = band, g](const auto &x, const auto &y) { return wdtwBanded(x, y, b, g); };
+    break;
+  }
+  case DTWVariant::ADTW: {
+    const auto p = static_cast<data_t>(variant_params.adtw_penalty);
+    dtw_fn_ = [b = band, p](const auto &x, const auto &y) { return adtwBanded(x, y, b, p); };
+    break;
+  }
+  case DTWVariant::Standard:
+  default:
+    dtw_fn_ = [b = band](const auto &x, const auto &y) { return dtwBanded(x, y, b); };
+    break;
+  }
+}
+
+void Problem::set_variant(core::DTWVariant v)
+{
+  variant_params.variant = v;
+  rebind_dtw_fn();
+  refreshDistanceMatrix();
+}
+
+void Problem::set_variant(core::DTWVariantParams params)
+{
+  variant_params = params;
+  rebind_dtw_fn();
+  refreshDistanceMatrix();
 }
 
 /**
@@ -118,16 +163,12 @@ void Problem::refreshDistanceMatrix()
  *@return The distance between the two points.
  *
  *@note Thread safety: safe to call from multiple threads when the distance matrix
- *      is already filled (read-only). When called from parallel contexts with
- *      unfilled entries, concurrent calls for the SAME (i,j) pair may both compute
- *      DTW (benign duplicate work) and race on the write. On x86-64 this is safe
- *      (aligned double writes are atomic), but technically UB under C++. Prefer
- *      calling fillDistanceMatrix() first to avoid this.
+ *      is already filled (read-only). Prefer calling fillDistanceMatrix() first.
  */
 double Problem::distByInd(int i, int j)
 {
   if (!distMat.is_computed(i, j)) {
-    const double d = dtwBanded(p_vec(i), p_vec(j), band);
+    const double d = dtw_fn_(p_vec(i), p_vec(j));
     distMat.set(i, j, d);
   }
 
