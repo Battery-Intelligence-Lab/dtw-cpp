@@ -6,81 +6,54 @@ nav_order: 6
 
 # Distance Metrics
 
-The DTW algorithm requires a **pointwise distance metric** to compute the cost of aligning element $$x_i$$ of one time series with element $$y_j$$ of another. The choice of metric affects both the meaning of the resulting DTW distance and the applicability of lower-bound pruning techniques.
+DTW-C++ supports multiple pointwise distance metrics for use within the DTW computation. The pointwise metric determines how the cost of aligning two individual time series points is calculated.
 
-DTW-C++ provides several built-in metrics in the `dtwc::core` namespace.
+## Available Metrics
 
-## L1 (Manhattan)
+| Metric | Formula | Description |
+|--------|---------|-------------|
+| L1 (default) | $$\|x_i - y_j\|$$ | Absolute difference. Robust to outliers. |
+| L2 | $$\sqrt{(x_i - y_j)^2}$$ | Euclidean distance between points. |
+| Squared L2 | $$(x_i - y_j)^2$$ | Squared Euclidean. Emphasizes large differences. |
+| Huber | See below | Quadratic for small errors, linear for large. |
 
-The L1 metric computes the absolute difference between two values:
+### Huber Metric
 
-$$
-d_{\text{L1}}(a, b) = |a - b|
-$$
-
-This is the default metric used by DTW-C++. It is robust to outliers compared to squared metrics and is compatible with LB_Keogh lower-bound pruning.
-
-**Implementation:** `L1Metric`
-
-## Squared L2
-
-The squared L2 metric computes the squared difference:
+The Huber metric provides a compromise between L1 and L2:
 
 $$
-d_{\text{sqL2}}(a, b) = (a - b)^2
+d_\delta(x_i, y_j) = \begin{cases}
+\frac{1}{2}(x_i - y_j)^2 & \text{if } |x_i - y_j| \le \delta \\
+\delta \left(|x_i - y_j| - \frac{1}{2}\delta\right) & \text{otherwise}
+\end{cases}
 $$
 
-This is the metric used in the classical DTW formulation. It penalises large deviations more heavily than L1 and is compatible with LB_Keogh lower-bound pruning.
+where $$\delta$$ is the Huber threshold parameter.
 
-Using squared L2 rather than L2 avoids computing a square root for every cell in the cost matrix, which is more efficient. When comparing DTW distances computed with this metric, note that the resulting distance is the sum of squared differences along the warping path (not the Euclidean distance).
+## Lower Bound Pruning
 
-**Implementation:** `SquaredL2Metric`
+Lower bounds allow skipping full DTW computations when the lower bound already exceeds a known upper bound, significantly accelerating distance matrix construction.
 
-## L2 (Euclidean)
+### LB_Keogh
 
-The L2 metric computes the Euclidean distance between two values:
+LB_Keogh computes a lower bound on the DTW distance by constructing an envelope around one series and measuring how much the other series falls outside that envelope. It requires a Sakoe-Chiba band constraint.
 
-$$
-d_{\text{L2}}(a, b) = \sqrt{(a - b)^2} = |a - b|
-$$
+#### LB_Keogh Compatibility by Metric
 
-For scalar (univariate) time series, the L2 metric is equivalent to the L1 metric. The L2 metric becomes distinct from L1 in the multivariate case, where the per-cell cost is the Euclidean norm of the difference vector. For univariate series, prefer `SquaredL2Metric` for efficiency.
+| Metric | LB_Keogh Supported | Notes |
+|--------|-------------------|-------|
+| L1 | Yes | Envelope-based bound holds for L1. |
+| L2 | Yes | Envelope-based bound holds for L2. |
+| Squared L2 | Yes | Envelope-based bound holds for squared L2. |
+| Huber | No | The Huber metric does not satisfy the envelope-based lower bound property in general. Because the Huber function transitions between quadratic and linear regimes depending on the magnitude of each pointwise difference, the envelope-based bound can overestimate the true DTW cost in the linear regime, violating the lower bound guarantee. |
 
-**Implementation:** `L2Metric`
+### LB_Kim
 
-## LB_Keogh compatibility
+LB_Kim is a simpler O(1) lower bound based on comparing the first, last, minimum, and maximum values of the two series. It is metric-independent and always valid, but typically provides a looser bound than LB_Keogh.
 
-[LB_Keogh](https://dl.acm.org/doi/10.5555/1367985.1367993) is a lower-bound technique that can prune unnecessary DTW computations when building the distance matrix. If the lower bound between two series exceeds a known best distance, the full DTW computation can be skipped.
+## Choosing a Metric
 
-Not all metrics are compatible with LB_Keogh pruning. The following table summarises compatibility:
-
-| Metric | LB_Keogh compatible | Notes |
-|--------|---------------------|-------|
-| L1 (Manhattan) | Yes | Default metric |
-| Squared L2 | Yes | Classical DTW metric |
-| L2 (Euclidean) | Yes | Equivalent to L1 for univariate |
-| Cosine (planned) | No | Requires vector normalisation |
-| Huber (planned) | No | Non-quadratic penalty |
-
-Compatibility is encoded at compile time via the `lb_keogh_valid<Metric>` trait, allowing the distance matrix builder to automatically enable or disable LB_Keogh pruning based on the chosen metric.
-
-## Choosing a metric
-
-* **For most applications**, use `SquaredL2Metric` (the classical DTW choice) or `L1Metric` (more robust to outliers).
-* **When LB_Keogh pruning is important** (large datasets), ensure the chosen metric is compatible.
-* **When outlier robustness matters**, prefer L1 over squared L2, as the squared term amplifies large deviations.
-
-## Adding a custom metric
-
-A metric is any callable that satisfies:
-
-```cpp
-T operator()(T a, T b) const;
-```
-
-To add a new metric, define a struct with this call operator. If the metric is compatible with LB_Keogh, specialise the `lb_keogh_valid` trait:
-
-```cpp
-template <>
-inline constexpr bool lb_keogh_valid<MyMetric> = true;
-```
+- **L1 (default):** Good general-purpose choice. More robust to outliers than L2 or squared L2.
+- **L2:** Standard Euclidean pointwise distance. Common in the literature.
+- **Squared L2:** Penalizes large misalignments more heavily. Useful when large deviations are especially undesirable.
+- **Huber:** Best when data contains occasional outliers but you still want sensitivity to moderate differences. Note that LB_Keogh pruning is not available with the Huber metric.

@@ -6,77 +6,47 @@ nav_order: 5
 
 # Clustering Algorithms
 
-DTW-C++ provides several clustering algorithms that operate on a pairwise distance matrix $$D^{p \times p}$$, where $$d_{i,j}$$ is the DTW distance between time series $$i$$ and $$j$$. All algorithms produce $$k$$ clusters, each represented by a **medoid** -- an actual time series from the dataset that minimises the total within-cluster dissimilarity.
+DTW-C++ implements several clustering algorithms for partitioning time series into groups based on DTW distance similarity.
 
-## Lloyd k-medoids iteration
+## k-Medoids (PAM)
 
-The Lloyd-style k-medoids algorithm (sometimes called "alternating" k-medoids) is the simplest iterative approach. It alternates between two steps:
+The Partitioning Around Medoids (PAM) algorithm is the default clustering method in DTW-C++. Unlike k-means, which uses computed centroids, k-medoids selects actual data points (medoids) as cluster representatives. This is particularly well-suited for DTW-based clustering because computing a meaningful "average" time series under DTW is non-trivial.
 
-1. **Assignment step.** Assign each time series to the cluster whose medoid is nearest:
+### Algorithm Overview
 
-   $$
-   c(i) = \arg\min_{m \in \mathcal{M}} \; d_{i,m}
-   $$
+PAM consists of two phases:
 
-   where $$\mathcal{M}$$ is the current set of $$k$$ medoids.
+1. **BUILD phase:** Select initial medoids (either randomly or via k++ initialization).
+2. **SWAP phase:** Iteratively improve the clustering by considering swapping each medoid with each non-medoid and accepting swaps that reduce total cost.
 
-2. **Update step.** Within each cluster, select the time series that minimises the total distance to all other members:
+### Complexity
 
-   $$
-   m^* = \arg\min_{j \in C_\ell} \sum_{i \in C_\ell} d_{i,j}
-   $$
+- **Assignment step:** $$O(Nk)$$ per iteration, where $$N$$ is the number of time series and $$k$$ is the number of clusters. Each point is compared to all $$k$$ medoids.
+- **Update (swap) step:** $$O(N^2)$$ per iteration for evaluating all candidate swaps.
 
-   where $$C_\ell$$ is the set of time series assigned to cluster $$\ell$$.
+### FastPAM
 
-These two steps repeat until the medoids no longer change or a maximum number of iterations is reached.
+DTW-C++ aims to incorporate the FastPAM optimization, which reduces the constant factor of the swap evaluation.
 
-**Complexity.** Each iteration costs $$O(N^2 k)$$ for the assignment step and $$O(N^2)$$ for the update step, where $$N = p$$ is the number of time series.
+FastPAM1 achieves $$O(N^2)$$ per iteration by evaluating all swap candidates simultaneously. The further optimization to $$O(Nk)$$ per swap (FastPAM2) requires a shared accumulator across medoid candidates, which is not yet implemented in the current codebase -- the current implementation is $$O(N^2 k)$$ per iteration.
 
-**Limitations.** Lloyd iteration is simple and fast per iteration, but it is more susceptible to getting stuck in local optima compared to PAM. The quality of the final clustering depends heavily on the initial medoid selection (random or k++ initialisation).
+> **Reference:** Schubert, E. and Rousseeuw, P. J. (2021). "Fast and Eager k-Medoids Clustering: O(k) Runtime Improvement of the PAM, CLARA, and CLARANS Algorithms." *Journal of Machine Learning Research (JMLR)*, 22(1), 4653-4688.
 
-In DTW-C++, this algorithm is implemented as `cluster_by_kMedoidsLloyd`.
+## Lloyd's Algorithm (k-Means style)
 
-## PAM SWAP (FastPAM)
+Lloyd's algorithm is the iterative assignment-update approach commonly associated with k-means clustering. When adapted for k-medoids:
 
-The Partitioning Around Medoids (PAM) algorithm provides higher-quality clusterings than Lloyd iteration by considering all possible swaps between current medoids and non-medoid points. DTW-C++ implements the **FastPAM** variant from Schubert & Rousseeuw (2021), which dramatically reduces the computational cost of the original PAM algorithm.
+1. **Assignment:** Assign each time series to its nearest medoid. Complexity: $$O(Nk)$$.
+2. **Update:** For each cluster, find the point that minimizes total within-cluster distance. Complexity: $$O(N^2)$$ in the worst case (evaluating all points as potential medoids within each cluster).
 
-### Algorithm overview
+## Mixed-Integer Programming (MIP)
 
-For each candidate swap of medoid $$m \in \mathcal{M}$$ with non-medoid $$x \notin \mathcal{M}$$, FastPAM computes the change in total cost $$\Delta T_{mx}$$ using nearest and second-nearest distance tracking:
+DTW-C++ also supports solving the k-medoids problem exactly via mixed-integer programming formulations using Gurobi or HiGHS solvers. This approach finds the globally optimal solution but is computationally expensive for large datasets.
 
-* For each point $$o$$ in the dataset, maintain:
-  - $$d_{\text{nearest}}(o)$$: distance to the closest medoid
-  - $$d_{\text{second}}(o)$$: distance to the second-closest medoid
+## Future Algorithms
 
-* The cost change of swapping $$m$$ for $$x$$ is computed by examining how each point $$o$$ is affected:
-  - If $$o$$ is currently assigned to $$m$$ (the medoid being removed), it will either move to $$x$$ or to its second-nearest medoid.
-  - If $$o$$ is not assigned to $$m$$, it may switch to $$x$$ if $$x$$ is closer.
+The following algorithms are planned for future implementation:
 
-The swap with the most negative $$\Delta T_{mx}$$ is performed. The algorithm terminates when no swap produces a negative cost change.
-
-**Complexity.** Each swap evaluation costs $$O(N k)$$ rather than $$O(N^2)$$ as in the original PAM, thanks to the nearest/second-nearest caching. The total number of candidate swaps per iteration is $$O(k(N-k))$$.
-
-**Advantages over Lloyd iteration:**
-* Converges to better local optima because it evaluates the global effect of each swap
-* More robust to initialisation
-* Deterministic convergence (no oscillation)
-
-In DTW-C++, this algorithm is available as the `fast_pam()` free function.
-
-**Reference:** Schubert, E. & Rousseeuw, P.J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804.
-
-## CLARA (planned)
-
-CLARA (Clustering LARge Applications) is a sampling-based extension of PAM designed for large datasets where computing the full $$N \times N$$ distance matrix is impractical.
-
-The algorithm works as follows:
-
-1. Draw a random sample $$S$$ of size $$s \ll N$$ from the dataset.
-2. Run PAM on the sample to find $$k$$ medoids.
-3. Assign all remaining points to their nearest sample medoid.
-4. Compute the total cost over the full dataset.
-5. Repeat steps 1--4 multiple times and keep the result with the lowest total cost.
-
-**Complexity.** Each iteration costs $$O(s^2 k)$$ for PAM on the sample plus $$O(Nk)$$ for the full assignment, making CLARA suitable for datasets with $$N$$ in the tens of thousands or more.
-
-CLARA is planned for a future release of DTW-C++.
+- **CLARA:** Clustering Large Applications -- applies PAM to random subsamples for scalability.
+- **CLARANS:** Randomized neighborhood search variant of PAM.
+- **Hierarchical clustering:** Agglomerative clustering with various linkage criteria (single, complete, average, Ward).

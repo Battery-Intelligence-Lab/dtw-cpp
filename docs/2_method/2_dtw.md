@@ -10,7 +10,7 @@ nav_order: 2
 
 ## The DTW algorithm
 
-Consider a time series to be a vector of some arbitrary length. Consider that we have $$p$$ such vectors in total, each possibly differing in length. To find a subset of $$k$$ clusters from within the total set of $$p$$ vectors, where each cluster contains similar vectors, we must first make $$\frac{1}{2} {p \choose 2}$$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance between a pair of vectors. Consider two time series $$x$$ and $$y$$ of differing lengths $$n$$ and $$m$$ respectively,
+Consider a time series to be a vector of some arbitrary length. Consider that we have $$p$$ such vectors in total, each possibly differing in length. To find a subset of $$k$$ clusters from within the total set of $$p$$ vectors, where each cluster contains similar vectors, we must first make $${p \choose 2} = \frac{p(p-1)}{2}$$ pairwise comparisons between all vectors within the total set and find the `similarity' between each pair. In this case, the similarity is defined as the DTW distance between a pair of vectors. Consider two time series $$x$$ and $$y$$ of differing lengths $$n$$ and $$m$$ respectively,
 
 $$
 x=(x_1, x_2, ..., x_n)
@@ -20,7 +20,7 @@ $$
 y=(y_1, y_2, ..., y_m).
 $$
 
-The DTW distance is the sum of the Euclidean distance between each point and its matched point(s) in the other vector. The following constraints must be met: 
+The DTW distance is the sum of the pointwise distance between each point and its matched point(s) in the other vector. In DTW-C++, the default pointwise metric is the absolute difference (L1 metric), i.e., $$|x_i - y_j|$$. The following constraints must be met:
 
 1. The first and last elements of each series must be matched.
 2. Only unidirectional forward movement through relative time is allowed, i.e., if $$x_1$$ is mapped to $$y_2$$ then $$x_2$$ may not be mapped to
@@ -30,12 +30,14 @@ The DTW distance is the sum of the Euclidean distance between each point and its
 Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves each of them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in DTW-C++, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an $$n$$ by $$m$$ matrix $$C^{n\times m}$$ is calculated, where each element represents the cumulative cost between series up to the points $$x_i$$ and $$y_j$$:
 
 $$
-c_{i,j} = (x_i-y_j)^2+\min \begin{cases}
+c_{i,j} = |x_i-y_j|+\min \begin{cases}
     c_{i-1,j-1}\\
     c_{i-1,j}\\
     c_{i,j-1}
     \end{cases}
 $$
+
+> **Note:** The formula above uses the absolute difference (L1 metric), which is the default in DTW-C++. Some literature uses the squared difference $$(x_i - y_j)^2$$ (squared L2 metric) instead. The choice of pointwise metric affects the resulting DTW distance values but not the algorithm structure.
 
 The final element $$c_{n,m}$$ is then the total cost, $$C_{x,y}$$, which provides the comparison metric between the two series $$x$$ and $$y$$. Below is an example of this cost matrix $$C$$ and the warping path through it.
 
@@ -82,5 +84,17 @@ Both functions handle the edge case of constant series ($$\sigma_x = 0$$) by ret
 
 ## Warping Window
 
-For longer time series it is possible to speed up the calculation by using a 'warping window'. This works by restricting which data elements on one seies can be mapped to another based on their proximity. For example, if one has two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$x_{1}$$ can only by mapped to $$y_{1}-y_{11}$$. Using a warping window of 1 results in clustering with Euclidean distances, forcing one-to-one mapping with no shifting allowed. The stricter the wapring window, the greater the increase in speed. However, the data being used must be carefully considered to assertain if this will negatively impact the results. Readers are referred [Sakoe et al., 1978](https://ieeexplore.ieee.org/abstract/document/1163055) for detailed information on the warping window. 
+For longer time series it is possible to speed up the calculation by using a 'warping window'. This works by restricting which data elements on one series can be mapped to another based on their proximity. For example, if one has two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$x_{1}$$ can only be mapped to $$y_{1}-y_{11}$$. A warping window (band) of $$w$$ allows a time shift of up to $$w$$ positions; setting $$w = 0$$ forces strictly diagonal alignment (equivalent to pointwise distance for equal-length series), while $$w = 1$$ still permits a shift of one position. The stricter the warping window, the greater the increase in speed. However, the data being used must be carefully considered to ascertain if this will negatively impact the results. Readers are referred to [Sakoe et al., 1978](https://ieeexplore.ieee.org/abstract/document/1163055) for detailed information on the warping window.
+
+## z-Normalization
+
+When comparing time series of different scales or offsets, it is common practice to z-normalize each series before computing DTW distances. z-normalization transforms each series to have zero mean and unit standard deviation:
+
+$$
+\hat{x}_i = \frac{x_i - \mu_x}{\sigma_x}
+$$
+
+where $$\mu_x$$ is the mean and $$\sigma_x$$ is the standard deviation of the series $$x$$.
+
+> **Note:** When z-normalization is applied, DTW-C++ uses the population standard deviation (dividing by $$N$$, not $$N-1$$). This is consistent with the UCR Suite and other DTW implementations in the literature, and is the appropriate choice when normalizing fixed-length time series rather than estimating a population parameter from a sample.
 

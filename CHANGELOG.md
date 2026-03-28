@@ -3,76 +3,24 @@
 [TOC]
 
 This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
+
+
 <br/><br/>
 # Unreleased
 
-## Phase 1: Architecture
-* Added `dtwc::core` namespace with new foundational types:
-  - `ScratchMatrix<T>` — row-major scratch buffer replacing `arma::Mat` in hot paths
-  - `TimeSeriesView<T>` — non-owning time series view (pointer + length)
-  - `TimeSeries<T>` — owning time series container
-  - `DenseDistanceMatrix` — flat-array distance matrix without virtual dispatch
-  - `ClusteringResult` — pure data struct for clustering output
-  - `DTWOptions` — configuration struct for DTW computation
-  - `L1Metric`, `SquaredL2Metric`, `L2Metric` — pointwise distance callables
-* Added `z_normalize()` and `z_normalized()` preprocessing functions
-* Added metric x lower-bound compatibility matrix (`lb_keogh_valid<Metric>`)
-* Added unified `dtw_distance()` API wrapping existing DTW implementations
-* Added FastPAM algorithm (Schubert & Rousseeuw 2021) as `fast_pam()` free function
-* Renamed `cluster_by_kMedoidsLloyd` documented as Lloyd iteration (not PAM)
+## Documentation
+* Fixed DTW formula in `docs/2_method/2_dtw.md`: changed from squared L2 `(x_i - y_j)^2` to L1 `|x_i - y_j|` to match actual code implementation.
+* Fixed pairwise comparison count: corrected from `1/2 * C(p,2)` to `C(p,2) = p(p-1)/2`.
+* Fixed warping window description: band=1 allows a shift of 1 (not equivalent to Euclidean distance); band=0 forces diagonal alignment.
+* Fixed spelling errors: "seies" -> "series", "wapring" -> "warping", "assertain" -> "ascertain".
+* Added note clarifying that the default pointwise metric is L1 (absolute difference).
+* Added z-normalization section with note that population stddev (N, not N-1) is used.
+* Added `docs/2_method/5_algorithms.md`: clustering algorithm documentation with corrected FastPAM citation (JMLR 22(1), 4653-4688) and accurate complexity descriptions.
+* Added `docs/2_method/6_metrics.md`: distance metrics documentation with LB_Keogh compatibility table and corrected Huber LB_Keogh reasoning.
 
 ## New features
-* Added `rapidcsv` library for robust multi-column CSV parsing.
-* New functions in fileOperations.hpp:
-  - `readCSV()` - Read multi-column CSV files into 2D vectors
-  - `readTimeSeriesCSV()` - Read CSV files where each row is a time series
-  - `readCSVColumn()` - Read a single column from a CSV file
-
-## Notable Bug-fixes
-* **CRITICAL**: Fixed `readFile()` in fileOperations.hpp where `std::runtime_error` was constructed but not thrown, causing silent failures when files could not be opened.
-* **CRITICAL**: Fixed `dtwBanded` allocating a full O(N*M) matrix even for banded DTW; replaced with O(N) rolling buffer, reducing memory from ~512 MB to ~64 KB for 8K-length series.
-* Fixed `dtwFull_L` using `.at()` bounds-checked access in the hot inner loop; replaced with `operator[]`.
-* Fixed `dtwBanded` template default type from `float` to `double` to match `data_t = double`.
-* Fixed `settings.hpp` `static` RNG in header (ODR violation); changed to `inline`.
-* Fixed Davies-Bouldin Index which always returned 0 (computed medoid-to-self distance = 0 instead of average within-cluster scatter).
-* Fixed `load_batch_file()` to throw proper `std::runtime_error` instead of throwing an integer (`throw 2`).
-* Fixed signed/unsigned mismatch in parallelisation.hpp where `int` loop variable was compared against `size_t` bound.
-* Fixed `numMaxParallelWorkers` parameter in `run()` function which was previously ignored; now properly sets OpenMP thread count.
-
-## Bug-fixes (CMake)
-* Fixed `option()` syntax in root CMakeLists.txt — added missing description strings.
-* Changed `DTWC_ENABLE_GUROBI` and `DTWC_ENABLE_HIGHS` from `set()` to `option()` so they can be overridden by parent projects.
-* Removed unconditional `enable_testing()` calls; `include(CTest)` handles this internally.
-* Wrapped standalone executables (`dtwc_main`, `dtwc_cl`) in `if(PROJECT_IS_TOP_LEVEL)` guard so the project can be consumed as a subdirectory without building executables.
-* Fixed misleading build-type status message (said "RelWithDebInfo" but actually set "Release").
-* Changed runtime output directories from `CMAKE_CURRENT_SOURCE_DIR` to `CMAKE_BINARY_DIR` to prevent source-tree pollution.
-* Updated Armadillo dependency from 12.6.x to 14.2.x branch, and added `if(NOT TARGET armadillo)` guard.
-* Added `CONFIGURE_DEPENDS` to test source file glob for automatic re-globbing on file changes.
-
-## Improvements
-* OpenMP is now properly optional with `#ifdef _OPENMP` guards and serial fallback.
-* Added bounds checking for loop indices to prevent undefined behavior with very large iteration counts.
-* Added unit tests for exception throwing on missing files.
-* Removed compile-time path dependencies (`DTWC_ROOT_FOLDER`, `CURRENT_ROOT_FOLDER`). Paths now default to current working directory and can be configured at runtime via `Problem::output_folder` or explicit `DataLoader` paths.
-
-## API changes
-* **New**: Added `settings::paths` namespace with runtime-configurable paths:
-  - `settings::paths::dataPath` - Data directory (default: `./data`)
-  - `settings::paths::resultsPath` - Results directory (default: `./results/`)
-  - `settings::paths::setDataPath(path)` - Set data path at runtime
-  - `settings::paths::setResultsPath(path)` - Set results path at runtime
-* **Deprecated**: `settings::resultsPath`, `settings::dataPath`, `settings::dtwc_dataPath` are now deprecated aliases pointing to the new `settings::paths::` variables.
-
-## Dependency updates
-* Added `rapidcsv` v8.84 (BSD 3-Clause license) for CSV parsing.
-
-## Developer updates
-* Added cpp-style.md documenting C++ coding conventions.
-* Added python-style.md documenting Python coding conventions.
-* Added TODO.md for development task tracking.
-* Removed `DTWC_ROOT_FOLDER` and `CURRENT_ROOT_FOLDER` CMake cache variables and compile definitions.
-* Added Google Benchmark-based baseline microbenchmarks for DTW distance functions. Enable with `-DDTWC_BUILD_BENCHMARK=ON`.
-* Added LB_Keogh and LB_Kim lower bound functions for DTW pruning (`dtwc/core/lower_bound_impl.hpp`).
+* Added roofline-aware microbenchmark (`benchmarks/bench_dtw_baseline.cpp`) measuring cells/sec, FLOP/sec, and bytes/sec for DTW computation at various series lengths.
+* Added Google Benchmark integration for structured performance measurement.
 
 <br/><br/>
 # DTWC v1.0.0
