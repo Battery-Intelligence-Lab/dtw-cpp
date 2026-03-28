@@ -70,8 +70,8 @@ inline void write_data_to_folder(std::string folder_name, const std::vector<std:
   std::string extension{ ".csv" };
 
   if (folder_name == "TSV") {
-    char delimiter{ '\t' };
-    std::string extension{ ".tsv" };
+    delimiter = '\t';
+    extension = ".tsv";
   }
 
   for (int i = 0; i < random_data.size(); ++i) {

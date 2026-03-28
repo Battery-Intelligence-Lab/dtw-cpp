@@ -57,6 +57,58 @@ TEST_CASE("dtwFull_L_test", "[dtwFull_L]")
   REQUIRE(dtwFull_L<data_t>(empty, x) > 1e10);
 }
 
+TEST_CASE("[Phase2] dtwFull_L early abandon returns maxValue when threshold exceeded", "[dtwFull_L][early_abandon]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 100, 200, 300 };
+
+  // The true DTW distance is large; set a tiny threshold to trigger early abandon
+  constexpr data_t threshold = 1.0;
+  auto result = dtwFull_L<data_t>(x, y, threshold);
+  REQUIRE(result > 1e10); // Should return maxValue
+}
+
+TEST_CASE("[Phase2] dtwFull_L early abandon returns normal result when threshold is large", "[dtwFull_L][early_abandon]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  // Large threshold should not trigger early abandon
+  constexpr data_t threshold = 1000.0;
+  REQUIRE_THAT(dtwFull_L<data_t>(x, y, threshold), WithinAbs(ground_truth, 1e-15));
+}
+
+TEST_CASE("[Phase2] dtwFull_L early abandon negative threshold disables feature", "[dtwFull_L][early_abandon]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  // Negative threshold (default) means no early abandoning
+  REQUIRE_THAT(dtwFull_L<data_t>(x, y, static_cast<data_t>(-1)), WithinAbs(ground_truth, 1e-15));
+}
+
+TEST_CASE("[Phase2] dtwFull_L early abandon exact threshold boundary", "[dtwFull_L][early_abandon]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  // Threshold equal to the true DTW distance should return the distance (not abandoned)
+  REQUIRE_THAT(dtwFull_L<data_t>(x, y, static_cast<data_t>(ground_truth)), WithinAbs(ground_truth, 1e-15));
+}
+
+TEST_CASE("[Phase2] dtwFull_L default parameter backward compatibility", "[dtwFull_L][early_abandon]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  // Calling without the early_abandon parameter should work exactly as before
+  REQUIRE_THAT(dtwFull_L<data_t>(x, y), WithinAbs(ground_truth, 1e-15));
+}
+
 TEST_CASE("dtwBanded_test", "[dtwBanded]")
 {
   using data_t = double;

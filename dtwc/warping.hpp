@@ -80,7 +80,8 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
  * @return The dynamic time warping distance.
  */
 template <typename data_t>
-data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
+data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                 data_t early_abandon = -1)
 {
   if (&x == &y) return 0; // If they are the same data then distance is 0.
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
@@ -113,6 +114,14 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
       diag = short_side[i];
       short_side[i] = next;
+    }
+
+    // Early abandon: if all values in the current row exceed the threshold,
+    // the final DTW distance cannot be lower than the threshold.
+    if (early_abandon >= 0) {
+      data_t row_min = *std::min_element(short_side.begin(),
+                                          short_side.begin() + static_cast<std::ptrdiff_t>(m_short));
+      if (row_min > early_abandon) return maxValue;
     }
   }
 
