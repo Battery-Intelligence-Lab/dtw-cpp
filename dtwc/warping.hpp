@@ -20,7 +20,7 @@
 #include <vector>    // for vector
 #include <utility>   // for pair
 
-#include <armadillo>
+#include "core/scratch_matrix.hpp"
 
 namespace dtwc {
 
@@ -35,7 +35,7 @@ namespace dtwc {
 template <typename data_t>
 data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 {
-  thread_local arma::Mat<data_t> C;
+  thread_local core::ScratchMatrix<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   if (&x == &y) return 0; // If they are the same data then distance is 0.

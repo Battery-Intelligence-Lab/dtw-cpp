@@ -107,8 +107,7 @@ void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
  */
 void Problem::refreshDistanceMatrix()
 {
-  distMat.set_size(size(), size());
-  distMat.fill(-1);
+  distMat.resize(size());
   is_distMat_filled = false;
 }
 
@@ -120,10 +119,12 @@ void Problem::refreshDistanceMatrix()
  */
 double Problem::distByInd(int i, int j)
 {
-  if (distMat(i, j) < 0)
-    distMat(j, i) = distMat(i, j) = dtwBanded(p_vec(i), p_vec(j), band);
+  if (!distMat.is_computed(i, j)) {
+    const double d = dtwBanded(p_vec(i), p_vec(j), band);
+    distMat.set(i, j, d);
+  }
 
-  return distMat(i, j);
+  return distMat.get(i, j);
 }
 
 /**

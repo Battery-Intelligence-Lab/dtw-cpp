@@ -186,4 +186,83 @@ T lb_kim(const std::vector<T> &x, const std::vector<T> &y)
   return lb_kim(x.data(), x.size(), y.data(), y.size());
 }
 
+// ======================================================================
+//  Wrapper types for precomputed LB data
+// ======================================================================
+
+/// Precomputed summary statistics for O(1) LB_Kim.
+struct SeriesSummary {
+  double first = 0, last = 0, min_val = 0, max_val = 0;
+};
+
+/// Compute summary from a time series vector.
+inline SeriesSummary compute_summary(const std::vector<double> &series)
+{
+  if (series.empty()) return {};
+  SeriesSummary s;
+  s.first = series.front();
+  s.last = series.back();
+  s.min_val = *std::min_element(series.begin(), series.end());
+  s.max_val = *std::max_element(series.begin(), series.end());
+  return s;
+}
+
+/// LB_Kim using precomputed summaries -- O(1).
+inline double lb_kim(const SeriesSummary &a, const SeriesSummary &b)
+{
+  double d = 0;
+  d = std::max(d, std::abs(a.first - b.first));
+  d = std::max(d, std::abs(a.last - b.last));
+  d = std::max(d, std::abs(a.min_val - b.min_val));
+  d = std::max(d, std::abs(a.max_val - b.max_val));
+  return d;
+}
+
+/// Precomputed upper/lower envelopes for LB_Keogh.
+struct Envelope {
+  std::vector<double> upper, lower;
+};
+
+/// Compute envelope from a time series vector with given band width.
+inline Envelope compute_envelope(const std::vector<double> &series, int band)
+{
+  Envelope env;
+  env.upper.resize(series.size());
+  env.lower.resize(series.size());
+  if (!series.empty())
+    compute_envelopes(series.data(), series.size(), band, env.upper.data(), env.lower.data());
+  return env;
+}
+
+/// Convenience overload: LB_Keogh from vector + precomputed Envelope.
+inline double lb_keogh(const std::vector<double> &query, const Envelope &env)
+{
+  const std::size_t n = std::min(query.size(), env.upper.size());
+  if (n == 0) return 0.0;
+  return lb_keogh(query.data(), n, env.upper.data(), env.lower.data());
+}
+
+/// Symmetric LB_Keogh: max of both directions.
+inline double lb_keogh_symmetric(
+  const std::vector<double> &x, const Envelope &env_x,
+  const std::vector<double> &y, const Envelope &env_y)
+{
+  double lb1 = lb_keogh(x, env_y);
+  double lb2 = lb_keogh(y, env_x);
+  return std::max(lb1, lb2);
+}
+
+// ======================================================================
+//  Runtime metric enum + LB compatibility
+// ======================================================================
+
+/// Runtime-selectable distance metric enum.
+enum class DistanceMetric { L1, L2, SquaredL2 };
+
+/// Check whether lower-bound pruning is valid for a given metric.
+inline bool lb_pruning_compatible(DistanceMetric m)
+{
+  return m == DistanceMetric::L1;
+}
+
 } // namespace dtwc::core

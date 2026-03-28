@@ -42,7 +42,9 @@ static Problem make_problem_with_data(
 // Helper: load dummy data from the data/dummy/ folder
 static Problem make_problem_from_dummy(int Ndata_max, int band_val = -1)
 {
-  DataLoader dl{ settings::dataPath / "dummy", Ndata_max };
+  // DTWC_TEST_DATA_DIR is set by CMake to the absolute path of the data/ folder
+  std::filesystem::path data_dir = std::filesystem::path(DTWC_TEST_DATA_DIR) / "dummy";
+  DataLoader dl{ data_dir, Ndata_max };
   dl.startColumn(1).startRow(1);
   Problem prob("test_pruned_dummy", dl);
   prob.band = band_val;

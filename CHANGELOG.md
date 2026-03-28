@@ -19,8 +19,37 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Added `docs/2_method/6_metrics.md`: distance metrics documentation with LB_Keogh compatibility table and corrected Huber LB_Keogh reasoning.
 
 ## New features
+
+* Added core type system (`dtwc::core` namespace): `ScratchMatrix<T>`, `DenseDistanceMatrix`, `TimeSeriesView<T>`/`TimeSeries<T>`, `ClusteringResult`, `DTWOptions`, distance metrics (L1, L2, SquaredL2).
+* Added FastPAM1 k-medoids clustering algorithm (Schubert & Rousseeuw 2021, JMLR) — true PAM SWAP with O(N^2*k) per iteration.
+* Added z-normalization (`z_normalize`, `z_normalized`) for preprocessing time series.
+* Added lower bound implementations: `lb_keogh()` with envelope precomputation, `lb_kim()` with summary precomputation, `lb_keogh_symmetric()` for symmetric pruning.
+* Added `DenseDistanceMatrix` with NaN sentinel, CSV I/O (`write_csv`/`read_csv`), and `operator<<`.
+* Added pruned distance matrix builder with LB_Kim and LB_Keogh pair-skipping support.
 * Added roofline-aware microbenchmark (`benchmarks/bench_dtw_baseline.cpp`) measuring cells/sec, FLOP/sec, and bytes/sec for DTW computation at various series lengths.
 * Added Google Benchmark integration for structured performance measurement.
+
+## Architecture
+
+* Removed Armadillo dependency from all hot-path code (`warping.hpp`, `Problem.hpp/cpp`, `fileOperations.hpp`). Armadillo is no longer linked to the core library.
+* Replaced `arma::Mat<data_t>` scratch buffer in DTW functions with `core::ScratchMatrix<data_t>` (column-major, same layout).
+* Replaced `arma::Mat<double>` distance matrix in `Problem` with `core::DenseDistanceMatrix` (NaN sentinel instead of -1).
+* Unified `FastPAMResult` with `core::ClusteringResult` (single result type for all clustering algorithms).
+* Distance matrix I/O now uses `DenseDistanceMatrix::write_csv()`/`read_csv()` instead of Armadillo's `save`/`load`.
+
+## Bug fixes
+
+* Fixed `throw 1` bare integer throw in `Problem_IO.cpp` — now throws `std::runtime_error`.
+* Fixed `static std::mt19937` ODR violation in `settings.hpp` — changed to `inline`.
+* Fixed `.at()` bounds-checked access in hot DTW loop — replaced with `operator[]`.
+* Fixed `dtwBanded` 512MB/thread allocation — replaced with rolling buffer (O(band) memory).
+* Fixed `fillDistanceMatrix` integer overflow at N>46K — triangular iteration with `size_t`.
+* Fixed `dtwBanded` template default from `float` to `double`.
+* Fixed `static` vectors data race in `calculateMedoids`.
+* Fixed DBI formula (was using `dist(medoid, medoid)` = 0 always).
+* Fixed broken examples (`settings::band` → `prob.band`).
+* Renamed `cluster_by_kMedoidsPAM` to `cluster_by_kMedoidsLloyd` (was mislabeled).
+* Fixed z_normalize tests to use production code instead of local reference implementation.
 
 <br/><br/>
 # DTWC v1.0.0

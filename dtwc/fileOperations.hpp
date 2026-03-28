@@ -30,7 +30,6 @@
 #include <sstream>
 #include <stdexcept> // for std::runtime_error
 
-#include <armadillo>
 #include <rapidcsv.h>
 
 namespace dtwc {
@@ -217,30 +216,6 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(p_vec, p_names);
-}
-
-/**
- * @brief Writes an Armadillo matrix to a file in CSV format.
- * @tparam data_t The data type of the elements in the matrix.
- * @param matrix The Armadillo matrix to be written to file.
- * @param path Path of the file where the matrix will be saved.
- */
-template <typename data_t>
-void writeMatrix(const arma::Mat<data_t> &matrix, const fs::path &path)
-{
-  matrix.save(path.string(), arma::csv_ascii);
-}
-
-/**
- * @brief Reads a CSV file into an Armadillo matrix.
- * @tparam data_t The data type of the elements in the matrix.
- * @param matrix Reference to an Armadillo matrix where the data will be loaded.
- * @param name Path of the CSV file to read.
- */
-template <typename data_t>
-void readMatrix(arma::Mat<data_t> &matrix, const fs::path &name)
-{
-  matrix.load(name.string(), arma::csv_ascii);
 }
 
 // ============================================================================

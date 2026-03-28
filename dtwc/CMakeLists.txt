@@ -12,7 +12,7 @@ target_sources(dtwc++
   scores.cpp
   core/dtw.cpp
   algorithms/fast_pam.cpp
-  # core/pruned_distance_matrix.cpp  # TODO: reconcile with lower_bound_impl.hpp API
+  core/pruned_distance_matrix.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
@@ -39,7 +39,6 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   PUBLIC
-  armadillo
   rapidcsv::rapidcsv
 )
 

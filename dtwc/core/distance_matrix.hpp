@@ -14,7 +14,14 @@
 #include <vector>
 #include <cstddef>
 #include <cmath>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <string>
 
 namespace dtwc::core {
 
@@ -72,6 +79,62 @@ public:
 
   double *raw() { return data_.data(); }
   const double *raw() const { return data_.data(); }
+
+  /// Write the matrix to a CSV file.
+  void write_csv(const std::filesystem::path &path) const
+  {
+    std::ofstream file(path);
+    if (!file.good())
+      throw std::runtime_error("Cannot open file for writing: " + path.string());
+    for (size_t i = 0; i < n_; ++i) {
+      for (size_t j = 0; j < n_; ++j) {
+        if (j > 0) file << ',';
+        file << std::setprecision(15) << get(i, j);
+      }
+      file << '\n';
+    }
+  }
+
+  /// Read the matrix from a CSV file.
+  void read_csv(const std::filesystem::path &path)
+  {
+    std::ifstream file(path);
+    if (!file.good())
+      throw std::runtime_error("Cannot open file for reading: " + path.string());
+
+    std::vector<std::vector<double>> rows;
+    std::string line;
+    while (std::getline(file, line)) {
+      if (line.empty()) continue;
+      std::vector<double> row;
+      std::istringstream ss(line);
+      std::string cell;
+      while (std::getline(ss, cell, ','))
+        row.push_back(std::stod(cell));
+      rows.push_back(std::move(row));
+    }
+    if (!rows.empty()) {
+      const size_t N = rows.size();
+      resize(N);
+      for (size_t i = 0; i < N; ++i)
+        for (size_t j = 0; j < N && j < rows[i].size(); ++j)
+          if (!std::isnan(rows[i][j]))
+            set(i, j, rows[i][j]);
+    }
+  }
+
+  /// Stream output: prints CSV format.
+  friend std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
+  {
+    for (size_t i = 0; i < dm.n_; ++i) {
+      for (size_t j = 0; j < dm.n_; ++j) {
+        if (j > 0) os << ',';
+        os << dm.get(i, j);
+      }
+      os << '\n';
+    }
+    return os;
+  }
 };
 
 } // namespace dtwc::core

@@ -87,7 +87,7 @@ double compute_total_cost(const std::vector<double>& nearest_dist, int N)
 } // anonymous namespace
 
 
-FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter)
+core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
   const int N = prob.size();
 
@@ -223,7 +223,7 @@ FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   // -------------------------------------------------------------------------
   // Build result.
   // -------------------------------------------------------------------------
-  FastPAMResult result;
+  core::ClusteringResult result;
   result.medoid_indices = medoids;
   result.labels.resize(N);
 

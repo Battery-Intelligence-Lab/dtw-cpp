@@ -14,7 +14,7 @@
 
 #include "Data.hpp"           // for Data
 #include "DataLoader.hpp"     // for DataLoader
-#include "fileOperations.hpp" // for writeMatrix, readMatrix
+#include "fileOperations.hpp" // for load_batch_file, readFile
 #include "settings.hpp"       // for data_t, resultsPath
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
@@ -30,7 +30,7 @@
 #include <functional>  // std::function
 #include <iostream>
 
-#include <armadillo>
+#include "core/distance_matrix.hpp"
 
 namespace dtwc {
 
@@ -45,7 +45,7 @@ namespace dtwc {
 class Problem
 {
 public:
-  using distMat_t = arma::Mat<double>;
+  using distMat_t = core::DenseDistanceMatrix;
   using path_t = std::decay_t<decltype(settings::resultsPath)>;
 
 private:

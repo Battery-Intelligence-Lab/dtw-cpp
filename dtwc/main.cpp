@@ -3,8 +3,6 @@
 #include <fstream>
 #include <string_view>
 
-#include <armadillo>
-
 int main()
 {
   dtwc::Clock clk; // Create a clock object

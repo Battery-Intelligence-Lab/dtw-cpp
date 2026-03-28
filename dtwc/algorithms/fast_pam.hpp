@@ -17,23 +17,16 @@
 
 #pragma once
 
+#include "../core/clustering_result.hpp"
+
 #include <vector>
 
 namespace dtwc {
 
 class Problem; // Forward declaration
 
-/**
- * @brief Result of FastPAM clustering.
- */
-struct FastPAMResult
-{
-  std::vector<int> labels;          ///< Cluster label for each point, in [0, k).
-  std::vector<int> medoid_indices;  ///< Index of each medoid in the dataset, in [0, N).
-  double total_cost;                ///< Sum of distances from each point to its nearest medoid.
-  int iterations;                   ///< Number of SWAP iterations performed.
-  bool converged;                   ///< True if no improving swap was found (converged).
-};
+/// Backward-compatible alias: FastPAMResult is now core::ClusteringResult.
+using FastPAMResult = core::ClusteringResult;
 
 /**
  * @brief Run FastPAM1 k-medoids clustering.
@@ -42,10 +35,10 @@ struct FastPAMResult
  *                  be called if the distance matrix is not yet filled.
  * @param n_clusters Number of clusters (k).
  * @param max_iter  Maximum number of SWAP iterations (default: 100).
- * @return FastPAMResult containing labels, medoid indices, total cost, etc.
+ * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
  * @note This function does NOT modify prob.centroids_ind or prob.clusters_ind.
- *       It returns a standalone FastPAMResult.
+ *       It returns a standalone ClusteringResult.
  * @note Requires prob to have data loaded (prob.size() > 0).
  */
 FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);

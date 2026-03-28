@@ -16,11 +16,10 @@
 #include "settings.hpp"    // for data_t, randGenerator, band
 #include "types/Range.hpp" // for Range
 
-#include <iomanip>  // for operator<<, setprecision
-#include <iostream> // for cout^
+#include <iostream> // for cout
 #include <fstream>
-#include <string> // for allocator, char_traits, operator+
-#include <vector> // for vector, operator==
+#include <string>  // for allocator, char_traits, operator+
+#include <vector>  // for vector, operator==
 
 namespace dtwc {
 
@@ -154,7 +153,7 @@ void Problem::writeMedoidMembers(int iter, int rep) const
  */
 void Problem::writeDistanceMatrix(const std::string &name_) const
 {
-  writeMatrix(distMat, output_folder / name_);
+  distMat.write_csv(output_folder / name_);
 }
 
 /**
@@ -178,7 +177,7 @@ void Problem::writeBestRep(int best_rep)
 void Problem::readDistanceMatrix(const fs::path &distMat_path)
 {
   try {
-    readMatrix(distMat, distMat_path);
+    distMat.read_csv(distMat_path);
   } catch (...) {
     std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
   }
