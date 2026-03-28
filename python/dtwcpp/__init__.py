@@ -33,6 +33,9 @@ from dtwcpp._dtwcpp_core import (
 
 __version__ = "1.0.0"
 
+# Pure-Python sklearn-compatible layer
+from dtwcpp._clustering import DTWClustering
+
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
@@ -41,4 +44,5 @@ __all__ = [
     "soft_dtw_distance", "soft_dtw_gradient",
     "fast_pam", "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
+    "DTWClustering",
 ]
