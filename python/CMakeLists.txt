@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.21)
 
+# Python and nanobind are found in cmake/Dependencies.cmake
+
 # STABLE_ABI requires Python >= 3.12
 if(Python_VERSION VERSION_GREATER_EQUAL "3.12")
   nanobind_add_module(_dtwcpp_core STABLE_ABI src/_dtwcpp_core.cpp)

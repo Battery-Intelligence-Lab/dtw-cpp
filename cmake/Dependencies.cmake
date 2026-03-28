@@ -49,8 +49,7 @@ function(dtwc_setup_dependencies)
   endif()
 
   # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
-  # When built via scikit-build-core (pip install), nanobind is available as a pip package.
-  # For standalone CMake builds, fall back to CPM fetch.
+  # nanobind-config.cmake requires find_package(Python) with Development BEFORE it runs.
   if(DTWC_BUILD_PYTHON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
     # Try pip-installed nanobind first
