@@ -1,15 +1,18 @@
+[build-system]
+requires = ["setuptools", "cmake>=3.21", "pybind11>=2.11", "wheel", "ninja"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "dtw-cpp"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
-dependencies = [
-    "cmake>=3.21",
-    "ninja>=1.13.0",
-    "numpy>=2.4.2",
-    "prebuilt-binaries>=0.5.0",
-    "pybind11>=3.0.1",
-    "setuptools>=80.10.2",
-    "wheel>=0.46.3",
+name = "dtwcpp"
+version = "1.0.0"
+description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
+authors = [
+    { name = "Volkan Kumtepeli", email = "volkan.kumtepeli@gmail.com" },
 ]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.21",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=6.0"]
