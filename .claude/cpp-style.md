@@ -5,7 +5,8 @@ This document describes the C++ coding conventions used in the DTWC++ project, d
 ## C++ Standard
 
 - **Minimum:** C++17
-- **Target:** C++17 (avoiding C++20 features for broader compiler compatibility)
+- **Preferred:** C++23 (use feature-test macros for C++20/23 features)
+- **Compiler support:** GCC 12+, Clang 15+, MSVC 17.8+
 
 ## Naming Conventions
 
@@ -13,23 +14,25 @@ This document describes the C++ coding conventions used in the DTWC++ project, d
 - **PascalCase** (UpperCamelCase)
 - Examples: `Problem`, `Data`, `Range`, `Index`, `DataLoader`
 
-### Functions
-- **snake_case**
-- Examples: `readFile`, `load_folder`, `dtwFull`, `dtwBanded`
-- Exception: DTW algorithm variants may use mixed case for readability (`dtwFull_L`)
+### Functions and Methods
+- **snake_case** (enforced for all new code; legacy camelCase will be migrated incrementally)
+- New code examples: `dtw_full`, `dtw_banded`, `fill_distance_matrix`, `read_file`
+- Legacy (to be renamed): `dtwFull` -> `dtw_full`, `readFile` -> `read_file`, `distByInd` -> `dist_by_ind`
 
-### Member Functions
-- **snake_case**
-- Examples: `set_numberOfClusters`, `get_name`, `p_vec`, `centroid_of`
+### DTW Algorithm Naming
+- New code: `dtw_full`, `dtw_banded`, `dtw_full_linear` (snake_case)
+- Legacy (to rename): `dtwFull` -> `dtw_full`, `dtwBanded` -> `dtw_banded`, `dtwFull_L` -> `dtw_full_linear`
+- Clustering: `lloyd_kmedoids`, `fast_pam`, `clara` (snake_case, descriptive)
+- Legacy rename: `cluster_by_kMedoidsPAM` -> `cluster_by_kMedoidsLloyd` (Phase 0), then -> `lloyd_kmedoids` (Phase 1)
 
 ### Variables
 - **snake_case**
 - Examples: `p_vec`, `p_names`, `clusters_ind`, `centroids_ind`
 
 ### Member Variables
-- **snake_case** with trailing underscore for private members
-- Examples: `name_`, `solver_`
-- Public members may omit the underscore: `Nc`, `distMat`, `band`
+- **Public members:** `snake_case` without trailing underscore (e.g., `band`, `name`, `data`)
+- **Private members:** `snake_case` with trailing underscore (e.g., `dist_mat_`, `solver_`)
+- **Legacy names (to be migrated):** `Nc`, `distMat`, `mipSolver` -- rename to `n_clusters`, `dist_mat`, `mip_solver` incrementally
 
 ### Constants
 - **UPPER_SNAKE_CASE** for compile-time constants
@@ -80,6 +83,30 @@ Example:
 
 ### Namespace Aliases
 Use `namespace fs = std::filesystem;` at namespace scope.
+
+## Performance Rules
+
+### No Virtual Dispatch in Hot Paths
+- Distance matrix access, DTW inner loops, and clustering iterations must use direct calls or templates
+- Virtual dispatch costs ~3ns per call; at N=10K this adds 300ms per PAM iteration
+- Use CRTP or template parameters for hot-path abstractions
+- Virtual dispatch is acceptable at outer API boundaries (bindings, CLI)
+
+### Template Judiciously
+- Template on constraint type only (None, SakoeChibaBand, Itakura) -- 2-3 variants
+- Do NOT template on metric type -- runtime callable dispatch overhead is 0.003% of DTW cost
+- Maximum ~6 explicit instantiations (3 constraints x 2 scalar types)
+
+### ScratchMatrix Pattern
+- Use `ScratchMatrix<T>` (row-major vector + stride) instead of `arma::Mat` for scratch buffers
+- Row-major layout ensures contiguous access in DTW inner loop
+- Use `thread_local ScratchMatrix<T>` for per-thread scratch space
+- For banded DTW, use rolling buffer of width `2*band+1` (not full matrix)
+
+### Memory-Bound Awareness
+- DTW is memory-bound (0.125 FLOP/byte). Fix memory access patterns before adding SIMD.
+- Prefer rolling buffers over full matrix allocation
+- Use cache-friendly access patterns (contiguous inner loop)
 
 ## Formatting
 

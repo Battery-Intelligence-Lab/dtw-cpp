@@ -4,8 +4,8 @@ This document describes the Python coding conventions for the DTWC++ project bin
 
 ## Python Version
 
-- **Minimum:** Python 3.7 (for broad compatibility)
-- **Recommended:** Python 3.9+
+- **Minimum:** Python 3.9
+- **Recommended:** Python 3.11+
 
 ## Style Standard
 
@@ -39,7 +39,7 @@ Follow [PEP 8](https://peps.python.org/pep-0008/) with the following project-spe
 
 ## Type Hints
 
-Use type hints for function signatures (Python 3.7+ style):
+Use type hints for function signatures (Python 3.9+ style):
 
 ```python
 def build_extension(self, ext: CMakeExtension) -> None:
@@ -49,15 +49,15 @@ def fit(self, X: np.ndarray) -> "KMedoids":
     ...
 ```
 
-For complex types, use `typing` module:
+For complex types, use built-in generics (Python 3.9+) or `typing` module:
 ```python
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 def cluster(
     self,
-    data: List[np.ndarray],
+    data: list[np.ndarray],
     n_clusters: int,
-    initial_medoids: Optional[List[int]] = None
+    initial_medoids: Optional[list[int]] = None
 ) -> np.ndarray:
     ...
 ```
@@ -125,9 +125,17 @@ def dtw_distance(x: np.ndarray, y: np.ndarray, band: int = -1) -> float:
 
 ## Class Design
 
-### Scikit-learn Compatible API
+### scikit-learn Compatible API (Partial)
 
-For clustering classes, follow scikit-learn conventions:
+DTW k-medoids has fundamental mismatches with sklearn's estimator API:
+- `predict()` computes DTW to all medoids on-the-fly (not centroid-based)
+- `cluster_centers_` is misleading (medoids are actual data points, not means)
+- `check_estimator()` will fail due to variable-length series and metric assumptions
+
+**Decision:** Inherit `BaseEstimator` + `ClusterMixin` for basic compatibility. Provide:
+- `labels_`, `medoid_indices_`, `medoids_`, `inertia_`
+- `predict()` with docstring warning about on-the-fly DTW computation
+- Skip `transform()` (distance matrix shape N x N doesn't match sklearn's N x k)
 
 ```python
 class KMedoids:
@@ -146,8 +154,10 @@ class KMedoids:
     ----------
     labels_ : np.ndarray
         Cluster labels for each sample.
-    cluster_centers_ : np.ndarray
-        Indices of medoid samples.
+    medoid_indices_ : np.ndarray
+        Indices of medoid samples in the input data.
+    medoids_ : list[np.ndarray]
+        The actual medoid time series (data points, not means).
     inertia_ : float
         Sum of distances to closest medoid.
     """
@@ -162,13 +172,13 @@ class KMedoids:
         self.metric = metric
         self.random_state = random_state
 
-    def fit(self, X: np.ndarray) -> "KMedoids":
+    def fit(self, X) -> "KMedoids":
         """Fit the K-Medoids model.
 
         Parameters
         ----------
-        X : np.ndarray of shape (n_samples, n_features)
-            Training data.
+        X : array-like
+            Training data (see Variable-Length Series Input below).
 
         Returns
         -------
@@ -178,14 +188,37 @@ class KMedoids:
         ...
         return self
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
-        """Predict cluster labels for samples."""
+    def predict(self, X) -> np.ndarray:
+        """Predict cluster labels for samples.
+
+        Warning: This computes DTW distance to all medoids on-the-fly,
+        which is O(n_new * k * L^2). For large datasets, consider using
+        fit_predict() instead.
+        """
         ...
 
-    def fit_predict(self, X: np.ndarray) -> np.ndarray:
+    def fit_predict(self, X) -> np.ndarray:
         """Fit and return cluster labels."""
         return self.fit(X).labels_
 ```
+
+### Variable-Length Series Input
+
+The `fit()` method must accept multiple input formats:
+```python
+def fit(self, X):
+    """
+    Parameters
+    ----------
+    X : array-like
+        Time series data. Accepted formats:
+        - numpy ndarray of shape (n_samples, n_timesteps) -- equal-length
+        - list of 1D numpy arrays -- variable-length series
+        - pandas DataFrame -- rows are series
+    """
+```
+
+C++ side: `vector<vector<double>>` for variable-length, buffer protocol for rectangular.
 
 ## NumPy Integration
 
@@ -296,7 +329,7 @@ In `pyproject.toml`:
 ```toml
 [tool.black]
 line-length = 88
-target-version = ['py37', 'py38', 'py39', 'py310', 'py311']
+target-version = ['py39', 'py310', 'py311', 'py312']
 
 [tool.isort]
 profile = "black"
