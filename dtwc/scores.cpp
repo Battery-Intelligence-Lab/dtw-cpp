@@ -16,10 +16,12 @@
 #include "Problem.hpp"
 #include "parallelisation.hpp"
 
-#include <iostream>
-#include <vector>
+#include <algorithm>  // for std::max
 #include <cstddef>
-#include <utility> // for pair
+#include <iostream>
+#include <stdexcept>  // for std::runtime_error
+#include <utility>    // for pair
+#include <vector>
 
 namespace dtwc::scores {
 
@@ -93,63 +95,49 @@ std::vector<double> silhouette(Problem &prob)
  * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
  * @return double The Davies-Bouldin index.
  *
- * @note Requires that the data has already been clustered; if not, it will prompt the user to cluster the data first.
+ * @note Requires that the data has already been clustered; throws std::runtime_error if centroids are not set.
  * @see https://en.wikipedia.org/wiki/Davies%E2%80%93Bouldin_index for more information on the Davies-Bouldin index.
  */
-// double daviesBouldinIndex(Problem &prob)
-// {
-//   const auto Nc = prob.cluster_size(); //!< Number of clusters
+double daviesBouldinIndex(Problem &prob)
+{
+  const auto Nc = prob.cluster_size(); //!< Number of clusters
 
-//   if (prob.centroids_ind.empty()) {
-//     std::cout << "Please cluster the data before calculating the Davies-Bouldin index!" << std::endl;
-//     return 0.0;
-//   }
+  if (prob.centroids_ind.empty()) {
+    throw std::runtime_error("Cluster before calculating DBI");
+  }
 
-//   prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
+  prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
 
-//   std::vector<double> clusterSimilarities(Nc, 0.0);    //!< Similarities between clusters
-//   std::vector<double> clusterDissimilarities(Nc, 0.0); //!< Dissimilarities between clusters
+  // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
+  std::vector<double> scatter(Nc, 0.0);
+  std::vector<int> cluster_counts(Nc, 0);
+  for (auto i : Range(prob.size())) {
+    int ci = prob.clusters_ind[i];
+    scatter[ci] += prob.distByInd(i, prob.centroids_ind[ci]);
+    cluster_counts[ci]++;
+  }
+  for (int c = 0; c < Nc; ++c) {
+    if (cluster_counts[c] > 0)
+      scatter[c] /= cluster_counts[c];
+  }
 
-//   // Calculate the similarity and dissimilarity for each cluster
-//   for (int i = 0; i < Nc; i++) {
-//     double maxSimilarity = std::numeric_limits<double>::lowest();
-
-//     for (int j = 0; j < Nc; j++) {
-//       if (i != j) {
-//         double similarity = (prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[i]) + prob.distByInd(prob.centroids_ind[j], prob.centroids_ind[j])) / prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
-
-//         if (similarity > maxSimilarity) {
-//           maxSimilarity = similarity;
-//         }
-//       }
-//     }
-
-//     clusterSimilarities[i] = maxSimilarity;
-//   }
-
-//   // Calculate the dissimilarity for each cluster
-//   for (int i = 0; i < Nc; i++) {
-//     double sumDissimilarity = 0.0;
-
-//     for (int j = 0; j < Nc; j++) {
-//       if (i != j) {
-//         sumDissimilarity += prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
-//       }
-//     }
-
-//     clusterDissimilarities[i] = sumDissimilarity / (Nc - 1);
-//   }
-
-//   // Calculate the Davies-Bouldin index
-//   double daviesBouldinIndex = 0.0;
-
-//   for (int i = 0; i < Nc; i++) {
-//     daviesBouldinIndex += clusterSimilarities[i] + clusterDissimilarities[i];
-//   }
-
-//   daviesBouldinIndex /= Nc;
-
-//   return daviesBouldinIndex;
-// }
+  // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
+  // where R_ij = (S_i + S_j) / d(medoid_i, medoid_j)
+  double dbi = 0.0;
+  for (int i = 0; i < Nc; ++i) {
+    double max_ratio = 0.0;
+    for (int j = 0; j < Nc; ++j) {
+      if (i != j) {
+        double d_ij = prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+        if (d_ij > 0) {
+          double ratio = (scatter[i] + scatter[j]) / d_ij;
+          max_ratio = std::max(max_ratio, ratio);
+        }
+      }
+    }
+    dbi += max_ratio;
+  }
+  return dbi / Nc;
+}
 
 } // namespace dtwc::scores

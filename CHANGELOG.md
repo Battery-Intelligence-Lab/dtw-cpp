@@ -3,8 +3,6 @@
 [TOC]
 
 This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
-
-
 <br/><br/>
 # Unreleased
 
@@ -21,6 +19,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Fixed `dtwFull_L` using `.at()` bounds-checked access in the hot inner loop; replaced with `operator[]`.
 * Fixed `dtwBanded` template default type from `float` to `double` to match `data_t = double`.
 * Fixed `settings.hpp` `static` RNG in header (ODR violation); changed to `inline`.
+* Fixed Davies-Bouldin Index which always returned 0 (computed medoid-to-self distance = 0 instead of average within-cluster scatter).
 * Fixed `load_batch_file()` to throw proper `std::runtime_error` instead of throwing an integer (`throw 2`).
 * Fixed signed/unsigned mismatch in parallelisation.hpp where `int` loop variable was compared against `size_t` bound.
 * Fixed `numMaxParallelWorkers` parameter in `run()` function which was previously ignored; now properly sets OpenMP thread count.

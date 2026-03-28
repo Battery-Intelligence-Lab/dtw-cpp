@@ -20,6 +20,7 @@ namespace dtwc {
 class Problem; // Pre-definition
 namespace scores {
   std::vector<double> silhouette(Problem &prob);
+  double daviesBouldinIndex(Problem &prob);
 
 } // namespace scores
 

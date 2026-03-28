@@ -12,5 +12,6 @@
 #include "fileOperations.hpp"
 #include "Problem.hpp"
 #include "DataLoader.hpp"
+#include "scores.hpp"
 #include "utility.hpp"
 #include "warping.hpp"
