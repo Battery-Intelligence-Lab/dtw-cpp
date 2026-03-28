@@ -24,6 +24,7 @@
 #include "core/dtw.hpp"
 #include "core/dtw_options.hpp"
 #include "core/lower_bounds.hpp"
+#include "core/lower_bound_impl.hpp"
 #include "core/scratch_matrix.hpp"
 #include "core/time_series.hpp"
 #include "core/z_normalize.hpp"

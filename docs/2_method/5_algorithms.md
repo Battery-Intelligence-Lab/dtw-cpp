@@ -28,7 +28,7 @@ PAM consists of two phases:
 
 DTW-C++ aims to incorporate the FastPAM optimization, which reduces the constant factor of the swap evaluation.
 
-FastPAM1 achieves $$O(N^2)$$ per iteration by evaluating all swap candidates simultaneously. The further optimization to $$O(Nk)$$ per swap (FastPAM2) requires a shared accumulator across medoid candidates, which is not yet implemented in the current codebase -- the current implementation is $$O(N^2 k)$$ per iteration.
+FastPAM1 achieves $$O(N^2 k)$$ per iteration (an $$O(k)$$ speedup over naive PAM's $$O(N^2 k^2)$$) by evaluating all swap candidates simultaneously using nearest/second-nearest medoid tracking. The current implementation matches this $$O(N^2 k)$$ complexity. A further optimization using a shared accumulator could reduce the inner loop, but this is not yet implemented.
 
 > **Reference:** Schubert, E. and Rousseeuw, P. J. (2021). "Fast and Eager k-Medoids Clustering: O(k) Runtime Improvement of the PAM, CLARA, and CLARANS Algorithms." *Journal of Machine Learning Research (JMLR)*, 22(1), 4653-4688.
 

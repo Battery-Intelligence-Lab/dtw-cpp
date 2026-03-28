@@ -49,7 +49,7 @@ LB_Keogh computes a lower bound on the DTW distance by constructing an envelope 
 
 ### LB_Kim
 
-LB_Kim is a simpler O(1) lower bound based on comparing the first, last, minimum, and maximum values of the two series. It is metric-independent and always valid, but typically provides a looser bound than LB_Keogh.
+LB_Kim is a simpler O(1) lower bound based on comparing the first, last, minimum, and maximum values of the two series. It requires a monotone pointwise metric (valid for L1, L2, Squared L2) and typically provides a looser bound than LB_Keogh.
 
 ## Choosing a Metric
 
