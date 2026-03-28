@@ -57,4 +57,17 @@ function(dtwc_setup_dependencies)
     )
   endif()
 
+  if(DTWC_BUILD_BENCHMARK)
+    if(NOT TARGET benchmark::benchmark)
+      CPMAddPackage(
+        NAME benchmark
+        GITHUB_REPOSITORY google/benchmark
+        VERSION 1.9.1
+        OPTIONS
+          "BENCHMARK_ENABLE_TESTING OFF"
+          "BENCHMARK_ENABLE_GTEST_TESTS OFF"
+      )
+    endif()
+  endif()
+
 endfunction()

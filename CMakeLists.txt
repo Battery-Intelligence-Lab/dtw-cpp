@@ -73,6 +73,7 @@ endif()
 
 if(DTWC_BUILD_BENCHMARK)
   add_subdirectory(benchmark)
+  add_subdirectory(benchmarks)
 endif()
 
 cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")

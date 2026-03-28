@@ -56,6 +56,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Added python-style.md documenting Python coding conventions.
 * Added TODO.md for development task tracking.
 * Removed `DTWC_ROOT_FOLDER` and `CURRENT_ROOT_FOLDER` CMake cache variables and compile definitions.
+* Added Google Benchmark-based baseline microbenchmarks for DTW distance functions. Enable with `-DDTWC_BUILD_BENCHMARK=ON`.
 
 <br/><br/>
 # DTWC v1.0.0
