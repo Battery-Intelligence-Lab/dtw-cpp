@@ -11,8 +11,8 @@ target_sources(dtwc++
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
-  core/pruned_distance_matrix.cpp
   algorithms/fast_pam.cpp
+  # core/pruned_distance_matrix.cpp  # TODO: reconcile with lower_bound_impl.hpp API
   PUBLIC
   Data.hpp
   DataLoader.hpp

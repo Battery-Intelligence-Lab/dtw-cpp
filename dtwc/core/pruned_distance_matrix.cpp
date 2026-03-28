@@ -80,7 +80,7 @@
  */
 
 #include "pruned_distance_matrix.hpp"
-#include "lower_bounds.hpp"
+#include "lower_bound_impl.hpp"
 #include "../warping.hpp"
 #include "../settings.hpp"
 
