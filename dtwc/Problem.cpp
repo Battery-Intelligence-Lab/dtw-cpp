@@ -120,24 +120,27 @@ void Problem::refreshDistanceMatrix()
  */
 void Problem::rebind_dtw_fn()
 {
+  // Capture `this` so that `band` and variant params are read at invocation time,
+  // not at lambda creation time. This ensures that changing `prob.band = 50` after
+  // construction correctly affects subsequent DTW calls without requiring a rebind.
   using namespace core;
   switch (variant_params.variant) {
   case DTWVariant::DDTW:
-    dtw_fn_ = [b = band](const auto &x, const auto &y) { return ddtwBanded(x, y, b); };
+    dtw_fn_ = [this](const auto &x, const auto &y) { return ddtwBanded(x, y, band); };
     break;
-  case DTWVariant::WDTW: {
-    const auto g = static_cast<data_t>(variant_params.wdtw_g);
-    dtw_fn_ = [b = band, g](const auto &x, const auto &y) { return wdtwBanded(x, y, b, g); };
+  case DTWVariant::WDTW:
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      return wdtwBanded(x, y, band, static_cast<data_t>(variant_params.wdtw_g));
+    };
     break;
-  }
-  case DTWVariant::ADTW: {
-    const auto p = static_cast<data_t>(variant_params.adtw_penalty);
-    dtw_fn_ = [b = band, p](const auto &x, const auto &y) { return adtwBanded(x, y, b, p); };
+  case DTWVariant::ADTW:
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      return adtwBanded(x, y, band, static_cast<data_t>(variant_params.adtw_penalty));
+    };
     break;
-  }
   case DTWVariant::Standard:
   default:
-    dtw_fn_ = [b = band](const auto &x, const auto &y) { return dtwBanded(x, y, b); };
+    dtw_fn_ = [this](const auto &x, const auto &y) { return dtwBanded(x, y, band); };
     break;
   }
 }

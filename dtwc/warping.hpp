@@ -59,7 +59,7 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
   for (int j = 1; j < my; j++) {
     for (int i = 1; i < mx; i++) {
-      const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
+      const auto minimum = std::min(C(i - 1, j - 1), std::min(C(i - 1, j), C(i, j - 1)));
       C(i, j) = minimum + distance(x[i], y[j]);
     }
   }
@@ -115,7 +115,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
       diag = short_side[i];
       short_side[i] = next;
-      if (next < row_min) row_min = next;
+      row_min = std::min(row_min, next); // branchless — avoids misprediction
     }
 
     // Early abandon: if the minimum value in this row exceeds the threshold,
@@ -225,7 +225,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
       // C(i-1, j) is col[i-1] (already updated for current column j).
       // C(i, j-1) is old_col_i (not yet updated).
       // C(i-1, j-1) is diag.
-      const auto minimum = std::min({ col[i - 1], old_col_i, diag });
+      const auto minimum = std::min(diag, std::min(col[i - 1], old_col_i));
       diag = old_col_i;
       col[i] = minimum + distance(long_vec[i], short_vec[j]);
     }

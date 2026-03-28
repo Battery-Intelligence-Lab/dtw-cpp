@@ -50,7 +50,7 @@ void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel 
 
 #ifdef _OPENMP
   if (isParallel) {
-#pragma omp parallel for schedule(dynamic) // Dynamic scheduling for varying task times
+#pragma omp parallel for schedule(dynamic, 16) // Chunked dynamic scheduling — reduces dispatch overhead
     for (int i = 0; i < end; i++)
       task_indv(static_cast<size_t>(i));
   } else {
