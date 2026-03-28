@@ -1,4 +1,4 @@
-file(GLOB_RECURSE TEST_SOURCES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp") # Get list of all test source files recursively
+file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp") # Get list of all test source files recursively
 
 # Iterate over each test source file and add an executable for each
 foreach(TEST_SOURCE ${TEST_SOURCES})
