@@ -11,6 +11,7 @@ target_sources(dtwc++
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
+  core/pruned_distance_matrix.cpp
   algorithms/fast_pam.cpp
   PUBLIC
   Data.hpp
@@ -26,6 +27,8 @@ target_sources(dtwc++
   warping.hpp
   fileOperations.hpp
   DataLoader.hpp
+  core/lower_bounds.hpp
+  core/pruned_distance_matrix.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC . ${range-v3_INCLUDE_DIRS})
