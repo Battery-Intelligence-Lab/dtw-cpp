@@ -47,6 +47,39 @@ For the clustering problem, only the final cost for each pairwise comparison is 
 
 In DTW-C++, the DTW distance $$C_{x,y}$$ is found for each pairwise comparison. Pairwise distances are then stored in a separate symmetric matrix, $$D^{p\times p}$$, where ($$p$$) is the total number of time series in the clustering exercise. In other words, the element $$d_{i,j}$$ gives the distance between time series ($$i$$) and ($$j$$).
 
+## Z-Normalization
+
+Before computing DTW distances, it is often beneficial to **z-normalize** each time series to have zero mean and unit standard deviation:
+
+$$
+\hat{x}_i = \frac{x_i - \mu_x}{\sigma_x}
+$$
+
+where $$\mu_x = \frac{1}{n}\sum_{i=1}^{n} x_i$$ and $$\sigma_x = \sqrt{\frac{1}{n}\sum_{i=1}^{n}(x_i - \mu_x)^2}$$.
+
+### Why z-normalize?
+
+Z-normalization provides **amplitude invariance**: two time series with the same shape but different scales or offsets will have a small DTW distance after normalization. Without normalization, a constant vertical shift or scaling difference between series can dominate the DTW cost, masking genuine shape similarity.
+
+For example, consider two temperature sensor readings that follow the same daily pattern but are offset by a calibration difference. Without z-normalization, DTW would report a large distance driven by the offset. After z-normalization, the distance reflects only the shape difference.
+
+### When to use z-normalization
+
+* **Recommended** when comparing time series from different sources, sensors, or scales where amplitude differences are not meaningful.
+* **Recommended** for the UCR time series benchmark and most classification/clustering tasks in the literature.
+* **Not recommended** when absolute amplitude carries important information (e.g., comparing actual energy consumption values where magnitude matters).
+
+### Interaction with DTW
+
+Z-normalization is applied as a **preprocessing step** before DTW computation. The normalization does not affect the DTW algorithm itself -- it only transforms the input data. The warping path found by DTW on z-normalized data may differ from the path on raw data, as the pointwise distances change.
+
+DTW-C++ provides two functions for z-normalization:
+
+* `z_normalize(series)` -- normalizes the series in place
+* `z_normalized(series)` -- returns a new normalized copy, leaving the original unchanged
+
+Both functions handle the edge case of constant series ($$\sigma_x = 0$$) by returning a zero series.
+
 ## Warping Window
 
 For longer time series it is possible to speed up the calculation by using a 'warping window'. This works by restricting which data elements on one seies can be mapped to another based on their proximity. For example, if one has two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$x_{1}$$ can only by mapped to $$y_{1}-y_{11}$$. Using a warping window of 1 results in clustering with Euclidean distances, forcing one-to-one mapping with no shifting allowed. The stricter the wapring window, the greater the increase in speed. However, the data being used must be carefully considered to assertain if this will negatively impact the results. Readers are referred [Sakoe et al., 1978](https://ieeexplore.ieee.org/abstract/document/1163055) for detailed information on the warping window. 

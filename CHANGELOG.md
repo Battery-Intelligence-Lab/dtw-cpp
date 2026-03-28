@@ -6,6 +6,21 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+## Phase 1: Architecture
+* Added `dtwc::core` namespace with new foundational types:
+  - `ScratchMatrix<T>` — row-major scratch buffer replacing `arma::Mat` in hot paths
+  - `TimeSeriesView<T>` — non-owning time series view (pointer + length)
+  - `TimeSeries<T>` — owning time series container
+  - `DenseDistanceMatrix` — flat-array distance matrix without virtual dispatch
+  - `ClusteringResult` — pure data struct for clustering output
+  - `DTWOptions` — configuration struct for DTW computation
+  - `L1Metric`, `SquaredL2Metric`, `L2Metric` — pointwise distance callables
+* Added `z_normalize()` and `z_normalized()` preprocessing functions
+* Added metric x lower-bound compatibility matrix (`lb_keogh_valid<Metric>`)
+* Added unified `dtw_distance()` API wrapping existing DTW implementations
+* Added FastPAM algorithm (Schubert & Rousseeuw 2021) as `fast_pam()` free function
+* Renamed `cluster_by_kMedoidsLloyd` documented as Lloyd iteration (not PAM)
+
 ## New features
 * Added `rapidcsv` library for robust multi-column CSV parsing.
 * New functions in fileOperations.hpp:
