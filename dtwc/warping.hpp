@@ -38,16 +38,15 @@ data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y)
   thread_local core::ScratchMatrix<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  if (&x == &y) return 0; // If they are the same data then distance is 0.
-
   const int mx = x.size();
   const int my = y.size();
+
+  if ((mx == 0) || (my == 0)) return maxValue;
+  if (&x == &y) return 0; // If they are the same data then distance is 0.
 
   C.resize(mx, my);
 
   auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
-
-  if ((mx == 0) || (my == 0)) return maxValue;
 
   C(0, 0) = distance(x[0], y[0]);
 
@@ -83,9 +82,12 @@ template <typename data_t>
 data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  data_t early_abandon = -1)
 {
-  if (&x == &y) return 0; // If they are the same data then distance is 0.
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
-  thread_local static std::vector<data_t> short_side(10000);
+
+  if (x.empty() || y.empty()) return maxValue;
+  if (&x == &y) return 0; // If they are the same data then distance is 0.
+
+  thread_local static std::vector<data_t> short_side;
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
   const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
@@ -93,8 +95,6 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
   short_side.resize(m_short);
 
   auto distance = [](data_t x, data_t y) { return std::abs(x - y); };
-
-  if ((m_short == 0) || (m_long == 0)) return maxValue;
 
   short_side[0] = distance(short_vec[0], long_vec[0]);
 

@@ -48,14 +48,7 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  if(NOT TARGET armadillo)
-    CPMAddPackage(
-      NAME armadillo
-      URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/14.2.x/armadillo-code-14.2.x.tar.gz"
-      OPTIONS
-      "BUILD_SMOKE_TEST OFF"
-    )
-  endif()
+  # Armadillo removed in Phase 2.5 — no longer used by dtwc++ core.
 
   # RapidCSV - header-only CSV parser (BSD 3-Clause license)
   if (NOT TARGET rapidcsv::rapidcsv)

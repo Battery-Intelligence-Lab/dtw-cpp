@@ -202,8 +202,9 @@ inline SeriesSummary compute_summary(const std::vector<double> &series)
   SeriesSummary s;
   s.first = series.front();
   s.last = series.back();
-  s.min_val = *std::min_element(series.begin(), series.end());
-  s.max_val = *std::max_element(series.begin(), series.end());
+  auto [it_min, it_max] = std::minmax_element(series.begin(), series.end());
+  s.min_val = *it_min;
+  s.max_val = *it_max;
   return s;
 }
 

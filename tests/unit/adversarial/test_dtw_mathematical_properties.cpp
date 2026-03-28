@@ -91,16 +91,9 @@ TEST_CASE("dtwFull empty series returns max value", "[adversarial][dtwFull]")
   REQUIRE(dtwFull<data_t>(empty, y) == maxVal);
   REQUIRE(dtwFull<data_t>(y, empty) == maxVal);
 
-  // BUG FOUND: dtwFull(empty, empty) returns 0 instead of maxVal because
-  // the self-pointer shortcut (&x == &y -> return 0) fires before the
-  // empty-size check. This is mathematically wrong: DTW of two empty
-  // series should be undefined/maxVal. Documenting as known issue.
-  // REQUIRE(dtwFull<data_t>(empty, empty) == maxVal); // KNOWN BUG
+  // Empty series should return maxVal regardless of pointer identity.
+  REQUIRE(dtwFull<data_t>(empty, empty) == maxVal);
 
-  // Verify the bug: same empty vector triggers pointer identity
-  REQUIRE(dtwFull<data_t>(empty, empty) == 0.0); // current (incorrect) behavior
-
-  // Two distinct empty vectors should still return maxVal
   std::vector<data_t> empty2;
   REQUIRE(dtwFull<data_t>(empty, empty2) == maxVal);
 }
@@ -212,9 +205,8 @@ TEST_CASE("dtwFull_L empty series returns max value", "[adversarial][dtwFull_L]"
   REQUIRE(dtwFull_L<data_t>(empty, y) == maxVal);
   REQUIRE(dtwFull_L<data_t>(y, empty) == maxVal);
 
-  // BUG FOUND: Same pointer-identity-before-empty-check bug as dtwFull.
-  // REQUIRE(dtwFull_L<data_t>(empty, empty) == maxVal); // KNOWN BUG
-  REQUIRE(dtwFull_L<data_t>(empty, empty) == 0.0); // current (incorrect) behavior
+  // Empty series should return maxVal regardless of pointer identity.
+  REQUIRE(dtwFull_L<data_t>(empty, empty) == maxVal);
 
   std::vector<data_t> empty2;
   REQUIRE(dtwFull_L<data_t>(empty, empty2) == maxVal);

@@ -44,7 +44,6 @@ if(PROJECT_IS_TOP_LEVEL)
     dtwc++
     project_warnings
     project_options
-    armadillo
   )
 
   add_executable(dtwc_cl

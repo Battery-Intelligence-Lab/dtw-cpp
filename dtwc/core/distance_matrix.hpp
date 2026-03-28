@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <vector>
 #include <cstddef>
 #include <cmath>
@@ -43,18 +44,27 @@ public:
   }
 
   /// Get the distance between points i and j.
-  double get(size_t i, size_t j) const { return data_[i * n_ + j]; }
+  double get(size_t i, size_t j) const
+  {
+    assert(i < n_ && j < n_);
+    return data_[i * n_ + j];
+  }
 
   /// Set the distance between points i and j (symmetric: also sets j,i).
   void set(size_t i, size_t j, double v)
   {
+    assert(i < n_ && j < n_);
     data_[i * n_ + j] = v;
     data_[j * n_ + i] = v;
   }
 
   /// Check whether the distance between i and j has been computed.
   /// Uses NaN sentinel: an entry is computed if it is not NaN.
-  bool is_computed(size_t i, size_t j) const { return !std::isnan(data_[i * n_ + j]); }
+  bool is_computed(size_t i, size_t j) const
+  {
+    assert(i < n_ && j < n_);
+    return !std::isnan(data_[i * n_ + j]);
+  }
 
   /// Number of points (matrix is size() x size()).
   size_t size() const { return n_; }
@@ -86,13 +96,16 @@ public:
     std::ofstream file(path);
     if (!file.good())
       throw std::runtime_error("Cannot open file for writing: " + path.string());
+    file << std::setprecision(15);
     for (size_t i = 0; i < n_; ++i) {
       for (size_t j = 0; j < n_; ++j) {
         if (j > 0) file << ',';
-        file << std::setprecision(15) << get(i, j);
+        file << get(i, j);
       }
       file << '\n';
     }
+    if (!file.good())
+      throw std::runtime_error("Write error on file: " + path.string());
   }
 
   /// Read the matrix from a CSV file.
@@ -105,12 +118,16 @@ public:
     std::vector<std::vector<double>> rows;
     std::string line;
     while (std::getline(file, line)) {
+      // Strip trailing \r for Windows line endings
+      if (!line.empty() && line.back() == '\r') line.pop_back();
       if (line.empty()) continue;
       std::vector<double> row;
       std::istringstream ss(line);
       std::string cell;
-      while (std::getline(ss, cell, ','))
+      while (std::getline(ss, cell, ',')) {
+        if (cell.empty()) continue; // skip trailing commas
         row.push_back(std::stod(cell));
+      }
       rows.push_back(std::move(row));
     }
     if (!rows.empty()) {
@@ -123,9 +140,10 @@ public:
     }
   }
 
-  /// Stream output: prints CSV format.
+  /// Stream output: prints CSV format with full precision.
   friend std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
   {
+    auto old_precision = os.precision(15);
     for (size_t i = 0; i < dm.n_; ++i) {
       for (size_t j = 0; j < dm.n_; ++j) {
         if (j > 0) os << ',';
@@ -133,6 +151,7 @@ public:
       }
       os << '\n';
     }
+    os.precision(old_precision);
     return os;
   }
 };
