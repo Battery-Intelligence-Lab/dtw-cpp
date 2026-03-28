@@ -50,12 +50,19 @@ Standard DTW violates the triangle inequality. This means:
 - **Fix**: Capture the error string into a local `std::string`, exit the try/catch scope (allowing destructors to run), THEN call `mexErrMsgIdAndTxt`
 - This applies to ALL `mexErr*` functions, not just `mexErrMsgIdAndTxt`
 
-### pybind11 GIL release is essential for expensive C++ methods
-- Any method running longer than ~10ms should release the GIL via `py::call_guard<py::gil_scoped_release>()`
-- Without GIL release, `fillDistanceMatrix()` and `cluster()` freeze ALL Python threads
-- pybind11's `std::function` wrapper automatically re-acquires the GIL when calling back into Python, so releasing the GIL on the outer method is safe even if it invokes a Python callback through `std::function`
+### nanobind chosen over pybind11
+- The adversarial review recommended pybind11 based on "670 lines of institutional knowledge" — but that was a Claude skill prompt file, not production code. Actual sunk cost: 68 lines.
+- nanobind advantages that matter for DTWC++: native `nb::ndarray<T, nb::device::cuda>` for GPU Phase 3 (avoids dual-framework), stable ABI (one wheel per platform), 5-10x smaller binaries.
+- Migration is trivial: 7 mechanical search-and-replace changes. Same author (Wenzel Jakob), same API philosophy.
+- GIL release, dangling ref, and lifetime patterns transfer directly: `nb::call_guard<nb::gil_scoped_release>()`, `nb::rv_policy::reference_internal`.
+- **Lesson**: Evaluate sunk cost by measuring actual production code, not supporting documentation.
 
-### Reference-returning methods create dangling pointers in pybind11
+### GIL release is essential for expensive C++ methods
+- Any method running longer than ~10ms should release the GIL via `nb::call_guard<nb::gil_scoped_release>()`
+- Without GIL release, `fillDistanceMatrix()` and `cluster()` freeze ALL Python threads
+- nanobind's `std::function` wrapper automatically re-acquires the GIL when calling back into Python
+
+### Reference-returning methods create dangling pointers in bindings
 - Methods like `p_vec(size_t i)` returning `const std::vector<double>&` can dangle if the parent C++ object is GC'd
 - Use `py::return_value_policy::reference_internal` to tie the returned reference's lifetime to the parent
 - When in doubt, return by value (copy) — slight overhead but always safe
@@ -90,9 +97,24 @@ Standard DTW violates the triangle inequality. This means:
 - Lloyd iteration restricts medoid updates to within each cluster, getting stuck in worse optima
 - FastPAM (Schubert & Rousseeuw 2021) is the state-of-the-art with O(k) speedup over naive PAM
 
-### DTW is memory-bound, not compute-bound
-- Roofline analysis: 5 FLOPs per 40 bytes = 0.125 FLOP/byte (extremely low operational intensity)
-- On modern CPUs with ~50 GB/s bandwidth, the ceiling is ~6.25 GFLOP/s while peak is >100 GFLOP/s
+### DTW is latency-bound on the recurrence chain, not memory-bound
+- Original analysis (pre-optimization): 0.125 FLOP/byte with full matrix — appeared memory-bound
+- After `std::min` initializer_list fix: DTW uses only 3% of L1 bandwidth. The bottleneck is the 10-cycle loop-carried dependency chain (`min(diag, min(left, below)) + dist`)
+- At 2.5 GHz, this gives ~250M cells/sec — matches measured performance exactly
+- **The recurrence cannot be shortened** — it is fundamental to DTW's dynamic programming structure
+- **Multi-pair SIMD** (4 pairs in AVX2) can hide latency by processing 4 independent recurrences in parallel — expected 3-3.5x
+
+### std::min with initializer_list is catastrophically slow in hot loops
+- `std::min({a, b, c})` constructs a temporary `std::initializer_list` on every call
+- On MSVC this compiles to a function call + stack allocation, not two `vminsd` instructions
+- Replacing with `std::min(a, std::min(b, c))` gave **2.5-3x speedup** on all DTW functions
+- **Rule**: Never use `std::min` with initializer_list in inner loops. Two nested calls are equally readable and dramatically faster.
+
+### Lambda capture-by-value creates stale parameter bugs
+- `rebind_dtw_fn()` originally captured `[b = band]` — the lambda froze `band` at creation time
+- Setting `prob.band = 50` after construction silently had no effect — banding was ignored
+- **Fix**: Capture `[this]` and read `this->band` at invocation time
+- **Rule**: For lambdas stored as `std::function` members, capture `this` for parameters that may change. Only capture by value for truly immutable data.
 - **Implication**: Fix memory access patterns BEFORE doing SIMD work. SIMD on a bandwidth-bound kernel gives minimal gains.
 - The rolling buffer fix (fitting in L1 cache) is worth more than vectorization
 

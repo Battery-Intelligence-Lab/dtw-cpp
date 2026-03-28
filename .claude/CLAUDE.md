@@ -48,8 +48,8 @@ Create a layered design:
 
 ### Layer 4: Bindings
 
-- /bindings/python: pybind11/nanobind + scikit-build-core wheels
-- /bindings/matlab: MEX wrapper + MATLAB OO sugar
+- /bindings/python: nanobind + scikit-build-core wheels (GPU-native ndarray, stable ABI)
+- /bindings/matlab: C++ MEX API (mex.hpp) + MATLAB OO sugar (no longjmp, RAII-safe)
 Bindings must call stable core APIs (or a small C API shim), not internal templates.
 
 ## Immediate verified bugs to fix (first PRs)
