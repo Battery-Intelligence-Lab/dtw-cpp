@@ -72,6 +72,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Added TODO.md for development task tracking.
 * Removed `DTWC_ROOT_FOLDER` and `CURRENT_ROOT_FOLDER` CMake cache variables and compile definitions.
 * Added Google Benchmark-based baseline microbenchmarks for DTW distance functions. Enable with `-DDTWC_BUILD_BENCHMARK=ON`.
+* Added LB_Keogh and LB_Kim lower bound functions for DTW pruning (`dtwc/core/lower_bound_impl.hpp`).
 
 <br/><br/>
 # DTWC v1.0.0
