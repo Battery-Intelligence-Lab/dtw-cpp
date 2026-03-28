@@ -152,7 +152,7 @@ NB_MODULE(_dtwcpp_core, m) {
                               const std::vector<double> &y,
                               int band, double penalty) {
     nb::gil_scoped_release release;
-    return dtwc::adtwBanded<double>(x, y, penalty, band);
+    return dtwc::adtwBanded<double>(x, y, band, penalty);
   }, "x"_a, "y"_a, "band"_a = -1, "penalty"_a = 1.0,
      "Compute Amerced DTW distance with non-diagonal step penalty.");
 
