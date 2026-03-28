@@ -15,6 +15,10 @@
 #include "scores.hpp"
 #include "utility.hpp"
 #include "warping.hpp"
+#include "warping_ddtw.hpp"
+#include "warping_wdtw.hpp"
+#include "warping_adtw.hpp"
+#include "soft_dtw.hpp"
 #include "algorithms/fast_pam.hpp"
 
 // Phase 1: Core types (binding-friendly, Armadillo-independent headers)

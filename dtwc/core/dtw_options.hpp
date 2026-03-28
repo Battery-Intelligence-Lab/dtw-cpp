@@ -27,12 +27,32 @@ enum class MetricType
   SquaredL2   ///< (a - b)^2
 };
 
+/// DTW algorithm variant.
+enum class DTWVariant
+{
+  Standard,  ///< Classic DTW with min(3 neighbors) recurrence
+  DDTW,      ///< Derivative DTW: derivative preprocessing + standard DTW
+  WDTW,      ///< Weighted DTW: position-dependent weight w(|i-j|) on local cost
+  ADTW,      ///< Amerced DTW: penalty on non-diagonal (horizontal/vertical) steps
+  SoftDTW    ///< Soft-DTW: softmin replaces min (differentiable, Cuturi & Blondel 2017)
+};
+
+/// Variant-specific parameters.
+struct DTWVariantParams
+{
+  DTWVariant variant = DTWVariant::Standard;
+  double wdtw_g = 0.05;       ///< WDTW: logistic weight steepness (Jeong et al. 2011)
+  double adtw_penalty = 1.0;  ///< ADTW: penalty for non-diagonal steps
+  double sdtw_gamma = 1.0;    ///< Soft-DTW: smoothing parameter (lower = closer to hard DTW)
+};
+
 /// Runtime DTW configuration.
 struct DTWOptions
 {
   ConstraintType constraint = ConstraintType::None;
   MetricType metric = MetricType::L1;
   int band_width = -1;  ///< Band width for Sakoe-Chiba; -1 means unconstrained
+  DTWVariantParams variant_params;  ///< Variant selection and parameters
 };
 
 } // namespace dtwc::core

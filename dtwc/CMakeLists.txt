@@ -25,6 +25,10 @@ target_sources(dtwc++
   timing.hpp
   utility.hpp
   warping.hpp
+  warping_ddtw.hpp
+  warping_wdtw.hpp
+  warping_adtw.hpp
+  soft_dtw.hpp
   fileOperations.hpp
   DataLoader.hpp
   core/lower_bounds.hpp

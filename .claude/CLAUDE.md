@@ -80,6 +80,22 @@ Bindings must call stable core APIs (or a small C API shim), not internal templa
 - Optimize only when benchmarks show wins. Record numbers in /benchmarks/README.md.
 - Prefer clear loops over clever meta-programming.
 
+### Memory & cache design principles
+- **DTW is memory-bound** (0.125 FLOP/byte). Fix memory access patterns BEFORE SIMD.
+- **Flat containers only** in hot paths — no std::deque, no linked structures. Use std::vector or fixed-size arrays.
+- **thread_local reuse** for scratch buffers — resize (never shrink), avoid per-call allocation.
+- **Cache-friendly partitioning** for parallelism — divide work into contiguous chunks per thread (e.g., 10×50 matrix → 5 chunks of 10×10), not interleaved indices.
+- **Band is small by definition** — O(n×band) algorithms with flat arrays beat O(n) algorithms with pointer-chasing data structures when band is small.
+- **Lock-free by design** — structure parallel decomposition so threads write to non-overlapping memory regions. No atomics or locks needed if the decomposition guarantees no data races.
+
+### DTW variant architecture
+- **Separate functions per variant** (WDTW, ADTW, DDTW, Soft-DTW), not a parameterized uber-function. The inner loop recurrence differs structurally; conditionals in the hot path hurt a memory-bound kernel.
+- **std::function dispatch in Problem** — ~2ns overhead is negligible vs 1-100ms DTW. Avoids template explosion.
+- **No changes to existing warping.hpp** when adding variants — all variants are additive new files.
+- **WDTW/ADTW need recurrence changes** — they CANNOT be implemented as metric swaps.
+- **DDTW is a preprocessing step** — derivative transform before standard DTW.
+- **Soft-DTW is a separate algorithm** — softmin replaces std::min, needs full cost matrix.
+
 ## Extensibility (metrics + clustering)
 
 ### DistanceMetric concept
