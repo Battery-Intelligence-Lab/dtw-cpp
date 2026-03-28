@@ -18,6 +18,18 @@
 #include <string>
 #include <vector>
 
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+static struct TestDataInitFP {
+  TestDataInitFP() {
+    dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
+    // Set output to build dir so tests don't fail on missing results dir
+    dtwc::settings::paths::setResultsPath(".");
+  }
+} test_data_init_fp_;
+
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -80,7 +92,7 @@ static Problem make_small_problem(int N = 5)
 
 // ---------------------------------------------------------------------------
 // Helper: compute Lloyd-style cost for comparison.
-// Runs Problem's existing cluster_by_kMedoidsPAM which is Lloyd iteration.
+// Runs Problem's existing cluster_by_kMedoidsLloyd which is Lloyd iteration.
 // ---------------------------------------------------------------------------
 static double lloyd_cost(int N, int k)
 {
@@ -90,7 +102,7 @@ static double lloyd_cost(int N, int k)
   prob.maxIter = 100;
   prob.fillDistanceMatrix();
   prob.init_fun = init::Kmeanspp;
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
   return prob.findTotalCost();
 }
 

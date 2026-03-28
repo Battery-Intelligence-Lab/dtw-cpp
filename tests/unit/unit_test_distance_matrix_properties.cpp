@@ -18,6 +18,14 @@
 #include <cmath>
 #include <vector>
 
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+static struct TestDataInit2 {
+  TestDataInit2() { dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR); }
+} test_data_init2_;
+
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -28,7 +36,7 @@ namespace {
  */
 Problem make_problem(int N_data)
 {
-  dtwc::DataLoader dl{ settings::dataPath / "dummy", N_data };
+  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", N_data };
   dl.startColumn(1).startRow(1);
   dtwc::Problem prob{ "dist_mat_test", dl };
   return prob;

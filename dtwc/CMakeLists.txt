@@ -13,6 +13,7 @@ target_sources(dtwc++
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
+  algorithms/fast_pam.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
@@ -36,8 +37,9 @@ target_link_libraries(dtwc++
   mip-solvers
   project_warnings
   project_options
-  PUBLIC 
+  PUBLIC
   armadillo
+  rapidcsv::rapidcsv
 )
 
 find_package(OpenMP)

@@ -18,6 +18,14 @@
 #include <set>
 #include <vector>
 
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+static struct TestDataInit {
+  TestDataInit() { dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR); }
+} test_data_init_;
+
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -32,13 +40,14 @@ namespace {
  */
 Problem make_dummy_problem(int N_data, int Nc)
 {
-  dtwc::DataLoader dl{ settings::dataPath / "dummy", N_data };
+  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", N_data };
   dl.startColumn(1).startRow(1);
 
   dtwc::Problem prob{ "test_clustering", dl };
   prob.set_numberOfClusters(Nc);
   prob.maxIter = 100;
   prob.N_repetition = 1;
+  prob.output_folder = ".";
   return prob;
 }
 
@@ -56,7 +65,7 @@ TEST_CASE("PAM clustering converges for dummy data", "[Phase1][clustering]")
   auto prob = make_dummy_problem(N_data, Nc);
 
   // Should not throw; should terminate within maxIter.
-  REQUIRE_NOTHROW(prob.cluster_by_kMedoidsPAM());
+  REQUIRE_NOTHROW(prob.cluster_by_kMedoidsLloyd());
 
   // After clustering, labels must be assigned.
   REQUIRE(prob.clusters_ind.size() == static_cast<size_t>(N_data));
@@ -72,7 +81,7 @@ TEST_CASE("Cluster labels are in valid range [0, k)", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   for (int label : prob.clusters_ind) {
     REQUIRE(label >= 0);
@@ -89,7 +98,7 @@ TEST_CASE("Medoid indices are valid data-point indices", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   for (int medoid : prob.centroids_ind) {
     REQUIRE(medoid >= 0);
@@ -110,7 +119,7 @@ TEST_CASE("Total cost is non-negative after clustering", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   double cost = prob.findTotalCost();
   REQUIRE(cost >= 0.0);
@@ -125,13 +134,13 @@ TEST_CASE("Multiple repetitions pick the best (lowest) cost", "[Phase1][clusteri
   constexpr int Nc = 3;
 
   auto prob1 = make_dummy_problem(N_data, Nc);
-  prob1.cluster_by_kMedoidsPAM();
+  prob1.cluster_by_kMedoidsLloyd();
   double cost1 = prob1.findTotalCost();
 
   // Run with multiple repetitions -- should find a cost <= worst single run.
   auto prob2 = make_dummy_problem(N_data, Nc);
   prob2.N_repetition = 3;
-  prob2.cluster_by_kMedoidsPAM();
+  prob2.cluster_by_kMedoidsLloyd();
   double cost2 = prob2.findTotalCost();
 
   // The multi-rep run may or may not beat the single run (depends on seeds),
@@ -149,7 +158,7 @@ TEST_CASE("k=1 puts all points in one cluster", "[Phase1][clustering]")
   constexpr int Nc = 1;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   // Every label should be 0.
   for (int label : prob.clusters_ind) {
@@ -170,7 +179,7 @@ TEST_CASE("k=N makes each point a medoid", "[Phase1][clustering]")
   constexpr int Nc = N_data;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   // Each label should be unique in [0, N).
   std::set<int> unique_labels(prob.clusters_ind.begin(), prob.clusters_ind.end());
