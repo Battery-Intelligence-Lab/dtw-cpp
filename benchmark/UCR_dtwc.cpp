@@ -14,6 +14,7 @@
 #include <map>
 #include <utility>
 #include <filesystem>
+#include <stdexcept>
 
 using namespace dtwc;
 
@@ -23,12 +24,12 @@ inline auto get_UCR_2018_files()
   std::map<std::string, int> Nc_list{};
 
 
-  std::ifstream summary_file(settings::root_folder / "data/benchmark/UCR_DataSummary.csv", std::ios_base::in);
+  const auto summary_path = settings::dataPath / "benchmark/UCR_DataSummary.csv";
+  std::ifstream summary_file(summary_path, std::ios_base::in);
 
   if (!summary_file.is_open()) {
-    std::cerr << fs::absolute(settings::root_folder / "data/benchmark/UCR_DataSummary.csv")
-              << " could not be opened!\n";
-    throw 11;
+    std::cerr << fs::absolute(summary_path) << " could not be opened!\n";
+    throw std::runtime_error("Failed to open UCR data summary file");
   }
 
   std::string summary_line{}, summary_name;
@@ -51,14 +52,14 @@ inline auto get_UCR_2018_files()
 
     if (Nc_now == 0) {
       std::cerr << summary_name << " cluster info could not be read!\n";
-      throw 11;
+      throw std::runtime_error("Cluster info could not be read for: " + summary_name);
     }
 
     Nc_list[summary_name] = Nc_now;
   }
 
 
-  auto directories = fs::recursive_directory_iterator(settings::root_folder / "data/benchmark/UCRArchive_2018");
+  auto directories = fs::recursive_directory_iterator(settings::dataPath / "benchmark/UCRArchive_2018");
   for (const auto &entry : directories) {
     if (entry.is_regular_file()) {                   // Check if the entry is a regular file
       std::string file_path = entry.path().string(); // Get the file path as a string
@@ -89,12 +90,12 @@ inline void UCR_2018()
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
-    //(settings::root_folder / "data/benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
-    // (settings::root_folder / "data/benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    //(settings::root_folder / "data/benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
-    //(settings::root_folder / "data/benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
-    (settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
-    //(settings::root_folder / "data/benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+    //(settings::dataPath / "benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    // (settings::dataPath / "benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+    //(settings::dataPath / "benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
+    //(settings::dataPath / "benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
+    (settings::dataPath / "benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    //(settings::dataPath / "benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
 
@@ -124,7 +125,7 @@ inline void UCR_2018()
     const auto time_1 = clk.duration();
 
     std::cout << "Finished calculating distances " << clk << std::endl;
-    std::cout << "Band used " << settings::band << "\n\n\n";
+    std::cout << "Band used " << prob.band << "\n\n\n";
 
     prob.N_repetition = 2;
 
@@ -133,7 +134,7 @@ inline void UCR_2018()
 
     const auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
-    std::cout << "Band used " << settings::band << "\n\n\n";
+    std::cout << "Band used " << prob.band << "\n\n\n";
 
     prob.printClusters(); // Prints to screen.
     prob.writeDistanceMatrix();
