@@ -32,9 +32,9 @@ struct Data
 
   /**
    * @brief Returns the number of data points.
-   * @return Integer representing the size of the data vector.
+   * @return The size of the data vector (size_t).
    */
-  auto size() const { return static_cast<int>(p_vec.size()); }
+  auto size() const { return p_vec.size(); }
 
   Data() = default; //!< Default constructor
 

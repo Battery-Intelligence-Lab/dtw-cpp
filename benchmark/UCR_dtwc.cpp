@@ -129,7 +129,7 @@ inline void UCR_2018()
 
     prob.N_repetition = 2;
 
-    prob.cluster_by_kMedoidsPAM();
+    prob.cluster_by_kMedoidsLloyd();
     // prob.cluster_by_MIP(); // Uses MILP to do clustering.
 
     const auto time_2 = clk.duration();

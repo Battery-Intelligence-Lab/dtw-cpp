@@ -58,7 +58,7 @@ std::vector<double> silhouette(Problem &prob)
 
     for (auto i : Range(prob.size())) {
       mean_distances[prob.clusters_ind[i]].first++;
-      mean_distances[prob.clusters_ind[i]].second += prob.distByInd(i, i_b);
+      mean_distances[prob.clusters_ind[i]].second += prob.distByInd(static_cast<int>(i), static_cast<int>(i_b));
     }
 
 

@@ -99,8 +99,8 @@ void Kmeanspp(Problem &prob)
 
   std::vector<data_t> distances(prob.size(), std::numeric_limits<data_t>::max());
 
-  auto distTask = [&](int i_p) {
-    distances[i_p] = std::min(distances[i_p], prob.distByInd(candidate_centroids.back(), i_p));
+  auto distTask = [&](size_t i_p) {
+    distances[i_p] = std::min(distances[i_p], prob.distByInd(candidate_centroids.back(), static_cast<int>(i_p)));
   };
 
   for (int i = 1; i < Nc; i++) {

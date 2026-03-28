@@ -26,7 +26,8 @@ void MIP_clustering_byGurobi(Problem &prob)
 {
 #ifdef DTWC_ENABLE_GUROBI
 
-  const auto Nb(prob.size()), Nc(prob.cluster_size());
+  const auto Nb = prob.size();
+  const auto Nc = prob.cluster_size();
   prob.centroids_ind.clear();
 
   try {
@@ -63,7 +64,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBLinExpr obj = 0;
     for (auto j : Range(Nb))
       for (auto i : Range(Nb))
-        obj += w[i + j * Nb] * prob.distByInd(i, j) / scaling_factor;
+        obj += w[i + j * Nb] * prob.distByInd(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
 
     model.setObjective(obj, GRB_MINIMIZE);
 
@@ -76,14 +77,14 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     for (auto i : Range(Nb))
       if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
-        prob.centroids_ind.push_back(i);
+        prob.centroids_ind.push_back(static_cast<int>(i));
 
     prob.clusters_ind.resize(Nb);
 
     for (auto i : Range(prob.cluster_size()))
       for (auto j : Range(Nb))
         if (w[prob.centroids_ind[i] + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
-          prob.clusters_ind[j] = i;
+          prob.clusters_ind[j] = static_cast<int>(i);
 
   } catch (GRBException &e) {
     std::cout << "Error code = " << e.getErrorCode() << std::endl

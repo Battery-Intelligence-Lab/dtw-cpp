@@ -36,7 +36,7 @@ int main()
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
   prob.N_repetition = 5;
 
-  prob.cluster_by_kMedoidsPAM();
+  prob.cluster_by_kMedoidsLloyd();
 
   prob.printClusters(); // Prints to screen.
   prob.writeClusters(); // Prints to file.

@@ -56,7 +56,7 @@ private:
   bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
 
   // Private functions:
-  std::pair<int, double> cluster_by_kMedoidsPAM_single(int rep);
+  std::pair<int, double> cluster_by_kMedoidsLloyd_single(int rep);
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
@@ -133,7 +133,7 @@ public:
   // Clustering functions:
   void cluster();
   void cluster_by_MIP();
-  void cluster_by_kMedoidsPAM();
+  void cluster_by_kMedoidsLloyd();
 
   void cluster_and_process();
 

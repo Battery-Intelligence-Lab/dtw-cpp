@@ -34,14 +34,14 @@ void extract_mip_solution(Problem &prob, const T &solution)
 
   for (auto i : Range(Nb))
     if (solution[i * (Nb + 1)] > 0.5)
-      prob.centroids_ind.push_back(i);
+      prob.centroids_ind.push_back(static_cast<int>(i));
 
   prob.clusters_ind.resize(Nb);
 
   for (auto i : Range(prob.cluster_size()))
     for (auto j : Range(Nb))
       if (solution[prob.centroids_ind[i] * Nb + j] > 0.5)
-        prob.clusters_ind[j] = i;
+        prob.clusters_ind[j] = static_cast<int>(i);
 }
 
 void MIP_clustering_byHiGHS(Problem &prob)
@@ -71,9 +71,9 @@ void MIP_clustering_byHiGHS(Problem &prob)
   prob.fillDistanceMatrix();                                           // We need full distance matrix before MIP clustering.
   const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0); // In case no distance is set.
 
-  for (int j{ 0 }; j < Nb; j++)
-    for (int i{ 0 }; i < Nb; i++)
-      model.lp_.col_cost_[i + j * Nb] = prob.distByInd(i, j) / scaling_factor;
+  for (size_t j{ 0 }; j < Nb; j++)
+    for (size_t i{ 0 }; i < Nb; i++)
+      model.lp_.col_cost_[i + j * Nb] = prob.distByInd(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
 
 
   model.lp_.col_lower_.clear();
@@ -90,7 +90,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   model.lp_.row_upper_[0] = model.lp_.row_lower_[0] = Nc;
 
-  for (int i = 0; i < Nb; ++i)
+  for (size_t i = 0; i < Nb; ++i)
     model.lp_.row_upper_[i + 1] = model.lp_.row_lower_[i + 1] = 1;
 
   model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
@@ -109,23 +109,23 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   triplets.reserve(numel);
 
-  for (int i = 0; i < Nb; ++i) {
-    triplets.emplace_back(0, i * (Nb + 1), 1.0); // Sum of diagonals is Nc
+  for (size_t i = 0; i < Nb; ++i) {
+    triplets.emplace_back(0, static_cast<int>(i * (Nb + 1)), 1.0); // Sum of diagonals is Nc
 
-    for (int j = 0; j < Nb; j++)
-      triplets.emplace_back(1 + j, Nb * i + j, 1.0); // Every element belongs to one cluster.
+    for (size_t j = 0; j < Nb; j++)
+      triplets.emplace_back(static_cast<int>(1 + j), static_cast<int>(Nb * i + j), 1.0); // Every element belongs to one cluster.
 
     // ---------------
     int shift = 0;
-    for (int j = 0; j < Nb; j++) {
-      const int block_begin_row = Nb + 1 + (Nb - 1) * i;
-      const int block_begin_col = Nb * i;
+    for (size_t j = 0; j < Nb; j++) {
+      const int block_begin_row = static_cast<int>(Nb + 1 + (Nb - 1) * i);
+      const int block_begin_col = static_cast<int>(Nb * i);
       if (i == j) {
-        for (int k = 0; k < (Nb - 1); k++)
-          triplets.emplace_back(block_begin_row + k, block_begin_col + j, -1);
+        for (size_t k = 0; k < (Nb - 1); k++)
+          triplets.emplace_back(block_begin_row + static_cast<int>(k), block_begin_col + static_cast<int>(j), -1);
         shift = 1;
       } else
-        triplets.emplace_back(block_begin_row + j - shift, block_begin_col + j, 1);
+        triplets.emplace_back(block_begin_row + static_cast<int>(j) - shift, block_begin_col + static_cast<int>(j), 1);
     }
   }
   std::sort(triplets.begin(), triplets.end(), solver::RowMajor{});

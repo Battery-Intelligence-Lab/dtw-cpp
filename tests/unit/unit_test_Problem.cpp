@@ -52,7 +52,7 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
   REQUIRE(prob.cluster_size() == Nc);
   REQUIRE(prob.name == probName);
 
-  // prob.cluster_by_kMedoidsPAM_repetetive(N_repetition, maxIter);
+  // prob.cluster_by_kMedoidsLloyd_repetetive(N_repetition, maxIter);
 }
 
 TEST_CASE("dtwFull_L_test", "[dtwFull_L]")

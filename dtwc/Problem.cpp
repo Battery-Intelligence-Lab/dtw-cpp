@@ -21,6 +21,7 @@
 
 
 #include <algorithm> // for max_element, min, min_element, sample
+#include <cmath>     // for sqrt, floor
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <iterator>  // for back_insert_iterator, back_inserter
@@ -63,7 +64,7 @@ void Problem::set_numberOfClusters(int Nc_)
  */
 void Problem::set_clusters(std::vector<int> &candidate_centroids)
 {
-  if (candidate_centroids.size() != Nc)
+  if (candidate_centroids.size() != static_cast<size_t>(Nc))
     throw std::runtime_error("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
 
   centroids_ind = candidate_centroids;
@@ -133,14 +134,26 @@ void Problem::fillDistanceMatrix()
 {
   if (isDistanceMatrixFilled()) return;
 
-  auto oneTask = [&, N = data.size()](int i_linear) {
-    int i{ i_linear / N }, j{ i_linear % N };
-    if (i <= j)
-      distByInd(i, j);
+  const size_t N = data.size();
+  auto oneTask = [this, N](size_t k) {
+    // Decode linear triangular index k into (i, j) where 0 <= i <= j < N.
+    // Row i starts at cumulative offset i*N - i*(i-1)/2, so we solve for i
+    // using the quadratic formula (O(1) instead of O(N) loop).
+    const double Nd = static_cast<double>(N);
+    const double kd = static_cast<double>(k);
+    size_t i = static_cast<size_t>(std::floor(Nd + 0.5 - std::sqrt((Nd + 0.5) * (Nd + 0.5) - 2.0 * kd)));
+    // Guard against floating-point rounding: if row_start for i+1 still fits, advance.
+    size_t row_start = i * N - i * (i - 1) / 2;
+    if (row_start + (N - i) <= k) {
+      row_start += (N - i);
+      ++i;
+    }
+    size_t j = i + (k - row_start);
+    distByInd(static_cast<int>(i), static_cast<int>(j));
   };
 
   std::cout << "Distance matrix is being filled!" << std::endl;
-  run(oneTask, data.size() * data.size());
+  run(oneTask, N * (N + 1) / 2);
   is_distMat_filled = true;
   std::cout << "Distance matrix has been filled!" << std::endl;
 }
@@ -152,7 +165,7 @@ void Problem::cluster()
 {
   switch (method) {
   case Method::Kmedoids:
-    cluster_by_kMedoidsPAM();
+    cluster_by_kMedoidsLloyd();
     break;
   case Method::MIP:
     cluster_by_MIP();
@@ -196,12 +209,13 @@ void Problem::cluster_by_MIP()
  */
 void Problem::assignClusters()
 {
-  auto assignClustersTask = [this](int i_p) //!< i_p  and i_c in [0, Np)
+  auto assignClustersTask = [this](size_t i_p) //!< i_p  and i_c in [0, Np)
   {
-    auto minIt = std::min_element(centroids_ind.begin(), centroids_ind.end(), [this, i_p](int ic_1, int ic_2) {
-      return distByInd(i_p, ic_1) < distByInd(i_p, ic_2);
+    const int ip = static_cast<int>(i_p);
+    auto minIt = std::min_element(centroids_ind.begin(), centroids_ind.end(), [this, ip](int ic_1, int ic_2) {
+      return distByInd(ip, ic_1) < distByInd(ip, ic_2);
     });
-    clusters_ind[i_p] = std::distance(centroids_ind.begin(), minIt);
+    clusters_ind[i_p] = static_cast<int>(std::distance(centroids_ind.begin(), minIt));
   };
 
   clusters_ind.resize(data.size()); // Resize before assigning.
@@ -215,11 +229,11 @@ void Problem::assignClusters()
  */
 void Problem::distanceInClusters()
 {
-  auto distanceInClustersTask = [&, N = size()](int i_p) {
+  auto distanceInClustersTask = [&, N = size()](size_t i_p) {
     const int clusterNo{ clusters_ind[i_p] };
-    for (int i{ i_p }; i < N; i++)
+    for (size_t i{ i_p }; i < N; i++)
       if (clusters_ind[i] == clusterNo) // If they are in the same cluster
-        distByInd(i_p, i);
+        distByInd(static_cast<int>(i_p), static_cast<int>(i));
   };
 
   run(distanceInClustersTask, size());
@@ -232,35 +246,35 @@ void Problem::distanceInClusters()
  */
 void Problem::calculateMedoids()
 {
-  static std::vector<double> pointCosts(size()), clusterCosts(cluster_size());
-  pointCosts.resize(size());
+  std::vector<double> pointCosts(size());
 
-  auto findBetterMedoidTask = [&](int i_p) // i_p is point index.
+  auto findBetterMedoidTask = [&](size_t i_p) // i_p is point index.
   {
     double sum{ 0 };
     for (const auto i : Range(size()))
       if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-        sum += distByInd(i_p, i);
+        sum += distByInd(static_cast<int>(i_p), static_cast<int>(i));
 
     pointCosts[i_p] = sum;
   };
 
   run(findBetterMedoidTask, size());
 
-  clusterCosts.assign(cluster_size(), std::numeric_limits<double>::max());
+  std::vector<double> clusterCosts(cluster_size(), std::numeric_limits<double>::max());
   for (const auto i : Range(size()))
     if (pointCosts[i] < clusterCosts[clusters_ind[i]]) {
       clusterCosts[clusters_ind[i]] = pointCosts[i];
-      centroids_ind[clusters_ind[i]] = i;
+      centroids_ind[clusters_ind[i]] = static_cast<int>(i);
     }
 }
 
 /**
- * @brief Performs the clustering using the k-Medoids PAM (Partitioning Around Medoids) algorithm.
- * @details Executes the PAM clustering algorithm with multiple repetitions, each time initializing medoids randomly.
+ * @brief Performs the clustering using the Lloyd k-medoids algorithm.
+ * @details Executes the Lloyd k-medoids algorithm (alternating assign + update medoids within clusters)
+ * with multiple repetitions, each time initializing medoids randomly.
  * The repetition yielding the lowest total cost is chosen as the best solution.
  */
-void Problem::cluster_by_kMedoidsPAM()
+void Problem::cluster_by_kMedoidsLloyd()
 {
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
@@ -273,7 +287,7 @@ void Problem::cluster_by_kMedoidsPAM()
               << Nc << " medoids are initialised.\n"
               << "Start clustering:\n";
 
-    auto [status, total_cost] = cluster_by_kMedoidsPAM_single(i_rand);
+    auto [status, total_cost] = cluster_by_kMedoidsLloyd_single(i_rand);
 
     if (status == 0)
       std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
@@ -291,13 +305,13 @@ void Problem::cluster_by_kMedoidsPAM()
 }
 
 /**
- * @brief Executes a single iteration of the k-Medoids PAM clustering.
- * @details This function performs a single iteration of the k-Medoids PAM algorithm, updating the medoids and clusters,
- * and calculating the total cost for this iteration.
+ * @brief Executes a single run of the Lloyd k-medoids clustering.
+ * @details This function performs a single run of the Lloyd k-medoids algorithm, updating the medoids and clusters,
+ * and calculating the total cost for this run.
  * @param rep The current repetition number.
  * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
  */
-std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
+std::pair<int, double> Problem::cluster_by_kMedoidsLloyd_single(int rep)
 {
   if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
 
@@ -346,7 +360,8 @@ std::pair<int, double> Problem::cluster_by_kMedoidsPAM_single(int rep)
 double Problem::findTotalCost()
 {
   double sum = 0;
-  for (int i : Range(size())) {
+  for (const auto idx : Range(size())) {
+    const int i = static_cast<int>(idx);
     if constexpr (settings::isDebug)
       std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
                 << " which is: " << distByInd(i, centroid_of(i)) << "\n";

@@ -39,7 +39,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
     std::cout << "Failed to open file in path: " << outPath << '\n'
               << "Program is exiting." << std::endl;
 
-    throw 1;
+    throw std::runtime_error("Failed to open medoids output file: " + outPath.string());
   }
 
   for (auto &c_ind : centroids_all) {
@@ -97,8 +97,8 @@ void Problem::writeClusters()
   myFile << "\n\n"
          << "Data" << ',' << "its cluster\n";
 
-  for (int i : Range(size()))
-    myFile << get_name(i) << ',' << get_name(centroid_of(i)) << '\n';
+  for (const auto i : Range(size()))
+    myFile << get_name(i) << ',' << get_name(centroid_of(static_cast<int>(i))) << '\n';
 
   myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
 
