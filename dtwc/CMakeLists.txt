@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.21)
 
 add_library(dtwc++ STATIC)
 
+# Required for linking into the Python shared library (.so) on Linux
+set_target_properties(dtwc++ PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 add_subdirectory(mip)
 
 target_sources(dtwc++
