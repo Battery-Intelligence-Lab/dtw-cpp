@@ -1,5 +1,127 @@
 # DTWC++ Transformation Plan v3 (Post-Adversarial Review)
 
+## Execution Plan: Phase 0 Parallel Worktree Decomposition
+
+### Context
+
+Phase 0 fixes 24 bugs across ~15 files. These are decomposed into 8 independent work units that can execute in parallel worktrees. Each unit is independently mergeable. An additional test-writing unit runs first to establish test coverage before modifications.
+
+### E2E Test Recipe
+
+```bash
+cd build_dir
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
+cmake --build . --parallel 4
+ctest -j4 -C Debug --output-on-failure
+```
+
+No UI or server verification needed — unit tests are sufficient for Phase 0 correctness fixes.
+
+### Work Units
+
+#### Unit 0: PRE — Write Tests Before Modifications
+**Files:** `tests/unit/unit_test_warping_phase0.cpp`, `tests/unit/unit_test_Problem_phase0.cpp`, `tests/unit/unit_test_scores_phase0.cpp`
+**Task:** Write NEW Catch2 test files that will verify Phase 0 fixes. Tests should initially FAIL on the current code (proving the bugs exist), then PASS after fixes. Tests:
+- `throw 1` produces non-std::exception (test that `writeMedoids` throws `std::runtime_error`)
+- `dtwBanded` with `float` default produces different precision than `double`
+- `fillDistanceMatrix` symmetry and non-negativity properties
+- `calculateMedoids` thread safety (call from two threads)
+- DTW `.at()` vs `[]` gives same results (regression)
+- `Data::size()` returns correct type for large datasets
+
+#### Unit 1: Core C++ Bug Fixes (warping.hpp + settings.hpp)
+**Files:** `dtwc/warping.hpp`, `dtwc/settings.hpp`
+**Changes:**
+- warping.hpp:109-110 — replace `.at(i)` with `[i]` and `.at(j)` with `[j]`
+- warping.hpp:144 — change `template <typename data_t = float>` to `template <typename data_t = double>`
+- warping.hpp:155-156 — replace full matrix `C.resize(m_long, m_short)` with rolling buffer `std::vector<data_t>` of width `2*band+1` for banded DTW
+- settings.hpp:35 — change `static std::mt19937` to `inline std::mt19937`
+
+#### Unit 2: Problem.cpp Bug Fixes
+**Files:** `dtwc/Problem.cpp`, `dtwc/Problem.hpp`, `dtwc/Data.hpp`
+**Changes:**
+- Problem.cpp:136-143 — replace N^2 linearized iteration with triangular nested loop using `size_t`
+- Problem.cpp:235,250 — change `static` vectors to local variables in `calculateMedoids`
+- Problem.hpp:136 — rename `cluster_by_kMedoidsPAM` to `cluster_by_kMedoidsLloyd` (and all call sites in Problem.cpp)
+- Data.hpp:37 — change `static_cast<int>` to return `size_t` (or `int64_t`)
+- Problem_IO.cpp:42 — change `throw 1` to `throw std::runtime_error(...)`
+
+#### Unit 3: Scores Fix (DBI)
+**Files:** `dtwc/scores.cpp`, `dtwc/scores.hpp`
+**Changes:**
+- scores.cpp:99-153 — fix commented-out DBI: replace `dist(medoid_i, medoid_i)` with average within-cluster scatter `S_i = mean(d(x, m_i))`. Uncomment with correct formula.
+
+#### Unit 4: Examples and Benchmark Fixes
+**Files:** `examples/MIP_single.cpp`, `examples/MIP_multiple.cpp`, `benchmark/UCR_dtwc.cpp`
+**Changes:**
+- MIP_single.cpp:39 — change `dtwc::settings::band` to `prob.band`
+- MIP_multiple.cpp:41 — change `dtwc::settings::band` to `prob.band`
+- UCR_dtwc.cpp:26,29,61 — replace `settings::root_folder` with `settings::paths::dataPath` parent
+- UCR_dtwc.cpp:127,136 — change `settings::band` to `prob.band`
+- UCR_dtwc.cpp:31 — change `throw 11` to `throw std::runtime_error(...)`
+
+#### Unit 5: CMake Fixes
+**Files:** `CMakeLists.txt`, `cmake/StandardProjectSettings.cmake`, `cmake/Dependencies.cmake`, `tests/CMakeLists.txt`
+**Changes:**
+- CMakeLists.txt:16-18 — fix `option()` syntax to include help strings
+- CMakeLists.txt:20-21 — change `set(DTWC_ENABLE_GUROBI ON)` to `option()`
+- CMakeLists.txt:35 — remove unconditional `enable_testing()`
+- CMakeLists.txt:66 — remove duplicate `enable_testing()` (keep `include(CTest)`)
+- CMakeLists.txt:40-62 — wrap executables in `if(PROJECT_IS_TOP_LEVEL)`
+- StandardProjectSettings.cmake:4 — fix message to say "Release" not "RelWithDebInfo"
+- StandardProjectSettings.cmake:61-64 — change `CMAKE_CURRENT_SOURCE_DIR` to `CMAKE_BINARY_DIR`
+- Dependencies.cmake:53 — pin Armadillo to specific tag (not branch)
+- tests/CMakeLists.txt:1 — add `CONFIGURE_DEPENDS` to GLOB_RECURSE
+
+#### Unit 6: CI Workflow Fixes
+**Files:** `.github/workflows/ubuntu-unit.yml`, `.github/workflows/windows-unit.yml`, `.github/workflows/macos-unit.yml`
+**Changes:**
+- Uncomment `- main` in push branch triggers in all 3 files
+- Add ASan+UBSan CI job to ubuntu-unit.yml (new matrix entry with `-DCMAKE_CXX_FLAGS="-fsanitize=address,undefined"`)
+
+#### Unit 7: Python Packaging Fixes
+**Files:** `pyproject.toml`, `setup.py` (DELETE), `.python-version`
+**Changes:**
+- pyproject.toml:7 — change `requires-python` to `">=3.9"`
+- pyproject.toml:10 — change numpy requirement to `">=1.21"`
+- pyproject.toml:12 — change pybind11 requirement to `">=2.11"`
+- pyproject.toml:4 — replace placeholder description
+- pyproject.toml: add VERSION file reference or set version to `"1.0.0"`
+- DELETE setup.py entirely (conflicts with pyproject.toml)
+- Create `VERSION` file at repo root with content `1.0.0`
+
+#### Unit 8: Style Guide Updates
+**Files:** `.claude/cpp-style.md`, `.claude/python-style.md`
+**Changes:**
+- cpp-style.md: update naming conventions to enforce snake_case for new functions (already partially done)
+- cpp-style.md: add "No virtual dispatch in hot paths" performance rule
+- cpp-style.md: add "Template on constraint only, not metrics" rule
+- cpp-style.md: add ScratchMatrix pattern documentation
+- python-style.md:7 — change minimum Python to 3.9
+- python-style.md: update scikit-learn API guidance per adversarial review (no check_estimator, medoid_indices_ not cluster_centers_)
+- python-style.md: add variable-length series input guidance (accept both ndarray and list-of-arrays)
+
+#### Unit 9: Baseline Benchmarks (Before Performance Changes)
+
+**Files:** `benchmarks/bench_dtw_baseline.cpp`, `benchmarks/CMakeLists.txt` (new), `cmake/Dependencies.cmake` (add Google Benchmark)
+
+**Task:** Write baseline microbenchmarks capturing current performance BEFORE any optimization. These numbers are the reference for measuring improvement. Use Google Benchmark (BSD-3, via CPM). Benchmarks:
+
+- `BM_dtwFull_scalar` — full DTW for series lengths 100, 500, 1000, 4000, 8000
+- `BM_dtwFull_L_scalar` — linear-space DTW same lengths
+- `BM_dtwBanded_scalar` — banded DTW with band=10, 50, 100 for length 1000, 8000
+- `BM_fillDistanceMatrix` — fill N x N distance matrix for N=25 (dummy data), N=100
+- `BM_calculateMedoids` — medoid calculation for N=25, k=3
+- `BM_assignClusters` — cluster assignment for N=25, k=3
+
+Store results as JSON in `benchmarks/baselines/` for future comparison. Add `DTWC_BUILD_BENCHMARK` CMake option to gate benchmark builds.
+
+### Worker Instructions Template
+
+Each worker receives the overall goal, its specific unit task, the e2e test recipe, and the standard post-implementation checklist (simplify, test, commit, PR).
+
+---
+
 **Target version:** v2.0.0 | **C++ standard:** C++17 minimum, C++23 preferred | **License:** BSD-3
 
 ## Context

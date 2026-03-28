@@ -64,13 +64,13 @@ TEST_CASE("[Phase0] writeMedoids throws std::runtime_error on bad path",
   // On both Windows and Unix this should fail to open a file.
   prob.output_folder = "/nonexistent_dir_phase0_test/deep/nested/path";
 
-  // cluster_by_kMedoidsPAM() eventually calls writeMedoids() which
+  // cluster_by_kMedoidsLloyd() eventually calls writeMedoids() which
   // currently does `throw 1` (an int).
   // After the fix it should throw std::runtime_error.
   //
   // EXPECTED TO FAIL on unmodified code: REQUIRE_THROWS_AS expects
   // std::runtime_error but gets int.
-  REQUIRE_THROWS_AS(prob.cluster_by_kMedoidsPAM(), std::runtime_error);
+  REQUIRE_THROWS_AS(prob.cluster_by_kMedoidsLloyd(), std::runtime_error);
 }
 
 // ---------------------------------------------------------------------------

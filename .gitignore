@@ -31,22 +31,40 @@
 *.out
 *.app
 
-# User defined
+# Build directories
+build/
+build_*/
+bin/
+out/
+cmake-build-*/
+Release/
+Debug/
 
-build/*
-bin/*
-cmake-build-debug/*
-.vscode/*
-*.pdb
-out/*
-.vs/*
+# IDE
+.vscode/
+.vs/
 .editorconfig
-Release/*
-Debug/*
+*.pdb
 *.ilk
-cmake-build-release/*
-cmake-build-debug/*
-cmake-build-relwithdebinfo/*
-build/*
-bin/*
-*.egg-info/*
+
+# Python
+*.egg-info/
+__pycache__/
+*.pyc
+*.pyo
+dist/
+*.whl
+.eggs/
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Virtual environments
+.venv/
+venv/
+
+# Benchmark baselines (machine-specific)
+benchmarks/baselines/*.json
+
+# CPM cache
+cmake-build-*/_deps/
