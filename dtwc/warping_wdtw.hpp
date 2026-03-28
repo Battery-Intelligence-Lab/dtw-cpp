@@ -1,203 +1,279 @@
 /**
  * @file warping_wdtw.hpp
- * @brief Weighted Dynamic Time Warping (WDTW) functions.
+ * @brief Weighted Dynamic Time Warping (WDTW) distance functions.
  *
- * @details Implements WDTW as described in:
- *   Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011).
- *   Weighted dynamic time warping for time series classification.
- *   Pattern Recognition, 44(9), 2231-2240.
+ * @details WDTW multiplies each pointwise distance by a weight that depends on
+ *          the absolute index difference |i - j| between the matched points.
+ *          Larger index deviations get heavier penalties. The weight vector is
+ *          typically a logistic function: w(d) = w_max / (1 + exp(-g*(d - m/2)))
+ *          where m is the maximum possible deviation and g controls steepness.
  *
- * The local distance at cell (i,j) is multiplied by a position-dependent weight
- * w(|i-j|) that penalizes diagonal deviation:
- *   w(k) = 1 / (1 + exp(-g * (k - max_len/2)))
- * where g controls steepness (higher g = stricter diagonal preference).
+ *          Reference: Y.-S. Jeong, M.-K. Jeong, O.-A. Omitaomu, "Weighted dynamic
+ *          time warping for time series classification", Pattern Recognition, 44(9),
+ *          2231-2240 (2011).
  *
+ * @author Claude (generated)
  * @date 28 Mar 2026
  */
 
 #pragma once
 
 #include "settings.hpp"
-#include "core/scratch_matrix.hpp"
 
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
-#include <cmath>     // for exp
+#include <cmath>     // for exp, ceil, floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
 #include <utility>   // for pair
+#include <numeric>   // for iota
 
 namespace dtwc {
 
-namespace detail {
-
 /**
- * @brief Precompute the WDTW weight vector for a given maximum length.
+ * @brief Generate WDTW weight vector using the logistic function.
  *
- * @param max_len Maximum of the two series lengths.
- * @param g       Steepness parameter for the logistic weight function.
- * @return        Weight vector of size max_len, where weights[k] = w(|i-j| = k).
+ * @details w(d) = w_max / (1 + exp(-g * (d - m/2)))
+ *          where d is the index deviation (0..max_dev), g controls steepness,
+ *          and w_max is the maximum weight.
+ *
+ * @tparam data_t Data type.
+ * @param max_dev Maximum index deviation (typically max(len_x, len_y) - 1).
+ * @param g Steepness parameter for the logistic weight function.
+ * @param w_max Maximum weight value.
+ * @return Weight vector of size max_dev + 1.
  */
 template <typename data_t>
-inline void computeWDTWWeights(std::vector<data_t> &weights, int max_len, data_t g)
+std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.0)
 {
-  weights.resize(static_cast<size_t>(max_len));
-  const data_t half = static_cast<data_t>(max_len) / 2.0;
-  for (int k = 0; k < max_len; ++k) {
-    weights[k] = static_cast<data_t>(1.0) / (static_cast<data_t>(1.0) + std::exp(-g * (static_cast<data_t>(k) - half)));
+  std::vector<data_t> weights(max_dev + 1);
+  const data_t half_dev = static_cast<data_t>(max_dev) / 2.0;
+  for (int d = 0; d <= max_dev; ++d) {
+    weights[d] = w_max / (1.0 + std::exp(-g * (d - half_dev)));
   }
+  return weights;
 }
-
-} // namespace detail
 
 
 /**
  * @brief Computes the full Weighted DTW distance between two sequences.
  *
- * Uses a rolling-buffer (single vector) approach identical to dtwFull_L,
- * but multiplies each local distance by the positional weight w(|i-j|).
- *
  * @tparam data_t Data type of the elements in the sequences.
  * @param x First sequence.
  * @param y Second sequence.
- * @param g Steepness parameter for the logistic weight function.
- * @return The weighted dynamic time warping distance.
+ * @param weights Weight vector indexed by |i - j|.
+ * @return The WDTW distance.
  */
 template <typename data_t>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y, data_t g)
+data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                const std::vector<data_t> &weights)
 {
-  if (&x == &y) return 0; // Same object => distance is 0.
+  if (&x == &y) return 0;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const auto m_short = short_vec.size();
-  const auto m_long = long_vec.size();
+  const int m_short = static_cast<int>(short_vec.size());
+  const int m_long = static_cast<int>(long_vec.size());
 
-  if ((m_short == 0) || (m_long == 0)) return maxValue;
-
-  // Precompute weights: w[k] for k = 0, 1, ..., max_len-1
-  const int max_len = static_cast<int>(std::max(m_short, m_long));
-  thread_local std::vector<data_t> weights;
-  detail::computeWDTWWeights(weights, max_len, g);
-
-  // Rolling buffer along the short side
-  thread_local std::vector<data_t> short_side;
-  short_side.resize(m_short);
+  if (m_short == 0 || m_long == 0) return maxValue;
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
 
-  // Note: after the swap, short_side[i] corresponds to short_vec[i],
-  // long_vec[j] corresponds to the other series. The weight index is |i - j|.
-  // Since w depends only on |i-j| (symmetric), the swap doesn't affect correctness.
+  // Use rolling column buffer (col stores one column at a time, indexed by long_vec rows)
+  thread_local std::vector<data_t> col;
+  col.resize(m_long);
 
-  short_side[0] = weights[0] * distance(short_vec[0], long_vec[0]); // |0-0| = 0
+  // We iterate columns j = 0..m_short-1 (short side).
+  // col[i] stores C(i, j_prev). After processing column j, col[i] = C(i, j).
 
-  for (size_t i = 1; i < m_short; i++) {
-    const int dev = static_cast<int>(i); // |i - 0|
-    short_side[i] = short_side[i - 1] + weights[dev] * distance(short_vec[i], long_vec[0]);
+  // Determine weight index: in the cost matrix, row i = long_vec index, col j = short_vec index.
+  // If x.size() < y.size(), then short_vec = x, long_vec = y, and the cost matrix
+  // has long_vec on rows and short_vec on columns. The original weight deviation
+  // between x[ix] and y[iy] is |ix - iy|. When short_vec = x and long_vec = y,
+  // ix = j (short index), iy = i (long index), so dev = |i - j|.
+  // When short_vec = y and long_vec = x, ix = i, iy = j, so dev = |i - j| as well.
+
+  // First column (j = 0)
+  col[0] = weights[0] * distance(long_vec[0], short_vec[0]);
+  for (int i = 1; i < m_long; ++i) {
+    col[i] = col[i - 1] + weights[i] * distance(long_vec[i], short_vec[0]);
   }
 
-  for (size_t j = 1; j < m_long; j++) {
-    auto diag = short_side[0];
-    {
-      const int dev = static_cast<int>(j); // |0 - j|
-      short_side[0] += weights[dev] * distance(short_vec[0], long_vec[j]);
-    }
+  // Remaining columns j = 1..m_short-1
+  for (int j = 1; j < m_short; ++j) {
+    data_t diag = col[0]; // C(0, j-1)
+    col[0] = col[0] + weights[j] * distance(long_vec[0], short_vec[j]); // C(0,j) = C(0,j-1) + w*d
 
-    for (size_t i = 1; i < m_short; i++) {
-      const int dev = std::abs(static_cast<int>(i) - static_cast<int>(j));
-      const data_t min1 = std::min(short_side[i - 1], short_side[i]);
-      const data_t dist = weights[dev] * distance(short_vec[i], long_vec[j]);
-      const data_t next = std::min(diag, min1) + dist;
-
-      diag = short_side[i];
-      short_side[i] = next;
+    for (int i = 1; i < m_long; ++i) {
+      const int dev = std::abs(i - j);
+      const auto dist = weights[dev] * distance(long_vec[i], short_vec[j]);
+      const data_t old_col_i = col[i]; // C(i, j-1) — vertical predecessor
+      const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
+      col[i] = minimum + dist;
+      diag = old_col_i; // for next i: diag = C(i, j-1) = C((i+1)-1, j-1)
     }
   }
 
-  return short_side.back();
+  return col[m_long - 1];
 }
 
 
 /**
  * @brief Computes the banded Weighted DTW distance between two sequences.
  *
- * Uses the same Sakoe-Chiba banding as dtwBanded, but with WDTW positional weights.
- * If band < 0, falls back to full WDTW.
+ * @details Uses a Sakoe-Chiba band and a rolling column buffer (one column at a time).
+ *          Memory usage is O(m_long) instead of O(m_long * m_short).
  *
  * @tparam data_t Data type of the elements in the sequences.
- * @param x     First sequence.
- * @param y     Second sequence.
- * @param band  The bandwidth parameter (-1 for full).
- * @param g     Steepness parameter for the logistic weight function.
- * @return The weighted banded dynamic time warping distance.
+ * @param x First sequence.
+ * @param y Second sequence.
+ * @param weights Weight vector indexed by |i - j|.
+ * @param band The bandwidth parameter controlling the Sakoe-Chiba band.
+ * @return The WDTW distance.
  */
-template <typename data_t = double>
+template <typename data_t>
 data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band, data_t g)
+                  const std::vector<data_t> &weights, int band = settings::DEFAULT_BAND_LENGTH)
 {
-  if (band < 0) return wdtwFull<data_t>(x, y, g);
+  if (band < 0) return wdtwFull<data_t>(x, y, weights);
 
-  if (&x == &y) return 0;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short(short_vec.size()), m_long(long_vec.size());
+  const int m_short = static_cast<int>(short_vec.size());
+  const int m_long = static_cast<int>(long_vec.size());
 
-  if ((m_short == 0) || (m_long == 0)) return maxValue;
-  if ((m_short == 1) || (m_long == 1)) return wdtwFull<data_t>(x, y, g);
-  if (m_long <= (band + 1)) return wdtwFull<data_t>(x, y, g);
-
-  // Precompute weights
-  const int max_len = std::max(m_short, m_long);
-  thread_local std::vector<data_t> weights;
-  detail::computeWDTWWeights(weights, max_len, g);
-
-  thread_local core::ScratchMatrix<data_t> C;
-  C.resize(m_long, m_short);
-  C.fill(maxValue);
+  if (m_short == 0 || m_long == 0) return maxValue;
+  if (m_short == 1 || m_long == 1) return wdtwFull<data_t>(x, y, weights);
+  if (m_long <= (band + 1)) return wdtwFull<data_t>(x, y, weights);
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
 
   const double slope = static_cast<double>(m_long - 1) / (m_short - 1);
   const auto window = std::max(static_cast<double>(band), slope / 2);
 
-  auto get_bounds = [slope, window](int x_val) {
-    const auto y_val = slope * x_val;
-    const int low = static_cast<int>(std::ceil(std::round(100 * (y_val - window)) / 100.0));
-    const int high = static_cast<int>(std::floor(std::round(100 * (y_val + window)) / 100.0)) + 1;
+  auto get_bounds = [slope, window](int j) {
+    const auto center = slope * j;
+    const int low = static_cast<int>(std::ceil(std::round(100 * (center - window)) / 100.0));
+    const int high = static_cast<int>(std::floor(std::round(100 * (center + window)) / 100.0)) + 1;
     return std::pair(low, high);
   };
 
-  // In the banded version, i indexes long_vec and j indexes short_vec.
-  // The weight deviation is |i - j| in cost matrix coordinates.
+  // Rolling column buffer: col[i] stores C(i, j) after processing column j.
+  thread_local std::vector<data_t> col;
+  col.assign(m_long, maxValue);
 
-  C(0, 0) = weights[0] * distance(long_vec[0], short_vec[0]);
-
+  // First column (j = 0): initialize col[0..hi) with cumulative weighted sums
   {
     const auto [lo, hi] = get_bounds(0);
-    for (int i = 1; i < hi; ++i) {
-      const int dev = i; // |i - 0|
-      C(i, 0) = C(i - 1, 0) + weights[dev] * distance(long_vec[i], short_vec[0]);
+    const int high = std::min(hi, m_long);
+    col[0] = weights[0] * distance(long_vec[0], short_vec[0]);
+    for (int i = 1; i < high; ++i) {
+      col[i] = col[i - 1] + weights[i] * distance(long_vec[i], short_vec[0]);
     }
   }
 
+  // Columns j = 1..m_short-1
   for (int j = 1; j < m_short; ++j) {
     const auto [lo, hi] = get_bounds(j);
-    if (lo <= 0) {
-      const int dev = j; // |0 - j|
-      C(0, j) = C(0, j - 1) + weights[dev] * distance(long_vec[0], short_vec[j]);
+    const int low = std::max(lo, 0);
+    const int high = std::min(hi, m_long);
+
+    // We need diag = C(i-1, j-1) at the start of each row sweep.
+    // Before overwriting col[low], grab it if it will serve as diag for low+1.
+    // For i = low: diag = col[low - 1] from previous column (if low > 0).
+    data_t diag = (low > 0) ? col[low - 1] : maxValue;
+
+    // Handle row i = 0 specially (only possible if low == 0)
+    if (low == 0) {
+      const data_t old_col_0 = col[0]; // C(0, j-1)
+      const int dev = j; // |0 - j| = j
+      col[0] = old_col_0 + weights[dev] * distance(long_vec[0], short_vec[j]);
+      diag = old_col_0;
+
+      // Process rows 1..high-1
+      for (int i = 1; i < high; ++i) {
+        const int dev_i = std::abs(i - j);
+        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const data_t old_col_i = col[i]; // C(i, j-1)
+        const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
+        col[i] = minimum + dist;
+        diag = old_col_i;
+      }
+    } else {
+      // Invalidate cells below the band from the previous column that are
+      // now out-of-band. The cell at col[low-1] is outside band for column j,
+      // but we already captured it as diag above. We must NOT invalidate it
+      // before capturing — we already have it in diag.
+
+      // For i = low (first row in band): there is no col[i-1] in-band for this column
+      // if low-1 is outside the band. col[low-1] from the previous column is the
+      // diag value, and there is no horizontal predecessor.
+      {
+        const int i = low;
+        const int dev_i = std::abs(i - j);
+        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const data_t old_col_i = col[i]; // C(i, j-1) = vertical predecessor
+
+        // Horizontal predecessor col[i-1] was just set in this column?
+        // No, i = low and we haven't processed low-1 for this column.
+        // col[i-1] might be from previous column but outside current band.
+        // We mark it as maxValue for the horizontal predecessor.
+        const data_t horiz = maxValue; // col[low-1] is outside band for column j
+        const data_t minimum = std::min(diag, std::min(horiz, old_col_i));
+        col[i] = minimum + dist;
+        diag = old_col_i;
+      }
+
+      for (int i = low + 1; i < high; ++i) {
+        const int dev_i = std::abs(i - j);
+        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const data_t old_col_i = col[i]; // C(i, j-1)
+        const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
+        col[i] = minimum + dist;
+        diag = old_col_i;
+      }
     }
 
-    const auto high = std::min(hi, m_long);
-    for (int i = std::max(lo, 1); i < high; ++i) {
-      const int dev = std::abs(i - j);
-      const auto minimum = std::min(C(i - 1, j - 1), std::min(C(i - 1, j), C(i, j - 1)));
-      C(i, j) = minimum + weights[dev] * distance(long_vec[i], short_vec[j]);
+    // Invalidate cells that have fallen outside the band
+    // Cells below low or at/above high are invalid for future use as vertical predecessors
+    if (lo > 0) {
+      // col[lo-1] is out of band; set to maxValue so it's not used as a vertical predecessor
+      col[lo - 1] = maxValue;
     }
+    // Cells at high..m_long-1 already have stale values from previous columns.
+    // They'll be maxValue from initialization or from invalidation. But if a cell
+    // was valid in a previous column and is now above the band, we must invalidate it.
+    // However, with the Sakoe-Chiba band, the high bound increases monotonically,
+    // so cells above high were either never set or already correctly maxValue.
+    // The low bound also increases, so we only need to invalidate the cell just below low.
   }
 
-  return C(m_long - 1, m_short - 1);
+  return col[m_long - 1];
+}
+
+// -------------------------------------------------------------------------
+// Convenience overloads: accept g parameter instead of precomputed weights.
+// -------------------------------------------------------------------------
+
+/// WDTW with g parameter (computes weights internally).
+template <typename data_t = double>
+data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  int band, data_t g)
+{
+  const int max_dev = static_cast<int>(std::max(x.size(), y.size()));
+  auto w = wdtw_weights<data_t>(max_dev, g);
+  return wdtwBanded(x, y, w, band);
+}
+
+/// Full WDTW with g parameter.
+template <typename data_t = double>
+data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                data_t g)
+{
+  const int max_dev = static_cast<int>(std::max(x.size(), y.size()));
+  auto w = wdtw_weights<data_t>(max_dev, g);
+  return wdtwFull(x, y, w);
 }
 
 } // namespace dtwc

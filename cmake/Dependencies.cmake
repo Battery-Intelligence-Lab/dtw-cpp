@@ -49,14 +49,28 @@ function(dtwc_setup_dependencies)
   endif()
 
   # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
-  if(DTWC_BUILD_PYTHON AND NOT TARGET nanobind::module)
+  # When built via scikit-build-core (pip install), nanobind is available as a pip package.
+  # For standalone CMake builds, fall back to CPM fetch.
+  if(DTWC_BUILD_PYTHON)
     find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-    CPMAddPackage(
-      NAME nanobind
-      GITHUB_REPOSITORY wjakob/nanobind
-      VERSION 2.4.0
-      OPTIONS "NB_TEST OFF"
+    # Try pip-installed nanobind first
+    execute_process(
+      COMMAND "${Python_EXECUTABLE}" -m nanobind --cmake_dir
+      OUTPUT_VARIABLE NB_DIR OUTPUT_STRIP_TRAILING_WHITESPACE
+      RESULT_VARIABLE NB_RESULT ERROR_QUIET
     )
+    if(NB_RESULT EQUAL 0 AND EXISTS "${NB_DIR}")
+      list(APPEND CMAKE_PREFIX_PATH "${NB_DIR}")
+    endif()
+    find_package(nanobind CONFIG QUIET)
+    if(NOT nanobind_FOUND)
+      CPMAddPackage(
+        NAME nanobind
+        GITHUB_REPOSITORY wjakob/nanobind
+        VERSION 2.4.0
+        OPTIONS "NB_TEST OFF"
+      )
+    endif()
   endif()
 
   # RapidCSV - header-only CSV parser (BSD 3-Clause license)

@@ -27,9 +27,12 @@ jobs:
           CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
           CIBW_ARCHS_MACOS: "x86_64 arm64"
 
-          # Disable commercial/heavy solvers for wheel builds
+          # Disable commercial/heavy solvers for wheel builds.
+          # Each cmake arg must be a separate config-setting line for scikit-build-core.
           CIBW_CONFIG_SETTINGS: >-
-            cmake.args="-DDTWC_BUILD_PYTHON=ON;-DDTWC_ENABLE_GUROBI=OFF;-DDTWC_ENABLE_HIGHS=OFF"
+            cmake.args=-DDTWC_BUILD_PYTHON=ON
+            cmake.args=-DDTWC_ENABLE_GUROBI=OFF
+            cmake.args=-DDTWC_ENABLE_HIGHS=OFF
 
           # macOS needs libomp for OpenMP
           CIBW_BEFORE_BUILD_MACOS: "brew install libomp || true"
