@@ -78,6 +78,54 @@ Standard DTW violates the triangle inequality. This means:
 - `dtwBanded<data_t = float>` — must explicitly instantiate `dtwBanded<double>` for the project's `data_t = double`
 - Easy to miss; always check template defaults against the project's type aliases
 
+### dtwBanded allocates full N x N matrix even for banded computation
+- **CRITICAL PERFORMANCE BUG**: `C.resize(m_long, m_short)` allocates the full matrix then only fills the band
+- For 8K x 8K series: 512 MB per thread. With 8 threads: 4 GB of scratch memory
+- **Fix**: Use a rolling buffer of width `2*band+1`. For band=50: 808 bytes vs 512 MB (>600,000x reduction)
+- This single fix gives more speedup than all SIMD work combined for 8K series
+
+### "PAM" implementation is actually Lloyd iteration
+- The code in `cluster_by_kMedoidsPAM` does alternating assign-then-update-medoid-within-cluster
+- True PAM SWAP considers swapping any medoid with ANY non-medoid point across all clusters
+- Lloyd iteration restricts medoid updates to within each cluster, getting stuck in worse optima
+- FastPAM (Schubert & Rousseeuw 2021) is the state-of-the-art with O(k) speedup over naive PAM
+
+### DTW is memory-bound, not compute-bound
+- Roofline analysis: 5 FLOPs per 40 bytes = 0.125 FLOP/byte (extremely low operational intensity)
+- On modern CPUs with ~50 GB/s bandwidth, the ceiling is ~6.25 GFLOP/s while peak is >100 GFLOP/s
+- **Implication**: Fix memory access patterns BEFORE doing SIMD work. SIMD on a bandwidth-bound kernel gives minimal gains.
+- The rolling buffer fix (fitting in L1 cache) is worth more than vectorization
+
+### Virtual dispatch in hot inner loops kills performance
+- `IDistanceMatrix::get(i,j)` with virtual dispatch costs ~3ns per call via vtable indirection
+- At N=10K, PAM does ~100M distance lookups per iteration → 300ms pure dispatch overhead
+- Use CRTP or template parameters for hot-path abstractions; virtual dispatch only at outer API boundary
+
+### Template explosion is rarely justified for DTW
+- DTWPolicy<Constraint, Metric, Missing> with 3×6×3 = 54+ instantiations
+- Runtime metric dispatch overhead: ~3ns per DTW call. DTW computation: 1-100ms.
+- Overhead ratio: 0.003% — templates for metric selection are unjustified
+- Template on constraint type only (2-3 variants); pass metric as runtime callable
+
+### LB_Keogh is only valid for L1 and squared L2 metrics
+- The lower bound proof assumes envelope-based properties: `d(x, U) = 0` when `L <= x <= U`
+- This holds for L1 and squared L2 but NOT for cosine distance (defined between vectors, not scalars)
+- Not for Huber (piecewise, LB_Keogh proof requires squared norm)
+- Using LB_Keogh with invalid metrics silently prunes valid nearest neighbors → wrong clustering results
+- Maintain a compile-time compatibility matrix; disable LB pruning for unvalidated metrics
+
+### Soft-DTW cannot be implemented via autodiff on std::min
+- `std::min` gives hard subgradients (1 for the min argument, 0 for others) — zero gradient almost everywhere
+- Soft-DTW requires replacing `min` with `softmin_gamma = -gamma * log(sum exp(-a/gamma))` in the DP recurrence
+- Must implement log-sum-exp trick for numerical stability
+- Soft-DTW is a separate algorithm, NOT a metric substitution or autodiff trick
+
+### WDTW and ADTW cannot be implemented via metric abstraction
+- WDTW weights depend on position (i,j) in the cost matrix, not on values x[i], y[j]
+- ADTW penalizes non-diagonal steps — a recurrence change, not a distance change
+- DDTW requires preprocessing (derivative computation) before DTW, not a metric swap
+- Architecture needs Transform pipeline + parameterizable recurrence, not just swappable metrics
+
 ### OpenMP inside MEX needs careful management
 - MATLAB manages its own thread pool; OpenMP threads can conflict
 - On macOS, MATLAB ships its own `libomp.dylib` which conflicts with system/Homebrew copies
