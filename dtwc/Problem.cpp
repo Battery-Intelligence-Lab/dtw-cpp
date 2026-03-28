@@ -116,6 +116,13 @@ void Problem::refreshDistanceMatrix()
  *@param i Index of the first point.
  *@param j Index of the second point.
  *@return The distance between the two points.
+ *
+ *@note Thread safety: safe to call from multiple threads when the distance matrix
+ *      is already filled (read-only). When called from parallel contexts with
+ *      unfilled entries, concurrent calls for the SAME (i,j) pair may both compute
+ *      DTW (benign duplicate work) and race on the write. On x86-64 this is safe
+ *      (aligned double writes are atomic), but technically UB under C++. Prefer
+ *      calling fillDistanceMatrix() first to avoid this.
  */
 double Problem::distByInd(int i, int j)
 {
@@ -277,6 +284,8 @@ void Problem::calculateMedoids()
  */
 void Problem::cluster_by_kMedoidsLloyd()
 {
+  fillDistanceMatrix(); // Ensure all distances computed before parallel clustering.
+
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
 

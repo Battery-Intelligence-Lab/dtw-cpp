@@ -105,6 +105,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
     auto diag = short_side[0];
     short_side[0] += distance(short_vec[0], long_vec[j]);
 
+    data_t row_min = short_side[0]; // track running min for early abandon
     for (size_t i = 1; i < m_short; i++) {
       const data_t min1 = std::min(short_side[i - 1], short_side[i]);
       const auto shr = short_vec[i];
@@ -114,15 +115,12 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
       diag = short_side[i];
       short_side[i] = next;
+      if (next < row_min) row_min = next;
     }
 
-    // Early abandon: if all values in the current row exceed the threshold,
+    // Early abandon: if the minimum value in this row exceeds the threshold,
     // the final DTW distance cannot be lower than the threshold.
-    if (early_abandon >= 0) {
-      data_t row_min = *std::min_element(short_side.begin(),
-                                          short_side.begin() + static_cast<std::ptrdiff_t>(m_short));
-      if (row_min > early_abandon) return maxValue;
-    }
+    if (early_abandon >= 0 && row_min > early_abandon) return maxValue;
   }
 
   return short_side.back();

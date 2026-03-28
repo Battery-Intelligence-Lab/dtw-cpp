@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <algorithm> // for min, max, min_element, max_element
+#include <algorithm> // for min, max, minmax_element
 #include <cmath>     // for abs
 #include <cstddef>   // for size_t
 #include <vector>    // for vector
@@ -45,17 +45,24 @@ template <typename T>
 void compute_envelopes(const T *series, std::size_t n, int band,
                        T *upper_out, T *lower_out)
 {
-  for (std::size_t i = 0; i < n; ++i) {
-    const std::size_t lo = (i > static_cast<std::size_t>(band)) ? i - static_cast<std::size_t>(band) : 0;
-    const std::size_t hi = std::min(i + static_cast<std::size_t>(band) + 1, n);
+  if (n == 0) return;
+  const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
+
+  // Sliding window min/max using direct scan over the band window.
+  // O(n * min(band, n)) total. For the typical DTW use case (band << n),
+  // this is cache-friendly (contiguous reads within the band) and allocation-free.
+  // Envelopes are computed once per series and reused O(N) times for LB pruning.
+  for (std::size_t p = 0; p < n; ++p) {
+    const std::size_t lo = (p >= w) ? p - w : 0;
+    const std::size_t hi = std::min(p + w + 1, n);
     T max_val = series[lo];
     T min_val = series[lo];
     for (std::size_t j = lo + 1; j < hi; ++j) {
       if (series[j] > max_val) max_val = series[j];
       if (series[j] < min_val) min_val = series[j];
     }
-    upper_out[i] = max_val;
-    lower_out[i] = min_val;
+    upper_out[p] = max_val;
+    lower_out[p] = min_val;
   }
 }
 
