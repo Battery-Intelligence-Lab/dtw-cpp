@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.21)
 
 add_library(dtwc++ STATIC)
+target_compile_definitions(dtwc++ PUBLIC DTWC_ROOT_FOLDER="${DTWC_ROOT_FOLDER}")
+target_compile_definitions(dtwc++ PUBLIC CURRENT_ROOT_FOLDER="${CURRENT_ROOT_FOLDER}")
 
 add_subdirectory(mip)
 
@@ -10,13 +12,12 @@ target_sources(dtwc++
   Problem_IO.cpp
   initialisation.cpp
   scores.cpp
-  algorithms/fast_pam.cpp
+  core/dtw.cpp
   PUBLIC
   Data.hpp
   DataLoader.hpp
   dtwc.hpp
   initialisation.hpp
-  algorithms/fast_pam.hpp
   parallelisation.hpp
   Problem.hpp
   scores.hpp
@@ -35,9 +36,8 @@ target_link_libraries(dtwc++
   mip-solvers
   project_warnings
   project_options
-  PUBLIC
+  PUBLIC 
   armadillo
-  rapidcsv::rapidcsv
 )
 
 find_package(OpenMP)

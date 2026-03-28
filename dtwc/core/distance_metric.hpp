@@ -1,10 +1,11 @@
 /**
  * @file distance_metric.hpp
- * @brief Pointwise distance metric callables for DTW computation.
+ * @brief Pointwise distance metric abstractions for DTW.
  *
- * @details Each metric satisfies the concept: T operator()(T a, T b) const.
- * For L2Metric, the caller must take the square root of the final DTW result
- * since only squared differences are accumulated during computation.
+ * @details Provides lightweight callable metric types used as the pointwise
+ *          cost function inside DTW.  Each metric satisfies:
+ *              T operator()(T a, T b) const
+ *          Built-in metrics: L1, L2, SquaredL2.
  *
  * @date 28 Mar 2026
  */
@@ -12,33 +13,30 @@
 #pragma once
 
 #include <cmath>
-#include <cstdlib>
 
 namespace dtwc::core {
 
-struct L1Metric {
+/// Absolute difference  |a - b|
+struct L1Metric
+{
   template <typename T>
-  T operator()(T a, T b) const noexcept
-  {
-    return std::abs(a - b);
-  }
+  T operator()(T a, T b) const noexcept { return std::abs(a - b); }
 };
 
-struct SquaredL2Metric {
+/// Euclidean pointwise distance  sqrt((a-b)^2) == |a-b| for scalars
+struct L2Metric
+{
   template <typename T>
-  T operator()(T a, T b) const noexcept
-  {
-    auto d = a - b;
-    return d * d;
-  }
+  T operator()(T a, T b) const noexcept { return std::abs(a - b); }
 };
 
-struct L2Metric {
-  // Accumulates squared differences; caller must sqrt the final DTW result.
+/// Squared Euclidean  (a - b)^2
+struct SquaredL2Metric
+{
   template <typename T>
   T operator()(T a, T b) const noexcept
   {
-    auto d = a - b;
+    const T d = a - b;
     return d * d;
   }
 };
