@@ -9,7 +9,7 @@ DTW-C++
 [![Ubuntu unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/Ubuntu%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
 [![macOS unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/macOS%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
 [![Windows unit](https://github.com/Battery-Intelligence-Lab/dtw-cpp/workflows/Windows%20unit/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions)
-![Website](https://img.shields.io/website?url=https%3A%2F%2FBattery-Intelligence-Lab.github.io%2Fdtw-cpp%2F)
+[![Python tests](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions/workflows/python-tests.yml/badge.svg)](https://github.com/Battery-Intelligence-Lab/dtw-cpp/actions/workflows/python-tests.yml)
 [![codecov](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp/branch/main/graph/badge.svg?token=K739SRV4QG)](https://codecov.io/gh/Battery-Intelligence-Lab/dtw-cpp)
 
 ![Contributors](https://img.shields.io/github/contributors/Battery-Intelligence-Lab/dtw-cpp)
