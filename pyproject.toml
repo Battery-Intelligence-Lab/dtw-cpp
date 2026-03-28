@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools", "cmake>=3.21", "pybind11>=2.11", "wheel", "ninja"]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "cmake>=3.21", "ninja"]
+build-backend = "scikit_build_core.build"
 
 [project]
 name = "dtwcpp"
@@ -16,3 +16,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=6.0"]
+sklearn = ["scikit-learn>=1.0"]
+
+[tool.scikit-build]
+cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF"]
+wheel.packages = ["python/dtwcpp"]
+build-dir = "build_python/{wheel_tag}"

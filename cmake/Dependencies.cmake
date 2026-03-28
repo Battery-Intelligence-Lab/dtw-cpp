@@ -48,7 +48,16 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  # Armadillo removed in Phase 2.5 — no longer used by dtwc++ core.
+  # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
+  if(DTWC_BUILD_PYTHON AND NOT TARGET nanobind::module)
+    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+    CPMAddPackage(
+      NAME nanobind
+      GITHUB_REPOSITORY wjakob/nanobind
+      VERSION 2.4.0
+      OPTIONS "NB_TEST OFF"
+    )
+  endif()
 
   # RapidCSV - header-only CSV parser (BSD 3-Clause license)
   if (NOT TARGET rapidcsv::rapidcsv)
