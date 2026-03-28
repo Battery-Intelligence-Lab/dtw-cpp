@@ -37,12 +37,16 @@ namespace dtwc::core {
 /// @param  metric   Metric instance (unused until warping.hpp is refactored;
 ///                  provided for forward API compatibility).
 /// @return DTW distance.
+/// @note Currently only L1Metric is supported. Passing a different metric
+///       will produce a compile error. Full metric abstraction will be
+///       wired when warping.hpp is refactored to accept a metric callable.
 template <typename T = double, typename Metric = L1Metric>
 T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
                int band = -1, const Metric& /*metric*/ = {})
 {
-  // Delegate to existing implementations (which use L1 internally).
-  // Full metric abstraction will be wired when warping.hpp is refactored.
+  static_assert(std::is_same_v<Metric, L1Metric>,
+    "Only L1Metric is currently supported. Other metrics will be added "
+    "when warping.hpp is refactored to accept a metric callable.");
   if (band < 0)
     return dtwFull_L<T>(x, y);
   else

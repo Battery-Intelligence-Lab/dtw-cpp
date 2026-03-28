@@ -22,7 +22,8 @@ namespace dtwc::core {
 template <typename T>
 void z_normalize(T *series, size_t n)
 {
-  if (n <= 1) return;
+  if (n == 0) return;
+  if (n == 1) { series[0] = static_cast<T>(0); return; }
 
   T sum = 0;
   for (size_t i = 0; i < n; ++i)

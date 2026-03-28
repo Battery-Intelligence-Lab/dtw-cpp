@@ -71,7 +71,7 @@ TEST_CASE("TimeSeries implicit conversion to view", "[TimeSeries]")
   TimeSeries<double> ts;
   ts.data = { 5.0, 10.0, 15.0 };
 
-  TimeSeriesView<double> view = ts;
+  TimeSeriesView<double> view = ts.view();
   REQUIRE(view.length == 3);
   REQUIRE(view[0] == 5.0);
   REQUIRE(view[1] == 10.0);
@@ -98,7 +98,7 @@ TEST_CASE("TimeSeries mutable indexing", "[TimeSeries]")
   REQUIRE(ts[1] == 42.0);
 
   // Verify the view reflects the mutation
-  TimeSeriesView<double> view = ts;
+  TimeSeriesView<double> view = ts.view();
   REQUIRE(view[1] == 42.0);
 }
 
@@ -107,7 +107,7 @@ TEST_CASE("TimeSeries with float type", "[TimeSeries]")
   TimeSeries<float> ts;
   ts.data = { 1.5f, 2.5f, 3.5f };
 
-  TimeSeriesView<float> view = ts;
+  TimeSeriesView<float> view = ts.view();
   REQUIRE(view.length == 3);
   REQUIRE(view[0] == 1.5f);
 }

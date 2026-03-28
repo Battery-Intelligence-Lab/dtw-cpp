@@ -28,11 +28,26 @@ inline constexpr bool lb_keogh_valid<L1Metric> = true;
 template <>
 inline constexpr bool lb_keogh_valid<SquaredL2Metric> = true;
 
+// L2Metric is identical to L1Metric for scalars (both compute |a-b|)
+template <>
+inline constexpr bool lb_keogh_valid<L2Metric> = true;
+
 // -------------------------------------------------------------------
-//  LB_Kim validity: valid for all non-negative pointwise metrics
+//  LB_Kim validity: requires monotone pointwise metric
+//  (if |a-c| <= |a-b| then d(a,c) <= d(a,b))
+//  Default false — explicitly opt in per metric.
 // -------------------------------------------------------------------
 
 template <typename Metric>
-inline constexpr bool lb_kim_valid = true;
+inline constexpr bool lb_kim_valid = false;
+
+template <>
+inline constexpr bool lb_kim_valid<L1Metric> = true;
+
+template <>
+inline constexpr bool lb_kim_valid<SquaredL2Metric> = true;
+
+template <>
+inline constexpr bool lb_kim_valid<L2Metric> = true;
 
 } // namespace dtwc::core

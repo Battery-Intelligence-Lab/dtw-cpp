@@ -25,8 +25,8 @@ using namespace dtwc::core;
 
 static_assert(lb_keogh_valid<L1Metric>,
               "LB_Keogh must be valid for L1Metric");
-static_assert(!lb_keogh_valid<L2Metric>,
-              "LB_Keogh must NOT be valid for L2Metric");
+static_assert(lb_keogh_valid<L2Metric>,
+              "LB_Keogh must be valid for L2Metric (identical to L1 for scalars)");
 static_assert(lb_keogh_valid<SquaredL2Metric>,
               "LB_Keogh must be valid for SquaredL2Metric");
 static_assert(lb_kim_valid<L1Metric>,

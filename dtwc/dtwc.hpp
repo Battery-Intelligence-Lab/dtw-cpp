@@ -16,3 +16,14 @@
 #include "utility.hpp"
 #include "warping.hpp"
 #include "algorithms/fast_pam.hpp"
+
+// Phase 1: Core types (binding-friendly, Armadillo-independent headers)
+#include "core/clustering_result.hpp"
+#include "core/distance_matrix.hpp"
+#include "core/distance_metric.hpp"
+#include "core/dtw.hpp"
+#include "core/dtw_options.hpp"
+#include "core/lower_bounds.hpp"
+#include "core/scratch_matrix.hpp"
+#include "core/time_series.hpp"
+#include "core/z_normalize.hpp"
