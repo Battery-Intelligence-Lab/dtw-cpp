@@ -16,6 +16,15 @@ def _make_problem(data, names=None):
     return p
 
 
+def _cluster_with_fast_pam(prob, k=3):
+    """Cluster using fast_pam and apply results to prob for scoring."""
+    result = dtwcpp.fast_pam(prob, k)
+    prob.set_number_of_clusters(k)
+    prob.clusters_ind = result.labels
+    prob.centroids_ind = result.medoid_indices
+    return result
+
+
 class TestFastPAM:
     """Tests for dtwcpp.fast_pam."""
 
@@ -113,24 +122,21 @@ class TestSilhouetteAndDBI:
     def test_silhouette_length(self, well_separated_data):
         """Silhouette scores length matches dataset size."""
         prob = _make_problem(well_separated_data)
-        prob.set_number_of_clusters(3)
-        prob.cluster()
+        _cluster_with_fast_pam(prob, 3)
         sil = dtwcpp.silhouette(prob)
         assert len(sil) == len(well_separated_data)
 
     def test_silhouette_range(self, well_separated_data):
         """Silhouette scores are in [-1, 1]."""
         prob = _make_problem(well_separated_data)
-        prob.set_number_of_clusters(3)
-        prob.cluster()
+        _cluster_with_fast_pam(prob, 3)
         sil = dtwcpp.silhouette(prob)
         assert all(-1.0 - 1e-10 <= s <= 1.0 + 1e-10 for s in sil)
 
     def test_well_separated_high_silhouette(self, well_separated_data):
         """Well-separated data should have high average silhouette."""
         prob = _make_problem(well_separated_data)
-        prob.set_number_of_clusters(3)
-        prob.cluster()
+        _cluster_with_fast_pam(prob, 3)
         sil = dtwcpp.silhouette(prob)
         avg = np.mean(sil)
         assert avg > 0.5, f"Expected high silhouette, got {avg}"
@@ -138,15 +144,13 @@ class TestSilhouetteAndDBI:
     def test_dbi_non_negative(self, well_separated_data):
         """Davies-Bouldin Index is non-negative."""
         prob = _make_problem(well_separated_data)
-        prob.set_number_of_clusters(3)
-        prob.cluster()
+        _cluster_with_fast_pam(prob, 3)
         dbi = dtwcpp.davies_bouldin_index(prob)
         assert dbi >= 0.0
 
     def test_well_separated_low_dbi(self, well_separated_data):
         """Well-separated data should have low DBI (< 1)."""
         prob = _make_problem(well_separated_data)
-        prob.set_number_of_clusters(3)
-        prob.cluster()
+        _cluster_with_fast_pam(prob, 3)
         dbi = dtwcpp.davies_bouldin_index(prob)
         assert dbi < 1.0, f"Expected low DBI, got {dbi}"
