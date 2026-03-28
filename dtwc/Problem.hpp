@@ -47,7 +47,7 @@ class Problem
 {
 public:
   using distMat_t = core::DenseDistanceMatrix;
-  using path_t = std::decay_t<decltype(settings::resultsPath)>;
+  using path_t = std::filesystem::path;
 
   /// DTW distance function type: computes distance between two series.
   using dtw_fn_t = std::function<data_t(const std::vector<data_t> &, const std::vector<data_t> &)>;
@@ -78,7 +78,7 @@ public:
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
-  path_t output_folder{ settings::resultsPath }; /*!< Output folder for results. */
+  path_t output_folder{ settings::paths::resultsPath }; /*!< Output folder for results. */
   std::string name{};                            /*!< Problem name. */
   Data data;                                     /*!< Data associated with the problem. */
 
