@@ -17,6 +17,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Notable Bug-fixes
 * **CRITICAL**: Fixed `readFile()` in fileOperations.hpp where `std::runtime_error` was constructed but not thrown, causing silent failures when files could not be opened.
+* **CRITICAL**: Fixed `dtwBanded` allocating a full O(N*M) matrix even for banded DTW; replaced with O(N) rolling buffer, reducing memory from ~512 MB to ~64 KB for 8K-length series.
+* Fixed `dtwFull_L` using `.at()` bounds-checked access in the hot inner loop; replaced with `operator[]`.
+* Fixed `dtwBanded` template default type from `float` to `double` to match `data_t = double`.
+* Fixed `settings.hpp` `static` RNG in header (ODR violation); changed to `inline`.
 * Fixed `load_batch_file()` to throw proper `std::runtime_error` instead of throwing an integer (`throw 2`).
 * Fixed signed/unsigned mismatch in parallelisation.hpp where `int` loop variable was compared against `size_t` bound.
 * Fixed `numMaxParallelWorkers` parameter in `run()` function which was previously ignored; now properly sets OpenMP thread count.
