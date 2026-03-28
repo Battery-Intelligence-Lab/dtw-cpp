@@ -1,0 +1,87 @@
+name: Python wheels
+
+on:
+  push:
+    branches: [main, Claude]
+    tags: ['v*']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  build_wheels:
+    name: Wheels on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - uses: pypa/cibuildwheel@v2.21
+        env:
+          # Build for Python 3.9-3.13; nanobind STABLE_ABI means fewer wheels
+          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-*"
+          CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
+          CIBW_ARCHS_MACOS: "x86_64 arm64"
+
+          # Disable commercial/heavy solvers for wheel builds
+          CIBW_CONFIG_SETTINGS: >-
+            cmake.args="-DDTWC_BUILD_PYTHON=ON;-DDTWC_ENABLE_GUROBI=OFF;-DDTWC_ENABLE_HIGHS=OFF"
+
+          # macOS needs libomp for OpenMP
+          CIBW_BEFORE_BUILD_MACOS: "brew install libomp || true"
+
+          # Test the built wheel
+          CIBW_TEST_REQUIRES: "pytest numpy"
+          CIBW_TEST_COMMAND: "pytest {project}/tests/python -v --tb=short"
+          CIBW_BUILD_VERBOSITY: 1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl
+
+  build_sdist:
+    name: Source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install build && python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  test_python:
+    name: Test Python ${{ matrix.python }} on ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ['3.10', '3.12']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install and test
+        run: |
+          pip install ".[test]" -v
+          pytest tests/python/ -v --tb=short
+
+  publish:
+    name: Publish to PyPI
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build_wheels, build_sdist, test_python]
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: pypa/gh-action-pypi-publish@release/v1
