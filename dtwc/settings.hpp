@@ -36,7 +36,7 @@ using data_t = double;
 /// @details This random number generator is used for all random number generation in the code.
 ///          The seed value is fixed to 29 for reproducibility.
 ///          To use a non-deterministic seed, replace '29' with 'std::random_device{}()'.
-static std::mt19937 randGenerator(29);
+inline std::mt19937 randGenerator(29);
 } // namespace dtwc
 
 

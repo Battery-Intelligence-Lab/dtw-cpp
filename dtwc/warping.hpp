@@ -106,8 +106,8 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
 
     for (size_t i = 1; i < m_short; i++) {
       const data_t min1 = std::min(short_side[i - 1], short_side[i]);
-      const auto shr = short_vec.at(i);
-      const auto lng = long_vec.at(j);
+      const auto shr = short_vec[i];
+      const auto lng = long_vec[j];
       const data_t dist = std::abs(shr - lng);
       const data_t next = std::min(diag, min1) + dist;
 
@@ -141,19 +141,15 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
  * @param band The bandwidth parameter that controls the vicinity around the diagonal.
  * @return The dynamic time warping distance.
  */
-template <typename data_t = float>
+template <typename data_t = double>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int band = settings::DEFAULT_BAND_LENGTH)
 {
   if (band < 0) return dtwFull_L<data_t>(x, y); //<! Band is negative, so returning full dtw.
 
-  thread_local arma::Mat<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
   const int m_short(short_vec.size()), m_long(long_vec.size());
-
-  C.resize(m_long, m_short);
-  C.fill(maxValue);
 
   auto distance = [](data_t xi, data_t yi) { return std::abs(xi - yi); };
 
@@ -163,7 +159,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
 
 
   const double slope = static_cast<double>(m_long - 1) / (m_short - 1);
-  const auto window = std::max((double)band, slope / 2);
+  const auto window = std::max(static_cast<double>(band), slope / 2);
 
   auto get_bounds = [slope, window](int x) {
     const auto y = slope * x;
@@ -172,27 +168,66 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y, int
     return std::pair(low, high);
   };
 
-  C(0, 0) = distance(long_vec[0], short_vec[0]);
+  // Rolling buffer: col[i] stores C(i, current_j).
+  // Uses O(m_long) memory instead of O(m_long * m_short).
+  thread_local std::vector<data_t> col;
+  col.assign(m_long, maxValue);
 
+  // Initialize column j=0.
+  col[0] = distance(long_vec[0], short_vec[0]);
   {
     const auto [lo, hi] = get_bounds(0);
-    for (int i = 1; i < hi; ++i)
-      C(i, 0) = C(i - 1, 0) + distance(long_vec[i], short_vec[0]);
+    for (int i = 1; i < std::min(hi, m_long); ++i)
+      col[i] = col[i - 1] + distance(long_vec[i], short_vec[0]);
   }
 
+  // Process columns j=1..m_short-1.
   for (int j = 1; j < m_short; j++) //<! Scan the short part!
   {
     const auto [lo, hi] = get_bounds(j);
-    if (lo <= 0)
-      C(0, j) = C(0, j - 1) + distance(long_vec[0], short_vec[j]);
+    const auto [prev_lo, prev_hi] = get_bounds(j - 1);
+    const int high = std::min(hi, m_long);
+    const int low = std::max(lo, 0);
 
-    const auto high = std::min(hi, m_long);
-    for (int i = std::max(lo, 1); i < high; ++i) {
-      const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
-      C(i, j) = minimum + distance(long_vec[i], short_vec[j]);
+    // diag holds C(i-1, j-1) -- the old value of col[i-1] before it was
+    // overwritten in the current column sweep.
+    data_t diag = maxValue;
+
+    // Capture the diagonal for the first row in the band.
+    // C(first_row-1, j-1) is needed as diag when processing row i=first_row.
+    const int first_row = std::max(low, 1);
+    if (first_row - 1 >= std::max(prev_lo, 0) && first_row - 1 < std::min(prev_hi, m_long)) {
+      diag = col[first_row - 1]; // Save before invalidation may overwrite it.
     }
+
+    // Handle row i=0 specially when it falls inside the band.
+    if (low == 0) {
+      diag = col[0];                                             // C(0, j-1)
+      col[0] = col[0] + distance(long_vec[0], short_vec[j]);    // C(0,j) = C(0,j-1) + dist
+    }
+
+    // Invalidate rows that were in the previous column's band but are now
+    // below the current band's lower bound. They hold stale values that must
+    // not leak into the min() calculation via the "left" (C(i,j-1)) term.
+    for (int i = std::max(prev_lo, 0); i < std::min(low, std::min(prev_hi, m_long)); ++i)
+      col[i] = maxValue;
+
+    for (int i = first_row; i < high; ++i) {
+      const data_t old_col_i = col[i]; // C(i, j-1)
+
+      // C(i-1, j) is col[i-1] (already updated for current column j).
+      // C(i, j-1) is old_col_i (not yet updated).
+      // C(i-1, j-1) is diag.
+      const auto minimum = std::min({ col[i - 1], old_col_i, diag });
+      diag = old_col_i;
+      col[i] = minimum + distance(long_vec[i], short_vec[j]);
+    }
+
+    // Invalidate rows above the band that held values from the previous column.
+    for (int i = std::max(high, std::max(prev_lo, 0)); i < std::min(prev_hi, m_long); ++i)
+      col[i] = maxValue;
   }
 
-  return C(m_long - 1, m_short - 1);
+  return col[m_long - 1];
 }
 } // namespace dtwc

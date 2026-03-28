@@ -2,7 +2,17 @@
 
 [TOC]
 
-This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed). 
+This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
+
+
+<br/><br/>
+# Unreleased
+
+## Notable Bug-fixes
+* Fixed `dtwFull_L` using `.at()` bounds-checked access in the hot inner loop; replaced with `operator[]` since loop bounds already guarantee valid indices.
+* Fixed `dtwBanded` template default type from `float` to `double` to match the project's `data_t = double`.
+* Fixed `dtwBanded` allocating a full O(N*M) matrix even for banded DTW; replaced with O(N) rolling buffer, reducing memory from ~512 MB to ~64 KB for 8K-length series.
+* Fixed `settings.hpp` using `static` for `randGenerator` in a header (ODR violation causing separate RNG instances per translation unit); changed to `inline`.
 
 
 <br/><br/>
