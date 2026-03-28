@@ -73,7 +73,7 @@ data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y, da
       // short_side[i-1] = C(i-1, j)  — already updated = left
       // short_side[i]   = C(i, j-1)  — not yet updated = below
       // diag            = C(i-1, j-1)
-      const data_t min1 = std::min(short_side[i - 1] + penalty, short_side[i] + penalty);
+      const data_t min1 = std::min(short_side[i - 1], short_side[i]) + penalty;
       const data_t dist = distance(short_vec[i], long_vec[j]);
       const data_t next = std::min(diag, min1) + dist;
 
@@ -146,7 +146,7 @@ data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
       const auto left = C(i, j - 1);
       const auto below = C(i - 1, j);
       // Diagonal is free; horizontal and vertical incur penalty
-      const auto minimum = std::min({ diag, left + penalty, below + penalty });
+      const auto minimum = std::min(diag, std::min(left + penalty, below + penalty));
       C(i, j) = minimum + distance(long_vec[i], short_vec[j]);
     }
   }

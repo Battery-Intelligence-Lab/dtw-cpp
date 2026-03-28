@@ -192,7 +192,7 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
     const auto high = std::min(hi, m_long);
     for (int i = std::max(lo, 1); i < high; ++i) {
       const int dev = std::abs(i - j);
-      const auto minimum = std::min({ C(i - 1, j), C(i, j - 1), C(i - 1, j - 1) });
+      const auto minimum = std::min(C(i - 1, j - 1), std::min(C(i - 1, j), C(i, j - 1)));
       C(i, j) = minimum + weights[dev] * distance(long_vec[i], short_vec[j]);
     }
   }

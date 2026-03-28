@@ -44,7 +44,7 @@ namespace dtwc {
 template <typename T>
 T softmin_gamma(T a, T b, T c, T gamma)
 {
-  const T M = std::min({ a, b, c });
+  const T M = std::min(a, std::min(b, c));
   const T inv_gamma = T(1) / gamma;
   return M - gamma * std::log(
                         std::exp(-(a - M) * inv_gamma) +

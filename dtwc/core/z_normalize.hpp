@@ -38,8 +38,9 @@ void z_normalize(T *series, size_t n)
   T stddev = std::sqrt(sq_sum / static_cast<T>(n));
 
   if (stddev > static_cast<T>(1e-10)) {
+    T inv_stddev = T(1) / stddev;
     for (size_t i = 0; i < n; ++i)
-      series[i] = (series[i] - mean) / stddev;
+      series[i] = (series[i] - mean) * inv_stddev;
   } else {
     for (size_t i = 0; i < n; ++i)
       series[i] = 0;

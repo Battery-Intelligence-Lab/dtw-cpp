@@ -110,11 +110,9 @@ T lb_keogh(const T *query, std::size_t n,
 {
   T sum = T(0);
   for (std::size_t i = 0; i < n; ++i) {
-    if (query[i] > upper[i])
-      sum += std::abs(query[i] - upper[i]);
-    else if (query[i] < lower[i])
-      sum += std::abs(query[i] - lower[i]);
-    // else: query[i] within envelope, contributes 0
+    T excess_upper = query[i] - upper[i];
+    T excess_lower = lower[i] - query[i];
+    sum += std::max(T(0), std::max(excess_upper, excess_lower));
   }
   return sum;
 }

@@ -19,10 +19,12 @@
 #include "fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../initialisation.hpp"
+#include "../parallelisation.hpp"
 #include "../settings.hpp"
 
 #include <algorithm>
 #include <limits>
+#include <numeric>
 #include <stdexcept>
 #include <vector>
 
@@ -50,6 +52,7 @@ void compute_nearest_and_second(
 {
   const int k = static_cast<int>(medoids.size());
 
+#pragma omp parallel for schedule(static)
   for (int p = 0; p < N; ++p) {
     double best = std::numeric_limits<double>::max();
     double second_best = std::numeric_limits<double>::max();
@@ -77,11 +80,7 @@ void compute_nearest_and_second(
  */
 double compute_total_cost(const std::vector<double>& nearest_dist, int N)
 {
-  double total = 0.0;
-  for (int p = 0; p < N; ++p) {
-    total += nearest_dist[p];
-  }
-  return total;
+  return std::reduce(nearest_dist.begin(), nearest_dist.begin() + N, 0.0);
 }
 
 } // anonymous namespace
@@ -158,51 +157,62 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   int iter = 0;
   const int k = static_cast<int>(medoids.size());
 
-  // Scratch buffer for per-medoid delta accumulation, hoisted out of the loop
-  // to avoid repeated heap allocations.
-  std::vector<double> delta_m(k);
-
   for (; iter < max_iter; ++iter) {
     double best_delta = 0.0;  // Only accept strictly negative deltas.
     int best_m_idx = -1;      // Index into medoids[] of the medoid to remove.
     int best_x_new = -1;      // Data point index of the candidate to add.
 
     // Evaluate all (medoid_out, candidate_in) pairs.
-    for (int x = 0; x < N; ++x) {
-      if (is_medoid[x]) continue;  // x must be a non-medoid.
+    // The outer loop over candidates x is embarrassingly parallel:
+    // each candidate accumulates into its own delta_m buffer.
+    #pragma omp parallel
+    {
+      std::vector<double> local_delta_m(k);
+      double local_best_delta = 0.0;
+      int local_best_m_idx = -1;
+      int local_best_x_new = -1;
 
-      // FastPAM1 optimization: accumulate delta contributions across all
-      // medoid-removal candidates simultaneously.
-      std::fill(delta_m.begin(), delta_m.end(), 0.0);
+      #pragma omp for schedule(dynamic, 16)
+      for (int x = 0; x < N; ++x) {
+        if (is_medoid[x]) continue;
 
-      for (int p = 0; p < N; ++p) {
-        double d_xp = prob.distByInd(p, x);
-        int nearest_m = nearest[p];
+        std::fill(local_delta_m.begin(), local_delta_m.end(), 0.0);
+
+        for (int p = 0; p < N; ++p) {
+          double d_xp = prob.distByInd(p, x);
+          int nearest_m = nearest[p];
+
+          for (int m = 0; m < k; ++m) {
+            if (m == nearest_m) {
+              local_delta_m[m] += std::min(second_dist[p], d_xp) - nearest_dist[p];
+            } else {
+              double improvement = d_xp - nearest_dist[p];
+              if (improvement < 0.0) {
+                local_delta_m[m] += improvement;
+              }
+            }
+          }
+        }
 
         for (int m = 0; m < k; ++m) {
-          if (m == nearest_m) {
-            // p's nearest medoid is being removed.
-            // p goes to the closer of second-nearest or the new candidate x.
-            delta_m[m] += std::min(second_dist[p], d_xp) - nearest_dist[p];
-          } else {
-            // p keeps its nearest medoid. It might prefer x.
-            double improvement = d_xp - nearest_dist[p];
-            if (improvement < 0.0) {
-              delta_m[m] += improvement;
-            }
+          if (local_delta_m[m] < local_best_delta) {
+            local_best_delta = local_delta_m[m];
+            local_best_m_idx = m;
+            local_best_x_new = x;
           }
         }
       }
 
-      // Find the best medoid to swap out for this candidate x.
-      for (int m = 0; m < k; ++m) {
-        if (delta_m[m] < best_delta) {
-          best_delta = delta_m[m];
-          best_m_idx = m;
-          best_x_new = x;
+      // Reduce: find global best swap across all threads.
+      #pragma omp critical
+      {
+        if (local_best_delta < best_delta) {
+          best_delta = local_best_delta;
+          best_m_idx = local_best_m_idx;
+          best_x_new = local_best_x_new;
         }
       }
-    }
+    } // end omp parallel
 
     if (best_m_idx < 0) {
       // No improving swap found -- converged.
@@ -225,11 +235,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   // -------------------------------------------------------------------------
   core::ClusteringResult result;
   result.medoid_indices = medoids;
-  result.labels.resize(N);
-
-  for (int p = 0; p < N; ++p) {
-    result.labels[p] = nearest[p];
-  }
+  result.labels.assign(nearest.begin(), nearest.end());
 
   result.total_cost = compute_total_cost(nearest_dist, N);
   result.iterations = iter;
