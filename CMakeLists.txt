@@ -75,7 +75,6 @@ if(DTWC_BUILD_EXAMPLES)
 endif()
 
 if(DTWC_BUILD_BENCHMARK)
-  add_subdirectory(benchmark)
   add_subdirectory(benchmarks)
 endif()
 
