@@ -2,7 +2,7 @@ name: Ubuntu unit # adapted from: https://github.com/trase-cpp/trase/tree/master
 on:
   push:
     branches:
-      # - main
+      - main
       - develop
   pull_request:
     branches:
@@ -10,7 +10,7 @@ on:
 
 jobs:
   build-and-test:
-    name: Ubuntu unit ${{matrix.CC}}
+    name: Ubuntu unit ${{matrix.CC}}${{ matrix.sanitizer == true && ' (ASan+UBSan)' || '' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -43,6 +43,10 @@ jobs:
           - CC: clang-17
             CXX: clang++-17
             compiler: clang-17 libomp-17-dev
+          - CC: gcc-12
+            CXX: g++-12
+            compiler: gcc-12 g++-12
+            sanitizer: true
     steps:
       - uses: actions/checkout@v4
 
@@ -63,7 +67,13 @@ jobs:
         run: mkdir build_dir
 
       - name: cmake configure
-        run: cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
+        run: |
+          if [ "${{ matrix.sanitizer }}" = "true" ]; then
+            cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON \
+              -DCMAKE_CXX_FLAGS="-fsanitize=address,undefined -fno-omit-frame-pointer"
+          else
+            cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
+          fi
         working-directory: build_dir
         env:
           CC: ${{matrix.CC}}
