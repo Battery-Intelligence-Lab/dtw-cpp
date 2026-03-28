@@ -9,9 +9,9 @@ description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
 authors = [
     { name = "Volkan Kumtepeli", email = "volkan.kumtepeli@gmail.com" },
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
-    "numpy>=1.21",
+    "numpy>=1.26",
 ]
 
 [project.optional-dependencies]
