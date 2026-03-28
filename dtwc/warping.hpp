@@ -13,14 +13,15 @@
 
 #pragma once
 
+#include "settings.hpp"           // for DEFAULT_BAND_LENGTH
+#include "core/scratch_matrix.hpp"
+
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
 #include <cmath>     // for floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
 #include <utility>   // for pair
-
-#include "core/scratch_matrix.hpp"
 
 namespace dtwc {
 
