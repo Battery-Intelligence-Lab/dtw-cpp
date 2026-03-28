@@ -2,8 +2,21 @@
 
 [TOC]
 
-This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed). 
+This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
 
+
+<br/><br/>
+# Unreleased
+
+## Bug-fixes
+* Fixed `option()` syntax in root CMakeLists.txt — added missing description strings.
+* Changed `DTWC_ENABLE_GUROBI` and `DTWC_ENABLE_HIGHS` from `set()` to `option()` so they can be overridden by parent projects.
+* Removed unconditional `enable_testing()` calls; `include(CTest)` handles this internally.
+* Wrapped standalone executables (`dtwc_main`, `dtwc_cl`) in `if(PROJECT_IS_TOP_LEVEL)` guard so the project can be consumed as a subdirectory without building executables.
+* Fixed misleading build-type status message (said "RelWithDebInfo" but actually set "Release").
+* Changed runtime output directories from `CMAKE_CURRENT_SOURCE_DIR` to `CMAKE_BINARY_DIR` to prevent source-tree pollution.
+* Updated Armadillo dependency from 12.6.x to 14.2.x branch, and added `if(NOT TARGET armadillo)` guard.
+* Added `CONFIGURE_DEPENDS` to test source file glob for automatic re-globbing on file changes.
 
 <br/><br/>
 # DTWC v1.0.0

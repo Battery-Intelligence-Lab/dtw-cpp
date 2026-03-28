@@ -16,12 +16,12 @@ set(DTWC_ROOT_FOLDER "${CMAKE_CURRENT_LIST_DIR}" CACHE STRING "Root folder for D
 
 include(cmake/StandardProjectSettings.cmake)
 
-option(DTWC_BUILD_EXAMPLES OFF)
-option(DTWC_BUILD_TESTING OFF)
-option(DTWC_BUILD_BENCHMARK OFF)
+option(DTWC_BUILD_EXAMPLES "Build example programs" OFF)
+option(DTWC_BUILD_TESTING "Build unit tests" OFF)
+option(DTWC_BUILD_BENCHMARK "Build benchmarks" OFF)
 
-set(DTWC_ENABLE_GUROBI ON)
-set(DTWC_ENABLE_HIGHS ON)
+option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
+option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 
@@ -35,38 +35,36 @@ add_library(project_warnings INTERFACE)
 add_library(project_options INTERFACE)
 target_compile_features(project_options INTERFACE cxx_std_17)
 
-enable_testing()
-
 add_subdirectory(dtwc bin)
 
+if(PROJECT_IS_TOP_LEVEL)
+  add_executable(dtwc_main
+    dtwc/main.cpp
+  )
 
-add_executable(dtwc_main
-  dtwc/main.cpp
-)
+  target_link_libraries(dtwc_main
+    PRIVATE
+    dtwc++
+    project_warnings
+    project_options
+    armadillo
+  )
 
-target_link_libraries(dtwc_main
-  PRIVATE
-  dtwc++
-  project_warnings
-  project_options
-  armadillo
-)
+  add_executable(dtwc_cl
+    dtwc/dtwc_cl.cpp
+  )
 
-add_executable(dtwc_cl
-  dtwc/dtwc_cl.cpp
-)
-
-target_link_libraries(dtwc_cl
-  PRIVATE
-  dtwc++
-  CLI11::CLI11
-  project_warnings
-  project_options
-)
+  target_link_libraries(dtwc_cl
+    PRIVATE
+    dtwc++
+    CLI11::CLI11
+    project_warnings
+    project_options
+  )
+endif()
 
 # Adding the tests:
 include(CTest)
-enable_testing()
 if(DTWC_BUILD_TESTING)
   include(cmake/Coverage.cmake)
   add_subdirectory(tests)

@@ -48,11 +48,13 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
-  CPMAddPackage(
-    NAME armadillo
-    URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/12.6.x/armadillo-code-12.6.x.tar.gz"
-    OPTIONS
-    "BUILD_SMOKE_TEST OFF"
-  )
+  if(NOT TARGET armadillo)
+    CPMAddPackage(
+      NAME armadillo
+      URL "https://gitlab.com/conradsnicta/armadillo-code/-/archive/14.2.x/armadillo-code-14.2.x.tar.gz"
+      OPTIONS
+      "BUILD_SMOKE_TEST OFF"
+    )
+  endif()
 
 endfunction()
