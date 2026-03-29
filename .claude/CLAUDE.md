@@ -52,6 +52,11 @@ Create a layered design:
 - /bindings/matlab: C++ MEX API (mex.hpp) + MATLAB OO sugar (no longjmp, RAII-safe)
 Bindings must call stable core APIs (or a small C API shim), not internal templates.
 
+## Python tooling
+
+- **Always use `uv`** for Python package management — NEVER pip. Use `uv add`, `uv sync`, `uv run`, `uv pip install` etc.
+- Project uses `pyproject.toml` (not requirements.txt).
+
 ## Immediate verified bugs to fix (first PRs)
 
 - fileOperations.hpp: readFile() constructs runtime_error but does not throw. Must `throw std::runtime_error(...)`.

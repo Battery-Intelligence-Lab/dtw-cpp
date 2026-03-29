@@ -7,5 +7,11 @@ dependencies = [
     "numpy>=1.26",
     "pandas>=2.0",
     "dtaidistance>=2.3",
+    "tslearn>=0.6",
+    "aeon>=0.9",
     "matplotlib>=3.7",
+    "dtwcpp",
 ]
+
+[tool.uv.sources]
+dtwcpp = { path = "../", editable = true }
