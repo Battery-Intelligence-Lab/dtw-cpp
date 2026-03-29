@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       # Copy additional markdown files to the Jekyll source directory
       - name: Copy CONTRIBUTING.md
@@ -34,7 +34,7 @@ jobs:
           find ./docs/7_develop/ -type f -name '*.md' -exec sed -i 's/](develop\//](/g' {} +
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
       - name: Build master with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:

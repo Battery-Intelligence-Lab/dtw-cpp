@@ -10,7 +10,7 @@ function(dtwc_setup_dependencies)
   # For each dependency, see if it's
   # already been provided to us by a parent project
   CPMAddPackage(
-    NAME CPMLicenses.cmake 
+    NAME CPMLicenses.cmake
     GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
     VERSION 0.0.7
   )

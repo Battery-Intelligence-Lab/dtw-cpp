@@ -48,7 +48,7 @@ jobs:
             compiler: gcc-12 g++-12
             sanitizer: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: update
         run: sudo apt update
