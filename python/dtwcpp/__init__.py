@@ -21,8 +21,11 @@ from dtwcpp._dtwcpp_core import (
     adtw_distance,
     soft_dtw_distance,
     soft_dtw_gradient,
+    dtw_distance_missing,
     # Algorithms
     fast_pam,
+    fast_clara,
+    CLARAOptions,
     # Scores
     silhouette,
     davies_bouldin_index,
@@ -43,8 +46,9 @@ __all__ = [
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
     "Problem",
     "dtw_distance", "ddtw_distance", "wdtw_distance", "adtw_distance",
-    "soft_dtw_distance", "soft_dtw_gradient",
-    "fast_pam", "silhouette", "davies_bouldin_index",
+    "soft_dtw_distance", "soft_dtw_gradient", "dtw_distance_missing",
+    "fast_pam", "fast_clara", "CLARAOptions",
+    "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "DTWClustering",
