@@ -22,6 +22,9 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 
+#ifdef DTWC_HAS_HIGHWAY
+#include "simd/multi_pair_dtw.hpp"
+#endif
 
 #include <algorithm> // for max_element, min, min_element, sample
 #include <cmath>     // for sqrt, floor
@@ -187,14 +190,60 @@ void Problem::fillDistanceMatrix()
   if (isDistanceMatrixFilled()) return;
 
   const size_t N = data.size();
+
+  std::cout << "Distance matrix is being filled!" << std::endl;
+
+#ifdef DTWC_HAS_HIGHWAY
+  // Multi-pair SIMD path: batch 4 pairs per SIMD call.
+  const size_t total_pairs = N * (N + 1) / 2;
+
+  // Pre-generate all (i,j) pairs for batching.
+  struct Pair { size_t i, j; };
+  std::vector<Pair> pairs;
+  pairs.reserve(total_pairs);
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = i; j < N; ++j)
+      pairs.push_back({i, j});
+
+  // Process pairs in batches of 4, parallelized over batches.
+  const size_t n_batches = (pairs.size() + 3) / 4;
+  auto batchTask = [&](size_t batch_idx) {
+    const size_t start = batch_idx * 4;
+    const size_t end = std::min(start + 4, pairs.size());
+    const size_t n_in_batch = end - start;
+
+    const double* x_ptrs[4] = {};
+    const double* y_ptrs[4] = {};
+    std::size_t x_lens[4] = {};
+    std::size_t y_lens[4] = {};
+
+    for (size_t k = 0; k < n_in_batch; ++k) {
+      const auto& [pi, pj] = pairs[start + k];
+      x_ptrs[k] = p_vec(pi).data();
+      y_ptrs[k] = p_vec(pj).data();
+      x_lens[k] = p_vec(pi).size();
+      y_lens[k] = p_vec(pj).size();
+    }
+
+    auto result = simd::dtw_multi_pair(x_ptrs, y_ptrs, x_lens, y_lens, n_in_batch);
+
+    for (size_t k = 0; k < n_in_batch; ++k) {
+      const auto& [pi, pj] = pairs[start + k];
+      if (pi == pj) {
+        distMat.set(pi, pj, 0.0);
+      } else {
+        distMat.set(pi, pj, result.distances[k]);
+      }
+    }
+  };
+  run(batchTask, n_batches);
+
+#else
+  // Scalar fallback: one pair at a time (original implementation).
   auto oneTask = [this, N](size_t k) {
-    // Decode linear triangular index k into (i, j) where 0 <= i <= j < N.
-    // Row i starts at cumulative offset i*N - i*(i-1)/2, so we solve for i
-    // using the quadratic formula (O(1) instead of O(N) loop).
     const double Nd = static_cast<double>(N);
     const double kd = static_cast<double>(k);
     size_t i = static_cast<size_t>(std::floor(Nd + 0.5 - std::sqrt((Nd + 0.5) * (Nd + 0.5) - 2.0 * kd)));
-    // Guard against floating-point rounding: if row_start for i+1 still fits, advance.
     size_t row_start = i * N - i * (i - 1) / 2;
     if (row_start + (N - i) <= k) {
       row_start += (N - i);
@@ -203,9 +252,9 @@ void Problem::fillDistanceMatrix()
     size_t j = i + (k - row_start);
     distByInd(static_cast<int>(i), static_cast<int>(j));
   };
-
-  std::cout << "Distance matrix is being filled!" << std::endl;
   run(oneTask, N * (N + 1) / 2);
+#endif
+
   is_distMat_filled = true;
   std::cout << "Distance matrix has been filled!" << std::endl;
 }
