@@ -35,3 +35,7 @@
 #include "core/scratch_matrix.hpp"
 #include "core/time_series.hpp"
 #include "core/z_normalize.hpp"
+
+#ifdef DTWC_HAS_CUDA
+#include "cuda/cuda_dtw.cuh"
+#endif

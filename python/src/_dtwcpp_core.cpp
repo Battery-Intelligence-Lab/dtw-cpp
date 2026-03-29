@@ -433,4 +433,40 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::daviesBouldinIndex(prob);
   }, "prob"_a, "Compute Davies-Bouldin Index.");
+
+  // =========================================================================
+  // CUDA (optional)
+  // =========================================================================
+
+#ifdef DTWC_HAS_CUDA
+  m.def("cuda_available", &dtwc::cuda::cuda_available,
+        "Check if a CUDA-capable GPU is available.");
+
+  m.def("cuda_device_info", &dtwc::cuda::cuda_device_info,
+        "device_id"_a = 0,
+        "Get a human-readable string describing the CUDA device.");
+
+  m.def("compute_distance_matrix_cuda",
+        [](const std::vector<std::vector<double>> &series,
+           int band, bool use_squared_l2, int device_id, bool verbose) {
+          dtwc::cuda::CUDADistMatOptions opts;
+          opts.band = band;
+          opts.use_squared_l2 = use_squared_l2;
+          opts.device_id = device_id;
+          opts.verbose = verbose;
+          nb::gil_scoped_release release;
+          auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+          // Return as flat list; Python side reshapes to NxN
+          return nb::make_tuple(result.matrix, result.n,
+                                result.gpu_time_sec, result.pairs_computed);
+        },
+        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
+        "device_id"_a = 0, "verbose"_a = false,
+        "Compute NxN DTW distance matrix on GPU.\n\n"
+        "Returns (flat_matrix, n, gpu_time_sec, pairs_computed).");
+
+  m.attr("CUDA_AVAILABLE") = true;
+#else
+  m.attr("CUDA_AVAILABLE") = false;
+#endif
 }
