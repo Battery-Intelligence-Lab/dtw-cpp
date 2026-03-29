@@ -22,9 +22,6 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 
-#ifdef DTWC_HAS_HIGHWAY
-#include "simd/multi_pair_dtw.hpp"
-#endif
 
 #include <algorithm> // for max_element, min, min_element, sample
 #include <cmath>     // for sqrt, floor
@@ -193,53 +190,6 @@ void Problem::fillDistanceMatrix()
 
   std::cout << "Distance matrix is being filled!" << std::endl;
 
-#ifdef DTWC_HAS_HIGHWAY
-  // Multi-pair SIMD path: batch 4 pairs per SIMD call.
-  const size_t total_pairs = N * (N + 1) / 2;
-
-  // Pre-generate all (i,j) pairs for batching.
-  struct Pair { size_t i, j; };
-  std::vector<Pair> pairs;
-  pairs.reserve(total_pairs);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = i; j < N; ++j)
-      pairs.push_back({i, j});
-
-  // Process pairs in batches of 4, parallelized over batches.
-  const size_t n_batches = (pairs.size() + 3) / 4;
-  auto batchTask = [&](size_t batch_idx) {
-    const size_t start = batch_idx * 4;
-    const size_t end = std::min(start + 4, pairs.size());
-    const size_t n_in_batch = end - start;
-
-    const double* x_ptrs[4] = {};
-    const double* y_ptrs[4] = {};
-    std::size_t x_lens[4] = {};
-    std::size_t y_lens[4] = {};
-
-    for (size_t k = 0; k < n_in_batch; ++k) {
-      const auto& [pi, pj] = pairs[start + k];
-      x_ptrs[k] = p_vec(pi).data();
-      y_ptrs[k] = p_vec(pj).data();
-      x_lens[k] = p_vec(pi).size();
-      y_lens[k] = p_vec(pj).size();
-    }
-
-    auto result = simd::dtw_multi_pair(x_ptrs, y_ptrs, x_lens, y_lens, n_in_batch);
-
-    for (size_t k = 0; k < n_in_batch; ++k) {
-      const auto& [pi, pj] = pairs[start + k];
-      if (pi == pj) {
-        distMat.set(pi, pj, 0.0);
-      } else {
-        distMat.set(pi, pj, result.distances[k]);
-      }
-    }
-  };
-  run(batchTask, n_batches);
-
-#else
-  // Scalar fallback: one pair at a time (original implementation).
   auto oneTask = [this, N](size_t k) {
     const double Nd = static_cast<double>(N);
     const double kd = static_cast<double>(k);
@@ -253,7 +203,6 @@ void Problem::fillDistanceMatrix()
     distByInd(static_cast<int>(i), static_cast<int>(j));
   };
   run(oneTask, N * (N + 1) / 2);
-#endif
 
   is_distMat_filled = true;
   std::cout << "Distance matrix has been filled!" << std::endl;
