@@ -14,18 +14,17 @@
  *            // This re-includes the .cpp once per target ISA.
  *
  *          Then inside the .cpp:
- *            #include "hwy/highway.h"
- *            #include "dtwc/simd/highway_targets.hpp"
  *            HWY_BEFORE_NAMESPACE();
  *            namespace dtwc::simd::HWY_NAMESPACE {
  *              // ... SIMD code using hn:: aliases ...
  *            }
  *            HWY_AFTER_NAMESPACE();
  *
+ * @note NO #pragma once — this header is intentionally re-included once per
+ *       ISA target by Highway's foreach_target.h mechanism.
+ *
  * @date 29 Mar 2026
  */
-
-#pragma once
 
 // Highway's foreach_target.h handles the multi-ISA compilation loop.
 // It re-includes HWY_TARGET_INCLUDE once per target (AVX-512, AVX2, SSE4, NEON, etc.)
