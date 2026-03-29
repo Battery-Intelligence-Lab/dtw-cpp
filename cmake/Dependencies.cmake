@@ -79,4 +79,25 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
+  # Google Highway — portable SIMD (Apache-2.0, Google)
+  # Runtime dispatch: AVX-512, AVX2, SSE4, NEON selected at load time.
+  if(DTWC_ENABLE_SIMD)
+    if(NOT TARGET hwy::hwy)
+      CPMAddPackage(
+        NAME highway
+        GITHUB_REPOSITORY google/highway
+        VERSION 1.2.0
+        OPTIONS
+          "HWY_ENABLE_TESTS OFF"
+          "HWY_ENABLE_EXAMPLES OFF"
+          "HWY_ENABLE_CONTRIB OFF"
+          "HWY_ENABLE_INSTALL OFF"
+          "BUILD_TESTING OFF"
+      )
+    endif()
+    if(NOT TARGET hwy::hwy)
+      message(WARNING "Google Highway not found — SIMD will be disabled")
+    endif()
+  endif()
+
 endfunction()

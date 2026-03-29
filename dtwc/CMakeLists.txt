@@ -67,3 +67,15 @@ if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP found")
   target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
 endif()
+
+# Google Highway SIMD (optional)
+if(DTWC_ENABLE_SIMD AND TARGET hwy::hwy)
+  target_sources(dtwc++ PRIVATE
+    simd/lb_keogh_simd.cpp
+    simd/z_normalize_simd.cpp
+    simd/multi_pair_dtw.cpp
+  )
+  target_link_libraries(dtwc++ PRIVATE hwy::hwy)
+  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_HIGHWAY)
+  message(STATUS "SIMD enabled via Google Highway")
+endif()

@@ -23,6 +23,7 @@ option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
+option(DTWC_ENABLE_SIMD "Enable SIMD acceleration via Google Highway" OFF)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 
