@@ -9,6 +9,11 @@ target_link_libraries(bench_dtw_baseline
     benchmark::benchmark_main
 )
 
+# Link Highway for SIMD benchmarks if available
+if(DTWC_ENABLE_SIMD AND TARGET hwy::hwy)
+  target_link_libraries(bench_dtw_baseline PRIVATE hwy::hwy)
+endif()
+
 # Legacy UCR benchmark
 add_executable(benchmark_UCR UCR_dtwc.cpp)
 target_link_libraries(benchmark_UCR PRIVATE dtwc++)

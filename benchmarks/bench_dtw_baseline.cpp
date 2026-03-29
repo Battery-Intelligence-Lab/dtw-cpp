@@ -11,6 +11,8 @@
 
 #include <benchmark/benchmark.h>
 #include <dtwc.hpp>
+#include <core/lower_bound_impl.hpp>
+#include <core/z_normalize.hpp>
 
 #include <vector>
 #include <random>
@@ -163,3 +165,81 @@ BENCHMARK(BM_fillDistanceMatrix)
   ->Args({50, 500, 50})
   ->Args({50, 1000, 50})
   ->Unit(benchmark::kMillisecond);
+
+// ---------------------------------------------------------------------------
+// BM_lb_keogh — LB_Keogh lower bound for varying lengths
+// ---------------------------------------------------------------------------
+static void BM_lb_keogh(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  auto query = random_series(len, 42);
+  auto candidate = random_series(len, 43);
+
+  std::vector<double> upper(len), lower(len);
+  dtwc::core::compute_envelopes(candidate.data(), len, 10, upper.data(), lower.data());
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+      dtwc::core::lb_keogh(query.data(), len, upper.data(), lower.data()));
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(len));
+}
+BENCHMARK(BM_lb_keogh)
+  ->Arg(100)
+  ->Arg(500)
+  ->Arg(1000)
+  ->Arg(4000)
+  ->Arg(8000)
+  ->Unit(benchmark::kNanosecond)
+  ->Complexity();
+
+// ---------------------------------------------------------------------------
+// BM_z_normalize — z-normalization for varying lengths
+// ---------------------------------------------------------------------------
+static void BM_z_normalize(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  auto series_data = random_series(len, 42);
+
+  for (auto _ : state) {
+    state.PauseTiming();
+    auto copy = series_data; // fresh copy each iteration
+    state.ResumeTiming();
+    dtwc::core::z_normalize(copy.data(), copy.size());
+    benchmark::DoNotOptimize(copy.data());
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(len));
+}
+BENCHMARK(BM_z_normalize)
+  ->Arg(100)
+  ->Arg(500)
+  ->Arg(1000)
+  ->Arg(4000)
+  ->Arg(8000)
+  ->Unit(benchmark::kNanosecond)
+  ->Complexity();
+
+// ---------------------------------------------------------------------------
+// BM_compute_envelopes — envelope computation for varying lengths
+// ---------------------------------------------------------------------------
+static void BM_compute_envelopes(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  const int band = static_cast<int>(state.range(1));
+  auto series = random_series(len, 42);
+  std::vector<double> upper(len), lower(len);
+
+  for (auto _ : state) {
+    dtwc::core::compute_envelopes(series.data(), len, band, upper.data(), lower.data());
+    benchmark::DoNotOptimize(upper.data());
+    benchmark::DoNotOptimize(lower.data());
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+}
+BENCHMARK(BM_compute_envelopes)
+  ->Args({1000, 10})
+  ->Args({1000, 50})
+  ->Args({4000, 50})
+  ->Unit(benchmark::kNanosecond);
