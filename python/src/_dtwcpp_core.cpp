@@ -130,7 +130,7 @@ NB_MODULE(_dtwcpp_core, m) {
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;
-    return dtwc::dtwBanded<double>(x, y, band, mt);
+    return dtwc::dtwBanded<double>(x, y, band, -1.0, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "Compute DTW distance.\n\n"
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
@@ -281,8 +281,6 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
                                         int band, const std::string &metric) {
-    nb::gil_scoped_release release;
-
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;
@@ -290,19 +288,23 @@ NB_MODULE(_dtwcpp_core, m) {
     const size_t n = series.size();
     double* ptr = new double[n * n]();  // zero-init
 
-    // Compute upper triangle (symmetric), then mirror.
-    #ifdef _OPENMP
-    #pragma omp parallel for schedule(dynamic, 16)
-    #endif
-    for (int i = 0; i < static_cast<int>(n); ++i) {
-        for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-            double d = (band >= 0)
-                ? dtwc::dtwBanded<double>(series[i], series[j], band, mt)
-                : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-            ptr[i * n + j] = d;
-            ptr[j * n + i] = d;
-        }
-    }
+    // Release GIL only for the compute-heavy section
+    {
+      nb::gil_scoped_release release;
+      // Compute upper triangle (symmetric), then mirror.
+      #ifdef _OPENMP
+      #pragma omp parallel for schedule(dynamic, 16)
+      #endif
+      for (int i = 0; i < static_cast<int>(n); ++i) {
+          for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+              double d = (band >= 0)
+                  ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
+                  : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+              ptr[i * n + j] = d;
+              ptr[j * n + i] = d;
+          }
+      }
+    }  // GIL re-acquired here
 
     nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
     return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);

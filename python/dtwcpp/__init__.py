@@ -29,6 +29,8 @@ from dtwcpp._dtwcpp_core import (
     # Utils
     derivative_transform,
     z_normalize,
+    # Distance matrix
+    compute_distance_matrix,
 )
 
 __version__ = "1.0.0"
@@ -44,5 +46,6 @@ __all__ = [
     "soft_dtw_distance", "soft_dtw_gradient",
     "fast_pam", "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
+    "compute_distance_matrix",
     "DTWClustering",
 ]
