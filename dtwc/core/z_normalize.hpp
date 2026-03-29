@@ -26,11 +26,13 @@ void z_normalize(T *series, size_t n)
   if (n == 1) { series[0] = static_cast<T>(0); return; }
 
   T sum = 0;
+  #pragma omp simd reduction(+:sum)
   for (size_t i = 0; i < n; ++i)
     sum += series[i];
   T mean = sum / static_cast<T>(n);
 
   T sq_sum = 0;
+  #pragma omp simd reduction(+:sq_sum)
   for (size_t i = 0; i < n; ++i) {
     T d = series[i] - mean;
     sq_sum += d * d;
@@ -39,9 +41,11 @@ void z_normalize(T *series, size_t n)
 
   if (stddev > static_cast<T>(1e-10)) {
     T inv_stddev = T(1) / stddev;
+    #pragma omp simd
     for (size_t i = 0; i < n; ++i)
       series[i] = (series[i] - mean) * inv_stddev;
   } else {
+    #pragma omp simd
     for (size_t i = 0; i < n; ++i)
       series[i] = 0;
   }

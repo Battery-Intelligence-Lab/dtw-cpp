@@ -81,7 +81,7 @@ Bindings must call stable core APIs (or a small C API shim), not internal templa
 - Prefer clear loops over clever meta-programming.
 
 ### Memory & cache design principles
-- **DTW is memory-bound** (0.125 FLOP/byte). Fix memory access patterns BEFORE SIMD.
+- **DTW is latency-bound** on the recurrence chain (~10 cycles/cell, uses only 3% of L1 bandwidth). The rolling buffer fits in L1. Multi-pair SIMD (4 independent pairs in AVX2 lanes) is the only viable SIMD strategy — single-pair SIMD is impossible due to the diagonal wavefront dependency. Simple reduction loops (LB_Keogh, z_normalize) are already auto-vectorized by the compiler; explicit SIMD adds overhead.
 - **Flat containers only** in hot paths — no std::deque, no linked structures. Use std::vector or fixed-size arrays.
 - **thread_local reuse** for scratch buffers — resize (never shrink), avoid per-call allocation.
 - **Cache-friendly partitioning** for parallelism — divide work into contiguous chunks per thread (e.g., 10×50 matrix → 5 chunks of 10×10), not interleaved indices.

@@ -103,6 +103,10 @@ Standard DTW violates the triangle inequality. This means:
 - At 2.5 GHz, this gives ~250M cells/sec — matches measured performance exactly
 - **The recurrence cannot be shortened** — it is fundamental to DTW's dynamic programming structure
 - **Multi-pair SIMD** (4 pairs in AVX2) can hide latency by processing 4 independent recurrences in parallel — expected 3-3.5x
+- **BUT**: scatter/gather overhead kills multi-pair DTW. Each inner-loop iteration needs 4 scalar reads to fill an aligned array (28 ops/cell vs 9 scalar). Max theoretical speedup: 1.29x. Fix: pre-interleave series data before batching.
+- **Highway dispatch overhead**: ~10-15ns per call (atomic load + BitScan + indirect call). For 40ns LB_Keogh, that's 25-35% overhead. For trivial loops, compiler auto-vectorization beats Highway.
+- **MSVC `/O2` auto-vectorizes** simple reduction loops (LB_Keogh, z_normalize) to SSE2. Measured 1.07 cycles/element for LB_Keogh (theoretical scalar min is 2 cycles) — proves auto-vectorization. Explicit Highway adds dispatch overhead and prevents inlining. Use `#pragma omp simd` instead.
+- **SIMD fillDistanceMatrix must respect band and DTW variant**. The multi-pair DTW function only implements full L1 DTW — using it when band>0 or DDTW/WDTW/ADTW is selected produces WRONG results (different distance values → different clusters).
 
 ### std::min with initializer_list is catastrophically slow in hot loops
 - `std::min({a, b, c})` constructs a temporary `std::initializer_list` on every call

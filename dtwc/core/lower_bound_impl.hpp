@@ -109,6 +109,7 @@ T lb_keogh(const T *query, std::size_t n,
            const T *upper, const T *lower)
 {
   T sum = T(0);
+  #pragma omp simd reduction(+:sum)
   for (std::size_t i = 0; i < n; ++i) {
     T excess_upper = query[i] - upper[i];
     T excess_lower = lower[i] - query[i];

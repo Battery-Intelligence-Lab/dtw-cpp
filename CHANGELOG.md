@@ -20,6 +20,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## New features
 
+* Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` CMake option, default OFF). Highway 1.2.0 fetched via CPM for future use on platforms where compiler auto-vectorization is insufficient (ARM NEON, older compilers). Includes prototype SIMD kernels for LB_Keogh, z_normalize, and multi-pair DTW.
+* Added `#pragma omp simd` hints to LB_Keogh and z_normalize loops for portable guaranteed vectorization.
+* Added LB_Keogh, z_normalize, and envelope computation benchmarks to `bench_dtw_baseline.cpp`.
 * Added `DTWClustering` sklearn-compatible Python class with `fit()`, `predict()`, `fit_predict()`, `score()`, `get_params()`/`set_params()`. Supports all DTW variants (standard, DDTW, WDTW, ADTW), multi-restart via `n_init`, and works with or without sklearn installed.
 * Added core type system (`dtwc::core` namespace): `ScratchMatrix<T>`, `DenseDistanceMatrix`, `TimeSeriesView<T>`/`TimeSeries<T>`, `ClusteringResult`, `DTWOptions`, distance metrics (L1, L2, SquaredL2).
 * Added FastPAM1 k-medoids clustering algorithm (Schubert & Rousseeuw 2021, JMLR) — true PAM SWAP with O(N^2*k) per iteration.
