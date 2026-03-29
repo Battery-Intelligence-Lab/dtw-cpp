@@ -30,27 +30,19 @@ namespace dtwc::core {
 /// Compute the DTW distance between two time series.
 ///
 /// @tparam T        Element type (default: double).
-/// @tparam Metric   Pointwise cost callable (default: L1Metric).
 /// @param  x        First time series.
 /// @param  y        Second time series.
 /// @param  band     Sakoe-Chiba band width; negative means unconstrained.
-/// @param  metric   Metric instance (unused until warping.hpp is refactored;
-///                  provided for forward API compatibility).
+/// @param  metric   Runtime metric selector (default: L1).
 /// @return DTW distance.
-/// @note Currently only L1Metric is supported. Passing a different metric
-///       will produce a compile error. Full metric abstraction will be
-///       wired when warping.hpp is refactored to accept a metric callable.
-template <typename T = double, typename Metric = L1Metric>
+template <typename T = double>
 T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
-               int band = -1, const Metric& /*metric*/ = {})
+               int band = -1, MetricType metric = MetricType::L1)
 {
-  static_assert(std::is_same_v<Metric, L1Metric>,
-    "Only L1Metric is currently supported. Other metrics will be added "
-    "when warping.hpp is refactored to accept a metric callable.");
   if (band < 0)
-    return dtwFull_L<T>(x, y);
+    return dtwFull_L<T>(x, y, static_cast<T>(-1), metric);
   else
-    return dtwBanded<T>(x, y, band);
+    return dtwBanded<T>(x, y, band, static_cast<T>(-1), metric);
 }
 
 // -----------------------------------------------------------------------
@@ -61,11 +53,11 @@ T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
 /// This temporary copy will be eliminated when warping.hpp accepts pointers.
 template <typename T = double>
 T dtw_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
-               int band = -1)
+               int band = -1, MetricType metric = MetricType::L1)
 {
   const std::vector<T> vx(x, x + nx);
   const std::vector<T> vy(y, y + ny);
-  return dtw_distance(vx, vy, band);
+  return dtw_distance(vx, vy, band, metric);
 }
 
 // -----------------------------------------------------------------------

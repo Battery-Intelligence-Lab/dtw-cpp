@@ -20,56 +20,50 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## New features
 
-* Added **checkpoint save/load** for distance matrix computation (`save_checkpoint`, `load_checkpoint` in `checkpoint.hpp`). Saves partial or complete distance matrices to disk as CSV + metadata text file, enabling resume after crashes during long-running `fillDistanceMatrix` calls. No new dependencies required.
-* Added `count_computed()` and `all_computed()` methods to `DenseDistanceMatrix` for querying computation progress.
+* Added **MATLAB MEX bindings** — new `bindings/matlab/` directory with C++ MEX API gateway and MATLAB `+dtwc` package: `dtwc.dtw_distance`, `dtwc.compute_distance_matrix`, `dtwc.DTWClustering`. Build with `cmake .. -DDTWC_BUILD_MATLAB=ON`.
+* Added **checkpoint save/load** for distance matrix computation (`save_checkpoint`, `load_checkpoint`). Saves partial or complete distance matrices to disk as CSV + metadata text file, enabling resume after crashes.
+* Added `count_computed()` and `all_computed()` methods to `DenseDistanceMatrix`.
 * Added `distance_matrix()` accessors and `set_distance_matrix_filled()` to `Problem` class.
 * Added Python bindings for `save_checkpoint`, `load_checkpoint`, and `CheckpointOptions`.
-* Added **DTW with missing data** (`dtwMissing`, `dtwMissing_L`, `dtwMissing_banded`) in `warping_missing.hpp`. NaN values in either series are treated as missing; pairs where one or both values are NaN contribute zero cost. Supports L1 and SquaredL2 metrics, early abandon, and Sakoe-Chiba banding. Reference: Yurtman, Soenen, Meert & Blockeel (2023), ECML-PKDD.
-* Added `dtw_distance_missing` Python binding for NaN-aware DTW distance computation.
-* Added **FastCLARA** scalable k-medoids clustering algorithm (`dtwc::algorithms::fast_clara`). Runs FastPAM on random subsamples of size `sample_size` (default: 40 + 2k), repeating `n_samples` times, and assigns all N points to the best medoids found. Avoids O(N^2) memory of full PAM. Reference: Kaufman & Rousseeuw (1990); Schubert & Rousseeuw (2021, JMLR).
-* Added Python binding for `fast_clara()` with all options exposed.
-* Added `MetricType` parameter (L1, SquaredL2) to all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`). Default remains L1 for backward compatibility. SquaredL2 enables fair benchmarking against aeon/dtaidistance/tslearn. Metric dispatch uses template lambdas for zero inner-loop overhead.
-* Refactored DTW implementations into `detail::*_impl` helpers that accept a distance callable as a template parameter, enabling future metric extensibility without code duplication.
-* Skips `row_min` tracking in `dtwFull_L` when early-abandon is disabled.
-* Added `metric` parameter to `dtw_distance` Python binding (`'l1'` default, `'squared_euclidean'` supported).
-* Added `compute_distance_matrix` Python function: computes full NxN pairwise DTW distance matrix in C++ with OpenMP parallelism. Returns numpy array.
-* Added `distance_matrix_numpy()` method to `Problem` Python class: fills distance matrix and returns it as a numpy array.
-* Added `-ffast-math` (GCC/Clang) and `/fp:fast` (MSVC) compiler flags for Release and RelWithDebInfo builds.
-* Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` CMake option, default OFF). Highway 1.2.0 fetched via CPM for future use on platforms where compiler auto-vectorization is insufficient (ARM NEON, older compilers). Includes prototype SIMD kernels for LB_Keogh, z_normalize, and multi-pair DTW.
-* Added `#pragma omp simd` hints to LB_Keogh and z_normalize loops for portable guaranteed vectorization.
-* Added LB_Keogh, z_normalize, and envelope computation benchmarks to `bench_dtw_baseline.cpp`.
-* Added `DTWClustering` sklearn-compatible Python class with `fit()`, `predict()`, `fit_predict()`, `score()`, `get_params()`/`set_params()`. Supports all DTW variants (standard, DDTW, WDTW, ADTW), multi-restart via `n_init`, and works with or without sklearn installed.
-* Added core type system (`dtwc::core` namespace): `ScratchMatrix<T>`, `DenseDistanceMatrix`, `TimeSeriesView<T>`/`TimeSeries<T>`, `ClusteringResult`, `DTWOptions`, distance metrics (L1, L2, SquaredL2).
-* Added FastPAM1 k-medoids clustering algorithm (Schubert & Rousseeuw 2021, JMLR) — true PAM SWAP with O(N^2*k) per iteration.
-* Added z-normalization (`z_normalize`, `z_normalized`) for preprocessing time series.
-* Added lower bound implementations: `lb_keogh()` with envelope precomputation, `lb_kim()` with summary precomputation, `lb_keogh_symmetric()` for symmetric pruning.
-* Added `DenseDistanceMatrix` with NaN sentinel, CSV I/O (`write_csv`/`read_csv`), and `operator<<`.
-* Added pruned distance matrix builder with LB_Kim and LB_Keogh pair-skipping support.
-* Added roofline-aware microbenchmark (`benchmarks/bench_dtw_baseline.cpp`) measuring cells/sec, FLOP/sec, and bytes/sec for DTW computation at various series lengths.
-* Added Google Benchmark integration for structured performance measurement.
+* Added **DTW with missing data** (`dtwMissing`, `dtwMissing_L`, `dtwMissing_banded`). NaN values contribute zero cost. Supports L1/SquaredL2, early abandon, banding. Reference: Yurtman et al. (2023), ECML-PKDD.
+* Added `dtw_distance_missing` Python binding.
+* Added **FastCLARA** scalable k-medoids clustering (`dtwc::algorithms::fast_clara`). Subsampling + FastPAM avoids O(N^2) memory. Reference: Kaufman & Rousseeuw (1990); Schubert & Rousseeuw (2021, JMLR).
+* Added Python binding for `fast_clara()`.
+* Added `MetricType` parameter (L1, SquaredL2) to all core DTW functions. Template lambda dispatch for zero inner-loop overhead.
+* Refactored DTW into `detail::*_impl` helpers with distance callable template parameter.
+* Added `metric` parameter to `dtw_distance` Python binding.
+* Added `compute_distance_matrix` Python function with OpenMP parallelism.
+* Added `distance_matrix_numpy()` method to `Problem` Python class.
+* Added `-ffast-math` (GCC/Clang) and `/fp:fast` (MSVC) for Release builds.
+* Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` option, default OFF). Prototype kernels for future use.
+* Added `#pragma omp simd` hints to LB_Keogh and z_normalize.
+* Added LB_Keogh, z_normalize, envelope benchmarks.
+* Added `DTWClustering` sklearn-compatible Python class.
+* Added core type system (`dtwc::core` namespace).
+* Added FastPAM1 k-medoids clustering algorithm.
+* Added z-normalization, lower bounds, DenseDistanceMatrix, pruned distance matrix.
+* Added Google Benchmark integration.
 
 ## Architecture
 
-* Removed Armadillo dependency from all hot-path code (`warping.hpp`, `Problem.hpp/cpp`, `fileOperations.hpp`). Armadillo is no longer linked to the core library.
-* Replaced `arma::Mat<data_t>` scratch buffer in DTW functions with `core::ScratchMatrix<data_t>` (column-major, same layout).
-* Replaced `arma::Mat<double>` distance matrix in `Problem` with `core::DenseDistanceMatrix` (NaN sentinel instead of -1).
-* Unified `FastPAMResult` with `core::ClusteringResult` (single result type for all clustering algorithms).
-* Distance matrix I/O now uses `DenseDistanceMatrix::write_csv()`/`read_csv()` instead of Armadillo's `save`/`load`.
+* Removed Armadillo dependency from all hot-path code.
+* Replaced `arma::Mat` with `core::ScratchMatrix` and `core::DenseDistanceMatrix`.
+* Unified `FastPAMResult` with `core::ClusteringResult`.
 
 ## Bug fixes
 
-* Fixed `DenseDistanceMatrix` NaN sentinel broken under `-ffast-math` / `/fp:fast` compiler flags. Replaced NaN-based `is_computed()` check with a separate boolean vector. `std::isnan()` is optimized away by compilers under fast-math, causing `distByInd()` to return uninitialized values instead of computing DTW distances lazily.
-* Fixed `throw 1` bare integer throw in `Problem_IO.cpp` — now throws `std::runtime_error`.
-* Fixed `static std::mt19937` ODR violation in `settings.hpp` — changed to `inline`.
-* Fixed `.at()` bounds-checked access in hot DTW loop — replaced with `operator[]`.
-* Fixed `dtwBanded` 512MB/thread allocation — replaced with rolling buffer (O(band) memory).
-* Fixed `fillDistanceMatrix` integer overflow at N>46K — triangular iteration with `size_t`.
+* Fixed `DenseDistanceMatrix` NaN sentinel broken under `-ffast-math` / `/fp:fast`. Replaced with boolean vector.
+* Fixed `throw 1` bare integer throw — now throws `std::runtime_error`.
+* Fixed `static std::mt19937` ODR violation — changed to `inline`.
+* Fixed `.at()` in hot DTW loop — replaced with `operator[]`.
+* Fixed `dtwBanded` 512MB/thread allocation — rolling buffer.
+* Fixed `fillDistanceMatrix` integer overflow at N>46K.
 * Fixed `dtwBanded` template default from `float` to `double`.
 * Fixed `static` vectors data race in `calculateMedoids`.
-* Fixed DBI formula (was using `dist(medoid, medoid)` = 0 always).
-* Fixed broken examples (`settings::band` → `prob.band`).
-* Renamed `cluster_by_kMedoidsPAM` to `cluster_by_kMedoidsLloyd` (was mislabeled).
-* Fixed z_normalize tests to use production code instead of local reference implementation.
+* Fixed DBI formula.
+* Fixed broken examples.
+* Renamed `cluster_by_kMedoidsPAM` to `cluster_by_kMedoidsLloyd`.
+* Fixed z_normalize tests.
 
 <br/><br/>
 # DTWC v1.0.0

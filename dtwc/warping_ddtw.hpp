@@ -78,12 +78,13 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
  */
 template <typename data_t = double>
 data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band = settings::DEFAULT_BAND_LENGTH)
+                  int band = settings::DEFAULT_BAND_LENGTH,
+                  core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
   dx = derivative_transform(x);
   dy = derivative_transform(y);
-  return dtwBanded<data_t>(dx, dy, band);
+  return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
 }
 
 /**
@@ -99,12 +100,13 @@ data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The DDTW distance.
  */
 template <typename data_t = double>
-data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y)
+data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
   dx = derivative_transform(x);
   dy = derivative_transform(y);
-  return dtwFull_L<data_t>(dx, dy);
+  return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
 }
 
 } // namespace dtwc

@@ -130,6 +130,61 @@ TEST_CASE("dtw_runtime with SakoeChibaBand matches dtwBanded",
   REQUIRE_THAT(result, WithinAbs(ref, 1e-15));
 }
 
+// ----- SquaredL2 metric tests -------------------------------------------
+
+TEST_CASE("dtw_distance with SquaredL2 metric",
+          "[dtw_api][dtw_distance][SquaredL2]")
+{
+  const std::vector<double> x{1, 2, 3};
+  const std::vector<double> y{3, 4, 5, 6, 7};
+  constexpr double sq_ground_truth = 35.0;
+
+  const double result = dtw_distance(x, y, -1, MetricType::SquaredL2);
+  REQUIRE_THAT(result, WithinAbs(sq_ground_truth, 1e-15));
+
+  // Must differ from L1
+  const double l1_result = dtw_distance(x, y, -1, MetricType::L1);
+  REQUIRE_THAT(l1_result, WithinAbs(13.0, 1e-15));
+  REQUIRE(result != l1_result);
+}
+
+TEST_CASE("dtw_runtime with SquaredL2 metric matches dtwFull_L SquaredL2",
+          "[dtw_api][dtw_runtime][SquaredL2]")
+{
+  const std::vector<double> x{1, 2, 3};
+  const std::vector<double> y{3, 4, 5, 6, 7};
+
+  DTWOptions opts;
+  opts.constraint = ConstraintType::None;
+  opts.metric = MetricType::SquaredL2;
+
+  const double result = dtw_runtime(x.data(), x.size(),
+                                    y.data(), y.size(), opts);
+  const double ref = dtwc::dtwFull_L<double>(x, y, -1.0, MetricType::SquaredL2);
+
+  REQUIRE_THAT(result, WithinAbs(ref, 1e-15));
+  REQUIRE_THAT(result, WithinAbs(35.0, 1e-15));
+}
+
+TEST_CASE("dtw_runtime with SakoeChibaBand and SquaredL2",
+          "[dtw_api][dtw_runtime][SquaredL2]")
+{
+  const std::vector<double> x{1, 2, 3};
+  const std::vector<double> y{3, 4, 5, 6, 7};
+  const int band = 100;
+
+  DTWOptions opts;
+  opts.constraint = ConstraintType::SakoeChibaBand;
+  opts.band_width = band;
+  opts.metric = MetricType::SquaredL2;
+
+  const double result = dtw_runtime(x.data(), x.size(),
+                                    y.data(), y.size(), opts);
+  const double ref = dtwc::dtwBanded<double>(x, y, band, -1.0, MetricType::SquaredL2);
+
+  REQUIRE_THAT(result, WithinAbs(ref, 1e-15));
+}
+
 // ----- Symmetry checks --------------------------------------------------
 
 TEST_CASE("dtw_distance is symmetric",

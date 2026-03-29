@@ -20,6 +20,7 @@ option(DTWC_BUILD_EXAMPLES "Build example programs" OFF)
 option(DTWC_BUILD_TESTING "Build unit tests" OFF)
 option(DTWC_BUILD_BENCHMARK "Build benchmarks" OFF)
 option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
+option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
@@ -81,6 +82,10 @@ endif()
 
 if(DTWC_BUILD_PYTHON)
   add_subdirectory(python)
+endif()
+
+if(DTWC_BUILD_MATLAB)
+  add_subdirectory(bindings/matlab)
 endif()
 
 cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")
