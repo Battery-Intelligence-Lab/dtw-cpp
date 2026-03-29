@@ -2,8 +2,10 @@ name: Python wheels
 
 on:
   push:
-    branches: [main]
+    branches: [develop]
     tags: ['v*']
+  pull_request:
+    branches: [main]
 
 jobs:
   build_wheels:

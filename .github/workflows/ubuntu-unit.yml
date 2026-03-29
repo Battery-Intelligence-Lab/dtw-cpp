@@ -1,12 +1,9 @@
 name: Ubuntu unit # adapted from: https://github.com/trase-cpp/trase/tree/master/.github/workflows
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: [develop]
   pull_request:
-    branches:
-      - '**'
+    branches: [main]
 
 jobs:
   build-and-test:
