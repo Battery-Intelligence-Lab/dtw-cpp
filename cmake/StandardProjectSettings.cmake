@@ -51,6 +51,16 @@ else()
 endif()
 
 
+# Fast floating-point for Release builds — enables FMA fusion, reordering.
+# This matches Numba's fastmath=True and is required for competitive DTW performance.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+  add_compile_options($<$<CONFIG:Release>:/fp:fast>)
+  add_compile_options($<$<CONFIG:RelWithDebInfo>:/fp:fast>)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  add_compile_options($<$<CONFIG:Release>:-ffast-math>)
+  add_compile_options($<$<CONFIG:RelWithDebInfo>:-ffast-math>)
+endif()
+
 # run vcvarsall when msvc is used
 include("${CMAKE_CURRENT_LIST_DIR}/VCEnvironment.cmake")
 run_vcvarsall()
