@@ -72,37 +72,66 @@
 
 ---
 
+### Sub-phase B: SIMD Investigation (COMPLETE — infrastructure retained, dispatch disabled)
+
+Adversarial investigation (10 agents) found:
+- Compiler auto-vectorizes simple loops (LB_Keogh, z_normalize) better than Highway dispatch
+- Multi-pair DTW gather overhead defeats SIMD benefit (28 ops/cell vs 9 scalar)
+- CORRECTNESS BUG found and fixed: SIMD fillDistanceMatrix ignored band + variants
+- Highway infrastructure retained for future ARM NEON / older compilers
+- `#pragma omp simd` added to reduction loops (z_normalize 62% faster)
+
+### Phase 5: FastCLARA (COMPLETE)
+
+- `dtwc::algorithms::fast_clara()` with `CLARAOptions` struct
+- Subsampling + FastPAM avoids O(N²) memory for large datasets
+- Python binding `dtwcpp.fast_clara()`
+- 11 test cases including reproducibility, quality, edge cases
+- Critical bug fix: DenseDistanceMatrix NaN sentinel broken under `-ffast-math`; replaced with boolean vector
+
+### Phase 6: Checkpointing (COMPLETE)
+
+- `save_checkpoint()` / `load_checkpoint()` — CSV + metadata text file
+- `count_computed()`, `all_computed()` on DenseDistanceMatrix
+- `distance_matrix()` accessors on Problem
+- Python bindings for save/load/CheckpointOptions
+- 8 test cases
+
+### Phase 7: DTW with Missing Data (COMPLETE)
+
+- `dtwMissing`, `dtwMissing_L`, `dtwMissing_banded` in `warping_missing.hpp`
+- NaN = missing; pairs with NaN contribute zero cost
+- Reuses `detail::*_impl` helpers with NaN-aware distance functors
+- Python binding `dtwcpp.dtw_distance_missing()`
+- 31 test cases
+
+### Phase 9: MATLAB MEX Bindings (COMPLETE)
+
+- `bindings/matlab/dtwc_mex.cpp` — C++ MEX API (R2018a+, RAII-safe)
+- `+dtwc` package: `dtw_distance.m`, `compute_distance_matrix.m`, `DTWClustering.m`
+- Build with `cmake .. -DDTWC_BUILD_MATLAB=ON`
+- 12 MATLAB unit tests
+
+### Performance Session (COMPLETE)
+
+- Added `MetricType` (L1, SquaredL2) to all DTW functions via template lambda dispatch
+- Added `compute_distance_matrix` Python function (single C++ call with OpenMP)
+- Added `/fp:fast` (MSVC) + `-ffast-math` (GCC/Clang) for Release builds
+- Cross-library benchmark: dtwcpp beats aeon on distance matrix at N≥50, clustering 42x faster
+- Row_min tracking skipped when early-abandon disabled
+
+---
+
 ## Remaining Phases
 
 | Phase | Scope | Status | Priority |
 |-------|-------|--------|----------|
-| Sub-B | SIMD via Google Highway | **Planned** | High — 3-4x multi-pair DTW, 4-8x LB_Keogh |
 | Sub-C | MPI + CUDA | **Planned** | High — required for N>10K scale |
 | 3 | GPU/CUDA kernels | Planned (part of Sub-C) | High |
-| 5 | FastCLARA + MPI | Planned (part of Sub-C) | High — required for 100M series |
-| 6 | Checkpointing (HDF5/CSV) | Not started | Medium |
-| 7 | Missing data (DTW-AROW) | Not started | Medium |
 | 8 | I/O — HDF5 + Parquet | Not started | Low |
-| 9 | MATLAB bindings (C++ MEX) | Not started | Low |
 | 11 | Build system + CLI | Not started | Low |
 
-### Sub-phase B: SIMD via Google Highway (NEXT)
-
-Layered parallelism architecture designed:
-```
-Level 2 (MPI):     P ranks across nodes — pair blocks
-  Level 1 (OpenMP): T threads per rank — dynamic scheduling
-    Level 0 (SIMD):  Highway vectorization (AVX2/512/NEON runtime dispatch)
-Level 3 (CUDA):    Alternative GPU path
-```
-
-Key items:
-- B0: Highway CPM integration + DTWC_ENABLE_SIMD option
-- B1: SIMD LB_Keogh (4-8x, called O(N²) times)
-- B4: Multi-pair DTW — 4 pairs in AVX2 lanes (3-4x fillDistanceMatrix)
-- B2/B3: SIMD envelope, derivative stencil
-
-### Sub-phase C: MPI + CUDA
+### Sub-phase C: MPI + CUDA (NEXT)
 
 - C1: MPI distance matrix partitioning + MPI_Allreduce
 - C3: CUDA batch DTW kernel (one block per pair, anti-diagonal wavefront)

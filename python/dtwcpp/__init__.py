@@ -34,6 +34,10 @@ from dtwcpp._dtwcpp_core import (
     z_normalize,
     # Distance matrix
     compute_distance_matrix,
+    # Checkpointing
+    save_checkpoint,
+    load_checkpoint,
+    CheckpointOptions,
 )
 
 __version__ = "1.0.0"
@@ -51,5 +55,6 @@ __all__ = [
     "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
+    "save_checkpoint", "load_checkpoint", "CheckpointOptions",
     "DTWClustering",
 ]
