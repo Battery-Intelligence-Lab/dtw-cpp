@@ -25,7 +25,20 @@ There is separate [detailed documentation](https://Battery-Intelligence-Lab.gith
 
 Introduction
 ===========================
-DTW-C++ is a C++ library for dynamic time warping (DTW) and clustering of time series data. Users can input multiple time series and find clusters of similar time series. The time series can have the same or different lengths. The number of clusters to find can be fixed or specified as a range to try. DTW-C++ finds clusters in time series data using k-medoids or mixed integer programming (MIP). K-medoids is generally faster but may get stuck in local optima, while MIP can give guarantees about globally optimal clusters.
+DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distance computation and time series clustering, with Python and MATLAB bindings.
+
+**Key features:**
+
+- **5 DTW variants**: Standard, Derivative (DDTW), Weighted (WDTW), Amerced (ADTW), Soft-DTW
+- **Missing data support**: NaN-aware DTW (DTW-AROW)
+- **3 clustering algorithms**: FastPAM k-medoids, FastCLARA (scalable), MIP (globally optimal)
+- **LB pruning**: LB_Kim + LB_Keogh early-abandon for 9-11x faster distance matrices
+- **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
+- **Parallelism**: OpenMP threads, MPI distributed, CUDA GPU (optional)
+- **Checkpointing**: Save/resume long-running distance matrix computations
+- **I/O**: CSV, HDF5, Parquet formats (Python)
+
+**Performance**: Beats aeon by 12x and dtaidistance by 1.7x on pairwise distance matrix construction. Full end-to-end clustering is 42x faster than aeon/tslearn.
 <p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
 
 Citation

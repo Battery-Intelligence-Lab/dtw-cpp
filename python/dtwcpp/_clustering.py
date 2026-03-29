@@ -94,13 +94,16 @@ class DTWClustering(BaseEstimator, ClusterMixin):
     def _dtw_fn(self, x, y):
         """Compute DTW distance between two series using current variant."""
         v = self.variant
+        # dtw_distance requires numpy arrays (nb::ndarray binding);
+        # variant functions accept lists (std::vector binding).
         if v == "ddtw":
             return ddtw_distance(list(x), list(y), self.band)
         if v == "wdtw":
             return wdtw_distance(list(x), list(y), self.band, self.wdtw_g)
         if v == "adtw":
             return adtw_distance(list(x), list(y), self.band, self.adtw_penalty)
-        return dtw_distance(list(x), list(y), self.band)
+        return dtw_distance(np.asarray(x, dtype=np.float64),
+                            np.asarray(y, dtype=np.float64), self.band)
 
     @staticmethod
     def _prepare_data(X):

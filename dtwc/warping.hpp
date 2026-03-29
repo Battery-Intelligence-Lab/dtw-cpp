@@ -273,6 +273,10 @@ data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
   case core::MetricType::SquaredL2:
     return detail::dtwFull_impl(x, nx, y, ny, detail::SquaredL2Dist{});
   case core::MetricType::L2:
+    // L2 for 1D scalars: |a-b| (same as L1). For Euclidean DTW (sqrt of sum
+    // of squared diffs, as in dtaidistance/tslearn), use SquaredL2 and take
+    // sqrt of the result externally.
+    return detail::dtwFull_impl(x, nx, y, ny, detail::L1Dist{});
   case core::MetricType::L1:
   default:
     return detail::dtwFull_impl(x, nx, y, ny, detail::L1Dist{});
@@ -299,7 +303,7 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
   switch (metric) {
   case core::MetricType::SquaredL2:
     return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
+  case core::MetricType::L2:  // L2 for 1D scalars == L1; for Euclidean DTW use SquaredL2 + sqrt
   case core::MetricType::L1:
   default:
     return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::L1Dist{});
@@ -341,7 +345,7 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
   switch (metric) {
   case core::MetricType::SquaredL2:
     return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
+  case core::MetricType::L2:  // L2 for 1D scalars == L1; for Euclidean DTW use SquaredL2 + sqrt
   case core::MetricType::L1:
   default:
     return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::L1Dist{});

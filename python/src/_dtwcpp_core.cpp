@@ -347,10 +347,20 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("fast_pam", [](dtwc::Problem &prob, int n_clusters, int max_iter) {
-    nb::gil_scoped_release release;
-    return dtwc::fast_pam(prob, n_clusters, max_iter);
+    dtwc::core::ClusteringResult result;
+    {
+      nb::gil_scoped_release release;
+      result = dtwc::fast_pam(prob, n_clusters, max_iter);
+    }
+    // Store results back into Problem so silhouette(prob) and DBI(prob) work
+    prob.set_numberOfClusters(n_clusters);
+    prob.centroids_ind = result.medoid_indices;
+    prob.clusters_ind = result.labels;
+    return result;
   }, "prob"_a, "n_clusters"_a, "max_iter"_a = 100,
-     "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).");
+     "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).\n\n"
+     "Results are also stored back into prob, so silhouette(prob) and\n"
+     "davies_bouldin_index(prob) work after this call.");
 
   // =========================================================================
   // FastCLARA
