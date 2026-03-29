@@ -13,14 +13,7 @@
 
 #include <cmath>
 #include <cstddef>
-#include <type_traits>
 #include <vector>
-
-#ifdef DTWC_HAS_HIGHWAY
-namespace dtwc::simd {
-void z_normalize_highway(double* series, std::size_t n);
-}  // namespace dtwc::simd
-#endif
 
 namespace dtwc::core {
 
@@ -29,13 +22,6 @@ namespace dtwc::core {
 template <typename T>
 void z_normalize(T *series, size_t n)
 {
-#ifdef DTWC_HAS_HIGHWAY
-  if constexpr (std::is_same_v<T, double>) {
-    simd::z_normalize_highway(series, n);
-    return;
-  }
-#endif
-  // Scalar fallback
   if (n == 0) return;
   if (n == 1) { series[0] = static_cast<T>(0); return; }
 

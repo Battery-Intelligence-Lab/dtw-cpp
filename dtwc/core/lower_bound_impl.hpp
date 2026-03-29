@@ -22,15 +22,7 @@
 #include <algorithm> // for min, max, minmax_element
 #include <cmath>     // for abs
 #include <cstddef>   // for size_t
-#include <type_traits> // for is_same_v
-#include <vector>      // for vector
-
-#ifdef DTWC_HAS_HIGHWAY
-namespace dtwc::simd {
-double lb_keogh_highway(const double* query, const double* upper,
-                        const double* lower, std::size_t n);
-}  // namespace dtwc::simd
-#endif
+#include <vector>    // for vector
 
 namespace dtwc::core {
 
@@ -116,12 +108,6 @@ template <typename T>
 T lb_keogh(const T *query, std::size_t n,
            const T *upper, const T *lower)
 {
-#ifdef DTWC_HAS_HIGHWAY
-  if constexpr (std::is_same_v<T, double>) {
-    return static_cast<T>(simd::lb_keogh_highway(query, upper, lower, n));
-  }
-#endif
-  // Scalar fallback
   T sum = T(0);
   for (std::size_t i = 0; i < n; ++i) {
     T excess_upper = query[i] - upper[i];
