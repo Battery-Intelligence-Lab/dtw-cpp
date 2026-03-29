@@ -125,11 +125,15 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("dtw_distance", [](const std::vector<double> &x,
                             const std::vector<double> &y,
-                            int band) {
+                            int band, const std::string &metric) {
     nb::gil_scoped_release release;
-    return dtwc::dtwBanded<double>(x, y, band);
-  }, "x"_a, "y"_a, "band"_a = -1,
-     "Compute DTW distance between two time series.\n\n"
+    auto mt = dtwc::core::MetricType::L1;
+    if (metric == "squared_euclidean" || metric == "sqeuclidean")
+        mt = dtwc::core::MetricType::SquaredL2;
+    return dtwc::dtwBanded<double>(x, y, band, mt);
+  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
+     "Compute DTW distance.\n\n"
+     "metric: 'l1' (default) or 'squared_euclidean'.\n"
      "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
 
   m.def("ddtw_distance", [](const std::vector<double> &x,
@@ -235,6 +239,17 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.fillDistanceMatrix();
     }, "Compute all pairwise DTW distances.")
+    .def("distance_matrix_numpy", [](dtwc::Problem &prob) {
+      prob.fillDistanceMatrix();
+      const size_t n = prob.size();
+      double* ptr = new double[n * n];
+      for (size_t i = 0; i < n; ++i)
+        for (size_t j = 0; j < n; ++j)
+          ptr[i * n + j] = prob.distByInd(static_cast<int>(i), static_cast<int>(j));
+
+      nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+      return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+    }, "Fill distance matrix in C++ (OpenMP parallel) and return as numpy array.")
     .def("refresh_distance_matrix", &dtwc::Problem::refreshDistanceMatrix)
     // Clustering
     .def("cluster", [](dtwc::Problem &p) {
@@ -259,6 +274,42 @@ NB_MODULE(_dtwcpp_core, m) {
       return "Problem(name='" + p.name + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.cluster_size()) + ")";
     });
+
+  // =========================================================================
+  // Distance matrix convenience function
+  // =========================================================================
+
+  m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
+                                        int band, const std::string &metric) {
+    nb::gil_scoped_release release;
+
+    auto mt = dtwc::core::MetricType::L1;
+    if (metric == "squared_euclidean" || metric == "sqeuclidean")
+        mt = dtwc::core::MetricType::SquaredL2;
+
+    const size_t n = series.size();
+    double* ptr = new double[n * n]();  // zero-init
+
+    // Compute upper triangle (symmetric), then mirror.
+    #ifdef _OPENMP
+    #pragma omp parallel for schedule(dynamic, 16)
+    #endif
+    for (int i = 0; i < static_cast<int>(n); ++i) {
+        for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+            double d = (band >= 0)
+                ? dtwc::dtwBanded<double>(series[i], series[j], band, mt)
+                : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+            ptr[i * n + j] = d;
+            ptr[j * n + i] = d;
+        }
+    }
+
+    nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+    return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+  }, "series"_a, "band"_a = -1, "metric"_a = "l1",
+     "Compute pairwise DTW distance matrix entirely in C++.\n\n"
+     "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
+     "Much faster than calling dtw_distance in a Python loop.");
 
   // =========================================================================
   // FastPAM

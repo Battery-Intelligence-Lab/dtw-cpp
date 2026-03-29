@@ -20,6 +20,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## New features
 
+* Added `metric` parameter to `dtw_distance` Python binding (`'l1'` default, `'squared_euclidean'` supported).
+* Added `compute_distance_matrix` Python function: computes full NxN pairwise DTW distance matrix in C++ with OpenMP parallelism. Returns numpy array.
+* Added `distance_matrix_numpy()` method to `Problem` Python class: fills distance matrix and returns it as a numpy array.
+* Added `-ffast-math` (GCC/Clang) and `/fp:fast` (MSVC) compiler flags for Release and RelWithDebInfo builds.
 * Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` CMake option, default OFF). Highway 1.2.0 fetched via CPM for future use on platforms where compiler auto-vectorization is insufficient (ARM NEON, older compilers). Includes prototype SIMD kernels for LB_Keogh, z_normalize, and multi-pair DTW.
 * Added `#pragma omp simd` hints to LB_Keogh and z_normalize loops for portable guaranteed vectorization.
 * Added LB_Keogh, z_normalize, and envelope computation benchmarks to `bench_dtw_baseline.cpp`.
