@@ -2,8 +2,19 @@
 
 [TOC]
 
-This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed). 
+This changelog contains a non-exhaustive list of new features and notable bug-fixes (not all bug-fixes will be listed).
 
+
+<br/><br/>
+# Unreleased
+
+## New features
+* **MATLAB MEX bindings** -- new `bindings/matlab/` directory with C++ MEX API gateway (`dtwc_mex.cpp`) and MATLAB `+dtwc` package providing:
+  * `dtwc.dtw_distance` -- compute DTW distance between two time series (full or Sakoe-Chiba banded)
+  * `dtwc.compute_distance_matrix` -- compute pairwise N x N DTW distance matrix
+  * `dtwc.DTWClustering` -- OO k-medoids clustering class (mirrors the Python API: `fit`, `fit_predict`)
+* Build with `cmake .. -DDTWC_BUILD_MATLAB=ON` (requires MATLAB; gracefully skips if not found)
+* MATLAB unit tests in `tests/matlab/test_dtwc.m`
 
 <br/><br/>
 # DTWC v1.0.0

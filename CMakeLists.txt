@@ -19,6 +19,7 @@ include(cmake/StandardProjectSettings.cmake)
 option(DTWC_BUILD_EXAMPLES OFF)
 option(DTWC_BUILD_TESTING OFF)
 option(DTWC_BUILD_BENCHMARK OFF)
+option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 
 set(DTWC_ENABLE_GUROBI ON)
 set(DTWC_ENABLE_HIGHS ON)
@@ -78,6 +79,10 @@ endif()
 
 if(DTWC_BUILD_BENCHMARK)
   add_subdirectory(benchmark)
+endif()
+
+if(DTWC_BUILD_MATLAB)
+  add_subdirectory(bindings/matlab)
 endif()
 
 cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")
