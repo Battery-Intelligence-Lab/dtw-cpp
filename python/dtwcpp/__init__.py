@@ -45,6 +45,16 @@ __version__ = "1.0.0"
 # Pure-Python sklearn-compatible layer
 from dtwcpp._clustering import DTWClustering
 
+# Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
+from dtwcpp.io import (
+    save_dataset_csv,
+    load_dataset_csv,
+    save_dataset_hdf5,
+    load_dataset_hdf5,
+    save_dataset_parquet,
+    load_dataset_parquet,
+)
+
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
@@ -57,4 +67,7 @@ __all__ = [
     "compute_distance_matrix",
     "save_checkpoint", "load_checkpoint", "CheckpointOptions",
     "DTWClustering",
+    "save_dataset_csv", "load_dataset_csv",
+    "save_dataset_hdf5", "load_dataset_hdf5",
+    "save_dataset_parquet", "load_dataset_parquet",
 ]

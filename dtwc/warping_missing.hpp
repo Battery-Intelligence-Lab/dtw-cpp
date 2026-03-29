@@ -156,4 +156,52 @@ data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t>
   }
 }
 
+// =========================================================================
+//  Pointer + length overloads (zero-copy for bindings)
+// =========================================================================
+
+/// DTW with missing data, linear space (pointer + length).
+template <typename data_t>
+data_t dtwMissing_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
+                    data_t early_abandon = -1,
+                    core::MetricType metric = core::MetricType::L1)
+{
+  switch (metric) {
+  case core::MetricType::SquaredL2:
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::MissingSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default:
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::MissingL1Dist{});
+  }
+}
+
+/// Banded DTW with missing data (pointer + length).
+template <typename data_t = double>
+data_t dtwMissing_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
+                         int band = settings::DEFAULT_BAND_LENGTH,
+                         data_t early_abandon = -1,
+                         core::MetricType metric = core::MetricType::L1)
+{
+  if (band < 0) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
+
+  const size_t min_sz = std::min(nx, ny);
+  const size_t max_sz = std::max(nx, ny);
+  const int m_short = static_cast<int>(min_sz);
+  const int m_long  = static_cast<int>(max_sz);
+
+  if ((m_short == 0) || (m_long == 0)) return std::numeric_limits<data_t>::max();
+  if ((m_short == 1) || (m_long == 1)) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
+  if (m_long <= (band + 1)) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
+
+  switch (metric) {
+  case core::MetricType::SquaredL2:
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::MissingSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default:
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::MissingL1Dist{});
+  }
+}
+
 } // namespace dtwc

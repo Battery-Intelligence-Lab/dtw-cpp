@@ -17,6 +17,9 @@ dependencies = [
 [project.optional-dependencies]
 test = ["pytest>=6.0"]
 sklearn = ["scikit-learn>=1.0"]
+hdf5 = ["h5py>=3.0"]
+parquet = ["pyarrow>=12.0"]
+io = ["h5py>=3.0", "pyarrow>=12.0"]
 
 [tool.scikit-build]
 cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF"]

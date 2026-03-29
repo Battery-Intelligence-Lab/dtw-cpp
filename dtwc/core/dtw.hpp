@@ -49,15 +49,15 @@ T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
 //  Pointer-based overload (for TimeSeriesView / binding layer)
 // -----------------------------------------------------------------------
 
-/// Pointer + length overload; wraps data into vectors and delegates.
-/// This temporary copy will be eliminated when warping.hpp accepts pointers.
+/// Pointer + length overload; calls warping.hpp pointer overloads directly (zero-copy).
 template <typename T = double>
 T dtw_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
                int band = -1, MetricType metric = MetricType::L1)
 {
-  const std::vector<T> vx(x, x + nx);
-  const std::vector<T> vy(y, y + ny);
-  return dtw_distance(vx, vy, band, metric);
+  if (band < 0)
+    return dtwFull_L<T>(x, nx, y, ny, static_cast<T>(-1), metric);
+  else
+    return dtwBanded<T>(x, nx, y, ny, band, static_cast<T>(-1), metric);
 }
 
 // -----------------------------------------------------------------------

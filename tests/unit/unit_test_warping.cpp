@@ -236,3 +236,73 @@ TEST_CASE("dtwBanded SquaredL2 matches dtwFull_L SquaredL2", "[dtwBanded][Square
   REQUIRE_THAT(dtwBanded<data_t>(x, x, 2, -1, core::MetricType::SquaredL2),
                WithinAbs(0, 1e-15));
 }
+
+// =========================================================================
+// Pointer + length API tests
+// =========================================================================
+
+TEST_CASE("dtwFull pointer API matches vector API", "[dtwFull][pointer]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+
+  const auto vec_result = dtwFull<data_t>(x, y);
+  const auto ptr_result = dtwFull<data_t>(x.data(), x.size(), y.data(), y.size());
+  REQUIRE_THAT(ptr_result, WithinAbs(vec_result, 1e-15));
+}
+
+TEST_CASE("dtwFull_L pointer API matches vector API", "[dtwFull_L][pointer]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  const auto ptr_result = dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size());
+  REQUIRE_THAT(ptr_result, WithinAbs(ground_truth, 1e-15));
+
+  // Symmetry
+  const auto ptr_result_rev = dtwFull_L<data_t>(y.data(), y.size(), x.data(), x.size());
+  REQUIRE_THAT(ptr_result_rev, WithinAbs(ground_truth, 1e-15));
+
+  // Self-distance (same pointer)
+  REQUIRE_THAT(dtwFull_L<data_t>(x.data(), x.size(), x.data(), x.size()),
+               WithinAbs(0, 1e-15));
+
+  // Early abandon via pointer API
+  const auto ea_result = dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size(), 1.0);
+  REQUIRE(ea_result > 1e10); // 1.0 < 13.0, so early abandon triggers
+
+  // SquaredL2 via pointer API
+  const auto sq_ptr = dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size(), -1.0,
+                                         dtwc::core::MetricType::SquaredL2);
+  const auto sq_vec = dtwFull_L<data_t>(x, y, -1.0, dtwc::core::MetricType::SquaredL2);
+  REQUIRE_THAT(sq_ptr, WithinAbs(sq_vec, 1e-15));
+}
+
+TEST_CASE("dtwBanded pointer API matches vector API", "[dtwBanded][pointer]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 }, y{ 3, 4, 5, 6, 7 };
+  constexpr double ground_truth = 13;
+
+  // Unbanded (band=-1) via pointer
+  const auto ptr_unbanded = dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), -1);
+  REQUIRE_THAT(ptr_unbanded, WithinAbs(ground_truth, 1e-15));
+
+  // Banded via pointer
+  const auto ptr_banded = dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), 2);
+  const auto vec_banded = dtwBanded<data_t>(x, y, 2);
+  REQUIRE_THAT(ptr_banded, WithinAbs(vec_banded, 1e-15));
+
+  // Empty
+  REQUIRE(dtwBanded<data_t>(x.data(), x.size(), nullptr, 0) > 1e10);
+  REQUIRE(dtwBanded<data_t>(nullptr, 0, y.data(), y.size()) > 1e10);
+}
+
+TEST_CASE("dtwFull_L pointer API with empty input", "[dtwFull_L][pointer]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3 };
+  REQUIRE(dtwFull_L<data_t>(x.data(), x.size(), nullptr, 0) > 1e10);
+  REQUIRE(dtwFull_L<data_t>(nullptr, 0, x.data(), x.size()) > 1e10);
+}

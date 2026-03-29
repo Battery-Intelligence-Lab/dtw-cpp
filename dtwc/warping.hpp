@@ -38,18 +38,19 @@ namespace dtwc {
 namespace detail {
 
 /// Full-matrix DTW (O(n*m) space). Supports backtracking.
+/// Accepts raw pointers + lengths for zero-copy binding support.
 template <typename data_t, typename DistFn>
-data_t dtwFull_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
                     DistFn distance)
 {
   thread_local core::ScratchMatrix<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  const int mx = x.size();
-  const int my = y.size();
+  const int mx = static_cast<int>(nx);
+  const int my = static_cast<int>(ny);
 
   if ((mx == 0) || (my == 0)) return maxValue;
-  if (&x == &y) return 0;
+  if (x == y && nx == ny) return 0;
 
   C.resize(mx, my);
 
@@ -71,40 +72,57 @@ data_t dtwFull_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return C(mx - 1, my - 1);
 }
 
+/// Full-matrix DTW — vector overload (forwards to pointer version).
+template <typename data_t, typename DistFn>
+data_t dtwFull_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                    DistFn distance)
+{
+  return dtwFull_impl(x.data(), x.size(), y.data(), y.size(), distance);
+}
+
 /// Linear-space DTW (O(min(n,m)) space, no backtracking).
 /// Supports early abandon when early_abandon >= 0.
+/// Accepts raw pointers + lengths for zero-copy binding support.
 template <typename data_t, typename DistFn>
-data_t dtwFull_L_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_L_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
                       data_t early_abandon, DistFn distance)
 {
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  if (x.empty() || y.empty()) return maxValue;
-  if (&x == &y) return 0;
+  if (nx == 0 || ny == 0) return maxValue;
+  if (x == y && nx == ny) return 0;
 
   thread_local static std::vector<data_t> short_side;
 
-  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const auto m_short{ short_vec.size() }, m_long{ long_vec.size() };
+  const data_t* short_ptr;
+  const data_t* long_ptr;
+  size_t m_short, m_long;
+  if (nx < ny) {
+    short_ptr = x; m_short = nx;
+    long_ptr  = y; m_long  = ny;
+  } else {
+    short_ptr = y; m_short = ny;
+    long_ptr  = x; m_long  = nx;
+  }
 
   short_side.resize(m_short);
 
-  short_side[0] = distance(short_vec[0], long_vec[0]);
+  short_side[0] = distance(short_ptr[0], long_ptr[0]);
 
   for (size_t i = 1; i < m_short; i++)
-    short_side[i] = short_side[i - 1] + distance(short_vec[i], long_vec[0]);
+    short_side[i] = short_side[i - 1] + distance(short_ptr[i], long_ptr[0]);
 
   const bool do_early_abandon = (early_abandon >= 0);
 
   for (size_t j = 1; j < m_long; j++) {
     auto diag = short_side[0];
-    short_side[0] += distance(short_vec[0], long_vec[j]);
+    short_side[0] += distance(short_ptr[0], long_ptr[j]);
 
     data_t row_min = do_early_abandon ? short_side[0] : data_t{0};
 
     for (size_t i = 1; i < m_short; i++) {
       const data_t min1 = std::min(short_side[i - 1], short_side[i]);
-      const data_t dist = distance(short_vec[i], long_vec[j]);
+      const data_t dist = distance(short_ptr[i], long_ptr[j]);
       const data_t next = std::min(diag, min1) + dist;
 
       diag = short_side[i];
@@ -118,15 +136,32 @@ data_t dtwFull_L_impl(const std::vector<data_t> &x, const std::vector<data_t> &y
   return short_side.back();
 }
 
-/// Sakoe-Chiba banded DTW.
+/// Linear-space DTW — vector overload (forwards to pointer version).
 template <typename data_t, typename DistFn>
-data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_L_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                      data_t early_abandon, DistFn distance)
+{
+  return dtwFull_L_impl(x.data(), x.size(), y.data(), y.size(), early_abandon, distance);
+}
+
+/// Sakoe-Chiba banded DTW.
+/// Accepts raw pointers + lengths for zero-copy binding support.
+template <typename data_t, typename DistFn>
+data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
                       int band, data_t early_abandon, DistFn distance)
 {
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short(short_vec.size()), m_long(long_vec.size());
+  const data_t* short_ptr;
+  const data_t* long_ptr;
+  int m_short, m_long;
+  if (nx < ny) {
+    short_ptr = x; m_short = static_cast<int>(nx);
+    long_ptr  = y; m_long  = static_cast<int>(ny);
+  } else {
+    short_ptr = y; m_short = static_cast<int>(ny);
+    long_ptr  = x; m_long  = static_cast<int>(nx);
+  }
 
   if ((m_short == 0) || (m_long == 0)) return maxValue;
 
@@ -143,11 +178,11 @@ data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y
   thread_local std::vector<data_t> col;
   col.assign(m_long, maxValue);
 
-  col[0] = distance(long_vec[0], short_vec[0]);
+  col[0] = distance(long_ptr[0], short_ptr[0]);
   {
     const auto [lo, hi] = get_bounds(0);
     for (int i = 1; i < std::min(hi, m_long); ++i)
-      col[i] = col[i - 1] + distance(long_vec[i], short_vec[0]);
+      col[i] = col[i - 1] + distance(long_ptr[i], short_ptr[0]);
   }
 
   for (int j = 1; j < m_short; j++) {
@@ -165,7 +200,7 @@ data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y
 
     if (low == 0) {
       diag = col[0];
-      col[0] = col[0] + distance(long_vec[0], short_vec[j]);
+      col[0] = col[0] + distance(long_ptr[0], short_ptr[j]);
     }
 
     for (int i = std::max(prev_lo, 0); i < std::min(low, std::min(prev_hi, m_long)); ++i)
@@ -175,7 +210,7 @@ data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y
       const data_t old_col_i = col[i];
       const auto minimum = std::min(diag, std::min(col[i - 1], old_col_i));
       diag = old_col_i;
-      col[i] = minimum + distance(long_vec[i], short_vec[j]);
+      col[i] = minimum + distance(long_ptr[i], short_ptr[j]);
     }
 
     for (int i = std::max(high, std::max(prev_lo, 0)); i < std::min(prev_hi, m_long); ++i)
@@ -183,6 +218,14 @@ data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y
   }
 
   return col[m_long - 1];
+}
+
+/// Sakoe-Chiba banded DTW — vector overload (forwards to pointer version).
+template <typename data_t, typename DistFn>
+data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                      int band, data_t early_abandon, DistFn distance)
+{
+  return dtwBanded_impl(x.data(), x.size(), y.data(), y.size(), band, early_abandon, distance);
 }
 
 } // namespace detail
@@ -208,107 +251,132 @@ struct SquaredL2Dist {
 } // namespace detail
 
 // =========================================================================
-//  Public API
+//  Public API — pointer + length overloads (zero-copy for bindings)
 // =========================================================================
 
 /**
- * @brief Computes the full dynamic time warping distance between two sequences.
+ * @brief Computes the full dynamic time warping distance (pointer + length).
  *
  * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence.
- * @param y Second sequence.
+ * @param x Pointer to first sequence.
+ * @param nx Length of first sequence.
+ * @param y Pointer to second sequence.
+ * @param ny Length of second sequence.
  * @param metric Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
 template <typename data_t>
-data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
   switch (metric) {
   case core::MetricType::SquaredL2:
-    return detail::dtwFull_impl(x, y, detail::SquaredL2Dist{});
-  case core::MetricType::L2:  // L2 on scalars is same as L1
+    return detail::dtwFull_impl(x, nx, y, ny, detail::SquaredL2Dist{});
+  case core::MetricType::L2:
   case core::MetricType::L1:
   default:
-    return detail::dtwFull_impl(x, y, detail::L1Dist{});
+    return detail::dtwFull_impl(x, nx, y, ny, detail::L1Dist{});
   }
 }
 
 /**
- * @brief Computes the dynamic time warping distance using the light method.
- *
- * This function uses the light method for computation but cannot backtrack.
- * It only uses one vector to traverse instead of matrices.
+ * @brief Computes the linear-space DTW distance (pointer + length).
  *
  * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence.
- * @param y Second sequence.
+ * @param x Pointer to first sequence.
+ * @param nx Length of first sequence.
+ * @param y Pointer to second sequence.
+ * @param ny Length of second sequence.
  * @param early_abandon Threshold for early abandon; negative disables.
  * @param metric Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
 template <typename data_t>
-data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
   switch (metric) {
   case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_impl(x, y, early_abandon, detail::SquaredL2Dist{});
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::SquaredL2Dist{});
   case core::MetricType::L2:
   case core::MetricType::L1:
   default:
-    return detail::dtwFull_L_impl(x, y, early_abandon, detail::L1Dist{});
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::L1Dist{});
   }
 }
 
-
 /**
- * @brief Computes the banded dynamic time warping distance between two sequences.
+ * @brief Computes the banded DTW distance (pointer + length).
  *
- * @details This version of the algorithm introduces banding to limit the computation to
- * a certain vicinity around the diagonal, reducing computational complexity.
- *
- * Actual banding with skewness. Uses Sakoe-Chiba band.
- * Reference: H. Sakoe and S. Chiba, "Dynamic programming algorithm optimization
- *            for spoken word recognition". IEEE Transactions on Acoustics,
- *            Speech, and Signal Processing, 26(1), 43-49 (1978).
- *
- * Code is inspired from pyts.
- * See https://pyts.readthedocs.io/en/stable/auto_examples/metrics/plot_sakoe_chiba.html
- * for a detailed explanation.
+ * @details Uses Sakoe-Chiba band. Falls back to dtwFull_L when band < 0.
  *
  * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence.
- * @param y Second sequence.
- * @param band The bandwidth parameter that controls the vicinity around the diagonal.
- * @param early_abandon Threshold for early abandon; negative disables (only used in full fallback).
+ * @param x Pointer to first sequence.
+ * @param nx Length of first sequence.
+ * @param y Pointer to second sequence.
+ * @param ny Length of second sequence.
+ * @param band The bandwidth parameter; negative means unconstrained.
+ * @param early_abandon Threshold for early abandon; negative disables.
  * @param metric Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
+template <typename data_t = double>
+data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
+                 int band = settings::DEFAULT_BAND_LENGTH,
+                 data_t early_abandon = -1,
+                 core::MetricType metric = core::MetricType::L1)
+{
+  if (band < 0) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
+
+  const size_t min_sz = std::min(nx, ny);
+  const size_t max_sz = std::max(nx, ny);
+  const int m_short = static_cast<int>(min_sz);
+  const int m_long  = static_cast<int>(max_sz);
+
+  if ((m_short == 0) || (m_long == 0)) return std::numeric_limits<data_t>::max();
+  if ((m_short == 1) || (m_long == 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
+  if (m_long <= (band + 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
+
+  switch (metric) {
+  case core::MetricType::SquaredL2:
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::SquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default:
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::L1Dist{});
+  }
+}
+
+// =========================================================================
+//  Public API — vector overloads (forward to pointer versions)
+// =========================================================================
+
+/// Full-matrix DTW (vector overload).
+template <typename data_t>
+data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+               core::MetricType metric = core::MetricType::L1)
+{
+  return dtwFull<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
+}
+
+/// Linear-space DTW (vector overload).
+template <typename data_t>
+data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                 data_t early_abandon = -1,
+                 core::MetricType metric = core::MetricType::L1)
+{
+  return dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size(), early_abandon, metric);
+}
+
+/// Banded DTW (vector overload).
 template <typename data_t = double>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  int band = settings::DEFAULT_BAND_LENGTH,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
-  if (band < 0) return dtwFull_L<data_t>(x, y, early_abandon, metric);
-
-  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short(short_vec.size()), m_long(long_vec.size());
-
-  if ((m_short == 0) || (m_long == 0)) return std::numeric_limits<data_t>::max();
-  if ((m_short == 1) || (m_long == 1)) return dtwFull_L<data_t>(x, y, early_abandon, metric);
-  if (m_long <= (band + 1)) return dtwFull_L<data_t>(x, y, early_abandon, metric);
-
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwBanded_impl(x, y, band, early_abandon, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwBanded_impl(x, y, band, early_abandon, detail::L1Dist{});
-  }
+  return dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
 }
 
 } // namespace dtwc

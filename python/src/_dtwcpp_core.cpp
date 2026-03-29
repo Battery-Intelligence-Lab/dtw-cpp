@@ -28,6 +28,7 @@
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
+#include <core/pruned_distance_matrix.hpp>
 
 #include <vector>
 #include <string>
@@ -126,16 +127,16 @@ NB_MODULE(_dtwcpp_core, m) {
   // DTW distance functions
   // =========================================================================
 
-  m.def("dtw_distance", [](const std::vector<double> &x,
-                            const std::vector<double> &y,
+  m.def("dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
+                            nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                             int band, const std::string &metric) {
     nb::gil_scoped_release release;
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;
-    return dtwc::dtwBanded<double>(x, y, band, -1.0, mt);
+    return dtwc::dtwBanded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
-     "Compute DTW distance.\n\n"
+     "Compute DTW distance (zero-copy from numpy).\n\n"
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
      "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
 
@@ -179,14 +180,14 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "x"_a, "y"_a, "gamma"_a = 1.0,
      "Compute Soft-DTW gradient w.r.t. first series x.");
 
-  m.def("dtw_distance_missing", [](const std::vector<double> &x,
-                                    const std::vector<double> &y,
+  m.def("dtw_distance_missing", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
+                                    nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                     int band, const std::string &metric) {
     nb::gil_scoped_release release;
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;
-    return dtwc::dtwMissing_banded<double>(x, y, band, -1.0, mt);
+    return dtwc::dtwMissing_banded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "DTW distance with missing data support (NaN = missing).\n\n"
      "NaN values in either series are treated as missing; pairs where\n"
@@ -298,7 +299,8 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
-                                        int band, const std::string &metric) {
+                                        int band, const std::string &metric,
+                                        bool use_pruning) {
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;
@@ -309,26 +311,35 @@ NB_MODULE(_dtwcpp_core, m) {
     // Release GIL only for the compute-heavy section
     {
       nb::gil_scoped_release release;
-      // Compute upper triangle (symmetric), then mirror.
-      #ifdef _OPENMP
-      #pragma omp parallel for schedule(dynamic, 16)
-      #endif
-      for (int i = 0; i < static_cast<int>(n); ++i) {
-          for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-              double d = (band >= 0)
-                  ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
-                  : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-              ptr[i * n + j] = d;
-              ptr[j * n + i] = d;
-          }
+
+      if (use_pruning && (mt == dtwc::core::MetricType::L1 || mt == dtwc::core::MetricType::L2)) {
+        // LB-pruned version: precomputes envelopes + summaries,
+        // uses early-abandon DTW guided by LB_Kim / LB_Keogh thresholds.
+        dtwc::core::compute_distance_matrix_pruned(series, ptr, band, mt);
+      } else {
+        // Standard unpruned version (for non-L1 metrics or when pruning disabled).
+        #ifdef _OPENMP
+        #pragma omp parallel for schedule(dynamic, 16)
+        #endif
+        for (int i = 0; i < static_cast<int>(n); ++i) {
+            for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+                double d = (band >= 0)
+                    ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
+                    : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+                ptr[i * n + j] = d;
+                ptr[j * n + i] = d;
+            }
+        }
       }
     }  // GIL re-acquired here
 
     nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
     return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
-  }, "series"_a, "band"_a = -1, "metric"_a = "l1",
+  }, "series"_a, "band"_a = -1, "metric"_a = "l1", "use_pruning"_a = true,
      "Compute pairwise DTW distance matrix entirely in C++.\n\n"
      "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
+     "When use_pruning=True (default), uses LB_Kim and LB_Keogh lower\n"
+     "bounds with early-abandon DTW for faster computation (L1 metric only).\n"
      "Much faster than calling dtw_distance in a Python loop.");
 
   // =========================================================================

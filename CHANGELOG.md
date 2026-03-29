@@ -8,6 +8,19 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+## Performance / API
+
+* Added pointer+length overloads for all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`, `dtwMissing_L`, `dtwMissing_banded`) enabling zero-copy calls from bindings. The `detail::*_impl` functions now operate on raw pointers; vector overloads forward to them.
+* Python `dtw_distance` and `dtw_distance_missing` now accept numpy arrays via `nb::ndarray` (zero-copy, no vector allocation).
+* Eliminated vector copies in `dtwc::core::dtw_distance` pointer overload and `dtw_runtime`.
+
+## CLI
+
+* Rewrote `dtwc_cl` CLI with full TOML configuration file support via CLI11 `--config` flag.
+* CLI now supports all clustering methods (FastPAM, FastCLARA, kMedoids Lloyd, MIP), all DTW variants (standard, DDTW, WDTW, ADTW, Soft-DTW), checkpointing, and flexible CSV output (labels, medoids, silhouette scores, distance matrix).
+* Added case-insensitive option validation for method, metric, variant, and solver flags.
+* Added example TOML configuration file at `examples/config.toml`.
+
 ## Tests
 
 * Added cross-language integration tests (`tests/integration/test_cross_language.py`): verifies C++ and Python interfaces produce identical results for DTW distances (L1/squared-euclidean, banded, missing-data), compute_distance_matrix, FastPAM/CLARA clustering, DTW variant consistency (DDTW/WDTW/ADTW/Soft-DTW), checkpoint save/load roundtrip, and end-to-end pipeline (data -> distance matrix -> clustering -> evaluation scores).
@@ -28,6 +41,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Added `docs/2_method/5_algorithms.md`: clustering algorithm documentation with corrected FastPAM citation (JMLR 22(1), 4653-4688) and accurate complexity descriptions.
 * Added `docs/2_method/6_metrics.md`: distance metrics documentation with LB_Keogh compatibility table and corrected Huber LB_Keogh reasoning.
 
+## I/O
+
+* Added **Python I/O utilities** (`dtwcpp.io`): `save_dataset_csv` / `load_dataset_csv` (always available), `save_dataset_hdf5` / `load_dataset_hdf5` (requires `h5py`), `save_dataset_parquet` / `load_dataset_parquet` (requires `pyarrow`).
+* HDF5 files store series data, names, distance matrices, and metadata in a single compressed file.
+* Added optional dependency groups in `pyproject.toml`: `hdf5`, `parquet`, `io` (both).
+
 ## New features
 
 * Added **MATLAB MEX bindings** — new `bindings/matlab/` directory with C++ MEX API gateway and MATLAB `+dtwc` package: `dtwc.dtw_distance`, `dtwc.compute_distance_matrix`, `dtwc.DTWClustering`. Build with `cmake .. -DDTWC_BUILD_MATLAB=ON`.
@@ -43,6 +62,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Refactored DTW into `detail::*_impl` helpers with distance callable template parameter.
 * Added `metric` parameter to `dtw_distance` Python binding.
 * Added `compute_distance_matrix` Python function with OpenMP parallelism.
+* Added **LB-pruned distance matrix** (`compute_distance_matrix_pruned`). Precomputes envelopes and summaries once, then uses LB_Kim (O(1)) and LB_Keogh (O(n)) as early-abandon thresholds for each DTW computation. Reduces inner-loop work by 30-60% for correlated series. Enabled by default in the Python `compute_distance_matrix` binding via `use_pruning=True`.
 * Added `distance_matrix_numpy()` method to `Problem` Python class.
 * Added `-ffast-math` (GCC/Clang) and `/fp:fast` (MSVC) for Release builds.
 * Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` option, default OFF). Prototype kernels for future use.
