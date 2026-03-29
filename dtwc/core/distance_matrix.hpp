@@ -87,6 +87,25 @@ public:
     return found ? result : 0.0;
   }
 
+  /// Count the number of computed (non-NaN) entries in the matrix.
+  size_t count_computed() const
+  {
+    size_t count = 0;
+    for (const double v : data_)
+      if (!std::isnan(v))
+        ++count;
+    return count;
+  }
+
+  /// Check whether all entries have been computed (no NaN values remain).
+  bool all_computed() const
+  {
+    for (const double v : data_)
+      if (std::isnan(v))
+        return false;
+    return true;
+  }
+
   double *raw() { return data_.data(); }
   const double *raw() const { return data_.data(); }
 

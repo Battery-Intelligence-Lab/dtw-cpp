@@ -20,6 +20,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## New features
 
+* Added **checkpoint save/load** for distance matrix computation (`save_checkpoint`, `load_checkpoint` in `checkpoint.hpp`). Saves partial or complete distance matrices to disk as CSV + metadata text file, enabling resume after crashes during long-running `fillDistanceMatrix` calls. No new dependencies required.
+* Added `count_computed()` and `all_computed()` methods to `DenseDistanceMatrix` for querying computation progress.
+* Added `distance_matrix()` accessors and `set_distance_matrix_filled()` to `Problem` class.
+* Added Python bindings for `save_checkpoint`, `load_checkpoint`, and `CheckpointOptions`.
+* Added **DTW with missing data** (`dtwMissing`, `dtwMissing_L`, `dtwMissing_banded`) in `warping_missing.hpp`. NaN values in either series are treated as missing; pairs where one or both values are NaN contribute zero cost. Supports L1 and SquaredL2 metrics, early abandon, and Sakoe-Chiba banding. Reference: Yurtman, Soenen, Meert & Blockeel (2023), ECML-PKDD.
+* Added `dtw_distance_missing` Python binding for NaN-aware DTW distance computation.
+* Added **FastCLARA** scalable k-medoids clustering algorithm (`dtwc::algorithms::fast_clara`). Runs FastPAM on random subsamples of size `sample_size` (default: 40 + 2k), repeating `n_samples` times, and assigns all N points to the best medoids found. Avoids O(N^2) memory of full PAM. Reference: Kaufman & Rousseeuw (1990); Schubert & Rousseeuw (2021, JMLR).
+* Added Python binding for `fast_clara()` with all options exposed.
+* Added `MetricType` parameter (L1, SquaredL2) to all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`). Default remains L1 for backward compatibility. SquaredL2 enables fair benchmarking against aeon/dtaidistance/tslearn. Metric dispatch uses template lambdas for zero inner-loop overhead.
+* Refactored DTW implementations into `detail::*_impl` helpers that accept a distance callable as a template parameter, enabling future metric extensibility without code duplication.
+* Skips `row_min` tracking in `dtwFull_L` when early-abandon is disabled.
 * Added `metric` parameter to `dtw_distance` Python binding (`'l1'` default, `'squared_euclidean'` supported).
 * Added `compute_distance_matrix` Python function: computes full NxN pairwise DTW distance matrix in C++ with OpenMP parallelism. Returns numpy array.
 * Added `distance_matrix_numpy()` method to `Problem` Python class: fills distance matrix and returns it as a numpy array.

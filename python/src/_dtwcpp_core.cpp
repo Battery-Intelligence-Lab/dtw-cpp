@@ -16,12 +16,15 @@
 #include <nanobind/stl/function.h>
 
 #include <dtwc.hpp>
+#include <checkpoint.hpp>
 #include <warping.hpp>
 #include <warping_ddtw.hpp>
 #include <warping_wdtw.hpp>
 #include <warping_adtw.hpp>
+#include <warping_missing.hpp>
 #include <soft_dtw.hpp>
 #include <algorithms/fast_pam.hpp>
+#include <algorithms/fast_clara.hpp>
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
@@ -176,6 +179,21 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "x"_a, "y"_a, "gamma"_a = 1.0,
      "Compute Soft-DTW gradient w.r.t. first series x.");
 
+  m.def("dtw_distance_missing", [](const std::vector<double> &x,
+                                    const std::vector<double> &y,
+                                    int band, const std::string &metric) {
+    nb::gil_scoped_release release;
+    auto mt = dtwc::core::MetricType::L1;
+    if (metric == "squared_euclidean" || metric == "sqeuclidean")
+        mt = dtwc::core::MetricType::SquaredL2;
+    return dtwc::dtwMissing_banded<double>(x, y, band, -1.0, mt);
+  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
+     "DTW distance with missing data support (NaN = missing).\n\n"
+     "NaN values in either series are treated as missing; pairs where\n"
+     "one or both values are NaN contribute zero cost.\n"
+     "metric: 'l1' (default) or 'squared_euclidean'.\n"
+     "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
+
   // =========================================================================
   // Utility functions
   // =========================================================================
@@ -322,6 +340,74 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::fast_pam(prob, n_clusters, max_iter);
   }, "prob"_a, "n_clusters"_a, "max_iter"_a = 100,
      "Run FastPAM k-medoids clustering (Schubert & Rousseeuw 2021).");
+
+  // =========================================================================
+  // FastCLARA
+  // =========================================================================
+
+  nb::class_<dtwc::algorithms::CLARAOptions>(m, "CLARAOptions")
+    .def(nb::init<>())
+    .def_rw("n_clusters", &dtwc::algorithms::CLARAOptions::n_clusters)
+    .def_rw("sample_size", &dtwc::algorithms::CLARAOptions::sample_size)
+    .def_rw("n_samples", &dtwc::algorithms::CLARAOptions::n_samples)
+    .def_rw("max_iter", &dtwc::algorithms::CLARAOptions::max_iter)
+    .def_rw("random_seed", &dtwc::algorithms::CLARAOptions::random_seed)
+    .def("__repr__", [](const dtwc::algorithms::CLARAOptions &o) {
+      return "CLARAOptions(k=" + std::to_string(o.n_clusters)
+             + ", sample_size=" + std::to_string(o.sample_size)
+             + ", n_samples=" + std::to_string(o.n_samples)
+             + ", max_iter=" + std::to_string(o.max_iter)
+             + ", seed=" + std::to_string(o.random_seed) + ")";
+    });
+
+  m.def("fast_clara", [](dtwc::Problem &prob, int n_clusters, int sample_size,
+                           int n_samples, int max_iter, unsigned seed) {
+    dtwc::algorithms::CLARAOptions opts;
+    opts.n_clusters = n_clusters;
+    opts.sample_size = sample_size;
+    opts.n_samples = n_samples;
+    opts.max_iter = max_iter;
+    opts.random_seed = seed;
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::fast_clara(prob, opts);
+  }, "prob"_a, "n_clusters"_a, "sample_size"_a = -1,
+     "n_samples"_a = 5, "max_iter"_a = 100, "seed"_a = 42,
+     "Run FastCLARA scalable k-medoids clustering.\n\n"
+     "Runs FastPAM on random subsamples and assigns all points to the\n"
+     "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
+     "Parameters:\n"
+     "  prob: Problem with data loaded.\n"
+     "  n_clusters: Number of clusters (k).\n"
+     "  sample_size: Subsample size (-1 = auto: 40 + 2*k).\n"
+     "  n_samples: Number of subsamples to try (default 5).\n"
+     "  max_iter: Max PAM iterations per subsample (default 100).\n"
+     "  seed: Random seed for reproducibility (default 42).");
+
+  // =========================================================================
+  // Checkpointing
+  // =========================================================================
+
+  nb::class_<dtwc::CheckpointOptions>(m, "CheckpointOptions")
+    .def(nb::init<>())
+    .def_rw("directory", &dtwc::CheckpointOptions::directory)
+    .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval)
+    .def_rw("enabled", &dtwc::CheckpointOptions::enabled)
+    .def("__repr__", [](const dtwc::CheckpointOptions &o) {
+      return "CheckpointOptions(dir='" + o.directory
+             + "', interval=" + std::to_string(o.save_interval)
+             + ", enabled=" + (o.enabled ? "True" : "False") + ")";
+    });
+
+  m.def("save_checkpoint", &dtwc::save_checkpoint, "prob"_a, "path"_a,
+        "Save distance matrix checkpoint to directory.\n\n"
+        "Creates distances.csv and metadata.txt in the given directory.\n"
+        "The directory is created if it does not exist.");
+
+  m.def("load_checkpoint", &dtwc::load_checkpoint, "prob"_a, "path"_a,
+        "Load distance matrix checkpoint from directory.\n\n"
+        "Returns True if checkpoint was loaded successfully, False otherwise.\n"
+        "Validates that matrix dimensions match the Problem's data size.\n"
+        "Sets distance matrix filled flag if all pairs are computed.");
 
   // =========================================================================
   // Scores

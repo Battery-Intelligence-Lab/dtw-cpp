@@ -127,6 +127,13 @@ public:
   data_t distByInd(int i, int j);
   bool isDistanceMatrixFilled() const { return is_distMat_filled; }
 
+  /// Access the underlying distance matrix (const).
+  const distMat_t &distance_matrix() const { return distMat; }
+  /// Access the underlying distance matrix (mutable).
+  distMat_t &distance_matrix() { return distMat; }
+  /// Mark the distance matrix as filled (e.g., after loading from checkpoint).
+  void set_distance_matrix_filled(bool filled) { is_distMat_filled = filled; }
+
   void fillDistanceMatrix();
   void printDistanceMatrix() const;
 

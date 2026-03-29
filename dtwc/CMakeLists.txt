@@ -11,15 +11,18 @@ target_sources(dtwc++
   PRIVATE
   Problem.cpp
   Problem_IO.cpp
+  checkpoint.cpp
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
   algorithms/fast_pam.cpp
+  algorithms/fast_clara.cpp
   core/pruned_distance_matrix.cpp
   PUBLIC
   # Top-level headers
   Data.hpp
   DataLoader.hpp
+  checkpoint.hpp
   dtwc.hpp
   fileOperations.hpp
   initialisation.hpp
@@ -49,6 +52,7 @@ target_sources(dtwc++
   core/z_normalize.hpp
   # Algorithm headers
   algorithms/fast_pam.hpp
+  algorithms/fast_clara.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC .)
