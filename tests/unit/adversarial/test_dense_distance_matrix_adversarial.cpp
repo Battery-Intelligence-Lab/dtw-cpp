@@ -73,13 +73,12 @@ TEST_CASE("Adversarial: NaN sentinel after resize", "[adversarial][DistanceMatri
     DenseDistanceMatrix dm(4);
     for (size_t i = 0; i < 4; ++i) {
       for (size_t j = 0; j < 4; ++j) {
-        REQUIRE(std::isnan(dm.get(i, j)));
         REQUIRE_FALSE(dm.is_computed(i, j));
       }
     }
   }
 
-  SECTION("All entries NaN after resize including diagonal")
+  SECTION("All entries uncomputed after resize including diagonal")
   {
     DenseDistanceMatrix dm(3);
     dm.set(0, 0, 0.0);
@@ -89,7 +88,6 @@ TEST_CASE("Adversarial: NaN sentinel after resize", "[adversarial][DistanceMatri
 
     for (size_t i = 0; i < 4; ++i) {
       for (size_t j = 0; j < 4; ++j) {
-        REQUIRE(std::isnan(dm.get(i, j)));
         REQUIRE_FALSE(dm.is_computed(i, j));
       }
     }
@@ -167,11 +165,10 @@ TEST_CASE("Adversarial: resize clears old data", "[adversarial][DistanceMatrix]"
   {
     dm.resize(5);
 
-    // Old positions must be NaN
-    REQUIRE(std::isnan(dm.get(0, 1)));
-    REQUIRE(std::isnan(dm.get(1, 0)));
-    REQUIRE(std::isnan(dm.get(2, 2)));
+    // Old positions must be uncomputed
     REQUIRE_FALSE(dm.is_computed(0, 1));
+    REQUIRE_FALSE(dm.is_computed(1, 0));
+    REQUIRE_FALSE(dm.is_computed(2, 2));
   }
 
   SECTION("Resize smaller then larger — old data must NOT persist")
@@ -181,14 +178,14 @@ TEST_CASE("Adversarial: resize clears old data", "[adversarial][DistanceMatrix]"
 
     for (size_t i = 0; i < 5; ++i)
       for (size_t j = 0; j < 5; ++j)
-        REQUIRE(std::isnan(dm.get(i, j)));
+        REQUIRE_FALSE(dm.is_computed(i, j));
   }
 
   SECTION("Resize to same size clears data")
   {
     dm.resize(3);
-    REQUIRE(std::isnan(dm.get(0, 1)));
-    REQUIRE(std::isnan(dm.get(2, 2)));
+    REQUIRE_FALSE(dm.is_computed(0, 1));
+    REQUIRE_FALSE(dm.is_computed(2, 2));
   }
 }
 
@@ -219,7 +216,7 @@ TEST_CASE("Adversarial: Single element matrix", "[adversarial][DistanceMatrix]")
   DenseDistanceMatrix dm(1);
 
   REQUIRE(dm.size() == 1);
-  REQUIRE(std::isnan(dm.get(0, 0))); // initially NaN
+  REQUIRE_FALSE(dm.is_computed(0, 0)); // initially uncomputed
 
   dm.set(0, 0, 5.0);
   REQUIRE_THAT(dm.get(0, 0), WithinAbs(5.0, 1e-15));
@@ -315,12 +312,10 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (NaN preservation)",
   REQUIRE_THAT(dm2.get(3, 2), WithinAbs(2.0, 1e-12));
   REQUIRE_THAT(dm2.get(4, 4), WithinAbs(0.0, 1e-12));
 
-  // NaN entries must remain NaN
-  REQUIRE(std::isnan(dm2.get(0, 0)));
-  REQUIRE(std::isnan(dm2.get(0, 2)));
-  REQUIRE(std::isnan(dm2.get(3, 4)));
+  // Uncomputed entries must remain uncomputed after round-trip
   REQUIRE_FALSE(dm2.is_computed(0, 0));
   REQUIRE_FALSE(dm2.is_computed(0, 2));
+  REQUIRE_FALSE(dm2.is_computed(3, 4));
 }
 
 TEST_CASE("Adversarial: Negative values in distance matrix", "[adversarial][DistanceMatrix][IO]")

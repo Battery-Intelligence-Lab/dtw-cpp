@@ -143,18 +143,18 @@ TEST_CASE("DenseDistanceMatrix raw pointer access", "[DistanceMatrix]")
   REQUIRE_THAT(raw[3], WithinAbs(3.0, 1e-12));
 }
 
-TEST_CASE("DenseDistanceMatrix uncomputed entries are NaN", "[DistanceMatrix]")
+TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")
 {
   DenseDistanceMatrix dm(3);
 
-  // Verify that uncomputed entries are actually NaN (not just negative)
-  REQUIRE(std::isnan(dm.get(0, 1)));
-  REQUIRE(std::isnan(dm.get(2, 0)));
+  // Verify that fresh entries are marked as not computed.
+  REQUIRE_FALSE(dm.is_computed(0, 1));
+  REQUIRE_FALSE(dm.is_computed(2, 0));
 
-  // After setting a value, it should no longer be NaN
+  // After setting a value, it should be marked as computed.
   dm.set(0, 1, 0.0);
-  REQUIRE_FALSE(std::isnan(dm.get(0, 1)));
-  REQUIRE_FALSE(std::isnan(dm.get(1, 0)));
+  REQUIRE(dm.is_computed(0, 1));
+  REQUIRE(dm.is_computed(1, 0));
 }
 
 TEST_CASE("DenseDistanceMatrix negative distance is valid and computed", "[DistanceMatrix]")

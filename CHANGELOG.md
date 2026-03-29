@@ -58,6 +58,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Bug fixes
 
+* Fixed `DenseDistanceMatrix` NaN sentinel broken under `-ffast-math` / `/fp:fast` compiler flags. Replaced NaN-based `is_computed()` check with a separate boolean vector. `std::isnan()` is optimized away by compilers under fast-math, causing `distByInd()` to return uninitialized values instead of computing DTW distances lazily.
 * Fixed `throw 1` bare integer throw in `Problem_IO.cpp` — now throws `std::runtime_error`.
 * Fixed `static std::mt19937` ODR violation in `settings.hpp` — changed to `inline`.
 * Fixed `.at()` bounds-checked access in hot DTW loop — replaced with `operator[]`.
