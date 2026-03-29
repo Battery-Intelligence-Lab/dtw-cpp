@@ -100,6 +100,17 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
+  # MPI (optional) — distributed distance matrix computation
+  if(DTWC_ENABLE_MPI)
+    find_package(MPI COMPONENTS CXX)
+    if(MPI_CXX_FOUND)
+      message(STATUS "MPI found: ${MPI_CXX_COMPILER}")
+    else()
+      message(WARNING "MPI requested but not found — disabling")
+      set(DTWC_ENABLE_MPI OFF)
+    endif()
+  endif()
+
   # CUDA toolkit (optional) — GPU acceleration for batch DTW
   if(DTWC_ENABLE_CUDA)
     include(CheckLanguage)

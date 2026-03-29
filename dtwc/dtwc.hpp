@@ -36,6 +36,10 @@
 #include "core/time_series.hpp"
 #include "core/z_normalize.hpp"
 
+#ifdef DTWC_HAS_MPI
+#include "mpi/mpi_distance_matrix.hpp"
+#endif
+
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"
 #endif

@@ -25,6 +25,7 @@ option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_SIMD "Enable SIMD acceleration via Google Highway" OFF)
+option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
