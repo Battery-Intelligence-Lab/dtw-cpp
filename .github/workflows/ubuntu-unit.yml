@@ -44,7 +44,7 @@ jobs:
             CXX: clang++-17
             compiler: clang-17 libomp-17-dev
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: update
         run: sudo apt update
