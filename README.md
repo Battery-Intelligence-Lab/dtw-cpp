@@ -41,6 +41,87 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 **Performance**: Beats aeon by 12x and dtaidistance by 1.7x on pairwise distance matrix construction. Full end-to-end clustering is 42x faster than aeon/tslearn.
 <p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
 
+Installation
+===========================
+
+### C++ (CMake)
+
+```bash
+cmake -S . -B build -DDTWC_BUILD_TESTING=ON
+cmake --build build --config Release -j
+cd build && ctest -C Release
+```
+
+### Python
+
+```bash
+pip install .          # install from source
+# or for development:
+pip install -e ".[test]"
+pytest tests/python/ -v
+```
+
+### Optional dependencies
+
+**MPI** (distributed distance matrix across multiple nodes):
+
+```bash
+# Linux
+sudo apt install libopenmpi-dev openmpi-bin
+
+# macOS
+brew install open-mpi
+
+# Windows: download MS-MPI from
+# https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi
+# Install BOTH msmpisetup.exe (runtime) AND msmpisdk.msi (SDK)
+
+# Build with MPI
+cmake -S . -B build -DDTWC_ENABLE_MPI=ON -DDTWC_BUILD_TESTING=ON
+cmake --build build --config Release -j
+mpiexec -n 4 ./build/bin/unit_test_mpi
+```
+
+**CUDA** (GPU-accelerated batch DTW):
+
+```bash
+# Linux
+sudo apt install cuda-toolkit-12-6  # or download from nvidia.com
+
+# Windows: download CUDA Toolkit from
+# https://developer.nvidia.com/cuda-downloads
+
+# Verify
+nvcc --version
+nvidia-smi
+
+# Build with CUDA
+cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
+cmake --build build --config Release -j
+```
+
+**MATLAB** (MEX bindings):
+
+```bash
+cmake -S . -B build -DDTWC_BUILD_MATLAB=ON
+cmake --build build --config Release -j
+# Requires MATLAB with C++ MEX compiler configured
+```
+
+### All CMake options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `DTWC_BUILD_TESTING` | OFF | Build unit tests (Catch2) |
+| `DTWC_BUILD_BENCHMARK` | OFF | Build benchmarks (Google Benchmark) |
+| `DTWC_BUILD_PYTHON` | OFF | Build Python bindings (nanobind) |
+| `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
+| `DTWC_ENABLE_MPI` | OFF | Enable MPI distributed computing |
+| `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
+| `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
+| `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
+| `DTWC_ENABLE_SIMD` | OFF | Enable Highway SIMD (experimental) |
+
 Citation
 ===========================
 
