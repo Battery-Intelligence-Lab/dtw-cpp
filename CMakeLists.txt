@@ -27,6 +27,22 @@ option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_SIMD "Enable SIMD acceleration via Google Highway" OFF)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
+
+# CUDA must be detected at directory scope (enable_language cannot be called
+# inside a function). Do it here before dtwc_setup_dependencies().
+if(DTWC_ENABLE_CUDA)
+  include(CheckLanguage)
+  check_language(CUDA)
+  if(CMAKE_CUDA_COMPILER)
+    enable_language(CUDA)
+    find_package(CUDAToolkit REQUIRED)
+    message(STATUS "CUDA found: ${CMAKE_CUDA_COMPILER_VERSION}")
+  else()
+    message(WARNING "CUDA requested but nvcc not found — disabling")
+    set(DTWC_ENABLE_CUDA OFF)
+  endif()
+endif()
+
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 

@@ -111,19 +111,7 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # CUDA toolkit (optional) — GPU acceleration for batch DTW
-  if(DTWC_ENABLE_CUDA)
-    include(CheckLanguage)
-    check_language(CUDA)
-    if(CMAKE_CUDA_COMPILER)
-      enable_language(CUDA)
-      find_package(CUDAToolkit REQUIRED)
-      message(STATUS "CUDA found: ${CMAKE_CUDA_COMPILER_VERSION}")
-    else()
-      message(WARNING "CUDA requested but nvcc not found — disabling")
-      set(DTWC_ENABLE_CUDA OFF PARENT_SCOPE)
-      set(DTWC_ENABLE_CUDA OFF)
-    endif()
-  endif()
+  # CUDA detection is done in root CMakeLists.txt (enable_language requires
+  # directory scope). CUDAToolkit is already found there.
 
 endfunction()
