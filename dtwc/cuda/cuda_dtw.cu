@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <cmath>
+#include <limits>
 #include <iostream>
 #include <numeric>
 #include <stdexcept>
@@ -250,9 +252,18 @@ std::vector<double> launch_dtw_kernel(
 
   // Request extended shared memory if needed (>48 KB)
   if (shared_mem > 48 * 1024) {
-    cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
+    CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
                          cudaFuncAttributeMaxDynamicSharedMemorySize,
-                         static_cast<int>(shared_mem));
+                         static_cast<int>(shared_mem)));
+  }
+
+  // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
+  if (num_pairs > static_cast<size_t>(std::numeric_limits<int>::max())) {
+    throw std::runtime_error(
+        "Too many DTW pairs (" + std::to_string(num_pairs) +
+        ") for a single CUDA kernel launch. Maximum: " +
+        std::to_string(std::numeric_limits<int>::max()) +
+        ". Reduce N or use the MPI backend for distributed computation.");
   }
 
   auto start = std::chrono::high_resolution_clock::now();
