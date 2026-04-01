@@ -153,26 +153,28 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         """
         series = self._prepare_data(X)
 
+        # Pre-compute GPU distance matrix once (shared across n_init restarts)
+        dm_precomputed = None
+        if self.device != "cpu":
+            from dtwcpp import compute_distance_matrix, _resolve_device
+            backend, _ = _resolve_device(self.device)
+            if backend == "cuda":
+                if self.variant != "standard":
+                    raise ValueError(
+                        f"device='cuda' only supports variant='standard', "
+                        f"got variant='{self.variant}'"
+                    )
+                dm_precomputed = compute_distance_matrix(
+                    series, band=self.band, device=self.device
+                )
+
         best_result = None
         best_cost = float("inf")
 
         for _ in range(self.n_init):
             prob = self._build_problem(series)
-
-            # Device-aware distance matrix computation
-            if self.device != "cpu":
-                from dtwcpp import compute_distance_matrix, _resolve_device
-                backend, _ = _resolve_device(self.device)
-                if backend == "cuda":
-                    if self.variant != "standard":
-                        raise ValueError(
-                            f"device='cuda' only supports variant='standard', "
-                            f"got variant='{self.variant}'"
-                        )
-                    dm = compute_distance_matrix(
-                        series, band=self.band, device=self.device
-                    )
-                    prob.set_distance_matrix_from_numpy(dm)
+            if dm_precomputed is not None:
+                prob.set_distance_matrix_from_numpy(dm_precomputed)
 
             result = fast_pam(prob, self.n_clusters, self.max_iter)
             if result.total_cost < best_cost:

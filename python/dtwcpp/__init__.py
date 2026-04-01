@@ -77,10 +77,13 @@ def dtw_distance_missing(x, y, band=-1, metric="l1"):
         band, metric)
 
 def _parse_device(device):
-    """Parse PyTorch-style device string. Returns (backend, device_id)."""
+    """Parse PyTorch-style device string (case-insensitive). Returns (backend, device_id)."""
+    if not isinstance(device, str):
+        raise ValueError(f"device must be a string, got {type(device).__name__}")
+    device = device.strip().lower()
     if device == "cpu":
         return ("cpu", 0)
-    if isinstance(device, str) and (device == "cuda" or device.startswith("cuda:")):
+    if device == "cuda" or device.startswith("cuda:"):
         parts = device.split(":", 1)
         device_id = int(parts[1]) if len(parts) > 1 else 0
         return ("cuda", device_id)
@@ -129,9 +132,18 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
     -------
     numpy.ndarray of shape (N, N)
     """
+    _valid_metrics = {"l1", "squared_euclidean", "sqeuclidean"}
+    if metric not in _valid_metrics:
+        raise ValueError(
+            f"Unknown metric '{metric}'. Expected one of: {sorted(_valid_metrics)}"
+        )
+
     backend, device_id = _resolve_device(device)
     if backend == "cuda":
-        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean", "l2")
+        import warnings as _w
+        if use_pruning:
+            _w.warn("use_pruning is ignored on device='cuda'.", stacklevel=2)
+        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
         return _compute_distance_matrix_cuda(
             series, band=band, use_squared_l2=use_squared_l2,
             device_id=device_id, verbose=False,
