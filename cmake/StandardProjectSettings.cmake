@@ -30,20 +30,11 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Enhance error reporting and compiler messages
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang")
-  if(WIN32)
-    # On Windows cuda nvcc uses cl and not clang
-    add_compile_options($<$<COMPILE_LANGUAGE:C>:-fcolor-diagnostics> $<$<COMPILE_LANGUAGE:CXX>:-fcolor-diagnostics>)
-  else()
-    add_compile_options(-fcolor-diagnostics)
-  endif()
+  # Guard with COMPILE_LANGUAGE to prevent leaking to nvcc (which doesn't understand these flags)
+  add_compile_options($<$<COMPILE_LANGUAGE:C>:-fcolor-diagnostics> $<$<COMPILE_LANGUAGE:CXX>:-fcolor-diagnostics>)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  if(WIN32)
-    # On Windows cuda nvcc uses cl and not gcc
-    add_compile_options($<$<COMPILE_LANGUAGE:C>:-fdiagnostics-color=always>
-                        $<$<COMPILE_LANGUAGE:CXX>:-fdiagnostics-color=always>)
-  else()
-    add_compile_options(-fdiagnostics-color=always)
-  endif()
+  add_compile_options($<$<COMPILE_LANGUAGE:C>:-fdiagnostics-color=always>
+                      $<$<COMPILE_LANGUAGE:CXX>:-fdiagnostics-color=always>)
 elseif(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC" AND MSVC_VERSION GREATER 1900)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:/diagnostics:column>)
 else()

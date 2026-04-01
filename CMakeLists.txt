@@ -113,7 +113,16 @@ if(DTWC_ENABLE_CUDA)
   if(CMAKE_CUDA_COMPILER)
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
+
+    # Set CUDA C++ standard to match the host (C++17 for nested namespaces)
+    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+
+    # On headless CI (no GPU), CMake's default "native" arch detection fails.
+    # Users can override with -DCMAKE_CUDA_ARCHITECTURES=... on the command line.
+    # The CI workflow passes -DCMAKE_CUDA_ARCHITECTURES=80 explicitly.
     message(STATUS "CUDA found: ${CMAKE_CUDA_COMPILER_VERSION}")
+    message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 
     # ── Persist toolkit path for MSBuild at build time ─────────────────────
     # set(ENV{...}) only affects the CMake process; the MSBuild invocation

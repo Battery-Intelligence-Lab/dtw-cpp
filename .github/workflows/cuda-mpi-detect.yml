@@ -20,7 +20,8 @@ jobs:
           cmake -S . -B build \
             -DDTWC_ENABLE_CUDA=ON \
             -DDTWC_BUILD_TESTING=OFF \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=80
       - name: Build CUDA sources
         run: cmake --build build --parallel 2
 
