@@ -102,12 +102,34 @@ function(dtwc_setup_dependencies)
 
   # MPI (optional) — distributed distance matrix computation
   if(DTWC_ENABLE_MPI)
+    # On Windows, help CMake find MS-MPI by setting hints from well-known
+    # environment variables and registry locations.
+    if(WIN32 AND NOT MPI_CXX_FOUND)
+      # MS-MPI SDK sets MSMPI_INC and MSMPI_LIB64 / MSMPI_LIB32.
+      # If the SDK env-vars are not set, try the default install path.
+      if(NOT DEFINED ENV{MSMPI_INC})
+        set(_msmpi_sdk_dir "C:/Program Files (x86)/Microsoft SDKs/MPI")
+        if(EXISTS "${_msmpi_sdk_dir}/Include/mpi.h")
+          set(ENV{MSMPI_INC} "${_msmpi_sdk_dir}/Include")
+          if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+            set(ENV{MSMPI_LIB64} "${_msmpi_sdk_dir}/Lib/x64")
+          else()
+            set(ENV{MSMPI_LIB32} "${_msmpi_sdk_dir}/Lib/x86")
+          endif()
+          message(STATUS "MS-MPI SDK found at ${_msmpi_sdk_dir}")
+        endif()
+      endif()
+    endif()
+
     find_package(MPI COMPONENTS CXX)
     if(MPI_CXX_FOUND)
       message(STATUS "MPI found: ${MPI_CXX_COMPILER}")
     else()
-      message(WARNING "MPI requested but not found — disabling")
-      set(DTWC_ENABLE_MPI OFF)
+      message(WARNING "MPI requested but not found — disabling.\n"
+        "  On Windows, install the MS-MPI SDK from:\n"
+        "  https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi\n"
+        "  (both the runtime MSMpiSetup.exe AND the SDK msmpisdk.msi are required)")
+      set(DTWC_ENABLE_MPI OFF PARENT_SCOPE)
     endif()
   endif()
 

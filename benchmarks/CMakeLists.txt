@@ -14,6 +14,19 @@ if(DTWC_ENABLE_SIMD AND TARGET hwy::hwy)
   target_link_libraries(bench_dtw_baseline PRIVATE hwy::hwy)
 endif()
 
+# CUDA benchmarks (Google Benchmark, requires CUDA)
+add_executable(bench_cuda_dtw bench_cuda_dtw.cpp)
+target_link_libraries(bench_cuda_dtw
+  PRIVATE
+    dtwc++
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
+# MPI benchmarks (standalone, requires MPI)
+add_executable(bench_mpi_dtw bench_mpi_dtw.cpp)
+target_link_libraries(bench_mpi_dtw PRIVATE dtwc++)
+
 # Legacy UCR benchmark
 add_executable(benchmark_UCR UCR_dtwc.cpp)
 target_link_libraries(benchmark_UCR PRIVATE dtwc++)

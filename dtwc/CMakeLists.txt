@@ -66,13 +66,16 @@ target_link_libraries(dtwc++
   rapidcsv::rapidcsv
 )
 
-find_package(OpenMP)
+# Only request the CXX component — if CUDA is enabled as a language, a bare
+# find_package(OpenMP) would also search for OpenMP_CUDA which fails on MSVC.
+find_package(OpenMP COMPONENTS CXX)
 if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP found")
   target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
   # MSVC needs /openmp:experimental for #pragma omp simd (OpenMP 4.0+)
+  # Guard with COMPILE_LANGUAGE to avoid passing MSVC flags to nvcc.
   if(MSVC)
-    target_compile_options(dtwc++ PUBLIC /openmp:experimental)
+    target_compile_options(dtwc++ PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
   endif()
 endif()
 
@@ -88,8 +91,10 @@ if(DTWC_ENABLE_SIMD AND TARGET hwy::hwy)
   message(STATUS "SIMD enabled via Google Highway")
 endif()
 
-# MPI (optional)
-if(DTWC_ENABLE_MPI AND MPI_CXX_FOUND)
+# MPI (optional) — check for the imported target rather than the variable,
+# because find_package(MPI) runs inside dtwc_setup_dependencies() (a function)
+# and MPI_CXX_FOUND doesn't propagate to this scope.
+if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
   target_sources(dtwc++ PRIVATE mpi/mpi_distance_matrix.cpp)
   target_link_libraries(dtwc++ PUBLIC MPI::MPI_CXX)
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MPI)

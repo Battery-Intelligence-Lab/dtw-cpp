@@ -172,6 +172,52 @@ Standard DTW violates the triangle inequality. This means:
 - The actual LP-rounding literature gives larger constants (~6.67 from Charikar et al., ~2.73 from Li & Svensson)
 - Always cite the specific paper that proves the claimed bound
 
+### CUDA multi-version on Windows: MSBuild picks latest .targets, needs versioned env-var
+- MSBuild loads CUDA `.props`/`.targets` from `BuildCustomizations/` — always the newest version
+- Each version's `.Version.props` expects `CUDA_PATH_Vxx_y` env-var (e.g. `CUDA_PATH_V13_2`)
+- If a newer CUDA has VS integration installed but the env-var is absent, `CudaToolkitDir` resolves to empty string → build error
+- `set(ENV{...})` in CMakeLists.txt only affects the CMake process, NOT the MSBuild child process during `cmake --build`
+- **Fix**: Generate `Directory.Build.props` in the build tree with `<CudaToolkitCustomDir>` — MSBuild auto-imports it
+- **Also**: Scan all installed CUDA versions and set missing env-vars for the CMake configure phase (needed for `check_language(CUDA)`)
+
+### MSVC compiler flags leak into nvcc when CUDA is enabled
+- Global `add_compile_options(/diagnostics:column)`, `/fp:fast`, `/openmp:experimental` are passed to ALL languages including CUDA
+- nvcc doesn't understand MSVC flags directly → "A single input file is required" error (misparses `/flag:value` as a file)
+- **Fix**: Use `$<$<COMPILE_LANGUAGE:C,CXX>:...>` generator expressions on ALL global MSVC-specific compile options
+- Check `StandardProjectSettings.cmake`, `dtwc/CMakeLists.txt`, and `CompilerWarnings.cmake` for unguarded options
+
+### OpenMP find_package fails when CUDA language is enabled
+- `find_package(OpenMP)` without component restriction searches for ALL enabled languages
+- With CUDA enabled, it looks for `OpenMP_CUDA` which doesn't exist on MSVC → overall detection fails
+- **Fix**: `find_package(OpenMP COMPONENTS CXX)` — only request the C++ component
+
+### find_package variables inside CMake functions don't propagate
+- `find_package(MPI)` inside `dtwc_setup_dependencies()` sets `MPI_CXX_FOUND` — but it's function-scoped
+- Imported targets (e.g. `MPI::MPI_CXX`) ARE global and visible everywhere
+- **Fix**: Check `TARGET MPI::MPI_CXX` instead of `MPI_CXX_FOUND` when consuming from outside the function
+
+### CUDA anti-diagonal wavefront gives 24x speedup over 1-thread-per-block
+- The DTW cost matrix has anti-diagonal independence: cells (i,j) where i+j=k are independent
+- Old kernel: 1 thread per block, one block per pair — ~910M cells/sec (4x slower than CPU)
+- New kernel: multiple threads per block filling anti-diagonals in parallel — ~22 Gcells/sec
+- Uses 3 rotating shared-memory buffers (anti-diag k, k-1, k-2), total `3 * max_L * 8` bytes
+- Block size selection: 32 for L<=32, 64 for L<=128, 128 for L<=512, 256 for L>512
+- `__syncthreads()` between each anti-diagonal (2L-1 barriers total) — overhead is small vs compute
+- For L >= 250, throughput is stable at ~22-24 Gcells/sec on RTX 3070 Laptop
+- GPU is 5-7x faster than 10-core CPU+OpenMP for medium-to-large problems
+
+### CUDA toolkit version must not exceed driver's supported version
+- `nvidia-smi` shows max supported CUDA version (e.g., "CUDA Version: 13.1")
+- Compiling with a newer toolkit (13.2) succeeds but crashes at runtime: `cudaErrorInsufficientDriver`
+- Fix: pin `CudaToolkitCustomDir` in `Directory.Build.props` to the CUDA_PATH version
+- The VS generator always picks the newest `.targets` from BuildCustomizations regardless of CUDA_PATH
+
+### MS-MPI needs BOTH runtime AND SDK on Windows
+- Runtime (`MSMpiSetup.exe`) provides `mpiexec.exe` only
+- SDK (`msmpisdk.msi`) provides headers (`mpi.h`) and libraries (`msmpi.lib`) — required for compilation
+- CMake's `FindMPI` needs the SDK; `winget install Microsoft.msmpisdk` is the quick fix
+- SDK sets `MSMPI_INC` and `MSMPI_LIB64` env-vars; default path: `C:/Program Files (x86)/Microsoft SDKs/MPI/`
+
 ### Lagrangian relaxation: which constraint to dualize matters
 - Dualizing cardinality does NOT decompose into independent subproblems (linking constraints still couple variables)
 - Dualizing assignment constraints DOES decompose by facility -- this is the standard approach in the literature
