@@ -6,7 +6,7 @@ nav_order: 2
 
 # Using DTW-C++ 
 
-DTW-C++ does not offer any binaries or wrappers in other languages at the moment. Therefore, the only way to use DTW-C++ is to compile it from C++ source files. With the appropriate compilers and dependencies installed you can easily compile DTW-C++ and use it, for example:
+DTW-C++ can be used as a C++ library, from the command line, or via its Python bindings. The sections below cover building from source for C++ use. For Python, see the Python section below.
 
 - Edit `main.cpp` in the `dtwc` folder and use the `dtwc_main` executable after compilation using the examples in `examples` folder. 
 - Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
@@ -93,6 +93,11 @@ xcode-select --install
 brew install cmake
 brew install libomp llvm && brew link --force libomp
 ```
+
+> **Note:** Apple Clang does not include OpenMP support. Install it via Homebrew:
+> `brew install libomp && brew link --force libomp`
+> This applies to both Intel and Apple Silicon Macs.
+
 3. Clone the repository using the following command or download it as a [*.zip file](https://github.com/battery-intelligence-lab/dtw-cpp/archive/refs/heads/main.zip): 
     ```bash
     git clone https://github.com/battery-intelligence-lab/dtw-cpp.git
@@ -161,6 +166,28 @@ In case you encounter sudden crash of the program, you may also try to complile 
 ```note
 If you are using Visual Studio Community, you may also open the folder in Visual Studio directly, without using CMake. See [this page](https://docs.microsoft.com/en-us/visualstudio/ide/develop-code-in-visual-studio-without-projects-or-solutions?view=vs-2019) for detailed explanation.
 ```
+
+## Python Installation
+
+The easiest way to use DTW-C++ from Python:
+
+```bash
+pip install dtwcpp
+```
+
+To build from source with GPU support:
+
+```bash
+pip install . --config-settings=cmake.define.DTWC_ENABLE_CUDA=ON
+```
+
+See [MPI & CUDA Setup](3_mpi_cuda_setup.md) for detailed GPU configuration.
+
+## GPU and MPI Acceleration
+
+CUDA GPU acceleration and MPI distributed computing are optional. See the dedicated [MPI & CUDA Setup Guide](3_mpi_cuda_setup.md) for installation instructions.
+
+> **Note:** CUDA is not available on macOS. Use Linux or Windows with an NVIDIA GPU.
 
 ## Visual Studio Code
 

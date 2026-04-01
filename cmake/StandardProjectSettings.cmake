@@ -67,6 +67,7 @@ run_vcvarsall()
 
 
 message(STATUS "Host system: ${CMAKE_HOST_SYSTEM}")
+message(STATUS "Target architecture: ${CMAKE_SYSTEM_PROCESSOR}")
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/bin)

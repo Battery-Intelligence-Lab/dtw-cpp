@@ -56,3 +56,9 @@ References used during development. Verify each citation independently before pu
 
 - Sanderson, C. & Curtin, R. (2016). Armadillo: a template-based C++ library for linear algebra. *Journal of Open Source Software*, 1(2), 26.
 - Column-major storage matches MATLAB (zero-copy possible); differs from NumPy row-major default.
+
+## CUDA Architecture & Precision
+
+- NVIDIA. "CUDA C++ Programming Guide: Compute Capabilities." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities — FP64:FP32 throughput ratios per compute capability.
+- NVIDIA. "CUDA C++ Programming Guide: Shared Memory." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory — Opt-in extended shared memory via cudaFuncSetAttribute.
+- NVIDIA. "cudaDeviceProp Reference." https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaDeviceProp.html — Runtime GPU property queries.

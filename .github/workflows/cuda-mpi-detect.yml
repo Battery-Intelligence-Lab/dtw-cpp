@@ -1,0 +1,88 @@
+name: CUDA/MPI detection smoke test
+
+on:
+  push:
+    branches: [main, develop, Claude]
+  pull_request:
+    branches: [main]
+
+jobs:
+  linux-cuda-configure:
+    name: Linux CUDA configure (no GPU needed)
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.0-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake and build tools
+        run: apt-get update && apt-get install -y cmake build-essential git
+      - name: CMake configure with CUDA
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_CUDA=ON \
+            -DDTWC_BUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+      - name: Build CUDA sources
+        run: cmake --build build --parallel 2
+
+  linux-mpi-build:
+    name: Linux MPI build + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MPI
+        run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin
+      - name: CMake configure with MPI
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_MPI=ON \
+            -DDTWC_BUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 2
+      - name: Run MPI tests
+        run: mpiexec --allow-run-as-root -n 2 ./build/bin/unit_test_mpi
+
+  macos-cuda-graceful-rejection:
+    name: macOS CUDA graceful rejection
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install libomp llvm && brew link --force libomp
+      - name: CMake configure with CUDA (should warn and disable)
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_CUDA=ON \
+            -DDTWC_BUILD_TESTING=OFF 2>&1 | tee cmake_output.txt
+          grep -q "not supported on macOS" cmake_output.txt
+
+  macos-mpi-build:
+    name: macOS MPI build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: brew install libomp llvm open-mpi && brew link --force libomp
+      - name: CMake configure with MPI
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_MPI=ON \
+            -DDTWC_BUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --parallel 2
+
+  windows-mpi-configure:
+    name: Windows MPI configure
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install MS-MPI
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://download.microsoft.com/download/a/5/2/a5207ca5-1203-491a-8fb8-906fd68ae623/msmpisetup.exe" -OutFile msmpisetup.exe
+          Start-Process -FilePath .\msmpisetup.exe -ArgumentList '-unattend' -Wait
+          Invoke-WebRequest -Uri "https://download.microsoft.com/download/a/5/2/a5207ca5-1203-491a-8fb8-906fd68ae623/msmpisdk.msi" -OutFile msmpisdk.msi
+          Start-Process msiexec.exe -ArgumentList '/i msmpisdk.msi /quiet' -Wait
+      - name: CMake configure with MPI
+        run: cmake -S . -B build -DDTWC_ENABLE_MPI=ON -DDTWC_BUILD_TESTING=OFF

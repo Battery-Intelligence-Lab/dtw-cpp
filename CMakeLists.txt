@@ -31,6 +31,13 @@ option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # CUDA must be detected at directory scope (enable_language cannot be called
 # inside a function). Do it here before dtwc_setup_dependencies().
 if(DTWC_ENABLE_CUDA)
+  if(APPLE)
+    message(WARNING
+      "CUDA is not supported on macOS. Apple dropped NVIDIA driver support "
+      "in macOS 10.14 (Mojave). Disabling CUDA.\n"
+      "  For GPU acceleration, use Linux or Windows with an NVIDIA GPU.")
+    set(DTWC_ENABLE_CUDA OFF)
+  elseif(WIN32)
   # ── MSVC / Visual Studio generator CUDA fix ──────────────────────────────
   # MSBuild picks the latest CUDA .props/.targets in BuildCustomizations.
   # Each version expects a CUDA_PATH_Vxx_y env-var (e.g. CUDA_PATH_V13_2).
@@ -39,7 +46,6 @@ if(DTWC_ENABLE_CUDA)
   #
   # Fix: scan the CUDA install root for all installed versions and set any
   # missing CUDA_PATH_Vxx_y env-vars so MSBuild can resolve any version.
-  if(WIN32)
     # Determine the CUDA base directory from CUDA_PATH or well-known location.
     if(DEFINED ENV{CUDA_PATH})
       file(TO_CMAKE_PATH "$ENV{CUDA_PATH}" _cuda_active)
@@ -84,6 +90,21 @@ if(DTWC_ENABLE_CUDA)
         set(ENV{CUDA_PATH} "${_cuda_best_cmake}")
         message(STATUS "Set CUDA_PATH = ${_cuda_best_cmake} (auto-detected)")
       endif()
+    endif()
+  endif()
+
+  # ── Linux CUDA hints ──────────────────────────────────────────────────
+  # Standard CUDA Toolkit installs land in /usr/local/cuda (a symlink).
+  # If nvcc is not on PATH, help check_language() find it.
+  if(UNIX AND NOT APPLE AND NOT DEFINED CMAKE_CUDA_COMPILER)
+    if(DEFINED ENV{CUDA_PATH})
+      set(_nvcc_hint "$ENV{CUDA_PATH}/bin/nvcc")
+    else()
+      set(_nvcc_hint "/usr/local/cuda/bin/nvcc")
+    endif()
+    if(EXISTS "${_nvcc_hint}")
+      set(CMAKE_CUDA_COMPILER "${_nvcc_hint}" CACHE FILEPATH "CUDA compiler")
+      message(STATUS "Auto-detected nvcc at ${_nvcc_hint}")
     endif()
   endif()
 

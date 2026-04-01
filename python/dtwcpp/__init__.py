@@ -35,11 +35,18 @@ from dtwcpp._dtwcpp_core import (
     derivative_transform,
     z_normalize,
     # Distance matrix
-    compute_distance_matrix,
+    compute_distance_matrix as _compute_distance_matrix_cpu,
     # Checkpointing
     save_checkpoint,
     load_checkpoint,
     CheckpointOptions,
+)
+
+from dtwcpp._dtwcpp_core import (
+    CUDA_AVAILABLE,
+    cuda_available,
+    cuda_device_info,
+    compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
 )
 
 __version__ = "1.0.0"
@@ -69,6 +76,69 @@ def dtw_distance_missing(x, y, band=-1, metric="l1"):
         _np.asarray(y, dtype=_np.float64),
         band, metric)
 
+def _parse_device(device):
+    """Parse PyTorch-style device string. Returns (backend, device_id)."""
+    if device == "cpu":
+        return ("cpu", 0)
+    if isinstance(device, str) and (device == "cuda" or device.startswith("cuda:")):
+        parts = device.split(":", 1)
+        device_id = int(parts[1]) if len(parts) > 1 else 0
+        return ("cuda", device_id)
+    raise ValueError(f"Unknown device '{device}'. Expected 'cpu', 'cuda', or 'cuda:N'.")
+
+
+def _resolve_device(device):
+    """Parse device and fall back to CPU if CUDA unavailable."""
+    import warnings
+    backend, device_id = _parse_device(device)
+    if backend == "cuda":
+        if not CUDA_AVAILABLE:
+            warnings.warn(
+                "device='cuda' requested but CUDA was not compiled in. "
+                "Falling back to CPU. Rebuild with -DDTWC_ENABLE_CUDA=ON.",
+                RuntimeWarning, stacklevel=3,
+            )
+            return ("cpu", 0)
+        if not cuda_available():
+            warnings.warn(
+                "device='cuda' requested but no CUDA GPU detected. "
+                "Falling back to CPU.",
+                RuntimeWarning, stacklevel=3,
+            )
+            return ("cpu", 0)
+    return (backend, device_id)
+
+
+def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, device="cpu"):
+    """Compute pairwise DTW distance matrix.
+
+    Parameters
+    ----------
+    series : list of list of float
+        Input time series.
+    band : int, default=-1
+        Sakoe-Chiba band width (-1 = full DTW).
+    metric : str, default='l1'
+        Distance metric: 'l1' or 'squared_euclidean'.
+    use_pruning : bool, default=True
+        Use LB_Keogh pruning (CPU only).
+    device : str, default='cpu'
+        Computation device: 'cpu', 'cuda', or 'cuda:N'.
+
+    Returns
+    -------
+    numpy.ndarray of shape (N, N)
+    """
+    backend, device_id = _resolve_device(device)
+    if backend == "cuda":
+        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean", "l2")
+        return _compute_distance_matrix_cuda(
+            series, band=band, use_squared_l2=use_squared_l2,
+            device_id=device_id, verbose=False,
+        )
+    return _compute_distance_matrix_cpu(series, band, metric, use_pruning)
+
+
 # Pure-Python sklearn-compatible layer
 from dtwcpp._clustering import DTWClustering
 
@@ -92,6 +162,7 @@ __all__ = [
     "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
+    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
     "save_checkpoint", "load_checkpoint", "CheckpointOptions",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",

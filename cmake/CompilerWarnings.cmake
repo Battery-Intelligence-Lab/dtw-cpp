@@ -71,14 +71,21 @@ function(
   endif()
 
   if("${CUDA_WARNINGS}" STREQUAL "")
-    set(CUDA_WARNINGS
-        -Wall
-        -Wextra
-        -Wunused
-        -Wconversion
-        -Wshadow
-        # TODO add more Cuda warnings
-    )
+    if(MSVC)
+      set(CUDA_WARNINGS
+        -Xcompiler=/W3
+      )
+    else()
+      set(CUDA_WARNINGS
+        -Xcompiler=-Wall
+        -Xcompiler=-Wextra
+        -Xcompiler=-Wunused
+        -Xcompiler=-Wconversion
+        -Xcompiler=-Wshadow
+        -Xcompiler=-Wno-unused-parameter
+        --display-error-number
+      )
+    endif()
   endif()
 
   if(WARNINGS_AS_ERRORS)
@@ -86,6 +93,11 @@ function(
     list(APPEND CLANG_WARNINGS -Werror)
     list(APPEND GCC_WARNINGS -Werror)
     list(APPEND MSVC_WARNINGS /WX)
+    if(MSVC)
+      list(APPEND CUDA_WARNINGS -Xcompiler=/WX)
+    else()
+      list(APPEND CUDA_WARNINGS -Xcompiler=-Werror)
+    endif()
   endif()
 
   if(MSVC)

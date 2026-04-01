@@ -165,6 +165,10 @@ export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
 Add these lines to your `~/.bashrc` to make them permanent.
 
+> **Tip:** If `nvcc` is not on your PATH, set the `CUDA_PATH` environment variable:
+> `export CUDA_PATH=/usr/local/cuda`
+> CMake will use this to locate `nvcc` automatically.
+
 Verify:
 ```bash
 nvcc --version

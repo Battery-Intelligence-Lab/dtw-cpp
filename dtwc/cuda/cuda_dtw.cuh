@@ -22,11 +22,19 @@
 
 namespace dtwc::cuda {
 
+/// Precision selection for CUDA DTW kernels
+enum class CUDAPrecision {
+  Auto,  ///< FP32 on consumer GPUs (slow FP64), FP64 on HPC GPUs
+  FP32,  ///< Always use single precision (fastest, ~1e-7 relative error)
+  FP64   ///< Always use double precision (bit-identical to CPU path)
+};
+
 struct CUDADistMatOptions {
   int band = -1;           ///< Sakoe-Chiba band width (-1 = full DTW)
   bool use_squared_l2 = false; ///< Use squared L2 metric instead of L1
   int device_id = 0;       ///< CUDA device to use
   bool verbose = false;     ///< Print timing info
+  CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
 };
 
 struct CUDADistMatResult {

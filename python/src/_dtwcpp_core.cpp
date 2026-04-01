@@ -289,6 +289,22 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("write_clusters", &dtwc::Problem::writeClusters)
     .def("write_distance_matrix", nb::overload_cast<>(&dtwc::Problem::writeDistanceMatrix, nb::const_))
     .def("write_silhouettes", &dtwc::Problem::writeSilhouettes)
+    .def("set_distance_matrix_from_numpy",
+         [](dtwc::Problem &p, nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
+           const size_t n = dm.shape(0);
+           if (dm.shape(1) != n)
+               throw std::runtime_error("Expected square matrix");
+           if (n != p.size())
+               throw std::runtime_error("Matrix size doesn't match Problem data size");
+           auto &mat = p.distance_matrix();
+           mat.resize(n);
+           const double* data = dm.data();
+           for (size_t i = 0; i < n; ++i)
+               for (size_t j = i; j < n; ++j)
+                   mat.set(i, j, data[i * n + j]);
+           p.set_distance_matrix_filled(true);
+         }, "dm"_a,
+         "Load a precomputed NxN distance matrix (e.g. from GPU computation).")
     .def("__repr__", [](const dtwc::Problem &p) {
       return "Problem(name='" + p.name + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.cluster_size()) + ")";
@@ -466,17 +482,35 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.verbose = verbose;
           nb::gil_scoped_release release;
           auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-          // Return as flat list; Python side reshapes to NxN
-          return nb::make_tuple(result.matrix, result.n,
-                                result.gpu_time_sec, result.pairs_computed);
+          size_t n = result.n;
+          double* data = new double[n * n];
+          std::copy(result.matrix.begin(), result.matrix.end(), data);
+          nb::gil_scoped_acquire acquire;
+          nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+          return nb::ndarray<nb::numpy, double>(data, {n, n}, owner);
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
         "Compute NxN DTW distance matrix on GPU.\n\n"
-        "Returns (flat_matrix, n, gpu_time_sec, pairs_computed).");
+        "Returns NxN numpy array of DTW distances.");
 
   m.attr("CUDA_AVAILABLE") = true;
 #else
+  m.def("cuda_available", []() { return false; },
+        "Check if CUDA GPU is available.");
+
+  m.def("cuda_device_info", [](int) { return std::string("CUDA not available (not compiled)"); },
+        "device_id"_a = 0,
+        "Get CUDA device info string.");
+
+  m.def("compute_distance_matrix_cuda",
+        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
+          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
+        },
+        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
+        "device_id"_a = 0, "verbose"_a = false,
+        "Compute NxN DTW distance matrix on GPU (requires CUDA build).");
+
   m.attr("CUDA_AVAILABLE") = false;
 #endif
 }

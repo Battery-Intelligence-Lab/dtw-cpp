@@ -50,6 +50,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         Logistic weight steepness for WDTW (ignored unless ``variant="wdtw"``).
     adtw_penalty : float, default=1.0
         Non-diagonal step penalty for ADTW (ignored unless ``variant="adtw"``).
+    device : str, default="cpu"
+        Computation device for distance matrix. ``"cpu"``, ``"cuda"``, or ``"cuda:N"``.
 
     Attributes
     ----------
@@ -66,7 +68,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
     """
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
-                 max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0):
+                 max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
+                 device="cpu"):
         self.n_clusters = n_clusters
         self.variant = variant
         self.band = band
@@ -74,6 +77,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.n_init = n_init
         self.wdtw_g = wdtw_g
         self.adtw_penalty = adtw_penalty
+        self.device = device
 
     def _variant_enum(self):
         """Map string variant name to C++ DTWVariant enum."""
@@ -154,6 +158,22 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
         for _ in range(self.n_init):
             prob = self._build_problem(series)
+
+            # Device-aware distance matrix computation
+            if self.device != "cpu":
+                from dtwcpp import compute_distance_matrix, _resolve_device
+                backend, _ = _resolve_device(self.device)
+                if backend == "cuda":
+                    if self.variant != "standard":
+                        raise ValueError(
+                            f"device='cuda' only supports variant='standard', "
+                            f"got variant='{self.variant}'"
+                        )
+                    dm = compute_distance_matrix(
+                        series, band=self.band, device=self.device
+                    )
+                    prob.set_distance_matrix_from_numpy(dm)
+
             result = fast_pam(prob, self.n_clusters, self.max_iter)
             if result.total_cost < best_cost:
                 best_cost = result.total_cost

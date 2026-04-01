@@ -221,3 +221,20 @@ Standard DTW violates the triangle inequality. This means:
 ### Lagrangian relaxation: which constraint to dualize matters
 - Dualizing cardinality does NOT decompose into independent subproblems (linking constraints still couple variables)
 - Dualizing assignment constraints DOES decompose by facility -- this is the standard approach in the literature
+
+### CUDA templated kernels: `extern __shared__` must use `char[]` for type-generic shared memory
+- When a CUDA kernel is templated on `T` (float/double), `extern __shared__ double smem[]` is invalid for `T=float`
+- CUDA requires a single `extern __shared__` declaration per kernel; it cannot be templated directly
+- **Fix**: Use `extern __shared__ char smem_raw[]` and `reinterpret_cast<T*>(smem_raw)`
+- Shared memory size is passed at launch time (`<<<blocks, threads, shared_bytes>>>`) so it adapts to `sizeof(T)` automatically
+
+### FP64 throughput varies 16-32x between HPC and consumer GPUs
+- HPC GPUs (P100, V100, A100, H100) have FP64:FP32 = 1:2 ratio
+- Consumer GPUs (RTX 30xx/40xx, GTX, L40S) have FP64:FP32 = 1:32 or 1:64
+- For DTW distance matrices, FP32 gives ~1e-5 relative error vs FP64 — acceptable for clustering
+- Auto-detection via compute capability: CC x.0 (minor=0) = HPC, CC x.{1,2,5,6,9} = consumer
+- Exception: Hopper H100 is CC 9.0 (Full), L4 is CC 8.9 (Slow) — pattern holds
+
+### `constexpr` with ternary on `sizeof(T)` fails in some CUDA versions
+- `constexpr T INF = (sizeof(T)==4) ? FLT_MAX : DBL_MAX;` rejected by some nvcc versions
+- **Fix**: Use `const T INF = ...` instead — the compiler still optimizes it as a compile-time constant since `sizeof(T)` is known at template instantiation
