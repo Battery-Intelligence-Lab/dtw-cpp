@@ -8,6 +8,18 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (Wave 1B — Multivariate Foundation)
+- Multivariate time series support via `Data.ndim` field (default 1, backward-compatible).
+- `Data::series_length(i)` and `Data::validate_ndim()` for multivariate data management.
+- `TimeSeriesView.ndim` with `at(i)` timestep access and `flat_size()`.
+- Multivariate distance functors `MVL1Dist` and `MVSquaredL2Dist` in `warping.hpp`.
+- `dtwFull_L_mv()` and `dtwBanded_mv()`: multivariate DTW with interleaved layout. `ndim=1` dispatches to existing scalar code (zero overhead).
+- `derivative_transform_mv()`: stride-aware per-channel derivative transform for multivariate DDTW.
+
+### Changed (Wave 1B)
+- `Problem::rebind_dtw_fn()` dispatches to multivariate DTW when `data.ndim > 1`.
+- `Problem::set_data()` calls `data.validate_ndim()` to catch malformed interleaved layouts early.
+
 ## Added
 
 * **`missing_utils.hpp`**: Bitwise NaN check (`is_missing()`) safe under `-ffast-math`/`/fp:fast`, plus `has_missing()`, `missing_rate()`, `interpolate_linear()` with LOCF/NOCB edge handling.
