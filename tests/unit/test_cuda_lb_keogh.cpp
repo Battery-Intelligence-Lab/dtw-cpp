@@ -244,6 +244,8 @@ TEST_CASE("GPU distance matrix with LB pruning (threshold mode)", "[cuda][lb_keo
   opts_pruned.skip_threshold = threshold;
   auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, opts_pruned);
 
+  REQUIRE(pruned.pairs_computed + pruned.pairs_pruned == N * (N - 1) / 2);
+
   // Check: non-pruned pairs should have exact distances
   // Pruned pairs should have INF
   constexpr double INF = std::numeric_limits<double>::max();
@@ -266,6 +268,74 @@ TEST_CASE("GPU distance matrix with LB pruning (threshold mode)", "[cuda][lb_keo
   // Should have pruned at least one pair (with a 50% threshold on random data)
   // This is a soft check -- if it fails, the test data might need adjustment
   // CHECK(pruned.pairs_pruned > 0);  // commented: not guaranteed for all seeds
+}
+
+TEST_CASE("GPU distance matrix with LB pruning can prune everything", "[cuda][lb_keogh]")
+{
+  if (!dtwc::cuda::cuda_available()) {
+    SKIP("No CUDA device available");
+  }
+
+  std::vector<std::vector<double>> series(6, std::vector<double>(32));
+  for (size_t i = 0; i < series.size(); ++i) {
+    const double base = 1000.0 * static_cast<double>(i + 1);
+    for (size_t k = 0; k < series[i].size(); ++k)
+      series[i][k] = base + static_cast<double>(k);
+  }
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = 3;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  opts.use_lb_pruning = true;
+  opts.skip_threshold = 1.0;
+
+  auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  const size_t N = series.size();
+  const size_t total_pairs = N * (N - 1) / 2;
+  constexpr double INF = std::numeric_limits<double>::max();
+
+  REQUIRE(pruned.pairs_pruned == total_pairs);
+  REQUIRE(pruned.pairs_computed == 0);
+
+  for (size_t i = 0; i < N; ++i) {
+    CHECK(pruned.matrix[i * N + i] == Catch::Approx(0.0));
+    for (size_t j = i + 1; j < N; ++j) {
+      CHECK(pruned.matrix[i * N + j] >= INF * 0.5);
+      CHECK(pruned.matrix[j * N + i] >= INF * 0.5);
+    }
+  }
+}
+
+TEST_CASE("GPU distance matrix with LB pruning can prune nothing", "[cuda][lb_keogh]")
+{
+  if (!dtwc::cuda::cuda_available()) {
+    SKIP("No CUDA device available");
+  }
+
+  const size_t N = 8;
+  const size_t L = 40;
+  const int band = 4;
+  auto series = generate_random_series(N, L, 808);
+
+  dtwc::cuda::CUDADistMatOptions ref_opts;
+  ref_opts.band = band;
+  ref_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto ref = dtwc::cuda::compute_distance_matrix_cuda(series, ref_opts);
+
+  dtwc::cuda::CUDADistMatOptions pruned_opts = ref_opts;
+  pruned_opts.use_lb_pruning = true;
+  pruned_opts.skip_threshold = 1e12;
+  auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, pruned_opts);
+
+  REQUIRE(pruned.pairs_pruned == 0);
+  REQUIRE(pruned.pairs_computed == N * (N - 1) / 2);
+
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      CAPTURE(i, j, ref.matrix[i * N + j], pruned.matrix[i * N + j]);
+      CHECK_THAT(pruned.matrix[i * N + j], WithinRel(ref.matrix[i * N + j], 1e-10));
+    }
+  }
 }
 
 TEST_CASE("GPU LB_Keogh with larger dataset", "[cuda][lb_keogh]")

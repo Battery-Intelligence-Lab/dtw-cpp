@@ -3,9 +3,7 @@
   "env": {
     "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp",
     "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "sonnet",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL": "opus",
-    "CLAUDE_CODE_SUBAGENT_MODEL": "opus"
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "sonnet"
   },
   "permissions": {
     "deny": [

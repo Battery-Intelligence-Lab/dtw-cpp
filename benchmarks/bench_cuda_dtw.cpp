@@ -45,6 +45,21 @@ static std::vector<std::vector<double>> make_series_set(int N, int L,
   return vecs;
 }
 
+static std::vector<std::vector<double>> make_pruning_friendly_series_set(int N, int L)
+{
+  std::vector<std::vector<double>> vecs;
+  vecs.reserve(N);
+  for (int i = 0; i < N; ++i) {
+    const double family_bias = (i % 2 == 0) ? -150.0 : 150.0;
+    std::vector<double> s(static_cast<size_t>(L));
+    for (int k = 0; k < L; ++k) {
+      s[static_cast<size_t>(k)] = family_bias + 0.05 * k + 0.001 * i;
+    }
+    vecs.push_back(std::move(s));
+  }
+  return vecs;
+}
+
 static dtwc::Data make_random_data(int N, int L, unsigned base_seed = 200)
 {
   std::vector<std::vector<dtwc::data_t>> vecs;
@@ -202,6 +217,143 @@ BENCHMARK(BM_cuda_scaling_L)
   ->Arg(1000)
   ->Arg(2000)
   ->Arg(4000)
+  ->Unit(benchmark::kMillisecond);
+
+// ---------------------------------------------------------------------------
+// BM_cuda_structuredDistanceMatrix — same structured data as pruning benchmark,
+// but without LB pruning. This is the fair baseline for the pruning path.
+// Args: (N_series, series_length)
+// ---------------------------------------------------------------------------
+static void BM_cuda_structuredDistanceMatrix(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_pruning_friendly_series_set(N, L);
+  const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = 10;
+  opts.verbose = false;
+
+  { auto warmup = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+
+  for (auto _ : state) {
+    auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+    benchmark::DoNotOptimize(result.matrix.data());
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
+  state.counters["pairs"] = benchmark::Counter(
+      static_cast<double>(num_pairs), benchmark::Counter::kDefaults);
+}
+
+BENCHMARK(BM_cuda_structuredDistanceMatrix)
+  ->Args({50, 500})
+  ->Args({100, 500})
+  ->Args({100, 1000})
+  ->Unit(benchmark::kMillisecond);
+
+// ---------------------------------------------------------------------------
+// BM_cuda_prunedDistanceMatrix — full matrix with real device-side pruning
+// Args: (N_series, series_length)
+// ---------------------------------------------------------------------------
+static void BM_cuda_prunedDistanceMatrix(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_pruning_friendly_series_set(N, L);
+  const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = 10;
+  opts.use_lb_pruning = true;
+  opts.skip_threshold = 50.0;
+  opts.verbose = false;
+
+  dtwc::cuda::CUDADistMatResult last;
+  { last = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
+
+  for (auto _ : state) {
+    last = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+    benchmark::DoNotOptimize(last.matrix.data());
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
+  state.counters["pairs"] = benchmark::Counter(
+      static_cast<double>(num_pairs), benchmark::Counter::kDefaults);
+  state.counters["active_pairs"] = benchmark::Counter(
+      static_cast<double>(last.pairs_computed), benchmark::Counter::kDefaults);
+  state.counters["pruned_pairs"] = benchmark::Counter(
+      static_cast<double>(last.pairs_pruned), benchmark::Counter::kDefaults);
+}
+
+BENCHMARK(BM_cuda_prunedDistanceMatrix)
+  ->Args({50, 500})
+  ->Args({100, 500})
+  ->Args({100, 1000})
+  ->Unit(benchmark::kMillisecond);
+
+// ---------------------------------------------------------------------------
+// BM_cuda_oneVsAll — repeated query search
+// Args: (N_series, series_length)
+// ---------------------------------------------------------------------------
+static void BM_cuda_oneVsAll(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_series_set(N, L);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.verbose = false;
+
+  { auto warmup = dtwc::cuda::compute_dtw_one_vs_all(series, 0, opts); }
+
+  for (auto _ : state) {
+    auto result = dtwc::cuda::compute_dtw_one_vs_all(series, 0, opts);
+    benchmark::DoNotOptimize(result.distances.data());
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * N);
+}
+
+BENCHMARK(BM_cuda_oneVsAll)
+  ->Args({50, 500})
+  ->Args({100, 500})
+  ->Args({100, 1000})
+  ->Unit(benchmark::kMillisecond);
+
+// ---------------------------------------------------------------------------
+// BM_cuda_kVsAll — batched multi-query search
+// Args: (N_series, series_length, K_queries)
+// ---------------------------------------------------------------------------
+static void BM_cuda_kVsAll(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  const int K = static_cast<int>(state.range(2));
+  auto series = make_series_set(N, L);
+  std::vector<size_t> query_indices;
+  query_indices.reserve(static_cast<size_t>(K));
+  for (int i = 0; i < K; ++i)
+    query_indices.push_back(static_cast<size_t>(i));
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.verbose = false;
+
+  { auto warmup = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts); }
+
+  for (auto _ : state) {
+    auto result = dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
+    benchmark::DoNotOptimize(result.distances.data());
+  }
+
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * K * N);
+}
+
+BENCHMARK(BM_cuda_kVsAll)
+  ->Args({50, 500, 4})
+  ->Args({100, 500, 4})
+  ->Args({100, 1000, 8})
   ->Unit(benchmark::kMillisecond);
 
 #endif // DTWC_HAS_CUDA

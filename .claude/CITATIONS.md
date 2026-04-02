@@ -62,3 +62,12 @@ References used during development. Verify each citation independently before pu
 - NVIDIA. "CUDA C++ Programming Guide: Compute Capabilities." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities — FP64:FP32 throughput ratios per compute capability.
 - NVIDIA. "CUDA C++ Programming Guide: Shared Memory." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory — Opt-in extended shared memory via cudaFuncSetAttribute.
 - NVIDIA. "cudaDeviceProp Reference." https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaDeviceProp.html — Runtime GPU property queries.
+
+## GPU DTW and GPU Dynamic Programming
+
+- Schmidt, B., & Hundt, C. (2020). *cuDTW++: Ultra-Fast Dynamic Time Warping on CUDA-Enabled GPUs*. In *Euro-Par 2020: Parallel Processing*, LNCS 12247, 597-612. Springer. https://doi.org/10.1007/978-3-030-57675-2_37 - Informed warp-intrinsic/register-tiled DTW and the goal of reducing memory traffic enough to become compute-bound.
+- asbschmidt/cuDTW. GitHub repository. https://github.com/asbschmidt/cuDTW - Informed concrete CUDA implementation details for cuDTW++-style kernel structure and tiling.
+- Schmidt, B., Kallenborn, F., Chacon, A., et al. (2024). *CUDASW++4.0: ultra-fast GPU-based Smith-Waterman protein sequence database search*. *BMC Bioinformatics*, 25, 342. https://doi.org/10.1186/s12859-024-05965-6 - Informed length binning, batch partitioning, warp-shuffle communication, mixed-precision ideas, and Hopper follow-up concepts.
+- Latta-Lin, D., & Padilla Munoz, S. I. (2024). *Optimizing sDTW for AMD GPUs*. arXiv:2403.06931. https://doi.org/10.48550/arXiv.2403.06931 - Informed tuning of values-per-thread/reference-width ownership and architecture-aware wavefront design.
+- NVIDIA. *CUDA C++ Programming Guide*. https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html - Informed warp shuffle intrinsics, shared-memory carveout, and dynamic shared-memory opt-in behavior.
+- NVIDIA. *Hopper Tuning Guide*. https://docs.nvidia.com/cuda/archive/12.1.0/hopper-tuning-guide/index.html - Informed DPX, TMA, distributed shared memory, and Hopper-specific performance ceilings.
