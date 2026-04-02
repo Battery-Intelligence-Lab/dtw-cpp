@@ -258,16 +258,18 @@ double Problem::distByInd(int i, int j)
   if (i == j) return 0.0;
 
   const size_t N = data.size();
-  const bool matrix_sized = (distMat.size() == N);
 
-  if (matrix_sized && distMat.is_computed(i, j))
+  // Lazily allocate the dense matrix on first individual distance request.
+  // This preserves caching for checkpoint save/load and repeated lookups,
+  // while still deferring the bulk allocation from set_data().
+  if (distMat.size() != N)
+    distMat.resize(N);
+
+  if (distMat.is_computed(i, j))
     return distMat.get(i, j);
 
   const double d = dtw_fn_(p_vec(i), p_vec(j));
-
-  if (matrix_sized)
-    distMat.set(i, j, d);
-
+  distMat.set(i, j, d);
   return d;
 }
 
