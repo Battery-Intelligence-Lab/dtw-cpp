@@ -20,17 +20,27 @@ namespace dtwc::core {
 template <typename T = double>
 struct TimeSeriesView {
   const T *data;
-  size_t length;
+  size_t length;        //!< Number of timesteps
+  size_t ndim = 1;      //!< Number of features (dimensions) per timestep
 
+  /// Element access for univariate series (backward compat, accesses flat buffer).
   const T &operator[](size_t i) const { return data[i]; }
+
+  /// Pointer to the start of timestep i (ndim elements).
+  const T *at(size_t i) const { return data + i * ndim; }
+
+  /// Total number of scalar values in the flat buffer (length * ndim).
+  size_t flat_size() const { return length * ndim; }
+
   const T *begin() const { return data; }
-  const T *end() const { return data + length; }
+  const T *end() const { return data + length * ndim; }
   bool empty() const { return length == 0; }
   size_t size() const { return length; }
 
   bool operator==(const TimeSeriesView &other) const {
-    if (length != other.length) return false;
-    for (size_t i = 0; i < length; ++i)
+    if (length != other.length || ndim != other.ndim) return false;
+    const size_t n = flat_size();
+    for (size_t i = 0; i < n; ++i)
       if (data[i] != other.data[i]) return false;
     return true;
   }
