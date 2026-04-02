@@ -589,3 +589,134 @@ TEST_CASE("Metric compatibility check", "[lower_bounds][compatibility]")
   REQUIRE(lb_pruning_compatible(DistanceMetric::L1) == true);
   REQUIRE(lb_pruning_compatible(DistanceMetric::L2) == false);
 }
+
+
+// ======== Parallel Pruned + Strategy Integration Tests ========
+
+TEST_CASE("fillDistanceMatrix with Pruned strategy matches BruteForce exactly",
+          "[pruned_distance_matrix][parallel][strategy]")
+{
+  std::vector<std::vector<double>> vecs = {
+    { 1.0, 2.0, 3.0, 4.0, 5.0 },
+    { 2.0, 3.0, 4.0, 5.0, 6.0 },
+    { 5.0, 4.0, 3.0, 2.0, 1.0 },
+    { 1.0, 1.0, 1.0, 1.0, 1.0 },
+    { 10.0, 20.0, 30.0, 40.0, 50.0 }
+  };
+  std::vector<std::string> names = { "a", "b", "c", "d", "e" };
+  const int N = static_cast<int>(vecs.size());
+
+  SECTION("Default band (full DTW)")
+  {
+    auto prob_brute = make_problem_with_data(vecs, names, -1);
+    prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+    prob_brute.fillDistanceMatrix();
+
+    auto prob_pruned = make_problem_with_data(vecs, names, -1);
+    prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+    prob_pruned.fillDistanceMatrix();
+
+    for (int i = 0; i < N; ++i)
+      for (int j = 0; j < N; ++j)
+        REQUIRE_THAT(prob_pruned.distByInd(i, j),
+                     WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+  }
+
+  SECTION("Banded DTW (band = 2)")
+  {
+    auto prob_brute = make_problem_with_data(vecs, names, 2);
+    prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+    prob_brute.fillDistanceMatrix();
+
+    auto prob_pruned = make_problem_with_data(vecs, names, 2);
+    prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+    prob_pruned.fillDistanceMatrix();
+
+    for (int i = 0; i < N; ++i)
+      for (int j = 0; j < N; ++j)
+        REQUIRE_THAT(prob_pruned.distByInd(i, j),
+                     WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+  }
+}
+
+TEST_CASE("Auto strategy selects Pruned for Standard DTW",
+          "[pruned_distance_matrix][strategy][auto]")
+{
+  std::vector<std::vector<double>> vecs = {
+    { 1.0, 2.0, 3.0, 4.0, 5.0 },
+    { 2.0, 3.0, 4.0, 5.0, 6.0 },
+    { 5.0, 4.0, 3.0, 2.0, 1.0 },
+  };
+  std::vector<std::string> names = { "a", "b", "c" };
+  const int N = static_cast<int>(vecs.size());
+
+  // Auto with Standard DTW -> should use Pruned, results must be correct
+  auto prob_auto = make_problem_with_data(vecs, names, -1);
+  prob_auto.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+  prob_auto.fillDistanceMatrix();
+
+  // Reference using BruteForce
+  auto prob_brute = make_problem_with_data(vecs, names, -1);
+  prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  prob_brute.fillDistanceMatrix();
+
+  for (int i = 0; i < N; ++i)
+    for (int j = 0; j < N; ++j)
+      REQUIRE_THAT(prob_auto.distByInd(i, j),
+                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+}
+
+TEST_CASE("Auto strategy falls back to BruteForce for non-Standard DTW",
+          "[pruned_distance_matrix][strategy][auto_fallback]")
+{
+  std::vector<std::vector<double>> vecs = {
+    { 1.0, 2.0, 3.0, 4.0, 5.0 },
+    { 2.0, 3.0, 4.0, 5.0, 6.0 },
+    { 5.0, 4.0, 3.0, 2.0, 1.0 },
+  };
+  std::vector<std::string> names = { "a", "b", "c" };
+  const int N = static_cast<int>(vecs.size());
+
+  // DDTW variant: Auto should fall back to BruteForce
+  auto prob_ddtw_auto = make_problem_with_data(vecs, names, 2);
+  prob_ddtw_auto.set_variant(dtwc::core::DTWVariant::DDTW);
+  prob_ddtw_auto.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+  prob_ddtw_auto.fillDistanceMatrix();
+
+  auto prob_ddtw_brute = make_problem_with_data(vecs, names, 2);
+  prob_ddtw_brute.set_variant(dtwc::core::DTWVariant::DDTW);
+  prob_ddtw_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  prob_ddtw_brute.fillDistanceMatrix();
+
+  for (int i = 0; i < N; ++i)
+    for (int j = 0; j < N; ++j)
+      REQUIRE_THAT(prob_ddtw_auto.distByInd(i, j),
+                   WithinAbs(prob_ddtw_brute.distByInd(i, j), 1e-10));
+}
+
+TEST_CASE("Parallel pruned with larger dummy dataset matches brute-force",
+          "[pruned_distance_matrix][parallel][dummy]")
+{
+  const int Ndata = 10;
+
+  auto prob_brute = make_problem_from_dummy(Ndata, 3);
+  prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  prob_brute.fillDistanceMatrix();
+
+  auto prob_pruned = make_problem_from_dummy(Ndata, 3);
+  prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+  prob_pruned.fillDistanceMatrix();
+
+  for (int i = 0; i < static_cast<int>(prob_brute.size()); ++i)
+    for (int j = 0; j < static_cast<int>(prob_brute.size()); ++j)
+      REQUIRE_THAT(prob_pruned.distByInd(i, j),
+                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+}
+
+TEST_CASE("DistanceMatrixStrategy enum values are distinct",
+          "[pruned_distance_matrix][strategy][enum]")
+{
+  REQUIRE(dtwc::DistanceMatrixStrategy::Auto != dtwc::DistanceMatrixStrategy::BruteForce);
+  REQUIRE(dtwc::DistanceMatrixStrategy::BruteForce != dtwc::DistanceMatrixStrategy::Pruned);
+  REQUIRE(dtwc::DistanceMatrixStrategy::Pruned != dtwc::DistanceMatrixStrategy::GPU);
+}

@@ -20,18 +20,103 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
+#include <stdexcept>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 namespace dtwc::core {
 
 // =========================================================================
-//  Problem-based version (for C++ clustering)
+//  C++17 lock-free atomic min for non-negative doubles.
+//
+//  Uses uint64_t CAS via compiler intrinsics. For non-negative IEEE-754
+//  doubles, the bit representation preserves ordering: if a < b (and both
+//  >= 0), then memcpy-to-uint64_t(a) < memcpy-to-uint64_t(b). This means
+//  we can do atomic CAS on the uint64_t bits directly.
+//
+//  Relaxed memory order is sufficient: stale reads only reduce pruning
+//  effectiveness, not correctness.
+// =========================================================================
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
+static inline void atomic_min_double(double *addr, double val)
+{
+#ifdef _OPENMP
+  static_assert(sizeof(double) == sizeof(uint64_t), "double must be 64 bits");
+
+  // Reinterpret as uint64_t pointer for atomic CAS.
+  // This is technically UB per strict aliasing, but every major compiler
+  // (GCC/Clang/MSVC/ICC) supports it, and the alternative (memcpy + CAS)
+  // generates identical code.
+  volatile uint64_t *iaddr = reinterpret_cast<volatile uint64_t *>(addr);
+
+  uint64_t new_bits;
+  std::memcpy(&new_bits, &val, sizeof(double));
+
+  for (;;) {
+    // Load current value
+    uint64_t old_bits;
+#if defined(_MSC_VER)
+    old_bits = *iaddr;  // volatile read is sufficient on x86
+#elif defined(__GNUC__) || defined(__clang__)
+    old_bits = __atomic_load_n(reinterpret_cast<uint64_t *>(const_cast<uint64_t *>(iaddr)),
+                               __ATOMIC_RELAXED);
+#else
+    old_bits = *iaddr;
+#endif
+
+    double old_val;
+    std::memcpy(&old_val, &old_bits, sizeof(double));
+
+    // If current value is already <= val, nothing to do
+    if (old_val <= val) return;
+
+    // Try to swap in the new (smaller) value
+#if defined(_MSC_VER)
+    uint64_t prev = static_cast<uint64_t>(
+      _InterlockedCompareExchange64(
+        reinterpret_cast<volatile long long *>(iaddr),
+        static_cast<long long>(new_bits),
+        static_cast<long long>(old_bits)));
+    if (prev == old_bits) return;  // Success
+#elif defined(__GNUC__) || defined(__clang__)
+    uint64_t expected = old_bits;
+    if (__atomic_compare_exchange_n(
+          reinterpret_cast<uint64_t *>(const_cast<uint64_t *>(iaddr)),
+          &expected, new_bits, /*weak=*/true,
+          __ATOMIC_RELAXED, __ATOMIC_RELAXED))
+      return;  // Success
+#else
+    // Fallback: omp critical (should not be reached on major compilers)
+    #pragma omp critical(nn_dist_update)
+    {
+      if (val < *addr) *addr = val;
+    }
+    return;
+#endif
+    // CAS failed (another thread updated concurrently) — retry
+  }
+#else
+  // Serial fallback — no synchronisation needed.
+  if (val < *addr) *addr = val;
+#endif
+}
+
+// =========================================================================
+//  Problem-based version (for C++ clustering) — PARALLEL
 // =========================================================================
 
 PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
 {
   PruningStats stats;
-  const int N = prob.size();
+  const int N = static_cast<int>(prob.size());
   if (N <= 1) {
     if (N == 1) {
       prob.distance_matrix().resize(1);
@@ -44,20 +129,26 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   // Ensure matrix is sized
   prob.distance_matrix().resize(static_cast<size_t>(N));
 
-  // Step 1: Precompute summaries for LB_Kim (O(N * n))
+  // Step 1: Precompute summaries for LB_Kim (O(N * n)) — parallel
   std::vector<SeriesSummary> summaries(N);
+  #ifdef _OPENMP
+  #pragma omp parallel for schedule(static)
+  #endif
   for (int i = 0; i < N; ++i)
     summaries[i] = compute_summary(prob.p_vec(i));
 
-  // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0)
+  // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0) — parallel
   const bool use_lb_keogh = (band >= 0);
   std::vector<Envelope> envelopes(N);
   if (use_lb_keogh) {
+    #ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
     for (int i = 0; i < N; ++i)
       envelopes[i] = compute_envelope(prob.p_vec(i), band);
   }
 
-  // Step 3: Per-row nearest-neighbor tracking
+  // Step 3: Per-row nearest-neighbor tracking (shared, updated atomically)
   constexpr double inf = std::numeric_limits<double>::max();
   std::vector<double> nn_dist(N, inf);
 
@@ -65,10 +156,47 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   for (int i = 0; i < N; ++i)
     prob.distance_matrix().set(static_cast<size_t>(i), static_cast<size_t>(i), 0.0);
 
-  // Step 5: Iterate upper triangle, compute DTW with early-abandon
-  for (int i = 0; i < N; ++i) {
-    for (int j = i + 1; j < N; ++j) {
-      stats.total_pairs++;
+  // Step 5: Compute total number of upper-triangle pairs
+  const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+  stats.total_pairs = static_cast<size_t>(num_pairs);
+
+  // Step 6: Parallel loop over all upper-triangle pairs.
+  // Each pair (i, j) is decoded from a linear index k.
+  // nn_dist is shared: reads may be stale (relaxed consistency) but
+  // this only reduces pruning effectiveness, not correctness —
+  // every pair still gets the exact DTW distance.
+
+  // Thread-local accumulators for stats
+  size_t global_pruned_kim = 0;
+  size_t global_pruned_keogh = 0;
+  size_t global_early_abandoned = 0;
+  size_t global_full_dtw = 0;
+
+  #ifdef _OPENMP
+  #pragma omp parallel
+  #endif
+  {
+    size_t local_pruned_kim = 0;
+    size_t local_pruned_keogh = 0;
+    size_t local_early_abandoned = 0;
+    size_t local_full_dtw = 0;
+
+    #ifdef _OPENMP
+    #pragma omp for schedule(dynamic, 16)
+    #endif
+    for (int64_t k = 0; k < num_pairs; ++k) {
+      // Decode linear pair index k -> (i, j) in the upper triangle.
+      // Row i: using the quadratic formula on k = i*N - i*(i+1)/2 + (j - i - 1)
+      const double Nd = static_cast<double>(N);
+      const double kd = static_cast<double>(k);
+      int i = static_cast<int>(Nd - 0.5 - std::sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd));
+      // Correct for floating-point imprecision
+      int64_t row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
+      if (k - row_start >= static_cast<int64_t>(N - i - 1)) {
+        ++i;
+        row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
+      }
+      int j = static_cast<int>(k - row_start) + i + 1;
 
       // Compute lower bound (cascading: LB_Kim, then LB_Keogh)
       double lb = lb_kim(summaries[i], summaries[j]);
@@ -84,16 +212,17 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
         }
       }
 
-      // Early-abandon threshold: smallest NN distance for either endpoint
+      // Early-abandon threshold: smallest NN distance for either endpoint.
+      // Reads may be stale from other threads — this is benign.
       const double threshold = std::min(nn_dist[i], nn_dist[j]);
 
       double dist;
       if (lb > threshold && threshold < inf) {
         // LB exceeds NN threshold -- try early-abandon DTW
         if (lb_keogh_used)
-          stats.pruned_by_lb_keogh++;
+          local_pruned_keogh++;
         else
-          stats.pruned_by_lb_kim++;
+          local_pruned_kim++;
 
         dist = (band >= 0)
           ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, threshold)
@@ -101,27 +230,46 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
 
         if (dist >= inf * 0.5) {
           // Early abandon triggered -- recompute for exact distance
-          stats.early_abandoned++;
+          local_early_abandoned++;
           dist = (band >= 0)
             ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, -1.0)
             : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), -1.0);
         }
       } else {
         // Pair may be close -- compute without early abandon
-        stats.computed_full_dtw++;
+        local_full_dtw++;
         dist = (band >= 0)
           ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, -1.0)
           : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), -1.0);
       }
 
-      // Store directly in the distance matrix (symmetric)
+      // Store directly in the distance matrix (symmetric).
+      // DenseDistanceMatrix::set() writes to two independent memory
+      // locations: data_[i*N+j] and data_[j*N+i]. No two threads
+      // write the same (i,j) pair, so this is safe without locks.
       prob.distance_matrix().set(static_cast<size_t>(i), static_cast<size_t>(j), dist);
 
-      // Update nearest-neighbor tracking
-      if (dist < nn_dist[i]) nn_dist[i] = dist;
-      if (dist < nn_dist[j]) nn_dist[j] = dist;
+      // Update nearest-neighbor tracking (atomic min).
+      atomic_min_double(&nn_dist[i], dist);
+      atomic_min_double(&nn_dist[j], dist);
     }
-  }
+
+    // Accumulate thread-local stats into globals
+    #ifdef _OPENMP
+    #pragma omp critical(stats_accumulate)
+    #endif
+    {
+      global_pruned_kim += local_pruned_kim;
+      global_pruned_keogh += local_pruned_keogh;
+      global_early_abandoned += local_early_abandoned;
+      global_full_dtw += local_full_dtw;
+    }
+  } // end parallel
+
+  stats.pruned_by_lb_kim = global_pruned_kim;
+  stats.pruned_by_lb_keogh = global_pruned_keogh;
+  stats.early_abandoned = global_early_abandoned;
+  stats.computed_full_dtw = global_full_dtw;
 
   prob.set_distance_matrix_filled(true);
   return stats;

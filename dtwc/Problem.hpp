@@ -21,6 +21,7 @@
 #include "core/dtw_options.hpp" // for DTWVariant
 
 #include <cstddef>     // for size_t
+#include <cstdint>     // for uint64_t
 #include <filesystem>  // for operator/, path
 #include <ostream>     // for operator<<, basic_ostream, ofstream
 #include <string>      // for char_traits, operator+, operator<<
@@ -34,6 +35,14 @@
 #include "core/distance_matrix.hpp"
 
 namespace dtwc {
+
+/// Strategy for computing the pairwise distance matrix.
+enum class DistanceMatrixStrategy {
+  Auto,       ///< Choose best strategy automatically
+  BruteForce, ///< Parallel brute-force (no lower-bound pruning)
+  Pruned,     ///< Parallel with LB_Kim + LB_Keogh early-abandon
+  GPU         ///< CUDA GPU (requires DTWC_HAS_CUDA)
+};
 
 /**
  * @class Problem
@@ -61,6 +70,7 @@ private:
   bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
 
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
+  void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
 
   // Private functions:
   std::pair<int, double> cluster_by_kMedoidsLloyd_single(int rep);
@@ -75,6 +85,7 @@ public:
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
+  DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 

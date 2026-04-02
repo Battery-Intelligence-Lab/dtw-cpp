@@ -21,6 +21,7 @@
 #include "warping_adtw.hpp"    // for adtwBanded
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
+#include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 
 
 #include <algorithm> // for max_element, min, min_element, sample
@@ -179,16 +180,25 @@ double Problem::distByInd(int i, int j)
 }
 
 /**
- * @brief Fills the distance matrix by computing distances between all pairs of points.
- * @details Populates the distance matrix using the DTW banded algorithm. This operation is parallelized for efficiency.
+ * @brief Determines whether the pruned distance matrix strategy is applicable.
+ * @details The pruned strategy requires Standard DTW variant (LB_Kim/LB_Keogh
+ *          are only valid for the standard recurrence with L1 metric).
+ * @return true if pruned strategy can be used.
  */
-void Problem::fillDistanceMatrix()
+static bool pruned_strategy_applicable(const Problem &prob)
 {
-  if (isDistanceMatrixFilled()) return;
+  // Pruning lower bounds are only valid for Standard DTW variant
+  return prob.variant_params.variant == core::DTWVariant::Standard;
+}
 
+/**
+ * @brief Fills the distance matrix using brute-force parallel computation.
+ * @details Original implementation: parallel loop over all upper-triangle pairs
+ *          using the bound dtw_fn_ (supports all DTW variants).
+ */
+void Problem::fillDistanceMatrix_BruteForce()
+{
   const size_t N = data.size();
-
-  std::cout << "Distance matrix is being filled!" << std::endl;
 
   auto oneTask = [this, N](size_t k) {
     const double Nd = static_cast<double>(N);
@@ -203,8 +213,52 @@ void Problem::fillDistanceMatrix()
     distByInd(static_cast<int>(i), static_cast<int>(j));
   };
   run(oneTask, N * (N + 1) / 2);
+}
 
-  is_distMat_filled = true;
+/**
+ * @brief Fills the distance matrix by computing distances between all pairs of points.
+ * @details Uses a strategy-based approach:
+ *   - Auto: selects Pruned for Standard DTW variant, BruteForce otherwise.
+ *   - BruteForce: parallel brute-force (all variants).
+ *   - Pruned: parallel with LB_Kim + LB_Keogh early-abandon (Standard DTW only).
+ *   - GPU: reserved for CUDA path (selected externally, e.g., via CLI).
+ */
+void Problem::fillDistanceMatrix()
+{
+  if (isDistanceMatrixFilled()) return;
+
+  const size_t N = data.size();
+
+  std::cout << "Distance matrix is being filled!" << std::endl;
+
+  // Resolve Auto strategy
+  DistanceMatrixStrategy effective = distance_strategy;
+  if (effective == DistanceMatrixStrategy::Auto) {
+    if (pruned_strategy_applicable(*this))
+      effective = DistanceMatrixStrategy::Pruned;
+    else
+      effective = DistanceMatrixStrategy::BruteForce;
+  }
+
+  switch (effective) {
+  case DistanceMatrixStrategy::Pruned: {
+    auto stats = core::fill_distance_matrix_pruned(*this, band);
+    std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
+              << stats.early_abandoned << " early-abandoned, "
+              << "pruning ratio: " << stats.pruning_ratio() << std::endl;
+    break;
+  }
+  case DistanceMatrixStrategy::GPU:
+    // GPU path is handled externally (CLI / bindings). Fall through to brute-force.
+    [[fallthrough]];
+  case DistanceMatrixStrategy::BruteForce:
+  default:
+    fillDistanceMatrix_BruteForce();
+    is_distMat_filled = true;
+    break;
+  // Note: DistanceMatrixStrategy::Auto is already resolved above.
+  }
+
   std::cout << "Distance matrix has been filled!" << std::endl;
 }
 /**
