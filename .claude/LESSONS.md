@@ -242,6 +242,22 @@ Standard DTW violates the triangle inequality. This means:
 - **Fix**: Move all `__shfl_sync` calls outside of any conditional branches, then use the shuffled values only inside the branches
 - Alternative: use a dynamic mask matching which lanes will actually execute, but unconditional shuffles are simpler and equally fast
 
+### Register-tiled DTW: wavefront timing across warp lanes is the hardest part
+- cuDTW++ keeps the entire DTW working set in registers (zero shared memory) using `__shfl_sync` for inter-thread communication
+- Key challenge: in the inter-thread wavefront, thread t-1 is one row AHEAD of thread t; shuffled penalty values must be carefully tracked for which row they correspond to
+- For pairwise distance matrices, the regtile approach has diminishing returns vs shared-memory wavefront because outer-level pair parallelism already saturates the GPU
+- Keep as experimental; the 3-buffer/double-buffer shared memory approach is proven and nearly as fast
+
+### cudaOccupancyMaxPotentialBlockSize hurts wavefront kernels
+- This API maximizes SM occupancy, but DTW wavefront kernels are recurrence-latency-bound, not occupancy-bound
+- More warps don't help when each thread is waiting on the previous anti-diagonal anyway
+- Hand-tuned heuristics (32/64/128/256 based on max_L) outperform the occupancy API for this pattern
+
+### Pinned memory (cudaMallocHost) has ~0.3-0.5ms allocation overhead
+- For small transfers (<256KB), the allocation cost dominates the transfer benefit
+- Add a size threshold: only use pinned memory when transfer size justifies the overhead
+- For large transfers (>256KB), pinned memory enables async DMA overlap via CUDA streams
+
 ### `constexpr` with ternary on `sizeof(T)` fails in some CUDA versions
 - `constexpr T INF = (sizeof(T)==4) ? FLT_MAX : DBL_MAX;` rejected by some nvcc versions
 - **Fix**: Use `const T INF = ...` instead — the compiler still optimizes it as a compile-time constant since `sizeof(T)` is known at template instantiation
