@@ -102,11 +102,12 @@ int main(int argc, char *argv[])
 
   app.add_option("-k,--clusters", n_clusters, "Number of clusters")
       ->check(CLI::PositiveNumber);
-  app.add_option("-m,--method", method, "Clustering method: pam, clara, kmedoids, mip")
+  app.add_option("-m,--method", method, "Clustering method: pam, clara, kmedoids, mip, hierarchical")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
               {"pam", "pam"}, {"clara", "clara"},
-              {"kmedoids", "kmedoids"}, {"mip", "mip"}},
+              {"kmedoids", "kmedoids"}, {"mip", "mip"},
+              {"hierarchical", "hierarchical"}, {"hclust", "hierarchical"}},
           CLI::ignore_case));
   app.add_option("-b,--band", band, "Sakoe-Chiba band width (-1 = full DTW)");
   app.add_option("--metric", metric, "Distance metric: l1, squared_euclidean")
@@ -139,6 +140,14 @@ int main(int argc, char *argv[])
   app.add_option("--sample-size", sample_size, "CLARA subsample size (-1 = auto)");
   app.add_option("--n-samples", n_samples, "CLARA number of subsamples");
   app.add_option("--seed", clara_seed, "Random seed for CLARA");
+
+  // Hierarchical-specific
+  std::string linkage_str = "average";
+  app.add_option("--linkage", linkage_str, "Hierarchical linkage: single, complete, average")
+      ->transform(CLI::CheckedTransformer(
+          std::map<std::string, std::string>{
+              {"single", "single"}, {"complete", "complete"}, {"average", "average"}},
+          CLI::ignore_case));
 
   // CSV parsing
   int skip_rows = 0;
@@ -202,6 +211,9 @@ int main(int argc, char *argv[])
                 << (sample_size < 0 ? "auto" : std::to_string(sample_size)) << "\n"
                 << "  CLARA n_samples:   " << n_samples << "\n"
                 << "  CLARA seed:        " << clara_seed << "\n";
+    }
+    if (method == "hierarchical") {
+      std::cout << "  Linkage:   " << linkage_str << "\n";
     }
     std::cout << std::flush;
   }
@@ -392,10 +404,32 @@ int main(int argc, char *argv[])
     if (verbose)
       std::cout << "MIP clustering finished, cost=" << result.total_cost
                 << " [" << clk << "]\n";
+  } else if (method == "hierarchical") {
+    // Agglomerative hierarchical clustering
+    if (verbose)
+      std::cout << "Running hierarchical clustering (k=" << n_clusters
+                << ", linkage=" << linkage_str << ") ...\n";
+
+    dtwc::algorithms::HierarchicalOptions hier_opts;
+    if (linkage_str == "single")
+      hier_opts.linkage = dtwc::algorithms::Linkage::Single;
+    else if (linkage_str == "complete")
+      hier_opts.linkage = dtwc::algorithms::Linkage::Complete;
+    else
+      hier_opts.linkage = dtwc::algorithms::Linkage::Average;
+
+    auto dend = dtwc::algorithms::build_dendrogram(prob, hier_opts);
+    result = dtwc::algorithms::cut_dendrogram(dend, prob, n_clusters);
+
+    if (verbose) {
+      std::cout << "Hierarchical clustering finished"
+                << ", cost=" << std::setprecision(6) << result.total_cost
+                << " [" << clk << "]\n";
+    }
   }
 
   // ---- Apply result to prob for scoring ----
-  if (method == "pam" || method == "clara") {
+  if (method == "pam" || method == "clara" || method == "hierarchical") {
     prob.set_numberOfClusters(n_clusters);
     prob.clusters_ind = result.labels;
     prob.centroids_ind = result.medoid_indices;
