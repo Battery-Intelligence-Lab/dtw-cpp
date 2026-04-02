@@ -838,9 +838,8 @@ std::vector<double> launch_dtw_kernel(
         d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
         d_distances.get(), static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
-  } else if (false && max_L <= 128) {
-    // TEMPORARILY DISABLED — register-tiled kernel has correctness issues
-    // TODO: fix and re-enable after validation
+  } else if (max_L <= 128) {
+    // Register-tiled kernel with TILE_W=4: 32 threads * 4 = 128 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 4;
     const int grid_size = static_cast<int>(
@@ -852,8 +851,8 @@ std::vector<double> launch_dtw_kernel(
         d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
         d_distances.get(), static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
-  } else if (false && max_L <= 256) {
-    // TEMPORARILY DISABLED — register-tiled kernel has correctness issues
+  } else if (max_L <= 256) {
+    // Register-tiled kernel with TILE_W=8: 32 threads * 8 = 256 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 8;
     const int grid_size = static_cast<int>(
