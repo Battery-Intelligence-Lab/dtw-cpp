@@ -138,3 +138,22 @@ mpiexec -n 4 ./build/bin/bench_mpi_dtw
 | GPU K-vs-N (K=5) | 5x200x500 | **~5ms** | Dedicated 1-vs-N kernel |
 
 *Estimated, depends on data distribution and pruning effectiveness.
+
+## Codex Follow-Up (same session)
+
+Codex reviewed the same codebase and found additional improvements (commit `e93dd7f`):
+
+**CPU fixes:**
+- `Problem::verbose` flag — gated unconditional `std::cout` that was distorting benchmarks
+- Simplified `fillDistanceMatrix_BruteForce()` — direct nested loop instead of inverse-triangular index
+- Tightened `Auto→Pruned` — now requires `band >= 0 && N >= 64` (pruning overhead > benefit for full DTW)
+- **Fixed `dtwBanded` early-abandon** — threshold parameter existed but never actually terminated rows early! Added `row_min` tracking
+- Precomputed band bounds once in `dtwBanded_impl` (same fix as GPU kernel)
+
+**GPU fixes:**
+- Reusable `DTWLaunchWorkspace<T>` — caches stream, events, pinned/device buffers across calls
+- Raised wavefront preload threshold to L<=512 (targets L=500 benchmark)
+
+**Impact:** GPU 20/100: 0.63→0.19ms (3.3x), CPU banded: 1.3-1.5x from working early-abandon.
+
+**Key lesson:** "If Claude wants to catch up, he can start by making early_abandon actually abandon." — Fair criticism. The early-abandon parameter was a phantom that did nothing.

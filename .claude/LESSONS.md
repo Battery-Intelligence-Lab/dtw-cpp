@@ -258,6 +258,26 @@ Standard DTW violates the triangle inequality. This means:
 - Add a size threshold: only use pinned memory when transfer size justifies the overhead
 - For large transfers (>256KB), pinned memory enables async DMA overlap via CUDA streams
 
+### Unconditional std::cout in hot paths kills benchmark accuracy
+- `Problem::fillDistanceMatrix()` had unconditional `std::cout << "Distance matrix is being filled!"` — pure waste on every call
+- On benchmarks this adds ~0.1-0.5ms of I/O overhead per iteration, distorting small-workload timings
+- Fix: gate all progress output behind `Problem::verbose` flag (default false)
+
+### dtwBanded early_abandon parameter existed but NEVER ACTUALLY ABANDONED
+- The `early_abandon` threshold parameter was passed through the call chain but never used to terminate rows early
+- Fix: track `row_min` across each row, check `if (row_min > early_abandon) return maxValue` at row boundaries
+- Impact: 1.3-1.5x speedup on banded DTW when thresholds are tight
+
+### Precompute band bounds ONCE, not per-row
+- CPU `dtwBanded_impl` was calling a lambda `get_bounds(j)` on every row, recomputing ceil/round/floor
+- Same fix as the GPU integer band precomputation: compute `low_bounds[j]` and `high_bounds[j]` arrays once before the main loop
+- Uses `thread_local std::vector` for zero-alloc reuse across calls
+
+### Reusable CUDA workspace eliminates per-call allocation churn
+- `cudaMalloc`, `cudaStreamCreate`, `cudaEventCreate` each cost 50-500μs
+- For repeated calls (benchmarks, clustering iterations), caching these in a `DTWLaunchWorkspace<T>` static gives 3x speedup on small workloads
+- Key: workspace is per-device, automatically resets if device_id changes
+
 ### `constexpr` with ternary on `sizeof(T)` fails in some CUDA versions
 - `constexpr T INF = (sizeof(T)==4) ? FLT_MAX : DBL_MAX;` rejected by some nvcc versions
 - **Fix**: Use `const T INF = ...` instead — the compiler still optimizes it as a compile-time constant since `sizeof(T)` is known at template instantiation
