@@ -154,4 +154,107 @@ data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return C(m_long - 1, m_short - 1);
 }
 
+// -------------------------------------------------------------------------
+// Multivariate ADTW variants (interleaved layout: x[t * ndim + d]).
+// -------------------------------------------------------------------------
+
+/**
+ * @brief Multivariate ADTW (full, linear-space).
+ *
+ * @details Replaces scalar abs(a-b) with L1 sum over ndim features.
+ *          When ndim == 1, delegates to the existing scalar adtwFull_L().
+ *
+ * @tparam data_t Data type.
+ * @param x        First series (flat interleaved: nx_steps * ndim elements).
+ * @param nx_steps Number of timesteps in x.
+ * @param y        Second series (flat interleaved: ny_steps * ndim elements).
+ * @param ny_steps Number of timesteps in y.
+ * @param ndim     Features per timestep.
+ * @param penalty  Penalty for non-diagonal warping steps.
+ */
+template <typename data_t = double>
+data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                     size_t ndim, data_t penalty = 1.0)
+{
+  if (ndim == 1) {
+    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
+    return adtwFull_L(vx, vy, penalty);
+  }
+
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
+  if (nx_steps == 0 || ny_steps == 0) return maxValue;
+  if (x == y && nx_steps == ny_steps) return 0;
+
+  const data_t *short_ptr, *long_ptr;
+  size_t m_short, m_long;
+  if (nx_steps < ny_steps) {
+    short_ptr = x; m_short = nx_steps; long_ptr = y; m_long = ny_steps;
+  } else {
+    short_ptr = y; m_short = ny_steps; long_ptr = x; m_long = nx_steps;
+  }
+
+  auto mv_dist = [ndim](const data_t *a, const data_t *b) {
+    data_t sum = 0;
+    for (size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
+    return sum;
+  };
+
+  thread_local std::vector<data_t> short_side;
+  short_side.resize(m_short);
+
+  // Base: C(0,0) = d(short[0], long[0])
+  short_side[0] = mv_dist(short_ptr, long_ptr);
+
+  // First column: only vertical steps (non-diagonal) => each incurs penalty
+  for (size_t i = 1; i < m_short; i++)
+    short_side[i] = short_side[i - 1] + penalty + mv_dist(short_ptr + i * ndim, long_ptr);
+
+  // Fill remaining columns
+  for (size_t j = 1; j < m_long; j++) {
+    auto diag = short_side[0];
+    // First row of this column: horizontal step (non-diagonal) => incurs penalty
+    short_side[0] += penalty + mv_dist(short_ptr, long_ptr + j * ndim);
+
+    for (size_t i = 1; i < m_short; i++) {
+      // short_side[i-1] = C(i-1, j)  — already updated
+      // short_side[i]   = C(i, j-1)  — not yet updated
+      // diag            = C(i-1, j-1)
+      const data_t min1 = std::min(short_side[i - 1], short_side[i]) + penalty;
+      const data_t dist = mv_dist(short_ptr + i * ndim, long_ptr + j * ndim);
+      const data_t next = std::min(diag, min1) + dist;
+      diag = short_side[i];
+      short_side[i] = next;
+    }
+  }
+
+  return short_side.back();
+}
+
+/**
+ * @brief Multivariate ADTW banded.
+ *
+ * @details When band < 0, delegates to adtwFull_L_mv.
+ *          When ndim == 1, delegates to the scalar adtwBanded().
+ *          For multivariate banded, falls back to full MV for now.
+ *
+ * @tparam data_t Data type.
+ * @param x, nx_steps  First series (flat interleaved).
+ * @param y, ny_steps  Second series (flat interleaved).
+ * @param ndim         Features per timestep.
+ * @param band         Sakoe-Chiba band. Negative means unbanded.
+ * @param penalty      Penalty for non-diagonal warping steps.
+ */
+template <typename data_t = double>
+data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                     size_t ndim, int band = settings::DEFAULT_BAND_LENGTH, data_t penalty = 1.0)
+{
+  if (band < 0) return adtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, penalty);
+  if (ndim == 1) {
+    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
+    return adtwBanded(vx, vy, band, penalty);
+  }
+  // For banded MV ADTW, delegate to full MV (optimize later if needed)
+  return adtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, penalty);
+}
+
 } // namespace dtwc

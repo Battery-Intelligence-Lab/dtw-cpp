@@ -16,6 +16,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - `dtwFull_L_mv()` and `dtwBanded_mv()`: multivariate DTW with interleaved layout. `ndim=1` dispatches to existing scalar code (zero overhead).
 - `derivative_transform_mv()`: stride-aware per-channel derivative transform for multivariate DDTW.
 
+### Added (Wave 1C — Multivariate WDTW / ADTW / DDTW)
+
+- `wdtwFull_mv()` and `wdtwBanded_mv()`: multivariate Weighted DTW with interleaved layout. `ndim=1` delegates to existing scalar code.
+- `adtwFull_L_mv()` and `adtwBanded_mv()`: multivariate Amerced DTW with interleaved layout. `ndim=1` delegates to existing scalar code.
+- `Problem::rebind_dtw_fn()` now dispatches WDTW, ADTW, and DDTW variants to their `_mv` counterparts when `data.ndim > 1`.
+
 ### Changed (Wave 1B)
 - `Problem::rebind_dtw_fn()` dispatches to multivariate DTW when `data.ndim > 1`.
 - `Problem::set_data()` calls `data.validate_ndim()` to catch malformed interleaved layouts early.

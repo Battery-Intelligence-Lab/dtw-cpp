@@ -276,4 +276,106 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return wdtwFull(x, y, w);
 }
 
+// -------------------------------------------------------------------------
+// Multivariate WDTW variants (interleaved layout: x[t * ndim + d]).
+// -------------------------------------------------------------------------
+
+/**
+ * @brief Multivariate WDTW (full, linear-space).
+ *
+ * @details Replaces scalar abs(a-b) with L1 sum over ndim features.
+ *          When ndim == 1, delegates to the existing scalar wdtwFull().
+ *
+ * @tparam data_t Data type.
+ * @param x        First series (flat interleaved: nx_steps * ndim elements).
+ * @param nx_steps Number of timesteps in x.
+ * @param y        Second series (flat interleaved: ny_steps * ndim elements).
+ * @param ny_steps Number of timesteps in y.
+ * @param ndim     Features per timestep.
+ * @param g        Logistic weight steepness.
+ */
+template <typename data_t = double>
+data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                   size_t ndim, data_t g = 0.05)
+{
+  if (ndim == 1) {
+    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
+    const int max_dev = static_cast<int>(std::max(nx_steps, ny_steps)) - 1;
+    auto w = wdtw_weights<data_t>(max_dev, g);
+    return wdtwFull(vx, vy, w);
+  }
+
+  constexpr data_t maxValue = std::numeric_limits<data_t>::max();
+  if (nx_steps == 0 || ny_steps == 0) return maxValue;
+  if (x == y && nx_steps == ny_steps) return 0;
+
+  const data_t *short_ptr, *long_ptr;
+  size_t m_short, m_long;
+  if (nx_steps < ny_steps) {
+    short_ptr = x; m_short = nx_steps; long_ptr = y; m_long = ny_steps;
+  } else {
+    short_ptr = y; m_short = ny_steps; long_ptr = x; m_long = nx_steps;
+  }
+
+  const int max_dev = static_cast<int>(m_long) - 1;
+  auto weights = wdtw_weights<data_t>(max_dev, g);
+
+  auto mv_dist = [ndim](const data_t *a, const data_t *b) {
+    data_t sum = 0;
+    for (size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
+    return sum;
+  };
+
+  thread_local std::vector<data_t> col;
+  col.resize(m_long);
+
+  // First column (j = 0)
+  col[0] = weights[0] * mv_dist(long_ptr, short_ptr);
+  for (size_t i = 1; i < m_long; ++i)
+    col[i] = col[i - 1] + weights[i] * mv_dist(long_ptr + i * ndim, short_ptr);
+
+  // Remaining columns j = 1..m_short-1
+  for (size_t j = 1; j < m_short; ++j) {
+    data_t diag = col[0];
+    col[0] = col[0] + weights[j] * mv_dist(long_ptr, short_ptr + j * ndim);
+
+    for (size_t i = 1; i < m_long; ++i) {
+      const int dev = std::abs(static_cast<int>(i) - static_cast<int>(j));
+      const auto dist = weights[dev] * mv_dist(long_ptr + i * ndim, short_ptr + j * ndim);
+      const data_t old_col_i = col[i];
+      col[i] = std::min(diag, std::min(col[i - 1], old_col_i)) + dist;
+      diag = old_col_i;
+    }
+  }
+
+  return col[m_long - 1];
+}
+
+/**
+ * @brief Multivariate WDTW banded.
+ *
+ * @details When band < 0, delegates to wdtwFull_mv.
+ *          When ndim == 1, delegates to the scalar wdtwBanded().
+ *          For multivariate banded, falls back to full MV for now.
+ *
+ * @tparam data_t Data type.
+ * @param x, nx_steps  First series (flat interleaved).
+ * @param y, ny_steps  Second series (flat interleaved).
+ * @param ndim         Features per timestep.
+ * @param band         Sakoe-Chiba band. Negative means unbanded.
+ * @param g            Logistic weight steepness.
+ */
+template <typename data_t = double>
+data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                     size_t ndim, int band = settings::DEFAULT_BAND_LENGTH, data_t g = 0.05)
+{
+  if (band < 0) return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, g);
+  if (ndim == 1) {
+    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
+    return wdtwBanded(vx, vy, band, g);
+  }
+  // For banded MV WDTW, delegate to full MV (optimize later if needed)
+  return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, g);
+}
+
 } // namespace dtwc

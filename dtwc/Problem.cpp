@@ -156,17 +156,43 @@ void Problem::rebind_dtw_fn()
   // Standard variant dispatch (for Error strategy and unsupported missing strategies)
   switch (variant_params.variant) {
   case DTWVariant::DDTW:
-    dtw_fn_ = [this](const auto &x, const auto &y) { return ddtwBanded(x, y, band); };
+    if (data.ndim > 1) {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        auto dx = derivative_transform_mv(x, data.ndim);
+        auto dy = derivative_transform_mv(y, data.ndim);
+        return dtwBanded_mv(dx.data(), dx.size() / data.ndim,
+                            dy.data(), dy.size() / data.ndim,
+                            data.ndim, band);
+      };
+    } else {
+      dtw_fn_ = [this](const auto &x, const auto &y) { return ddtwBanded(x, y, band); };
+    }
     break;
   case DTWVariant::WDTW:
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      return wdtwBanded(x, y, band, static_cast<data_t>(variant_params.wdtw_g));
-    };
+    if (data.ndim > 1) {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return wdtwBanded_mv(x.data(), x.size() / data.ndim,
+                             y.data(), y.size() / data.ndim,
+                             data.ndim, band, static_cast<data_t>(variant_params.wdtw_g));
+      };
+    } else {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return wdtwBanded(x, y, band, static_cast<data_t>(variant_params.wdtw_g));
+      };
+    }
     break;
   case DTWVariant::ADTW:
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      return adtwBanded(x, y, band, static_cast<data_t>(variant_params.adtw_penalty));
-    };
+    if (data.ndim > 1) {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return adtwBanded_mv(x.data(), x.size() / data.ndim,
+                             y.data(), y.size() / data.ndim,
+                             data.ndim, band, static_cast<data_t>(variant_params.adtw_penalty));
+      };
+    } else {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return adtwBanded(x, y, band, static_cast<data_t>(variant_params.adtw_penalty));
+      };
+    }
     break;
   case DTWVariant::Standard:
   default:
