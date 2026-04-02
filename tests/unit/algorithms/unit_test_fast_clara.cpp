@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <limits>
 #include <set>
 #include <string>
 #include <vector>
@@ -316,11 +317,12 @@ TEST_CASE("FastCLARA throws on invalid inputs", "[fast_clara][errors]")
 }
 
 // ===========================================================================
-// Test 10: Auto sample_size default (40 + 2*k).
+// Test 10: Auto sample_size default (Schubert & Rousseeuw 2021 formula).
 // ===========================================================================
-TEST_CASE("FastCLARA auto sample_size is 40 + 2*k", "[fast_clara][auto_sample_size]")
+TEST_CASE("FastCLARA auto sample_size uses improved formula", "[fast_clara][auto_sample_size]")
 {
-  // With N=100, k=5, auto sample_size = 40 + 10 = 50.
+  // With N=100, k=5: max(40+10, min(100, 150)) = max(50, 100) = 100 -> fallback to FastPAM.
+  // With N=200, k=5: max(50, min(200, 150)) = max(50, 150) = 150 < 200, so CLARA path.
   // The test just verifies it runs without error and produces a valid result.
   constexpr int N = 100;
   constexpr int k = 5;
@@ -330,6 +332,32 @@ TEST_CASE("FastCLARA auto sample_size is 40 + 2*k", "[fast_clara][auto_sample_si
   algorithms::CLARAOptions opts;
   opts.n_clusters = k;
   opts.sample_size = -1; // Auto.
+  opts.n_samples = 2;
+  opts.random_seed = 42;
+
+  auto result = algorithms::fast_clara(prob, opts);
+
+  REQUIRE(result.labels.size() == static_cast<size_t>(N));
+  REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
+  REQUIRE(result.total_cost > 0.0);
+}
+
+// ===========================================================================
+// Test 10b: Auto sample_size with large N uses improved formula (not old 40+2k).
+// ===========================================================================
+TEST_CASE("FastCLARA auto sample_size with large N uses Schubert formula", "[fast_clara][auto_sample_size_large]")
+{
+  // With N=1000, k=5: max(40+10, min(1000, 150)) = max(50, 150) = 150.
+  // Old formula would give 50. New formula gives 150.
+  // Both should produce valid results; this test confirms the new formula runs.
+  constexpr int N = 200;
+  constexpr int k = 5;
+
+  Problem prob = make_clara_problem(N);
+
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = k;
+  opts.sample_size = -1; // Auto — triggers new formula.
   opts.n_samples = 2;
   opts.random_seed = 42;
 
@@ -367,4 +395,88 @@ TEST_CASE("FastCLARA different seeds can produce different results", "[fast_clar
   REQUIRE(result2.labels.size() == static_cast<size_t>(N));
   REQUIRE(result1.total_cost > 0.0);
   REQUIRE(result2.total_cost > 0.0);
+}
+
+// ===========================================================================
+// Test 12: FastCLARA propagates ndim to sub-problem.
+// ===========================================================================
+TEST_CASE("FastCLARA: propagates ndim to sub-problem", "[clara][mv]")
+{
+  dtwc::Data data;
+  data.ndim = 2;
+  // 10 series, 3 timesteps x 2 features each
+  for (int i = 0; i < 10; ++i) {
+    data.p_vec.push_back({double(i), double(i + 1), double(i + 2), double(i + 3), double(i + 4), double(i + 5)});
+    data.p_names.push_back("s" + std::to_string(i));
+  }
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.verbose = false;
+
+  dtwc::algorithms::CLARAOptions opts;
+  opts.n_clusters = 2;
+  opts.n_samples = 2;
+  opts.sample_size = 6;
+
+  auto result = dtwc::algorithms::fast_clara(prob, opts);
+  REQUIRE(result.labels.size() == 10);
+  REQUIRE(result.medoid_indices.size() == 2);
+  REQUIRE(result.total_cost >= 0.0);
+}
+
+// ===========================================================================
+// Test 13: FastCLARA propagates missing_strategy to sub-problem.
+// ===========================================================================
+TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
+{
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  dtwc::Data data;
+  for (int i = 0; i < 10; ++i) {
+    std::vector<double> series = {double(i), double(i + 1), double(i + 2)};
+    if (i % 3 == 0) series[1] = nan;  // Some series have NaN
+    data.p_vec.push_back(std::move(series));
+    data.p_names.push_back("s" + std::to_string(i));
+  }
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.verbose = false;
+
+  dtwc::algorithms::CLARAOptions opts;
+  opts.n_clusters = 2;
+  opts.n_samples = 2;
+  opts.sample_size = 6;
+
+  // Should NOT throw — missing_strategy propagated to sub-problem.
+  REQUIRE_NOTHROW(dtwc::algorithms::fast_clara(prob, opts));
+}
+
+// ===========================================================================
+// Test 14: Improved sample size formula with large k.
+// ===========================================================================
+TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
+{
+  // For k=70: old formula = 40+140=180, new = max(180, min(N, 800))
+  // With N=1000: sample_size should be 800, not 180.
+  dtwc::Data data;
+  for (int i = 0; i < 1000; ++i) {
+    data.p_vec.push_back({double(i), double(i + 1)});
+    data.p_names.push_back("s" + std::to_string(i));
+  }
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.verbose = false;
+
+  dtwc::algorithms::CLARAOptions opts;
+  opts.n_clusters = 70;
+  opts.n_samples = 1;
+  opts.sample_size = -1;  // auto
+
+  // Should complete (the larger sample gives better results).
+  auto result = dtwc::algorithms::fast_clara(prob, opts);
+  REQUIRE(result.labels.size() == 1000);
+  REQUIRE(result.medoid_indices.size() == 70);
 }

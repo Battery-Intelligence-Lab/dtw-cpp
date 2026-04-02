@@ -34,6 +34,18 @@ namespace dtwc::algorithms {
 namespace {
 
 /**
+ * @brief Compute effective CLARA sample size per Schubert & Rousseeuw (2021) recommendation.
+ *
+ * @param k Number of clusters.
+ * @param N Total number of data points.
+ * @return Effective sample size: max(40 + 2*k, min(N, 10*k + 100)).
+ */
+int clara_sample_size(int k, int N)
+{
+  return std::max(40 + 2 * k, std::min(N, 10 * k + 100));
+}
+
+/**
  * @brief Assign all N points to the nearest medoid, computing only N*k distances.
  *
  * @param prob          Original Problem with all N series.
@@ -95,7 +107,7 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
   // Determine effective sample size.
   int sample_size = opts.sample_size;
   if (sample_size < 0) {
-    sample_size = 40 + 2 * opts.n_clusters; // Kaufman & Rousseeuw default
+    sample_size = clara_sample_size(opts.n_clusters, N); // Schubert & Rousseeuw 2021
   }
   // Clamp to [k, N].
   sample_size = std::max(sample_size, opts.n_clusters);
@@ -133,10 +145,13 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
     }
 
     Problem sub_prob("clara_subsample_" + std::to_string(s));
-    // Copy band and variant settings from the original problem.
+    // Copy all relevant settings from the original problem.
     sub_prob.band = prob.band;
     sub_prob.variant_params = prob.variant_params;
-    sub_prob.set_data(Data(std::move(sub_vecs), std::move(sub_names)));
+    sub_prob.missing_strategy = prob.missing_strategy;
+    sub_prob.distance_strategy = prob.distance_strategy;
+    sub_prob.verbose = prob.verbose;
+    sub_prob.set_data(Data(std::move(sub_vecs), std::move(sub_names), prob.data.ndim));
 
     // 3. Run FastPAM on the sub-Problem.
     auto sub_result = fast_pam(sub_prob, opts.n_clusters, opts.max_iter);
