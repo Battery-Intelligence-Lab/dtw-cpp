@@ -65,6 +65,48 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
 }
 
 /**
+ * @brief Multivariate derivative transform: apply Keogh-Pazzani derivative
+ *        independently per channel, preserving interleaved layout.
+ *
+ * @details Input and output are interleaved: x[t * ndim + d] is feature d at timestep t.
+ *          Each channel is transformed independently using the same boundary rules
+ *          as the univariate derivative_transform.
+ *
+ * @tparam data_t Data type of the elements.
+ * @param x     Input series in interleaved layout (n_timesteps * ndim elements).
+ * @param ndim  Number of features per timestep.
+ * @return Derivative-transformed series in interleaved layout (same size as input).
+ *         Returns empty for empty input; returns ndim zeros for single-timestep input.
+ */
+template <typename data_t>
+std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t ndim)
+{
+  if (ndim == 1) return derivative_transform(x);
+
+  const size_t n = x.size() / ndim; // number of timesteps
+  if (n == 0) return {};
+  if (n == 1) return std::vector<data_t>(ndim, data_t(0));
+
+  std::vector<data_t> dx(x.size());
+
+  for (size_t d = 0; d < ndim; ++d) {
+    // Boundary: first point
+    dx[0 * ndim + d] = x[1 * ndim + d] - x[0 * ndim + d];
+
+    // Interior points
+    for (size_t i = 1; i + 1 < n; ++i) {
+      dx[i * ndim + d] = ((x[i * ndim + d] - x[(i - 1) * ndim + d])
+                        + (x[(i + 1) * ndim + d] - x[(i - 1) * ndim + d]) / data_t(2)) / data_t(2);
+    }
+
+    // Boundary: last point
+    dx[(n - 1) * ndim + d] = x[(n - 1) * ndim + d] - x[(n - 2) * ndim + d];
+  }
+
+  return dx;
+}
+
+/**
  * @brief DDTW using banded DTW on derivative series.
  *
  * @details Computes the derivative transform of both input series, then
