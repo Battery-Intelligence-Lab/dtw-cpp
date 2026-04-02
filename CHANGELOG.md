@@ -8,6 +8,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (Wave 2B — Multivariate Variants + Lower Bounds)
+- Multivariate WDTW: `wdtwFull_mv()`, `wdtwBanded_mv()` with position-dependent weights.
+- Multivariate ADTW: `adtwFull_L_mv()`, `adtwBanded_mv()` with non-diagonal step penalty.
+- Multivariate DDTW: via `derivative_transform_mv()` + standard multivariate DTW.
+- Per-channel `compute_envelopes_mv()` and `lb_keogh_mv()`: valid lower bound on dependent multivariate DTW.
+- `lb_keogh_squared()` and `lb_keogh_mv_squared()`: SquaredL2 metric LB_Keogh variants.
+- Multivariate missing-data DTW: `dtwMissing_L_mv()`, `dtwMissing_banded_mv()` with per-channel NaN handling.
+
+### Changed (Wave 2B)
+- `Problem::rebind_dtw_fn()` dispatches to multivariate variants for WDTW, ADTW, DDTW, and ZeroCost missing when `data.ndim > 1`.
+
 ### Added (Wave 1B — Multivariate Foundation)
 - Multivariate time series support via `Data.ndim` field (default 1, backward-compatible).
 - `Data::series_length(i)` and `Data::validate_ndim()` for multivariate data management.
