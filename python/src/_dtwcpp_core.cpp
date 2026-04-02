@@ -494,6 +494,23 @@ NB_MODULE(_dtwcpp_core, m) {
         "Compute NxN DTW distance matrix on GPU.\n\n"
         "Returns NxN numpy array of DTW distances.");
 
+  m.def("compute_lb_keogh_cuda",
+        [](const std::vector<std::vector<double>> &series,
+           int band, int device_id) {
+          nb::gil_scoped_release release;
+          auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
+          size_t np = result.lb_values.size();
+          double* data = new double[np];
+          std::copy(result.lb_values.begin(), result.lb_values.end(), data);
+          nb::gil_scoped_acquire acquire;
+          nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+          return nb::ndarray<nb::numpy, double>(data, {np}, owner);
+        },
+        "series"_a, "band"_a, "device_id"_a = 0,
+        "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
+        "Returns flat array of symmetric LB_Keogh values (upper triangle).\n"
+        "Requires band >= 0 (Sakoe-Chiba constraint).");
+
   m.attr("CUDA_AVAILABLE") = true;
 #else
   m.def("cuda_available", []() { return false; },
@@ -510,6 +527,13 @@ NB_MODULE(_dtwcpp_core, m) {
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
         "Compute NxN DTW distance matrix on GPU (requires CUDA build).");
+
+  m.def("compute_lb_keogh_cuda",
+        [](const std::vector<std::vector<double>> &, int, int) -> nb::object {
+          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
+        },
+        "series"_a, "band"_a, "device_id"_a = 0,
+        "Compute LB_Keogh lower bounds on GPU (requires CUDA build).");
 
   m.attr("CUDA_AVAILABLE") = false;
 #endif

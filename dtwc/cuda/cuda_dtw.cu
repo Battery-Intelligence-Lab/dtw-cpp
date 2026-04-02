@@ -2029,7 +2029,7 @@ std::vector<double> launch_one_vs_all_kernel(
 
   } else {
     // Wavefront kernel: one block per target, grid.y = K queries
-    const bool preload = false; // max_L > 256 here
+    // max_L > 256 here: never preload, use 2 or 3 diag buffers
     const size_t n_bufs = (max_L > 1024) ? 2 : 3;
     size_t shared_mem = n_bufs * max_L * sizeof(T);
     if (band >= 0)

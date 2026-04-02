@@ -47,6 +47,7 @@ from dtwcpp._dtwcpp_core import (
     cuda_available,
     cuda_device_info,
     compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
+    compute_lb_keogh_cuda,
 )
 
 __version__ = "1.0.0"
@@ -140,9 +141,6 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
 
     backend, device_id = _resolve_device(device)
     if backend == "cuda":
-        import warnings as _w
-        if use_pruning:
-            _w.warn("use_pruning is ignored on device='cuda'.", stacklevel=2)
         use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
         return _compute_distance_matrix_cuda(
             series, band=band, use_squared_l2=use_squared_l2,
@@ -174,7 +172,7 @@ __all__ = [
     "silhouette", "davies_bouldin_index",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
-    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
+    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "save_checkpoint", "load_checkpoint", "CheckpointOptions",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",
