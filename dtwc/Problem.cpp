@@ -170,7 +170,15 @@ void Problem::rebind_dtw_fn()
     break;
   case DTWVariant::Standard:
   default:
-    dtw_fn_ = [this](const auto &x, const auto &y) { return dtwBanded(x, y, band); };
+    if (data.ndim > 1) {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return dtwBanded_mv(x.data(), x.size() / data.ndim,
+                            y.data(), y.size() / data.ndim,
+                            data.ndim, band);
+      };
+    } else {
+      dtw_fn_ = [this](const auto &x, const auto &y) { return dtwBanded(x, y, band); };
+    }
     break;
   }
 }

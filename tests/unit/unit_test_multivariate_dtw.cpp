@@ -278,3 +278,86 @@ TEST_CASE("MV DTW: D=1 performance parity", "[mv][dtw][perf]")
   // MV(D=1) dispatches to existing scalar path, so timing should be ~1x.
   // We don't assert on timing — just print for observation.
 }
+
+// =========================================================================
+//  Task 4: Problem multivariate DTW integration
+// =========================================================================
+
+TEST_CASE("Problem: multivariate DTW distance matrix", "[mv][problem]")
+{
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    {0,0, 1,1},     // series 0: [(0,0), (1,1)]
+    {0,0, 1,1},     // series 1: identical to 0
+    {10,10, 11,11}  // series 2: far away
+  };
+  data.p_names = {"a", "b", "c"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.verbose = false;
+  prob.fillDistanceMatrix();
+
+  REQUIRE(prob.distByInd(0, 1) == 0.0);  // identical
+  REQUIRE(prob.distByInd(0, 2) > 0.0);   // different
+  REQUIRE(prob.distByInd(0, 2) == prob.distByInd(1, 2));  // symmetry
+}
+
+TEST_CASE("Problem: ndim=1 backward compat", "[mv][problem]")
+{
+  dtwc::Data data;
+  data.p_vec = {{1,2,3}, {4,5,6}};
+  data.p_names = {"a", "b"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.verbose = false;
+  prob.fillDistanceMatrix();
+
+  double d = prob.distByInd(0, 1);
+  REQUIRE(d > 0.0);
+  // Should match standard DTW
+  double d_std = dtwc::dtwBanded(std::vector<double>{1,2,3}, std::vector<double>{4,5,6}, prob.band);
+  REQUIRE(d == d_std);
+}
+
+// =========================================================================
+//  Task 5: derivative_transform_mv tests
+// =========================================================================
+
+TEST_CASE("derivative_transform_mv: ndim=1 unchanged", "[mv][ddtw]")
+{
+  std::vector<double> x = {1, 3, 6, 10};
+  auto dx_old = dtwc::derivative_transform(x);
+  auto dx_new = dtwc::derivative_transform_mv(x, 1);
+  REQUIRE(dx_old.size() == dx_new.size());
+  for (size_t i = 0; i < dx_old.size(); ++i)
+    CHECK(std::abs(dx_new[i] - dx_old[i]) < 1e-10);
+}
+
+TEST_CASE("derivative_transform_mv: ndim=2 per-channel", "[mv][ddtw]")
+{
+  // 4 timesteps x 2 features: [(1,10), (3,20), (6,30), (10,40)]
+  std::vector<double> x = {1,10, 3,20, 6,30, 10,40};
+  auto dx = dtwc::derivative_transform_mv(x, 2);
+  REQUIRE(dx.size() == 8);
+
+  auto ch0 = dtwc::derivative_transform(std::vector<double>{1,3,6,10});
+  auto ch1 = dtwc::derivative_transform(std::vector<double>{10,20,30,40});
+
+  for (size_t t = 0; t < 4; ++t) {
+    CHECK(std::abs(dx[t*2+0] - ch0[t]) < 1e-10);
+    CHECK(std::abs(dx[t*2+1] - ch1[t]) < 1e-10);
+  }
+}
+
+TEST_CASE("derivative_transform_mv: empty and single", "[mv][ddtw]")
+{
+  auto dx_empty = dtwc::derivative_transform_mv(std::vector<double>{}, 3);
+  REQUIRE(dx_empty.empty());
+
+  auto dx_single = dtwc::derivative_transform_mv(std::vector<double>{1,2,3}, 3);
+  REQUIRE(dx_single.size() == 3);
+  for (auto v : dx_single) CHECK(v == 0.0);
+}

@@ -129,6 +129,7 @@ public:
   void set_data(dtwc::Data data_)
   {
     data = data_;
+    data.validate_ndim();
     refreshDistanceMatrix();
   }
 
