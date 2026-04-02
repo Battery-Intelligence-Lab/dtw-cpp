@@ -106,7 +106,10 @@ core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts)
         // Skip the swap loop entirely; the result is optimal by definition.
         const bool all_medoids = (k == N);
 
-        while (!all_medoids && neighbor_count < max_nb) {
+        int total_swaps = 0;
+        const int max_total_swaps = max_nb * 10; // hard upper bound on total iterations
+        while (!all_medoids && neighbor_count < max_nb && total_swaps < max_total_swaps) {
+            ++total_swaps;
             if (has_budget && dtw_evals >= opts.max_dtw_evals) break;
 
             // Pick a random medoid slot to potentially remove.
