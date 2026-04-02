@@ -272,4 +272,156 @@ inline bool lb_pruning_compatible(DistanceMetric m)
   return m == DistanceMetric::L1;
 }
 
+// ======================================================================
+//  Multivariate LB_Keogh (per-channel envelopes, interleaved layout)
+// ======================================================================
+
+/**
+ * @brief Compute per-channel Sakoe-Chiba envelopes for a multivariate series.
+ *
+ * @details Each channel is enveloped independently with stride @p ndim.
+ *          Input and output arrays use the same interleaved layout:
+ *          element at timestep t, channel d is at index t*ndim+d.
+ *          For ndim==1 this delegates to compute_envelopes() (zero overhead).
+ *
+ *          The per-channel lower bound computed from these envelopes is a
+ *          valid lower bound on dependent multivariate DTW (Keogh 2005).
+ *
+ * @tparam T Numeric data type (float, double).
+ * @param series Input multivariate series, interleaved layout, n_steps * ndim elements.
+ * @param n_steps Number of timesteps.
+ * @param ndim Number of channels (dimensions).
+ * @param band Sakoe-Chiba band width (half-window radius).
+ * @param upper_out Output: upper envelope, same interleaved layout (pre-allocated).
+ * @param lower_out Output: lower envelope, same interleaved layout (pre-allocated).
+ */
+template <typename T>
+void compute_envelopes_mv(const T *series, std::size_t n_steps, std::size_t ndim,
+                          int band, T *upper_out, T *lower_out)
+{
+  if (n_steps == 0 || ndim == 0) return;
+  if (ndim == 1) {
+    compute_envelopes(series, n_steps, band, upper_out, lower_out);
+    return;
+  }
+
+  const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
+
+  for (std::size_t d = 0; d < ndim; ++d) {
+    for (std::size_t p = 0; p < n_steps; ++p) {
+      const std::size_t lo = (p >= w) ? p - w : 0;
+      const std::size_t hi = std::min(p + w + 1, n_steps);
+      T max_val = series[lo * ndim + d];
+      T min_val = series[lo * ndim + d];
+      for (std::size_t j = lo + 1; j < hi; ++j) {
+        T val = series[j * ndim + d];
+        if (val > max_val) max_val = val;
+        if (val < min_val) min_val = val;
+      }
+      upper_out[p * ndim + d] = max_val;
+      lower_out[p * ndim + d] = min_val;
+    }
+  }
+}
+
+/**
+ * @brief LB_Keogh for multivariate interleaved series using L1 metric.
+ *
+ * @details Sums per-channel LB_Keogh contributions across all channels.
+ *          This is a valid lower bound on dependent multivariate DTW under the
+ *          Sakoe-Chiba band constraint (proven in Keogh & Ratanamahatana 2005).
+ *          For ndim==1 this delegates to the scalar lb_keogh() (zero overhead).
+ *
+ * @tparam T Numeric data type.
+ * @param query Query series pointer, interleaved layout, n_steps * ndim elements.
+ * @param n_steps Number of timesteps.
+ * @param ndim Number of channels.
+ * @param upper Upper envelope of the candidate (from compute_envelopes_mv).
+ * @param lower Lower envelope of the candidate (from compute_envelopes_mv).
+ * @return Lower bound value (always <= true DTW distance under the band constraint).
+ */
+template <typename T>
+T lb_keogh_mv(const T *query, std::size_t n_steps, std::size_t ndim,
+              const T *upper, const T *lower)
+{
+  if (ndim == 1) return lb_keogh(query, n_steps, upper, lower);
+
+  T sum = T(0);
+  for (std::size_t i = 0; i < n_steps; ++i) {
+    for (std::size_t d = 0; d < ndim; ++d) {
+      const std::size_t idx = i * ndim + d;
+      T excess_upper = query[idx] - upper[idx];
+      T excess_lower = lower[idx] - query[idx];
+      sum += std::max(T(0), std::max(excess_upper, excess_lower));
+    }
+  }
+  return sum;
+}
+
+// ======================================================================
+//  SquaredL2 LB_Keogh variants
+// ======================================================================
+
+/**
+ * @brief LB_Keogh with SquaredL2 metric: sum of squared distances to envelope boundary.
+ *
+ * @details A valid lower bound on DTW computed with the SquaredL2 metric.
+ *          If the query point lies within [lower[i], upper[i]], the contribution
+ *          is zero. Otherwise it is the square of the distance to the nearest boundary.
+ *
+ * @tparam T Numeric data type.
+ * @param query Query series pointer.
+ * @param n Length of the series (must match envelope length).
+ * @param upper Upper envelope of the candidate.
+ * @param lower Lower envelope of the candidate.
+ * @return SquaredL2 lower bound value.
+ */
+template <typename T>
+T lb_keogh_squared(const T *query, std::size_t n,
+                   const T *upper, const T *lower)
+{
+  T sum = T(0);
+  for (std::size_t i = 0; i < n; ++i) {
+    T excess = T(0);
+    if (query[i] > upper[i]) excess = query[i] - upper[i];
+    else if (query[i] < lower[i]) excess = lower[i] - query[i];
+    sum += excess * excess;
+  }
+  return sum;
+}
+
+/**
+ * @brief LB_Keogh SquaredL2 for multivariate interleaved series.
+ *
+ * @details Sums squared per-channel LB contributions across all channels.
+ *          Valid lower bound on dependent multivariate DTW using SquaredL2 metric.
+ *          For ndim==1 this delegates to lb_keogh_squared() (zero overhead).
+ *
+ * @tparam T Numeric data type.
+ * @param query Query series pointer, interleaved layout, n_steps * ndim elements.
+ * @param n_steps Number of timesteps.
+ * @param ndim Number of channels.
+ * @param upper Upper envelope of the candidate (from compute_envelopes_mv).
+ * @param lower Lower envelope of the candidate (from compute_envelopes_mv).
+ * @return SquaredL2 lower bound value.
+ */
+template <typename T>
+T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
+                      const T *upper, const T *lower)
+{
+  if (ndim == 1) return lb_keogh_squared(query, n_steps, upper, lower);
+
+  T sum = T(0);
+  for (std::size_t i = 0; i < n_steps; ++i) {
+    for (std::size_t d = 0; d < ndim; ++d) {
+      const std::size_t idx = i * ndim + d;
+      T excess = T(0);
+      if (query[idx] > upper[idx]) excess = query[idx] - upper[idx];
+      else if (query[idx] < lower[idx]) excess = lower[idx] - query[idx];
+      sum += excess * excess;
+    }
+  }
+  return sum;
+}
+
 } // namespace dtwc::core
