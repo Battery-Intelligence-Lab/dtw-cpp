@@ -1,116 +1,91 @@
 # DTWC++ Benchmarks
 
 Performance measurements on a laptop with:
+
 - **CPU**: Intel Core i7-12800H (10 cores / 20 threads, 2.8 GHz base)
-- **GPU**: NVIDIA GeForce RTX 3070 Laptop (5120 CUDA cores, 8 GB VRAM)
+- **GPU**: NVIDIA GeForce RTX 3070 Laptop (5120 CUDA cores, 8 GB VRAM, CC 8.6)
 - **OS**: Windows 11, MSVC 19.40, CUDA 12.2
 
-## CPU Distance Matrix (OpenMP, 10 cores)
+## Final GPU Performance (FP32 Auto-Precision)
 
-| N | L | Band | Time (ms) | Pairs/sec | Gcells/sec |
+| N | L | GPU (ms) | CPU (ms) | **Speedup** | Kernel Used |
 |---|---|---|---|---|---|
-| 20 | 100 | full | 1.1 | 179K | 1.8 |
-| 50 | 100 | full | 3.4 | 390K | 3.9 |
-| 100 | 100 | full | 12.5 | 403K | 4.0 |
-| 50 | 500 | full | 88 | 14.8K | 3.7 |
-| 100 | 500 | full | 318 | 16.7K | 4.2 |
-| 200 | 500 | full | 1251 | 17.0K | 4.2 |
-| 50 | 1000 | full | 360 | 3.7K | 3.7 |
-| 100 | 1000 | full | 1324 | 4.2K | 4.2 |
+| 100 | 100 | **0.80** | 12.3 | **15x** | Register-tiled (TILE_W=4) |
+| 50 | 500 | **5.68** | 89.7 | **16x** | Wavefront (persistent) |
+| 100 | 500 | **20.3** | 320 | **16x** | Wavefront (persistent) |
+| 200 | 500 | **80.0** | 1297 | **16x** | Wavefront (persistent) |
+| 50 | 1000 | **20.8** | 356 | **17x** | Wavefront (persistent) |
+| 100 | 1000 | **80.6** | 1330 | **17x** | Wavefront (persistent) |
 
-## GPU Distance Matrix (CUDA wavefront kernel)
+## GPU Kernel Throughput by Series Length
 
-| N | L | Band | Time (ms) | Pairs/sec | Gcells/sec | vs CPU |
-|---|---|---|---|---|---|---|
-| 20 | 100 | full | 0.63 | 340K | 3.4 | 1.7x |
-| 50 | 100 | full | 1.0 | 1.36M | 13.6 | 3.3x |
-| 100 | 100 | full | 2.8 | 1.92M | 19.2 | 4.5x |
-| 50 | 500 | full | 13.3 | 97.6K | 24.4 | 6.6x |
-| 100 | 500 | full | 52.2 | 96.8K | 24.2 | 6.1x |
-| 200 | 500 | full | 200 | 98.0K | 24.5 | 6.3x |
-| 50 | 1000 | full | 51 | 24.5K | 24.5 | 7.1x |
-| 100 | 1000 | full | 196 | 25.0K | 25.0 | 6.8x |
-
-### GPU Scaling
-
-**By N (fixed L=500):**
-
-| N | Pairs | Time (ms) | Pairs/sec |
+| L | Gcells/sec | Kernel | Key Technique |
 |---|---|---|---|
-| 10 | 45 | 1.3 | 37K |
-| 20 | 190 | 2.9 | 66K |
-| 50 | 1225 | 14.2 | 88K |
-| 100 | 4950 | 52.3 | 97K |
-| 200 | 19900 | 208 | 96K |
-| 500 | 124750 | 1201 | 105K |
+| 100 | ~70 | `dtw_regtile_kernel<4>` | Register tiling, `__shfl_sync` |
+| 250 | ~75 | `dtw_regtile_kernel<8>` | Register tiling, `__shfl_sync` |
+| 500 | ~60 | `dtw_wavefront_kernel` | 3-buffer, persistent, preload |
+| 1000 | ~63 | `dtw_wavefront_kernel` | 3-buffer, persistent |
+| 2000 | ~68 | `dtw_wavefront_kernel` | Double-buffer, persistent |
+| 4000 | ~74 | `dtw_wavefront_kernel` | Double-buffer, persistent |
 
-Throughput saturates at ~100K pairs/sec for N >= 100 (enough blocks to fill all SMs).
+Peak: **75 Gcells/sec** at L=250. Sustained >60 Gcells/sec across all lengths.
 
-**By L (fixed N=50):**
+## Five Kernel Variants
 
-| L | Time (ms) | Gcells/sec |
-|---|---|---|
-| 100 | 1.1 | 13.0 |
-| 250 | 4.0 | 21.7 |
-| 500 | 13.5 | 24.5 |
-| 1000 | 55.3 | 22.1 |
-| 2000 | 206 | 24.1 |
-| 4000 | 916 | 21.3 |
-
-Cell throughput is stable at ~22-24 Gcells/sec for L >= 250.
+| Series Length | Kernel | Threads | Technique |
+|---|---|---|---|
+| L <= 32 | `dtw_warp_kernel` | 8 warps/block | `__shfl_sync`, 8 pairs/block |
+| 32 < L <= 128 | `dtw_regtile_kernel<4>` | 8 warps/block | cuDTW++-style register tiling |
+| 128 < L <= 256 | `dtw_regtile_kernel<8>` | 8 warps/block | TILE_W=8 register tiling |
+| 256 < L <= 1024 | `dtw_wavefront_kernel` | Block (128-256) | Shared-mem 3-buffer, persistent |
+| L > 1024 | `dtw_wavefront_kernel` | Block (256) | Double-buffer for occupancy |
 
 ## MPI Distance Matrix (4 ranks, each with OpenMP)
 
-| N | L | Band | MPI time (ms) | Serial time (ms) | Speedup | Efficiency |
-|---|---|---|---|---|---|---|
-| 20 | 100 | full | 1.1 | 7.9 | 7.2x | 180% |
-| 50 | 500 | full | 90 | 1357 | 15.0x | 376% |
-| 100 | 500 | full | 310 | 5678 | 18.3x | 458% |
-| 200 | 500 | full | 1235 | 19618 | 15.9x | 397% |
-| 100 | 1000 | full | 1297 | 19926 | 15.4x | 384% |
-| 50 | 500 | 50 | 19 | 984 | 52.2x | 1305% |
-
-Note: "Serial time" is single-threaded. MPI with 4 ranks uses OpenMP (10
-cores each), so the >100% efficiency reflects MPI + OpenMP combined
-parallelism vs the single-thread serial reference.
+| N | L | Band | MPI time (ms) | Serial time (ms) | Speedup |
+|---|---|---|---|---|---|
+| 50 | 500 | full | 90 | 1357 | 15x |
+| 100 | 500 | full | 310 | 5678 | 18x |
+| 200 | 500 | full | 1235 | 19618 | 16x |
+| 50 | 500 | 50 | 19 | 984 | 52x |
 
 ## Running Benchmarks
 
 ```bash
-# CPU + GPU benchmarks (Google Benchmark)
-cmake -S . -B build -DDTWC_BUILD_BENCHMARK=ON -DDTWC_ENABLE_CUDA=ON
+# Build with CUDA + benchmarks
+cmake -S . -B build \
+  -DDTWC_BUILD_BENCHMARK=ON \
+  -DDTWC_ENABLE_CUDA=ON \
+  -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release -j
-./build/bin/bench_dtw_baseline   # CPU DTW microbenchmarks
-./build/bin/bench_cuda_dtw       # GPU vs CPU distance matrix
 
-# MPI benchmarks (standalone)
+# GPU vs CPU distance matrix
+./build/bin/bench_cuda_dtw
+
+# CPU DTW microbenchmarks
+./build/bin/bench_dtw_baseline
+
+# MPI benchmarks
 cmake -S . -B build -DDTWC_BUILD_BENCHMARK=ON -DDTWC_ENABLE_MPI=ON
 cmake --build build --config Release -j
-mpiexec -n 4 ./build/bin/bench_mpi_dtw       # distributed benchmark
-mpiexec -n 1 ./build/bin/bench_mpi_dtw       # single-rank baseline
+mpiexec -n 4 ./build/bin/bench_mpi_dtw
+
+# Python GPU benchmark
+uv run python benchmarks/bench_cuda_python.py
 
 # JSON output for plotting
 ./build/bin/bench_cuda_dtw --benchmark_format=json --benchmark_out=results/cuda.json
 ```
 
-## GPU Distance Matrix — FP32 Auto-Precision (consumer GPUs)
-
-On consumer GPUs (RTX/GTX/L40S), `CUDAPrecision::Auto` selects FP32 for ~2x
-speedup over FP64, with ~1e-5 relative error (acceptable for clustering).
-
-| N | L | Band | Time (ms) | Pairs/sec | vs CPU |
-|---|---|---|---|---|---|
-| 100 | 100 | full | 1.55 | 3.32M | 9.4x |
-| 50 | 500 | full | 6.6 | 196K | 13.9x |
-| 100 | 500 | full | 24.4 | 211K | 14.7x |
-| 200 | 500 | full | 95.3 | 225K | 16.5x |
-| 50 | 1000 | full | 16.9 | 82K | 22.7x |
-| 100 | 1000 | full | 67.6 | 79K | 20.4x |
-
 ## Optimization History
 
-| Date | Change | Impact |
-|---|---|---|
-| 2026-04-01 | Baseline: 1-thread-per-block CUDA kernel | 910M cells/sec (4x slower than CPU) |
-| 2026-04-01 | Anti-diagonal wavefront kernel (multi-threaded blocks) | 22 Gcells/sec (24x kernel speedup, 5-7x faster than CPU) |
-| 2026-04-02 | FP32 auto-precision on consumer GPUs + `__ldg()` + banded DTW | 2x over FP64, **15-23x faster than CPU** |
+| Date | Change | Throughput | vs CPU |
+|---|---|---|---|
+| Apr 01 | Baseline (1 thread/block) | 0.9 Gcells/s | 4x slower |
+| Apr 01 | Anti-diagonal wavefront | 22 Gcells/s | 5-7x faster |
+| Apr 02 | FP32 auto-precision | 50 Gcells/s | 15x faster |
+| Apr 02 | Register-tiled kernel (L<=256) | 75 Gcells/s | 16x faster |
+| Apr 02 | Persistent kernel + double-buffer | 74 Gcells/s (L=4000) | 17x faster |
+| Apr 02 | On-device pairs + GPU matrix write | 70 Gcells/s (+36% small L) | 15-17x faster |
+
+**85x kernel speedup** from baseline to final (0.9 -> 75 Gcells/s).
