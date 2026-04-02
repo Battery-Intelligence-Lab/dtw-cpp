@@ -187,8 +187,11 @@ double Problem::distByInd(int i, int j)
  */
 static bool pruned_strategy_applicable(const Problem &prob)
 {
-  // Pruning lower bounds are only valid for Standard DTW variant
-  return prob.variant_params.variant == core::DTWVariant::Standard;
+  // LB_Keogh is only available for banded standard DTW, and the full-DTW
+  // path tends to pay the pruning overhead without getting enough benefit.
+  return prob.variant_params.variant == core::DTWVariant::Standard
+      && prob.band >= 0
+      && prob.size() >= 64;
 }
 
 /**
@@ -199,20 +202,20 @@ static bool pruned_strategy_applicable(const Problem &prob)
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data.size();
+  distMat.resize(N);
 
-  auto oneTask = [this, N](size_t k) {
-    const double Nd = static_cast<double>(N);
-    const double kd = static_cast<double>(k);
-    size_t i = static_cast<size_t>(std::floor(Nd + 0.5 - std::sqrt((Nd + 0.5) * (Nd + 0.5) - 2.0 * kd)));
-    size_t row_start = i * N - i * (i - 1) / 2;
-    if (row_start + (N - i) <= k) {
-      row_start += (N - i);
-      ++i;
-    }
-    size_t j = i + (k - row_start);
-    distByInd(static_cast<int>(i), static_cast<int>(j));
-  };
-  run(oneTask, N * (N + 1) / 2);
+  for (size_t i = 0; i < N; ++i)
+    distMat.set(i, i, 0.0);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(dynamic, 1)
+#endif
+  for (int ii = 0; ii < static_cast<int>(N); ++ii) {
+    const size_t i = static_cast<size_t>(ii);
+    const auto &series_i = p_vec(i);
+    for (size_t j = i + 1; j < N; ++j)
+      distMat.set(i, j, dtw_fn_(series_i, p_vec(j)));
+  }
 }
 
 /**
@@ -227,9 +230,8 @@ void Problem::fillDistanceMatrix()
 {
   if (isDistanceMatrixFilled()) return;
 
-  const size_t N = data.size();
-
-  std::cout << "Distance matrix is being filled!" << std::endl;
+  if (verbose)
+    std::cout << "Distance matrix is being filled!" << std::endl;
 
   // Resolve Auto strategy
   DistanceMatrixStrategy effective = distance_strategy;
@@ -243,9 +245,11 @@ void Problem::fillDistanceMatrix()
   switch (effective) {
   case DistanceMatrixStrategy::Pruned: {
     auto stats = core::fill_distance_matrix_pruned(*this, band);
-    std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
-              << stats.early_abandoned << " early-abandoned, "
-              << "pruning ratio: " << stats.pruning_ratio() << std::endl;
+    if (verbose) {
+      std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
+                << stats.early_abandoned << " early-abandoned, "
+                << "pruning ratio: " << stats.pruning_ratio() << std::endl;
+    }
     break;
   }
   case DistanceMatrixStrategy::GPU:
@@ -259,7 +263,8 @@ void Problem::fillDistanceMatrix()
   // Note: DistanceMatrixStrategy::Auto is already resolved above.
   }
 
-  std::cout << "Distance matrix has been filled!" << std::endl;
+  if (verbose)
+    std::cout << "Distance matrix has been filled!" << std::endl;
 }
 /**
  * @brief Performs clustering based on the specified method.

@@ -86,6 +86,7 @@ public:
   int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
+  bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 

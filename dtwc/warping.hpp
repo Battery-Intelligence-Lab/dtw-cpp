@@ -168,30 +168,40 @@ data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   const double slope = static_cast<double>(m_long - 1) / (m_short - 1);
   const auto window = std::max(static_cast<double>(band), slope / 2);
 
-  auto get_bounds = [slope, window](int x) {
-    const auto y = slope * x;
-    const int low = std::ceil(std::round(100 * (y - window)) / 100.0);
-    const int high = std::floor(std::round(100 * (y + window)) / 100.0) + 1;
-    return std::pair(low, high);
-  };
-
   thread_local std::vector<data_t> col;
   col.assign(m_long, maxValue);
+  thread_local std::vector<int> low_bounds;
+  thread_local std::vector<int> high_bounds;
+  low_bounds.resize(m_short);
+  high_bounds.resize(m_short);
+  const bool do_early_abandon = (early_abandon >= 0);
+
+  for (int row = 0; row < m_short; ++row) {
+    const double center = slope * row;
+    low_bounds[row] = static_cast<int>(
+      std::ceil(std::round(100.0 * (center - window)) / 100.0));
+    high_bounds[row] = static_cast<int>(
+      std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+  }
 
   col[0] = distance(long_ptr[0], short_ptr[0]);
   {
-    const auto [lo, hi] = get_bounds(0);
+    const int hi = high_bounds[0];
     for (int i = 1; i < std::min(hi, m_long); ++i)
       col[i] = col[i - 1] + distance(long_ptr[i], short_ptr[0]);
   }
+  if (do_early_abandon && col[0] > early_abandon) return maxValue;
 
   for (int j = 1; j < m_short; j++) {
-    const auto [lo, hi] = get_bounds(j);
-    const auto [prev_lo, prev_hi] = get_bounds(j - 1);
+    const int lo = low_bounds[j];
+    const int hi = high_bounds[j];
+    const int prev_lo = low_bounds[j - 1];
+    const int prev_hi = high_bounds[j - 1];
     const int high = std::min(hi, m_long);
     const int low = std::max(lo, 0);
 
     data_t diag = maxValue;
+    data_t row_min = do_early_abandon ? maxValue : data_t{0};
 
     const int first_row = std::max(low, 1);
     if (first_row - 1 >= std::max(prev_lo, 0) && first_row - 1 < std::min(prev_hi, m_long)) {
@@ -201,6 +211,7 @@ data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
     if (low == 0) {
       diag = col[0];
       col[0] = col[0] + distance(long_ptr[0], short_ptr[j]);
+      if (do_early_abandon) row_min = col[0];
     }
 
     for (int i = std::max(prev_lo, 0); i < std::min(low, std::min(prev_hi, m_long)); ++i)
@@ -211,10 +222,13 @@ data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
       const auto minimum = std::min(diag, std::min(col[i - 1], old_col_i));
       diag = old_col_i;
       col[i] = minimum + distance(long_ptr[i], short_ptr[j]);
+      if (do_early_abandon) row_min = std::min(row_min, col[i]);
     }
 
     for (int i = std::max(high, std::max(prev_lo, 0)); i < std::min(prev_hi, m_long); ++i)
       col[i] = maxValue;
+
+    if (do_early_abandon && row_min > early_abandon) return maxValue;
   }
 
   return col[m_long - 1];

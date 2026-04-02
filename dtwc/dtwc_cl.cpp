@@ -222,6 +222,7 @@ int main(int argc, char *argv[])
   prob.maxIter = max_iter;
   prob.N_repetition = n_init;
   prob.output_folder = output_dir;
+  prob.verbose = verbose;
 
   // Set DTW variant
   dtwc::core::DTWVariantParams vparams;

@@ -38,6 +38,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #define CUDA_CHECK(call)                                                     \
   do {                                                                       \
@@ -116,7 +117,7 @@ __global__ void dtw_wavefront_kernel(
       : static_cast<T>(1.7976931348623157e+308); // DBL_MAX
 
   // Preload threshold: series shorter than this are loaded into shared memory
-  constexpr int PRELOAD_THRESHOLD = 256;
+  constexpr int PRELOAD_THRESHOLD = 512;
   const bool preload = (max_L <= PRELOAD_THRESHOLD);
 
   // Shared memory layout:
@@ -904,6 +905,161 @@ std::string cuda_device_info(int device_id)
 
 namespace {
 
+template <typename T>
+struct CachedHostBuffer {
+  size_t capacity = 0;
+  PinnedPtr<T> pinned;
+  std::vector<T> fallback;
+
+  T *ensure(size_t count, bool prefer_pinned)
+  {
+    if (pinned && capacity >= count)
+      return pinned.get();
+
+    if (prefer_pinned) {
+      auto new_pinned = pinned_alloc_nothrow<T>(count);
+      if (new_pinned) {
+        pinned = std::move(new_pinned);
+        fallback.clear();
+        capacity = count;
+        return pinned.get();
+      }
+    }
+
+    pinned.reset();
+    if (fallback.size() < count)
+      fallback.resize(count);
+    capacity = count;
+    return fallback.data();
+  }
+};
+
+template <typename T>
+struct DTWLaunchWorkspace {
+  int device_id = -1;
+  size_t series_capacity = 0;
+  size_t length_capacity = 0;
+  size_t matrix_capacity = 0;
+  size_t counter_capacity = 0;
+  CachedHostBuffer<T> host_series;
+  CachedHostBuffer<T> host_matrix;
+  CudaPtr<T> d_series;
+  CudaPtr<int> d_lengths;
+  CudaPtr<T> d_result_matrix;
+  CudaPtr<int> d_counter;
+  CudaStream stream;
+  CudaEvent evt_start;
+  CudaEvent evt_end;
+
+  void ensure_runtime(int new_device_id)
+  {
+    if (device_id != new_device_id) {
+      d_series.reset();
+      d_lengths.reset();
+      d_result_matrix.reset();
+      d_counter.reset();
+      stream.reset();
+      evt_start.reset();
+      evt_end.reset();
+      series_capacity = 0;
+      length_capacity = 0;
+      matrix_capacity = 0;
+      counter_capacity = 0;
+      device_id = new_device_id;
+    }
+
+    if (!stream)
+      stream = make_cuda_stream();
+    if (!evt_start)
+      evt_start = make_cuda_event();
+    if (!evt_end)
+      evt_end = make_cuda_event();
+  }
+};
+
+template <typename T>
+DTWLaunchWorkspace<T> &get_dtw_launch_workspace(int device_id)
+{
+  thread_local DTWLaunchWorkspace<T> workspace;
+  workspace.ensure_runtime(device_id);
+  return workspace;
+}
+
+template <typename T>
+void ensure_dtw_device_capacity(
+    DTWLaunchWorkspace<T> &workspace,
+    size_t series_elems,
+    size_t length_elems,
+    size_t matrix_elems)
+{
+  if (workspace.series_capacity < series_elems) {
+    workspace.d_series = cuda_alloc<T>(series_elems);
+    workspace.series_capacity = series_elems;
+  }
+  if (workspace.length_capacity < length_elems) {
+    workspace.d_lengths = cuda_alloc<int>(length_elems);
+    workspace.length_capacity = length_elems;
+  }
+  if (workspace.matrix_capacity < matrix_elems) {
+    workspace.d_result_matrix = cuda_alloc<T>(matrix_elems);
+    workspace.matrix_capacity = matrix_elems;
+  }
+}
+
+template <typename T>
+void flatten_series_buffer(
+    T *dst,
+    const std::vector<std::vector<double>> &series,
+    size_t max_L)
+{
+  for (size_t i = 0; i < series.size(); ++i) {
+    const auto &src = series[i];
+    T *row_dst = dst + i * max_L;
+    const size_t len = src.size();
+
+    if constexpr (std::is_same_v<T, double>) {
+      if (len > 0)
+        std::memcpy(row_dst, src.data(), len * sizeof(double));
+    } else {
+      for (size_t k = 0; k < len; ++k)
+        row_dst[k] = static_cast<T>(src[k]);
+    }
+
+    if (len < max_L)
+      std::fill(row_dst + len, row_dst + max_L, T(0));
+  }
+}
+
+template <typename T>
+std::vector<double> convert_result_matrix(
+    const T *src, size_t N, size_t matrix_elems)
+{
+  std::vector<double> result(matrix_elems);
+  if constexpr (std::is_same_v<T, double>) {
+    for (size_t i = 0; i < N; ++i) {
+      const size_t row_offset = i * N;
+      if (i > 0)
+        std::memcpy(result.data() + row_offset, src + row_offset, i * sizeof(double));
+      result[row_offset + i] = 0.0;
+      if (i + 1 < N) {
+        std::memcpy(result.data() + row_offset + i + 1,
+                    src + row_offset + i + 1,
+                    (N - i - 1) * sizeof(double));
+      }
+    }
+  } else {
+    for (size_t i = 0; i < N; ++i) {
+      const size_t row_offset = i * N;
+      for (size_t j = 0; j < i; ++j)
+        result[row_offset + j] = static_cast<double>(src[row_offset + j]);
+      result[row_offset + i] = 0.0;
+      for (size_t j = i + 1; j < N; ++j)
+        result[row_offset + j] = static_cast<double>(src[row_offset + j]);
+    }
+  }
+  return result;
+}
+
 /// Launch the DTW kernel for a given compute type T (float or double).
 /// Returns the NxN distance matrix as a flat vector<double> (row-major).
 ///
@@ -922,11 +1078,6 @@ std::vector<double> launch_dtw_kernel(
     size_t N, size_t max_L, size_t num_pairs,
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec)
 {
-  using dtwc::cuda::cuda_alloc;
-  using dtwc::cuda::pinned_alloc_nothrow;
-  using dtwc::cuda::make_cuda_stream;
-  using dtwc::cuda::make_cuda_event;
-
   // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
   if (num_pairs > static_cast<size_t>(std::numeric_limits<int>::max())) {
     throw std::runtime_error(
@@ -948,67 +1099,27 @@ std::vector<double> launch_dtw_kernel(
   // ---------------------------------------------------------------------------
   constexpr size_t PINNED_THRESHOLD = 256 * 1024;
   const size_t series_transfer = N * max_L * sizeof(T);
-  auto h_pinned_series = (series_transfer >= PINNED_THRESHOLD)
-      ? pinned_alloc_nothrow<T>(N * max_L) : PinnedPtr<T>(nullptr);
-  auto h_pinned_matrix = (matrix_bytes >= PINNED_THRESHOLD)
-      ? pinned_alloc_nothrow<T>(matrix_elems) : PinnedPtr<T>(nullptr);
-
-  // Fallback std::vectors used only when pinned allocation fails
-  std::vector<T> flat_series_fallback;
-  std::vector<T> h_matrix_fallback;
-
-  T *h_flat_series   = nullptr;
-  T *h_result_matrix = nullptr;
-
-  if (h_pinned_series) {
-    h_flat_series = h_pinned_series.get();
-    std::memset(h_flat_series, 0, series_bytes);
-  } else {
-    flat_series_fallback.resize(N * max_L, T(0));
-    h_flat_series = flat_series_fallback.data();
-  }
-
-  if (h_pinned_matrix) {
-    h_result_matrix = h_pinned_matrix.get();
-  } else {
-    h_matrix_fallback.resize(matrix_elems);
-    h_result_matrix = h_matrix_fallback.data();
-  }
-
-  // Flatten and convert to T
-  for (size_t i = 0; i < N; ++i)
-    for (size_t k = 0; k < series[i].size(); ++k)
-      h_flat_series[i * max_L + k] = static_cast<T>(series[i][k]);
-
-  // ---------------------------------------------------------------------------
-  // Create CUDA stream and timing events
-  // ---------------------------------------------------------------------------
-  auto stream    = make_cuda_stream();
-  auto evt_start = make_cuda_event();
-  auto evt_end   = make_cuda_event();
-
-  // Allocate device memory (RAII -- freed automatically)
-  // Fix 1: No d_pair_i / d_pair_j — indices computed on-device via decode_pair()
-  // Fix 2: Allocate NxN result matrix instead of per-pair distances
-  auto d_series        = cuda_alloc<T>(N * max_L);
-  auto d_lengths       = cuda_alloc<int>(N);
-  auto d_result_matrix = cuda_alloc<T>(matrix_elems);
+  auto &workspace = get_dtw_launch_workspace<T>(device_id);
+  T *h_flat_series = workspace.host_series.ensure(
+      N * max_L, series_transfer >= PINNED_THRESHOLD);
+  T *h_result_matrix = workspace.host_matrix.ensure(
+      matrix_elems, matrix_bytes >= PINNED_THRESHOLD);
+  flatten_series_buffer(h_flat_series, series, max_L);
+  ensure_dtw_device_capacity(workspace, N * max_L, N, matrix_elems);
 
   const int N_series = static_cast<int>(N);
+  auto stream = workspace.stream.get();
 
   // ---------------------------------------------------------------------------
   // Begin timed region: H2D transfers + kernel + D2H
   // ---------------------------------------------------------------------------
-  CUDA_CHECK(cudaEventRecord(evt_start.get(), stream.get()));
+  CUDA_CHECK(cudaEventRecord(workspace.evt_start.get(), stream));
 
   // Async H2D transfers (no pair index arrays needed — Fix 1)
-  CUDA_CHECK(cudaMemcpyAsync(d_series.get(), h_flat_series,
-                              series_bytes, cudaMemcpyHostToDevice, stream.get()));
-  CUDA_CHECK(cudaMemcpyAsync(d_lengths.get(), lengths.data(),
-                              N * sizeof(int), cudaMemcpyHostToDevice, stream.get()));
-
-  // Zero-initialize NxN result matrix on device (diagonal = 0, Fix 2)
-  CUDA_CHECK(cudaMemsetAsync(d_result_matrix.get(), 0, matrix_bytes, stream.get()));
+  CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
+                              series_bytes, cudaMemcpyHostToDevice, stream));
+  CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
+                              N * sizeof(int), cudaMemcpyHostToDevice, stream));
 
   // ---------------------------------------------------------------------------
   // Kernel launch (on the same stream -- automatically waits for H2D)
@@ -1021,8 +1132,8 @@ std::vector<double> launch_dtw_kernel(
     constexpr int block_size = pairs_per_block * 32;  // 256
     const size_t shared_mem = pairs_per_block * 2 * 32 * sizeof(T);
 
-    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream.get()>>>(
-        d_series.get(), d_lengths.get(), d_result_matrix.get(),
+    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream>>>(
+        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
   } else if (max_L <= 128) {
@@ -1037,8 +1148,8 @@ std::vector<double> launch_dtw_kernel(
     const size_t band_smem = (band >= 0) ? pairs_per_block * 2 * max_L * sizeof(int) : 0;
     const size_t shared_mem = series_smem + band_smem;
 
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream.get()>>>(
-        d_series.get(), d_lengths.get(), d_result_matrix.get(),
+    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
+        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
   } else if (max_L <= 256) {
@@ -1052,15 +1163,15 @@ std::vector<double> launch_dtw_kernel(
     const size_t band_smem = (band >= 0) ? pairs_per_block * 2 * max_L * sizeof(int) : 0;
     const size_t shared_mem = series_smem + band_smem;
 
-    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream.get()>>>(
-        d_series.get(), d_lengths.get(), d_result_matrix.get(),
+    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
+        workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
   } else {
     // Wavefront kernel: shared memory and block size configuration
-    const bool preload = (max_L <= 256);
-    // L<=256: preload mode (2 series + 3 anti-diag buffers = 5)
-    // 256<L<=1024: 3-buffer mode (3 anti-diag buffers)
+    const bool preload = (max_L <= 512);
+    // L<=512: preload mode (2 series + 3 anti-diag buffers = 5)
+    // 512<L<=1024: 3-buffer mode (3 anti-diag buffers)
     // L>1024: double-buffer mode (2 anti-diag buffers, saves occupancy)
     const size_t n_bufs = preload ? 5 : (max_L > 1024 ? 2 : 3);
     // Base shared memory for diag/series buffers
@@ -1071,13 +1182,7 @@ std::vector<double> launch_dtw_kernel(
     }
 
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
-    int block_size;
-    if (max_L <= 128)
-      block_size = 64;
-    else if (max_L <= 512)
-      block_size = 128;
-    else
-      block_size = 256;
+    constexpr int block_size = 256;
 
     // Request extended shared memory if needed (>48 KB)
     if (shared_mem > 48 * 1024) {
@@ -1096,18 +1201,21 @@ std::vector<double> launch_dtw_kernel(
         (static_cast<int>(num_pairs) > persistent_grid * 4);
 
     if (use_persistent) {
-      auto d_counter = cuda_alloc<int>(1);
-      CUDA_CHECK(cudaMemsetAsync(d_counter.get(), 0, sizeof(int), stream.get()));
+      if (workspace.counter_capacity < 1) {
+        workspace.d_counter = cuda_alloc<int>(1);
+        workspace.counter_capacity = 1;
+      }
+      CUDA_CHECK(cudaMemsetAsync(workspace.d_counter.get(), 0, sizeof(int), stream));
 
-      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem, stream.get()>>>(
-          d_series.get(), d_lengths.get(), d_result_matrix.get(),
+      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem, stream>>>(
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
-          d_counter.get());
+          workspace.d_counter.get());
     } else {
       // Non-persistent: one block per pair (original behavior)
-      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream.get()>>>(
-          d_series.get(), d_lengths.get(), d_result_matrix.get(),
+      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream>>>(
+          workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
           nullptr);
@@ -1119,24 +1227,22 @@ std::vector<double> launch_dtw_kernel(
   // ---------------------------------------------------------------------------
   // Async D2H transfer: single contiguous NxN matrix (Fix 2 — no host fill loop)
   // ---------------------------------------------------------------------------
-  CUDA_CHECK(cudaMemcpyAsync(h_result_matrix, d_result_matrix.get(),
-                              matrix_bytes, cudaMemcpyDeviceToHost, stream.get()));
+  CUDA_CHECK(cudaMemcpyAsync(h_result_matrix, workspace.d_result_matrix.get(),
+                              matrix_bytes, cudaMemcpyDeviceToHost, stream));
 
   // ---------------------------------------------------------------------------
   // End timed region and synchronize
   // ---------------------------------------------------------------------------
-  CUDA_CHECK(cudaEventRecord(evt_end.get(), stream.get()));
-  CUDA_CHECK(cudaStreamSynchronize(stream.get()));
+  CUDA_CHECK(cudaEventRecord(workspace.evt_end.get(), stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
 
   float elapsed_ms = 0.0f;
-  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, evt_start.get(), evt_end.get()));
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms,
+                                  workspace.evt_start.get(),
+                                  workspace.evt_end.get()));
   gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
 
-  // Convert NxN matrix from T to double
-  std::vector<double> result(matrix_elems);
-  for (size_t i = 0; i < matrix_elems; ++i)
-    result[i] = static_cast<double>(h_result_matrix[i]);
-  return result;
+  return convert_result_matrix(h_result_matrix, N, matrix_elems);
 }
 
 // =========================================================================
@@ -1464,7 +1570,7 @@ __global__ void dtw_one_vs_all_wavefront_kernel(
   const int N_len = max(query_len, target_len);
 
   // Shared memory layout (same as pairwise wavefront kernel)
-  constexpr int PRELOAD_THRESHOLD = 256;
+  constexpr int PRELOAD_THRESHOLD = 512;
   const bool preload = (max_L <= PRELOAD_THRESHOLD);
   constexpr int DOUBLE_BUF_THRESHOLD = 1024;
   const bool use_double_buf = (max_L > DOUBLE_BUF_THRESHOLD) && !preload;
@@ -2029,8 +2135,8 @@ std::vector<double> launch_one_vs_all_kernel(
 
   } else {
     // Wavefront kernel: one block per target, grid.y = K queries
-    // max_L > 256 here: never preload, use 2 or 3 diag buffers
-    const size_t n_bufs = (max_L > 1024) ? 2 : 3;
+    const bool preload = (max_L <= 512);
+    const size_t n_bufs = preload ? 5 : (max_L > 1024 ? 2 : 3);
     size_t shared_mem = n_bufs * max_L * sizeof(T);
     if (band >= 0)
       shared_mem += 2 * max_L * sizeof(int);
