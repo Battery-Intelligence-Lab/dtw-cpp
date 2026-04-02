@@ -85,6 +85,7 @@ public:
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
+  core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
   bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
 

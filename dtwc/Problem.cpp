@@ -22,6 +22,8 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
+#include "missing_utils.hpp"               // for has_missing, interpolate_linear
+#include "warping_missing.hpp"             // for dtwMissing_banded
 
 
 #include <algorithm> // for max_element, min, min_element, sample
@@ -125,6 +127,27 @@ void Problem::rebind_dtw_fn()
   // not at lambda creation time. This ensures that changing `prob.band = 50` after
   // construction correctly affects subsequent DTW calls without requiring a rebind.
   using namespace core;
+
+  // Missing-data strategies override the variant dispatch
+  if (missing_strategy == MissingStrategy::ZeroCost) {
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      return dtwMissing_banded(x, y, band);
+    };
+    return;
+  }
+
+  if (missing_strategy == MissingStrategy::Interpolate) {
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      auto xi = has_missing(x) ? interpolate_linear(x) : x;
+      auto yi = has_missing(y) ? interpolate_linear(y) : y;
+      return dtwBanded(xi, yi, band);
+    };
+    return;
+  }
+
+  // AROW will be wired in a future task when warping_missing_arow.hpp is created
+
+  // Standard variant dispatch (for Error strategy and unsupported missing strategies)
   switch (variant_params.variant) {
   case DTWVariant::DDTW:
     dtw_fn_ = [this](const auto &x, const auto &y) { return ddtwBanded(x, y, band); };
@@ -230,8 +253,24 @@ void Problem::fillDistanceMatrix()
 {
   if (isDistanceMatrixFilled()) return;
 
+  // Re-bind the DTW function in case missing_strategy was changed after construction
+  // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
+  rebind_dtw_fn();
+
   if (verbose)
     std::cout << "Distance matrix is being filled!" << std::endl;
+
+  // Pre-scan for NaN if strategy is Error
+  if (missing_strategy == core::MissingStrategy::Error) {
+    for (size_t i = 0; i < data.size(); ++i) {
+      if (has_missing(p_vec(i))) {
+        throw std::runtime_error(
+          "fillDistanceMatrix: NaN detected in series '" + data.p_names[i]
+          + "' (index " + std::to_string(i)
+          + "). Set missing_strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
+      }
+    }
+  }
 
   // Resolve Auto strategy
   DistanceMatrixStrategy effective = distance_strategy;
@@ -240,6 +279,19 @@ void Problem::fillDistanceMatrix()
       effective = DistanceMatrixStrategy::Pruned;
     else
       effective = DistanceMatrixStrategy::BruteForce;
+  }
+
+  // Disable LB pruning if dataset has missing values (LB bounds are invalid with NaN)
+  if (missing_strategy != core::MissingStrategy::Error
+      && missing_strategy != core::MissingStrategy::Interpolate) {
+    if (effective == DistanceMatrixStrategy::Pruned) {
+      for (size_t i = 0; i < data.size(); ++i) {
+        if (has_missing(p_vec(i))) {
+          effective = DistanceMatrixStrategy::BruteForce;
+          break;
+        }
+      }
+    }
   }
 
   switch (effective) {
