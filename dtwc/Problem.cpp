@@ -306,6 +306,9 @@ void Problem::fillDistanceMatrix_BruteForce()
   for (size_t i = 0; i < N; ++i)
     distMat.set(i, i, 0.0);
 
+  // Lock-free by design: each thread owns a disjoint set of rows. distMat.set(i,j)
+  // writes to data_[i*N+j] and data_[j*N+i]; the row-based partitioning ensures
+  // no two threads write the same (i,j) pair simultaneously.
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, 1)
 #endif

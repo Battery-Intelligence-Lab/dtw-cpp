@@ -130,6 +130,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   prob.distance_matrix().resize(static_cast<size_t>(N));
 
   // Step 1: Precompute summaries for LB_Kim (O(N * n)) — parallel
+  // Lock-free by design: each iteration writes only to summaries[i] at its own index.
   std::vector<SeriesSummary> summaries(N);
   #ifdef _OPENMP
   #pragma omp parallel for schedule(static)
@@ -138,6 +139,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
     summaries[i] = compute_summary(prob.p_vec(i));
 
   // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0) — parallel
+  // Lock-free by design: each iteration writes only to envelopes[i] at its own index.
   const bool use_lb_keogh = (band >= 0);
   std::vector<Envelope> envelopes(N);
   if (use_lb_keogh) {
@@ -243,10 +245,10 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
           : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), -1.0);
       }
 
-      // Store directly in the distance matrix (symmetric).
-      // DenseDistanceMatrix::set() writes to two independent memory
-      // locations: data_[i*N+j] and data_[j*N+i]. No two threads
-      // write the same (i,j) pair, so this is safe without locks.
+      // Lock-free by design: DenseDistanceMatrix::set() writes to two independent
+      // memory locations: data_[i*N+j] and data_[j*N+i]. The pair-based
+      // decomposition guarantees no two threads write the same (i,j) pair,
+      // so this is safe without locks or atomics.
       prob.distance_matrix().set(static_cast<size_t>(i), static_cast<size_t>(j), dist);
 
       // Update nearest-neighbor tracking (atomic min).

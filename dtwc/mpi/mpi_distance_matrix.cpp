@@ -124,6 +124,8 @@ MPIDistMatResult compute_distance_matrix_mpi(
   std::vector<std::pair<size_t, size_t>> local_ij(local_count);
 
   // Compute this rank's share of pairs
+  // Lock-free by design: each thread writes only to local_distances[idx] and
+  // local_ij[idx] at its own index — no two threads access the same element.
   // Use OpenMP within each rank for thread-level parallelism
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, 16)

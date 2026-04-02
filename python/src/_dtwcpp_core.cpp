@@ -334,6 +334,9 @@ NB_MODULE(_dtwcpp_core, m) {
         dtwc::core::compute_distance_matrix_pruned(series, ptr, band, mt);
       } else {
         // Standard unpruned version (for non-L1 metrics or when pruning disabled).
+        // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
+        // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
+        // no two threads share the same i value.
         #ifdef _OPENMP
         #pragma omp parallel for schedule(dynamic, 16)
         #endif

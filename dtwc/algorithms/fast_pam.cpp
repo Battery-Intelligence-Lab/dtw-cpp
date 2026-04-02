@@ -52,6 +52,8 @@ void compute_nearest_and_second(
 {
   const int k = static_cast<int>(medoids.size());
 
+  // Lock-free by design: each iteration writes only to nearest[p], nearest_dist[p],
+  // and second_dist[p] at its own index p — no two threads access the same element.
 #pragma omp parallel for schedule(static)
   for (int p = 0; p < N; ++p) {
     double best = std::numeric_limits<double>::max();
@@ -163,6 +165,8 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
     int best_x_new = -1;      // Data point index of the candidate to add.
 
     // Evaluate all (medoid_out, candidate_in) pairs.
+    // Lock-free by design: each thread uses thread-local delta_m buffers and
+    // local best-swap trackers. Only the final reduction uses omp critical.
     // The outer loop over candidates x is embarrassingly parallel:
     // each candidate accumulates into its own delta_m buffer.
     #pragma omp parallel

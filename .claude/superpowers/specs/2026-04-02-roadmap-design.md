@@ -1,9 +1,26 @@
 # DTWC++ Roadmap Design Spec
 
-**Date:** 2026-04-02
+**Date:** 2026-04-02 (updated 2026-04-02)
 **Author:** Volkan Kumtepeli + Claude
 **Branch:** Claude
-**Status:** Draft
+**Status:** Active — Waves 1A, 1B, 2A, 2B completed
+
+## Completion Status (as of 2026-04-02)
+
+| Wave | Scope | Status |
+|------|-------|--------|
+| **Wave 1A** | Metrics + Missing Data (missing_utils, MissingStrategy, DTW-AROW, 5 scoring metrics) | **DONE** |
+| **Wave 1B** | Multivariate Foundation (ndim, MVL1/MVSquaredL2, MV DTW, MV DDTW) | **DONE** |
+| **Wave 2A** | Clustering Algorithms (deferred alloc, medoid utils, hierarchical, CLARANS, FastCLARA fixes) | **DONE** |
+| **Wave 2B** | MV Variants + Lower Bounds (MV WDTW/ADTW/DDTW, per-channel LB_Keogh, MV missing DTW) | **DONE** |
+| **CUDA Next** | Device-side pruning, arch-aware dispatch, benchmark expansion | **PLANNED** (see plans/2026-04-02-cuda-next-phase.md) |
+| **SIMD** | Google Highway (LB_Keogh, z_normalize, multi-pair DTW) | **PLANNED** (not started) |
+| **A4** | GPU-CLARA (wire K-vs-N into clustering loop) | **NOT STARTED** |
+| **A5** | Two-phase clustering (pre-categorized data) | **NOT STARTED** |
+| **A6** | Condensed distance matrix | **NOT STARTED** |
+| **A7** | Lazy loading | **NOT STARTED** |
+| **A8** | Binary distance matrix storage | **NOT STARTED** |
+| **Bindings** | MATLAB MEX, Python updates | **NOT STARTED** (skills drafted) |
 
 ## Context
 
