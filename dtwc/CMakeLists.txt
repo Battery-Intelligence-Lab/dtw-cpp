@@ -53,6 +53,7 @@ target_sources(dtwc++
   # Algorithm headers
   algorithms/fast_pam.hpp
   algorithms/fast_clara.hpp
+  algorithms/detail/medoid_utils.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC .)
