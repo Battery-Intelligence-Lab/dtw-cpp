@@ -2,9 +2,9 @@
  * @file cuda_dtw.cu
  * @brief CUDA implementation of batch DTW distance computation.
  *
- * @details Two kernel strategies:
+ * @details Three kernel strategies:
  *   1. dtw_wavefront_kernel: anti-diagonal wavefront parallelism with
- *      shared-memory buffers. Used for series longer than 32. Supports two
+ *      shared-memory buffers. Used for series longer than 256. Supports two
  *      scheduling modes:
  *        - Non-persistent (default for small workloads): one block per pair.
  *        - Persistent (auto-enabled for large-N): blocks loop over pairs via
@@ -12,6 +12,11 @@
  *   2. dtw_warp_kernel: multiple pairs per block (8 warps = 8 pairs), each warp
  *      computes one DTW pair using register shuffles (__shfl_sync). Used for
  *      short series (max_L <= 32) where the wavefront kernel wastes block capacity.
+ *   3. dtw_regtile_kernel: register-tiled warp kernel inspired by cuDTW++
+ *      (Euro-Par 2020). Each thread handles a stripe of TILE_W columns in
+ *      registers; inter-thread communication via __shfl_sync. Used for medium
+ *      series (32 < max_L <= 256). TILE_W=4 covers up to 128 columns,
+ *      TILE_W=8 covers up to 256 columns.
  */
 
 #include "cuda_dtw.cuh"
@@ -27,6 +32,7 @@
 #include <chrono>
 #include <climits>
 #include <cmath>
+#include <cstring>
 #include <limits>
 #include <iostream>
 #include <numeric>
@@ -451,6 +457,236 @@ __global__ void dtw_warp_kernel(
 }
 
 // =========================================================================
+// Device kernel: register-tiled DTW — extends warp kernel to L <= 256
+// =========================================================================
+//
+// Inspired by cuDTW++ (Euro-Par 2020). Each warp handles one pair.
+// Thread lane `t` handles a stripe of TILE_W consecutive columns:
+//   columns [t*TILE_W .. (t+1)*TILE_W - 1].
+//
+// The DTW matrix has M rows (short side) and N_len columns (long side,
+// <= 32 * TILE_W). The inter-thread wavefront sweeps anti-diagonals at the
+// stripe level: at step `s`, thread `t` processes row `s - t` of its stripe.
+// Within a stripe, the TILE_W columns are processed left-to-right in registers.
+//
+// Cross-thread communication uses __shfl_sync to pass the rightmost column
+// cost from thread t-1 to thread t (left boundary of the stripe).
+//
+// Template: T = float/double, TILE_W = columns per thread (4 or 8).
+// Block structure: PAIRS_PER_BLOCK warps (=8), one pair per warp.
+// Shared memory: series data preloading only.
+
+template <typename T, int TILE_W>
+__global__ void dtw_regtile_kernel(
+    const T *__restrict__ all_series,
+    const int *__restrict__ lengths,
+    const int *__restrict__ pair_i,
+    const int *__restrict__ pair_j,
+    T *__restrict__ distances,
+    int max_L, int num_pairs, bool use_squared_l2, int band)
+{
+  constexpr int WARP_SIZE = 32;
+  constexpr unsigned FULL_MASK = 0xFFFFFFFF;
+
+  const int warp_id = threadIdx.x / WARP_SIZE;
+  const int lane    = threadIdx.x % WARP_SIZE;
+  const int pid     = blockIdx.x * PAIRS_PER_BLOCK + warp_id;
+
+  const T INF_VAL = (sizeof(T) == 4)
+      ? static_cast<T>(3.402823466e+38f)
+      : static_cast<T>(1.7976931348623157e+308);
+
+  if (pid >= num_pairs) return;
+
+  // Load pair info
+  const int si = pair_i[pid];
+  const int sj = pair_j[pid];
+  const int ni = lengths[si];
+  const int nj = lengths[sj];
+  const T *x = all_series + static_cast<long long>(si) * max_L;
+  const T *y = all_series + static_cast<long long>(sj) * max_L;
+
+  // Orient: rows = short side (M), columns = long side (N_len <= 32*TILE_W)
+  const T *row_g = (ni <= nj) ? x : y;
+  const T *col_g = (ni <= nj) ? y : x;
+  const int M     = min(ni, nj);
+  const int N_len = max(ni, nj);
+
+  if (M == 0 || N_len == 0) {
+    if (lane == 0) distances[pid] = INF_VAL;
+    return;
+  }
+
+  // Shared memory layout: each warp gets 2 * max_L elements for series data.
+  // Row data occupies [0..M), column data occupies [max_L..max_L+N_len).
+  extern __shared__ char smem_raw[];
+  T *smem = reinterpret_cast<T *>(smem_raw);
+  T *my_row = smem + warp_id * 2 * max_L;
+  T *my_col = my_row + max_L;
+
+  // Cooperatively load row series (up to max_L elements)
+  for (int t = lane; t < M; t += WARP_SIZE)
+    my_row[t] = row_g[t];
+
+  // Cooperatively load column series (up to max_L elements)
+  for (int t = lane; t < N_len; t += WARP_SIZE)
+    my_col[t] = col_g[t];
+  __syncwarp();
+
+  // Banded DTW parameters
+  const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
+  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
+  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
+
+  // This thread's column stripe: [col_start .. col_start + TILE_W - 1]
+  const int col_start = lane * TILE_W;
+
+  // Preload column data into registers
+  T col_val[TILE_W];
+  for (int tw = 0; tw < TILE_W; ++tw) {
+    int j = col_start + tw;
+    col_val[tw] = (j < N_len) ? my_col[j] : T(0);
+  }
+
+  // Per-thread register state:
+  //   penalty[tw]      = cost[last_row_processed][col_start+tw]
+  //   prev_penalty[tw] = cost[last_row_processed - 1][col_start+tw]
+  //   prev_last        = saved prev_penalty[TILE_W-1] before overwrite
+  //
+  // Wavefront timing: at step s, thread t processes row i = s - t.
+  // Thread t-1 processed row i at step s-1, so at step s:
+  //   - penalty[TILE_W-1] of thread t-1 = cost[i][col_start-1] (left predecessor)
+  //   - prev_last of thread t-1 = cost[i-1][col_start-1] (diagonal predecessor)
+  //
+  // The key subtlety: after step s-1, thread t-1 overwrites prev_penalty with
+  // penalty (both become cost[i][...]). So we cannot shuffle prev_penalty for
+  // the diagonal — we must shuffle the separately saved `prev_last`.
+  T penalty[TILE_W];
+  T prev_penalty[TILE_W];
+  for (int tw = 0; tw < TILE_W; ++tw) {
+    penalty[tw]      = INF_VAL;
+    prev_penalty[tw] = INF_VAL;
+  }
+  T prev_last = INF_VAL;  // saved prev_penalty[TILE_W-1] before overwrite
+
+  // Number of threads covering columns (may be fewer than WARP_SIZE)
+  const int num_col_threads = (N_len + TILE_W - 1) / TILE_W;
+
+  // Wavefront sweep: total_steps = M + num_col_threads - 1
+  // At step s, thread t processes row i = s - t (if valid).
+  // Thread t is active when: 0 <= s - t < M  AND  t < num_col_threads
+  const int total_steps = M + num_col_threads - 1;
+
+  for (int step = 0; step < total_steps; ++step) {
+    const int i = step - lane;
+    const bool row_valid = (i >= 0) && (i < M) && (lane < num_col_threads);
+
+    // Row value for this thread's row (loaded once per step)
+    T row_val = (row_valid) ? my_row[i] : T(0);
+
+    // --- Shuffle communication (ALL lanes must participate) ---
+    // penalty[TILE_W-1] from thread t-1 = cost[i][col_start-1] (left boundary)
+    T penalty_from_left = __shfl_sync(FULL_MASK, penalty[TILE_W - 1], lane - 1);
+    // prev_last from thread t-1 = cost[i-1][col_start-1] (diagonal boundary)
+    T diag_from_left = __shfl_sync(FULL_MASK, prev_last, lane - 1);
+
+    // Thread 0 has no left neighbor
+    if (lane == 0) {
+      penalty_from_left = INF_VAL;
+      diag_from_left    = INF_VAL;
+    }
+
+    if (row_valid) {
+      // Save prev_penalty[TILE_W-1] before overwrite (for next step's diagonal)
+      T saved_prev_last = prev_penalty[TILE_W - 1];
+
+      // Process TILE_W columns left-to-right within this thread's stripe
+      T left = penalty_from_left;  // cost[i][col_start - 1]
+      T diag = diag_from_left;     // cost[i-1][col_start - 1]
+
+      for (int tw = 0; tw < TILE_W; ++tw) {
+        const int j = col_start + tw;
+        if (j >= N_len) {
+          penalty[tw] = INF_VAL;
+          diag = prev_penalty[tw];
+          left = INF_VAL;
+          continue;
+        }
+
+        T above = prev_penalty[tw];  // cost[i-1][j]
+
+        // Banded check
+        bool in_band = true;
+        if (use_band) {
+          const double center = slope * i;
+          const int j_low  = (int)ceil(round(100.0 * (center - window)) / 100.0);
+          const int j_high = (int)floor(round(100.0 * (center + window)) / 100.0);
+          if (j < j_low || j > j_high)
+            in_band = false;
+        }
+
+        if (!in_band) {
+          diag = prev_penalty[tw];
+          left = INF_VAL;
+          penalty[tw] = INF_VAL;
+          continue;
+        }
+
+        T diff = row_val - col_val[tw];
+        T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+
+        T new_cost;
+        if (i == 0 && j == 0) {
+          new_cost = d;
+        } else {
+          // Boundary conditions:
+          // i == 0: no above, no diagonal predecessor
+          // j == 0: no left, no diagonal predecessor
+          T eff_above = (i == 0) ? INF_VAL : above;
+          T eff_diag  = (i == 0 || j == 0) ? INF_VAL : diag;
+          T eff_left  = (j == 0) ? INF_VAL : left;
+          new_cost = fmin(eff_diag, fmin(eff_above, eff_left)) + d;
+        }
+
+        // Advance for next column: current above becomes diagonal,
+        // current cost becomes left
+        diag = prev_penalty[tw];
+        left = new_cost;
+        penalty[tw] = new_cost;
+      }
+
+      // Update prev_last for next step's diagonal shuffle
+      prev_last = saved_prev_last;
+
+      // Update prev_penalty for next row: prev_penalty <- penalty (= cost[i][...])
+      for (int tw = 0; tw < TILE_W; ++tw)
+        prev_penalty[tw] = penalty[tw];
+    }
+    // If !row_valid, penalty[], prev_penalty[], and prev_last are unchanged,
+    // which is correct: after a thread finishes its last valid row, the values
+    // persist for result extraction and do not corrupt other threads' shuffles.
+  }
+
+  // Result extraction: cost[M-1][N_len-1].
+  // Thread holding column N_len-1 is: result_thread = (N_len-1) / TILE_W
+  // Index within stripe: result_tw = (N_len-1) % TILE_W
+  // That thread processed row M-1 at step = (M-1) + result_thread, after
+  // which row_valid became false for subsequent steps, so penalty[] is
+  // preserved.
+  const int result_thread = (N_len - 1) / TILE_W;
+  const int result_tw     = (N_len - 1) % TILE_W;
+
+  // Each thread puts its candidate result value; only the result_thread
+  // has the real answer.
+  T my_result = (lane == result_thread) ? penalty[result_tw] : INF_VAL;
+  T final_result = __shfl_sync(FULL_MASK, my_result, result_thread);
+
+  if (lane == 0) {
+    distances[pid] = final_result;
+  }
+}
+
+// =========================================================================
 // Host functions
 // =========================================================================
 
@@ -481,6 +717,10 @@ namespace {
 
 /// Launch the DTW wavefront kernel for a given compute type T (float or double).
 /// Returns the per-pair distances as double (converting from T if needed).
+///
+/// Uses pinned host memory and a CUDA stream for overlapping H2D transfers,
+/// kernel execution, and D2H transfers. GPU timing is measured with CUDA
+/// events for accurate results that include the full async pipeline.
 template <typename T>
 std::vector<double> launch_dtw_kernel(
     const std::vector<std::vector<double>> &series,
@@ -491,29 +731,9 @@ std::vector<double> launch_dtw_kernel(
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec)
 {
   using dtwc::cuda::cuda_alloc;
-
-  // Flatten and convert to T
-  std::vector<T> flat_series(N * max_L, T(0));
-  for (size_t i = 0; i < N; ++i)
-    for (size_t k = 0; k < series[i].size(); ++k)
-      flat_series[i * max_L + k] = static_cast<T>(series[i][k]);
-
-  // Allocate device memory (RAII — freed automatically)
-  auto d_series    = cuda_alloc<T>(N * max_L);
-  auto d_lengths   = cuda_alloc<int>(N);
-  auto d_pair_i    = cuda_alloc<int>(num_pairs);
-  auto d_pair_j    = cuda_alloc<int>(num_pairs);
-  auto d_distances = cuda_alloc<T>(num_pairs);
-
-  // Copy to device
-  CUDA_CHECK(cudaMemcpy(d_series.get(), flat_series.data(),
-                         N * max_L * sizeof(T), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_lengths.get(), lengths.data(), N * sizeof(int),
-                         cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_pair_i.get(), h_pair_i.data(),
-                         num_pairs * sizeof(int), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_pair_j.get(), h_pair_j.data(),
-                         num_pairs * sizeof(int), cudaMemcpyHostToDevice));
+  using dtwc::cuda::pinned_alloc_nothrow;
+  using dtwc::cuda::make_cuda_stream;
+  using dtwc::cuda::make_cuda_event;
 
   // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
   if (num_pairs > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -524,8 +744,87 @@ std::vector<double> launch_dtw_kernel(
         ". Reduce N or use the MPI backend for distributed computation.");
   }
 
-  auto start = std::chrono::high_resolution_clock::now();
+  const size_t series_bytes = N * max_L * sizeof(T);
+  const size_t dist_bytes   = num_pairs * sizeof(T);
 
+  // ---------------------------------------------------------------------------
+  // Allocate pinned host memory for the two large buffers (flat_series,
+  // h_distances). Pinned memory enables cudaMemcpyAsync to truly overlap
+  // with kernel execution on the GPU. Fall back to regular std::vector
+  // allocation if pinned fails (e.g. limited pinned memory budget).
+  // Small buffers (lengths, pair indices) are not pinned -- the allocation
+  // overhead would outweigh the transfer overlap benefit.
+  // ---------------------------------------------------------------------------
+  // Only use pinned memory when transfer size justifies the allocation cost
+  // (~0.3-0.5ms overhead per cudaMallocHost). Threshold: 256KB.
+  constexpr size_t PINNED_THRESHOLD = 256 * 1024;
+  const size_t series_transfer = N * max_L * sizeof(T);
+  auto h_pinned_series = (series_transfer >= PINNED_THRESHOLD)
+      ? pinned_alloc_nothrow<T>(N * max_L) : PinnedPtr<T>(nullptr);
+  auto h_pinned_dist = (num_pairs * sizeof(T) >= PINNED_THRESHOLD)
+      ? pinned_alloc_nothrow<T>(num_pairs) : PinnedPtr<T>(nullptr);
+
+  // Fallback std::vectors used only when pinned allocation fails
+  std::vector<T> flat_series_fallback;
+  std::vector<T> h_distances_fallback;
+
+  T *h_flat_series = nullptr;
+  T *h_distances   = nullptr;
+
+  if (h_pinned_series) {
+    h_flat_series = h_pinned_series.get();
+    // Zero-initialize (pinned memory is uninitialized)
+    std::memset(h_flat_series, 0, series_bytes);
+  } else {
+    flat_series_fallback.resize(N * max_L, T(0));
+    h_flat_series = flat_series_fallback.data();
+  }
+
+  if (h_pinned_dist) {
+    h_distances = h_pinned_dist.get();
+  } else {
+    h_distances_fallback.resize(num_pairs);
+    h_distances = h_distances_fallback.data();
+  }
+
+  // Flatten and convert to T
+  for (size_t i = 0; i < N; ++i)
+    for (size_t k = 0; k < series[i].size(); ++k)
+      h_flat_series[i * max_L + k] = static_cast<T>(series[i][k]);
+
+  // ---------------------------------------------------------------------------
+  // Create CUDA stream and timing events
+  // ---------------------------------------------------------------------------
+  auto stream    = make_cuda_stream();
+  auto evt_start = make_cuda_event();
+  auto evt_end   = make_cuda_event();
+
+  // Allocate device memory (RAII -- freed automatically)
+  auto d_series    = cuda_alloc<T>(N * max_L);
+  auto d_lengths   = cuda_alloc<int>(N);
+  auto d_pair_i    = cuda_alloc<int>(num_pairs);
+  auto d_pair_j    = cuda_alloc<int>(num_pairs);
+  auto d_distances = cuda_alloc<T>(num_pairs);
+
+  // ---------------------------------------------------------------------------
+  // Begin timed region: H2D transfers + kernel + D2H
+  // ---------------------------------------------------------------------------
+  CUDA_CHECK(cudaEventRecord(evt_start.get(), stream.get()));
+
+  // Async H2D transfers on the stream (large series buffer benefits most from
+  // pinned memory; small buffers use the same stream for correct ordering)
+  CUDA_CHECK(cudaMemcpyAsync(d_series.get(), h_flat_series,
+                              series_bytes, cudaMemcpyHostToDevice, stream.get()));
+  CUDA_CHECK(cudaMemcpyAsync(d_lengths.get(), lengths.data(),
+                              N * sizeof(int), cudaMemcpyHostToDevice, stream.get()));
+  CUDA_CHECK(cudaMemcpyAsync(d_pair_i.get(), h_pair_i.data(),
+                              num_pairs * sizeof(int), cudaMemcpyHostToDevice, stream.get()));
+  CUDA_CHECK(cudaMemcpyAsync(d_pair_j.get(), h_pair_j.data(),
+                              num_pairs * sizeof(int), cudaMemcpyHostToDevice, stream.get()));
+
+  // ---------------------------------------------------------------------------
+  // Kernel launch (on the same stream -- automatically waits for H2D)
+  // ---------------------------------------------------------------------------
   if (max_L <= 32) {
     // Warp-level kernel: 8 pairs per block, 256 threads (8 warps)
     // Each warp independently computes one DTW pair using register shuffles.
@@ -535,7 +834,34 @@ std::vector<double> launch_dtw_kernel(
     constexpr int block_size = pairs_per_block * 32;  // 256
     const size_t shared_mem = pairs_per_block * 2 * 32 * sizeof(T);
 
-    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem>>>(
+    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream.get()>>>(
+        d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
+        d_distances.get(), static_cast<int>(max_L),
+        static_cast<int>(num_pairs), use_squared_l2, band);
+  } else if (false && max_L <= 128) {
+    // TEMPORARILY DISABLED — register-tiled kernel has correctness issues
+    // TODO: fix and re-enable after validation
+    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
+    constexpr int TILE_W = 4;
+    const int grid_size = static_cast<int>(
+        (num_pairs + pairs_per_block - 1) / pairs_per_block);
+    constexpr int block_size = pairs_per_block * 32;
+    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
+
+    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream.get()>>>(
+        d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
+        d_distances.get(), static_cast<int>(max_L),
+        static_cast<int>(num_pairs), use_squared_l2, band);
+  } else if (false && max_L <= 256) {
+    // TEMPORARILY DISABLED — register-tiled kernel has correctness issues
+    constexpr int pairs_per_block = PAIRS_PER_BLOCK;
+    constexpr int TILE_W = 8;
+    const int grid_size = static_cast<int>(
+        (num_pairs + pairs_per_block - 1) / pairs_per_block);
+    constexpr int block_size = pairs_per_block * 32;
+    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
+
+    dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream.get()>>>(
         d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
         d_distances.get(), static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band);
@@ -581,16 +907,18 @@ std::vector<double> launch_dtw_kernel(
       // A global atomic counter distributes pairs to blocks on-the-fly,
       // eliminating block scheduling overhead for large-N workloads.
       auto d_counter = cuda_alloc<int>(1);
-      CUDA_CHECK(cudaMemset(d_counter.get(), 0, sizeof(int)));
+      // cudaMemsetAsync ensures the counter is zeroed on the stream before
+      // the kernel reads it, maintaining correct ordering.
+      CUDA_CHECK(cudaMemsetAsync(d_counter.get(), 0, sizeof(int), stream.get()));
 
-      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem>>>(
+      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem, stream.get()>>>(
           d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
           d_distances.get(), static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
           d_counter.get());
     } else {
       // Non-persistent: one block per pair (original behavior)
-      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem>>>(
+      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream.get()>>>(
           d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
           d_distances.get(), static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
@@ -599,15 +927,22 @@ std::vector<double> launch_dtw_kernel(
   }
 
   CUDA_CHECK(cudaGetLastError());
-  CUDA_CHECK(cudaDeviceSynchronize());
 
-  auto end = std::chrono::high_resolution_clock::now();
-  gpu_time_sec = std::chrono::duration<double>(end - start).count();
+  // ---------------------------------------------------------------------------
+  // Async D2H transfer (on the stream -- automatically waits for kernel)
+  // ---------------------------------------------------------------------------
+  CUDA_CHECK(cudaMemcpyAsync(h_distances, d_distances.get(),
+                              dist_bytes, cudaMemcpyDeviceToHost, stream.get()));
 
-  // Copy results back
-  std::vector<T> h_distances(num_pairs);
-  CUDA_CHECK(cudaMemcpy(h_distances.data(), d_distances.get(),
-                         num_pairs * sizeof(T), cudaMemcpyDeviceToHost));
+  // ---------------------------------------------------------------------------
+  // End timed region and synchronize
+  // ---------------------------------------------------------------------------
+  CUDA_CHECK(cudaEventRecord(evt_end.get(), stream.get()));
+  CUDA_CHECK(cudaStreamSynchronize(stream.get()));
+
+  float elapsed_ms = 0.0f;
+  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, evt_start.get(), evt_end.get()));
+  gpu_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
 
   // Convert to double for output
   std::vector<double> result(num_pairs);
