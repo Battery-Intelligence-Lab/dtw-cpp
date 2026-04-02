@@ -1,249 +1,219 @@
-# Wave 2A: Clustering Algorithms - Adversarial Review and Revised Plan
+# Wave 2A: Clustering Algorithms - Adversarial Revised Plan
 
-## Verdict
+## Review History
 
-Claude's draft has the right feature list, but the plan overclaims scale and under-specifies the architecture. The biggest problem is not CLARANS or hierarchical linkage logic. It is the current `Problem` contract.
+1. Claude draft: feature-forward plan with CondensedDistanceMatrix, hierarchical clustering, CLARANS, improved FastCLARA, and CLI integration.
+2. First adversarial pass: identified the real architectural blocker first - `Problem::set_data()` currently forces `O(N^2)` dense-matrix allocation through `refreshDistanceMatrix()`.
+3. Expanded adversarial pass: correctly found existing FastCLARA correctness bugs and correctly rejected naive large-N CLARANS.
 
-Today, `Problem::set_data()` calls `refreshDistanceMatrix()`, which resizes a `DenseDistanceMatrix` to `N x N`. That means any algorithm that takes `Problem&` already inherits quadratic memory before it computes a single DTW distance. Under the current design, "100K-1M series" is not a serious claim. It is impossible on ordinary hardware.
+The expanded pass was useful, but it overcorrected on CLARANS. "Not viable as the main large-scale DTW algorithm" is a strong and defensible claim. "Drop it entirely" is weaker. There is still a plausible mid-ground role for CLARANS, but only as a bounded, benchmark-gated algorithm, not as a headline scalability story.
 
-The original plan also asks `Dendrogram::cut()` to compute medoids from merge history alone. That is not possible with the proposed type. Merge history is not enough to recover medoids without access to the underlying pairwise distances.
+## Final Position
 
-So the revised plan below starts with the real blocker instead of pretending the rest of the wave can be implemented independently.
+The wave should be split by regime instead of pretending one algorithm fits all scales.
 
-## Findings Against The Original Draft
+- Small N, dense exact regime: FastPAM and hierarchical clustering.
+- Mid-ground, budgeted local-search regime: CLARANS, but only if it earns its keep against FastCLARA and FastPAM.
+- Large N, sample-based regime: FastCLARA.
 
-### 1. The scalability claim is false under the current `Problem` design
+That is the honest shape of the problem.
 
-Relevant code path:
+## What Was Right, What Was Wrong
 
-- `Problem::set_data()` -> `refreshDistanceMatrix()`
-- `refreshDistanceMatrix()` -> `distMat.resize(size())`
-- `DenseDistanceMatrix::resize(n)` allocates `n * n` doubles plus computed flags
+### Correct from the adversarial expansion
+
+- The `Problem` memory model is still the phase-0 blocker.
+- FastCLARA has real existing correctness bugs:
+  - `ndim` is not propagated into the subsample `Data`
+  - `missing_strategy` is not propagated into the subsample `Problem`
+- Hierarchical clustering needs a separate cut step that can see real distances.
+- Hierarchical clustering must assert a fully computed matrix and must not silently read uncomputed zeros.
+
+### Overstated from the adversarial expansion
+
+- "Drop CLARANS" is too blunt.
+
+The more accurate statement is:
+
+- do not market CLARANS as the scalable DTW answer
+- do not put it on the critical path for Wave 2A
+- do keep it as an experimental mid-ground candidate if it is implemented with hard budgets and benchmark gates
+
+## Why CLARANS Still Has A Plausible Role
+
+Naive CLARANS on full DTW workloads is a bad idea. The expanded review was right about that. A textbook `num_local * max_neighbor * N` search with expensive DTW lookups blows up quickly.
+
+But that does not imply CLARANS has no role at all.
+
+There are two plausible uses:
+
+1. A mid-ground algorithm for moderate `N`, where:
+   - hierarchical is already too expensive
+   - full FastPAM is too slow or too memory-hungry
+   - FastCLARA may suffer from sample bias
+
+2. A refinement stage seeded from FastCLARA or another initializer, where:
+   - the starting medoids are already decent
+   - CLARANS uses a strict swap budget
+   - the goal is not global search, but "buy some quality improvement with bounded extra work"
+
+That second role is the stronger one. A budgeted CLARANS-refine pass is much more defensible than selling standalone CLARANS-from-random-start as a large-scale DTW algorithm.
+
+## Real Blockers And Design Constraints
+
+### 1. `Problem` still allocates a dense matrix too early
+
+Current path:
+
+- `Problem::set_data()`
+- `refreshDistanceMatrix()`
+- `DenseDistanceMatrix::resize(size())`
 
 Consequence:
 
-- `fast_clara(prob, ...)` and any future `clarans(prob, ...)` already pay `O(N^2)` memory just by receiving a populated `Problem`.
-- That directly contradicts the stated goal of supporting `100K-1M` time series.
+- any algorithm that merely accepts a populated `Problem&` inherits `O(N^2)` memory before it asks for a single distance
 
-This is the phase-0 blocker. Do not bury it under five feature tasks and call that a plan.
+That invalidates any large-scale claim until fixed.
 
-### 2. `CondensedDistanceMatrix` is premature as a public API
+### 2. `distByInd()` must stay safe under parallel callers
 
-The draft creates a new public `core::CondensedDistanceMatrix`, but its first user is only hierarchical clustering. Worse, the proposed `from_dense()` path duplicates matrix storage at peak memory if the source is the existing `DenseDistanceMatrix`.
+If distance access becomes lazy and non-dense by default, `distByInd()` must not perform unsafe shared writes from parallel code. The safe first step is simple:
 
-That is exactly backwards:
+- if the dense matrix exists and the entry is computed, return it
+- if the dense matrix does not exist, compute through `dtw_fn_` and return without caching
 
-- first prove the algorithm and the ownership model
-- then factor out a reusable matrix type if a second real consumer exists
+That preserves correctness and thread safety. Fancy caching can come later.
 
-For v1, hierarchical clustering can operate directly on the existing dense matrix and be explicitly scoped to small `N`.
+### 3. Hierarchical clustering is a dense small-N feature
 
-### 3. The hierarchical design is internally inconsistent
+Do not pretend otherwise.
 
-The draft proposes:
+If the first implementation is generic agglomerative `O(N^3)`, it needs:
 
-- `Dendrogram` stores only `merges` and `n_points`
-- `Dendrogram::cut(int k) const` returns `core::ClusteringResult`
-- medoids are computed as within-cluster argmin of sum-of-distances
+- a hard `max_points` guard
+- explicit documentation that it is small-N only
+- deterministic tie-breaking
 
-That does not work. `Dendrogram::cut()` has no access to:
+### 4. CLARANS must be budgeted, not open-ended
 
-- the original distance matrix
-- the original `Problem`
-- any cluster membership cost table
+If CLARANS survives the plan, it must not arrive as a textbook algorithm with only `num_local` and `max_neighbor` and a vague promise of scale.
 
-So it cannot compute medoids.
+It needs hard resource controls such as:
 
-The plan also says a generic `O(N^3)` agglomerative implementation is "fine for N < 5000". That is too loose to be credible. If this ships as a naive all-linkage `O(N^3)` implementation, it needs a hard small-`N` limit and explicit documentation that it is not a large-scale algorithm.
+- `max_neighbor`
+- optional `max_dtw_evals`
+- optional `time_budget_ms`
 
-### 4. The CLARANS task is too naive for a "large-scale" wave
-
-The draft says CLARANS should use `prob.distByInd(i, j)` directly and rely on lazy caching in `DenseDistanceMatrix`.
-
-That has two problems:
-
-1. It is still coupled to the dense-cache architecture that breaks the scale claim.
-2. It throws away reusable logic that already exists in `fast_pam.cpp` for nearest / second-nearest caching and total-cost accounting.
-
-If CLARANS is supposed to matter, it should share the medoid-assignment machinery with FastPAM instead of starting over from a textbook implementation.
-
-### 5. CLI integration is correct to leave last, but the proposed interface is clumsy
-
-The draft adds:
-
-- `--method hierarchical`
-- `--linkage average`
-- `--cut-k 5`
-
-But the CLI already has `-k/--clusters`. There is no reason to invent a second cluster-count flag for hierarchical clustering. Reuse `-k` as the cut level and make `--linkage` method-specific.
-
-### 6. The draft is missing deterministic tie-breaking rules
-
-For hierarchical clustering and CLARANS, tests will become flaky unless the plan defines how ties break.
-
-At minimum:
-
-- hierarchical merge ties must break by stable cluster id ordering
-- medoid ties must break by lowest original point index
-- CLARANS swap ties must either reject neutral swaps or choose deterministically
-
-If the plan does not state this, the tests will discover it the hard way.
+If the implementation cannot be bounded, it does not belong in this wave.
 
 ## Revised Scope
 
-Split Wave 2A into two tracks instead of pretending everything targets the same scale regime:
+## Track A: Required for Wave 2A
 
-- Track A: scalable medoid algorithms (`CLARANS`, improved `FastCLARA`)
-- Track B: small-`N` analytical clustering (`hierarchical`)
+- defer dense distance-matrix allocation
+- fix FastCLARA correctness bugs
+- improve FastCLARA sample sizing and parent/subproblem behavior
+- add hierarchical clustering as an explicitly dense small-N feature
+- integrate the proven pieces into CLI and headers
 
-Those are different engineering problems and they should not share the same success criteria.
+## Track B: Experimental, benchmark-gated
+
+- CLARANS, preferably as a bounded mid-ground or refinement algorithm
+
+The distinction matters. Track A is what should ship. Track B is what should earn promotion through evidence.
 
 ## Revised Task Plan
 
-## Task 0: Fix The Distance-Access Contract First
+## Task 0: Defer Dense Distance-Matrix Allocation
 
-Primary goal: make scalable algorithms possible without forcing `O(N^2)` memory at `Problem` construction time.
+Goal: stop `Problem::set_data()` from forcing `O(N^2)` memory immediately.
 
-Minimal viable design:
+Required changes:
 
-- Add a cache policy to `Problem`, for example:
-  - `Dense`
-  - `Disabled`
-- Keep `Dense` as the default for backward compatibility.
-- When cache is `Disabled`, `refreshDistanceMatrix()` must not allocate an `N x N` matrix.
-- In disabled mode, `distByInd(i, j)` computes directly via `dtw_fn_` and returns the value without storing it in the dense matrix.
-- Add an explicit helper for algorithms that truly need the full matrix, for example:
-  - `fillDistanceMatrix()`
-  - or `ensure_dense_distance_matrix()`
+- `refreshDistanceMatrix()` should reset state and rebind DTW, but not eagerly resize to `N x N`
+- `fillDistanceMatrix()` should allocate the dense matrix on first real need
+- `distByInd()` should:
+  - return cached values when the dense matrix exists and the entry is computed
+  - otherwise compute directly and return without mutating shared state
 
-Why this task comes first:
+This is the real architectural blocker. Everything else depends on it.
 
-- without it, CLARANS and large-scale CLARA are still quadratic-memory algorithms
-- without it, the "100K-1M" language is still nonsense
-
-Files likely involved:
+Files:
 
 - `dtwc/Problem.hpp`
 - `dtwc/Problem.cpp`
 - `dtwc/core/distance_matrix.hpp`
 
-Tests required:
-
-- `Problem` in dense mode behaves exactly as before
-- `Problem` in disabled-cache mode can still answer `distByInd()`
-- `fast_clara()` with disabled cache does not call `fillDistanceMatrix()` on the full dataset
-- `clarans()` with disabled cache leaves the dense matrix unfilled
-
-Non-goal for Task 0:
-
-- do not build a fancy LRU cache yet
-- dense vs disabled is enough for the first pass
-
-## Task 1: Factor Shared Medoid Utilities
-
-Before adding CLARANS, stop copy-pasting medoid logic.
-
-Create an internal helper header such as:
-
-- `dtwc/algorithms/detail/medoid_utils.hpp`
-
-Move or factor shared logic out of `fast_pam.cpp`:
-
-- nearest medoid assignment
-- second-nearest distance tracking
-- total cost reduction
-- medoid-index validation helpers
-
-Why:
-
-- FastPAM already contains the right building blocks
-- CLARANS and improved CLARA should not each invent their own partial copy
-
-Public API impact:
-
-- none
-
-## Task 2: Implement CLARANS On Top Of The Shared Utilities
-
-Create:
-
-- `dtwc/algorithms/clarans.hpp`
-- `dtwc/algorithms/clarans.cpp`
-- `tests/unit/algorithms/unit_test_clarans.cpp`
-
-Suggested API:
-
-```cpp
-namespace dtwc::algorithms {
-
-struct CLARANSOptions {
-  int n_clusters = 3;
-  int num_local = 2;
-  int max_neighbor = -1;   // -1 = auto
-  unsigned random_seed = 42;
-};
-
-core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts);
-
-} // namespace dtwc::algorithms
-```
-
-Implementation requirements:
-
-- require Task 0 first if the wave still claims scalability
-- do not call `fillDistanceMatrix()` on the full dataset
-- use shared nearest / second-nearest style bookkeeping where it helps
-- keep restart-level RNG deterministic
-- reject neutral swaps by default; only strictly improving swaps should be accepted
-
-Auto `max_neighbor`:
-
-- keep the published heuristic if desired
-- but clamp it explicitly and document the formula in one helper
-
 Tests:
 
-- valid labels and medoids
-- deterministic with fixed seed
-- `k = 1`
-- `k = N`
-- invalid inputs throw
-- multiple local minima search (`num_local > 1`) is no worse than `num_local = 1`
-- with disabled cache mode, algorithm does not require a dense distance matrix
+- `set_data()` no longer allocates full dense storage by default
+- `fillDistanceMatrix()` still materializes and fills the matrix correctly
+- `distByInd()` still works before dense fill
+- existing FastPAM path still works unchanged
 
-## Task 3: Improve FastCLARA The Right Way
+## Task 1: Fix Existing FastCLARA Bugs First
 
-Modify:
+Fix the bugs already found:
+
+- propagate `prob.data.ndim` into the subsample `Data`
+- propagate `prob.missing_strategy` into the subsample `Problem`
+- also propagate:
+  - `band`
+  - `variant_params`
+  - `distance_strategy`
+  - `verbose`
+
+This is not optional cleanup. These are correctness bugs.
+
+Files:
 
 - `dtwc/algorithms/fast_clara.cpp`
 - `tests/unit/algorithms/unit_test_fast_clara.cpp`
 
+Tests:
+
+- multivariate FastCLARA uses correct `ndim`
+- FastCLARA with missing-data strategy does not crash or silently change semantics
+- existing FastCLARA tests still pass
+
+## Task 2: Improve FastCLARA Properly
+
 Required changes:
 
-1. Replace the hardcoded auto sample-size rule with a named helper and explicit clamp logic.
-2. Propagate all relevant `Problem` settings into the subsample problem:
-   - `band`
-   - `variant_params`
-   - `missing_strategy`
-   - `distance_strategy`
-   - `verbose` if needed
-   - `data.ndim`
-3. Keep the parent problem in disabled-cache mode for the global assignment step if Task 0 is implemented.
-4. Keep the subsample problem in dense mode, because FastPAM does want a full local matrix.
+- move sample-size logic into a named helper
+- use the improved rule from Schubert and Rousseeuw instead of the old fixed heuristic
+- keep the parent `Problem` non-dense by default after Task 0
+- keep subsample problems dense, because FastPAM on the sample really does want the local matrix
 
-Important correction to the original draft:
+Optional but sensible follow-up:
 
-- the sample-size tweak is not the main event
-- the real improvement is making CLARA large-dataset-friendly under the actual `Problem` architecture
+- consider parallelizing parent-level assignment using direct DTW calls rather than unsafe cached writes
 
-Tests to add:
+Why this matters:
 
-- missing-strategy propagation
-- multivariate `ndim` propagation
-- sample-size helper returns the documented value
-- parent full problem does not become fully materialized just because CLARA ran
+- FastCLARA is still the primary large-N algorithm in this wave
+- it needs to be correct before it needs to be clever
 
-## Task 4: Add Hierarchical Clustering, But Admit It Is A Small-N Feature
+## Task 3: Factor Shared Medoid Utilities
+
+Create an internal helper layer, for example:
+
+- `dtwc/algorithms/detail/medoid_utils.hpp`
+
+Factor reusable logic out of `fast_pam.cpp`:
+
+- assign-to-nearest-medoid
+- total-cost accumulation
+- nearest / second-nearest support where needed
+
+Important design rule:
+
+- utilities should accept a distance function `(int, int) -> double`
+- they should not be hardwired to a dense `Problem` assumption
+
+This prepares both FastCLARA improvements and any later CLARANS work without duplicating brittle logic.
+
+## Task 4: Hierarchical Clustering, Small-N Only
 
 Create:
 
@@ -251,15 +221,7 @@ Create:
 - `dtwc/algorithms/hierarchical.cpp`
 - `tests/unit/algorithms/unit_test_hierarchical.cpp`
 
-Do not create a public `CondensedDistanceMatrix` in this task.
-
-First implementation should:
-
-- use the existing `DenseDistanceMatrix`
-- explicitly require a full matrix
-- explicitly guard against large `N`
-
-Suggested API split:
+API direction:
 
 ```cpp
 namespace dtwc::algorithms {
@@ -280,140 +242,176 @@ struct Dendrogram {
 
 struct HierarchicalOptions {
   Linkage linkage = Linkage::Average;
-  int max_points = 2000;   // hard guard for the dense implementation
+  int max_points = 2000;
 };
 
 Dendrogram build_dendrogram(Problem& prob, const HierarchicalOptions& opts = {});
-core::ClusteringResult cut_dendrogram(
-  const Dendrogram& dendrogram,
-  Problem& prob,
-  int k);
+core::ClusteringResult cut_dendrogram(const Dendrogram& dendrogram, Problem& prob, int k);
 
 } // namespace dtwc::algorithms
 ```
 
-Why this API is better:
+Required behavior:
 
-- `build_dendrogram()` only needs to describe the merge tree
-- `cut_dendrogram()` receives `Problem&`, so it can compute medoids from real distances
-- the type no longer pretends that merges alone are enough to recover a full clustering result
+- assert the dense matrix is fully computed before building the dendrogram
+- keep a separate working inter-cluster distance structure
+- do not mutate `Problem` inside `cut_dendrogram`
+- use deterministic tie-breaking
+- throw when `N > max_points`
 
-Implementation notes:
+Do not introduce a public `CondensedDistanceMatrix` yet. That is premature until a second real consumer exists.
 
-- if the implementation is still generic `O(N^3)`, enforce `max_points` hard
-- define stable tie-breaking in the plan, not after the tests fail
-- for medoid extraction after a cut, break ties by smallest original index
+## Task 5: Experimental CLARANS, Reframed
 
-Tests:
+CLARANS stays in the plan only under a stricter contract.
 
-- 4-point hand-checked examples for each linkage
-- deterministic merge order under equal distances
-- `cut(1)` and `cut(N)`
-- medoid correctness on small synthetic problems
-- throws when `N > max_points`
+### Positioning
 
-Future work, not this task:
+- not the flagship scalable algorithm
+- not a required Wave 2A deliverable
+- not exposed in the CLI on day one
 
-- if a second real consumer appears, then consider an internal or public condensed matrix
-- if hierarchical becomes performance critical, revisit algorithm choice (`SLINK`, nearest-neighbor chain, etc.)
+### Acceptable roles
 
-## Task 5: CLI, Headers, Docs, And Changelog
+- bounded mid-ground clustering for moderate `N`
+- bounded refinement of medoids produced by FastCLARA or another initializer
 
-Modify:
+### Preferred implementation order
 
-- `dtwc/dtwc.hpp`
-- `dtwc/dtwc_cl.cpp`
-- `CHANGELOG.md`
+1. Internal prototype first
+2. Seed from a reasonable initializer
+3. Add hard budgets
+4. Benchmark against FastCLARA and FastPAM
+5. Promote only if it wins somewhere meaningful
 
-CLI rules:
+### API direction
 
-- add `clarans`
-- add `hierarchical`
-- reuse `-k/--clusters` as the cut level for hierarchical
-- add `--linkage {single,complete,average}` only for hierarchical
+If implemented, prefer an options struct that can actually bound runtime:
 
-Do not add:
+```cpp
+struct CLARANSOptions {
+  int n_clusters = 3;
+  int num_local = 2;
+  int max_neighbor = -1;
+  int64_t max_dtw_evals = -1;
+  int64_t time_budget_ms = -1;
+  unsigned random_seed = 42;
+};
+```
 
-- `--cut-k`
+Even better for the first prototype:
 
-That flag is redundant and makes the CLI worse.
+- implement an internal `clarans_refine(...)` helper that starts from initial medoids
+- only expose a standalone public CLARANS API if benchmarks justify it
 
-Header policy:
+### Acceptance criteria
 
-- add new public headers only after the implementations and tests are stable
+CLARANS earns promotion only if it satisfies at least one of these on a defined mid-ground benchmark set:
 
-Documentation rule:
+- materially better cost than FastCLARA at acceptable additional runtime
+- materially lower runtime than FastPAM while staying close enough in cost
 
-- changelog last
-- do not mark the wave as "large-scale" unless Task 0 landed
+If it never lands on a useful Pareto point, delete it from the wave.
+
+That is the correct adversarial standard.
+
+## Task 6: CLI, Headers, And Changelog
+
+Ship only the proven pieces.
+
+Required:
+
+- add hierarchical support to the CLI
+- reuse `-k/--clusters` for hierarchical cut level
+- add `--linkage {single,complete,average}`
+- update `dtwc.hpp`
+- update `CHANGELOG.md`
+
+Do not expose CLARANS in the CLI until the experimental task passes its acceptance criteria.
 
 ## Execution Order
 
 ```text
-T0 Distance-access contract
-  |
-  +--> T1 Shared medoid utilities
-         |
-         +--> T2 CLARANS
-         |
-         +--> T3 FastCLARA improvements
-  |
-  +--> T4 Hierarchical clustering (small-N only)
-         |
-         +--> T5 CLI + headers + changelog
+T0 defer dense allocation
+  ->
+T1 fix FastCLARA correctness bugs
+  ->
+T2 improve FastCLARA
+  ->
+T3 factor shared medoid utilities
+  ->
+T4 hierarchical clustering (small-N only)
+  ->
+T6 CLI + headers + changelog
+
+T5 experimental CLARANS runs beside or after T3, but does not block shipping Track A
 ```
-
-Rationale:
-
-- `T0` is the blocker for any honest scalability claim
-- `T1` prevents duplicate medoid logic
-- `T4` is independent in feature space, but it is not part of the scale story
-- CLI integration belongs at the end
 
 ## Verification Plan
 
-### Required unit tests
+### Correctness
 
-- existing FastPAM tests still pass
-- existing FastCLARA tests still pass
-- new CLARANS tests pass
+- all existing FastPAM tests still pass
+- all existing FastCLARA tests still pass
 - new hierarchical tests pass
+- new regression tests cover:
+  - deferred dense allocation
+  - multivariate FastCLARA
+  - missing-data FastCLARA
+  - hierarchical precondition failures
 
-### Required regression checks
+### Performance and scale claims
 
-- dense-cache mode preserves current behavior
-- disabled-cache mode does not silently materialize the full matrix
-- CLARANS and FastCLARA do not call full-matrix code paths on the full dataset
+Do not claim scale from toy examples.
 
-### Required benchmark or smoke checks
+Required evidence:
 
-Do not benchmark only tiny toy data and call it scalable.
+- one smoke test showing `Problem::set_data()` no longer forces dense `N x N` allocation
+- FastCLARA runtime and quality checks on medium and larger datasets
+- hierarchical explicitly benchmarked only in the small-N regime
 
-Add at least:
+### CLARANS-specific evidence
 
-- small-N quality checks where FastPAM is the reference
-- medium-N runtime checks for CLARANS and FastCLARA
-- one large-N smoke run in disabled-cache mode to prove the wave no longer depends on dense `N x N` storage
+If CLARANS is attempted, benchmark it in the regime where it is supposed to matter, not in a fantasy regime where it obviously fails.
 
-The last item matters more than a pretty cost table. Without it, the scale claim is still unproven.
+At minimum compare against:
+
+- FastCLARA
+- FastPAM
+
+Across:
+
+- moderate `N`
+- multiple `k`
+- at least one expensive DTW setting
+
+Report:
+
+- wall time
+- number of DTW evaluations
+- final total cost
+- initializer used
+
+If the algorithm is only good when hidden behind cherry-picked settings, that is a rejection signal, not a success story.
 
 ## Definition Of Done
 
-- The plan no longer lies about `100K-1M` support under a dense-matrix `Problem`
-- CLARANS and FastCLARA can run without forcing full `N x N` storage on the full dataset
-- Hierarchical clustering ships as an explicitly dense, small-`N` feature
-- CLI integration is clean and does not invent redundant flags
-- tie-breaking is deterministic
-- tests prove both correctness and the intended memory model
+- `Problem` no longer forces dense `O(N^2)` allocation at data load time
+- FastCLARA is corrected for multivariate and missing-data inputs
+- FastCLARA remains the primary large-N algorithm
+- hierarchical clustering ships as an explicitly dense small-N feature
+- CLARANS, if kept, is positioned honestly as a benchmark-gated mid-ground or refinement algorithm
+- only proven features reach the CLI
 
 ## Bottom Line
 
-The original draft tried to schedule five feature tasks as if the architecture were already compatible with large-scale clustering. It is not.
+The expanded adversarial review was right to attack naive CLARANS. It was wrong to conclude that the only honest answer is deletion.
 
-The improved plan fixes that by doing the adult work first:
+The stronger plan is:
 
-- repair the distance-access contract
-- reuse medoid logic instead of cloning it
-- separate genuinely scalable algorithms from dense small-`N` analytics
+- fix the memory model first
+- fix the existing FastCLARA bugs second
+- ship hierarchical honestly as small-N
+- keep CLARANS on a short leash as an experimental mid-ground candidate
 
-That is the difference between a feature list and an implementation plan.
+That preserves the adversarial standard without confusing "not the main answer" with "has no role at all."
