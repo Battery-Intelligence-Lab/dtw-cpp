@@ -71,6 +71,16 @@ seed = 42
 # Solver: "highs", "gurobi"
 solver = "highs"
 
+# --- Compute device ---
+# "cpu" (default), "cuda" (GPU), or "cuda:N" for specific GPU device.
+# GPU mode computes the distance matrix on the GPU before clustering.
+# Only works with variant = "standard". Requires CUDA build.
+device = "cpu"
+
+# GPU precision: "auto" (FP32 on consumer GPUs, FP64 on HPC GPUs),
+# "fp32" (fastest, ~1e-5 relative error), "fp64" (bit-identical to CPU).
+precision = "auto"
+
 # --- Precomputed distance matrix ---
 # Uncomment to load a precomputed distance matrix:
 # dist-matrix = "path/to/distance_matrix.csv"

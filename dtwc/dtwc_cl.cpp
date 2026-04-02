@@ -162,6 +162,12 @@ int main(int argc, char *argv[])
               {"highs", "highs"}, {"gurobi", "gurobi"}},
           CLI::ignore_case));
 
+  // Compute device
+  std::string device = "cpu";
+  std::string precision = "auto";
+  app.add_option("-d,--device", device, "Compute device: cpu, cuda, cuda:N");
+  app.add_option("--precision", precision, "GPU precision: auto, fp32, fp64");
+
   // Verbosity
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "Verbose output");
@@ -188,7 +194,9 @@ int main(int argc, char *argv[])
               << "  Metric:   " << metric << "\n"
               << "  Variant:  " << variant << "\n"
               << "  MaxIter:  " << max_iter << "\n"
-              << "  N-init:   " << n_init << "\n";
+              << "  N-init:   " << n_init << "\n"
+              << "  Device:   " << device << "\n"
+              << "  Precision:" << precision << "\n";
     if (method == "clara") {
       std::cout << "  CLARA sample_size: "
                 << (sample_size < 0 ? "auto" : std::to_string(sample_size)) << "\n"
@@ -259,6 +267,62 @@ int main(int argc, char *argv[])
     } else if (verbose) {
       std::cout << "No valid checkpoint found at " << checkpoint_dir << ", starting fresh.\n";
     }
+  }
+
+  // ---- GPU distance matrix (if --device cuda) ----
+  if (device.rfind("cuda", 0) == 0 && !prob.isDistanceMatrixFilled()) {
+#ifdef DTWC_HAS_CUDA
+    if (!dtwc::cuda::cuda_available()) {
+      std::cerr << "Error: --device cuda requested but no CUDA GPU detected.\n";
+      return EXIT_FAILURE;
+    }
+
+    // Parse device ID from "cuda:N" syntax
+    int cuda_device_id = 0;
+    if (device.size() > 5 && device[4] == ':')
+      cuda_device_id = std::stoi(device.substr(5));
+
+    if (variant != "standard") {
+      std::cerr << "Error: --device cuda only supports --variant standard "
+                << "(got '" << variant << "'). Use CPU for other variants.\n";
+      return EXIT_FAILURE;
+    }
+
+    dtwc::cuda::CUDADistMatOptions cuda_opts;
+    cuda_opts.band = band;
+    cuda_opts.use_squared_l2 = (metric == "squared_euclidean");
+    cuda_opts.device_id = cuda_device_id;
+    cuda_opts.verbose = verbose;
+
+    if (precision == "fp32")
+      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+    else if (precision == "fp64")
+      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+    // else Auto (default)
+
+    if (verbose)
+      std::cout << "Computing distance matrix on GPU ("
+                << dtwc::cuda::cuda_device_info(cuda_device_id) << ") ...\n";
+
+    auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(prob.data.p_vec, cuda_opts);
+
+    // Inject GPU distance matrix into Problem
+    auto &dm = prob.distance_matrix();
+    dm.resize(cuda_result.n);
+    for (size_t i = 0; i < cuda_result.n; ++i)
+      for (size_t j = i; j < cuda_result.n; ++j)
+        dm.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    prob.set_distance_matrix_filled(true);
+
+    if (verbose)
+      std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
+                << " pairs in " << std::setprecision(3)
+                << cuda_result.gpu_time_sec * 1000 << " ms [" << clk << "]\n";
+#else
+    std::cerr << "Error: --device cuda requested but DTWC++ was built without CUDA.\n"
+              << "Rebuild with: cmake -DDTWC_ENABLE_CUDA=ON ...\n";
+    return EXIT_FAILURE;
+#endif
   }
 
   // ---- Run clustering ----
