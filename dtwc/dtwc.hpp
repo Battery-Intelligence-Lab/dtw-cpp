@@ -25,6 +25,9 @@
 #include "soft_dtw.hpp"
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/fast_clara.hpp"
+#include "algorithms/hierarchical.hpp"
+#include "algorithms/clarans.hpp"
+#include "algorithms/detail/medoid_utils.hpp"
 
 // Phase 1: Core types (binding-friendly, Armadillo-independent headers)
 #include "core/clustering_result.hpp"

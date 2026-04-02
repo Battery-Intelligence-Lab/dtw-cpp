@@ -8,6 +8,23 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (Wave 2A — Clustering Algorithms)
+
+- Deferred dense distance-matrix allocation: `Problem::set_data()` no longer forces O(N^2) memory. Dense matrix allocated lazily on first `fillDistanceMatrix()` or `distByInd()` call.
+- Shared medoid utilities (`algorithms/detail/medoid_utils.hpp`): `assign_to_nearest`, `compute_nearest_and_second`, `find_cluster_medoid`, `validate_medoids` — reusable, decoupled from Problem.
+- Hierarchical agglomerative clustering (`algorithms/hierarchical.hpp`): Single, complete, and average linkage. `build_dendrogram()` + `cut_dendrogram()`. Small-N feature with hard `max_points=2000` guard. Ward's excluded (mathematically invalid for DTW).
+- CLARANS experimental (`algorithms/clarans.hpp`): Bounded randomized k-medoids with `max_dtw_evals` and `max_neighbor` budget controls. Not exposed in CLI — requires benchmark evidence before promotion.
+
+### Fixed (Wave 2A)
+
+- FastCLARA now propagates `data.ndim`, `missing_strategy`, `distance_strategy`, and `verbose` to sub-problems. Previously, multivariate data was silently treated as univariate, and NaN data caused crashes.
+- FastCLARA default sample size improved to `max(40+2k, min(N, 10k+100))` per Schubert & Rousseeuw 2021.
+- `distByInd()` lazy allocation fix for checkpoint compatibility.
+
+### Changed (Wave 2A)
+
+- `Problem::set_data()` no longer calls `distMat.resize()`. The dense matrix is deferred to first actual use.
+
 ### Added (Wave 2B — Multivariate Variants + Lower Bounds)
 - Multivariate WDTW: `wdtwFull_mv()`, `wdtwBanded_mv()` with position-dependent weights.
 - Multivariate ADTW: `adtwFull_L_mv()`, `adtwBanded_mv()` with non-diagonal step penalty.
