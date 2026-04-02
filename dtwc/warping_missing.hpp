@@ -24,6 +24,7 @@
 #include "warping.hpp"           // for dtwFull_L (fallback)
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"  // for core::MetricType
+#include "missing_utils.hpp"     // for is_missing() — bitwise NaN, safe under -ffast-math
 
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
@@ -44,7 +45,7 @@ namespace detail {
 struct MissingL1Dist {
   template <typename T>
   T operator()(T a, T b) const {
-    if (std::isnan(a) || std::isnan(b)) return T(0);
+    if (is_missing(a) || is_missing(b)) return T(0);
     return std::abs(a - b);
   }
 };
@@ -53,7 +54,7 @@ struct MissingL1Dist {
 struct MissingSquaredL2Dist {
   template <typename T>
   T operator()(T a, T b) const {
-    if (std::isnan(a) || std::isnan(b)) return T(0);
+    if (is_missing(a) || is_missing(b)) return T(0);
     auto d = a - b;
     return d * d;
   }
