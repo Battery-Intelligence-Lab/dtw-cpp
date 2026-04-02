@@ -8,6 +8,7 @@
 
 #include "mip.hpp"
 #include "../Problem.hpp"
+#include "../algorithms/fast_pam.hpp"
 #include "../settings.hpp"
 #include "../types/types.hpp" // for Range
 
@@ -36,6 +37,11 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Create variables
     std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
+
+    // Branch on medoid selection first — once A[i,i] is fixed,
+    // assignment is a transportation problem (TU) and LP-integral.
+    for (size_t i = 0; i < Nb; ++i)
+      w[i * (Nb + 1)].set(GRB_IntAttr_BranchPriority, 100);
 
     for (auto i : Range(Nb)) {
       GRBLinExpr lhs = 0;
@@ -68,10 +74,34 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.setObjective(obj, GRB_MINIMIZE);
 
-    model.set(GRB_IntParam_NumericFocus, 3); // Much numerics
-    model.set(GRB_DoubleParam_MIPGap, 1e-5); // Default 1e-4
+    // Solver tuning from MIPSettings
+    model.set(GRB_IntParam_NumericFocus, prob.mip_settings.numeric_focus);
+    model.set(GRB_IntParam_MIPFocus, prob.mip_settings.mip_focus);
+    model.set(GRB_DoubleParam_MIPGap, prob.mip_settings.mip_gap);
+    if (prob.mip_settings.time_limit_sec > 0)
+      model.set(GRB_DoubleParam_TimeLimit, static_cast<double>(prob.mip_settings.time_limit_sec));
+    if (!prob.mip_settings.verbose_solver)
+      model.set(GRB_IntParam_OutputFlag, 0);
 
-    std::cout << "Finished setting up the MILP problem." << std::endl;
+    // Warm start: run FastPAM and feed solution as MIP start
+    if (prob.mip_settings.warm_start) {
+      auto pam_result = fast_pam(prob, static_cast<int>(Nc));
+
+      for (size_t idx = 0; idx < Nb * Nb; ++idx)
+        w[idx].set(GRB_DoubleAttr_Start, 0.0);
+
+      for (int med : pam_result.medoid_indices)
+        w[static_cast<size_t>(med) * (Nb + 1)].set(GRB_DoubleAttr_Start, 1.0);
+
+      // Gurobi indexing: A[i,j] at flat index i + j * Nb (column-major)
+      for (size_t j = 0; j < Nb; ++j) {
+        int med = pam_result.medoid_indices[pam_result.labels[j]];
+        w[static_cast<size_t>(med) + j * Nb].set(GRB_DoubleAttr_Start, 1.0);
+      }
+    }
+
+    if (prob.mip_settings.verbose_solver || prob.verbose)
+      std::cout << "Finished setting up the MILP problem." << std::endl;
 
     model.optimize();
 

@@ -8,6 +8,20 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (MIP Solver Improvements)
+
+- MIP warm start: `--method mip` now runs FastPAM first and feeds the solution as a MIP start, dramatically reducing branch-and-bound solve time. Controlled by `--no-warm-start` flag.
+- MIP solver settings exposed in CLI and TOML config: `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`.
+- Gurobi branching priority on medoid selection variables A[i,i] — once medoids are fixed, assignment is a TU transportation problem (LP-integral).
+- Optional YAML configuration file support (`--yaml-config config.yaml`) via yaml-cpp (`-DDTWC_ENABLE_YAML=ON`).
+- `MIPSettings` struct on `Problem` for programmatic solver tuning.
+
+### Changed (MIP Solver Improvements)
+
+- Gurobi `NumericFocus` reduced from 3 to 1 (sufficient for 0/1/-1 constraint matrix, avoids 1.5-3x overhead).
+- Gurobi now uses `MIPFocus=2` (optimality-focused) by default.
+- MIP solver output suppressed by default (use `--verbose-solver` to see solver logs).
+
 ### Added (Wave 2A — Clustering Algorithms)
 
 - Deferred dense distance-matrix allocation: `Problem::set_data()` no longer forces O(N^2) memory. Dense matrix allocated lazily on first `fillDistanceMatrix()` or `distByInd()` call.

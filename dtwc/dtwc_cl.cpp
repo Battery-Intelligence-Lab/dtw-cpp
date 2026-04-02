@@ -1,14 +1,15 @@
 /**
  * @file dtwc_cl.cpp
- * @brief Command line interface for DTWC++ with TOML configuration support.
+ * @brief Command line interface for DTWC++ with TOML/YAML configuration support.
  *
- * @details Full CLI tool using CLI11 with TOML config file support.
- * Supports PAM and CLARA clustering methods, all DTW variants,
- * checkpointing, and flexible output.
+ * @details Full CLI tool using CLI11 with TOML config file support and optional
+ * YAML support via yaml-cpp. Supports PAM, CLARA, MIP, and hierarchical clustering
+ * methods, all DTW variants, checkpointing, and flexible output.
  *
  * Usage:
  *   dtwc_cl --input data.csv -k 5 --method pam -v
  *   dtwc_cl --config config.toml
+ *   dtwc_cl --config config.yaml   (requires -DDTWC_ENABLE_YAML=ON)
  *
  * @date 29 Mar 2026
  * @authors Volkan Kumtepeli
@@ -18,6 +19,11 @@
 #include "dtwc.hpp"
 
 #include <CLI/CLI.hpp>
+
+#ifdef DTWC_HAS_YAML
+#include <yaml-cpp/yaml.h>
+#endif
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -80,8 +86,12 @@ int main(int argc, char *argv[])
 {
   CLI::App app{"DTWC++ -- Dynamic Time Warping Clustering"};
 
-  // TOML config file support
+  // TOML config file support (CLI11 built-in, processes before parsing)
   app.set_config("--config", "", "Read TOML configuration file");
+
+  // YAML config file (optional, processed after CLI parsing)
+  std::string yaml_config_path;
+  app.add_option("--yaml-config", yaml_config_path, "Read YAML configuration file (requires -DDTWC_ENABLE_YAML=ON)");
 
   // Input/output
   std::string input_file;
@@ -171,6 +181,21 @@ int main(int argc, char *argv[])
               {"highs", "highs"}, {"gurobi", "gurobi"}},
           CLI::ignore_case));
 
+  // MIP solver settings (kebab-case: matches CLI flags, TOML keys, and YAML keys)
+  double mip_gap = 1e-5;
+  int time_limit = -1;
+  bool no_warm_start = false;
+  int numeric_focus = 1;
+  int mip_focus = 2;
+  bool verbose_solver = false;
+
+  app.add_option("--mip-gap", mip_gap, "MIP optimality gap tolerance (default: 1e-5)");
+  app.add_option("--time-limit", time_limit, "MIP solver time limit in seconds (-1 = unlimited)");
+  app.add_flag("--no-warm-start", no_warm_start, "Disable FastPAM warm start for MIP");
+  app.add_option("--numeric-focus", numeric_focus, "Gurobi NumericFocus (0-3, default: 1)");
+  app.add_option("--mip-focus", mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
+  app.add_flag("--verbose-solver", verbose_solver, "Show MIP solver log output");
+
   // Compute device
   std::string device = "cpu";
   std::string precision = "auto";
@@ -187,6 +212,69 @@ int main(int argc, char *argv[])
   if (argc == 1) {
     std::cout << app.help() << std::endl;
     return EXIT_SUCCESS;
+  }
+
+  // ---- YAML config loading (post-parse, CLI flags take precedence) ----
+  if (!yaml_config_path.empty()) {
+#ifdef DTWC_HAS_YAML
+    try {
+      YAML::Node config = YAML::LoadFile(yaml_config_path);
+
+      // Only override values that were NOT explicitly set on CLI.
+      // CLI11 already parsed CLI args; YAML provides defaults for unset options.
+      auto set_if_unset = [&](const std::string &key, auto &var) {
+        if (config[key]) {
+          using T = std::decay_t<decltype(var)>;
+          var = config[key].as<T>();
+        }
+      };
+
+      set_if_unset("input", input_file);
+      set_if_unset("output", output_dir);
+      set_if_unset("name", prob_name);
+      set_if_unset("clusters", n_clusters);
+      set_if_unset("method", method);
+      set_if_unset("band", band);
+      set_if_unset("metric", metric);
+      set_if_unset("variant", variant);
+      set_if_unset("max-iter", max_iter);
+      set_if_unset("n-init", n_init);
+      set_if_unset("solver", solver);
+      set_if_unset("device", device);
+      set_if_unset("precision", precision);
+      set_if_unset("verbose", verbose);
+
+      // MIP solver settings
+      set_if_unset("mip-gap", mip_gap);
+      set_if_unset("time-limit", time_limit);
+      set_if_unset("no-warm-start", no_warm_start);
+      set_if_unset("numeric-focus", numeric_focus);
+      set_if_unset("mip-focus", mip_focus);
+      set_if_unset("verbose-solver", verbose_solver);
+
+      // DTW variant parameters
+      set_if_unset("wdtw-g", wdtw_g);
+      set_if_unset("adtw-penalty", adtw_penalty);
+      set_if_unset("sdtw-gamma", sdtw_gamma);
+
+      // CLARA parameters
+      set_if_unset("sample-size", sample_size);
+      set_if_unset("n-samples", n_samples);
+      set_if_unset("seed", clara_seed);
+
+      // Hierarchical
+      set_if_unset("linkage", linkage_str);
+
+      if (verbose)
+        std::cout << "Loaded YAML config: " << yaml_config_path << "\n";
+    } catch (const YAML::Exception &e) {
+      std::cerr << "Error loading YAML config: " << e.what() << "\n";
+      return EXIT_FAILURE;
+    }
+#else
+    std::cerr << "Error: YAML config requires building with -DDTWC_ENABLE_YAML=ON\n";
+    return EXIT_FAILURE;
+#endif
   }
 
   // ---- Setup ----
@@ -235,6 +323,14 @@ int main(int argc, char *argv[])
   prob.N_repetition = n_init;
   prob.output_folder = output_dir;
   prob.verbose = verbose;
+
+  // Wire MIP solver settings
+  prob.mip_settings.mip_gap = mip_gap;
+  prob.mip_settings.time_limit_sec = time_limit;
+  prob.mip_settings.warm_start = !no_warm_start;
+  prob.mip_settings.numeric_focus = numeric_focus;
+  prob.mip_settings.mip_focus = mip_focus;
+  prob.mip_settings.verbose_solver = verbose_solver;
 
   // Set DTW variant
   dtwc::core::DTWVariantParams vparams;

@@ -1,56 +1,69 @@
 # DTWC++ Development TODO
 
-**Last Updated:** 2026-04-02 (GPU optimization session)
+**Last Updated:** 2026-04-02
 
-## Completed (This Session)
+## Completed
 
+### Waves 1A/1B/2A/2B (2026-04-02)
+- [x] Wave 1A: Metrics + Missing Data (missing_utils, MissingStrategy, DTW-AROW, 5 scoring metrics)
+- [x] Wave 1B: Multivariate Foundation (ndim, MVL1/MVSquaredL2, MV DTW, MV DDTW)
+- [x] Wave 2A: Clustering Algorithms (deferred alloc, medoid utils, hierarchical, CLARANS, FastCLARA fixes)
+- [x] Wave 2B: MV Variants + Lower Bounds (MV WDTW/ADTW/DDTW, per-channel LB_Keogh, MV missing DTW)
+
+### GPU Optimization (2026-04-02)
 - [x] CUDA anti-diagonal wavefront kernel (85x kernel speedup)
 - [x] FP32/FP64 auto-precision by GPU architecture
-- [x] Register-tiled kernel (L<=256, cuDTW++-inspired)
-- [x] Warp-level kernel (L<=32, 8 pairs/block)
+- [x] Register-tiled kernel (L<=256), warp-level kernel (L<=32)
 - [x] Persistent kernel with atomic work queue
-- [x] Double-buffer for long series (L>1024)
-- [x] Series preloading into shared memory (L<=256)
-- [x] On-device pair index computation (eliminate pair arrays)
-- [x] GPU-side NxN matrix write (eliminate host fill loop)
-- [x] Integer band boundary precomputation
-- [x] CUDA streams + pinned memory + event-based timing
-- [x] GPU LB_Keogh lower bound kernels
-- [x] GPU pruned distance matrix with skip_threshold
-- [x] 1-vs-N and K-vs-N GPU kernels for clustering
+- [x] GPU LB_Keogh, 1-vs-N and K-vs-N kernels
 - [x] Parallel CPU pruned distance matrix (OpenMP + atomic NN)
 - [x] DistanceMatrixStrategy enum (Auto/BruteForce/Pruned/GPU)
-- [x] Python `device='cpu'|'cuda'` API
-- [x] CLI `--device cuda --precision auto`
-- [x] Cross-platform CUDA/MPI/OpenMP detection
-- [x] CI workflow for CUDA/MPI smoke testing
-- [x] 3 adversarial reviews (GPU kernel, Python API, build system)
-- [x] 41/41 tests, 312/312 MPI tests
+- [x] Python `device='cpu'|'cuda'` API, CLI `--device cuda`
+- [x] Cross-platform CUDA/MPI/OpenMP detection + CI workflow
 
 ## Remaining Work
 
-### High Priority
-- [ ] Wire K-vs-N kernel into fast_pam clustering loop (C++ side)
-- [ ] Wire GPU LB_Keogh into clustering (prune before DTW in iterations)
-- [ ] Fix register-tiled kernel for banded DTW edge cases (some precision issues at boundaries)
-- [ ] CUDA streams: multi-stream pipelining for very large N (currently single stream)
-- [ ] Profile register pressure with `--ptxas-options=-v`, add `__launch_bounds__`
+### MIP Solver Improvements (from UNIMODULAR.md analysis)
+- [ ] MIP start from PAM (warm start for both HiGHS and Gurobi, ~10 lines each)
+- [ ] Gurobi: reduce NumericFocus 3->1, add MIPFocus=2, branching priority on A[i,i] diagonals
+- [ ] Benders decomposition for N > 200 (master: N binary vars, subproblem: O(Nk) assignment)
+- [ ] Odd-cycle cutting planes ({0,1/2}-CG cuts) as lazy constraints
 
-### Medium Priority
-- [ ] Hilbert-curve pair ordering for L2 cache locality (helps when N*L > L2)
-- [ ] GPU early-abandon within DTW kernels (periodic threshold check)
-- [ ] Template kernels on `use_squared_l2` (compile-time metric dispatch)
-- [ ] HIPify for AMD GPU support (~1-2 days for 300 LOC)
-- [ ] MATLAB MEX bindings with GPU support
+### CUDA Next Phase (see .claude/superpowers/plans/2026-04-02-cuda-next-phase.md)
+- [ ] Device-side pruning: stop launching DTW for LB-pruned pairs
+- [ ] Architecture-aware dispatch (DispatchProfile by compute capability)
+- [ ] Wire K-vs-N kernel into fast_pam clustering loop
+- [ ] Wire GPU LB_Keogh into clustering iterations
+- [ ] Benchmark expansion: standalone LB, pruned matrix, 1-vs-N, K-vs-N
+
+### CUDA Medium Priority
+- [ ] Fix register-tiled kernel for banded DTW edge cases
+- [ ] Multi-stream pipelining for very large N
+- [ ] Profile register pressure, add `__launch_bounds__`
+- [ ] Hilbert-curve pair ordering for L2 cache locality
+- [ ] GPU early-abandon within DTW kernels
+- [ ] Template kernels on `use_squared_l2`
+
+### Algorithms & Scale
+- [ ] Condensed distance matrix (half memory for symmetric storage)
+- [ ] Two-phase clustering for pre-categorized data (within-group + cross-group)
+- [ ] Lazy loading (FileBackedDataSource, CachedDataSource)
+- [ ] Binary distance matrix storage (HDF5 + mmap'd flat binary)
+- [ ] Algorithm auto-selection based on cost = N^2 * min(L, band) * ndim
+
+### Bindings
+- [ ] MATLAB MEX bindings (skill drafted in .claude/skills/matlab-wrapper-skill.md)
+- [ ] Python binding updates (skill drafted in .claude/skills/python-wrapper-skill.md)
+- [ ] HIPify for AMD GPU support
+
+### Technical Debt
+- [ ] Clean up wavefront kernel dead code (unreachable preload branch for L<=256)
+- [ ] Unify kernel dispatch logic
+- [ ] Add `DeviceContext` abstraction (device_id, stream, workspace pool)
 
 ### Low Priority / Research
 - [ ] Multi-GPU support (data sharding across devices)
-- [ ] TMA (Tensor Memory Accelerator) for Hopper GPUs
-- [ ] `cp.async` for compute-transfer overlap on Ampere+
+- [ ] TMA for Hopper GPUs
 - [ ] GPU DTW variants (DDTW, WDTW, ADTW on GPU)
 - [ ] Soft-DTW GPU kernel
-
-### Technical Debt
-- [ ] Clean up wavefront kernel dead code (preload branch for L<=256 is now unreachable)
-- [ ] Unify kernel dispatch logic (currently scattered across launch_dtw_kernel)
-- [ ] Add `DeviceContext` abstraction (carries device_id, stream, workspace pool)
+- [ ] SIMD via Google Highway (LB_Keogh, z_normalize, multi-pair DTW)

@@ -71,6 +71,24 @@ seed = 42
 # Solver: "highs", "gurobi"
 solver = "highs"
 
+# MIP optimality gap tolerance (default: 1e-5).
+mip-gap = 1e-5
+
+# MIP solver time limit in seconds (-1 = unlimited).
+time-limit = -1
+
+# Gurobi NumericFocus (0-3, default: 1). Higher = more numeric care, slower.
+numeric-focus = 1
+
+# Gurobi MIPFocus (0=balanced, 1=find feasible, 2=prove optimal, 3=bound).
+mip-focus = 2
+
+# Show detailed MIP solver log output.
+verbose-solver = false
+
+# Uncomment to disable FastPAM warm start for MIP:
+# no-warm-start = true
+
 # --- Compute device ---
 # "cpu" (default), "cuda" (GPU), or "cuda:N" for specific GPU device.
 # GPU mode computes the distance matrix on the GPU before clustering.

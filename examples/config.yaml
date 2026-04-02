@@ -1,0 +1,71 @@
+# DTWC++ Configuration File (YAML format)
+#
+# Usage: dtwc_cl --yaml-config examples/config.yaml
+# Requires: build with -DDTWC_ENABLE_YAML=ON
+#
+# All options can also be set via command line flags.
+# Command line flags override values from this file.
+# Key names use kebab-case, matching CLI flags and TOML keys.
+
+# Input CSV file or folder containing time series data.
+input: data/dummy
+
+# Output directory for results.
+output: ./results
+
+# Problem name used in output filenames.
+name: example
+
+# Number of clusters.
+clusters: 5
+
+# Clustering method: pam, clara, kmedoids, mip, hierarchical
+method: pam
+
+# Sakoe-Chiba band width. -1 = full (unconstrained) DTW.
+band: -1
+
+# Distance metric: l1, squared_euclidean
+metric: l1
+
+# DTW variant: standard, ddtw, wdtw, adtw, softdtw
+variant: standard
+
+# Maximum iterations for iterative algorithms.
+max-iter: 100
+
+# Number of random restarts (PAM/kMedoids Lloyd).
+n-init: 1
+
+# CSV parsing.
+skip-rows: 0
+skip-cols: 0
+
+# Verbose output.
+verbose: true
+
+# DTW variant parameters.
+wdtw-g: 0.05
+adtw-penalty: 1.0
+sdtw-gamma: 1.0
+
+# CLARA-specific options (only used when method = "clara").
+sample-size: -1
+n-samples: 5
+seed: 42
+
+# MIP solver (only used when method = "mip").
+solver: highs
+mip-gap: 1.0e-5
+time-limit: -1
+numeric-focus: 1
+mip-focus: 2
+verbose-solver: false
+# no-warm-start: true  # Uncomment to disable FastPAM warm start
+
+# Hierarchical linkage (only used when method = "hierarchical").
+linkage: average
+
+# Compute device.
+device: cpu
+precision: auto

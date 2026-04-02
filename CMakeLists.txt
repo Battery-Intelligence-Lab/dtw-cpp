@@ -27,6 +27,7 @@ option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_SIMD "Enable SIMD acceleration via Google Highway" OFF)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
+option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
 
 # CUDA must be detected at directory scope (enable_language cannot be called
 # inside a function). Do it here before dtwc_setup_dependencies().
@@ -201,6 +202,12 @@ if(PROJECT_IS_TOP_LEVEL)
     project_warnings
     project_options
   )
+
+  # Optional YAML config support for CLI tool
+  if(DTWC_ENABLE_YAML AND TARGET yaml-cpp::yaml-cpp)
+    target_link_libraries(dtwc_cl PRIVATE yaml-cpp::yaml-cpp)
+    target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
+  endif()
 endif()
 
 # Adding the tests:

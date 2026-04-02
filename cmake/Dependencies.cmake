@@ -100,6 +100,25 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
+  # yaml-cpp — YAML configuration file support (MIT license, optional)
+  if(DTWC_ENABLE_YAML AND NOT TARGET yaml-cpp)
+    CPMAddPackage(
+      NAME yaml-cpp
+      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz"
+      SYSTEM
+      EXCLUDE_FROM_ALL
+      OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"
+    )
+    # Ensure namespaced alias exists (CPM subdirectory may not create it)
+    if(TARGET yaml-cpp AND NOT TARGET yaml-cpp::yaml-cpp)
+      add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
+    endif()
+    if(NOT TARGET yaml-cpp)
+      message(WARNING "yaml-cpp not found -- YAML config support disabled")
+      set(DTWC_ENABLE_YAML OFF PARENT_SCOPE)
+    endif()
+  endif()
+
   # MPI (optional) — distributed distance matrix computation
   if(DTWC_ENABLE_MPI)
     # On Windows, help CMake find MS-MPI by setting hints from well-known

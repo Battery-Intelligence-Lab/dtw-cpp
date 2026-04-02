@@ -10,6 +10,7 @@
 #include "../Data.hpp"        // for Data
 #include "../types/types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
+#include "../algorithms/fast_pam.hpp"
 #include "../settings.hpp"
 #include "../timing.hpp"
 
@@ -46,7 +47,8 @@ void extract_mip_solution(Problem &prob, const T &solution)
 
 void MIP_clustering_byHiGHS(Problem &prob)
 {
-  std::cout << "HiGS is being called!" << std::endl;
+  if (prob.mip_settings.verbose_solver || prob.verbose)
+    std::cout << "HiGHS MIP solver starting." << std::endl;
   dtwc::Clock clk; // Create a clock object
 
 #ifdef DTWC_ENABLE_HIGHS
@@ -153,10 +155,37 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Create a Highs instance
   Highs highs;
 
+  // Solver tuning from MIPSettings
+  highs.setOptionValue("mip_rel_gap", prob.mip_settings.mip_gap);
+  if (prob.mip_settings.time_limit_sec > 0)
+    highs.setOptionValue("time_limit", static_cast<double>(prob.mip_settings.time_limit_sec));
+  if (!prob.mip_settings.verbose_solver)
+    highs.setOptionValue("output_flag", false);
+
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   if (return_status != HighsStatus::kOk) {
     std::cout << "Passing the model to HiGHS was unsuccessful!" << std::endl;
     return;
+  }
+
+  // Warm start: run FastPAM and feed solution as MIP start
+  if (prob.mip_settings.warm_start) {
+    auto pam_result = fast_pam(prob, static_cast<int>(Nc));
+
+    HighsSolution sol;
+    sol.col_value.resize(Nvar, 0.0);
+    sol.value_valid = true;
+
+    for (int med : pam_result.medoid_indices)
+      sol.col_value[static_cast<size_t>(med) * (Nb + 1)] = 1.0;
+
+    // HiGHS indexing: A[i,j] at flat index i * Nb + j (row-major)
+    for (size_t j = 0; j < Nb; ++j) {
+      int med = pam_result.medoid_indices[pam_result.labels[j]];
+      sol.col_value[static_cast<size_t>(med) * Nb + j] = 1.0;
+    }
+
+    highs.setSolution(sol);
   }
 
   return_status = highs.run(); // Solve the model
@@ -168,15 +197,17 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Get the model status
   const HighsModelStatus &model_status = highs.getModelStatus();
   assert(model_status == HighsModelStatus::kOptimal);
-  std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
 
-  // Get the solution information
-  const HighsInfo &info = highs.getInfo();
-  std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n'
-            << "Objective function value: " << info.objective_function_value << '\n'
-            << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n'
-            << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n'
-            << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
+  if (prob.mip_settings.verbose_solver || prob.verbose) {
+    std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
+
+    const HighsInfo &info = highs.getInfo();
+    std::cout << "Simplex iteration count: " << info.simplex_iteration_count << '\n'
+              << "Objective function value: " << info.objective_function_value << '\n'
+              << "Primal  solution status: " << highs.solutionStatusToString(info.primal_solution_status) << '\n'
+              << "Dual    solution status: " << highs.solutionStatusToString(info.dual_solution_status) << '\n'
+              << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
+  }
 
   // Get the solution values
   extract_mip_solution(prob, highs.getSolution().col_value);

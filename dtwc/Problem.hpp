@@ -36,6 +36,16 @@
 
 namespace dtwc {
 
+/// MIP solver tuning parameters.
+struct MIPSettings {
+  double mip_gap = 1e-5;          ///< Relative MIP gap tolerance.
+  int time_limit_sec = -1;        ///< Solver time limit in seconds (-1 = unlimited).
+  bool warm_start = true;          ///< Run FastPAM first and feed as MIP start.
+  int numeric_focus = 1;           ///< Gurobi NumericFocus (0-3).
+  int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
+  bool verbose_solver = false;     ///< Show solver log output.
+};
+
 /// Strategy for computing the pairwise distance matrix.
 enum class DistanceMatrixStrategy {
   Auto,       ///< Choose best strategy automatically
@@ -87,6 +97,7 @@ public:
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
+  MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
