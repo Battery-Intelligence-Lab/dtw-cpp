@@ -20,6 +20,7 @@
 #include "warping_wdtw.hpp"
 #include "warping_adtw.hpp"
 #include "warping_missing.hpp"
+#include "missing_utils.hpp"
 #include "soft_dtw.hpp"
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/fast_clara.hpp"
