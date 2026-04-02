@@ -22,6 +22,15 @@ namespace scores {
   std::vector<double> silhouette(Problem &prob);
   double daviesBouldinIndex(Problem &prob);
 
+  double dunnIndex(Problem &prob);
+  double inertia(Problem &prob);
+  double calinskiHarabaszIndex(Problem &prob);
+
+  double adjustedRandIndex(const std::vector<int> &labels_true,
+                           const std::vector<int> &labels_pred);
+  double normalizedMutualInformation(const std::vector<int> &labels_true,
+                                     const std::vector<int> &labels_pred);
+
 } // namespace scores
 
 } // namespace dtwc
