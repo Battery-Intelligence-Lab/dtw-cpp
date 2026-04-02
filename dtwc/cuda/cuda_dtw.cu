@@ -97,21 +97,35 @@ __global__ void dtw_wavefront_kernel(
   // outside the loop, to avoid issues with __syncthreads convergence.
   __shared__ int s_pid;
 
-  // Set up anti-diagonal buffer pointers (constant across pairs)
+  // Two modes: 3-buffer (classic) for L<=1024, 2-buffer (double-buffer) for L>1024.
+  // The 2-buffer mode saves max_L*sizeof(T) shared memory, improving occupancy
+  // for long series at the cost of an extra sync + register pressure per anti-diag.
+  // For medium series the 3-buffer mode is faster (no extra sync overhead).
+  constexpr int DOUBLE_BUF_THRESHOLD = 1024;
+  const bool use_double_buf = (max_L > DOUBLE_BUF_THRESHOLD) && !preload;
+
   T *s_row_buf = nullptr;
   T *s_col_buf = nullptr;
-  T *diag[3];
+  T *diag_buf[3]; // [0],[1] always used; [2] only in 3-buffer mode
+  int n_diag_bufs;
 
   if (preload) {
-    s_row_buf = smem;                   // [max_L]
-    s_col_buf = smem + max_L;          // [max_L]
-    diag[0] = smem + 2 * max_L;
-    diag[1] = smem + 3 * max_L;
-    diag[2] = smem + 4 * max_L;
+    s_row_buf = smem;
+    s_col_buf = smem + max_L;
+    diag_buf[0] = smem + 2 * max_L;
+    diag_buf[1] = smem + 3 * max_L;
+    diag_buf[2] = smem + 4 * max_L; // 3-buffer always for preload
+    n_diag_bufs = 3;
+  } else if (use_double_buf) {
+    diag_buf[0] = smem;
+    diag_buf[1] = smem + max_L;
+    diag_buf[2] = nullptr; // not used
+    n_diag_bufs = 2;
   } else {
-    diag[0] = smem;
-    diag[1] = smem + max_L;
-    diag[2] = smem + 2 * max_L;
+    diag_buf[0] = smem;
+    diag_buf[1] = smem + max_L;
+    diag_buf[2] = smem + 2 * max_L;
+    n_diag_bufs = 3;
   }
 
   // ---------------------------------------------------------------------------
@@ -185,60 +199,92 @@ __global__ void dtw_wavefront_kernel(
 
     const int total_diags = M + N_len - 1;
 
-    for (int k = 0; k < total_diags; ++k) {
-      // Anti-diagonal k: cells (i, j) where i + j = k
-      const int i_min = max(0, k - N_len + 1);
-      const int i_max = min(k, M - 1);
-      const int len_k = i_max - i_min + 1;
+    if (use_double_buf) {
+      // ── Double-buffer mode (L > 1024): 2 ping-pong buffers ───────────
+      // Pre-fetch cost_diag from k-2 buffer into registers before overwriting.
+      // Saves max_L*sizeof(T) shared memory → better occupancy for long series.
+      for (int k = 0; k < total_diags; ++k) {
+        const int i_min = max(0, k - N_len + 1);
+        const int i_max = min(k, M - 1);
+        const int len_k = i_max - i_min + 1;
+        const int i_min_k1 = max(0, (k - 1) - N_len + 1);
+        const int i_min_k2 = max(0, (k - 2) - N_len + 1);
 
-      // i_min for the two previous anti-diagonals
-      const int i_min_k1 = max(0, (k - 1) - N_len + 1);
-      const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+        T *cur  = diag_buf[k & 1];        // output for k (also holds k-2)
+        T *prev = diag_buf[(k & 1) ^ 1];  // k-1
 
-      // Which buffer slot for k, k-1, k-2
-      T *cur  = diag[k % 3];
-      T *prev = diag[(k - 1 + 3) % 3]; // k-1
-      T *prev2 = diag[(k - 2 + 3) % 3]; // k-2
+        // Phase 1: cache cost_diag from k-2 (= cur) before overwriting
+        constexpr int MAX_SI = 8;
+        T cd[MAX_SI];
+        for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
+          int i = i_min + p;
+          cd[s] = (k >= 2 && i > 0 && (k - i) > 0)
+                      ? cur[(i - 1) - i_min_k2] : INF;
+        }
+        __syncthreads();
 
-      for (int p = tid; p < len_k; p += nthreads) {
-        const int i = i_min + p;
-        const int j = k - i;
-
-        // Banded check
-        if (use_band) {
-          const double center = slope * i;
-          const int j_low  = (int)ceil(round(100.0 * (center - window)) / 100.0);
-          const int j_high = (int)floor(round(100.0 * (center + window)) / 100.0);
-          if (j < j_low || j > j_high) {
-            cur[p] = INF;
-            continue;
+        // Phase 2: compute anti-diag k
+        for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
+          int i = i_min + p, j = k - i;
+          if (use_band) {
+            double center = slope * i;
+            int jl = (int)ceil(round(100.0 * (center - window)) / 100.0);
+            int jh = (int)floor(round(100.0 * (center + window)) / 100.0);
+            if (j < jl || j > jh) { cur[p] = INF; continue; }
+          }
+          T diff = __ldg(&s_row[i]) - __ldg(&s_col[j]);
+          T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+          if (i == 0 && j == 0) { cur[p] = d; }
+          else {
+            T ca = (i > 0) ? prev[(i-1) - i_min_k1] : INF;
+            T cl = (j > 0) ? prev[i - i_min_k1] : INF;
+            cur[p] = fmin(cd[s], fmin(ca, cl)) + d;
           }
         }
-
-        // Series data: from shared memory if preloaded, else via __ldg from global
-        T diff = preload ? (s_row[i] - s_col[j])
-                         : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
-        T d = use_squared_l2 ? (diff * diff) : fabs(diff);
-
-        if (i == 0 && j == 0) {
-          cur[p] = d;
-        } else {
-          // cost[i-1][j] is on anti-diag k-1 at position (i-1) - i_min(k-1)
-          T cost_above = (i > 0) ? prev[(i - 1) - i_min_k1] : INF;
-          // cost[i][j-1] is on anti-diag k-1 at position i - i_min(k-1)
-          T cost_left  = (j > 0) ? prev[i - i_min_k1] : INF;
-          // cost[i-1][j-1] is on anti-diag k-2 at position (i-1) - i_min(k-2)
-          T cost_diag  = (i > 0 && j > 0) ? prev2[(i - 1) - i_min_k2] : INF;
-
-          cur[p] = fmin(cost_diag, fmin(cost_above, cost_left)) + d;
-        }
+        __syncthreads();
       }
-      __syncthreads();
+    } else {
+      // ── 3-buffer mode (L <= 1024): classic rotating buffers ──────────
+      // Faster for medium series (no extra sync or register pressure).
+      for (int k = 0; k < total_diags; ++k) {
+        const int i_min = max(0, k - N_len + 1);
+        const int i_max = min(k, M - 1);
+        const int len_k = i_max - i_min + 1;
+        const int i_min_k1 = max(0, (k - 1) - N_len + 1);
+        const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+
+        T *cur   = diag_buf[k % 3];
+        T *prev  = diag_buf[(k - 1 + 3) % 3];
+        T *prev2 = diag_buf[(k - 2 + 3) % 3];
+
+        for (int p = tid; p < len_k; p += nthreads) {
+          int i = i_min + p, j = k - i;
+          if (use_band) {
+            double center = slope * i;
+            int jl = (int)ceil(round(100.0 * (center - window)) / 100.0);
+            int jh = (int)floor(round(100.0 * (center + window)) / 100.0);
+            if (j < jl || j > jh) { cur[p] = INF; continue; }
+          }
+          T diff = preload ? (s_row[i] - s_col[j])
+                           : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
+          T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+          if (i == 0 && j == 0) { cur[p] = d; }
+          else {
+            T ca = (i > 0) ? prev[(i-1) - i_min_k1] : INF;
+            T cl = (j > 0) ? prev[i - i_min_k1] : INF;
+            T cd = (i > 0 && j > 0) ? prev2[(i-1) - i_min_k2] : INF;
+            cur[p] = fmin(cd, fmin(ca, cl)) + d;
+          }
+        }
+        __syncthreads();
+      }
     }
 
     // Result is the last anti-diagonal (single cell: (M-1, N_len-1))
     if (tid == 0) {
-      distances[pid] = diag[(total_diags - 1) % 3][0];
+      int last_buf = use_double_buf ? ((total_diags - 1) & 1)
+                                    : ((total_diags - 1) % 3);
+      distances[pid] = diag_buf[last_buf][0];
     }
 
     // Non-persistent mode: exit after one pair
@@ -496,7 +542,11 @@ std::vector<double> launch_dtw_kernel(
   } else {
     // Wavefront kernel: shared memory and block size configuration
     const bool preload = (max_L <= 256);
-    const size_t shared_mem = (preload ? 5 : 3) * max_L * sizeof(T);
+    // L<=256: preload mode (2 series + 3 anti-diag buffers = 5)
+    // 256<L<=1024: 3-buffer mode (3 anti-diag buffers)
+    // L>1024: double-buffer mode (2 anti-diag buffers, saves occupancy)
+    const size_t n_bufs = preload ? 5 : (max_L > 1024 ? 2 : 3);
+    const size_t shared_mem = n_bufs * max_L * sizeof(T);
 
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     int block_size;
