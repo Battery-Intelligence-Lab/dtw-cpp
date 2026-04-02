@@ -17,6 +17,7 @@ target_sources(dtwc++
   core/dtw.cpp
   algorithms/fast_pam.cpp
   algorithms/fast_clara.cpp
+  algorithms/hierarchical.cpp
   core/pruned_distance_matrix.cpp
   PUBLIC
   # Top-level headers
@@ -53,6 +54,7 @@ target_sources(dtwc++
   # Algorithm headers
   algorithms/fast_pam.hpp
   algorithms/fast_clara.hpp
+  algorithms/hierarchical.hpp
   algorithms/detail/medoid_utils.hpp
 )
 
