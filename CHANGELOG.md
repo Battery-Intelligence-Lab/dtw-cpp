@@ -8,6 +8,27 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+## Added
+
+* **`missing_utils.hpp`**: Bitwise NaN check (`is_missing()`) safe under `-ffast-math`/`/fp:fast`, plus `has_missing()`, `missing_rate()`, `interpolate_linear()` with LOCF/NOCB edge handling.
+* **`MissingStrategy` enum**: `Error` (default), `ZeroCost`, `AROW`, `Interpolate` for controlling missing-data handling in `Problem`.
+* **DTW-AROW algorithm** (`warping_missing_arow.hpp`): One-to-one diagonal-only alignment for missing values (Yurtman et al., ECML-PKDD 2023). Linear-space, full-matrix, and banded variants.
+* **5 new cluster quality metrics** in `scores.hpp`:
+  * `dunnIndex()`: Min inter-cluster distance / max intra-cluster diameter.
+  * `inertia()`: Total within-cluster sum of distances to medoids.
+  * `calinskiHarabaszIndex()`: Medoid-adapted Calinski-Harabasz (uses overall medoid as global reference).
+  * `adjustedRandIndex()`: Combinatorial agreement with ground-truth labels.
+  * `normalizedMutualInformation()`: Information-theoretic agreement with ground-truth labels.
+
+## Fixed
+
+* **`warping_missing.hpp`**: Replaced `std::isnan()` with bitwise `is_missing()` check. The missing-data DTW feature was silently broken in Release builds due to `-ffast-math`/`/fp:fast` making `std::isnan()` unreliable.
+
+## Changed
+
+* **`Problem::fillDistanceMatrix()`** now pre-scans for NaN and throws with a helpful message under `MissingStrategy::Error`. Auto-disables LB pruning when missing data is detected under `ZeroCost`/`AROW` strategies.
+* **`Problem::rebind_dtw_fn()`** dispatches based on `missing_strategy` member.
+
 ## Core
 
 * **Parallel pruned distance matrix**: `fill_distance_matrix_pruned()` (Problem-based) is now parallelised with OpenMP. Uses lock-free atomic CAS on `nn_dist` for nearest-neighbor tracking across threads, with `schedule(dynamic, 16)` for load balancing. Precomputation of summaries and envelopes is also parallelised.
