@@ -423,6 +423,238 @@ TEST_CASE("test_gpu_banded_unequal_lengths", "[cuda][banded]")
 }
 
 // ---------------------------------------------------------------------------
+// Warp-level kernel tests (short series, L <= 32)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("test_warp_kernel_short_series_L8", "[cuda][warp]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 20;
+  constexpr size_t L = 8;
+  auto series = generate_random_series(N, L, /*seed=*/1001);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-10));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_short_series_L16", "[cuda][warp]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 15;
+  constexpr size_t L = 16;
+  auto series = generate_random_series(N, L, /*seed=*/2002);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-10));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_short_series_L32", "[cuda][warp]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 20;
+  constexpr size_t L = 32;
+  auto series = generate_random_series(N, L, /*seed=*/3003);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-10));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_short_series_L1", "[cuda][warp]")
+{
+  // Edge case: single-element series through the warp kernel
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  std::vector<std::vector<double>> series = {{3.0}, {7.0}, {1.0}, {5.0}};
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+
+  const size_t N = series.size();
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      double expected = std::abs(series[i][0] - series[j][0]);
+      INFO("i=" << i << " j=" << j);
+      REQUIRE(gpu_result.matrix[i * N + j] == Catch::Approx(expected));
+      REQUIRE(gpu_result.matrix[j * N + i] == Catch::Approx(expected));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_variable_short_lengths", "[cuda][warp]")
+{
+  // Variable lengths all <= 32 to exercise the warp kernel
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  std::mt19937 rng(4004);
+  std::uniform_real_distribution<double> dist(-5.0, 5.0);
+
+  std::vector<std::vector<double>> series(8);
+  const size_t lens[] = {5, 10, 15, 20, 25, 30, 8, 12};
+  for (size_t s = 0; s < 8; ++s) {
+    series[s].resize(lens[s]);
+    for (auto &v : series[s]) v = dist(rng);
+  }
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  const size_t N = series.size();
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-10));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_banded_short_series", "[cuda][warp][banded]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 12;
+  constexpr size_t L = 20;
+  constexpr int band = 3;
+  auto series = generate_random_series(N, L, /*seed=*/5005);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = band;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_banded_distance_matrix(series, band);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-10));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_fp32_short_series", "[cuda][warp][fp32]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 15;
+  constexpr size_t L = 24;
+  auto series = generate_random_series(N, L, /*seed=*/6006);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_mat[i * N + j], 1e-4));
+    }
+  }
+}
+
+TEST_CASE("test_warp_kernel_many_pairs_short_series", "[cuda][warp]")
+{
+  // Stress test: many pairs to ensure multi-block dispatch works
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 50;   // 1225 pairs, ~154 blocks of 8
+  constexpr size_t L = 16;
+  auto series = generate_random_series(N, L, /*seed=*/7007);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+
+  REQUIRE(gpu_result.n == N);
+  REQUIRE(gpu_result.pairs_computed == N * (N - 1) / 2);
+
+  // Spot-check 25 pairs against CPU
+  for (size_t k = 0; k < 25; ++k) {
+    size_t i = k;
+    size_t j = N - 1 - k;
+    double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j]);
+    double gpu_d = gpu_result.matrix[i * N + j];
+    INFO("k=" << k << " i=" << i << " j=" << j);
+    REQUIRE_THAT(gpu_d, WithinRel(cpu_d, 1e-10));
+  }
+
+  // Symmetry check on a sample
+  for (size_t i = 0; i < 10; ++i)
+    for (size_t j = i + 1; j < 10; ++j)
+      REQUIRE(gpu_result.matrix[i * N + j] == gpu_result.matrix[j * N + i]);
+}
+
+TEST_CASE("test_warp_kernel_squared_l2_short_series", "[cuda][warp]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  constexpr size_t N = 10;
+  constexpr size_t L = 20;
+  auto series = generate_random_series(N, L, /*seed=*/8008);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.use_squared_l2 = true;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+
+  REQUIRE(gpu_result.n == N);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      double cpu_d = dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
+                                              dtwc::core::MetricType::SquaredL2);
+      INFO("i=" << i << " j=" << j);
+      REQUIRE_THAT(gpu_result.matrix[i * N + j],
+                   WithinRel(cpu_d, 1e-10));
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // FP32 precision tests: looser tolerance due to single-precision accumulation
 // ---------------------------------------------------------------------------
 

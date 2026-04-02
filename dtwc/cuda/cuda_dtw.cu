@@ -2,9 +2,16 @@
  * @file cuda_dtw.cu
  * @brief CUDA implementation of batch DTW distance computation.
  *
- * @details Simple version: one block per DTW pair, single-threaded per block.
- *          Anti-diagonal wavefront parallelism within a block is future work.
- *          Uses shared memory for the rolling buffer (one column of the cost matrix).
+ * @details Two kernel strategies:
+ *   1. dtw_wavefront_kernel: anti-diagonal wavefront parallelism with
+ *      shared-memory buffers. Used for series longer than 32. Supports two
+ *      scheduling modes:
+ *        - Non-persistent (default for small workloads): one block per pair.
+ *        - Persistent (auto-enabled for large-N): blocks loop over pairs via
+ *          a global atomic counter, eliminating block scheduling overhead.
+ *   2. dtw_warp_kernel: multiple pairs per block (8 warps = 8 pairs), each warp
+ *      computes one DTW pair using register shuffles (__shfl_sync). Used for
+ *      short series (max_L <= 32) where the wavefront kernel wastes block capacity.
  */
 
 #include "cuda_dtw.cuh"
@@ -42,16 +49,20 @@ namespace dtwc::cuda {
 // Device kernel: anti-diagonal wavefront — multiple threads per block
 // =========================================================================
 //
-// Each block computes one DTW pair. Threads cooperate on the anti-diagonal
-// wavefront: cells (i,j) where i+j=k are independent and computed in
-// parallel. Three rotating shared-memory buffers store anti-diagonals k,
-// k-1, and k-2.
+// Each block computes one DTW pair (non-persistent) or loops over many pairs
+// (persistent mode). Threads cooperate on the anti-diagonal wavefront:
+// cells (i,j) where i+j=k are independent and computed in parallel.
+// Three rotating shared-memory buffers store anti-diagonals k, k-1, and k-2.
 //
-// For an m_short × m_long matrix (m_short <= m_long), there are
-// (m_short + m_long - 1) anti-diagonals. The widest has min(m_short, m_long)
-// = m_short cells.
+// Persistent mode: when work_counter is non-null, blocks atomically grab
+// pair indices from a global counter and loop until all pairs are done.
+// This eliminates block scheduling overhead for large-N workloads where
+// num_pairs >> resident blocks (e.g. N=1000 -> 499,500 pairs but only
+// ~80-160 blocks resident). When work_counter is null, behavior is identical
+// to the original one-pair-per-block design.
 //
-// Shared memory layout: 3 * max_L doubles (rotating anti-diagonal buffers).
+// Shared memory layout: 3 * max_L T's (rotating anti-diagonal buffers),
+// optionally preceded by 2 * max_L T's for preloaded series data.
 
 template <typename T>
 __global__ void dtw_wavefront_kernel(
@@ -60,9 +71,219 @@ __global__ void dtw_wavefront_kernel(
     const int *__restrict__ pair_i,        // [num_pairs] first index
     const int *__restrict__ pair_j,        // [num_pairs] second index
     T *__restrict__ distances,        // [num_pairs] output
+    int max_L, int num_pairs, bool use_squared_l2, int band,
+    int *__restrict__ work_counter)   // persistent mode when non-null
+{
+  const int tid = threadIdx.x;
+  const int nthreads = blockDim.x;
+
+  // Use the largest representable value for the compute type
+  const T INF = (sizeof(T) == 4)
+      ? static_cast<T>(3.402823466e+38f)    // FLT_MAX
+      : static_cast<T>(1.7976931348623157e+308); // DBL_MAX
+
+  // Preload threshold: series shorter than this are loaded into shared memory
+  constexpr int PRELOAD_THRESHOLD = 256;
+  const bool preload = (max_L <= PRELOAD_THRESHOLD);
+
+  // Shared memory layout:
+  //   Preload mode:  [0..max_L) row_buf, [max_L..2*max_L) col_buf,
+  //                  [2*max_L..5*max_L) 3 anti-diagonal buffers
+  //   Non-preload:   [0..3*max_L) 3 anti-diagonal buffers
+  extern __shared__ char smem_raw[];
+  T *smem = reinterpret_cast<T *>(smem_raw);
+
+  // Shared variable for persistent work distribution — declared once,
+  // outside the loop, to avoid issues with __syncthreads convergence.
+  __shared__ int s_pid;
+
+  // Set up anti-diagonal buffer pointers (constant across pairs)
+  T *s_row_buf = nullptr;
+  T *s_col_buf = nullptr;
+  T *diag[3];
+
+  if (preload) {
+    s_row_buf = smem;                   // [max_L]
+    s_col_buf = smem + max_L;          // [max_L]
+    diag[0] = smem + 2 * max_L;
+    diag[1] = smem + 3 * max_L;
+    diag[2] = smem + 4 * max_L;
+  } else {
+    diag[0] = smem;
+    diag[1] = smem + max_L;
+    diag[2] = smem + 2 * max_L;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistent kernel loop: each block grabs work atomically and computes
+  // one DTW pair per iteration. When work_counter is null, falls back to
+  // the original one-pair-per-block behavior (pid = blockIdx.x, single pass).
+  // ---------------------------------------------------------------------------
+  while (true) {
+    int pid;
+    if (work_counter) {
+      // Persistent mode: thread 0 grabs next pair, broadcasts to block
+      if (tid == 0) {
+        s_pid = atomicAdd(work_counter, 1);
+      }
+      __syncthreads();
+      pid = s_pid;
+      if (pid >= num_pairs) return;
+    } else {
+      // Non-persistent mode (backwards compatible): one pair per block
+      pid = blockIdx.x;
+      if (pid >= num_pairs) return;
+    }
+
+    const int si = pair_i[pid];
+    const int sj = pair_j[pid];
+    const int ni = lengths[si];
+    const int nj = lengths[sj];
+
+    const T *x = all_series + static_cast<long long>(si) * max_L;
+    const T *y = all_series + static_cast<long long>(sj) * max_L;
+
+    // Orient: rows = short side, columns = long side.
+    const T *row_s = (ni <= nj) ? x : y;  // indexed by i (rows, short)
+    const T *col_s = (ni <= nj) ? y : x;  // indexed by j (columns, long)
+    const int M = min(ni, nj);  // rows (short)
+    const int N_len = max(ni, nj);  // columns (long)
+
+    // Guard: zero-length series produce INF distance
+    if (M == 0 || N_len == 0) {
+      if (tid == 0) distances[pid] = INF;
+      // In non-persistent mode, exit; in persistent mode, loop for next pair
+      if (!work_counter) return;
+      // Sync before next iteration so all threads agree before atomicAdd
+      __syncthreads();
+      continue;
+    }
+
+    // Precompute slope-adjusted Sakoe-Chiba band parameters
+    const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
+    const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
+    const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
+
+    // Series data pointers (re-set each iteration for persistent mode)
+    const T *s_row;
+    const T *s_col;
+
+    if (preload) {
+      // Cooperatively preload both series into shared memory
+      for (int t = tid; t < M; t += nthreads)
+        s_row_buf[t] = row_s[t];
+      for (int t = tid; t < N_len; t += nthreads)
+        s_col_buf[t] = col_s[t];
+      __syncthreads();
+
+      s_row = s_row_buf;
+      s_col = s_col_buf;
+    } else {
+      s_row = row_s;  // read from global via __ldg
+      s_col = col_s;
+    }
+
+    const int total_diags = M + N_len - 1;
+
+    for (int k = 0; k < total_diags; ++k) {
+      // Anti-diagonal k: cells (i, j) where i + j = k
+      const int i_min = max(0, k - N_len + 1);
+      const int i_max = min(k, M - 1);
+      const int len_k = i_max - i_min + 1;
+
+      // i_min for the two previous anti-diagonals
+      const int i_min_k1 = max(0, (k - 1) - N_len + 1);
+      const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+
+      // Which buffer slot for k, k-1, k-2
+      T *cur  = diag[k % 3];
+      T *prev = diag[(k - 1 + 3) % 3]; // k-1
+      T *prev2 = diag[(k - 2 + 3) % 3]; // k-2
+
+      for (int p = tid; p < len_k; p += nthreads) {
+        const int i = i_min + p;
+        const int j = k - i;
+
+        // Banded check
+        if (use_band) {
+          const double center = slope * i;
+          const int j_low  = (int)ceil(round(100.0 * (center - window)) / 100.0);
+          const int j_high = (int)floor(round(100.0 * (center + window)) / 100.0);
+          if (j < j_low || j > j_high) {
+            cur[p] = INF;
+            continue;
+          }
+        }
+
+        // Series data: from shared memory if preloaded, else via __ldg from global
+        T diff = preload ? (s_row[i] - s_col[j])
+                         : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
+        T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+
+        if (i == 0 && j == 0) {
+          cur[p] = d;
+        } else {
+          // cost[i-1][j] is on anti-diag k-1 at position (i-1) - i_min(k-1)
+          T cost_above = (i > 0) ? prev[(i - 1) - i_min_k1] : INF;
+          // cost[i][j-1] is on anti-diag k-1 at position i - i_min(k-1)
+          T cost_left  = (j > 0) ? prev[i - i_min_k1] : INF;
+          // cost[i-1][j-1] is on anti-diag k-2 at position (i-1) - i_min(k-2)
+          T cost_diag  = (i > 0 && j > 0) ? prev2[(i - 1) - i_min_k2] : INF;
+
+          cur[p] = fmin(cost_diag, fmin(cost_above, cost_left)) + d;
+        }
+      }
+      __syncthreads();
+    }
+
+    // Result is the last anti-diagonal (single cell: (M-1, N_len-1))
+    if (tid == 0) {
+      distances[pid] = diag[(total_diags - 1) % 3][0];
+    }
+
+    // Non-persistent mode: exit after one pair
+    if (!work_counter) return;
+
+    // Persistent mode: sync before grabbing next pair (ensures result is
+    // written and shared memory is safe to reuse)
+    __syncthreads();
+  }
+}
+
+// =========================================================================
+// Device kernel: warp-level DTW — multiple pairs per block (L <= 32)
+// =========================================================================
+//
+// For short series (M <= 32), one warp of 32 threads suffices per DTW pair.
+// This kernel packs PAIRS_PER_BLOCK warps (= pairs) into each block,
+// dramatically improving occupancy for short series.
+//
+// Each warp processes one pair using register-based anti-diagonal propagation
+// with __shfl_sync() for cross-lane communication — no shared-memory buffers
+// needed for the cost matrix, only for preloading series data.
+//
+// Thread assignment: lane `t` (0..31) is row `t`. For a pair with short side
+// M, lanes >= M are inactive but still participate in shuffles.
+
+constexpr int PAIRS_PER_BLOCK = 8;   // 8 warps x 32 threads = 256 threads
+
+template <typename T>
+__global__ void dtw_warp_kernel(
+    const T *__restrict__ all_series,
+    const int *__restrict__ lengths,
+    const int *__restrict__ pair_i,
+    const int *__restrict__ pair_j,
+    T *__restrict__ distances,
     int max_L, int num_pairs, bool use_squared_l2, int band)
 {
-  const int pid = blockIdx.x;
+  const int warp_id = threadIdx.x / 32;       // which warp within block [0..7]
+  const int lane    = threadIdx.x % 32;       // lane within warp [0..31]
+  const int pid     = blockIdx.x * PAIRS_PER_BLOCK + warp_id;  // global pair id
+
+  const T INF = (sizeof(T) == 4)
+      ? static_cast<T>(3.402823466e+38f)
+      : static_cast<T>(1.7976931348623157e+308);
+
   if (pid >= num_pairs) return;
 
   const int si = pair_i[pid];
@@ -73,138 +294,113 @@ __global__ void dtw_wavefront_kernel(
   const T *x = all_series + static_cast<long long>(si) * max_L;
   const T *y = all_series + static_cast<long long>(sj) * max_L;
 
-  // Orient: rows = short side, columns = long side.
-  // CPU banded DTW uses short_ptr for rows (i), long_ptr for columns (j).
-  const T *row_s = (ni <= nj) ? x : y;  // indexed by i (rows, short)
-  const T *col_s = (ni <= nj) ? y : x;  // indexed by j (columns, long)
-  const int M = min(ni, nj);  // rows (short)
-  const int N_len = max(ni, nj);  // columns (long)
+  // Orient: rows = short side (M <= 32), columns = long side
+  const T *row_g = (ni <= nj) ? x : y;
+  const T *col_g = (ni <= nj) ? y : x;
+  const int M     = min(ni, nj);
+  const int N_len = max(ni, nj);
 
-  const int tid = threadIdx.x;
-  // Use the largest representable value for the compute type
-  const T INF = (sizeof(T) == 4)
-      ? static_cast<T>(3.402823466e+38f)    // FLT_MAX
-      : static_cast<T>(1.7976931348623157e+308); // DBL_MAX
-
-  // Guard: zero-length series produce INF distance
+  // Guard: zero-length series
   if (M == 0 || N_len == 0) {
-    if (tid == 0) distances[pid] = INF;
+    if (lane == 0) distances[pid] = INF;
     return;
   }
 
-  // Precompute slope-adjusted Sakoe-Chiba band parameters (same formula as
-  // CPU dtwBanded_impl in warping.hpp). These are uniform across all threads.
-  // In CPU code: rows = short side (M), columns = long side (N_len).
-  // slope maps row index i to expected column index j.
+  // Shared memory layout: each warp gets 2 * 32 elements for series data
+  // Total: PAIRS_PER_BLOCK * 2 * 32 * sizeof(T)
+  extern __shared__ char smem_raw[];
+  T *smem = reinterpret_cast<T *>(smem_raw);
+  T *my_row = smem + warp_id * 64;        // 32 elements for row series
+  T *my_col = smem + warp_id * 64 + 32;   // 32 elements for col series
+
+  // Cooperatively load series data (each lane loads one element)
+  if (lane < M)
+    my_row[lane] = row_g[lane];
+  // For column data, which may be up to 32 elements (since max_L <= 32)
+  if (lane < N_len)
+    my_col[lane] = col_g[lane];
+  __syncwarp();
+
+  // Banded DTW parameters (same formula as wavefront kernel)
   const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
   const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
   const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
 
-  // Shared memory layout (preload mode, when series fit without killing occupancy):
-  //   [0 .. max_L)          : series row data  (preloaded from global)
-  //   [max_L .. 2*max_L)    : series col data  (preloaded from global)
-  //   [2*max_L .. 5*max_L)  : 3 rotating anti-diagonal buffers
-  // Non-preload mode:
-  //   [0 .. 3*max_L)        : 3 rotating anti-diagonal buffers
+  const unsigned FULL_MASK = 0xFFFFFFFF;
+
+  // Each thread (lane) represents row i = lane.
+  // We sweep anti-diagonals k = 0 .. M + N_len - 2.
+  // On anti-diagonal k, thread lane computes cell (lane, k - lane)
+  // if both indices are valid.
   //
-  // Preloading is enabled when max_L <= PRELOAD_THRESHOLD (extra shared mem
-  // cost is small enough not to hurt occupancy).
-  constexpr int PRELOAD_THRESHOLD = 256;
-  const bool preload = (max_L <= PRELOAD_THRESHOLD);
+  // Register state per thread:
+  //   prev_val  = this thread's cost from anti-diagonal k-1
+  //   prev2_val = this thread's cost from anti-diagonal k-2
+  //
+  // Predecessor lookup via shuffle:
+  //   cost(i-1, j)   = lane-1's value from anti-diag k-1  -> shfl(prev_val, lane-1)
+  //   cost(i, j-1)   = this thread's value from anti-diag k-1 -> prev_val
+  //   cost(i-1, j-1) = lane-1's value from anti-diag k-2  -> shfl(prev2_val, lane-1)
 
-  extern __shared__ char smem_raw[];
-  T *smem = reinterpret_cast<T *>(smem_raw);
-
-  // Pointers for series data (shared or global memory)
-  const T *s_row;
-  const T *s_col;
-  T *diag[3];
-
-  if (preload) {
-    T *s_row_buf = smem;                // [max_L]
-    T *s_col_buf = smem + max_L;       // [max_L]
-    diag[0] = smem + 2 * max_L;
-    diag[1] = smem + 3 * max_L;
-    diag[2] = smem + 4 * max_L;
-
-    // Cooperatively preload both series into shared memory
-    for (int t = tid; t < M; t += blockDim.x)
-      s_row_buf[t] = row_s[t];
-    for (int t = tid; t < N_len; t += blockDim.x)
-      s_col_buf[t] = col_s[t];
-    __syncthreads();
-
-    s_row = s_row_buf;
-    s_col = s_col_buf;
-  } else {
-    diag[0] = smem;
-    diag[1] = smem + max_L;
-    diag[2] = smem + 2 * max_L;
-    s_row = row_s;  // read from global via __ldg
-    s_col = col_s;
-  }
-
-  const int nthreads = blockDim.x;
+  T prev_val  = INF;   // my value from anti-diagonal k-1
+  T prev2_val = INF;   // my value from anti-diagonal k-2
 
   const int total_diags = M + N_len - 1;
 
   for (int k = 0; k < total_diags; ++k) {
-    // Anti-diagonal k: cells (i, j) where i + j = k
-    const int i_min = max(0, k - N_len + 1);
-    const int i_max = min(k, M - 1);
-    const int len_k = i_max - i_min + 1;
+    const int i = lane;
+    const int j = k - lane;
 
-    // i_min for the two previous anti-diagonals
-    const int i_min_k1 = max(0, (k - 1) - N_len + 1);
-    const int i_min_k2 = max(0, (k - 2) - N_len + 1);
+    // All 32 lanes must participate in __shfl_sync (FULL_MASK requires it).
+    // Perform shuffles unconditionally before branching on cell validity.
+    T cost_above = __shfl_sync(FULL_MASK, prev_val, lane - 1);
+    T cost_diag  = __shfl_sync(FULL_MASK, prev2_val, lane - 1);
+    T cost_left  = prev_val;  // same row, previous column
 
-    // Which buffer slot for k, k-1, k-2
-    T *cur  = diag[k % 3];
-    T *prev = diag[(k - 1 + 3) % 3]; // k-1
-    T *prev2 = diag[(k - 2 + 3) % 3]; // k-2
+    // Check if this thread's cell is valid
+    const bool valid = (i < M) && (j >= 0) && (j < N_len);
 
-    for (int p = tid; p < len_k; p += nthreads) {
-      const int i = i_min + p;
-      const int j = k - i;
+    T my_current = INF;
 
-      // Banded check: if cell (i, j) is outside the Sakoe-Chiba window,
-      // write INF and skip computation. Matches CPU get_bounds():
-      //   j_low  = ceil(round(100*(slope*i - window)) / 100.0)
-      //   j_high = floor(round(100*(slope*i + window)) / 100.0)
+    if (valid) {
+      // Banded check
+      bool in_band = true;
       if (use_band) {
         const double center = slope * i;
         const int j_low  = (int)ceil(round(100.0 * (center - window)) / 100.0);
         const int j_high = (int)floor(round(100.0 * (center + window)) / 100.0);
-        if (j < j_low || j > j_high) {
-          cur[p] = INF;
-          continue;
+        if (j < j_low || j > j_high)
+          in_band = false;
+      }
+
+      if (in_band) {
+        T diff = my_row[i] - my_col[j];
+        T d = use_squared_l2 ? (diff * diff) : fabs(diff);
+
+        if (i == 0 && j == 0) {
+          my_current = d;
+        } else {
+          // Fix up boundary cases for the shuffled predecessors
+          if (lane == 0) {
+            cost_above = INF;  // no row i-1 when i=0
+            cost_diag  = INF;  // no (i-1, j-1) when i=0
+          }
+          if (j == 0) cost_left = INF;  // no column j-1 when j=0
+
+          my_current = fmin(cost_diag, fmin(cost_above, cost_left)) + d;
         }
       }
-
-      // Series data: from shared memory if preloaded, else via __ldg from global
-      T diff = preload ? (s_row[i] - s_col[j])
-                       : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
-      T d = use_squared_l2 ? (diff * diff) : fabs(diff);
-
-      if (i == 0 && j == 0) {
-        cur[p] = d;
-      } else {
-        // cost[i-1][j] is on anti-diag k-1 at position (i-1) - i_min(k-1)
-        T cost_above = (i > 0) ? prev[(i - 1) - i_min_k1] : INF;
-        // cost[i][j-1] is on anti-diag k-1 at position i - i_min(k-1)
-        T cost_left  = (j > 0) ? prev[i - i_min_k1] : INF;
-        // cost[i-1][j-1] is on anti-diag k-2 at position (i-1) - i_min(k-2)
-        T cost_diag  = (i > 0 && j > 0) ? prev2[(i - 1) - i_min_k2] : INF;
-
-        cur[p] = fmin(cost_diag, fmin(cost_above, cost_left)) + d;
-      }
     }
-    __syncthreads();
+
+    // Rotate register state
+    prev2_val = prev_val;
+    prev_val  = my_current;
   }
 
-  // Result is the last anti-diagonal (single cell: (M-1, N_len-1))
-  if (tid == 0) {
-    distances[pid] = diag[(total_diags - 1) % 3][0];
+  // The result is at cell (M-1, N_len-1), which is on the last anti-diagonal.
+  // Thread lane = M-1 holds this value in prev_val.
+  if (lane == M - 1) {
+    distances[pid] = prev_val;
   }
 }
 
@@ -246,7 +442,7 @@ std::vector<double> launch_dtw_kernel(
     const std::vector<int> &h_pair_i,
     const std::vector<int> &h_pair_j,
     size_t N, size_t max_L, size_t num_pairs,
-    bool use_squared_l2, int band, double &gpu_time_sec)
+    bool use_squared_l2, int band, int device_id, double &gpu_time_sec)
 {
   using dtwc::cuda::cuda_alloc;
 
@@ -273,33 +469,6 @@ std::vector<double> launch_dtw_kernel(
   CUDA_CHECK(cudaMemcpy(d_pair_j.get(), h_pair_j.data(),
                          num_pairs * sizeof(int), cudaMemcpyHostToDevice));
 
-  // Shared memory: 3 anti-diagonal buffers + optionally 2 series buffers
-  // (preloading enabled for short series where the extra shared mem is cheap)
-  const bool preload = (max_L <= 256);
-  const size_t shared_mem = (preload ? 5 : 3) * max_L * sizeof(T);
-
-  // Block size heuristic tuned for the anti-diagonal wavefront pattern.
-  // This kernel is recurrence-latency-bound (not occupancy-bound), so we
-  // want just enough threads to cover the widest anti-diagonal efficiently.
-  // cudaOccupancyMaxPotentialBlockSize was tested but hurts this kernel —
-  // it over-allocates threads, wasting registers without improving throughput.
-  int block_size;
-  if (max_L <= 32)
-    block_size = 32;
-  else if (max_L <= 128)
-    block_size = 64;
-  else if (max_L <= 512)
-    block_size = 128;
-  else
-    block_size = 256;
-
-  // Request extended shared memory if needed (>48 KB)
-  if (shared_mem > 48 * 1024) {
-    CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
-                         cudaFuncAttributeMaxDynamicSharedMemorySize,
-                         static_cast<int>(shared_mem)));
-  }
-
   // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
   if (num_pairs > static_cast<size_t>(std::numeric_limits<int>::max())) {
     throw std::runtime_error(
@@ -311,10 +480,73 @@ std::vector<double> launch_dtw_kernel(
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem>>>(
-      d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
-      d_distances.get(), static_cast<int>(max_L),
-      static_cast<int>(num_pairs), use_squared_l2, band);
+  if (max_L <= 32) {
+    // Warp-level kernel: 8 pairs per block, 256 threads (8 warps)
+    // Each warp independently computes one DTW pair using register shuffles.
+    constexpr int pairs_per_block = PAIRS_PER_BLOCK;  // 8
+    const int grid_size = static_cast<int>(
+        (num_pairs + pairs_per_block - 1) / pairs_per_block);
+    constexpr int block_size = pairs_per_block * 32;  // 256
+    const size_t shared_mem = pairs_per_block * 2 * 32 * sizeof(T);
+
+    dtw_warp_kernel<T><<<grid_size, block_size, shared_mem>>>(
+        d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
+        d_distances.get(), static_cast<int>(max_L),
+        static_cast<int>(num_pairs), use_squared_l2, band);
+  } else {
+    // Wavefront kernel: shared memory and block size configuration
+    const bool preload = (max_L <= 256);
+    const size_t shared_mem = (preload ? 5 : 3) * max_L * sizeof(T);
+
+    // Block size heuristic tuned for the anti-diagonal wavefront pattern.
+    int block_size;
+    if (max_L <= 128)
+      block_size = 64;
+    else if (max_L <= 512)
+      block_size = 128;
+    else
+      block_size = 256;
+
+    // Request extended shared memory if needed (>48 KB)
+    if (shared_mem > 48 * 1024) {
+      CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
+                           cudaFuncAttributeMaxDynamicSharedMemorySize,
+                           static_cast<int>(shared_mem)));
+    }
+
+    // Determine whether to use persistent mode: query how many blocks
+    // the GPU can run simultaneously, and use persistent mode only when
+    // num_pairs significantly exceeds that (4x threshold to amortize the
+    // atomicAdd overhead per pair).
+    auto gpu_cfg = query_gpu_config(device_id);
+    int blocks_per_sm = 0;
+    cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+        &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, shared_mem);
+    const int persistent_grid = gpu_cfg.sm_count * std::max(blocks_per_sm, 1);
+    const bool use_persistent =
+        (static_cast<int>(num_pairs) > persistent_grid * 4);
+
+    if (use_persistent) {
+      // Persistent kernel: launch exactly enough blocks to fill the GPU.
+      // A global atomic counter distributes pairs to blocks on-the-fly,
+      // eliminating block scheduling overhead for large-N workloads.
+      auto d_counter = cuda_alloc<int>(1);
+      CUDA_CHECK(cudaMemset(d_counter.get(), 0, sizeof(int)));
+
+      dtw_wavefront_kernel<T><<<persistent_grid, block_size, shared_mem>>>(
+          d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
+          d_distances.get(), static_cast<int>(max_L),
+          static_cast<int>(num_pairs), use_squared_l2, band,
+          d_counter.get());
+    } else {
+      // Non-persistent: one block per pair (original behavior)
+      dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem>>>(
+          d_series.get(), d_lengths.get(), d_pair_i.get(), d_pair_j.get(),
+          d_distances.get(), static_cast<int>(max_L),
+          static_cast<int>(num_pairs), use_squared_l2, band,
+          nullptr);
+    }
+  }
 
   CUDA_CHECK(cudaGetLastError());
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -421,12 +653,12 @@ CUDADistMatResult compute_distance_matrix_cuda(
     h_distances = launch_dtw_kernel<float>(
         series, lengths, h_pair_i, h_pair_j,
         N, max_L, num_pairs,
-        opts.use_squared_l2, opts.band, result.gpu_time_sec);
+        opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
   } else {
     h_distances = launch_dtw_kernel<double>(
         series, lengths, h_pair_i, h_pair_j,
         N, max_L, num_pairs,
-        opts.use_squared_l2, opts.band, result.gpu_time_sec);
+        opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
   }
 
   // Fill symmetric matrix using the (possibly sorted) pair indices

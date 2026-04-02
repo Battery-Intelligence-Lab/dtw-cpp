@@ -235,6 +235,13 @@ Standard DTW violates the triangle inequality. This means:
 - Auto-detection via compute capability: CC x.0 (minor=0) = HPC, CC x.{1,2,5,6,9} = consumer
 - Exception: Hopper H100 is CC 9.0 (Full), L4 is CC 8.9 (Slow) — pattern holds
 
+### CUDA `__shfl_sync(FULL_MASK, ...)` requires ALL lanes to execute unconditionally
+- When using `FULL_MASK = 0xFFFFFFFF`, all 32 lanes in the warp must execute the `__shfl_sync` instruction
+- Placing `__shfl_sync` inside conditional branches (e.g. `if (valid)`) is **undefined behavior** -- lanes that skip the shuffle violate the mask contract
+- Symptoms: silently wrong results (not crashes), making this extremely hard to debug
+- **Fix**: Move all `__shfl_sync` calls outside of any conditional branches, then use the shuffled values only inside the branches
+- Alternative: use a dynamic mask matching which lanes will actually execute, but unconditional shuffles are simpler and equally fast
+
 ### `constexpr` with ternary on `sizeof(T)` fails in some CUDA versions
 - `constexpr T INF = (sizeof(T)==4) ? FLT_MAX : DBL_MAX;` rejected by some nvcc versions
 - **Fix**: Use `const T INF = ...` instead — the compiler still optimizes it as a compile-time constant since `sizeof(T)` is known at template instantiation
