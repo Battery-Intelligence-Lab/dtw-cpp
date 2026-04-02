@@ -100,15 +100,52 @@ __global__ void dtw_wavefront_kernel(
   const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
   const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
 
-  // 3 rotating anti-diagonal buffers in shared memory
+  // Shared memory layout (preload mode, when series fit without killing occupancy):
+  //   [0 .. max_L)          : series row data  (preloaded from global)
+  //   [max_L .. 2*max_L)    : series col data  (preloaded from global)
+  //   [2*max_L .. 5*max_L)  : 3 rotating anti-diagonal buffers
+  // Non-preload mode:
+  //   [0 .. 3*max_L)        : 3 rotating anti-diagonal buffers
+  //
+  // Preloading is enabled when max_L <= PRELOAD_THRESHOLD (extra shared mem
+  // cost is small enough not to hurt occupancy).
+  constexpr int PRELOAD_THRESHOLD = 256;
+  const bool preload = (max_L <= PRELOAD_THRESHOLD);
+
   extern __shared__ char smem_raw[];
   T *smem = reinterpret_cast<T *>(smem_raw);
+
+  // Pointers for series data (shared or global memory)
+  const T *s_row;
+  const T *s_col;
   T *diag[3];
-  diag[0] = smem;
-  diag[1] = smem + max_L;
-  diag[2] = smem + 2 * max_L;
+
+  if (preload) {
+    T *s_row_buf = smem;                // [max_L]
+    T *s_col_buf = smem + max_L;       // [max_L]
+    diag[0] = smem + 2 * max_L;
+    diag[1] = smem + 3 * max_L;
+    diag[2] = smem + 4 * max_L;
+
+    // Cooperatively preload both series into shared memory
+    for (int t = tid; t < M; t += blockDim.x)
+      s_row_buf[t] = row_s[t];
+    for (int t = tid; t < N_len; t += blockDim.x)
+      s_col_buf[t] = col_s[t];
+    __syncthreads();
+
+    s_row = s_row_buf;
+    s_col = s_col_buf;
+  } else {
+    diag[0] = smem;
+    diag[1] = smem + max_L;
+    diag[2] = smem + 2 * max_L;
+    s_row = row_s;  // read from global via __ldg
+    s_col = col_s;
+  }
 
   const int nthreads = blockDim.x;
+
   const int total_diags = M + N_len - 1;
 
   for (int k = 0; k < total_diags; ++k) {
@@ -144,8 +181,9 @@ __global__ void dtw_wavefront_kernel(
         }
       }
 
-      // Use __ldg() for read-only texture cache path on global memory reads
-      T diff = __ldg(&row_s[i]) - __ldg(&col_s[j]);
+      // Series data: from shared memory if preloaded, else via __ldg from global
+      T diff = preload ? (s_row[i] - s_col[j])
+                       : (__ldg(&s_row[i]) - __ldg(&s_col[j]));
       T d = use_squared_l2 ? (diff * diff) : fabs(diff);
 
       if (i == 0 && j == 0) {
@@ -235,11 +273,16 @@ std::vector<double> launch_dtw_kernel(
   CUDA_CHECK(cudaMemcpy(d_pair_j.get(), h_pair_j.data(),
                          num_pairs * sizeof(int), cudaMemcpyHostToDevice));
 
-  // Shared memory: 3 rotating anti-diagonal buffers of type T
-  const size_t shared_mem = 3 * max_L * sizeof(T);
+  // Shared memory: 3 anti-diagonal buffers + optionally 2 series buffers
+  // (preloading enabled for short series where the extra shared mem is cheap)
+  const bool preload = (max_L <= 256);
+  const size_t shared_mem = (preload ? 5 : 3) * max_L * sizeof(T);
 
-  // Choose block size based on the widest anti-diagonal (= min series length,
-  // bounded by max_L). Round up to warp boundaries.
+  // Block size heuristic tuned for the anti-diagonal wavefront pattern.
+  // This kernel is recurrence-latency-bound (not occupancy-bound), so we
+  // want just enough threads to cover the widest anti-diagonal efficiently.
+  // cudaOccupancyMaxPotentialBlockSize was tested but hurts this kernel —
+  // it over-allocates threads, wasting registers without improving throughput.
   int block_size;
   if (max_L <= 32)
     block_size = 32;
@@ -327,6 +370,30 @@ CUDADistMatResult compute_distance_matrix_cuda(
         h_pair_j[idx] = static_cast<int>(j);
         ++idx;
       }
+
+    // Sort pairs by min-length descending when series have variable lengths.
+    // This reduces warp divergence / tail effects from unequal work per block.
+    // Skip sorting for uniform-length data (the common case) to avoid overhead.
+    const int min_len = *std::min_element(lengths.begin(), lengths.end());
+    const int max_len = *std::max_element(lengths.begin(), lengths.end());
+    if (min_len != max_len) {
+      std::vector<size_t> order(num_pairs);
+      std::iota(order.begin(), order.end(), size_t(0));
+      std::sort(order.begin(), order.end(),
+                [&](size_t a, size_t b) {
+                  int ma = std::min(lengths[h_pair_i[a]], lengths[h_pair_j[a]]);
+                  int mb = std::min(lengths[h_pair_i[b]], lengths[h_pair_j[b]]);
+                  return ma > mb;
+                });
+      // Apply permutation in-place
+      std::vector<int> sorted_i(num_pairs), sorted_j(num_pairs);
+      for (size_t k = 0; k < num_pairs; ++k) {
+        sorted_i[k] = h_pair_i[order[k]];
+        sorted_j[k] = h_pair_j[order[k]];
+      }
+      h_pair_i = std::move(sorted_i);
+      h_pair_j = std::move(sorted_j);
+    }
   }
 
   result.pairs_computed = num_pairs;
@@ -362,15 +429,12 @@ CUDADistMatResult compute_distance_matrix_cuda(
         opts.use_squared_l2, opts.band, result.gpu_time_sec);
   }
 
-  // Fill symmetric matrix
-  {
-    size_t idx = 0;
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = i + 1; j < N; ++j) {
-        result.matrix[i * N + j] = h_distances[idx];
-        result.matrix[j * N + i] = h_distances[idx];
-        ++idx;
-      }
+  // Fill symmetric matrix using the (possibly sorted) pair indices
+  for (size_t idx = 0; idx < num_pairs; ++idx) {
+    size_t i = static_cast<size_t>(h_pair_i[idx]);
+    size_t j = static_cast<size_t>(h_pair_j[idx]);
+    result.matrix[i * N + j] = h_distances[idx];
+    result.matrix[j * N + i] = h_distances[idx];
   }
 
   if (opts.verbose) {
