@@ -37,6 +37,15 @@ enum class DTWVariant
   SoftDTW    ///< Soft-DTW: softmin replaces min (differentiable, Cuturi & Blondel 2017)
 };
 
+/// Strategy for handling missing data (NaN values) in time series.
+enum class MissingStrategy
+{
+  Error,        ///< Throw if NaN encountered (default, backward-compatible)
+  ZeroCost,     ///< Zero local cost for NaN pairs (existing warping_missing.hpp behavior)
+  AROW,         ///< DTW-AROW: one-to-one diagonal-only alignment for missing positions
+  Interpolate   ///< Linear interpolation preprocessing, then standard DTW
+};
+
 /// Variant-specific parameters.
 struct DTWVariantParams
 {
@@ -53,6 +62,7 @@ struct DTWOptions
   MetricType metric = MetricType::L1;
   int band_width = -1;  ///< Band width for Sakoe-Chiba; -1 means unconstrained
   DTWVariantParams variant_params;  ///< Variant selection and parameters
+  MissingStrategy missing_strategy = MissingStrategy::Error;  ///< How to handle NaN values
 };
 
 } // namespace dtwc::core
