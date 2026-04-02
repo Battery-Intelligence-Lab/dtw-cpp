@@ -60,6 +60,33 @@ struct MissingSquaredL2Dist {
   }
 };
 
+/// Multivariate missing-aware L1: sum of |a[d]-b[d]| skipping NaN channels.
+struct MissingMVL1Dist {
+  template <typename T>
+  T operator()(const T* a, const T* b, size_t ndim) const noexcept {
+    T sum = T(0);
+    for (size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      sum += std::abs(a[d] - b[d]);
+    }
+    return sum;
+  }
+};
+
+/// Multivariate missing-aware SquaredL2: sum of (a[d]-b[d])^2 skipping NaN channels.
+struct MissingMVSquaredL2Dist {
+  template <typename T>
+  T operator()(const T* a, const T* b, size_t ndim) const noexcept {
+    T sum = T(0);
+    for (size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return sum;
+  }
+};
+
 } // namespace detail
 
 // =========================================================================
@@ -203,6 +230,81 @@ data_t dtwMissing_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
   default:
     return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::MissingL1Dist{});
   }
+}
+
+// =========================================================================
+//  Public API — multivariate DTW with missing data
+// =========================================================================
+
+/**
+ * @brief Multivariate missing-data DTW (linear space, zero-cost for NaN channels).
+ *
+ * @details For interleaved multivariate series where individual channels may be NaN.
+ * NaN channels contribute zero cost at the affected timestep pair; other channels
+ * still contribute normally. This is consistent with the scalar zero-cost philosophy.
+ *
+ * Input layout: x[t * ndim + d] is feature d at timestep t (interleaved).
+ *
+ * @tparam data_t Data type of the elements.
+ * @param x Pointer to first series (interleaved, nx_steps * ndim elements).
+ * @param nx_steps Number of timesteps in x.
+ * @param y Pointer to second series (interleaved, ny_steps * ndim elements).
+ * @param ny_steps Number of timesteps in y.
+ * @param ndim Number of features per timestep.
+ * @param early_abandon Threshold for early abandon; negative disables.
+ * @param metric Pointwise distance metric (default: L1).
+ * @return The DTW distance with per-channel NaN handling.
+ */
+template <typename data_t = double>
+data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
+                       size_t ndim, data_t early_abandon = -1,
+                       core::MetricType metric = core::MetricType::L1)
+{
+  if (ndim == 1) return dtwMissing_L(x, nx_steps, y, ny_steps, early_abandon, metric);
+
+  switch (metric) {
+  case core::MetricType::SquaredL2:
+    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
+                                      detail::MissingMVSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default:
+    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
+                                      detail::MissingMVL1Dist{});
+  }
+}
+
+/**
+ * @brief Multivariate missing-data banded DTW (Sakoe-Chiba).
+ *
+ * @details For ndim==1 delegates to scalar dtwMissing_banded. For ndim>1 with
+ * band < 0 delegates to dtwMissing_L_mv (unbanded). Full banded MV missing
+ * implementation defers to dtwMissing_L_mv for simplicity; a dedicated banded
+ * MV missing impl can be added when needed.
+ *
+ * @tparam data_t Data type of the elements.
+ * @param x Pointer to first series (interleaved).
+ * @param nx_steps Number of timesteps in x.
+ * @param y Pointer to second series (interleaved).
+ * @param ny_steps Number of timesteps in y.
+ * @param ndim Number of features per timestep.
+ * @param band Sakoe-Chiba band width; negative means unconstrained.
+ * @param early_abandon Threshold for early abandon; negative disables.
+ * @param metric Pointwise distance metric (default: L1).
+ * @return The DTW distance with per-channel NaN handling.
+ */
+template <typename data_t = double>
+data_t dtwMissing_banded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
+                            size_t ndim, int band = settings::DEFAULT_BAND_LENGTH,
+                            data_t early_abandon = -1,
+                            core::MetricType metric = core::MetricType::L1)
+{
+  if (band < 0) return dtwMissing_L_mv(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
+  if (ndim == 1) return dtwMissing_banded(x, nx_steps, y, ny_steps, band, early_abandon, metric);
+
+  // TODO: implement a full banded MV missing variant using dtwBanded_mv_impl +
+  // MissingMVL1Dist/MissingMVSquaredL2Dist. For now, delegate to unbanded.
+  return dtwMissing_L_mv(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
 }
 
 } // namespace dtwc

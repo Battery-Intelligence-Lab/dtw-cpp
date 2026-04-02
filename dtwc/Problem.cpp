@@ -131,9 +131,17 @@ void Problem::rebind_dtw_fn()
 
   // Missing-data strategies override the variant dispatch
   if (missing_strategy == MissingStrategy::ZeroCost) {
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      return dtwMissing_banded(x, y, band);
-    };
+    if (data.ndim > 1) {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return dtwMissing_banded_mv(x.data(), x.size() / data.ndim,
+                                    y.data(), y.size() / data.ndim,
+                                    data.ndim, band);
+      };
+    } else {
+      dtw_fn_ = [this](const auto &x, const auto &y) {
+        return dtwMissing_banded(x, y, band);
+      };
+    }
     return;
   }
 
@@ -147,6 +155,10 @@ void Problem::rebind_dtw_fn()
   }
 
   if (missing_strategy == MissingStrategy::AROW) {
+    // TODO: AROW MV (multivariate) is deferred. The AROW recurrence is more complex
+    // than zero-cost and requires a dedicated MV AROW _impl to handle per-channel
+    // missing data correctly. For now, AROW always uses the scalar path regardless of
+    // data.ndim. This means ndim>1 series are treated as a flat vector for AROW.
     dtw_fn_ = [this](const auto &x, const auto &y) {
       return dtwAROW_banded(x, y, band);
     };
