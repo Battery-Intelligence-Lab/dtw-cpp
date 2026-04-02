@@ -24,6 +24,7 @@
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "missing_utils.hpp"               // for has_missing, interpolate_linear
 #include "warping_missing.hpp"             // for dtwMissing_banded
+#include "warping_missing_arow.hpp"        // for dtwAROW_banded
 
 
 #include <algorithm> // for max_element, min, min_element, sample
@@ -145,7 +146,12 @@ void Problem::rebind_dtw_fn()
     return;
   }
 
-  // AROW will be wired in a future task when warping_missing_arow.hpp is created
+  if (missing_strategy == MissingStrategy::AROW) {
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      return dtwAROW_banded(x, y, band);
+    };
+    return;
+  }
 
   // Standard variant dispatch (for Error strategy and unsupported missing strategies)
   switch (variant_params.variant) {
