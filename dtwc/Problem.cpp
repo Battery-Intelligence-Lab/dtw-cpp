@@ -109,13 +109,20 @@ void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
 
 /**
  * @brief Refreshes the distance matrix.
- * @details Resets the distance matrix and marks it as not filled. This is necessary when the data has changed,
- * requiring a re-calculation of distances.
+ * @details Resets state and rebinds the DTW function. Does NOT allocate the
+ * dense N×N matrix — that is deferred to fillDistanceMatrix() so that
+ * large-N algorithms (e.g. FastCLARA) can load data without forcing
+ * quadratic memory usage.
+ *
+ * If the matrix was previously allocated (e.g. from a prior fillDistanceMatrix()
+ * call), it is reset to size 0 so that stale entries are not reused after a
+ * variant or data change.
  */
 void Problem::refreshDistanceMatrix()
 {
-  distMat.resize(size());
   is_distMat_filled = false;
+  if (distMat.size() != 0)
+    distMat.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
   rebind_dtw_fn();
 }
 
@@ -243,15 +250,25 @@ void Problem::set_variant(core::DTWVariantParams params)
  *
  *@note Thread safety: safe to call from multiple threads when the distance matrix
  *      is already filled (read-only). Prefer calling fillDistanceMatrix() first.
+ *@note When the dense matrix has not been allocated yet (size() == 0 after
+ *      deferred allocation), distance is computed directly without caching.
  */
 double Problem::distByInd(int i, int j)
 {
-  if (!distMat.is_computed(i, j)) {
-    const double d = dtw_fn_(p_vec(i), p_vec(j));
-    distMat.set(i, j, d);
-  }
+  if (i == j) return 0.0;
 
-  return distMat.get(i, j);
+  const size_t N = data.size();
+  const bool matrix_sized = (distMat.size() == N);
+
+  if (matrix_sized && distMat.is_computed(i, j))
+    return distMat.get(i, j);
+
+  const double d = dtw_fn_(p_vec(i), p_vec(j));
+
+  if (matrix_sized)
+    distMat.set(i, j, d);
+
+  return d;
 }
 
 /**
@@ -304,6 +321,10 @@ void Problem::fillDistanceMatrix_BruteForce()
 void Problem::fillDistanceMatrix()
 {
   if (isDistanceMatrixFilled()) return;
+
+  // Allocate the dense N×N matrix on first call (deferred from set_data / refreshDistanceMatrix).
+  if (distMat.size() != data.size())
+    distMat.resize(data.size());
 
   // Re-bind the DTW function in case missing_strategy was changed after construction
   // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
