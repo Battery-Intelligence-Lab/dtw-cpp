@@ -60,24 +60,32 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
  * @brief Computes the full Weighted DTW distance between two sequences.
  *
  * @tparam data_t Data type of the elements in the sequences.
- * @param x First sequence.
- * @param y Second sequence.
+ * @param x Pointer to first sequence.
+ * @param nx Length of first sequence.
+ * @param y Pointer to second sequence.
+ * @param ny Length of second sequence.
  * @param weights Weight vector indexed by |i - j|.
  * @return The WDTW distance.
  */
 template <typename data_t>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
                 const std::vector<data_t> &weights)
 {
-  if (&x == &y) return 0;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
+  if (nx == 0 || ny == 0) return maxValue;
+  if (x == y && nx == ny) return 0;
 
-  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short = static_cast<int>(short_vec.size());
-  const int m_long = static_cast<int>(long_vec.size());
-
-  if (m_short == 0 || m_long == 0) return maxValue;
-
+  const data_t *short_ptr;
+  const data_t *long_ptr;
+  size_t m_short;
+  size_t m_long;
+  if (nx < ny) {
+    short_ptr = x; m_short = nx;
+    long_ptr = y; m_long = ny;
+  } else {
+    short_ptr = y; m_short = ny;
+    long_ptr = x; m_long = nx;
+  }
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
 
   // Use rolling column buffer (col stores one column at a time, indexed by long_vec rows)
@@ -95,19 +103,19 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
   // When short_vec = y and long_vec = x, ix = i, iy = j, so dev = |i - j| as well.
 
   // First column (j = 0)
-  col[0] = weights[0] * distance(long_vec[0], short_vec[0]);
-  for (int i = 1; i < m_long; ++i) {
-    col[i] = col[i - 1] + weights[i] * distance(long_vec[i], short_vec[0]);
+  col[0] = weights[0] * distance(long_ptr[0], short_ptr[0]);
+  for (size_t i = 1; i < m_long; ++i) {
+    col[i] = col[i - 1] + weights[i] * distance(long_ptr[i], short_ptr[0]);
   }
 
   // Remaining columns j = 1..m_short-1
-  for (int j = 1; j < m_short; ++j) {
+  for (size_t j = 1; j < m_short; ++j) {
     data_t diag = col[0]; // C(0, j-1)
-    col[0] = col[0] + weights[j] * distance(long_vec[0], short_vec[j]); // C(0,j) = C(0,j-1) + w*d
+    col[0] = col[0] + weights[j] * distance(long_ptr[0], short_ptr[j]); // C(0,j) = C(0,j-1) + w*d
 
-    for (int i = 1; i < m_long; ++i) {
-      const int dev = std::abs(i - j);
-      const auto dist = weights[dev] * distance(long_vec[i], short_vec[j]);
+    for (size_t i = 1; i < m_long; ++i) {
+      const auto dev = static_cast<size_t>(std::abs(static_cast<int>(i) - static_cast<int>(j)));
+      const auto dist = weights[dev] * distance(long_ptr[i], short_ptr[j]);
       const data_t old_col_i = col[i]; // C(i, j-1) — vertical predecessor
       const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
       col[i] = minimum + dist;
@@ -115,7 +123,14 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
     }
   }
 
-  return col[m_long - 1];
+  return col.back();
+}
+
+template <typename data_t>
+data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                const std::vector<data_t> &weights)
+{
+  return wdtwFull(x.data(), x.size(), y.data(), y.size(), weights);
 }
 
 
@@ -133,20 +148,29 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The WDTW distance.
  */
 template <typename data_t>
-data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  const std::vector<data_t> &weights, int band = settings::DEFAULT_BAND_LENGTH)
+data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  const std::vector<data_t> &weights,
+                  int band = settings::DEFAULT_BAND_LENGTH)
 {
-  if (band < 0) return wdtwFull<data_t>(x, y, weights);
+  if (band < 0) return wdtwFull<data_t>(x, nx, y, ny, weights);
 
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
-  const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short = static_cast<int>(short_vec.size());
-  const int m_long = static_cast<int>(long_vec.size());
+  const data_t *short_ptr;
+  const data_t *long_ptr;
+  int m_short;
+  int m_long;
+  if (nx < ny) {
+    short_ptr = x; m_short = static_cast<int>(nx);
+    long_ptr = y; m_long = static_cast<int>(ny);
+  } else {
+    short_ptr = y; m_short = static_cast<int>(ny);
+    long_ptr = x; m_long = static_cast<int>(nx);
+  }
 
   if (m_short == 0 || m_long == 0) return maxValue;
-  if (m_short == 1 || m_long == 1) return wdtwFull<data_t>(x, y, weights);
-  if (m_long <= (band + 1)) return wdtwFull<data_t>(x, y, weights);
+  if (m_short == 1 || m_long == 1) return wdtwFull<data_t>(x, nx, y, ny, weights);
+  if (m_long <= (band + 1)) return wdtwFull<data_t>(x, nx, y, ny, weights);
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
 
@@ -168,9 +192,9 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   {
     const auto [lo, hi] = get_bounds(0);
     const int high = std::min(hi, m_long);
-    col[0] = weights[0] * distance(long_vec[0], short_vec[0]);
+    col[0] = weights[0] * distance(long_ptr[0], short_ptr[0]);
     for (int i = 1; i < high; ++i) {
-      col[i] = col[i - 1] + weights[i] * distance(long_vec[i], short_vec[0]);
+      col[i] = col[i - 1] + weights[i] * distance(long_ptr[i], short_ptr[0]);
     }
   }
 
@@ -189,13 +213,13 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
     if (low == 0) {
       const data_t old_col_0 = col[0]; // C(0, j-1)
       const int dev = j; // |0 - j| = j
-      col[0] = old_col_0 + weights[dev] * distance(long_vec[0], short_vec[j]);
+      col[0] = old_col_0 + weights[dev] * distance(long_ptr[0], short_ptr[j]);
       diag = old_col_0;
 
       // Process rows 1..high-1
       for (int i = 1; i < high; ++i) {
         const int dev_i = std::abs(i - j);
-        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const auto dist = weights[dev_i] * distance(long_ptr[i], short_ptr[j]);
         const data_t old_col_i = col[i]; // C(i, j-1)
         const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
         col[i] = minimum + dist;
@@ -213,7 +237,7 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
       {
         const int i = low;
         const int dev_i = std::abs(i - j);
-        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const auto dist = weights[dev_i] * distance(long_ptr[i], short_ptr[j]);
         const data_t old_col_i = col[i]; // C(i, j-1) = vertical predecessor
 
         // Horizontal predecessor col[i-1] was just set in this column?
@@ -228,7 +252,7 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
       for (int i = low + 1; i < high; ++i) {
         const int dev_i = std::abs(i - j);
-        const auto dist = weights[dev_i] * distance(long_vec[i], short_vec[j]);
+        const auto dist = weights[dev_i] * distance(long_ptr[i], short_ptr[j]);
         const data_t old_col_i = col[i]; // C(i, j-1)
         const data_t minimum = std::min(diag, std::min(col[i - 1], old_col_i));
         col[i] = minimum + dist;
@@ -253,18 +277,43 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return col[m_long - 1];
 }
 
+template <typename data_t>
+data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  const std::vector<data_t> &weights, int band = settings::DEFAULT_BAND_LENGTH)
+{
+  return wdtwBanded(x.data(), x.size(), y.data(), y.size(), weights, band);
+}
+
 // -------------------------------------------------------------------------
 // Convenience overloads: accept g parameter instead of precomputed weights.
 // -------------------------------------------------------------------------
 
 /// WDTW with g parameter (computes weights internally).
 template <typename data_t = double>
+data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  int band, data_t g)
+{
+  const int max_dev = static_cast<int>(std::max(nx, ny));
+  auto w = wdtw_weights<data_t>(max_dev, g);
+  return wdtwBanded(x, nx, y, ny, w, band);
+}
+
+/// WDTW with g parameter (computes weights internally).
+template <typename data_t = double>
 data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   int band, data_t g)
 {
-  const int max_dev = static_cast<int>(std::max(x.size(), y.size()));
+  return wdtwBanded(x.data(), x.size(), y.data(), y.size(), band, g);
+}
+
+/// Full WDTW with g parameter.
+template <typename data_t = double>
+data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                data_t g)
+{
+  const int max_dev = static_cast<int>(std::max(nx, ny));
   auto w = wdtw_weights<data_t>(max_dev, g);
-  return wdtwBanded(x, y, w, band);
+  return wdtwFull(x, nx, y, ny, w);
 }
 
 /// Full WDTW with g parameter.
@@ -272,9 +321,7 @@ template <typename data_t = double>
 data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
                 data_t g)
 {
-  const int max_dev = static_cast<int>(std::max(x.size(), y.size()));
-  auto w = wdtw_weights<data_t>(max_dev, g);
-  return wdtwFull(x, y, w);
+  return wdtwFull(x.data(), x.size(), y.data(), y.size(), g);
 }
 
 // -------------------------------------------------------------------------
@@ -297,14 +344,10 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
  */
 template <typename data_t = double>
 data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                   size_t ndim, data_t g = 0.05)
+                   size_t ndim, const std::vector<data_t> &weights)
 {
-  if (ndim == 1) {
-    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
-    const int max_dev = static_cast<int>(std::max(nx_steps, ny_steps)) - 1;
-    auto w = wdtw_weights<data_t>(max_dev, g);
-    return wdtwFull(vx, vy, w);
-  }
+  if (ndim == 1)
+    return wdtwFull(x, nx_steps, y, ny_steps, weights);
 
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   if (nx_steps == 0 || ny_steps == 0) return maxValue;
@@ -317,9 +360,6 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
   } else {
     short_ptr = y; m_short = ny_steps; long_ptr = x; m_long = nx_steps;
   }
-
-  const int max_dev = static_cast<int>(m_long) - 1;
-  auto weights = wdtw_weights<data_t>(max_dev, g);
 
   auto mv_dist = [ndim](const data_t *a, const data_t *b) {
     data_t sum = 0;
@@ -352,6 +392,22 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
   return col[m_long - 1];
 }
 
+template <typename data_t = double>
+data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                   size_t ndim, data_t g = 0.05)
+{
+  if (ndim == 1) {
+    const size_t max_steps = std::max(nx_steps, ny_steps);
+    const int max_dev = (max_steps > 0) ? static_cast<int>(max_steps - 1) : 0;
+    auto weights = wdtw_weights<data_t>(max_dev, g);
+    return wdtwFull(x, nx_steps, y, ny_steps, weights);
+  }
+  const size_t max_steps = std::max(nx_steps, ny_steps);
+  const int max_dev = (max_steps > 0) ? static_cast<int>(max_steps - 1) : 0;
+  auto weights = wdtw_weights<data_t>(max_dev, g);
+  return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, weights);
+}
+
 /**
  * @brief Multivariate WDTW banded.
  *
@@ -368,15 +424,25 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
  */
 template <typename data_t = double>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
+                     size_t ndim, const std::vector<data_t> &weights,
+                     int band = settings::DEFAULT_BAND_LENGTH)
+{
+  if (band < 0) return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, weights);
+  if (ndim == 1)
+    return wdtwBanded(x, nx_steps, y, ny_steps, weights, band);
+  // For banded MV WDTW, delegate to full MV for now.
+  return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, weights);
+}
+
+template <typename data_t = double>
+data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND_LENGTH, data_t g = 0.05)
 {
-  if (band < 0) return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, g);
-  if (ndim == 1) {
-    std::vector<data_t> vx(x, x + nx_steps), vy(y, y + ny_steps);
-    return wdtwBanded(vx, vy, band, g);
-  }
-  // For banded MV WDTW, delegate to full MV (optimize later if needed)
-  return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, g);
+  if (ndim == 1) return wdtwBanded(x, nx_steps, y, ny_steps, band, g);
+  const size_t max_steps = std::max(nx_steps, ny_steps);
+  const int max_dev = (max_steps > 0) ? static_cast<int>(max_steps - 1) : 0;
+  auto weights = wdtw_weights<data_t>(max_dev, g);
+  return wdtwBanded_mv(x, nx_steps, y, ny_steps, ndim, weights, band);
 }
 
 } // namespace dtwc

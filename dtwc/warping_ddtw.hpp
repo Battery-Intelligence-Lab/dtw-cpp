@@ -42,14 +42,20 @@ namespace dtwc {
  * @return Derivative-transformed series (same length as input).
  */
 template <typename data_t>
-std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
+void derivative_transform_inplace(const std::vector<data_t> &x, std::vector<data_t> &dx)
 {
   const auto n = x.size();
 
-  if (n == 0) return {};
-  if (n == 1) return { data_t(0) };
+  if (n == 0) {
+    dx.clear();
+    return;
+  }
 
-  std::vector<data_t> dx(n);
+  dx.resize(n);
+  if (n == 1) {
+    dx[0] = data_t(0);
+    return;
+  }
 
   // Boundary: first point
   dx[0] = x[1] - x[0];
@@ -61,7 +67,13 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
 
   // Boundary: last point
   dx[n - 1] = x[n - 1] - x[n - 2];
+}
 
+template <typename data_t>
+std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
+{
+  std::vector<data_t> dx;
+  derivative_transform_inplace(x, dx);
   return dx;
 }
 
@@ -80,15 +92,25 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
  *         Returns empty for empty input; returns ndim zeros for single-timestep input.
  */
 template <typename data_t>
-std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t ndim)
+void derivative_transform_mv_inplace(const std::vector<data_t> &x, size_t ndim,
+                                     std::vector<data_t> &dx)
 {
-  if (ndim == 1) return derivative_transform(x);
+  if (ndim == 1) {
+    derivative_transform_inplace(x, dx);
+    return;
+  }
 
   const size_t n = x.size() / ndim; // number of timesteps
-  if (n == 0) return {};
-  if (n == 1) return std::vector<data_t>(ndim, data_t(0));
+  if (n == 0) {
+    dx.clear();
+    return;
+  }
+  if (n == 1) {
+    dx.assign(ndim, data_t(0));
+    return;
+  }
 
-  std::vector<data_t> dx(x.size());
+  dx.resize(x.size());
 
   for (size_t d = 0; d < ndim; ++d) {
     // Boundary: first point
@@ -103,7 +125,13 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
     // Boundary: last point
     dx[(n - 1) * ndim + d] = x[(n - 1) * ndim + d] - x[(n - 2) * ndim + d];
   }
+}
 
+template <typename data_t>
+std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t ndim)
+{
+  std::vector<data_t> dx;
+  derivative_transform_mv_inplace(x, ndim, dx);
   return dx;
 }
 
@@ -125,8 +153,8 @@ data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
-  dx = derivative_transform(x);
-  dy = derivative_transform(y);
+  derivative_transform_inplace(x, dx);
+  derivative_transform_inplace(y, dy);
   return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
 }
 
@@ -147,8 +175,8 @@ data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
-  dx = derivative_transform(x);
-  dy = derivative_transform(y);
+  derivative_transform_inplace(x, dx);
+  derivative_transform_inplace(y, dy);
   return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
 }
 

@@ -130,6 +130,31 @@ void Problem::refreshDistanceMatrix()
   rebind_dtw_fn();
 }
 
+void Problem::refresh_variant_caches()
+{
+  wdtw_weights_cache_.clear();
+
+  if (variant_params.variant != core::DTWVariant::WDTW || data.p_vec.empty())
+    return;
+
+  const auto g = static_cast<data_t>(variant_params.wdtw_g);
+
+  if (data.ndim > 1) {
+    for (const auto &series : data.p_vec) {
+      const size_t steps = series.size() / data.ndim;
+      if (steps == 0) continue;
+      const size_t max_dev = steps - 1;
+      wdtw_weights_cache_.try_emplace(max_dev, wdtw_weights<data_t>(static_cast<int>(max_dev), g));
+    }
+    return;
+  }
+
+  for (const auto &series : data.p_vec) {
+    const size_t max_dev = series.size();
+    wdtw_weights_cache_.try_emplace(max_dev, wdtw_weights<data_t>(static_cast<int>(max_dev), g));
+  }
+}
+
 /**
  * @brief Rebind the DTW distance function based on current variant_params and band.
  */
@@ -139,6 +164,7 @@ void Problem::rebind_dtw_fn()
   // not at lambda creation time. This ensures that changing `prob.band = 50` after
   // construction correctly affects subsequent DTW calls without requiring a rebind.
   using namespace core;
+  refresh_variant_caches();
 
   // Missing-data strategies override the variant dispatch
   if (missing_strategy == MissingStrategy::ZeroCost) {
@@ -181,8 +207,9 @@ void Problem::rebind_dtw_fn()
   case DTWVariant::DDTW:
     if (data.ndim > 1) {
       dtw_fn_ = [this](const auto &x, const auto &y) {
-        auto dx = derivative_transform_mv(x, data.ndim);
-        auto dy = derivative_transform_mv(y, data.ndim);
+        thread_local std::vector<data_t> dx, dy;
+        derivative_transform_mv_inplace(x, data.ndim, dx);
+        derivative_transform_mv_inplace(y, data.ndim, dy);
         return dtwBanded_mv(dx.data(), dx.size() / data.ndim,
                             dy.data(), dy.size() / data.ndim,
                             data.ndim, band);
@@ -194,13 +221,22 @@ void Problem::rebind_dtw_fn()
   case DTWVariant::WDTW:
     if (data.ndim > 1) {
       dtw_fn_ = [this](const auto &x, const auto &y) {
-        return wdtwBanded_mv(x.data(), x.size() / data.ndim,
-                             y.data(), y.size() / data.ndim,
-                             data.ndim, band, static_cast<data_t>(variant_params.wdtw_g));
+        const size_t x_steps = x.size() / data.ndim;
+        const size_t y_steps = y.size() / data.ndim;
+        if (x_steps == 0 || y_steps == 0)
+          return std::numeric_limits<data_t>::max();
+
+        const auto max_dev = std::max(x_steps, y_steps) - size_t{1};
+        const auto &weights = wdtw_weights_cache_.at(max_dev);
+        return wdtwBanded_mv(x.data(), x_steps,
+                             y.data(), y_steps,
+                             data.ndim, weights, band);
       };
     } else {
       dtw_fn_ = [this](const auto &x, const auto &y) {
-        return wdtwBanded(x, y, band, static_cast<data_t>(variant_params.wdtw_g));
+        const auto max_dev = std::max(x.size(), y.size());
+        const auto &weights = wdtw_weights_cache_.at(max_dev);
+        return wdtwBanded(x, y, weights, band);
       };
     }
     break;

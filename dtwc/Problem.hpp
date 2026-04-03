@@ -30,6 +30,7 @@
 #include <vector>      // for vector, allocator
 #include <type_traits> // std::decay_t
 #include <functional>  // std::function
+#include <unordered_map> // std::unordered_map
 #include <iostream>
 
 #include "core/distance_matrix.hpp"
@@ -84,10 +85,12 @@ private:
   distMat_t distMat;                                /*!< Distance matrix. */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   dtw_fn_t dtw_fn_;                                 /*!< DTW distance function (set by rebind_dtw_fn). */
+  std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
 
   bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
 
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
+  void refresh_variant_caches(); ///< Refresh precomputed variant-specific caches.
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
 
   // Private functions:
