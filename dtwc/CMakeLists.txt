@@ -69,6 +69,7 @@ target_link_libraries(dtwc++
   project_options
   PUBLIC
   rapidcsv::rapidcsv
+  Eigen3::Eigen
 )
 
 # Only request the CXX component — if CUDA is enabled as a language, a bare

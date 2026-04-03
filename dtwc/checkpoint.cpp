@@ -145,7 +145,7 @@ void save_checkpoint(const Problem &prob, const std::string &path)
                  dm.count_computed());
 
   std::cout << "Checkpoint saved to " << dir.string()
-            << " (" << dm.count_computed() << "/" << (n * n) << " entries computed)" << std::endl;
+            << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << std::endl;
 }
 
 
@@ -189,11 +189,11 @@ bool load_checkpoint(Problem &prob, const std::string &path)
   if (dm.all_computed()) {
     prob.set_distance_matrix_filled(true);
     std::cout << "Checkpoint fully loaded from " << dir.string()
-              << " (all " << (meta.n * meta.n) << " entries computed)" << std::endl;
+              << " (all " << dm.packed_count() << " entries computed)" << std::endl;
   } else {
     prob.set_distance_matrix_filled(false);
     std::cout << "Checkpoint partially loaded from " << dir.string()
-              << " (" << dm.count_computed() << "/" << (meta.n * meta.n) << " entries computed)" << std::endl;
+              << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << std::endl;
   }
 
   return true;

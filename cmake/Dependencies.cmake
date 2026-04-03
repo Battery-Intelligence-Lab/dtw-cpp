@@ -66,6 +66,20 @@ function(dtwc_setup_dependencies)
       INTERFACE_INCLUDE_DIRECTORIES "${rapidcsv_SOURCE_DIR}/src")
   endif()
 
+  # Eigen3 — header-only linear algebra (MPL2 / Apache-2.0 / BSD-3)
+  # Used for scratch matrices (aligned SIMD-ready allocation, zero-copy Map),
+  # replacing custom ScratchMatrix and DenseDistanceMatrix internals.
+  if(NOT TARGET Eigen3::Eigen)
+    CPMAddPackage(
+      NAME Eigen
+      URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2"
+      DOWNLOAD_ONLY YES
+    )
+    add_library(Eigen3::Eigen INTERFACE IMPORTED)
+    set_target_properties(Eigen3::Eigen PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}")
+  endif()
+
   if(DTWC_BUILD_BENCHMARK)
     if(NOT TARGET benchmark::benchmark)
       CPMAddPackage(

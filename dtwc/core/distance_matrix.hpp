@@ -1,11 +1,11 @@
 /**
  * @file distance_matrix.hpp
- * @brief Dense symmetric distance matrix with flat array storage.
+ * @brief Dense symmetric distance matrix with packed triangular storage.
  *
- * @details Stores pairwise distances in a flat N*N array. The set() method
- * enforces symmetry by writing both (i,j) and (j,i). Uncomputed entries
- * are tracked via a separate boolean vector (not NaN sentinels), ensuring
- * correctness under -ffast-math / /fp:fast compiler flags.
+ * @details Stores pairwise distances in a packed lower-triangular array of
+ * size N*(N+1)/2, cutting memory use by ~50% vs a full N*N matrix.
+ * Uncomputed entries are tracked via a bit-packed boolean vector,
+ * ensuring correctness under -ffast-math / /fp:fast compiler flags.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -13,8 +13,9 @@
 
 #pragma once
 
+#include <Eigen/Core>
+
 #include <cassert>
-#include <vector>
 #include <cstddef>
 #include <cmath>
 #include <filesystem>
@@ -25,24 +26,39 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace dtwc::core {
 
 class DenseDistanceMatrix {
-  std::vector<double> data_;
-  std::vector<char> computed_;  ///< 1 if entry has been set, 0 otherwise.
+  Eigen::VectorXd data_;          ///< Packed lower-triangular: N*(N+1)/2 elements.
+  std::vector<bool> computed_;    ///< Bit-packed: 1 if entry has been set.
   size_t n_{ 0 };
+
+  /// Map (i,j) to packed lower-triangular index.
+  /// Normalises so that the larger index is first: tri(max,min).
+  static size_t tri_index(size_t i, size_t j)
+  {
+    if (i < j) std::swap(i, j);
+    return i * (i + 1) / 2 + j;
+  }
+
+  /// Total number of elements in packed storage for n points.
+  static size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
 public:
   DenseDistanceMatrix() = default;
-  explicit DenseDistanceMatrix(size_t n) : data_(n * n, 0.0), computed_(n * n, 0), n_(n) {}
+  explicit DenseDistanceMatrix(size_t n)
+    : data_(Eigen::VectorXd::Zero(static_cast<Eigen::Index>(packed_size(n)))),
+      computed_(packed_size(n), false),
+      n_(n) {}
 
   /// Resize and reset all entries to uncomputed.
-  /// Exception-safe: allocates before updating dimension.
   void resize(size_t n)
   {
-    data_.assign(n * n, 0.0);
-    computed_.assign(n * n, 0);
+    const auto ps = packed_size(n);
+    data_ = Eigen::VectorXd::Zero(static_cast<Eigen::Index>(ps));
+    computed_.assign(ps, false);
     n_ = n;
   }
 
@@ -50,38 +66,36 @@ public:
   double get(size_t i, size_t j) const
   {
     assert(i < n_ && j < n_);
-    return data_[i * n_ + j];
+    return data_[static_cast<Eigen::Index>(tri_index(i, j))];
   }
 
-  /// Set the distance between points i and j (symmetric: also sets j,i).
+  /// Set the distance between points i and j (symmetric — single write).
   void set(size_t i, size_t j, double v)
   {
     assert(i < n_ && j < n_);
-    data_[i * n_ + j] = v;
-    data_[j * n_ + i] = v;
-    computed_[i * n_ + j] = 1;
-    computed_[j * n_ + i] = 1;
+    const auto k = tri_index(i, j);
+    data_[static_cast<Eigen::Index>(k)] = v;
+    computed_[k] = true;
   }
 
   /// Check whether the distance between i and j has been computed.
   bool is_computed(size_t i, size_t j) const
   {
     assert(i < n_ && j < n_);
-    return computed_[i * n_ + j] != 0;
+    return computed_[tri_index(i, j)];
   }
 
   /// Number of points (matrix is size() x size()).
   size_t size() const { return n_; }
 
   /// Maximum computed value in the matrix.
-  /// Returns 0.0 if no entries have been computed.
   double max() const
   {
-    if (data_.empty()) return 0.0;
+    if (data_.size() == 0) return 0.0;
     double result = 0.0;
     bool found = false;
-    for (size_t idx = 0; idx < data_.size(); ++idx) {
-      if (computed_[idx]) {
+    for (Eigen::Index idx = 0; idx < data_.size(); ++idx) {
+      if (computed_[static_cast<size_t>(idx)]) {
         if (!found || data_[idx] > result) {
           result = data_[idx];
           found = true;
@@ -92,10 +106,11 @@ public:
   }
 
   /// Count the number of computed entries in the matrix.
+  /// Returns the count in packed storage (unique pairs + diagonal).
   size_t count_computed() const
   {
     size_t count = 0;
-    for (char c : computed_)
+    for (bool c : computed_)
       if (c) ++count;
     return count;
   }
@@ -103,15 +118,35 @@ public:
   /// Check whether all entries have been computed.
   bool all_computed() const
   {
-    for (char c : computed_)
+    for (bool c : computed_)
       if (!c) return false;
     return true;
   }
 
+  /// Raw pointer to packed triangular data.
+  /// Layout: lower-triangular, row i elements [i*(i+1)/2 .. i*(i+1)/2+i].
   double *raw() { return data_.data(); }
   const double *raw() const { return data_.data(); }
 
-  /// Write the matrix to a CSV file.
+  /// Number of elements in packed storage.
+  size_t packed_count() const { return packed_size(n_); }
+
+  /// Expand packed triangular storage to a full N*N Eigen matrix.
+  /// Useful for numpy/MATLAB export.
+  Eigen::MatrixXd to_full_matrix() const
+  {
+    Eigen::MatrixXd full = Eigen::MatrixXd::Zero(
+      static_cast<Eigen::Index>(n_), static_cast<Eigen::Index>(n_));
+    for (size_t i = 0; i < n_; ++i)
+      for (size_t j = 0; j <= i; ++j) {
+        const double v = data_[static_cast<Eigen::Index>(tri_index(i, j))];
+        full(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(j)) = v;
+        full(static_cast<Eigen::Index>(j), static_cast<Eigen::Index>(i)) = v;
+      }
+    return full;
+  }
+
+  /// Write the matrix to a CSV file (full N*N format for compatibility).
   void write_csv(const std::filesystem::path &path) const
   {
     std::ofstream file(path);
@@ -143,7 +178,6 @@ public:
     std::vector<std::vector<bool>> rows_valid;
     std::string line;
     while (std::getline(file, line)) {
-      // Strip trailing \r for Windows line endings
       if (!line.empty() && line.back() == '\r') line.pop_back();
       if (line.empty()) continue;
       std::vector<double> row;
@@ -151,7 +185,7 @@ public:
       std::istringstream ss(line);
       std::string cell;
       while (std::getline(ss, cell, ',')) {
-        if (cell.empty()) continue; // skip trailing commas
+        if (cell.empty()) continue;
         if (cell == "nan" || cell == "NaN" || cell == "NAN") {
           row.push_back(0.0);
           valid.push_back(false);

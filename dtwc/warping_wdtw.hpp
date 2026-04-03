@@ -288,14 +288,26 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 // Convenience overloads: accept g parameter instead of precomputed weights.
 // -------------------------------------------------------------------------
 
-/// WDTW with g parameter (computes weights internally).
+/// WDTW with g parameter (caches weights via thread_local to avoid
+/// recomputing exp() on every call when max_dev and g are unchanged).
 template <typename data_t = double>
 data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band, data_t g)
 {
-  const int max_dev = static_cast<int>(std::max(nx, ny));
-  auto w = wdtw_weights<data_t>(max_dev, g);
-  return wdtwBanded(x, nx, y, ny, w, band);
+  // max_dev = max(nx,ny) - 1: the maximum possible |i-j| for series of
+  // lengths nx, ny. Matches the MV path convention.
+  const auto max_len = std::max(nx, ny);
+  if (max_len == 0) return std::numeric_limits<data_t>::max();
+  const int max_dev = static_cast<int>(max_len) - 1;
+  thread_local std::vector<data_t> cached_w;
+  thread_local int cached_max_dev = -1;
+  thread_local data_t cached_g = data_t(-1);
+  if (max_dev != cached_max_dev || g != cached_g) {
+    cached_w = wdtw_weights<data_t>(max_dev, g);
+    cached_max_dev = max_dev;
+    cached_g = g;
+  }
+  return wdtwBanded(x, nx, y, ny, cached_w, band);
 }
 
 /// WDTW with g parameter (computes weights internally).
@@ -306,14 +318,23 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return wdtwBanded(x.data(), x.size(), y.data(), y.size(), band, g);
 }
 
-/// Full WDTW with g parameter.
+/// Full WDTW with g parameter (caches weights via thread_local).
 template <typename data_t = double>
 data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
                 data_t g)
 {
-  const int max_dev = static_cast<int>(std::max(nx, ny));
-  auto w = wdtw_weights<data_t>(max_dev, g);
-  return wdtwFull(x, nx, y, ny, w);
+  const auto max_len = std::max(nx, ny);
+  if (max_len == 0) return std::numeric_limits<data_t>::max();
+  const int max_dev = static_cast<int>(max_len) - 1;
+  thread_local std::vector<data_t> cached_w;
+  thread_local int cached_max_dev = -1;
+  thread_local data_t cached_g = data_t(-1);
+  if (max_dev != cached_max_dev || g != cached_g) {
+    cached_w = wdtw_weights<data_t>(max_dev, g);
+    cached_max_dev = max_dev;
+    cached_g = g;
+  }
+  return wdtwFull(x, nx, y, ny, cached_w);
 }
 
 /// Full WDTW with g parameter.

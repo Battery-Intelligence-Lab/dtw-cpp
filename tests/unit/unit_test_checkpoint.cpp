@@ -175,8 +175,8 @@ TEST_CASE("Checkpoint metadata file contains expected fields", "[checkpoint]")
   REQUIRE(content.find("pairs_computed=") != std::string::npos);
   REQUIRE(content.find("timestamp=") != std::string::npos);
 
-  // pairs_computed should be N*N = 25 (all computed including diagonal)
-  REQUIRE(content.find("pairs_computed=25") != std::string::npos);
+  // pairs_computed = N*(N+1)/2 = 15 (packed triangular, all computed)
+  REQUIRE(content.find("pairs_computed=15") != std::string::npos);
 
   cleanup_dir(ckpt_dir);
 }
@@ -279,16 +279,16 @@ TEST_CASE("DenseDistanceMatrix count_computed and all_computed", "[checkpoint][d
   REQUIRE(dm.count_computed() == 0);
   REQUIRE_FALSE(dm.all_computed());
 
-  // Set a few entries (set is symmetric, so sets 2 entries per call)
+  // Set a few entries (packed triangular: each set() marks 1 unique entry)
   dm.set(0, 0, 0.0);
   dm.set(1, 1, 0.0);
-  dm.set(0, 1, 1.5);  // sets (0,1) and (1,0)
+  dm.set(0, 1, 1.5);  // maps to tri(1,0) — single entry
 
-  // 0,0 + 1,1 + 0,1 + 1,0 = 4 entries
-  REQUIRE(dm.count_computed() == 4);
+  // 3 unique packed entries: (0,0), (1,1), tri(1,0)
+  REQUIRE(dm.count_computed() == 3);
   REQUIRE_FALSE(dm.all_computed());
 
-  // Fill the rest
+  // Fill the rest — N=4 has N*(N+1)/2 = 10 packed entries
   dm.set(2, 2, 0.0);
   dm.set(3, 3, 0.0);
   dm.set(0, 2, 2.0);
@@ -297,6 +297,6 @@ TEST_CASE("DenseDistanceMatrix count_computed and all_computed", "[checkpoint][d
   dm.set(1, 3, 5.0);
   dm.set(2, 3, 6.0);
 
-  REQUIRE(dm.count_computed() == 16); // 4*4
+  REQUIRE(dm.count_computed() == 10); // N*(N+1)/2
   REQUIRE(dm.all_computed());
 }

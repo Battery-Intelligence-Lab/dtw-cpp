@@ -37,6 +37,9 @@
 #include <core/dtw_options.hpp>
 #include <core/pruned_distance_matrix.hpp>
 
+#include <Eigen/Core>
+
+#include <cstring>
 #include <vector>
 #include <string>
 
@@ -247,12 +250,19 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("is_computed", &dtwc::core::DenseDistanceMatrix::is_computed, "i"_a, "j"_a)
     .def_prop_ro("size", &dtwc::core::DenseDistanceMatrix::size)
     .def("max", &dtwc::core::DenseDistanceMatrix::max)
-    .def("to_numpy", [](dtwc::core::DenseDistanceMatrix &dm) {
-      size_t n = dm.size();
-      size_t shape[2] = {n, n};
-      return nb::ndarray<nb::numpy, double>(dm.raw(), 2, shape, nb::handle());
-    }, nb::rv_policy::reference_internal,
-       "Return a numpy view of the distance matrix (zero-copy).")
+    .def("to_numpy", [](const dtwc::core::DenseDistanceMatrix &dm) {
+      // Expand packed triangular storage to full N*N numpy array.
+      const Eigen::MatrixXd full = dm.to_full_matrix();
+      const size_t n = dm.size();
+      // Eigen is column-major; numpy expects row-major (C order).
+      // Use nb::ndarray with explicit strides to handle this, or just copy
+      // row-major since the matrix is symmetric (col-major == row-major for symmetric).
+      double *ptr = new double[n * n];
+      // Copy from Eigen column-major to row-major (symmetric, so identical)
+      std::memcpy(ptr, full.data(), n * n * sizeof(double));
+      nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+      return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+    }, "Return a numpy array of the full N*N distance matrix.")
     .def("write_csv", &dtwc::core::DenseDistanceMatrix::write_csv, "path"_a)
     .def("read_csv", &dtwc::core::DenseDistanceMatrix::read_csv, "path"_a)
     .def("__repr__", [](const dtwc::core::DenseDistanceMatrix &dm) {
@@ -430,14 +440,18 @@ NB_MODULE(_dtwcpp_core, m) {
       p.fillDistanceMatrix();
     }, "Compute all pairwise DTW distances.")
     .def("distance_matrix_numpy", [](dtwc::Problem &prob) {
-      prob.fillDistanceMatrix();
-      const size_t n = prob.size();
-      double* ptr = new double[n * n];
-      for (size_t i = 0; i < n; ++i)
-        for (size_t j = 0; j < n; ++j)
-          ptr[i * n + j] = prob.distByInd(static_cast<int>(i), static_cast<int>(j));
-
-      nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
+      {
+        nb::gil_scoped_release release;
+        prob.fillDistanceMatrix();
+      }
+      // Use to_full_matrix() to expand packed triangular → full NxN.
+      const auto &dm = prob.distance_matrix();
+      const Eigen::MatrixXd full = dm.to_full_matrix();
+      const size_t n = dm.size();
+      double *ptr = new double[n * n];
+      // Symmetric matrix: col-major == row-major, safe to memcpy.
+      std::memcpy(ptr, full.data(), n * n * sizeof(double));
+      nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
       return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
     }, "Fill distance matrix in C++ (OpenMP parallel) and return as numpy array.")
     .def("refresh_distance_matrix", &dtwc::Problem::refreshDistanceMatrix)

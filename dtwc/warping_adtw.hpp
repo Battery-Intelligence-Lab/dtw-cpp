@@ -134,12 +134,12 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
     long_ptr = x; m_long = static_cast<int>(nx);
   }
 
+  if ((m_short == 0) || (m_long == 0)) return maxValue;
+
   C.resize(m_long, m_short);
   C.fill(maxValue);
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
-
-  if ((m_short == 0) || (m_long == 0)) return maxValue;
   if ((m_short == 1) || (m_long == 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
   if (m_long <= (band + 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
 

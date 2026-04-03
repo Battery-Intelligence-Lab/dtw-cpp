@@ -400,10 +400,12 @@ PruningStats compute_distance_matrix_pruned(
       output[i * N + j] = dist;
       output[j * N + i] = dist;
 
-      // Only update nn_dist[i] — owned by this thread (outer loop row i).
-      // nn_dist[j] is owned by the thread processing row j.
-      // This lock-free design avoids data races entirely.
-      if (dist < nn_dist[i]) nn_dist[i] = dist;
+      // Update nearest-neighbor distances for pruning.
+      // Use atomic min for both endpoints — matches the Problem-based version
+      // (lines 256-257). The previous design only updated nn_dist[i], reducing
+      // pruning effectiveness for later pairs involving series j.
+      atomic_min_double(&nn_dist[i], dist);
+      atomic_min_double(&nn_dist[j], dist);
     }
 
     // Accumulate thread-local stats

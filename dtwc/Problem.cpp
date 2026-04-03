@@ -227,16 +227,29 @@ void Problem::rebind_dtw_fn()
           return std::numeric_limits<data_t>::max();
 
         const auto max_dev = std::max(x_steps, y_steps) - size_t{1};
-        const auto &weights = wdtw_weights_cache_.at(max_dev);
+        // Lookup precomputed weights; compute on miss for synthetic series
+        // (e.g., DBA centroids with lengths not in original dataset).
+        // Read g at invocation time so direct mutation of wdtw_g is honoured.
+        auto it = wdtw_weights_cache_.find(max_dev);
+        if (it == wdtw_weights_cache_.end()) {
+          const auto g = static_cast<data_t>(variant_params.wdtw_g);
+          it = wdtw_weights_cache_.emplace(max_dev,
+                   wdtw_weights<data_t>(static_cast<int>(max_dev), g)).first;
+        }
         return wdtwBanded_mv(x.data(), x_steps,
                              y.data(), y_steps,
-                             data.ndim, weights, band);
+                             data.ndim, it->second, band);
       };
     } else {
       dtw_fn_ = [this](const auto &x, const auto &y) {
         const auto max_dev = std::max(x.size(), y.size());
-        const auto &weights = wdtw_weights_cache_.at(max_dev);
-        return wdtwBanded(x, y, weights, band);
+        auto it = wdtw_weights_cache_.find(max_dev);
+        if (it == wdtw_weights_cache_.end()) {
+          const auto g = static_cast<data_t>(variant_params.wdtw_g);
+          it = wdtw_weights_cache_.emplace(max_dev,
+                   wdtw_weights<data_t>(static_cast<int>(max_dev), g)).first;
+        }
+        return wdtwBanded(x, y, it->second, band);
       };
     }
     break;
@@ -271,15 +284,13 @@ void Problem::rebind_dtw_fn()
 void Problem::set_variant(core::DTWVariant v)
 {
   variant_params.variant = v;
-  rebind_dtw_fn();
-  refreshDistanceMatrix();
+  refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
 }
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
   variant_params = params;
-  rebind_dtw_fn();
-  refreshDistanceMatrix();
+  refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
 }
 
 /**

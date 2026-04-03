@@ -180,4 +180,37 @@ data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
 }
 
+// -------------------------------------------------------------------------
+// Pointer-based overloads for Python/MATLAB zero-copy bindings.
+// -------------------------------------------------------------------------
+
+/// DDTW (banded) from raw pointers — avoids caller needing to construct vectors.
+template <typename data_t = double>
+data_t ddtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  int band = settings::DEFAULT_BAND_LENGTH,
+                  core::MetricType metric = core::MetricType::L1)
+{
+  // derivative_transform_inplace operates on vectors, so we wrap the pointers.
+  // These thread_local vectors avoid heap allocation after warmup.
+  thread_local std::vector<data_t> vx, vy, dx, dy;
+  vx.assign(x, x + nx);
+  vy.assign(y, y + ny);
+  derivative_transform_inplace(vx, dx);
+  derivative_transform_inplace(vy, dy);
+  return dtwBanded<data_t>(dx, dy, band, static_cast<data_t>(-1), metric);
+}
+
+/// DDTW (full, linear-space) from raw pointers.
+template <typename data_t = double>
+data_t ddtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  core::MetricType metric = core::MetricType::L1)
+{
+  thread_local std::vector<data_t> vx, vy, dx, dy;
+  vx.assign(x, x + nx);
+  vy.assign(y, y + ny);
+  derivative_transform_inplace(vx, dx);
+  derivative_transform_inplace(vy, dy);
+  return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
+}
+
 } // namespace dtwc

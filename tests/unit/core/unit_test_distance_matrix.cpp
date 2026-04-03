@@ -129,7 +129,7 @@ TEST_CASE("DenseDistanceMatrix diagonal self-distance", "[DistanceMatrix]")
   }
 }
 
-TEST_CASE("DenseDistanceMatrix raw pointer access", "[DistanceMatrix]")
+TEST_CASE("DenseDistanceMatrix raw pointer access (packed triangular)", "[DistanceMatrix]")
 {
   DenseDistanceMatrix dm(2);
   dm.set(0, 0, 1.0);
@@ -137,11 +137,34 @@ TEST_CASE("DenseDistanceMatrix raw pointer access", "[DistanceMatrix]")
   dm.set(1, 1, 3.0);
 
   const double *raw = dm.raw();
-  // Row-major flat storage: [0,0]=1.0  [0,1]=2.0  [1,0]=2.0  [1,1]=3.0
-  REQUIRE_THAT(raw[0], WithinAbs(1.0, 1e-12));
-  REQUIRE_THAT(raw[1], WithinAbs(2.0, 1e-12));
-  REQUIRE_THAT(raw[2], WithinAbs(2.0, 1e-12)); // symmetric
-  REQUIRE_THAT(raw[3], WithinAbs(3.0, 1e-12));
+  // Packed lower-triangular: [tri(0,0)]=1.0  [tri(1,0)]=2.0  [tri(1,1)]=3.0
+  // Index mapping: tri(0,0)=0, tri(1,0)=1, tri(1,1)=2
+  REQUIRE(dm.packed_count() == 3);
+  REQUIRE_THAT(raw[0], WithinAbs(1.0, 1e-12)); // (0,0)
+  REQUIRE_THAT(raw[1], WithinAbs(2.0, 1e-12)); // (1,0) == (0,1)
+  REQUIRE_THAT(raw[2], WithinAbs(3.0, 1e-12)); // (1,1)
+
+  // Verify symmetry via get()
+  REQUIRE_THAT(dm.get(0, 1), WithinAbs(2.0, 1e-12));
+  REQUIRE_THAT(dm.get(1, 0), WithinAbs(2.0, 1e-12));
+}
+
+TEST_CASE("DenseDistanceMatrix to_full_matrix", "[DistanceMatrix]")
+{
+  DenseDistanceMatrix dm(3);
+  dm.set(0, 1, 5.0);
+  dm.set(0, 2, 3.0);
+  dm.set(1, 2, 7.0);
+
+  const auto full = dm.to_full_matrix();
+  REQUIRE(full.rows() == 3);
+  REQUIRE(full.cols() == 3);
+  REQUIRE_THAT(full(0, 1), WithinAbs(5.0, 1e-12));
+  REQUIRE_THAT(full(1, 0), WithinAbs(5.0, 1e-12));
+  REQUIRE_THAT(full(0, 2), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(full(2, 0), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(full(1, 2), WithinAbs(7.0, 1e-12));
+  REQUIRE_THAT(full(2, 1), WithinAbs(7.0, 1e-12));
 }
 
 TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")

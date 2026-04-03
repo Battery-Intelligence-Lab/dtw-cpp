@@ -495,42 +495,50 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 
 static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("dtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  const double *x = mxGetDoubles(prhs[1]);
+  size_t nx = mxGetNumberOfElements(prhs[1]);
+  const double *y = mxGetDoubles(prhs[2]);
+  size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND_LENGTH;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::dtwBanded<double>(x, y, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::dtwBanded<double>(x, nx, y, ny, band));
 }
 
 static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("ddtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  const double *x = mxGetDoubles(prhs[1]);
+  size_t nx = mxGetNumberOfElements(prhs[1]);
+  const double *y = mxGetDoubles(prhs[2]);
+  size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND_LENGTH;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::ddtwBanded<double>(x, y, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::ddtwBanded<double>(x, nx, y, ny, band));
 }
 
 static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("wdtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  const double *x = mxGetDoubles(prhs[1]);
+  size_t nx = mxGetNumberOfElements(prhs[1]);
+  const double *y = mxGetDoubles(prhs[2]);
+  size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND_LENGTH;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double g = 0.05;
   if (nrhs > 4) g = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::wdtwBanded<double>(x, y, band, g));
+  plhs[0] = mxCreateDoubleScalar(dtwc::wdtwBanded<double>(x, nx, y, ny, band, g));
 }
 
 static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  const double *x = mxGetDoubles(prhs[1]);
+  size_t nx = mxGetNumberOfElements(prhs[1]);
+  const double *y = mxGetDoubles(prhs[2]);
+  size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND_LENGTH;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double penalty = 1.0;
   if (nrhs > 4) penalty = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::adtwBanded<double>(x, y, band, penalty));
+  plhs[0] = mxCreateDoubleScalar(dtwc::adtwBanded<double>(x, nx, y, ny, band, penalty));
 }
 
 static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
