@@ -15,6 +15,10 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/function.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include <dtwc.hpp>
 #include <checkpoint.hpp>
 #include <warping.hpp>
@@ -787,4 +791,49 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.attr("CUDA_AVAILABLE") = false;
 #endif
+
+  // =========================================================================
+  // Capability detection: OpenMP, MPI
+  // =========================================================================
+
+#ifdef _OPENMP
+  m.attr("OPENMP_AVAILABLE") = true;
+  m.def("openmp_max_threads", []() {
+    return omp_get_max_threads();
+  }, "Return the maximum number of OpenMP threads available.");
+#else
+  m.attr("OPENMP_AVAILABLE") = false;
+  m.def("openmp_max_threads", []() { return 1; },
+        "Return 1 (OpenMP not compiled in).");
+#endif
+
+#ifdef DTWC_HAS_MPI
+  m.attr("MPI_AVAILABLE") = true;
+#else
+  m.attr("MPI_AVAILABLE") = false;
+#endif
+
+  m.def("system_info", []() {
+    std::string info;
+    info += "DTWC++ System Information\n";
+#ifdef _OPENMP
+    info += "  OpenMP: available (" + std::to_string(omp_get_max_threads()) + " threads)\n";
+#else
+    info += "  OpenMP: not available\n";
+#endif
+#ifdef DTWC_HAS_CUDA
+    if (dtwc::cuda::cuda_available())
+      info += "  CUDA:   available (" + dtwc::cuda::cuda_device_info(0) + ")\n";
+    else
+      info += "  CUDA:   compiled but no GPU detected\n";
+#else
+    info += "  CUDA:   not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)\n";
+#endif
+#ifdef DTWC_HAS_MPI
+    info += "  MPI:    available\n";
+#else
+    info += "  MPI:    not compiled (rebuild with -DDTWC_ENABLE_MPI=ON)\n";
+#endif
+    return info;
+  }, "Return a string summarizing available backends and capabilities.");
 }

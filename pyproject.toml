@@ -6,13 +6,44 @@ build-backend = "scikit_build_core.build"
 name = "dtwcpp"
 version = "1.0.0"
 description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
+readme = "README.md"
+license = {text = "BSD-3-Clause"}
 authors = [
-    { name = "Volkan Kumtepeli", email = "volkan.kumtepeli@gmail.com" },
+    { name = "Volkan Kumtepeli" },
+    { name = "Rebecca Perriment" },
+    { name = "David A. Howey" },
 ]
-requires-python = ">=3.10"
+maintainers = [
+    { name = "Volkan Kumtepeli" },
+]
+requires-python = ">=3.9"
 dependencies = [
     "numpy>=1.26",
 ]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: C++",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["dtw", "dynamic-time-warping", "clustering", "time-series", "k-medoids"]
+
+[project.urls]
+Homepage = "https://github.com/Battery-Intelligence-Lab/dtw-cpp"
+Documentation = "https://battery-intelligence-lab.github.io/dtw-cpp/"
+Repository = "https://github.com/Battery-Intelligence-Lab/dtw-cpp"
+Issues = "https://github.com/Battery-Intelligence-Lab/dtw-cpp/issues"
+Changelog = "https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 test = ["pytest>=6.0"]
@@ -20,6 +51,7 @@ sklearn = ["scikit-learn>=1.0"]
 hdf5 = ["h5py>=3.0"]
 parquet = ["pyarrow>=12.0"]
 io = ["h5py>=3.0", "pyarrow>=12.0"]
+dev = ["pytest>=6.0", "scikit-learn>=1.0"]
 
 [tool.scikit-build]
 cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF"]

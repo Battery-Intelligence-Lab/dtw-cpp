@@ -14,6 +14,10 @@
 #include "mex.h"
 #include "matrix.h"
 
+#ifdef _OPENMP
+#include <omp.h>
+#endif
+
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
@@ -912,6 +916,32 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "normalized_mutual_information") cmd_normalized_mutual_information(nlhs, plhs, nrhs, prhs);
     // Legacy backward-compatible command
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
+    // System capability check
+    else if (cmd == "system_check") {
+      const char *fields[] = {"openmp", "openmp_threads", "cuda", "cuda_info", "mpi"};
+      mxArray *info = mxCreateStructMatrix(1, 1, 5, fields);
+#ifdef _OPENMP
+      mxSetField(info, 0, "openmp", mxCreateLogicalScalar(true));
+      mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(omp_get_max_threads()));
+#else
+      mxSetField(info, 0, "openmp", mxCreateLogicalScalar(false));
+      mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(1));
+#endif
+#ifdef DTWC_HAS_CUDA
+      mxSetField(info, 0, "cuda", mxCreateLogicalScalar(dtwc::cuda::cuda_available()));
+      std::string ci = dtwc::cuda::cuda_device_info(0);
+      mxSetField(info, 0, "cuda_info", mxCreateString(ci.c_str()));
+#else
+      mxSetField(info, 0, "cuda", mxCreateLogicalScalar(false));
+      mxSetField(info, 0, "cuda_info", mxCreateString("not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)"));
+#endif
+#ifdef DTWC_HAS_MPI
+      mxSetField(info, 0, "mpi", mxCreateLogicalScalar(true));
+#else
+      mxSetField(info, 0, "mpi", mxCreateLogicalScalar(false));
+#endif
+      plhs[0] = info;
+    }
     else {
       throw std::invalid_argument("Unknown command: '" + cmd + "'.");
     }

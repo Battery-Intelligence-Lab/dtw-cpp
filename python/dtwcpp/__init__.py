@@ -65,6 +65,10 @@ from dtwcpp._dtwcpp_core import (
     cuda_device_info,
     compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
     compute_lb_keogh_cuda,
+    OPENMP_AVAILABLE,
+    openmp_max_threads,
+    MPI_AVAILABLE,
+    system_info as _system_info_raw,
 )
 
 __version__ = "1.0.0"
@@ -195,6 +199,52 @@ from dtwcpp.io import (
     load_dataset_parquet,
 )
 
+def check_system():
+    """Print a diagnostic summary of available DTWC++ backends.
+
+    Usage::
+
+        import dtwcpp
+        dtwcpp.check_system()
+    """
+    import sys
+    _utf8 = sys.stdout.encoding and 'utf' in sys.stdout.encoding.lower()
+    _ok = "\u2705" if _utf8 else "[OK]"
+    _no = "\u274c" if _utf8 else "[--]"
+
+    print("DTWC++ System Check")
+    print("=" * 40)
+
+    # OpenMP
+    if OPENMP_AVAILABLE:
+        print(f"  {_ok} OpenMP: {openmp_max_threads()} threads")
+    else:
+        print(f"  {_no} OpenMP: not available")
+        print("     Rebuild with OpenMP support enabled.")
+        print("     CMake: compiler should support /openmp (MSVC) or -fopenmp (GCC/Clang)")
+
+    # CUDA
+    if CUDA_AVAILABLE:
+        if cuda_available():
+            print(f"  {_ok} CUDA:   {cuda_device_info(0)}")
+        else:
+            print(f"  {_no} CUDA:   compiled but no GPU detected")
+            print("     Check nvidia-smi and CUDA driver installation.")
+    else:
+        print(f"  {_no} CUDA:   not compiled")
+        print("     Rebuild with: cmake -DDTWC_ENABLE_CUDA=ON ...")
+
+    # MPI
+    if MPI_AVAILABLE:
+        print(f"  {_ok} MPI:    available")
+    else:
+        print(f"  {_no} MPI:    not compiled")
+        print("     Rebuild with: cmake -DDTWC_ENABLE_MPI=ON ...")
+        print("     Windows: install MS-MPI SDK from microsoft.com/mpi")
+
+    print("=" * 40)
+
+
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
     "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
@@ -213,6 +263,9 @@ __all__ = [
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
+    "OPENMP_AVAILABLE", "openmp_max_threads",
+    "MPI_AVAILABLE",
+    "check_system",
     "save_checkpoint", "load_checkpoint", "CheckpointOptions",
     "DTWClustering",
     "save_dataset_csv", "load_dataset_csv",
