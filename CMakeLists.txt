@@ -218,7 +218,7 @@ if(DTWC_BUILD_TESTING)
 endif()
 
 if(DTWC_BUILD_EXAMPLES)
-  add_subdirectory(examples)
+  add_subdirectory(examples/cpp)
 endif()
 
 if(DTWC_BUILD_BENCHMARK)
