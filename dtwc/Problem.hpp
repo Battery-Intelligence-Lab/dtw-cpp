@@ -36,6 +36,12 @@
 
 namespace dtwc {
 
+/// GPU compute settings (only used when distance_strategy == GPU).
+struct CUDASettings {
+  int device_id = 0;              ///< CUDA device index.
+  int precision_mode = 0;          ///< 0 = Auto, 1 = FP32, 2 = FP64.
+};
+
 /// MIP solver tuning parameters.
 struct MIPSettings {
   double mip_gap = 1e-5;          ///< Relative MIP gap tolerance.
@@ -44,6 +50,8 @@ struct MIPSettings {
   int numeric_focus = 1;           ///< Gurobi NumericFocus (0-3).
   int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
   bool verbose_solver = false;     ///< Show solver log output.
+  int max_benders_iter = 200;      ///< Maximum Benders iterations.
+  std::string benders = "auto";    ///< Benders mode: "auto" (N>200), "on", "off".
 };
 
 /// Strategy for computing the pairwise distance matrix.
@@ -97,6 +105,7 @@ public:
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
+  CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
 

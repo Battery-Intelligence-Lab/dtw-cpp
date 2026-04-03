@@ -196,6 +196,9 @@ int main(int argc, char *argv[])
   app.add_option("--mip-focus", mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
   app.add_flag("--verbose-solver", verbose_solver, "Show MIP solver log output");
 
+  std::string benders_mode = "auto";
+  app.add_option("--benders", benders_mode, "Benders decomposition: auto (N>200), on, off");
+
   // Compute device
   std::string device = "cpu";
   std::string precision = "auto";
@@ -331,6 +334,16 @@ int main(int argc, char *argv[])
   prob.mip_settings.numeric_focus = numeric_focus;
   prob.mip_settings.mip_focus = mip_focus;
   prob.mip_settings.verbose_solver = verbose_solver;
+  prob.mip_settings.benders = benders_mode;
+
+  // Wire GPU settings from --device and --precision
+  if (device.rfind("cuda", 0) == 0) {
+    prob.distance_strategy = dtwc::DistanceMatrixStrategy::GPU;
+    if (device.size() > 5 && device[4] == ':')
+      prob.cuda_settings.device_id = std::stoi(device.substr(5));
+    if (precision == "fp32") prob.cuda_settings.precision_mode = 1;
+    else if (precision == "fp64") prob.cuda_settings.precision_mode = 2;
+  }
 
   // Set DTW variant
   dtwc::core::DTWVariantParams vparams;

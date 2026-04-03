@@ -9,11 +9,19 @@ from dtwcpp._dtwcpp_core import (
     ConstraintType,
     MetricType,
     DTWVariant,
+    MissingStrategy,
+    DistanceMatrixStrategy,
+    Linkage,
     # Structs
     DTWVariantParams,
     ClusteringResult,
     DenseDistanceMatrix,
     Data,
+    MIPSettings,
+    DendrogramStep,
+    Dendrogram,
+    HierarchicalOptions,
+    CLARANSOptions,
     # Classes
     Problem,
     # DTW functions (raw C++ bindings — require numpy arrays)
@@ -24,13 +32,22 @@ from dtwcpp._dtwcpp_core import (
     soft_dtw_distance,
     soft_dtw_gradient,
     dtw_distance_missing as _dtw_distance_missing_raw,
+    dtw_arow_distance as _dtw_arow_distance_raw,
     # Algorithms
     fast_pam,
     fast_clara,
     CLARAOptions,
+    clarans,
+    build_dendrogram,
+    cut_dendrogram,
     # Scores
     silhouette,
     davies_bouldin_index,
+    dunn_index,
+    inertia,
+    calinski_harabasz_index,
+    adjusted_rand_index,
+    normalized_mutual_information,
     # Utils
     derivative_transform,
     z_normalize,
@@ -73,6 +90,22 @@ def dtw_distance_missing(x, y, band=-1, metric="l1"):
     Accepts lists or numpy arrays. NaN values contribute zero cost.
     """
     return _dtw_distance_missing_raw(
+        _np.asarray(x, dtype=_np.float64),
+        _np.asarray(y, dtype=_np.float64),
+        band, metric)
+
+
+def dtw_arow_distance(x, y, band=-1, metric="l1"):
+    """DTW-AROW distance with diagonal-only alignment for missing values.
+
+    When x[i] or y[j] is NaN, the warping path is restricted to the
+    diagonal direction only (one-to-one), preventing free stretching
+    through missing regions.
+
+    Accepts lists or numpy arrays.
+    Reference: Yurtman et al. (ECML-PKDD 2023).
+    """
+    return _dtw_arow_distance_raw(
         _np.asarray(x, dtype=_np.float64),
         _np.asarray(y, dtype=_np.float64),
         band, metric)
@@ -164,12 +197,19 @@ from dtwcpp.io import (
 
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
+    "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
+    "MIPSettings", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
+    "CLARANSOptions",
     "Problem",
     "dtw_distance", "ddtw_distance", "wdtw_distance", "adtw_distance",
     "soft_dtw_distance", "soft_dtw_gradient", "dtw_distance_missing",
+    "dtw_arow_distance",
     "fast_pam", "fast_clara", "CLARAOptions",
+    "clarans", "build_dendrogram", "cut_dendrogram",
     "silhouette", "davies_bouldin_index",
+    "dunn_index", "inertia", "calinski_harabasz_index",
+    "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",

@@ -2,6 +2,7 @@
 import numpy as np
 from dtwcpp._dtwcpp_core import (
     Problem, fast_pam, silhouette, DTWVariant, DTWVariantParams,
+    MissingStrategy,
     dtw_distance, ddtw_distance, wdtw_distance, adtw_distance,
 )
 
@@ -50,6 +51,10 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         Logistic weight steepness for WDTW (ignored unless ``variant="wdtw"``).
     adtw_penalty : float, default=1.0
         Non-diagonal step penalty for ADTW (ignored unless ``variant="adtw"``).
+    missing_strategy : str, default="error"
+        How to handle NaN values in time series. One of ``"error"`` (throw),
+        ``"zero_cost"`` (NaN pairs contribute zero cost), ``"arow"``
+        (diagonal-only alignment), or ``"interpolate"`` (linear interpolation).
     device : str, default="cpu"
         Computation device for distance matrix. ``"cpu"``, ``"cuda"``, or ``"cuda:N"``.
 
@@ -69,7 +74,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
-                 device="cpu"):
+                 missing_strategy="error", device="cpu"):
         self.n_clusters = n_clusters
         self.variant = variant
         self.band = band
@@ -77,6 +82,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.n_init = n_init
         self.wdtw_g = wdtw_g
         self.adtw_penalty = adtw_penalty
+        self.missing_strategy = missing_strategy
         self.device = device
 
     def _variant_enum(self):
@@ -94,6 +100,22 @@ class DTWClustering(BaseEstimator, ClusterMixin):
                 f"Expected one of: {list(mapping.keys())}"
             )
         return v
+
+    def _missing_strategy_enum(self):
+        """Map string missing_strategy name to C++ MissingStrategy enum."""
+        mapping = {
+            "error": MissingStrategy.Error,
+            "zero_cost": MissingStrategy.ZeroCost,
+            "arow": MissingStrategy.AROW,
+            "interpolate": MissingStrategy.Interpolate,
+        }
+        s = mapping.get(self.missing_strategy)
+        if s is None:
+            raise ValueError(
+                f"Unknown missing_strategy '{self.missing_strategy}'. "
+                f"Expected one of: {list(mapping.keys())}"
+            )
+        return s
 
     def _dtw_fn(self, x, y):
         """Compute DTW distance between two series using current variant."""
@@ -130,6 +152,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         prob = Problem("dtw_clustering")
         prob.set_data(series, names)
         prob.band = self.band
+        prob.missing_strategy = self._missing_strategy_enum()
 
         vp = DTWVariantParams()
         vp.variant = self._variant_enum()

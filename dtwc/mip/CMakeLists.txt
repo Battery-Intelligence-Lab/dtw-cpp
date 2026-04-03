@@ -6,8 +6,10 @@ target_sources(mip-solvers
   PRIVATE
     mip_Gurobi.cpp
     mip_Highs.cpp
+    benders.cpp
   PUBLIC
     mip.hpp
+    benders.hpp
   )
 
 target_include_directories(mip-solvers PUBLIC .)

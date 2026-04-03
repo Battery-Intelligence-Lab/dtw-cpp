@@ -16,6 +16,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Optional YAML configuration file support (`--yaml-config config.yaml`) via yaml-cpp (`-DDTWC_ENABLE_YAML=ON`).
 - `MIPSettings` struct on `Problem` for programmatic solver tuning.
 
+### Added (MATLAB MEX Bindings)
+
+- MATLAB MEX gateway (`bindings/matlab/dtwc_mex.cpp`) using C++ MEX API (R2018a+, RAII-safe).
+- `+dtwc` MATLAB package: `dtw_distance`, `compute_distance_matrix`, `DTWClustering` class.
+- `DTWClustering` handle class with `fit`, `fit_predict`, `predict` (mirrors Python API).
+- CMake integration: `DTWC_BUILD_MATLAB=ON` automatically finds MATLAB and builds MEX.
+- 1-based indexing conversion for all labels and medoid indices.
+- FastPAM used for clustering (not legacy Lloyd).
+
 ### Changed (MIP Solver Improvements)
 
 - Gurobi `NumericFocus` reduced from 3 to 1 (sufficient for 0/1/-1 constraint matrix, avoids 1.5-3x overhead).

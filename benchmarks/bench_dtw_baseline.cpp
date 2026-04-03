@@ -159,11 +159,14 @@ static void BM_fillDistanceMatrix(benchmark::State &state)
 BENCHMARK(BM_fillDistanceMatrix)
   ->Args({20, 100, -1})
   ->Args({50, 100, -1})
+  ->Args({100, 100, -1})
   ->Args({20, 500, -1})
   ->Args({50, 500, -1})
+  ->Args({100, 500, -1})
   ->Args({50, 500, 10})
   ->Args({50, 500, 50})
   ->Args({50, 1000, 50})
+  ->Args({100, 1000, -1})
   ->Unit(benchmark::kMillisecond);
 
 // ---------------------------------------------------------------------------

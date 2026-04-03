@@ -22,9 +22,12 @@
 #include <warping_wdtw.hpp>
 #include <warping_adtw.hpp>
 #include <warping_missing.hpp>
+#include <warping_missing_arow.hpp>
 #include <soft_dtw.hpp>
 #include <algorithms/fast_pam.hpp>
 #include <algorithms/fast_clara.hpp>
+#include <algorithms/clarans.hpp>
+#include <algorithms/hierarchical.hpp>
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
@@ -67,6 +70,27 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("ADTW", dtwc::core::DTWVariant::ADTW)
     .value("SoftDTW", dtwc::core::DTWVariant::SoftDTW);
 
+  nb::enum_<dtwc::core::MissingStrategy>(m, "MissingStrategy")
+    .value("Error", dtwc::core::MissingStrategy::Error)
+    .value("ZeroCost", dtwc::core::MissingStrategy::ZeroCost)
+    .value("AROW", dtwc::core::MissingStrategy::AROW)
+    .value("Interpolate", dtwc::core::MissingStrategy::Interpolate);
+
+  nb::enum_<dtwc::DistanceMatrixStrategy>(m, "DistanceMatrixStrategy")
+    .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
+    .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
+    .value("Pruned", dtwc::DistanceMatrixStrategy::Pruned)
+    .value("GPU", dtwc::DistanceMatrixStrategy::GPU);
+
+  // =========================================================================
+  // Linkage (hierarchical clustering)
+  // =========================================================================
+
+  nb::enum_<dtwc::algorithms::Linkage>(m, "Linkage")
+    .value("Single", dtwc::algorithms::Linkage::Single)
+    .value("Complete", dtwc::algorithms::Linkage::Complete)
+    .value("Average", dtwc::algorithms::Linkage::Average);
+
   // =========================================================================
   // DTWVariantParams
   // =========================================================================
@@ -77,6 +101,114 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("wdtw_g", &dtwc::core::DTWVariantParams::wdtw_g)
     .def_rw("adtw_penalty", &dtwc::core::DTWVariantParams::adtw_penalty)
     .def_rw("sdtw_gamma", &dtwc::core::DTWVariantParams::sdtw_gamma);
+
+  // =========================================================================
+  // MIPSettings
+  // =========================================================================
+
+  nb::class_<dtwc::MIPSettings>(m, "MIPSettings")
+    .def(nb::init<>())
+    .def_rw("mip_gap", &dtwc::MIPSettings::mip_gap,
+            "Relative MIP gap tolerance (default 1e-5).")
+    .def_rw("time_limit_sec", &dtwc::MIPSettings::time_limit_sec,
+            "Solver time limit in seconds (-1 = unlimited).")
+    .def_rw("warm_start", &dtwc::MIPSettings::warm_start,
+            "Run FastPAM first and feed as MIP start (default True).")
+    .def_rw("numeric_focus", &dtwc::MIPSettings::numeric_focus,
+            "Gurobi NumericFocus (0-3, default 1).")
+    .def_rw("mip_focus", &dtwc::MIPSettings::mip_focus,
+            "Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).")
+    .def_rw("verbose_solver", &dtwc::MIPSettings::verbose_solver,
+            "Show solver log output (default False).")
+    .def("__repr__", [](const dtwc::MIPSettings &s) {
+      return "MIPSettings(gap=" + std::to_string(s.mip_gap)
+             + ", time_limit=" + std::to_string(s.time_limit_sec)
+             + ", warm_start=" + (s.warm_start ? "True" : "False")
+             + ", numeric_focus=" + std::to_string(s.numeric_focus)
+             + ", mip_focus=" + std::to_string(s.mip_focus)
+             + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
+    });
+
+  // =========================================================================
+  // DendrogramStep
+  // =========================================================================
+
+  nb::class_<dtwc::algorithms::DendrogramStep>(m, "DendrogramStep")
+    .def(nb::init<>())
+    .def_rw("cluster_a", &dtwc::algorithms::DendrogramStep::cluster_a,
+            "First merged cluster index.")
+    .def_rw("cluster_b", &dtwc::algorithms::DendrogramStep::cluster_b,
+            "Second merged cluster index.")
+    .def_rw("distance", &dtwc::algorithms::DendrogramStep::distance,
+            "Merge distance.")
+    .def_rw("new_size", &dtwc::algorithms::DendrogramStep::new_size,
+            "Size of the merged cluster.")
+    .def("__repr__", [](const dtwc::algorithms::DendrogramStep &s) {
+      return "DendrogramStep(a=" + std::to_string(s.cluster_a)
+             + ", b=" + std::to_string(s.cluster_b)
+             + ", dist=" + std::to_string(s.distance)
+             + ", size=" + std::to_string(s.new_size) + ")";
+    });
+
+  // =========================================================================
+  // Dendrogram
+  // =========================================================================
+
+  nb::class_<dtwc::algorithms::Dendrogram>(m, "Dendrogram")
+    .def(nb::init<>())
+    .def_rw("merges", &dtwc::algorithms::Dendrogram::merges,
+            "List of N-1 DendrogramStep merge records.")
+    .def_rw("n_points", &dtwc::algorithms::Dendrogram::n_points,
+            "Number of original data points.")
+    .def("__repr__", [](const dtwc::algorithms::Dendrogram &d) {
+      return "Dendrogram(n_points=" + std::to_string(d.n_points)
+             + ", merges=" + std::to_string(d.merges.size()) + ")";
+    });
+
+  // =========================================================================
+  // HierarchicalOptions
+  // =========================================================================
+
+  nb::class_<dtwc::algorithms::HierarchicalOptions>(m, "HierarchicalOptions")
+    .def(nb::init<>())
+    .def_rw("linkage", &dtwc::algorithms::HierarchicalOptions::linkage,
+            "Linkage criterion (Single, Complete, or Average).")
+    .def_rw("max_points", &dtwc::algorithms::HierarchicalOptions::max_points,
+            "Hard guard: throws if N exceeds this (default 2000).")
+    .def("__repr__", [](const dtwc::algorithms::HierarchicalOptions &o) {
+      std::string linkage_str;
+      switch (o.linkage) {
+        case dtwc::algorithms::Linkage::Single: linkage_str = "Single"; break;
+        case dtwc::algorithms::Linkage::Complete: linkage_str = "Complete"; break;
+        case dtwc::algorithms::Linkage::Average: linkage_str = "Average"; break;
+      }
+      return "HierarchicalOptions(linkage=" + linkage_str
+             + ", max_points=" + std::to_string(o.max_points) + ")";
+    });
+
+  // =========================================================================
+  // CLARANSOptions
+  // =========================================================================
+
+  nb::class_<dtwc::algorithms::CLARANSOptions>(m, "CLARANSOptions")
+    .def(nb::init<>())
+    .def_rw("n_clusters", &dtwc::algorithms::CLARANSOptions::n_clusters,
+            "Number of clusters (k).")
+    .def_rw("num_local", &dtwc::algorithms::CLARANSOptions::num_local,
+            "Number of random restarts (default 2).")
+    .def_rw("max_neighbor", &dtwc::algorithms::CLARANSOptions::max_neighbor,
+            "Max non-improving swaps per restart (-1 = auto).")
+    .def_rw("max_dtw_evals", &dtwc::algorithms::CLARANSOptions::max_dtw_evals,
+            "Hard budget on total DTW computations (-1 = no limit).")
+    .def_rw("random_seed", &dtwc::algorithms::CLARANSOptions::random_seed,
+            "RNG seed for determinism (default 42).")
+    .def("__repr__", [](const dtwc::algorithms::CLARANSOptions &o) {
+      return "CLARANSOptions(k=" + std::to_string(o.n_clusters)
+             + ", num_local=" + std::to_string(o.num_local)
+             + ", max_neighbor=" + std::to_string(o.max_neighbor)
+             + ", max_dtw_evals=" + std::to_string(o.max_dtw_evals)
+             + ", seed=" + std::to_string(o.random_seed) + ")";
+    });
 
   // =========================================================================
   // ClusteringResult
@@ -195,6 +327,26 @@ NB_MODULE(_dtwcpp_core, m) {
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
      "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
 
+  m.def("dtw_arow_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
+                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
+                                  int band, const std::string &metric) {
+    nb::gil_scoped_release release;
+    auto mt = dtwc::core::MetricType::L1;
+    if (metric == "squared_euclidean" || metric == "sqeuclidean")
+        mt = dtwc::core::MetricType::SquaredL2;
+    if (band >= 0)
+      return dtwc::dtwAROW_banded<double>(x.data(), x.size(), y.data(), y.size(), band, mt);
+    else
+      return dtwc::dtwAROW_L<double>(x.data(), x.size(), y.data(), y.size(), mt);
+  }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
+     "DTW-AROW distance with diagonal-only alignment for missing values.\n\n"
+     "When x[i] or y[j] is NaN, the warping path is restricted to the\n"
+     "diagonal direction only (one-to-one alignment), preventing free\n"
+     "stretching through missing regions.\n"
+     "Reference: Yurtman et al. (ECML-PKDD 2023).\n"
+     "metric: 'l1' (default) or 'squared_euclidean'.\n"
+     "band=-1 for full DTW-AROW, band>0 for Sakoe-Chiba banded DTW-AROW.");
+
   // =========================================================================
   // Utility functions
   // =========================================================================
@@ -219,7 +371,14 @@ NB_MODULE(_dtwcpp_core, m) {
          "series"_a, "names"_a)
     .def_rw("p_vec", &dtwc::Data::p_vec)
     .def_rw("p_names", &dtwc::Data::p_names)
-    .def_prop_ro("size", &dtwc::Data::size);
+    .def_rw("ndim", &dtwc::Data::ndim,
+            "Number of features (dimensions) per timestep (default 1).")
+    .def_prop_ro("size", &dtwc::Data::size)
+    .def("series_length", &dtwc::Data::series_length, "i"_a,
+         "Return the number of timesteps for series i (flat size / ndim).")
+    .def("validate_ndim", &dtwc::Data::validate_ndim,
+         "Validate that all series flat sizes are divisible by ndim.\n\n"
+         "Raises RuntimeError if any series has incompatible size.");
 
   // =========================================================================
   // Problem class
@@ -236,6 +395,14 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("n_repetition", &dtwc::Problem::N_repetition)
     .def_rw("band", &dtwc::Problem::band)
     .def_rw("variant_params", &dtwc::Problem::variant_params)
+    .def_rw("missing_strategy", &dtwc::Problem::missing_strategy,
+            "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
+    .def_rw("distance_strategy", &dtwc::Problem::distance_strategy,
+            "Distance matrix computation strategy (Auto, BruteForce, Pruned, GPU).")
+    .def_rw("mip_settings", &dtwc::Problem::mip_settings,
+            "MIP solver tuning parameters.")
+    .def_rw("verbose", &dtwc::Problem::verbose,
+            "Print progress messages for long-running operations.")
     .def_rw("name", &dtwc::Problem::name)
     .def_rw("clusters_ind", &dtwc::Problem::clusters_ind)
     .def_rw("centroids_ind", &dtwc::Problem::centroids_ind)
@@ -462,6 +629,86 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::daviesBouldinIndex(prob);
   }, "prob"_a, "Compute Davies-Bouldin Index.");
+
+  m.def("dunn_index", [](dtwc::Problem &prob) {
+    nb::gil_scoped_release release;
+    return dtwc::scores::dunnIndex(prob);
+  }, "prob"_a,
+     "Compute Dunn Index (min inter-cluster distance / max intra-cluster diameter).\n\n"
+     "Higher values indicate better-separated, compact clusters.");
+
+  m.def("inertia", [](dtwc::Problem &prob) {
+    nb::gil_scoped_release release;
+    return dtwc::scores::inertia(prob);
+  }, "prob"_a,
+     "Compute inertia (total within-cluster distance sum to medoids).");
+
+  m.def("calinski_harabasz_index", [](dtwc::Problem &prob) {
+    nb::gil_scoped_release release;
+    return dtwc::scores::calinskiHarabaszIndex(prob);
+  }, "prob"_a,
+     "Compute Calinski-Harabasz Index (medoid-adapted).\n\n"
+     "Higher values indicate better-defined clusters.");
+
+  m.def("adjusted_rand_index", [](const std::vector<int> &labels_true,
+                                    const std::vector<int> &labels_pred) {
+    return dtwc::scores::adjustedRandIndex(labels_true, labels_pred);
+  }, "labels_true"_a, "labels_pred"_a,
+     "Compute Adjusted Rand Index between two label assignments.\n\n"
+     "Returns a value in [-0.5, 1.0]; 1.0 indicates perfect agreement,\n"
+     "0.0 indicates random labeling.");
+
+  m.def("normalized_mutual_information", [](const std::vector<int> &labels_true,
+                                              const std::vector<int> &labels_pred) {
+    return dtwc::scores::normalizedMutualInformation(labels_true, labels_pred);
+  }, "labels_true"_a, "labels_pred"_a,
+     "Compute Normalized Mutual Information between two label assignments.\n\n"
+     "Returns a value in [0.0, 1.0]; 1.0 indicates perfect agreement.");
+
+  // =========================================================================
+  // Hierarchical clustering
+  // =========================================================================
+
+  m.def("build_dendrogram", [](dtwc::Problem &prob,
+                                 const dtwc::algorithms::HierarchicalOptions &opts) {
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::build_dendrogram(prob, opts);
+  }, "prob"_a, "opts"_a = dtwc::algorithms::HierarchicalOptions{},
+     "Build a hierarchical dendrogram from a Problem.\n\n"
+     "Requires distance matrix to be filled (call fill_distance_matrix() first).\n"
+     "Returns a Dendrogram containing N-1 merge steps in merge order.\n"
+     "Throws RuntimeError if N > opts.max_points (default 2000).");
+
+  m.def("cut_dendrogram", [](const dtwc::algorithms::Dendrogram &dend,
+                               dtwc::Problem &prob, int k) {
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::cut_dendrogram(dend, prob, k);
+  }, "dendrogram"_a, "prob"_a, "k"_a,
+     "Cut a dendrogram to produce k flat clusters.\n\n"
+     "Returns a ClusteringResult with labels, medoid_indices, and total_cost.\n"
+     "Does NOT mutate Problem.clusters_ind or Problem.centroids_ind.");
+
+  // =========================================================================
+  // CLARANS
+  // =========================================================================
+
+  m.def("clarans", [](dtwc::Problem &prob, const dtwc::algorithms::CLARANSOptions &opts) {
+    dtwc::core::ClusteringResult result;
+    {
+      nb::gil_scoped_release release;
+      result = dtwc::algorithms::clarans(prob, opts);
+    }
+    // Store results back into Problem so scoring functions work
+    prob.set_numberOfClusters(opts.n_clusters);
+    prob.centroids_ind = result.medoid_indices;
+    prob.clusters_ind = result.labels;
+    return result;
+  }, "prob"_a, "opts"_a,
+     "Run CLARANS randomized k-medoids clustering.\n\n"
+     "Experimental bounded mid-ground algorithm. Tests random\n"
+     "(medoid_out, x_in) swaps, accepting only strictly improving ones.\n"
+     "Results are stored back into prob for scoring.\n\n"
+     "Reference: Ng & Han (2002), IEEE TKDE 14(5).");
 
   // =========================================================================
   // CUDA (optional)

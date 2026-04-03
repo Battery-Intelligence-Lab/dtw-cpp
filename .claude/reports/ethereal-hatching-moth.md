@@ -1,425 +1,262 @@
-# Execution Plan: MIP Solver Improvements (Tasks 1-3)
+# Plan: Full OOP MATLAB Bindings (CasADi-style, Phased)
 
 ## Context
 
-Four waves of algorithm and DTW variant work are complete (1A/1B/2A/2B). The MIP solver
-path (`Method::MIP`) is functional but unoptimized — no warm start, excessive
-`NumericFocus`, no solver settings exposed to users. The detailed design is in
-`.claude/superpowers/plans/2026-04-02-mip-solver-improvements.md`. This plan covers
-executing Tasks 1-3 from that document. Task 4 (Benders) and Task 5 (odd-cycle cuts)
-are deferred.
+The Python bindings expose 49 public symbols (8 enums, 13 structs, ~25 functions) via
+nanobind (790 lines). The MATLAB MEX has 3 commands (~12% coverage). Goal: CasADi-style
+API parity — same class names, same methods, same feel.
 
-**Goals:**
-1. Add FastPAM warm start to both HiGHS and Gurobi MIP solvers
-2. Tune Gurobi parameters (NumericFocus, MIPFocus, branching priority)
-3. Add `MIPSettings` struct and expose solver settings in CLI + TOML config
-4. Add yaml-cpp as optional dependency for YAML config support
-5. Add tests, update CHANGELOG
+Two adversarial reviews identified critical safety issues (mexLock, fast_pam side-effects)
+and a ~60% API gap vs Python. The plan is phased: Phase 1 ships the core workflow,
+Phase 2 fills remaining gaps.
 
----
+## Phase 1 (this implementation): Core Workflow
 
-## Adversarial Review Findings (incorporated)
+**Scope:** Problem class, all DTW variants, all algorithms, all scoring, distance matrix.
+This covers the "90% use case" — users can do everything they'd do in Python.
 
-Two adversarial passes identified critical issues in the original design plan. All are
-addressed below. Key corrections:
+**Deferred to Phase 2:** Enums as standalone classes, DenseDistanceMatrix class, Data class,
+MIPSettings/CUDASettings as MATLAB classes, checkpointing, CUDA functions, I/O utilities,
+`compile.m` standalone build script.
 
-- **HighsSolution API:** Aggregate init `{start_values, {}}` is wrong — struct starts
-  with `bool value_valid`. Must construct properly and set `value_valid = true`.
-- **CLI11 TOML sections:** `[solver]` section requires a CLI11 subcommand, not flat options.
-  Decision: use flat top-level TOML keys with `mip-` prefix for simplicity.
-- **yaml-cpp CMake:** Must link in root `CMakeLists.txt` (not `Dependencies.cmake`) because
-  `dtwc_cl` target doesn't exist inside `dtwc_setup_dependencies()`. Need alias guard and
-  `NOT TARGET` guard for CPM consistency.
-- **Variable indexing:** Gurobi uses `medoid + point * Nb`, HiGHS uses `medoid * Nb + point`.
-  Both have diagonal at `i * (Nb + 1)`. Warm start code must use the correct convention per solver.
-- **Field name:** `ClusteringResult.medoid_indices` (not `.medoids`).
+## Architecture
 
----
+### Handle-based MEX with `mexLock`
 
-## Step 1: Add `MIPSettings` struct
-
-**File:** `dtwc/Problem.hpp`
-
-Add before the `Problem` class definition:
-
-```cpp
-/// MIP solver tuning parameters.
-struct MIPSettings {
-  double mip_gap = 1e-5;
-  int time_limit_sec = -1;       // -1 = unlimited
-  bool warm_start = true;         // Run FastPAM first and feed as MIP start
-  int numeric_focus = 1;          // Gurobi NumericFocus (0-3)
-  int mip_focus = 2;              // Gurobi MIPFocus (0=balanced, 2=optimal)
-  bool verbose_solver = false;    // Show solver log output
-};
+```
+MATLAB                        MEX (C++)                     C++ Core
++dtwc/Problem.m  ------> dtwc_mex('Problem_new')  ------> new Problem()
+  .set_data()    ------> dtwc_mex('Problem_set_data', h)   prob->set_data()
+  .Band = 50     ------> dtwc_mex('Problem_set_band', h)   prob->band = 50
+  delete(obj)    ------> dtwc_mex('Problem_delete', h)      shared_ptr released
 ```
 
-Add `MIPSettings mip_settings;` as a public member of `Problem` (near line 90, alongside
-other settings like `verbose`, `distance_strategy`).
+**CRITICAL: `mexLock()`** on first MEX call. This prevents MATLAB from unloading the MEX
+DLL while handle objects exist. Without it, `delete()` during garbage collection crashes.
 
----
+**HandleManager** is a static `unordered_map<uint64, shared_ptr<T>>`. Thread safety:
+MATLAB never calls `mexFunction` concurrently — the map is only accessed from the MATLAB
+main thread. Document this assumption. Do NOT add mutex (unnecessary overhead).
 
-## Step 2: MIP Warm Start + Tuning
+**`mexAtExit` callback** must drain all HandleManagers to ensure C++ destructors run in
+order before DLL teardown (avoids OpenMP static destructor crash).
 
-### `dtwc/mip/mip_Gurobi.cpp`
+### Error handling (longjmp-safe)
 
-Add `#include "../algorithms/fast_pam.hpp"` at the top (NOT in mip.hpp — keep header clean).
-
-After `model.setObjective(obj, GRB_MINIMIZE)` (current line 69), before `model.optimize()`:
-
-**Warm start:**
 ```cpp
-if (prob.mip_settings.warm_start) {
-  auto pam_result = fast_pam(prob, static_cast<int>(Nc));
-  // Distance matrix already filled by fillDistanceMatrix() above — no double computation.
-
-  for (size_t idx = 0; idx < Nb * Nb; ++idx)
-    w[idx].set(GRB_DoubleAttr_Start, 0.0);
-
-  for (int med : pam_result.medoid_indices)
-    w[static_cast<size_t>(med) * (Nb + 1)].set(GRB_DoubleAttr_Start, 1.0);
-
-  // Gurobi indexing: A[i,j] at flat index i + j * Nb (column-major)
-  for (size_t j = 0; j < Nb; ++j) {
-    int med = pam_result.medoid_indices[pam_result.labels[j]];
-    w[static_cast<size_t>(med) + j * Nb].set(GRB_DoubleAttr_Start, 1.0);
-  }
+std::string error_id, error_msg;
+try {
+    // ... all C++ work ...
+} catch (const std::invalid_argument &e) {
+    error_id = "dtwc:invalidArgument"; error_msg = e.what();
+} catch (const std::out_of_range &e) {
+    error_id = "dtwc:outOfRange"; error_msg = e.what();
+} catch (const std::runtime_error &e) {
+    error_id = "dtwc:runtime"; error_msg = e.what();
+} catch (const std::exception &e) {
+    error_id = "dtwc:internal"; error_msg = e.what();
+} catch (...) {
+    error_id = "dtwc:internal"; error_msg = "Unknown C++ exception";
 }
+if (!error_msg.empty())
+    mexErrMsgIdAndTxt(error_id.c_str(), "%s", error_msg.c_str());
 ```
 
-**Tuning (replaces hardcoded NumericFocus=3):**
-```cpp
-model.set(GRB_IntParam_NumericFocus, prob.mip_settings.numeric_focus);
-model.set(GRB_IntParam_MIPFocus, prob.mip_settings.mip_focus);
-model.set(GRB_DoubleParam_MIPGap, prob.mip_settings.mip_gap);
-if (prob.mip_settings.time_limit_sec > 0)
-  model.set(GRB_DoubleParam_TimeLimit, static_cast<double>(prob.mip_settings.time_limit_sec));
-if (!prob.mip_settings.verbose_solver)
-  model.set(GRB_IntParam_OutputFlag, 0);
+### Index conversion rules
+
+- **labels** `[0, k)` → `[1, k]` (cluster IDs, MATLAB 1-based)
+- **medoid_indices** `[0, N)` → `[1, N]` (data point indices, MATLAB 1-based)
+- **dist_by_ind(i, j)** — MATLAB passes 1-based, MEX subtracts 1
+- These are semantically different transformations that happen to both be "+1"
+
+### Enums: string-based dispatch (MATLAB convention)
+
+Instead of exposing C++ enum classes, MATLAB uses string arguments (standard MATLAB pattern):
+
+```matlab
+prob.MissingStrategy = 'arow';          % maps to MissingStrategy::AROW
+prob.DistanceStrategy = 'pruned';       % maps to DistanceMatrixStrategy::Pruned
+opts.linkage = 'complete';              % maps to Linkage::Complete
 ```
 
-**Branching priority on diagonals (after variable creation, line 38):**
-```cpp
-for (size_t i = 0; i < Nb; ++i)
-  w[i * (Nb + 1)].set(GRB_IntAttr_BranchPriority, 100);
+This is the standard MATLAB pattern (e.g., `optimoptions('fmincon', 'Algorithm', 'sqp')`).
+
+### Naming convention: snake_case (intentional Python parity)
+
+MATLAB convention is camelCase, but we intentionally use snake_case for function names
+to match Python exactly. This is a deliberate trade-off documented in the help text.
+CasADi uses camelCase; we prioritize cross-language code portability over MATLAB convention.
+
+Property names use PascalCase (MATLAB convention): `Band`, `Verbose`, `MaxIter`.
+
+### ClusteringResult: return as MATLAB struct (not a class)
+
+```matlab
+result = dtwc.fast_pam(prob, 3);
+result.labels          % int32 row vector (1-based)
+result.medoid_indices  % int32 row vector (1-based)
+result.total_cost      % double scalar
+result.iterations      % int32 scalar
+result.converged       % logical scalar
 ```
 
-### `dtwc/mip/mip_Highs.cpp`
+Returned directly from MEX as a struct. No handle management needed.
 
-Add `#include "../algorithms/fast_pam.hpp"` at the top.
+### Dendrogram: return as MATLAB struct (not a handle)
 
-After `highs.passModel(model)` (current line 156), before `highs.run()`:
-
-**Warm start (correct HighsSolution API):**
-```cpp
-if (prob.mip_settings.warm_start) {
-  auto pam_result = fast_pam(prob, static_cast<int>(Nc));
-
-  HighsSolution sol;
-  sol.col_value.resize(Nvar, 0.0);
-  sol.value_valid = true;
-
-  for (int med : pam_result.medoid_indices)
-    sol.col_value[static_cast<size_t>(med) * (Nb + 1)] = 1.0;
-
-  // HiGHS indexing: A[i,j] at flat index i * Nb + j (row-major)
-  for (size_t j = 0; j < Nb; ++j) {
-    int med = pam_result.medoid_indices[pam_result.labels[j]];
-    sol.col_value[static_cast<size_t>(med) * Nb + j] = 1.0;
-  }
-
-  highs.setSolution(sol);
-}
+```matlab
+dend = dtwc.build_dendrogram(prob, 'Linkage', 'average');
+dend.merges    % N-1 x 4 double matrix [cluster_a, cluster_b, distance, new_size]
+dend.n_points  % int32 scalar
 ```
 
-**Tuning:**
-```cpp
-highs.setOptionValue("mip_rel_gap", prob.mip_settings.mip_gap);
-if (prob.mip_settings.time_limit_sec > 0)
-  highs.setOptionValue("time_limit", static_cast<double>(prob.mip_settings.time_limit_sec));
-if (!prob.mip_settings.verbose_solver)
-  highs.setOptionValue("output_flag", false);
-```
+For `cut_dendrogram`, the MEX reconstructs the C++ Dendrogram from this struct.
 
-Also suppress the hardcoded `std::cout << "HiGS is being called!"` — gate it behind
-`prob.mip_settings.verbose_solver || prob.verbose`.
+### fast_pam must store results back into Problem
 
----
-
-## Step 3: Expose Settings in CLI + TOML Config
-
-**File:** `dtwc/dtwc_cl.cpp`
-
-CLI11 TOML sections (`[solver]`) require subcommands. To keep things simple,
-use flat top-level keys. **kebab-case everywhere** — CLI flags, TOML keys, and
-YAML keys all use the same names (`mip-gap`, `time-limit`, etc.). This means
-config file keys match CLI flags exactly with zero mapping.
-
-After the existing `--solver` option block (line 172), add:
+**CRITICAL:** After calling `dtwc::fast_pam()`, the MEX must store results back:
 
 ```cpp
-// MIP solver settings — kebab-case matches CLI flags, TOML keys, and YAML keys
-double mip_gap = 1e-5;
-int time_limit = -1;
-bool no_warm_start = false;
-int numeric_focus = 1;
-int mip_focus = 2;
-bool verbose_solver = false;
-
-app.add_option("--mip-gap", mip_gap, "MIP optimality gap tolerance (default: 1e-5)");
-app.add_option("--time-limit", time_limit, "MIP solver time limit in seconds (-1 = unlimited)");
-app.add_flag("--no-warm-start", no_warm_start, "Disable FastPAM warm start for MIP");
-app.add_option("--numeric-focus", numeric_focus, "Gurobi NumericFocus (0-3, default: 1)");
-app.add_option("--mip-focus", mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
-app.add_flag("--verbose-solver", verbose_solver, "Show MIP solver log output");
+prob->set_numberOfClusters(n_clusters);
+prob->centroids_ind = result.medoid_indices;
+prob->clusters_ind = result.labels;
 ```
 
-After `CLI11_PARSE`, wire into prob:
+This is required because `silhouette(prob)`, `davies_bouldin_index(prob)`, etc. read
+from `prob.clusters_ind` and `prob.centroids_ind`. The Python binding does exactly this.
 
-```cpp
-prob.mip_settings.mip_gap = mip_gap;
-prob.mip_settings.time_limit_sec = time_limit;
-prob.mip_settings.warm_start = !no_warm_start;
-prob.mip_settings.numeric_focus = numeric_focus;
-prob.mip_settings.mip_focus = mip_focus;
-prob.mip_settings.verbose_solver = verbose_solver;
+### Problem.m: handle class with cached + dependent properties
+
+**Cached** (stored on MATLAB side, synced via MEX):
+- `Band`, `Verbose`, `MaxIter`, `NRepetition` — scalar values, set via setter
+
+**Dependent** (always read from C++ via MEX):
+- `Size`, `ClusterSize`, `Name`, `CentroidsInd`, `ClustersInd`
+
+**Custom `disp()` method** — single bulk MEX call `Problem_get_info` that returns a
+struct with all display-worthy fields. Avoids 11+ individual MEX calls.
+
+**Destructor safety:**
+
+```matlab
+function delete(obj)
+    if obj.Handle > 0
+        try
+            dtwc_mex('Problem_delete', obj.Handle);
+        catch
+            % MEX may be unloaded during shutdown
+        end
+        obj.Handle = uint64(0);
+    end
+end
 ```
 
-**Naming convention:** kebab-case everywhere. Config keys = CLI flags.
+## Files
 
-**TOML** (`examples/config.toml`):
-```toml
-input = "data/scooters.csv"
-output = "results/"
-clusters = 5
-method = "mip"
-solver = "highs"
-mip-gap = 1e-5
-time-limit = 300
-numeric-focus = 1
-mip-focus = 2
-verbose-solver = false
-verbose = true
+### MEX gateway: `bindings/matlab/dtwc_mex.cpp` (rewrite, ~600 lines)
+
+MEX commands:
+
+```
+% Problem lifecycle
+Problem_new(name) -> handle
+Problem_delete(handle)
+Problem_get_info(handle) -> struct (for disp)
+
+% Problem properties (get/set)
+Problem_set_data(handle, data_matrix)
+Problem_set_band(handle, band)
+Problem_get_band(handle) -> double
+Problem_set_verbose(handle, bool)
+Problem_set_max_iter(handle, int)
+Problem_set_n_repetition(handle, int)
+Problem_set_n_clusters(handle, k)
+Problem_set_missing_strategy(handle, string)
+Problem_set_distance_strategy(handle, string)
+Problem_set_variant(handle, variant_string, [params...])
+Problem_get_size(handle) -> double
+Problem_get_cluster_size(handle) -> double
+Problem_get_name(handle) -> string
+Problem_get_centroids(handle) -> int32 row (1-based)
+Problem_get_clusters(handle) -> int32 row (1-based)
+Problem_is_distance_matrix_filled(handle) -> logical
+
+% Problem methods
+Problem_fill_distance_matrix(handle)
+Problem_dist_by_ind(handle, i, j) -> double  (i,j 1-based)
+Problem_cluster(handle)
+Problem_find_total_cost(handle) -> double
+Problem_get_distance_matrix(handle) -> NxN double
+Problem_set_distance_matrix(handle, NxN double)
+
+% DTW distance functions (stateless)
+dtw_distance(x, y, band) -> double
+ddtw_distance(x, y, band) -> double
+wdtw_distance(x, y, band, g) -> double
+adtw_distance(x, y, band, penalty) -> double
+soft_dtw_distance(x, y, gamma) -> double
+soft_dtw_gradient(x, y, gamma) -> vector
+dtw_distance_missing(x, y, band) -> double
+dtw_arow_distance(x, y, band) -> double
+compute_distance_matrix(data, band) -> NxN double
+derivative_transform(x) -> vector
+z_normalize(x) -> vector
+
+% Algorithms (take Problem handle, return struct)
+fast_pam(handle, k, max_iter) -> ClusteringResult struct
+fast_clara(handle, k, sample_size, n_samples, max_iter, seed) -> struct
+clarans(handle, k, num_local, max_neighbor, max_dtw_evals, seed) -> struct
+build_dendrogram(handle, linkage_string, max_points) -> Dendrogram struct
+cut_dendrogram(merges, n_points, handle, k) -> ClusteringResult struct
+
+% Scoring (take Problem handle)
+silhouette(handle) -> vector
+davies_bouldin_index(handle) -> double
+dunn_index(handle) -> double
+inertia(handle) -> double
+calinski_harabasz_index(handle) -> double
+adjusted_rand_index(labels1, labels2) -> double
+normalized_mutual_information(labels1, labels2) -> double
 ```
 
-**YAML** (`examples/config.yaml`):
-```yaml
-input: data/scooters.csv
-output: results/
-clusters: 5
-method: mip
-solver: highs
-mip-gap: 1.0e-5
-time-limit: 300
-numeric-focus: 1
-mip-focus: 2
-verbose-solver: false
-verbose: true
-```
+### MATLAB +dtwc package files
 
-Identical keys across CLI, TOML, and YAML. No mapping needed.
+| File | Type | Description |
+|------|------|-------------|
+| `Problem.m` | handle class | Full OOP wrapper with cached/dependent properties |
+| `DTWClustering.m` | handle class | Update: add Variant, WdtwG, AdtwPenalty, MissingStrategy |
+| `dtw_distance.m` | function | Existing (keep) |
+| `ddtw_distance.m` | function | New |
+| `wdtw_distance.m` | function | New |
+| `adtw_distance.m` | function | New |
+| `soft_dtw_distance.m` | function | New |
+| `soft_dtw_gradient.m` | function | New |
+| `dtw_distance_missing.m` | function | New |
+| `dtw_arow_distance.m` | function | New |
+| `compute_distance_matrix.m` | function | Existing (update: add Metric param) |
+| `derivative_transform.m` | function | New |
+| `z_normalize.m` | function | New |
+| `fast_pam.m` | function | New — takes Problem, returns struct |
+| `fast_clara.m` | function | New — takes Problem + Name-Value opts |
+| `clarans.m` | function | New — takes Problem + Name-Value opts |
+| `build_dendrogram.m` | function | New — takes Problem + Linkage/MaxPoints |
+| `cut_dendrogram.m` | function | New — takes dendrogram struct + Problem + k |
+| `silhouette.m` | function | New |
+| `davies_bouldin_index.m` | function | New |
+| `dunn_index.m` | function | New |
+| `inertia.m` | function | New |
+| `calinski_harabasz_index.m` | function | New |
+| `adjusted_rand_index.m` | function | New |
+| `normalized_mutual_information.m` | function | New |
 
----
+### Test file: `bindings/matlab/test_mex.m` (expand to ~20 tests)
 
-## Step 4: YAML Config Support (Optional Dependency)
-
-### `CMakeLists.txt` (root)
-
-Add option near other optional deps:
-```cmake
-option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
-```
-
-Default OFF — TOML covers all settings; YAML is a convenience for users who prefer it.
-
-### `cmake/Dependencies.cmake`
-
-Add inside `dtwc_setup_dependencies()`, after CLI11 block:
-```cmake
-if(DTWC_ENABLE_YAML AND NOT TARGET yaml-cpp)
-  CPMAddPackage(
-    NAME yaml-cpp
-    URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz"
-    OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"
-    SYSTEM YES
-  )
-  # Ensure namespaced alias exists (CPM subdirectory may not create it)
-  if(TARGET yaml-cpp AND NOT TARGET yaml-cpp::yaml-cpp)
-    add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
-  endif()
-  if(NOT TARGET yaml-cpp)
-    message(WARNING "yaml-cpp not found -- YAML config support disabled")
-    set(DTWC_ENABLE_YAML OFF PARENT_SCOPE)
-  endif()
-endif()
-```
-
-### `CMakeLists.txt` (root, inside `PROJECT_IS_TOP_LEVEL` block, after `add_executable(dtwc_cl)`)
-
-```cmake
-if(DTWC_ENABLE_YAML AND TARGET yaml-cpp::yaml-cpp)
-  target_link_libraries(dtwc_cl PRIVATE yaml-cpp::yaml-cpp)
-  target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
-endif()
-```
-
-### `dtwc/dtwc_cl.cpp`
-
-Replace `app.set_config("--config", "", "Read TOML configuration file")` with:
-
-```cpp
-std::string config_path;
-app.add_option("--config", config_path, "Configuration file (TOML or YAML)");
-```
-
-Before `CLI11_PARSE`, add TOML config support conditionally:
-```cpp
-// If config path is .toml, use CLI11 built-in parser
-// CLI11_PARSE will handle TOML automatically if set_config was used
-// We handle YAML separately after parse
-```
-
-After `CLI11_PARSE`, add YAML loading:
-```cpp
-if (!config_path.empty()) {
-  auto ext = fs::path(config_path).extension().string();
-  if (ext == ".yaml" || ext == ".yml") {
-#ifdef DTWC_HAS_YAML
-    load_yaml_config(config_path, /* references to all option variables */);
-    // CLI flags override: re-parse CLI args after YAML loading
-    // (CLI11 already parsed, so CLI values take precedence by default —
-    //  only set YAML values for options that weren't explicitly provided on CLI)
-#else
-    std::cerr << "Error: YAML config requires building with -DDTWC_ENABLE_YAML=ON\n";
-    return EXIT_FAILURE;
-#endif
-  } else {
-    // Re-parse with TOML: use CLI11's built-in config reader
-    // (This path handles .toml and .ini files)
-    app.set_config("--config", config_path, "Read configuration file");
-    // Note: must re-parse or handle differently — see implementation detail
-  }
-}
-```
-
-Implementation detail: CLI11's `set_config` must be called before `CLI11_PARSE`. The
-cleanest approach is to keep `app.set_config("--config")` for TOML (pre-parse), and add
-a separate `--yaml-config` option for YAML (post-parse), or detect the extension in a
-two-pass approach. The implementor should choose the simplest working approach.
-
----
-
-## Step 5: Tests
-
-**File:** `tests/unit/unit_test_mip.cpp` (new — auto-registered by CMake glob)
-
-Use synthetic data (N=8-10 short series) — NOT `data/dummy` which is too large.
-
-```cpp
-#include <dtwc.hpp>
-#include <dtwc/algorithms/fast_pam.hpp>
-#include <catch2/catch_test_macros.hpp>
-
-// Helper: build a small Problem with N synthetic series of length L
-static dtwc::Problem make_small_problem(int N, int L) { ... }
-
-#ifdef DTWC_ENABLE_HIGHS
-TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]") {
-  auto prob = make_small_problem(8, 20);
-  prob.set_numberOfClusters(2);
-  prob.mip_settings.warm_start = true;
-  prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
-  prob.cluster();
-
-  REQUIRE(prob.centroids_ind.size() == 2);
-  REQUIRE(prob.clusters_ind.size() == 8);
-  // Every point assigned to a valid cluster
-  for (auto c : prob.clusters_ind)
-    REQUIRE((c >= 0 && c < 2));
-}
-
-TEST_CASE("MIP HiGHS: cold start matches warm start", "[mip][highs]") {
-  auto prob1 = make_small_problem(8, 20);
-  prob1.set_numberOfClusters(2);
-  prob1.mip_settings.warm_start = false;
-  prob1.set_solver(dtwc::Solver::HiGHS);
-  prob1.method = dtwc::Method::MIP;
-  prob1.cluster();
-  double cold_cost = prob1.findTotalCost();
-
-  auto prob2 = make_small_problem(8, 20);
-  prob2.set_numberOfClusters(2);
-  prob2.mip_settings.warm_start = true;
-  prob2.set_solver(dtwc::Solver::HiGHS);
-  prob2.method = dtwc::Method::MIP;
-  prob2.cluster();
-  double warm_cost = prob2.findTotalCost();
-
-  // Both should find the same optimal (or warm should be equal/better)
-  REQUIRE(warm_cost <= cold_cost + 1e-6);
-}
-#endif
-
-#ifdef DTWC_ENABLE_GUROBI
-// Equivalent tests for Gurobi
-#endif
-```
-
----
-
-## Step 6: Example Config + CHANGELOG
-
-**Create** `examples/config.toml` with all documented settings.
-**Create** `examples/config.yaml` with equivalent YAML format.
-
-**CHANGELOG.md** (Unreleased section):
-```
-### Added
-- MIP warm start: `--method mip` now runs FastPAM first and feeds the solution
-  as a MIP start, reducing solve time significantly.
-- MIP solver settings in CLI/TOML: `--mip-gap`, `--time-limit`, `--no-warm-start`,
-  `--numeric-focus`, `--mip-focus`, `--verbose-solver`.
-- Optional YAML config support (`--config config.yaml`) via yaml-cpp.
-
-### Changed
-- Gurobi NumericFocus reduced 3 -> 1, added MIPFocus=2 and branching priority
-  on medoid selection variables A[i,i].
-- MIP solver output suppressed by default (use `--verbose-solver`).
-```
-
----
-
-## Files Summary
-
-| File | Action | Change |
-|------|--------|--------|
-| `dtwc/Problem.hpp` | Modify | Add `MIPSettings` struct + member |
-| `dtwc/mip/mip_Gurobi.cpp` | Modify | Warm start, tuning, branching priority, output suppression |
-| `dtwc/mip/mip_Highs.cpp` | Modify | Warm start (correct HighsSolution API), tuning, output suppression |
-| `dtwc/dtwc_cl.cpp` | Modify | CLI solver options, YAML dispatch |
-| `CMakeLists.txt` | Modify | YAML option, yaml-cpp link for dtwc_cl |
-| `cmake/Dependencies.cmake` | Modify | yaml-cpp CPMAddPackage with guards |
-| `CHANGELOG.md` | Modify | Document changes |
-| `tests/unit/unit_test_mip.cpp` | Create | Warm start + settings tests |
-| `examples/config.toml` | Create | Example TOML config |
-| `examples/config.yaml` | Create | Example YAML config |
-
-## Key Reusable Code
-
-| Symbol | Location | Usage |
-|--------|----------|-------|
-| `fast_pam(Problem&, int, int)` | `dtwc/algorithms/fast_pam.hpp:44` | Warm start |
-| `ClusteringResult.medoid_indices` | `dtwc/core/clustering_result.hpp:20` | Medoid indices |
-| `ClusteringResult.labels` | `dtwc/core/clustering_result.hpp:19` | Point assignments |
-| `extract_mip_solution()` | `dtwc/mip/mip_Highs.cpp:30` | Reuse pattern |
+### CHANGELOG.md update
 
 ## Verification
 
-1. **Build:** `cmake -S . -B build -DDTWC_BUILD_TESTING=ON && cmake --build build --config Release -j`
-2. **Build with YAML:** Add `-DDTWC_ENABLE_YAML=ON`
-3. **Build without YAML:** `-DDTWC_ENABLE_YAML=OFF` (must still compile)
-4. **Tests:** `ctest --test-dir build --build-config Release -R mip`
-5. **Regression:** `ctest --test-dir build --build-config Release` (all existing tests pass)
-6. **CLI smoke:** `./build/bin/dtwc_cl -i data/dummy -k 3 -m mip -v --verbose-solver`
+1. Build: `cmake --build build --config Release --target dtwc_mex`
+2. MATLAB: `matlab -batch "addpath('build/bin','bindings/matlab'); test_mex"`
+3. Check output for "ALL TESTS PASSED" (ignore exit code — OpenMP teardown issue)
+4. C++ tests: `ctest --test-dir build --build-config Release` (62/62)
+5. API parity: every Phase 1 Python function has a MATLAB equivalent

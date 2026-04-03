@@ -13,5 +13,6 @@ class Problem;
 
 void MIP_clustering_byGurobi(Problem &prob);
 void MIP_clustering_byHiGHS(Problem &prob);
+void MIP_clustering_byBenders(Problem &prob);
 
 } // namespace dtwc

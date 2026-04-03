@@ -11,11 +11,15 @@
  */
 
 #include "Problem.hpp"
-#include "mip.hpp"             // for MIP_clustering_byGurobi
+#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byBenders
 #include "parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "warping.hpp"         // for dtwBanded, dtwFull
+
+#ifdef DTWC_HAS_CUDA
+#include "cuda/cuda_dtw.cuh"   // GPU distance matrix computation
+#endif
 #include "warping_ddtw.hpp"    // for ddtwBanded
 #include "warping_wdtw.hpp"    // for wdtwBanded
 #include "warping_adtw.hpp"    // for adtwBanded
@@ -388,14 +392,48 @@ void Problem::fillDistanceMatrix()
     break;
   }
   case DistanceMatrixStrategy::GPU:
-    // GPU path is handled externally (CLI / bindings). Fall through to brute-force.
+#ifdef DTWC_HAS_CUDA
+  {
+    if (!dtwc::cuda::cuda_available()) {
+      if (verbose) std::cout << "No CUDA GPU detected, falling back to CPU.\n";
+      fillDistanceMatrix_BruteForce();
+      is_distMat_filled = true;
+      break;
+    }
+
+    dtwc::cuda::CUDADistMatOptions cuda_opts;
+    cuda_opts.band = band;
+    cuda_opts.device_id = cuda_settings.device_id;
+    if (cuda_settings.precision_mode == 1)
+      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
+    else if (cuda_settings.precision_mode == 2)
+      cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+    cuda_opts.use_squared_l2 = false;
+    cuda_opts.verbose = verbose;
+
+    auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(data.p_vec, cuda_opts);
+
+    distMat.resize(cuda_result.n);
+    for (size_t i = 0; i < cuda_result.n; ++i)
+      for (size_t j = i; j < cuda_result.n; ++j)
+        distMat.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    is_distMat_filled = true;
+
+    if (verbose)
+      std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
+                << " pairs in " << std::setprecision(3)
+                << cuda_result.gpu_time_sec * 1000 << " ms\n";
+    break;
+  }
+#else
+    if (verbose) std::cout << "CUDA not compiled in, falling back to CPU brute-force.\n";
     [[fallthrough]];
+#endif
   case DistanceMatrixStrategy::BruteForce:
   default:
     fillDistanceMatrix_BruteForce();
     is_distMat_filled = true;
     break;
-  // Note: DistanceMatrixStrategy::Auto is already resolved above.
   }
 
   if (verbose)
@@ -436,6 +474,15 @@ void Problem::cluster_and_process()
  */
 void Problem::cluster_by_MIP()
 {
+  // Auto-dispatch to Benders decomposition for large N
+  const bool use_benders = (mip_settings.benders == "on") ||
+    (mip_settings.benders == "auto" && data.size() > 200);
+
+  if (use_benders) {
+    MIP_clustering_byBenders(*this);
+    return;
+  }
+
   switch (mipSolver) {
   case Solver::Gurobi:
     MIP_clustering_byGurobi(*this);

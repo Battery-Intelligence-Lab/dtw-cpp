@@ -13,11 +13,12 @@ endif()
 message(STATUS "MATLAB found: ${Matlab_ROOT_DIR}")
 message(STATUS "Building MATLAB MEX bindings for DTWC++")
 
-# Build the MEX gateway using the C++ MEX API (R2018a+)
+# Build the MEX gateway using the legacy C MEX API (mex.h / matrix.h)
+# with R2018a interleaved complex support (enables mxGetDoubles).
 matlab_add_mex(
     NAME dtwc_mex
     SRC dtwc_mex.cpp
-    R2018a          # Use interleaved complex / C++ MEX API
+    R2018a          # Use interleaved complex (mxGetDoubles); keeps legacy C API
     LINK_TO dtwc++
 )
 

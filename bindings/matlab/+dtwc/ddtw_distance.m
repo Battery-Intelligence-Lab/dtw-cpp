@@ -1,8 +1,12 @@
-function d = dtw_distance(x, y, varargin)
-%DTW_DISTANCE Compute DTW distance between two time series using DTWC++.
+function d = ddtw_distance(x, y, varargin)
+%DDTW_DISTANCE Compute Derivative DTW distance between two time series.
 %
-%   d = dtwc.dtw_distance(x, y)
-%   d = dtwc.dtw_distance(x, y, 'Band', 10)
+%   d = dtwc.ddtw_distance(x, y)
+%   d = dtwc.ddtw_distance(x, y, 'Band', 10)
+%
+%   DDTW applies a derivative transform to both series, then computes
+%   standard DTW on the transformed series. This captures shape similarity
+%   rather than amplitude similarity.
 %
 %   Parameters
 %   ----------
@@ -16,16 +20,11 @@ function d = dtw_distance(x, y, varargin)
 %   Returns
 %   -------
 %   d : double
-%       The DTW distance between x and y.
+%       The DDTW distance between x and y.
 %
-%   Examples
-%   --------
-%       x = [1 2 3 4 5];
-%       y = [2 4 6 3 1];
-%       d = dtwc.dtw_distance(x, y);
-%       d_banded = dtwc.dtw_distance(x, y, 'Band', 2);
+%   Reference: Keogh & Pazzani (2001), "Derivative Dynamic Time Warping"
 %
-%   See also dtwc.ddtw_distance, dtwc.compute_distance_matrix, dtwc.DTWClustering
+%   See also dtwc.dtw_distance, dtwc.derivative_transform
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);
@@ -33,7 +32,7 @@ function d = dtw_distance(x, y, varargin)
     addParameter(p, 'Band', -1, @(v) isnumeric(v) && isscalar(v));
     parse(p, x, y, varargin{:});
 
-    d = dtwc_mex('dtw_distance', ...
+    d = dtwc_mex('ddtw_distance', ...
                   double(x(:)'), ...
                   double(y(:)'), ...
                   double(p.Results.Band));

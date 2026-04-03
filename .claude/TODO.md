@@ -24,8 +24,9 @@
 ## Remaining Work
 
 ### MIP Solver Improvements (from UNIMODULAR.md analysis)
-- [ ] MIP start from PAM (warm start for both HiGHS and Gurobi, ~10 lines each)
-- [ ] Gurobi: reduce NumericFocus 3->1, add MIPFocus=2, branching priority on A[i,i] diagonals
+- [x] MIP start from PAM (warm start for both HiGHS and Gurobi)
+- [x] Gurobi: NumericFocus 3->1, MIPFocus=2, branching priority on A[i,i] diagonals
+- [x] MIPSettings struct + CLI/TOML/YAML config exposure
 - [ ] Benders decomposition for N > 200 (master: N binary vars, subproblem: O(Nk) assignment)
 - [ ] Odd-cycle cutting planes ({0,1/2}-CG cuts) as lazy constraints
 

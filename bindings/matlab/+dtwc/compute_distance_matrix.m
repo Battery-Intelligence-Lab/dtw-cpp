@@ -30,5 +30,5 @@ function D = compute_distance_matrix(X, varargin)
 
     D = dtwc_mex('compute_distance_matrix', ...
                   double(p.Results.X), ...
-                  int32(p.Results.Band));
+                  double(p.Results.Band));
 end
