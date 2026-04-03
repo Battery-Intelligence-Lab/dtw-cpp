@@ -148,8 +148,8 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 
   auto get_bounds = [slope, window](int idx) {
     const auto yval = slope * idx;
-    const int low = std::ceil(std::round(100 * (yval - window)) / 100.0);
-    const int high = std::floor(std::round(100 * (yval + window)) / 100.0) + 1;
+    const int low = static_cast<int>(std::ceil(std::round(100 * (yval - window)) / 100.0));
+    const int high = static_cast<int>(std::floor(std::round(100 * (yval + window)) / 100.0)) + 1;
     return std::pair(low, high);
   };
 

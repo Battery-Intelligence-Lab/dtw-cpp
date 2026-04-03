@@ -117,7 +117,7 @@ double daviesBouldinIndex(Problem &prob)
   std::vector<int> cluster_counts(Nc, 0);
   for (auto i : Range(prob.size())) {
     int ci = prob.clusters_ind[i];
-    scatter[ci] += prob.distByInd(i, prob.centroids_ind[ci]);
+    scatter[ci] += prob.distByInd(static_cast<int>(i), prob.centroids_ind[ci]);
     cluster_counts[ci]++;
   }
   for (int c = 0; c < Nc; ++c) {

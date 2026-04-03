@@ -48,9 +48,10 @@ namespace dtwc {
 
 void MIP_clustering_byBenders(Problem &prob)
 {
+  (void)prob;
 #ifdef DTWC_ENABLE_HIGHS
   dtwc::Clock clk;
-  const int Nb = prob.size();
+  const int Nb = static_cast<int>(prob.size());
   const int Nc = prob.cluster_size();
 
   if (Nb <= 0 || Nc <= 0 || Nc > Nb) {

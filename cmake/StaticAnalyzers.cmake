@@ -42,7 +42,7 @@ macro(dtwc_enable_cppcheck WARNINGS_AS_ERRORS CPPCHECK_OPTIONS)
       list(APPEND CMAKE_CXX_CPPCHECK --error-exitcode=2)
     endif()
   else()
-    message(${WARNING_MESSAGE} "cppcheck requested but executable not found")
+    message(WARNING "cppcheck requested but executable not found")
   endif()
 endmacro()
 
@@ -74,7 +74,7 @@ macro(dtwc_enable_clang_tidy target WARNINGS_AS_ERRORS)
         -extra-arg=-Wno-unknown-warning-option
         -extra-arg=-Wno-ignored-optimization-argument
         -extra-arg=-Wno-unused-command-line-argument
-        -p)
+        -p=${CMAKE_BINARY_DIR})
     # set standard
     if(NOT
        "${CMAKE_CXX_STANDARD}"
@@ -92,10 +92,9 @@ macro(dtwc_enable_clang_tidy target WARNINGS_AS_ERRORS)
       list(APPEND CLANG_TIDY_OPTIONS -warnings-as-errors=*)
     endif()
 
-    message("Also setting clang-tidy globally")
     set(CMAKE_CXX_CLANG_TIDY ${CLANG_TIDY_OPTIONS})
   else()
-    message(${WARNING_MESSAGE} "clang-tidy requested but executable not found")
+    message(WARNING "clang-tidy requested but executable not found")
   endif()
 endmacro()
 
@@ -104,6 +103,6 @@ macro(dtwc_enable_include_what_you_use)
   if(INCLUDE_WHAT_YOU_USE)
     set(CMAKE_CXX_INCLUDE_WHAT_YOU_USE ${INCLUDE_WHAT_YOU_USE})
   else()
-    message(${WARNING_MESSAGE} "include-what-you-use requested but executable not found")
+    message(WARNING "include-what-you-use requested but executable not found")
   endif()
 endmacro()

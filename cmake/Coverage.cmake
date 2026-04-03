@@ -3,7 +3,7 @@ option (DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 macro(add_executable_with_coverage_and_test TARGET_PATH)
     get_filename_component(TARGET_NAME ${TARGET_PATH} NAME_WE)
     add_executable(${TARGET_NAME} ${TARGET_PATH})
-    target_link_libraries(${TARGET_NAME} PRIVATE dtwc++ Catch2::Catch2WithMain)
+    target_link_libraries(${TARGET_NAME} PRIVATE dtwc++ Catch2::Catch2WithMain project_options)
     # Pass the project source directory to tests for finding test data
     target_compile_definitions(${TARGET_NAME} PRIVATE DTWC_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
     add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME} WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

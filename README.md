@@ -52,6 +52,16 @@ cmake --build build --config Release -j
 cd build && ctest -C Release
 ```
 
+For maintainer-style builds with strict warnings:
+
+```bash
+cmake -S . -B build-dev -DDTWC_DEV_MODE=ON -DDTWC_BUILD_TESTING=ON
+cmake --build build-dev --config Debug -j
+ctest --test-dir build-dev -C Debug
+```
+
+To add sanitizer instrumentation in a developer build, pass the specific maintainer option you want, for example `-Ddtwc_ENABLE_SANITIZER_ADDRESS=ON`.
+
 ### Python
 
 ```bash
@@ -116,6 +126,7 @@ cmake --build build --config Release -j
 | `DTWC_BUILD_BENCHMARK` | OFF | Build benchmarks (Google Benchmark) |
 | `DTWC_BUILD_PYTHON` | OFF | Build Python bindings (nanobind) |
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
+| `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
 | `DTWC_ENABLE_MPI` | OFF | Enable MPI distributed computing |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |

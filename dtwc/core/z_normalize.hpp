@@ -27,13 +27,21 @@ void z_normalize(T *series, size_t n)
   if (n == 1) { series[0] = static_cast<T>(0); return; }
 
   T sum = 0;
+#if defined(_MSC_VER)
+  // MSVC does not support OpenMP reduction clauses on simd directives.
+#else
   #pragma omp simd reduction(+:sum)
+#endif
   for (size_t i = 0; i < n; ++i)
     sum += series[i];
   T mean = sum / static_cast<T>(n);
 
   T sq_sum = 0;
+#if defined(_MSC_VER)
+  // MSVC does not support OpenMP reduction clauses on simd directives.
+#else
   #pragma omp simd reduction(+:sq_sum)
+#endif
   for (size_t i = 0; i < n; ++i) {
     T d = series[i] - mean;
     sq_sum += d * d;

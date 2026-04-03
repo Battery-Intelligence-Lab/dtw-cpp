@@ -33,8 +33,8 @@
 #include <cstddef>   // for size_t
 #include <algorithm> // for sample
 #include <cassert>   // for assert
-#include <iterator>  // for back_inserter
 #include <limits>    // for numeric_limits
+#include <numeric>   // for iota
 #include <random>    // for discrete_distribution, uniform_int_di...
 #include <vector>    // for vector
 
@@ -60,10 +60,10 @@ void random(Problem &prob)
   if (Nc <= 0)
     throw std::runtime_error("init::random has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
 
-  std::vector<int> candidate_centroids;
-  candidate_centroids.reserve(prob.cluster_size());
-  auto range = Range(prob.size());
-  std::sample(range.begin(), range.end(), std::back_inserter(candidate_centroids), Nc, randGenerator);
+  std::vector<int> candidate_centroids(prob.size());
+  std::iota(candidate_centroids.begin(), candidate_centroids.end(), 0);
+  std::shuffle(candidate_centroids.begin(), candidate_centroids.end(), randGenerator);
+  candidate_centroids.resize(static_cast<std::size_t>(Nc));
 
   prob.set_clusters(candidate_centroids);
 }
@@ -91,7 +91,7 @@ void Kmeanspp(Problem &prob)
 
   prob.centroids_ind.clear();
 
-  std::uniform_int_distribution<size_t> d(0, prob.size() - 1);
+  std::uniform_int_distribution<int> d(0, static_cast<int>(prob.size() - 1));
   std::vector<int> candidate_centroids;
   candidate_centroids.reserve(Nc);
 
@@ -106,7 +106,7 @@ void Kmeanspp(Problem &prob)
   for (int i = 1; i < Nc; i++) {
     dtwc::run(distTask, prob.size());
     std::discrete_distribution<> dd(distances.begin(), distances.end());
-    candidate_centroids.push_back(dd(randGenerator));
+    candidate_centroids.push_back(static_cast<int>(dd(randGenerator)));
   }
 
   prob.set_clusters(candidate_centroids);

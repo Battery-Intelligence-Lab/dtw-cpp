@@ -18,7 +18,7 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
-      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.7.0.tar.gz"
+      URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
       OPTIONS 
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
@@ -28,7 +28,7 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.7.2.tar.gz"
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.13.1.tar.gz"
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
@@ -39,7 +39,7 @@ function(dtwc_setup_dependencies)
   if (NOT TARGET CLI11::CLI11)
   CPMAddPackage(
     NAME CLI11
-    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.3.2.tar.gz"
+    URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
     DOWNLOAD_ONLY YES 
   )
 
@@ -57,7 +57,7 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME rapidcsv
       GITHUB_REPOSITORY d99kris/rapidcsv
-      VERSION 8.84
+      VERSION 8.92
       DOWNLOAD_ONLY YES
     )
 
@@ -72,12 +72,13 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET Eigen3::Eigen)
     CPMAddPackage(
       NAME Eigen
-      URL "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2"
+      URL "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2"
       DOWNLOAD_ONLY YES
     )
     add_library(Eigen3::Eigen INTERFACE IMPORTED)
     set_target_properties(Eigen3::Eigen PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}")
+      INTERFACE_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}"
+      INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}")
   endif()
 
   if(DTWC_BUILD_BENCHMARK)

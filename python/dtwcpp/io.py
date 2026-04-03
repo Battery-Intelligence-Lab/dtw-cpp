@@ -13,6 +13,7 @@ HDF5 layout::
     /names      -- (N,) variable-length string dataset
     /distmat    -- (N, N) float64 dataset, gzip-compressed (optional)
     /metadata   -- HDF5 root attributes (band, variant, etc.)
+
 @author Volkan Kumtepeli
 """
 

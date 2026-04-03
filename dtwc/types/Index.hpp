@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <iterator>
 
 namespace dtwc {
@@ -24,7 +25,7 @@ public:
   using value_type = size_t;
   using reference = size_t;
   using pointer = size_t;
-  using difference_type = size_t;
+  using difference_type = std::ptrdiff_t;
 
   Index() = default;
   Index(size_t ptr) : ptr(ptr) {}
@@ -43,10 +44,19 @@ public:
     return *this;
   }
 
-  difference_type operator-(const Index &it) const { return this->ptr - it.ptr; }
+  difference_type operator-(const Index &it) const
+  {
+    return static_cast<difference_type>(ptr) - static_cast<difference_type>(it.ptr);
+  }
 
-  Index operator+(const difference_type &diff) const { return Index(ptr + diff); }
-  Index operator-(const difference_type &diff) const { return Index(ptr - diff); }
+  Index operator+(const difference_type &diff) const
+  {
+    return Index(static_cast<size_t>(static_cast<difference_type>(ptr) + diff));
+  }
+  Index operator-(const difference_type &diff) const
+  {
+    return Index(static_cast<size_t>(static_cast<difference_type>(ptr) - diff));
+  }
 
   reference operator[](const difference_type &offset) const { return *(*this + offset); }
 

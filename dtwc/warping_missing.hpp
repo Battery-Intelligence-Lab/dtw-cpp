@@ -169,7 +169,8 @@ data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t>
   if (band < 0) return dtwMissing_L<data_t>(x, y, early_abandon, metric);
 
   const auto &[short_vec, long_vec] = (x.size() < y.size()) ? std::tie(x, y) : std::tie(y, x);
-  const int m_short(short_vec.size()), m_long(long_vec.size());
+  const int m_short = static_cast<int>(short_vec.size());
+  const int m_long = static_cast<int>(long_vec.size());
 
   if ((m_short == 0) || (m_long == 0)) return std::numeric_limits<data_t>::max();
   if ((m_short == 1) || (m_long == 1)) return dtwMissing_L<data_t>(x, y, early_abandon, metric);

@@ -74,14 +74,16 @@ target_link_libraries(dtwc++
 
 # Only request the CXX component — if CUDA is enabled as a language, a bare
 # find_package(OpenMP) would also search for OpenMP_CUDA which fails on MSVC.
+if(MSVC)
+  set(OpenMP_RUNTIME_MSVC experimental)
+endif()
 find_package(OpenMP COMPONENTS CXX)
 if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP found")
-  target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
-  # MSVC needs /openmp:experimental for #pragma omp simd (OpenMP 4.0+)
-  # Guard with COMPILE_LANGUAGE to avoid passing MSVC flags to nvcc.
   if(MSVC)
-    target_compile_options(dtwc++ PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
+    target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
+  else()
+    target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
   endif()
 endif()
 

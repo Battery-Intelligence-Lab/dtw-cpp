@@ -13,7 +13,13 @@ target_sources(mip-solvers
   )
 
 target_include_directories(mip-solvers PUBLIC .)
-target_link_libraries(mip-solvers PRIVATE rapidcsv::rapidcsv Eigen3::Eigen)
+target_link_libraries(mip-solvers
+  PRIVATE
+  rapidcsv::rapidcsv
+  Eigen3::Eigen
+  project_warnings
+  project_options
+)
 
 if(DTWC_ENABLE_GUROBI AND TARGET Gurobi::GurobiCXX)
   message(STATUS "Gurobi found and enabled")

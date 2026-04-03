@@ -61,7 +61,7 @@ uv.lock
 .claude/worktrees/
 
 # Virtual environments
-.venv/
+.venv*/
 venv/
 
 # Benchmark baselines (machine-specific)

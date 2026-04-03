@@ -81,9 +81,9 @@ void compute_nearest_and_second(
 /**
  * @brief Compute the total cost (sum of nearest-medoid distances).
  */
-double compute_total_cost(const std::vector<double>& nearest_dist, int N)
+double compute_total_cost(const std::vector<double>& nearest_dist)
 {
-  return std::reduce(nearest_dist.begin(), nearest_dist.begin() + N, 0.0);
+  return std::reduce(nearest_dist.begin(), nearest_dist.end(), 0.0);
 }
 
 } // anonymous namespace
@@ -91,7 +91,7 @@ double compute_total_cost(const std::vector<double>& nearest_dist, int N)
 
 core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
-  const int N = prob.size();
+  const int N = static_cast<int>(prob.size());
 
   if (N <= 0) {
     throw std::runtime_error("fast_pam: Problem has no data points.");
@@ -242,7 +242,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   result.medoid_indices = medoids;
   result.labels.assign(nearest.begin(), nearest.end());
 
-  result.total_cost = compute_total_cost(nearest_dist, N);
+  result.total_cost = compute_total_cost(nearest_dist);
   result.iterations = iter;
   result.converged = converged;
 

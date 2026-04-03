@@ -21,6 +21,7 @@ option(DTWC_BUILD_TESTING "Build unit tests" OFF)
 option(DTWC_BUILD_BENCHMARK "Build benchmarks" OFF)
 option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
 option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
+option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer options" OFF)
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
@@ -166,16 +167,16 @@ endif()
 
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
+include(cmake/ProjectOptions.cmake)
 
-# include(cmake/PreventInSourceBuilds.cmake)
+include(cmake/PreventInSourceBuilds.cmake)
 dtwc_setup_dependencies()
+dtwc_setup_options()
+dtwc_global_options()
+dtwc_local_options()
 
-# Link this 'library' to use the warnings specified in CompilerWarnings.cmake
-add_library(project_warnings INTERFACE)
-
-# Link this 'library' to set the c++ standard / compile-time options requested
-add_library(project_options INTERFACE)
-target_compile_features(project_options INTERFACE cxx_std_17)
+add_library(project_warnings ALIAS dtwc_warnings)
+add_library(project_options ALIAS dtwc_options)
 
 add_subdirectory(dtwc bin)
 

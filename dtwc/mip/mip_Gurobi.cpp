@@ -25,6 +25,7 @@
 namespace dtwc {
 void MIP_clustering_byGurobi(Problem &prob)
 {
+  (void)prob;
 #ifdef DTWC_ENABLE_GUROBI
 
   const auto Nb = prob.size();

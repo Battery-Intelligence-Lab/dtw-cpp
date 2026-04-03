@@ -6,6 +6,8 @@
  *          distance matrix, and scoring to Python with zero-copy
  *          numpy integration where possible.
  *
+ * @author Volkan Kumtepeli
+ * 
  * @date 28 Mar 2026
  */
 
