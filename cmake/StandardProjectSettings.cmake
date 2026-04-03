@@ -43,13 +43,37 @@ endif()
 
 
 # Fast floating-point for Release builds — enables FMA fusion, reordering.
-# This matches Numba's fastmath=True and is required for competitive DTW performance.
+# Explicit sub-flags instead of -ffast-math: preserves std::isnan() by omitting
+# -ffinite-math-only, while retaining all other fast-math optimizations.
+# See missing_utils.hpp for NaN handling design notes.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:fast>>)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:fast>>)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:-ffast-math>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:-ffast-math>>)
+  # -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math -fno-signed-zeros
+  # give ~95% of -ffast-math (FMA, reassociation, reciprocal) without -ffinite-math-only.
+  foreach(_flag -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math -fno-signed-zeros)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_flag}>>)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_flag}>>)
+  endforeach()
+endif()
+
+# Native architecture tuning — unlocks AVX2/AVX-512/NEON auto-vectorization.
+# Disabled for Python wheels (DTWC_BUILD_PYTHON) to keep wheel binaries portable.
+# Disabled when consumed as a sub-project (PROJECT_IS_TOP_LEVEL=OFF) so the
+# parent project controls its own arch flags.
+option(DTWC_ENABLE_NATIVE_ARCH "Tune for the host CPU architecture (-march=native / /arch:AVX2)" ON)
+if(DTWC_ENABLE_NATIVE_ARCH AND PROJECT_IS_TOP_LEVEL AND NOT DTWC_BUILD_PYTHON)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/arch:AVX2>>)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/arch:AVX2>>)
+  elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:-march=native>>)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:-march=native>>)
+  endif()
+  message(STATUS "Native arch tuning enabled (DTWC_ENABLE_NATIVE_ARCH=ON)")
+else()
+  message(STATUS "Native arch tuning disabled — portable binary mode")
 endif()
 
 # run vcvarsall when msvc is used

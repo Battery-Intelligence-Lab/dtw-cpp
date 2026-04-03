@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include <algorithm> // for min, max, minmax_element
+#include <algorithm> // for min, max, fill, max_element, min_element
 #include <cmath>     // for abs
 #include <cstddef>   // for size_t
 #include <vector>    // for vector
@@ -49,21 +49,67 @@ void compute_envelopes(const T *series, std::size_t n, int band,
   if (n == 0) return;
   const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
 
-  // Sliding window min/max using direct scan over the band window.
-  // O(n * min(band, n)) total. For the typical DTW use case (band << n),
-  // this is cache-friendly (contiguous reads within the band) and allocation-free.
-  // Envelopes are computed once per series and reused O(N) times for LB pruning.
+  // Fast path: band covers entire series → envelopes are global min/max.
+  if (w >= n) {
+    const T *end = series + n;
+    const T gmax = *std::max_element(series, end);
+    const T gmin = *std::min_element(series, end);
+    std::fill(upper_out, upper_out + n, gmax);
+    std::fill(lower_out, lower_out + n, gmin);
+    return;
+  }
+
+  // O(n) Lemire sliding-window min/max for centered window [p-w, p+w].
+  //
+  // Decomposes into two one-sided trailing/leading windows:
+  //   lmax[p] = max over [max(0, p-w), p]       (trailing, forward pass)
+  //   rmax[p] = max over [p, min(n-1, p+w)]     (leading, backward pass)
+  //   upper[p] = max(lmax[p], rmax[p])
+  // Same for min.
+  //
+  // Ring buffers (contiguous std::vector, NOT std::deque) keep index deques
+  // cache-friendly. Capacity w+2 > window width w+1, so the buffer never
+  // overflows. Each element is pushed and popped at most once → O(n) total.
+  //
+  // Reference: D. Lemire, "Streaming Maximum-Minimum Filter Using No More
+  // Than Three Comparisons per Element," 2006.
+
+  const std::size_t cap = w + 2;
+  std::vector<std::size_t> dmax(cap), dmin(cap);
+  std::size_t mx_h = 0, mx_t = 0, mn_h = 0, mn_t = 0;
+
+  // Temporary storage for trailing-window (left-side) results.
+  std::vector<T> lmax(n), lmin(n);
+
+  // --- Forward pass: lmax[p] = max([max(0,p-w)..p]), lmin symmetric ---
   for (std::size_t p = 0; p < n; ++p) {
-    const std::size_t lo = (p >= w) ? p - w : 0;
-    const std::size_t hi = std::min(p + w + 1, n);
-    T max_val = series[lo];
-    T min_val = series[lo];
-    for (std::size_t j = lo + 1; j < hi; ++j) {
-      if (series[j] > max_val) max_val = series[j];
-      if (series[j] < min_val) min_val = series[j];
-    }
-    upper_out[p] = max_val;
-    lower_out[p] = min_val;
+    // Evict indices that have left the trailing window [p-w, p]
+    if (mx_h != mx_t && dmax[mx_h % cap] + w < p) ++mx_h;
+    if (mn_h != mn_t && dmin[mn_h % cap] + w < p) ++mn_h;
+    // Maintain monotone decreasing (max) and increasing (min) deques
+    while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap]] <= series[p]) --mx_t;
+    while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap]] >= series[p]) --mn_t;
+    dmax[mx_t++ % cap] = p;
+    dmin[mn_t++ % cap] = p;
+    lmax[p] = series[dmax[mx_h % cap]];
+    lmin[p] = series[dmin[mn_h % cap]];
+  }
+
+  // --- Backward pass: leading window [p, min(n-1,p+w)], merged with lmax/lmin ---
+  mx_h = mx_t = mn_h = mn_t = 0;
+  for (std::ptrdiff_t q = static_cast<std::ptrdiff_t>(n) - 1; q >= 0; --q) {
+    const std::size_t p = static_cast<std::size_t>(q);
+    // Evict indices past the leading window [p, p+w]
+    if (mx_h != mx_t && dmax[mx_h % cap] > p + w) ++mx_h;
+    if (mn_h != mn_t && dmin[mn_h % cap] > p + w) ++mn_h;
+    // Maintain monotone deques
+    while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap]] <= series[p]) --mx_t;
+    while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap]] >= series[p]) --mn_t;
+    dmax[mx_t++ % cap] = p;
+    dmin[mn_t++ % cap] = p;
+    // Centered window = union of trailing + leading; take max/min of both sides
+    upper_out[p] = std::max(lmax[p], series[dmax[mx_h % cap]]);
+    lower_out[p] = std::min(lmin[p], series[dmin[mn_h % cap]]);
   }
 }
 
@@ -313,19 +359,60 @@ void compute_envelopes_mv(const T *series, std::size_t n_steps, std::size_t ndim
 
   const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
 
-  for (std::size_t d = 0; d < ndim; ++d) {
-    for (std::size_t p = 0; p < n_steps; ++p) {
-      const std::size_t lo = (p >= w) ? p - w : 0;
-      const std::size_t hi = std::min(p + w + 1, n_steps);
-      T max_val = series[lo * ndim + d];
-      T min_val = series[lo * ndim + d];
-      for (std::size_t j = lo + 1; j < hi; ++j) {
-        T val = series[j * ndim + d];
-        if (val > max_val) max_val = val;
-        if (val < min_val) min_val = val;
+  // O(n) Lemire sliding-window per channel. Interleaved layout: series[t*ndim+d].
+  // Deque indices store timesteps (not flat offsets). Same ring-buffer approach as
+  // the scalar compute_envelopes — see that function for algorithm commentary.
+
+  if (w >= n_steps) {
+    // Fast path: band spans all timesteps → per-channel global min/max.
+    for (std::size_t d = 0; d < ndim; ++d) {
+      T gmax = series[d], gmin = series[d];
+      for (std::size_t t = 1; t < n_steps; ++t) {
+        T v = series[t * ndim + d];
+        if (v > gmax) gmax = v;
+        if (v < gmin) gmin = v;
       }
-      upper_out[p * ndim + d] = max_val;
-      lower_out[p * ndim + d] = min_val;
+      for (std::size_t t = 0; t < n_steps; ++t) {
+        upper_out[t * ndim + d] = gmax;
+        lower_out[t * ndim + d] = gmin;
+      }
+    }
+    return;
+  }
+
+  const std::size_t cap = w + 2;
+  std::vector<std::size_t> dmax(cap), dmin(cap);
+  std::vector<T> lmax(n_steps), lmin(n_steps);
+
+  for (std::size_t d = 0; d < ndim; ++d) {
+    std::size_t mx_h = 0, mx_t = 0, mn_h = 0, mn_t = 0;
+
+    // Forward pass: lmax[p] = max([max(0,p-w)..p]) for channel d
+    for (std::size_t p = 0; p < n_steps; ++p) {
+      const T v = series[p * ndim + d];
+      if (mx_h != mx_t && dmax[mx_h % cap] + w < p) ++mx_h;
+      if (mn_h != mn_t && dmin[mn_h % cap] + w < p) ++mn_h;
+      while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap] * ndim + d] <= v) --mx_t;
+      while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap] * ndim + d] >= v) --mn_t;
+      dmax[mx_t++ % cap] = p;
+      dmin[mn_t++ % cap] = p;
+      lmax[p] = series[dmax[mx_h % cap] * ndim + d];
+      lmin[p] = series[dmin[mn_h % cap] * ndim + d];
+    }
+
+    // Backward pass: leading window merged with lmax/lmin
+    mx_h = mx_t = mn_h = mn_t = 0;
+    for (std::ptrdiff_t q = static_cast<std::ptrdiff_t>(n_steps) - 1; q >= 0; --q) {
+      const std::size_t p = static_cast<std::size_t>(q);
+      const T v = series[p * ndim + d];
+      if (mx_h != mx_t && dmax[mx_h % cap] > p + w) ++mx_h;
+      if (mn_h != mn_t && dmin[mn_h % cap] > p + w) ++mn_h;
+      while (mx_h != mx_t && series[dmax[(mx_t - 1) % cap] * ndim + d] <= v) --mx_t;
+      while (mn_h != mn_t && series[dmin[(mn_t - 1) % cap] * ndim + d] >= v) --mn_t;
+      dmax[mx_t++ % cap] = p;
+      dmin[mn_t++ % cap] = p;
+      upper_out[p * ndim + d] = std::max(lmax[p], series[dmax[mx_h % cap] * ndim + d]);
+      lower_out[p * ndim + d] = std::min(lmin[p], series[dmin[mn_h % cap] * ndim + d]);
     }
   }
 }

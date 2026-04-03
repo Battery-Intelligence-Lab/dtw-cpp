@@ -2,8 +2,13 @@
  * @file missing_utils.hpp
  * @brief Utilities for handling missing data (NaN) in time series.
  *
- * @details Provides a bitwise NaN check that is safe under -ffast-math and /fp:fast,
- *          plus helper functions for detecting and interpolating missing values.
+ * @details NaN handling design:
+ *   - Build flags use explicit fast-math sub-flags (-fno-math-errno, -fassociative-math,
+ *     etc.) but NOT -ffinite-math-only, so std::isnan() is correct and available.
+ *   - is_missing() is a thin semantic wrapper over std::isnan() — prefer this name
+ *     in domain code for clarity ("missing value" not "not-a-number").
+ *   - DenseDistanceMatrix tracks computed entries via std::vector<bool> (not NaN
+ *     sentinels), which is safe regardless of floating-point mode.
  *
  * @author Volkan Kumtepeli
  * @date 02 Apr 2026
@@ -11,32 +16,20 @@
 
 #pragma once
 
-#include <cstdint>
-#include <cstring>
+#include <cmath>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
 
 namespace dtwc {
 
-/// Bitwise NaN check — safe under -ffast-math / /fp:fast.
-/// std::isnan() may be optimized away under -ffast-math; this uses raw bit inspection.
+/// NaN check — semantic alias for std::isnan for use in missing-data code paths.
+/// Build flags omit -ffinite-math-only so std::isnan() is reliable at all opt levels.
 template <typename T>
 inline bool is_missing(T val) noexcept
 {
-  static_assert(std::is_same_v<T, double> || std::is_same_v<T, float>,
-                "is_missing only supports float and double");
-  if constexpr (std::is_same_v<T, double>) {
-    uint64_t bits;
-    std::memcpy(&bits, &val, sizeof(bits));
-    return (bits & 0x7FF0000000000000ULL) == 0x7FF0000000000000ULL
-        && (bits & 0x000FFFFFFFFFFFFFULL) != 0;
-  } else {
-    uint32_t bits;
-    std::memcpy(&bits, &val, sizeof(bits));
-    return (bits & 0x7F800000U) == 0x7F800000U
-        && (bits & 0x007FFFFFU) != 0;
-  }
+  static_assert(std::is_floating_point_v<T>, "is_missing only supports floating-point types");
+  return std::isnan(val);
 }
 
 /// Returns true if any element in the vector is NaN.

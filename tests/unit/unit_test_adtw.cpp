@@ -270,3 +270,44 @@ TEST_CASE("adtwBanded: empty vectors", "[adtw]")
   REQUIRE(adtwBanded<data_t>(x, empty, 2, 1.0) > 1e10);
   REQUIRE(adtwBanded<data_t>(empty, x, 2, 1.0) > 1e10);
 }
+
+TEST_CASE("adtwBanded: early_abandon disabled (-1) gives exact result", "[adtw]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3, 4, 5 }, y{ 2, 4, 5, 6, 7, 8 };
+  int band = 3;
+  double penalty = 1.0;
+
+  const auto no_abandon   = adtwBanded<data_t>(x, y, band, penalty, -1.0);
+  const auto default_call = adtwBanded<data_t>(x, y, band, penalty);  // default = -1
+
+  REQUIRE_THAT(no_abandon, WithinAbs(default_call, 1e-12));
+}
+
+TEST_CASE("adtwBanded: early_abandon above true cost gives exact result", "[adtw]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3, 4, 5 }, y{ 2, 4, 5, 6, 7, 8 };
+  int band = 3;
+  double penalty = 1.0;
+
+  const auto exact        = adtwBanded<data_t>(x, y, band, penalty);
+  const auto high_abandon = adtwBanded<data_t>(x, y, band, penalty, exact + 1e6);
+
+  REQUIRE_THAT(high_abandon, WithinAbs(exact, 1e-12));
+}
+
+TEST_CASE("adtwBanded: early_abandon below true cost triggers abandon", "[adtw]")
+{
+  using data_t = double;
+  std::vector<data_t> x{ 1, 2, 3, 4, 5 }, y{ 2, 4, 5, 6, 7, 8 };
+  int band = 3;
+  double penalty = 1.0;
+
+  const auto exact         = adtwBanded<data_t>(x, y, band, penalty);
+  constexpr double maxValue = std::numeric_limits<double>::max();
+
+  // Threshold strictly below true cost triggers abandon
+  const auto abandoned = adtwBanded<data_t>(x, y, band, penalty, exact * 0.1);
+  REQUIRE(abandoned >= maxValue * 0.5);  // returned maxValue sentinel
+}

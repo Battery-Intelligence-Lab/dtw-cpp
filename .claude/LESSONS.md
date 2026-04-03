@@ -10,11 +10,6 @@ Critical knowledge to avoid repeating mistakes.
 - Violates triangle inequality. MIP integrality gap bounds (assume metric D) don't formally apply.
 - In practice the gap is small. References: Marteau (2009), Jain (2018).
 
-### k-Medoids constraint matrix is NOT totally unimodular
-- TU boundary is p=3. For p≤2, the matrix IS TU.
-- Odd cycles among facilities break TU (det = (-1)^n - 1 for n-cycle).
-- With fixed medoid set, the assignment IS a transportation problem (TU) → enables Benders.
-
 ### DTW-AROW ≠ simple zero-cost DTW
 - DTW-AROW constrains each missing value to one-to-one diagonal alignment.
 - Simple zero-cost is less restrictive and underestimates distances more.

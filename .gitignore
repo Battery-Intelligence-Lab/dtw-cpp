@@ -72,3 +72,4 @@ test_clustering*.csv
 
 # CPM cache
 cmake-build-*/_deps/
+.claude/settings.local.json

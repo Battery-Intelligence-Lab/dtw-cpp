@@ -560,7 +560,13 @@ Benders is expected to outperform compact MIP for N > 200 and becomes essential 
 | How to interpret fractional values? | Fractional A[i,i] = 1/2 indicates facility i is on an odd cycle in the LP solution. Fractional A[i,j] means point j is "shared" between clusters. |
 | Practical strategy? | LP first -> branch on A[i,i] only -> full MIP fallback. |
 
+### k-Medoids constraint matrix is NOT totally unimodular
+- TU boundary is p=3. For p≤2, the matrix IS TU.
+- Odd cycles among facilities break TU (det = (-1)^n - 1 for n-cycle).
+- With fixed medoid set, the assignment IS a transportation problem (TU) → enables Benders.
+
 ---
+
 
 ## 8. References
 

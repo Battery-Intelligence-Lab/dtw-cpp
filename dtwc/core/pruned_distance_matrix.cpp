@@ -16,6 +16,7 @@
 #include "pruned_distance_matrix.hpp"
 #include "lower_bound_impl.hpp"
 #include "../warping.hpp"
+#include "../warping_adtw.hpp"
 #include "../settings.hpp"
 
 #include <vector>
@@ -118,6 +119,8 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
 {
   PruningStats stats;
   const int N = static_cast<int>(prob.size());
+  const bool is_adtw = (prob.variant_params.variant == dtwc::core::DTWVariant::ADTW);
+  const double adtw_penalty = prob.variant_params.adtw_penalty;
   if (N <= 1) {
     if (N == 1) {
       prob.distance_matrix().resize(1);
@@ -219,6 +222,17 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
       // Reads may be stale from other threads — this is benign.
       const double threshold = std::min(nn_dist[i], nn_dist[j]);
 
+      // Helper lambdas to dispatch Standard vs ADTW, with or without early abandon.
+      auto dtw_with_abandon = [&](double abandon) -> double {
+        if (is_adtw)
+          return (band >= 0)
+            ? dtwc::adtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, adtw_penalty, abandon)
+            : dtwc::adtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), adtw_penalty, abandon);
+        return (band >= 0)
+          ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, abandon)
+          : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), abandon);
+      };
+
       double dist;
       if (lb > threshold && threshold < inf) {
         // LB exceeds NN threshold -- try early-abandon DTW
@@ -227,23 +241,17 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
         else
           local_pruned_kim++;
 
-        dist = (band >= 0)
-          ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, threshold)
-          : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), threshold);
+        dist = dtw_with_abandon(threshold);
 
         if (dist >= inf * 0.5) {
           // Early abandon triggered -- recompute for exact distance
           local_early_abandoned++;
-          dist = (band >= 0)
-            ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, -1.0)
-            : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), -1.0);
+          dist = dtw_with_abandon(-1.0);
         }
       } else {
         // Pair may be close -- compute without early abandon
         local_full_dtw++;
-        dist = (band >= 0)
-          ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, -1.0)
-          : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), -1.0);
+        dist = dtw_with_abandon(-1.0);
       }
 
       // Lock-free by design: DenseDistanceMatrix::set() writes to two independent

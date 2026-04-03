@@ -21,7 +21,6 @@
 
 #include "settings.hpp"
 #include "warping.hpp"
-#include "core/scratch_matrix.hpp"
 
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
@@ -41,10 +40,13 @@ namespace dtwc {
  * @param y Pointer to second sequence.
  * @param ny Length of second sequence.
  * @param penalty Penalty added to non-diagonal (horizontal/vertical) warping steps.
+ * @param early_abandon Upper-bound threshold; returns maxValue immediately when all active
+ *                      cells in a column exceed it. Negative value disables early abandon.
  * @return The ADTW distance.
  */
 template <typename data_t>
-data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny, data_t penalty)
+data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
+                  data_t penalty, data_t early_abandon = data_t{ -1 })
 {
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   if (nx == 0 || ny == 0) return maxValue;
@@ -66,6 +68,7 @@ data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny, data_t
   short_side.resize(m_short);
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
+  const bool do_early_abandon = (early_abandon >= 0);
 
   // Base: C(0,0) = d(short[0], long[0])
   short_side[0] = distance(short_ptr[0], long_ptr[0]);
@@ -74,11 +77,14 @@ data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny, data_t
   for (size_t i = 1; i < m_short; i++)
     short_side[i] = short_side[i - 1] + penalty + distance(short_ptr[i], long_ptr[0]);
 
+  if (do_early_abandon && short_side[0] > early_abandon) return maxValue;
+
   // Fill remaining columns
   for (size_t j = 1; j < m_long; j++) {
     auto diag = short_side[0];
     // First row of this column: horizontal step (non-diagonal) => incurs penalty
     short_side[0] += penalty + distance(short_ptr[0], long_ptr[j]);
+    data_t row_min = do_early_abandon ? short_side[0] : data_t{ 0 };
 
     for (size_t i = 1; i < m_short; i++) {
       // short_side[i-1] = C(i-1, j)  — already updated = left
@@ -90,101 +96,140 @@ data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny, data_t
 
       diag = short_side[i];
       short_side[i] = next;
+      if (do_early_abandon) row_min = std::min(row_min, next);
     }
+
+    if (do_early_abandon && row_min > early_abandon) return maxValue;
   }
 
   return short_side.back();
 }
 
 template <typename data_t>
-data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y, data_t penalty)
+data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  data_t penalty, data_t early_abandon = data_t{ -1 })
 {
-  return adtwFull_L(x.data(), x.size(), y.data(), y.size(), penalty);
+  return adtwFull_L(x.data(), x.size(), y.data(), y.size(), penalty, early_abandon);
 }
 
 
 /**
- * @brief Computes the banded ADTW distance using a Sakoe-Chiba band.
+ * @brief Computes the banded ADTW distance using a Sakoe-Chiba band (rolling O(n) memory).
  *
  * @tparam data_t Data type of sequence elements.
  * @param x First sequence.
+ * @param nx Length of first sequence.
  * @param y Second sequence.
+ * @param ny Length of second sequence.
  * @param band Sakoe-Chiba bandwidth. Negative means unbanded (falls back to adtwFull_L).
- * @param penalty Penalty added to non-diagonal warping steps.
+ * @param penalty Penalty added to non-diagonal (horizontal/vertical) warping steps.
+ * @param early_abandon Upper-bound threshold; returns maxValue immediately when all active
+ *                      cells in a column exceed it. Negative value disables early abandon.
  * @return The ADTW distance.
  */
 template <typename data_t = double>
 data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  int band, data_t penalty)
+                  int band, data_t penalty, data_t early_abandon = data_t{ -1 })
 {
   if (band < 0) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
 
-  thread_local core::ScratchMatrix<data_t> C;
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
   const data_t *short_ptr;
   const data_t *long_ptr;
-  int m_short;
-  int m_long;
+  int m_short, m_long;
   if (nx < ny) {
     short_ptr = x; m_short = static_cast<int>(nx);
-    long_ptr = y; m_long = static_cast<int>(ny);
+    long_ptr  = y; m_long  = static_cast<int>(ny);
   } else {
     short_ptr = y; m_short = static_cast<int>(ny);
-    long_ptr = x; m_long = static_cast<int>(nx);
+    long_ptr  = x; m_long  = static_cast<int>(nx);
   }
 
   if ((m_short == 0) || (m_long == 0)) return maxValue;
-
-  C.resize(m_long, m_short);
-  C.fill(maxValue);
-
-  auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
   if ((m_short == 1) || (m_long == 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
   if (m_long <= (band + 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
 
-  const double slope = static_cast<double>(m_long - 1) / (m_short - 1);
-  const auto window = std::max((double)band, slope / 2);
+  const double slope  = static_cast<double>(m_long - 1) / (m_short - 1);
+  const auto   window = std::max(static_cast<double>(band), slope / 2);
 
-  auto get_bounds = [slope, window](int idx) {
-    const auto yval = slope * idx;
-    const int low = static_cast<int>(std::ceil(std::round(100 * (yval - window)) / 100.0));
-    const int high = static_cast<int>(std::floor(std::round(100 * (yval + window)) / 100.0)) + 1;
-    return std::pair(low, high);
-  };
+  thread_local std::vector<data_t> col;
+  col.assign(m_long, maxValue);
+  thread_local std::vector<int> low_bounds;
+  thread_local std::vector<int> high_bounds;
+  low_bounds.resize(m_short);
+  high_bounds.resize(m_short);
+  const bool do_early_abandon = (early_abandon >= 0);
 
-  C(0, 0) = distance(long_ptr[0], short_ptr[0]);
-
-  {
-    const auto [lo, hi] = get_bounds(0);
-    for (int i = 1; i < hi; ++i)
-      C(i, 0) = C(i - 1, 0) + penalty + distance(long_ptr[i], short_ptr[0]);
+  for (int row = 0; row < m_short; ++row) {
+    const double center = slope * row;
+    low_bounds[row]  = static_cast<int>(std::ceil(std::round(100.0 * (center - window)) / 100.0));
+    high_bounds[row] = static_cast<int>(std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
   }
+
+  auto distance = [](data_t a, data_t b) { return std::abs(a - b); };
+
+  // First column: only vertical steps => each incurs penalty
+  col[0] = distance(long_ptr[0], short_ptr[0]);
+  {
+    const int hi = high_bounds[0];
+    for (int i = 1; i < std::min(hi, m_long); ++i)
+      col[i] = col[i - 1] + penalty + distance(long_ptr[i], short_ptr[0]);
+  }
+  if (do_early_abandon && col[0] > early_abandon) return maxValue;
 
   for (int j = 1; j < m_short; j++) {
-    const auto [lo, hi] = get_bounds(j);
-    if (lo <= 0)
-      C(0, j) = C(0, j - 1) + penalty + distance(long_ptr[0], short_ptr[j]);
+    const int lo      = low_bounds[j];
+    const int hi      = high_bounds[j];
+    const int prev_lo = low_bounds[j - 1];
+    const int prev_hi = high_bounds[j - 1];
+    const int high    = std::min(hi, m_long);
+    const int low     = std::max(lo, 0);
 
-    const auto high = std::min(hi, m_long);
-    for (int i = std::max(lo, 1); i < high; ++i) {
-      const auto diag = C(i - 1, j - 1);
-      const auto left = C(i, j - 1);
-      const auto below = C(i - 1, j);
-      // Diagonal is free; horizontal and vertical incur penalty
-      const auto minimum = std::min(diag, std::min(left + penalty, below + penalty));
-      C(i, j) = minimum + distance(long_ptr[i], short_ptr[j]);
+    data_t diag    = maxValue;
+    data_t row_min = do_early_abandon ? maxValue : data_t{ 0 };
+
+    const int first_row = std::max(low, 1);
+    if (first_row - 1 >= std::max(prev_lo, 0) && first_row - 1 < std::min(prev_hi, m_long))
+      diag = col[first_row - 1];
+
+    if (low == 0) {
+      // Horizontal step from (0, j-1) to (0, j): incurs penalty
+      diag   = col[0];
+      col[0] = col[0] + penalty + distance(long_ptr[0], short_ptr[j]);
+      if (do_early_abandon) row_min = col[0];
     }
+
+    // Zero out cells that leave the band on the left
+    for (int i = std::max(prev_lo, 0); i < std::min(low, std::min(prev_hi, m_long)); ++i)
+      col[i] = maxValue;
+
+    for (int i = first_row; i < high; ++i) {
+      const data_t old_col_i = col[i];
+      // col[i-1] = C(i-1, j) — already updated (horizontal neighbour): incurs penalty
+      // old_col_i = C(i, j-1) — previous column (vertical neighbour): incurs penalty
+      // diag = C(i-1, j-1) — diagonal: free
+      const auto minimum = std::min(diag, std::min(col[i - 1] + penalty, old_col_i + penalty));
+      diag   = old_col_i;
+      col[i] = minimum + distance(long_ptr[i], short_ptr[j]);
+      if (do_early_abandon) row_min = std::min(row_min, col[i]);
+    }
+
+    // Zero out cells that leave the band on the right
+    for (int i = std::max(high, std::max(prev_lo, 0)); i < std::min(prev_hi, m_long); ++i)
+      col[i] = maxValue;
+
+    if (do_early_abandon && row_min > early_abandon) return maxValue;
   }
 
-  return C(m_long - 1, m_short - 1);
+  return col[m_long - 1];
 }
 
 template <typename data_t = double>
 data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band, data_t penalty)
+                  int band, data_t penalty, data_t early_abandon = data_t{ -1 })
 {
-  return adtwBanded(x.data(), x.size(), y.data(), y.size(), band, penalty);
+  return adtwBanded(x.data(), x.size(), y.data(), y.size(), band, penalty, early_abandon);
 }
 
 // -------------------------------------------------------------------------

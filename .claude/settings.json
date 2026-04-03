@@ -1,9 +1,7 @@
 {
-  "alwaysThinkingEnabled": true,
   "env": {
     "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp",
-    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "sonnet"
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000"
   },
   "permissions": {
     "deny": [
@@ -124,9 +122,8 @@
     ]
   },
   "plansDirectory": "./.claude/reports",
-  "outputStyle": "Explanatory",
   "enableAllProjectMcpServers": true,
   "disableAllHooks": false,
   "autoUpdatesChannel": "latest",
-  "effortLevel": "max"
+  "model": "opusplan"
 }

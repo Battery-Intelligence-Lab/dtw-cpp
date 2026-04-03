@@ -337,9 +337,11 @@ double Problem::distByInd(int i, int j)
  */
 static bool pruned_strategy_applicable(const Problem &prob)
 {
-  // LB_Keogh is only available for banded standard DTW, and the full-DTW
-  // path tends to pay the pruning overhead without getting enough benefit.
-  return prob.variant_params.variant == core::DTWVariant::Standard
+  // LB_Keogh is a valid lower bound for Standard DTW and ADTW: ADTW penalties
+  // only increase cost, so LB_Keogh(x,y) <= DTW(x,y) <= ADTW(x,y,penalty).
+  const bool supported_variant = prob.variant_params.variant == core::DTWVariant::Standard
+                               || prob.variant_params.variant == core::DTWVariant::ADTW;
+  return supported_variant
       && prob.band >= 0
       && prob.size() >= 64;
 }
