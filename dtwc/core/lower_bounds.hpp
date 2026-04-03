@@ -6,6 +6,7 @@
  *          Actual lower-bound implementations are Phase 2; this header
  *          provides the compile-time predicates that will guard them.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

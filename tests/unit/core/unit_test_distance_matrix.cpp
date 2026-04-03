@@ -2,6 +2,7 @@
  * @file unit_test_distance_matrix.cpp
  * @brief Unit tests for DenseDistanceMatrix class.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

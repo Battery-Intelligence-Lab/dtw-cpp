@@ -10,6 +10,7 @@
  *          Variable-length pairs are handled by masking: finished lanes receive
  *          infinity so they don't affect the ongoing recurrence for other pairs.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

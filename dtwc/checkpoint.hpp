@@ -11,6 +11,7 @@
  *   - distances.csv  -- the NxN distance matrix (NaN for uncomputed pairs)
  *   - metadata.txt   -- key=value pairs: n, band, variant, pairs_computed, timestamp
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

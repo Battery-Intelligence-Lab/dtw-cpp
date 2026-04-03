@@ -1,3 +1,6 @@
+%> @file davies_bouldin_index.m
+%> @brief Compute the Davies-Bouldin index.
+%> @author Volkan Kumtepeli
 function db = davies_bouldin_index(prob)
 %DAVIES_BOULDIN_INDEX Compute the Davies-Bouldin index.
 %
@@ -16,6 +19,7 @@ function db = davies_bouldin_index(prob)
 %       The Davies-Bouldin index.
 %
 %   See also dtwc.silhouette, dtwc.dunn_index
+% @author Volkan Kumtepeli
 
     db = dtwc_mex('davies_bouldin_index', prob.get_handle());
 end

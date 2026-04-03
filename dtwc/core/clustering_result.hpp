@@ -5,6 +5,7 @@
  * @details Holds cluster assignments, medoid indices, cost, and convergence
  * information returned by clustering algorithms.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

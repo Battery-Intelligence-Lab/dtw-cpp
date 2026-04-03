@@ -1,3 +1,6 @@
+%> @file dtw_distance.m
+%> @brief Compute DTW distance between two time series using DTWC++.
+%> @author Volkan Kumtepeli
 function d = dtw_distance(x, y, varargin)
 %DTW_DISTANCE Compute DTW distance between two time series using DTWC++.
 %
@@ -26,6 +29,7 @@ function d = dtw_distance(x, y, varargin)
 %       d_banded = dtwc.dtw_distance(x, y, 'Band', 2);
 %
 %   See also dtwc.ddtw_distance, dtwc.compute_distance_matrix, dtwc.DTWClustering
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

@@ -6,8 +6,9 @@
  * the unpruned version, that pruning statistics are valid, and that edge
  * cases are handled correctly.
  *
- * @author Claude Code
- * @date 2026-03-29
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
+ * @date 29 Mar 2026
  */
 
 #include <dtwc.hpp>

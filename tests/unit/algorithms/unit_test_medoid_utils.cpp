@@ -6,6 +6,7 @@
  * find_cluster_medoid, and validate_medoids using simple synthetic distance functions
  * that do not require a Problem or distance matrix.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

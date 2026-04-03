@@ -1,10 +1,8 @@
-/*
- * UCR_dtwc.cpp
- *
- *  Benchmark file
- *
- *  Created on: 17 Aug 2022
- *   Author(s): Volkan Kumtepeli, Rebecca Perriment
+/**
+ * @file UCR_dtwc.cpp
+ * @brief Benchmark runner over the UCR 2018 time-series archive.
+ * @authors Volkan Kumtepeli, Becky Perriment
+ * @date 17 Aug 2022
  */
 
 #include <dtwc.hpp>

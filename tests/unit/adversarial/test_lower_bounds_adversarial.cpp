@@ -14,7 +14,8 @@
  *
  *          All randomised tests use std::mt19937 with seed=12345 for reproducibility.
  *
- * @author Claude (adversarial test agent)
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
  * @date 28 Mar 2026
  */
 

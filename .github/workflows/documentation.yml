@@ -1,7 +1,7 @@
 name: Build, test and generate docs
 on:
   push:
-    branches: [develop]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 

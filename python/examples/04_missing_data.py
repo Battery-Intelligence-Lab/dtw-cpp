@@ -1,6 +1,7 @@
 """
-DTWC++ Missing Data — DTW with NaN-aware distance.
-
+@file 04_missing_data.py
+@brief DTWC++ Missing Data — DTW with NaN-aware distance.
+@details
 Demonstrates: dtw_distance_missing(), comparison with standard DTW.
 
 When real-world sensors fail or data is incomplete, some time points
@@ -9,6 +10,7 @@ and contributes zero cost for those pairs, rather than propagating NaN
 or requiring imputation.
 
 Reference: Yurtman et al. (2023), ECML-PKDD.
+@author Volkan Kumtepeli
 """
 
 import numpy as np

@@ -1,3 +1,6 @@
+%> @file z_normalize.m
+%> @brief Z-normalize a time series (zero mean, unit std dev).
+%> @author Volkan Kumtepeli
 function xn = z_normalize(x)
 %Z_NORMALIZE Z-normalize a time series (zero mean, unit std dev).
 %

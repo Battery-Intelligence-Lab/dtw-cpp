@@ -1,11 +1,13 @@
 """
-DTWC++ Distance Matrix — Fast pairwise DTW computation in C++.
-
+@file 06_distance_matrix.py
+@brief DTWC++ Distance Matrix — Fast pairwise DTW computation in C++.
+@details
 Demonstrates: compute_distance_matrix() with OpenMP parallelism,
 metric options, and the Problem.distance_matrix_numpy() method.
 
 A single C++ call computes the full NxN symmetric distance matrix
 using OpenMP — much faster than a Python loop over dtw_distance().
+@author Volkan Kumtepeli
 """
 
 import numpy as np

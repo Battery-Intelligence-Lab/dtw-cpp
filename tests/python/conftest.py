@@ -1,4 +1,8 @@
-"""Shared fixtures for DTWC++ Python binding tests."""
+"""
+@file conftest.py
+@brief Shared fixtures for DTWC++ Python binding tests.
+@author Volkan Kumtepeli
+"""
 
 import numpy as np
 import pytest

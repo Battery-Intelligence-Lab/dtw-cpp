@@ -11,6 +11,7 @@
  *  - Missing checkpoint returns false
  *  - Fully computed matrix sets filled flag
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

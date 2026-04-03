@@ -20,6 +20,7 @@
  *
  * @warning Experimental. Not exposed in CLI. Use FastCLARA for large N.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

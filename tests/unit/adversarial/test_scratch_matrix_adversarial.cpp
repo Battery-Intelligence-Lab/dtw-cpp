@@ -4,6 +4,7 @@
  *
  * Tests column-major layout guarantees, edge cases, and thread safety.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

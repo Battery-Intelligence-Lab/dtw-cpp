@@ -8,6 +8,7 @@
  *
  *          String-dispatched ~45 commands. See the plan document for full list.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

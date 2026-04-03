@@ -2,6 +2,7 @@
  * @file unit_test_problem_missing.cpp
  * @brief Tests for Problem::missing_strategy wiring (Error / ZeroCost / Interpolate).
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

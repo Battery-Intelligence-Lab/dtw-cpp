@@ -8,8 +8,9 @@
  * DTW computations terminate sooner when partial cost exceeds an
  * upper bound, saving 30-60% of inner-loop work for correlated data.
  *
- * @author Claude Code
- * @date 2026-03-29
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
+ * @date 29 Mar 2026
  */
 
 #include "pruned_distance_matrix.hpp"

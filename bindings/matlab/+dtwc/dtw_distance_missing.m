@@ -1,3 +1,6 @@
+%> @file dtw_distance_missing.m
+%> @brief Compute DTW distance with missing data support.
+%> @author Volkan Kumtepeli
 function d = dtw_distance_missing(x, y, varargin)
 %DTW_DISTANCE_MISSING Compute DTW distance with missing data support.
 %
@@ -26,6 +29,7 @@ function d = dtw_distance_missing(x, y, varargin)
 %              Time Series with Missing Data"
 %
 %   See also dtwc.dtw_arow_distance, dtwc.dtw_distance
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

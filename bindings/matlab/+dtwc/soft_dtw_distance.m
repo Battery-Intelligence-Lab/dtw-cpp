@@ -1,3 +1,6 @@
+%> @file soft_dtw_distance.m
+%> @brief Compute Soft-DTW distance between two time series.
+%> @author Volkan Kumtepeli
 function d = soft_dtw_distance(x, y, varargin)
 %SOFT_DTW_DISTANCE Compute Soft-DTW distance between two time series.
 %
@@ -26,6 +29,7 @@ function d = soft_dtw_distance(x, y, varargin)
 %              Function for Time-Series"
 %
 %   See also dtwc.soft_dtw_gradient, dtwc.dtw_distance
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

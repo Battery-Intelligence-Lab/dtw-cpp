@@ -1,9 +1,12 @@
-/*
- * unit_test_Range.cpp
+/**
+ * @file unit_test_Range.cpp
+ * @brief Unit tests for the dtwc::Range class.
  *
- * Unit test file for time Range class
- *  Created on: 31 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * Covers default construction, single- and double-parameter construction,
+ * and range-based iteration correctness.
+ *
+ * @date 31 Dec 2023
+ * @authors Volkan Kumtepeli, Becky Perriment
  */
 
 #include <dtwc.hpp>

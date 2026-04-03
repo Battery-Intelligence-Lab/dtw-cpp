@@ -15,6 +15,7 @@
  * @warning Experimental — not exposed in CLI. Use FastCLARA for large N.
  *          Promote only after benchmarks justify.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

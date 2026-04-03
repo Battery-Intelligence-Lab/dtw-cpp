@@ -1,4 +1,8 @@
-"""Tests for dtwcpp.io — CSV, HDF5, and Parquet I/O utilities."""
+"""
+@file test_io.py
+@brief Tests for dtwcpp.io — CSV, HDF5, and Parquet I/O utilities.
+@author Volkan Kumtepeli
+"""
 
 from __future__ import annotations
 

@@ -1,3 +1,6 @@
+%> @file dunn_index.m
+%> @brief Compute the Dunn index.
+%> @author Volkan Kumtepeli
 function di = dunn_index(prob)
 %DUNN_INDEX Compute the Dunn index.
 %

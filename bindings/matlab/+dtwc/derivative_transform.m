@@ -1,3 +1,6 @@
+%> @file derivative_transform.m
+%> @brief Apply the Keogh-Pazzani derivative transform.
+%> @author Volkan Kumtepeli
 function dx = derivative_transform(x)
 %DERIVATIVE_TRANSFORM Apply the Keogh-Pazzani derivative transform.
 %

@@ -1,3 +1,6 @@
+%> @file Problem.m
+%> @brief OOP wrapper for the DTWC++ Problem class.
+%> @author Volkan Kumtepeli
 classdef Problem < handle
 %PROBLEM OOP wrapper for the DTWC++ Problem class.
 %

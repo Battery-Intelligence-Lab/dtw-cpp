@@ -18,6 +18,7 @@
  *   5. Full Problem pipeline with ndim=3: WDTW, distance matrix, cluster, all metrics finite
  *   6. Performance comparison ndim=1 vs ndim=3: timing sanity check
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

@@ -8,6 +8,7 @@
  *   Weighted dynamic time warping for time series classification.
  *   Pattern Recognition, 44(9), 2231-2240.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

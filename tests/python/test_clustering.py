@@ -1,4 +1,8 @@
-"""Tests for clustering (FastPAM) via DTWC++ Python bindings."""
+"""
+@file test_clustering.py
+@brief Tests for clustering (FastPAM) via DTWC++ Python bindings.
+@author Volkan Kumtepeli
+"""
 
 import numpy as np
 import pytest

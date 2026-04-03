@@ -15,6 +15,7 @@
  *   The goal is to confirm AROW is not catastrophically slower (same O(n*m)
  *   complexity, different recurrence branch).
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

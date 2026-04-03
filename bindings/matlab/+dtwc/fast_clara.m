@@ -1,3 +1,6 @@
+%> @file fast_clara.m
+%> @brief Run FastCLARA: scalable k-medoids via subsampling + FastPAM.
+%> @author Volkan Kumtepeli
 function result = fast_clara(prob, k, varargin)
 %FAST_CLARA Run FastCLARA: scalable k-medoids via subsampling + FastPAM.
 %

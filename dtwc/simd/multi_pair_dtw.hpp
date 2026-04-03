@@ -11,6 +11,7 @@
  *          The rolling buffer becomes 4-wide: each position holds a Vec<double,4>
  *          with one element per pair. The recurrence is identical across lanes.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

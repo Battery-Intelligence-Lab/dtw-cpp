@@ -13,7 +13,8 @@
  *     NOTE: DBI and CH index are currently commented out in scores.cpp.
  *           Tests for those are included as DISABLED (skipped) sections.
  *
- * @date 2026-03-28
+ * @author Volkan Kumtepeli
+ * @date 28 Mar 2026
  */
 
 #include <dtwc.hpp>

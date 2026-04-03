@@ -1,3 +1,6 @@
+%> @file fast_pam.m
+%> @brief Run FastPAM1 k-medoids clustering on a Problem.
+%> @author Volkan Kumtepeli
 function result = fast_pam(prob, k, varargin)
 %FAST_PAM Run FastPAM1 k-medoids clustering on a Problem.
 %

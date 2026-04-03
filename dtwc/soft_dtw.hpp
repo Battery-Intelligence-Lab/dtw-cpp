@@ -11,6 +11,7 @@
  * Reference: Cuturi & Blondel (2017), "Soft-DTW: a Differentiable Loss
  *            Function for Time-Series"
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

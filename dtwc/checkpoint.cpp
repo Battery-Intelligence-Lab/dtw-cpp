@@ -2,6 +2,7 @@
  * @file checkpoint.cpp
  * @brief Implementation of checkpoint save/load for distance matrix computation.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

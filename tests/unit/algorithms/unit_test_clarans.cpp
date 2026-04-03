@@ -5,6 +5,7 @@
  * @details Tests verify correctness, determinism, edge cases, and budget
  * enforcement for dtwc::algorithms::clarans.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

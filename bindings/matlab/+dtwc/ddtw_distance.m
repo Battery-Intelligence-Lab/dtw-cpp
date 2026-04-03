@@ -1,3 +1,6 @@
+%> @file ddtw_distance.m
+%> @brief Compute Derivative DTW distance between two time series.
+%> @author Volkan Kumtepeli
 function d = ddtw_distance(x, y, varargin)
 %DDTW_DISTANCE Compute Derivative DTW distance between two time series.
 %

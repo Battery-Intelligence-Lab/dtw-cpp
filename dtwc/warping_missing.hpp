@@ -15,6 +15,7 @@
  *            "Estimating DTW Distance Between Time Series with Missing Data."
  *            ECML-PKDD 2023, LNCS 14173.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

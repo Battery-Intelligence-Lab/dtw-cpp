@@ -12,7 +12,8 @@
  *
  * All tests use Catch2 (NOT Google Test).
  *
- * @date 2026-04-02
+ * @author Volkan Kumtepeli
+ * @date 02 Apr 2026
  */
 
 #include <catch2/catch_test_macros.hpp>

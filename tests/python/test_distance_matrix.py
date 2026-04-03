@@ -1,4 +1,8 @@
-"""Tests for DenseDistanceMatrix Python bindings."""
+"""
+@file test_distance_matrix.py
+@brief Tests for DenseDistanceMatrix Python bindings.
+@author Volkan Kumtepeli
+"""
 
 import math
 

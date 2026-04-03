@@ -18,6 +18,7 @@
  *  7. SquaredL2 metric with missing data.
  *  8. Float specialisation of is_missing.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

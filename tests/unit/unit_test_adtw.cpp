@@ -8,6 +8,7 @@
  * Reference: Herrmann & Shifaz (2023), "Amercing: An intuitive and effective
  *            constraint for DTW"
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

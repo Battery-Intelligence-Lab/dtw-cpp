@@ -7,6 +7,7 @@
  * tie-breaking: among equal-distance pairs the lexicographically smallest
  * (a, b) pair (with a < b) is chosen first.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

@@ -5,6 +5,7 @@
  * @details DTWOptions bundles every knob that can be set at runtime for the
  *          binding-friendly (non-template) DTW entry point.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

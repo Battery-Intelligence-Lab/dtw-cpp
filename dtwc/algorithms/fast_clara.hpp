@@ -13,6 +13,7 @@
  * CLARA avoids O(N^2) memory by running PAM on subsamples of size s << N,
  * then assigning all N points to the best medoids found.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

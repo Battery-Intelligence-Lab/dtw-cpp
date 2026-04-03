@@ -1,3 +1,6 @@
+%> @file DTWClustering.m
+%> @brief K-medoids clustering with DTW distance via DTWC++.
+%> @author Volkan Kumtepeli
 classdef DTWClustering
 %DTWCLUSTERING K-medoids clustering with DTW distance via DTWC++.
 %
@@ -42,6 +45,7 @@ classdef DTWClustering
 %       Sum of intra-cluster DTW distances.
 %
 %   See also dtwc.Problem, dtwc.fast_pam, dtwc.dtw_distance
+% @author Volkan Kumtepeli
 
     properties
         NClusters (1,1) {mustBePositive, mustBeInteger} = 3

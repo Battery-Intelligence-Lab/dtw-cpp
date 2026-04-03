@@ -5,6 +5,7 @@
  * @details Tests verify correctness, convergence, and quality of FastPAM
  * against basic invariants and compared to Lloyd-style k-medoids.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

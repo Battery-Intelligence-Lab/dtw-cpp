@@ -5,6 +5,7 @@
  * Verifies that daviesBouldinIndex returns a positive value for
  * a clustered dataset, not always 0 as the buggy version did.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

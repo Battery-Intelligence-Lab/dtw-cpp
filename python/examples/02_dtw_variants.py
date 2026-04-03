@@ -1,7 +1,8 @@
 """
-DTWC++ DTW Variants — Compare all 5 DTW distance measures.
-
-Demonstrates: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW.
+@file 02_dtw_variants.py
+@brief DTWC++ DTW Variants — Compare all 5 DTW distance measures.
+@details Demonstrates: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW.
+@author Volkan Kumtepeli
 """
 
 import numpy as np

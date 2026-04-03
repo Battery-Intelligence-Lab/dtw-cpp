@@ -2,6 +2,7 @@
  * @file unit_test_scratch_matrix.cpp
  * @brief Unit tests for ScratchMatrix class.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

@@ -5,6 +5,7 @@
  * Verifies diagonal zeros, symmetry, non-negativity, and consistency
  * between fillDistanceMatrix and individual pair computations.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

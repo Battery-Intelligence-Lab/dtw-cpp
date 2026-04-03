@@ -23,6 +23,7 @@
  * @note NO #pragma once — this header is intentionally re-included once per
  *       ISA target by Highway's foreach_target.h mechanism.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

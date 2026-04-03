@@ -1,3 +1,6 @@
+%> @file test_mex.m
+%> @brief DTWC++ MEX Binding Test Suite (Comprehensive).
+%> @author Volkan Kumtepeli
 %% DTWC++ MEX Binding Test Suite (Comprehensive)
 % Run with: matlab -batch "addpath('build/bin'); addpath('bindings/matlab'); test_mex"
 %
@@ -24,6 +27,7 @@ catch e
 end
 
 %% Test 2: DTW distance (banded)
+% @author Volkan Kumtepeli
 try
     x = sin(linspace(0, 2*pi, 100));
     y = cos(linspace(0, 2*pi, 100));
@@ -37,6 +41,7 @@ catch e
 end
 
 %% Test 3: Self-distance = 0
+% @author Volkan Kumtepeli
 try
     d = dtwc.dtw_distance([1 2 3 4], [1 2 3 4]);
     assert(d == 0, 'Self-distance should be zero');
@@ -48,6 +53,7 @@ catch e
 end
 
 %% Test 4: Distance matrix
+% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 50);
@@ -63,6 +69,7 @@ catch e
 end
 
 %% Test 5: DDTW distance
+% @author Volkan Kumtepeli
 try
     x = [1 3 5 7 5 3 1];
     y = [2 4 6 8 6 4 2];
@@ -79,6 +86,7 @@ catch e
 end
 
 %% Test 6: WDTW distance
+% @author Volkan Kumtepeli
 try
     x = [1 2 3 4 5];
     y = [2 3 4 5 6];
@@ -94,6 +102,7 @@ catch e
 end
 
 %% Test 7: ADTW distance
+% @author Volkan Kumtepeli
 try
     x = [1 2 3 4 5];
     y = [1 1 2 3 4 5]; % shifted
@@ -108,6 +117,7 @@ catch e
 end
 
 %% Test 8: Soft-DTW distance and gradient
+% @author Volkan Kumtepeli
 try
     x = [1 2 3 4 5];
     y = [2 3 4 5 6];
@@ -123,6 +133,7 @@ catch e
 end
 
 %% Test 9: DTW with missing data (zero-cost)
+% @author Volkan Kumtepeli
 try
     x = [1 2 NaN 4 5];
     y = [1 2 3 4 5];
@@ -140,6 +151,7 @@ catch e
 end
 
 %% Test 10: DTW-AROW
+% @author Volkan Kumtepeli
 try
     x = [1 2 NaN 4 5];
     y = [1 2 3 4 5];
@@ -153,6 +165,7 @@ catch e
 end
 
 %% Test 11: Problem class lifecycle
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('test_problem');
     assert(strcmp(prob.Name, 'test_problem'), 'Name should match');
@@ -183,6 +196,7 @@ catch e
 end
 
 %% Test 12: Problem distance matrix operations
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('dist_test');
     rng(42);
@@ -209,6 +223,7 @@ catch e
 end
 
 %% Test 13: FastPAM via Problem
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('fastpam_test');
     rng(42);
@@ -238,6 +253,7 @@ catch e
 end
 
 %% Test 14: FastCLARA
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('clara_test');
     rng(42);
@@ -257,6 +273,7 @@ catch e
 end
 
 %% Test 15: CLARANS
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('clarans_test');
     rng(42);
@@ -276,6 +293,7 @@ catch e
 end
 
 %% Test 16: Hierarchical clustering (build + cut)
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('hier_test');
     rng(42);
@@ -302,6 +320,7 @@ catch e
 end
 
 %% Test 17: Scoring functions
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('score_test');
     rng(42);
@@ -336,6 +355,7 @@ catch e
 end
 
 %% Test 18: ARI and NMI
+% @author Volkan Kumtepeli
 try
     labels_true = int32([1 1 1 2 2 2 3 3 3 3]);
     labels_pred = int32([1 1 2 2 2 3 3 3 3 3]);
@@ -363,6 +383,7 @@ catch e
 end
 
 %% Test 19: Derivative transform and z_normalize utilities
+% @author Volkan Kumtepeli
 try
     x = [1 3 5 7 5 3 1];
     dx = dtwc.derivative_transform(x);
@@ -383,6 +404,7 @@ catch e
 end
 
 %% Test 20: DTWClustering high-level API
+% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 50);
@@ -402,6 +424,7 @@ catch e
 end
 
 %% Test 21: DTWClustering with variant
+% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 30);
@@ -418,6 +441,7 @@ catch e
 end
 
 %% Test 22: Problem set_variant
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('variant_test');
     rng(42);
@@ -438,6 +462,7 @@ catch e
 end
 
 %% Test 23: Problem set_distance_matrix
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('setdist_test');
     rng(42);
@@ -461,6 +486,7 @@ catch e
 end
 
 %% Test 24: Error handling (invalid handle)
+% @author Volkan Kumtepeli
 try
     caught = false;
     try
@@ -478,6 +504,7 @@ catch e
 end
 
 %% Test 25: Error handling (unknown command)
+% @author Volkan Kumtepeli
 try
     caught = false;
     try
@@ -495,6 +522,7 @@ catch e
 end
 
 %% Test 26: Problem delete and handle cleanup
+% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('delete_test');
     h = prob.get_handle();
@@ -516,6 +544,7 @@ catch e
 end
 
 %% Summary
+% @author Volkan Kumtepeli
 fprintf('\n=== Results: %d passed, %d failed out of %d ===\n', passed, failed, passed + failed);
 
 if failed == 0

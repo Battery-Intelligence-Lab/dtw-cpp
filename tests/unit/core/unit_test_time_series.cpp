@@ -3,6 +3,7 @@
  * @brief Unit tests for TimeSeriesView and TimeSeries.
  *
  * @date 28 Mar 2026
+ * @author Volkan Kumtepeli
  */
 
 #include <core/time_series.hpp>

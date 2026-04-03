@@ -9,6 +9,7 @@
  *
  * Also covers Problem::ZeroCost wiring for ndim > 1.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

@@ -2,6 +2,7 @@
  * @file dtw.cpp
  * @brief Implementation of the runtime-dispatched DTW entry point.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

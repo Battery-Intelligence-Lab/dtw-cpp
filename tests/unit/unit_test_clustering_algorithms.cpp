@@ -5,6 +5,7 @@
  * Tests PAM (k-medoids) convergence, label validity, medoid validity,
  * cost monotonicity, seed sensitivity, and edge cases.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

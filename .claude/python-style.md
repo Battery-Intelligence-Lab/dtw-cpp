@@ -1,367 +1,72 @@
 # DTWC++ Python Style Guide
 
-This document describes the Python coding conventions for the DTWC++ project bindings and scripts.
-
 ## Python Version
 
 - **Minimum:** Python 3.9
-- **Recommended:** Python 3.11+
+- **Supported:** 3.9 through 3.14
 
-## Style Standard
+## Style
 
-Follow [PEP 8](https://peps.python.org/pep-0008/) with the following project-specific guidelines.
+Follow PEP 8. Use `ruff` for linting and formatting.
 
-## Naming Conventions
+## Naming
 
-### Modules
-- **snake_case**, lowercase
-- Examples: `setup.py`, `py_main.cpp`, `ucr_benchmark.py`
-
-### Classes
-- **PascalCase**
-- Examples: `CMakeExtension`, `CMakeBuild`, `DTW`, `KMedoids`
-
-### Functions and Methods
-- **snake_case**
-- Examples: `build_extension`, `get_ext_fullpath`, `fit`, `predict`
-
-### Variables
-- **snake_case**
-- Examples: `ext_fullpath`, `cmake_args`, `n_clusters`
-
-### Constants
-- **UPPER_SNAKE_CASE**
-- Examples: `PLAT_TO_CMAKE`, `DEFAULT_BAND_WIDTH`
-
-### Private/Internal
-- Single leading underscore: `_internal_method`
-- Double underscore for name mangling (rare): `__private`
-
-## Type Hints
-
-Use type hints for function signatures (Python 3.9+ style):
-
-```python
-def build_extension(self, ext: CMakeExtension) -> None:
-    ...
-
-def fit(self, X: np.ndarray) -> "KMedoids":
-    ...
-```
-
-For complex types, use built-in generics (Python 3.9+) or `typing` module:
-```python
-from typing import Optional, Union
-
-def cluster(
-    self,
-    data: list[np.ndarray],
-    n_clusters: int,
-    initial_medoids: Optional[list[int]] = None
-) -> np.ndarray:
-    ...
-```
-
-## Imports
-
-### Order
-1. Standard library imports
-2. Related third-party imports
-3. Local application imports
-
-Separate each group with a blank line:
-
-```python
-import os
-import sys
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-
-from dtwcpp import DTW, KMedoids
-```
-
-### Import Style
-- Prefer explicit imports over `from module import *`
-- Group related imports on same line if short
+- Modules: `snake_case` (`_clustering.py`, `__init__.py`)
+- Classes: `PascalCase` (`DTWClustering`, `Problem`)
+- Functions: `snake_case` (`dtw_distance`, `fast_pam`, `check_system`)
+- Constants: `UPPER_SNAKE_CASE` (`CUDA_AVAILABLE`, `OPENMP_AVAILABLE`)
 
 ## Docstrings
 
-Use NumPy-style docstrings for consistency with scientific Python packages:
+NumPy-style for consistency with scientific Python:
 
 ```python
-def dtw_distance(x: np.ndarray, y: np.ndarray, band: int = -1) -> float:
-    """
-    Compute Dynamic Time Warping distance between two time series.
+def dtw_distance(x, y, band=-1, metric="l1"):
+    """Compute DTW distance between two time series.
 
     Parameters
     ----------
-    x : np.ndarray
-        First time series (1D array).
-    y : np.ndarray
-        Second time series (1D array).
+    x : array-like
+        First time series.
+    y : array-like
+        Second time series.
     band : int, optional
-        Sakoe-Chiba band width. -1 means no constraint (default).
+        Sakoe-Chiba band width. -1 for full DTW.
 
     Returns
     -------
     float
-        The DTW distance between x and y.
-
-    Examples
-    --------
-    >>> x = np.array([1, 2, 3, 4])
-    >>> y = np.array([1, 2, 2, 3, 4])
-    >>> dtw_distance(x, y)
-    1.0
-
-    See Also
-    --------
-    distance_matrix : Compute pairwise DTW distances.
+        The DTW distance.
     """
-    ...
 ```
 
 ## Class Design
 
-### scikit-learn Compatible API (Partial)
+- `DTWClustering` inherits `sklearn.BaseEstimator + ClusterMixin` (optional sklearn dep)
+- `fit(X)`, `predict(X)`, `fit_predict(X)` API
+- Attributes: `labels_`, `medoid_indices_`, `inertia_`
 
-DTW k-medoids has fundamental mismatches with sklearn's estimator API:
-- `predict()` computes DTW to all medoids on-the-fly (not centroid-based)
-- `cluster_centers_` is misleading (medoids are actual data points, not means)
-- `check_estimator()` will fail due to variable-length series and metric assumptions
+## Bindings (nanobind)
 
-**Decision:** Inherit `BaseEstimator` + `ClusterMixin` for basic compatibility. Provide:
-- `labels_`, `medoid_indices_`, `medoids_`, `inertia_`
-- `predict()` with docstring warning about on-the-fly DTW computation
-- Skip `transform()` (distance matrix shape N x N doesn't match sklearn's N x k)
+- Release GIL for any C++ call >10ms: `nb::gil_scoped_release`
+- Zero-copy numpy via `nb::ndarray` with `nb::capsule` ownership
+- Accept lists and numpy arrays; convert internally with `np.asarray`
 
-```python
-class KMedoids:
-    """K-Medoids clustering using DTW distance.
-
-    Parameters
-    ----------
-    n_clusters : int
-        Number of clusters.
-    metric : str, default="dtw"
-        Distance metric to use.
-    random_state : int, optional
-        Random seed for reproducibility.
-
-    Attributes
-    ----------
-    labels_ : np.ndarray
-        Cluster labels for each sample.
-    medoid_indices_ : np.ndarray
-        Indices of medoid samples in the input data.
-    medoids_ : list[np.ndarray]
-        The actual medoid time series (data points, not means).
-    inertia_ : float
-        Sum of distances to closest medoid.
-    """
-
-    def __init__(
-        self,
-        n_clusters: int,
-        metric: str = "dtw",
-        random_state: Optional[int] = None
-    ):
-        self.n_clusters = n_clusters
-        self.metric = metric
-        self.random_state = random_state
-
-    def fit(self, X) -> "KMedoids":
-        """Fit the K-Medoids model.
-
-        Parameters
-        ----------
-        X : array-like
-            Training data (see Variable-Length Series Input below).
-
-        Returns
-        -------
-        self
-            Fitted estimator.
-        """
-        ...
-        return self
-
-    def predict(self, X) -> np.ndarray:
-        """Predict cluster labels for samples.
-
-        Warning: This computes DTW distance to all medoids on-the-fly,
-        which is O(n_new * k * L^2). For large datasets, consider using
-        fit_predict() instead.
-        """
-        ...
-
-    def fit_predict(self, X) -> np.ndarray:
-        """Fit and return cluster labels."""
-        return self.fit(X).labels_
-```
-
-### Variable-Length Series Input
-
-The `fit()` method must accept multiple input formats:
-```python
-def fit(self, X):
-    """
-    Parameters
-    ----------
-    X : array-like
-        Time series data. Accepted formats:
-        - numpy ndarray of shape (n_samples, n_timesteps) -- equal-length
-        - list of 1D numpy arrays -- variable-length series
-        - pandas DataFrame -- rows are series
-    """
-```
-
-C++ side: `vector<vector<double>>` for variable-length, buffer protocol for rectangular.
-
-## NumPy Integration
-
-### Array Handling
-- Accept both lists and numpy arrays
-- Convert to numpy internally if needed
-- Return numpy arrays for consistency
-
-```python
-def distance_matrix(X):
-    X = np.asarray(X)  # Convert if needed
-    # ... compute ...
-    return result  # Return numpy array
-```
-
-### Memory Efficiency
-- Use `np.ascontiguousarray()` before passing to C++ if needed
-- Document when zero-copy is possible
-
-## Error Handling
-
-### Exceptions
-- Use built-in exceptions when appropriate
-- Create custom exceptions for domain-specific errors
-
-```python
-class DTWError(Exception):
-    """Base exception for DTW-related errors."""
-    pass
-
-class InvalidBandWidthError(DTWError):
-    """Raised when band width is invalid."""
-    pass
-```
-
-### Validation
-- Validate inputs at public API boundaries
-- Provide clear error messages
-
-```python
-def fit(self, X):
-    if X.ndim != 2:
-        raise ValueError(f"X must be 2D, got {X.ndim}D")
-    if X.shape[0] < self.n_clusters:
-        raise ValueError(
-            f"n_samples={X.shape[0]} must be >= n_clusters={self.n_clusters}"
-        )
-```
-
-## Testing
-
-### pytest Style
-```python
-import pytest
-import numpy as np
-from dtwcpp import DTW, KMedoids
-
-
-class TestDTW:
-    def test_same_series_zero_distance(self):
-        """Distance to self should be zero."""
-        x = np.array([1, 2, 3, 4, 5])
-        dtw = DTW()
-        assert dtw.distance(x, x) == 0.0
-
-    def test_symmetric(self):
-        """DTW distance should be symmetric."""
-        x = np.array([1, 2, 3])
-        y = np.array([1, 2, 2, 3])
-        dtw = DTW()
-        assert dtw.distance(x, y) == dtw.distance(y, x)
-
-    @pytest.mark.parametrize("band", [1, 5, 10])
-    def test_banded_dtw(self, band):
-        """Banded DTW should not exceed full DTW."""
-        x = np.random.randn(100)
-        y = np.random.randn(100)
-        dtw_full = DTW().distance(x, y)
-        dtw_banded = DTW(band=band).distance(x, y)
-        assert dtw_banded >= dtw_full
-```
-
-### Fixtures
-```python
-@pytest.fixture
-def sample_data():
-    """Generate sample time series data."""
-    np.random.seed(42)
-    return np.random.randn(50, 100)  # 50 series, length 100
-```
-
-## Formatting Tools
-
-### Black
-Use Black for automatic formatting:
-```bash
-black path/to/file.py
-```
-
-### isort
-Use isort for import sorting (compatible with Black):
-```bash
-isort path/to/file.py
-```
-
-### Configuration
-In `pyproject.toml`:
-```toml
-[tool.black]
-line-length = 88
-target-version = ['py39', 'py310', 'py311', 'py312']
-
-[tool.isort]
-profile = "black"
-```
-
-## Project Structure
+## Package Structure
 
 ```
 python/
-├── dtwcpp/
-│   ├── __init__.py      # Package init, version, public API
-│   ├── _core.py         # Internal wrapper around C++ bindings
-│   ├── dtw.py           # DTW class
-│   ├── clustering.py    # KMedoids, CLARA classes
-│   └── metrics.py       # Evaluation metrics
-├── tests/
-│   ├── __init__.py
-│   ├── test_dtw.py
-│   ├── test_clustering.py
-│   └── conftest.py      # pytest fixtures
-└── py_main.cpp          # pybind11 bindings
+  dtwcpp/
+    __init__.py       # Public API, check_system()
+    _clustering.py    # DTWClustering sklearn-compatible class
+    io.py             # CSV/HDF5/Parquet I/O utilities
+  src/
+    _dtwcpp_core.cpp  # nanobind C++ bindings
 ```
 
-## Package Metadata
+## Build & Publish
 
-In `__init__.py`:
-```python
-"""DTWC++ - Dynamic Time Warping Clustering Library."""
-
-from ._version import __version__
-from .dtw import DTW
-from .clustering import KMedoids, CLARA
-
-__all__ = ["DTW", "KMedoids", "CLARA", "__version__"]
-```
+- **Build system:** scikit-build-core + nanobind + CMake
+- **Package manager:** `uv` (not pip)
+- **Wheels:** cibuildwheel for cp39-cp314 on Linux/macOS/Windows
+- **Publish:** `uv publish` with OIDC trusted publishing

@@ -6,6 +6,7 @@
  * interpolate_linear() — all of which use bitwise NaN detection safe
  * under -ffast-math / /fp:fast.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

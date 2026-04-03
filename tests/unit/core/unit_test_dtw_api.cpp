@@ -6,6 +6,7 @@
  *          produce identical results to the underlying warping.hpp
  *          functions they delegate to.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

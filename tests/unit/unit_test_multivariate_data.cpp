@@ -3,6 +3,7 @@
  * @brief Unit tests for multivariate support: Data::ndim, series_length,
  *        validate_ndim, and TimeSeriesView ndim/at()/flat_size().
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

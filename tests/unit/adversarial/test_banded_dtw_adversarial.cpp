@@ -6,6 +6,7 @@
  *   H. Sakoe and S. Chiba, "Dynamic programming algorithm optimization for spoken
  *   word recognition". IEEE Trans. Acoustics, Speech, Signal Processing, 26(1), 43-49 (1978).
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

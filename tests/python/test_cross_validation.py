@@ -1,8 +1,10 @@
 """
-Cross-validation tests: verify C++ and Python interfaces give identical results.
-
+@file test_cross_validation.py
+@brief Cross-validation tests: verify C++ and Python interfaces give identical results.
+@details
 These tests compute DTW distances through both the direct C++ bindings and
 the Python sugar layer, ensuring they produce the same numerical results.
+@author Volkan Kumtepeli
 """
 
 import numpy as np

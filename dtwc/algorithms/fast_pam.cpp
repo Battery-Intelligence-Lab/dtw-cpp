@@ -13,6 +13,7 @@
  *          reduces total cost, using nearest/second-nearest caching for
  *          O(N) per swap candidate evaluation.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

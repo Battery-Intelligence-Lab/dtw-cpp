@@ -10,6 +10,7 @@
  *          Within each rank, OpenMP is used for thread-level parallelism
  *          when available.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

@@ -11,6 +11,7 @@
  *     `throw std::runtime_error(...)`. The test uses REQUIRE_THROWS_AS(...,
  *     std::runtime_error) which will FAIL until the bug is fixed.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

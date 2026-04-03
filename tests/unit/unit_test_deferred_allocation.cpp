@@ -7,6 +7,7 @@
  * to fillDistanceMatrix(). Also verifies that distByInd() works both before
  * and after allocation.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

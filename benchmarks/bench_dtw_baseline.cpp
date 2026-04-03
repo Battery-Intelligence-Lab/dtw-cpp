@@ -6,6 +6,7 @@
  *          fillDistanceMatrix before any optimisation work begins.
  *          Uses Google Benchmark with deterministic random data (fixed seeds).
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

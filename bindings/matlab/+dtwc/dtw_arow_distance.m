@@ -1,3 +1,6 @@
+%> @file dtw_arow_distance.m
+%> @brief Compute DTW-AROW distance (diagonal-only for missing).
+%> @author Volkan Kumtepeli
 function d = dtw_arow_distance(x, y, varargin)
 %DTW_AROW_DISTANCE Compute DTW-AROW distance (diagonal-only for missing).
 %
@@ -26,6 +29,7 @@ function d = dtw_arow_distance(x, y, varargin)
 %              Time Series with Missing Data" (ECML-PKDD 2023)
 %
 %   See also dtwc.dtw_distance_missing, dtwc.dtw_distance
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

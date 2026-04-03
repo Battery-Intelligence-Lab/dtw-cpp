@@ -6,6 +6,7 @@
  *          element-wise max(0, max(q-U, L-q)), horizontal sum. Processes 4 doubles
  *          per iteration on AVX2, 8 on AVX-512.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

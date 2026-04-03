@@ -12,6 +12,7 @@
  *     template parameter is float. This test checks that explicit and
  *     deduced calls agree, and that banded matches full DTW for wide bands.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

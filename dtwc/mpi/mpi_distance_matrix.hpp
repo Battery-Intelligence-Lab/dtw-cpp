@@ -8,6 +8,7 @@
  *          non-overlapping positions).
  *          All ranks must hold all N series (replicated data).
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

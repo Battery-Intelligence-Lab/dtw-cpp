@@ -5,6 +5,7 @@
  * @details Provides a bitwise NaN check that is safe under -ffast-math and /fp:fast,
  *          plus helper functions for detecting and interpolating missing values.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

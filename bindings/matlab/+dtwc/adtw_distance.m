@@ -1,3 +1,6 @@
+%> @file adtw_distance.m
+%> @brief Compute Amerced DTW distance between two time series.
+%> @author Volkan Kumtepeli
 function d = adtw_distance(x, y, varargin)
 %ADTW_DISTANCE Compute Amerced DTW distance between two time series.
 %

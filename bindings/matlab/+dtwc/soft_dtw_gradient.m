@@ -1,3 +1,6 @@
+%> @file soft_dtw_gradient.m
+%> @brief Compute gradient of Soft-DTW w.r.t. first series.
+%> @author Volkan Kumtepeli
 function g = soft_dtw_gradient(x, y, varargin)
 %SOFT_DTW_GRADIENT Compute gradient of Soft-DTW w.r.t. first series.
 %

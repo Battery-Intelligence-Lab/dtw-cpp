@@ -1,7 +1,8 @@
 """
-DTWC++ Clustering Evaluation — Compare clustering quality across DTW variants.
-
-Demonstrates: DTWClustering with different variants, silhouette scores, DBI.
+@file 03_clustering_evaluation.py
+@brief DTWC++ Clustering Evaluation — Compare clustering quality across DTW variants.
+@details Demonstrates: DTWClustering with different variants, silhouette scores, DBI.
+@author Volkan Kumtepeli
 """
 
 import numpy as np

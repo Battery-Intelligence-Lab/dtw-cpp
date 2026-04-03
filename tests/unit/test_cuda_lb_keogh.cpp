@@ -10,6 +10,7 @@
  *          - Pruned distance matrix via use_lb_pruning option
  *          - Edge cases (single series, empty series, varying lengths)
  *
+ * @author Volkan Kumtepeli
  * @date 01 Apr 2026
  */
 

@@ -9,7 +9,7 @@ languageCode = "en"
 [params]
   description = "Official documentation of DTWC++ software."
   logo = "docs_logo.png"
-  version = "v1.0.0"
+  version = "v2.0.0"
   edit_on_github = true
   edit_branch = "main"
   repo_url = "https://github.com/Battery-Intelligence-Lab/dtw-cpp/"

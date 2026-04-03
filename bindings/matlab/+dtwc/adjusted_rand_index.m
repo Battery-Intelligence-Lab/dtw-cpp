@@ -1,3 +1,6 @@
+%> @file adjusted_rand_index.m
+%> @brief Compute the Adjusted Rand Index between two clusterings.
+%> @author Volkan Kumtepeli
 function ari = adjusted_rand_index(labels1, labels2)
 %ADJUSTED_RAND_INDEX Compute the Adjusted Rand Index between two clusterings.
 %

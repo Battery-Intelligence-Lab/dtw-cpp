@@ -1,3 +1,6 @@
+%> @file check_system.m
+%> @brief Print a diagnostic summary of available DTWC++ backends.
+%> @author Volkan Kumtepeli
 function check_system()
 %CHECK_SYSTEM Print a diagnostic summary of available DTWC++ backends.
 %

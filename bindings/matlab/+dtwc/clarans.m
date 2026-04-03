@@ -1,3 +1,6 @@
+%> @file clarans.m
+%> @brief Run CLARANS: randomized k-medoids via neighborhood search.
+%> @author Volkan Kumtepeli
 function result = clarans(prob, k, varargin)
 %CLARANS Run CLARANS: randomized k-medoids via neighborhood search.
 %

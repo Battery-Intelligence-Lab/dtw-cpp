@@ -6,6 +6,7 @@
  *          and scaling with N (number of series) and L (series length).
  *          Uses Google Benchmark with deterministic random data.
  *
+ * @author Volkan Kumtepeli
  * @date 01 Apr 2026
  */
 

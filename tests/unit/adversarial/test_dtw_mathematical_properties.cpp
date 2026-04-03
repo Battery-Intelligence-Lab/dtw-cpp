@@ -7,7 +7,8 @@
  *          symmetry, non-negativity, known values, and cross-variant
  *          equivalence for dtwFull, dtwFull_L, and dtwBanded.
  *
- * @date 2026-03-28
+ * @author Volkan Kumtepeli
+ * @date 28 Mar 2026
  */
 
 #include <catch2/catch_test_macros.hpp>

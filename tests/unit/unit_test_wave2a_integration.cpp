@@ -11,6 +11,7 @@
  *
  * All tests use Catch2 with MSVC/C++17.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

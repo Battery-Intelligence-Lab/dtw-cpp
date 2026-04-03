@@ -1,6 +1,7 @@
 """
-DTWC++ FastCLARA — Scalable k-medoids for large datasets.
-
+@file 05_fast_clara.py
+@brief DTWC++ FastCLARA — Scalable k-medoids for large datasets.
+@details
 Demonstrates: fast_clara() for datasets too large for full PAM,
 CLARAOptions, comparison with FastPAM.
 
@@ -10,6 +11,7 @@ medoids, avoiding the O(N^2) distance matrix of full PAM.
 References:
   Kaufman & Rousseeuw (1990). "Finding Groups in Data."
   Schubert & Rousseeuw (2021). JMLR 22(1), 4653-4688.
+@author Volkan Kumtepeli
 """
 
 import numpy as np

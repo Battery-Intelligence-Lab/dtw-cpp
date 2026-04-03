@@ -1,3 +1,6 @@
+%> @file silhouette.m
+%> @brief Compute silhouette scores for each data point.
+%> @author Volkan Kumtepeli
 function s = silhouette(prob)
 %SILHOUETTE Compute silhouette scores for each data point.
 %

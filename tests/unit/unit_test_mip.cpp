@@ -7,6 +7,7 @@
  * that the MIPSettings struct and warm start path compile and don't crash.
  * On machines with HiGHS enabled, the tests verify solution quality.
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

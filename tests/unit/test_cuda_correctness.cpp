@@ -2,6 +2,7 @@
  * @file test_cuda_correctness.cpp
  * @brief CUDA DTW correctness tests: compare GPU distance matrix against CPU reference.
  *
+ * @author Volkan Kumtepeli
  * @date 01 Apr 2026
  */
 

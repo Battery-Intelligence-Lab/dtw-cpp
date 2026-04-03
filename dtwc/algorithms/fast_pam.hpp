@@ -12,6 +12,7 @@
  * within their own cluster. It maintains nearest and second-nearest medoid
  * information per point for O(N*k) swap evaluation instead of O(N*k*N).
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

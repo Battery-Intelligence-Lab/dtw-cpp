@@ -1,3 +1,6 @@
+%> @file inertia.m
+%> @brief Compute the inertia (total within-cluster distance sum).
+%> @author Volkan Kumtepeli
 function val = inertia(prob)
 %INERTIA Compute the inertia (total within-cluster distance sum).
 %

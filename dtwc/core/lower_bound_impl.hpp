@@ -13,7 +13,8 @@
  *            similarity search supporting time warping in large sequence
  *            databases," Proc. 17th ICDE (2001): 607-614.
  *
- * @author Claude (AI assistant)
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
  * @date 28 Mar 2026
  */
 

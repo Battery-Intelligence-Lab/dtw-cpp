@@ -6,6 +6,7 @@
  * Column-major layout for cache-friendly column-sweep patterns in DTW.
  * This matches Armadillo's memory layout (column-major / Fortran order).
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

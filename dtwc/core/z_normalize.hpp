@@ -6,6 +6,7 @@
  * standard deviation). Series with near-zero standard deviation are set to
  * all zeros to avoid numerical instability.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

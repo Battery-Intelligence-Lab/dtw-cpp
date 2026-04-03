@@ -1,12 +1,14 @@
 """
-DTWC++ Checkpointing — Save and resume distance matrix computation.
-
+@file 07_checkpoint.py
+@brief DTWC++ Checkpointing — Save and resume distance matrix computation.
+@details
 Demonstrates: save_checkpoint(), load_checkpoint() for long-running
 computations that may need to survive crashes or interruptions.
 
 Checkpoint format:
   - distances.csv: the NxN matrix (NaN for uncomputed entries)
   - metadata.txt:  key=value metadata (n, band, pairs_computed, timestamp)
+@author Volkan Kumtepeli
 """
 
 import numpy as np

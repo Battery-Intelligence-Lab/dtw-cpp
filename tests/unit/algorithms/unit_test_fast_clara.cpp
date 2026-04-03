@@ -5,6 +5,7 @@
  * @details Tests verify correctness, reproducibility, edge cases, and quality
  * of FastCLARA compared to single-subsample PAM.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

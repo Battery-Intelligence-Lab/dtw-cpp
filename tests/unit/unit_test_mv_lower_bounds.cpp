@@ -1,6 +1,7 @@
 /**
  * @file unit_test_mv_lower_bounds.cpp
  * @brief Unit tests for per-channel multivariate LB_Keogh and SquaredL2 LB variants.
+ * @author Volkan Kumtepeli
  *
  * @details Tests cover:
  *   - compute_envelopes_mv: ndim=1 parity with scalar, ndim=2 per-channel correctness

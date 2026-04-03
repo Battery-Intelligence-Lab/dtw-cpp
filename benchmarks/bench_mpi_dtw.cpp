@@ -11,6 +11,7 @@
  *          - Scaling efficiency across different rank counts
  *          - Comparison with serial (single-process) computation
  *
+ * @author Volkan Kumtepeli
  * @date 01 Apr 2026
  */
 

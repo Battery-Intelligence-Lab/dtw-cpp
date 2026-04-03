@@ -1,6 +1,7 @@
 /**
  * @file unit_test_mv_variants.cpp
  * @brief Unit tests for multivariate WDTW, ADTW, and DDTW functions.
+ * @author Volkan Kumtepeli
  *
  * Tests cover:
  *   - wdtwFull_mv / wdtwBanded_mv: ndim=1 parity, ndim=2 identity/symmetry/non-negativity

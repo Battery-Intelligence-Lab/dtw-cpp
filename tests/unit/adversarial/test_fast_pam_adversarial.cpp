@@ -7,6 +7,7 @@
  * satisfy: label validity, medoid uniqueness, cost non-negativity, convergence, determinism,
  * quality guarantees, and known-cluster recovery.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

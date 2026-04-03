@@ -4,7 +4,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "dtwcpp"
-version = "1.0.0"
+version = "2.0.0"
 description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
 readme = "README.md"
 license = {text = "BSD-3-Clause"}

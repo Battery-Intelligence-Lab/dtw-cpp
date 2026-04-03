@@ -8,7 +8,7 @@
  *   - Identical series yield LB == 0
  *   - Edge cases (single element, empty series)
  *
- * @author Claude (AI assistant)
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

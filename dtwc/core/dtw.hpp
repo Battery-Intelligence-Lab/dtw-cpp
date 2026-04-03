@@ -9,6 +9,7 @@
  *          This header does NOT rewrite any DTW algorithm; it delegates to
  *          dtwFull_L / dtwBanded in warping.hpp.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

@@ -1,4 +1,8 @@
-"""Tests for the Problem class Python bindings."""
+"""
+@file test_problem.py
+@brief Tests for the Problem class Python bindings.
+@author Volkan Kumtepeli
+"""
 
 import math
 

@@ -4,8 +4,9 @@
  *   Dunn Index, Inertia, Calinski-Harabasz Index (internal),
  *   Adjusted Rand Index, Normalized Mutual Information (external).
  *
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
  * @date 02 Apr 2026
- * @author Claude (coding agent)
  */
 
 #include <dtwc.hpp>

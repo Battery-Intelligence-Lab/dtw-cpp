@@ -1,3 +1,6 @@
+%> @file wdtw_distance.m
+%> @brief Compute Weighted DTW distance between two time series.
+%> @author Volkan Kumtepeli
 function d = wdtw_distance(x, y, varargin)
 %WDTW_DISTANCE Compute Weighted DTW distance between two time series.
 %
@@ -26,6 +29,7 @@ function d = wdtw_distance(x, y, varargin)
 %   Reference: Jeong et al. (2011), "Weighted dynamic time warping"
 %
 %   See also dtwc.dtw_distance, dtwc.adtw_distance
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

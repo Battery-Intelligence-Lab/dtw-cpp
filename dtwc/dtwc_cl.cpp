@@ -11,6 +11,7 @@
  *   dtwc_cl --config config.toml
  *   dtwc_cl --config config.yaml   (requires -DDTWC_ENABLE_YAML=ON)
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  * @authors Volkan Kumtepeli
  * @authors Becky Perriment

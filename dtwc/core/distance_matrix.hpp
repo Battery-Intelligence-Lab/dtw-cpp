@@ -7,6 +7,7 @@
  * are tracked via a separate boolean vector (not NaN sentinels), ensuring
  * correctness under -ffast-math / /fp:fast compiler flags.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

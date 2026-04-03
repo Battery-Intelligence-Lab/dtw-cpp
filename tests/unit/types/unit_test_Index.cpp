@@ -1,9 +1,12 @@
-/*
- * unit_test_Index.cpp
+/**
+ * @file unit_test_Index.cpp
+ * @brief Unit tests for the dtwc::Index class.
  *
- * Unit test file for time Index class
- *  Created on: 31 Dec 2023
- *   Author(s): Volkan Kumtepeli, Becky Perriment
+ * Covers default and parameterised construction, pre-increment/decrement,
+ * arithmetic operators (+, -, difference), subscript indexing, and equality.
+ *
+ * @date 31 Dec 2023
+ * @authors Volkan Kumtepeli, Becky Perriment
  */
 
 #include <dtwc.hpp>

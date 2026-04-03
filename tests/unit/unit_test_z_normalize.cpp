@@ -5,6 +5,7 @@
  * These tests exercise the production dtwc::core::z_normalize() and
  * dtwc::core::z_normalized() functions from dtwc/core/z_normalize.hpp.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

@@ -1,5 +1,7 @@
-"""I/O utilities for saving/loading time series data and distance matrices.
-
+"""
+@file io.py
+@brief I/O utilities for saving/loading time series data and distance matrices.
+@details
 Supported formats:
 - CSV: always available (numpy only)
 - HDF5: requires h5py (optional)
@@ -11,6 +13,7 @@ HDF5 layout::
     /names      -- (N,) variable-length string dataset
     /distmat    -- (N, N) float64 dataset, gzip-compressed (optional)
     /metadata   -- HDF5 root attributes (band, variant, etc.)
+@author Volkan Kumtepeli
 """
 
 from __future__ import annotations

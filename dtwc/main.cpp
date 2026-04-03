@@ -1,3 +1,9 @@
+/**
+ * @file main.cpp
+ * @brief Example driver for DTWC++ demonstrating basic clustering usage.
+ * @author Volkan Kumtepeli
+ */
+
 #include "dtwc.hpp"
 #include <iostream>
 #include <fstream>

@@ -1,4 +1,8 @@
-"""Tests for DTW distance functions."""
+"""
+@file test_dtw.py
+@brief Tests for DTW distance functions.
+@author Volkan Kumtepeli
+"""
 
 import math
 

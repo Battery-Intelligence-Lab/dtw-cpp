@@ -1,5 +1,3 @@
-#pragma once
-
 /**
  * @file medoid_utils.hpp
  * @brief Internal helper utilities for medoid-based clustering algorithms.
@@ -10,7 +8,11 @@
  * dense distance matrices, lazy-evaluation wrappers, or any other backend.
  *
  * Used by FastPAM, CLARANS, and improved CLARA.
+ *
+ * @author Volkan Kumtepeli
  */
+
+#pragma once
 
 #include <algorithm>
 #include <limits>

@@ -1,3 +1,6 @@
+%> @file compute_distance_matrix.m
+%> @brief Compute pairwise DTW distance matrix using DTWC++.
+%> @author Volkan Kumtepeli
 function D = compute_distance_matrix(X, varargin)
 %COMPUTE_DISTANCE_MATRIX Compute pairwise DTW distance matrix using DTWC++.
 %
@@ -22,6 +25,7 @@ function D = compute_distance_matrix(X, varargin)
 %       D = dtwc.compute_distance_matrix(X, 'Band', 5);
 %
 %   See also dtwc.dtw_distance, dtwc.DTWClustering
+% @author Volkan Kumtepeli
 
     p = inputParser;
     addRequired(p, 'X', @(v) isnumeric(v) && ismatrix(v));

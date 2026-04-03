@@ -22,8 +22,9 @@
  *   - S.-W. Kim, S. Park, W.W. Chu, "An Index-Based Approach for Similarity
  *     Search Supporting Time Warping in Large Sequence Databases", ICDE 2001.
  *
- * @author Claude Code
- * @date 2026-03-28
+ * @author Volkan Kumtepeli
+ * @author Claude 4.6
+ * @date 28 Mar 2026
  */
 
 #pragma once

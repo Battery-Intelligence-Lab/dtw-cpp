@@ -1,3 +1,6 @@
+%> @file normalized_mutual_information.m
+%> @brief Compute NMI between two clusterings.
+%> @author Volkan Kumtepeli
 function nmi = normalized_mutual_information(labels1, labels2)
 %NORMALIZED_MUTUAL_INFORMATION Compute NMI between two clusterings.
 %

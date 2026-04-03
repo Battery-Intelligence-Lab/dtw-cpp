@@ -1,6 +1,7 @@
 /**
  * @file unit_test_multivariate_dtw.cpp
  * @brief Unit tests for multivariate DTW functions and MV distance functors.
+ * @author Volkan Kumtepeli
  *
  * Tests cover:
  *   - MVL1Dist and MVSquaredL2Dist metric functors

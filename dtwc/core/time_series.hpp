@@ -6,6 +6,7 @@
  * contiguous time series data. TimeSeries owns its data and can implicitly
  * convert to a view.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

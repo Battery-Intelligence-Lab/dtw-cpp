@@ -10,6 +10,7 @@
  * Reference: E. J. Keogh and M. J. Pazzani, "Derivative Dynamic Time Warping,"
  *            SIAM International Conference on Data Mining, 2001.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

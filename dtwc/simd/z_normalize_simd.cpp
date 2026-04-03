@@ -7,6 +7,7 @@
  *          2. Squared-deviation sum for stddev
  *          3. Element-wise normalize: (x - mean) * inv_stddev
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

@@ -7,6 +7,7 @@
  *              T operator()(T a, T b) const
  *          Built-in metrics: L1, L2, SquaredL2.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

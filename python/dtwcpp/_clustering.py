@@ -1,4 +1,8 @@
-"""sklearn-compatible DTW clustering."""
+"""
+@file _clustering.py
+@brief sklearn-compatible DTW clustering.
+@author Volkan Kumtepeli
+"""
 import numpy as np
 from dtwcpp._dtwcpp_core import (
     Problem, fast_pam, silhouette, DTWVariant, DTWVariantParams,

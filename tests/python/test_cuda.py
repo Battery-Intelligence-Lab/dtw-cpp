@@ -1,4 +1,8 @@
-"""Tests for CUDA/GPU functionality in DTWC++ Python bindings."""
+"""
+@file test_cuda.py
+@brief Tests for CUDA/GPU functionality in DTWC++ Python bindings.
+@author Volkan Kumtepeli
+"""
 import warnings
 
 import numpy as np

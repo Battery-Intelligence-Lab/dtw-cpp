@@ -14,6 +14,7 @@
  *   - Kaufman & Rousseeuw (1990), "Finding Groups in Data."
  *   - Schubert & Rousseeuw (2021), JMLR 22(1), 4653-4688.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

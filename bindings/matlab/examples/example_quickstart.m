@@ -1,3 +1,6 @@
+%> @file example_quickstart.m
+%> @brief DTWC++ Quickstart Example — DTW distance, distance matrix, and clustering.
+%> @author Volkan Kumtepeli
 %% DTWC++ Quickstart Example
 % Compute DTW distance, build a distance matrix, and cluster time series.
 %
@@ -13,10 +16,12 @@ d = dtwc.dtw_distance(x, y);
 fprintf('DTW distance (sin vs cos): %.4f\n', d);
 
 % Banded DTW — constrain warping to speed up computation
+% @author Volkan Kumtepeli
 d_banded = dtwc.dtw_distance(x, y, 'Band', 10);
 fprintf('DTW distance (band=10):    %.4f\n', d_banded);
 
 %% 2. Distance matrix — computed in C++ with OpenMP
+% @author Volkan Kumtepeli
 rng(42);  % reproducibility
 N = 20;
 L = 100;
@@ -29,6 +34,7 @@ fprintf('Max:          %.4f\n', max(dm(:)));
 fprintf('Symmetric:    %d\n', issymmetric(dm));
 
 %% 3. Clustering — k-medoids with FastPAM
+% @author Volkan Kumtepeli
 clust = dtwc.DTWClustering('NClusters', 3, 'Band', 10);
 labels = clust.fit_predict(data);
 

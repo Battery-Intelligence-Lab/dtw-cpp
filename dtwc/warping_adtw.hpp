@@ -13,6 +13,7 @@
  *            effective constraint for dynamic time warping."
  *            Pattern Recognition, 137, 109301.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 

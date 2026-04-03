@@ -1,6 +1,7 @@
 /**
  * @file unit_test_mpi.cpp
  * @brief Tests for MPI distributed distance matrix computation.
+ * @author Volkan Kumtepeli
  *
  * Run with: mpiexec -n 4 ./bin/unit_test_mpi
  * Also works with -n 1 (single process) and -n 2.

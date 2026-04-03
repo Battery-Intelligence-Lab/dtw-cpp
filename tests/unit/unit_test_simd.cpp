@@ -8,6 +8,7 @@
  *          dispatch path. Tests cover various lengths (including non-power-of-2 for
  *          tail handling), edge cases, and mathematical properties.
  *
+ * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */
 

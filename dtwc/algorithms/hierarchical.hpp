@@ -7,6 +7,7 @@
  * (DTW does not satisfy the squared Euclidean distance identity required by
  * Ward's formula).
  *
+ * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */
 

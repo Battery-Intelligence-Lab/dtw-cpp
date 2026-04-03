@@ -1,4 +1,8 @@
-"""DTWC++ — Fast Dynamic Time Warping and Clustering."""
+"""
+@file __init__.py
+@brief DTWC++ — Fast Dynamic Time Warping and Clustering.
+@author Volkan Kumtepeli
+"""
 
 import numpy as _np
 
@@ -71,7 +75,7 @@ from dtwcpp._dtwcpp_core import (
     system_info as _system_info_raw,
 )
 
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 
 # Wrappers that accept both lists and numpy arrays (the C++ nb::ndarray

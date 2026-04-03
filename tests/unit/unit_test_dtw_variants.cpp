@@ -5,6 +5,7 @@
  * Tests identity, symmetry, banded-vs-full relationships,
  * diagonal-only band, different-length series, and empty series.
  *
+ * @author Volkan Kumtepeli
  * @date 28 Mar 2026
  */
 
