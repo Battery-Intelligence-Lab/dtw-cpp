@@ -4,9 +4,7 @@ on:
     branches: [develop]
   pull_request:
     branches: [main]
-    # paths:
-    #   - 'dtwc/**'
-    #   - 'docs/**'
+
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
@@ -20,64 +18,96 @@ jobs:
     steps:
       - name: Checkout current branch
         uses: actions/checkout@v6
-      
-      # Copy additional markdown files to the Jekyll source directory
-      - name: Copy CONTRIBUTING.md
-        run: sudo cp ./CONTRIBUTING.md ./docs/7_develop/
-      - name: Copy conventions.md
-        run: sudo cp ./develop/conventions.md ./docs/7_develop/
-      - name: Copy contributors.md
-        run: sudo cp ./develop/contributors.md ./docs/7_develop/
 
-      # Update links in markdown files
-      - name: Update links in markdown files
+      # --- Prepare contributing docs (copy from repo root into Hugo content) ---
+      - name: Prepare contributing docs
         run: |
-          find ./docs/7_develop/ -type f -name '*.md' -exec sed -i 's/](develop\//](/g' {} +
+          mkdir -p docs/content/contributing
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-      - name: Build master with Jekyll
-        uses: actions/jekyll-build-pages@v1
+          # CONTRIBUTING.md -> guideline.md (with Hugo frontmatter)
+          {
+            echo '---'
+            echo 'title: Guideline'
+            echo 'weight: 2'
+            echo '---'
+            echo ''
+            # Strip any existing Jekyll frontmatter (between --- markers)
+            sed '1{/^---$/!b};1,/^---$/d' ./CONTRIBUTING.md
+          } > docs/content/contributing/guideline.md
+
+          # conventions.md
+          {
+            echo '---'
+            echo 'title: Coding conventions'
+            echo 'weight: 3'
+            echo '---'
+            echo ''
+            sed '1{/^---$/!b};1,/^---$/d' ./develop/conventions.md
+          } > docs/content/contributing/conventions.md
+
+          # contributors.md
+          {
+            echo '---'
+            echo 'title: Contributors'
+            echo 'weight: 4'
+            echo '---'
+            echo ''
+            sed '1{/^---$/!b};1,/^---$/d' ./develop/contributors.md
+          } > docs/content/contributing/contributors.md
+
+          # Fix internal links (strip develop/ prefix)
+          find docs/content/contributing/ -name '*.md' -exec sed -i 's|](develop/|](|g' {} +
+
+      # --- Hugo build ---
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          source: 'docs'
-          destination: ./_site
-      - run: sudo rm -rf build
-      - run: mkdir build
+          go-version: '1.22'
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: 'latest'
+          extended: true
+
+      - name: Build Hugo site
+        working-directory: docs
+        run: |
+          hugo mod get -u
+          hugo --minify --baseURL "https://battery-intelligence-lab.github.io/dtw-cpp/"
+
+      - name: Build Pagefind search index
+        working-directory: docs
+        run: npx pagefind@1.3.0 --site public --output-subdir _pagefind
+
+      # --- Doxygen API reference ---
+      - run: mkdir -p build
       - name: Create Doxygen Files
         uses: mattnotmitt/doxygen-action@v1.9.8
         with:
           doxyfile-path: 'docs/Doxyfile'
-      - run: sudo sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
-      - run: sudo mv ./build/Doxygen/html ./_site/Doxygen
-      - run: sudo cp -r ./media ./_site/Doxygen #Copy media folder into Doxygen folder. 
-      
+      - run: sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
+      - run: mv ./build/Doxygen/html ./docs/public/Doxygen
+      - run: cp -r ./media ./docs/public/Doxygen
 
-      # Create a coverage report and upload to the website! 
-      - name: update
-        run: sudo apt update
+      # --- C++ build, test, and coverage report ---
+      - name: Install compiler and dependencies
+        run: sudo apt-get update && sudo apt-get install -y gcc-11 g++-11 lcov
 
-      - name: install compiler and dependencies
-        run: sudo apt install gcc-11 g++-11 lcov
-
-      - name: make build directory
-        run: mkdir build_dir
-
-      - name: cmake configure
-        run: cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_ENABLE_COVERAGE:BOOL=TRUE -DDTWC_BUILD_TESTING=ON
-        working-directory: build_dir
+      - name: CMake configure
+        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DDTWC_ENABLE_COVERAGE:BOOL=TRUE -DDTWC_BUILD_TESTING=ON
         env:
           CC: gcc-11
           CXX: g++-11
 
-      - name: cmake build
-        run: cmake --build . --parallel 2
-        working-directory: build_dir
+      - name: CMake build
+        run: cmake --build build_dir --parallel 2
 
-      - name: cmake test
+      - name: Run tests
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
-      
-      - name: upload coverage results
+
+      - name: Upload coverage to Codecov
         run: |
           lcov --directory ./tests --capture --output-file coverage.info
           lcov --remove coverage.info '*/tests/*' '/_deps/*' '/usr/*' '*/catch2/*' --output-file coverage.info
@@ -87,27 +117,17 @@ jobs:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         working-directory: build_dir
 
-      - name: generate html report for website
+      - name: Generate LCOV HTML report
         run: genhtml coverage.info -o Coverage
         working-directory: build_dir
-      - run: sudo mv ./build_dir/Coverage ./_site/Coverage
 
-      # # JOSS Paper Compilation Steps
-      # - name: Build draft PDF for JOSS paper
-      #   uses: openjournals/openjournals-draft-action@master
-      #   with:
-      #     journal: joss
-      #     paper-path: joss/paper.md
+      - run: mv ./build_dir/Coverage ./docs/public/Coverage
 
-      # - name: Create directory for JOSS paper
-      #   run: sudo mkdir -p ./_site/pub
-
-      # - name: Move JOSS paper to documentation
-      #   run: sudo mv ./joss/paper.pdf ./_site/pub/joss.pdf
-      
-      # Upload the website:
+      # --- Upload combined site artifact ---
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/public
 
   # Publication job
   publish:
