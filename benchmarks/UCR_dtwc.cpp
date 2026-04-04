@@ -22,7 +22,7 @@ inline auto get_UCR_2018_files()
   std::map<std::string, int> Nc_list{};
 
 
-  const auto summary_path = settings::dataPath / "benchmark/UCR_DataSummary.csv";
+  const auto summary_path = settings::paths::data / "benchmark/UCR_DataSummary.csv";
   std::ifstream summary_file(summary_path, std::ios_base::in);
 
   if (!summary_file.is_open()) {
@@ -57,7 +57,7 @@ inline auto get_UCR_2018_files()
   }
 
 
-  auto directories = fs::recursive_directory_iterator(settings::dataPath / "benchmark/UCRArchive_2018");
+  auto directories = fs::recursive_directory_iterator(settings::paths::data / "benchmark/UCRArchive_2018");
   for (const auto &entry : directories) {
     if (entry.is_regular_file()) {                   // Check if the entry is a regular file
       std::string file_path = entry.path().string(); // Get the file path as a string
@@ -80,7 +80,7 @@ inline void UCR_2018()
   dtwc::DataLoader dl;
   dl.startColumn(1); // For not reading first column of *.tsv files;
 
-  fs::path out_folder = settings::resultsPath / "benchmark";
+  fs::path out_folder = settings::paths::results / "benchmark";
 
   std::ofstream timing_file(out_folder / "timing_all.csv", std::ios_base::out);
 
@@ -88,12 +88,12 @@ inline void UCR_2018()
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
-    //(settings::dataPath / "benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
-    // (settings::dataPath / "benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    //(settings::dataPath / "benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
-    //(settings::dataPath / "benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
-    (settings::dataPath / "benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
-    //(settings::dataPath / "benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+    //(settings::paths::data / "benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    // (settings::paths::data / "benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+    //(settings::paths::data / "benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
+    //(settings::paths::data / "benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
+    (settings::paths::data / "benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    //(settings::paths::data / "benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
 

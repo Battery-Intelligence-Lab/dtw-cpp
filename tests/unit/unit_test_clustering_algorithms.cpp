@@ -41,7 +41,7 @@ namespace {
  */
 Problem make_dummy_problem(int N_data, int Nc)
 {
-  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", N_data };
+  dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
   dl.startColumn(1).startRow(1);
 
   dtwc::Problem prob{ "test_clustering", dl };

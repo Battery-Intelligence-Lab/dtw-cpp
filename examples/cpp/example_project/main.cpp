@@ -13,7 +13,7 @@ int main()
   // dtwc::settings::paths::setDataPath("/path/to/your/data");
 
   // Use the configurable data path (defaults to "./data")
-  dtwc::DataLoader dl{ dtwc::settings::paths::dataPath / "dummy", Ndata_max };
+  dtwc::DataLoader dl{ dtwc::settings::paths::data / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.

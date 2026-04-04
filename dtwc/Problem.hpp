@@ -114,7 +114,7 @@ public:
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 
-  path_t output_folder{ settings::paths::resultsPath }; /*!< Output folder for results. */
+  path_t output_folder{ settings::paths::results }; /*!< Output folder for results. */
   std::string name{};                            /*!< Problem name. */
   Data data;                                     /*!< Data associated with the problem. */
 

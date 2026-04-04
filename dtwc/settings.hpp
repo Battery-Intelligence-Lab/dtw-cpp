@@ -51,44 +51,30 @@ namespace paths {
 /// @brief Path to the data directory.
 /// @details Defaults to "./data" relative to current working directory.
 ///          Can be set at runtime via setDataPath() or direct assignment.
-inline fs::path dataPath = fs::path{ "." } / "data";
+inline fs::path data = fs::path{ "." } / "data";
 
 /// @brief Path to the results/output directory.
 /// @details Defaults to "./results/" relative to current working directory.
 ///          Can be set at runtime via setResultsPath() or direct assignment.
-inline fs::path resultsPath = fs::path{ "." } / "results/";
+inline fs::path results = fs::path{ "." } / "results/";
 
 /// @brief Set the data directory path.
 /// @param path New path (as fs::path).
-inline void setDataPath(const fs::path &path) { dataPath = path; }
+inline void setDataPath(const fs::path &path) { data = path; }
 
 /// @brief Set the data directory path from C-string.
 /// @param path New path (as C-string).
-inline void setDataPath(const char *path) { dataPath = fs::path(path); }
+inline void setDataPath(const char *path) { data = fs::path(path); }
 
 /// @brief Set the results directory path.
 /// @param path New path (as fs::path).
-inline void setResultsPath(const fs::path &path) { resultsPath = path; }
+inline void setResultsPath(const fs::path &path) { results = path; }
 
 /// @brief Set the results directory path from C-string.
 /// @param path New path (as C-string).
-inline void setResultsPath(const char *path) { resultsPath = fs::path(path); }
+inline void setResultsPath(const char *path) { results = fs::path(path); }
 
 } // namespace paths
-
-// Legacy path aliases (deprecated - use settings::paths:: instead)
-
-/// @deprecated Use settings::paths::resultsPath instead.
-[[deprecated("Use settings::paths::resultsPath instead")]]
-inline const fs::path &resultsPath = paths::resultsPath;
-
-/// @deprecated Use settings::paths::dataPath instead.
-[[deprecated("Use settings::paths::dataPath instead")]]
-inline const fs::path &dataPath = paths::dataPath;
-
-/// @deprecated Use settings::paths::dataPath instead.
-[[deprecated("Use settings::paths::dataPath instead")]]
-inline const fs::path &dtwc_dataPath = paths::dataPath;
 
 /// @brief Flag for debug mode for developers.
 /// @details When set to true, the program may output additional debug information.

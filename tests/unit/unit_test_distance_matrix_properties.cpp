@@ -37,7 +37,7 @@ namespace {
  */
 Problem make_problem(int N_data)
 {
-  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", N_data };
+  dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
   dl.startColumn(1).startRow(1);
   dtwc::Problem prob{ "dist_mat_test", dl };
   return prob;

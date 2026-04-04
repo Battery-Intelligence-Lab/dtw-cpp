@@ -22,7 +22,7 @@ using namespace dtwc;
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-// Initialize settings::paths::dataPath from compile-time definition for tests
+// Initialize settings::paths::data from compile-time definition for tests
 struct TestPathInitializer {
   TestPathInitializer() {
     dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
@@ -41,13 +41,12 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
   constexpr int maxIter = 100;
   constexpr int Ndata_max = 10;
 
-  dtwc::DataLoader dl{ settings::paths::dataPath / "dummy", Ndata_max };
+  dtwc::DataLoader dl{ settings::paths::data / "dummy", Ndata_max };
   dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-
 
   REQUIRE(prob.cluster_size() == Nc);
   REQUIRE(prob.name == probName);

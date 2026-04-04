@@ -6,7 +6,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 
 <br/><br/>
-# Unreleased
+# DTWC v2.0.0
 
 ### Added (SIMD)
 
