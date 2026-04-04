@@ -101,7 +101,7 @@ function(dtwc_setup_dependencies)
       CPMAddPackage(
         NAME highway
         GITHUB_REPOSITORY google/highway
-        GIT_TAG 1.2.0
+        GIT_TAG 1.3.0
         OPTIONS
           "HWY_ENABLE_TESTS OFF"
           "HWY_ENABLE_EXAMPLES OFF"

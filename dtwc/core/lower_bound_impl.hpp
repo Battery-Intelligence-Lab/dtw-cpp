@@ -23,7 +23,16 @@
 #include <algorithm> // for min, max, fill, max_element, min_element
 #include <cmath>     // for abs
 #include <cstddef>   // for size_t
+#include <type_traits> // for is_same_v
 #include <vector>    // for vector
+
+#ifdef DTWC_HAS_HIGHWAY
+namespace dtwc::simd {
+// Declared in dtwc/simd/lb_keogh_simd.cpp; signature matches the SIMD kernel.
+double lb_keogh_highway(const double *query, const double *upper,
+                        const double *lower, std::size_t n);
+}  // namespace dtwc::simd
+#endif
 
 namespace dtwc::core {
 
@@ -155,17 +164,28 @@ template <typename T>
 T lb_keogh(const T *query, std::size_t n,
            const T *upper, const T *lower)
 {
+#ifdef DTWC_HAS_HIGHWAY
+  if constexpr (std::is_same_v<T, double>) {
+    return dtwc::simd::lb_keogh_highway(query, upper, lower, n);
+  }
+#endif
   T sum = T(0);
 #if defined(_MSC_VER)
   // MSVC does not support OpenMP reduction clauses on simd directives.
-  // Keep the loop warning-free and correct; the compiler can still auto-vectorize it.
+  // The branchless ternaries below map to vmaxpd — MSVC can auto-vectorize them.
 #else
   #pragma omp simd reduction(+:sum)
 #endif
   for (std::size_t i = 0; i < n; ++i) {
-    T excess_upper = query[i] - upper[i];
-    T excess_lower = lower[i] - query[i];
-    sum += std::max(T(0), std::max(excess_upper, excess_lower));
+    const T eu = query[i] - upper[i];  // positive when query is above the upper envelope
+    const T el = lower[i] - query[i];  // positive when query is below the lower envelope
+    // Decompose max(0, max(eu,el)) → max(0,eu) + max(0,el).
+    // For a valid envelope L<=U: eu+el = (q-U)+(L-q) = L-U <= 0, so at most one term
+    // is positive. Each ternary maps to a single vmaxpd with zero — two independent
+    // SIMD ops instead of a nested std::max call chain with a data dependency.
+    const T cu = eu > T(0) ? eu : T(0);
+    const T cl = el > T(0) ? el : T(0);
+    sum += cu + cl;
   }
   return sum;
 }
@@ -443,9 +463,11 @@ T lb_keogh_mv(const T *query, std::size_t n_steps, std::size_t ndim,
   for (std::size_t i = 0; i < n_steps; ++i) {
     for (std::size_t d = 0; d < ndim; ++d) {
       const std::size_t idx = i * ndim + d;
-      T excess_upper = query[idx] - upper[idx];
-      T excess_lower = lower[idx] - query[idx];
-      sum += std::max(T(0), std::max(excess_upper, excess_lower));
+      const T eu = query[idx] - upper[idx];
+      const T el = lower[idx] - query[idx];
+      const T cu = eu > T(0) ? eu : T(0);
+      const T cl = el > T(0) ? el : T(0);
+      sum += cu + cl;
     }
   }
   return sum;
@@ -474,10 +496,18 @@ T lb_keogh_squared(const T *query, std::size_t n,
                    const T *upper, const T *lower)
 {
   T sum = T(0);
+#if defined(_MSC_VER)
+  // MSVC does not support OpenMP reduction clauses on simd directives.
+#else
+  #pragma omp simd reduction(+:sum)
+#endif
   for (std::size_t i = 0; i < n; ++i) {
-    T excess = T(0);
-    if (query[i] > upper[i]) excess = query[i] - upper[i];
-    else if (query[i] < lower[i]) excess = lower[i] - query[i];
+    const T eu = query[i] - upper[i];  // positive when query is above the upper envelope
+    const T el = lower[i] - query[i];  // positive when query is below the lower envelope
+    // Branchless: at most one of eu, el is positive (L<=U for valid envelopes).
+    const T cu = eu > T(0) ? eu : T(0);
+    const T cl = el > T(0) ? el : T(0);
+    const T excess = cu + cl;
     sum += excess * excess;
   }
   return sum;
@@ -508,9 +538,11 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
   for (std::size_t i = 0; i < n_steps; ++i) {
     for (std::size_t d = 0; d < ndim; ++d) {
       const std::size_t idx = i * ndim + d;
-      T excess = T(0);
-      if (query[idx] > upper[idx]) excess = query[idx] - upper[idx];
-      else if (query[idx] < lower[idx]) excess = lower[idx] - query[idx];
+      const T eu = query[idx] - upper[idx];
+      const T el = lower[idx] - query[idx];
+      const T cu = eu > T(0) ? eu : T(0);
+      const T cl = el > T(0) ? el : T(0);
+      const T excess = cu + cl;
       sum += excess * excess;
     }
   }

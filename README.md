@@ -118,6 +118,48 @@ cmake --build build --config Release -j
 # Requires MATLAB with C++ MEX compiler configured
 ```
 
+### HPC / Supercomputer builds
+
+DTW-C++ targets heterogeneous HPC clusters with a mix of CPU and GPU generations.
+
+**Portable CPU build** — safe for all modern HPC CPUs (Broadwell, Haswell, Cascade Lake, Sapphire/Emerald Rapids, Rome, Genoa, Turin). Compile once on the login node, run on any compute node:
+
+```bash
+cmake -S . -B build -DDTWC_ARCH_LEVEL=v3
+cmake --build build --config Release -j
+```
+
+**AVX-512 build** — for homogeneous clusters with Cascade Lake Xeon, Sapphire/Emerald Rapids, Genoa, or Turin nodes:
+
+```bash
+cmake -S . -B build -DDTWC_ARCH_LEVEL=v4
+cmake --build build --config Release -j
+```
+
+**CUDA multi-arch build** — covers the full common HPC GPU fleet (V100→H100) by default. To target specific GPUs:
+
+```bash
+# Default: compiles for V100, A100, RTX Ampere, L40s, H100 (sm 70/80/86/89/90)
+cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
+
+# Single-arch build for A100-only cluster (faster compile):
+cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=80
+
+# Add P100 (sm_60) if needed:
+cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DDTWC_CUDA_ARCH_LIST="60;70;80;86;89;90"
+```
+
+**SIMD** is ON by default for standalone builds. Google Highway compiles for SSE4, AVX2, and AVX-512 in a single binary and dispatches at runtime — no need to rebuild for different node types.
+
+**OpenMP on many-core NUMA nodes** (e.g. 288-core AMD Turin): bind threads to cores to avoid cross-NUMA memory traffic:
+
+```bash
+export OMP_NUM_THREADS=288
+export OMP_PROC_BIND=close
+export OMP_PLACES=cores
+./build/bin/dtwc_main ...
+```
+
 ### All CMake options
 
 | Option | Default | Description |
@@ -131,7 +173,10 @@ cmake --build build --config Release -j
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
-| `DTWC_ENABLE_SIMD` | OFF | Enable Highway SIMD (experimental) |
+| `DTWC_ENABLE_SIMD` | ON* | Enable Highway SIMD with runtime ISA dispatch (*ON for standalone builds, OFF for sub-projects/Python wheels) |
+| `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
+| `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |
+| `DTWC_CUDA_ARCH_LIST` | `70;80;86;89;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set |
 
 Citation
 ===========================

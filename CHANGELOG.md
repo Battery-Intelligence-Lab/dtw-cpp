@@ -8,6 +8,26 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (SIMD)
+
+- `lb_keogh()` dispatches to `dtwc::simd::lb_keogh_highway()` for `double` when `DTWC_ENABLE_SIMD=ON`, giving 2.7–3.3× speedup (measured AVX2, MSVC, i7).
+- `DTWC_ENABLE_SIMD` now defaults to ON for standalone top-level builds (OFF for sub-projects and Python wheels). Google Highway provides runtime ISA dispatch — one binary runs optimally across SSE4/AVX2/AVX-512 nodes.
+
+### Changed (SIMD performance)
+
+- **Branchless scalar `lb_keogh`:** Replaced `std::max(T(0), std::max(eu, el))` with decomposed ternaries `max(0,eu) + max(0,el)` (valid for L≤U envelopes). Each ternary maps to a single `vmaxpd` instruction. Result: scalar lb_keogh is now **3.2–4.3× faster** and matches Highway performance — MSVC auto-vectorizer can now handle the loop. Added `#pragma omp simd reduction(+:sum)` to `lb_keogh_squared`, `lb_keogh_mv`, `lb_keogh_mv_squared`.
+- **`dtw_multi_pair` uniform-length fast path:** When all 4 SIMD-lane pairs share the same dimensions (common case in DTW clustering), OOB masks are always all-false. New uniform path skips all `IfThenElse` and mask computation — 30% fewer ops per cell. Result: **4.6–5.6× faster** vs previous SIMD path; SIMD now **2.8× faster than sequential** (was 1.5× slower before).
+- **Pre-hoisted row masks in `dtw_multi_pair` variable-length path:** `i_oob` masks (per-row OOB checks) are computed once before the j-loop into a `thread_local` buffer. Saves 4 scalar comparisons + stack write per inner-loop cell.
+- **FMA in `z_normalize_highway`:** Normalize pass uses `MulAdd(val, inv_sd, bias)` (one FMA) instead of `Mul(Sub(val, mean), inv_sd)` (Sub + Mul). `bias = -mean * inv_sd` precomputed once.
+- **`z_normalize_simd.cpp` header corrected:** Comment now accurately describes the two-pass König-Huygens algorithm (sum + sum-of-squares in one pass).
+
+### Added (HPC build support)
+
+- `DTWC_ARCH_LEVEL` CMake option (`""` / `"v3"` / `"v4"`): overrides `-march=native` with a portable x86-64 microarchitecture level. `v3` (AVX2+FMA) is safe for all modern HPC CPUs; `v4` targets AVX-512 nodes (Cascade Lake Xeon, Sapphire/Emerald Rapids, Genoa, Turin).
+- CUDA builds now default to `CMAKE_CUDA_ARCHITECTURES=70;80;86;89;90` (V100 through H100) when not explicitly set. Override with `-DDTWC_CUDA_ARCH_LIST=...` or `-DCMAKE_CUDA_ARCHITECTURES=...`.
+- GCC/Clang fast-math flags completed: added `-fno-rounding-math` and `-fno-signaling-nans` (safe for this codebase; complete the safe subset of `-ffast-math` excluding `-ffinite-math-only`).
+- MSVC Release builds now include `/Gy` (function-level linking) for linker COMDAT elimination.
+
 ### Added (MIP Solver Improvements)
 
 - MIP warm start: `--method mip` now runs FastPAM first and feeds the solution as a MIP start, dramatically reducing branch-and-bound solve time. Controlled by `--no-warm-start` flag.

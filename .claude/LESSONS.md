@@ -62,7 +62,8 @@ Highway's explicit vectorization wins decisively.
 ## C++ Implementation
 
 ### NaN for missing data
-- Use `quiet_NaN()`. Bitwise check via `std::memcpy` (not union type-punning — UB in C++).
+- Use `quiet_NaN()`. Check via `std::isnan()` — safe because `-ffinite-math-only` is NOT in the build flags.
+- `is_missing()` in `missing_utils.hpp` is a thin wrapper over `std::isnan()`. Use it in missing-data paths.
 - `is_missing()` MUST happen BEFORE calling the distance function.
 
 ### HiGHS vs Gurobi indexing

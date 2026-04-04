@@ -15,6 +15,7 @@ project(DTWC++ VERSION "${DTWC_VERSION_STRING}"
   LANGUAGES CXX C)
 
 include(cmake/StandardProjectSettings.cmake)
+include(CMakeDependentOption)
 
 option(DTWC_BUILD_EXAMPLES "Build example programs" OFF)
 option(DTWC_BUILD_TESTING "Build unit tests" OFF)
@@ -25,7 +26,13 @@ option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer o
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
-option(DTWC_ENABLE_SIMD "Enable SIMD acceleration via Google Highway" OFF)
+# SIMD via Google Highway: ON by default for standalone top-level builds.
+# Provides runtime ISA dispatch (SSE4 → AVX2 → AVX-512) — ideal for HPC heterogeneous fleets.
+# Disabled automatically for Python wheels and sub-project consumption.
+cmake_dependent_option(DTWC_ENABLE_SIMD
+  "Enable SIMD acceleration via Google Highway (runtime ISA dispatch)"
+  ON "PROJECT_IS_TOP_LEVEL;NOT DTWC_BUILD_PYTHON"
+  OFF)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
@@ -113,6 +120,17 @@ if(DTWC_ENABLE_CUDA)
   include(CheckLanguage)
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
+    # Set default CUDA arch list before enable_language(CUDA) — CMake reads this at language-enable time.
+    # Covers the common HPC/cloud GPU fleet: V100(70), A100(80), RTX Ampere(86), L40s/Ada(89), H100(90).
+    # P100(60) is omitted: EOL at most HPC centers, roughly doubles compile time.
+    # Override with -DCMAKE_CUDA_ARCHITECTURES=... or -DDTWC_CUDA_ARCH_LIST=... on the command line.
+    set(DTWC_CUDA_ARCH_LIST "70;80;86;89;90" CACHE STRING
+        "CUDA architectures to compile for (default covers V100 through H100)")
+    if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
+      set(CMAKE_CUDA_ARCHITECTURES "${DTWC_CUDA_ARCH_LIST}" CACHE STRING
+          "CUDA architectures (set from DTWC_CUDA_ARCH_LIST)" FORCE)
+    endif()
+
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
 
@@ -120,9 +138,6 @@ if(DTWC_ENABLE_CUDA)
     set(CMAKE_CUDA_STANDARD 17)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
-    # On headless CI (no GPU), CMake's default "native" arch detection fails.
-    # Users can override with -DCMAKE_CUDA_ARCHITECTURES=... on the command line.
-    # The CI workflow passes -DCMAKE_CUDA_ARCHITECTURES=80 explicitly.
     message(STATUS "CUDA found: ${CMAKE_CUDA_COMPILER_VERSION}")
     message(STATUS "CUDA architectures: ${CMAKE_CUDA_ARCHITECTURES}")
 

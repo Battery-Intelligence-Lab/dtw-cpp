@@ -23,6 +23,14 @@
  * @note NO #pragma once — this header is intentionally re-included once per
  *       ISA target by Highway's foreach_target.h mechanism.
  *
+ * **Why Highway instead of raw intrinsics?**
+ * - Single binary with runtime ISA dispatch: no separate SSE4/AVX2/AVX-512 build
+ *   variants are needed. One binary works optimally on any node in an HPC cluster.
+ * - Portability: the same kernels compile for ARM NEON, RISC-V V, SVE, etc. —
+ *   future-proofing for non-x86 HPC (AWS Graviton, NVIDIA Grace, etc.).
+ * - Safety: the Highway API avoids the sharp-edge surface of raw intrinsic names
+ *   (which differ across ISA families) and handles alignment rules automatically.
+ *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
  */

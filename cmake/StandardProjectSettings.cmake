@@ -49,31 +49,62 @@ endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:fast>>)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:fast>>)
+  # /Gy: function-level linking — lets the linker eliminate/fold unused COMDATs.
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/Gy>>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/Gy>>)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math -fno-signed-zeros
-  # give ~95% of -ffast-math (FMA, reassociation, reciprocal) without -ffinite-math-only.
-  foreach(_flag -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math -fno-signed-zeros)
+  # Full safe fast-math subset: all components of -ffast-math except -ffinite-math-only.
+  # -ffinite-math-only is deliberately omitted — it breaks std::isnan() under GCC/Clang.
+  # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
+  # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
+  foreach(_flag
+      -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math
+      -fno-signed-zeros -fno-rounding-math -fno-signaling-nans)
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_flag}>>)
     add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_flag}>>)
   endforeach()
 endif()
 
-# Native architecture tuning — unlocks AVX2/AVX-512/NEON auto-vectorization.
+# Architecture tuning — unlocks AVX2/AVX-512/NEON auto-vectorization.
 # Disabled for Python wheels (DTWC_BUILD_PYTHON) to keep wheel binaries portable.
 # Disabled when consumed as a sub-project (PROJECT_IS_TOP_LEVEL=OFF) so the
 # parent project controls its own arch flags.
+#
+# DTWC_ARCH_LEVEL overrides -march=native with a specific x86-64 microarchitecture
+# level for HPC cross-compile scenarios where the build node differs from compute nodes:
+#   ""   (default) — -march=native / /arch:AVX2 as before
+#   "v3" — AVX2 + FMA baseline; safe for ALL modern HPC CPUs (Broadwell, Haswell,
+#           Cascade Lake, Sapphire/Emerald Rapids, Rome, Genoa, Turin).
+#   "v4" — AVX-512 baseline; Cascade Lake Xeon, Sapphire/Emerald Rapids, Genoa, Turin.
+#           NOT safe for Broadwell, Haswell, or Rome nodes.
+# When DTWC_ENABLE_SIMD=ON, Highway provides runtime dispatch across all ISAs regardless
+# of this flag — DTWC_ARCH_LEVEL only affects compiler auto-vectorization paths.
 option(DTWC_ENABLE_NATIVE_ARCH "Tune for the host CPU architecture (-march=native / /arch:AVX2)" ON)
+set(DTWC_ARCH_LEVEL "" CACHE STRING
+    "Override native arch with x86-64 microarchitecture level for HPC: '' (native), 'v3' (AVX2+FMA), 'v4' (AVX-512)")
+set_property(CACHE DTWC_ARCH_LEVEL PROPERTY STRINGS "" "v3" "v4")
+
 if(DTWC_ENABLE_NATIVE_ARCH AND PROJECT_IS_TOP_LEVEL AND NOT DTWC_BUILD_PYTHON)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/arch:AVX2>>)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/arch:AVX2>>)
+    if(DTWC_ARCH_LEVEL STREQUAL "v4")
+      set(_arch_flag /arch:AVX512)
+    else()
+      set(_arch_flag /arch:AVX2)  # v3 and native both map to AVX2 on MSVC
+    endif()
   elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:-march=native>>)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:-march=native>>)
+    if(DTWC_ARCH_LEVEL STREQUAL "v3" OR DTWC_ARCH_LEVEL STREQUAL "v4")
+      set(_arch_flag -march=x86-64-${DTWC_ARCH_LEVEL})
+    else()
+      set(_arch_flag -march=native)
+    endif()
   endif()
-  message(STATUS "Native arch tuning enabled (DTWC_ENABLE_NATIVE_ARCH=ON)")
+  if(DEFINED _arch_flag)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_arch_flag}>>)
+    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_arch_flag}>>)
+    message(STATUS "Architecture tuning: ${_arch_flag}")
+  endif()
 else()
-  message(STATUS "Native arch tuning disabled — portable binary mode")
+  message(STATUS "Architecture tuning disabled — portable binary mode")
 endif()
 
 # run vcvarsall when msvc is used

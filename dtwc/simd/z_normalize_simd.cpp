@@ -2,10 +2,16 @@
  * @file z_normalize_simd.cpp
  * @brief SIMD-accelerated z-normalization using Google Highway.
  *
- * @details Three embarrassingly parallel loops vectorized:
- *          1. Sum reduction for mean
- *          2. Squared-deviation sum for stddev
- *          3. Element-wise normalize: (x - mean) * inv_stddev
+ * @details Two-pass fused approach (König-Huygens):
+ *          Pass 1: compute sum(x) and sum(x²) in a single memory sweep using
+ *                  two accumulator vectors. Avoids the extra pass needed by the
+ *                  naive mean → squared-deviation → normalize scheme.
+ *                  Variance is recovered via: var = E[x²] - mean²  (König-Huygens).
+ *                  FMA instruction (MulAdd) accumulates x² in one op.
+ *          Pass 2: normalize in-place as x * inv_sd + bias (FMA-friendly form),
+ *                  where bias = -mean * inv_sd is precomputed once.
+ *
+ *          Processes N doubles per iteration: N=4 on AVX2, N=8 on AVX-512 (ScalableTag).
  *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
@@ -54,19 +60,22 @@ void ZNormalizeSimd(double* HWY_RESTRICT series, std::size_t n)
   const double variance = std::max(0.0, sq_sum * inv_n - mean * mean);
   const double stddev   = std::sqrt(variance);
 
-  // Pass 2: normalize in place
-  const auto mean_vec = hn::Set(d, mean);
+  // Pass 2: normalize in place using FMA form: x * inv_sd + bias
+  // where bias = -mean * inv_sd (precomputed once).
+  // Avoids a separate Sub per element vs (x - mean) * inv_sd.
   if (stddev > 1e-10) {
-    const auto inv_sd_vec = hn::Set(d, 1.0 / stddev);
+    const double inv_sd    = 1.0 / stddev;
+    const double bias      = -mean * inv_sd;
+    const auto inv_sd_vec  = hn::Set(d, inv_sd);
+    const auto bias_vec    = hn::Set(d, bias);
     i = 0;
     for (; i + N <= n; i += N) {
       const auto val    = hn::LoadU(d, series + i);
-      const auto normed = hn::Mul(hn::Sub(val, mean_vec), inv_sd_vec);
+      const auto normed = hn::MulAdd(val, inv_sd_vec, bias_vec);  // val*inv_sd + bias
       hn::StoreU(normed, d, series + i);
     }
-    const double inv_sd = 1.0 / stddev;
     for (; i < n; ++i)
-      series[i] = (series[i] - mean) * inv_sd;
+      series[i] = series[i] * inv_sd + bias;
   } else {
     const auto zero = hn::Zero(d);
     i = 0;

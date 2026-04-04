@@ -27,6 +27,9 @@ double LbKeoghSimd(const double* HWY_RESTRICT query,
 {
   if (n == 0) return 0.0;
 
+  // ScalableTag adapts to the widest available ISA at runtime:
+  // N=2 doubles on SSE4 (128-bit), N=4 on AVX2 (256-bit), N=8 on AVX-512 (512-bit).
+  // Unlike FixedTag, this automatically exploits wider hardware without recompilation.
   const hn::ScalableTag<double> d;
   const std::size_t N = hn::Lanes(d);
 
