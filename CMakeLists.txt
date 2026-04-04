@@ -26,13 +26,6 @@ option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer o
 
 option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
-# SIMD via Google Highway: ON by default for standalone top-level builds.
-# Provides runtime ISA dispatch (SSE4 → AVX2 → AVX-512) — ideal for HPC heterogeneous fleets.
-# Disabled automatically for Python wheels and sub-project consumption.
-cmake_dependent_option(DTWC_ENABLE_SIMD
-  "Enable SIMD acceleration via Google Highway (runtime ISA dispatch)"
-  ON "PROJECT_IS_TOP_LEVEL;NOT DTWC_BUILD_PYTHON"
-  OFF)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)

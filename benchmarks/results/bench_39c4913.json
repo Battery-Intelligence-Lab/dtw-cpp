@@ -1,8 +1,8 @@
 {
   "context": {
     "date": "2026-03-28T17:34:31+00:00",
-    "host_name": "ENGS-32384",
-    "executable": "C:\\D\\git\\dtw-cpp\\build2\\bin\\bench_dtw_baseline.exe",
+    "host_name": "",
+    "executable": "bench_dtw_baseline.exe",
     "num_cpus": 24,
     "mhz_per_cpu": 2496,
     "caches": [

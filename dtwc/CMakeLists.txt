@@ -87,19 +87,6 @@ if(OpenMP_CXX_FOUND)
   endif()
 endif()
 
-# Google Highway SIMD (optional)
-# CPM/FetchContent creates target "hwy" (no namespace); hwy::hwy only exists when installed
-if(DTWC_ENABLE_SIMD AND (TARGET hwy::hwy OR TARGET hwy))
-  set(_hwy_target "$<IF:$<TARGET_EXISTS:hwy::hwy>,hwy::hwy,hwy>")
-  target_sources(dtwc++ PRIVATE
-    simd/lb_keogh_simd.cpp
-    simd/z_normalize_simd.cpp
-    simd/multi_pair_dtw.cpp
-  )
-  target_link_libraries(dtwc++ PRIVATE "${_hwy_target}")
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_HIGHWAY)
-  message(STATUS "SIMD enabled via Google Highway")
-endif()
 
 # MPI (optional) — check for the imported target rather than the variable,
 # because find_package(MPI) runs inside dtwc_setup_dependencies() (a function)

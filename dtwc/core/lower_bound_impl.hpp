@@ -26,14 +26,6 @@
 #include <type_traits> // for is_same_v
 #include <vector>    // for vector
 
-#ifdef DTWC_HAS_HIGHWAY
-namespace dtwc::simd {
-// Declared in dtwc/simd/lb_keogh_simd.cpp; signature matches the SIMD kernel.
-double lb_keogh_highway(const double *query, const double *upper,
-                        const double *lower, std::size_t n);
-}  // namespace dtwc::simd
-#endif
-
 namespace dtwc::core {
 
 /**
@@ -164,11 +156,6 @@ template <typename T>
 T lb_keogh(const T *query, std::size_t n,
            const T *upper, const T *lower)
 {
-#ifdef DTWC_HAS_HIGHWAY
-  if constexpr (std::is_same_v<T, double>) {
-    return dtwc::simd::lb_keogh_highway(query, upper, lower, n);
-  }
-#endif
   T sum = T(0);
 #if defined(_MSC_VER)
   // MSVC does not support OpenMP reduction clauses on simd directives.
