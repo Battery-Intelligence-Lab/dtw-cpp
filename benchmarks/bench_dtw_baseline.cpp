@@ -15,6 +15,14 @@
 #include <core/lower_bound_impl.hpp>
 #include <core/z_normalize.hpp>
 
+#ifdef DTWC_HAS_HIGHWAY
+#include <simd/multi_pair_dtw.hpp>
+namespace dtwc::simd {
+double lb_keogh_highway(const double *, const double *, const double *, std::size_t);
+void z_normalize_highway(double *, std::size_t);
+}  // namespace dtwc::simd
+#endif
+
 #include <vector>
 #include <random>
 #include <string>
@@ -443,3 +451,92 @@ BENCHMARK(BM_compute_envelopes)
   ->Args({1000, 50})
   ->Args({4000, 50})
   ->Unit(benchmark::kNanosecond);
+
+// ---------------------------------------------------------------------------
+// SIMD vs scalar A/B comparisons (compiled only when DTWC_HAS_HIGHWAY is set)
+// ---------------------------------------------------------------------------
+
+#ifdef DTWC_HAS_HIGHWAY
+
+static void BM_lb_keogh_highway(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  auto query = random_series(len, 42);
+  auto candidate = random_series(len, 43);
+  std::vector<double> upper(len), lower(len);
+  dtwc::core::compute_envelopes(candidate.data(), len, 10, upper.data(), lower.data());
+
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+      dtwc::simd::lb_keogh_highway(query.data(), upper.data(), lower.data(), len));
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(len));
+}
+BENCHMARK(BM_lb_keogh_highway)
+  ->Arg(100)->Arg(500)->Arg(1000)->Arg(4000)->Arg(8000)
+  ->Unit(benchmark::kNanosecond)->Complexity();
+
+static void BM_z_normalize_highway(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  auto series_data = random_series(len, 42);
+
+  for (auto _ : state) {
+    state.PauseTiming();
+    auto copy = series_data;
+    state.ResumeTiming();
+    dtwc::simd::z_normalize_highway(copy.data(), copy.size());
+    benchmark::DoNotOptimize(copy.data());
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(len));
+}
+BENCHMARK(BM_z_normalize_highway)
+  ->Arg(100)->Arg(500)->Arg(1000)->Arg(4000)->Arg(8000)
+  ->Unit(benchmark::kNanosecond)->Complexity();
+
+static void BM_dtw_4pairs_sequential(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  std::vector<std::vector<double>> xs(4), ys(4);
+  for (int p = 0; p < 4; ++p) {
+    xs[p] = random_series(len, 100 + p * 2);
+    ys[p] = random_series(len, 101 + p * 2);
+  }
+  for (auto _ : state) {
+    double total = 0;
+    for (int p = 0; p < 4; ++p)
+      total += dtwc::dtwFull_L<double>(xs[p], ys[p]);
+    benchmark::DoNotOptimize(total);
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * 4);
+}
+BENCHMARK(BM_dtw_4pairs_sequential)
+  ->Arg(100)->Arg(500)->Arg(1000)
+  ->Unit(benchmark::kMicrosecond);
+
+static void BM_dtw_4pairs_simd(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  std::vector<std::vector<double>> xs(4), ys(4);
+  for (int p = 0; p < 4; ++p) {
+    xs[p] = random_series(len, 100 + p * 2);
+    ys[p] = random_series(len, 101 + p * 2);
+  }
+  const double *x_ptrs[4] = {xs[0].data(), xs[1].data(), xs[2].data(), xs[3].data()};
+  const double *y_ptrs[4] = {ys[0].data(), ys[1].data(), ys[2].data(), ys[3].data()};
+  std::size_t x_lens[4] = {len, len, len, len};
+  std::size_t y_lens[4] = {len, len, len, len};
+
+  for (auto _ : state) {
+    auto result = dtwc::simd::dtw_multi_pair(x_ptrs, y_ptrs, x_lens, y_lens, 4);
+    benchmark::DoNotOptimize(result);
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * 4);
+}
+BENCHMARK(BM_dtw_4pairs_simd)
+  ->Arg(100)->Arg(500)->Arg(1000)
+  ->Unit(benchmark::kMicrosecond);
+
+#endif  // DTWC_HAS_HIGHWAY

@@ -7,6 +7,7 @@
  */
 
 #include <core/distance_matrix.hpp>
+#include <core/matrix_io.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -156,7 +157,7 @@ TEST_CASE("DenseDistanceMatrix to_full_matrix", "[DistanceMatrix]")
   dm.set(0, 2, 3.0);
   dm.set(1, 2, 7.0);
 
-  const auto full = dm.to_full_matrix();
+  const auto full = dtwc::io::to_full_matrix(dm);
   REQUIRE(full.rows() == 3);
   REQUIRE(full.cols() == 3);
   REQUIRE_THAT(full(0, 1), WithinAbs(5.0, 1e-12));

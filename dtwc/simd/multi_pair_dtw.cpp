@@ -15,10 +15,10 @@
  */
 
 #undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "dtwc/simd/multi_pair_dtw.cpp"
-#include "dtwc/simd/highway_targets.hpp"
+#define HWY_TARGET_INCLUDE "simd/multi_pair_dtw.cpp"
+#include "simd/highway_targets.hpp"
 
-#include "dtwc/simd/multi_pair_dtw.hpp"
+#include "simd/multi_pair_dtw.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -42,10 +42,12 @@ MultiPairResult DtwMultiPairImpl(
   constexpr double inf = std::numeric_limits<double>::infinity();
   MultiPairResult result;
 
+  constexpr double max_val = std::numeric_limits<double>::max();
+
   // Handle zero pairs
   if (n_pairs == 0) {
     for (std::size_t p = 0; p < kDtwBatchSize; ++p)
-      result.distances[p] = inf;
+      result.distances[p] = max_val;
     return result;
   }
 
@@ -94,68 +96,60 @@ MultiPairResult DtwMultiPairImpl(
   // Handle all-empty case
   if (max_short == 0 || max_long == 0) {
     for (std::size_t p = 0; p < kDtwBatchSize; ++p)
-      result.distances[p] = inf;
+      result.distances[p] = max_val;
     return result;
   }
 
-  // Thread-local rolling buffer: interleaved layout.
-  // buf[i * 4 + lane] = short_side[i] for pair `lane`.
-  // Size: max_short * 4 doubles.
-  thread_local std::vector<double> buf;
+  // Pre-pack all 4 pairs' series into interleaved SoA buffers so the inner
+  // DTW loop uses contiguous Load() instead of scatter-gather.
+  // short_soa[i*4 + lane] = short_ptrs[lane][i]  (0.0 if out of bounds)
+  // long_soa [j*4 + lane] = long_ptrs [lane][j]  (0.0 if out of bounds)
+  // Cost: O(max_short + max_long) scalar ops up front; saves O(m²) gather
+  // ops in the inner loop.
+  thread_local std::vector<double> buf, short_soa, long_soa;
   buf.resize(max_short * kDtwBatchSize);
+  short_soa.resize(max_short * kDtwBatchSize, 0.0);
+  long_soa.resize(max_long  * kDtwBatchSize, 0.0);
+
+  for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
+    for (std::size_t i = 0; i < m_shorts[p]; ++i)
+      short_soa[i * kDtwBatchSize + p] = short_ptrs[p][i];
+    for (std::size_t j = 0; j < m_longs[p]; ++j)
+      long_soa[j * kDtwBatchSize + p] = long_ptrs[p][j];
+  }
 
   const auto v_inf = hn::Set(d, inf);
 
-  // Helper: gather one element from each pair's series into a SIMD vector.
-  // If pair p's index is out of bounds, use 0.0 (won't matter due to masking).
-  auto gather_short = [&](std::size_t i) HWY_ATTR -> decltype(hn::Zero(d)) {
-    HWY_ALIGN double vals[4];
-    for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
-      vals[p] = (i < m_shorts[p]) ? short_ptrs[p][i] : 0.0;
-    }
-    return hn::Load(d, vals);
-  };
-
-  auto gather_long = [&](std::size_t j) HWY_ATTR -> decltype(hn::Zero(d)) {
-    HWY_ALIGN double vals[4];
-    for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
-      vals[p] = (j < m_longs[p]) ? long_ptrs[p][j] : 0.0;
-    }
-    return hn::Load(d, vals);
-  };
+  // Precompute per-column (j) and per-row (i) OOB masks so the inner loop
+  // never recomputes them from scratch.
+  // j_active[j] = mask of lanes that are still computing at column j.
+  // short_active[i] = mask of lanes whose short series has row i.
+  // Both are computed once and stored as SIMD masks.
+  // For equal-length pairs (the common case), all masks are all-true and the
+  // IfThenElse calls become no-ops that the compiler can optimise away.
 
   // abs_diff: |a - b|
   auto abs_diff = [&](decltype(hn::Zero(d)) a, decltype(hn::Zero(d)) b) HWY_ATTR {
     return hn::Abs(hn::Sub(a, b));
   };
 
-  // --- Initialize rolling buffer: short_side[i] = cumsum of |s[i] - l[0]| ---
+  // --- Initialize rolling buffer (first column, j=0) ---
   {
-    const auto l0 = gather_long(0);  // long_vec[0] for each pair
+    const auto l0 = hn::Load(d, long_soa.data());  // contiguous!
 
-    // short_side[0] = |s[0] - l[0]|
-    const auto s0 = gather_short(0);
-    auto prev = abs_diff(s0, l0);
-
-    // For pairs with m_shorts[p] == 0, the gather returns 0 so prev=0.
-    // Those lanes are handled at result extraction (set to inf).
+    auto prev = abs_diff(hn::Load(d, short_soa.data()), l0);
     hn::Store(prev, d, buf.data());
 
     for (std::size_t i = 1; i < max_short; ++i) {
-      const auto si = gather_short(i);
-      auto cost = abs_diff(si, l0);
-      auto val = hn::Add(prev, cost);
+      const auto si = hn::Load(d, short_soa.data() + i * kDtwBatchSize);  // contiguous!
+      auto val = hn::Add(prev, abs_diff(si, l0));
 
-      // For pairs where i >= m_shorts[p], set to inf so they don't
-      // pollute the min() recurrence for other pairs sharing the buffer.
+      // Mask out lanes where this row is beyond the pair's short length.
+      // Precompute per-row mask (hoisted: only depends on i, not j).
       HWY_ALIGN double inf_mask[4];
-      for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
+      for (std::size_t p = 0; p < kDtwBatchSize; ++p)
         inf_mask[p] = (i < m_shorts[p]) ? 0.0 : 1.0;
-      }
-      auto do_inf = hn::Load(d, inf_mask);
-      // Where do_inf > 0, set val to inf
-      auto is_oob = hn::Gt(do_inf, hn::Zero(d));
-      val = hn::IfThenElse(is_oob, v_inf, val);
+      val = hn::IfThenElse(hn::Gt(hn::Load(d, inf_mask), hn::Zero(d)), v_inf, val);
 
       hn::Store(val, d, buf.data() + i * kDtwBatchSize);
       prev = val;
@@ -164,65 +158,56 @@ MultiPairResult DtwMultiPairImpl(
 
   // --- Main recurrence: for j = 1..max_long-1 ---
   for (std::size_t j = 1; j < max_long; ++j) {
-    const auto lj = gather_long(j);
+    const auto lj = hn::Load(d, long_soa.data() + j * kDtwBatchSize);  // contiguous!
 
-    // diag = short_side[0] (old value before update)
+    // Precompute column-level OOB mask: lanes where j >= m_longs[p] are done.
+    HWY_ALIGN double jmask[4];
+    for (std::size_t p = 0; p < kDtwBatchSize; ++p)
+      jmask[p] = (j < m_longs[p] && m_shorts[p] > 0) ? 0.0 : 1.0;
+    const auto j_oob = hn::Gt(hn::Load(d, jmask), hn::Zero(d));
+
     auto diag = hn::Load(d, buf.data());
 
-    // short_side[0] += |s[0] - l[j]|
+    // Row i=0
     {
-      const auto s0 = gather_short(0);
-      auto cost = abs_diff(s0, lj);
-      auto new_val = hn::Add(diag, cost);
-
-      // For pairs where j >= m_longs[p], this row is past their computation.
-      // Their buffer values should remain at the correct final state, which is
-      // the value from j = m_longs[p]-1. So we don't update them.
-      HWY_ALIGN double jmask[4];
-      for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
-        jmask[p] = (j < m_longs[p] && m_shorts[p] > 0) ? 0.0 : 1.0;
-      }
-      auto j_oob = hn::Gt(hn::Load(d, jmask), hn::Zero(d));
-      new_val = hn::IfThenElse(j_oob, hn::Load(d, buf.data()), new_val);
-
+      auto new_val = hn::Add(diag, abs_diff(hn::Load(d, short_soa.data()), lj));
+      new_val = hn::IfThenElse(j_oob, diag, new_val);
       hn::Store(new_val, d, buf.data());
     }
 
     // Inner loop: i = 1..max_short-1
+    // Per-row OOB check (i < m_shorts[p]) is constant across j iterations,
+    // but we only enter this branch for rows that exist in at least one pair.
     for (std::size_t i = 1; i < max_short; ++i) {
-      const auto cur = hn::Load(d, buf.data() + i * kDtwBatchSize);      // short_side[i] = C(i, j-1)
-      const auto left = hn::Load(d, buf.data() + (i - 1) * kDtwBatchSize); // short_side[i-1] = C(i-1, j) (already updated)
+      const auto cur  = hn::Load(d, buf.data() + i * kDtwBatchSize);
+      const auto left = hn::Load(d, buf.data() + (i - 1) * kDtwBatchSize);
 
-      // min(left, cur) = min(C(i-1,j), C(i,j-1))
-      auto min1 = hn::Min(left, cur);
-      // min(diag, min1) = min(C(i-1,j-1), C(i-1,j), C(i,j-1))
-      auto best = hn::Min(diag, min1);
+      auto best = hn::Min(diag, hn::Min(left, cur));
+      const auto si   = hn::Load(d, short_soa.data() + i * kDtwBatchSize);  // contiguous!
+      auto next = hn::Add(best, abs_diff(si, lj));
 
-      const auto si = gather_short(i);
-      auto cost = abs_diff(si, lj);
-      auto next = hn::Add(best, cost);
-
-      // Save diag before overwrite
       diag = cur;
 
-      // For out-of-bounds lanes, preserve old value
-      HWY_ALIGN double mask_vals[4];
-      for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
-        mask_vals[p] = (i < m_shorts[p] && j < m_longs[p]) ? 0.0 : 1.0;
-      }
-      auto oob = hn::Gt(hn::Load(d, mask_vals), hn::Zero(d));
-      next = hn::IfThenElse(oob, cur, next);
+      // Apply both OOB guards: column-level (j_oob) is already computed above.
+      // Row-level (i >= m_shorts[p]) is hoistable per i but kept inline here
+      // since it's a single Load+Gt vs the old per-cell 4-branch scalar loop.
+      HWY_ALIGN double imask[4];
+      for (std::size_t p = 0; p < kDtwBatchSize; ++p)
+        imask[p] = (i < m_shorts[p]) ? 0.0 : 1.0;
+      const auto i_oob = hn::Gt(hn::Load(d, imask), hn::Zero(d));
+      next = hn::IfThenElse(hn::Or(i_oob, j_oob), cur, next);
 
       hn::Store(next, d, buf.data() + i * kDtwBatchSize);
     }
   }
 
-  // Extract results: for pair p, answer is at buf[(m_shorts[p]-1) * 4 + p]
+  // Extract results: for pair p, answer is at buf[(m_shorts[p]-1) * 4 + p].
+  // Use max() (not inf) for empty pairs: matches the production DTW convention.
   for (std::size_t p = 0; p < kDtwBatchSize; ++p) {
     if (p < n_pairs && m_shorts[p] > 0 && m_longs[p] > 0) {
       result.distances[p] = buf[(m_shorts[p] - 1) * kDtwBatchSize + p];
     } else {
-      result.distances[p] = inf;
+      result.distances[p] = max_val;
     }
   }
 

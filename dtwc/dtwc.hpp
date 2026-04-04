@@ -32,6 +32,7 @@
 // Phase 1: Core types (binding-friendly, Armadillo-independent headers)
 #include "core/clustering_result.hpp"
 #include "core/distance_matrix.hpp"
+#include "core/matrix_io.hpp"
 #include "core/distance_metric.hpp"
 #include "core/dtw.hpp"
 #include "core/dtw_options.hpp"

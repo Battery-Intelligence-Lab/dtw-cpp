@@ -8,6 +8,7 @@
 
 #include "checkpoint.hpp"
 #include "Problem.hpp"
+#include "core/matrix_io.hpp"
 
 #include <chrono>
 #include <ctime>
@@ -135,7 +136,7 @@ void save_checkpoint(const Problem &prob, const std::string &path)
   const size_t n = dm.size();
 
   // Write distance matrix CSV
-  dm.write_csv(dir / "distances.csv");
+  io::write_csv(dm, dir / "distances.csv");
 
   // Write metadata
   write_metadata(dir / "metadata.txt",
@@ -178,7 +179,7 @@ bool load_checkpoint(Problem &prob, const std::string &path)
 
   // Load the distance matrix CSV
   try {
-    prob.distance_matrix().read_csv(csv_path);
+    io::read_csv(prob.distance_matrix(), csv_path);
   } catch (const std::exception &e) {
     std::cout << "Failed to read checkpoint distances: " << e.what() << std::endl;
     return false;

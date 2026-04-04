@@ -16,6 +16,7 @@
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "warping.hpp"         // for dtwBanded, dtwFull
+#include "core/matrix_io.hpp"  // for io::write_csv, io::read_csv, operator<<
 
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"   // GPU distance matrix computation

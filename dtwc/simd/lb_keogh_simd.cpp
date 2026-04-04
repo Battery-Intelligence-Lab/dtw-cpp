@@ -12,8 +12,8 @@
 
 // Highway multi-target compilation: this file is re-included per ISA target.
 #undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "dtwc/simd/lb_keogh_simd.cpp"
-#include "dtwc/simd/highway_targets.hpp"
+#define HWY_TARGET_INCLUDE "simd/lb_keogh_simd.cpp"
+#include "simd/highway_targets.hpp"
 
 HWY_BEFORE_NAMESPACE();
 namespace dtwc::simd::HWY_NAMESPACE {

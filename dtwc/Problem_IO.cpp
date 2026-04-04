@@ -11,6 +11,7 @@
  */
 
 #include "Problem.hpp"
+#include "core/matrix_io.hpp"
 #include "fileOperations.hpp"
 #include "scores.hpp"      // for silhouette
 #include "settings.hpp"    // for data_t, randGenerator, band
@@ -153,7 +154,7 @@ void Problem::writeMedoidMembers(int iter, int rep) const
  */
 void Problem::writeDistanceMatrix(const std::string &name_) const
 {
-  distMat.write_csv(output_folder / name_);
+  io::write_csv(distMat, output_folder / name_);
 }
 
 /**
@@ -177,7 +178,7 @@ void Problem::writeBestRep(int best_rep)
 void Problem::readDistanceMatrix(const fs::path &distMat_path)
 {
   try {
-    distMat.read_csv(distMat_path);
+    io::read_csv(distMat, distMat_path);
   } catch (...) {
     std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
   }

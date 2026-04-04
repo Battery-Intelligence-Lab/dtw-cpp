@@ -101,7 +101,7 @@ function(dtwc_setup_dependencies)
       CPMAddPackage(
         NAME highway
         GITHUB_REPOSITORY google/highway
-        VERSION 1.2.0
+        GIT_TAG 1.2.0
         OPTIONS
           "HWY_ENABLE_TESTS OFF"
           "HWY_ENABLE_EXAMPLES OFF"
@@ -110,7 +110,7 @@ function(dtwc_setup_dependencies)
           "BUILD_TESTING OFF"
       )
     endif()
-    if(NOT TARGET hwy::hwy)
+    if(NOT TARGET hwy::hwy AND NOT TARGET hwy)
       message(WARNING "Google Highway not found — SIMD will be disabled")
     endif()
   endif()

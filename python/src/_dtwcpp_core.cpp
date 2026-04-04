@@ -38,6 +38,7 @@
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
 #include <core/pruned_distance_matrix.hpp>
+#include <core/matrix_io.hpp>
 
 #include <Eigen/Core>
 
@@ -254,7 +255,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("max", &dtwc::core::DenseDistanceMatrix::max)
     .def("to_numpy", [](const dtwc::core::DenseDistanceMatrix &dm) {
       // Expand packed triangular storage to full N*N numpy array.
-      const Eigen::MatrixXd full = dm.to_full_matrix();
+      const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
       const size_t n = dm.size();
       // Eigen is column-major; numpy expects row-major (C order).
       // Use nb::ndarray with explicit strides to handle this, or just copy
@@ -448,7 +449,7 @@ NB_MODULE(_dtwcpp_core, m) {
       }
       // Use to_full_matrix() to expand packed triangular → full NxN.
       const auto &dm = prob.distance_matrix();
-      const Eigen::MatrixXd full = dm.to_full_matrix();
+      const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
       const size_t n = dm.size();
       double *ptr = new double[n * n];
       // Symmetric matrix: col-major == row-major, safe to memcpy.

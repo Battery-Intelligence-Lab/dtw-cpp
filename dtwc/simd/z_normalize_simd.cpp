@@ -12,8 +12,8 @@
  */
 
 #undef HWY_TARGET_INCLUDE
-#define HWY_TARGET_INCLUDE "dtwc/simd/z_normalize_simd.cpp"
-#include "dtwc/simd/highway_targets.hpp"
+#define HWY_TARGET_INCLUDE "simd/z_normalize_simd.cpp"
+#include "simd/highway_targets.hpp"
 
 #include <cmath>
 
@@ -30,55 +30,50 @@ void ZNormalizeSimd(double* HWY_RESTRICT series, std::size_t n)
   const hn::ScalableTag<double> d;
   const std::size_t N = hn::Lanes(d);
 
-  // Pass 1: compute sum for mean
+  // Pass 1 (fused): compute sum(x) and sum(x²) in one memory sweep.
+  // Gives mean and variance via var = E[x²] - mean² (König-Huygens).
+  // Avoids a separate squared-deviation pass, halving pass-1+2 memory traffic.
   auto sum_vec = hn::Zero(d);
+  auto sq_vec  = hn::Zero(d);
   std::size_t i = 0;
   for (; i + N <= n; i += N) {
-    sum_vec = hn::Add(sum_vec, hn::LoadU(d, series + i));
+    const auto val = hn::LoadU(d, series + i);
+    sum_vec = hn::Add(sum_vec, val);
+    sq_vec  = hn::MulAdd(val, val, sq_vec);  // FMA: sq_vec += val²
   }
-  double sum = hn::ReduceSum(d, sum_vec);
-  for (; i < n; ++i) sum += series[i];
-
-  const double mean = sum / static_cast<double>(n);
-
-  // Pass 2: compute squared deviation sum
-  const auto mean_vec = hn::Set(d, mean);
-  auto sq_vec = hn::Zero(d);
-  i = 0;
-  for (; i + N <= n; i += N) {
-    const auto diff = hn::Sub(hn::LoadU(d, series + i), mean_vec);
-    sq_vec = hn::MulAdd(diff, diff, sq_vec);
-  }
+  double sum    = hn::ReduceSum(d, sum_vec);
   double sq_sum = hn::ReduceSum(d, sq_vec);
   for (; i < n; ++i) {
-    double diff = series[i] - mean;
-    sq_sum += diff * diff;
+    sum    += series[i];
+    sq_sum += series[i] * series[i];
   }
 
-  const double stddev = std::sqrt(sq_sum / static_cast<double>(n));
+  const double inv_n   = 1.0 / static_cast<double>(n);
+  const double mean    = sum * inv_n;
+  // Clamp to 0 to guard against tiny negative values from floating-point rounding.
+  const double variance = std::max(0.0, sq_sum * inv_n - mean * mean);
+  const double stddev   = std::sqrt(variance);
 
-  // Pass 3: normalize in place
+  // Pass 2: normalize in place
+  const auto mean_vec = hn::Set(d, mean);
   if (stddev > 1e-10) {
-    const double inv_sd = 1.0 / stddev;
-    const auto inv_sd_vec = hn::Set(d, inv_sd);
+    const auto inv_sd_vec = hn::Set(d, 1.0 / stddev);
     i = 0;
     for (; i + N <= n; i += N) {
-      const auto val = hn::LoadU(d, series + i);
+      const auto val    = hn::LoadU(d, series + i);
       const auto normed = hn::Mul(hn::Sub(val, mean_vec), inv_sd_vec);
       hn::StoreU(normed, d, series + i);
     }
-    for (; i < n; ++i) {
+    const double inv_sd = 1.0 / stddev;
+    for (; i < n; ++i)
       series[i] = (series[i] - mean) * inv_sd;
-    }
   } else {
     const auto zero = hn::Zero(d);
     i = 0;
-    for (; i + N <= n; i += N) {
+    for (; i + N <= n; i += N)
       hn::StoreU(zero, d, series + i);
-    }
-    for (; i < n; ++i) {
+    for (; i < n; ++i)
       series[i] = 0.0;
-    }
   }
 }
 

@@ -705,3 +705,189 @@ TEST_CASE("LB_Keogh <= banded DTW with matching band",
     REQUIRE(lb <= dtw_banded + 1e-10);
   }
 }
+
+// =========================================================================
+//  AREA 3: Envelope O(n) vs naive O(n*w) cross-validation
+//  Cross-checks the Lemire sliding-window implementation against a reference
+//  brute-force implementation for multiple (n, w) combinations including
+//  critical edge cases: n=1, n=2, w=0, w>=n.
+// =========================================================================
+
+/// Naive O(n*w) reference implementation of compute_envelopes.
+static void naive_envelopes(const std::vector<data_t> &series, int band,
+                            std::vector<data_t> &upper_out,
+                            std::vector<data_t> &lower_out)
+{
+  const std::size_t n = series.size();
+  upper_out.resize(n);
+  lower_out.resize(n);
+  const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
+  for (std::size_t p = 0; p < n; ++p) {
+    const std::size_t lo = (p > w) ? p - w : 0;
+    const std::size_t hi = std::min(p + w + 1, n);  // exclusive
+    upper_out[p] = *std::max_element(series.begin() + lo, series.begin() + hi);
+    lower_out[p] = *std::min_element(series.begin() + lo, series.begin() + hi);
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3a. Cross-validate O(n) vs naive for edge-case lengths {1, 2, 10, 100}
+//     and band sizes {0, 1, 5, 50} with deterministic random series.
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes O(n) matches naive O(n*w) reference — edge-case sizes",
+          "[adversarial][envelope][cross_validate][edge_cases]")
+{
+  std::mt19937 rng(99991);
+  const std::vector<std::size_t> lengths = { 1, 2, 10, 100 };
+  const std::vector<int> bands = { 0, 1, 5, 50 };
+
+  for (std::size_t n : lengths) {
+    auto series = random_series(rng, n, -20.0, 20.0);
+
+    for (int band : bands) {
+      std::vector<data_t> upper_naive, lower_naive;
+      naive_envelopes(series, band, upper_naive, lower_naive);
+
+      std::vector<data_t> upper_fast(n), lower_fast(n);
+      dtwc::core::compute_envelopes(series, band, upper_fast, lower_fast);
+
+      for (std::size_t i = 0; i < n; ++i) {
+        INFO("n=" << n << " band=" << band << " i=" << i
+             << " naive_upper=" << upper_naive[i] << " fast_upper=" << upper_fast[i]
+             << " naive_lower=" << lower_naive[i] << " fast_lower=" << lower_fast[i]);
+        REQUIRE_THAT(upper_fast[i], WithinAbs(upper_naive[i], 1e-12));
+        REQUIRE_THAT(lower_fast[i], WithinAbs(lower_naive[i], 1e-12));
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3b. w=0: upper[i] == lower[i] == series[i] for all lengths
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes w=0 is identity for n=1,2,10,100",
+          "[adversarial][envelope][cross_validate][w_zero]")
+{
+  std::mt19937 rng(77777);
+  for (std::size_t n : { 1u, 2u, 10u, 100u }) {
+    auto series = random_series(rng, n);
+    std::vector<data_t> upper(n), lower(n);
+    dtwc::core::compute_envelopes(series, 0, upper, lower);
+
+    for (std::size_t i = 0; i < n; ++i) {
+      INFO("n=" << n << " i=" << i << " series=" << series[i]
+           << " upper=" << upper[i] << " lower=" << lower[i]);
+      REQUIRE_THAT(upper[i], WithinAbs(series[i], 1e-15));
+      REQUIRE_THAT(lower[i], WithinAbs(series[i], 1e-15));
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3c. w >= n (fast-path): envelope is global min/max for all positions
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes w>=n fast-path gives global min/max for n=1,2,10",
+          "[adversarial][envelope][cross_validate][fast_path]")
+{
+  std::mt19937 rng(11111);
+  for (std::size_t n : { 1u, 2u, 10u }) {
+    auto series = random_series(rng, n, -50.0, 50.0);
+    const data_t gmax = *std::max_element(series.begin(), series.end());
+    const data_t gmin = *std::min_element(series.begin(), series.end());
+
+    // band = n (exactly equal) and band = n+5 (strictly greater)
+    for (int band : { static_cast<int>(n), static_cast<int>(n + 5) }) {
+      std::vector<data_t> upper(n), lower(n);
+      dtwc::core::compute_envelopes(series, band, upper, lower);
+
+      for (std::size_t i = 0; i < n; ++i) {
+        INFO("n=" << n << " band=" << band << " i=" << i);
+        REQUIRE_THAT(upper[i], WithinAbs(gmax, 1e-15));
+        REQUIRE_THAT(lower[i], WithinAbs(gmin, 1e-15));
+      }
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3d. Ring-buffer capacity invariant: with cap=w+2, at most w+1 elements
+//     should be live in the deque simultaneously (no aliasing).
+//     This is verified indirectly: if the ring buffer overflows it would
+//     corrupt an index that is still live, producing wrong envelope values.
+//     Cross-validation against the naive reference catches such corruption.
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes ring-buffer no-aliasing: 50 random series, bands 0-50",
+          "[adversarial][envelope][cross_validate][ring_buffer]")
+{
+  std::mt19937 rng(31415);
+
+  for (int trial = 0; trial < 50; ++trial) {
+    const std::size_t n = 20 + (rng() % 80);  // lengths 20..99
+    const int band = static_cast<int>(rng() % 51);  // bands 0..50
+    auto series = random_series(rng, n);
+
+    std::vector<data_t> upper_naive, lower_naive;
+    naive_envelopes(series, band, upper_naive, lower_naive);
+
+    std::vector<data_t> upper_fast(n), lower_fast(n);
+    dtwc::core::compute_envelopes(series, band, upper_fast, lower_fast);
+
+    for (std::size_t i = 0; i < n; ++i) {
+      INFO("trial=" << trial << " n=" << n << " band=" << band << " i=" << i);
+      REQUIRE_THAT(upper_fast[i], WithinAbs(upper_naive[i], 1e-12));
+      REQUIRE_THAT(lower_fast[i], WithinAbs(lower_naive[i], 1e-12));
+    }
+  }
+}
+
+// -------------------------------------------------------------------------
+// 3e. n=2, various bands: minimal non-trivial case
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes n=2 all band values are correct",
+          "[adversarial][envelope][cross_validate][n2]")
+{
+  // For n=2: with band=0, upper={s[0],s[1]}, lower={s[0],s[1]}
+  //          with band>=1, upper={max,max},  lower={min,min}
+  const std::vector<data_t> series = { 3.0, 7.0 };
+  std::vector<data_t> upper(2), lower(2);
+
+  // band=0
+  dtwc::core::compute_envelopes(series, 0, upper, lower);
+  REQUIRE_THAT(upper[0], WithinAbs(3.0, 1e-15));
+  REQUIRE_THAT(upper[1], WithinAbs(7.0, 1e-15));
+  REQUIRE_THAT(lower[0], WithinAbs(3.0, 1e-15));
+  REQUIRE_THAT(lower[1], WithinAbs(7.0, 1e-15));
+
+  // band=1 (w=1 >= n-1=1, but n=2 and w=1, w < n=2 so NOT fast-path)
+  // window for p=0: [0,1] -> max=7, min=3
+  // window for p=1: [0,1] -> max=7, min=3
+  dtwc::core::compute_envelopes(series, 1, upper, lower);
+  REQUIRE_THAT(upper[0], WithinAbs(7.0, 1e-15));
+  REQUIRE_THAT(upper[1], WithinAbs(7.0, 1e-15));
+  REQUIRE_THAT(lower[0], WithinAbs(3.0, 1e-15));
+  REQUIRE_THAT(lower[1], WithinAbs(3.0, 1e-15));
+
+  // band=2 (w=2 >= n=2: fast-path)
+  dtwc::core::compute_envelopes(series, 2, upper, lower);
+  REQUIRE_THAT(upper[0], WithinAbs(7.0, 1e-15));
+  REQUIRE_THAT(upper[1], WithinAbs(7.0, 1e-15));
+  REQUIRE_THAT(lower[0], WithinAbs(3.0, 1e-15));
+  REQUIRE_THAT(lower[1], WithinAbs(3.0, 1e-15));
+}
+
+// -------------------------------------------------------------------------
+// 3f. n=1: trivial case — upper[0] == lower[0] == series[0] for all bands
+// -------------------------------------------------------------------------
+TEST_CASE("compute_envelopes n=1 gives series value regardless of band",
+          "[adversarial][envelope][cross_validate][n1]")
+{
+  const std::vector<data_t> series = { 42.5 };
+  std::vector<data_t> upper(1), lower(1);
+
+  for (int band : { 0, 1, 5, 100 }) {
+    dtwc::core::compute_envelopes(series, band, upper, lower);
+    INFO("band=" << band);
+    REQUIRE_THAT(upper[0], WithinAbs(42.5, 1e-15));
+    REQUIRE_THAT(lower[0], WithinAbs(42.5, 1e-15));
+  }
+}

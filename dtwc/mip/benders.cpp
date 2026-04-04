@@ -100,7 +100,7 @@ void MIP_clustering_byBenders(Problem &prob)
 
     prob.method = Method::Kmedoids;
     prob.N_repetition = 1;
-    prob.cluster_by_kMedoidsPAM();
+    prob.cluster_by_kMedoidsLloyd();
 
     best_medoids = prob.centroids_ind;
     best_cost = prob.findTotalCost();

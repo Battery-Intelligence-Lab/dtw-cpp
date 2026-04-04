@@ -4,7 +4,7 @@
  *
  * These tests are written from the SPECIFICATION, not the implementation.
  * Spec: "Dense symmetric distance matrix with flat array storage.
- *        set() enforces symmetry. Uncomputed entries are NaN."
+ *        set() enforces symmetry. Uncomputed entries are written as empty fields."
  *
  * If a test fails, the CODE is wrong, not the test.
  *
@@ -13,6 +13,7 @@
  */
 
 #include <core/distance_matrix.hpp>
+#include <core/matrix_io.hpp>
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -276,10 +277,10 @@ TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatr
       dm.set(i, j, static_cast<double>(i * N + j) * 0.1);
 
   TempFile tmp("full_roundtrip");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
-  dm2.read_csv(tmp.path);
+  dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE(dm2.size() == N);
   for (size_t i = 0; i < N; ++i)
@@ -287,7 +288,7 @@ TEST_CASE("Adversarial: Full matrix CSV round-trip", "[adversarial][DistanceMatr
       REQUIRE_THAT(dm2.get(i, j), WithinAbs(dm.get(i, j), 1e-12));
 }
 
-TEST_CASE("Adversarial: Partial matrix CSV round-trip (NaN preservation)",
+TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)",
   "[adversarial][DistanceMatrix][IO]")
 {
   constexpr size_t N = 5;
@@ -299,10 +300,10 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (NaN preservation)",
   dm.set(4, 4, 0.0);
 
   TempFile tmp("partial_roundtrip");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
-  dm2.read_csv(tmp.path);
+  dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE(dm2.size() == N);
 
@@ -326,10 +327,10 @@ TEST_CASE("Adversarial: Negative values in distance matrix", "[adversarial][Dist
   dm.set(1, 2, -0.001);
 
   TempFile tmp("negative_roundtrip");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
-  dm2.read_csv(tmp.path);
+  dtwc::io::read_csv(dm2,tmp.path);
 
   REQUIRE_THAT(dm2.get(0, 1), WithinAbs(-42.5, 1e-12));
   REQUIRE_THAT(dm2.get(1, 0), WithinAbs(-42.5, 1e-12));
@@ -342,10 +343,10 @@ TEST_CASE("Adversarial: Very large values (1e300)", "[adversarial][DistanceMatri
   dm.set(0, 1, 1e300);
 
   TempFile tmp("large_roundtrip");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
-  dm2.read_csv(tmp.path);
+  dtwc::io::read_csv(dm2,tmp.path);
 
   // Relative tolerance for very large values
   REQUIRE_THAT(dm2.get(0, 1), WithinAbs(1e300, 1e287));
@@ -358,10 +359,10 @@ TEST_CASE("Adversarial: Very small values (1e-300)", "[adversarial][DistanceMatr
   dm.set(0, 1, 1e-300);
 
   TempFile tmp("small_roundtrip");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
-  dm2.read_csv(tmp.path);
+  dtwc::io::read_csv(dm2,tmp.path);
 
   // Must not underflow to zero
   REQUIRE(dm2.get(0, 1) != 0.0);
@@ -379,7 +380,7 @@ TEST_CASE("Adversarial: operator<< matches write_csv output",
 
   // write_csv output
   TempFile tmp("operator_vs_csv");
-  dm.write_csv(tmp.path);
+  dtwc::io::write_csv(dm,tmp.path);
 
   std::ifstream file(tmp.path);
   std::string csv_content((std::istreambuf_iterator<char>(file)),
@@ -405,7 +406,7 @@ TEST_CASE("Adversarial: read_csv with trailing newline", "[adversarial][Distance
   }
 
   DenseDistanceMatrix dm;
-  dm.read_csv(tmp.path);
+  dtwc::io::read_csv(dm,tmp.path);
 
   // Should have 2 rows, not 3 — trailing blank line must be ignored
   REQUIRE(dm.size() == 2);
@@ -423,7 +424,7 @@ TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix]
 
   SECTION("write_csv on empty matrix does not crash")
   {
-    REQUIRE_NOTHROW(dm.write_csv(tmp.path));
+    REQUIRE_NOTHROW(dtwc::io::write_csv(dm,tmp.path));
   }
 
   SECTION("read_csv of empty file does not crash")
@@ -433,7 +434,7 @@ TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix]
       // write nothing
     }
     DenseDistanceMatrix dm2;
-    REQUIRE_NOTHROW(dm2.read_csv(tmp.path));
+    REQUIRE_NOTHROW(dtwc::io::read_csv(dm2,tmp.path));
     REQUIRE(dm2.size() == 0);
   }
 }
@@ -452,7 +453,7 @@ TEST_CASE("Adversarial: read_csv of asymmetric CSV enforces symmetry",
   }
 
   DenseDistanceMatrix dm;
-  dm.read_csv(tmp.path);
+  dtwc::io::read_csv(dm,tmp.path);
 
   REQUIRE(dm.size() == 3);
   // set() enforces symmetry, so the last set wins.

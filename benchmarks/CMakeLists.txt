@@ -10,8 +10,9 @@ target_link_libraries(bench_dtw_baseline
 )
 
 # Link Highway for SIMD benchmarks if available
-if(DTWC_ENABLE_SIMD AND TARGET hwy::hwy)
-  target_link_libraries(bench_dtw_baseline PRIVATE hwy::hwy)
+if(DTWC_ENABLE_SIMD AND (TARGET hwy::hwy OR TARGET hwy))
+  set(_hwy_target "$<IF:$<TARGET_EXISTS:hwy::hwy>,hwy::hwy,hwy>")
+  target_link_libraries(bench_dtw_baseline PRIVATE "${_hwy_target}")
 endif()
 
 # CUDA benchmarks (Google Benchmark, requires CUDA)

@@ -21,6 +21,30 @@ Critical knowledge to avoid repeating mistakes.
 - Multi-pair SIMD gives max ~1.29x due to scatter/gather overhead.
 - MSVC auto-vectorizes LB_Keogh/z_normalize to SSE2; explicit Highway adds dispatch overhead.
 
+### Highway SIMD benchmark results (measured 2026-04-04, MSVC, AVX2, i7-20 core)
+Results saved in `benchmarks/results/simd_comparison.json`.
+
+**LB_Keogh**: Highway 2.7–3.3× faster than scalar. MSVC cannot auto-vectorize `std::max` chains;
+Highway's explicit vectorization wins decisively.
+
+**z_normalize**:
+- Old (3-pass): Highway 0.67–1.2× scalar — slower on large series. Each pass read the full array
+  independently, giving no cache reuse benefit over scalar.
+- Fix: fuse passes 1+2 into one pass computing `sum(x)` and `sum(x²)` simultaneously →
+  `var = E[x²] - mean²`. Reduces to 2 passes.
+- New (2-pass): Highway 0.92–1.0× scalar — now essentially at parity. 40% faster at n=8000.
+
+**multi_pair_dtw**:
+- Old (scatter/gather): 0.45–0.64× scalar — 1.6–2.2× *slower*. `gather_short(i)` called inside
+  O(m²) inner loop; each call did 4 scalar reads from separate memory + stack write + SIMD Load.
+  Additionally the OOB mask was re-computed per-cell (4 branches + Load + Gt per iteration) even
+  for equal-length pairs where it is always all-false.
+- Fix: pre-pack all 4 series into interleaved SoA buffers before the kernel. O(n) packing up front
+  → inner loop uses contiguous `Load()` — no scatter. Hoist j_oob mask outside inner loop.
+- New (SoA): 0.65–0.98× scalar — at n=1000 essentially at parity. 37% faster than old at n=1000.
+- **Lesson**: Any "batch SIMD" kernel that loads data from multiple independent pointers must
+  pre-transpose into a contiguous SoA layout; scatter/gather in a recurrence inner loop kills perf.
+
 ### std::min with initializer_list is catastrophically slow
 - `std::min({a,b,c})` creates a temporary on every call. 2.5-3x speedup from `std::min(a, std::min(b,c))`.
 
