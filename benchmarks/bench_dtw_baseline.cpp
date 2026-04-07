@@ -444,3 +444,72 @@ BENCHMARK(BM_compute_envelopes)
   ->Args({4000, 50})
   ->Unit(benchmark::kNanosecond);
 
+// ---------------------------------------------------------------------------
+// BM_dtwFull_L_SquaredL2 — linear-space DTW with SquaredL2 metric
+// ---------------------------------------------------------------------------
+static void BM_dtwFull_L_SquaredL2(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  auto x = random_series(len, 42);
+  auto y = random_series(len, 43);
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+      dtwc::dtwFull_L<double>(x.data(), x.size(), y.data(), y.size(), -1.0,
+                              dtwc::core::MetricType::SquaredL2));
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(len));
+}
+BENCHMARK(BM_dtwFull_L_SquaredL2)
+  ->Arg(100)
+  ->Arg(500)
+  ->Arg(1000)
+  ->Arg(4000)
+  ->Unit(benchmark::kMicrosecond)
+  ->Complexity();
+
+// ---------------------------------------------------------------------------
+// BM_dtwBanded_earlyAbandon — banded DTW with and without early abandon
+// ---------------------------------------------------------------------------
+static void BM_dtwBanded_earlyAbandon(benchmark::State &state)
+{
+  const auto len = static_cast<size_t>(state.range(0));
+  const int band = static_cast<int>(state.range(1));
+  auto x = random_series(len, 42);
+  auto y = random_series(len, 43);
+  // Compute a tight upper bound to make early abandon effective
+  double ub = dtwc::dtwBanded<double>(x, y, band);
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(dtwc::dtwBanded<double>(x, y, band, ub * 1.01));
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+}
+BENCHMARK(BM_dtwBanded_earlyAbandon)
+  ->Args({1000, 50})
+  ->Args({4000, 50})
+  ->Args({4000, 100})
+  ->Unit(benchmark::kMicrosecond);
+
+// ---------------------------------------------------------------------------
+// BM_dtwFull_L_mv_ndim2 — multivariate DTW ndim=2
+// ---------------------------------------------------------------------------
+static void BM_dtwFull_L_mv_ndim2(benchmark::State &state)
+{
+  const auto steps = static_cast<size_t>(state.range(0));
+  auto x = random_series(steps * 2, 42);
+  auto y = random_series(steps * 2, 43);
+  for (auto _ : state) {
+    benchmark::DoNotOptimize(
+      dtwc::dtwFull_L_mv<double>(x.data(), steps, y.data(), steps, 2));
+  }
+  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()));
+  state.SetComplexityN(static_cast<int64_t>(steps));
+}
+BENCHMARK(BM_dtwFull_L_mv_ndim2)
+  ->Arg(100)
+  ->Arg(500)
+  ->Arg(1000)
+  ->Arg(4000)
+  ->Unit(benchmark::kMicrosecond)
+  ->Complexity();
+
