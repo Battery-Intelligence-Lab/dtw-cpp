@@ -292,7 +292,8 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  // Normalize YAML string values that bypass CLI11's CheckedTransformer
+  // Normalize YAML string values that bypass CLI11's CheckedTransformer.
+  // Must replicate both case-folding AND alias mappings from the CLI definitions.
   auto to_lower = [](std::string &s) {
     for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   };
@@ -300,6 +301,11 @@ int main(int argc, char *argv[])
   to_lower(metric);
   to_lower(variant);
   to_lower(linkage_str);
+
+  // Alias mappings (mirror the CheckedTransformer maps above)
+  if (method == "hclust") method = "hierarchical";
+  if (metric == "sqeuclidean" || metric == "l2sq") metric = "squared_euclidean";
+  if (variant == "soft-dtw") variant = "softdtw";
 
   // ---- Setup ----
   dtwc::Clock clk;

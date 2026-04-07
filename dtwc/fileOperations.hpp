@@ -43,21 +43,14 @@ namespace fs = std::filesystem;
  */
 inline void ignoreBOM(std::istream &in)
 {
-  const char BOMchars[] = { '\xEF', '\xBB', '\xBF' };
-  char consumed[3];
-  int seek = 0;
-  for (; seek < 3; ++seek) {
-    char c;
-    if (!in.get(c) || BOMchars[seek] != c) {
-      if (in) in.putback(c);
-      // Put back any previously consumed partial-BOM bytes (reverse order)
-      for (int j = seek - 1; j >= 0; --j)
-        in.putback(consumed[j]);
-      break;
-    }
-    consumed[seek] = c;
-  }
+  const auto start = in.tellg();
+  const char bom[] = { '\xEF', '\xBB', '\xBF' };
+  char buf[3]{};
+  if (in.read(buf, 3) && buf[0] == bom[0] && buf[1] == bom[1] && buf[2] == bom[2])
+    return; // BOM consumed
+  // No BOM (or partial match) — rewind to start
   in.clear();
+  in.seekg(start);
 }
 
 /**

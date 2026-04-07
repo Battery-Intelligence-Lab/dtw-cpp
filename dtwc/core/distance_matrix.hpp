@@ -75,11 +75,11 @@ public:
 
   double max() const
   {
-    double result = 0.0;
+    double result = -std::numeric_limits<double>::infinity();
     for (double d : data_)
       if (!std::isnan(d) && d > result)
         result = d;
-    return result;
+    return std::isfinite(result) ? result : 0.0;
   }
 
   size_t count_computed() const
