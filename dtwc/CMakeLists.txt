@@ -87,6 +87,11 @@ if(OpenMP_CXX_FOUND)
   endif()
 endif()
 
+# Guard against parent projects that use -ffast-math (which includes -ffinite-math-only).
+# This is target-scoped so it applies even when consumed as a subproject.
+if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+  target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
+endif()
 
 # MPI (optional) — check for the imported target rather than the variable,
 # because find_package(MPI) runs inside dtwc_setup_dependencies() (a function)

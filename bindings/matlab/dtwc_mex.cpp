@@ -486,7 +486,6 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
     for (size_t j = i; j < N; ++j)
       dm.set(i, j, data[i + j * N]);  // column-major
 
-  prob.set_distance_matrix_filled(true);
 }
 
 // =========================================================================

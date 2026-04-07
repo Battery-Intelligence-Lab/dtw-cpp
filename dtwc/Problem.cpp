@@ -125,7 +125,6 @@ void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
  */
 void Problem::refreshDistanceMatrix()
 {
-  is_distMat_filled = false;
   if (distMat.size() != 0)
     distMat.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
   rebind_dtw_fn();
@@ -447,7 +446,6 @@ void Problem::fillDistanceMatrix()
     if (!dtwc::cuda::cuda_available()) {
       if (verbose) std::cout << "No CUDA GPU detected, falling back to CPU.\n";
       fillDistanceMatrix_BruteForce();
-      is_distMat_filled = true;
       break;
     }
 
@@ -467,7 +465,6 @@ void Problem::fillDistanceMatrix()
     for (size_t i = 0; i < cuda_result.n; ++i)
       for (size_t j = i; j < cuda_result.n; ++j)
         distMat.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
-    is_distMat_filled = true;
 
     if (verbose)
       std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
@@ -482,7 +479,6 @@ void Problem::fillDistanceMatrix()
   case DistanceMatrixStrategy::BruteForce:
   default:
     fillDistanceMatrix_BruteForce();
-    is_distMat_filled = true;
     break;
   }
 

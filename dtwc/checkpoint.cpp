@@ -188,11 +188,9 @@ bool load_checkpoint(Problem &prob, const std::string &path)
   // Check if all pairs are computed
   const auto &dm = prob.distance_matrix();
   if (dm.all_computed()) {
-    prob.set_distance_matrix_filled(true);
     std::cout << "Checkpoint fully loaded from " << dir.string()
               << " (all " << dm.packed_count() << " entries computed)" << std::endl;
   } else {
-    prob.set_distance_matrix_filled(false);
     std::cout << "Checkpoint partially loaded from " << dir.string()
               << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << std::endl;
   }

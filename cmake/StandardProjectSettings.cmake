@@ -47,8 +47,12 @@ endif()
 # -ffinite-math-only, while retaining all other fast-math optimizations.
 # See missing_utils.hpp for NaN handling design notes.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:fast>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:fast>>)
+  # /fp:precise preserves std::isnan() semantics (required by missing_utils.hpp).
+  # /fp:contract enables FMA contraction for performance.
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:precise>>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:contract>>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:precise>>)
+  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:contract>>)
   # /Gy: function-level linking — lets the linker eliminate/fold unused COMDATs.
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/Gy>>)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/Gy>>)

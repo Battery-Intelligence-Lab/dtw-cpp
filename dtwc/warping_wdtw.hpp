@@ -20,6 +20,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include "warping.hpp"   // for detail::band_bounds
 
 #include <cstdlib>   // for abs, size_t
 #include <algorithm> // for min, max
@@ -27,7 +28,6 @@
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
 #include <utility>   // for pair
-#include <numeric>   // for iota
 
 namespace dtwc {
 
@@ -177,20 +177,13 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
   const double slope = static_cast<double>(m_long - 1) / (m_short - 1);
   const auto window = std::max(static_cast<double>(band), slope / 2);
 
-  auto get_bounds = [slope, window](int j) {
-    const auto center = slope * j;
-    const int low = static_cast<int>(std::ceil(std::round(100 * (center - window)) / 100.0));
-    const int high = static_cast<int>(std::floor(std::round(100 * (center + window)) / 100.0)) + 1;
-    return std::pair(low, high);
-  };
-
   // Rolling column buffer: col[i] stores C(i, j) after processing column j.
   thread_local std::vector<data_t> col;
   col.assign(m_long, maxValue);
 
   // First column (j = 0): initialize col[0..hi) with cumulative weighted sums
   {
-    const auto [lo, hi] = get_bounds(0);
+    const auto [lo, hi] = detail::band_bounds(slope, window, 0);
     const int high = std::min(hi, m_long);
     col[0] = weights[0] * distance(long_ptr[0], short_ptr[0]);
     for (int i = 1; i < high; ++i) {
@@ -200,7 +193,7 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 
   // Columns j = 1..m_short-1
   for (int j = 1; j < m_short; ++j) {
-    const auto [lo, hi] = get_bounds(j);
+    const auto [lo, hi] = detail::band_bounds(slope, window, j);
     const int low = std::max(lo, 0);
     const int high = std::min(hi, m_long);
 

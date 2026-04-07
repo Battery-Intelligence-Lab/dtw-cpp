@@ -47,7 +47,7 @@ void save_checkpoint(const Problem &prob, const std::string &path);
 ///
 /// Reads distances.csv and metadata.txt from the given directory.
 /// Validates that the matrix dimension matches the Problem's data size.
-/// Sets is_distMat_filled to true only if all pairs are computed.
+/// The Problem's isDistanceMatrixFilled() will return true if all pairs are computed.
 ///
 /// @param prob  The Problem to restore the distance matrix into.
 /// @param path  Directory path containing checkpoint files.

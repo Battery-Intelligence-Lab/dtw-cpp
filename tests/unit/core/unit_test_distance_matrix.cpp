@@ -182,14 +182,13 @@ TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceM
   REQUIRE(dm.is_computed(1, 0));
 }
 
-TEST_CASE("DenseDistanceMatrix negative distance is valid and computed", "[DistanceMatrix]")
+TEST_CASE("DenseDistanceMatrix zero distance is valid and computed", "[DistanceMatrix]")
 {
-  // With the NaN sentinel, negative values should be treated as valid computed entries
-  // (unlike the old -1.0 sentinel which incorrectly conflated negative distances
-  // with uncomputed entries)
+  // Zero is a valid DTW distance (identical series). The -1.0 sentinel must not
+  // confuse 0.0 with "uncomputed".
   DenseDistanceMatrix dm(3);
 
-  dm.set(0, 1, -5.0);
+  dm.set(0, 1, 0.0);
   REQUIRE(dm.is_computed(0, 1));
-  REQUIRE_THAT(dm.get(0, 1), WithinAbs(-5.0, 1e-12));
+  REQUIRE_THAT(dm.get(0, 1), WithinAbs(0.0, 1e-12));
 }

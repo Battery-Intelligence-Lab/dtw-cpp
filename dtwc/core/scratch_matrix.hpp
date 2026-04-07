@@ -25,10 +25,15 @@ namespace dtwc::core {
  * convenience method that Eigen's Matrix does not natively expose.
  */
 template <typename T>
-class ScratchMatrix : public Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> {
+class ScratchMatrix : private Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> {
   using Base = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
 
 public:
+  using Base::operator();
+  using Base::data;
+  using Base::size;
+  using Base::rows;
+  using Base::cols;
   ScratchMatrix() = default;
   ScratchMatrix(size_t r, size_t c) : Base(static_cast<Eigen::Index>(r), static_cast<Eigen::Index>(c)) {}
   ScratchMatrix(size_t r, size_t c, T val) : Base(static_cast<Eigen::Index>(r), static_cast<Eigen::Index>(c))

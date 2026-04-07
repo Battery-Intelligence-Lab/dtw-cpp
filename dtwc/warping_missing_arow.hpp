@@ -243,8 +243,13 @@ data_t dtwAROW_banded_impl(const data_t* x, size_t nx, const data_t* y, size_t n
     for (int j = 0; j < my; ++j)
       C(i, j) = maxValue;
 
-  // Compute band boundaries for each row i
-  // Uses the same slope-based formula as dtwBanded_impl
+  // Compute band boundaries for each row i.
+  // NOTE: AROW uses the simpler std::ceil/floor(center +/- window) without the
+  // round-100 trick used by detail::band_bounds(). This is intentional: AROW
+  // operates on a full matrix (not a rolling buffer), so off-by-one at band
+  // edges is harmless -- out-of-band cells are +inf and never selected. The
+  // other banded variants use rolling buffers where the round-100 trick is
+  // needed to avoid floating-point boundary drift.
   const double slope = (my > 1 && mx > 1)
     ? static_cast<double>(my - 1) / (mx - 1)
     : 1.0;
@@ -333,14 +338,9 @@ template <typename data_t = double>
 data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_L_impl(x, y, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_L_impl(x, y, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_L_impl(x, y, dist);
+  });
 }
 
 /**
@@ -359,14 +359,9 @@ template <typename data_t = double>
 data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
                core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_impl(x, y, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_impl(x, y, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_impl(x, y, dist);
+  });
 }
 
 /**
@@ -389,15 +384,9 @@ data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, y, metric);
-
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_banded_impl(x, y, band, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_banded_impl(x, y, band, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_banded_impl(x, y, band, dist);
+  });
 }
 
 // =========================================================================
@@ -409,14 +398,9 @@ template <typename data_t = double>
 data_t dtwAROW_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_L_impl(x, nx, y, ny, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_L_impl(x, nx, y, ny, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_L_impl(x, nx, y, ny, dist);
+  });
 }
 
 /// DTW-AROW, full matrix (pointer + length).
@@ -424,14 +408,9 @@ template <typename data_t = double>
 data_t dtwAROW(const data_t* x, size_t nx, const data_t* y, size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_impl(x, nx, y, ny, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_impl(x, nx, y, ny, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_impl(x, nx, y, ny, dist);
+  });
 }
 
 /// DTW-AROW, banded (pointer + length).
@@ -441,15 +420,9 @@ data_t dtwAROW_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, nx, y, ny, metric);
-
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwAROW_banded_impl(x, nx, y, ny, band, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwAROW_banded_impl(x, nx, y, ny, band, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwAROW_banded_impl(x, nx, y, ny, band, dist);
+  });
 }
 
 } // namespace dtwc

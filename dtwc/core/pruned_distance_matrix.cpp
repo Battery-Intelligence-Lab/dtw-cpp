@@ -125,7 +125,6 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
     if (N == 1) {
       prob.distance_matrix().resize(1);
       prob.distance_matrix().set(0, 0, 0.0);
-      prob.set_distance_matrix_filled(true);
     }
     return stats;
   }
@@ -282,7 +281,6 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   stats.early_abandoned = global_early_abandoned;
   stats.computed_full_dtw = global_full_dtw;
 
-  prob.set_distance_matrix_filled(true);
   return stats;
 }
 

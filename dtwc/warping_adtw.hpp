@@ -51,7 +51,7 @@ data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   if (nx == 0 || ny == 0) return maxValue;
   if (x == y && nx == ny) return 0; // Same object => distance 0.
-  thread_local static std::vector<data_t> short_side(10000);
+  thread_local static std::vector<data_t> short_side;
 
   const data_t *short_ptr;
   const data_t *long_ptr;
@@ -162,9 +162,9 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
   const bool do_early_abandon = (early_abandon >= 0);
 
   for (int row = 0; row < m_short; ++row) {
-    const double center = slope * row;
-    low_bounds[row]  = static_cast<int>(std::ceil(std::round(100.0 * (center - window)) / 100.0));
-    high_bounds[row] = static_cast<int>(std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+    auto [lo, hi] = detail::band_bounds(slope, window, row);
+    low_bounds[row]  = lo;
+    high_bounds[row] = hi;
   }
 
   auto distance = [](data_t a, data_t b) { return std::abs(a - b); };

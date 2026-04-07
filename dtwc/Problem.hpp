@@ -87,8 +87,6 @@ private:
   dtw_fn_t dtw_fn_;                                 /*!< DTW distance function (set by rebind_dtw_fn). */
   std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
 
-  bool is_distMat_filled{ false }; /*!< Flag indicating if the distance matrix is filled. */
-
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
   void refresh_variant_caches(); ///< Refresh precomputed variant-specific caches.
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
@@ -162,15 +160,12 @@ public:
 
   data_t maxDistance() const { return distMat.max(); }
   data_t distByInd(int i, int j);
-  bool isDistanceMatrixFilled() const { return is_distMat_filled; }
+  bool isDistanceMatrixFilled() const { return distMat.size() > 0 && distMat.all_computed(); }
 
   /// Access the underlying distance matrix (const).
   const distMat_t &distance_matrix() const { return distMat; }
   /// Access the underlying distance matrix (mutable).
   distMat_t &distance_matrix() { return distMat; }
-  /// Mark the distance matrix as filled (e.g., after loading from checkpoint).
-  void set_distance_matrix_filled(bool filled) { is_distMat_filled = filled; }
-
   void fillDistanceMatrix();
   void printDistanceMatrix() const;
 

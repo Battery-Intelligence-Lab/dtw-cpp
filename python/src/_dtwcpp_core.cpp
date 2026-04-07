@@ -490,7 +490,6 @@ NB_MODULE(_dtwcpp_core, m) {
            for (size_t i = 0; i < n; ++i)
                for (size_t j = i; j < n; ++j)
                    mat.set(i, j, data[i * n + j]);
-           p.set_distance_matrix_filled(true);
          }, "dm"_a,
          "Load a precomputed NxN distance matrix (e.g. from GPU computation).")
     .def("__repr__", [](const dtwc::Problem &p) {

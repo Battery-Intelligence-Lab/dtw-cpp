@@ -583,14 +583,6 @@ TEST_CASE("Standalone single series", "[pruned_distance_matrix][standalone][edge
   REQUIRE_THAT(output[0], WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("Metric compatibility check", "[lower_bounds][compatibility]")
-{
-  using namespace dtwc::core;
-
-  REQUIRE(lb_pruning_compatible(DistanceMetric::L1) == true);
-  REQUIRE(lb_pruning_compatible(DistanceMetric::L2) == false);
-}
-
 
 // ======== Parallel Pruned + Strategy Integration Tests ========
 

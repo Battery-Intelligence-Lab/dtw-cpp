@@ -88,6 +88,30 @@ struct MissingMVSquaredL2Dist {
   }
 };
 
+/// Dispatch MetricType to missing-aware scalar distance functor.
+template <typename Fn>
+auto dispatch_missing_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MissingL1Dist{}))
+{
+  switch (m) {
+  case core::MetricType::SquaredL2: return fn(MissingSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default: return fn(MissingL1Dist{});
+  }
+}
+
+/// Dispatch MetricType to missing-aware multivariate distance functor.
+template <typename Fn>
+auto dispatch_missing_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MissingMVL1Dist{}))
+{
+  switch (m) {
+  case core::MetricType::SquaredL2: return fn(MissingMVSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default: return fn(MissingMVL1Dist{});
+  }
+}
+
 } // namespace detail
 
 // =========================================================================
@@ -114,14 +138,9 @@ data_t dtwMissing_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_impl(x, y, early_abandon, detail::MissingSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_L_impl(x, y, early_abandon, detail::MissingL1Dist{});
-  }
+  return detail::dispatch_missing_metric(metric, [&](auto dist) {
+    return detail::dtwFull_L_impl(x, y, early_abandon, dist);
+  });
 }
 
 /**
@@ -139,14 +158,9 @@ template <typename data_t>
 data_t dtwMissing(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_impl(x, y, detail::MissingSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_impl(x, y, detail::MissingL1Dist{});
-  }
+  return detail::dispatch_missing_metric(metric, [&](auto dist) {
+    return detail::dtwFull_impl(x, y, dist);
+  });
 }
 
 /**
@@ -176,14 +190,9 @@ data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t>
   if ((m_short == 1) || (m_long == 1)) return dtwMissing_L<data_t>(x, y, early_abandon, metric);
   if (m_long <= (band + 1)) return dtwMissing_L<data_t>(x, y, early_abandon, metric);
 
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwBanded_impl(x, y, band, early_abandon, detail::MissingSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwBanded_impl(x, y, band, early_abandon, detail::MissingL1Dist{});
-  }
+  return detail::dispatch_missing_metric(metric, [&](auto dist) {
+    return detail::dtwBanded_impl(x, y, band, early_abandon, dist);
+  });
 }
 
 // =========================================================================
@@ -196,14 +205,9 @@ data_t dtwMissing_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::MissingSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::MissingL1Dist{});
-  }
+  return detail::dispatch_missing_metric(metric, [&](auto dist) {
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, dist);
+  });
 }
 
 /// Banded DTW with missing data (pointer + length).
@@ -224,14 +228,9 @@ data_t dtwMissing_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
   if ((m_short == 1) || (m_long == 1)) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
   if (m_long <= (band + 1)) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
 
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::MissingSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::MissingL1Dist{});
-  }
+  return detail::dispatch_missing_metric(metric, [&](auto dist) {
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, dist);
+  });
 }
 
 // =========================================================================
@@ -263,17 +262,9 @@ data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t
                        core::MetricType metric = core::MetricType::L1)
 {
   if (ndim == 1) return dtwMissing_L(x, nx_steps, y, ny_steps, early_abandon, metric);
-
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
-                                      detail::MissingMVSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
-                                      detail::MissingMVL1Dist{});
-  }
+  return detail::dispatch_missing_mv_metric(metric, [&](auto dist) {
+    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon, dist);
+  });
 }
 
 /**

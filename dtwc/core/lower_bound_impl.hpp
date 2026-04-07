@@ -319,19 +319,6 @@ inline double lb_keogh_symmetric(
 }
 
 // ======================================================================
-//  Runtime metric enum + LB compatibility
-// ======================================================================
-
-/// Runtime-selectable distance metric enum.
-enum class DistanceMetric { L1, L2, SquaredL2 };
-
-/// Check whether lower-bound pruning is valid for a given metric.
-inline bool lb_pruning_compatible(DistanceMetric m)
-{
-  return m == DistanceMetric::L1;
-}
-
-// ======================================================================
 //  Multivariate LB_Keogh (per-channel envelopes, interleaved layout)
 // ======================================================================
 

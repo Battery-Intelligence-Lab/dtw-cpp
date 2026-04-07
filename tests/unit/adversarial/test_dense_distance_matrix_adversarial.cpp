@@ -144,16 +144,14 @@ TEST_CASE("Adversarial: max() skips NaN", "[adversarial][DistanceMatrix]")
     REQUIRE_THAT(dm.max(), WithinAbs(0.0, 1e-15));
   }
 
-  SECTION("max handles negative computed values")
+  SECTION("max with only zero distances returns 0.0")
   {
-    // If all computed values are negative, max should return the largest
-    // (least negative), NOT 0.0
+    // DTW distances are always >= 0. Zero distances (identical series) are valid.
     DenseDistanceMatrix dm2(3);
-    dm2.set(0, 1, -5.0);
-    dm2.set(1, 2, -2.0);
+    dm2.set(0, 1, 0.0);
+    dm2.set(1, 2, 0.0);
 
-    // Per spec: "Maximum computed value" — should be -2.0
-    REQUIRE_THAT(dm2.max(), WithinAbs(-2.0, 1e-12));
+    REQUIRE_THAT(dm2.max(), WithinAbs(0.0, 1e-12));
   }
 }
 
@@ -320,21 +318,21 @@ TEST_CASE("Adversarial: Partial matrix CSV round-trip (empty-field preservation)
   REQUIRE_FALSE(dm2.is_computed(3, 4));
 }
 
-TEST_CASE("Adversarial: Negative values in distance matrix", "[adversarial][DistanceMatrix][IO]")
+TEST_CASE("Adversarial: Small values in distance matrix roundtrip", "[adversarial][DistanceMatrix][IO]")
 {
   DenseDistanceMatrix dm(3);
-  dm.set(0, 1, -42.5);
-  dm.set(1, 2, -0.001);
+  dm.set(0, 1, 42.5);
+  dm.set(1, 2, 0.001);
 
-  TempFile tmp("negative_roundtrip");
+  TempFile tmp("small_roundtrip");
   dtwc::io::write_csv(dm,tmp.path);
 
   DenseDistanceMatrix dm2;
   dtwc::io::read_csv(dm2,tmp.path);
 
-  REQUIRE_THAT(dm2.get(0, 1), WithinAbs(-42.5, 1e-12));
-  REQUIRE_THAT(dm2.get(1, 0), WithinAbs(-42.5, 1e-12));
-  REQUIRE_THAT(dm2.get(1, 2), WithinAbs(-0.001, 1e-12));
+  REQUIRE_THAT(dm2.get(0, 1), WithinAbs(42.5, 1e-12));
+  REQUIRE_THAT(dm2.get(1, 0), WithinAbs(42.5, 1e-12));
+  REQUIRE_THAT(dm2.get(1, 2), WithinAbs(0.001, 1e-12));
 }
 
 TEST_CASE("Adversarial: Very large values (1e300)", "[adversarial][DistanceMatrix][IO]")

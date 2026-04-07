@@ -4,8 +4,8 @@
  *
  * @details Stores pairwise distances in a packed lower-triangular array of
  * size N*(N+1)/2, cutting memory use by ~50% vs a full N*N matrix.
- * Uncomputed entries are tracked via a bit-packed boolean vector,
- * ensuring correctness under -ffast-math / /fp:fast compiler flags.
+ * Uncomputed entries use a -1.0 sentinel (DTW distances are always >= 0).
+ * No synchronization needed: parallel fills use disjoint (i,j) pairs by design.
  *
  * I/O (CSV, stream, Eigen export) is in core/matrix_io.hpp.
  *
@@ -15,108 +15,83 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <vector>
 
 namespace dtwc::core {
 
+/// Thread-safety contract: no locking, no atomics.
+/// Parallel fills (brute-force, pruned, CUDA) partition the pair space so each
+/// (i,j) is written by exactly one thread. count_computed()/all_computed() are
+/// cold-path queries called only after the parallel region joins.
 class DenseDistanceMatrix {
-  std::vector<double> data_;       ///< Packed lower-triangular: N*(N+1)/2 elements.
-  std::vector<bool> computed_;     ///< Bit-packed: 1 if entry has been set.
+  std::vector<double> data_;   ///< Packed lower-triangular: N*(N+1)/2 elements. -1.0 = uncomputed.
   size_t n_{ 0 };
 
-  /// Map (i,j) to packed lower-triangular index.
-  /// Normalises so that the larger index is first: tri(max,min).
   static size_t tri_index(size_t i, size_t j)
   {
     if (i < j) std::swap(i, j);
     return i * (i + 1) / 2 + j;
   }
 
-  /// Total number of elements in packed storage for n points.
   static size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
 public:
   DenseDistanceMatrix() = default;
   explicit DenseDistanceMatrix(size_t n)
-    : data_(packed_size(n), 0.0),
-      computed_(packed_size(n), false),
-      n_(n) {}
+    : data_(packed_size(n), -1.0), n_(n) {}
 
-  /// Resize and reset all entries to uncomputed.
   void resize(size_t n)
   {
-    const auto ps = packed_size(n);
-    data_.assign(ps, 0.0);
-    computed_.assign(ps, false);
+    data_.assign(packed_size(n), -1.0);
     n_ = n;
   }
 
-  /// Get the distance between points i and j.
   double get(size_t i, size_t j) const
   {
     assert(i < n_ && j < n_);
     return data_[tri_index(i, j)];
   }
 
-  /// Set the distance between points i and j (symmetric — single write).
+  /// Set distance. Parallel fills must use disjoint (i,j) pairs — no locking needed.
   void set(size_t i, size_t j, double v)
   {
-    assert(i < n_ && j < n_);
-    const auto k = tri_index(i, j);
-    data_[k] = v;
-    computed_[k] = true;
+    assert(i < n_ && j < n_ && v >= 0.0);
+    data_[tri_index(i, j)] = v;
   }
 
-  /// Check whether the distance between i and j has been computed.
   bool is_computed(size_t i, size_t j) const
   {
     assert(i < n_ && j < n_);
-    return computed_[tri_index(i, j)];
+    return data_[tri_index(i, j)] >= 0.0;
   }
 
-  /// Number of points (matrix is size() x size()).
   size_t size() const { return n_; }
 
-  /// Maximum computed value in the matrix.
   double max() const
   {
     double result = 0.0;
-    bool found = false;
-    for (size_t idx = 0; idx < data_.size(); ++idx) {
-      if (computed_[idx]) {
-        if (!found || data_[idx] > result) {
-          result = data_[idx];
-          found = true;
-        }
-      }
-    }
-    return found ? result : 0.0;
+    for (double d : data_)
+      if (d > result)
+        result = d;
+    return result;
   }
 
-  /// Count the number of computed entries in the matrix.
   size_t count_computed() const
   {
-    size_t count = 0;
-    for (bool c : computed_)
-      if (c) ++count;
-    return count;
+    return static_cast<size_t>(
+      std::count_if(data_.begin(), data_.end(), [](double d) { return d >= 0.0; }));
   }
 
-  /// Check whether all entries have been computed.
   bool all_computed() const
   {
-    for (bool c : computed_)
-      if (!c) return false;
-    return true;
+    return std::none_of(data_.begin(), data_.end(), [](double d) { return d < 0.0; });
   }
 
-  /// Raw pointer to packed triangular data.
   double *raw() { return data_.data(); }
   const double *raw() const { return data_.data(); }
-
-  /// Number of elements in packed storage.
   size_t packed_count() const { return data_.size(); }
 };
 

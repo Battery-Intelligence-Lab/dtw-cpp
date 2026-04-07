@@ -37,6 +37,15 @@ namespace dtwc {
 
 namespace detail {
 
+/// Compute inclusive [lo, hi) column range for a banded DTW at the given row.
+inline std::pair<int, int> band_bounds(double slope, double window, int row)
+{
+  const double center = slope * row;
+  const int lo = static_cast<int>(std::ceil(std::round(100.0 * (center - window)) / 100.0));
+  const int hi = static_cast<int>(std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+  return {lo, hi};
+}
+
 /// Full-matrix DTW (O(n*m) space). Supports backtracking.
 /// Accepts raw pointers + lengths for zero-copy binding support.
 template <typename data_t, typename DistFn>
@@ -177,11 +186,9 @@ data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   const bool do_early_abandon = (early_abandon >= 0);
 
   for (int row = 0; row < m_short; ++row) {
-    const double center = slope * row;
-    low_bounds[row] = static_cast<int>(
-      std::ceil(std::round(100.0 * (center - window)) / 100.0));
-    high_bounds[row] = static_cast<int>(
-      std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+    auto [lo, hi] = band_bounds(slope, window, row);
+    low_bounds[row]  = lo;
+    high_bounds[row] = hi;
   }
 
   col[0] = distance(long_ptr[0], short_ptr[0]);
@@ -327,11 +334,9 @@ data_t dtwBanded_mv_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   const bool do_early_abandon = (early_abandon >= 0);
 
   for (int row = 0; row < m_short; ++row) {
-    const double center = slope * row;
-    low_bounds_mv[row] = static_cast<int>(
-      std::ceil(std::round(100.0 * (center - window)) / 100.0));
-    high_bounds_mv[row] = static_cast<int>(
-      std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+    auto [lo, hi] = band_bounds(slope, window, row);
+    low_bounds_mv[row]  = lo;
+    high_bounds_mv[row] = hi;
   }
 
   col_mv[0] = distance(long_ptr, short_ptr, ndim);
@@ -387,7 +392,7 @@ data_t dtwBanded_mv_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
 } // namespace detail
 
 // =========================================================================
-//  Metric dispatch helpers
+//  Distance functors
 // =========================================================================
 
 namespace detail {
@@ -428,6 +433,30 @@ struct MVSquaredL2Dist {
   }
 };
 
+/// Dispatch MetricType to scalar distance functor, invoke fn(functor).
+template <typename Fn>
+auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
+{
+  switch (m) {
+  case core::MetricType::SquaredL2: return fn(SquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default: return fn(L1Dist{});
+  }
+}
+
+/// Dispatch MetricType to multivariate distance functor, invoke fn(functor).
+template <typename Fn>
+auto dispatch_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{}))
+{
+  switch (m) {
+  case core::MetricType::SquaredL2: return fn(MVSquaredL2Dist{});
+  case core::MetricType::L2:
+  case core::MetricType::L1:
+  default: return fn(MVL1Dist{});
+  }
+}
+
 } // namespace detail
 
 // =========================================================================
@@ -449,18 +478,9 @@ template <typename data_t>
 data_t dtwFull(const data_t* x, size_t nx, const data_t* y, size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_impl(x, nx, y, ny, detail::SquaredL2Dist{});
-  case core::MetricType::L2:
-    // L2 for 1D scalars: |a-b| (same as L1). For Euclidean DTW (sqrt of sum
-    // of squared diffs, as in dtaidistance/tslearn), use SquaredL2 and take
-    // sqrt of the result externally.
-    return detail::dtwFull_impl(x, nx, y, ny, detail::L1Dist{});
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_impl(x, nx, y, ny, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwFull_impl(x, nx, y, ny, dist);
+  });
 }
 
 /**
@@ -480,14 +500,9 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::SquaredL2Dist{});
-  case core::MetricType::L2:  // L2 for 1D scalars == L1; for Euclidean DTW use SquaredL2 + sqrt
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwFull_L_impl(x, nx, y, ny, early_abandon, dist);
+  });
 }
 
 /**
@@ -522,14 +537,9 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
   if ((m_short == 1) || (m_long == 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
   if (m_long <= (band + 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
 
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::SquaredL2Dist{});
-  case core::MetricType::L2:  // L2 for 1D scalars == L1; for Euclidean DTW use SquaredL2 + sqrt
-  case core::MetricType::L1:
-  default:
-    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, detail::L1Dist{});
-  }
+  return detail::dispatch_metric(metric, [&](auto dist) {
+    return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, dist);
+  });
 }
 
 // =========================================================================
@@ -590,16 +600,9 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
                     core::MetricType metric = core::MetricType::L1)
 {
   if (ndim == 1) return dtwFull_L(x, nx_steps, y, ny_steps, early_abandon, metric);
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
-                                      detail::MVSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon,
-                                      detail::MVL1Dist{});
-  }
+  return detail::dispatch_mv_metric(metric, [&](auto dist) {
+    return detail::dtwFull_L_mv_impl(x, nx_steps, y, ny_steps, ndim, early_abandon, dist);
+  });
 }
 
 /**
@@ -636,16 +639,9 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
   if (min_sz == 1 || max_sz == 1 || static_cast<int>(max_sz) <= band + 1)
     return dtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
 
-  switch (metric) {
-  case core::MetricType::SquaredL2:
-    return detail::dtwBanded_mv_impl(x, nx_steps, y, ny_steps, ndim, band, early_abandon,
-                                      detail::MVSquaredL2Dist{});
-  case core::MetricType::L2:
-  case core::MetricType::L1:
-  default:
-    return detail::dtwBanded_mv_impl(x, nx_steps, y, ny_steps, ndim, band, early_abandon,
-                                      detail::MVL1Dist{});
-  }
+  return detail::dispatch_mv_metric(metric, [&](auto dist) {
+    return detail::dtwBanded_mv_impl(x, nx_steps, y, ny_steps, ndim, band, early_abandon, dist);
+  });
 }
 
 } // namespace dtwc

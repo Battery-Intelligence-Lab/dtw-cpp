@@ -435,8 +435,6 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < cuda_result.n; ++i)
       for (size_t j = i; j < cuda_result.n; ++j)
         dm.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
-    prob.set_distance_matrix_filled(true);
-
     if (verbose)
       std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
                 << " pairs in " << std::setprecision(3)

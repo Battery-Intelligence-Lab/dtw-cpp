@@ -59,8 +59,7 @@ std::vector<double> silhouette(Problem &prob)
   auto oneTask = [&](size_t i_b) {
     const auto i_c = prob.clusters_ind[i_b];
 
-    thread_local std::vector<std::pair<int, double>> mean_distances(Nc);
-    mean_distances.assign(Nc, { 0, 0 });
+    std::vector<std::pair<int, double>> mean_distances(Nc, { 0, 0 });
 
     for (auto i : Range(prob.size())) {
       mean_distances[prob.clusters_ind[i]].first++;
