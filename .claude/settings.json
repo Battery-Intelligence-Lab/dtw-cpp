@@ -1,7 +1,6 @@
 {
   "env": {
-    "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp",
+    "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp"
   },
-  "plansDirectory": "./.claude/reports",
-  "model": "opusplan"
+  "plansDirectory": "./.claude/reports"
 }

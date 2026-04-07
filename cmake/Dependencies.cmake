@@ -86,7 +86,7 @@ function(dtwc_setup_dependencies)
       CPMAddPackage(
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
-        VERSION 1.9.1
+        VERSION 1.9.5
         OPTIONS
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
@@ -98,7 +98,7 @@ function(dtwc_setup_dependencies)
   if(DTWC_ENABLE_YAML AND NOT TARGET yaml-cpp)
     CPMAddPackage(
       NAME yaml-cpp
-      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.8.0.tar.gz"
+      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.9.0.tar.gz"
       SYSTEM
       EXCLUDE_FROM_ALL
       OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"

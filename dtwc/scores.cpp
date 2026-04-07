@@ -132,7 +132,7 @@ double daviesBouldinIndex(Problem &prob)
     double max_ratio = 0.0;
     for (int j = 0; j < Nc; ++j) {
       if (i != j) {
-        double d_ij = prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+        const double d_ij = prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
         if (d_ij > 0) {
           double ratio = (scatter[i] + scatter[j]) / d_ij;
           max_ratio = std::max(max_ratio, ratio);
@@ -167,14 +167,11 @@ double dunnIndex(Problem &prob)
 
   for (int i = 0; i < N; ++i) {
     for (int j = i + 1; j < N; ++j) {
-      double d = prob.distByInd(i, j);
-      if (prob.clusters_ind[i] == prob.clusters_ind[j]) {
-        // Same cluster: contributes to intra-cluster diameter
-        max_intra = std::max(max_intra, d);
-      } else {
-        // Different clusters: contributes to inter-cluster distance
-        min_inter = std::min(min_inter, d);
-      }
+      const double d = prob.distByInd(i, j);
+      if (prob.clusters_ind[i] == prob.clusters_ind[j]) 
+        max_intra = std::max(max_intra, d); // Same cluster: contributes to intra-cluster diameter
+       else 
+        min_inter = std::min(min_inter, d); // Different clusters: contributes to inter-cluster distance
     }
   }
 

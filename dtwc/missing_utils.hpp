@@ -7,8 +7,6 @@
  *     etc.) but NOT -ffinite-math-only, so std::isnan() is correct and available.
  *   - is_missing() is a thin semantic wrapper over std::isnan() — prefer this name
  *     in domain code for clarity ("missing value" not "not-a-number").
- *   - DenseDistanceMatrix tracks computed entries via std::vector<bool> (not NaN
- *     sentinels), which is safe regardless of floating-point mode.
  *
  * @author Volkan Kumtepeli
  * @date 02 Apr 2026

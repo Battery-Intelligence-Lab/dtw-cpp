@@ -46,15 +46,3 @@
 ### Platform
 - [ ] ARM Mac Studio investigation: test CPU path on Apple Silicon, evaluate Metal compute for GPU path
 - [ ] HIPify for AMD GPU — **accept community PRs only**, do not invest core developer time
-
-## Guidelines (not TODOs — current conventions)
-- Buffer > thread_local >> heap allocation: already enforced everywhere
-- No naked `new`/`delete` in core: already enforced
-- Contiguous arrays in hot paths: `Data::p_vec` as `vector<vector<data_t>>` is correct for variable-length series
-
-## Removed (completed or cut)
-- ~~NaN/-ffast-math robustification~~ — **DONE**: explicit fast-math sub-flags + `std::isnan()` wrapper
-- ~~Eigen 5.0.1 exploration~~ — **CUT**: Eigen used only as aligned allocator, no gap identified
-- ~~Condensed distance matrix~~ — **DONE**: `DenseDistanceMatrix` already uses packed triangular N*(N+1)/2
-- ~~Unnecessary memory allocations audit~~ — **CUT**: 30+ `thread_local` declarations already in place
-- ~~Device-side LB pruning (pair-level)~~ — **DONE**: `compact_active_pairs` in `cuda_dtw.cu`

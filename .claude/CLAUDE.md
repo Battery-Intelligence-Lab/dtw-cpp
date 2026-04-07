@@ -26,3 +26,8 @@
 - [ ] CHANGELOG.md updated (Unreleased)
 - [ ] Docs updated (if user-facing)
 - [ ] Optional deps remain optional
+
+## Guidelines
+- Buffer > thread_local >> heap allocation: already enforced everywhere
+- No naked `new`/`delete` in core: already enforced
+- Contiguous arrays in hot paths: `Data::p_vec` as `vector<vector<data_t>>` is correct for variable-length series
