@@ -83,7 +83,7 @@ jobs:
       # --- Doxygen API reference ---
       - run: mkdir -p build
       - name: Create Doxygen Files
-        uses: mattnotmitt/doxygen-action@v1.9.8
+        uses: mattnotmitt/doxygen-action@v1.12.0
         with:
           doxyfile-path: 'docs/Doxyfile'
       - run: sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
@@ -125,9 +125,7 @@ jobs:
 
       # --- Upload combined site artifact ---
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: docs/public
+        uses: actions/upload-pages-artifact@v4
 
   # Publication job
   publish:
@@ -139,4 +137,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
