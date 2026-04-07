@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 namespace dtwc::core {
