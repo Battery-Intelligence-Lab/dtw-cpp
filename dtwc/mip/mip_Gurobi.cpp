@@ -102,7 +102,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     }
 
     if (prob.mip_settings.verbose_solver || prob.verbose)
-      std::cout << "Finished setting up the MILP problem." << std::endl;
+      std::cout << "Finished setting up the MILP problem." << '\n';
 
     model.optimize();
 
@@ -118,13 +118,13 @@ void MIP_clustering_byGurobi(Problem &prob)
           prob.clusters_ind[j] = static_cast<int>(i);
 
   } catch (GRBException &e) {
-    std::cout << "Error code = " << e.getErrorCode() << std::endl
-              << e.getMessage() << std::endl;
+    std::cout << "Error code = " << e.getErrorCode() << '\n'
+              << e.getMessage() << '\n';
   } catch (...) {
-    std::cout << "Unknown Exception during Gurobi optimisation" << std::endl;
+    std::cout << "Unknown Exception during Gurobi optimisation" << '\n';
   }
 #else
-  std::cout << "Gurobi solver is not activated but is being used!" << std::endl;
+  std::cout << "Gurobi solver is not activated but is being used!" << '\n';
 #endif
 }
 

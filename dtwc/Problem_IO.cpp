@@ -37,7 +37,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
 
   if (!medoidsFile.good()) {
     std::cout << "Failed to open file in path: " << outPath << '\n'
-              << "Program is exiting." << std::endl;
+              << "Program is exiting." << '\n';
 
     throw std::runtime_error("Failed to open medoids output file: " + outPath.string());
   }
@@ -180,7 +180,7 @@ void Problem::readDistanceMatrix(const fs::path &distMat_path)
   try {
     io::read_csv(distMat, distMat_path);
   } catch (...) {
-    std::cout << "Distance matrix could not be read! Continuing without matrix!" << std::endl;
+    std::cout << "Distance matrix could not be read! Continuing without matrix!" << '\n';
   }
 }
 

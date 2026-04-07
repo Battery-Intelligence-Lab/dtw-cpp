@@ -50,7 +50,7 @@ std::vector<double> silhouette(Problem &prob)
   std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
   if (prob.centroids_ind.empty()) {
-    std::cout << "Please cluster the data before calculating silhouette!" << std::endl;
+    std::cout << "Please cluster the data before calculating silhouette!" << '\n';
     return silhouettes;
   }
 

@@ -48,7 +48,7 @@ void extract_mip_solution(Problem &prob, const T &solution)
 void MIP_clustering_byHiGHS(Problem &prob)
 {
   if (prob.mip_settings.verbose_solver || prob.verbose)
-    std::cout << "HiGHS MIP solver starting." << std::endl;
+    std::cout << "HiGHS MIP solver starting." << '\n';
   dtwc::Clock clk; // Create a clock object
 
 #ifdef DTWC_ENABLE_HIGHS
@@ -164,7 +164,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   if (return_status != HighsStatus::kOk) {
-    std::cout << "Passing the model to HiGHS was unsuccessful!" << std::endl;
+    std::cout << "Passing the model to HiGHS was unsuccessful!" << '\n';
     return;
   }
 
@@ -190,7 +190,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   return_status = highs.run(); // Solve the model
   if (return_status != HighsStatus::kOk) {
-    std::cout << "Solving the model with HiGHS was unsuccessful!" << std::endl;
+    std::cout << "Solving the model with HiGHS was unsuccessful!" << '\n';
     return;
   }
 
@@ -212,7 +212,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Get the solution values
   extract_mip_solution(prob, highs.getSolution().col_value);
 #else
-  std::cout << "Highs solver is not activated but is being used!" << std::endl;
+  std::cout << "Highs solver is not activated but is being used!" << '\n';
 #endif
 }
 

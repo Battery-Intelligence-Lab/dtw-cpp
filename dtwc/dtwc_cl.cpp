@@ -214,7 +214,7 @@ int main(int argc, char *argv[])
 
   // Show help if no arguments provided
   if (argc == 1) {
-    std::cout << app.help() << std::endl;
+    std::cout << app.help() << '\n';
     return EXIT_SUCCESS;
   }
 

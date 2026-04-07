@@ -123,7 +123,7 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
 template <typename data_t, typename Tpath>
 auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
-  std::cout << "Reading data:" << std::endl;
+  std::cout << "Reading data:" << '\n';
 
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
@@ -163,7 +163,7 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_
 template <typename data_t>
 auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
 {
-  std::cout << "Reading data:" << std::endl;
+  std::cout << "Reading data:" << '\n';
 
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
@@ -177,10 +177,11 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   }
 
   std::string line;
+  int line_no{ 0 };
   int n_rows{ 0 };
   while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) //!< Read file.
   {
-    if (n_rows < start_row) // Skip first rows.
+    if (line_no++ < start_row) // Skip first rows.
       continue;
 
     n_rows++;

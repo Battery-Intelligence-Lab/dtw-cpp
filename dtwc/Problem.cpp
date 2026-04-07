@@ -24,6 +24,7 @@
 #include "warping_ddtw.hpp"    // for ddtwBanded
 #include "warping_wdtw.hpp"    // for wdtwBanded
 #include "warping_adtw.hpp"    // for adtwBanded
+#include "soft_dtw.hpp"        // for soft_dtw
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
@@ -139,6 +140,10 @@ void Problem::refresh_variant_caches()
 
   const auto g = static_cast<data_t>(variant_params.wdtw_g);
 
+  // Precompute WDTW weights for every unique max_dev that can arise.
+  // max_dev = max(len_x, len_y) for univariate, max(steps_x, steps_y)-1 for MV.
+  // We precompute for every unique series length so the parallel DTW lambda
+  // never mutates the cache. Thread-safe by design: no insertion after this point.
   if (data.ndim > 1) {
     for (const auto &series : data.p_vec) {
       const size_t steps = series.size() / data.ndim;
@@ -227,14 +232,16 @@ void Problem::rebind_dtw_fn()
           return std::numeric_limits<data_t>::max();
 
         const auto max_dev = std::max(x_steps, y_steps) - size_t{1};
-        // Lookup precomputed weights; compute on miss for synthetic series
-        // (e.g., DBA centroids with lengths not in original dataset).
-        // Read g at invocation time so direct mutation of wdtw_g is honoured.
+        // Cache is populated by refresh_variant_caches() before parallel fill.
+        // Read-only lookup here — no race by design.
         auto it = wdtw_weights_cache_.find(max_dev);
         if (it == wdtw_weights_cache_.end()) {
+          // Cache miss (e.g. DBA centroid with novel length). Compute on stack.
+          // This path is serial only (centroid update), never inside parallel fill.
           const auto g = static_cast<data_t>(variant_params.wdtw_g);
-          it = wdtw_weights_cache_.emplace(max_dev,
-                   wdtw_weights<data_t>(static_cast<int>(max_dev), g)).first;
+          auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
+          return wdtwBanded_mv(x.data(), x_steps, y.data(), y_steps,
+                               data.ndim, w, band);
         }
         return wdtwBanded_mv(x.data(), x_steps,
                              y.data(), y_steps,
@@ -243,11 +250,13 @@ void Problem::rebind_dtw_fn()
     } else {
       dtw_fn_ = [this](const auto &x, const auto &y) {
         const auto max_dev = std::max(x.size(), y.size());
+        // Cache is populated by refresh_variant_caches(). Read-only in parallel.
         auto it = wdtw_weights_cache_.find(max_dev);
         if (it == wdtw_weights_cache_.end()) {
+          // Serial-only fallback for novel lengths (DBA centroids).
           const auto g = static_cast<data_t>(variant_params.wdtw_g);
-          it = wdtw_weights_cache_.emplace(max_dev,
-                   wdtw_weights<data_t>(static_cast<int>(max_dev), g)).first;
+          auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
+          return wdtwBanded(x, y, w, band);
         }
         return wdtwBanded(x, y, it->second, band);
       };
@@ -265,6 +274,13 @@ void Problem::rebind_dtw_fn()
         return adtwBanded(x, y, band, static_cast<data_t>(variant_params.adtw_penalty));
       };
     }
+    break;
+  case DTWVariant::SoftDTW:
+    // Soft-DTW can produce negative values; the distance matrix sentinel (-1.0)
+    // is safe because soft_dtw results are only stored when explicitly computed.
+    dtw_fn_ = [this](const auto &x, const auto &y) {
+      return soft_dtw(x, y, static_cast<data_t>(variant_params.sdtw_gamma));
+    };
     break;
   case DTWVariant::Standard:
   default:
@@ -299,10 +315,9 @@ void Problem::set_variant(core::DTWVariantParams params)
  *@param j Index of the second point.
  *@return The distance between the two points.
  *
- *@note Thread safety: safe to call from multiple threads when the distance matrix
- *      is already filled (read-only). Prefer calling fillDistanceMatrix() first.
- *@note When the dense matrix has not been allocated yet (size() == 0 after
- *      deferred allocation), distance is computed directly without caching.
+ *@note Thread safety: the lazy-alloc + compute path is NOT thread-safe.
+ *      Call fillDistanceMatrix() before entering any parallel region.
+ *      After that, all calls are read-only lookups (no race by design).
  */
 double Problem::distByInd(int i, int j)
 {
@@ -394,7 +409,7 @@ void Problem::fillDistanceMatrix()
   rebind_dtw_fn();
 
   if (verbose)
-    std::cout << "Distance matrix is being filled!" << std::endl;
+    std::cout << "Distance matrix is being filled!" << '\n';
 
   // Pre-scan for NaN if strategy is Error
   if (missing_strategy == core::MissingStrategy::Error) {
@@ -436,7 +451,7 @@ void Problem::fillDistanceMatrix()
     if (verbose) {
       std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
                 << stats.early_abandoned << " early-abandoned, "
-                << "pruning ratio: " << stats.pruning_ratio() << std::endl;
+                << "pruning ratio: " << stats.pruning_ratio() << '\n';
     }
     break;
   }
@@ -483,7 +498,7 @@ void Problem::fillDistanceMatrix()
   }
 
   if (verbose)
-    std::cout << "Distance matrix has been filled!" << std::endl;
+    std::cout << "Distance matrix has been filled!" << '\n';
 }
 /**
  * @brief Performs clustering based on the specified method.

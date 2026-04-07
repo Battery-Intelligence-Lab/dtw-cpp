@@ -146,7 +146,7 @@ void save_checkpoint(const Problem &prob, const std::string &path)
                  dm.count_computed());
 
   std::cout << "Checkpoint saved to " << dir.string()
-            << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << std::endl;
+            << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << '\n';
 }
 
 
@@ -159,21 +159,21 @@ bool load_checkpoint(Problem &prob, const std::string &path)
   fs::path meta_path = dir / "metadata.txt";
 
   if (!fs::exists(csv_path) || !fs::exists(meta_path)) {
-    std::cout << "No checkpoint found at " << dir.string() << std::endl;
+    std::cout << "No checkpoint found at " << dir.string() << '\n';
     return false;
   }
 
   // Read and validate metadata
   CheckpointMetadata meta;
   if (!read_metadata(meta_path, meta)) {
-    std::cout << "Checkpoint metadata is invalid at " << dir.string() << std::endl;
+    std::cout << "Checkpoint metadata is invalid at " << dir.string() << '\n';
     return false;
   }
 
   // Validate dimension matches the Problem's data
   if (meta.n != prob.size()) {
     std::cout << "Checkpoint dimension mismatch: checkpoint has n=" << meta.n
-              << " but Problem has n=" << prob.size() << std::endl;
+              << " but Problem has n=" << prob.size() << '\n';
     return false;
   }
 
@@ -181,7 +181,7 @@ bool load_checkpoint(Problem &prob, const std::string &path)
   try {
     io::read_csv(prob.distance_matrix(), csv_path);
   } catch (const std::exception &e) {
-    std::cout << "Failed to read checkpoint distances: " << e.what() << std::endl;
+    std::cout << "Failed to read checkpoint distances: " << e.what() << '\n';
     return false;
   }
 
@@ -189,10 +189,10 @@ bool load_checkpoint(Problem &prob, const std::string &path)
   const auto &dm = prob.distance_matrix();
   if (dm.all_computed()) {
     std::cout << "Checkpoint fully loaded from " << dir.string()
-              << " (all " << dm.packed_count() << " entries computed)" << std::endl;
+              << " (all " << dm.packed_count() << " entries computed)" << '\n';
   } else {
     std::cout << "Checkpoint partially loaded from " << dir.string()
-              << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << std::endl;
+              << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << '\n';
   }
 
   return true;
