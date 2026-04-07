@@ -552,6 +552,7 @@ int main(int argc, char *argv[])
     else
       hier_opts.linkage = dtwc::algorithms::Linkage::Average;
 
+    prob.fillDistanceMatrix(); // hierarchical requires full pairwise distances
     auto dend = dtwc::algorithms::build_dendrogram(prob, hier_opts);
     result = dtwc::algorithms::cut_dendrogram(dend, prob, n_clusters);
 
