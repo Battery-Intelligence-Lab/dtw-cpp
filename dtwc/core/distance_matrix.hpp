@@ -4,7 +4,8 @@
  *
  * @details Stores pairwise distances in a packed lower-triangular array of
  * size N*(N+1)/2, cutting memory use by ~50% vs a full N*N matrix.
- * Uncomputed entries use a -1.0 sentinel (DTW distances are always >= 0).
+ * Uncomputed entries use a NaN sentinel (safe for all DTW variants
+ * including Soft-DTW which can return negative values).
  * No synchronization needed: parallel fills use disjoint (i,j) pairs by design.
  *
  * I/O (CSV, stream, Eigen export) is in core/matrix_io.hpp.
@@ -17,7 +18,9 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 namespace dtwc::core {
@@ -27,7 +30,7 @@ namespace dtwc::core {
 /// (i,j) is written by exactly one thread. count_computed()/all_computed() are
 /// cold-path queries called only after the parallel region joins.
 class DenseDistanceMatrix {
-  std::vector<double> data_;   ///< Packed lower-triangular: N*(N+1)/2 elements. -1.0 = uncomputed.
+  std::vector<double> data_;   ///< Packed lower-triangular: N*(N+1)/2 elements. NaN = uncomputed.
   size_t n_{ 0 };
 
   static size_t tri_index(size_t i, size_t j)
@@ -41,11 +44,11 @@ class DenseDistanceMatrix {
 public:
   DenseDistanceMatrix() = default;
   explicit DenseDistanceMatrix(size_t n)
-    : data_(packed_size(n), -1.0), n_(n) {}
+    : data_(packed_size(n), std::numeric_limits<double>::quiet_NaN()), n_(n) {}
 
   void resize(size_t n)
   {
-    data_.assign(packed_size(n), -1.0);
+    data_.assign(packed_size(n), std::numeric_limits<double>::quiet_NaN());
     n_ = n;
   }
 
@@ -58,14 +61,14 @@ public:
   /// Set distance. Parallel fills must use disjoint (i,j) pairs — no locking needed.
   void set(size_t i, size_t j, double v)
   {
-    assert(i < n_ && j < n_ && v >= 0.0);
+    assert(i < n_ && j < n_ && !std::isnan(v));
     data_[tri_index(i, j)] = v;
   }
 
   bool is_computed(size_t i, size_t j) const
   {
     assert(i < n_ && j < n_);
-    return data_[tri_index(i, j)] >= 0.0;
+    return !std::isnan(data_[tri_index(i, j)]);
   }
 
   size_t size() const { return n_; }
@@ -74,7 +77,7 @@ public:
   {
     double result = 0.0;
     for (double d : data_)
-      if (d > result)
+      if (!std::isnan(d) && d > result)
         result = d;
     return result;
   }
@@ -82,12 +85,12 @@ public:
   size_t count_computed() const
   {
     return static_cast<size_t>(
-      std::count_if(data_.begin(), data_.end(), [](double d) { return d >= 0.0; }));
+      std::count_if(data_.begin(), data_.end(), [](double d) { return !std::isnan(d); }));
   }
 
   bool all_computed() const
   {
-    return std::none_of(data_.begin(), data_.end(), [](double d) { return d < 0.0; });
+    return std::none_of(data_.begin(), data_.end(), [](double d) { return std::isnan(d); });
   }
 
   double *raw() { return data_.data(); }

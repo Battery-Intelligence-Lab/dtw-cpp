@@ -74,7 +74,7 @@ std::vector<double> silhouette(Problem &prob)
       for (int i = 0; i < Nc; i++) // Finding means:
         if (i == i_c)
           mean_distances[i].second /= (mean_distances[i].first - 1);
-        else {
+        else if (mean_distances[i].first > 0) {
           mean_distances[i].second /= mean_distances[i].first;
           min = std::min(min, mean_distances[i].second);
         }
@@ -262,6 +262,8 @@ double calinskiHarabaszIndex(Problem &prob)
     B += cluster_counts[c] * d * d;
   }
 
+  if (W == 0.0)
+    return std::numeric_limits<double>::infinity();
   return (B / (k - 1)) / (W / (N - k));
 }
 

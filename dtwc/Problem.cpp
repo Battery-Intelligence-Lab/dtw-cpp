@@ -326,14 +326,18 @@ double Problem::distByInd(int i, int j)
   const size_t N = data.size();
 
   // Lazily allocate the dense matrix on first individual distance request.
-  // This preserves caching for checkpoint save/load and repeated lookups,
-  // while still deferring the bulk allocation from set_data().
+  // The critical section ensures thread safety if called from a parallel region
+  // before fillDistanceMatrix(). Double-check pattern: fast path skips the lock.
   if (distMat.size() != N) {
-    distMat.resize(N);
-    // Re-bind the DTW function on first use after data load, in case
-    // missing_strategy or other settings were changed after set_data()
-    // (e.g., prob.missing_strategy = ZeroCost after prob.set_data(...)).
-    rebind_dtw_fn();
+#ifdef _OPENMP
+    #pragma omp critical(distByInd_init)
+#endif
+    {
+      if (distMat.size() != N) {
+        distMat.resize(N);
+        rebind_dtw_fn();
+      }
+    }
   }
 
   if (distMat.is_computed(i, j))

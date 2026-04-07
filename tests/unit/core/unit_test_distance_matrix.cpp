@@ -184,7 +184,7 @@ TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceM
 
 TEST_CASE("DenseDistanceMatrix zero distance is valid and computed", "[DistanceMatrix]")
 {
-  // Zero is a valid DTW distance (identical series). The -1.0 sentinel must not
+  // Zero is a valid DTW distance (identical series). The NaN sentinel must not
   // confuse 0.0 with "uncomputed".
   DenseDistanceMatrix dm(3);
 

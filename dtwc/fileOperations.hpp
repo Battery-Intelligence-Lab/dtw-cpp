@@ -43,17 +43,21 @@ namespace fs = std::filesystem;
  */
 inline void ignoreBOM(std::istream &in)
 {
-  char BOMchars[] = { '\xEF', '\xBB', '\xBF' };
+  const char BOMchars[] = { '\xEF', '\xBB', '\xBF' };
+  char consumed[3];
   int seek = 0;
-  char c = '.';
-  while (in >> c) {
-    if (BOMchars[seek] != c) {
-      in.putback(c);
+  for (; seek < 3; ++seek) {
+    char c;
+    if (!in.get(c) || BOMchars[seek] != c) {
+      if (in) in.putback(c);
+      // Put back any previously consumed partial-BOM bytes (reverse order)
+      for (int j = seek - 1; j >= 0; --j)
+        in.putback(consumed[j]);
       break;
     }
-    seek++;
+    consumed[seek] = c;
   }
-  in.clear(); // Clear EOF flag if end of file was reached
+  in.clear();
 }
 
 /**
@@ -99,8 +103,8 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
         iss >> c;
     }
 
-    iss >> p_i; // Finally we got it!  % #TODO does not work for many-column arrays.
-    p.push_back(p_i);
+    if (iss >> p_i)
+      p.push_back(p_i);
   }
 
   p.shrink_to_fit();

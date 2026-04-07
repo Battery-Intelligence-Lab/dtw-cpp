@@ -98,7 +98,7 @@ int main(int argc, char *argv[])
   std::string input_file;
   std::string output_dir = "./results";
   std::string prob_name = "dtwc";
-  app.add_option("-i,--input", input_file, "Input CSV file or folder")->required();
+  app.add_option("-i,--input", input_file, "Input CSV file or folder");
   app.add_option("-o,--output", output_dir, "Output directory");
   app.add_option("--name", prob_name, "Problem name (used in output filenames)");
 
@@ -210,13 +210,14 @@ int main(int argc, char *argv[])
   bool verbose = false;
   app.add_flag("-v,--verbose", verbose, "Verbose output");
 
-  CLI11_PARSE(app, argc, argv);
-
-  // Show help if no arguments provided
+  // Show help if no arguments provided (before CLI11 parses, so --input
+  // is not required yet — YAML may provide it).
   if (argc == 1) {
     std::cout << app.help() << '\n';
     return EXIT_SUCCESS;
   }
+
+  CLI11_PARSE(app, argc, argv);
 
   // ---- YAML config loading (post-parse, CLI flags take precedence) ----
   if (!yaml_config_path.empty()) {
@@ -280,6 +281,25 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
 #endif
   }
+
+  // ---- Post-parse validation (catches both CLI and YAML values) ----
+  if (input_file.empty()) {
+    std::cerr << "Error: --input is required (via CLI or YAML config)\n";
+    return EXIT_FAILURE;
+  }
+  if (n_clusters < 1) {
+    std::cerr << "Error: --clusters must be a positive integer\n";
+    return EXIT_FAILURE;
+  }
+
+  // Normalize YAML string values that bypass CLI11's CheckedTransformer
+  auto to_lower = [](std::string &s) {
+    for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  };
+  to_lower(method);
+  to_lower(metric);
+  to_lower(variant);
+  to_lower(linkage_str);
 
   // ---- Setup ----
   dtwc::Clock clk;

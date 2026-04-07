@@ -131,7 +131,7 @@ template <typename data_t = double>
 data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band, data_t penalty, data_t early_abandon = data_t{ -1 })
 {
-  if (band < 0) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
+  if (band < 0) return adtwFull_L<data_t>(x, nx, y, ny, penalty, early_abandon);
 
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
 
@@ -147,8 +147,8 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
   }
 
   if ((m_short == 0) || (m_long == 0)) return maxValue;
-  if ((m_short == 1) || (m_long == 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
-  if (m_long <= (band + 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty);
+  if ((m_short == 1) || (m_long == 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty, early_abandon);
+  if (m_long <= (band + 1)) return adtwFull_L<data_t>(x, nx, y, ny, penalty, early_abandon);
 
   const double slope  = static_cast<double>(m_long - 1) / (m_short - 1);
   const auto   window = std::max(static_cast<double>(band), slope / 2);

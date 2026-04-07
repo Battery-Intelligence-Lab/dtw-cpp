@@ -384,6 +384,9 @@ data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, y, metric);
+  const auto m_short = static_cast<int>(std::min(x.size(), y.size()));
+  const auto m_long  = static_cast<int>(std::max(x.size(), y.size()));
+  if (m_short <= 1 || m_long <= band + 1) return dtwAROW_L<data_t>(x, y, metric);
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwAROW_banded_impl(x, y, band, dist);
   });
@@ -420,6 +423,9 @@ data_t dtwAROW_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, nx, y, ny, metric);
+  const auto m_short = static_cast<int>(std::min(nx, ny));
+  const auto m_long  = static_cast<int>(std::max(nx, ny));
+  if (m_short <= 1 || m_long <= band + 1) return dtwAROW_L<data_t>(x, nx, y, ny, metric);
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwAROW_banded_impl(x, nx, y, ny, band, dist);
   });
