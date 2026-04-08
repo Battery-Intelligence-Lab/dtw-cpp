@@ -364,7 +364,7 @@ int main(int argc, char *argv[])
   }
 
 #ifdef DTWC_HAS_MMAP
-  if (mmap_threshold > 0 && prob.size() >= mmap_threshold) {
+  if (mmap_threshold == 0 || prob.size() >= mmap_threshold) {
     auto cache_path = fs::path(output_dir) / (prob_name + "_distmat.cache");
     prob.use_mmap_distance_matrix(cache_path);
     if (verbose)

@@ -155,6 +155,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * Fixed `find_package(OpenMP)` failure when CUDA language is enabled by requesting only the CXX component.
 * Fixed MPI detection: `MPI_CXX_FOUND` variable didn't propagate from `dtwc_setup_dependencies()` function scope; now checks `TARGET MPI::MPI_CXX` instead.
 * Improved MS-MPI SDK detection on Windows with fallback to default install path and actionable error messages.
+* Added llfio dependency (optional, `DTWC_ENABLE_MMAP=ON`) for cross-platform memory-mapped I/O.
 
 ## Benchmarks
 
@@ -164,6 +165,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Performance / API
 
+* Added `MmapDistanceMatrix` — memory-mapped distance matrix via llfio for large-N problems. Supports warmstart: reopen existing cache file to resume interrupted computation. Binary format with 32-byte header (magic, version, CRC32, N).
 * Added `DataLoader::count()` — count series without loading data (directory iteration or line counting).
 * Added pointer+length overloads for all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`, `dtwMissing_L`, `dtwMissing_banded`) enabling zero-copy calls from bindings. The `detail::*_impl` functions now operate on raw pointers; vector overloads forward to them.
 * Python `dtw_distance` and `dtw_distance_missing` now accept numpy arrays via `nb::ndarray` (zero-copy, no vector allocation).
@@ -175,6 +177,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 * CLI now supports all clustering methods (FastPAM, FastCLARA, kMedoids Lloyd, MIP), all DTW variants (standard, DDTW, WDTW, ADTW, Soft-DTW), checkpointing, and flexible CSV output (labels, medoids, silhouette scores, distance matrix).
 * Added `--method auto` (new default): auto-selects `pam` for N≤5000, `clara` for N>5000.
 * Added CLARA sample size auto-scaling for N>50K: `max(40+2k, sqrt(N)*k)`.
+* Added `--mmap-threshold` to control when memory-mapped distance matrix activates (default 50K).
+* Added `--restart` to resume from binary checkpoint (distance matrix cache + clustering state).
 * Added case-insensitive option validation for method, metric, variant, and solver flags.
 * Added example TOML configuration file at `examples/config.toml`.
 
@@ -213,6 +217,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 * Added **MATLAB MEX bindings** — new `bindings/matlab/` directory with C++ MEX API gateway and MATLAB `+dtwc` package: `dtwc.dtw_distance`, `dtwc.compute_distance_matrix`, `dtwc.DTWClustering`. Build with `cmake .. -DDTWC_BUILD_MATLAB=ON`.
 * Added **checkpoint save/load** for distance matrix computation (`save_checkpoint`, `load_checkpoint`). Saves partial or complete distance matrices to disk as CSV + metadata text file, enabling resume after crashes.
+* Added **binary checkpoint** (`save_binary_checkpoint`, `load_binary_checkpoint`) for clustering state (medoids, labels, cost, iteration). Used by `--restart` CLI flag.
 * Added `count_computed()` and `all_computed()` methods to `DenseDistanceMatrix`.
 * Added `distance_matrix()` accessors and `set_distance_matrix_filled()` to `Problem` class.
 * Added Python bindings for `save_checkpoint`, `load_checkpoint`, and `CheckpointOptions`.
