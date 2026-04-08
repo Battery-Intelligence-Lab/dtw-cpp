@@ -42,8 +42,10 @@ target_sources(dtwc++
   soft_dtw.hpp
   # Core types
   core/clustering_result.hpp
+  core/crc32.hpp
   core/distance_matrix.hpp
   core/distance_metric.hpp
+  core/mmap_data_store.hpp
   core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp

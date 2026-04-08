@@ -166,6 +166,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 ## Performance / API
 
 * Added `MmapDistanceMatrix` — memory-mapped distance matrix via llfio for large-N problems. Supports warmstart: reopen existing cache file to resume interrupted computation. Binary format with 32-byte header (magic, version, CRC32, N).
+* Added `MmapDataStore` — memory-mapped contiguous cache for time series data. Supports variable-length and multivariate series. Binary format with 64-byte header (magic, version, CRC32, N, ndim) + offset table + contiguous data. Extracted shared `crc32.hpp` utility.
 * Added `DataLoader::count()` — count series without loading data (directory iteration or line counting).
 * Added pointer+length overloads for all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`, `dtwMissing_L`, `dtwMissing_banded`) enabling zero-copy calls from bindings. The `detail::*_impl` functions now operate on raw pointers; vector overloads forward to them.
 * Python `dtw_distance` and `dtw_distance_missing` now accept numpy arrays via `nb::ndarray` (zero-copy, no vector allocation).
