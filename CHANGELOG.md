@@ -6,6 +6,19 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 
 <br/><br/>
+# Unreleased
+
+### Changed (Build)
+
+- **C++20 minimum:** All CMake targets upgraded from C++17 to C++20. CI matrix drops GCC 10, Clang 12, Clang 13 (no C++20 support).
+
+### Changed (API)
+
+- **`std::span` interfaces:** All public DTW distance functions (dtwFull, dtwFull_L, dtwBanded, ddtw*, adtw*, wdtw*, soft_dtw*, dtwMissing*, dtwAROW*) now accept `std::span<const data_t>` as primary overloads. `const std::vector<data_t>&` convenience overloads are retained for backward compatibility.
+- **`dtw_fn_t` signature:** Changed from `std::function<data_t(const vector&, const vector&)>` to `std::function<data_t(std::span<const data_t>, std::span<const data_t>)>`.
+- **`missing_utils.hpp`:** `has_missing()`, `missing_rate()`, `interpolate_linear()` now take `std::span<const T>` with vector convenience overloads.
+
+<br/><br/>
 # DTWC v2.0.0
 
 ### Added (SIMD)
