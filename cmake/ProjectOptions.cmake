@@ -60,7 +60,7 @@ endmacro()
 macro(dtwc_local_options)
   add_library(dtwc_warnings INTERFACE)
   add_library(dtwc_options INTERFACE)
-  target_compile_features(dtwc_options INTERFACE cxx_std_17)
+  target_compile_features(dtwc_options INTERFACE cxx_std_20)
 
   if(dtwc_ENABLE_COMPILER_WARNINGS)
     include(cmake/CompilerWarnings.cmake)

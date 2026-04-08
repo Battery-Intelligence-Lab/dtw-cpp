@@ -22,7 +22,7 @@ matlab_add_mex(
     LINK_TO dtwc++
 )
 
-target_compile_features(dtwc_mex PRIVATE cxx_std_17)
+target_compile_features(dtwc_mex PRIVATE cxx_std_20)
 
 # Install MEX binary alongside the +dtwc package
 install(TARGETS dtwc_mex

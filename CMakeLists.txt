@@ -127,8 +127,8 @@ if(DTWC_ENABLE_CUDA)
     enable_language(CUDA)
     find_package(CUDAToolkit REQUIRED)
 
-    # Set CUDA C++ standard to match the host (C++17 for nested namespaces)
-    set(CMAKE_CUDA_STANDARD 17)
+    # Set CUDA C++ standard to match the host (C++20)
+    set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
     message(STATUS "CUDA found: ${CMAKE_CUDA_COMPILER_VERSION}")

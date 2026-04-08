@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.21)
 project(MY_AWESOME_PROJECT VERSION "0.0.1"
         LANGUAGES CXX C)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 
 include(CPM.cmake)
 
