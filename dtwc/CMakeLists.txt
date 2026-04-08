@@ -44,6 +44,7 @@ target_sources(dtwc++
   core/clustering_result.hpp
   core/distance_matrix.hpp
   core/distance_metric.hpp
+  core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp
   core/lower_bounds.hpp

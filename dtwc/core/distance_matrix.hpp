@@ -25,6 +25,16 @@
 
 namespace dtwc::core {
 
+/// Map (i,j) to a packed lower-triangular index (symmetric: tri_index(i,j)==tri_index(j,i)).
+inline size_t tri_index(size_t i, size_t j)
+{
+  if (i < j) std::swap(i, j);
+  return i * (i + 1) / 2 + j;
+}
+
+/// Number of elements in a packed lower-triangular matrix of dimension n.
+inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
+
 /// Thread-safety contract: no locking, no atomics.
 /// Parallel fills (brute-force, pruned, CUDA) partition the pair space so each
 /// (i,j) is written by exactly one thread. count_computed()/all_computed() are
@@ -32,14 +42,6 @@ namespace dtwc::core {
 class DenseDistanceMatrix {
   std::vector<double> data_;   ///< Packed lower-triangular: N*(N+1)/2 elements. NaN = uncomputed.
   size_t n_{ 0 };
-
-  static size_t tri_index(size_t i, size_t j)
-  {
-    if (i < j) std::swap(i, j);
-    return i * (i + 1) / 2 + j;
-  }
-
-  static size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
 public:
   DenseDistanceMatrix() = default;
