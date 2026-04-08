@@ -1,0 +1,84 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "default",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "DTWC_BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "clang-win",
+      "displayName": "Clang (Windows/MSVC target)",
+      "description": "Clang with LLVM libomp on Windows. OpenMP is auto-detected from the LLVM install.",
+      "inherits": "default",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "clang-win-debug",
+      "displayName": "Clang (Windows/MSVC target, Debug)",
+      "inherits": "clang-win",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "msvc",
+      "displayName": "MSVC (Visual Studio)",
+      "description": "Visual Studio generator with MSVC compiler. OpenMP is auto-detected.",
+      "inherits": "default",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "gcc-linux",
+      "displayName": "GCC (Linux)",
+      "inherits": "default",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "clang-macos",
+      "displayName": "Apple Clang (macOS)",
+      "inherits": "default",
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "clang-win",
+      "configurePreset": "clang-win",
+      "configuration": "Release"
+    },
+    {
+      "name": "clang-win-debug",
+      "configurePreset": "clang-win-debug",
+      "configuration": "Debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "clang-win",
+      "configurePreset": "clang-win",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true },
+      "execution": { "jobs": 8 }
+    }
+  ]
+}

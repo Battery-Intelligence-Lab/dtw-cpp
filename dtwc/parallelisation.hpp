@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iostream>
 #include <limits>
 #include <stdexcept>
 
@@ -26,6 +27,24 @@
 #endif
 
 namespace dtwc {
+
+/// @brief Returns the number of available OpenMP threads (1 if OpenMP is absent).
+///        On first call, emits a warning to stderr if running single-threaded.
+inline int get_max_threads()
+{
+#ifdef _OPENMP
+  return omp_get_max_threads();
+#else
+  static bool warned = [] {
+    std::cerr << "[DTWC++ WARNING] OpenMP not available — running single-threaded.\n"
+              << "  Distance matrix computation will be extremely slow for large datasets.\n"
+              << "  Rebuild with OpenMP support for parallel execution.\n";
+    return true;
+  }();
+  (void)warned;
+  return 1;
+#endif
+}
 
 /**
  * @brief Runs a given task in parallel using OpenMP if available.
@@ -82,15 +101,18 @@ void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 32)
 {
   const bool useParallel = (numMaxParallelWorkers != 1);
 
-#ifdef _OPENMP
   if (useParallel && numMaxParallelWorkers > 0) {
+    const int maxThreads = get_max_threads();
+#ifdef _OPENMP
     // Respect the requested thread limit, but don't exceed system maximum
     const int requestedThreads = static_cast<int>(std::min(
       numMaxParallelWorkers,
-      static_cast<size_t>(omp_get_max_threads())));
+      static_cast<size_t>(maxThreads)));
     omp_set_num_threads(requestedThreads);
-  }
+#else
+    (void)maxThreads; // warning already emitted by get_max_threads()
 #endif
+  }
 
   run_openmp(task_indv, i_end, useParallel);
 }

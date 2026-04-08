@@ -5,29 +5,44 @@
 #       Gurobi::GurobiC   - only the C interface
 #       Gurobi::GurobiCXX - C and C++ interface
 
+# ── Locate GUROBI_HOME ──────────────────────────────────────────────────────
+# Priority: user cache → GUROBI_HOME env-var → well-known install paths.
+# On Windows, Gurobi installs to C:/gurobiXYZ/win64. Scan for the newest.
+set(_gurobi_search_paths "$ENV{GUROBI_HOME}" "/opt/gurobi/linux64/")
+if(WIN32)
+  # Scan C:/gurobi*/win64 for installations, sorted descending to prefer newest
+  file(GLOB _gurobi_win_candidates "C:/gurobi*/win64")
+  list(SORT _gurobi_win_candidates ORDER DESCENDING)
+  list(APPEND _gurobi_search_paths ${_gurobi_win_candidates})
+  unset(_gurobi_win_candidates)
+endif()
+
 find_path(GUROBI_HOME
           NAMES include/gurobi_c++.h
-          PATHS
-          $ENV{GUROBI_HOME}
-          "/opt/gurobi/linux64/"
+          PATHS ${_gurobi_search_paths}
           NO_DEFAULT_PATH # avoid finding /usr
           )
+unset(_gurobi_search_paths)
 
 find_path(GUROBI_INCLUDE_DIR
     NAMES gurobi_c++.h
-    HINTS
-    "${GUROBI_HOME}/include"
+    HINTS "${GUROBI_HOME}/include"
     )
 mark_as_advanced(GUROBI_INCLUDE_DIR)
 
 set(GUROBI_BIN_DIR "${GUROBI_HOME}/bin")
 set(GUROBI_LIB_DIR "${GUROBI_HOME}/lib")
 
+# ── Detect library version ──────────────────────────────────────────────────
+# Scan for versioned libraries to determine the version suffix (e.g., "130").
 if (WIN32)
+    # On Windows, the import lib in lib/ is authoritative.
     file(GLOB GUROBI_LIBRARY_LIST
-        RELATIVE ${GUROBI_BIN_DIR}
-        ${GUROBI_BIN_DIR}/gurobi*.dll
+        RELATIVE ${GUROBI_LIB_DIR}
+        ${GUROBI_LIB_DIR}/gurobi[0-9]*.lib
         )
+    # Filter out C++ wrapper libs (gurobi_c++*.lib)
+    list(FILTER GUROBI_LIBRARY_LIST EXCLUDE REGEX "gurobi_c\\+\\+")
 else()
     file(GLOB GUROBI_LIBRARY_LIST
         RELATIVE ${GUROBI_LIB_DIR}
@@ -35,7 +50,7 @@ else()
         )
 endif()
 
-# Ignore libgurobiXY_light.so, libgurobi.so (without version):
+# Extract version numbers, ignoring _light variants
 string(REGEX MATCHALL
     "gurobi([0-9]+)\\..*"
     GUROBI_LIBRARY_LIST
@@ -54,39 +69,58 @@ if (GUROBI_NUMVER EQUAL 0)
 elseif (GUROBI_NUMVER EQUAL 1)
     list(GET GUROBI_LIBRARY_VERSIONS 0 GUROBI_LIBRARY_VERSION)
 else()
-    # none or more than one versioned library -let's try without suffix,
-    # maybe the user added a symlink to the desired library
-    message(STATUS "Found more than one Gurobi library version (${GUROBI_LIBRARY_VERSIONS}), trying without suffix. Set GUROBI_LIBRARY if you want to pick a certain one.")
-    set(GUROBI_LIBRARY_VERSION "")
+    # More than one — pick the highest version
+    list(SORT GUROBI_LIBRARY_VERSIONS COMPARE NATURAL ORDER DESCENDING)
+    list(GET GUROBI_LIBRARY_VERSIONS 0 GUROBI_LIBRARY_VERSION)
+    message(STATUS "Found multiple Gurobi versions (${GUROBI_LIBRARY_VERSIONS}), using ${GUROBI_LIBRARY_VERSION}")
 endif()
 
+# ── Find the library ────────────────────────────────────────────────────────
 if (WIN32)
-    find_library(GUROBI_LIBRARY
-        NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
-        PATHS
-        ${GUROBI_BIN_DIR}
-    )
+    # On Windows with non-MSVC compilers (Clang, MinGW), find_library may not
+    # search bin/ for DLLs. Use the import lib in lib/ as the primary library
+    # and record the DLL location separately for IMPORTED_LOCATION.
     find_library(GUROBI_IMPLIB
         NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
-        PATHS
-        ${GUROBI_LIB_DIR}
+        PATHS ${GUROBI_LIB_DIR}
+        NO_DEFAULT_PATH
     )
     mark_as_advanced(GUROBI_IMPLIB)
+
+    # Find the DLL in bin/
+    find_file(GUROBI_DLL
+        NAMES "gurobi${GUROBI_LIBRARY_VERSION}.dll"
+        PATHS ${GUROBI_BIN_DIR}
+        NO_DEFAULT_PATH
+    )
+    mark_as_advanced(GUROBI_DLL)
+
+    # Accept either the import lib or a direct DLL find as "found"
+    if(GUROBI_IMPLIB)
+      set(GUROBI_LIBRARY "${GUROBI_IMPLIB}" CACHE FILEPATH "Gurobi C library" FORCE)
+    endif()
 else ()
     find_library(GUROBI_LIBRARY
         NAMES "gurobi${GUROBI_LIBRARY_VERSION}"
-        PATHS
-        ${GUROBI_LIB_DIR}
+        PATHS ${GUROBI_LIB_DIR}
+        NO_DEFAULT_PATH
     )
 endif()
 mark_as_advanced(GUROBI_LIBRARY)
 
+# ── Create imported targets ─────────────────────────────────────────────────
 if(GUROBI_LIBRARY AND NOT TARGET Gurobi::GurobiC)
     add_library(Gurobi::GurobiC SHARED IMPORTED)
     target_include_directories(Gurobi::GurobiC INTERFACE ${GUROBI_INCLUDE_DIR})
-    set_target_properties(Gurobi::GurobiC PROPERTIES IMPORTED_LOCATION ${GUROBI_LIBRARY})
-    if (GUROBI_IMPLIB)
+    if(WIN32 AND GUROBI_DLL)
+      set_target_properties(Gurobi::GurobiC PROPERTIES
+        IMPORTED_LOCATION "${GUROBI_DLL}"
+        IMPORTED_IMPLIB "${GUROBI_LIBRARY}")
+    else()
+      set_target_properties(Gurobi::GurobiC PROPERTIES IMPORTED_LOCATION ${GUROBI_LIBRARY})
+      if(GUROBI_IMPLIB)
         set_target_properties(Gurobi::GurobiC PROPERTIES IMPORTED_IMPLIB ${GUROBI_IMPLIB})
+      endif()
     endif()
 endif()
 

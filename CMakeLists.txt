@@ -243,3 +243,75 @@ if(DTWC_BUILD_MATLAB)
 endif()
 
 cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")
+
+# ── Configuration summary ──────────────────────────────────────────────────
+if(PROJECT_IS_TOP_LEVEL)
+  # Determine what was actually found
+  set(_omp_status "OFF")
+  # OpenMP is found inside dtwc/CMakeLists.txt — check the compile definition
+  # or the imported target, which are visible in parent scope.
+  get_target_property(_dtwc_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
+  if(_dtwc_defs MATCHES "DTWC_HAS_OPENMP")
+    set(_omp_status "ON")
+    # Try to extract version from cache (set by FindOpenMP)
+    if(DEFINED CACHE{OpenMP_CXX_SPEC_DATE})
+      set(_omp_status "ON (spec ${OpenMP_CXX_SPEC_DATE})")
+    endif()
+  endif()
+
+  set(_gurobi_status "OFF")
+  if(TARGET Gurobi::GurobiCXX)
+    set(_gurobi_status "ON (${GUROBI_HOME})")
+  elseif(DTWC_ENABLE_GUROBI)
+    set(_gurobi_status "REQUESTED BUT NOT FOUND")
+  endif()
+
+  set(_highs_status "OFF")
+  if(TARGET highs::highs)
+    set(_highs_status "ON")
+  endif()
+
+  set(_cuda_status "OFF")
+  if(DTWC_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
+    set(_cuda_status "ON (${CMAKE_CUDA_COMPILER_VERSION})")
+  elseif(DTWC_ENABLE_CUDA)
+    set(_cuda_status "REQUESTED BUT NOT FOUND")
+  endif()
+
+  set(_mpi_status "OFF")
+  if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
+    set(_mpi_status "ON")
+  elseif(DTWC_ENABLE_MPI)
+    set(_mpi_status "REQUESTED BUT NOT FOUND")
+  endif()
+
+  message(STATUS "")
+  message(STATUS "╔══════════════════════════════════════════════════╗")
+  message(STATUS "║  DTWC++ ${DTWC_VERSION_STRING} Configuration Summary")
+  message(STATUS "╠══════════════════════════════════════════════════╣")
+  message(STATUS "║  Compiler:  ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+  message(STATUS "║  OpenMP:    ${_omp_status}")
+  message(STATUS "║  CUDA:      ${_cuda_status}")
+  message(STATUS "║  MPI:       ${_mpi_status}")
+  message(STATUS "║  Gurobi:    ${_gurobi_status}")
+  message(STATUS "║  HiGHS:     ${_highs_status}")
+  message(STATUS "║  Testing:   ${DTWC_BUILD_TESTING}")
+  message(STATUS "╚══════════════════════════════════════════════════╝")
+  message(STATUS "")
+
+  # Warn about missing optional deps that were requested
+  if(DTWC_ENABLE_GUROBI AND NOT TARGET Gurobi::GurobiCXX)
+    message(WARNING
+      "Gurobi requested (DTWC_ENABLE_GUROBI=ON) but not found.\n"
+      "  MIP-based clustering will fall back to HiGHS (if available).\n"
+      "  To fix: set GUROBI_HOME env-var to your Gurobi installation,\n"
+      "  e.g., GUROBI_HOME=C:/gurobi1301/win64 or /opt/gurobi1301/linux64\n"
+      "  Or pass -DDTWC_ENABLE_GUROBI=OFF to silence this warning.")
+  endif()
+
+  if(NOT TARGET Gurobi::GurobiCXX AND NOT TARGET highs::highs)
+    message(WARNING
+      "No MIP solver available — MIP-based clustering (Method::MIP) will fail at runtime.\n"
+      "  Enable at least one: -DDTWC_ENABLE_GUROBI=ON or -DDTWC_ENABLE_HIGHS=ON")
+  endif()
+endif()

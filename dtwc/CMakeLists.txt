@@ -72,19 +72,49 @@ target_link_libraries(dtwc++
   Eigen3::Eigen
 )
 
+# ── OpenMP detection ──────────────────────────────────────────────────────────
 # Only request the CXX component — if CUDA is enabled as a language, a bare
 # find_package(OpenMP) would also search for OpenMP_CUDA which fails on MSVC.
 if(MSVC)
   set(OpenMP_RUNTIME_MSVC experimental)
 endif()
+
+# Clang targeting MSVC (clang++ -target x86_64-pc-windows-msvc) ships libomp
+# but CMake's FindOpenMP cannot auto-detect the flags. Probe the compiler's
+# LLVM install directory for libomp and set the hints if found.
+if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" AND WIN32 AND NOT OpenMP_CXX_FOUND)
+  if(NOT DEFINED OpenMP_CXX_FLAGS)
+    # Resolve the LLVM root from the compiler path: .../bin/clang++.exe → .../
+    get_filename_component(_llvm_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    get_filename_component(_llvm_root "${_llvm_bin}" DIRECTORY)
+    find_library(_llvm_libomp omp PATHS "${_llvm_root}/lib" NO_DEFAULT_PATH)
+    if(_llvm_libomp)
+      set(OpenMP_CXX_FLAGS "-fopenmp" CACHE STRING "OpenMP flags for Clang/Windows (auto-detected)")
+      set(OpenMP_CXX_LIB_NAMES "omp" CACHE STRING "OpenMP lib name for Clang/Windows (auto-detected)")
+      set(OpenMP_omp_LIBRARY "${_llvm_libomp}" CACHE FILEPATH "Path to libomp (auto-detected)")
+      message(STATUS "Auto-detected LLVM libomp at ${_llvm_libomp}")
+    endif()
+    unset(_llvm_bin)
+    unset(_llvm_root)
+    unset(_llvm_libomp)
+  endif()
+endif()
+
 find_package(OpenMP COMPONENTS CXX)
 if(OpenMP_CXX_FOUND)
-  message(STATUS "OpenMP found")
+  message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — parallel execution enabled")
+  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_OPENMP)
   if(MSVC)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
   else()
     target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
   endif()
+else()
+  message(WARNING
+    "OpenMP NOT found — DTWC++ will run single-threaded.\n"
+    "  This will be extremely slow for large datasets.\n"
+    "  To fix: install libomp (Clang), enable OpenMP in your compiler,\n"
+    "  or pass -DOpenMP_CXX_FLAGS / -DOpenMP_CXX_LIB_NAMES manually.")
 endif()
 
 # Guard against parent projects that use -ffast-math (which includes -ffinite-math-only).
