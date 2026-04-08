@@ -63,6 +63,16 @@ Critical knowledge to avoid repeating mistakes.
 - `tri_index: i*(i+1)/2 + j` is 1-2 cycles (imul). Precomputed row-offset table adds L1 load (~4 cycles) + cache pollution.
 - Benchmarked: table version was 5% SLOWER on 500K random lookups. Modern CPUs do integer multiply faster than memory indirection.
 
+### Mmap access benchmarks at N=5000 (benchmarked 2026-04-08)
+- Packed triangular distance matrix: 12.5M doubles (~95MB).
+- **Random get**: mmap 3.63ms vs dense 3.46ms (only 5% slower). No eager-read fallback needed.
+- **Sequential scan**: mmap 4.24ms vs dense 3.90ms (9% slower). Page cache handles it.
+- **Startup latency**: mmap open 1.4ms vs fread-to-vector 109ms (**78x faster** open).
+- **Medoid access (FastPAM pattern)**: mmap 0.035ms vs dense 0.034ms (within noise).
+- **CLARA subsample**: view creation 0.051μs vs vector copy 2.43μs (**48x faster**).
+- **Conclusion**: mmap is safe as default backend. No regime where read-all-to-vector is meaningfully faster. Views eliminate CLARA copy overhead entirely.
+- **Lesson**: OS page cache makes mmap nearly free for hot data. Don't over-optimize — measure first.
+
 ### llfio > mio for memory-mapped I/O (evaluated 2026-04-08)
 - mio (MIT, header-only): clean 3-line API but dormant since 2020, no file locking, no pre-allocation.
 - llfio (Apache 2.0, header-only option): active (Jan 2025), has file locking, `posix_fallocate`, sparse files, production-proven (SEC MIDAS).
