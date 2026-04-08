@@ -175,6 +175,13 @@ int main(int argc, char *argv[])
   std::string checkpoint_dir;
   app.add_option("--checkpoint", checkpoint_dir, "Checkpoint directory for save/resume");
 
+  // Binary checkpoint restart & mmap threshold
+  bool restart = false;
+  size_t mmap_threshold = 50000;
+  app.add_flag("--restart", restart, "Resume from checkpoint (distance matrix cache + clustering state)");
+  app.add_option("--mmap-threshold", mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)")
+      ->check(CLI::NonNegativeNumber);
+
   // MIP solver (for method=mip)
   std::string solver = "highs";
   app.add_option("--solver", solver, "MIP solver: highs, gurobi")
@@ -354,6 +361,25 @@ int main(int argc, char *argv[])
     method = (N <= 5000) ? "pam" : "clara";
     if (verbose)
       std::cout << "Auto-selected method: " << method << " (N=" << N << ")\n";
+  }
+
+#ifdef DTWC_HAS_MMAP
+  if (mmap_threshold > 0 && prob.size() >= mmap_threshold) {
+    auto cache_path = fs::path(output_dir) / (prob_name + "_distmat.cache");
+    prob.use_mmap_distance_matrix(cache_path);
+    if (verbose)
+      std::cout << "Using memory-mapped distance matrix: " << cache_path << "\n";
+  }
+#endif
+
+  if (restart) {
+    auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
+    dtwc::core::ClusteringResult ckpt_result;
+    if (dtwc::load_binary_checkpoint(ckpt_result, ckpt_path)) {
+      if (verbose)
+        std::cout << "Loaded checkpoint: " << ckpt_result.iterations
+                  << " iterations, cost=" << ckpt_result.total_cost << "\n";
+    }
   }
 
   // ---- Configure DTW ----
@@ -575,6 +601,12 @@ int main(int argc, char *argv[])
                 << ", cost=" << std::setprecision(6) << result.total_cost
                 << " [" << clk << "]\n";
     }
+  }
+
+  // ---- Save binary checkpoint of clustering result ----
+  {
+    auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
+    dtwc::save_binary_checkpoint(result, ckpt_path);
   }
 
   // ---- Apply result to prob for scoring ----

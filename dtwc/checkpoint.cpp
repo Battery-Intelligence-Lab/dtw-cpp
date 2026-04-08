@@ -11,6 +11,8 @@
 #include "core/matrix_io.hpp"
 
 #include <chrono>
+#include <cstring>
+#include <cstdint>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -196,6 +198,143 @@ bool load_checkpoint(Problem &prob, const std::string &path)
     std::cout << "Checkpoint partially loaded from " << dir.string()
               << " (" << dm_load.count_computed() << "/" << dm_load.packed_count() << " entries computed)" << '\n';
   }
+
+  return true;
+}
+
+
+// ---- Binary checkpoint for ClusteringResult --------------------------------
+
+namespace {
+
+constexpr char BINARY_MAGIC[4] = { 'D', 'C', 'K', 'P' };
+constexpr uint16_t BINARY_VERSION = 1;
+
+} // anonymous namespace
+
+
+void save_binary_checkpoint(const core::ClusteringResult &result,
+                            const fs::path &path)
+{
+  // Ensure parent directory exists
+  if (path.has_parent_path())
+    fs::create_directories(path.parent_path());
+
+  std::ofstream out(path, std::ios::binary);
+  if (!out.is_open())
+    throw std::runtime_error("Cannot open binary checkpoint for writing: " + path.string());
+
+  // Header
+  out.write(BINARY_MAGIC, 4);
+
+  const uint16_t version = BINARY_VERSION;
+  out.write(reinterpret_cast<const char *>(&version), sizeof(version));
+
+  const uint16_t reserved = 0;
+  out.write(reinterpret_cast<const char *>(&reserved), sizeof(reserved));
+
+  const int32_t k = static_cast<int32_t>(result.medoid_indices.size());
+  const int32_t N = static_cast<int32_t>(result.labels.size());
+  const int32_t iterations = static_cast<int32_t>(result.iterations);
+  out.write(reinterpret_cast<const char *>(&k), sizeof(k));
+  out.write(reinterpret_cast<const char *>(&N), sizeof(N));
+  out.write(reinterpret_cast<const char *>(&iterations), sizeof(iterations));
+
+  const uint8_t converged = result.converged ? 1 : 0;
+  out.write(reinterpret_cast<const char *>(&converged), sizeof(converged));
+
+  const char padding[3] = { 0, 0, 0 };
+  out.write(padding, 3);
+
+  out.write(reinterpret_cast<const char *>(&result.total_cost), sizeof(result.total_cost));
+
+  // Medoid indices
+  for (int32_t i = 0; i < k; ++i) {
+    const int32_t val = static_cast<int32_t>(result.medoid_indices[i]);
+    out.write(reinterpret_cast<const char *>(&val), sizeof(val));
+  }
+
+  // Labels
+  for (int32_t i = 0; i < N; ++i) {
+    const int32_t val = static_cast<int32_t>(result.labels[i]);
+    out.write(reinterpret_cast<const char *>(&val), sizeof(val));
+  }
+
+  if (!out.good())
+    throw std::runtime_error("Write error on binary checkpoint: " + path.string());
+}
+
+
+bool load_binary_checkpoint(core::ClusteringResult &result,
+                            const fs::path &path)
+{
+  if (!fs::exists(path))
+    return false;
+
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open())
+    return false;
+
+  // Read and validate magic
+  char magic[4];
+  in.read(magic, 4);
+  if (!in.good() || std::memcmp(magic, BINARY_MAGIC, 4) != 0)
+    return false;
+
+  // Read and validate version
+  uint16_t version = 0;
+  in.read(reinterpret_cast<char *>(&version), sizeof(version));
+  if (!in.good() || version != BINARY_VERSION)
+    return false;
+
+  // Skip reserved
+  uint16_t reserved = 0;
+  in.read(reinterpret_cast<char *>(&reserved), sizeof(reserved));
+
+  // Read header fields
+  int32_t k = 0, N = 0, iterations = 0;
+  in.read(reinterpret_cast<char *>(&k), sizeof(k));
+  in.read(reinterpret_cast<char *>(&N), sizeof(N));
+  in.read(reinterpret_cast<char *>(&iterations), sizeof(iterations));
+
+  uint8_t converged = 0;
+  in.read(reinterpret_cast<char *>(&converged), sizeof(converged));
+
+  // Skip padding
+  char padding[3];
+  in.read(padding, 3);
+
+  double total_cost = 0.0;
+  in.read(reinterpret_cast<char *>(&total_cost), sizeof(total_cost));
+
+  if (!in.good())
+    return false;
+
+  // Read medoid indices
+  std::vector<int> medoid_indices(k);
+  for (int32_t i = 0; i < k; ++i) {
+    int32_t val = 0;
+    in.read(reinterpret_cast<char *>(&val), sizeof(val));
+    medoid_indices[i] = val;
+  }
+
+  // Read labels
+  std::vector<int> labels(N);
+  for (int32_t i = 0; i < N; ++i) {
+    int32_t val = 0;
+    in.read(reinterpret_cast<char *>(&val), sizeof(val));
+    labels[i] = val;
+  }
+
+  if (!in.good())
+    return false;
+
+  // Populate result
+  result.medoid_indices = std::move(medoid_indices);
+  result.labels = std::move(labels);
+  result.total_cost = total_cost;
+  result.iterations = iterations;
+  result.converged = (converged != 0);
 
   return true;
 }

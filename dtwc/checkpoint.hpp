@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "core/clustering_result.hpp"
+
 #include <string>
 #include <filesystem>
 
@@ -53,5 +55,39 @@ void save_checkpoint(const Problem &prob, const std::string &path);
 /// @param path  Directory path containing checkpoint files.
 /// @return true if checkpoint was loaded successfully, false if not found or invalid.
 bool load_checkpoint(Problem &prob, const std::string &path);
+
+// ---- Binary checkpoint for ClusteringResult --------------------------------
+
+/// Save clustering result to a compact binary file.
+///
+/// Binary format (little-endian):
+///   bytes 0-3:   magic "DCKP"
+///   bytes 4-5:   version uint16 = 1
+///   bytes 6-7:   reserved (0)
+///   bytes 8-11:  k (int32) -- number of medoids
+///   bytes 12-15: N (int32) -- number of data points
+///   bytes 16-19: iterations (int32)
+///   byte  20:    converged (uint8, 0 or 1)
+///   bytes 21-23: padding (0)
+///   bytes 24-31: total_cost (double)
+///   bytes 32+:   medoid_indices (k * int32)
+///   then:        labels (N * int32)
+///
+/// @param result  The clustering result to save.
+/// @param path    File path for the binary checkpoint.
+/// @throws std::runtime_error if the file cannot be written.
+void save_binary_checkpoint(const core::ClusteringResult &result,
+                            const std::filesystem::path &path);
+
+/// Load clustering result from a binary checkpoint file.
+///
+/// Validates the magic bytes and version. Returns false if the file
+/// does not exist or has an invalid header.
+///
+/// @param result  The ClusteringResult to populate.
+/// @param path    File path of the binary checkpoint.
+/// @return true if loaded successfully, false otherwise.
+bool load_binary_checkpoint(core::ClusteringResult &result,
+                            const std::filesystem::path &path);
 
 } // namespace dtwc
