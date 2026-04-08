@@ -27,7 +27,9 @@
 #include <limits>
 #include <numeric>
 #include <random>
+#include <span>
 #include <stdexcept>
+#include <string_view>
 #include <vector>
 
 namespace dtwc::algorithms {
@@ -134,15 +136,15 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
     std::shuffle(sample_indices.begin(), sample_indices.end(), rng);
     sample_indices.resize(sample_size);
 
-    // 2. Create a sub-Problem with only the sampled series.
-    std::vector<std::vector<data_t>> sub_vecs;
-    std::vector<std::string> sub_names;
-    sub_vecs.reserve(sample_size);
+    // 2. Create a sub-Problem with zero-copy span views into parent data.
+    std::vector<std::span<const data_t>> sub_spans;
+    std::vector<std::string_view> sub_names;
+    sub_spans.reserve(sample_size);
     sub_names.reserve(sample_size);
 
     for (int idx : sample_indices) {
-      sub_vecs.push_back(prob.p_vec(idx));
-      sub_names.push_back(prob.get_name(idx));
+      sub_spans.push_back(prob.series(idx));        // O(1), no data copy
+      sub_names.push_back(prob.series_name(idx));   // O(1), no string copy
     }
 
     Problem sub_prob("clara_subsample_" + std::to_string(s));
@@ -152,7 +154,7 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
     sub_prob.missing_strategy = prob.missing_strategy;
     sub_prob.distance_strategy = prob.distance_strategy;
     sub_prob.verbose = prob.verbose;
-    sub_prob.set_data(Data(std::move(sub_vecs), std::move(sub_names), prob.data.ndim));
+    sub_prob.set_view_data(Data(std::move(sub_spans), std::move(sub_names), prob.data.ndim));
 
     // 3. Run FastPAM on the sub-Problem.
     auto sub_result = fast_pam(sub_prob, opts.n_clusters, opts.max_iter);

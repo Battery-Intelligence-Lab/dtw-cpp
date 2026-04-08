@@ -134,6 +134,111 @@ function(dtwc_setup_dependencies)
     message(FATAL_ERROR "  llfio:    NOT FOUND — llfio is a required dependency")
   endif()
 
+  # Apache Arrow + Parquet (optional) — zero-copy IPC and Parquet reading.
+  # No Python required. No external package manager required.
+  #
+  # Detection order:
+  #   1. find_package (conda, system install — fastest, no build)
+  #   2. CPM: download and build minimal Arrow from source (~5 min first time, cached after)
+  #
+  if(DTWC_ENABLE_ARROW)
+    # 1. Try system-installed Arrow first (conda, apt, brew, module load)
+    find_package(Arrow QUIET CONFIG)
+    find_package(Parquet QUIET CONFIG)
+
+    if(Arrow_FOUND)
+      message(STATUS "  Arrow:    YES (v${Arrow_VERSION}) — system install")
+      set(Arrow_FOUND TRUE PARENT_SCOPE)
+      if(Parquet_FOUND)
+        message(STATUS "  Parquet:  YES (v${Parquet_VERSION}) — system install")
+        set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
+      endif()
+    else()
+      # 2. Build minimal Arrow+Parquet from source via CPM
+      message(STATUS "  Arrow:    not found — building from source via CPM (first build takes ~5 min)")
+
+      # Workaround: Arrow's ExternalProject passes CMAKE_CXX_FLAGS_* to sub-builds
+      # (snappy, zstd, thrift). On Windows+Clang, flags like "-Xclang --dependent-lib=msvcrt"
+      # and "-D_DLL -D_MT" contain spaces that break CMake argument parsing in ExternalProject.
+      # Strip these from ALL flag variables before Arrow configure, restore after.
+      # Flag stripping not needed — Windows+Clang skips CPM build (see guard above)
+      # NOTE: On Windows+Clang, Arrow's ExternalProject sub-builds fail because
+      # CMake's platform module sets "-Xclang --dependent-lib=msvcrt" in default
+      # flags, and the space breaks ExternalProject's semicolon-separated command.
+      # This is an Arrow upstream issue. Workarounds:
+      #   - Use MSVC compiler instead of Clang on Windows
+      #   - Use conda: conda install -c conda-forge arrow-cpp (find_package path)
+      #   - Use Linux (SLURM) where this issue doesn't exist
+      if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+        message(WARNING "Arrow CPM build is not supported with Windows+Clang due to "
+          "ExternalProject flag quoting issues. Use one of:\n"
+          "  1. conda install -c conda-forge arrow-cpp  (then find_package works)\n"
+          "  2. Build with MSVC instead of Clang\n"
+          "  3. Use Linux (SLURM) where CPM build works\n"
+          "  4. Use dtwc-convert (Python) as a workaround")
+        set(DTWC_ENABLE_ARROW OFF PARENT_SCOPE)
+      else()
+
+      CPMAddPackage(
+        NAME Arrow
+        VERSION 19.0.1
+        URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
+        SOURCE_SUBDIR cpp
+        SYSTEM
+        EXCLUDE_FROM_ALL
+        OPTIONS
+          "ARROW_BUILD_STATIC ON"
+          "ARROW_BUILD_SHARED OFF"
+          "ARROW_PARQUET ON"
+          "ARROW_IPC ON"
+          "ARROW_FILESYSTEM ON"
+          "ARROW_COMPUTE OFF"
+          "ARROW_CSV OFF"
+          "ARROW_DATASET OFF"
+          "ARROW_JSON OFF"
+          "ARROW_FLIGHT OFF"
+          "ARROW_GANDIVA OFF"
+          "ARROW_ORC OFF"
+          "ARROW_PLASMA OFF"
+          "ARROW_PYTHON OFF"
+          "ARROW_S3 OFF"
+          "ARROW_HDFS OFF"
+          "ARROW_JEMALLOC OFF"
+          "ARROW_MIMALLOC OFF"
+          "ARROW_WITH_SNAPPY OFF"
+          "ARROW_WITH_ZSTD OFF"
+          "ARROW_WITH_LZ4 OFF"
+          "ARROW_WITH_BROTLI OFF"
+          "ARROW_WITH_BZ2 OFF"
+          "ARROW_WITH_ZLIB OFF"
+          "ARROW_DEPENDENCY_SOURCE BUNDLED"
+          "ARROW_SIMD_LEVEL NONE"
+          "ARROW_USE_XSIMD OFF"
+          "ARROW_RUNTIME_SIMD_LEVEL NONE"
+          "ARROW_BUILD_TESTS OFF"
+          "ARROW_BUILD_BENCHMARKS OFF"
+          "ARROW_BUILD_EXAMPLES OFF"
+          "ARROW_BUILD_UTILITIES OFF"
+          "PARQUET_BUILD_EXECUTABLES OFF"
+          "PARQUET_BUILD_EXAMPLES OFF"
+          "PARQUET_REQUIRE_ENCRYPTION OFF"
+      )
+
+      if(TARGET arrow_static)
+        set(Arrow_FOUND TRUE PARENT_SCOPE)
+        set(DTWC_ARROW_FROM_CPM TRUE PARENT_SCOPE)
+        set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
+        message(STATUS "  Arrow:    built from source (static, IPC + Parquet)")
+      else()
+        message(WARNING "Arrow CPM build failed.\n"
+          "  Install: conda install -c conda-forge arrow-cpp")
+        set(DTWC_ENABLE_ARROW OFF PARENT_SCOPE)
+      endif()
+
+      endif() # Windows+Clang guard
+    endif()
+  endif()
+
   # MPI (optional) — distributed distance matrix computation
   if(DTWC_ENABLE_MPI)
     # On Windows, help CMake find MS-MPI by setting hints from well-known

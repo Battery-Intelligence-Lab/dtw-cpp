@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <span>
 #include <stdexcept>
 #include <string>
 
@@ -142,7 +143,7 @@ public:
     // Calculate total values across all series
     size_t total_values = 0;
     for (size_t i = 0; i < store.n_; ++i)
-      total_values += data.p_vec[i].size();
+      total_values += data.series_flat_size(i);
 
     const size_t file_sz = compute_file_size(store.n_, total_values);
 
@@ -173,7 +174,7 @@ public:
     uint64_t byte_offset = 0;
     for (size_t i = 0; i < store.n_; ++i) {
       offsets[i] = byte_offset;
-      byte_offset += static_cast<uint64_t>(data.p_vec[i].size()) * sizeof(double);
+      byte_offset += static_cast<uint64_t>(data.series_flat_size(i)) * sizeof(double);
     }
     offsets[store.n_] = byte_offset; // sentinel
 
@@ -181,8 +182,9 @@ public:
     auto *data_start = base + HEADER_SIZE + (store.n_ + 1) * sizeof(uint64_t);
     size_t write_pos = 0;
     for (size_t i = 0; i < store.n_; ++i) {
-      const size_t nbytes = data.p_vec[i].size() * sizeof(double);
-      std::memcpy(data_start + write_pos, data.p_vec[i].data(), nbytes);
+      const auto sp = data.series(i);
+      const size_t nbytes = sp.size() * sizeof(double);
+      std::memcpy(data_start + write_pos, sp.data(), nbytes);
       write_pos += nbytes;
     }
 
@@ -265,6 +267,12 @@ public:
   size_t series_length(size_t i) const
   {
     return series_flat_size(i) / ndim_;
+  }
+
+  /// Span view of series i's flat data (zero-copy).
+  std::span<const double> series(size_t i) const
+  {
+    return { series_data(i), series_flat_size(i) };
   }
 
   /// Flush mapped memory to disk.

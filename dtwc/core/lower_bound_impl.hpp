@@ -20,11 +20,12 @@
 
 #pragma once
 
-#include <algorithm> // for min, max, fill, max_element, min_element
-#include <cmath>     // for abs
-#include <cstddef>   // for size_t
+#include <algorithm>   // for min, max, fill, max_element, min_element
+#include <cmath>       // for abs
+#include <cstddef>     // for size_t
+#include <span>        // for span
 #include <type_traits> // for is_same_v
-#include <vector>    // for vector
+#include <vector>      // for vector
 
 namespace dtwc::core {
 
@@ -260,8 +261,8 @@ struct SeriesSummary {
   double first = 0, last = 0, min_val = 0, max_val = 0;
 };
 
-/// Compute summary from a time series vector.
-inline SeriesSummary compute_summary(const std::vector<double> &series)
+/// Compute summary from a time series span.
+inline SeriesSummary compute_summary(std::span<const double> series)
 {
   if (series.empty()) return {};
   SeriesSummary s;
@@ -271,6 +272,12 @@ inline SeriesSummary compute_summary(const std::vector<double> &series)
   s.min_val = *it_min;
   s.max_val = *it_max;
   return s;
+}
+
+/// Compute summary from a time series vector (convenience overload).
+inline SeriesSummary compute_summary(const std::vector<double> &series)
+{
+  return compute_summary(std::span<const double>(series));
 }
 
 /// LB_Kim using precomputed summaries -- O(1).
@@ -289,8 +296,8 @@ struct Envelope {
   std::vector<double> upper, lower;
 };
 
-/// Compute envelope from a time series vector with given band width.
-inline Envelope compute_envelope(const std::vector<double> &series, int band)
+/// Compute envelope from a time series span with given band width.
+inline Envelope compute_envelope(std::span<const double> series, int band)
 {
   Envelope env;
   env.upper.resize(series.size());
@@ -298,6 +305,19 @@ inline Envelope compute_envelope(const std::vector<double> &series, int band)
   if (!series.empty())
     compute_envelopes(series.data(), series.size(), band, env.upper.data(), env.lower.data());
   return env;
+}
+
+/// Compute envelope from a time series vector (convenience overload).
+inline Envelope compute_envelope(const std::vector<double> &series, int band)
+{
+  return compute_envelope(std::span<const double>(series), band);
+}
+
+/// LB_Keogh from span + precomputed Envelope.
+inline double lb_keogh(std::span<const double> query, const Envelope &env)
+{
+  const auto n = std::min(query.size(), env.upper.size());
+  return lb_keogh(query.data(), n, env.upper.data(), env.lower.data());
 }
 
 /// Convenience overload: LB_Keogh from vector + precomputed Envelope.
@@ -310,12 +330,22 @@ inline double lb_keogh(const std::vector<double> &query, const Envelope &env)
 
 /// Symmetric LB_Keogh: max of both directions.
 inline double lb_keogh_symmetric(
-  const std::vector<double> &x, const Envelope &env_x,
-  const std::vector<double> &y, const Envelope &env_y)
+  std::span<const double> x, const Envelope &env_x,
+  std::span<const double> y, const Envelope &env_y)
 {
   double lb1 = lb_keogh(x, env_y);
   double lb2 = lb_keogh(y, env_x);
   return std::max(lb1, lb2);
+}
+
+/// Convenience overload for vectors.
+inline double lb_keogh_symmetric(
+  const std::vector<double> &x, const Envelope &env_x,
+  const std::vector<double> &y, const Envelope &env_y)
+{
+  return lb_keogh_symmetric(
+    std::span<const double>(x), env_x,
+    std::span<const double>(y), env_y);
 }
 
 // ======================================================================

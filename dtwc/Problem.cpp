@@ -143,7 +143,7 @@ void Problem::refresh_variant_caches()
 {
   wdtw_weights_cache_.clear();
 
-  if (variant_params.variant != core::DTWVariant::WDTW || data.p_vec.empty())
+  if (variant_params.variant != core::DTWVariant::WDTW || data.size() == 0)
     return;
 
   const auto g = static_cast<data_t>(variant_params.wdtw_g);
@@ -153,8 +153,8 @@ void Problem::refresh_variant_caches()
   // We precompute for every unique series length so the parallel DTW lambda
   // never mutates the cache. Thread-safe by design: no insertion after this point.
   if (data.ndim > 1) {
-    for (const auto &series : data.p_vec) {
-      const size_t steps = series.size() / data.ndim;
+    for (size_t i = 0; i < data.size(); ++i) {
+      const size_t steps = data.series_flat_size(i) / data.ndim;
       if (steps == 0) continue;
       const size_t max_dev = steps - 1;
       wdtw_weights_cache_.try_emplace(max_dev, wdtw_weights<data_t>(static_cast<int>(max_dev), g));
@@ -162,8 +162,8 @@ void Problem::refresh_variant_caches()
     return;
   }
 
-  for (const auto &series : data.p_vec) {
-    const size_t max_dev = series.size();
+  for (size_t i = 0; i < data.size(); ++i) {
+    const size_t max_dev = data.series_flat_size(i);
     wdtw_weights_cache_.try_emplace(max_dev, wdtw_weights<data_t>(static_cast<int>(max_dev), g));
   }
 }
@@ -303,6 +303,21 @@ void Problem::rebind_dtw_fn()
     }
     break;
   }
+
+  // Bind float32 DTW function (mirrors the float64 binding above).
+  // DTW templates work with float; distance returns double for precision.
+  if (data.ndim > 1) {
+    dtw_fn_f32_ = [this](std::span<const float> x, std::span<const float> y) -> double {
+      return static_cast<double>(dtwBanded_mv<float>(
+        x.data(), x.size() / data.ndim,
+        y.data(), y.size() / data.ndim,
+        data.ndim, band));
+    };
+  } else {
+    dtw_fn_f32_ = [this](std::span<const float> x, std::span<const float> y) -> double {
+      return static_cast<double>(dtwBanded<float>(x, y, band));
+    };
+  }
 }
 
 void Problem::set_variant(core::DTWVariant v)
@@ -372,7 +387,9 @@ double Problem::distByInd(int i, int j)
   if (computed)
     return visit_distmat([&](const auto &m) { return m.get(i, j); });
 
-  const double d = dtw_fn_(p_vec(i), p_vec(j));
+  const double d = data.is_f32()
+    ? dtw_fn_f32_(data.series_f32(i), data.series_f32(j))
+    : dtw_fn_(series(i), series(j));
   visit_distmat([&](auto &m) { m.set(i, j, d); });
   return d;
 }
@@ -424,11 +441,20 @@ void Problem::fillDistanceMatrix_BruteForce()
 #endif
   for (int ii = 0; ii < static_cast<int>(N); ++ii) {
     const size_t i = static_cast<size_t>(ii);
-    const auto &series_i = p_vec(i);
-    for (size_t j = i + 1; j < N; ++j) {
-      bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
-      if (!computed)
-        visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(series_i, p_vec(j))); });
+    if (data.is_f32()) {
+      const auto si = data.series_f32(i);
+      for (size_t j = i + 1; j < N; ++j) {
+        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
+        if (!computed)
+          visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_f32_(si, data.series_f32(j))); });
+      }
+    } else {
+      const auto si = series(i);
+      for (size_t j = i + 1; j < N; ++j) {
+        bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
+        if (!computed)
+          visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(si, series(j))); });
+      }
     }
   }
 }
@@ -464,9 +490,10 @@ void Problem::fillDistanceMatrix()
   // Pre-scan for NaN if strategy is Error
   if (missing_strategy == core::MissingStrategy::Error) {
     for (size_t i = 0; i < data.size(); ++i) {
-      if (has_missing(p_vec(i))) {
+      const bool has_nan = data.is_f32() ? has_missing(data.series_f32(i)) : has_missing(series(i));
+      if (has_nan) {
         throw std::runtime_error(
-          "fillDistanceMatrix: NaN detected in series '" + data.p_names[i]
+          "fillDistanceMatrix: NaN detected in series '" + std::string(series_name(i))
           + "' (index " + std::to_string(i)
           + "). Set missing_strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
       }
@@ -487,7 +514,7 @@ void Problem::fillDistanceMatrix()
       && missing_strategy != core::MissingStrategy::Interpolate) {
     if (effective == DistanceMatrixStrategy::Pruned) {
       for (size_t i = 0; i < data.size(); ++i) {
-        if (has_missing(p_vec(i))) {
+        if (has_missing(series(i))) {
           effective = DistanceMatrixStrategy::BruteForce;
           break;
         }

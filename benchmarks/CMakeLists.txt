@@ -37,6 +37,15 @@ target_link_libraries(bench_cuda_dtw
 add_executable(bench_mpi_dtw bench_mpi_dtw.cpp)
 target_link_libraries(bench_mpi_dtw PRIVATE dtwc++)
 
+# float32 vs float64 DTW speed benchmark
+add_executable(bench_f32_vs_f64 bench_f32_vs_f64.cpp)
+target_link_libraries(bench_f32_vs_f64
+  PRIVATE
+    dtwc++
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
 # Legacy UCR benchmark
 add_executable(benchmark_UCR UCR_dtwc.cpp)
 target_link_libraries(benchmark_UCR PRIVATE dtwc++)

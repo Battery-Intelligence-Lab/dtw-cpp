@@ -19,6 +19,7 @@
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
+#include "core/storage.hpp"     // for StoragePolicy
 
 #include "core/mmap_distance_matrix.hpp"
 #include <variant>
@@ -81,14 +82,17 @@ public:
   using distMat_t = std::variant<core::DenseDistanceMatrix, core::MmapDistanceMatrix>;
   using path_t = std::filesystem::path;
 
-  /// DTW distance function type: computes distance between two series.
+  /// DTW distance function types: float64 and float32 variants.
+  /// Both return double (distance precision is always double).
   using dtw_fn_t = std::function<data_t(std::span<const data_t>, std::span<const data_t>)>;
+  using dtw_fn_f32_t = std::function<double(std::span<const float>, std::span<const float>)>;
 
 private:
   int Nc{ 1 };                                      /*!< Number of clusters. */
   distMat_t distMat;                                /*!< Distance matrix. */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
-  dtw_fn_t dtw_fn_;                                 /*!< DTW distance function (set by rebind_dtw_fn). */
+  dtw_fn_t dtw_fn_;                                 /*!< DTW distance function for float64. */
+  dtw_fn_f32_t dtw_fn_f32_;                         /*!< DTW distance function for float32. */
   std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
 
   /// Dispatch through variant via std::visit.
@@ -123,6 +127,7 @@ public:
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
+  core::StoragePolicy storage_policy{ core::StoragePolicy::Auto }; /*!< How series data is stored. */
   CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
   bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
@@ -147,11 +152,20 @@ public:
 
   auto size() const { return data.size(); }
   auto cluster_size() const { return Nc; }
-  auto &get_name(size_t i) { return data.p_names[i]; }
-  auto const &get_name(size_t i) const { return data.p_names[i]; }
 
-  auto &p_vec(size_t i) { return data.p_vec[i]; }
-  auto const &p_vec(size_t i) const { return data.p_vec[i]; }
+  /// Mutable name access (heap-mode only — asserts if view-mode).
+  auto &get_name(size_t i) { assert(!data.is_view()); return data.p_names[i]; }
+  auto const &get_name(size_t i) const { assert(!data.is_view()); return data.p_names[i]; }
+
+  /// Mutable vector access (heap-mode only — asserts if view-mode).
+  auto &p_vec(size_t i) { assert(!data.is_view()); return data.p_vec[i]; }
+  auto const &p_vec(size_t i) const { assert(!data.is_view()); return data.p_vec[i]; }
+
+  /// Zero-copy span view of series i (works for heap, mmap, and view modes).
+  std::span<const data_t> series(size_t i) const { return data.series(i); }
+
+  /// Name of series i as a string_view.
+  std::string_view series_name(size_t i) const { return data.name(i); }
 
   void refreshDistanceMatrix();
   void resize();
@@ -166,9 +180,18 @@ public:
 
   void set_data(dtwc::Data data_)
   {
-    data = data_;
+    data = std::move(data_);
     data.validate_ndim();
     refreshDistanceMatrix();
+  }
+
+  /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
+  void set_view_data(dtwc::Data data_)
+  {
+    data = std::move(data_);
+    // validate_ndim() already called by Data's view-mode constructor
+    rebind_dtw_fn();
+    resize(); // sizes distance matrix for new N
   }
 
   /// Set DTW variant and rebind the distance function.

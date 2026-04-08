@@ -18,6 +18,14 @@
  */
 
 #include "dtwc.hpp"
+#include "core/mmap_data_store.hpp"
+
+#ifdef DTWC_HAS_ARROW
+#include "io/arrow_ipc_reader.hpp"
+#endif
+#ifdef DTWC_HAS_PARQUET
+#include "io/parquet_reader.hpp"
+#endif
 
 #include <CLI/CLI.hpp>
 
@@ -35,6 +43,38 @@
 #include <string>
 
 namespace fs = std::filesystem;
+
+/// Parse a human-readable size string like "2G", "500M", "128G" to bytes.
+/// Returns 0 if parsing fails or string is empty.
+static size_t parse_ram_limit(const std::string &s)
+{
+  if (s.empty()) return 0;
+  char *end = nullptr;
+  double val = std::strtod(s.c_str(), &end);
+  if (end == s.c_str()) return 0;
+  char suffix = (*end) ? static_cast<char>(std::toupper(static_cast<unsigned char>(*end))) : 'B';
+  switch (suffix) {
+  case 'T': return static_cast<size_t>(val * (1ULL << 40));
+  case 'G': return static_cast<size_t>(val * (1ULL << 30));
+  case 'M': return static_cast<size_t>(val * (1ULL << 20));
+  case 'K': return static_cast<size_t>(val * (1ULL << 10));
+  default:  return static_cast<size_t>(val);
+  }
+}
+
+/// Convert float64 Data to float32 in-place.
+static dtwc::Data convert_to_f32(dtwc::Data &&data_f64)
+{
+  const size_t n = data_f64.size();
+  std::vector<std::vector<float>> vecs_f32(n);
+  for (size_t i = 0; i < n; ++i) {
+    const auto &src = data_f64.p_vec[i];
+    vecs_f32[i].resize(src.size());
+    for (size_t j = 0; j < src.size(); ++j)
+      vecs_f32[i][j] = static_cast<float>(src[j]);
+  }
+  return dtwc::Data(std::move(vecs_f32), std::move(data_f64.p_names), data_f64.ndim);
+}
 
 /// Write cluster labels to CSV: one line per point with "name,cluster_id".
 static void write_labels_csv(const fs::path &path,
@@ -99,9 +139,24 @@ int main(int argc, char *argv[])
   std::string input_file;
   std::string output_dir = "./results";
   std::string prob_name = "dtwc";
-  app.add_option("-i,--input", input_file, "Input CSV file or folder");
+  std::string parquet_column;
+  app.add_option("-i,--input", input_file, "Input file (CSV, Parquet, Arrow IPC, .dtws) or folder");
   app.add_option("-o,--output", output_dir, "Output directory");
   app.add_option("--name", prob_name, "Problem name (used in output filenames)");
+  app.add_option("--column", parquet_column, "Column name to use as time series (Parquet only)");
+
+  std::string precision_str = "float32";
+  app.add_option("--precision", precision_str, "Series data precision: float32 (default, 2x memory saving) or float64")
+      ->transform(CLI::CheckedTransformer(
+          std::map<std::string, std::string>{
+              {"float32", "float32"}, {"f32", "float32"}, {"fp32", "float32"},
+              {"float64", "float64"}, {"f64", "float64"}, {"fp64", "float64"},
+              {"double", "float64"}, {"float", "float32"}},
+          CLI::ignore_case));
+
+  std::string ram_limit_str;
+  app.add_option("--ram-limit", ram_limit_str,
+      "Max RAM for series data (e.g. 2G, 500M, 128G). Default: no limit.");
 
   // Clustering parameters
   int n_clusters = 3;
@@ -348,12 +403,110 @@ int main(int argc, char *argv[])
   fs::create_directories(output_dir);
 
   // ---- Load data ----
-  dtwc::DataLoader dl{input_file};
-  dl.startColumn(skip_cols).startRow(skip_rows);
+  dtwc::Problem prob{prob_name};
 
-  dtwc::Problem prob{prob_name, dl};
-  if (verbose)
-    std::cout << "Data loaded: " << prob.size() << " series [" << clk << "]\n";
+  const bool is_dir = fs::is_directory(input_file);
+  const auto input_ext = is_dir ? "" : fs::path(input_file).extension().string();
+
+#ifdef DTWC_HAS_PARQUET
+  // Check if directory contains .parquet files
+  if (is_dir) {
+    bool has_parquet = false;
+    for (const auto &e : fs::directory_iterator(input_file)) {
+      auto ext = e.path().extension().string();
+      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+      if (ext == ".parquet" || ext == ".pq") { has_parquet = true; break; }
+    }
+    if (has_parquet) {
+      prob.set_data(dtwc::io::load_parquet_directory(input_file, parquet_column));
+      if (verbose)
+        std::cout << "Data loaded from Parquet directory: " << prob.size() << " series [" << clk << "]\n";
+      goto data_loaded;
+    }
+  }
+#endif
+
+  if (input_ext == ".dtws") {
+    // Memory-mapped binary cache — zero-copy load
+    auto store = dtwc::core::MmapDataStore::open(input_file);
+    const size_t n = store.size();
+    const size_t ndim = store.ndim();
+
+    // Copy into Problem's Data (MmapDataStore integration into Problem is a future step)
+    std::vector<std::vector<dtwc::data_t>> vecs(n);
+    for (size_t i = 0; i < n; ++i) {
+      auto sp = store.series(i);
+      vecs[i].assign(sp.begin(), sp.end());
+    }
+
+    // Load names from sidecar file if it exists
+    std::vector<std::string> names(n);
+    auto names_path = fs::path(input_file).string() + ".names";
+    if (fs::exists(names_path)) {
+      std::ifstream nf(names_path);
+      for (size_t i = 0; i < n && std::getline(nf, names[i]); ++i) {}
+    } else {
+      for (size_t i = 0; i < n; ++i) names[i] = "series_" + std::to_string(i);
+    }
+
+    prob.set_data(dtwc::Data(std::move(vecs), std::move(names), ndim));
+    if (verbose)
+      std::cout << "Data loaded from .dtws cache: " << prob.size() << " series [" << clk << "]\n";
+  }
+#ifdef DTWC_HAS_ARROW
+  else if (input_ext == ".arrow" || input_ext == ".ipc" || input_ext == ".feather") {
+    // Arrow IPC — zero-copy memory-mapped load
+    auto src = dtwc::io::ArrowIPCDataSource::open(input_file);
+    const size_t n = src.size();
+    const size_t ndim = src.ndim();
+
+    // Copy into Problem's Data (direct ArrowIPCDataSource integration is a future step)
+    std::vector<std::vector<dtwc::data_t>> vecs(n);
+    for (size_t i = 0; i < n; ++i) {
+      auto sp = src.series(i);
+      vecs[i].assign(sp.begin(), sp.end());
+    }
+
+    auto names = src.all_names();
+    prob.set_data(dtwc::Data(std::move(vecs), std::move(names), ndim));
+    if (verbose)
+      std::cout << "Data loaded from Arrow IPC: " << prob.size() << " series [" << clk << "]\n";
+  }
+#endif
+#ifdef DTWC_HAS_PARQUET
+  else if (input_ext == ".parquet" || input_ext == ".pq") {
+    // Parquet: direct reading via Arrow Parquet reader
+    if (fs::is_directory(input_file)) {
+      prob.set_data(dtwc::io::load_parquet_directory(input_file, parquet_column));
+    } else {
+      prob.set_data(dtwc::io::load_parquet_file(input_file, parquet_column));
+    }
+    if (verbose)
+      std::cout << "Data loaded from Parquet: " << prob.size() << " series [" << clk << "]\n";
+  }
+#endif
+  else {
+    // Default: CSV/TSV via DataLoader
+    dtwc::DataLoader dl{input_file};
+    dl.startColumn(skip_cols).startRow(skip_rows);
+    prob.set_data(dl.load());
+    if (verbose)
+      std::cout << "Data loaded: " << prob.size() << " series [" << clk << "]\n";
+  }
+
+  data_loaded:
+  // ---- Apply precision conversion ----
+  if (precision_str == "float32" && !prob.data.is_f32() && !prob.data.is_view()) {
+    prob.set_data(convert_to_f32(std::move(prob.data)));
+    if (verbose)
+      std::cout << "Converted to float32 (2x memory saving)\n";
+  }
+
+  // Parse and store ram limit (for future chunked processing)
+  const size_t ram_limit = parse_ram_limit(ram_limit_str);
+  if (ram_limit > 0 && verbose)
+    std::cout << "RAM limit: " << (ram_limit / (1ULL << 30)) << " GB\n";
+  (void)ram_limit; // TODO: wire into chunked CLARA processing
 
   // ---- Auto method selection ----
   if (method == "auto") {

@@ -142,7 +142,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   #pragma omp parallel for schedule(static)
   #endif
   for (int i = 0; i < N; ++i)
-    summaries[i] = compute_summary(prob.p_vec(i));
+    summaries[i] = compute_summary(prob.series(i));
 
   // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0) — parallel
   // Lock-free by design: each iteration writes only to envelopes[i] at its own index.
@@ -153,7 +153,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
     #pragma omp parallel for schedule(static)
     #endif
     for (int i = 0; i < N; ++i)
-      envelopes[i] = compute_envelope(prob.p_vec(i), band);
+      envelopes[i] = compute_envelope(prob.series(i), band);
   }
 
   // Step 3: Per-row nearest-neighbor tracking (shared, updated atomically)
@@ -210,10 +210,10 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
       double lb = lb_kim(summaries[i], summaries[j]);
 
       bool lb_keogh_used = false;
-      if (use_lb_keogh && prob.p_vec(i).size() == prob.p_vec(j).size()) {
+      if (use_lb_keogh && prob.series(i).size() == prob.series(j).size()) {
         const double lb_k = lb_keogh_symmetric(
-          prob.p_vec(i), envelopes[i],
-          prob.p_vec(j), envelopes[j]);
+          prob.series(i), envelopes[i],
+          prob.series(j), envelopes[j]);
         if (lb_k > lb) {
           lb = lb_k;
           lb_keogh_used = true;
@@ -228,11 +228,11 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
       auto dtw_with_abandon = [&](double abandon) -> double {
         if (is_adtw)
           return (band >= 0)
-            ? dtwc::adtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, adtw_penalty, abandon)
-            : dtwc::adtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), adtw_penalty, abandon);
+            ? dtwc::adtwBanded<double>(prob.series(i), prob.series(j), band, adtw_penalty, abandon)
+            : dtwc::adtwFull_L<double>(prob.series(i), prob.series(j), adtw_penalty, abandon);
         return (band >= 0)
-          ? dtwc::dtwBanded<double>(prob.p_vec(i), prob.p_vec(j), band, abandon)
-          : dtwc::dtwFull_L<double>(prob.p_vec(i), prob.p_vec(j), abandon);
+          ? dtwc::dtwBanded<double>(prob.series(i), prob.series(j), band, abandon)
+          : dtwc::dtwFull_L<double>(prob.series(i), prob.series(j), abandon);
       };
 
       double dist;

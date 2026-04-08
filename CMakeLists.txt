@@ -29,6 +29,7 @@ option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
+option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
 
 # CUDA must be detected at directory scope (enable_language cannot be called
 # inside a function). Do it here before dtwc_setup_dependencies().
