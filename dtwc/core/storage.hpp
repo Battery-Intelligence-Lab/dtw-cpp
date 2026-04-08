@@ -1,4 +1,8 @@
 /// @file storage.hpp — Storage policy and precision enums.
+///
+/// @author Volkan Kumtepeli
+/// @author Claude (generated)
+/// @date 08 Apr 2026
 #pragma once
 
 namespace dtwc::core {

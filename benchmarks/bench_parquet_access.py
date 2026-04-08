@@ -10,6 +10,10 @@ Answers:
 
 Usage:
     python benchmarks/bench_parquet_access.py
+
+@author Volkan Kumtepeli
+@author Claude (generated)
+@date 08 Apr 2026
 """
 
 from __future__ import annotations

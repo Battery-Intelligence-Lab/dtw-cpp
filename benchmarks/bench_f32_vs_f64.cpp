@@ -1,6 +1,10 @@
 /**
  * @file bench_f32_vs_f64.cpp
  * @brief Benchmark: float32 vs float64 DTW computation speed.
+ *
+ * @author Volkan Kumtepeli
+ * @author Claude (generated)
+ * @date 08 Apr 2026
  */
 
 #include <dtwc.hpp>

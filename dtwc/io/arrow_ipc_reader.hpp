@@ -6,6 +6,10 @@
 /// Schema metadata key "ndim" specifies features per timestep (default 1).
 ///
 /// Requires DTWC_HAS_ARROW (Apache Arrow, Apache-2.0 license).
+///
+/// @author Volkan Kumtepeli
+/// @author Claude (generated)
+/// @date 08 Apr 2026
 
 #pragma once
 

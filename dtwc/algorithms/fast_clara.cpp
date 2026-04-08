@@ -15,7 +15,9 @@
  *   - Schubert & Rousseeuw (2021), JMLR 22(1), 4653-4688.
  *
  * @author Volkan Kumtepeli
- * @date 29 Mar 2026
+ * @author Becky Perriment
+ * @author Claude (generated)
+ * @date 08 Apr 2026
  */
 
 #include "fast_clara.hpp"

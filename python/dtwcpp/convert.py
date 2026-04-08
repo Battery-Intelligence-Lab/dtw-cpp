@@ -12,6 +12,8 @@ Usage::
     dtwc-convert input.h5 -o output.arrow --name-column name
 
 @author Volkan Kumtepeli
+@author Claude (generated)
+@date 08 Apr 2026
 """
 
 from __future__ import annotations
