@@ -36,11 +36,14 @@ dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-i, --input <path>` | Input CSV file or folder (required) | — |
+| `-i, --input <path>` | Input file or folder. Supported: `.csv`, `.tsv`, `.parquet`, `.arrow`, `.ipc`, `.feather`, `.dtws` | — |
 | `-o, --output <path>` | Output directory | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | `dtwc` |
 | `-k, --clusters <int>` | Number of clusters | 3 |
 | `-v, --verbose` | Verbose output | off |
+| `--column <name>` | Parquet column to use as time series (required for Parquet single-file mode) | — |
+| `--precision <string>` | Floating-point precision: `float32` or `float64`. `float32` halves memory use with ~0.003% DTW error | `float32` |
+| `--ram-limit <size>` | Memory budget, e.g. `2G`, `500M`, `128G` (parsed; used for chunked processing) | — |
 
 ### Clustering Method
 
@@ -115,10 +118,10 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias: `soft-
 
 ### GPU Options
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-d, --device <string>` | Compute device: `cpu`, `cuda`, `cuda:N` | `cpu` |
-| `--precision <string>` | GPU precision: `auto`, `fp32`, `fp64` | `auto` |
+| Flag                       | Description                                  | Default |
+|----------------------------|----------------------------------------------|---------|
+| `-d, --device <string>`    | Compute device: `cpu`, `cuda`, `cuda:N`      | `cpu`   |
+| `--gpu-precision <string>` | GPU kernel precision: `auto`, `fp32`, `fp64` | `auto`  |
 
 ### Configuration Files
 

@@ -8,7 +8,7 @@
 /// Requires DTWC_HAS_ARROW (Apache Arrow, Apache-2.0 license).
 ///
 /// @author Volkan Kumtepeli
-/// @author Claude (generated)
+/// @author Claude 4.6
 /// @date 08 Apr 2026
 
 #pragma once

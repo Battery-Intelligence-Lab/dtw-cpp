@@ -12,7 +12,7 @@ Usage:
     python benchmarks/bench_parquet_access.py
 
 @author Volkan Kumtepeli
-@author Claude (generated)
+@author Claude 4.6
 @date 08 Apr 2026
 """
 

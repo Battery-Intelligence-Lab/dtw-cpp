@@ -23,7 +23,7 @@
  * Data section:
  *   Contiguous doubles for all series. No padding between series.
  *
- * @author Claude (generated)
+ * @author Claude 4.6
  * @date 08 Apr 2026
  */
 

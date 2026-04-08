@@ -41,6 +41,108 @@ A _folder path_ can contain multiple individual files, each representing a _sing
 | 4 | , | 75.13 |
 | 5 | , | 95.93 |
 
+## Parquet
+
+Parquet provides columnar, compressed storage. Requires `-DDTWC_ENABLE_ARROW=ON` at build time (pulls in Apache Arrow).
+
+Battery voltage data typically compresses **21×** with Zstd.
+
+### Single file — one column per series
+
+Each column in the Parquet file is treated as one time series. Use `--column` to select a specific column.
+
+CLI:
+
+```bash
+dtwc_cl -i data.parquet --column Voltage -k 5
+```
+
+C++:
+
+```cpp
+dtwc::DataLoader loader;
+loader.setFile("data.parquet").setColumn("Voltage");
+problem.set_data(loader.load());
+```
+
+Python:
+
+```python
+data, names = dtwcpp.io.load_parquet("data.parquet", column="Voltage")
+```
+
+### Directory of Parquet files — one file per series
+
+Each `.parquet` file in the directory is read as a single time series. The series name is taken from the filename (without extension).
+
+CLI:
+
+```bash
+dtwc_cl -i /path/to/parquet_folder/ --column Voltage -k 5
+```
+
+### LargeList columns (list-per-row encoding)
+
+A Parquet file may store all series in a single column of type `LargeList<Float64>` (one list cell = one variable-length series). This layout is produced by `dtwc-convert`.
+
+```bash
+dtwc_cl -i data.parquet --column series -k 5
+```
+
+---
+
+## Arrow IPC (Feather v2)
+
+Arrow IPC (`.arrow` / `.feather`) provides **zero-copy memory-mapped** access — the file is mapped directly into address space with no deserialization overhead. Preferred for repeated clustering runs on the same dataset.
+
+Requires `-DDTWC_ENABLE_ARROW=ON`.
+
+CLI:
+
+```bash
+dtwc_cl -i data.arrow -k 10
+```
+
+C++:
+
+```cpp
+dtwc::DataLoader loader;
+loader.setFile("data.arrow");
+problem.set_data(loader.load());
+```
+
+Python:
+
+```python
+import pyarrow as pa
+import pyarrow.ipc as ipc
+
+with ipc.open_file("data.arrow") as f:
+    table = f.read_all()
+```
+
+**Schema:** `LargeList<Float64>` for series data (supports >2 billion elements per list). Create Arrow IPC files with the `dtwc-convert` tool — see [Data Conversion](data-conversion.md).
+
+---
+
+## .dtws (Internal Cache)
+
+`.dtws` is a binary cache that stores the serialised `Data` object (series + names) for fast restart. It avoids re-parsing Parquet/CSV on repeated runs.
+
+Created automatically when `--checkpoint` is specified, or explicitly via `dtwc-convert`:
+
+```bash
+dtwc-convert input.parquet -o cache.dtws --column Voltage
+```
+
+Load at runtime:
+
+```bash
+dtwc_cl -i cache.dtws -k 5
+```
+
+---
+
 ## Reading data directly
 
 If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_type>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.

@@ -21,7 +21,7 @@
  * Thread-safety contract: same as DenseDistanceMatrix — no locking.
  * Parallel fills partition pairs so each (i,j) written by exactly one thread.
  *
- * @author Claude (generated)
+ * @author Claude 4.6
  * @date 08 Apr 2026
  */
 

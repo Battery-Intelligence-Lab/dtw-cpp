@@ -12,7 +12,7 @@ Usage::
     dtwc-convert input.h5 -o output.arrow --name-column name
 
 @author Volkan Kumtepeli
-@author Claude (generated)
+@author Claude 4.6
 @date 08 Apr 2026
 """
 

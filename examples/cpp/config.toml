@@ -40,6 +40,14 @@ n-init = 1
 skip-rows = 0
 skip-cols = 0
 
+# Column to use as the time series values when loading from Parquet/Arrow IPC.
+# Leave unset (or empty) to use all numeric columns.
+column = "Voltage"
+
+# Data precision for in-memory storage.
+# "float64" (default, full precision) or "float32" (2x memory saving, ~1e-7 rel error).
+precision = "float64"
+
 # Verbose output.
 verbose = true
 

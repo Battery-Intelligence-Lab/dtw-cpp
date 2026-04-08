@@ -16,8 +16,8 @@
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
- * @author Claude (generated)
- * @date 08 Apr 2026
+ * @author Claude 4.6
+ * @date 29 Mar 2026
  */
 
 #include "fast_clara.hpp"

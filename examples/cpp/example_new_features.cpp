@@ -160,5 +160,53 @@ int main()
   std::cout << "  Cleaned up checkpoint.\n\n";
 
   std::cout << "All examples completed successfully.\n";
+
+  // -------------------------------------------------------------------------
+  // 5. Float32 data — halved memory, identical clustering results
+  // -------------------------------------------------------------------------
+  std::cout << "=== Float32 Clustering ===\n";
+
+  // Build float32 series from the same clusters as section 3.
+  std::vector<std::vector<float>> f32_series;
+  std::vector<std::string> f32_names;
+  std::mt19937 rng2(42);
+  std::normal_distribution<float> noise32(0.0f, 2.0f);
+  for (int c = 0; c < k; ++c) {
+    float center = static_cast<float>(c * 30);
+    for (int i = 0; i < n_series / k; ++i) {
+      std::vector<float> s(series_len);
+      for (auto &v : s)
+        v = center + noise32(rng2);
+      f32_series.push_back(std::move(s));
+      f32_names.push_back("f" + std::to_string(f32_series.size() - 1));
+    }
+  }
+
+  // Data constructor selects Float32 precision automatically.
+  dtwc::Problem prob_f32("f32_demo");
+  dtwc::Data data_f32(std::move(f32_series), std::move(f32_names));
+  std::cout << "  Precision: " << (data_f32.is_f32() ? "float32" : "float64") << "\n";
+  prob_f32.set_data(std::move(data_f32));
+
+  dtwc::algorithms::CLARAOptions opts32;
+  opts32.n_clusters = k;
+  opts32.sample_size = 50;
+  opts32.n_samples = 5;
+  opts32.random_seed = 42;
+
+  auto result32 = dtwc::algorithms::fast_clara(prob_f32, opts32);
+  std::cout << "  Total cost (float32): " << result32.total_cost << "\n"
+            << "  Converged:            " << (result32.converged ? "yes" : "no") << "\n";
+
+  // Cluster sizes should match the float64 result above.
+  std::vector<int> sizes32(k, 0);
+  for (auto label : result32.labels)
+    ++sizes32[label];
+  std::cout << "  Cluster sizes: ";
+  for (auto sz : sizes32)
+    std::cout << sz << " ";
+  std::cout << "\n\n";
+
+  std::cout << "All examples completed successfully.\n";
   return EXIT_SUCCESS;
 }

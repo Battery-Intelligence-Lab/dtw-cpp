@@ -7,7 +7,7 @@
 /// Requires DTWC_HAS_PARQUET (Apache Arrow + Parquet, Apache-2.0 license).
 ///
 /// @author Volkan Kumtepeli
-/// @author Claude (generated)
+/// @author Claude 4.6
 /// @date 08 Apr 2026
 
 #pragma once
