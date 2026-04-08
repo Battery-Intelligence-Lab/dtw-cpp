@@ -38,6 +38,7 @@ out/
 cmake-build-*/
 Release/
 Debug/
+.cache/
 
 # IDE
 .vscode/
