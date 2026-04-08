@@ -15,6 +15,7 @@
 
 #include <cstddef>    //!< For size_t
 #include <filesystem> //!< For filesystem objects like path
+#include <fstream>    //!< For std::ifstream (used in count())
 #include <tuple>      //!< For std::tie(), std::tuple
 #include <vector>     //!< For std::vector
 
@@ -122,6 +123,39 @@ public:
       std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose, start_row, start_col, delim);
 
     return d;
+  }
+
+  /**
+   * @brief Count series without loading data.
+   * @details Directory mode: counts entries via directory_iterator.
+   *          Batch file mode: counts lines (skips start_row headers).
+   *          Respects Ndata limit in both modes.
+   * @return Number of series that would be loaded.
+   */
+  size_t count() const
+  {
+    if (fs::is_directory(data_path)) {
+      size_t n = 0;
+      for ([[maybe_unused]] const auto &entry : fs::directory_iterator(data_path)) {
+        ++n;
+        if (Ndata >= 0 && static_cast<int>(n) >= Ndata) break;
+      }
+      return n;
+    }
+    // Batch file: count lines after skipping start_row, respecting Ndata
+    std::ifstream in(data_path, std::ios_base::in);
+    if (!in.good())
+      throw std::runtime_error("DataLoader::count: cannot open " + data_path.string());
+
+    std::string line;
+    int line_no = 0;
+    size_t n_rows = 0;
+    while (std::getline(in, line)) {
+      if (line_no++ < start_row) continue;
+      ++n_rows;
+      if (Ndata >= 0 && static_cast<int>(n_rows) >= Ndata) break;
+    }
+    return n_rows;
   }
 };
 

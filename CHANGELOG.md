@@ -164,6 +164,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 ## Performance / API
 
+* Added `DataLoader::count()` — count series without loading data (directory iteration or line counting).
 * Added pointer+length overloads for all core DTW functions (`dtwFull`, `dtwFull_L`, `dtwBanded`, `dtwMissing_L`, `dtwMissing_banded`) enabling zero-copy calls from bindings. The `detail::*_impl` functions now operate on raw pointers; vector overloads forward to them.
 * Python `dtw_distance` and `dtw_distance_missing` now accept numpy arrays via `nb::ndarray` (zero-copy, no vector allocation).
 * Eliminated vector copies in `dtwc::core::dtw_distance` pointer overload and `dtw_runtime`.
@@ -172,6 +173,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 * Rewrote `dtwc_cl` CLI with full TOML configuration file support via CLI11 `--config` flag.
 * CLI now supports all clustering methods (FastPAM, FastCLARA, kMedoids Lloyd, MIP), all DTW variants (standard, DDTW, WDTW, ADTW, Soft-DTW), checkpointing, and flexible CSV output (labels, medoids, silhouette scores, distance matrix).
+* Added `--method auto` (new default): auto-selects `pam` for N≤5000, `clara` for N>5000.
+* Added CLARA sample size auto-scaling for N>50K: `max(40+2k, sqrt(N)*k)`.
 * Added case-insensitive option validation for method, metric, variant, and solver flags.
 * Added example TOML configuration file at `examples/config.toml`.
 

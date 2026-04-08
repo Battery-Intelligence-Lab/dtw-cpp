@@ -25,13 +25,14 @@
 #include <yaml-cpp/yaml.h>
 #endif
 
-#include <iostream>
-#include <fstream>
-#include <string>
-#include <filesystem>
-#include <numeric>
 #include <algorithm>
+#include <cmath>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
+#include <iostream>
+#include <numeric>
+#include <string>
 
 namespace fs = std::filesystem;
 
@@ -104,7 +105,7 @@ int main(int argc, char *argv[])
 
   // Clustering parameters
   int n_clusters = 3;
-  std::string method = "pam";
+  std::string method = "auto";
   int band = -1;
   std::string metric = "l1";
   std::string variant = "standard";
@@ -113,10 +114,10 @@ int main(int argc, char *argv[])
 
   app.add_option("-k,--clusters", n_clusters, "Number of clusters")
       ->check(CLI::PositiveNumber);
-  app.add_option("-m,--method", method, "Clustering method: pam, clara, kmedoids, mip, hierarchical")
+  app.add_option("-m,--method", method, "Clustering method: auto, pam, clara, kmedoids, mip, hierarchical")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
-              {"pam", "pam"}, {"clara", "clara"},
+              {"auto", "auto"}, {"pam", "pam"}, {"clara", "clara"},
               {"kmedoids", "kmedoids"}, {"mip", "mip"},
               {"hierarchical", "hierarchical"}, {"hclust", "hierarchical"}},
           CLI::ignore_case));
@@ -347,6 +348,14 @@ int main(int argc, char *argv[])
   if (verbose)
     std::cout << "Data loaded: " << prob.size() << " series [" << clk << "]\n";
 
+  // ---- Auto method selection ----
+  if (method == "auto") {
+    const size_t N = prob.size();
+    method = (N <= 5000) ? "pam" : "clara";
+    if (verbose)
+      std::cout << "Auto-selected method: " << method << " (N=" << N << ")\n";
+  }
+
   // ---- Configure DTW ----
   prob.band = band;
   prob.maxIter = max_iter;
@@ -493,6 +502,11 @@ int main(int argc, char *argv[])
     // FastCLARA
     if (verbose)
       std::cout << "Running FastCLARA (k=" << n_clusters << ") ...\n";
+
+    // Auto-scale sample size for large N
+    if (sample_size < 0 && prob.size() > 50000)
+      sample_size = std::max(40 + 2 * n_clusters,
+        static_cast<int>(std::sqrt(static_cast<double>(prob.size())) * n_clusters));
 
     dtwc::algorithms::CLARAOptions clara_opts;
     clara_opts.n_clusters = n_clusters;

@@ -84,4 +84,37 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
     REQUIRE(loader.path() == testPath);
     REQUIRE(loader.verbosity() == 1);
   }
+
+  SECTION("Count directory mode")
+  {
+    DataLoader loader("data/dummy");
+    REQUIRE(loader.count() == 25);
+  }
+
+  SECTION("Count directory mode with Ndata limit")
+  {
+    DataLoader loader("data/dummy", 5);
+    REQUIRE(loader.count() == 5);
+  }
+
+  SECTION("Count matches load for directory")
+  {
+    DataLoader loader("data/dummy");
+    loader.verbosity(0);
+    REQUIRE(loader.count() == loader.load().size());
+  }
+
+  SECTION("Count matches load with Ndata limit")
+  {
+    DataLoader loader("data/dummy", 10);
+    loader.verbosity(0);
+    REQUIRE(loader.count() == 10);
+    REQUIRE(loader.count() == loader.load().size());
+  }
+
+  SECTION("Count throws on non-existent file")
+  {
+    DataLoader loader("nonexistent_file.csv");
+    REQUIRE_THROWS_AS(loader.count(), std::runtime_error);
+  }
 }
