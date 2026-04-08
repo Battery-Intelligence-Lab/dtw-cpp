@@ -1,6 +1,0 @@
-{
-  "env": {
-    "CLAUDE_CODE_TASK_LIST_ID": "dtwcpp"
-  },
-  "plansDirectory": "./.claude/reports"
-}
