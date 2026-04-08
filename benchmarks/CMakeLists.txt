@@ -15,6 +15,15 @@ if(DTWC_ENABLE_SIMD AND (TARGET hwy::hwy OR TARGET hwy))
   target_link_libraries(bench_dtw_baseline PRIVATE "${_hwy_target}")
 endif()
 
+# Mmap access pattern benchmarks
+add_executable(bench_mmap_access bench_mmap_access.cpp)
+target_link_libraries(bench_mmap_access
+  PRIVATE
+    dtwc++
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
 # CUDA benchmarks (Google Benchmark, requires CUDA)
 add_executable(bench_cuda_dtw bench_cuda_dtw.cpp)
 target_link_libraries(bench_cuda_dtw

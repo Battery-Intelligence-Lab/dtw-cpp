@@ -90,6 +90,7 @@ function(dtwc_setup_dependencies)
         OPTIONS
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
+          "BENCHMARK_ENABLE_WERROR OFF"
       )
     endif()
   endif()
