@@ -197,9 +197,9 @@ void Problem::rebind_dtw_fn()
 
   if (missing_strategy == MissingStrategy::Interpolate) {
     dtw_fn_ = [this](const auto &x, const auto &y) {
-      auto xi = has_missing(x) ? interpolate_linear(x) : x;
-      auto yi = has_missing(y) ? interpolate_linear(y) : y;
-      return dtwBanded(xi, yi, band);
+      auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<data_t>(x.begin(), x.end());
+      auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<data_t>(y.begin(), y.end());
+      return dtwBanded<data_t>(xi, yi, band);
     };
     return;
   }

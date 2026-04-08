@@ -27,6 +27,8 @@
 #include <cmath>     // for exp, ceil, floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+#include <span>      // for span
+#include <type_traits> // for type_identity_t
 #include <utility>   // for pair
 
 namespace dtwc {
@@ -69,7 +71,7 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
  */
 template <typename data_t>
 data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                const std::vector<data_t> &weights)
+                std::type_identity_t<std::span<const data_t>> weights)
 {
   constexpr data_t maxValue = std::numeric_limits<data_t>::max();
   if (nx == 0 || ny == 0) return maxValue;
@@ -127,8 +129,8 @@ data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 template <typename data_t>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                const std::vector<data_t> &weights)
+data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y,
+                std::type_identity_t<std::span<const data_t>> weights)
 {
   return wdtwFull(x.data(), x.size(), y.data(), y.size(), weights);
 }
@@ -149,7 +151,7 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
  */
 template <typename data_t>
 data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  const std::vector<data_t> &weights,
+                  std::type_identity_t<std::span<const data_t>> weights,
                   int band = settings::DEFAULT_BAND_LENGTH)
 {
   if (band < 0) return wdtwFull<data_t>(x, nx, y, ny, weights);
@@ -271,8 +273,8 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 template <typename data_t>
-data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  const std::vector<data_t> &weights, int band = settings::DEFAULT_BAND_LENGTH)
+data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
+                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND_LENGTH)
 {
   return wdtwBanded(x.data(), x.size(), y.data(), y.size(), weights, band);
 }
@@ -305,7 +307,7 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 
 /// WDTW with g parameter (computes weights internally).
 template <typename data_t = double>
-data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band, data_t g)
 {
   return wdtwBanded(x.data(), x.size(), y.data(), y.size(), band, g);
@@ -332,10 +334,39 @@ data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
 
 /// Full WDTW with g parameter.
 template <typename data_t = double>
-data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y,
                 data_t g)
 {
   return wdtwFull(x.data(), x.size(), y.data(), y.size(), g);
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t>
+data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                std::type_identity_t<std::span<const data_t>> weights)
+{
+  return wdtwFull<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, weights);
+}
+
+template <typename data_t>
+data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND_LENGTH)
+{
+  return wdtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, weights, band);
+}
+
+template <typename data_t = double>
+data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  int band, data_t g)
+{
+  return wdtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, g);
+}
+
+template <typename data_t = double>
+data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                data_t g)
+{
+  return wdtwFull<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, g);
 }
 
 // -------------------------------------------------------------------------
@@ -358,7 +389,7 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
  */
 template <typename data_t = double>
 data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                   size_t ndim, const std::vector<data_t> &weights)
+                   size_t ndim, std::type_identity_t<std::span<const data_t>> weights)
 {
   if (ndim == 1)
     return wdtwFull(x, nx_steps, y, ny_steps, weights);
@@ -438,7 +469,7 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
  */
 template <typename data_t = double>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                     size_t ndim, const std::vector<data_t> &weights,
+                     size_t ndim, std::type_identity_t<std::span<const data_t>> weights,
                      int band = settings::DEFAULT_BAND_LENGTH)
 {
   if (band < 0) return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, weights);

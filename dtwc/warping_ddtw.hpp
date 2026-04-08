@@ -27,6 +27,7 @@
 #include "settings.hpp"
 
 #include <vector>
+#include <span>
 #include <cstddef>
 
 namespace dtwc {
@@ -42,7 +43,7 @@ namespace dtwc {
  * @return Derivative-transformed series (same length as input).
  */
 template <typename data_t>
-void derivative_transform_inplace(const std::vector<data_t> &x, std::vector<data_t> &dx)
+void derivative_transform_inplace(std::span<const data_t> x, std::vector<data_t> &dx)
 {
   const auto n = x.size();
 
@@ -69,12 +70,26 @@ void derivative_transform_inplace(const std::vector<data_t> &x, std::vector<data
   dx[n - 1] = x[n - 1] - x[n - 2];
 }
 
+/// Convenience overload: vector -> span (implicit conversion is non-deduced).
 template <typename data_t>
-std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
+void derivative_transform_inplace(const std::vector<data_t> &x, std::vector<data_t> &dx)
+{
+  derivative_transform_inplace(std::span<const data_t>{x}, dx);
+}
+
+template <typename data_t>
+std::vector<data_t> derivative_transform(std::span<const data_t> x)
 {
   std::vector<data_t> dx;
   derivative_transform_inplace(x, dx);
   return dx;
+}
+
+/// Convenience overload: vector -> span (implicit conversion is non-deduced).
+template <typename data_t>
+std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
+{
+  return derivative_transform(std::span<const data_t>{x});
 }
 
 /**
@@ -92,7 +107,7 @@ std::vector<data_t> derivative_transform(const std::vector<data_t> &x)
  *         Returns empty for empty input; returns ndim zeros for single-timestep input.
  */
 template <typename data_t>
-void derivative_transform_mv_inplace(const std::vector<data_t> &x, size_t ndim,
+void derivative_transform_mv_inplace(std::span<const data_t> x, size_t ndim,
                                      std::vector<data_t> &dx)
 {
   if (ndim == 1) {
@@ -127,12 +142,27 @@ void derivative_transform_mv_inplace(const std::vector<data_t> &x, size_t ndim,
   }
 }
 
+/// Convenience overload: vector -> span.
 template <typename data_t>
-std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t ndim)
+void derivative_transform_mv_inplace(const std::vector<data_t> &x, size_t ndim,
+                                     std::vector<data_t> &dx)
+{
+  derivative_transform_mv_inplace(std::span<const data_t>{x}, ndim, dx);
+}
+
+template <typename data_t>
+std::vector<data_t> derivative_transform_mv(std::span<const data_t> x, size_t ndim)
 {
   std::vector<data_t> dx;
   derivative_transform_mv_inplace(x, ndim, dx);
   return dx;
+}
+
+/// Convenience overload: vector -> span.
+template <typename data_t>
+std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t ndim)
+{
+  return derivative_transform_mv(std::span<const data_t>{x}, ndim);
 }
 
 /**
@@ -148,7 +178,7 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
  * @return The DDTW distance.
  */
 template <typename data_t = double>
-data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band = settings::DEFAULT_BAND_LENGTH,
                   core::MetricType metric = core::MetricType::L1)
 {
@@ -171,13 +201,29 @@ data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The DDTW distance.
  */
 template <typename data_t = double>
-data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
   return dtwFull_L<data_t>(dx, dy, static_cast<data_t>(-1), metric);
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t = double>
+data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  int band = settings::DEFAULT_BAND_LENGTH,
+                  core::MetricType metric = core::MetricType::L1)
+{
+  return ddtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
+}
+
+template <typename data_t = double>
+data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  core::MetricType metric = core::MetricType::L1)
+{
+  return ddtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
 }
 
 // -------------------------------------------------------------------------

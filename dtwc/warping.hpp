@@ -27,6 +27,7 @@
 #include <cmath>     // for floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+#include <span>      // for span
 #include <utility>   // for pair
 
 namespace dtwc {
@@ -81,9 +82,9 @@ data_t dtwFull_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return C(mx - 1, my - 1);
 }
 
-/// Full-matrix DTW — vector overload (forwards to pointer version).
+/// Full-matrix DTW — span overload (forwards to pointer version).
 template <typename data_t, typename DistFn>
-data_t dtwFull_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_impl(std::span<const data_t> x, std::span<const data_t> y,
                     DistFn distance)
 {
   return dtwFull_impl(x.data(), x.size(), y.data(), y.size(), distance);
@@ -145,9 +146,9 @@ data_t dtwFull_L_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return short_side.back();
 }
 
-/// Linear-space DTW — vector overload (forwards to pointer version).
+/// Linear-space DTW — span overload (forwards to pointer version).
 template <typename data_t, typename DistFn>
-data_t dtwFull_L_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_L_impl(std::span<const data_t> x, std::span<const data_t> y,
                       data_t early_abandon, DistFn distance)
 {
   return dtwFull_L_impl(x.data(), x.size(), y.data(), y.size(), early_abandon, distance);
@@ -241,9 +242,9 @@ data_t dtwBanded_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return col[m_long - 1];
 }
 
-/// Sakoe-Chiba banded DTW — vector overload (forwards to pointer version).
+/// Sakoe-Chiba banded DTW — span overload (forwards to pointer version).
 template <typename data_t, typename DistFn>
-data_t dtwBanded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwBanded_impl(std::span<const data_t> x, std::span<const data_t> y,
                       int band, data_t early_abandon, DistFn distance)
 {
   return dtwBanded_impl(x.data(), x.size(), y.data(), y.size(), band, early_abandon, distance);
@@ -546,31 +547,56 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
 //  Public API — vector overloads (forward to pointer versions)
 // =========================================================================
 
-/// Full-matrix DTW (vector overload).
+/// Full-matrix DTW (span overload).
 template <typename data_t>
-data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull(std::span<const data_t> x, std::span<const data_t> y,
                core::MetricType metric = core::MetricType::L1)
 {
   return dtwFull<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-/// Linear-space DTW (vector overload).
+/// Linear-space DTW (span overload).
 template <typename data_t>
-data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwFull_L<data_t>(x.data(), x.size(), y.data(), y.size(), early_abandon, metric);
 }
 
-/// Banded DTW (vector overload).
+/// Banded DTW (span overload).
+template <typename data_t = double>
+data_t dtwBanded(std::span<const data_t> x, std::span<const data_t> y,
+                 int band = settings::DEFAULT_BAND_LENGTH,
+                 data_t early_abandon = -1,
+                 core::MetricType metric = core::MetricType::L1)
+{
+  return dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t>
+data_t dtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
+               core::MetricType metric = core::MetricType::L1)
+{
+  return dtwFull<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
+}
+
+template <typename data_t>
+data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                 data_t early_abandon = -1,
+                 core::MetricType metric = core::MetricType::L1)
+{
+  return dtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, early_abandon, metric);
+}
+
 template <typename data_t = double>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  int band = settings::DEFAULT_BAND_LENGTH,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
-  return dtwBanded<data_t>(x.data(), x.size(), y.data(), y.size(), band, early_abandon, metric);
+  return dtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, early_abandon, metric);
 }
 
 // =========================================================================

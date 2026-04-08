@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
+#include <span>
 
 namespace dtwc {
 
@@ -30,18 +31,25 @@ inline bool is_missing(T val) noexcept
   return std::isnan(val);
 }
 
-/// Returns true if any element in the vector is NaN.
+/// Returns true if any element in the range is NaN.
 template <typename T>
-bool has_missing(const std::vector<T> &v)
+bool has_missing(std::span<const T> v)
 {
   for (const auto &x : v)
     if (is_missing(x)) return true;
   return false;
 }
 
-/// Returns the fraction of NaN values in the vector (0.0 if empty).
+/// Convenience overload: vector -> span (implicit conversion is non-deduced).
 template <typename T>
-double missing_rate(const std::vector<T> &v)
+bool has_missing(const std::vector<T> &v)
+{
+  return has_missing(std::span<const T>{v});
+}
+
+/// Returns the fraction of NaN values in the range (0.0 if empty).
+template <typename T>
+double missing_rate(std::span<const T> v)
 {
   if (v.empty()) return 0.0;
   size_t count = 0;
@@ -50,14 +58,24 @@ double missing_rate(const std::vector<T> &v)
   return static_cast<double>(count) / static_cast<double>(v.size());
 }
 
+/// Convenience overload: vector -> span.
+template <typename T>
+double missing_rate(const std::vector<T> &v)
+{
+  return missing_rate(std::span<const T>{v});
+}
+
 /// Linear interpolation of NaN gaps.
 /// Interior NaN: linearly interpolated between nearest observed neighbors.
 /// Leading NaN: filled with first observed value (NOCB).
 /// Trailing NaN: filled with last observed value (LOCF).
 /// Throws std::runtime_error if ALL values are NaN.
 template <typename T>
-std::vector<T> interpolate_linear(const std::vector<T> &v)
+std::vector<T> interpolate_linear(std::span<const T> v)
 {
+  // Primary implementation — span overload.
+  // A vector convenience overload is below.
+
   if (v.empty()) return {};
 
   size_t first_valid = v.size();
@@ -86,9 +104,9 @@ std::vector<T> interpolate_linear(const std::vector<T> &v)
       if (i - prev_valid > 1) {
         T start = v[prev_valid];
         T end = v[i];
-        T span = static_cast<T>(i - prev_valid);
+        T gap_len = static_cast<T>(i - prev_valid);
         for (size_t j = prev_valid + 1; j < i; ++j) {
-          T frac = static_cast<T>(j - prev_valid) / span;
+          T frac = static_cast<T>(j - prev_valid) / gap_len;
           result[j] = start + frac * (end - start);
         }
       }
@@ -101,6 +119,13 @@ std::vector<T> interpolate_linear(const std::vector<T> &v)
     result[i] = v[last_valid];
 
   return result;
+}
+
+/// Convenience overload: vector -> span.
+template <typename T>
+std::vector<T> interpolate_linear(const std::vector<T> &v)
+{
+  return interpolate_linear(std::span<const T>{v});
 }
 
 } // namespace dtwc

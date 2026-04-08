@@ -32,6 +32,7 @@
 #include <cmath>     // for isnan, abs, ceil, floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+#include <span>      // for span
 #include <utility>   // for pair, tie
 
 namespace dtwc {
@@ -134,7 +135,7 @@ auto dispatch_missing_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(Miss
  * @return The DTW distance with missing data handling.
  */
 template <typename data_t>
-data_t dtwMissing_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwMissing_L(std::span<const data_t> x, std::span<const data_t> y,
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
@@ -155,7 +156,7 @@ data_t dtwMissing_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The DTW distance with missing data handling.
  */
 template <typename data_t>
-data_t dtwMissing(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwMissing(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
   return detail::dispatch_missing_metric(metric, [&](auto dist) {
@@ -175,7 +176,7 @@ data_t dtwMissing(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The banded DTW distance with missing data handling.
  */
 template <typename data_t = double>
-data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwMissing_banded(std::span<const data_t> x, std::span<const data_t> y,
                          int band = settings::DEFAULT_BAND_LENGTH,
                          data_t early_abandon = -1,
                          core::MetricType metric = core::MetricType::L1)
@@ -193,6 +194,31 @@ data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t>
   return detail::dispatch_missing_metric(metric, [&](auto dist) {
     return detail::dtwBanded_impl(x, y, band, early_abandon, dist);
   });
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t>
+data_t dtwMissing_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                    data_t early_abandon = -1,
+                    core::MetricType metric = core::MetricType::L1)
+{
+  return dtwMissing_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, early_abandon, metric);
+}
+
+template <typename data_t>
+data_t dtwMissing(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  core::MetricType metric = core::MetricType::L1)
+{
+  return dtwMissing<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
+}
+
+template <typename data_t = double>
+data_t dtwMissing_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                         int band = settings::DEFAULT_BAND_LENGTH,
+                         data_t early_abandon = -1,
+                         core::MetricType metric = core::MetricType::L1)
+{
+  return dtwMissing_banded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, early_abandon, metric);
 }
 
 // =========================================================================

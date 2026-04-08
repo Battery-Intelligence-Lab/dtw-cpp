@@ -18,6 +18,7 @@
 #pragma once
 
 #include <vector>
+#include <span>
 #include <cmath>
 #include <limits>
 #include <algorithm>
@@ -68,7 +69,7 @@ T softmin_gamma(T a, T b, T c, T gamma)
  * @return The Soft-DTW distance.
  */
 template <typename T = double>
-T soft_dtw(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
+T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
   constexpr T maxValue = std::numeric_limits<T>::max();
 
@@ -122,7 +123,7 @@ T soft_dtw(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
  * @return Gradient vector of size x.size().
  */
 template <typename T = double>
-std::vector<T> soft_dtw_gradient(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
+std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());
@@ -227,6 +228,19 @@ std::vector<T> soft_dtw_gradient(const std::vector<T> &x, const std::vector<T> &
   }
 
   return grad;
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename T = double>
+T soft_dtw(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
+{
+  return soft_dtw<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
+}
+
+template <typename T = double>
+std::vector<T> soft_dtw_gradient(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
+{
+  return soft_dtw_gradient<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
 }
 
 } // namespace dtwc

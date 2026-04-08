@@ -105,7 +105,7 @@ TEST_CASE("dtwFull single element: DTW({a}, {b}) == |a - b|", "[adversarial][dtw
   std::uniform_real_distribution<data_t> dist(-100, 100);
   for (int i = 0; i < 20; ++i) {
     data_t a = dist(rng), b = dist(rng);
-    REQUIRE_THAT(dtwFull<data_t>({a}, {b}), WithinAbs(std::abs(a - b), 1e-12));
+    REQUIRE_THAT(dtwFull<data_t>(std::vector<data_t>{a}, std::vector<data_t>{b}), WithinAbs(std::abs(a - b), 1e-12));
   }
 }
 
@@ -219,7 +219,7 @@ TEST_CASE("dtwFull_L single element", "[adversarial][dtwFull_L]")
   std::uniform_real_distribution<data_t> dist(-100, 100);
   for (int i = 0; i < 20; ++i) {
     data_t a = dist(rng), b = dist(rng);
-    REQUIRE_THAT(dtwFull_L<data_t>({a}, {b}), WithinAbs(std::abs(a - b), 1e-12));
+    REQUIRE_THAT(dtwFull_L<data_t>(std::vector<data_t>{a}, std::vector<data_t>{b}), WithinAbs(std::abs(a - b), 1e-12));
   }
 }
 
@@ -308,7 +308,7 @@ TEST_CASE("dtwBanded single element", "[adversarial][dtwBanded]")
   std::uniform_real_distribution<data_t> dist(-100, 100);
   for (int i = 0; i < 20; ++i) {
     data_t a = dist(rng), b = dist(rng);
-    REQUIRE_THAT(dtwBanded<data_t>({a}, {b}, 5), WithinAbs(std::abs(a - b), 1e-12));
+    REQUIRE_THAT(dtwBanded<data_t>(std::vector<data_t>{a}, std::vector<data_t>{b}, 5), WithinAbs(std::abs(a - b), 1e-12));
   }
 }
 

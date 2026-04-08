@@ -41,6 +41,7 @@
 #include <algorithm> // for min, max
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+#include <span>      // for span
 
 namespace dtwc {
 
@@ -142,9 +143,9 @@ data_t dtwAROW_L_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return col[m_short - 1];
 }
 
-/// Linear-space AROW — vector overload.
+/// Linear-space AROW — span overload.
 template <typename data_t, typename DistFn>
-data_t dtwAROW_L_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW_L_impl(std::span<const data_t> x, std::span<const data_t> y,
                       DistFn distance)
 {
   return dtwAROW_L_impl(x.data(), x.size(), y.data(), y.size(), distance);
@@ -208,9 +209,9 @@ data_t dtwAROW_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
   return C(mx - 1, my - 1);
 }
 
-/// Full-matrix AROW — vector overload.
+/// Full-matrix AROW — span overload.
 template <typename data_t, typename DistFn>
-data_t dtwAROW_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW_impl(std::span<const data_t> x, std::span<const data_t> y,
                     DistFn distance)
 {
   return dtwAROW_impl(x.data(), x.size(), y.data(), y.size(), distance);
@@ -307,9 +308,9 @@ data_t dtwAROW_banded_impl(const data_t* x, size_t nx, const data_t* y, size_t n
   return C(mx - 1, my - 1);
 }
 
-/// Banded AROW — vector overload.
+/// Banded AROW — span overload.
 template <typename data_t, typename DistFn>
-data_t dtwAROW_banded_impl(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW_banded_impl(std::span<const data_t> x, std::span<const data_t> y,
                            int band, DistFn distance)
 {
   return dtwAROW_banded_impl(x.data(), x.size(), y.data(), y.size(), band, distance);
@@ -335,7 +336,7 @@ data_t dtwAROW_banded_impl(const std::vector<data_t> &x, const std::vector<data_
  * @return The DTW-AROW distance.
  */
 template <typename data_t = double>
-data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW_L(std::span<const data_t> x, std::span<const data_t> y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return detail::dispatch_metric(metric, [&](auto dist) {
@@ -356,7 +357,7 @@ data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The DTW-AROW distance.
  */
 template <typename data_t = double>
-data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW(std::span<const data_t> x, std::span<const data_t> y,
                core::MetricType metric = core::MetricType::L1)
 {
   return detail::dispatch_metric(metric, [&](auto dist) {
@@ -379,7 +380,7 @@ data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @return The banded DTW-AROW distance.
  */
 template <typename data_t = double>
-data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t dtwAROW_banded(std::span<const data_t> x, std::span<const data_t> y,
                       int band = settings::DEFAULT_BAND_LENGTH,
                       core::MetricType metric = core::MetricType::L1)
 {
@@ -390,6 +391,29 @@ data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwAROW_banded_impl(x, y, band, dist);
   });
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t = double>
+data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                 core::MetricType metric = core::MetricType::L1)
+{
+  return dtwAROW_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
+}
+
+template <typename data_t = double>
+data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
+               core::MetricType metric = core::MetricType::L1)
+{
+  return dtwAROW<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
+}
+
+template <typename data_t = double>
+data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                      int band = settings::DEFAULT_BAND_LENGTH,
+                      core::MetricType metric = core::MetricType::L1)
+{
+  return dtwAROW_banded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
 }
 
 // =========================================================================

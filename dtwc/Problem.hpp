@@ -34,6 +34,7 @@
 #include <type_traits> // std::decay_t
 #include <functional>  // std::function
 #include <unordered_map> // std::unordered_map
+#include <span>        // std::span
 #include <iostream>
 
 #include "core/distance_matrix.hpp"
@@ -81,7 +82,7 @@ public:
   using path_t = std::filesystem::path;
 
   /// DTW distance function type: computes distance between two series.
-  using dtw_fn_t = std::function<data_t(const std::vector<data_t> &, const std::vector<data_t> &)>;
+  using dtw_fn_t = std::function<data_t(std::span<const data_t>, std::span<const data_t>)>;
 
 private:
   int Nc{ 1 };                                      /*!< Number of clusters. */

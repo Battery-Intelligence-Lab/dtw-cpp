@@ -27,6 +27,7 @@
 #include <cmath>     // for ceil, floor, round
 #include <limits>    // for numeric_limits
 #include <vector>    // for vector
+#include <span>      // for span
 #include <utility>   // for pair, tie
 
 namespace dtwc {
@@ -106,7 +107,7 @@ data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 template <typename data_t>
-data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t adtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   data_t penalty, data_t early_abandon = data_t{ -1 })
 {
   return adtwFull_L(x.data(), x.size(), y.data(), y.size(), penalty, early_abandon);
@@ -226,10 +227,25 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 template <typename data_t = double>
-data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+data_t adtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band, data_t penalty, data_t early_abandon = data_t{ -1 })
 {
   return adtwBanded(x.data(), x.size(), y.data(), y.size(), band, penalty, early_abandon);
+}
+
+// Vector convenience overloads (vector -> span implicit conversion is non-deduced).
+template <typename data_t>
+data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  data_t penalty, data_t early_abandon = data_t{ -1 })
+{
+  return adtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, penalty, early_abandon);
+}
+
+template <typename data_t = double>
+data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
+                  int band, data_t penalty, data_t early_abandon = data_t{ -1 })
+{
+  return adtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, penalty, early_abandon);
 }
 
 // -------------------------------------------------------------------------
