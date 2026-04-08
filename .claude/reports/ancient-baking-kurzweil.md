@@ -1,198 +1,158 @@
-# Plan: Mmap Benchmarks + Architecture for First-Class Mmap Storage
+# Plan: C++20 Upgrade + std::span DTW Interface
 
 ## Context
 
-We implemented mmap distance matrices (Steps 1-5) and benchmarked warmstart (36x speedup at N=25). Now we need:
-1. Rigorous benchmarks at N=5000 comparing mmap vs in-memory access patterns
-2. A path toward mmap as the **default** storage backend (not optional)
-3. Mmap for time series data (not just distance matrices)
-4. Use Eigen::Map to wrap mmap'd series data — eliminate hand-written view code
+Phase 3c of the mmap architecture. `dtw_fn_t` currently uses `const vector<double>&` — incompatible with mmap-backed data. Upgrading to C++20 gives `std::span<const double>`, constructible from both `vector<double>` and `{double*, size_t}`.
 
-**Key insight**: Eigen::Map doesn't help for the packed triangular distance matrix (irregular `tri_index` stride), but it's perfect for time series — each series is contiguous doubles, and `Eigen::Map<const VectorXd>` gives SIMD-optimized operations for free.
+**This is a semver-major breaking change.** External code calling DTW functions without explicit template args will need `<double>`. All consumers must compile with C++20.
 
-## Phase 1: Benchmark Suite
+## Adversarial Review Findings (addressed)
 
-**New file:** `benchmarks/bench_mmap_access.cpp`
-**Modify:** `benchmarks/CMakeLists.txt` (add target)
+| Finding | Severity | Resolution |
+|---------|----------|------------|
+| Template deduction: `span<const T>` non-deduced from `vector<T>` | CRITICAL | Lambdas pass spans (deduction works span→span). External callers need explicit `<double>` (they already do). |
+| Cascading scope: ~25+ functions need span, not just 17 | CRITICAL | Full audit done. All functions reachable from dtw_fn_ lambdas listed below. |
+| CUDA headers with `<span>` | CRITICAL | Upgrade `CMAKE_CUDA_STANDARD` to 20 (CUDA 12.6 supports it). |
+| GCC 10 / Clang 12 fragile C++20 | IMPORTANT | Drop from CI matrix. Require GCC 11+, Clang 14+. |
+| cmake `cxx_std_17` in multiple places | IMPORTANT | Update all: ProjectOptions.cmake, MATLAB bindings, examples. |
+| DDTW derivative_transform output needs vector | IMPORTANT | Input param → span, output param stays vector. |
+| `has_missing`, `interpolate_linear` need span | IMPORTANT | Change to accept span (body uses `[i]` and `.size()` — both work). |
+| Mixing C++20/C++17 translation units | IMPORTANT | All public headers get `<span>`, consumers must use C++20. |
+| soft_dtw body uses `[i]` and `.size()` | MINOR | Both work on span. No body changes needed. |
 
-Generate N=5000 random series (L=25, seed=42) in-place. Run 7 benchmarks using Google Benchmark:
+## Task 1: C++20 Upgrade (build system)
 
-| Benchmark | What it measures |
-|-----------|-----------------|
-| `BM_fill_dense` / `BM_fill_mmap` | Sequential fill of 12.5M doubles (~95MB) — DTW compute + write |
-| `BM_random_get_dense` / `BM_random_get_mmap` | 500K random `tri_index` lookups — FastPAM-like pattern |
-| `BM_sequential_scan_dense` / `BM_sequential_scan_mmap` | Sum all packed doubles — mmap best case |
-| `BM_open_mmap` / `BM_read_binary_to_vector` | Startup: mmap open (lazy) vs fread (eager ~95MB) |
-| `BM_medoid_access_pattern` | k=10 medoids, look up distances for all N points — realistic FastPAM |
-| `BM_series_contiguous` / `BM_series_vec_of_vec` | Iterate N=5000 series of L=25: flat array vs vector\<vector\> |
-| `BM_clara_copy` / `BM_clara_view` | CLARA subsample: copy 100 vectors vs create 100 Eigen::Map views |
+**Files to modify:**
 
-**Decision gate after benchmarks:**
-- If mmap random access is >3x slower than dense at N=5000 → implement eager-read fallback
-- If contiguous series access is meaningfully faster → proceed to MmapDataStore
+| File | Line | Change |
+|------|------|--------|
+| `cmake/StandardProjectSettings.cmake` | 26 | `CMAKE_CXX_STANDARD 17` → `20` |
+| `CMakeLists.txt` | 131 | `CMAKE_CUDA_STANDARD 17` → `20` |
+| `cmake/ProjectOptions.cmake` | ~63 | `cxx_std_17` → `cxx_std_20` |
+| `bindings/matlab/CMakeLists.txt` | ~25 | `cxx_std_17` → `cxx_std_20` |
+| `examples/cpp/example_project/CMakeLists.txt` | ~6 | `cxx_std_17` → `cxx_std_20` |
 
-**Files:**
-- Create: `benchmarks/bench_mmap_access.cpp`
-- Modify: `benchmarks/CMakeLists.txt`
+**CI matrix** (`.github/workflows/ubuntu-unit.yml`):
+- Drop GCC 10: remove from matrix
+- Drop Clang 12, 13: remove from matrix
+- Keep: GCC 11, 12; Clang 14, 15, 16, 17
 
-## Phase 2: Make llfio Non-Optional
+Build and verify all tests pass.
 
-Remove all `DTWC_ENABLE_MMAP` / `DTWC_HAS_MMAP` conditional compilation. llfio becomes a core dependency like Eigen.
+## Task 2: Change dtw_fn_t to std::span
 
-**Files to modify (remove `#ifdef DTWC_HAS_MMAP` guards):**
-
-| File | Change |
-|------|--------|
-| `cmake/Dependencies.cmake` | Remove `option(DTWC_ENABLE_MMAP ...)`, always fetch llfio |
-| `dtwc/CMakeLists.txt` | Always link `llfio_hl`, always define `DTWC_HAS_MMAP` |
-| `dtwc/Problem.hpp` | `distMat_t` always `std::variant`, remove `#ifdef` from visit_distmat |
-| `dtwc/core/mmap_distance_matrix.hpp` | Remove outer `#ifdef` |
-| `dtwc/dtwc.hpp` | Remove `#ifdef` around mmap include |
-| `dtwc/core/matrix_io.hpp` | Remove `#ifdef` around MmapDistanceMatrix `operator<<` |
-| `dtwc/dtwc_cl.cpp` | Remove `#ifdef` around mmap threshold logic |
-| `dtwc/Problem.cpp` | Remove `#ifdef` around `use_mmap_distance_matrix()` |
-| `tests/unit/core/unit_test_mmap_distance_matrix.cpp` | Remove outer `#ifdef` |
-| `tests/unit/unit_test_variant_distmat.cpp` | Remove `#ifdef` around mmap tests |
-| `.claude/CLAUDE.md` | Update: llfio is now a core dependency |
-
-## Phase 3: Mmap Time Series with Eigen::Map
-
-### 3a. Internal mmap cache for series data
-
-**The series data format is user-supplied** (CSV, HDF5, Parquet, folder of files). We do NOT impose a binary format on users. Instead, the mmap layer is an **internal cache**:
-
-1. User provides data in any format → `DataLoader::load()` reads it (unchanged)
-2. After loading, we write a contiguous mmap cache file (internal, in output_dir)
-3. On `--restart`, if cache exists and is fresh (hash of input path + file sizes + mtimes), use cache instead of re-loading
-4. Cache file is auto-generated, auto-cleaned, never user-facing
-
-**Cache binary format** (same pattern as distance matrix cache):
-
-```text
-Header (64 bytes):
-  magic "DTWS", version, endian, elem_size, N, ndim, CRC32, reserved
-
-Offset table (N+1 uint64 entries):
-  offsets[i] = byte offset from data start to series i
-  offsets[N] = total data size (sentinel)
-
-Data section:
-  series 0 doubles, series 1 doubles, ..., contiguous, no padding
-```
-
-### 3b. MmapDataStore class
-
-**New file:** `dtwc/core/mmap_data_store.hpp`
-
-Wraps the internal cache. Created from loaded `Data`, reopened on restart.
+**File:** `dtwc/Problem.hpp`
 
 ```cpp
-class MmapDataStore {
-  llfio::mapped_file_handle mfh_;
-  const double* data_base_;
-  const uint64_t* offsets_;
-  size_t n_, ndim_;
+#include <span>
 
-public:
-  // Create cache from already-loaded Data (writes mmap file)
-  static MmapDataStore create(const fs::path& cache_path, const Data& data);
-  // Reopen existing cache (for --restart)
-  static MmapDataStore open(const fs::path& cache_path);
+// Line 84, FROM:
+using dtw_fn_t = std::function<data_t(const std::vector<data_t> &, const std::vector<data_t> &)>;
 
-  size_t size() const;
-  size_t ndim() const;
-
-  // Return Eigen::Map view of series i — zero copy, SIMD-ready
-  Eigen::Map<const Eigen::VectorXd> series(size_t i) const {
-    return {data_base_ + offsets_[i] / sizeof(double),
-            static_cast<Eigen::Index>(series_flat_size(i))};
-  }
-
-  const double* series_data(size_t i) const;
-  size_t series_length(size_t i) const;  // timesteps
-  size_t series_flat_size(size_t i) const;  // timesteps * ndim
-};
+// TO:
+using dtw_fn_t = std::function<data_t(std::span<const data_t>, std::span<const data_t>)>;
 ```
 
-### 3c. Integration with Data/Problem
+**Call sites** (Problem.cpp:375, 431): `dtw_fn_(p_vec(i), p_vec(j))` — `p_vec(i)` returns `vector<data_t>&` which implicitly converts to `span<const data_t>`. **No change needed at call sites.**
 
-**Strategy:** Add a `DataAccessor` that abstracts over vector-of-vectors vs mmap. Both DTW paths already accept `const double*, size_t` — the accessor just provides different sources for that pointer.
+## Task 3: Change all functions reachable from dtw_fn_ lambdas
+
+The 12 lambdas in `rebind_dtw_fn()` receive `const auto &x` (deduced as `span<const data_t>`). Every function they call must accept span.
+
+**Full list of functions to change** (`const vector<data_t>&` → `std::span<const data_t>`):
+
+### warping.hpp (3 functions)
+- `dtwFull(const vector<data_t>&, ...)` → `dtwFull(span<const data_t>, ...)`
+- `dtwFull_L(const vector<data_t>&, ...)` → `dtwFull_L(span<const data_t>, ...)`
+- `dtwBanded(const vector<data_t>&, ...)` → `dtwBanded(span<const data_t>, ...)`
+
+### warping_adtw.hpp (2 functions)
+- `adtwFull_L` → span
+- `adtwBanded` → span
+
+### warping_ddtw.hpp (3 changes)
+- `ddtwBanded(const vector&, const vector&, ...)` → `ddtwBanded(span, span, ...)`
+  - Body creates derivative vectors — must construct from span: `vector<data_t> xv(x.begin(), x.end())`
+- `ddtwFull_L` → same pattern
+- `derivative_transform_inplace(const vector<data_t> &x, vector<data_t> &dx)` → input param span: `derivative_transform_inplace(span<const data_t> x, vector<data_t> &dx)`. Output stays vector (needs `.resize()`).
+
+### warping_wdtw.hpp (4 functions)
+- `wdtwFull` (2 overloads) → span for x, y AND weights
+- `wdtwBanded` (2 overloads) → span for x, y AND weights
+
+### warping_missing.hpp (3 functions)
+- `dtwMissing_L`, `dtwMissing`, `dtwMissing_banded` → span
+- Note: `dtwMissing_banded` has `std::tie(x,y)` pattern — works with span (both are lvalue refs, ternary types match)
+
+### warping_missing_arow.hpp (3 functions)
+- `dtwAROW_L`, `dtwAROW`, `dtwAROW_banded` → span
+
+### soft_dtw.hpp (2 functions)
+- `soft_dtw(const vector<T>&, ...)` → `soft_dtw(span<const T>, ...)`
+  - Body uses `x.size()` and `x[i]` — both work on span
+- `soft_dtw_gradient` → span for inputs, returns `vector<T>` (unchanged)
+
+### missing_utils.hpp (2 functions)
+- `has_missing(const vector<T>&)` → `has_missing(span<const T>)`
+- `interpolate_linear(const vector<T>&)` → `interpolate_linear(span<const T>)` (returns vector)
+
+### lower_bounds.hpp / lower_bound_impl.hpp
+- Already use pointer+length signatures. **No changes needed.**
+
+### pruned_distance_matrix.cpp
+- Calls `prob.p_vec(i)` which returns `vector<data_t>&`. These are passed to `compute_summary`, `compute_envelope`, `lb_keogh_symmetric` — all accept pointers. **No changes needed** (vector→pointer conversion still works).
+
+**Total: ~22 function signature changes across 8 header files.**
+
+Each change follows the same pattern — the function body calls `.data()`, `.size()`, or `[i]` which all work identically on span.
+
+Add `#include <span>` to each modified header.
+
+## Task 4: Fix DDTW span→vector bridge
+
+In `warping_ddtw.hpp`, `ddtwBanded` needs to create vectors from span input (derivative transform needs mutable vectors):
 
 ```cpp
-// In Data.hpp or a new accessor header
-struct DataAccessor {
-  virtual size_t size() const = 0;
-  virtual const double* series_data(size_t i) const = 0;
-  virtual size_t series_flat_size(size_t i) const = 0;
-  virtual size_t ndim() const = 0;
-  virtual ~DataAccessor() = default;
-};
-
-// VectorDataAccessor: wraps existing vector<vector<double>>
-// MmapDataAccessor: wraps MmapDataStore
+template <typename data_t>
+data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y, int band) {
+  std::vector<data_t> dx, dy;
+  derivative_transform_inplace(x, dx);  // x is span — reads via x[i]
+  derivative_transform_inplace(y, dy);
+  return dtwBanded<data_t>(std::span<const data_t>(dx), std::span<const data_t>(dy), band);
+}
 ```
 
-`Problem::p_vec(i)` currently returns `const vector<double>&`. Migration:
-1. DTW functions already accept `const double*, size_t` internally
-2. Change `rebind_dtw_fn()` lambda to use accessor pointer interface
-3. Existing `vector<vector<double>>` code keeps working through VectorDataAccessor
+Same for `ddtwFull_L`.
 
-### 3d. CLARA fix
+## Task 5: CLARA — keep working (no behavior change yet)
 
-Current code copies full vectors into sub-Problems. With Eigen::Map views:
-
-- Create Eigen::Map views pointing into parent's data (zero copy, works with both heap and mmap backends)
-- Sub-Problem holds index mapping + reference to parent accessor
-- DTW on subsample reads directly from mmap — no allocation
-
-### 3e. Eigen::Map benefits
-
-Where Eigen::Map replaces hand-written code:
-- `TimeSeriesView` (currently unused) → replaced by `Eigen::Map<const VectorXd>`
-- Element-wise ops in DTW metric functions → Eigen SIMD for free
-- z-normalization of series → `(series - mean) / stddev` as Eigen expression
-- CLARA subsample "copy" → just a vector of Eigen::Map views (zero copy)
-- No new dependency — Eigen is already linked
-
-## Phase 4: Storage Policy
-
-Add auto-selection to Problem:
-
+`fast_clara.cpp:144`:
 ```cpp
-enum class StoragePolicy { Auto, Heap, Mmap };
+sub_vecs.push_back(prob.p_vec(idx));  // p_vec returns vector&, copy into sub_vecs
 ```
 
-- `Auto` (default): N < threshold → Dense in heap, N >= threshold → Mmap
-- `Heap`: force `DenseDistanceMatrix` + vector-of-vectors
-- `Mmap`: force `MmapDistanceMatrix` + `MmapDataStore`
+This still works — `p_vec(i)` returns `vector<data_t>&`, which can be copied into a `vector<vector<data_t>>`. **No change needed.** The zero-copy view optimization comes in Phase 4.
 
-Default threshold: determined by Phase 1 benchmarks (likely 5000-10000).
+## Task 6: Build, test, verify
 
-For small files on mmap: the OS page cache makes this fast anyway. If benchmarks show no penalty, we can lower the threshold to 0 (always mmap) and simplify the code.
-
-## Implementation Order
-
-```
-Phase 1 (benchmarks)  ← START HERE, informs all decisions
-    │
-    ├── Phase 2 (remove #ifdef guards) — independent, low risk
-    │
-    └── Phase 3 (mmap series + Eigen::Map)
-            │
-            └── Phase 4 (storage policy + auto-selection)
-```
+1. Build: `cmake --build build --parallel 8`
+2. All 67 tests pass
+3. Benchmarks: no regression
+4. CLI: `./build/bin/dtwc_cl -k 3 -i data/dummy -v` works
+5. Commit
 
 ## Verification
 
-- Phase 1: `cmake -B build -DDTWC_BUILD_BENCHMARK=ON && cmake --build build --target bench_mmap_access && ./build/bin/bench_mmap_access`
-- Phase 2: `ctest --test-dir build -C Release -j8` — all existing tests pass
-- Phase 3: New tests for MmapDataStore + Eigen::Map series access
-- Phase 4: CLI with `--storage auto|heap|mmap` flag
-- Full suite: 64+ tests pass after each phase
+- All 67+ tests pass (tests use explicit `<data_t>` template args — unaffected)
+- Benchmarks: `bench_mmap_access` — verify no perf regression
+- Python bindings: use explicit `<double>` — unaffected
+- MATLAB bindings: use explicit `<double>` — unaffected
+- New capability: `dtw_fn_` can accept mmap-backed data via span
 
 ## What NOT to do
 
-- Don't use Eigen::Map for packed triangular distance matrix — Eigen has no packed symmetric storage. `SelfAdjointView`/`TriangularView` both require full NxN underneath. Our `tri_index` + `double*` is already optimal (1-2 cycles, benchmarked)
-- Don't add a virtual DataAccessor until benchmarks prove the need (YAGNI unless Phase 1 shows contiguous is significantly faster)
-- Don't change the DTW core recurrence — it's already pointer-based
-- Don't remove CSV checkpoint — it coexists with binary checkpoint for human readability
+- Don't change `p_vec(i)` return type yet — Phase 4
+- Don't change `Data::p_vec` storage — Phase 4
+- Don't add Eigen::Map to interfaces — use internally only (Phase 4)
+- Don't change pointer+length overloads — they're already optimal
+- Don't keep both vector AND span overloads — just change vector→span. External callers use explicit template args.
