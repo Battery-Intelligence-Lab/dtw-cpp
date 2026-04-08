@@ -117,20 +117,23 @@ static inline void atomic_min_double(double *addr, double val)
 
 PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
 {
+  // Pruned fill only operates on DenseDistanceMatrix (resize required).
+  auto &dm = prob.dense_distance_matrix();
+
   PruningStats stats;
   const int N = static_cast<int>(prob.size());
   const bool is_adtw = (prob.variant_params.variant == dtwc::core::DTWVariant::ADTW);
   const double adtw_penalty = prob.variant_params.adtw_penalty;
   if (N <= 1) {
     if (N == 1) {
-      prob.distance_matrix().resize(1);
-      prob.distance_matrix().set(0, 0, 0.0);
+      dm.resize(1);
+      dm.set(0, 0, 0.0);
     }
     return stats;
   }
 
   // Ensure matrix is sized
-  prob.distance_matrix().resize(static_cast<size_t>(N));
+  dm.resize(static_cast<size_t>(N));
 
   // Step 1: Precompute summaries for LB_Kim (O(N * n)) — parallel
   // Lock-free by design: each iteration writes only to summaries[i] at its own index.
@@ -159,7 +162,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
 
   // Step 4: Set diagonal to 0
   for (int i = 0; i < N; ++i)
-    prob.distance_matrix().set(static_cast<size_t>(i), static_cast<size_t>(i), 0.0);
+    dm.set(static_cast<size_t>(i), static_cast<size_t>(i), 0.0);
 
   // Step 5: Compute total number of upper-triangle pairs
   const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
@@ -257,7 +260,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
       // memory locations: data_[i*N+j] and data_[j*N+i]. The pair-based
       // decomposition guarantees no two threads write the same (i,j) pair,
       // so this is safe without locks or atomics.
-      prob.distance_matrix().set(static_cast<size_t>(i), static_cast<size_t>(j), dist);
+      dm.set(static_cast<size_t>(i), static_cast<size_t>(j), dist);
 
       // Update nearest-neighbor tracking (atomic min).
       atomic_min_double(&nn_dist[i], dist);

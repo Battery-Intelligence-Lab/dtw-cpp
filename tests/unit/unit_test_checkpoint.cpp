@@ -141,7 +141,7 @@ TEST_CASE("Checkpoint saves and loads partial distance matrix", "[checkpoint]")
   REQUIRE_THAT(prob2.distByInd(1, 0), WithinAbs(prob.distByInd(1, 0), 1e-10));
 
   // Uncomputed pair should still be NaN in the raw matrix
-  REQUIRE_FALSE(prob2.distance_matrix().is_computed(4, 5));
+  REQUIRE_FALSE(prob2.dense_distance_matrix().is_computed(4, 5));
 
   cleanup_dir(ckpt_dir);
 }

@@ -132,7 +132,9 @@ void save_checkpoint(const Problem &prob, const std::string &path)
   if (!fs::exists(dir))
     fs::create_directories(dir);
 
-  const auto &dm = prob.distance_matrix();
+  // Checkpoint CSV save only works with DenseDistanceMatrix.
+  // MmapDistanceMatrix is file-backed and doesn't need CSV checkpointing.
+  const auto &dm = prob.dense_distance_matrix();
   const size_t n = dm.size();
 
   // Write distance matrix CSV
@@ -177,22 +179,22 @@ bool load_checkpoint(Problem &prob, const std::string &path)
     return false;
   }
 
-  // Load the distance matrix CSV
+  // Load the distance matrix CSV (Dense only — mmap doesn't use CSV checkpointing).
+  auto &dm_load = prob.dense_distance_matrix();
   try {
-    io::read_csv(prob.distance_matrix(), csv_path);
+    io::read_csv(dm_load, csv_path);
   } catch (const std::exception &e) {
     std::cout << "Failed to read checkpoint distances: " << e.what() << '\n';
     return false;
   }
 
   // Check if all pairs are computed
-  const auto &dm = prob.distance_matrix();
-  if (dm.all_computed()) {
+  if (dm_load.all_computed()) {
     std::cout << "Checkpoint fully loaded from " << dir.string()
-              << " (all " << dm.packed_count() << " entries computed)" << '\n';
+              << " (all " << dm_load.packed_count() << " entries computed)" << '\n';
   } else {
     std::cout << "Checkpoint partially loaded from " << dir.string()
-              << " (" << dm.count_computed() << "/" << dm.packed_count() << " entries computed)" << '\n';
+              << " (" << dm_load.count_computed() << "/" << dm_load.packed_count() << " entries computed)" << '\n';
   }
 
   return true;

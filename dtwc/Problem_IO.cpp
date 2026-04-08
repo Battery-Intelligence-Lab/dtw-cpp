@@ -19,6 +19,7 @@
 
 #include <iostream> // for cout
 #include <fstream>
+#include <iomanip>  // for setprecision
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
@@ -154,7 +155,26 @@ void Problem::writeMedoidMembers(int iter, int rep) const
  */
 void Problem::writeDistanceMatrix(const std::string &name_) const
 {
-  io::write_csv(distMat, output_folder / name_);
+  visit_distmat([&](const auto &m) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+      io::write_csv(m, output_folder / name_);
+    } else {
+      // MmapDistanceMatrix: data is already on disk. Write a CSV copy for inspection.
+      const size_t n = m.size();
+      std::ofstream file(output_folder / name_);
+      if (!file.good())
+        throw std::runtime_error("Cannot open file for writing: " + (output_folder / name_).string());
+      file << std::setprecision(15);
+      for (size_t i = 0; i < n; ++i) {
+        for (size_t j = 0; j < n; ++j) {
+          if (j > 0) file << ',';
+          if (m.is_computed(i, j))
+            file << m.get(i, j);
+        }
+        file << '\n';
+      }
+    }
+  });
 }
 
 /**
@@ -178,7 +198,14 @@ void Problem::writeBestRep(int best_rep)
 void Problem::readDistanceMatrix(const fs::path &distMat_path)
 {
   try {
-    io::read_csv(distMat, distMat_path);
+    visit_distmat([&](auto &m) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+        io::read_csv(m, distMat_path);
+      } else {
+        throw std::runtime_error("readDistanceMatrix: CSV read not supported for MmapDistanceMatrix "
+                                 "(use warm-start via use_mmap_distance_matrix instead).");
+      }
+    });
   } catch (...) {
     std::cout << "Distance matrix could not be read! Continuing without matrix!" << '\n';
   }

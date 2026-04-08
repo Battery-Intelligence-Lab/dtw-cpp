@@ -22,6 +22,10 @@
 
 #include "distance_matrix.hpp"
 
+#ifdef DTWC_HAS_MMAP
+#include "mmap_distance_matrix.hpp"
+#endif
+
 #include <Eigen/Core>
 
 #include <filesystem>
@@ -133,5 +137,24 @@ inline std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
   os.precision(old_precision);
   return os;
 }
+
+#ifdef DTWC_HAS_MMAP
+/// Stream output for MmapDistanceMatrix (same CSV format as DenseDistanceMatrix).
+inline std::ostream &operator<<(std::ostream &os, const MmapDistanceMatrix &dm)
+{
+  const auto old_precision = os.precision(15);
+  const size_t n = dm.size();
+  for (size_t i = 0; i < n; ++i) {
+    for (size_t j = 0; j < n; ++j) {
+      if (j > 0) os << ',';
+      if (dm.is_computed(i, j))
+        os << dm.get(i, j);
+    }
+    os << '\n';
+  }
+  os.precision(old_precision);
+  return os;
+}
+#endif
 
 } // namespace dtwc::core

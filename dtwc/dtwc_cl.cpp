@@ -464,8 +464,8 @@ int main(int argc, char *argv[])
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(prob.data.p_vec, cuda_opts);
 
-    // Inject GPU distance matrix into Problem
-    auto &dm = prob.distance_matrix();
+    // Inject GPU distance matrix into Problem (Dense only)
+    auto &dm = prob.dense_distance_matrix();
     dm.resize(cuda_result.n);
     for (size_t i = 0; i < cuda_result.n; ++i)
       for (size_t j = i; j < cuda_result.n; ++j)

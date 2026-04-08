@@ -75,7 +75,7 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   auto N = GENERATE(1, 2, 5, 10, 20);
 
   // Create a DenseDistanceMatrix with random values.
-  Problem::distMat_t matrix(static_cast<size_t>(N));
+  dtwc::core::DenseDistanceMatrix matrix(static_cast<size_t>(N));
   std::mt19937 rng(42);
   std::uniform_real_distribution<double> dist(0.0, 100.0);
   for (size_t i = 0; i < static_cast<size_t>(N); ++i) {
@@ -125,11 +125,11 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
 
 TEST_CASE("Write and Read Empty Matrix", "[fileOperations]")
 {
-  Problem::distMat_t matrix;
+  dtwc::core::DenseDistanceMatrix matrix;
   REQUIRE(matrix.size() == 0);
 
   // Empty matrix should be default-constructed with size 0.
-  Problem::distMat_t readMat;
+  dtwc::core::DenseDistanceMatrix readMat;
   REQUIRE(readMat.size() == 0);
 }
 

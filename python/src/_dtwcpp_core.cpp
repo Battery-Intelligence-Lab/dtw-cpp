@@ -448,7 +448,7 @@ NB_MODULE(_dtwcpp_core, m) {
         prob.fillDistanceMatrix();
       }
       // Use to_full_matrix() to expand packed triangular → full NxN.
-      const auto &dm = prob.distance_matrix();
+      const auto &dm = prob.dense_distance_matrix();
       const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
       const size_t n = dm.size();
       double *ptr = new double[n * n];
@@ -484,7 +484,7 @@ NB_MODULE(_dtwcpp_core, m) {
                throw std::runtime_error("Expected square matrix");
            if (n != p.size())
                throw std::runtime_error("Matrix size doesn't match Problem data size");
-           auto &mat = p.distance_matrix();
+           auto &mat = p.dense_distance_matrix();
            mat.resize(n);
            const double* data = dm.data();
            for (size_t i = 0; i < n; ++i)

@@ -111,7 +111,10 @@ bool Problem::set_solver(Solver solver_)
  * @brief Prints the current distance matrix to the standard output.
  * @details Outputs the distance matrix in a human-readable format, useful for debugging and verification.
  */
-void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
+void Problem::printDistanceMatrix() const
+{
+  visit_distmat([](const auto &m) { std::cout << m << '\n'; });
+}
 
 /**
  * @brief Refreshes the distance matrix.
@@ -126,8 +129,13 @@ void Problem::printDistanceMatrix() const { std::cout << distMat << '\n'; }
  */
 void Problem::refreshDistanceMatrix()
 {
-  if (distMat.size() != 0)
-    distMat.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
+  visit_distmat([](auto &m) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+      if (m.size() != 0)
+        m.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
+    }
+    // MmapDistanceMatrix: no-op (mmap is pre-allocated and persistent).
+  });
   rebind_dtw_fn();
 }
 
@@ -309,6 +317,22 @@ void Problem::set_variant(core::DTWVariantParams params)
   refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
 }
 
+#ifdef DTWC_HAS_MMAP
+void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
+{
+  const size_t N = data.size();
+  if (std::filesystem::exists(cache_path)) {
+    distMat = core::MmapDistanceMatrix::open(cache_path);
+    auto &m = std::get<core::MmapDistanceMatrix>(distMat);
+    if (m.size() != N)
+      throw std::runtime_error("Mmap cache N=" + std::to_string(m.size())
+                               + " != data N=" + std::to_string(N));
+  } else {
+    distMat = core::MmapDistanceMatrix(cache_path, N);
+  }
+}
+#endif
+
 /**
  *@brief Retrieves or calculates the distance between two points by their indices.
  *@param i Index of the first point.
@@ -326,25 +350,32 @@ double Problem::distByInd(int i, int j)
   const size_t N = data.size();
 
   // Lazily allocate the dense matrix on first individual distance request.
+  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
   // The critical section ensures thread safety if called from a parallel region
   // before fillDistanceMatrix(). Double-check pattern: fast path skips the lock.
-  if (distMat.size() != N) {
+  bool needs_init = visit_distmat([&](const auto &m) { return m.size() != N; });
+  if (needs_init) {
 #ifdef _OPENMP
     #pragma omp critical(distByInd_init)
 #endif
     {
-      if (distMat.size() != N) {
-        distMat.resize(N);
-        rebind_dtw_fn();
-      }
+      visit_distmat([&](auto &m) {
+        if (m.size() != N) {
+          if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+            m.resize(N);
+          }
+        }
+      });
     }
+    rebind_dtw_fn();
   }
 
-  if (distMat.is_computed(i, j))
-    return distMat.get(i, j);
+  bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
+  if (computed)
+    return visit_distmat([&](const auto &m) { return m.get(i, j); });
 
   const double d = dtw_fn_(p_vec(i), p_vec(j));
-  distMat.set(i, j, d);
+  visit_distmat([&](auto &m) { m.set(i, j, d); });
   return d;
 }
 
@@ -373,22 +404,34 @@ static bool pruned_strategy_applicable(const Problem &prob)
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data.size();
-  distMat.resize(N);
 
-  for (size_t i = 0; i < N; ++i)
-    distMat.set(i, i, 0.0);
+  // Resize (Dense only — mmap is pre-allocated at creation).
+  visit_distmat([&](auto &m) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+      m.resize(N);
+    }
+  });
 
-  // Lock-free by design: each thread owns a disjoint set of rows. distMat.set(i,j)
-  // writes to data_[i*N+j] and data_[j*N+i]; the row-based partitioning ensures
-  // no two threads write the same (i,j) pair simultaneously.
+  // Set diagonal to 0
+  visit_distmat([&](auto &m) {
+    for (size_t i = 0; i < N; ++i)
+      if (!m.is_computed(i, i))
+        m.set(i, i, 0.0);
+  });
+
+  // Lock-free by design: each thread owns a disjoint set of rows.
+  // The row-based partitioning ensures no two threads write the same (i,j) pair.
 #ifdef _OPENMP
 #pragma omp parallel for schedule(dynamic, 1)
 #endif
   for (int ii = 0; ii < static_cast<int>(N); ++ii) {
     const size_t i = static_cast<size_t>(ii);
     const auto &series_i = p_vec(i);
-    for (size_t j = i + 1; j < N; ++j)
-      distMat.set(i, j, dtw_fn_(series_i, p_vec(j)));
+    for (size_t j = i + 1; j < N; ++j) {
+      bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
+      if (!computed)
+        visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(series_i, p_vec(j))); });
+    }
   }
 }
 
@@ -405,8 +448,13 @@ void Problem::fillDistanceMatrix()
   if (isDistanceMatrixFilled()) return;
 
   // Allocate the dense N×N matrix on first call (deferred from set_data / refreshDistanceMatrix).
-  if (distMat.size() != data.size())
-    distMat.resize(data.size());
+  // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
+  visit_distmat([&](auto &m) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+      if (m.size() != data.size())
+        m.resize(data.size());
+    }
+  });
 
   // Re-bind the DTW function in case missing_strategy was changed after construction
   // (e.g., user sets prob.missing_strategy = ZeroCost after prob.set_data(...)).
@@ -480,10 +528,14 @@ void Problem::fillDistanceMatrix()
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(data.p_vec, cuda_opts);
 
-    distMat.resize(cuda_result.n);
-    for (size_t i = 0; i < cuda_result.n; ++i)
-      for (size_t j = i; j < cuda_result.n; ++j)
-        distMat.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    visit_distmat([&](auto &m) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+        m.resize(cuda_result.n);
+      }
+      for (size_t i = 0; i < cuda_result.n; ++i)
+        for (size_t j = i; j < cuda_result.n; ++j)
+          m.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    });
 
     if (verbose)
       std::cout << "GPU distance matrix: " << cuda_result.pairs_computed

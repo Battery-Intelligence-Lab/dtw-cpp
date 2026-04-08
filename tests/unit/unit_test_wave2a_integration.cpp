@@ -163,7 +163,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   prob.output_folder = g_tmp_dir();
 
   // Dense matrix must NOT be allocated yet (deferred).
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   // distByInd works on-demand (lazy compute).
   double d01 = prob.distByInd(0, 1);
@@ -179,7 +179,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
 
   // We asked for 3 unique off-diagonal pairs: (0,1),(0,2),(1,0).
   // The matrix should have some cached entries but NOT the full N*(N-1)/2.
-  size_t computed = prob.distance_matrix().count_computed();
+  size_t computed = prob.dense_distance_matrix().count_computed();
   // N^2 / 2 = ~12.5M; computed must be tiny by comparison.
   REQUIRE(computed < 100); // only the few pairs we explicitly queried
 
@@ -193,10 +193,10 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   Problem small_prob;
   small_prob.set_data(std::move(small_data));
   small_prob.verbose = false;
-  REQUIRE(small_prob.distance_matrix().size() == 0);
+  REQUIRE(small_prob.dense_distance_matrix().size() == 0);
 
   small_prob.fillDistanceMatrix();
-  REQUIRE(small_prob.distance_matrix().size() == 5);
+  REQUIRE(small_prob.dense_distance_matrix().size() == 5);
   REQUIRE(small_prob.isDistanceMatrixFilled());
 }
 
@@ -576,7 +576,7 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   prob.output_folder = g_tmp_dir();
 
   // The matrix must start empty.
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   algorithms::CLARAOptions opts;
   opts.n_clusters  = k;
@@ -598,7 +598,7 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   // CLARA only touches N*k (2000) for assignment, plus sub-problem distances.
   // We allow a generous 10x budget to tolerate any incidental caching.
   const size_t full_pairs = static_cast<size_t>(N) * (N - 1) / 2;
-  const size_t computed   = prob.distance_matrix().count_computed();
+  const size_t computed   = prob.dense_distance_matrix().count_computed();
 
   // Note: distance_matrix().size() == N only after distByInd triggers lazy resize.
   // CLARA calls distByInd on the *parent* prob for the N*k assignment step.
@@ -621,7 +621,7 @@ TEST_CASE("Wave2A: deferred distByInd is cached after first call",
   Problem prob = make_problem_uv(vecs, 2);
 
   // Matrix not yet allocated.
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   // First call triggers lazy computation.
   double d01 = prob.distByInd(0, 1);

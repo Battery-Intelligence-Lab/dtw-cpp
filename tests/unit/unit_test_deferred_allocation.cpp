@@ -32,7 +32,7 @@ TEST_CASE("Deferred allocation: set_data does not allocate dense matrix", "[prob
   prob.verbose = false;
 
   // Dense matrix should NOT be allocated yet
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 }
 
 TEST_CASE("Deferred allocation: fillDistanceMatrix allocates and fills", "[problem][deferred]")
@@ -45,11 +45,11 @@ TEST_CASE("Deferred allocation: fillDistanceMatrix allocates and fills", "[probl
   prob.set_data(std::move(data));
   prob.verbose = false;
 
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   prob.fillDistanceMatrix();
 
-  REQUIRE(prob.distance_matrix().size() == 3);
+  REQUIRE(prob.dense_distance_matrix().size() == 3);
   REQUIRE(prob.distByInd(0, 1) > 0.0);
   REQUIRE(prob.distByInd(0, 0) == 0.0);
 }
@@ -134,7 +134,7 @@ TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem
   prob.set_data(std::move(data1));
   prob.verbose = false;
   prob.fillDistanceMatrix();
-  REQUIRE(prob.distance_matrix().size() == 2);
+  REQUIRE(prob.dense_distance_matrix().size() == 2);
 
   // Now set new data — matrix should be reset
   dtwc::Data data2;
@@ -143,10 +143,10 @@ TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem
   prob.set_data(std::move(data2));
 
   // Matrix must be cleared (deferred again)
-  REQUIRE(prob.distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   // Fill again — should work with new data
   prob.fillDistanceMatrix();
-  REQUIRE(prob.distance_matrix().size() == 3);
+  REQUIRE(prob.dense_distance_matrix().size() == 3);
   REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(10.0, 1e-12));
 }
