@@ -5,8 +5,6 @@
  * @date 08 Apr 2026
  */
 
-#ifdef DTWC_HAS_MMAP
-
 #include <core/mmap_distance_matrix.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -386,14 +384,3 @@ TEST_CASE("packed_size", "[MmapDistanceMatrix][packed_size]")
   REQUIRE(packed_size(10) == 55);
   REQUIRE(packed_size(1000) == 500500);
 }
-
-#else // !DTWC_HAS_MMAP
-
-#include <catch2/catch_test_macros.hpp>
-
-TEST_CASE("MmapDistanceMatrix SKIPPED — DTWC_HAS_MMAP not defined", "[MmapDistanceMatrix]")
-{
-  SKIP("llfio not available — mmap tests skipped");
-}
-
-#endif // DTWC_HAS_MMAP

@@ -5,8 +5,7 @@
  * @details Compares DenseDistanceMatrix and MmapDistanceMatrix across seven
  *          access patterns: fill, random get, sequential scan, open/read
  *          latency, medoid access, series layout, and CLARA subsample.
- *          Non-mmap benchmarks (series access, CLARA) always compile.
- *          Mmap benchmarks are guarded by DTWC_HAS_MMAP.
+ *          All benchmarks always compile (llfio is a required dependency).
  *
  * @author Volkan Kumtepeli
  * @date 08 Apr 2026
@@ -87,7 +86,6 @@ static void BM_fill_dense(benchmark::State &state)
 }
 BENCHMARK(BM_fill_dense)->Unit(benchmark::kMillisecond);
 
-#ifdef DTWC_HAS_MMAP
 static void BM_fill_mmap(benchmark::State &state)
 {
   constexpr int N = 5000, L = 25, band = 10;
@@ -118,7 +116,6 @@ static void BM_fill_mmap(benchmark::State &state)
     std::filesystem::remove(p);
 }
 BENCHMARK(BM_fill_mmap)->Unit(benchmark::kMillisecond);
-#endif
 
 // ---------------------------------------------------------------------------
 // 2. BM_random_get_dense / BM_random_get_mmap — Random tri_index lookups
@@ -158,7 +155,6 @@ static void BM_random_get_dense(benchmark::State &state)
 }
 BENCHMARK(BM_random_get_dense)->Unit(benchmark::kMillisecond);
 
-#ifdef DTWC_HAS_MMAP
 static void BM_random_get_mmap(benchmark::State &state)
 {
   constexpr size_t N = 5000;
@@ -201,7 +197,6 @@ static void BM_random_get_mmap(benchmark::State &state)
   std::filesystem::remove(path);
 }
 BENCHMARK(BM_random_get_mmap)->Unit(benchmark::kMillisecond);
-#endif
 
 // ---------------------------------------------------------------------------
 // 3. BM_sequential_scan_dense / BM_sequential_scan_mmap — Raw pointer scan
@@ -233,7 +228,6 @@ static void BM_sequential_scan_dense(benchmark::State &state)
 }
 BENCHMARK(BM_sequential_scan_dense)->Unit(benchmark::kMillisecond);
 
-#ifdef DTWC_HAS_MMAP
 static void BM_sequential_scan_mmap(benchmark::State &state)
 {
   constexpr size_t N = 5000;
@@ -265,13 +259,11 @@ static void BM_sequential_scan_mmap(benchmark::State &state)
   std::filesystem::remove(path);
 }
 BENCHMARK(BM_sequential_scan_mmap)->Unit(benchmark::kMillisecond);
-#endif
 
 // ---------------------------------------------------------------------------
 // 4. BM_open_mmap / BM_read_binary_to_vector — Startup latency
 // ---------------------------------------------------------------------------
 
-#ifdef DTWC_HAS_MMAP
 static void BM_open_mmap(benchmark::State &state)
 {
   constexpr size_t N = 5000;
@@ -329,7 +321,6 @@ static void BM_read_binary_to_vector(benchmark::State &state)
   std::filesystem::remove(path);
 }
 BENCHMARK(BM_read_binary_to_vector)->Unit(benchmark::kMicrosecond);
-#endif
 
 // ---------------------------------------------------------------------------
 // 5. BM_medoid_access_dense / BM_medoid_access_mmap — Realistic FastPAM access
@@ -370,7 +361,6 @@ static void BM_medoid_access_dense(benchmark::State &state)
 }
 BENCHMARK(BM_medoid_access_dense)->Unit(benchmark::kMillisecond);
 
-#ifdef DTWC_HAS_MMAP
 static void BM_medoid_access_mmap(benchmark::State &state)
 {
   constexpr size_t N = 5000;
@@ -410,7 +400,6 @@ static void BM_medoid_access_mmap(benchmark::State &state)
   std::filesystem::remove(path);
 }
 BENCHMARK(BM_medoid_access_mmap)->Unit(benchmark::kMillisecond);
-#endif
 
 // ---------------------------------------------------------------------------
 // 6. BM_series_contiguous_flat / BM_series_vec_of_vec — Series access layout

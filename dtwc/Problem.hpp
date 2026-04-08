@@ -20,10 +20,8 @@
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
 
-#ifdef DTWC_HAS_MMAP
 #include "core/mmap_distance_matrix.hpp"
 #include <variant>
-#endif
 
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t
@@ -79,11 +77,7 @@ enum class DistanceMatrixStrategy {
 class Problem
 {
 public:
-#ifdef DTWC_HAS_MMAP
   using distMat_t = std::variant<core::DenseDistanceMatrix, core::MmapDistanceMatrix>;
-#else
-  using distMat_t = core::DenseDistanceMatrix;
-#endif
   using path_t = std::filesystem::path;
 
   /// DTW distance function type: computes distance between two series.
@@ -96,25 +90,17 @@ private:
   dtw_fn_t dtw_fn_;                                 /*!< DTW distance function (set by rebind_dtw_fn). */
   std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
 
-  /// Dispatch through variant (when DTWC_HAS_MMAP) or call directly (otherwise).
+  /// Dispatch through variant via std::visit.
   template <typename F>
   decltype(auto) visit_distmat(F &&f)
   {
-#ifdef DTWC_HAS_MMAP
     return std::visit(std::forward<F>(f), distMat);
-#else
-    return f(distMat);
-#endif
   }
 
   template <typename F>
   decltype(auto) visit_distmat(F &&f) const
   {
-#ifdef DTWC_HAS_MMAP
     return std::visit(std::forward<F>(f), distMat);
-#else
-    return f(distMat);
-#endif
   }
 
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
@@ -203,23 +189,13 @@ public:
   /// Access the Dense distance matrix. Throws std::bad_variant_access if mmap is active.
   const core::DenseDistanceMatrix &dense_distance_matrix() const
   {
-#ifdef DTWC_HAS_MMAP
     return std::get<core::DenseDistanceMatrix>(distMat);
-#else
-    return distMat;
-#endif
   }
   core::DenseDistanceMatrix &dense_distance_matrix()
   {
-#ifdef DTWC_HAS_MMAP
     return std::get<core::DenseDistanceMatrix>(distMat);
-#else
-    return distMat;
-#endif
   }
-#ifdef DTWC_HAS_MMAP
   void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
-#endif
 
   void fillDistanceMatrix();
   void printDistanceMatrix() const;

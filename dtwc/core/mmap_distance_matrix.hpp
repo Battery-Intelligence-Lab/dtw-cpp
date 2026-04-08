@@ -27,8 +27,6 @@
 
 #pragma once
 
-#ifdef DTWC_HAS_MMAP
-
 #include "distance_matrix.hpp" // tri_index, packed_size
 
 #include <algorithm>
@@ -284,5 +282,3 @@ public:
 };
 
 } // namespace dtwc::core
-
-#endif // DTWC_HAS_MMAP

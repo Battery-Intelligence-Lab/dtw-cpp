@@ -134,8 +134,8 @@ if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
   message(STATUS "MPI enabled for distributed distance matrix computation")
 endif()
 
-# llfio (optional) — memory-mapped distance matrices
-if(DTWC_ENABLE_MMAP AND TARGET llfio_hl)
+# llfio (required) — memory-mapped distance matrices
+if(TARGET llfio_hl)
   target_link_libraries(dtwc++ PUBLIC llfio_hl)
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MMAP)
   message(STATUS "llfio linked — memory-mapped distance matrix support enabled")

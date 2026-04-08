@@ -32,7 +32,6 @@ TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][
   REQUIRE(d == prob.distByInd(1, 0)); // symmetry
 }
 
-#ifdef DTWC_HAS_MMAP
 TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mmap]")
 {
   auto cache_path = fs::temp_directory_path() / "dtwc_test" / "variant_mmap.dtwcache";
@@ -88,4 +87,3 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
   // Cleanup
   fs::remove_all(cache_path.parent_path());
 }
-#endif

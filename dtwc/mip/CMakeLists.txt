@@ -17,6 +17,7 @@ target_link_libraries(mip-solvers
   PRIVATE
   rapidcsv::rapidcsv
   Eigen3::Eigen
+  llfio_hl
   project_warnings
   project_options
 )

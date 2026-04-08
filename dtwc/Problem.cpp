@@ -317,7 +317,6 @@ void Problem::set_variant(core::DTWVariantParams params)
   refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
 }
 
-#ifdef DTWC_HAS_MMAP
 void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
 {
   const size_t N = data.size();
@@ -331,7 +330,6 @@ void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
     distMat = core::MmapDistanceMatrix(cache_path, N);
   }
 }
-#endif
 
 /**
  *@brief Retrieves or calculates the distance between two points by their indices.

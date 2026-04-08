@@ -363,14 +363,12 @@ int main(int argc, char *argv[])
       std::cout << "Auto-selected method: " << method << " (N=" << N << ")\n";
   }
 
-#ifdef DTWC_HAS_MMAP
   if (mmap_threshold == 0 || prob.size() >= mmap_threshold) {
     auto cache_path = fs::path(output_dir) / (prob_name + "_distmat.cache");
     prob.use_mmap_distance_matrix(cache_path);
     if (verbose)
       std::cout << "Using memory-mapped distance matrix: " << cache_path << "\n";
   }
-#endif
 
   if (restart) {
     auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");

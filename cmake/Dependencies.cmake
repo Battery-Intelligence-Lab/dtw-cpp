@@ -114,28 +114,24 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # llfio — memory-mapped I/O for large distance matrices (optional)
-  option(DTWC_ENABLE_MMAP "Enable memory-mapped distance matrix support via llfio" ON)
-  if(DTWC_ENABLE_MMAP)
-    if(NOT TARGET llfio_hl)
-      CPMAddPackage(
-        NAME llfio
-        GITHUB_REPOSITORY ned14/llfio
-        GIT_TAG develop
-        DOWNLOAD_ONLY YES
-      )
-      if(llfio_ADDED)
-        add_subdirectory(${llfio_SOURCE_DIR} ${llfio_BINARY_DIR} EXCLUDE_FROM_ALL)
-      endif()
+  # llfio — memory-mapped I/O for large distance matrices (required)
+  if(NOT TARGET llfio_hl)
+    CPMAddPackage(
+      NAME llfio
+      GITHUB_REPOSITORY ned14/llfio
+      GIT_TAG develop
+      DOWNLOAD_ONLY YES
+    )
+    if(llfio_ADDED)
+      add_subdirectory(${llfio_SOURCE_DIR} ${llfio_BINARY_DIR} EXCLUDE_FROM_ALL)
     endif()
+  endif()
 
-    if(TARGET llfio_hl)
-      message(STATUS "  llfio:    YES (memory-mapped distance matrix enabled)")
-      set(DTWC_HAS_MMAP TRUE)
-    else()
-      message(WARNING "  llfio:    NOT FOUND — memory-mapped distance matrix disabled")
-      set(DTWC_HAS_MMAP FALSE)
-    endif()
+  if(TARGET llfio_hl)
+    message(STATUS "  llfio:    YES (memory-mapped distance matrix enabled)")
+    set(DTWC_HAS_MMAP TRUE)
+  else()
+    message(FATAL_ERROR "  llfio:    NOT FOUND — llfio is a required dependency")
   endif()
 
   # MPI (optional) — distributed distance matrix computation

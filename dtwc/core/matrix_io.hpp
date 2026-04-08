@@ -21,10 +21,7 @@
 #pragma once
 
 #include "distance_matrix.hpp"
-
-#ifdef DTWC_HAS_MMAP
 #include "mmap_distance_matrix.hpp"
-#endif
 
 #include <Eigen/Core>
 
@@ -138,7 +135,6 @@ inline std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
   return os;
 }
 
-#ifdef DTWC_HAS_MMAP
 /// Stream output for MmapDistanceMatrix (same CSV format as DenseDistanceMatrix).
 inline std::ostream &operator<<(std::ostream &os, const MmapDistanceMatrix &dm)
 {
@@ -155,6 +151,5 @@ inline std::ostream &operator<<(std::ostream &os, const MmapDistanceMatrix &dm)
   os.precision(old_precision);
   return os;
 }
-#endif
 
 } // namespace dtwc::core
