@@ -37,7 +37,13 @@ echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 DTWC_BIN="${SLURM_SUBMIT_DIR}/build-htc-cpu/bin/dtwc_cl"
-DATA_DIR="${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018"
+if [[ -d "${SLURM_SUBMIT_DIR}/../data/Coffee" ]]; then
+    DATA_DIR="${SLURM_SUBMIT_DIR}/../data"
+elif [[ -d "${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018/Coffee" ]]; then
+    DATA_DIR="${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018"
+else
+    echo "ERROR: Test data not found." >&2; exit 1
+fi
 
 if [[ ! -x "${DTWC_BIN}" ]]; then
     echo "ERROR: Binary not found: ${DTWC_BIN}" >&2
