@@ -145,8 +145,9 @@ int main(int argc, char *argv[])
   app.add_option("--name", prob_name, "Problem name (used in output filenames)");
   app.add_option("--column", parquet_column, "Column name to use as time series (Parquet only)");
 
-  std::string precision_str = "float32";
-  app.add_option("--precision", precision_str, "Series data precision: float32 (default, 2x memory saving) or float64")
+  std::string dtype_str = "float32";
+  app.add_option("--dtype,--data-precision,--data-type", dtype_str,
+      "Series data type: float32 (default, 2x memory saving) or float64 (aliases: f32, f64, float, double)")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
               {"float32", "float32"}, {"f32", "float32"}, {"fp32", "float32"},
@@ -230,10 +231,10 @@ int main(int argc, char *argv[])
   std::string checkpoint_dir;
   app.add_option("--checkpoint", checkpoint_dir, "Checkpoint directory for save/resume");
 
-  // Binary checkpoint restart & mmap threshold
-  bool restart = false;
+  // Binary checkpoint resume & mmap threshold
+  bool resume = false;
   size_t mmap_threshold = 50000;
-  app.add_flag("--restart", restart, "Resume from checkpoint (distance matrix cache + clustering state)");
+  app.add_flag("--resume,--restart", resume, "Resume from checkpoint (distance matrix cache + clustering state)");
   app.add_option("--mmap-threshold", mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)")
       ->check(CLI::NonNegativeNumber);
 
@@ -265,9 +266,16 @@ int main(int argc, char *argv[])
 
   // Compute device
   std::string device = "cpu";
-  std::string precision = "auto";
+  std::string gpu_precision = "auto";
   app.add_option("-d,--device", device, "Compute device: cpu, cuda, cuda:N");
-  app.add_option("--precision", precision, "GPU precision: auto, fp32, fp64");
+  app.add_option("--gpu-precision,--gpu-dtype", gpu_precision,
+      "GPU kernel precision: auto (default), float32/f32/fp32, float64/f64/fp64/double")
+      ->transform(CLI::CheckedTransformer(
+          std::map<std::string, std::string>{
+              {"auto", "auto"},
+              {"float32", "fp32"}, {"f32", "fp32"}, {"fp32", "fp32"}, {"float", "fp32"},
+              {"float64", "fp64"}, {"f64", "fp64"}, {"fp64", "fp64"}, {"double", "fp64"}},
+          CLI::ignore_case));
 
   // Verbosity
   bool verbose = false;
@@ -288,8 +296,9 @@ int main(int argc, char *argv[])
     try {
       YAML::Node config = YAML::LoadFile(yaml_config_path);
 
-      // Only override values that were NOT explicitly set on CLI.
-      // CLI11 already parsed CLI args; YAML provides defaults for unset options.
+      // TODO: This always overrides CLI values if the YAML key exists.
+      // Should use app["--flag"]->count() to check if CLI was explicitly set.
+      // Pre-existing issue — fixing requires refactoring all set_if_unset calls.
       auto set_if_unset = [&](const std::string &key, auto &var) {
         if (config[key]) {
           using T = std::decay_t<decltype(var)>;
@@ -309,7 +318,9 @@ int main(int argc, char *argv[])
       set_if_unset("n-init", n_init);
       set_if_unset("solver", solver);
       set_if_unset("device", device);
-      set_if_unset("precision", precision);
+      set_if_unset("dtype", dtype_str);
+      set_if_unset("gpu-precision", gpu_precision);
+      set_if_unset("resume", resume);
       set_if_unset("verbose", verbose);
 
       // MIP solver settings
@@ -370,6 +381,14 @@ int main(int argc, char *argv[])
   if (metric == "sqeuclidean" || metric == "l2sq") metric = "squared_euclidean";
   if (variant == "soft-dtw") variant = "softdtw";
 
+  // Normalize dtype/gpu-precision aliases from YAML (bypass CheckedTransformer)
+  to_lower(dtype_str);
+  if (dtype_str == "f32" || dtype_str == "fp32" || dtype_str == "float") dtype_str = "float32";
+  if (dtype_str == "f64" || dtype_str == "fp64" || dtype_str == "double") dtype_str = "float64";
+  to_lower(gpu_precision);
+  if (gpu_precision == "float32" || gpu_precision == "f32" || gpu_precision == "float") gpu_precision = "fp32";
+  if (gpu_precision == "float64" || gpu_precision == "f64" || gpu_precision == "double") gpu_precision = "fp64";
+
   // ---- Setup ----
   dtwc::Clock clk;
 
@@ -386,7 +405,8 @@ int main(int argc, char *argv[])
               << "  MaxIter:  " << max_iter << "\n"
               << "  N-init:   " << n_init << "\n"
               << "  Device:   " << device << "\n"
-              << "  Precision:" << precision << "\n";
+              << "  Dtype:    " << dtype_str << "\n"
+              << "  GPU Prec: " << gpu_precision << "\n";
     if (method == "clara") {
       std::cout << "  CLARA sample_size: "
                 << (sample_size < 0 ? "auto" : std::to_string(sample_size)) << "\n"
@@ -396,7 +416,47 @@ int main(int argc, char *argv[])
     if (method == "hierarchical") {
       std::cout << "  Linkage:   " << linkage_str << "\n";
     }
-    std::cout << std::flush;
+
+    // ---- System diagnostics (useful for SLURM .out logs) ----
+    std::cout << "\n=== System Diagnostics ===\n";
+#ifdef _OPENMP
+    std::cout << "  OpenMP threads:  " << omp_get_max_threads() << "\n";
+#else
+    std::cout << "  OpenMP:          not available\n";
+#endif
+    auto print_env = [](const char *name) {
+      const char *val = std::getenv(name);
+      if (val) std::cout << "  " << name << ": " << val << "\n";
+    };
+    print_env("OMP_NUM_THREADS");
+    print_env("SLURM_JOB_ID");
+    print_env("SLURM_CPUS_PER_TASK");
+    print_env("SLURM_NODELIST");
+    print_env("SLURM_JOB_PARTITION");
+    print_env("SLURM_GPUS");
+#if defined(__linux__)
+    {
+      std::ifstream cpuinfo("/proc/cpuinfo");
+      std::string line;
+      while (std::getline(cpuinfo, line)) {
+        if (line.rfind("model name", 0) == 0) {
+          auto pos = line.find(':');
+          if (pos != std::string::npos)
+            std::cout << "  CPU:             " << line.substr(pos + 2) << "\n";
+          break;
+        }
+      }
+    }
+    {
+      std::ifstream status("/proc/self/status");
+      std::string line;
+      while (std::getline(status, line)) {
+        if (line.rfind("VmRSS:", 0) == 0 || line.rfind("VmPeak:", 0) == 0)
+          std::cout << "  " << line << "\n";
+      }
+    }
+#endif
+    std::cout << "==========================\n\n" << std::flush;
   }
 
   // Create output directory
@@ -495,8 +555,18 @@ int main(int argc, char *argv[])
   }
 
   data_loaded:
+  if (verbose && prob.size() > 0) {
+    size_t total_elements = 0;
+    for (const auto &v : prob.data.p_vec) total_elements += v.size();
+    size_t data_bytes = total_elements * sizeof(dtwc::data_t);
+    std::cout << "  Data memory: ~" << (data_bytes / (1ULL << 20)) << " MB ("
+              << prob.size() << " series, "
+              << (total_elements / prob.size()) << " avg length, "
+              << dtype_str << ")\n";
+  }
+
   // ---- Apply precision conversion ----
-  if (precision_str == "float32" && !prob.data.is_f32() && !prob.data.is_view()) {
+  if (dtype_str == "float32" && !prob.data.is_f32() && !prob.data.is_view()) {
     prob.set_data(convert_to_f32(std::move(prob.data)));
     if (verbose)
       std::cout << "Converted to float32 (2x memory saving)\n";
@@ -522,7 +592,7 @@ int main(int argc, char *argv[])
       std::cout << "Using memory-mapped distance matrix: " << cache_path << "\n";
   }
 
-  if (restart) {
+  if (resume) {
     auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
     dtwc::core::ClusteringResult ckpt_result;
     if (dtwc::load_binary_checkpoint(ckpt_result, ckpt_path)) {
@@ -548,13 +618,13 @@ int main(int argc, char *argv[])
   prob.mip_settings.verbose_solver = verbose_solver;
   prob.mip_settings.benders = benders_mode;
 
-  // Wire GPU settings from --device and --precision
+  // Wire GPU settings from --device and --gpu-precision
   if (device.rfind("cuda", 0) == 0) {
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::GPU;
     if (device.size() > 5 && device[4] == ':')
       prob.cuda_settings.device_id = std::stoi(device.substr(5));
-    if (precision == "fp32") prob.cuda_settings.precision_mode = 1;
-    else if (precision == "fp64") prob.cuda_settings.precision_mode = 2;
+    if (gpu_precision == "fp32") prob.cuda_settings.precision_mode = 1;
+    else if (gpu_precision == "fp64") prob.cuda_settings.precision_mode = 2;
   }
 
   // Set DTW variant
@@ -628,9 +698,9 @@ int main(int argc, char *argv[])
     cuda_opts.device_id = cuda_device_id;
     cuda_opts.verbose = verbose;
 
-    if (precision == "fp32")
+    if (gpu_precision == "fp32")
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (precision == "fp64")
+    else if (gpu_precision == "fp64")
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     // else Auto (default)
 
@@ -698,7 +768,7 @@ int main(int argc, char *argv[])
         clara_opts.ram_limit_bytes = ram_limit;
         clara_opts.parquet_path = input_file;
         clara_opts.parquet_column = parquet_column;
-        clara_opts.use_float32 = (precision_str == "float32");
+        clara_opts.use_float32 = (dtype_str == "float32");
       } else if (verbose) {
         std::cerr << "Warning: --ram-limit only effective with Parquet input for streaming CLARA\n";
       }
