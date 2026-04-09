@@ -53,6 +53,11 @@ Critical knowledge to avoid repeating mistakes.
 - **MATLAB + MSVC OpenMP: exit segfault in `-batch` mode.** Functionality works; segfault after output. Check output, not exit code.
 - **nanobind over pybind11.** Stable ABI, 5-10x smaller binaries, native CUDA ndarray. GIL release for >10ms calls.
 
+## HiGHS MIP Solver (IMPORTANT — workaround in place)
+
+- **HiGHS <=1.14.0 `assert(ub_consistent)` fires on warm-start MIP.** The assertion is in `updatePrimalDualIntegral()` — a performance metric tracker, NOT solution correctness. `prev_lb/prev_ub/prev_gap` are documented "Only for checking/debugging" (line 2802). The P-D integral is never used to accept/reject incumbents. Presolve restart rebases bounds with offset arithmetic that introduces roundoff exceeding the 1e-12 tolerance. **Current workaround:** `target_compile_definitions(highs PRIVATE NDEBUG)` in `cmake/Dependencies.cmake` — too blunt (suppresses ALL HiGHS assertions). **Proper fix needed:** patch HiGHS to skip `check_prev_data` after restart, or relax the tolerance in this specific block. File upstream issue at github.com/ERGO-Code/HiGHS.
+- **Verified by Codex (GPT-5.4, xhigh reasoning):** Not a solution-correctness bug. The workaround is legitimate short-term.
+
 ## Build System
 
 - **CUDA multi-version on Windows:** Generate `Directory.Build.props` with `<CudaToolkitCustomDir>`.

@@ -28,14 +28,17 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.13.1.tar.gz"
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.14.0.tar.gz"
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
     "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON"
     )
-    # HiGHS v1.13.1 has debug assertions (ub_consistent) that fire on valid warm-start
-    # MIP solves due to numerical noise. Suppress by defining NDEBUG on HiGHS targets.
+    # HiGHS <=1.14.0 has a debug assertion (ub_consistent) that fires on valid
+    # warm-start MIP solves due to rounding in primal-dual integral tracking
+    # after presolve reset. The solution is correct; the bookkeeping tolerance
+    # (1e-12) is too tight. Suppress by defining NDEBUG on HiGHS target.
+    # Upstream: https://github.com/ERGO-Code/HiGHS — not yet fixed as of 1.14.0.
     if(TARGET highs)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()
