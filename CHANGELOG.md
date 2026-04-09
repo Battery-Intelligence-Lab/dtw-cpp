@@ -21,7 +21,30 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 - **Runtime float32 precision**: `Precision` enum, `Data` float32 storage (`p_vec_f32`), `series_f32(i)` accessor, `dtw_fn_f32_t` dispatch.
 - **Float32 view-mode**: `Data` supports non-owning `span<const float>` views for CLARA subsampling with float32 data.
-- **CLI**: `--precision float32|float64` (default float32). 2x memory saving, 0.003% max DTW error.
+- **CLI**: `--dtype float32|float64` (default float32, aliases: f32/fp32/float/f64/fp64/double). 2x memory saving, 0.003% max DTW error.
+
+### Added (SLURM HPC Support)
+
+- **Generalized SLURM scripts** (`scripts/slurm/`): portable remote helper, job templates (CPU, GPU, checkpoint, Parquet), `.env`-based configuration.
+- **`slurm_remote.py`**: SSH/SFTP remote helper with SSH-key-first auth, two-hop gateway support, batch build/submit/download commands.
+- **Job templates**: CPU test (Coffee k=2, Beef k=5), GPU test (fp32+fp64), checkpoint/resume verification, Parquet I/O test.
+- **`verify_results.py`**: ARI-based ground truth comparison against UCR class labels.
+- **`convert_ucr.py`**: UCR TSV to Parquet converter for testing Parquet I/O path.
+- **`env.example`**: Configuration template with Oxford ARC example values.
+- **SLURM documentation**: `docs/content/getting-started/slurm.md` with partition tables, GPU gres syntax, and troubleshooting.
+
+### Changed (CLI)
+
+- **`--precision` renamed to `--dtype`** (aliases: `--data-precision`, `--data-type`) to resolve CLI11 crash from duplicate `--precision` flag.
+- **`--gpu-precision`** (alias: `--gpu-dtype`): GPU kernel precision with full alias set (f32/fp32/float32/f64/fp64/float64/double). Default: `auto`.
+- **`--restart` renamed to `--resume`** (`--restart` kept as deprecated alias). Avoids confusion with "restart from scratch".
+- **Verbose diagnostics**: `--verbose` now prints OpenMP threads, SLURM env vars (job ID, node, CPUs), CPU model, memory usage, and data memory estimate.
+- **YAML/TOML config**: `precision` key split into `dtype` and `gpu-precision`. Added `resume` key.
+
+### Fixed
+
+- **CLI crash**: duplicate `--precision` flag caused CLI11 `OptionAlreadyAdded` exception at startup. Fixed by renaming to `--dtype` + `--gpu-precision`.
+- **YAML config**: data precision was never loaded from YAML (only GPU precision was bound). Now both `dtype` and `gpu-precision` are loaded.
 
 ### Added (Data Access)
 
