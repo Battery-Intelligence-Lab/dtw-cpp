@@ -21,6 +21,10 @@
 
 #include "../core/clustering_result.hpp"
 
+#include <cstddef>
+#include <filesystem>
+#include <string>
+
 namespace dtwc {
 
 class Problem; // Forward declaration
@@ -34,6 +38,12 @@ struct CLARAOptions {
   int n_samples = 5;        ///< Number of subsamples to try.
   int max_iter = 100;       ///< Max PAM iterations per subsample.
   unsigned random_seed = 42; ///< RNG seed for reproducibility.
+
+  // RAM-aware chunked processing
+  size_t ram_limit_bytes = 0;                ///< 0 = no limit (all data in RAM).
+  std::filesystem::path parquet_path;        ///< Parquet file for streaming (empty = data in RAM).
+  std::string parquet_column;                ///< Column name for Parquet reader.
+  bool use_float32 = false;                  ///< Load chunks as float32 (2x memory saving).
 };
 
 /**

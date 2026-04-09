@@ -40,7 +40,7 @@ struct Data
   /// Returns the number of data points (series count).
   size_t size() const
   {
-    if (is_view_) return p_spans_.size();
+    if (is_view_) return is_f32() ? p_spans_f32_.size() : p_spans_.size();
     return (precision == core::Precision::Float32) ? p_vec_f32.size() : p_vec.size();
   }
 
@@ -57,13 +57,14 @@ struct Data
   /// Returns a float32 span view of series i (only valid when precision == Float32).
   std::span<const float> series_f32(size_t i) const
   {
+    if (is_view_) return p_spans_f32_[i];
     return std::span<const float>(p_vec_f32[i]);
   }
 
   /// Returns the number of scalar values in series i.
   size_t series_flat_size(size_t i) const
   {
-    if (is_view_) return p_spans_[i].size();
+    if (is_view_) return is_f32() ? p_spans_f32_[i].size() : p_spans_[i].size();
     return (precision == core::Precision::Float32) ? p_vec_f32[i].size() : p_vec[i].size();
   }
 
@@ -120,7 +121,7 @@ struct Data
     validate_ndim();
   }
 
-  /// View-mode constructor: non-owning spans into another Data's storage.
+  /// View-mode constructor: non-owning float64 spans into another Data's storage.
   Data(std::vector<std::span<const data_t>> &&spans,
        std::vector<std::string_view> &&name_views, size_t ndim_)
     : ndim{ ndim_ }, p_spans_(std::move(spans)),
@@ -131,8 +132,21 @@ struct Data
     validate_ndim();
   }
 
+  /// View-mode constructor: non-owning float32 spans into another Data's storage.
+  Data(std::vector<std::span<const float>> &&spans,
+       std::vector<std::string_view> &&name_views, size_t ndim_)
+    : ndim{ ndim_ }, precision{ core::Precision::Float32 },
+      p_spans_f32_(std::move(spans)),
+      p_name_views_(std::move(name_views)), is_view_(true)
+  {
+    if (p_spans_f32_.size() != p_name_views_.size())
+      throw std::runtime_error("Data view: span and name vectors should be of the same size");
+    validate_ndim();
+  }
+
 private:
-  std::vector<std::span<const data_t>> p_spans_;    //!< View-mode: spans into parent data
+  std::vector<std::span<const data_t>> p_spans_;    //!< View-mode: float64 spans into parent data
+  std::vector<std::span<const float>> p_spans_f32_; //!< View-mode: float32 spans into parent data
   std::vector<std::string_view> p_name_views_;       //!< View-mode: names from parent
   bool is_view_ = false;                             //!< True when in view mode
 };

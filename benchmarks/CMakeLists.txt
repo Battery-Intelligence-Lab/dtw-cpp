@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 # Google Benchmark microbenchmarks
 add_executable(bench_dtw_baseline bench_dtw_baseline.cpp)

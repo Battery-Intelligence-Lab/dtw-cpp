@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 # This CMake file is adapted from https://github.com/cpp-best-practices/cmake_template
 
@@ -115,11 +115,10 @@ if(DTWC_ENABLE_CUDA)
   check_language(CUDA)
   if(CMAKE_CUDA_COMPILER)
     # Set default CUDA arch list before enable_language(CUDA) — CMake reads this at language-enable time.
-    # Covers the common HPC/cloud GPU fleet: V100(70), A100(80), RTX Ampere(86), L40s/Ada(89), H100(90).
-    # P100(60) is omitted: EOL at most HPC centers, roughly doubles compile time.
+    # Covers common HPC GPU fleets: P100(60), V100(70), Turing(75), A100(80), Ampere(86), L40s/Ada(89), H100(90).
     # Override with -DCMAKE_CUDA_ARCHITECTURES=... or -DDTWC_CUDA_ARCH_LIST=... on the command line.
-    set(DTWC_CUDA_ARCH_LIST "70;80;86;89;90" CACHE STRING
-        "CUDA architectures to compile for (default covers V100 through H100)")
+    set(DTWC_CUDA_ARCH_LIST "60;70;75;80;86;89;90" CACHE STRING
+        "CUDA architectures to compile for (default covers P100 through H100)")
     if(NOT DEFINED CMAKE_CUDA_ARCHITECTURES OR CMAKE_CUDA_ARCHITECTURES STREQUAL "")
       set(CMAKE_CUDA_ARCHITECTURES "${DTWC_CUDA_ARCH_LIST}" CACHE STRING
           "CUDA architectures (set from DTWC_CUDA_ARCH_LIST)" FORCE)
@@ -129,6 +128,7 @@ if(DTWC_ENABLE_CUDA)
     find_package(CUDAToolkit REQUIRED)
 
     # Set CUDA C++ standard to match the host (C++20)
+    # Requires CMake >= 3.25 (enforced by cmake_minimum_required) and CUDA >= 12.0
     set(CMAKE_CUDA_STANDARD 20)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 

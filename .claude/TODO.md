@@ -37,15 +37,19 @@
 ## Remaining Work
 
 ### RAM-Aware Chunked Processing
-- [ ] Wire `--ram-limit` into chunked CLARA — stream Parquet row groups within budget
+- [x] Wire `--ram-limit` into chunked CLARA — stream Parquet row groups within budget
+- [x] CLARA float32 view-mode (float32 + views via `p_spans_f32_`)
+- [x] `ParquetChunkReader` for row-group streaming with RAM budget calculation
+- [x] Medoid pinning: k medoid series loaded on demand from Parquet
 - [ ] Smart row-group ordering: sort access by Parquet row group to minimize decompression
-- [ ] Medoid pinning: keep k medoid series in RAM across assignment iterations
-- [ ] CLARA float32 view-mode (float32 + views don't combine yet — needs `p_spans_f32_`)
 
 ### Streaming CLARA
-- [ ] Assignment pass: load chunks from Parquet, compute N×k distances, discard chunk
+- [x] Assignment pass: load chunks from Parquet, compute N×k distances, discard chunk
+- [x] Float32 chunked Parquet path: `read_row_groups_f32` + `assign_all_points_chunked_f32`
+- [x] OpenMP parallelism in chunked assignment inner loop (`schedule(dynamic)`, reader called outside loop)
 - [ ] Sample size scaling: `sqrt(N)` for large N (current `max(40+2k, 10k+100)` too small at 100M)
 - [ ] CLARA checkpointing: save/resume assignment state for long runs
+- [ ] Integration test for chunked CLARA with small synthetic Parquet file
 
 ### CUDA (Phase 3)
 - [ ] Architecture-aware dispatch by compute capability (target H100)
@@ -71,8 +75,8 @@
 - [ ] Arrow CPM build on Windows+MSVC: untested, should work
 
 ### Documentation
-- [ ] Update CHANGELOG.md for Phase 4 changes
-- [ ] Update README.md feature list (Parquet, Arrow IPC, float32)
+- [x] Update CHANGELOG.md for Phase 4 changes
+- [x] Update README.md feature list (Parquet, Arrow IPC, float32)
 - [ ] Add `data-conversion.md` Hugo page for dtwc-convert tool
 - [ ] Add Mermaid architecture diagram to website
 

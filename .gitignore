@@ -75,3 +75,4 @@ test_clustering*.csv
 cmake-build-*/_deps/
 .claude/settings.local.json
 /data/test_*
+.env

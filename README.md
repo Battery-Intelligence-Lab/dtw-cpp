@@ -35,8 +35,10 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **LB pruning**: LB_Kim + LB_Keogh early-abandon for 9-11x faster distance matrices
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
 - **Parallelism**: OpenMP threads, MPI distributed, CUDA GPU (optional)
+- **Runtime float32 precision**: 2x memory saving with 0.003% max DTW error
+- **RAM-aware streaming**: `--ram-limit` enables chunked CLARA for datasets exceeding memory
 - **Checkpointing**: Save/resume long-running distance matrix computations
-- **I/O**: CSV, HDF5, Parquet formats (Python)
+- **I/O**: CSV, HDF5, Parquet, Arrow IPC (zero-copy mmap) — auto-detected from extension
 
 **Performance**: Beats aeon by 12x and dtaidistance by 1.7x on pairwise distance matrix construction. Full end-to-end clustering is 42x faster than aeon/tslearn.
 <p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
@@ -171,6 +173,7 @@ export OMP_PLACES=cores
 | `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
 | `DTWC_ENABLE_MPI` | OFF | Enable MPI distributed computing |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
+| `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (via `find_package` or CPM) |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_ENABLE_SIMD` | ON* | Enable Highway SIMD with runtime ISA dispatch (*ON for standalone builds, OFF for sub-projects/Python wheels) |

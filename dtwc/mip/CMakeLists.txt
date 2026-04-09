@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 add_library(mip-solvers OBJECT)
 set_target_properties(mip-solvers PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

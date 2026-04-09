@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 add_executable(example_Kmedoids_single Kmedoids_single.cpp)
 target_link_libraries(example_Kmedoids_single PRIVATE dtwc++)

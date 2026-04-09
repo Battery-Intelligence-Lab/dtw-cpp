@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 project(MY_AWESOME_PROJECT VERSION "0.0.1"
         LANGUAGES CXX C)

@@ -502,11 +502,10 @@ int main(int argc, char *argv[])
       std::cout << "Converted to float32 (2x memory saving)\n";
   }
 
-  // Parse and store ram limit (for future chunked processing)
+  // Parse and store ram limit for chunked CLARA processing
   const size_t ram_limit = parse_ram_limit(ram_limit_str);
   if (ram_limit > 0 && verbose)
     std::cout << "RAM limit: " << (ram_limit / (1ULL << 30)) << " GB\n";
-  (void)ram_limit; // TODO: wire into chunked CLARA processing
 
   // ---- Auto method selection ----
   if (method == "auto") {
@@ -691,6 +690,19 @@ int main(int argc, char *argv[])
     clara_opts.n_samples = n_samples;
     clara_opts.max_iter = max_iter;
     clara_opts.random_seed = clara_seed;
+
+    // Wire RAM-limit chunked processing for Parquet input
+    if (ram_limit > 0) {
+      bool is_parquet_input = (input_ext == ".parquet" || input_ext == ".pq");
+      if (is_parquet_input) {
+        clara_opts.ram_limit_bytes = ram_limit;
+        clara_opts.parquet_path = input_file;
+        clara_opts.parquet_column = parquet_column;
+        clara_opts.use_float32 = (precision_str == "float32");
+      } else if (verbose) {
+        std::cerr << "Warning: --ram-limit only effective with Parquet input for streaming CLARA\n";
+      }
+    }
 
     result = dtwc::algorithms::fast_clara(prob, clara_opts);
 

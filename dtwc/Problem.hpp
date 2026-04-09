@@ -200,6 +200,12 @@ public:
 
   data_t maxDistance() const { return visit_distmat([](const auto &m) { return m.max(); }); }
   data_t distByInd(int i, int j);
+
+  /// Access the bound DTW distance function (float64).
+  const dtw_fn_t &dtw_function() const { return dtw_fn_; }
+
+  /// Access the bound DTW distance function (float32).
+  const dtw_fn_f32_t &dtw_function_f32() const { return dtw_fn_f32_; }
   bool isDistanceMatrixFilled() const
   {
     return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });

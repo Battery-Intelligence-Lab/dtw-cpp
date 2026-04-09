@@ -481,3 +481,56 @@ TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
   REQUIRE(result.labels.size() == 1000);
   REQUIRE(result.medoid_indices.size() == 70);
 }
+
+// ===========================================================================
+// Test 15: FastCLARA with float32 data uses f32 view-mode subsample.
+// ===========================================================================
+TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
+{
+  constexpr int N = 60;
+  constexpr int k = 3;
+
+  // Build float32 data with 3 distinct groups
+  std::vector<std::vector<float>> vecs;
+  std::vector<std::string> names;
+  for (int i = 0; i < N; ++i) {
+    int group = (i * 3) / N;
+    float baseline = static_cast<float>(group * 50);
+    float slope = static_cast<float>((group == 2) ? -2.0 : (group + 1) * 1.5);
+    float noise_offset = static_cast<float>(i * 0.1);
+
+    std::vector<float> ts;
+    int len = 20 + (i % 5);
+    for (int j = 0; j < len; ++j)
+      ts.push_back(baseline + slope * j + noise_offset);
+    vecs.push_back(std::move(ts));
+    names.push_back("ts_" + std::to_string(i));
+  }
+
+  Data data(std::move(vecs), std::move(names));
+  REQUIRE(data.is_f32());
+
+  Problem prob("f32_clara");
+  prob.set_data(std::move(data));
+
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = k;
+  opts.n_samples = 3;
+  opts.random_seed = 42;
+
+  auto result = algorithms::fast_clara(prob, opts);
+
+  REQUIRE(result.labels.size() == static_cast<size_t>(N));
+  REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
+  REQUIRE(result.total_cost > 0.0);
+
+  // All labels valid
+  for (int label : result.labels) {
+    REQUIRE(label >= 0);
+    REQUIRE(label < k);
+  }
+
+  // All medoids distinct and valid
+  std::set<int> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
+  REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
+}

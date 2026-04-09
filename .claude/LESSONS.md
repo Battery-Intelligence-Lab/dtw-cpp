@@ -60,6 +60,17 @@ Critical knowledge to avoid repeating mistakes.
 - **`find_package` vars don't propagate from CMake functions.** Check `TARGET X` instead of `X_FOUND`.
 - **PyArrow bundles Arrow C++ libs** but DLL loading on Windows is fragile. Use vcpkg/conda for proper install.
 
+## ARC SLURM Hardware
+
+- **htc GPU compute capabilities (corrected from docs).** The ARC docs list CUDA toolkit version, not compute capability. Actual values: P100=6.0, V100=7.0, RTX8000/TitanRTX=7.5, A100=8.0, RTXA6000=8.6, L40S=8.9, H100/GH200=9.0.
+- **Rome (htc-g019) and Broadwell (htc-g045-049) lack AVX-512.** Use `DTWC_ARCH_LEVEL=v3` for portable htc builds. All arc nodes support v4.
+- **Grace Hopper (htc-g057) is AArch64.** Needs separate ARM build. CUDA kernel not yet ported.
+
+## Arrow/Parquet
+
+- **Never `static_pointer_cast<DoubleArray>` without checking value type.** Parquet list columns can store Float (32-bit) values. Casting to DoubleArray reinterprets float bits as double — silent data corruption. Always check `values->type_id()` first.
+- **Parquet row-group metadata is free.** `num_rows`, `total_uncompressed_size` per row group available without reading data. Use for RAM budgeting.
+
 ## Research Process
 
 - **Always verify citations.** Author names, venues, volume numbers can be hallucinated.

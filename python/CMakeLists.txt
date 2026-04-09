@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.26)
 
 # Python discovery — scikit-build-core pre-configures the correct paths
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)

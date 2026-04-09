@@ -189,6 +189,58 @@ TEST_CASE("Data float32 storage", "[Data][float32]")
   }
 }
 
+TEST_CASE("Data float32 view-mode", "[Data][float32][view]")
+{
+  // Create parent float32 data that will outlive the view.
+  std::vector<std::vector<float>> parent_vecs = { { 1.0f, 2.0f, 3.0f }, { 4.0f, 5.0f }, { 6.0f, 7.0f, 8.0f, 9.0f } };
+  std::vector<std::string> parent_names = { "Alpha", "Beta", "Gamma" };
+  Data parent(std::move(parent_vecs), std::move(parent_names));
+
+  REQUIRE(parent.is_f32());
+
+  SECTION("Float32 view references parent series without copying")
+  {
+    std::vector<std::span<const float>> spans = { parent.series_f32(0), parent.series_f32(2) };
+    std::vector<std::string_view> names = { parent.name(0), parent.name(2) };
+    Data view(std::move(spans), std::move(names), 1);
+
+    REQUIRE(view.is_view());
+    REQUIRE(view.is_f32());
+    REQUIRE(view.size() == 2);
+    REQUIRE(view.series_f32(0).size() == 3);
+    REQUIRE(view.series_f32(0)[0] == 1.0f);
+    REQUIRE(view.series_f32(1).size() == 4);
+    REQUIRE(view.series_f32(1)[3] == 9.0f);
+    REQUIRE(view.name(0) == "Alpha");
+    REQUIRE(view.name(1) == "Gamma");
+    REQUIRE(view.series_flat_size(0) == 3);
+    REQUIRE(view.series_flat_size(1) == 4);
+  }
+
+  SECTION("Float32 view pointers match parent (zero-copy)")
+  {
+    std::vector<std::span<const float>> spans = { parent.series_f32(1) };
+    std::vector<std::string_view> names = { parent.name(1) };
+    Data view(std::move(spans), std::move(names), 1);
+
+    REQUIRE(view.series_f32(0).data() == parent.series_f32(1).data());
+  }
+
+  SECTION("Float32 view validates size mismatch")
+  {
+    std::vector<std::span<const float>> spans = { parent.series_f32(0), parent.series_f32(1) };
+    std::vector<std::string_view> names = { parent.name(0) }; // 1 name for 2 spans
+    REQUIRE_THROWS_AS(Data(std::move(spans), std::move(names), 1), std::runtime_error);
+  }
+
+  SECTION("Float32 view validates ndim")
+  {
+    std::vector<std::span<const float>> spans = { parent.series_f32(0) }; // size 3
+    std::vector<std::string_view> names = { parent.name(0) };
+    REQUIRE_THROWS_AS(Data(std::move(spans), std::move(names), 2), std::runtime_error);
+  }
+}
+
 TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
 {
   using namespace dtwc;

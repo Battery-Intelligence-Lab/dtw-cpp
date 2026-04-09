@@ -8,6 +8,34 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (I/O Formats)
+
+- **Apache Arrow IPC reader** (`dtwc/io/arrow_ipc_reader.hpp`): zero-copy mmap loading via `ArrowIPCDataSource`. List + LargeList dispatch with int64 offsets for >2B elements.
+- **Parquet reader** (`dtwc/io/parquet_reader.hpp`): scalar + list columns, directory loading, column auto-detection or `--column` override.
+- **Parquet row-group streaming** (`dtwc/io/parquet_chunk_reader.hpp`): `ParquetChunkReader` class for reading individual row groups on demand — enables RAM-aware chunked CLARA.
+- **`dtwc-convert`** Python CLI tool: converts Parquet/CSV/HDF5 → Arrow IPC or `.dtws` format.
+- **CMake `DTWC_ENABLE_ARROW`**: optional Apache Arrow + Parquet support via `find_package` or CPM from source (static, ~20MB CLI binary).
+- Auto-detection of input format from file extension: `.parquet`, `.arrow`, `.ipc`, `.feather`, `.dtws`, `.csv`.
+
+### Added (Float32 Precision)
+
+- **Runtime float32 precision**: `Precision` enum, `Data` float32 storage (`p_vec_f32`), `series_f32(i)` accessor, `dtw_fn_f32_t` dispatch.
+- **Float32 view-mode**: `Data` supports non-owning `span<const float>` views for CLARA subsampling with float32 data.
+- **CLI**: `--precision float32|float64` (default float32). 2x memory saving, 0.003% max DTW error.
+
+### Added (Data Access)
+
+- **`Data::series(i)` → `span<const data_t>`**: uniform accessor for heap, mmap, and view modes.
+- **CLARA zero-copy views** via `set_view_data()`: 48x subsample speedup by sharing parent memory.
+- **`StoragePolicy` enum** (Auto/Heap/Mmap) in `dtwc/core/storage.hpp`.
+- **Span overloads** for `compute_summary`, `compute_envelope`, `lb_keogh`, `lb_keogh_symmetric`.
+
+### Added (RAM-Aware Chunked Processing)
+
+- **`--ram-limit`** CLI flag: parsed with T/G/M/K suffixes (e.g., `--ram-limit 2G`).
+- **Chunked CLARA**: when `--ram-limit` is set with Parquet input, CLARA streams row groups within the RAM budget. Subsamples and medoid series are loaded on demand; no full dataset in memory.
+- **`ParquetChunkReader::read_rows()`**: sparse row access for loading subsamples by index.
+
 ### Changed (Build)
 
 - **C++20 minimum:** All CMake targets upgraded from C++17 to C++20. CI matrix drops GCC 10, Clang 12, Clang 13 (no C++20 support).
