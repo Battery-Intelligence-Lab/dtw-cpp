@@ -78,7 +78,7 @@ T_START=$(date +%s.%N)
 DTWC_EXIT=0
 "${DTWC_BIN}" \
     --input "${WORKDIR}/Coffee/Coffee_TRAIN.tsv" \
-    --k 2 \
+    -k2 \
     --skip-cols 1 \
     --dtype float64 \
     --method pam \
@@ -99,7 +99,7 @@ T_START=$(date +%s.%N)
 DTWC_EXIT=0
 "${DTWC_BIN}" \
     --input "${WORKDIR}/Coffee/Coffee_TRAIN.tsv" \
-    --k 2 \
+    -k2 \
     --skip-cols 1 \
     --dtype float64 \
     --method pam \

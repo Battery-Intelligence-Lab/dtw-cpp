@@ -21,10 +21,11 @@ BUILD_DIR="build-${PROFILE}"
 NPROC=$(nproc)
 
 # ── Common flags ────────────────────────────────────────────────────────────
+# Override defaults via environment: DTWC_BUILD_TESTING=OFF, DTWC_ENABLE_ARROW=OFF, etc.
 CMAKE_COMMON=(
-    -DCMAKE_BUILD_TYPE=Release
-    -DDTWC_BUILD_TESTING=ON
-    -DDTWC_ENABLE_ARROW=ON
+    -DCMAKE_BUILD_TYPE="${DTWC_BUILD_TYPE:-Release}"
+    -DDTWC_BUILD_TESTING="${DTWC_BUILD_TESTING:-ON}"
+    -DDTWC_ENABLE_ARROW="${DTWC_ENABLE_ARROW:-ON}"
 )
 
 case "${PROFILE}" in

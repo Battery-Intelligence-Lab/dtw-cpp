@@ -86,7 +86,7 @@ if [[ -f "${DATA_DIR}/Coffee/Coffee_TRAIN.parquet" ]]; then
     T_START=$(date +%s.%N)
     if "${DTWC_BIN}" \
         --input "${PARQUET_FILE}" \
-        --k 2 \
+        -k2 \
         --skip-cols 1 \
         --dtype float64 \
         --method pam \
@@ -117,7 +117,7 @@ if [[ -f "${DATA_DIR}/Coffee/Coffee_TRAIN.dtws" ]]; then
     T_START=$(date +%s.%N)
     if "${DTWC_BIN}" \
         --input "${DTWS_FILE}" \
-        --k 2 \
+        -k2 \
         --skip-cols 1 \
         --dtype float64 \
         --method pam \
@@ -149,7 +149,7 @@ echo "── Baseline: Coffee TSV k=2 ──────────────
 T_START=$(date +%s.%N)
 "${DTWC_BIN}" \
     --input "${WORKDIR}/Coffee/Coffee_TRAIN.tsv" \
-    --k 2 \
+    -k2 \
     --skip-cols 1 \
     --dtype float64 \
     --method pam \

@@ -7,7 +7,7 @@ General-purpose scripts for building and testing DTWC++ on SLURM-managed HPC clu
 | File | Purpose |
 |------|---------|
 | `env.example` | Configuration template -- copy to `.env` at project root |
-| `slurm_remote.py` | SSH/SFTP remote helper: upload, build, submit, download |
+| `slurm_remote.sh` | SSH/rsync remote helper: upload, build, submit, download |
 | `build-arc.sh` | Multi-profile CMake build script (6 hardware targets) |
 | `../../benchmarks/verify_results.py` | Compare clustering output against UCR ground truth (in benchmarks/) |
 | `../../benchmarks/convert_ucr.py` | Convert UCR TSV files to Parquet format (in benchmarks/) |
@@ -24,22 +24,22 @@ cp scripts/slurm/env.example .env
 # Edit .env with your cluster details
 
 # 2. Test connection
-uv run scripts/slurm/slurm_remote.py test
+bash scripts/slurm/slurm_remote.sh test
 
 # 3. Upload source + test data
-uv run scripts/slurm/slurm_remote.py upload
+bash scripts/slurm/slurm_remote.sh upload
 
 # 4. Build on cluster
-uv run scripts/slurm/slurm_remote.py build --profile htc-cpu
+bash scripts/slurm/slurm_remote.sh build --profile htc-cpu
 
 # 5. Submit tests
-uv run scripts/slurm/slurm_remote.py submit-cpu
+bash scripts/slurm/slurm_remote.sh submit-cpu
 
 # 6. Monitor
-uv run scripts/slurm/slurm_remote.py status
+bash scripts/slurm/slurm_remote.sh status
 
 # 7. Download results
-uv run scripts/slurm/slurm_remote.py download
+bash scripts/slurm/slurm_remote.sh download
 
 # 8. Verify
 uv run benchmarks/verify_results.py \

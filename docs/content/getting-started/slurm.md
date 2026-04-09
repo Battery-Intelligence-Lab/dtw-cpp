@@ -9,8 +9,7 @@ DTWC++ includes scripts for building and testing on SLURM-managed HPC clusters. 
 
 ## Prerequisites
 
-- SSH access to a SLURM cluster
-- Python 3.10+ with `paramiko` (`uv add paramiko`)
+- SSH access to a SLURM cluster (`ssh` and `rsync` — both ship with Git Bash on Windows)
 - Cluster modules: GCC >= 13, CMake >= 3.26, and optionally CUDA >= 12.0, Arrow >= 15.0
 
 ## Configuration
@@ -50,22 +49,22 @@ cp scripts/slurm/env.example .env
 
 ```bash
 # Test SSH connection
-uv run scripts/slurm/slurm_remote.py test
+bash scripts/slurm/slurm_remote.sh test
 
 # Upload source code and test datasets
-uv run scripts/slurm/slurm_remote.py upload
+bash scripts/slurm/slurm_remote.sh upload
 
 # Build on an interactive node (batch job)
-uv run scripts/slurm/slurm_remote.py build --profile htc-cpu
+bash scripts/slurm/slurm_remote.sh build --profile htc-cpu
 
 # Submit CPU test job
-uv run scripts/slurm/slurm_remote.py submit-cpu
+bash scripts/slurm/slurm_remote.sh submit-cpu
 
 # Check job status
-uv run scripts/slurm/slurm_remote.py status
+bash scripts/slurm/slurm_remote.sh status
 
 # Download results and logs
-uv run scripts/slurm/slurm_remote.py download
+bash scripts/slurm/slurm_remote.sh download
 
 # Verify results against known answers
 uv run benchmarks/verify_results.py \

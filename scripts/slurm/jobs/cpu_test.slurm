@@ -37,12 +37,22 @@ echo "OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 DTWC_BIN="${SLURM_SUBMIT_DIR}/build-htc-cpu/bin/dtwc_cl"
-DATA_DIR="${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018"
+# Data may be at sibling data/ dir (slurm_remote.sh upload layout) or inside src/
+if [[ -d "${SLURM_SUBMIT_DIR}/../data/Coffee" ]]; then
+    DATA_DIR="${SLURM_SUBMIT_DIR}/../data"
+elif [[ -d "${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018/Coffee" ]]; then
+    DATA_DIR="${SLURM_SUBMIT_DIR}/data/benchmark/UCRArchive_2018"
+else
+    echo "ERROR: Test data not found. Run 'slurm_remote.sh upload' first." >&2
+    exit 1
+fi
 
 if [[ ! -x "${DTWC_BIN}" ]]; then
     echo "ERROR: Binary not found: ${DTWC_BIN}" >&2
     exit 1
 fi
+
+echo "  Data:    ${DATA_DIR}"
 
 # ── Copy data to scratch ──────────────────────────────────────────────────
 cp -r "${DATA_DIR}/Coffee" "${WORKDIR}/Coffee"
@@ -79,7 +89,7 @@ T_START=$(date +%s.%N)
 DTWC_EXIT=0
 "${DTWC_BIN}" \
     --input "${WORKDIR}/Coffee/Coffee_TRAIN.tsv" \
-    --k 2 \
+    -k2 \
     --skip-cols 1 \
     --dtype float64 \
     --method pam \
@@ -99,7 +109,7 @@ T_START=$(date +%s.%N)
 DTWC_EXIT=0
 "${DTWC_BIN}" \
     --input "${WORKDIR}/Beef/Beef_TRAIN.tsv" \
-    --k 5 \
+    -k5 \
     --skip-cols 1 \
     --dtype float64 \
     --method pam \
