@@ -12,6 +12,8 @@
 #   bash scripts/slurm/slurm_remote.sh submit-gpu
 #   bash scripts/slurm/slurm_remote.sh submit-checkpoint
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
+#   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
+#   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
@@ -225,8 +227,9 @@ _submit_job() {
     # Upload the latest job script
     scp "${PROJECT_ROOT}/${SLURM_FILE}" "${SSH_TARGET}:${REMOTE}/src/${SLURM_FILE}"
 
+    local EXTRA_SBATCH="${4:-}"
     local JOB_ID
-    JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${SLURM_FILE}")
+    JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${EXTRA_SBATCH} ${SLURM_FILE}")
     echo "  Job ID: ${JOB_ID}"
     echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
 }
@@ -245,6 +248,20 @@ cmd_submit_checkpoint() {
 
 cmd_submit_parquet() {
     _submit_job "scripts/slurm/jobs/parquet_test.slurm" "Parquet test" "build-*/bin/dtwc_cl"
+}
+
+cmd_submit_benchmark_cpu() {
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_cpu.slurm" "UCR benchmark (CPU)" "build-*/bin/dtwc_cl"
+}
+
+cmd_submit_benchmark_gpu() {
+    local gpu_type="${1:-}"
+    local extra_args=""
+    if [[ -n "${gpu_type}" ]]; then
+        extra_args="--gres=gpu:${gpu_type}:1"
+        echo "  Requesting GPU type: ${gpu_type}"
+    fi
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${extra_args}"
 }
 
 cmd_status() {
@@ -313,6 +330,8 @@ case "${CMD}" in
     submit-gpu)        cmd_submit_gpu ;;
     submit-checkpoint) cmd_submit_checkpoint ;;
     submit-parquet)    cmd_submit_parquet ;;
+    submit-benchmark-cpu) cmd_submit_benchmark_cpu ;;
+    submit-benchmark-gpu) cmd_submit_benchmark_gpu "$@" ;;
     status)            cmd_status ;;
     download)          cmd_download ;;
     ssh)               cmd_ssh "$@" ;;
@@ -328,6 +347,8 @@ case "${CMD}" in
         echo "  submit-gpu        Submit GPU test job"
         echo "  submit-checkpoint Submit checkpoint/resume test"
         echo "  submit-parquet    Submit Parquet I/O test"
+        echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
+        echo "  submit-benchmark-gpu [type]  Submit full UCR benchmark (GPU, e.g. a100, l40s)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
         echo "  ssh \"command\"     Run arbitrary command on cluster"

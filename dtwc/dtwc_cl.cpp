@@ -791,8 +791,8 @@ int main(int argc, char *argv[])
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
     result.total_cost = prob.findTotalCost();
-    result.converged = true;
-    result.iterations = max_iter; // Lloyd does not report actual iterations
+    result.converged = (prob.last_iterations < max_iter);
+    result.iterations = prob.last_iterations;
 
     if (verbose)
       std::cout << "kMedoids Lloyd finished, cost=" << result.total_cost

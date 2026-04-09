@@ -170,6 +170,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
     // local best-swap trackers. Only the final reduction uses omp critical.
     // The outer loop over candidates x is embarrassingly parallel:
     // each candidate accumulates into its own delta_m buffer.
+    const int swap_chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
     {
       std::vector<double> local_delta_m(k);
@@ -177,7 +178,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
       int local_best_m_idx = -1;
       int local_best_x_new = -1;
 
-      #pragma omp for schedule(dynamic, 16)
+      #pragma omp for schedule(dynamic, swap_chunk)
       for (int x = 0; x < N; ++x) {
         if (is_medoid[x]) continue;
 

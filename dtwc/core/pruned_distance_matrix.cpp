@@ -18,6 +18,7 @@
 #include "../warping.hpp"
 #include "../warping_adtw.hpp"
 #include "../settings.hpp"
+#include "../parallelisation.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -181,6 +182,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   size_t global_full_dtw = 0;
 
   #ifdef _OPENMP
+  const int pair_chunk = omp_chunk_size(static_cast<int>(num_pairs));
   #pragma omp parallel
   #endif
   {
@@ -190,7 +192,7 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
     size_t local_full_dtw = 0;
 
     #ifdef _OPENMP
-    #pragma omp for schedule(dynamic, 16)
+    #pragma omp for schedule(dynamic, pair_chunk)
     #endif
     for (int64_t k = 0; k < num_pairs; ++k) {
       // Decode linear pair index k -> (i, j) in the upper triangle.
@@ -338,7 +340,8 @@ PruningStats compute_distance_matrix_pruned(
   // threads (relaxed consistency) but this only reduces pruning effectiveness,
   // not correctness -- every pair still gets the exact distance.
   #ifdef _OPENMP
-  #pragma omp parallel for schedule(dynamic, 1)
+  const int row_chunk = omp_chunk_size(static_cast<int>(N), 8);
+  #pragma omp parallel for schedule(dynamic, row_chunk)
   #endif
   for (int ii = 0; ii < static_cast<int>(N); ++ii) {
     const size_t i = static_cast<size_t>(ii);

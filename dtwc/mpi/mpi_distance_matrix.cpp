@@ -15,6 +15,7 @@
  */
 
 #include "mpi_distance_matrix.hpp"
+#include "../parallelisation.hpp"
 
 #ifdef DTWC_HAS_MPI
 
@@ -129,7 +130,8 @@ MPIDistMatResult compute_distance_matrix_mpi(
   // local_ij[idx] at its own index — no two threads access the same element.
   // Use OpenMP within each rank for thread-level parallelism
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic, 16)
+  const int mpi_chunk = dtwc::omp_chunk_size(static_cast<int>(local_count));
+#pragma omp parallel for schedule(dynamic, mpi_chunk)
 #endif
   for (int idx = 0; idx < static_cast<int>(local_count); ++idx) {
     const size_t k = start_k + static_cast<size_t>(idx);

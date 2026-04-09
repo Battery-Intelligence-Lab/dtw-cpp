@@ -113,7 +113,7 @@ private:
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
 
   // Private functions:
-  std::pair<int, double> cluster_by_kMedoidsLloyd_single(int rep);
+  std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(int rep);
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
@@ -123,6 +123,7 @@ public:
   Method method{ Method::Kmedoids };         /*!< Clustering method. */
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
+  int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
   int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */

@@ -437,7 +437,8 @@ void Problem::fillDistanceMatrix_BruteForce()
   // Lock-free by design: each thread owns a disjoint set of rows.
   // The row-based partitioning ensures no two threads write the same (i,j) pair.
 #ifdef _OPENMP
-#pragma omp parallel for schedule(dynamic, 1)
+  const int fill_chunk = omp_chunk_size(static_cast<int>(N), 8);
+#pragma omp parallel for schedule(dynamic, fill_chunk)
 #endif
   for (int ii = 0; ii < static_cast<int>(N); ++ii) {
     const size_t i = static_cast<size_t>(ii);
@@ -722,7 +723,8 @@ void Problem::cluster_by_kMedoidsLloyd()
               << Nc << " medoids are initialised.\n"
               << "Start clustering:\n";
 
-    auto [status, total_cost] = cluster_by_kMedoidsLloyd_single(i_rand);
+    auto [status, total_cost, iters] = cluster_by_kMedoidsLloyd_single(i_rand);
+    last_iterations = iters;
 
     if (status == 0)
       std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
@@ -746,7 +748,7 @@ void Problem::cluster_by_kMedoidsLloyd()
  * @param rep The current repetition number.
  * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
  */
-std::pair<int, double> Problem::cluster_by_kMedoidsLloyd_single(int rep)
+std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
 {
   if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
 
@@ -755,7 +757,9 @@ std::pair<int, double> Problem::cluster_by_kMedoidsLloyd_single(int rep)
   int status = -1;
   std::vector<std::vector<int>> centroids_all;
 
+  int actual_iters = 0;
   for (int i = 0; i < maxIter; i++) {
+    actual_iters = i + 1;
 
     std::cout << "Medoids: ";
     for (auto medoid : centroids_ind)
@@ -783,7 +787,7 @@ std::pair<int, double> Problem::cluster_by_kMedoidsLloyd_single(int rep)
   const double total_cost = findTotalCost();
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
   writeMedoids(centroids_all, rep, total_cost);
-  return std::pair(status, total_cost);
+  return {status, total_cost, actual_iters};
 }
 
 /**

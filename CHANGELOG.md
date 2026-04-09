@@ -31,6 +31,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **`verify_results.py`**: ARI-based ground truth comparison against UCR class labels.
 - **`convert_ucr.py`**: UCR TSV to Parquet converter for testing Parquet I/O path.
 - **`env.example`**: Configuration template with Oxford ARC example values.
+- **Full UCR benchmark scripts** (`scripts/slurm/jobs/ucr_benchmark_cpu.slurm`, `ucr_benchmark_gpu.slurm`): run all 128 UCR datasets with Lloyd k-medoids, save distance matrices, per-dataset timing JSON, and aggregate summary.
+- **`aggregate_results.py`**: merges per-dataset timing JSONs into a single benchmark results JSON for the docs website. Supports multiple runs (CPU, GPU, different architectures).
+- **`slurm_remote.sh` benchmark commands**: `submit-benchmark-cpu`, `submit-benchmark-gpu [gpu_type]` for full UCR benchmarking on ARC.
 - **SLURM documentation**: `docs/content/getting-started/slurm.md` with partition tables, GPU gres syntax, and troubleshooting.
 
 ### Changed (CLI)

@@ -46,6 +46,20 @@ inline int get_max_threads()
 #endif
 }
 
+/// @brief Computes an optimal OpenMP dynamic chunk size at runtime.
+/// @param n_iterations Total loop iterations.
+/// @param chunks_per_thread Target number of chunks per thread for load balancing (default: 4).
+/// @return Chunk size >= 1, scaled to the machine's thread count.
+///
+/// Heuristic: each thread gets ~chunks_per_thread work units. This balances
+/// dispatch overhead (fewer, larger chunks) against load imbalance (more, smaller chunks).
+/// For 168 threads with N=8926: chunk=13. For 16 threads with N=28: chunk=1.
+inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
+{
+  const int nthreads = get_max_threads();
+  return std::max(1, n_iterations / (nthreads * chunks_per_thread));
+}
+
 /**
  * @brief Runs a given task in parallel using OpenMP if available.
  *
@@ -69,7 +83,8 @@ void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel 
 
 #ifdef _OPENMP
   if (isParallel) {
-#pragma omp parallel for schedule(dynamic, 16) // Chunked dynamic scheduling — reduces dispatch overhead
+    const int chunk = omp_chunk_size(end);
+#pragma omp parallel for schedule(dynamic, chunk)
     for (int i = 0; i < end; i++)
       task_indv(static_cast<size_t>(i));
   } else {

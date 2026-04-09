@@ -76,3 +76,5 @@ cmake-build-*/_deps/
 .claude/settings.local.json
 /data/test_*
 .env
+*.aux
+*.log
