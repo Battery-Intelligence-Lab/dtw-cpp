@@ -66,6 +66,14 @@ verbose-solver: false
 # Hierarchical linkage (only used when method = "hierarchical").
 linkage: average
 
+# Data type for in-memory storage: float32 (default) or float64.
+dtype: float64
+
 # Compute device.
 device: cpu
-precision: auto
+
+# GPU kernel precision: auto (default), fp32, fp64.
+gpu-precision: auto
+
+# Resume from checkpoint (requires --checkpoint).
+# resume: true

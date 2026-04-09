@@ -44,9 +44,10 @@ skip-cols = 0
 # Leave unset (or empty) to use all numeric columns.
 column = "Voltage"
 
-# Data precision for in-memory storage.
-# "float64" (default, full precision) or "float32" (2x memory saving, ~1e-7 rel error).
-precision = "float64"
+# Data type for in-memory storage.
+# "float64" (full precision) or "float32" (default, 2x memory saving, ~1e-7 rel error).
+# Aliases: f32, fp32, float -> float32; f64, fp64, double -> float64.
+dtype = "float64"
 
 # Verbose output.
 verbose = true
@@ -103,9 +104,10 @@ verbose-solver = false
 # Only works with variant = "standard". Requires CUDA build.
 device = "cpu"
 
-# GPU precision: "auto" (FP32 on consumer GPUs, FP64 on HPC GPUs),
-# "fp32" (fastest, ~1e-5 relative error), "fp64" (bit-identical to CPU).
-precision = "auto"
+# GPU kernel precision: "auto" (FP32 on consumer GPUs, FP64 on HPC GPUs),
+# "fp32"/"f32"/"float32" (fastest, ~1e-5 relative error),
+# "fp64"/"f64"/"float64"/"double" (bit-identical to CPU).
+gpu-precision = "auto"
 
 # --- Precomputed distance matrix ---
 # Uncomment to load a precomputed distance matrix:

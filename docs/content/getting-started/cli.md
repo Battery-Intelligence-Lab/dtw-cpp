@@ -42,7 +42,7 @@ dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
 | `-k, --clusters <int>` | Number of clusters | 3 |
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | Parquet column to use as time series (required for Parquet single-file mode) | — |
-| `--precision <string>` | Floating-point precision: `float32` or `float64`. `float32` halves memory use with ~0.003% DTW error | `float32` |
+| `--dtype <string>` | Data type for in-memory storage. Aliases: `--data-precision`, `--data-type`, `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float32` |
 | `--ram-limit <size>` | Memory budget, e.g. `2G`, `500M`, `128G` (parsed; used for chunked processing) | — |
 
 ### Clustering Method
@@ -115,13 +115,15 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias: `soft-
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
+| `--resume` | Resume from checkpoint (distance matrix cache + clustering state) | off |
+| `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 ### GPU Options
 
 | Flag                       | Description                                  | Default |
 |----------------------------|----------------------------------------------|---------|
 | `-d, --device <string>`    | Compute device: `cpu`, `cuda`, `cuda:N`      | `cpu`   |
-| `--gpu-precision <string>` | GPU kernel precision: `auto`, `fp32`, `fp64` | `auto`  |
+| `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
 
 ### Configuration Files
 
@@ -184,7 +186,7 @@ dtwc_cl -i data.csv -k 3 --method mip --solver gurobi --mip-gap 1e-6 --time-limi
 ### GPU-accelerated distance matrix
 
 ```bash
-dtwc_cl -i data.csv -k 5 --device cuda --precision fp32 -v
+dtwc_cl -i data.csv -k 5 --device cuda --gpu-precision fp32 -v
 ```
 
 ### Using a TOML configuration file
@@ -200,7 +202,7 @@ dtwc_cl --config config.toml
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 
 # If interrupted, resume from the same checkpoint
-dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
+dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints --resume
 ```
 
 All flags are case-insensitive for enum values (e.g., `--method PAM` works the same as `--method pam`).

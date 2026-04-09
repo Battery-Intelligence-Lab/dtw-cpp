@@ -123,7 +123,7 @@ device = "cpu"
 
 # GPU precision: "auto" (FP32 on consumer GPUs, FP64 on HPC GPUs),
 # "fp32" (fastest, ~1e-5 relative error), "fp64" (bit-identical to CPU).
-precision = "auto"
+gpu-precision = "auto"
 
 # --- Precomputed distance matrix ---
 # Uncomment to load a precomputed distance matrix:
@@ -219,7 +219,7 @@ linkage: average
 
 # Compute device.
 device: cpu
-precision: auto
+gpu-precision: auto
 ```
 
 ## CLI flag reference
@@ -288,6 +288,6 @@ The following table maps CLI flags to configuration file keys. All keys use keba
 | CLI flag | Config key | Type | Default | Description |
 |----------|-----------|------|---------|-------------|
 | `-d`, `--device` | `device` | string | `"cpu"` | Compute device: `cpu`, `cuda`, `cuda:N` |
-| `--precision` | `precision` | string | `"auto"` | GPU precision: `auto`, `fp32`, `fp64` |
+| `--gpu-precision` | `gpu-precision` | string | `"auto"` | GPU precision: `auto`, `fp32`, `fp64` |
 | `--dist-matrix` | `dist-matrix` | string | | Path to precomputed distance matrix CSV |
 | `--checkpoint` | `checkpoint` | string | | Checkpoint directory for save/resume |
