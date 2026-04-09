@@ -68,7 +68,7 @@ uv run scripts/slurm/slurm_remote.py status
 uv run scripts/slurm/slurm_remote.py download
 
 # Verify results against known answers
-uv run scripts/slurm/verify_results.py \
+uv run benchmarks/verify_results.py \
     --true data/benchmark/UCRArchive_2018/Coffee/Coffee_TRAIN.tsv \
     --predicted results/coffee_k2/coffee_labels.csv -k 2
 ```
@@ -100,7 +100,7 @@ The scripts upload small UCR datasets for quick verification:
 Convert UCR TSV files to Parquet for testing the Parquet I/O path:
 
 ```bash
-uv run scripts/slurm/convert_ucr.py data/benchmark/UCRArchive_2018/Coffee
+uv run benchmarks/convert_ucr.py data/benchmark/UCRArchive_2018/Coffee
 ```
 
 ## Oxford ARC Reference

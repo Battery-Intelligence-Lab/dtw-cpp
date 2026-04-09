@@ -9,8 +9,8 @@ General-purpose scripts for building and testing DTWC++ on SLURM-managed HPC clu
 | `env.example` | Configuration template -- copy to `.env` at project root |
 | `slurm_remote.py` | SSH/SFTP remote helper: upload, build, submit, download |
 | `build-arc.sh` | Multi-profile CMake build script (6 hardware targets) |
-| `verify_results.py` | Compare clustering output against UCR ground truth (ARI) |
-| `convert_ucr.py` | Convert UCR TSV files to Parquet format |
+| `../../benchmarks/verify_results.py` | Compare clustering output against UCR ground truth (in benchmarks/) |
+| `../../benchmarks/convert_ucr.py` | Convert UCR TSV files to Parquet format (in benchmarks/) |
 | `jobs/cpu_test.slurm` | CPU-only test: Coffee k=2, Beef k=5 |
 | `jobs/gpu_test.slurm` | GPU test: Coffee with fp32 and fp64 precision |
 | `jobs/checkpoint_test.slurm` | Checkpoint/resume verification |
@@ -42,7 +42,7 @@ uv run scripts/slurm/slurm_remote.py status
 uv run scripts/slurm/slurm_remote.py download
 
 # 8. Verify
-uv run scripts/slurm/verify_results.py \
+uv run benchmarks/verify_results.py \
     --true data/benchmark/UCRArchive_2018/Coffee/Coffee_TRAIN.tsv \
     --predicted results/cpu_test_JOBID/coffee_k2/coffee_labels.csv -k 2
 ```
