@@ -32,8 +32,13 @@ function(dtwc_setup_dependencies)
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
-    "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF"
+    "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON"
     )
+    # HiGHS v1.13.1 has debug assertions (ub_consistent) that fire on valid warm-start
+    # MIP solves due to numerical noise. Suppress by defining NDEBUG on HiGHS targets.
+    if(TARGET highs)
+      target_compile_definitions(highs PRIVATE NDEBUG)
+    endif()
   endif()
 
   if (NOT TARGET CLI11::CLI11)

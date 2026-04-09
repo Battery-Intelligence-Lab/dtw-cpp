@@ -11,13 +11,14 @@
 5. **Adversarial review** — 2 agents (Opus code-reviewer + Codex). Fixed: float Parquet `static_pointer_cast<DoubleArray>` crash (High), int overflow at >2B rows (Medium), duplicate index double-move (Medium), bounds validation, `row_groups_per_batch` edge case, N-element copy per subsample replaced with `std::sample`.
 6. **CUDA CMake** — `cmake_minimum_required(VERSION 3.26)`, CUDA C++20 now works. CI updated to `pip install cmake>=3.26`.
 7. **ARC SLURM support** — default CUDA archs expanded to `60;70;75;80;86;89;90` (P100→H100). Build script `scripts/slurm/build-arc.sh` with 6 profiles (arc, htc-cpu, htc-gpu, htc-v4, h100, grace).
-8. **Docs** — CHANGELOG.md (Phase 4 features), README.md (feature list + `DTWC_ENABLE_ARROW`), LESSONS.md (Arrow/Parquet + ARC hardware notes).
-9. **Cleanup** — deleted 6 older handoff files, kept 2.
+8. **HiGHS assertion fix** — HiGHS v1.13.1 debug `assert(ub_consistent)` fires on warm-start MIP. Fixed by adding `NDEBUG` compile definition to HiGHS target. 67/67 tests now pass.
+9. **Docs** — CHANGELOG.md (Phase 4 features), README.md (feature list + `DTWC_ENABLE_ARROW`), LESSONS.md (Arrow/Parquet + ARC hardware notes).
+10. **Cleanup** — deleted 8 older handoff files.
 
 ## Current State
 
 - **Branch:** Claude
-- **Tests:** 66/67 pass, 1 pre-existing HiGHS assertion failure (`unit_test_benders`), 2 CUDA skipped
+- **Tests:** 67/67 pass, 2 CUDA skipped
 - **Build:** Clang 21, C++20, Ninja, Windows 11
 
 ## Files Changed
@@ -51,6 +52,6 @@
 6. CLARA checkpointing: save/resume assignment state for long runs
 
 ### Known Issues
-- `unit_test_benders`: HiGHS assertion failure (`ub_consistent`) — pre-existing, not our bug
+
 - Arrow CPM build on Windows+Clang: blocked by Arrow upstream ExternalProject flag quoting
 - Grace Hopper (htc-g057): AArch64 CPU build untested, CUDA kernel not ported to ARM
