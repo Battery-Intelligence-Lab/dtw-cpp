@@ -150,7 +150,7 @@ public:
 
     if (!result)
       throw std::runtime_error(std::string("MmapDistanceMatrix: failed to create file: ") +
-                               result.error().message().c_str());
+                               result.error().message());
 
     mfh_ = std::move(result.value());
     mfh_.truncate(total).value();
@@ -183,7 +183,7 @@ public:
 
     if (!result)
       throw std::runtime_error(std::string("MmapDistanceMatrix::open: failed to open file: ") +
-                               result.error().message().c_str());
+                               result.error().message());
 
     auto mfh = std::move(result.value());
     mfh.update_map().value();
