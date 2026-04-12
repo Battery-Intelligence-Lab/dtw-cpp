@@ -828,11 +828,15 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, bool verbose) {
+           int band, bool use_squared_l2, bool verbose,
+           bool enable_lb_keogh, double lb_threshold, int lb_envelope_band) {
           dtwc::metal::MetalDistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.verbose = verbose;
+          opts.enable_lb_keogh = enable_lb_keogh;
+          opts.lb_threshold = lb_threshold;
+          opts.lb_envelope_band = lb_envelope_band;
           nb::gil_scoped_release release;
           auto result = dtwc::metal::compute_distance_matrix_metal(series, opts);
           size_t n = result.n;
@@ -844,8 +848,12 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
+        "enable_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
+        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances.");
+        "Returns NxN numpy array of DTW distances. Pairs whose LB_Keogh lower\n"
+        "bound exceeds `lb_threshold` are pruned (result entry +inf) when\n"
+        "`enable_lb_keogh=True` on a wavefront dispatch path.");
 
   m.attr("METAL_AVAILABLE") = true;
 #else
@@ -854,11 +862,14 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
         "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, bool,
+           bool, double, int) -> nb::object {
           throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
+        "enable_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
+        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
   m.attr("METAL_AVAILABLE") = false;
 #endif

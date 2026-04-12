@@ -35,6 +35,21 @@ struct MetalDistMatOptions {
   bool use_squared_l2 = false; ///< Squared L2 metric instead of L1.
   bool verbose = false;        ///< Print timing info.
   MetalPrecision precision = MetalPrecision::Auto;
+
+  /// Opt-in LB_Keogh pruning path. When true, each pair's LB_Keogh lower
+  /// bound is computed on-GPU; pairs whose LB exceeds `lb_threshold` are
+  /// marked `+∞` in the result matrix and skipped by the DTW kernel.
+  /// Supported only on wavefront / wavefront_global paths (i.e. band == -1
+  /// with max_L > 256). On other paths the flag is silently ignored.
+  bool enable_lb_keogh = false;
+
+  /// Pruning threshold applied to max(LB(i→j), LB(j→i)). Pairs with lower
+  /// bound > threshold are pruned. 0 means "prune everything that isn't an
+  /// exact envelope match"; +∞ means "compute all pairs anyway".
+  double lb_threshold = 0.0;
+
+  /// Envelope window for LB_Keogh. Negative means "use L/10 (min 1)".
+  int lb_envelope_band = -1;
 };
 
 struct MetalDistMatResult {
@@ -42,7 +57,8 @@ struct MetalDistMatResult {
   size_t n = 0;                   ///< Number of series.
   double gpu_time_sec = 0;        ///< GPU kernel execution time.
   size_t pairs_computed = 0;      ///< Number of DTW pairs computed.
-  std::string kernel_used;        ///< "wavefront" / "wavefront_global" / "banded_row".
+  size_t pairs_pruned   = 0;      ///< LB_Keogh-pruned pairs (0 when disabled).
+  std::string kernel_used;        ///< "wavefront" / "wavefront_global" / "banded_row" / "regtile_w4" / "regtile_w8".
 };
 
 /// Check if Metal is available (MTLCreateSystemDefaultDevice succeeds).

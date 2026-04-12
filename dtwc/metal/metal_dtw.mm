@@ -69,6 +69,10 @@ static inline void decode_pair(int k, int N, thread int &i, thread int &j)
 //   4: max_L       — int32 (row pitch of all_series)
 //   5: band        — int32 (Sakoe-Chiba band width; -1 = unbounded)
 //   6: use_sq_l2   — int32 (0 = |a-b|, 1 = (a-b)^2)
+//   8: pair_offset — int32 (base for chunked dispatch)
+//  10: pair_indices — [[optional]] int32 buffer mapping work_idx -> real pair id
+//                    (nonempty only when has_pair_indices != 0, used for LB_Keogh pruning)
+//  11: has_pair_indices — int32 flag (0 = ignore buffer(10))
 // Threadgroup memory:
 //   0: smem        — 3 * max_L float (3 rotating anti-diagonal buffers)
 kernel void dtw_wavefront(
@@ -80,14 +84,20 @@ kernel void dtw_wavefront(
     constant int&         band       [[buffer(5)]],
     constant int&         use_sq_l2  [[buffer(6)]],
     constant int&         pair_offset [[buffer(8)]],
+    device const int*     pair_indices [[buffer(10)]],
+    constant int&         has_pair_indices [[buffer(11)]],
     threadgroup float*    smem       [[threadgroup(0)]],
     uint tid   [[thread_position_in_threadgroup]],
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
   const int num_pairs = N_series * (N_series - 1) / 2;
-  const int real_pid = (int)pid + pair_offset;
-  if (real_pid >= num_pairs) return;
+  const int work_idx  = (int)pid + pair_offset;
+  if (work_idx >= num_pairs) return;
+  // Pruning path: resolve the work index through the compacted pair list so
+  // we only touch active pairs (pruned pairs have their +∞ already stamped
+  // by compact_active_pairs).
+  const int real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
   int a_idx, b_idx;
   decode_pair(real_pid, N_series, a_idx, b_idx);
@@ -193,13 +203,16 @@ kernel void dtw_wavefront_global(
     constant int&         use_sq_l2  [[buffer(6)]],
     device float*         scratch    [[buffer(7)]],
     constant int&         pair_offset [[buffer(8)]],
+    device const int*     pair_indices [[buffer(10)]],
+    constant int&         has_pair_indices [[buffer(11)]],
     uint tid   [[thread_position_in_threadgroup]],
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
   const int num_pairs = N_series * (N_series - 1) / 2;
-  const int real_pid = (int)pid + pair_offset;
-  if (real_pid >= num_pairs) return;
+  const int work_idx  = (int)pid + pair_offset;
+  if (work_idx >= num_pairs) return;
+  const int real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
   int a_idx, b_idx;
   decode_pair(real_pid, N_series, a_idx, b_idx);
@@ -813,6 +826,132 @@ kernel void dtw_regtile_w8(
                              use_sq_l2, pair_offset, smem,
                              simd_lane, simd_id, tg_idx);
 }
+
+// ---------------------------------------------------------------------------
+// LB_Keogh pipeline — three cooperating kernels:
+//   1. compute_envelopes      — sliding min/max per series
+//   2. compute_lb_keogh       — symmetric LB per pair
+//   3. compact_active_pairs   — threshold filter, stamp INF for pruned pairs
+// Mirrors the CUDA pipeline at dtwc/cuda/cuda_dtw.cu:785-910.
+// ---------------------------------------------------------------------------
+
+// One threadgroup per series. Each thread covers ceil(max_L / ntids) positions.
+// Brute-force O(band) scan per position; simple and cache-friendly for the
+// small bands used in practice.
+kernel void compute_envelopes(
+    device const float*   all_series      [[buffer(0)]],
+    device const int*     lengths         [[buffer(1)]],
+    device float*         upper_envelopes [[buffer(2)]],
+    device float*         lower_envelopes [[buffer(3)]],
+    constant int&         max_L           [[buffer(4)]],
+    constant int&         N_series        [[buffer(5)]],
+    constant int&         env_band        [[buffer(6)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint pid   [[threadgroup_position_in_grid]],
+    uint ntids [[threads_per_threadgroup]])
+{
+  const int series_idx = (int)pid;
+  if (series_idx >= N_series) return;
+
+  const int L = lengths[series_idx];
+  const device float *series = all_series + series_idx * max_L;
+  device float *upper = upper_envelopes + series_idx * max_L;
+  device float *lower = lower_envelopes + series_idx * max_L;
+
+  const int w = (env_band >= 0) ? env_band : 0;
+
+  for (int k = (int)tid; k < L; k += (int)ntids) {
+    const int lo = (k >= w) ? k - w : 0;
+    const int hi = (k + w + 1 < L) ? k + w + 1 : L;
+
+    float max_val = series[lo];
+    float min_val = series[lo];
+    for (int j = lo + 1; j < hi; ++j) {
+      const float v = series[j];
+      max_val = max(max_val, v);
+      min_val = min(min_val, v);
+    }
+    upper[k] = max_val;
+    lower[k] = min_val;
+  }
+
+  // Zero-fill padding past the valid series range.
+  for (int k = L + (int)tid; k < max_L; k += (int)ntids) {
+    upper[k] = 0.0f;
+    lower[k] = 0.0f;
+  }
+}
+
+// One thread per upper-triangle pair. Writes symmetric LB =
+// max(LB_Keogh(query=j, env=i), LB_Keogh(query=i, env=j)) to lb_values[pid].
+kernel void compute_lb_keogh(
+    device const float*   all_series      [[buffer(0)]],
+    device const int*     lengths         [[buffer(1)]],
+    device const float*   upper_envelopes [[buffer(2)]],
+    device const float*   lower_envelopes [[buffer(3)]],
+    device float*         lb_values       [[buffer(4)]],
+    constant int&         N_series        [[buffer(5)]],
+    constant int&         max_L           [[buffer(6)]],
+    constant int&         num_pairs       [[buffer(7)]],
+    uint gid [[thread_position_in_grid]])
+{
+  const int pid = (int)gid;
+  if (pid >= num_pairs) return;
+
+  int si, sj;
+  decode_pair(pid, N_series, si, sj);
+
+  const int Li = lengths[si];
+  const int Lj = lengths[sj];
+  const int n  = min(Li, Lj);
+
+  const device float *series_i = all_series + si * max_L;
+  const device float *series_j = all_series + sj * max_L;
+  const device float *upper_i  = upper_envelopes + si * max_L;
+  const device float *lower_i  = lower_envelopes + si * max_L;
+  const device float *upper_j  = upper_envelopes + sj * max_L;
+  const device float *lower_j  = lower_envelopes + sj * max_L;
+
+  float lb1 = 0.0f;
+  float lb2 = 0.0f;
+  for (int k = 0; k < n; ++k) {
+    const float vj = series_j[k];
+    const float vi = series_i[k];
+    lb1 += max(0.0f, max(vj - upper_i[k], lower_i[k] - vj));
+    lb2 += max(0.0f, max(vi - upper_j[k], lower_j[k] - vi));
+  }
+  lb_values[pid] = max(lb1, lb2);
+}
+
+// One thread per pair. Partitions pairs into active (lb <= threshold, appended
+// to active_pairs via atomic counter) and pruned (+∞ stamped into
+// result_matrix at both (si, sj) and (sj, si)).
+kernel void compact_active_pairs(
+    device const float*   lb_values     [[buffer(0)]],
+    device int*           active_pairs  [[buffer(1)]],
+    device atomic_int*    active_count  [[buffer(2)]],
+    device float*         result_matrix [[buffer(3)]],
+    constant int&         N_series      [[buffer(4)]],
+    constant int&         num_pairs     [[buffer(5)]],
+    constant float&       threshold     [[buffer(6)]],
+    uint gid [[thread_position_in_grid]])
+{
+  const int pid = (int)gid;
+  if (pid >= num_pairs) return;
+
+  if (lb_values[pid] <= threshold) {
+    const int slot =
+        atomic_fetch_add_explicit(active_count, 1, memory_order_relaxed);
+    active_pairs[slot] = pid;
+    return;
+  }
+
+  const float INF = 3.402823466e+38f;
+  int si, sj;
+  decode_pair(pid, N_series, si, sj);
+  result_matrix[si * N_series + sj] = INF;
+  result_matrix[sj * N_series + si] = INF;
+}
 )METAL";
 
 // ---------------------------------------------------------------------------
@@ -828,6 +967,9 @@ struct MetalContext {
   id<MTLComputePipelineState> pipeline_regtile_w8 = nil; // register-tile, max_L <= 256
   id<MTLComputePipelineState> pipeline_kvn = nil;        // K-vs-N threadgroup-memory
   id<MTLComputePipelineState> pipeline_kvn_global = nil; // K-vs-N device-memory
+  id<MTLComputePipelineState> pipeline_envelopes = nil;  // LB_Keogh envelope builder
+  id<MTLComputePipelineState> pipeline_lb_keogh = nil;   // LB_Keogh pairwise
+  id<MTLComputePipelineState> pipeline_compact = nil;    // Threshold + compaction
   bool initialized = false;
   bool init_failed = false;
   std::string init_error;
@@ -951,6 +1093,18 @@ static MetalContext &context()
           return;
         }
         if (!make_pipeline(@"dtw_regtile_w8", ctx.pipeline_regtile_w8)) {
+          [lib release];
+          return;
+        }
+        if (!make_pipeline(@"compute_envelopes", ctx.pipeline_envelopes)) {
+          [lib release];
+          return;
+        }
+        if (!make_pipeline(@"compute_lb_keogh", ctx.pipeline_lb_keogh)) {
+          [lib release];
+          return;
+        }
+        if (!make_pipeline(@"compact_active_pairs", ctx.pipeline_compact)) {
           [lib release];
           return;
         }
@@ -1235,10 +1389,195 @@ MetalDistMatResult compute_distance_matrix_metal(
       }
     }
 
+    // -----------------------------------------------------------------------
+    // Optional LB_Keogh pre-pass: compute envelopes, pairwise lower bounds,
+    // and compact pairs whose LB <= threshold. Pruned pairs get +∞ stamped
+    // into the result matrix here; the DTW dispatch below then runs only on
+    // the survivor list (passed via pair_indices[work_idx]).
+    //
+    // Only wavefront / wavefront_global kernels support pair_indices in this
+    // pass. If user requested LB but selected banded_row/regtile, we silently
+    // disable LB (with a verbose-mode warning).
+    // -----------------------------------------------------------------------
+    const bool pipeline_uses_pair_indices = !use_banded_row && !use_regtile;
+    const bool lb_requested = opts.enable_lb_keogh;
+    bool lb_active = lb_requested && pipeline_uses_pair_indices && num_pairs > 0;
+    if (lb_requested && !lb_active && opts.verbose) {
+      std::cerr << "[Metal] LB_Keogh requested but current kernel path does "
+                   "not support pruning (requires wavefront / wavefront_global); "
+                   "disabling pruning.\n";
+    }
+
+    id<MTLBuffer> buf_pair_indices = nil;
+    int has_pair_indices = 0;
+    size_t effective_pairs = num_pairs;
+
+    if (lb_active) {
+      int env_band = opts.lb_envelope_band;
+      if (env_band < 0) {
+        env_band = (opts.band > 0) ? opts.band : std::max(1, max_L / 10);
+      }
+      const int num_pairs_int = static_cast<int>(num_pairs);
+      const float threshold_f32 = static_cast<float>(opts.lb_threshold);
+
+      const size_t env_bytes = (size_t)N * (size_t)max_L * sizeof(float);
+      id<MTLBuffer> buf_upper = [ctx.device
+          newBufferWithLength:env_bytes options:MTLResourceStorageModePrivate];
+      id<MTLBuffer> buf_lower = [ctx.device
+          newBufferWithLength:env_bytes options:MTLResourceStorageModePrivate];
+      id<MTLBuffer> buf_lb = [ctx.device
+          newBufferWithLength:num_pairs * sizeof(float)
+                      options:MTLResourceStorageModePrivate];
+      buf_pair_indices = [ctx.device
+          newBufferWithLength:num_pairs * sizeof(int)
+                      options:MTLResourceStorageModePrivate];
+      id<MTLBuffer> buf_active_count = [ctx.device
+          newBufferWithLength:sizeof(int)
+                      options:MTLResourceStorageModeShared];
+      if (!buf_upper || !buf_lower || !buf_lb || !buf_pair_indices ||
+          !buf_active_count) {
+        if (buf_upper) [buf_upper release];
+        if (buf_lower) [buf_lower release];
+        if (buf_lb)    [buf_lb release];
+        if (buf_pair_indices) {
+          [buf_pair_indices release];
+          buf_pair_indices = nil;
+        }
+        if (buf_active_count) [buf_active_count release];
+        if (opts.verbose) {
+          std::cerr << "[Metal] LB_Keogh buffer allocation failed; "
+                       "falling back to unpruned DTW.\n";
+        }
+        lb_active = false;
+      } else {
+        *static_cast<int *>([buf_active_count contents]) = 0;
+
+        // 1. Envelopes (N threadgroups, threads cooperate on elements).
+        {
+          id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+          id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+          [enc setComputePipelineState:ctx.pipeline_envelopes];
+          [enc setBuffer:buf_series  offset:0 atIndex:0];
+          [enc setBuffer:buf_lengths offset:0 atIndex:1];
+          [enc setBuffer:buf_upper   offset:0 atIndex:2];
+          [enc setBuffer:buf_lower   offset:0 atIndex:3];
+          [enc setBytes:&max_L    length:sizeof(int) atIndex:4];
+          [enc setBytes:&N_int    length:sizeof(int) atIndex:5];
+          [enc setBytes:&env_band length:sizeof(int) atIndex:6];
+          const NSUInteger env_max =
+              ctx.pipeline_envelopes.maxTotalThreadsPerThreadgroup;
+          NSUInteger env_tg = std::min<NSUInteger>(128, env_max);
+          if (env_tg > (NSUInteger)max_L && max_L > 0)
+            env_tg = (NSUInteger)max_L;
+          if (env_tg == 0) env_tg = 1;
+          [enc dispatchThreadgroups:MTLSizeMake(N, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake(env_tg, 1, 1)];
+          [enc endEncoding];
+          [cmd commit];
+          [cmd waitUntilCompleted];
+          if (cmd.error) {
+            NSString *desc = [cmd.error localizedDescription];
+            throw std::runtime_error(
+                std::string("Metal envelopes kernel failed: ") +
+                (desc ? [desc UTF8String] : "unknown"));
+          }
+        }
+
+        // 2. Pairwise LB_Keogh (one thread per pair).
+        {
+          id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+          id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+          [enc setComputePipelineState:ctx.pipeline_lb_keogh];
+          [enc setBuffer:buf_series  offset:0 atIndex:0];
+          [enc setBuffer:buf_lengths offset:0 atIndex:1];
+          [enc setBuffer:buf_upper   offset:0 atIndex:2];
+          [enc setBuffer:buf_lower   offset:0 atIndex:3];
+          [enc setBuffer:buf_lb      offset:0 atIndex:4];
+          [enc setBytes:&N_int          length:sizeof(int) atIndex:5];
+          [enc setBytes:&max_L          length:sizeof(int) atIndex:6];
+          [enc setBytes:&num_pairs_int  length:sizeof(int) atIndex:7];
+          const NSUInteger lb_max =
+              ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
+          const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
+          const NSUInteger lb_ntgs = (num_pairs + lb_tg - 1) / lb_tg;
+          [enc dispatchThreadgroups:MTLSizeMake(lb_ntgs, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake(lb_tg, 1, 1)];
+          [enc endEncoding];
+          [cmd commit];
+          [cmd waitUntilCompleted];
+          if (cmd.error) {
+            NSString *desc = [cmd.error localizedDescription];
+            throw std::runtime_error(
+                std::string("Metal LB_Keogh kernel failed: ") +
+                (desc ? [desc UTF8String] : "unknown"));
+          }
+        }
+
+        // 3. Compact (stamp +∞ for pruned, atomic-append active pids).
+        {
+          id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+          id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+          [enc setComputePipelineState:ctx.pipeline_compact];
+          [enc setBuffer:buf_lb           offset:0 atIndex:0];
+          [enc setBuffer:buf_pair_indices offset:0 atIndex:1];
+          [enc setBuffer:buf_active_count offset:0 atIndex:2];
+          [enc setBuffer:buf_out          offset:0 atIndex:3];
+          [enc setBytes:&N_int         length:sizeof(int)   atIndex:4];
+          [enc setBytes:&num_pairs_int length:sizeof(int)   atIndex:5];
+          [enc setBytes:&threshold_f32 length:sizeof(float) atIndex:6];
+          const NSUInteger ct_max =
+              ctx.pipeline_compact.maxTotalThreadsPerThreadgroup;
+          const NSUInteger ct_tg = std::min<NSUInteger>(256, ct_max);
+          const NSUInteger ct_ntgs = (num_pairs + ct_tg - 1) / ct_tg;
+          [enc dispatchThreadgroups:MTLSizeMake(ct_ntgs, 1, 1)
+              threadsPerThreadgroup:MTLSizeMake(ct_tg, 1, 1)];
+          [enc endEncoding];
+          [cmd commit];
+          [cmd waitUntilCompleted];
+          if (cmd.error) {
+            NSString *desc = [cmd.error localizedDescription];
+            throw std::runtime_error(
+                std::string("Metal compact kernel failed: ") +
+                (desc ? [desc UTF8String] : "unknown"));
+          }
+        }
+
+        const int active_count =
+            *static_cast<int *>([buf_active_count contents]);
+        effective_pairs = (size_t)active_count;
+        has_pair_indices = 1;
+        result.pairs_pruned = num_pairs - effective_pairs;
+        result.pairs_computed = effective_pairs;
+
+        [buf_upper release];
+        [buf_lower release];
+        [buf_lb release];
+        [buf_active_count release];
+        // buf_pair_indices kept live for the DTW dispatch below.
+      }
+    }
+
+    // For wavefront kernels we always bind a pair_indices buffer — either the
+    // active-pairs list (when pruning) or a 1-int dummy (when not).
+    if (pipeline_uses_pair_indices && !buf_pair_indices) {
+      buf_pair_indices = [ctx.device
+          newBufferWithLength:sizeof(int)
+                      options:MTLResourceStorageModePrivate];
+      if (!buf_pair_indices) {
+        throw std::runtime_error(
+            "Metal: pair_indices dummy buffer allocation failed");
+      }
+    }
+
+    // Trim chunk to effective_pairs so the final chunk never overshoots.
+    if (chunk > effective_pairs && effective_pairs > 0) {
+      chunk = effective_pairs;
+    }
+
     id<MTLCommandBuffer> last_cmd = nil;
-    for (size_t off = 0; off < num_pairs; off += chunk) {
+    for (size_t off = 0; off < effective_pairs; off += chunk) {
       const int pair_offset = static_cast<int>(off);
-      const size_t this_chunk = std::min(chunk, num_pairs - off);
+      const size_t this_chunk = std::min(chunk, effective_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
       id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
@@ -1260,6 +1599,10 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&pair_offset length:sizeof(int) atIndex:8];
       if (use_banded_row) {
         [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
+      }
+      if (pipeline_uses_pair_indices) {
+        [enc setBuffer:buf_pair_indices offset:0 atIndex:10];
+        [enc setBytes:&has_pair_indices length:sizeof(int) atIndex:11];
       }
 
       // Grid geometry:
@@ -1317,6 +1660,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     [buf_lengths release];
     [buf_series release];
     if (buf_scratch) [buf_scratch release];
+    if (buf_pair_indices) [buf_pair_indices release];
 
     auto t1 = std::chrono::steady_clock::now();
     result.gpu_time_sec =

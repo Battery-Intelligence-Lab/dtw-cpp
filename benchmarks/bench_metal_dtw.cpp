@@ -16,6 +16,7 @@
 #include <metal/metal_dtw.hpp>
 #endif
 
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
@@ -168,6 +169,73 @@ BENCHMARK(BM_metal_regtile_short)
     ->Args({100, 128})
     ->Args({100, 192})
     ->Args({100, 256})
+    ->Unit(benchmark::kMillisecond);
+
+// LB_Keogh pruning path on a k-medoids-shape workload.
+// Compares:
+//   - baseline wavefront (N x N)
+//   - LB_Keogh with a permissive threshold (all active, overhead only)
+//   - LB_Keogh with a strict threshold (most pruned on random data)
+// Reports the wall time with pruning counters so the cost/benefit can be read
+// off the JSON. Tuned so 3*max_L*4 exceeds threadgroup cap -> wavefront_global.
+static void BM_metal_lb_keogh_permissive(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_series_set(N, L);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.enable_lb_keogh = true;
+  opts.lb_threshold = std::numeric_limits<double>::infinity();
+  opts.lb_envelope_band = std::max(1, L / 10);
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts); // warm-up
+
+  size_t last_pruned = 0;
+  for (auto _ : state) {
+    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    last_pruned = r.pairs_pruned;
+    benchmark::DoNotOptimize(r.matrix.data());
+  }
+  const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+  state.counters["N"] = N;
+  state.counters["L"] = L;
+  state.counters["pairs_total"] = static_cast<double>(pairs);
+  state.counters["pairs_pruned"] = static_cast<double>(last_pruned);
+}
+
+BENCHMARK(BM_metal_lb_keogh_permissive)
+    ->Args({100, 1000})
+    ->Args({200, 1000})
+    ->Unit(benchmark::kMillisecond);
+
+static void BM_metal_lb_keogh_strict(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_series_set(N, L);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.enable_lb_keogh = true;
+  opts.lb_threshold = 0.0; // prunes nearly everything on random data
+  opts.lb_envelope_band = std::max(1, L / 10);
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  size_t last_pruned = 0;
+  for (auto _ : state) {
+    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    last_pruned = r.pairs_pruned;
+    benchmark::DoNotOptimize(r.matrix.data());
+  }
+  const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+  state.counters["N"] = N;
+  state.counters["L"] = L;
+  state.counters["pairs_total"] = static_cast<double>(pairs);
+  state.counters["pairs_pruned"] = static_cast<double>(last_pruned);
+}
+
+BENCHMARK(BM_metal_lb_keogh_strict)
+    ->Args({100, 1000})
+    ->Args({200, 1000})
     ->Unit(benchmark::kMillisecond);
 
 // Report achieved FLOPs vs Apple GPU theoretical peak for each size.
