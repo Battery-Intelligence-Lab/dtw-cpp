@@ -90,7 +90,8 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
     .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
     .value("Pruned", dtwc::DistanceMatrixStrategy::Pruned)
-    .value("GPU", dtwc::DistanceMatrixStrategy::GPU);
+    .value("GPU", dtwc::DistanceMatrixStrategy::GPU)
+    .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
 
   // =========================================================================
   // Linkage (hierarchical clustering)
@@ -266,8 +267,14 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
       return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
     }, "Return a numpy array of the full N*N distance matrix.")
-    .def("write_csv", &dtwc::core::DenseDistanceMatrix::write_csv, "path"_a)
-    .def("read_csv", &dtwc::core::DenseDistanceMatrix::read_csv, "path"_a)
+    .def("write_csv", [](const dtwc::core::DenseDistanceMatrix &dm,
+                          const std::filesystem::path &path) {
+      dtwc::io::write_csv(dm, path);
+    }, "path"_a)
+    .def("read_csv", [](dtwc::core::DenseDistanceMatrix &dm,
+                         const std::filesystem::path &path) {
+      dtwc::io::read_csv(dm, path);
+    }, "path"_a)
     .def("__repr__", [](const dtwc::core::DenseDistanceMatrix &dm) {
       return "DenseDistanceMatrix(n=" + std::to_string(dm.size()) + ")";
     });
@@ -809,6 +816,54 @@ NB_MODULE(_dtwcpp_core, m) {
 #endif
 
   // =========================================================================
+  // Metal (optional, Apple GPU)
+  // =========================================================================
+
+#ifdef DTWC_HAS_METAL
+  m.def("metal_available", &dtwc::metal::metal_available,
+        "Check if a Metal-capable GPU is available (macOS only).");
+
+  m.def("metal_device_info", &dtwc::metal::metal_device_info,
+        "Get a human-readable string describing the Metal device.");
+
+  m.def("compute_distance_matrix_metal",
+        [](const std::vector<std::vector<double>> &series,
+           int band, bool use_squared_l2, bool verbose) {
+          dtwc::metal::MetalDistMatOptions opts;
+          opts.band = band;
+          opts.use_squared_l2 = use_squared_l2;
+          opts.verbose = verbose;
+          nb::gil_scoped_release release;
+          auto result = dtwc::metal::compute_distance_matrix_metal(series, opts);
+          size_t n = result.n;
+          double *data = new double[n * n];
+          std::copy(result.matrix.begin(), result.matrix.end(), data);
+          nb::gil_scoped_acquire acquire;
+          nb::capsule owner(data, [](void *p) noexcept { delete[] static_cast<double *>(p); });
+          return nb::ndarray<nb::numpy, double>(data, {n, n}, owner);
+        },
+        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
+        "verbose"_a = false,
+        "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
+        "Returns NxN numpy array of DTW distances.");
+
+  m.attr("METAL_AVAILABLE") = true;
+#else
+  m.def("metal_available", []() { return false; },
+        "Check if Metal GPU is available.");
+  m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
+        "Get Metal device info string.");
+  m.def("compute_distance_matrix_metal",
+        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
+          throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
+        },
+        "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
+        "verbose"_a = false,
+        "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
+  m.attr("METAL_AVAILABLE") = false;
+#endif
+
+  // =========================================================================
   // Capability detection: OpenMP, MPI
   // =========================================================================
 
@@ -844,6 +899,14 @@ NB_MODULE(_dtwcpp_core, m) {
       info += "  CUDA:   compiled but no GPU detected\n";
 #else
     info += "  CUDA:   not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)\n";
+#endif
+#ifdef DTWC_HAS_METAL
+    if (dtwc::metal::metal_available())
+      info += "  Metal:  available (" + dtwc::metal::metal_device_info() + ")\n";
+    else
+      info += "  Metal:  compiled but no GPU detected\n";
+#else
+    info += "  Metal:  not compiled (macOS only)\n";
 #endif
 #ifdef DTWC_HAS_MPI
     info += "  MPI:    available\n";
