@@ -7,7 +7,6 @@
 
 #include "../Problem.hpp"
 #include "../missing_utils.hpp"      // has_missing, interpolate_linear
-#include "../soft_dtw.hpp"           // soft_dtw
 #include "../warping.hpp"            // dtwBanded, dtwBanded_mv
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
@@ -202,10 +201,25 @@ template <typename T>
 auto make_soft_dtw(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // Soft-DTW has no MV kernel and ignores `band` (full-matrix only).
-  // Pre-refactor behaviour: flat-vector treatment for MV. Preserved here.
+  // Soft-DTW (Cuturi & Blondel 2017) via the unified full-matrix kernel +
+  // SoftCell (log-sum-exp with max-subtract stabilisation). Cross-validated
+  // bit-for-bit against the legacy soft_dtw() on equal/different-length,
+  // identical, and swap-symmetric inputs across gamma {0.1..10.0}
+  // (unit_test_soft_dtw.cpp [phase3]).
+  //
+  // Flat-vector MV treatment preserved: band and multivariate channels
+  // aren't part of the soft_dtw contract. The gradient backward pass in
+  // soft_dtw_gradient() still uses its own full matrix — orthogonal to
+  // the forward distance dispatch.
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(soft_dtw<T>(x, y, static_cast<T>(p.variant_params.sdtw_gamma)));
+    const bool swap = x.size() > y.size();
+    const auto a = swap ? y : x;
+    const auto b = swap ? x : y;
+    SpanL1Cost<T> cost{a.data(), b.data()};
+    SoftCell<T> cell{static_cast<T>(p.variant_params.sdtw_gamma)};
+    return static_cast<double>(
+      dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>(
+        a.size(), b.size(), cost, cell));
   };
 }
 

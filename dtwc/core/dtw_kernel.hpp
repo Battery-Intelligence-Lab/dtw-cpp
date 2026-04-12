@@ -82,6 +82,45 @@ struct ADTWCell {
   }
 };
 
+/// Soft-DTW (Cuturi & Blondel 2017): softmin(diag, up, left) + cost with
+/// log-sum-exp stabilisation (M = min of valid predecessors; exponents are
+/// subtracted by M before exp/log).
+///
+/// Sentinel handling: out-of-bounds predecessors (== std::numeric_limits<T>::max())
+/// are excluded from the LSE. This preserves the legacy `soft_dtw` boundary
+/// semantics — first-row/column cells have exactly one valid predecessor, and
+/// the softmin of a single value is that value, so `combine` reduces to
+/// `left + cost` (first col) or `up + cost` (first row), matching the hard
+/// accumulation used in `soft_dtw.hpp`.
+///
+/// Soft-DTW is inherently O(n*m) full-matrix (gradient backward pass needs
+/// the full C); only `dtw_kernel_full` is meaningful for SoftCell.
+template <typename T>
+struct SoftCell {
+  T gamma;
+  T combine(T diag, T up, T left, T cost,
+            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    constexpr T maxValue = std::numeric_limits<T>::max();
+    T m = maxValue;
+    if (diag < m) m = diag;
+    if (up   < m) m = up;
+    if (left < m) m = left;
+    if (m == maxValue) return maxValue;
+
+    const T inv_gamma = T(1) / gamma;
+    T acc = T(0);
+    if (diag != maxValue) acc += std::exp(-(diag - m) * inv_gamma);
+    if (up   != maxValue) acc += std::exp(-(up   - m) * inv_gamma);
+    if (left != maxValue) acc += std::exp(-(left - m) * inv_gamma);
+    return m - gamma * std::log(acc) + cost;
+  }
+  T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return cost;
+  }
+};
+
 /// AROW (Yurtman 2023): diagonal-carry when the pointwise cost is NaN (the
 /// "missing pair" sentinel from a NaN-propagating Cost functor). Otherwise
 /// standard min-of-3 + cost. Boundary treatment: when only one predecessor is

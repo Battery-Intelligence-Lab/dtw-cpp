@@ -11,6 +11,8 @@
 
 #include <dtwc.hpp>
 #include <soft_dtw.hpp>
+#include <core/dtw_cost.hpp>
+#include <core/dtw_kernel.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -282,4 +284,73 @@ TEST_CASE("soft_dtw_gradient: zero gradient at minimum for identical series", "[
   for (size_t i = 0; i < grad.size(); ++i) {
     REQUIRE(std::isfinite(grad[i]));
   }
+}
+
+// ===========================================================================
+//  Phase 3.3: cross-validate the unified-kernel Soft-DTW (SpanL1Cost +
+//  SoftCell via dtw_kernel_full) against the existing soft_dtw(). Used as a
+//  gate before migrating Problem::rebind_dtw_fn's SoftDTW path to the
+//  unified kernel.
+// ===========================================================================
+
+namespace {
+double softdtw_via_kernel(const std::vector<double>& x, const std::vector<double>& y, double gamma)
+{
+  // Full kernel contract: n_short <= n_long. Swap if needed — SoftDTW is
+  // symmetric over (x,y) because pointwise L1 and the log-sum-exp recurrence
+  // are both symmetric.
+  const bool swap = x.size() > y.size();
+  const auto& a = swap ? y : x;
+  const auto& b = swap ? x : y;
+  dtwc::core::SpanL1Cost<double> cost{a.data(), b.data()};
+  dtwc::core::SoftCell<double> cell{gamma};
+  return dtwc::core::dtw_kernel_full<double, dtwc::core::SpanL1Cost<double>, dtwc::core::SoftCell<double>>(
+    a.size(), b.size(), cost, cell);
+}
+} // anon namespace
+
+TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on equal-length series", "[soft_dtw][phase3]")
+{
+  std::vector<double> x{ 1, 2, 3, 4, 5, 6 };
+  std::vector<double> y{ 2, 2, 4, 4, 6, 6 };
+  for (double gamma : {0.1, 0.5, 1.0, 2.0, 5.0}) {
+    INFO("gamma=" << gamma);
+    REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
+                 WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
+  }
+}
+
+TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on different-length series", "[soft_dtw][phase3]")
+{
+  std::vector<double> x{ 1, 2, 3, 4, 5 };
+  std::vector<double> y{ 2, 3, 4 };
+  for (double gamma : {0.1, 0.5, 1.0, 2.0}) {
+    INFO("gamma=" << gamma);
+    REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
+                 WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
+  }
+}
+
+TEST_CASE("SoftDTW kernel-policy: matches soft_dtw on identical series", "[soft_dtw][phase3]")
+{
+  std::vector<double> x{ 1.5, 2.5, 3.5, 4.5, 5.5 };
+  for (double gamma : {0.1, 1.0, 10.0}) {
+    INFO("gamma=" << gamma);
+    const double legacy = soft_dtw<double>(x, x, gamma);
+    const double kernel = softdtw_via_kernel(x, x, gamma);
+    // Legacy result can be negative for identical series; WithinRel handles
+    // near-zero edge cases through the tolerance.
+    REQUIRE_THAT(kernel, WithinAbs(legacy, 1e-10));
+  }
+}
+
+TEST_CASE("SoftDTW kernel-policy: matches on symmetric/asymmetric swap", "[soft_dtw][phase3]")
+{
+  std::vector<double> x{ 0, 1, 3, 2, 1, 0, 1, 2 };
+  std::vector<double> y{ 1, 2, 2, 0 };
+  const double gamma = 1.0;
+  REQUIRE_THAT(softdtw_via_kernel(x, y, gamma),
+               WithinRel(soft_dtw<double>(x, y, gamma), 1e-10));
+  REQUIRE_THAT(softdtw_via_kernel(y, x, gamma),
+               WithinRel(soft_dtw<double>(y, x, gamma), 1e-10));
 }

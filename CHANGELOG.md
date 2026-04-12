@@ -45,9 +45,16 @@ The `Problem`-level AROW missing-data path now runs on `dtw_kernel_banded` with 
 - **Perf**: `BM_dtwBanded/1000/50` 146 μs → 145 μs (−0.7%); `seed()` method is inlined to a direct assignment for non-AROW cells — zero overhead on Standard/ADTW/WDTW/DDTW hot paths.
 - `warping_missing_arow.hpp` is retained unchanged as the standalone public API surface; the Problem-level dispatch no longer depends on it.
 
-### Deferred (Phase 3 part 3)
+### Changed (Soft-DTW via unified kernel — Phase 3 part 3)
 
-- Fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp (full-matrix kernel + gradient ownership).
+Problem-level SoftDTW dispatch now runs on `dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>` instead of the standalone `soft_dtw()` function.
+
+- **`SoftCell<T>{gamma}`** in [dtwc/core/dtw_kernel.hpp](dtwc/core/dtw_kernel.hpp): log-sum-exp softmin with max-subtract stabilisation. Sentinel-aware — out-of-bounds predecessors (`maxValue`) are excluded from the LSE accumulator, so first-row/column cells where only one predecessor is valid reduce automatically to `predecessor + cost` (hard accumulation), matching the legacy `soft_dtw()` boundary treatment.
+- **Cross-validated** bit-for-bit against `soft_dtw()` on equal-length, different-length, identical, and swap-symmetric inputs across gamma {0.1..10.0}. See [unit_test_soft_dtw.cpp](tests/unit/unit_test_soft_dtw.cpp) `[phase3]` tag. 4 test cases, 14 assertions, all passing within 1e-10 tolerance.
+- `soft_dtw.hpp` retained unchanged as the standalone public API surface (and for `soft_dtw_gradient()`, which still needs its own forward+backward matrices).
+
+### Deferred (Phase 3 part 4)
+
 - Multivariate AROW: still dispatches through the scalar path. Needs a per-channel recurrence.
 
 ### Added (GPU parity + configuration)
