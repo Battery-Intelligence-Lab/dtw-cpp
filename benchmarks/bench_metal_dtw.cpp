@@ -138,6 +138,38 @@ BENCHMARK(BM_metal_distanceMatrix)
     ->Unit(benchmark::kMillisecond)
     ->Iterations(3);
 
+// Register-tile kernel coverage: short/medium unbanded (max_L <= 256).
+// Reports the regtile kernel's throughput on its target workload range so the
+// 2-4x over wavefront expectation can be verified against the baseline numbers
+// above. Uses N=100 to fill many threadgroups with work.
+static void BM_metal_regtile_short(benchmark::State &state)
+{
+  const int N = static_cast<int>(state.range(0));
+  const int L = static_cast<int>(state.range(1));
+  auto series = make_series_set(N, L);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = -1;
+  (void)dtwc::metal::compute_distance_matrix_metal(series, opts); // warm-up
+
+  for (auto _ : state) {
+    auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    benchmark::DoNotOptimize(r.matrix.data());
+  }
+
+  const int64_t pairs = static_cast<int64_t>(N) * (N - 1) / 2;
+  state.counters["pairs"] = static_cast<double>(pairs);
+  state.counters["N"] = N;
+  state.counters["L"] = L;
+}
+
+BENCHMARK(BM_metal_regtile_short)
+    ->Args({100, 64})
+    ->Args({100, 128})
+    ->Args({100, 192})
+    ->Args({100, 256})
+    ->Unit(benchmark::kMillisecond);
+
 // Report achieved FLOPs vs Apple GPU theoretical peak for each size.
 // Ops per DTW cell (approximate): 1 sub + 1 abs + 3 min + 1 add = ~6 FP32.
 static void BM_metal_flops(benchmark::State &state)

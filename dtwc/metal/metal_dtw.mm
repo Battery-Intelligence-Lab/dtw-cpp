@@ -607,6 +607,212 @@ kernel void dtw_kvn_wavefront_global(
     out_matrix[q_idx * N_target + t_idx] = cur[La - 1];
   }
 }
+
+// ---------------------------------------------------------------------------
+// Register-tile DTW for short/medium series (max_L <= 256, unbanded).
+//
+// One SIMD-group (32 threads) per pair, PAIRS_PER_TG warps per threadgroup.
+// Each thread holds TILE_W columns in registers; 32 threads cover 32*TILE_W
+// columns total. Left-neighbor values are fetched via simd_shuffle_up.
+//
+// Wavefront timing: at step s, thread t processes row i = s - t. Thread t-1
+// processed row i at step s-1, so at step s its penalty[TILE_W-1] holds
+// cost[i][col_start-1] — fetched via simd_shuffle_up(penalty[TILE_W-1], 1).
+//
+// Mirrors dtwc/cuda/cuda_dtw.cu `dtw_regtile_kernel`. Unbanded-only — the band
+// path adds register pressure that is deferred.
+constant int PAIRS_PER_TG = 8;
+
+template <int TILE_W>
+static float dtw_regtile_compute(
+    threadgroup const float *my_row,
+    threadgroup const float *my_col,
+    int M, int N_len,
+    uint simd_lane,
+    int use_sq_l2)
+{
+  const float INF = 3.402823466e+38f;
+  const int col_start = (int)simd_lane * TILE_W;
+
+  float col_val[TILE_W];
+  for (int tw = 0; tw < TILE_W; ++tw) {
+    int j = col_start + tw;
+    col_val[tw] = (j < N_len) ? my_col[j] : 0.0f;
+  }
+
+  float penalty[TILE_W];
+  float prev_penalty[TILE_W];
+  for (int tw = 0; tw < TILE_W; ++tw) {
+    penalty[tw] = INF;
+    prev_penalty[tw] = INF;
+  }
+  float prev_last = INF; // saved prev_penalty[TILE_W-1] before overwrite
+
+  const int num_col_threads = (N_len + TILE_W - 1) / TILE_W;
+  const int total_steps = M + num_col_threads - 1;
+
+  for (int step = 0; step < total_steps; ++step) {
+    const int i = step - (int)simd_lane;
+    const bool row_valid =
+        (i >= 0) && (i < M) && ((int)simd_lane < num_col_threads);
+
+    const float row_val = row_valid ? my_row[i] : 0.0f;
+
+    // Cross-lane communication (all lanes must participate in shuffles).
+    float penalty_from_left = simd_shuffle_up(penalty[TILE_W - 1], 1);
+    float diag_from_left    = simd_shuffle_up(prev_last, 1);
+    if (simd_lane == 0) {
+      penalty_from_left = INF; // no left neighbor for lane 0
+      diag_from_left    = INF;
+    }
+
+    if (row_valid) {
+      const float saved_prev_last = prev_penalty[TILE_W - 1];
+
+      float left = penalty_from_left; // cost[i][col_start - 1]
+      float diag = diag_from_left;    // cost[i-1][col_start - 1]
+
+      for (int tw = 0; tw < TILE_W; ++tw) {
+        const int j = col_start + tw;
+        if (j >= N_len) {
+          penalty[tw] = INF;
+          diag = prev_penalty[tw];
+          left = INF;
+          continue;
+        }
+
+        const float above = prev_penalty[tw];
+        const float diff  = row_val - col_val[tw];
+        const float d     = use_sq_l2 ? (diff * diff) : fabs(diff);
+
+        float new_cost;
+        if (i == 0 && j == 0) {
+          new_cost = d;
+        } else {
+          const float eff_above = (i == 0)              ? INF : above;
+          const float eff_diag  = (i == 0 || j == 0)    ? INF : diag;
+          const float eff_left  = (j == 0)              ? INF : left;
+          new_cost = min(eff_diag, min(eff_above, eff_left)) + d;
+        }
+
+        diag = prev_penalty[tw];
+        left = new_cost;
+        penalty[tw] = new_cost;
+      }
+
+      prev_last = saved_prev_last;
+      for (int tw = 0; tw < TILE_W; ++tw) {
+        prev_penalty[tw] = penalty[tw];
+      }
+    }
+    // When !row_valid, penalty/prev_penalty/prev_last are untouched; other
+    // lanes' shuffles continue to see stable values from our last valid step.
+  }
+
+  // Result is cost[M-1][N_len-1].
+  const int result_thread = (N_len - 1) / TILE_W;
+  const int result_tw     = (N_len - 1) % TILE_W;
+  const float my_result =
+      ((int)simd_lane == result_thread) ? penalty[result_tw] : INF;
+  return simd_shuffle(my_result, (ushort)result_thread);
+}
+
+template <int TILE_W>
+static void dtw_regtile_kernel_body(
+    device const float *all_series,
+    device const int   *lengths,
+    device float       *out_matrix,
+    int  N_series,
+    int  max_L,
+    int  use_sq_l2,
+    int  pair_offset,
+    threadgroup float  *smem,
+    uint simd_lane,
+    uint simd_id,
+    uint tg_idx)
+{
+  const int num_pairs = N_series * (N_series - 1) / 2;
+  const int work_idx  = (int)tg_idx * PAIRS_PER_TG + (int)simd_id;
+  const int real_pid  = work_idx + pair_offset;
+  if (real_pid >= num_pairs) return;
+
+  int si, sj;
+  decode_pair(real_pid, N_series, si, sj);
+  const int ni = lengths[si];
+  const int nj = lengths[sj];
+  const device float *x = all_series + si * max_L;
+  const device float *y = all_series + sj * max_L;
+
+  // Orient: rows = short side, columns = long side.
+  const device float *row_g = (ni <= nj) ? x : y;
+  const device float *col_g = (ni <= nj) ? y : x;
+  const int M     = min(ni, nj);
+  const int N_len = max(ni, nj);
+
+  const float INF = 3.402823466e+38f;
+
+  if (M == 0 || N_len == 0) {
+    if (simd_lane == 0) {
+      out_matrix[si * N_series + sj] = INF;
+      out_matrix[sj * N_series + si] = INF;
+    }
+    return;
+  }
+
+  // Per-warp smem slice: 2 * max_L floats (row + col).
+  threadgroup float *my_row = smem + (int)simd_id * 2 * max_L;
+  threadgroup float *my_col = my_row + max_L;
+
+  for (int t = (int)simd_lane; t < M; t += 32)
+    my_row[t] = row_g[t];
+  for (int t = (int)simd_lane; t < N_len; t += 32)
+    my_col[t] = col_g[t];
+  simdgroup_barrier(mem_flags::mem_threadgroup);
+
+  const float final_result =
+      dtw_regtile_compute<TILE_W>(my_row, my_col, M, N_len, simd_lane, use_sq_l2);
+
+  if (simd_lane == 0) {
+    out_matrix[si * N_series + sj] = final_result;
+    out_matrix[sj * N_series + si] = final_result;
+  }
+}
+
+kernel void dtw_regtile_w4(
+    device const float*   all_series [[buffer(0)]],
+    device const int*     lengths    [[buffer(1)]],
+    device float*         out_matrix [[buffer(2)]],
+    constant int&         N_series   [[buffer(3)]],
+    constant int&         max_L      [[buffer(4)]],
+    constant int&         use_sq_l2  [[buffer(6)]],
+    constant int&         pair_offset [[buffer(8)]],
+    threadgroup float*    smem       [[threadgroup(0)]],
+    uint simd_lane [[thread_index_in_simdgroup]],
+    uint simd_id   [[simdgroup_index_in_threadgroup]],
+    uint tg_idx    [[threadgroup_position_in_grid]])
+{
+  dtw_regtile_kernel_body<4>(all_series, lengths, out_matrix, N_series, max_L,
+                             use_sq_l2, pair_offset, smem,
+                             simd_lane, simd_id, tg_idx);
+}
+
+kernel void dtw_regtile_w8(
+    device const float*   all_series [[buffer(0)]],
+    device const int*     lengths    [[buffer(1)]],
+    device float*         out_matrix [[buffer(2)]],
+    constant int&         N_series   [[buffer(3)]],
+    constant int&         max_L      [[buffer(4)]],
+    constant int&         use_sq_l2  [[buffer(6)]],
+    constant int&         pair_offset [[buffer(8)]],
+    threadgroup float*    smem       [[threadgroup(0)]],
+    uint simd_lane [[thread_index_in_simdgroup]],
+    uint simd_id   [[simdgroup_index_in_threadgroup]],
+    uint tg_idx    [[threadgroup_position_in_grid]])
+{
+  dtw_regtile_kernel_body<8>(all_series, lengths, out_matrix, N_series, max_L,
+                             use_sq_l2, pair_offset, smem,
+                             simd_lane, simd_id, tg_idx);
+}
 )METAL";
 
 // ---------------------------------------------------------------------------
@@ -618,6 +824,8 @@ struct MetalContext {
   id<MTLComputePipelineState> pipeline = nil;            // threadgroup-memory wavefront
   id<MTLComputePipelineState> pipeline_global = nil;     // device-memory wavefront
   id<MTLComputePipelineState> pipeline_banded_row = nil; // row-major banded (tight-band)
+  id<MTLComputePipelineState> pipeline_regtile_w4 = nil; // register-tile, max_L <= 128
+  id<MTLComputePipelineState> pipeline_regtile_w8 = nil; // register-tile, max_L <= 256
   id<MTLComputePipelineState> pipeline_kvn = nil;        // K-vs-N threadgroup-memory
   id<MTLComputePipelineState> pipeline_kvn_global = nil; // K-vs-N device-memory
   bool initialized = false;
@@ -714,6 +922,38 @@ static MetalContext &context()
                              : "newComputePipelineStateWithFunction (banded_row) failed";
         [lib release];
         return;
+      }
+
+      // Register-tile pipelines (unbanded, max_L <= 256).
+      {
+        auto make_pipeline = [&](NSString *name,
+                                 id<MTLComputePipelineState> &out) -> bool {
+          id<MTLFunction> fn = [lib newFunctionWithName:name];
+          if (!fn) {
+            ctx.init_failed = true;
+            ctx.init_error = std::string("kernel function ") +
+                             [name UTF8String] + " not found";
+            return false;
+          }
+          out = [ctx.device newComputePipelineStateWithFunction:fn error:&err];
+          [fn release];
+          if (!out) {
+            ctx.init_failed = true;
+            ctx.init_error = err ? [[err localizedDescription] UTF8String]
+                                 : "newComputePipelineStateWithFunction failed";
+            return false;
+          }
+          return true;
+        };
+
+        if (!make_pipeline(@"dtw_regtile_w4", ctx.pipeline_regtile_w4)) {
+          [lib release];
+          return;
+        }
+        if (!make_pipeline(@"dtw_regtile_w8", ctx.pipeline_regtile_w8)) {
+          [lib release];
+          return;
+        }
       }
 
       // Fourth/fifth pipelines: K-vs-N wavefront (threadgroup + global).
@@ -862,10 +1102,13 @@ MetalDistMatResult compute_distance_matrix_metal(
     const int use_sq_l2 = opts.use_squared_l2 ? 1 : 0;
 
     // Choose kernel variant based on workload:
-    //   banded-row kernel: tight Sakoe-Chiba band (band > 0, band*4 < max_L).
+    //   banded-row kernel: tight Sakoe-Chiba band (band > 0, band*20 < max_L).
     //                      One thread per pair, row-major iteration, no barriers.
     //                      Wins on tight bands where the wavefront's 2*La
     //                      threadgroup barriers dominate.
+    //   regtile kernels:   short/medium unbanded (max_L <= 256). SIMD-shuffle
+    //                      cross-lane communication, ~4x fewer threadgroup
+    //                      barriers than wavefront on the same work.
     //   threadgroup kernel: 3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
     //   global kernel:     uses device memory for the 3 anti-diagonal buffers
     const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
@@ -877,12 +1120,24 @@ MetalDistMatResult compute_distance_matrix_metal(
     // on a single thread. Cap at 512 to avoid huge per-thread scratch.
     const bool use_banded_row =
         (band > 0) && (band * 20 < max_L) && (band <= 512);
-    const bool use_global = !use_banded_row && (tg_mem_len > tg_mem_cap);
+    // Register-tile path: unbanded only for this pass. TILE_W=4 covers
+    // max_L in [1, 128] (32 lanes * 4 cols = 128), TILE_W=8 covers (128, 256].
+    const bool use_regtile =
+        !use_banded_row && (band == -1) && (max_L > 0) && (max_L <= 256);
+    const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
+    const bool use_global =
+        !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
 
     id<MTLComputePipelineState> pipeline;
-    if (use_banded_row)   pipeline = ctx.pipeline_banded_row;
-    else if (use_global)  pipeline = ctx.pipeline_global;
-    else                  pipeline = ctx.pipeline;
+    if (use_banded_row)
+      pipeline = ctx.pipeline_banded_row;
+    else if (use_regtile)
+      pipeline = (regtile_tile_w == 4) ? ctx.pipeline_regtile_w4
+                                       : ctx.pipeline_regtile_w8;
+    else if (use_global)
+      pipeline = ctx.pipeline_global;
+    else
+      pipeline = ctx.pipeline;
 
     // Chunk pairs across multiple command buffers. macOS's GPU watchdog
     // kills compute that holds the GPU for more than ~2 s per command buffer
@@ -932,19 +1187,28 @@ MetalDistMatResult compute_distance_matrix_metal(
     // Pick threads-per-threadgroup.
     //  - banded-row: one thread per pair, so tg_size = simd width (32) for
     //    cheap dispatch without intra-threadgroup cooperation.
+    //  - regtile:    PAIRS_PER_TG (8) warps per threadgroup, 1 warp per pair.
+    //                tg_size = 8 * simd = 256 threads. Threadgroup memory holds
+    //                8 * 2 * max_L floats of series data (16 KB at max_L=256).
     //  - wavefront kernels: cooperate within a pair, use up to max_L threads
     //    rounded to a multiple of the simd width.
     const NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup;
     const NSUInteger simd = pipeline.threadExecutionWidth;
+    const NSUInteger kPairsPerTG = 8; // must match PAIRS_PER_TG in MSL
     NSUInteger tg_size;
     if (use_banded_row) {
       tg_size = simd;
       if (tg_size > max_threads) tg_size = max_threads;
+    } else if (use_regtile) {
+      tg_size = simd * kPairsPerTG;
+      if (tg_size > max_threads) tg_size = (max_threads / simd) * simd;
     } else {
       tg_size = std::min((NSUInteger)max_L, max_threads);
       if (tg_size == 0) tg_size = 1;
       if (tg_size > simd) tg_size = (tg_size / simd) * simd;
     }
+    const NSUInteger regtile_smem_len =
+        use_regtile ? (kPairsPerTG * 2 * (NSUInteger)max_L * sizeof(float)) : 0;
 
     // Banded-row: allocate coalesced scratch sized by total thread count.
     // Grid is 1D of (ceil(chunk/tg_size) * tg_size) threads.
@@ -988,6 +1252,8 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
       if (use_global || use_banded_row) {
         [enc setBuffer:buf_scratch offset:0 atIndex:7];
+      } else if (use_regtile) {
+        [enc setThreadgroupMemoryLength:regtile_smem_len atIndex:0];
       } else {
         [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
       }
@@ -998,10 +1264,15 @@ MetalDistMatResult compute_distance_matrix_metal(
 
       // Grid geometry:
       //  - banded-row: one thread per pair, dispatch ceil(chunk / tg_size) tgs.
+      //  - regtile:    kPairsPerTG warps per tg, dispatch ceil(chunk/kPairsPerTG) tgs.
       //  - wavefront:  one threadgroup per pair.
       MTLSize grid, tg;
       if (use_banded_row) {
         const size_t ntgs = (this_chunk + tg_size - 1) / tg_size;
+        grid = MTLSizeMake(ntgs, 1, 1);
+        tg   = MTLSizeMake(tg_size, 1, 1);
+      } else if (use_regtile) {
+        const size_t ntgs = (this_chunk + kPairsPerTG - 1) / kPairsPerTG;
         grid = MTLSizeMake(ntgs, 1, 1);
         tg   = MTLSizeMake(tg_size, 1, 1);
       } else {
@@ -1058,8 +1329,14 @@ MetalDistMatResult compute_distance_matrix_metal(
               << metal_device_info() << std::endl;
   }
   // Record which kernel path was taken so tests / benchmarks can assert on it.
-  if (opts.band > 0 && opts.band * 20 < max_L && opts.band <= 512) {
+  const bool lbl_banded_row =
+      (opts.band > 0) && (opts.band * 20 < max_L) && (opts.band <= 512);
+  const bool lbl_regtile =
+      !lbl_banded_row && (opts.band == -1) && (max_L > 0) && (max_L <= 256);
+  if (lbl_banded_row) {
     result.kernel_used = "banded_row";
+  } else if (lbl_regtile) {
+    result.kernel_used = (max_L <= 128) ? "regtile_w4" : "regtile_w8";
   } else if (3u * (unsigned)max_L * sizeof(float)
              > (unsigned)ctx.device.maxThreadgroupMemoryLength) {
     result.kernel_used = "wavefront_global";

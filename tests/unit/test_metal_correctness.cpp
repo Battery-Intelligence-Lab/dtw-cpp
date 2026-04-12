@@ -164,6 +164,116 @@ TEST_CASE("Metal unbanded DTW on longer series", "[metal]")
   }
 }
 
+TEST_CASE("Metal regtile_w4 kernel matches CPU for max_L <= 128", "[metal][regtile]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // Three lengths covering the TILE_W=4 lane-coverage range (32 * 4 = 128).
+  // N=32 stresses the 8-pair-per-threadgroup tile layout (multiple full tgs).
+  for (size_t L : {size_t{64}, size_t{100}, size_t{128}}) {
+    const size_t N = 32;
+    auto series = generate_random_series(N, L, 0xA11C0DE);
+    auto cpu = cpu_distance_matrix(series);
+
+    dtwc::metal::MetalDistMatOptions opts;
+    opts.band = -1;
+    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+    INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
+    REQUIRE(gpu.kernel_used == "regtile_w4");
+    REQUIRE(gpu.n == N);
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = i + 1; j < N; ++j) {
+        CAPTURE(L, i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+        REQUIRE_THAT(gpu.matrix[i * N + j],
+                     WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+      }
+      REQUIRE(gpu.matrix[i * N + i] == 0.0);
+    }
+  }
+}
+
+TEST_CASE("Metal regtile_w8 kernel matches CPU for max_L in (128, 256]", "[metal][regtile]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  for (size_t L : {size_t{192}, size_t{256}}) {
+    const size_t N = 16;
+    auto series = generate_random_series(N, L, 0xBE57CAFE);
+    auto cpu = cpu_distance_matrix(series);
+
+    dtwc::metal::MetalDistMatOptions opts;
+    opts.band = -1;
+    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+    INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
+    REQUIRE(gpu.kernel_used == "regtile_w8");
+    REQUIRE(gpu.n == N);
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = i + 1; j < N; ++j) {
+        CAPTURE(L, i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+        REQUIRE_THAT(gpu.matrix[i * N + j],
+                     WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+      }
+    }
+  }
+}
+
+TEST_CASE("Metal regtile handles uneven tile cover (N_len not multiple of TILE_W)", "[metal][regtile]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // L=127 leaves a partial w4 tile at the end (32 threads * 4 - 127 = 1 unused slot).
+  // L=255 leaves a partial w8 tile (32*8 - 255 = 1 unused slot).
+  for (size_t L : {size_t{127}, size_t{255}}) {
+    const size_t N = 6;
+    auto series = generate_random_series(N, L, 0xDEADBEEF);
+    auto cpu = cpu_distance_matrix(series);
+
+    dtwc::metal::MetalDistMatOptions opts;
+    auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+    INFO("L=" << L << " kernel_used=" << gpu.kernel_used);
+    REQUIRE((gpu.kernel_used == "regtile_w4" || gpu.kernel_used == "regtile_w8"));
+    for (size_t i = 0; i < N; ++i) {
+      for (size_t j = i + 1; j < N; ++j) {
+        CAPTURE(L, i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+        REQUIRE_THAT(gpu.matrix[i * N + j],
+                     WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+      }
+    }
+  }
+}
+
+TEST_CASE("Metal regtile with asymmetric (variable-length) series", "[metal][regtile]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // Variable lengths force the kernel's rows=short / cols=long orientation logic
+  // to matter. All lengths stay within max_L=128 so regtile_w4 fires.
+  std::mt19937 rng(0xCAFEBABE);
+  std::uniform_int_distribution<int> len_dist(32, 120);
+  std::uniform_real_distribution<double> val_dist(-5.0, 5.0);
+
+  std::vector<std::vector<double>> series(8);
+  for (auto &s : series) {
+    const int L = len_dist(rng);
+    s.resize(L);
+    for (auto &v : s) v = val_dist(rng);
+  }
+
+  auto cpu = cpu_distance_matrix(series);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  INFO("kernel_used=" << gpu.kernel_used);
+  REQUIRE(gpu.kernel_used == "regtile_w4");
+  const size_t N = series.size();
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, series[i].size(), series[j].size(),
+              cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+    }
+  }
+}
+
 TEST_CASE("Metal pushes max_L towards the threadgroup memory cap", "[metal]")
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
