@@ -15,6 +15,7 @@ target_sources(dtwc++
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
+  core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp
   algorithms/fast_clara.cpp
   algorithms/hierarchical.cpp

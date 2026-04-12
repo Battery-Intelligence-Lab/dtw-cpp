@@ -30,6 +30,7 @@
 #include "soft_dtw.hpp"        // for soft_dtw
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
+#include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "missing_utils.hpp"               // for has_missing, interpolate_linear
 #include "warping_missing.hpp"             // for dtwMissing_banded
@@ -176,151 +177,19 @@ void Problem::refresh_variant_caches()
  */
 void Problem::rebind_dtw_fn()
 {
-  // Capture `this` so that `band` and variant params are read at invocation time,
-  // not at lambda creation time. This ensures that changing `prob.band = 50` after
-  // construction correctly affects subsequent DTW calls without requiring a rebind.
-  using namespace core;
+  // Resolve dispatch once, here, at rebind time. The returned std::function
+  // reads mutable members (band, variant_params, missing_strategy, ndim,
+  // wdtw_weights_cache_) at call time via a stable reference to `*this`, so
+  // changing e.g. `prob.band = 50` after construction takes effect without a
+  // second rebind.
+  //
+  // Historical note: previously this function was a ~130-line nested switch
+  // that also silently bound dtw_fn_f32_ to Standard DTW regardless of the
+  // configured variant/missing strategy (fast_clara's chunked-Parquet path
+  // hit this). Both f64 and f32 now share core::resolve_dtw_fn.
   refresh_variant_caches();
-
-  // Missing-data strategies override the variant dispatch
-  if (missing_strategy == MissingStrategy::ZeroCost) {
-    if (data.ndim > 1) {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        return dtwMissing_banded_mv(x.data(), x.size() / data.ndim,
-                                    y.data(), y.size() / data.ndim,
-                                    data.ndim, band);
-      };
-    } else {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        return dtwMissing_banded(x, y, band);
-      };
-    }
-    return;
-  }
-
-  if (missing_strategy == MissingStrategy::Interpolate) {
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<data_t>(x.begin(), x.end());
-      auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<data_t>(y.begin(), y.end());
-      return dtwBanded<data_t>(xi, yi, band);
-    };
-    return;
-  }
-
-  if (missing_strategy == MissingStrategy::AROW) {
-    // TODO: AROW MV (multivariate) is deferred. The AROW recurrence is more complex
-    // than zero-cost and requires a dedicated MV AROW _impl to handle per-channel
-    // missing data correctly. For now, AROW always uses the scalar path regardless of
-    // data.ndim. This means ndim>1 series are treated as a flat vector for AROW.
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      return dtwAROW_banded(x, y, band);
-    };
-    return;
-  }
-
-  // Standard variant dispatch (for Error strategy and unsupported missing strategies)
-  switch (variant_params.variant) {
-  case DTWVariant::DDTW:
-    if (data.ndim > 1) {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        thread_local std::vector<data_t> dx, dy;
-        derivative_transform_mv_inplace(x, data.ndim, dx);
-        derivative_transform_mv_inplace(y, data.ndim, dy);
-        return dtwBanded_mv(dx.data(), dx.size() / data.ndim,
-                            dy.data(), dy.size() / data.ndim,
-                            data.ndim, band);
-      };
-    } else {
-      dtw_fn_ = [this](const auto &x, const auto &y) { return ddtwBanded(x, y, band); };
-    }
-    break;
-  case DTWVariant::WDTW:
-    if (data.ndim > 1) {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        const size_t x_steps = x.size() / data.ndim;
-        const size_t y_steps = y.size() / data.ndim;
-        if (x_steps == 0 || y_steps == 0)
-          return std::numeric_limits<data_t>::max();
-
-        const auto max_dev = std::max(x_steps, y_steps) - size_t{1};
-        // Cache is populated by refresh_variant_caches() before parallel fill.
-        // Read-only lookup here — no race by design.
-        auto it = wdtw_weights_cache_.find(max_dev);
-        if (it == wdtw_weights_cache_.end()) {
-          // Cache miss (e.g. DBA centroid with novel length). Compute on stack.
-          // This path is serial only (centroid update), never inside parallel fill.
-          const auto g = static_cast<data_t>(variant_params.wdtw_g);
-          auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-          return wdtwBanded_mv(x.data(), x_steps, y.data(), y_steps,
-                               data.ndim, w, band);
-        }
-        return wdtwBanded_mv(x.data(), x_steps,
-                             y.data(), y_steps,
-                             data.ndim, it->second, band);
-      };
-    } else {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        const auto max_dev = std::max(x.size(), y.size());
-        // Cache is populated by refresh_variant_caches(). Read-only in parallel.
-        auto it = wdtw_weights_cache_.find(max_dev);
-        if (it == wdtw_weights_cache_.end()) {
-          // Serial-only fallback for novel lengths (DBA centroids).
-          const auto g = static_cast<data_t>(variant_params.wdtw_g);
-          auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-          return wdtwBanded(x, y, w, band);
-        }
-        return wdtwBanded(x, y, it->second, band);
-      };
-    }
-    break;
-  case DTWVariant::ADTW:
-    if (data.ndim > 1) {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        return adtwBanded_mv(x.data(), x.size() / data.ndim,
-                             y.data(), y.size() / data.ndim,
-                             data.ndim, band, static_cast<data_t>(variant_params.adtw_penalty));
-      };
-    } else {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        return adtwBanded(x, y, band, static_cast<data_t>(variant_params.adtw_penalty));
-      };
-    }
-    break;
-  case DTWVariant::SoftDTW:
-    // Soft-DTW can produce negative values; the distance matrix sentinel (-1.0)
-    // is safe because soft_dtw results are only stored when explicitly computed.
-    dtw_fn_ = [this](const auto &x, const auto &y) {
-      return soft_dtw(x, y, static_cast<data_t>(variant_params.sdtw_gamma));
-    };
-    break;
-  case DTWVariant::Standard:
-  default:
-    if (data.ndim > 1) {
-      dtw_fn_ = [this](const auto &x, const auto &y) {
-        return dtwBanded_mv(x.data(), x.size() / data.ndim,
-                            y.data(), y.size() / data.ndim,
-                            data.ndim, band);
-      };
-    } else {
-      dtw_fn_ = [this](const auto &x, const auto &y) { return dtwBanded(x, y, band); };
-    }
-    break;
-  }
-
-  // Bind float32 DTW function (mirrors the float64 binding above).
-  // DTW templates work with float; distance returns double for precision.
-  if (data.ndim > 1) {
-    dtw_fn_f32_ = [this](std::span<const float> x, std::span<const float> y) -> double {
-      return static_cast<double>(dtwBanded_mv<float>(
-        x.data(), x.size() / data.ndim,
-        y.data(), y.size() / data.ndim,
-        data.ndim, band));
-    };
-  } else {
-    dtw_fn_f32_ = [this](std::span<const float> x, std::span<const float> y) -> double {
-      return static_cast<double>(dtwBanded<float>(x, y, band));
-    };
-  }
+  dtw_fn_     = core::resolve_dtw_fn<data_t>(*this);
+  dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
 }
 
 void Problem::set_variant(core::DTWVariant v)

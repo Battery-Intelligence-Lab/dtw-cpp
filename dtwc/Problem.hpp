@@ -214,6 +214,14 @@ public:
 
   /// Access the bound DTW distance function (float32).
   const dtw_fn_f32_t &dtw_function_f32() const { return dtw_fn_f32_; }
+
+  /// Read-only access to the WDTW weights cache (consumed by core::resolve_dtw_fn).
+  /// Cache is populated serially by refresh_variant_caches() before parallel fill
+  /// and is lock-free for parallel readers.
+  const std::unordered_map<std::size_t, std::vector<data_t>> &wdtw_weights_cache() const
+  {
+    return wdtw_weights_cache_;
+  }
   bool isDistanceMatrixFilled() const
   {
     return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });

@@ -393,3 +393,96 @@ TEST_CASE("dtw_runtime honours DTWVariant::WDTW", "[dtw_runtime][wdtw]")
   INFO("d_std=" << d_std << " d_wdtw=" << d_wdtw);
   REQUIRE(d_wdtw != d_std); // WDTW applies per-cell weights -> different result.
 }
+
+// =========================================================================
+//  Problem::dtw_function_f32() dispatch regressions.
+//
+//  Previously (pre-resolve_dtw_fn), the f32 path silently ran Standard DTW
+//  regardless of variant_params.variant and missing_strategy. The chunked-
+//  Parquet path in fast_clara invokes dtw_function_f32() — users setting
+//  WDTW/ADTW got Standard DTW results, silently.
+// =========================================================================
+
+TEST_CASE("Problem::dtw_function_f32 honours DTWVariant::ADTW", "[f32][adtw][problem]")
+{
+  // Shifted-peak pattern: unbanded Standard warps to match the peak cheaply;
+  // ADTW with a non-zero penalty charges the off-diagonal steps. Results
+  // must differ — if dtw_fn_f32_ silently ran Standard, they would match.
+  std::vector<float> x = {0, 0, 9, 0, 0, 0, 0, 0, 0, 0};
+  std::vector<float> y = {0, 0, 0, 0, 0, 0, 0, 0, 9, 0};
+
+  dtwc::Data data;
+  data.ndim = 1;
+  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
+  data.p_names = {"x", "y"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+
+  prob.set_variant(dtwc::core::DTWVariant::Standard);
+  const double d_std = prob.dtw_function_f32()(std::span<const float>{x},
+                                               std::span<const float>{y});
+
+  dtwc::core::DTWVariantParams ap;
+  ap.variant = dtwc::core::DTWVariant::ADTW;
+  ap.adtw_penalty = 2.0;
+  prob.set_variant(ap);
+  const double d_adtw = prob.dtw_function_f32()(std::span<const float>{x},
+                                                std::span<const float>{y});
+
+  INFO("d_std=" << d_std << " d_adtw=" << d_adtw);
+  REQUIRE(d_adtw > d_std);
+}
+
+TEST_CASE("Problem::dtw_function_f32 honours DTWVariant::WDTW", "[f32][wdtw][problem]")
+{
+  std::vector<float> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
+  std::vector<float> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
+
+  dtwc::Data data;
+  data.ndim = 1;
+  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
+  data.p_names = {"x", "y"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+
+  prob.set_variant(dtwc::core::DTWVariant::Standard);
+  const double d_std = prob.dtw_function_f32()(std::span<const float>{x},
+                                               std::span<const float>{y});
+
+  dtwc::core::DTWVariantParams wp;
+  wp.variant = dtwc::core::DTWVariant::WDTW;
+  wp.wdtw_g = 0.05;
+  prob.set_variant(wp);
+  const double d_wdtw = prob.dtw_function_f32()(std::span<const float>{x},
+                                                std::span<const float>{y});
+
+  INFO("d_std=" << d_std << " d_wdtw=" << d_wdtw);
+  REQUIRE(d_wdtw != d_std);
+}
+
+TEST_CASE("Problem::dtw_function_f32 honours MissingStrategy::ZeroCost", "[f32][missing][problem]")
+{
+  // x has a NaN gap; y matches the non-NaN values. With ZeroCost missing,
+  // NaN pairings contribute 0 — distance should be 0 (perfect match).
+  // Without the fix, the f32 path ignored missing_strategy and ran
+  // Standard DTW which treats NaN as a regular value -> non-zero distance.
+  const float nan = std::numeric_limits<float>::quiet_NaN();
+  std::vector<float> x = {1, 2, nan, 4, 5};
+  std::vector<float> y = {1, 2, 3,   4, 5};
+
+  dtwc::Data data;
+  data.ndim = 1;
+  data.p_vec = {{x.begin(), x.end()}, {y.begin(), y.end()}};
+  data.p_names = {"x", "y"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  prob.set_variant(dtwc::core::DTWVariant::Standard); // triggers rebind
+
+  const double d = prob.dtw_function_f32()(std::span<const float>{x},
+                                           std::span<const float>{y});
+  REQUIRE_THAT(d, WithinAbs(0.0, 1e-5));
+}

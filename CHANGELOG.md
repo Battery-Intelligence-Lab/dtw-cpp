@@ -22,10 +22,22 @@ The Standard / ADTW / WDTW / DDTW + ZeroCost-missing paths now share **one** tem
 - **`dtwc::core::dtw_runtime()`** now honours `opts.variant_params.variant`. Previously [dtwc/core/dtw.cpp](dtwc/core/dtw.cpp) ignored the variant field and always ran Standard DTW, silently dropping ADTW / WDTW / DDTW requests from the simple binding entry point.
 - **`adtwBanded_mv` / `wdtwBanded_mv` / `dtwMissing_banded_mv`** now use a real banded MV kernel instead of falling back to the unbanded MV path. Previous TODO comments acknowledged this was a "for now" — the unified kernel promotes banded MV to a first-class path across all variants. Regression tests in [unit_test_mv_variants.cpp](tests/unit/unit_test_mv_variants.cpp) and [unit_test_mv_missing.cpp](tests/unit/unit_test_mv_missing.cpp) confirm tight bands now produce strictly different (tighter) results than unbanded.
 
-### Deferred (Phase 3)
+### Changed (dispatch unification — Phase 3 part 1)
+
+`Problem::rebind_dtw_fn` previously held a ~130-line nested switch that dispatched on `{missing_strategy, variant, ndim}` with UV/MV forks duplicated across every variant case. Collapsed to two lines that call a new templated resolver:
+
+- **New `dtwc::core::resolve_dtw_fn<T>(const Problem&)`** in [dtwc/core/dtw_dispatch.hpp](dtwc/core/dtw_dispatch.hpp) / [dtw_dispatch.cpp](dtwc/core/dtw_dispatch.cpp). Explicit instantiations for `T = data_t` (f64) and `T = float` (f32). Resolution happens once at rebind time; the returned `std::function` inner body is the existing templated kernel call — zero per-cell dispatch overhead. Benchmarked: 0% change on `BM_dtwBanded/1000/50`, `BM_wdtwBanded_g/1000/50` vs pre-refactor.
+- Adding a new DTW variant now localises to `resolve_dtw_fn` — one `make_*<T>` helper + one switch arm, instead of two touch points (public wrapper + rebind case) with UV/MV duplication.
+- New public `Problem::wdtw_weights_cache()` const accessor for the resolver to read the WDTW weights cache without friend machinery.
+
+### Fixed (silent dispatch — f32 path)
+
+- **`Problem::dtw_function_f32()`** now honours `variant_params.variant` and `missing_strategy`. Previously the float32 distance function was unconditionally bound to Standard DTW with `MissingStrategy::Error`, regardless of Problem configuration. The primary user of this path is `fast_clara`'s chunked-Parquet assignment (memory-saving f32 loader): anyone clustering with `variant = WDTW/ADTW/DDTW/SoftDTW` or with missing-data strategies and using the chunked path silently got Standard DTW results. Regression tests in [unit_test_mv_variants.cpp](tests/unit/unit_test_mv_variants.cpp) `[f32]` tag exercise ADTW, WDTW, and ZeroCost-missing via `dtw_function_f32()`.
+
+### Deferred (Phase 3 part 2)
 
 - Fold `warping_missing_arow.hpp` — its recurrence (`C(i,j) = C(i-1,j-1)` when the pair is missing) doesn't fit the current Cell contract without extending the kernel interface to pass a "missing-pair" flag. Genuinely different path; kept as-is.
-- Fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp; shrink `Problem::rebind_dtw_fn()`'s 130-line switch.
+- Fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp.
 
 ### Added (GPU parity + configuration)
 
