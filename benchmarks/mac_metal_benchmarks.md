@@ -76,15 +76,40 @@ The initial kernel iterated all diagonal cells and wrote INF for out-of-band cel
 
 ---
 
-## 5. User-target workload: 75 × 10 000
+## 5. Row-major banded kernel (tight-band)
 
-| Config | Target | CPU actual | Metal actual |
-|---|---|---|---|
-| unbanded | CPU < 100 s | **92.5 s** ✓ | **5.80 s** |
-| band = 100 | CPU < 4 s | **1.75 s** ✓ | **1.40 s** |
-| band = 1 000 (L/10) | — | 17.5 s | 2.01 s |
+Anti-diagonal wavefront pays 2·L threadgroup_barriers per pair; at tight bands (few cells per diagonal) the barriers dominate. The new `dtw_banded_row` kernel trades within-pair parallelism for across-pair parallelism: **one thread per pair**, row-major iteration with two rolling row-strips in device-memory scratch, laid out **coalesced across SIMD-group lanes** (`scratch[r*stride + gid]`) so 32 threads hit one cache line per read. A register-rotated `prev_r` / `prev_rp1` window reduces per-cell device reads from 3 to 1. Boundary INF-fills cover only the delta between adjacent rows' bands (≤ 2 cells) instead of the full strip.
 
-At tight band (100) Metal is only 1.25× faster than CPU — the fixed per-diagonal barrier + index-setup overhead dominates once actual cell work is small. Further speedup needs a row-major banded kernel that avoids the 2·L-1 diagonal barriers (follow-on work).
+Dispatcher fires it when `band > 0 AND band * 20 < max_L AND band ≤ 512` — the crossover is empirically at band/L ≈ 5%; wider bands put too much sequential work on a single thread and lose to the parallel wavefront. Exposed to callers via `MetalDistMatResult::kernel_used`.
+
+**Before/after, same machine, 3 repetitions each.** Before runs were taken by temporarily forcing `use_banded_row = false` and rebuilding; after runs use the default dispatcher.
+
+| 75 × 10 000, band = 100 | Mean | stddev | CV | vs CPU | vs wavefront |
+|---|---|---|---|---|---|
+| CPU baseline (12 threads) | 1 760 ms | 5.6 ms | 0.32 % | — | — |
+| Metal wavefront (before) | **1 396 ms** | 0.2 ms | 0.02 % | 1.26× | 1.00× |
+| Metal `dtw_banded_row` (after) | **1 011 ms** | 0.5 ms | 0.05 % | **1.74×** | **1.38×** |
+
+Wider-band regression check (dispatcher keeps these on the wavefront; numbers identical to the prior handoff, confirming no regression):
+
+| Workload | Time (3-rep mean) | Path |
+|---|---|---|
+| 75 × 10 000 unbanded | 5 800 ms | `wavefront_global` |
+| 75 × 10 000 band=1 000 | 2 010 ms | `wavefront_global` |
+
+Correctness: 91 assertions across 9 test cases in `tests/unit/test_metal_correctness.cpp`, including a band=5 / L=400 sanity and band=50 / L=5000 long-series tight-band case.
+
+The kernel is memory-bound: at 2775 pairs × 2 M cells = 5.58 Gcells in 1.01 s = 5.52 Gcells/s. The naive one-thread-per-pair geometry only dispatches ≈ 2775 threads — roughly 7 % of the 38 K resident-thread capacity on M2 Max, so a larger win requires a register-tile / simd_shuffle kernel that uses more threads per pair without reintroducing barriers (follow-on).
+
+---
+
+## 5.5. User-target workload: 75 × 10 000
+
+| Config | Target | CPU actual | Metal actual | Kernel |
+|---|---|---|---|---|
+| unbanded | CPU < 100 s | **92.5 s** ✓ | **5.80 s** | `wavefront_global` |
+| band = 100 | CPU < 4 s | **1.75 s** ✓ | **1.01 s** | **`dtw_banded_row`** |
+| band = 1 000 (L/10) | — | 17.5 s | 2.01 s | `wavefront_global` |
 
 ---
 
@@ -127,6 +152,5 @@ Low FLOP fraction is expected: DTW is a DP recurrence (each cell depends on thre
 ## 8. What's not yet benchmarked / known gaps
 
 - **LB_Keogh pruning on Metal**: the CUDA path computes envelopes + LB_Keogh on-GPU and skips pairs above a threshold. Metal equivalent not yet implemented. Benefit is workload-specific — only helps when user provides a meaningful threshold.
-- **Register-tile kernel**: short series (max_L ≤ 128) would see the biggest win. Current wavefront uses ~32 threads per pair and under-utilizes the SIMD group. Implementation is non-trivial MSL + warp-shuffle work.
-- **Row-major banded kernel**: would dramatically improve tight-band (e.g. band=100) speedup from the current 1.25× to ≈ 5–10× over CPU, by eliminating anti-diagonal barrier overhead.
-- **1-vs-all / k-vs-all Metal variants**: parallel to CUDA's `compute_dtw_one_vs_all` / `compute_dtw_k_vs_all`.
+- **Register-tile kernel**: short series (max_L ≤ 128) would see the biggest win. Current wavefront uses ~32 threads per pair and under-utilizes the SIMD group; the new `dtw_banded_row` kernel is memory-bound at ≈ 7 % GPU occupancy. A `simd_shuffle`-based register-tile kernel is the next step. Implementation is non-trivial MSL + warp-shuffle work.
+- **1-vs-all / k-vs-all Metal variants**: parallel to CUDA's `compute_dtw_one_vs_all` / `compute_dtw_k_vs_all`. Needed to accelerate the k-medoids cluster-assignment loop on GPU.

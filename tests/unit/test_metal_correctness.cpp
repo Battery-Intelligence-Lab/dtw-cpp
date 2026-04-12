@@ -64,6 +64,21 @@ std::vector<double> cpu_distance_matrix(
   return mat;
 }
 
+std::vector<double> cpu_banded_matrix(
+    const std::vector<std::vector<double>> &series, int band)
+{
+  const size_t N = series.size();
+  std::vector<double> mat(N * N, 0.0);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      double d = dtwc::dtwBanded<double>(series[i], series[j], band);
+      mat[i * N + j] = d;
+      mat[j * N + i] = d;
+    }
+  }
+  return mat;
+}
+
 } // namespace
 
 TEST_CASE("Metal backend is available", "[metal]")
@@ -170,6 +185,81 @@ TEST_CASE("Metal pushes max_L towards the threadgroup memory cap", "[metal]")
       else REQUIRE(gpu.matrix[i * N + j] > 0.0);
     }
   }
+}
+
+TEST_CASE("Metal row-major banded kernel matches CPU banded reference", "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // Mid-length so we can run in a single correctness pass.
+  //   band*4 = 20 < L = 400  -> row-major banded dispatcher fires.
+  const size_t N = 6;
+  const size_t L = 400;
+  const int band = 5;
+  auto series = generate_random_series(N, L, 2024);
+
+  auto cpu = cpu_banded_matrix(series, band);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  INFO("kernel_used=" << gpu.kernel_used);
+  REQUIRE(gpu.kernel_used == "banded_row");
+  REQUIRE(gpu.n == N);
+
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal row-major banded kernel handles long series tight band", "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // 2730-cap wavefront would still fire here (L > 2730); tight band triggers
+  // row-major path regardless. Small N keeps the correctness test fast.
+  const size_t N = 3;
+  const size_t L = 5000;
+  const int band = 50;
+  auto series = generate_random_series(N, L, 99);
+
+  auto cpu = cpu_banded_matrix(series, band);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  INFO("kernel_used=" << gpu.kernel_used);
+  REQUIRE(gpu.kernel_used == "banded_row");
+
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1.0));
+    }
+  }
+}
+
+TEST_CASE("Metal wide band still routes to wavefront kernel", "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // band*4 >= L  -> stays on wavefront, not banded-row.
+  const size_t N = 4;
+  const size_t L = 200;
+  const int band = 100; // band*4 = 400 >= L=200 -> wavefront
+  auto series = generate_random_series(N, L, 33);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  INFO("kernel_used=" << gpu.kernel_used);
+  REQUIRE(gpu.kernel_used == "wavefront");
 }
 
 TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")

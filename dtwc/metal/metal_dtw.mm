@@ -274,6 +274,134 @@ kernel void dtw_wavefront_global(
     out_matrix[b_idx * N_series + a_idx] = result;
   }
 }
+
+// Row-major banded DTW: one thread per pair, no intra-threadgroup barriers.
+//
+// For tight Sakoe-Chiba bands the anti-diagonal wavefront kernel is barrier-
+// bound (2*La threadgroup_barriers dominate compute). This kernel trades
+// within-pair parallelism for across-pair parallelism: each thread iterates
+// row-by-row with two rolling buffers of length (2*band+1) in device memory.
+//
+// Relative-index scheme: cell (i, j) with |i - j| <= band is stored at
+//   r = j - i + band   in [0, 2*band].
+// Dependencies at row i, col j:
+//   D[i-1][j-1]  -> prev[r]     (relative index j-1-(i-1)+band = r)
+//   D[i-1][j]    -> prev[r+1]   (relative index j-(i-1)+band   = r+1)
+//   D[i][j-1]    -> cur[r-1]    (relative index j-1-i+band     = r-1)
+// Out-of-band cells stay INF (explicit fill each row after the j loop), so
+// reads of prev[r+1] at the band edge naturally return INF.
+//
+// Memory layout is COALESCED across threads in a SIMD group:
+//   scratch[ row_half * W*stride + r * stride + gid ]
+// where stride = total threads dispatched. Threads in one SIMD group reading
+// `prev[r]` all hit one 128-byte cache line, avoiding the 32x bandwidth
+// penalty of a naive per-thread-strip layout.
+kernel void dtw_banded_row(
+    device const float*   all_series  [[buffer(0)]],
+    device const int*     lengths     [[buffer(1)]],
+    device float*         out_matrix  [[buffer(2)]],
+    constant int&         N_series    [[buffer(3)]],
+    constant int&         max_L       [[buffer(4)]],
+    constant int&         band        [[buffer(5)]],
+    constant int&         use_sq_l2   [[buffer(6)]],
+    device float*         scratch     [[buffer(7)]],
+    constant int&         pair_offset [[buffer(8)]],
+    constant int&         stride      [[buffer(9)]],
+    uint gid [[thread_position_in_grid]])
+{
+  const int num_pairs = N_series * (N_series - 1) / 2;
+  const int real_pid = (int)gid + pair_offset;
+  if (real_pid >= num_pairs) return;
+
+  int a_idx, b_idx;
+  decode_pair(real_pid, N_series, a_idx, b_idx);
+
+  const int La = lengths[a_idx];
+  const int Lb = lengths[b_idx];
+  const device float *a = all_series + a_idx * max_L;
+  const device float *b = all_series + b_idx * max_L;
+
+  const int W = 2 * band + 1;                // strip width
+  const float INF = 3.402823466e+38f;
+
+  // Interleaved coalesced layout: this thread's prev[r] is scratch[0 + r*stride + gid];
+  // cur[r] is scratch[W*stride + r*stride + gid]. Pointer arithmetic:
+  device float *prev = scratch + gid;
+  device float *cur  = scratch + (size_t)W * stride + gid;
+
+  // Initial prev row: nothing computed yet, all INF.
+  for (int r = 0; r < W; ++r) prev[r * stride] = INF;
+
+  // Track previous row's band bounds so we can INF-fill only the delta
+  // between adjacent rows' bands (2 cells maximum) instead of all W cells.
+  int prev_r_lo = 0;
+  int prev_r_hi = -1; // sentinel: row i=-1 had no in-band cells
+
+  for (int i = 0; i < La; ++i) {
+    const int j_lo = max(0, i - band);
+    const int j_hi = min(Lb - 1, i + band);
+    const int r_lo = j_lo - i + band;        // 0..band
+    const int r_hi = j_hi - i + band;        // band..W-1
+
+    // INF-fill only cells in cur that WON'T be written by the j-loop but
+    // WILL be read by row i+1. Cells [prev_r_lo..prev_r_hi] of prev were
+    // valid; after the upcoming swap, cur becomes prev. So for row i+1,
+    // any read at r in [r_lo_next..r_hi_next] (for cdiag/cup) touches
+    // positions [r_lo_next..r_hi_next+1] of prev(=cur-after-swap). We
+    // simply INF-fill cells outside [r_lo, r_hi] of cur that were set by
+    // some earlier iteration (up to prev_r_lo..prev_r_hi).
+    for (int r = prev_r_lo; r < r_lo; ++r) cur[r * stride] = INF;
+    for (int r = r_hi + 1; r <= prev_r_hi; ++r) cur[r * stride] = INF;
+
+    // Register-rotated read of prev: hold prev[r*stride] and prev[(r+1)*stride]
+    // in registers, shift one position each iteration. One device load per cell.
+    float prev_r, prev_rp1;
+    if (i == 0) {
+      prev_r   = INF;
+      prev_rp1 = INF;
+    } else {
+      prev_r   = (r_lo     < W) ? prev[r_lo * stride]       : INF;
+      prev_rp1 = (r_lo + 1 < W) ? prev[(r_lo + 1) * stride] : INF;
+    }
+    float last_cur = INF; // D[i][j-1] from previous j iteration
+
+    for (int j = j_lo; j <= j_hi; ++j) {
+      const int r = j - i + band;            // 0..W-1
+
+      const float diff = a[i] - b[j];
+      const float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
+
+      float best;
+      if (i == 0 && j == 0) {
+        best = 0.0f;
+      } else {
+        const float cdiag = (i > 0 && j > 0)         ? prev_r   : INF;
+        const float cup   = (i > 0 && r + 1 < W)     ? prev_rp1 : INF;
+        const float cleft = (j > 0 && r > 0)         ? last_cur : INF;
+        best = min(cdiag, min(cup, cleft));
+      }
+      last_cur = cost + best;
+      cur[r * stride] = last_cur;
+
+      // Shift register window for next j (r+1): prev_r <- prev_rp1;
+      // prev_rp1 <- prev[(r+2)*stride] (INF if out of band in prev row).
+      prev_r   = prev_rp1;
+      prev_rp1 = (r + 2 < W) ? prev[(r + 2) * stride] : INF;
+    }
+
+    // Swap prev <-> cur for next row.
+    device float *tmp = prev; prev = cur; cur = tmp;
+    prev_r_lo = r_lo;
+    prev_r_hi = r_hi;
+  }
+
+  // After the final iteration we swapped; the completed row is now `prev`.
+  // Target cell (La-1, Lb-1) lives at relative index (Lb-1)-(La-1)+band.
+  const int r_final = (Lb - 1) - (La - 1) + band;
+  float result = (r_final >= 0 && r_final < W) ? prev[r_final * stride] : INF;
+  out_matrix[a_idx * N_series + b_idx] = result;
+  out_matrix[b_idx * N_series + a_idx] = result;
+}
 )METAL";
 
 // ---------------------------------------------------------------------------
@@ -282,8 +410,9 @@ kernel void dtw_wavefront_global(
 struct MetalContext {
   id<MTLDevice> device = nil;
   id<MTLCommandQueue> queue = nil;
-  id<MTLComputePipelineState> pipeline = nil;        // threadgroup-memory wavefront
-  id<MTLComputePipelineState> pipeline_global = nil; // device-memory wavefront
+  id<MTLComputePipelineState> pipeline = nil;           // threadgroup-memory wavefront
+  id<MTLComputePipelineState> pipeline_global = nil;    // device-memory wavefront
+  id<MTLComputePipelineState> pipeline_banded_row = nil; // row-major banded (tight-band)
   bool initialized = false;
   bool init_failed = false;
   std::string init_error;
@@ -352,11 +481,31 @@ static MetalContext &context()
       ctx.pipeline_global =
           [ctx.device newComputePipelineStateWithFunction:fn_global error:&err];
       [fn_global release];
-      [lib release];
       if (!ctx.pipeline_global) {
         ctx.init_failed = true;
         ctx.init_error = err ? [[err localizedDescription] UTF8String]
                              : "newComputePipelineStateWithFunction (global) failed";
+        [lib release];
+        return;
+      }
+
+      // Third pipeline: row-major banded kernel for tight Sakoe-Chiba bands.
+      id<MTLFunction> fn_banded_row =
+          [lib newFunctionWithName:@"dtw_banded_row"];
+      if (!fn_banded_row) {
+        ctx.init_failed = true;
+        ctx.init_error = "kernel function dtw_banded_row not found";
+        [lib release];
+        return;
+      }
+      ctx.pipeline_banded_row =
+          [ctx.device newComputePipelineStateWithFunction:fn_banded_row error:&err];
+      [fn_banded_row release];
+      [lib release];
+      if (!ctx.pipeline_banded_row) {
+        ctx.init_failed = true;
+        ctx.init_error = err ? [[err localizedDescription] UTF8String]
+                             : "newComputePipelineStateWithFunction (banded_row) failed";
         return;
       }
 
@@ -467,15 +616,28 @@ MetalDistMatResult compute_distance_matrix_metal(
     const int band = opts.band;
     const int use_sq_l2 = opts.use_squared_l2 ? 1 : 0;
 
-    // Choose kernel variant based on threadgroup-memory requirement:
-    //   threadgroup kernel:  3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
-    //   global kernel:       uses device memory for the 3 anti-diagonal buffers
+    // Choose kernel variant based on workload:
+    //   banded-row kernel: tight Sakoe-Chiba band (band > 0, band*4 < max_L).
+    //                      One thread per pair, row-major iteration, no barriers.
+    //                      Wins on tight bands where the wavefront's 2*La
+    //                      threadgroup barriers dominate.
+    //   threadgroup kernel: 3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
+    //   global kernel:     uses device memory for the 3 anti-diagonal buffers
     const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
     const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
-    const bool use_global = (tg_mem_len > tg_mem_cap);
+    // Row-major one-thread-per-pair wins only when the band is tight enough
+    // that wavefront barrier overhead dominates. Empirically (M2 Max), a
+    // ~5%-of-length band is the crossover: at band/L < 1/20 the row-major
+    // kernel beats the wavefront; wider bands put too much sequential work
+    // on a single thread. Cap at 512 to avoid huge per-thread scratch.
+    const bool use_banded_row =
+        (band > 0) && (band * 20 < max_L) && (band <= 512);
+    const bool use_global = !use_banded_row && (tg_mem_len > tg_mem_cap);
 
-    id<MTLComputePipelineState> pipeline =
-        use_global ? ctx.pipeline_global : ctx.pipeline;
+    id<MTLComputePipelineState> pipeline;
+    if (use_banded_row)   pipeline = ctx.pipeline_banded_row;
+    else if (use_global)  pipeline = ctx.pipeline_global;
+    else                  pipeline = ctx.pipeline;
 
     // Chunk pairs across multiple command buffers. macOS's GPU watchdog
     // kills compute that holds the GPU for more than ~2 s per command buffer
@@ -483,17 +645,27 @@ MetalDistMatResult compute_distance_matrix_metal(
     // Rough rule: keep each dispatch bounded in total cell count.
     //
     // Global-memory kernel is slower per-pair than threadgroup, so chunk more
-    // aggressively for long series.
+    // aggressively for long series. Banded-row touches only band*La cells
+    // per pair, so cells-per-pair accounting uses band*L, not L*L.
     const size_t cells_budget = 5e9; // ~5 billion DTW cells per command buffer
-    const size_t cells_per_pair = (size_t)max_L * (size_t)max_L;
+    const size_t cells_per_pair = use_banded_row
+        ? (size_t)(2 * band + 1) * (size_t)max_L
+        : (size_t)max_L * (size_t)max_L;
     size_t chunk = std::max<size_t>(1, cells_budget / cells_per_pair);
     if (chunk > num_pairs) chunk = num_pairs;
 
     // Allocate scratch sized for one chunk (reused across chunks).
     id<MTLBuffer> buf_scratch = nil;
+    size_t scratch_bytes = 0;
     if (use_global) {
-      const size_t scratch_bytes =
-          chunk * 3ULL * (size_t)max_L * sizeof(float);
+      scratch_bytes = chunk * 3ULL * (size_t)max_L * sizeof(float);
+    } else if (use_banded_row) {
+      // Coalesced layout: 2 rolling row-strips of (2*band+1) floats; each
+      // row stripe has `stride` floats (stride == total threads dispatched).
+      // Stride is computed below once tg_size is known — defer allocation.
+      scratch_bytes = 0;
+    }
+    if (scratch_bytes > 0) {
       buf_scratch = [ctx.device newBufferWithLength:scratch_bytes
                                             options:MTLResourceStorageModePrivate];
       if (!buf_scratch) {
@@ -512,12 +684,47 @@ MetalDistMatResult compute_distance_matrix_metal(
       }
     }
 
-    // Pick threads-per-threadgroup: at most max_L, at most kernel's hint.
+    // Pick threads-per-threadgroup.
+    //  - banded-row: one thread per pair, so tg_size = simd width (32) for
+    //    cheap dispatch without intra-threadgroup cooperation.
+    //  - wavefront kernels: cooperate within a pair, use up to max_L threads
+    //    rounded to a multiple of the simd width.
     const NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup;
-    NSUInteger tg_size = std::min((NSUInteger)max_L, max_threads);
-    if (tg_size == 0) tg_size = 1;
     const NSUInteger simd = pipeline.threadExecutionWidth;
-    if (tg_size > simd) tg_size = (tg_size / simd) * simd;
+    NSUInteger tg_size;
+    if (use_banded_row) {
+      tg_size = simd;
+      if (tg_size > max_threads) tg_size = max_threads;
+    } else {
+      tg_size = std::min((NSUInteger)max_L, max_threads);
+      if (tg_size == 0) tg_size = 1;
+      if (tg_size > simd) tg_size = (tg_size / simd) * simd;
+    }
+
+    // Banded-row: allocate coalesced scratch sized by total thread count.
+    // Grid is 1D of (ceil(chunk/tg_size) * tg_size) threads.
+    int banded_stride = 0;
+    if (use_banded_row) {
+      const size_t ntgs = (chunk + tg_size - 1) / tg_size;
+      banded_stride = static_cast<int>(ntgs * tg_size);
+      scratch_bytes =
+          2ULL * (size_t)(2 * band + 1) * (size_t)banded_stride * sizeof(float);
+      buf_scratch = [ctx.device newBufferWithLength:scratch_bytes
+                                            options:MTLResourceStorageModePrivate];
+      if (!buf_scratch) {
+        [buf_out release];
+        [buf_lengths release];
+        [buf_series release];
+        if (opts.verbose) {
+          std::cerr << "[Metal] banded-row scratch alloc failed ("
+                    << scratch_bytes << " bytes); CPU fallback.\n";
+        }
+        result.matrix.clear();
+        result.matrix.resize(N * N, 0.0);
+        result.pairs_computed = 0;
+        return result;
+      }
+    }
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < num_pairs; off += chunk) {
@@ -534,24 +741,37 @@ MetalDistMatResult compute_distance_matrix_metal(
       [enc setBytes:&max_L     length:sizeof(int) atIndex:4];
       [enc setBytes:&band      length:sizeof(int) atIndex:5];
       [enc setBytes:&use_sq_l2 length:sizeof(int) atIndex:6];
-      if (use_global) {
+      if (use_global || use_banded_row) {
         [enc setBuffer:buf_scratch offset:0 atIndex:7];
       } else {
         [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
       }
       [enc setBytes:&pair_offset length:sizeof(int) atIndex:8];
+      if (use_banded_row) {
+        [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
+      }
 
-      MTLSize grid = MTLSizeMake(this_chunk, 1, 1);
-      MTLSize tg   = MTLSizeMake(tg_size, 1, 1);
+      // Grid geometry:
+      //  - banded-row: one thread per pair, dispatch ceil(chunk / tg_size) tgs.
+      //  - wavefront:  one threadgroup per pair.
+      MTLSize grid, tg;
+      if (use_banded_row) {
+        const size_t ntgs = (this_chunk + tg_size - 1) / tg_size;
+        grid = MTLSizeMake(ntgs, 1, 1);
+        tg   = MTLSizeMake(tg_size, 1, 1);
+      } else {
+        grid = MTLSizeMake(this_chunk, 1, 1);
+        tg   = MTLSizeMake(tg_size, 1, 1);
+      }
       [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
       [enc endEncoding];
       [cmd commit];
       last_cmd = cmd;
 
-      // When the global kernel reuses a single scratch region across chunks,
-      // we must wait for each chunk before starting the next (otherwise the
-      // next chunk clobbers in-flight scratch).
-      if (use_global) {
+      // When scratch is reused across chunks we must wait for each chunk
+      // before launching the next (otherwise the next chunk clobbers
+      // in-flight scratch). Applies to both global and banded-row kernels.
+      if (use_global || use_banded_row) {
         [cmd waitUntilCompleted];
         if (cmd.error) {
           NSString *desc = [cmd.error localizedDescription];
@@ -560,7 +780,7 @@ MetalDistMatResult compute_distance_matrix_metal(
         }
       }
     }
-    if (last_cmd && !use_global) {
+    if (last_cmd && !use_global && !use_banded_row) {
       [last_cmd waitUntilCompleted];
       if (last_cmd.error) {
         NSString *desc = [last_cmd.error localizedDescription];
@@ -591,6 +811,15 @@ MetalDistMatResult compute_distance_matrix_metal(
     std::cout << "Metal DTW: " << num_pairs << " pairs in "
               << (result.gpu_time_sec * 1000.0) << " ms on "
               << metal_device_info() << std::endl;
+  }
+  // Record which kernel path was taken so tests / benchmarks can assert on it.
+  if (opts.band > 0 && opts.band * 20 < max_L && opts.band <= 512) {
+    result.kernel_used = "banded_row";
+  } else if (3u * (unsigned)max_L * sizeof(float)
+             > (unsigned)ctx.device.maxThreadgroupMemoryLength) {
+    result.kernel_used = "wavefront_global";
+  } else {
+    result.kernel_used = "wavefront";
   }
 
   return result;

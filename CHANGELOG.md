@@ -29,11 +29,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   | 30 × 10000 | 16061 | 929 | **17.3×** |
 
   Throughput: ~30–52 × 10⁹ DTW cells/sec; ~180–320 GFLOPS (≈1.3–2.4% of 13.6 TFLOPS FP32 peak). The low FLOP fraction is expected for DTW's memory-bandwidth-bound DP recurrence; further gains require register-tiling and warp-shuffle kernels (follow-on).
-- **Two kernel variants share the same API:**
+- **Three kernel variants share the same API:**
   - `dtw_wavefront` (threadgroup memory): 3 × max_L floats in 32 KB threadgroup memory → max_L ≤ 2730 on M1/M2/M3.
-  - `dtw_wavefront_global` (device memory): scratch lives in unified GPU memory; any max_L supported. Dispatcher picks automatically.
+  - `dtw_wavefront_global` (device memory): scratch lives in unified GPU memory; any max_L supported.
+  - `dtw_banded_row` (tight-band row-major): one thread per pair, no intra-threadgroup barriers, coalesced device-memory scratch with register-rotated prev/cur window. Fires when `band > 0 AND band * 20 < max_L AND band ≤ 512` — the regime where anti-diagonal barrier overhead dominates the wavefront kernel. On 75 × 10000 band=100: **1.01 s vs 1.40 s for wavefront (1.4×) and 1.76 s for CPU (1.7×)**. Dispatcher picks automatically; `MetalDistMatResult::kernel_used` reports which kernel ran.
 - **macOS GPU-watchdog avoidance**: long dispatches (>~2 s per command buffer) fail with `kIOGPUCommandBufferCallbackErrorImpactingInteractivity`. The dispatcher now chunks pairs across multiple command buffers (budget ≈ 5 × 10⁹ cells per buffer) so arbitrary N × L workloads complete without triggering the watchdog.
-- **Tests**: `test_metal_correctness.cpp` (6 cases, 66 assertions) validates GPU output against CPU reference at FP32 tolerance, covers length-2000 and the 10 000-length fallback. `test_metal_mmap.cpp` exercises the Metal strategy through `Problem::fillDistanceMatrix` into both `DenseDistanceMatrix` and the memory-mapped distance-matrix paths.
+- **Tests**: `test_metal_correctness.cpp` (9 cases, 91 assertions) validates GPU output against CPU reference at FP32 tolerance, covers length-2000, the 10 000-length global-memory fallback, and three banded-row dispatch scenarios (tight-band hit, long-series tight-band, wide-band routing back to wavefront). `test_metal_mmap.cpp` exercises the Metal strategy through `Problem::fillDistanceMatrix` into both `DenseDistanceMatrix` and the memory-mapped distance-matrix paths.
 - **Benchmark**: `benchmarks/bench_metal_dtw.cpp` (Google Benchmark) compares Metal vs CPU at matching sizes; JSON lands in `benchmarks/results/mac_m2max/`.
 
 ### Added (macOS support)
@@ -124,9 +125,6 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **`std::span` interfaces:** All public DTW distance functions (dtwFull, dtwFull_L, dtwBanded, ddtw*, adtw*, wdtw*, soft_dtw*, dtwMissing*, dtwAROW*) now accept `std::span<const data_t>` as primary overloads. `const std::vector<data_t>&` convenience overloads are retained for backward compatibility.
 - **`dtw_fn_t` signature:** Changed from `std::function<data_t(const vector&, const vector&)>` to `std::function<data_t(std::span<const data_t>, std::span<const data_t>)>`.
 - **`missing_utils.hpp`:** `has_missing()`, `missing_rate()`, `interpolate_linear()` now take `std::span<const T>` with vector convenience overloads.
-
-<br/><br/>
-# DTWC v2.0.0
 
 ### Added (SIMD)
 

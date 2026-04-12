@@ -38,10 +38,11 @@ struct MetalDistMatOptions {
 };
 
 struct MetalDistMatResult {
-  std::vector<double> matrix; ///< N*N flat row-major distance matrix.
-  size_t n = 0;               ///< Number of series.
-  double gpu_time_sec = 0;    ///< GPU kernel execution time.
-  size_t pairs_computed = 0;  ///< Number of DTW pairs computed.
+  std::vector<double> matrix;     ///< N*N flat row-major distance matrix.
+  size_t n = 0;                   ///< Number of series.
+  double gpu_time_sec = 0;        ///< GPU kernel execution time.
+  size_t pairs_computed = 0;      ///< Number of DTW pairs computed.
+  std::string kernel_used;        ///< "wavefront" / "wavefront_global" / "banded_row".
 };
 
 /// Check if Metal is available (MTLCreateSystemDefaultDevice succeeds).
