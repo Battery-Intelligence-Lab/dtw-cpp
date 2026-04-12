@@ -111,6 +111,38 @@ else()
   message(STATUS "Architecture tuning disabled — portable binary mode")
 endif()
 
+# Reproducible-build flags (opt-in).
+#
+# Enables bit-identical binaries across build hosts when the following are also
+# ensured externally:
+#   - SOURCE_DATE_EPOCH is exported (gcc/clang read this env var automatically
+#     and use it to stabilise __DATE__ / __TIME__ macros — no CMake plumbing
+#     needed).
+#   - Build directory is deterministic (e.g. /build rather than
+#     /home/user/project/build).
+#
+# -ffile-prefix-map rewrites absolute source paths in debug info AND in
+# __FILE__ macros, so the binaries don't embed the developer's home directory.
+# Applied to Clang and GCC; MSVC has no equivalent single flag (use /d1 flags
+# if ever required).
+#
+# This is opt-in because the flag slows compilation slightly and alters debug
+# info paths, which can surprise local IDE debuggers.
+option(DTWC_REPRODUCIBLE_BUILD
+  "Strip absolute source paths from debug info and __FILE__ (for Debian-style packaging)"
+  OFF)
+
+if(DTWC_REPRODUCIBLE_BUILD)
+  if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(
+      $<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=.>
+      $<$<COMPILE_LANGUAGE:C,CXX>:-ffile-prefix-map=${CMAKE_BINARY_DIR}=./build>)
+    message(STATUS "Reproducible build: -ffile-prefix-map enabled")
+  else()
+    message(STATUS "Reproducible build: not supported on ${CMAKE_CXX_COMPILER_ID} (no-op)")
+  endif()
+endif()
+
 # run vcvarsall when msvc is used
 include("${CMAKE_CURRENT_LIST_DIR}/VCEnvironment.cmake")
 run_vcvarsall()
