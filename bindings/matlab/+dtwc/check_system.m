@@ -49,6 +49,19 @@ function check_system()
         end
     end
 
+    % Metal (Apple GPU)
+    if isfield(info, 'metal')
+        if info.metal
+            fprintf('  %s Metal:  %s\n', char(9989), info.metal_info);
+        else
+            if contains(info.metal_info, 'not compiled')
+                fprintf('  %s Metal:  not compiled (macOS only)\n', char(10060));
+            else
+                fprintf('  %s Metal:  compiled but no GPU detected\n', char(10060));
+            end
+        end
+    end
+
     % MPI
     if info.mpi
         fprintf('  %s MPI:    available\n', char(9989));

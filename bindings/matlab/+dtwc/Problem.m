@@ -144,6 +144,8 @@ classdef Problem < handle
         %   prob.set_distance_strategy('auto')
         %   prob.set_distance_strategy('brute_force')
         %   prob.set_distance_strategy('pruned')
+        %   prob.set_distance_strategy('gpu')   % CUDA
+        %   prob.set_distance_strategy('metal') % Apple GPU (macOS)
             dtwc_mex('Problem_set_distance_strategy', obj.Handle, strategy);
         end
 

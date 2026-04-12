@@ -236,9 +236,10 @@ static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s
   if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
   if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
   if (s == "pruned") return dtwc::DistanceMatrixStrategy::Pruned;
-  if (s == "gpu") return dtwc::DistanceMatrixStrategy::GPU;
+  if (s == "gpu" || s == "cuda") return dtwc::DistanceMatrixStrategy::GPU;
+  if (s == "metal") return dtwc::DistanceMatrixStrategy::Metal;
   throw std::invalid_argument("Unknown distance strategy: '" + s + "'. "
-    "Valid: 'auto', 'brute_force', 'pruned', 'gpu'.");
+    "Valid: 'auto', 'brute_force', 'pruned', 'gpu'/'cuda', 'metal'.");
 }
 
 /// Parse linkage string -> enum
@@ -926,8 +927,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
     // System capability check
     else if (cmd == "system_check") {
-      const char *fields[] = {"openmp", "openmp_threads", "cuda", "cuda_info", "mpi"};
-      mxArray *info = mxCreateStructMatrix(1, 1, 5, fields);
+      const char *fields[] = {"openmp", "openmp_threads", "cuda", "cuda_info",
+                              "metal", "metal_info", "mpi"};
+      mxArray *info = mxCreateStructMatrix(1, 1, 7, fields);
 #ifdef _OPENMP
       mxSetField(info, 0, "openmp", mxCreateLogicalScalar(true));
       mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(omp_get_max_threads()));
@@ -942,6 +944,14 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #else
       mxSetField(info, 0, "cuda", mxCreateLogicalScalar(false));
       mxSetField(info, 0, "cuda_info", mxCreateString("not compiled (rebuild with -DDTWC_ENABLE_CUDA=ON)"));
+#endif
+#ifdef DTWC_HAS_METAL
+      mxSetField(info, 0, "metal", mxCreateLogicalScalar(dtwc::metal::metal_available()));
+      std::string mi = dtwc::metal::metal_device_info();
+      mxSetField(info, 0, "metal_info", mxCreateString(mi.c_str()));
+#else
+      mxSetField(info, 0, "metal", mxCreateLogicalScalar(false));
+      mxSetField(info, 0, "metal_info", mxCreateString("not compiled (macOS only)"));
 #endif
 #ifdef DTWC_HAS_MPI
       mxSetField(info, 0, "mpi", mxCreateLogicalScalar(true));
