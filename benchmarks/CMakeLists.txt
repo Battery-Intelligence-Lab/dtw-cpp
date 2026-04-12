@@ -33,6 +33,16 @@ target_link_libraries(bench_cuda_dtw
     benchmark::benchmark_main
 )
 
+# Metal benchmarks (Google Benchmark, requires macOS Metal).
+# Target is always added; kernel code is gated on DTWC_HAS_METAL inside the .cpp.
+add_executable(bench_metal_dtw bench_metal_dtw.cpp)
+target_link_libraries(bench_metal_dtw
+  PRIVATE
+    dtwc++
+    benchmark::benchmark
+    benchmark::benchmark_main
+)
+
 # MPI benchmarks (standalone, requires MPI)
 add_executable(bench_mpi_dtw bench_mpi_dtw.cpp)
 target_link_libraries(bench_mpi_dtw PRIVATE dtwc++)

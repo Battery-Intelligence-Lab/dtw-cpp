@@ -12,6 +12,60 @@ All results from Oxford ARC HTC cluster, 2026-04-09.
 | CPU (Genoa) | AMD EPYC 9645 @ 2.30 GHz | 168 | 672 GB |
 | GPU (L40S) | NVIDIA L40S (Ada Lovelace) | 18,176 CUDA | 48 GB GDDR6X |
 | GPU (H100) | NVIDIA H100 NVL (Hopper) | 16,896 CUDA | 94 GB HBM3 |
+| Apple M2 Max (CPU) | Apple M2 Max (8P + 4E cores) | 12 | 64 GB unified |
+| Apple M2 Max (GPU, Metal) | Apple M2 Max 38-core GPU | 38 GPU cores | shares unified |
+
+### Apple Silicon spot-check (2026-04-12, M2 Max)
+
+Not yet a full UCR sweep; measurements come from `benchmarks/bench_dtw_baseline` (CPU thread scaling) and `benchmarks/bench_metal_dtw` (Metal vs CPU at matching sizes).
+
+Thread scaling on `fillDistanceMatrix/100/1000/-1` (4950 pairs × 1000² cells, unbanded):
+
+| Threads | Time (ms) | Speedup | Efficiency |
+|---|---|---|---|
+| 1 | 14 618 | 1.0× | 100% |
+| 8 (P-cores) | 2 124 | 6.88× | 86% |
+| 12 (P + E) | 1 599 | 9.14× | 76% |
+
+`OMP_PROC_BIND` / `OMP_PLACES` pinning has no measurable effect on Darwin + Homebrew libomp (pinning sweep at T=12 was within 0.3%).
+
+Metal GPU path on the same workloads (unbanded, FP32):
+
+| Workload | CPU 12-thread (ms) | Metal (ms) | Speedup |
+|---|---|---|---|
+| 50 × 500 | 106 | 6.9 | **15.4×** |
+| 100 × 500 | 404 | 26.2 | **15.4×** |
+| 100 × 1000 | 1648 | 139 | **11.9×** |
+| 200 × 500 | 1626 | 103 | **15.8×** |
+| 50 × 2500 | — | 151 | — |
+| **75 × 2500** | **5914** | **342** | **17.3×** |
+
+Long series (threadgroup cap at ~2730 → global-memory kernel kicks in):
+
+| Workload | CPU 12-thread | Metal | Speedup |
+|---|---|---|---|
+| 10 × 10000 | 3.06 s | 108 ms | **28.3×** |
+| 30 × 10000 | 16.06 s | 929 ms | **17.3×** |
+| **75 × 10000** | **92.5 s** | **5.80 s** | **15.9×** |
+
+Banded (Sakoe-Chiba) on the hardest workload (75 × 10000):
+
+| Variant | CPU 12-thread | Metal |
+|---|---|---|
+| unbanded | 92.5 s | 5.80 s |
+| band = L/10 = 1000 | 17.5 s | 2.01 s |
+| band = 100 (tight) | 1.75 s | 1.40 s |
+
+Achieved throughput: 35–52 × 10⁹ DTW cells/sec; ~180–320 GFLOPS (≈1.3–2.4% of 13.6 TFLOPS FP32 peak). Low FLOP fraction is expected for DTW's memory-bandwidth-bound DP recurrence. Initial anti-diagonal wavefront kernels; register-tiling and warp-shuffle variants are follow-on work.
+
+Wrapper overhead vs native C++ (measured on 8 workloads, 50×500 through 30×10000):
+
+| Language | vs direct Metal | vs `Problem::fillDistanceMatrix` | Details |
+|---|---|---|---|
+| Python (nanobind) | **−0.5% to +0.9%** | **<1%** | `nb::gil_scoped_release` keeps GIL off during GPU dispatch |
+| MATLAB (MEX, R2024b) | +8.5% to +17% | **<1%** | The 8.5–17% number was a like-for-unlike comparison: MATLAB uses `Problem::fillDistanceMatrix` (adds ~15% Problem-wrapper work), whereas the C++ bench timed `compute_distance_matrix_metal` directly. Comparing same path, MATLAB is within 1% of Python. |
+
+MATLAB 10 000-length verification: `10×10000` → 103.81 ms, `30×10000` → 890.75 ms (vs C++ 108 ms / 929 ms). Both bindings meet the ≤10% wrapper-overhead target.
 
 ## Summary
 
