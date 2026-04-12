@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <limits>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 namespace dtwc::core {
@@ -196,26 +197,12 @@ auto make_soft_dtw(const Problem &p)
   };
 }
 
-// ----------------------------------------------------------------------------
-// Per-T variant dispatch (WDTW has two specialisations for the weights cache).
-// ----------------------------------------------------------------------------
-
 template <typename T>
 auto make_wdtw(const Problem &p)
-  -> std::function<double(std::span<const T>, std::span<const T>)>;
-
-template <>
-inline auto make_wdtw<data_t>(const Problem &p)
-  -> std::function<double(std::span<const data_t>, std::span<const data_t>)>
+  -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  return make_wdtw_f64(p);
-}
-
-template <>
-inline auto make_wdtw<float>(const Problem &p)
-  -> std::function<double(std::span<const float>, std::span<const float>)>
-{
-  return make_wdtw_f32(p);
+  if constexpr (std::is_same_v<T, data_t>) return make_wdtw_f64(p);
+  else                                     return make_wdtw_f32(p);
 }
 
 } // unnamed namespace

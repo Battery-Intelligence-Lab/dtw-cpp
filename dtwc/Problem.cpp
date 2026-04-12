@@ -15,8 +15,7 @@
 #include "parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
-#include "warping.hpp"         // for dtwBanded, dtwFull
-#include "core/matrix_io.hpp"  // for io::write_csv, io::read_csv, operator<<
+#include "core/matrix_io.hpp"  // for operator<<(ostream, DenseDistanceMatrix)
 
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"   // GPU distance matrix computation
@@ -24,17 +23,12 @@
 #ifdef DTWC_HAS_METAL
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
-#include "warping_ddtw.hpp"    // for ddtwBanded
-#include "warping_wdtw.hpp"    // for wdtwBanded
-#include "warping_adtw.hpp"    // for adtwBanded
-#include "soft_dtw.hpp"        // for soft_dtw
+#include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
-#include "missing_utils.hpp"               // for has_missing, interpolate_linear
-#include "warping_missing.hpp"             // for dtwMissing_banded
-#include "warping_missing_arow.hpp"        // for dtwAROW_banded
+#include "missing_utils.hpp"               // for has_missing
 
 
 #include <algorithm> // for max_element, min, min_element, sample
