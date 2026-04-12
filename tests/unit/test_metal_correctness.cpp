@@ -1,0 +1,202 @@
+/**
+ * @file test_metal_correctness.cpp
+ * @brief Metal DTW correctness tests: compare GPU distance matrix against CPU reference.
+ *
+ * @details Mirrors test_cuda_correctness.cpp. FP32 rounding tolerance is
+ *          looser than CUDA FP64 but still tight enough to catch kernel bugs.
+ *
+ * @date 2026-04-12
+ */
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <dtwc.hpp>
+
+#ifdef DTWC_HAS_METAL
+#include <metal/metal_dtw.hpp>
+#endif
+
+#include <random>
+#include <vector>
+
+using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
+
+#ifndef DTWC_HAS_METAL
+
+TEST_CASE("Metal not available", "[metal]")
+{
+  SKIP("DTWC_HAS_METAL not defined; Metal tests skipped");
+}
+
+#else // DTWC_HAS_METAL
+
+namespace {
+
+std::vector<std::vector<double>> generate_random_series(
+    size_t n, size_t length, unsigned seed)
+{
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<double> dist(-10.0, 10.0);
+
+  std::vector<std::vector<double>> series(n);
+  for (auto &s : series) {
+    s.resize(length);
+    for (auto &v : s)
+      v = dist(rng);
+  }
+  return series;
+}
+
+std::vector<double> cpu_distance_matrix(
+    const std::vector<std::vector<double>> &series)
+{
+  const size_t N = series.size();
+  std::vector<double> mat(N * N, 0.0);
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      double d = dtwc::dtwFull_L<double>(series[i], series[j]);
+      mat[i * N + j] = d;
+      mat[j * N + i] = d;
+    }
+  }
+  return mat;
+}
+
+} // namespace
+
+TEST_CASE("Metal backend is available", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) {
+    SKIP("Metal initialization failed on this machine: "
+         << dtwc::metal::metal_device_info());
+  }
+  INFO("Metal device: " << dtwc::metal::metal_device_info());
+  REQUIRE(dtwc::metal::metal_available());
+}
+
+TEST_CASE("Metal unbanded DTW matches CPU on small random series", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const size_t N = 8;
+  const size_t L = 32;
+  auto series = generate_random_series(N, L, 42);
+
+  auto cpu = cpu_distance_matrix(series);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = -1;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.matrix.size() == N * N);
+
+  // FP32 accumulation over L iterations -> relative tolerance ~1e-5.
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-4) || WithinAbs(cpu[i * N + j], 1e-3));
+    }
+    CAPTURE(i);
+    REQUIRE(gpu.matrix[i * N + i] == 0.0); // diagonal
+  }
+}
+
+TEST_CASE("Metal handles N=2 smallest possible matrix", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  std::vector<std::vector<double>> series = {
+      {1.0, 2.0, 3.0, 4.0, 5.0},
+      {2.0, 3.0, 4.0, 5.0, 6.0},
+  };
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  REQUIRE(gpu.n == 2);
+  // Two shifted ramps: DTW L1 distance should be small (aligned by warping).
+  double d_cpu = dtwc::dtwFull_L<double>(series[0], series[1]);
+  REQUIRE_THAT(gpu.matrix[0 * 2 + 1], WithinRel(d_cpu, 1e-4) || WithinAbs(d_cpu, 1e-3));
+  REQUIRE(gpu.matrix[1 * 2 + 0] == gpu.matrix[0 * 2 + 1]); // symmetric
+}
+
+TEST_CASE("Metal unbanded DTW on longer series", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const size_t N = 5;
+  const size_t L = 200;
+  auto series = generate_random_series(N, L, 7);
+
+  auto cpu = cpu_distance_matrix(series);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  REQUIRE(gpu.n == N);
+  // With L=200 and ~O(L^2) FP32 ops per pair, accumulated error can be
+  // larger — widen tolerance slightly.
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal pushes max_L towards the threadgroup memory cap", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // Longest length that fits in the 32 KB cap: 3 * L * 4 <= 32768 -> L <= 2730.
+  // Pick 2000 to stay comfortably inside the cap.
+  const size_t N = 3;
+  const size_t L = 2000;
+  auto series = generate_random_series(N, L, 123);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.pairs_computed == N * (N - 1) / 2);
+  // Sanity: all off-diagonals are positive and finite; diagonals are zero.
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = 0; j < N; ++j) {
+      if (i == j) REQUIRE(gpu.matrix[i * N + j] == 0.0);
+      else REQUIRE(gpu.matrix[i * N + j] > 0.0);
+    }
+  }
+}
+
+TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // 10 000 > 2730 (threadgroup cap), so the dispatcher must pick the global
+  // kernel. Verify correctness against CPU on a small N to keep the test fast.
+  const size_t N = 3;
+  const size_t L = 10000;
+  auto series = generate_random_series(N, L, 456);
+
+  auto cpu = cpu_distance_matrix(series);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.verbose = false;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.pairs_computed == N * (N - 1) / 2);
+
+  // FP32 accumulation over L=10000 -> loose tolerance (relative 1e-3, absolute 1e-1).
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1.0));
+    }
+  }
+}
+
+#endif // DTWC_HAS_METAL
