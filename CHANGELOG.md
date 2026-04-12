@@ -8,6 +8,34 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Changed (naming unification — breaking, pre-v2.0.0)
+
+Unified option/field names across CPU, CUDA, and Metal backends. Hard renames (no compat aliases):
+
+| Old | New | Scope |
+|---|---|---|
+| `DEFAULT_BAND_LENGTH` | `DEFAULT_BAND` | [settings.hpp](dtwc/settings.hpp) + 32 call sites |
+| `DTWOptions::band_width` | `DTWOptions::band` | [dtw_options.hpp](dtwc/core/dtw_options.hpp) + 4 call sites |
+| `CUDADistMatOptions::use_lb_pruning` | `use_lb_keogh` | CUDA — matches Metal, CPU naming |
+| `CUDADistMatOptions::skip_threshold` | `lb_threshold` | CUDA |
+| `MetalDistMatOptions::enable_lb_keogh` | `use_lb_keogh` | Metal — matches CUDA |
+| `DistanceMatrixStrategy::GPU` | `::CUDA` | `::GPU` was ambiguous once `::Metal` landed. Enum / CLI `--device` / Python `DistanceMatrixStrategy.CUDA` / MATLAB `"cuda"` string |
+| `CUDASettings::precision_mode` (int 0/1/2) | `precision` | Kept as int for header independence from `DTWC_HAS_CUDA` |
+
+MATLAB strategy string `'gpu'` is no longer accepted — pass `'cuda'` instead.
+
+Motivation: three different spellings for LB_Keogh (`use_lb_pruning`, `enable_lb_keogh`, implicit-via-`Pruned`-strategy) and two for the band (`band`, `band_width`). With two GPU backends now shipped, the drift would only compound.
+
+Cited cuDTW++ (Schmidt & Hundt 2020) and LB_Keogh (Keogh & Ratanamahatana 2005) in [metal_dtw.hpp](dtwc/metal/metal_dtw.hpp) / [metal_dtw.mm](dtwc/metal/metal_dtw.mm) headers and in the Register-tile / LB_Keogh CHANGELOG entries below — these were missing when the kernels first landed.
+
+### Added (Python bindings)
+
+- `compute_distance_matrix_cuda()` now accepts `use_lb_keogh` and `lb_threshold` kwargs (previously CUDA pruning was exposed in C++ only). Default `use_lb_keogh=False` preserves existing behavior. Semantics match the C++ surface: pair pruned if `LB_Keogh > lb_threshold` and `lb_threshold > 0`.
+
+### Added (Documentation)
+
+- New **GPU Backends** page in the docs site ([docs/content/method/gpu-backends.md](docs/content/method/gpu-backends.md)): kernel dispatch tables for both CUDA (3 kernels) and Metal (5 kernels), Sakoe-Chiba envelope definition with ASCII diagram, `LB_Keogh` equation (one-directional + symmetric), full GPU LB_Keogh pipeline flowchart, measured speedups on Apple M2 Max, when-to-use-which decision tree, and citations to Schmidt & Hundt 2020, Keogh & Ratanamahatana 2005, Rakthanmanon 2012, Sakoe & Chiba 1978, and Lemire 2009 (future work).
+
 ### Added (Metal GPU backend — Apple Silicon)
 
 - **New `dtwc::metal` backend**: anti-diagonal wavefront DTW kernel in MSL (Metal Shading Language), compiled at runtime via `newLibraryWithSource:`. Pairwise distance matrix on the Apple GPU, one threadgroup per pair, 3 rotating threadgroup-memory buffers for anti-diagonals.

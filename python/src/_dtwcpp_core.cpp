@@ -751,12 +751,15 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, int device_id, bool verbose) {
+           int band, bool use_squared_l2, int device_id, bool verbose,
+           bool use_lb_keogh, double lb_threshold) {
           dtwc::cuda::CUDADistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.device_id = device_id;
           opts.verbose = verbose;
+          opts.use_lb_keogh = use_lb_keogh;
+          opts.lb_threshold = lb_threshold;
           nb::gil_scoped_release release;
           auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
           size_t n = result.n;
@@ -768,8 +771,11 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "Compute NxN DTW distance matrix on GPU.\n\n"
-        "Returns NxN numpy array of DTW distances.");
+        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
+        "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
+        "Returns NxN numpy array of DTW distances.\n"
+        "When `use_lb_keogh=True` and `lb_threshold > 0`, pairs whose LB_Keogh\n"
+        "lower bound exceeds `lb_threshold` are pruned (+inf in result).");
 
   m.def("compute_lb_keogh_cuda",
         [](const std::vector<std::vector<double>> &series,
@@ -798,12 +804,14 @@ NB_MODULE(_dtwcpp_core, m) {
         "Get CUDA device info string.");
 
   m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, int, bool,
+           bool, double) -> nb::object {
           throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "Compute NxN DTW distance matrix on GPU (requires CUDA build).");
+        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
+        "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
 
   m.def("compute_lb_keogh_cuda",
         [](const std::vector<std::vector<double>> &, int, int) -> nb::object {
