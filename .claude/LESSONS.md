@@ -11,6 +11,12 @@ Critical knowledge to avoid repeating mistakes.
 - **LB_Keogh valid only for L1 and squared L2.** Not cosine or Huber.
 - **WDTW/ADTW/DDTW/Soft-DTW are separate functions, not metric swaps.** Each modifies the recurrence differently.
 
+## Apple Silicon / macOS (benchmarked 2026-04-12, M2 Max 8P+4E)
+
+- **Don't worry about E-cores vs P-cores on Apple Silicon.** Measured on `fillDistanceMatrix/100/1000/-1`: 1→8 threads gives 6.88× (all P-cores), 8→12 threads gives another 1.33× (E-cores help). Full 12-thread speedup is 9.14× (76% efficiency). E-cores are a net win with dynamic scheduling — do NOT cap to P-core count.
+- **`OMP_PROC_BIND` / `OMP_PLACES` are no-ops on Darwin** with Homebrew libomp. Pinning sweep at T=12: default / close / spread all within 0.3% of each other (1606 / 1610 / 1609 ms). macOS QoS scheduler handles placement. Don't document them as tuning knobs — they do nothing.
+- **`sysctlbyname("hw.perflevel0.logicalcpu")` is not worth calling** for thread-count tuning. `omp_get_max_threads()` gives the right answer. Skip the P-core auto-cap code path unless a future benchmark contradicts this.
+
 ## C++ Performance
 
 - **DTW is latency-bound** (10-cycle recurrence). Only 3% of L1 bandwidth used. SIMD gives max ~1.29x.

@@ -25,8 +25,8 @@ jobs:
 
       - name: CMake build
         run: |
-          cmake --build build --config Release --parallel 4
+          cmake --build build --config Release --parallel
 
       - name: CMake test
         run: |
-          ctest --test-dir build -j4 -C Release --output-on-failure
+          ctest --test-dir build -j -C Release --output-on-failure
