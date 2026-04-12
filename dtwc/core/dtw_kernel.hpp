@@ -132,7 +132,7 @@ struct AROWCell {
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     constexpr T maxValue = std::numeric_limits<T>::max();
-    if (cost != cost) { // NaN -> missing pair. (std::isnan is not constexpr pre-C++23.)
+    if (std::isnan(cost)) { // NaN -> missing pair.
       if (diag != maxValue) return diag;
       if (up   != maxValue) return up;
       if (left != maxValue) return left;
@@ -144,7 +144,7 @@ struct AROWCell {
   template <typename T>
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
-    return (cost != cost) ? T(0) : cost;
+    return std::isnan(cost) ? T(0) : cost;
   }
 };
 
