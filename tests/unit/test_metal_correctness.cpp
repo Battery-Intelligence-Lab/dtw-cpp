@@ -551,4 +551,26 @@ TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
   }
 }
 
+TEST_CASE("Metal KernelOverride forces requested pipeline", "[metal][kernel_override]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  const size_t N = 4;
+  const size_t L = 400; // would auto-pick wavefront
+  auto series = generate_random_series(N, L, 0x7777);
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.kernel_override = dtwc::KernelOverride::WavefrontGlobal;
+  auto r = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  INFO("kernel_used=" << r.kernel_used);
+  REQUIRE(r.kernel_used == "wavefront_global");
+
+  // Unsupported override (BandedRow with band=-1) must silently fall back.
+  dtwc::metal::MetalDistMatOptions opts2;
+  opts2.kernel_override = dtwc::KernelOverride::BandedRow;
+  opts2.band = -1; // BandedRow requires band > 0; should fall back to Auto.
+  auto r2 = dtwc::metal::compute_distance_matrix_metal(series, opts2);
+  INFO("fallback kernel_used=" << r2.kernel_used);
+  REQUIRE(r2.kernel_used != "banded_row");
+}
+
 #endif // DTWC_HAS_METAL

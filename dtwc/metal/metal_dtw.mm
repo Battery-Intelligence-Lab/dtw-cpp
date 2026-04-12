@@ -1287,33 +1287,71 @@ MetalDistMatResult compute_distance_matrix_metal(
     //                      barriers than wavefront on the same work.
     //   threadgroup kernel: 3 * max_L * 4 <= device cap (32KB on M1/M2/M3 -> max_L <= 2730)
     //   global kernel:     uses device memory for the 3 anti-diagonal buffers
-    const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
+    // max_length_hint lets callers influence kernel selection without
+    // round-tripping the actual lengths. We use the hint as the heuristic
+    // input when it's bigger than the scanned max (e.g. future rows may be
+    // longer), and otherwise fall back to the scanned value.
+    const int heuristic_L =
+        (opts.max_length_hint > 0 && opts.max_length_hint > max_L)
+          ? opts.max_length_hint : max_L;
+
+    const NSUInteger tg_mem_len = 3 * (NSUInteger)heuristic_L * sizeof(float);
     const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
     // Row-major one-thread-per-pair wins only when the band is tight enough
     // that wavefront barrier overhead dominates. Empirically (M2 Max), a
     // ~5%-of-length band is the crossover: at band/L < 1/20 the row-major
     // kernel beats the wavefront; wider bands put too much sequential work
     // on a single thread. Cap at 512 to avoid huge per-thread scratch.
-    const bool use_banded_row =
-        (band > 0) && (band * 20 < max_L) && (band <= 512);
+    bool use_banded_row =
+        (band > 0) && (band * 20 < heuristic_L) && (band <= 512);
     // Register-tile path: unbanded only for this pass. TILE_W=4 covers
     // max_L in [1, 128] (32 lanes * 4 cols = 128), TILE_W=8 covers (128, 256].
-    const bool use_regtile =
-        !use_banded_row && (band == -1) && (max_L > 0) && (max_L <= 256);
+    bool use_regtile =
+        !use_banded_row && (band == -1) && (heuristic_L > 0) && (heuristic_L <= 256);
     const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
-    const bool use_global =
+    bool use_global =
         !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
 
+    // Honour KernelOverride when the user explicitly picks a path. Unsupported
+    // overrides (e.g. RegTile with band != -1 or max_L > 256) silently fall
+    // back to the heuristic choice to preserve correctness.
+    switch (opts.kernel_override) {
+      case dtwc::KernelOverride::Wavefront:
+        use_banded_row = false; use_regtile = false; use_global = false;
+        break;
+      case dtwc::KernelOverride::WavefrontGlobal:
+        use_banded_row = false; use_regtile = false; use_global = true;
+        break;
+      case dtwc::KernelOverride::BandedRow:
+        if (band > 0 && band <= 512) {
+          use_banded_row = true; use_regtile = false; use_global = false;
+        }
+        break;
+      case dtwc::KernelOverride::RegTile:
+        if (band == -1 && max_L > 0 && max_L <= 256) {
+          use_banded_row = false; use_regtile = true; use_global = false;
+        }
+        break;
+      case dtwc::KernelOverride::Auto:
+      default:
+        break;
+    }
+
     id<MTLComputePipelineState> pipeline;
-    if (use_banded_row)
+    if (use_banded_row) {
       pipeline = ctx.pipeline_banded_row;
-    else if (use_regtile)
+      result.kernel_used = "banded_row";
+    } else if (use_regtile) {
       pipeline = (regtile_tile_w == 4) ? ctx.pipeline_regtile_w4
                                        : ctx.pipeline_regtile_w8;
-    else if (use_global)
+      result.kernel_used = (regtile_tile_w == 4) ? "regtile_w4" : "regtile_w8";
+    } else if (use_global) {
       pipeline = ctx.pipeline_global;
-    else
+      result.kernel_used = "wavefront_global";
+    } else {
       pipeline = ctx.pipeline;
+      result.kernel_used = "wavefront";
+    }
 
     // Chunk pairs across multiple command buffers. macOS's GPU watchdog
     // kills compute that holds the GPU for more than ~2 s per command buffer
@@ -1435,6 +1473,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     size_t effective_pairs = num_pairs;
 
     if (lb_active) {
+      const auto lb_t0 = std::chrono::steady_clock::now();
       int env_band = opts.lb_envelope_band;
       if (env_band < 0) {
         env_band = (opts.band > 0) ? opts.band : std::max(1, max_L / 10);
@@ -1576,6 +1615,10 @@ MetalDistMatResult compute_distance_matrix_metal(
         [buf_lb release];
         [buf_active_count release];
         // buf_pair_indices kept live for the DTW dispatch below.
+
+        const auto lb_t1 = std::chrono::steady_clock::now();
+        result.lb_time_sec =
+            std::chrono::duration<double>(lb_t1 - lb_t0).count();
       }
     }
 
@@ -1691,23 +1734,165 @@ MetalDistMatResult compute_distance_matrix_metal(
 
   if (opts.verbose) {
     std::cout << "Metal DTW: " << num_pairs << " pairs in "
-              << (result.gpu_time_sec * 1000.0) << " ms on "
-              << metal_device_info() << std::endl;
+              << (result.gpu_time_sec * 1000.0) << " ms";
+    if (result.lb_time_sec > 0) {
+      std::cout << " (LB_Keogh: " << (result.lb_time_sec * 1000.0) << " ms"
+                << ", pruned " << result.pairs_pruned << "/" << num_pairs << ")";
+    }
+    std::cout << " on " << metal_device_info() << std::endl;
   }
-  // Record which kernel path was taken so tests / benchmarks can assert on it.
-  const bool lbl_banded_row =
-      (opts.band > 0) && (opts.band * 20 < max_L) && (opts.band <= 512);
-  const bool lbl_regtile =
-      !lbl_banded_row && (opts.band == -1) && (max_L > 0) && (max_L <= 256);
-  if (lbl_banded_row) {
-    result.kernel_used = "banded_row";
-  } else if (lbl_regtile) {
-    result.kernel_used = (max_L <= 128) ? "regtile_w4" : "regtile_w8";
-  } else if (3u * (unsigned)max_L * sizeof(float)
-             > (unsigned)ctx.device.maxThreadgroupMemoryLength) {
-    result.kernel_used = "wavefront_global";
-  } else {
-    result.kernel_used = "wavefront";
+  // kernel_used is set during dispatch (inside the autoreleasepool) to reflect
+  // the actual pipeline chosen (including any KernelOverride).
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Standalone LB_Keogh for all N*(N-1)/2 pairs. Mirrors
+// cuda::compute_lb_keogh_cuda — no DTW dispatch, no thresholding, no +∞
+// stamping; just upload series, run envelope + LB kernels, download values.
+// ---------------------------------------------------------------------------
+MetalLBResult compute_lb_keogh_metal(
+    const std::vector<std::vector<double>> &series, int band)
+{
+  MetalLBResult result;
+  const size_t N = series.size();
+  result.n = N;
+
+  if (N <= 1 || band < 0) return result;
+
+  auto &ctx = context();
+  if (!ctx.initialized) return result;
+
+  int max_L = 0;
+  std::vector<int> lengths(N);
+  for (size_t s = 0; s < N; ++s) {
+    lengths[s] = static_cast<int>(series[s].size());
+    if (lengths[s] > max_L) max_L = lengths[s];
+  }
+  if (max_L == 0) return result;
+
+  const size_t num_pairs = N * (N - 1) / 2;
+  const int N_int = static_cast<int>(N);
+  const int num_pairs_int = static_cast<int>(num_pairs);
+
+  @autoreleasepool {
+    const auto t0 = std::chrono::steady_clock::now();
+
+    const size_t series_bytes = N * max_L * sizeof(float);
+    id<MTLBuffer> buf_series = [ctx.device
+        newBufferWithLength:series_bytes
+                    options:MTLResourceStorageModeShared];
+    id<MTLBuffer> buf_lengths = [ctx.device
+        newBufferWithLength:N * sizeof(int)
+                    options:MTLResourceStorageModeShared];
+    const size_t env_bytes = (size_t)N * (size_t)max_L * sizeof(float);
+    id<MTLBuffer> buf_upper = [ctx.device
+        newBufferWithLength:env_bytes options:MTLResourceStorageModePrivate];
+    id<MTLBuffer> buf_lower = [ctx.device
+        newBufferWithLength:env_bytes options:MTLResourceStorageModePrivate];
+    id<MTLBuffer> buf_lb = [ctx.device
+        newBufferWithLength:num_pairs * sizeof(float)
+                    options:MTLResourceStorageModeShared];
+    if (!buf_series || !buf_lengths || !buf_upper || !buf_lower || !buf_lb) {
+      if (buf_series)  [buf_series  release];
+      if (buf_lengths) [buf_lengths release];
+      if (buf_upper)   [buf_upper   release];
+      if (buf_lower)   [buf_lower   release];
+      if (buf_lb)      [buf_lb      release];
+      return result;
+    }
+
+    float *series_ptr = static_cast<float *>([buf_series contents]);
+    std::memset(series_ptr, 0, series_bytes);
+    for (size_t s = 0; s < N; ++s) {
+      for (int k = 0; k < lengths[s]; ++k) {
+        series_ptr[s * max_L + k] = static_cast<float>(series[s][k]);
+      }
+    }
+    std::memcpy([buf_lengths contents], lengths.data(), N * sizeof(int));
+
+    // 1. Envelopes.
+    {
+      id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+      id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+      [enc setComputePipelineState:ctx.pipeline_envelopes];
+      [enc setBuffer:buf_series  offset:0 atIndex:0];
+      [enc setBuffer:buf_lengths offset:0 atIndex:1];
+      [enc setBuffer:buf_upper   offset:0 atIndex:2];
+      [enc setBuffer:buf_lower   offset:0 atIndex:3];
+      [enc setBytes:&max_L length:sizeof(int) atIndex:4];
+      [enc setBytes:&N_int length:sizeof(int) atIndex:5];
+      [enc setBytes:&band  length:sizeof(int) atIndex:6];
+      const NSUInteger env_max =
+          ctx.pipeline_envelopes.maxTotalThreadsPerThreadgroup;
+      NSUInteger env_tg = std::min<NSUInteger>(128, env_max);
+      if (env_tg > (NSUInteger)max_L && max_L > 0)
+        env_tg = (NSUInteger)max_L;
+      if (env_tg == 0) env_tg = 1;
+      [enc dispatchThreadgroups:MTLSizeMake(N, 1, 1)
+          threadsPerThreadgroup:MTLSizeMake(env_tg, 1, 1)];
+      [enc endEncoding];
+      [cmd commit];
+      [cmd waitUntilCompleted];
+      if (cmd.error) {
+        [buf_series release]; [buf_lengths release];
+        [buf_upper release]; [buf_lower release]; [buf_lb release];
+        throw std::runtime_error(
+            std::string("Metal envelopes kernel failed: ") +
+            (cmd.error.localizedDescription
+                 ? [cmd.error.localizedDescription UTF8String]
+                 : "unknown"));
+      }
+    }
+
+    // 2. Pairwise LB_Keogh.
+    {
+      id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+      id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+      [enc setComputePipelineState:ctx.pipeline_lb_keogh];
+      [enc setBuffer:buf_series  offset:0 atIndex:0];
+      [enc setBuffer:buf_lengths offset:0 atIndex:1];
+      [enc setBuffer:buf_upper   offset:0 atIndex:2];
+      [enc setBuffer:buf_lower   offset:0 atIndex:3];
+      [enc setBuffer:buf_lb      offset:0 atIndex:4];
+      [enc setBytes:&N_int         length:sizeof(int) atIndex:5];
+      [enc setBytes:&max_L         length:sizeof(int) atIndex:6];
+      [enc setBytes:&num_pairs_int length:sizeof(int) atIndex:7];
+      const NSUInteger lb_max =
+          ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
+      const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
+      const NSUInteger lb_ntgs = (num_pairs + lb_tg - 1) / lb_tg;
+      [enc dispatchThreadgroups:MTLSizeMake(lb_ntgs, 1, 1)
+          threadsPerThreadgroup:MTLSizeMake(lb_tg, 1, 1)];
+      [enc endEncoding];
+      [cmd commit];
+      [cmd waitUntilCompleted];
+      if (cmd.error) {
+        [buf_series release]; [buf_lengths release];
+        [buf_upper release]; [buf_lower release]; [buf_lb release];
+        throw std::runtime_error(
+            std::string("Metal LB_Keogh kernel failed: ") +
+            (cmd.error.localizedDescription
+                 ? [cmd.error.localizedDescription UTF8String]
+                 : "unknown"));
+      }
+    }
+
+    result.lb_values.resize(num_pairs);
+    const float *lb_ptr = static_cast<const float *>([buf_lb contents]);
+    for (size_t p = 0; p < num_pairs; ++p) {
+      result.lb_values[p] = static_cast<double>(lb_ptr[p]);
+    }
+
+    [buf_series release];
+    [buf_lengths release];
+    [buf_upper release];
+    [buf_lower release];
+    [buf_lb release];
+
+    const auto t1 = std::chrono::steady_clock::now();
+    result.gpu_time_sec = std::chrono::duration<double>(t1 - t0).count();
   }
 
   return result;

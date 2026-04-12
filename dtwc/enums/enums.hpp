@@ -14,3 +14,5 @@
 
 #include "Method.hpp" ///< Include the Method enum definitions.
 #include "Solver.hpp" ///< Include the Solver enum definitions.
+#include "LowerBoundStrategy.hpp" ///< Include the LowerBoundStrategy enum.
+#include "KernelOverride.hpp" ///< Include the KernelOverride enum.

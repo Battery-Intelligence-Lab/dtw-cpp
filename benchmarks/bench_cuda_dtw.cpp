@@ -368,3 +368,25 @@ static void BM_cuda_not_available(benchmark::State &state)
 }
 BENCHMARK(BM_cuda_not_available);
 #endif
+
+// Custom main: inject GPU device info into Google Benchmark's JSON context so
+// benchmark results include hardware specs (more valuable than the auto-filled
+// host_name, which we strip post-run).
+int main(int argc, char **argv)
+{
+  benchmark::Initialize(&argc, argv);
+#ifdef DTWC_HAS_CUDA
+  benchmark::AddCustomContext("gpu_backend", "cuda");
+  benchmark::AddCustomContext("gpu_available",
+      dtwc::cuda::cuda_available() ? "true" : "false");
+  if (dtwc::cuda::cuda_available())
+    benchmark::AddCustomContext("gpu_device_info", dtwc::cuda::cuda_device_info(0));
+#else
+  benchmark::AddCustomContext("gpu_backend", "cuda");
+  benchmark::AddCustomContext("gpu_available", "false");
+#endif
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
+}

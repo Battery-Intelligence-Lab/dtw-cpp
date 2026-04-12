@@ -1,0 +1,56 @@
+{
+  "context": {
+    "date": "2026-04-12T21:23:03+01:00",
+    "host_name": "",
+    "executable": "./build/bin/bench_metal_dtw",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [2.84131,2.35889,3.06396],
+    "library_version": "v1.9.5",
+    "library_build_type": "release",
+    "json_schema_version": 1,
+    "gpu_available": "true",
+    "gpu_backend": "metal",
+    "gpu_device_info": "Apple M2 Max (registryID=0x100000446, max_working_set=77.76 GB)"
+  },
+  "benchmarks": [
+    {
+      "name": "BM_metal_distanceMatrix/50/500",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_metal_distanceMatrix/50/500",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 100,
+      "real_time": 8.2788545824587345e+00,
+      "cpu_time": 6.7390000000002725e-02,
+      "time_unit": "ms",
+      "L": 5.0000000000000000e+02,
+      "N": 5.0000000000000000e+01,
+      "pairs": 1.2250000000000000e+03
+    }
+  ]
+}

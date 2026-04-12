@@ -8,6 +8,37 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Changed (warping header family — unified DTW kernel, Phase 1)
+
+The Standard / ADTW / WDTW / DDTW paths now share **one** templated DTW kernel instead of per-variant copy-paste loops. Three axes of variation — pointwise cost, cell recurrence, and window shape — each become a policy; the banded/linear/full loop bodies live in exactly one place.
+
+- **New `dtwc::core::dtw_kernel_{full,linear,banded}<T, Cost, Cell>`** in [dtwc/core/dtw_kernel.hpp](dtwc/core/dtw_kernel.hpp). All four variants dispatch through these. `Cell` policies: `StandardCell` (min of 3 + cost), `ADTWCell<T>{penalty}` (penalty on horizontal/vertical steps).
+- **New `dtwc::core::Span*Cost<T>`** cost functors in [dtwc/core/dtw_cost.hpp](dtwc/core/dtw_cost.hpp): `SpanL1Cost`, `SpanSquaredL2Cost`, `SpanWeightedL1Cost` (for WDTW), plus their multivariate counterparts (`SpanMVL1Cost`, `SpanMVSquaredL2Cost`, `SpanMVWeightedL1Cost`). `dispatch_metric()` / `dispatch_mv_metric()` also live here now — formerly in `warping.hpp` `detail::`.
+- [dtwc/warping.hpp](dtwc/warping.hpp), [warping_adtw.hpp](dtwc/warping_adtw.hpp), [warping_wdtw.hpp](dtwc/warping_wdtw.hpp) are now thin public-API wrappers that build a Cost + Cell and call the shared kernel. Total touched-file LOC dropped from ~1,776 to ~1,608; more importantly, the **banded loop (previously duplicated in 4 files)** now exists once.
+- [warping_ddtw.hpp](dtwc/warping_ddtw.hpp) unchanged — it already delegated to `dtwBanded` after derivative preprocessing, which was the right design.
+
+### Fixed (silent dispatch bugs)
+
+- **`dtwc::core::dtw_runtime()`** now honours `opts.variant_params.variant`. Previously [dtwc/core/dtw.cpp](dtwc/core/dtw.cpp) ignored the variant field and always ran Standard DTW, silently dropping ADTW / WDTW / DDTW requests from the simple binding entry point. Regression tests added in [tests/unit/unit_test_mv_variants.cpp](tests/unit/unit_test_mv_variants.cpp).
+- **`adtwBanded_mv` / `wdtwBanded_mv`** now use a real banded MV kernel instead of silently falling back to the unbanded MV path. Previous TODO comments (`warping_adtw.hpp:344`, `warping_wdtw.hpp:478`) acknowledged this was a "for now" — the unified kernel makes banded MV a first-class path. Regression tests confirm banded results are genuinely tighter than unbanded when the band restricts the warping path.
+
+### Deferred (future phases)
+
+- Phase 2: fold `warping_missing.hpp` and `warping_missing_arow.hpp` into the unified kernel via a `MissingCell` policy (AROW may need its own kernel path — its NaN-handling recurrence differs).
+- Phase 3: fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp; shrink `Problem::rebind_dtw_fn()`'s 130-line switch.
+
+### Added (GPU parity + configuration)
+
+- **`MetalDistMatResult::lb_time_sec`**: Metal now reports LB_Keogh pre-pass time separately from total GPU time, matching the CUDA field of the same name.
+- **`dtwc::metal::compute_lb_keogh_metal(series, band)`**: standalone LB_Keogh lower bounds over all `N*(N-1)/2` pairs on the default Metal device. Mirrors `dtwc::cuda::compute_lb_keogh_cuda` (envelope + symmetric pairwise LB, no DTW dispatch). Returns `MetalLBResult{lb_values, n, gpu_time_sec}`.
+- **`dtwc::LowerBoundStrategy` enum** (`Auto`/`None`/`Kim`/`Keogh`/`KimKeogh`) and `Problem::lb_strategy` field. Controls which lower bound(s) feed the Pruned CPU path. `Auto` keeps the historical Kim+Keogh cascade; `None` short-circuits to BruteForce.
+- **`dtwc::KernelOverride` enum** (`Auto`/`Wavefront`/`WavefrontGlobal`/`BandedRow`/`RegTile`) and `max_length_hint` field on both `CUDADistMatOptions` and `MetalDistMatOptions`. Lets advanced users force a kernel path or hint the expected max series length for the selector. Unsupported overrides silently fall back to `Auto`. Metal wires the hint into its kernel-selection heuristics; CUDA stores the fields for API uniformity.
+
+### Changed (GPU backend refactor — non-breaking)
+
+- **Base structs `dtwc::gpu::DistMatOptionsBase` / `DistMatResultBase`** in [core/gpu_dtw_common.hpp](dtwc/core/gpu_dtw_common.hpp). `CUDADistMatOptions`, `MetalDistMatOptions`, `CUDADistMatResult`, `MetalDistMatResult` now inherit common fields (`band`, `verbose`, `use_lb_keogh`, `max_length_hint`, `kernel_override`, `matrix`, `n`, `gpu_time_sec`, `lb_time_sec`, `pairs_computed`, `pairs_pruned`, `kernel_used`). `lb_threshold` stays per-backend: CUDA default `-1.0` (sentinel), Metal default `0.0` (applied). Designated aggregate init preserved.
+- **`dispatch_gpu_backend` lambda in `Problem::fillDistanceMatrix`**: collapses the parallel CUDA/Metal case blocks (result → matrix copy, verbose log, empty-result fallback) into one generic post-processor parameterised by backend result type.
+
 ### Changed (naming unification — breaking, pre-v2.0.0)
 
 Unified option/field names across CPU, CUDA, and Metal backends. Hard renames (no compat aliases):

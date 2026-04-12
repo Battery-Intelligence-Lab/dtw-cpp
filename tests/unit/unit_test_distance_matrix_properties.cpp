@@ -180,7 +180,48 @@ TEST_CASE("Default band produces same distances as dtwFull", "[Phase1][distance_
 }
 
 // ---------------------------------------------------------------------------
-// 8. Re-filling the distance matrix is a no-op when already filled
+// 8. LowerBoundStrategy variants produce the same distance matrix
+//    (pruning reduces work, never changes results).
+// ---------------------------------------------------------------------------
+TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][distance_matrix][lb_strategy]")
+{
+  // Explicitly set distance_strategy=Pruned so we exercise the pruned path
+  // regardless of the Auto-gate threshold. Dummy dataset caps at 25 series.
+  constexpr int N = 25;
+  const LowerBoundStrategy strategies[] = {
+    LowerBoundStrategy::Auto,
+    LowerBoundStrategy::None,
+    LowerBoundStrategy::Kim,
+    LowerBoundStrategy::Keogh,
+    LowerBoundStrategy::KimKeogh,
+  };
+
+  auto prob_ref = make_problem(N);
+  const int actual_N = static_cast<int>(prob_ref.size());
+  prob_ref.band = 3;
+  prob_ref.distance_strategy = DistanceMatrixStrategy::Pruned;
+  prob_ref.lb_strategy = LowerBoundStrategy::Auto;
+  prob_ref.fillDistanceMatrix();
+
+  for (auto strat : strategies) {
+    auto prob = make_problem(N);
+    prob.band = 3;
+    prob.distance_strategy = DistanceMatrixStrategy::Pruned;
+    prob.lb_strategy = strat;
+    prob.fillDistanceMatrix();
+
+    for (int i = 0; i < actual_N; ++i) {
+      for (int j = 0; j < actual_N; ++j) {
+        CAPTURE(static_cast<int>(strat), i, j);
+        REQUIRE_THAT(prob.distByInd(i, j),
+                     WithinAbs(prob_ref.distByInd(i, j), 1e-12));
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 9. Re-filling the distance matrix is a no-op when already filled
 // ---------------------------------------------------------------------------
 TEST_CASE("Repeated fillDistanceMatrix is idempotent", "[Phase1][distance_matrix]")
 {

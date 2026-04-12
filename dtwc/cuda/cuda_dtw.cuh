@@ -16,6 +16,9 @@
 
 #ifdef DTWC_HAS_CUDA
 
+#include "../enums/KernelOverride.hpp"
+#include "../core/gpu_dtw_common.hpp"
+
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -29,23 +32,23 @@ enum class CUDAPrecision {
   FP64   ///< Always use double precision (bit-identical to CPU path)
 };
 
-struct CUDADistMatOptions {
-  int band = -1;           ///< Sakoe-Chiba band width (-1 = full DTW)
-  bool use_squared_l2 = false; ///< Use squared L2 metric instead of L1
-  int device_id = 0;       ///< CUDA device to use
-  bool verbose = false;     ///< Print timing info
+struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
+  int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
-  bool use_lb_keogh = false; ///< Compute LB_Keogh on GPU and skip pairs exceeding threshold
-  double lb_threshold = -1.0; ///< When positive, pairs with LB > threshold get INF (no DTW)
+
+  /// When positive, pairs with LB > threshold get INF (no DTW).
+  /// CUDA default is -1.0 (threshold-off sentinel); Metal uses 0.0 with
+  /// different semantics. Kept per-backend for backward compatibility.
+  double lb_threshold = -1.0;
+
+  // Inherited from DistMatOptionsBase:
+  //   band, use_squared_l2, verbose, use_lb_keogh, max_length_hint,
+  //   kernel_override
 };
 
-struct CUDADistMatResult {
-  std::vector<double> matrix; ///< N*N flat row-major distance matrix
-  size_t n = 0;               ///< Number of series
-  double gpu_time_sec = 0;    ///< GPU kernel execution time
-  size_t pairs_computed = 0;  ///< Number of DTW pairs computed
-  size_t pairs_pruned = 0;    ///< Number of pairs skipped by LB_Keogh pruning
-  double lb_time_sec = 0;     ///< Time for LB_Keogh computation (envelope + LB kernels)
+struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {
+  // All fields come from DistMatResultBase. kernel_used is populated by the
+  // CUDA backend when known; consumers can match on it for benchmarking.
 };
 
 /// Check if CUDA is available (device count > 0).

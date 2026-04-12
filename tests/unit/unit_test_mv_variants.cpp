@@ -313,3 +313,83 @@ TEST_CASE("Problem: DDTW MV different shape > 0", "[mv][ddtw][problem]")
 
   REQUIRE(prob.distByInd(0, 1) > 0.0);
 }
+
+// =========================================================================
+//  Phase 1 unified-kernel regressions: banded MV is now a first-class path.
+//  Previously adtwBanded_mv / wdtwBanded_mv silently fell back to the
+//  unbanded MV variant (documented TODO). With the unified kernel, band
+//  restrictions are honoured and must produce different results from the
+//  unbanded MV when the band is tight enough to constrain the warping path.
+// =========================================================================
+
+TEST_CASE("ADTW MV banded actually restricts the warping path", "[mv][adtw][banded]")
+{
+  // Shifted-peak pattern: x has a peak at step 2, y has the same peak at step 8.
+  // Unbanded DTW warps heavily to align the peaks; band=1 forbids that warp.
+  // Previously adtwBanded_mv fell back to the unbanded path (documented TODO),
+  // so the two results were identical. With the unified kernel, the banded
+  // result is genuinely higher.
+  std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
+  std::vector<double> y = {0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 9,0, 0,0};
+  const double penalty = 0.5;
+
+  const double d_unbanded = dtwc::adtwFull_L_mv<double>(x.data(), 10, y.data(), 10, 2, penalty);
+  const double d_banded1  = dtwc::adtwBanded_mv<double>(x.data(), 10, y.data(), 10, 2, 1, penalty);
+
+  INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
+  REQUIRE(d_banded1 > d_unbanded); // previously equal (fallback); now distinct and strictly greater.
+}
+
+TEST_CASE("WDTW MV banded actually restricts the warping path", "[mv][wdtw][banded]")
+{
+  std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
+  std::vector<double> y = {0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 9,0, 0,0};
+  const double g = 0.05;
+
+  const double d_unbanded = dtwc::wdtwFull_mv<double>(x.data(), 10, y.data(), 10, 2, g);
+  const double d_banded1  = dtwc::wdtwBanded_mv<double>(x.data(), 10, y.data(), 10, 2, 1, g);
+
+  INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
+  REQUIRE(d_banded1 > d_unbanded);
+}
+
+// =========================================================================
+//  dtw_runtime() variant dispatch regression — previously silently dropped
+//  opts.variant_params.variant. ADTW with a non-zero penalty must differ
+//  from Standard DTW.
+// =========================================================================
+
+TEST_CASE("dtw_runtime honours DTWVariant::ADTW", "[dtw_runtime][adtw]")
+{
+  std::vector<double> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
+  std::vector<double> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
+
+  dtwc::core::DTWOptions opts_std;
+  opts_std.variant_params.variant = dtwc::core::DTWVariant::Standard;
+  const double d_std = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_std);
+
+  dtwc::core::DTWOptions opts_adtw;
+  opts_adtw.variant_params.variant = dtwc::core::DTWVariant::ADTW;
+  opts_adtw.variant_params.adtw_penalty = 2.0;
+  const double d_adtw = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_adtw);
+
+  INFO("d_std=" << d_std << " d_adtw=" << d_adtw);
+  REQUIRE(d_adtw > d_std); // ADTW with penalty > 0 must be >= Standard DTW.
+}
+
+TEST_CASE("dtw_runtime honours DTWVariant::WDTW", "[dtw_runtime][wdtw]")
+{
+  std::vector<double> x = {1, 3, 4, 2, 5, 4, 3, 2, 1};
+  std::vector<double> y = {2, 4, 3, 5, 1, 2, 4, 3, 2};
+
+  dtwc::core::DTWOptions opts_std;
+  const double d_std = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_std);
+
+  dtwc::core::DTWOptions opts_wdtw;
+  opts_wdtw.variant_params.variant = dtwc::core::DTWVariant::WDTW;
+  opts_wdtw.variant_params.wdtw_g = 0.05;
+  const double d_wdtw = dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts_wdtw);
+
+  INFO("d_std=" << d_std << " d_wdtw=" << d_wdtw);
+  REQUIRE(d_wdtw != d_std); // WDTW applies per-cell weights -> different result.
+}

@@ -15,8 +15,10 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -26,8 +28,13 @@
 static struct TestDataInitFP {
   TestDataInitFP() {
     dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
-    // Set output to build dir so tests don't fail on missing results dir
-    dtwc::settings::paths::setResultsPath(".");
+    // Route Lloyd/FastPAM CSV output to a per-run temp dir so the test never
+    // pollutes the repo root or the build tree (previously `.`, which was
+    // CWD-dependent and leaked files when run from the repo root).
+    const auto out = std::filesystem::temp_directory_path() / "dtwc_fast_pam_test";
+    std::error_code ec;
+    std::filesystem::create_directories(out, ec);
+    dtwc::settings::paths::setResultsPath(out);
   }
 } test_data_init_fp_;
 

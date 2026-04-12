@@ -134,6 +134,7 @@ public:
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
+  LowerBoundStrategy lb_strategy{ LowerBoundStrategy::Auto }; /*!< Lower-bound selection for the Pruned CPU path. */
   core::StoragePolicy storage_policy{ core::StoragePolicy::Auto }; /*!< How series data is stored. */
   CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */

@@ -16,9 +16,11 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <filesystem>
 #include <limits>
 #include <set>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -28,7 +30,12 @@
 static struct TestDataInitCLARA {
   TestDataInitCLARA() {
     dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
-    dtwc::settings::paths::setResultsPath(".");
+    // Route CSV output to a per-run temp dir so the test doesn't pollute the
+    // repo root or build tree (CWD-dependent otherwise).
+    const auto out = std::filesystem::temp_directory_path() / "dtwc_fast_clara_test";
+    std::error_code ec;
+    std::filesystem::create_directories(out, ec);
+    dtwc::settings::paths::setResultsPath(out);
   }
 } test_data_init_clara_;
 

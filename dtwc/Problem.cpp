@@ -527,9 +527,48 @@ void Problem::fillDistanceMatrix()
     }
   }
 
+  // Shared post-GPU handler. Templated on the backend's result type (both
+  // CUDADistMatResult and MetalDistMatResult derive from gpu::DistMatResultBase,
+  // so any base accessor works). Returns true on success; false signals the
+  // caller to fall back to brute-force.
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+  auto dispatch_gpu_backend = [&](const auto &result, const char *backend) -> bool {
+    if (result.pairs_computed == 0 && data.size() > 1) {
+      if (verbose) std::cout << backend << " returned empty — falling back to CPU.\n";
+      return false;
+    }
+    visit_distmat([&](auto &m) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+        m.resize(result.n);
+      }
+      for (size_t i = 0; i < result.n; ++i)
+        for (size_t j = i; j < result.n; ++j)
+          m.set(i, j, result.matrix[i * result.n + j]);
+    });
+    if (verbose) {
+      std::cout << backend << " distance matrix: " << result.pairs_computed
+                << " pairs in " << std::setprecision(3)
+                << result.gpu_time_sec * 1000 << " ms";
+      if (result.lb_time_sec > 0) {
+        std::cout << " (LB_Keogh: " << result.lb_time_sec * 1000 << " ms"
+                  << ", pruned " << result.pairs_pruned << ")";
+      }
+      std::cout << "\n";
+    }
+    return true;
+  };
+#endif
+
   switch (effective) {
   case DistanceMatrixStrategy::Pruned: {
-    auto stats = core::fill_distance_matrix_pruned(*this, band);
+    // LowerBoundStrategy::None inside Pruned path would compute all DTWs
+    // without any pruning — that's exactly BruteForce, so short-circuit.
+    if (lb_strategy == LowerBoundStrategy::None) {
+      if (verbose) std::cout << "lb_strategy=None; using BruteForce.\n";
+      fillDistanceMatrix_BruteForce();
+      break;
+    }
+    auto stats = core::fill_distance_matrix_pruned(*this, band, lb_strategy);
     if (verbose) {
       std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
                 << stats.early_abandoned << " early-abandoned, "
@@ -557,20 +596,7 @@ void Problem::fillDistanceMatrix()
     cuda_opts.verbose = verbose;
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(data.p_vec, cuda_opts);
-
-    visit_distmat([&](auto &m) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-        m.resize(cuda_result.n);
-      }
-      for (size_t i = 0; i < cuda_result.n; ++i)
-        for (size_t j = i; j < cuda_result.n; ++j)
-          m.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
-    });
-
-    if (verbose)
-      std::cout << "CUDA distance matrix: " << cuda_result.pairs_computed
-                << " pairs in " << std::setprecision(3)
-                << cuda_result.gpu_time_sec * 1000 << " ms\n";
+    if (!dispatch_gpu_backend(cuda_result, "CUDA")) fillDistanceMatrix_BruteForce();
     break;
   }
 #else
@@ -593,28 +619,7 @@ void Problem::fillDistanceMatrix()
 
     auto metal_result = dtwc::metal::compute_distance_matrix_metal(
         data.p_vec, metal_opts);
-
-    // Graceful fallback: if Metal couldn't handle this input (e.g. series
-    // length exceeds the threadgroup memory cap), compute on CPU instead.
-    if (metal_result.pairs_computed == 0 && data.size() > 1) {
-      if (verbose) std::cout << "Metal returned empty — falling back to CPU.\n";
-      fillDistanceMatrix_BruteForce();
-      break;
-    }
-
-    visit_distmat([&](auto &m) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-        m.resize(metal_result.n);
-      }
-      for (size_t i = 0; i < metal_result.n; ++i)
-        for (size_t j = i; j < metal_result.n; ++j)
-          m.set(i, j, metal_result.matrix[i * metal_result.n + j]);
-    });
-
-    if (verbose)
-      std::cout << "Metal distance matrix: " << metal_result.pairs_computed
-                << " pairs in " << std::setprecision(3)
-                << metal_result.gpu_time_sec * 1000 << " ms\n";
+    if (!dispatch_gpu_backend(metal_result, "Metal")) fillDistanceMatrix_BruteForce();
     break;
   }
 #else

@@ -116,7 +116,8 @@ static inline void atomic_min_double(double *addr, double val)
 //  Problem-based version (for C++ clustering) — PARALLEL
 // =========================================================================
 
-PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
+PruningStats fill_distance_matrix_pruned(
+    dtwc::Problem &prob, int band, dtwc::LowerBoundStrategy lb_strat)
 {
   // Pruned fill only operates on DenseDistanceMatrix (resize required).
   auto &dm = prob.dense_distance_matrix();
@@ -136,18 +137,47 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
   // Ensure matrix is sized
   dm.resize(static_cast<size_t>(N));
 
+  // Resolve the effective lower-bound strategy. Auto keeps the historical
+  // Kim+Keogh cascade; None disables both (equivalent to brute-force with
+  // the pruned framework's bookkeeping); Kim/Keogh/KimKeogh flip individual
+  // bounds on or off.
+  bool use_lb_kim_flag = false;
+  bool use_lb_keogh_flag = false;
+  switch (lb_strat) {
+    case dtwc::LowerBoundStrategy::None:
+      use_lb_kim_flag = false;
+      use_lb_keogh_flag = false;
+      break;
+    case dtwc::LowerBoundStrategy::Kim:
+      use_lb_kim_flag = true;
+      use_lb_keogh_flag = false;
+      break;
+    case dtwc::LowerBoundStrategy::Keogh:
+      use_lb_kim_flag = false;
+      use_lb_keogh_flag = true;
+      break;
+    case dtwc::LowerBoundStrategy::KimKeogh:
+    case dtwc::LowerBoundStrategy::Auto:
+    default:
+      use_lb_kim_flag = true;
+      use_lb_keogh_flag = true;
+      break;
+  }
+
   // Step 1: Precompute summaries for LB_Kim (O(N * n)) — parallel
   // Lock-free by design: each iteration writes only to summaries[i] at its own index.
   std::vector<SeriesSummary> summaries(N);
-  #ifdef _OPENMP
-  #pragma omp parallel for schedule(static)
-  #endif
-  for (int i = 0; i < N; ++i)
-    summaries[i] = compute_summary(prob.series(i));
+  if (use_lb_kim_flag) {
+    #ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
+    for (int i = 0; i < N; ++i)
+      summaries[i] = compute_summary(prob.series(i));
+  }
 
   // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0) — parallel
   // Lock-free by design: each iteration writes only to envelopes[i] at its own index.
-  const bool use_lb_keogh = (band >= 0);
+  const bool use_lb_keogh = use_lb_keogh_flag && (band >= 0);
   std::vector<Envelope> envelopes(N);
   if (use_lb_keogh) {
     #ifdef _OPENMP
@@ -208,8 +238,9 @@ PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band)
       }
       int j = static_cast<int>(k - row_start) + i + 1;
 
-      // Compute lower bound (cascading: LB_Kim, then LB_Keogh)
-      double lb = lb_kim(summaries[i], summaries[j]);
+      // Compute lower bound (cascading: LB_Kim, then LB_Keogh).
+      // If Kim is disabled, start at 0 (no-op threshold); Keogh may still fire.
+      double lb = use_lb_kim_flag ? lb_kim(summaries[i], summaries[j]) : 0.0;
 
       bool lb_keogh_used = false;
       if (use_lb_keogh && prob.series(i).size() == prob.series(j).size()) {

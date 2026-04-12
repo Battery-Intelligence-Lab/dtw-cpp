@@ -24,6 +24,9 @@
 
 #ifdef DTWC_HAS_METAL
 
+#include "../enums/KernelOverride.hpp"
+#include "../core/gpu_dtw_common.hpp"
+
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -38,35 +41,31 @@ enum class MetalPrecision {
   FP64  ///< Not implemented yet — falls back to FP32 with a warning.
 };
 
-struct MetalDistMatOptions {
-  int band = -1;               ///< Sakoe-Chiba band width (-1 = full DTW).
-  bool use_squared_l2 = false; ///< Squared L2 metric instead of L1.
-  bool verbose = false;        ///< Print timing info.
+struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   MetalPrecision precision = MetalPrecision::Auto;
-
-  /// Opt-in LB_Keogh pruning path. When true, each pair's LB_Keogh lower
-  /// bound is computed on-GPU; pairs whose LB exceeds `lb_threshold` are
-  /// marked `+∞` in the result matrix and skipped by the DTW kernel.
-  /// Supported only on wavefront / wavefront_global paths (i.e. band == -1
-  /// with max_L > 256). On other paths the flag is silently ignored.
-  bool use_lb_keogh = false;
 
   /// Pruning threshold applied to max(LB(i→j), LB(j→i)). Pairs with lower
   /// bound > threshold are pruned. 0 means "prune everything that isn't an
   /// exact envelope match"; +∞ means "compute all pairs anyway".
+  ///
+  /// Note: Metal uses 0.0 as the default (always-applied threshold), while
+  /// CUDA uses -1.0 (threshold-off sentinel). Kept per-backend for backward
+  /// compatibility.
   double lb_threshold = 0.0;
 
   /// Envelope window for LB_Keogh. Negative means "use L/10 (min 1)".
   int lb_envelope_band = -1;
+
+  // Inherited from DistMatOptionsBase:
+  //   band, use_squared_l2, verbose, use_lb_keogh, max_length_hint,
+  //   kernel_override
 };
 
-struct MetalDistMatResult {
-  std::vector<double> matrix;     ///< N*N flat row-major distance matrix.
-  size_t n = 0;                   ///< Number of series.
-  double gpu_time_sec = 0;        ///< GPU kernel execution time.
-  size_t pairs_computed = 0;      ///< Number of DTW pairs computed.
-  size_t pairs_pruned   = 0;      ///< LB_Keogh-pruned pairs (0 when disabled).
-  std::string kernel_used;        ///< "wavefront" / "wavefront_global" / "banded_row" / "regtile_w4" / "regtile_w8".
+struct MetalDistMatResult : public dtwc::gpu::DistMatResultBase {
+  // All fields (matrix, n, gpu_time_sec, lb_time_sec, pairs_computed,
+  // pairs_pruned, kernel_used) come from DistMatResultBase. `kernel_used`
+  // strings for Metal: "wavefront" / "wavefront_global" / "banded_row" /
+  // "regtile_w4" / "regtile_w8".
 };
 
 /// Check if Metal is available (MTLCreateSystemDefaultDevice succeeds).
@@ -81,6 +80,20 @@ std::string metal_device_info();
 MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts = {});
+
+/// Result type for standalone LB_Keogh computation on Metal.
+struct MetalLBResult {
+  std::vector<double> lb_values; ///< N*(N-1)/2 symmetric LB values (upper triangle, row-major).
+  size_t n = 0;                  ///< Number of series.
+  double gpu_time_sec = 0;       ///< Envelope + pairwise LB kernel time.
+};
+
+/// Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on the default
+/// Metal device. Returns symmetric LB: max(LB(i→j), LB(j→i)).
+/// Requires `band >= 0` (Sakoe-Chiba envelope window); returns empty on
+/// band < 0, N <= 1, or when Metal is unavailable.
+MetalLBResult compute_lb_keogh_metal(
+    const std::vector<std::vector<double>> &series, int band);
 
 // ===========================================================================
 // 1-vs-N and K-vs-N DTW computation (k-medoids assignment loop).

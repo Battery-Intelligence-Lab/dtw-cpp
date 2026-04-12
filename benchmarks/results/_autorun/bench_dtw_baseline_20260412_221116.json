@@ -1,0 +1,81 @@
+{
+  "context": {
+    "date": "2026-04-12T22:11:17+01:00",
+    "host_name": "",
+    "executable": "./build/bin/bench_dtw_baseline",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [6.70215,7.80322,5.31055],
+    "library_version": "v1.9.5",
+    "library_build_type": "release",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_dtwFull_L/1000",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_dtwFull_L/1000",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 215,
+      "real_time": 1.9158118187861387e+03,
+      "cpu_time": 1.9150837209302322e+03,
+      "time_unit": "us",
+      "items_per_second": 5.2217038298161719e+02
+    },
+    {
+      "name": "BM_dtwBanded/1000/50",
+      "family_index": 1,
+      "per_family_instance_index": 0,
+      "run_name": "BM_dtwBanded/1000/50",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 2878,
+      "real_time": 1.4611975923491238e+02,
+      "cpu_time": 1.4607053509381512e+02,
+      "time_unit": "us",
+      "items_per_second": 6.8460076452635767e+03
+    },
+    {
+      "name": "BM_wdtwBanded_g/1000/50",
+      "family_index": 2,
+      "per_family_instance_index": 0,
+      "run_name": "BM_wdtwBanded_g/1000/50",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 2637,
+      "real_time": 1.5878414517642199e+02,
+      "cpu_time": 1.5874402730375422e+02,
+      "time_unit": "us",
+      "items_per_second": 6.2994496044031666e+03
+    }
+  ]
+}

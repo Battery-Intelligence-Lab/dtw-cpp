@@ -1,0 +1,66 @@
+{
+  "context": {
+    "date": "2026-04-12T02:50:18+01:00",
+    "host_name": "",
+    "executable": "./build/bin/bench_dtw_baseline",
+    "num_cpus": 12,
+    "mhz_per_cpu": 24,
+    "cpu_scaling_enabled": false,
+    "caches": [
+      {
+        "type": "Data",
+        "level": 1,
+        "size": 65536,
+        "num_sharing": 0
+      },
+      {
+        "type": "Instruction",
+        "level": 1,
+        "size": 131072,
+        "num_sharing": 0
+      },
+      {
+        "type": "Unified",
+        "level": 2,
+        "size": 4194304,
+        "num_sharing": 1
+      }
+    ],
+    "load_avg": [3.56104,2.27051,2.44385],
+    "library_version": "v1.9.5",
+    "library_build_type": "release",
+    "json_schema_version": 1
+  },
+  "benchmarks": [
+    {
+      "name": "BM_fillDistanceMatrix/50/500/50",
+      "family_index": 0,
+      "per_family_instance_index": 0,
+      "run_name": "BM_fillDistanceMatrix/50/500/50",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 150,
+      "real_time": 2.0192268354197342e+01,
+      "cpu_time": 1.8651493333333281e+01,
+      "time_unit": "ms",
+      "items_per_second": 6.5678387146123248e+04
+    },
+    {
+      "name": "BM_fillDistanceMatrix/100/1000/-1",
+      "family_index": 0,
+      "per_family_instance_index": 1,
+      "run_name": "BM_fillDistanceMatrix/100/1000/-1",
+      "run_type": "iteration",
+      "repetitions": 1,
+      "repetition_index": 0,
+      "threads": 1,
+      "iterations": 2,
+      "real_time": 1.8377027914393693e+03,
+      "cpu_time": 1.6461685000000004e+03,
+      "time_unit": "ms",
+      "items_per_second": 3.0069825780289193e+03
+    }
+  ]
+}

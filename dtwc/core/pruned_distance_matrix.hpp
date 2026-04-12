@@ -31,6 +31,7 @@
 
 #include "../warping.hpp"
 #include "../Problem.hpp"
+#include "../enums/LowerBoundStrategy.hpp"
 #include "lower_bounds.hpp"
 #include "lower_bound_impl.hpp"
 #include "../settings.hpp"
@@ -62,10 +63,15 @@ struct PruningStats {
 
 /// Fill a Problem's distance matrix with LB-guided early-abandon DTW.
 ///
-/// @param prob  Problem with data loaded
-/// @param band  Sakoe-Chiba band width (-1 for full DTW)
+/// @param prob      Problem with data loaded
+/// @param band      Sakoe-Chiba band width (-1 for full DTW)
+/// @param lb_strat  Which lower bound(s) to apply (Auto -> Kim+Keogh cascade).
+///                  None short-circuits to brute-force within the pruned fill.
 /// @return Pruning statistics
-PruningStats fill_distance_matrix_pruned(dtwc::Problem &prob, int band);
+PruningStats fill_distance_matrix_pruned(
+    dtwc::Problem &prob,
+    int band,
+    dtwc::LowerBoundStrategy lb_strat = dtwc::LowerBoundStrategy::Auto);
 
 /// Compute NxN pairwise DTW distance matrix with LB-guided early-abandon.
 ///

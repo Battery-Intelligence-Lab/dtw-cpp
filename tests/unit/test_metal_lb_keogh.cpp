@@ -169,6 +169,62 @@ TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_k
   }
 }
 
+TEST_CASE("Metal compute_lb_keogh_metal matches CPU reference", "[metal][lb_keogh]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  const size_t N = 8;
+  const size_t L = 96;
+  const int band = 8;
+  auto series = random_series(N, L, 0xBEEF);
+
+  auto gpu = dtwc::metal::compute_lb_keogh_metal(series, band);
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.lb_values.size() == N * (N - 1) / 2);
+
+  // CPU reference using core::lb_keogh_symmetric.
+  std::vector<dtwc::core::Envelope> envs(N);
+  for (size_t i = 0; i < N; ++i)
+    envs[i] = dtwc::core::compute_envelope(series[i], band);
+
+  size_t k = 0;
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      const double cpu = dtwc::core::lb_keogh_symmetric(
+          series[i], envs[i], series[j], envs[j]);
+      const double g = gpu.lb_values[k++];
+      CAPTURE(i, j, cpu, g);
+      // FP32 math on GPU vs FP64 CPU — allow relative slack.
+      REQUIRE_THAT(g, WithinRel(cpu, 1e-3) || WithinAbs(cpu, 1e-3));
+    }
+  }
+}
+
+TEST_CASE("Metal compute_lb_keogh_metal edge cases", "[metal][lb_keogh]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  SECTION("band < 0 returns empty") {
+    auto series = random_series(4, 32, 1);
+    auto r = dtwc::metal::compute_lb_keogh_metal(series, -1);
+    CHECK(r.lb_values.empty());
+  }
+
+  SECTION("N <= 1 returns empty") {
+    std::vector<std::vector<double>> single{{1.0, 2.0, 3.0}};
+    auto r = dtwc::metal::compute_lb_keogh_metal(single, 2);
+    CHECK(r.lb_values.empty());
+    CHECK(r.n == 1);
+  }
+
+  SECTION("Identical series yield LB = 0") {
+    std::vector<double> s = {1.0, 3.0, -2.0, 5.0, 0.0};
+    std::vector<std::vector<double>> series = {s, s, s};
+    auto r = dtwc::metal::compute_lb_keogh_metal(series, 2);
+    REQUIRE(r.lb_values.size() == 3);
+    for (size_t i = 0; i < 3; ++i) CHECK(r.lb_values[i] == 0.0);
+  }
+}
+
 TEST_CASE("Metal LB_Keogh silently disables on banded_row path", "[metal][lb_keogh]")
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");

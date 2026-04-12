@@ -396,3 +396,24 @@ BENCHMARK(BM_cpu_distanceMatrix_banded)
     ->Args({75, 2500})
     ->Args({75, 10000})
     ->Unit(benchmark::kMillisecond);
+
+// Custom main: inject GPU device info into Google Benchmark's JSON context so
+// benchmark results include hardware specs (more valuable than the auto-filled
+// host_name, which we strip post-run).
+int main(int argc, char **argv)
+{
+  benchmark::Initialize(&argc, argv);
+#ifdef DTWC_HAS_METAL
+  benchmark::AddCustomContext("gpu_backend", "metal");
+  benchmark::AddCustomContext("gpu_device_info", dtwc::metal::metal_device_info());
+  benchmark::AddCustomContext("gpu_available",
+      dtwc::metal::metal_available() ? "true" : "false");
+#else
+  benchmark::AddCustomContext("gpu_backend", "metal");
+  benchmark::AddCustomContext("gpu_available", "false");
+#endif
+  if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+  benchmark::RunSpecifiedBenchmarks();
+  benchmark::Shutdown();
+  return 0;
+}

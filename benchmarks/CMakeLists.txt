@@ -24,23 +24,23 @@ target_link_libraries(bench_mmap_access
     benchmark::benchmark_main
 )
 
-# CUDA benchmarks (Google Benchmark, requires CUDA)
+# CUDA benchmarks (Google Benchmark, requires CUDA).
+# Defines its own main() to inject GPU device info into the JSON context.
 add_executable(bench_cuda_dtw bench_cuda_dtw.cpp)
 target_link_libraries(bench_cuda_dtw
   PRIVATE
     dtwc++
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 # Metal benchmarks (Google Benchmark, requires macOS Metal).
 # Target is always added; kernel code is gated on DTWC_HAS_METAL inside the .cpp.
+# Defines its own main() to inject GPU device info into the JSON context.
 add_executable(bench_metal_dtw bench_metal_dtw.cpp)
 target_link_libraries(bench_metal_dtw
   PRIVATE
     dtwc++
     benchmark::benchmark
-    benchmark::benchmark_main
 )
 
 # MPI benchmarks (standalone, requires MPI)
