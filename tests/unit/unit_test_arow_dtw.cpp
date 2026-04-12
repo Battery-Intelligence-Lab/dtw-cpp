@@ -23,6 +23,8 @@
  */
 
 #include <dtwc.hpp>
+#include <core/dtw_cost.hpp>
+#include <core/dtw_kernel.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -623,4 +625,76 @@ TEST_CASE("Problem: AROW gives finite distance with leading NaN", "[arow_dtw][pr
   const double d = prob.distByInd(0, 1);
   REQUIRE(d >= 0.0);
   REQUIRE(d < std::numeric_limits<double>::max() / 2.0);
+}
+
+// ===========================================================================
+//  Phase 3.2: cross-validate the unified-kernel AROW (SpanAROWL1Cost +
+//  AROWCell via dtw_kernel_banded) against the existing dtwAROW_banded.
+//  Used as a gate before migrating Problem::rebind_dtw_fn's AROW path to
+//  the unified kernel.
+// ===========================================================================
+
+namespace {
+double arow_via_kernel(const std::vector<double>& x, const std::vector<double>& y, int band)
+{
+  // Kernel contract: n_short <= n_long. Swap if needed.
+  const bool swap = x.size() > y.size();
+  const auto& a = swap ? y : x;
+  const auto& b = swap ? x : y;
+  dtwc::core::SpanAROWL1Cost<double> cost{a.data(), b.data()};
+  dtwc::core::AROWCell cell;
+  return dtwc::core::dtw_kernel_banded<double, dtwc::core::SpanAROWL1Cost<double>, dtwc::core::AROWCell>(
+    a.size(), b.size(), band, cost, cell);
+}
+} // anon namespace
+
+TEST_CASE("AROW kernel-policy: no NaN matches dtwAROW_banded", "[arow_dtw][phase3]")
+{
+  std::vector<double> x{ 1, 2, 3, 4, 5, 6, 7, 8 };
+  std::vector<double> y{ 1, 3, 3, 5, 5, 7, 7, 9 };
+  for (int band : {1, 2, 3, 4}) {
+    INFO("band=" << band);
+    REQUIRE_THAT(arow_via_kernel(x, y, band),
+                 WithinAbs(dtwAROW_banded<double>(x, y, band), 1e-10));
+  }
+}
+
+TEST_CASE("AROW kernel-policy: interior NaN matches dtwAROW_banded", "[arow_dtw][phase3]")
+{
+  std::vector<double> x{ 1, 2, NaN, 4, 5, 6, NaN, 8 };
+  std::vector<double> y{ 1, 3, 3, 5, 5, 7, 7, 9 };
+  for (int band : {1, 2, 3, 4}) {
+    INFO("band=" << band);
+    REQUIRE_THAT(arow_via_kernel(x, y, band),
+                 WithinAbs(dtwAROW_banded<double>(x, y, band), 1e-10));
+  }
+}
+
+TEST_CASE("AROW kernel-policy: leading NaN matches dtwAROW_banded", "[arow_dtw][phase3]")
+{
+  std::vector<double> x{ NaN, NaN, 3, 4, 5, 6, 7, 8 };
+  std::vector<double> y{ 1, 2, 3, 4, 5, 6, 7, 8 };
+  for (int band : {1, 2, 3, 4}) {
+    INFO("band=" << band);
+    REQUIRE_THAT(arow_via_kernel(x, y, band),
+                 WithinAbs(dtwAROW_banded<double>(x, y, band), 1e-10));
+  }
+}
+
+TEST_CASE("AROW kernel-policy: trailing NaN matches dtwAROW_banded", "[arow_dtw][phase3]")
+{
+  std::vector<double> x{ 1, 2, 3, 4, 5, 6, NaN, NaN };
+  std::vector<double> y{ 1, 2, 3, 4, 5, 6, 7, 8 };
+  for (int band : {1, 2, 3, 4}) {
+    INFO("band=" << band);
+    REQUIRE_THAT(arow_via_kernel(x, y, band),
+                 WithinAbs(dtwAROW_banded<double>(x, y, band), 1e-10));
+  }
+}
+
+TEST_CASE("AROW kernel-policy: all NaN both sides = 0", "[arow_dtw][phase3]")
+{
+  std::vector<double> x{ NaN, NaN, NaN, NaN, NaN };
+  std::vector<double> y{ NaN, NaN, NaN, NaN, NaN };
+  REQUIRE_THAT(arow_via_kernel(x, y, 2), WithinAbs(0.0, 1e-10));
 }

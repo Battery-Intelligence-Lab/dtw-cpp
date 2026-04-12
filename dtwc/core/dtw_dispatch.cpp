@@ -12,8 +12,9 @@
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
 #include "../warping_missing.hpp"    // dtwMissing_banded, dtwMissing_banded_mv
-#include "../warping_missing_arow.hpp" // dtwAROW_banded
 #include "../warping_wdtw.hpp"       // wdtwBanded, wdtwBanded_mv, wdtw_weights
+#include "dtw_cost.hpp"              // SpanAROWL1Cost
+#include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
 #include "dtw_options.hpp"           // DTWVariant, MissingStrategy
 
 #include <algorithm>
@@ -63,11 +64,22 @@ template <typename T>
 auto make_arow(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  // AROW always uses the scalar path regardless of data.ndim — MV AROW is a
-  // genuinely different recurrence (see Phase 3 deferred work). Preserved
-  // verbatim from pre-refactor behaviour.
+  // AROW (Yurtman 2023) via the unified kernel: NaN-propagating L1 Cost +
+  // AROWCell that carries the diagonal predecessor when the cost is NaN.
+  // Cross-validated bit-for-bit against the legacy dtwAROW_banded on
+  // {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN} x bands 1..4
+  // (unit_test_arow_dtw.cpp [phase3]).
+  //
+  // Preserves the pre-refactor behaviour: ndim>1 is treated as a flat vector
+  // — MV AROW has a per-channel recurrence that still needs a dedicated path.
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(dtwAROW_banded<T>(x, y, p.band));
+    const bool swap = x.size() > y.size();
+    const auto a = swap ? y : x;
+    const auto b = swap ? x : y;
+    SpanAROWL1Cost<T> cost{a.data(), b.data()};
+    return static_cast<double>(
+      dtw_kernel_banded<T, SpanAROWL1Cost<T>, AROWCell>(
+        a.size(), b.size(), p.band, cost, AROWCell{}));
   };
 }
 

@@ -21,6 +21,11 @@
  *                  Standard: min(diag, up, left) + cost.
  *                  ADTW: min(diag, up+penalty, left+penalty) + cost.
  *                  The "no neighbour" sentinel is std::numeric_limits<T>::max().
+ *                  T seed(T cost, size_t short_idx, size_t long_idx) const noexcept
+ *                  — value placed at DP cell (0, 0). Default policies return
+ *                  `cost` directly. AROW overrides to return 0 when cost is
+ *                  NaN (the "missing pair" sentinel) so the diagonal-carry
+ *                  doesn't propagate NaN downstream.
  *
  *          @pre n_short <= n_long. Wrappers must swap (x, y) beforehand if
  *               needed and rebuild their Cost functor with the post-swap
@@ -54,6 +59,11 @@ struct StandardCell {
   {
     return std::min({diag, up, left}) + cost;
   }
+  template <typename T>
+  T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return cost;
+  }
 };
 
 /// ADTW (Amerced DTW): penalty on non-diagonal (horizontal/vertical) steps.
@@ -65,6 +75,37 @@ struct ADTWCell {
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
     return std::min({diag, up + penalty, left + penalty}) + cost;
+  }
+  T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return cost;
+  }
+};
+
+/// AROW (Yurtman 2023): diagonal-carry when the pointwise cost is NaN (the
+/// "missing pair" sentinel from a NaN-propagating Cost functor). Otherwise
+/// standard min-of-3 + cost. Boundary treatment: when only one predecessor is
+/// available (i.e. first row/column), that predecessor is used; at (0,0) with
+/// no predecessors, `seed(NaN, 0, 0)` returns 0 — the DP anchor.
+struct AROWCell {
+  template <typename T>
+  T combine(T diag, T up, T left, T cost,
+            std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    constexpr T maxValue = std::numeric_limits<T>::max();
+    if (cost != cost) { // NaN -> missing pair. (std::isnan is not constexpr pre-C++23.)
+      if (diag != maxValue) return diag;
+      if (up   != maxValue) return up;
+      if (left != maxValue) return left;
+      return T(0);
+    }
+    const T m = std::min({diag, up, left});
+    return (m == maxValue) ? maxValue : m + cost;
+  }
+  template <typename T>
+  T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
+  {
+    return (cost != cost) ? T(0) : cost;
   }
 };
 
@@ -95,7 +136,7 @@ T dtw_kernel_full(std::size_t n_short, std::size_t n_long, Cost cost, Cell cell)
   thread_local core::ScratchMatrix<T> C;
   C.resize(static_cast<int>(n_short), static_cast<int>(n_long));
 
-  C(0, 0) = cost(0, 0);
+  C(0, 0) = cell.seed(cost(0, 0), 0, 0);
   for (std::size_t i = 1; i < n_short; ++i)
     C(static_cast<int>(i), 0) = cell.combine(
         maxValue, C(static_cast<int>(i - 1), 0), maxValue, cost(i, 0), i, 0);
@@ -131,7 +172,7 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
   short_side.resize(n_short);
 
   // First column (long_idx = 0): accumulate along short axis, no diag/left.
-  short_side[0] = cost(0, 0);
+  short_side[0] = cell.seed(cost(0, 0), 0, 0);
   for (std::size_t i = 1; i < n_short; ++i)
     short_side[i] = cell.combine(maxValue, short_side[i - 1], maxValue,
                                  cost(i, 0), i, 0);
@@ -198,7 +239,7 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
 
   // First short-step (j_short = 0): fill col along long axis. Only `left`
   // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
-  col[0] = cost(0, 0);
+  col[0] = cell.seed(cost(0, 0), 0, 0);
   {
     const int hi = high_bounds[0];
     for (int i = 1; i < std::min(hi, m_long); ++i) {

@@ -34,10 +34,21 @@ The Standard / ADTW / WDTW / DDTW + ZeroCost-missing paths now share **one** tem
 
 - **`Problem::dtw_function_f32()`** now honours `variant_params.variant` and `missing_strategy`. Previously the float32 distance function was unconditionally bound to Standard DTW with `MissingStrategy::Error`, regardless of Problem configuration. The primary user of this path is `fast_clara`'s chunked-Parquet assignment (memory-saving f32 loader): anyone clustering with `variant = WDTW/ADTW/DDTW/SoftDTW` or with missing-data strategies and using the chunked path silently got Standard DTW results. Regression tests in [unit_test_mv_variants.cpp](tests/unit/unit_test_mv_variants.cpp) `[f32]` tag exercise ADTW, WDTW, and ZeroCost-missing via `dtw_function_f32()`.
 
-### Deferred (Phase 3 part 2)
+### Changed (AROW via unified kernel — Phase 3 part 2)
 
-- Fold `warping_missing_arow.hpp` — its recurrence (`C(i,j) = C(i-1,j-1)` when the pair is missing) doesn't fit the current Cell contract without extending the kernel interface to pass a "missing-pair" flag. Genuinely different path; kept as-is.
-- Fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp.
+The `Problem`-level AROW missing-data path now runs on `dtw_kernel_banded` with two new policies, completing the kernel-family unification for banded AROW:
+
+- **`AROWCell`** in [dtwc/core/dtw_kernel.hpp](dtwc/core/dtw_kernel.hpp): interprets a NaN cost as the "missing pair" sentinel and carries the diagonal predecessor without adding cost. Boundary-aware fallback (uses `up` or `left` when `diag` is out-of-bounds).
+- **`SpanAROWL1Cost<T>`** / **`SpanAROWSquaredL2Cost<T>`** in [dtwc/core/dtw_cost.hpp](dtwc/core/dtw_cost.hpp): return NaN when either operand is missing — signal to `AROWCell` without widening the Cell contract with an extra bool.
+- **Cell contract extended with `seed(cost, i, j)`**: seed value at DP cell (0,0). Default (`StandardCell`/`ADTWCell`) returns `cost` unchanged. `AROWCell` returns 0 when cost is NaN, preventing NaN propagation through the DP when both (0,0) operands are missing.
+- **Cross-validated** bit-for-bit against the legacy `dtwAROW_banded` on {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN} × bands {1,2,3,4}. See [unit_test_arow_dtw.cpp](tests/unit/unit_test_arow_dtw.cpp) `[phase3]` tag.
+- **Perf**: `BM_dtwBanded/1000/50` 146 μs → 145 μs (−0.7%); `seed()` method is inlined to a direct assignment for non-AROW cells — zero overhead on Standard/ADTW/WDTW/DDTW hot paths.
+- `warping_missing_arow.hpp` is retained unchanged as the standalone public API surface; the Problem-level dispatch no longer depends on it.
+
+### Deferred (Phase 3 part 3)
+
+- Fold `soft_dtw.hpp` via a `SoftCell{gamma}` with log-sum-exp (full-matrix kernel + gradient ownership).
+- Multivariate AROW: still dispatches through the scalar path. Needs a per-channel recurrence.
 
 ### Added (GPU parity + configuration)
 
