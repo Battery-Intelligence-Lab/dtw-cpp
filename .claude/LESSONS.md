@@ -19,6 +19,7 @@ Critical knowledge to avoid repeating mistakes.
 
 ## C++ Performance
 
+- **Generalising can beat specialising.** Phase 1 unified the Standard/ADTW/WDTW/DDTW/ZeroCost-missing banded paths behind one `dtw_kernel_banded<T, Cost, Cell>`. The per-variant loops had accumulated divergent bookkeeping — WDTW had a ~50-line `if (low == 0)` block that didn't exist in Standard, etc. Unification produced **1.54× (dtwBanded), 1.77× (wdtwBanded), 2.83× (wdtwBanded_g)** speedups on 1000-length series. Register pressure, icache behaviour, and constant-folding under `-O2` all favoured the uniform loop. Template Cost/Cell policies are pass-by-value 8-24-byte structs kept in registers — zero runtime indirection. Counter to the assumption that specialised loops should always win.
 - **DTW is latency-bound** (10-cycle recurrence). Only 3% of L1 bandwidth used. SIMD gives max ~1.29x.
 - **Branchless scalar matches explicit SIMD for DTW.** Highway was tried and removed. scatter/gather in recurrence kills perf.
 - **Don't replace integer arithmetic with lookup tables.** `i*(i+1)/2` = 1-2 cycles (imul). Table lookup = 4 cycles + cache pollution. Benchmarked 5% slower.
@@ -81,6 +82,12 @@ Critical knowledge to avoid repeating mistakes.
 
 - **Never `static_pointer_cast<DoubleArray>` without checking value type.** Parquet list columns can store Float (32-bit) values. Casting to DoubleArray reinterprets float bits as double — silent data corruption. Always check `values->type_id()` first.
 - **Parquet row-group metadata is free.** `num_rows`, `total_uncompressed_size` per row group available without reading data. Use for RAM budgeting.
+
+## Refactoring Process
+
+- **Cross-validation is the gate for policy migrations.** Before swapping a dispatch from impl A to impl B (e.g. `dtwAROW_banded` → `dtw_kernel_banded<T, SpanAROWL1Cost<T>, AROWCell>`), write a test that runs BOTH on representative inputs (no-NaN, interior NaN, leading/trailing NaN, all-NaN × bands {1..4}) and asserts bit-for-bit agreement within 1e-10. If the test passes, migrate; if it fails, diagnose BEFORE touching production dispatch. Applied in Phase 3.2 (AROW) and 3.3 (Soft-DTW) — both landed with zero regression.
+- **Silent-dispatch bugs hide in asymmetries.** `Problem::dtw_function_f32()` was hardwired to Standard DTW regardless of `variant_params.variant` / `missing_strategy` — nobody noticed because every existing test exercised only the f64 path. Found when unifying dispatch via a templated resolver. **Pattern: dual-type APIs (f32/f64) need parity tests, not just one-side tests.** Same failure mode showed up twice in this codebase (also `dtw_runtime()` silently ignoring variant pre-Phase 1).
+- **Cell/Cost policy contracts are forward-extensible.** Adding `seed(cost, i, j)` to the Cell policy to support AROW's `C(0,0) = 0 on NaN` semantics did NOT require touching existing cells — `StandardCell::seed` defaulted to `return cost`, which is identical to the pre-refactor `col[0] = cost(0, 0)` assignment. Pattern: new contract methods with sensible defaults are additive, not breaking.
 
 ## Research Process
 

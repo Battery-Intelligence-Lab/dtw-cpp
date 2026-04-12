@@ -85,3 +85,6 @@
 - [ ] Stale cache detection — hash input filenames + sizes in mmap header
 - [ ] nanoarrow C Data Interface — eliminate Arrow C++ dependency entirely
 - [ ] HIPify for AMD GPU — accept community PRs only
+
+### Blocked
+- [ ] Python wheel cross-language parity test (`tests/integration/test_cross_language.py`). `uv pip install -e .` fails with `CMake Error at ... QuickCppLibUtils.cmake:79 (message): FATAL: Configure download, build and install of quickcpplib ... stderr was: no such file or directory '.../ninja' --version`. Root cause: llfio's quickcpplib dependency spawns a **sub-CMake** configure that doesn't inherit scikit-build-core's ninja-path injection. Passing `CMAKE_MAKE_PROGRAM` at the top level (via `[tool.scikit-build.cmake.define]`) does not propagate to the sub-build. Workarounds to investigate: (a) `brew install ninja` system-wide before `uv pip install -e .`, (b) make llfio truly optional via `DTWC_ENABLE_MMAP` and guard `MmapDistanceMatrix` with `#ifdef DTWC_HAS_MMAP` (non-trivial — type lives in `Problem::distMat` `std::variant`), (c) file upstream issue against quickcpplib for make-program hint propagation.
