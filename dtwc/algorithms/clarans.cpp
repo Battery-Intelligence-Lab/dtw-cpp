@@ -69,6 +69,9 @@ core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts)
 
         // -----------------------------------------------------------------------
         // 1. Random initial medoids (sample k from [0, N) without replacement).
+        // Per-restart heap allocations (indices, medoids, labels, nearest_dist)
+        // are amortised: restart-count is bounded by num_local (typically 5-10)
+        // and dominated by the O(max_nb * N) inner work below.
         // -----------------------------------------------------------------------
         std::vector<int> indices(N);
         std::iota(indices.begin(), indices.end(), 0);
