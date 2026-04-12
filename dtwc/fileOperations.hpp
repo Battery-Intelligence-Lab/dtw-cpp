@@ -105,6 +105,26 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
 }
 
 /**
+ * @brief Options for load_folder / load_batch_file.
+ *
+ * @details Bundles the five auxiliary parameters (Ndata, verbose, start_row,
+ * start_col, delimiter) that previously trailed the path argument as positional
+ * args. C++20 designated initialisers make call sites self-documenting:
+ *
+ *   load_folder<double>(path, {.Ndata = 1000, .start_row = 1});
+ *
+ * The positional-arg overloads are retained for backwards compatibility; they
+ * delegate to the struct-based form.
+ */
+struct LoadOptions {
+  int Ndata = -1;       //!< Max number of series to read; -1 = all.
+  int verbose = 1;      //!< Verbosity level for logging.
+  int start_row = 0;    //!< First row to read (skip headers).
+  int start_col = 0;    //!< First column to read (skip ID columns).
+  char delimiter = ','; //!< Field delimiter character.
+};
+
+/**
  * @brief Loads all files from a given folder and returns their data as vectors along with file names.
  *
  * @tparam data_t The data type of the elements to be read.
@@ -118,7 +138,7 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
  * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> A pair containing vectors of data and corresponding file names.
  */
 template <typename data_t, typename Tpath>
-auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 {
   std::cout << "Reading data:" << '\n';
 
@@ -128,21 +148,31 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_
   int i_data = 0;
   for (const auto &entry : fs::directory_iterator(folder_path)) {
 
-    auto p = readFile<data_t>(entry.path(), start_row, start_col, delimiter);
+    auto p = readFile<data_t>(entry.path(), opts.start_row, opts.start_col, opts.delimiter);
 
-    if (verbose >= 2 || (verbose == 1 && p.empty()))
+    if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
       std::cout << entry.path() << "\tSize: " << p.size() << '\n';
 
     p_vec.push_back(std::move(p));
     p_names.push_back(entry.path().stem().string());
 
     i_data++;
-    if (i_data == Ndata) break;
+    if (i_data == opts.Ndata) break;
   }
 
   std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(p_vec, p_names);
+}
+
+/// Positional-arg overload retained for backwards compatibility; delegates to
+/// the LoadOptions-based form.
+template <typename data_t, typename Tpath>
+auto load_folder(Tpath &folder_path, int Ndata, int verbose = 1,
+                 int start_row = 0, int start_col = 0, char delimiter = ',')
+{
+  return load_folder<data_t>(folder_path,
+    LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 
 /**
@@ -158,7 +188,7 @@ auto load_folder(Tpath &folder_path, int Ndata = -1, int verbose = 1, int start_
  * @return std::pair<std::vector<std::vector<data_t>>, std::vectorstd::string> A pair containing vectors of data and corresponding identifiers.
  */
 template <typename data_t>
-auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int start_row = 0, int start_col = 0, char delimiter = ',')
+auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 {
   std::cout << "Reading data:" << '\n';
 
@@ -176,9 +206,9 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   std::string line;
   int line_no{ 0 };
   int n_rows{ 0 };
-  while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) //!< Read file.
+  while ((opts.Ndata == -1 || n_rows < opts.Ndata) && std::getline(in, line)) //!< Read file.
   {
-    if (line_no++ < start_row) // Skip first rows.
+    if (line_no++ < opts.start_row) // Skip first rows.
       continue;
 
     n_rows++;
@@ -189,22 +219,22 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
     data_t temp, p_i;
     char c;
 
-    for (int i = 0; i < start_col; i++) // Skip first start_col columns to start from start_col.
+    for (int i = 0; i < opts.start_col; i++) // Skip first start_col columns to start from start_col.
     {
       in_line >> temp;
-      if (delimiter != ' ' && delimiter != '\t') // These we do not need to remove from stream.
+      if (opts.delimiter != ' ' && opts.delimiter != '\t') // These we do not need to remove from stream.
         in_line >> c;
     }
 
     while (in_line >> p_i) {
       p.push_back(p_i);
-      if (delimiter != ' ' && delimiter != '\t') // These we do not need to remove from stream.
+      if (opts.delimiter != ' ' && opts.delimiter != '\t') // These we do not need to remove from stream.
         in_line >> c;
     }
 
     p.shrink_to_fit();
 
-    if (verbose >= 2 || (verbose == 1 && p.empty()))
+    if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
       std::cout << file_path << '\t' << "data: " << n_rows << " Size: " << p.size() << '\n';
 
     p_vec.push_back(std::move(p));
@@ -214,6 +244,16 @@ auto load_batch_file(fs::path &file_path, int Ndata = -1, int verbose = 1, int s
   std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(p_vec, p_names);
+}
+
+/// Positional-arg overload retained for backwards compatibility; delegates to
+/// the LoadOptions-based form.
+template <typename data_t>
+auto load_batch_file(fs::path &file_path, int Ndata, int verbose = 1,
+                     int start_row = 0, int start_col = 0, char delimiter = ',')
+{
+  return load_batch_file<data_t>(file_path,
+    LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
 }
 
 // ============================================================================

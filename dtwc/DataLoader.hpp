@@ -117,10 +117,11 @@ public:
   Data load()
   {
     Data d;
+    const LoadOptions opts{Ndata, verbose, start_row, start_col, delim};
     if (fs::is_directory(data_path))
-      std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, Ndata, verbose, start_row, start_col, delim);
+      std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, opts);
     else
-      std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, Ndata, verbose, start_row, start_col, delim);
+      std::tie(d.p_vec, d.p_names) = load_batch_file<data_t>(data_path, opts);
 
     return d;
   }
