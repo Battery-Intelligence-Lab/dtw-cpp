@@ -21,6 +21,9 @@
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"   // GPU distance matrix computation
 #endif
+#ifdef DTWC_HAS_METAL
+#include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
+#endif
 #include "warping_ddtw.hpp"    // for ddtwBanded
 #include "warping_wdtw.hpp"    // for wdtwBanded
 #include "warping_adtw.hpp"    // for adtwBanded
@@ -571,6 +574,50 @@ void Problem::fillDistanceMatrix()
   }
 #else
     if (verbose) std::cout << "CUDA not compiled in, falling back to CPU brute-force.\n";
+    [[fallthrough]];
+#endif
+  case DistanceMatrixStrategy::Metal:
+#ifdef DTWC_HAS_METAL
+  {
+    if (!dtwc::metal::metal_available()) {
+      if (verbose) std::cout << "No Metal GPU detected, falling back to CPU.\n";
+      fillDistanceMatrix_BruteForce();
+      break;
+    }
+
+    dtwc::metal::MetalDistMatOptions metal_opts;
+    metal_opts.band = band;
+    metal_opts.use_squared_l2 = false;
+    metal_opts.verbose = verbose;
+
+    auto metal_result = dtwc::metal::compute_distance_matrix_metal(
+        data.p_vec, metal_opts);
+
+    // Graceful fallback: if Metal couldn't handle this input (e.g. series
+    // length exceeds the threadgroup memory cap), compute on CPU instead.
+    if (metal_result.pairs_computed == 0 && data.size() > 1) {
+      if (verbose) std::cout << "Metal returned empty — falling back to CPU.\n";
+      fillDistanceMatrix_BruteForce();
+      break;
+    }
+
+    visit_distmat([&](auto &m) {
+      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+        m.resize(metal_result.n);
+      }
+      for (size_t i = 0; i < metal_result.n; ++i)
+        for (size_t j = i; j < metal_result.n; ++j)
+          m.set(i, j, metal_result.matrix[i * metal_result.n + j]);
+    });
+
+    if (verbose)
+      std::cout << "Metal distance matrix: " << metal_result.pairs_computed
+                << " pairs in " << std::setprecision(3)
+                << metal_result.gpu_time_sec * 1000 << " ms\n";
+    break;
+  }
+#else
+    if (verbose) std::cout << "Metal not compiled in, falling back to CPU brute-force.\n";
     [[fallthrough]];
 #endif
   case DistanceMatrixStrategy::BruteForce:

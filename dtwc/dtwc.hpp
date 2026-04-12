@@ -51,3 +51,7 @@
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"
 #endif
+
+#ifdef DTWC_HAS_METAL
+#include "metal/metal_dtw.hpp"
+#endif

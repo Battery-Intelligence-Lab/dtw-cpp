@@ -28,6 +28,9 @@ option(DTWC_ENABLE_GUROBI "Enable Gurobi MIP solver" ON)
 option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
+# Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
+# Silently ignored on non-Apple platforms.
+option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
 option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
 option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
 
@@ -174,6 +177,19 @@ if(DTWC_ENABLE_CUDA)
   endif()
 endif()
 
+# Metal (Apple GPU) — macOS/iOS only. Needs Objective-C++ language + framework linkage.
+if(DTWC_ENABLE_METAL)
+  if(APPLE)
+    enable_language(OBJCXX)
+    # Metal and Foundation frameworks ship with the base SDK; no find_package needed.
+    set(DTWC_HAS_METAL_DETECTED ON)
+    message(STATUS "Metal enabled — dtwc/metal will be built")
+  else()
+    # Silently disable on non-Apple — avoids CI noise on Linux/Windows checkouts.
+    set(DTWC_ENABLE_METAL OFF)
+  endif()
+endif()
+
 include(cmake/Dependencies.cmake) # Include external projects
 include(cmake/FindGUROBI.cmake)
 include(cmake/ProjectOptions.cmake)
@@ -286,6 +302,11 @@ if(PROJECT_IS_TOP_LEVEL)
     set(_mpi_status "REQUESTED BUT NOT FOUND")
   endif()
 
+  set(_metal_status "OFF")
+  if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
+    set(_metal_status "ON (Apple GPU)")
+  endif()
+
   message(STATUS "")
   message(STATUS "╔══════════════════════════════════════════════════╗")
   message(STATUS "║  DTWC++ ${DTWC_VERSION_STRING} Configuration Summary")
@@ -293,6 +314,7 @@ if(PROJECT_IS_TOP_LEVEL)
   message(STATUS "║  Compiler:  ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
   message(STATUS "║  OpenMP:    ${_omp_status}")
   message(STATUS "║  CUDA:      ${_cuda_status}")
+  message(STATUS "║  Metal:     ${_metal_status}")
   message(STATUS "║  MPI:       ${_mpi_status}")
   message(STATUS "║  Gurobi:    ${_gurobi_status}")
   message(STATUS "║  HiGHS:     ${_highs_status}")

@@ -65,7 +65,8 @@ enum class DistanceMatrixStrategy {
   Auto,       ///< Choose best strategy automatically
   BruteForce, ///< Parallel brute-force (no lower-bound pruning)
   Pruned,     ///< Parallel with LB_Kim + LB_Keogh early-abandon
-  GPU         ///< CUDA GPU (requires DTWC_HAS_CUDA)
+  GPU,        ///< CUDA GPU (requires DTWC_HAS_CUDA)
+  Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
 };
 
 /**

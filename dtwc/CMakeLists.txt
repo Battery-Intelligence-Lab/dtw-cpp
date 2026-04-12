@@ -169,3 +169,16 @@ if(DTWC_ENABLE_CUDA AND CMAKE_CUDA_COMPILER)
   set_source_files_properties(cuda/cuda_dtw.cu PROPERTIES LANGUAGE CUDA)
   message(STATUS "CUDA enabled for GPU DTW acceleration")
 endif()
+
+# Metal (optional, Apple only)
+if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
+  target_sources(dtwc++ PRIVATE metal/metal_dtw.mm)
+  # Compile the .mm with ARC disabled — we use manual retain/release via __bridge casts.
+  set_source_files_properties(metal/metal_dtw.mm PROPERTIES
+    COMPILE_FLAGS "-fno-objc-arc")
+  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_METAL)
+  target_link_libraries(dtwc++ PUBLIC
+    "-framework Foundation"
+    "-framework Metal")
+  message(STATUS "Metal enabled for Apple GPU DTW acceleration")
+endif()
