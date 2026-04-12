@@ -125,10 +125,6 @@ kernel void dtw_wavefront(
     int i_hi = min(La - 1, k);
 
     // Band clip: |i - j| = |2i - k| <= band  ->  i in [(k-band+1)/2, (k+band)/2].
-    // Safe because out-of-band cells in prev/prev2 buffers are INF from init,
-    // and the 3-buffer rotation is such that reads by in-band cells only touch
-    // prev-diagonals' in-band cells (proof: (i,j) in band at k implies
-    // (i-1,j-1), (i-1,j), (i,j-1) are in band at k-2 and k-1 respectively).
     if (band >= 0) {
       const int band_lo = (k - band + 1) / 2;  // ceil((k-band)/2) when k-band>=0
       const int band_hi = (k + band) / 2;      // floor((k+band)/2)
@@ -136,29 +132,36 @@ kernel void dtw_wavefront(
       i_hi = min(i_hi, band_hi);
     }
     const int diag_len = i_hi - i_lo + 1;
-    if (diag_len <= 0) {
-      threadgroup_barrier(mem_flags::mem_threadgroup);
-      continue;
+
+    if (diag_len > 0) {
+      for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
+        const int i = i_lo + idx;
+        const int j = k - i;
+
+        float diff = a[i] - b[j];
+        float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
+
+        float best;
+        if (i == 0 && j == 0) {
+          best = 0.0f; // origin
+        } else {
+          float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
+          float cup   = (i > 0)          ? prev[i - 1]  : INF;
+          float cleft = (j > 0)          ? prev[i]      : INF;
+          best = min(cdiag, min(cup, cleft));
+        }
+
+        cur[i] = cost + best;
+      }
     }
 
-    for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
-      const int i = i_lo + idx;
-      const int j = k - i;
-
-      float diff = a[i] - b[j];
-      float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
-
-      float best;
-      if (i == 0 && j == 0) {
-        best = 0.0f; // origin
-      } else {
-        float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
-        float cup   = (i > 0)          ? prev[i - 1]  : INF;
-        float cleft = (j > 0)          ? prev[i]      : INF;
-        best = min(cdiag, min(cup, cleft));
-      }
-
-      cur[i] = cost + best;
+    // INF-fill the band-adjacent positions so the next diagonal's in-band
+    // reads of out-of-band cells see INF instead of stale data from 3
+    // diagonals ago (3-buffer rotation). Both edges need stamping because
+    // the band can shift by 1 either way per diagonal.
+    if ((int)tid == 0 && band >= 0) {
+      if (i_lo - 1 >= 0 && i_lo - 1 < max_L) cur[i_lo - 1] = INF;
+      if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
     }
 
     threadgroup_barrier(mem_flags::mem_threadgroup);
@@ -238,29 +241,34 @@ kernel void dtw_wavefront_global(
       i_hi = min(i_hi, band_hi);
     }
     const int diag_len = i_hi - i_lo + 1;
-    if (diag_len <= 0) {
-      threadgroup_barrier(mem_flags::mem_device);
-      continue;
+
+    if (diag_len > 0) {
+      for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
+        const int i = i_lo + idx;
+        const int j = k - i;
+
+        float diff = a[i] - b[j];
+        float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
+
+        float best;
+        if (i == 0 && j == 0) {
+          best = 0.0f;
+        } else {
+          float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
+          float cup   = (i > 0)          ? prev[i - 1]  : INF;
+          float cleft = (j > 0)          ? prev[i]      : INF;
+          best = min(cdiag, min(cup, cleft));
+        }
+
+        cur[i] = cost + best;
+      }
     }
 
-    for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
-      const int i = i_lo + idx;
-      const int j = k - i;
-
-      float diff = a[i] - b[j];
-      float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
-
-      float best;
-      if (i == 0 && j == 0) {
-        best = 0.0f;
-      } else {
-        float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
-        float cup   = (i > 0)          ? prev[i - 1]  : INF;
-        float cleft = (j > 0)          ? prev[i]      : INF;
-        best = min(cdiag, min(cup, cleft));
-      }
-
-      cur[i] = cost + best;
+    // INF-fill band-adjacent cells to prevent stale-data reads on subsequent
+    // diagonals (see dtw_wavefront comment).
+    if ((int)tid == 0 && band >= 0) {
+      if (i_lo - 1 >= 0 && i_lo - 1 < max_L) cur[i_lo - 1] = INF;
+      if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
     }
 
     threadgroup_barrier(mem_flags::mem_device);
@@ -402,6 +410,203 @@ kernel void dtw_banded_row(
   out_matrix[a_idx * N_series + b_idx] = result;
   out_matrix[b_idx * N_series + a_idx] = result;
 }
+
+// ---------------------------------------------------------------------------
+// K-vs-N DTW: one threadgroup per (query k, target j) pair. Structure mirrors
+// `dtw_wavefront` / `dtw_wavefront_global` but replaces the upper-triangle
+// decode with explicit q = pid / N, t = pid % N, and reads the query and
+// target from two separate buffers.
+// ---------------------------------------------------------------------------
+struct KVNParams {
+  int N_target;
+  int max_L;
+  int band;
+  int use_sq_l2;
+  int pair_offset;
+  int num_pairs;
+};
+
+kernel void dtw_kvn_wavefront(
+    device const float*   queries    [[buffer(0)]],
+    device const float*   targets    [[buffer(1)]],
+    device const int*     q_lengths  [[buffer(2)]],
+    device const int*     t_lengths  [[buffer(3)]],
+    device float*         out_matrix [[buffer(4)]],
+    constant KVNParams&   p          [[buffer(5)]],
+    threadgroup float*    smem       [[threadgroup(0)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint pid   [[threadgroup_position_in_grid]],
+    uint ntids [[threads_per_threadgroup]])
+{
+  const int N_target = p.N_target;
+  const int max_L    = p.max_L;
+  const int band     = p.band;
+  const int use_sq_l2 = p.use_sq_l2;
+  const int pair_offset = p.pair_offset;
+  const int num_pairs = p.num_pairs;
+
+  const int real_pid = (int)pid + pair_offset;
+  if (real_pid >= num_pairs) return;
+
+  const int q_idx = real_pid / N_target;
+  const int t_idx = real_pid - q_idx * N_target;
+
+  const int La = q_lengths[q_idx];
+  const int Lb = t_lengths[t_idx];
+  const device float *a = queries + q_idx * max_L;
+  const device float *b = targets + t_idx * max_L;
+
+  const float INF = 3.402823466e+38f;
+  const int K = La + Lb - 1;
+
+  threadgroup float *d0 = smem + 0 * max_L;
+  threadgroup float *d1 = smem + 1 * max_L;
+  threadgroup float *d2 = smem + 2 * max_L;
+
+  for (int i = (int)tid; i < max_L; i += (int)ntids) {
+    d0[i] = INF;
+    d1[i] = INF;
+    d2[i] = INF;
+  }
+  threadgroup_barrier(mem_flags::mem_threadgroup);
+
+  for (int k = 0; k < K; ++k) {
+    threadgroup float *cur  = (k % 3 == 0) ? d0 : ((k % 3 == 1) ? d1 : d2);
+    threadgroup float *prev = (k % 3 == 0) ? d2 : ((k % 3 == 1) ? d0 : d1);
+    threadgroup float *prev2 = (k % 3 == 0) ? d1 : ((k % 3 == 1) ? d2 : d0);
+
+    int i_lo = max(0, k - Lb + 1);
+    int i_hi = min(La - 1, k);
+    if (band >= 0) {
+      const int band_lo = (k - band + 1) / 2;
+      const int band_hi = (k + band) / 2;
+      i_lo = max(i_lo, band_lo);
+      i_hi = min(i_hi, band_hi);
+    }
+    const int diag_len = i_hi - i_lo + 1;
+    if (diag_len > 0) {
+      for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
+        const int i = i_lo + idx;
+        const int j = k - i;
+        float diff = a[i] - b[j];
+        float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
+        float best;
+        if (i == 0 && j == 0) {
+          best = 0.0f;
+        } else {
+          float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
+          float cup   = (i > 0)          ? prev[i - 1]  : INF;
+          float cleft = (j > 0)          ? prev[i]      : INF;
+          best = min(cdiag, min(cup, cleft));
+        }
+        cur[i] = cost + best;
+      }
+    }
+    if ((int)tid == 0 && band >= 0) {
+      if (i_lo - 1 >= 0 && i_lo - 1 < max_L) cur[i_lo - 1] = INF;
+      if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+
+  if (tid == 0) {
+    const int last = K - 1;
+    threadgroup float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
+    out_matrix[q_idx * N_target + t_idx] = cur[La - 1];
+  }
+}
+
+// K-vs-N with device-memory scratch (max_L > threadgroup cap).
+kernel void dtw_kvn_wavefront_global(
+    device const float*   queries    [[buffer(0)]],
+    device const float*   targets    [[buffer(1)]],
+    device const int*     q_lengths  [[buffer(2)]],
+    device const int*     t_lengths  [[buffer(3)]],
+    device float*         out_matrix [[buffer(4)]],
+    constant KVNParams&   p          [[buffer(5)]],
+    device float*         scratch    [[buffer(6)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint pid   [[threadgroup_position_in_grid]],
+    uint ntids [[threads_per_threadgroup]])
+{
+  const int N_target = p.N_target;
+  const int max_L    = p.max_L;
+  const int band     = p.band;
+  const int use_sq_l2 = p.use_sq_l2;
+  const int pair_offset = p.pair_offset;
+  const int num_pairs = p.num_pairs;
+
+  const int real_pid = (int)pid + pair_offset;
+  if (real_pid >= num_pairs) return;
+
+  const int q_idx = real_pid / N_target;
+  const int t_idx = real_pid - q_idx * N_target;
+
+  const int La = q_lengths[q_idx];
+  const int Lb = t_lengths[t_idx];
+  const device float *a = queries + q_idx * max_L;
+  const device float *b = targets + t_idx * max_L;
+
+  const float INF = 3.402823466e+38f;
+  const int K = La + Lb - 1;
+
+  device float *my_scratch = scratch + (size_t)pid * 3 * max_L;
+  device float *d0 = my_scratch + 0 * max_L;
+  device float *d1 = my_scratch + 1 * max_L;
+  device float *d2 = my_scratch + 2 * max_L;
+
+  for (int i = (int)tid; i < max_L; i += (int)ntids) {
+    d0[i] = INF;
+    d1[i] = INF;
+    d2[i] = INF;
+  }
+  threadgroup_barrier(mem_flags::mem_device);
+
+  for (int k = 0; k < K; ++k) {
+    device float *cur   = (k % 3 == 0) ? d0 : ((k % 3 == 1) ? d1 : d2);
+    device float *prev  = (k % 3 == 0) ? d2 : ((k % 3 == 1) ? d0 : d1);
+    device float *prev2 = (k % 3 == 0) ? d1 : ((k % 3 == 1) ? d2 : d0);
+
+    int i_lo = max(0, k - Lb + 1);
+    int i_hi = min(La - 1, k);
+    if (band >= 0) {
+      const int band_lo = (k - band + 1) / 2;
+      const int band_hi = (k + band) / 2;
+      i_lo = max(i_lo, band_lo);
+      i_hi = min(i_hi, band_hi);
+    }
+    const int diag_len = i_hi - i_lo + 1;
+    if (diag_len > 0) {
+      for (int idx = (int)tid; idx < diag_len; idx += (int)ntids) {
+        const int i = i_lo + idx;
+        const int j = k - i;
+        float diff = a[i] - b[j];
+        float cost = use_sq_l2 ? (diff * diff) : fabs(diff);
+        float best;
+        if (i == 0 && j == 0) {
+          best = 0.0f;
+        } else {
+          float cdiag = (i > 0 && j > 0) ? prev2[i - 1] : INF;
+          float cup   = (i > 0)          ? prev[i - 1]  : INF;
+          float cleft = (j > 0)          ? prev[i]      : INF;
+          best = min(cdiag, min(cup, cleft));
+        }
+        cur[i] = cost + best;
+      }
+    }
+    if ((int)tid == 0 && band >= 0) {
+      if (i_lo - 1 >= 0 && i_lo - 1 < max_L) cur[i_lo - 1] = INF;
+      if (i_hi + 1 >= 0 && i_hi + 1 < max_L) cur[i_hi + 1] = INF;
+    }
+    threadgroup_barrier(mem_flags::mem_device);
+  }
+
+  if (tid == 0) {
+    const int last = K - 1;
+    device float *cur = (last % 3 == 0) ? d0 : ((last % 3 == 1) ? d1 : d2);
+    out_matrix[q_idx * N_target + t_idx] = cur[La - 1];
+  }
+}
 )METAL";
 
 // ---------------------------------------------------------------------------
@@ -410,9 +615,11 @@ kernel void dtw_banded_row(
 struct MetalContext {
   id<MTLDevice> device = nil;
   id<MTLCommandQueue> queue = nil;
-  id<MTLComputePipelineState> pipeline = nil;           // threadgroup-memory wavefront
-  id<MTLComputePipelineState> pipeline_global = nil;    // device-memory wavefront
+  id<MTLComputePipelineState> pipeline = nil;            // threadgroup-memory wavefront
+  id<MTLComputePipelineState> pipeline_global = nil;     // device-memory wavefront
   id<MTLComputePipelineState> pipeline_banded_row = nil; // row-major banded (tight-band)
+  id<MTLComputePipelineState> pipeline_kvn = nil;        // K-vs-N threadgroup-memory
+  id<MTLComputePipelineState> pipeline_kvn_global = nil; // K-vs-N device-memory
   bool initialized = false;
   bool init_failed = false;
   std::string init_error;
@@ -501,11 +708,49 @@ static MetalContext &context()
       ctx.pipeline_banded_row =
           [ctx.device newComputePipelineStateWithFunction:fn_banded_row error:&err];
       [fn_banded_row release];
-      [lib release];
       if (!ctx.pipeline_banded_row) {
         ctx.init_failed = true;
         ctx.init_error = err ? [[err localizedDescription] UTF8String]
                              : "newComputePipelineStateWithFunction (banded_row) failed";
+        [lib release];
+        return;
+      }
+
+      // Fourth/fifth pipelines: K-vs-N wavefront (threadgroup + global).
+      id<MTLFunction> fn_kvn = [lib newFunctionWithName:@"dtw_kvn_wavefront"];
+      if (!fn_kvn) {
+        ctx.init_failed = true;
+        ctx.init_error = "kernel function dtw_kvn_wavefront not found";
+        [lib release];
+        return;
+      }
+      ctx.pipeline_kvn =
+          [ctx.device newComputePipelineStateWithFunction:fn_kvn error:&err];
+      [fn_kvn release];
+      if (!ctx.pipeline_kvn) {
+        ctx.init_failed = true;
+        ctx.init_error = err ? [[err localizedDescription] UTF8String]
+                             : "newComputePipelineStateWithFunction (kvn) failed";
+        [lib release];
+        return;
+      }
+
+      id<MTLFunction> fn_kvn_g =
+          [lib newFunctionWithName:@"dtw_kvn_wavefront_global"];
+      if (!fn_kvn_g) {
+        ctx.init_failed = true;
+        ctx.init_error = "kernel function dtw_kvn_wavefront_global not found";
+        [lib release];
+        return;
+      }
+      ctx.pipeline_kvn_global =
+          [ctx.device newComputePipelineStateWithFunction:fn_kvn_g error:&err];
+      [fn_kvn_g release];
+      [lib release];
+      if (!ctx.pipeline_kvn_global) {
+        ctx.init_failed = true;
+        ctx.init_error = err ? [[err localizedDescription] UTF8String]
+                             : "newComputePipelineStateWithFunction (kvn_global) failed";
         return;
       }
 
@@ -823,6 +1068,278 @@ MetalDistMatResult compute_distance_matrix_metal(
   }
 
   return result;
+}
+
+// ===========================================================================
+// K-vs-N implementation
+// ===========================================================================
+
+namespace {
+
+// Core dispatch: K queries against N targets -> K*N distance matrix.
+MetalKVsNResult compute_kvn_impl(
+    const std::vector<std::vector<double>> &queries,
+    const std::vector<std::vector<double>> &targets,
+    const MetalDistMatOptions &opts)
+{
+  MetalKVsNResult result;
+  const size_t Kq = queries.size();
+  const size_t N  = targets.size();
+  result.k = Kq;
+  result.n = N;
+  result.distances.assign(Kq * N, 0.0);
+
+  if (Kq == 0 || N == 0) return result;
+
+  auto &ctx = context();
+  if (!ctx.initialized) {
+    if (opts.verbose) {
+      std::cerr << "[Metal] Backend unavailable: " << ctx.init_error << '\n';
+    }
+    return result;
+  }
+
+  // Shared max_L across queries and targets. Users with very different query
+  // vs target lengths pay padding cost; the CUDA path has the same behavior.
+  int max_L = 0;
+  std::vector<int> q_len(Kq), t_len(N);
+  for (size_t k = 0; k < Kq; ++k) {
+    q_len[k] = static_cast<int>(queries[k].size());
+    if (q_len[k] > max_L) max_L = q_len[k];
+  }
+  for (size_t j = 0; j < N; ++j) {
+    t_len[j] = static_cast<int>(targets[j].size());
+    if (t_len[j] > max_L) max_L = t_len[j];
+  }
+  if (max_L == 0) return result;
+
+  const size_t num_pairs = Kq * N;
+
+  if (opts.precision == MetalPrecision::FP64 && opts.verbose) {
+    std::cerr << "[Metal] FP64 not implemented; using FP32.\n";
+  }
+
+  @autoreleasepool {
+    auto t0 = std::chrono::steady_clock::now();
+
+    auto upload_series = [&](const std::vector<std::vector<double>> &ser,
+                             size_t count) -> id<MTLBuffer> {
+      const size_t bytes = count * max_L * sizeof(float);
+      id<MTLBuffer> buf = [ctx.device newBufferWithLength:bytes
+                                                  options:MTLResourceStorageModeShared];
+      if (!buf) return nil;
+      float *p = static_cast<float *>([buf contents]);
+      std::memset(p, 0, bytes);
+      for (size_t s = 0; s < count; ++s) {
+        for (size_t k = 0; k < ser[s].size(); ++k) {
+          p[s * max_L + k] = static_cast<float>(ser[s][k]);
+        }
+      }
+      return buf;
+    };
+
+    id<MTLBuffer> buf_queries = upload_series(queries, Kq);
+    id<MTLBuffer> buf_targets = upload_series(targets, N);
+    if (!buf_queries || !buf_targets) {
+      throw std::runtime_error("Metal: K-vs-N series buffer allocation failed");
+    }
+
+    id<MTLBuffer> buf_qlen = [ctx.device newBufferWithBytes:q_len.data()
+                                                     length:Kq * sizeof(int)
+                                                    options:MTLResourceStorageModeShared];
+    id<MTLBuffer> buf_tlen = [ctx.device newBufferWithBytes:t_len.data()
+                                                     length:N * sizeof(int)
+                                                    options:MTLResourceStorageModeShared];
+    if (!buf_qlen || !buf_tlen) {
+      throw std::runtime_error("Metal: K-vs-N lengths buffer allocation failed");
+    }
+
+    id<MTLBuffer> buf_out = [ctx.device newBufferWithLength:Kq * N * sizeof(float)
+                                                    options:MTLResourceStorageModeShared];
+    if (!buf_out) throw std::runtime_error("Metal: K-vs-N output buffer allocation failed");
+    std::memset([buf_out contents], 0, Kq * N * sizeof(float));
+
+    struct KVNParams {
+      int N_target;
+      int max_L;
+      int band;
+      int use_sq_l2;
+      int pair_offset;
+      int num_pairs;
+    };
+    KVNParams params{};
+    params.N_target    = static_cast<int>(N);
+    params.max_L       = max_L;
+    params.band        = opts.band;
+    params.use_sq_l2   = opts.use_squared_l2 ? 1 : 0;
+    params.pair_offset = 0;
+    params.num_pairs   = static_cast<int>(num_pairs);
+
+    const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
+    const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
+    const bool use_global = (tg_mem_len > tg_mem_cap);
+    id<MTLComputePipelineState> pipeline =
+        use_global ? ctx.pipeline_kvn_global : ctx.pipeline_kvn;
+
+    // Chunk pairs across command buffers (same watchdog budget as the NxN path).
+    const size_t cells_budget = 5e9;
+    const size_t cells_per_pair = (size_t)max_L * (size_t)max_L;
+    size_t chunk = std::max<size_t>(1, cells_budget / cells_per_pair);
+    if (chunk > num_pairs) chunk = num_pairs;
+
+    id<MTLBuffer> buf_scratch = nil;
+    if (use_global) {
+      const size_t scratch_bytes =
+          chunk * 3ULL * (size_t)max_L * sizeof(float);
+      buf_scratch = [ctx.device newBufferWithLength:scratch_bytes
+                                            options:MTLResourceStorageModePrivate];
+      if (!buf_scratch) {
+        [buf_out release];
+        [buf_tlen release];
+        [buf_qlen release];
+        [buf_targets release];
+        [buf_queries release];
+        if (opts.verbose) {
+          std::cerr << "[Metal] K-vs-N scratch alloc failed; CPU fallback.\n";
+        }
+        return result;
+      }
+    }
+
+    const NSUInteger max_threads = pipeline.maxTotalThreadsPerThreadgroup;
+    NSUInteger tg_size = std::min((NSUInteger)max_L, max_threads);
+    if (tg_size == 0) tg_size = 1;
+    const NSUInteger simd = pipeline.threadExecutionWidth;
+    if (tg_size > simd) tg_size = (tg_size / simd) * simd;
+
+    id<MTLCommandBuffer> last_cmd = nil;
+    for (size_t off = 0; off < num_pairs; off += chunk) {
+      params.pair_offset = static_cast<int>(off);
+      const size_t this_chunk = std::min(chunk, num_pairs - off);
+
+      id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
+      id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+      [enc setComputePipelineState:pipeline];
+      [enc setBuffer:buf_queries offset:0 atIndex:0];
+      [enc setBuffer:buf_targets offset:0 atIndex:1];
+      [enc setBuffer:buf_qlen    offset:0 atIndex:2];
+      [enc setBuffer:buf_tlen    offset:0 atIndex:3];
+      [enc setBuffer:buf_out     offset:0 atIndex:4];
+      [enc setBytes:&params length:sizeof(KVNParams) atIndex:5];
+      if (use_global) {
+        [enc setBuffer:buf_scratch offset:0 atIndex:6];
+      } else {
+        [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
+      }
+
+      MTLSize grid = MTLSizeMake(this_chunk, 1, 1);
+      MTLSize tg   = MTLSizeMake(tg_size, 1, 1);
+      [enc dispatchThreadgroups:grid threadsPerThreadgroup:tg];
+      [enc endEncoding];
+      [cmd commit];
+      last_cmd = cmd;
+
+      if (use_global) {
+        [cmd waitUntilCompleted];
+        if (cmd.error) {
+          NSString *desc = [cmd.error localizedDescription];
+          throw std::runtime_error(std::string("Metal K-vs-N kernel failed: ") +
+                                   (desc ? [desc UTF8String] : "unknown"));
+        }
+      }
+    }
+    if (last_cmd && !use_global) {
+      [last_cmd waitUntilCompleted];
+      if (last_cmd.error) {
+        NSString *desc = [last_cmd.error localizedDescription];
+        throw std::runtime_error(std::string("Metal K-vs-N kernel failed: ") +
+                                 (desc ? [desc UTF8String] : "unknown"));
+      }
+    }
+
+    const float *out_ptr = static_cast<const float *>([buf_out contents]);
+    for (size_t i = 0; i < Kq * N; ++i) {
+      result.distances[i] = static_cast<double>(out_ptr[i]);
+    }
+
+    [buf_out release];
+    [buf_tlen release];
+    [buf_qlen release];
+    [buf_targets release];
+    [buf_queries release];
+    if (buf_scratch) [buf_scratch release];
+
+    auto t1 = std::chrono::steady_clock::now();
+    result.gpu_time_sec = std::chrono::duration<double>(t1 - t0).count();
+  }
+
+  result.kernel_used = (3u * (unsigned)max_L * sizeof(float)
+                        > (unsigned)ctx.device.maxThreadgroupMemoryLength)
+                           ? "kvn_wavefront_global"
+                           : "kvn_wavefront";
+  if (opts.verbose) {
+    std::cout << "Metal K-vs-N: " << num_pairs << " pairs in "
+              << (result.gpu_time_sec * 1000.0) << " ms ("
+              << result.kernel_used << ")\n";
+  }
+  return result;
+}
+
+} // anonymous namespace
+
+MetalKVsNResult compute_dtw_k_vs_all_metal(
+    const std::vector<std::vector<double>> &series,
+    const std::vector<size_t> &query_indices,
+    const MetalDistMatOptions &opts)
+{
+  std::vector<std::vector<double>> queries;
+  queries.reserve(query_indices.size());
+  for (size_t qi : query_indices) {
+    if (qi >= series.size()) {
+      throw std::out_of_range("compute_dtw_k_vs_all_metal: query_indices out of range");
+    }
+    queries.push_back(series[qi]);
+  }
+  return compute_kvn_impl(queries, series, opts);
+}
+
+MetalKVsNResult compute_dtw_k_vs_all_metal(
+    const std::vector<std::vector<double>> &queries,
+    const std::vector<std::vector<double>> &targets,
+    const MetalDistMatOptions &opts)
+{
+  return compute_kvn_impl(queries, targets, opts);
+}
+
+MetalOneVsNResult compute_dtw_one_vs_all_metal(
+    const std::vector<std::vector<double>> &series,
+    size_t query_index,
+    const MetalDistMatOptions &opts)
+{
+  if (query_index >= series.size()) {
+    throw std::out_of_range("compute_dtw_one_vs_all_metal: query_index out of range");
+  }
+  auto kvn = compute_kvn_impl({series[query_index]}, series, opts);
+  MetalOneVsNResult out;
+  out.distances  = std::move(kvn.distances);
+  out.n          = kvn.n;
+  out.gpu_time_sec = kvn.gpu_time_sec;
+  out.kernel_used  = std::move(kvn.kernel_used);
+  return out;
+}
+
+MetalOneVsNResult compute_dtw_one_vs_all_metal(
+    const std::vector<double> &query,
+    const std::vector<std::vector<double>> &targets,
+    const MetalDistMatOptions &opts)
+{
+  auto kvn = compute_kvn_impl({query}, targets, opts);
+  MetalOneVsNResult out;
+  out.distances  = std::move(kvn.distances);
+  out.n          = kvn.n;
+  out.gpu_time_sec = kvn.gpu_time_sec;
+  out.kernel_used  = std::move(kvn.kernel_used);
+  return out;
 }
 
 } // namespace dtwc::metal

@@ -262,6 +262,158 @@ TEST_CASE("Metal wide band still routes to wavefront kernel", "[metal][banded]")
   REQUIRE(gpu.kernel_used == "wavefront");
 }
 
+TEST_CASE("Metal wavefront NxN banded matches CPU dtwBanded", "[metal][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+  // L=200, band=20: band*20=400 > L=200 so NOT banded-row -> wavefront path.
+  const size_t N = 4;
+  const size_t L = 200;
+  const int band = 20;
+  auto series = generate_random_series(N, L, 919);
+
+  auto cpu = cpu_banded_matrix(series, band);
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
+  INFO("kernel_used=" << gpu.kernel_used);
+  REQUIRE(gpu.kernel_used == "wavefront");
+  for (size_t i = 0; i < N; ++i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      CAPTURE(i, j, cpu[i * N + j], gpu.matrix[i * N + j]);
+      REQUIRE_THAT(gpu.matrix[i * N + j],
+                   WithinRel(cpu[i * N + j], 1e-3) || WithinAbs(cpu[i * N + j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal 1-vs-N (by index) matches CPU reference", "[metal][kvn]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const size_t N = 6;
+  const size_t L = 150;
+  auto series = generate_random_series(N, L, 2025);
+
+  const size_t qi = 2;
+  std::vector<double> cpu(N, 0.0);
+  for (size_t j = 0; j < N; ++j) {
+    if (j == qi) continue;
+    cpu[j] = dtwc::dtwFull_L<double>(series[qi], series[j]);
+  }
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_dtw_one_vs_all_metal(series, qi, opts);
+
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.distances.size() == N);
+  INFO("kernel=" << gpu.kernel_used);
+  for (size_t j = 0; j < N; ++j) {
+    if (j == qi) {
+      REQUIRE(gpu.distances[j] == 0.0);
+    } else {
+      CAPTURE(j, cpu[j], gpu.distances[j]);
+      REQUIRE_THAT(gpu.distances[j],
+                   WithinRel(cpu[j], 1e-3) || WithinAbs(cpu[j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal 1-vs-N (external query) matches CPU reference", "[metal][kvn]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const size_t N = 5;
+  const size_t L = 100;
+  auto targets = generate_random_series(N, L, 7777);
+  auto query_vec = generate_random_series(1, L, 42)[0];
+
+  std::vector<double> cpu(N);
+  for (size_t j = 0; j < N; ++j) {
+    cpu[j] = dtwc::dtwFull_L<double>(query_vec, targets[j]);
+  }
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_dtw_one_vs_all_metal(query_vec, targets, opts);
+
+  REQUIRE(gpu.n == N);
+  for (size_t j = 0; j < N; ++j) {
+    CAPTURE(j, cpu[j], gpu.distances[j]);
+    REQUIRE_THAT(gpu.distances[j],
+                 WithinRel(cpu[j], 1e-3) || WithinAbs(cpu[j], 1e-2));
+  }
+}
+
+TEST_CASE("Metal K-vs-N (by indices) matches CPU reference", "[metal][kvn]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const size_t N = 8;
+  const size_t L = 120;
+  auto series = generate_random_series(N, L, 11);
+
+  const std::vector<size_t> qis = {1, 3, 5};
+  const size_t Kq = qis.size();
+
+  std::vector<double> cpu(Kq * N, 0.0);
+  for (size_t k = 0; k < Kq; ++k) {
+    for (size_t j = 0; j < N; ++j) {
+      if (j == qis[k]) continue;
+      cpu[k * N + j] = dtwc::dtwFull_L<double>(series[qis[k]], series[j]);
+    }
+  }
+
+  dtwc::metal::MetalDistMatOptions opts;
+  auto gpu = dtwc::metal::compute_dtw_k_vs_all_metal(series, qis, opts);
+
+  REQUIRE(gpu.k == Kq);
+  REQUIRE(gpu.n == N);
+  REQUIRE(gpu.distances.size() == Kq * N);
+  for (size_t k = 0; k < Kq; ++k) {
+    for (size_t j = 0; j < N; ++j) {
+      CAPTURE(k, j, qis[k], cpu[k * N + j], gpu.distances[k * N + j]);
+      REQUIRE_THAT(gpu.distances[k * N + j],
+                   WithinRel(cpu[k * N + j], 1e-3) || WithinAbs(cpu[k * N + j], 1e-2));
+    }
+  }
+}
+
+TEST_CASE("Metal K-vs-N with banded DTW matches CPU banded reference", "[metal][kvn][banded]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // Widen tolerance for FP32 accumulation: at L=200 with band=20, FP32 error
+  // compounds over ~4000 cells per pair and random series hit ~0.5% relative
+  // against FP64 CPU reference.
+  const size_t Kq = 2;
+  const size_t N = 4;
+  const size_t L = 200;
+  const int band = 20;
+  auto queries = generate_random_series(Kq, L, 314);
+  auto targets = generate_random_series(N,  L, 271);
+
+  std::vector<double> cpu_banded(Kq * N);
+  for (size_t k = 0; k < Kq; ++k) {
+    for (size_t j = 0; j < N; ++j) {
+      cpu_banded[k * N + j] = dtwc::dtwBanded<double>(queries[k], targets[j], band);
+    }
+  }
+
+  dtwc::metal::MetalDistMatOptions opts;
+  opts.band = band;
+  auto gpu = dtwc::metal::compute_dtw_k_vs_all_metal(queries, targets, opts);
+
+  REQUIRE(gpu.k == Kq);
+  REQUIRE(gpu.n == N);
+  for (size_t k = 0; k < Kq; ++k) {
+    for (size_t j = 0; j < N; ++j) {
+      CAPTURE(k, j, cpu_banded[k * N + j], gpu.distances[k * N + j]);
+      REQUIRE_THAT(gpu.distances[k * N + j],
+                   WithinRel(cpu_banded[k * N + j], 1e-3)
+                       || WithinAbs(cpu_banded[k * N + j], 1e-2));
+    }
+  }
+}
+
 TEST_CASE("Metal handles long series via global-memory kernel", "[metal]")
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
