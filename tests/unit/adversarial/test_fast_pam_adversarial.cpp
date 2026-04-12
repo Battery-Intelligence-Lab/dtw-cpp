@@ -406,7 +406,7 @@ TEST_CASE("Adversarial: Every point assigned to exactly one cluster", "[adversar
 TEST_CASE("Adversarial: Identical series get same cluster label", "[adversarial][pam][correctness]")
 {
   // If two series are identical, they must be in the same cluster.
-  // Add more series per group so random init is very likely to pick one from each group.
+  // Data is trivially separable: two groups of 3 identical series, groups far apart.
   std::vector<std::vector<data_t>> series = {
     {1.0, 2.0, 3.0},        // group A (idx 0)
     {1.0, 2.0, 3.0},        // group A (idx 1, identical)
@@ -416,17 +416,20 @@ TEST_CASE("Adversarial: Identical series get same cluster label", "[adversarial]
     {100.0, 200.0, 300.0},  // group B (idx 5, identical)
   };
 
-  // Seed so that init picks one medoid from each group
+  // Use multiple random restarts — the algorithm keeps the min-cost solution,
+  // and for trivially separable data, only the "one medoid per group" init yields
+  // zero cost. A fixed seed is not platform-robust (RNG-driven init interacts with
+  // std::lib floating-point sampling), so we let N_repetition=10 find the optimum.
   dtwc::randGenerator.seed(12345);
   auto prob = make_synthetic_problem(series);
-  run_clustering(prob, 2);
+  run_clustering(prob, 2, /*max_iter=*/100, /*n_rep=*/10);
 
   // Identical series must share the same label
   REQUIRE(prob.clusters_ind[0] == prob.clusters_ind[1]);
   REQUIRE(prob.clusters_ind[0] == prob.clusters_ind[2]);
   REQUIRE(prob.clusters_ind[3] == prob.clusters_ind[4]);
   REQUIRE(prob.clusters_ind[3] == prob.clusters_ind[5]);
-  // And the two groups must have different labels
+  // And the two groups must have different labels (required by min-cost property)
   REQUIRE(prob.clusters_ind[0] != prob.clusters_ind[3]);
 }
 
