@@ -23,6 +23,7 @@
 #include <limits>
 #include <algorithm>
 #include <cassert>
+#include <stdexcept>
 
 #include "core/scratch_matrix.hpp"
 
@@ -46,6 +47,7 @@ namespace dtwc {
 template <typename T>
 T softmin_gamma(T a, T b, T c, T gamma)
 {
+  assert(gamma > T(0) && "softmin_gamma requires gamma > 0");
   const T M = std::min(a, std::min(b, c));
   const T inv_gamma = T(1) / gamma;
   return M - gamma * std::log(
@@ -71,6 +73,9 @@ T softmin_gamma(T a, T b, T c, T gamma)
 template <typename T = double>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
+  if (gamma <= T(0))
+    throw std::invalid_argument("soft_dtw: gamma must be > 0");
+
   constexpr T maxValue = std::numeric_limits<T>::max();
 
   const auto mx = static_cast<int>(x.size());
@@ -125,6 +130,9 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 template <typename T = double>
 std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
+  if (gamma <= T(0))
+    throw std::invalid_argument("soft_dtw_gradient: gamma must be > 0");
+
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());
 

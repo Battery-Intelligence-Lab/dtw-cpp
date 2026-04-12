@@ -64,14 +64,41 @@ ctest --test-dir build-dev -C Debug
 
 To add sanitizer instrumentation in a developer build, pass the specific maintainer option you want, for example `-Ddtwc_ENABLE_SANITIZER_ADDRESS=ON`.
 
-### Python
+#### macOS (Apple Clang + Homebrew libomp)
+
+Apple Clang on macOS ships without OpenMP; install `libomp` via Homebrew. Ninja is required by the `clang-macos` preset.
 
 ```bash
-pip install .          # install from source
+brew install ninja libomp
+brew link --force libomp
+cmake --preset clang-macos -DDTWC_BUILD_TESTING=ON
+cmake --build build --config Release -j
+cd build && ctest -C Release
+```
+
+The `clang-macos` preset pins `/usr/bin/clang++` to avoid libc++ ABI conflicts when Homebrew LLVM is also installed. If OpenMP auto-detection fails, pass explicit hints:
+
+```bash
+cmake --preset clang-macos \
+  -DOpenMP_CXX_FLAGS="-Xpreprocessor -fopenmp" \
+  -DOpenMP_CXX_LIB_NAMES="omp" \
+  -DOpenMP_omp_LIBRARY="$(brew --prefix libomp)/lib/libomp.dylib"
+```
+
+Gurobi on macOS installs to `/Library/gurobi<version>/macos_universal2/` — `FindGUROBI.cmake` auto-detects this location, or set `GUROBI_HOME` explicitly.
+
+### Python
+
+We recommend [`uv`](https://docs.astral.sh/uv/) for Python (faster and more reproducible than pip):
+
+```bash
+uv pip install .          # install from source
 # or for development:
-pip install -e ".[test]"
+uv pip install -e ".[test]"
 pytest tests/python/ -v
 ```
+
+`pip install .` works too if you prefer — both use the same `pyproject.toml` (scikit-build-core + nanobind).
 
 ### Optional dependencies
 
@@ -180,6 +207,25 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
 | `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |
 | `DTWC_CUDA_ARCH_LIST` | `70;80;86;89;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set |
+
+AI-assisted workflow (Claude Code)
+===========================
+
+DTWC++ ships with Claude Code slash commands in `.claude/commands/` so users can drive the library through their AI assistant:
+
+| Command | Purpose |
+|---------|---------|
+| `/cluster` | Full pipeline: load data, pick method, cluster, evaluate, save |
+| `/distance` | Compute DTW distances (single pair or full pairwise matrix) |
+| `/evaluate` | Silhouette, Davies-Bouldin, Calinski-Harabasz, ARI, NMI |
+| `/convert` | Convert between CSV, Parquet, Arrow IPC, HDF5 |
+| `/visualize` | Plot clusters, silhouette, distance-matrix heatmap, warping path |
+| `/help` | Algorithm selection, variant guide, parameter tuning reference |
+| `/troubleshoot` | Diagnose build errors, runtime crashes, performance |
+
+Example: from within Claude Code, type `/cluster data/ecg.csv -k 5 --variant wdtw` and the assistant generates and runs a complete Python script using the DTWC++ API, then reports results and suggests next steps.
+
+Commands are discovered automatically when Claude Code is launched from the repository root. See [`docs/content/getting-started/ai-commands.md`](docs/content/getting-started/ai-commands.md) for details.
 
 Citation
 ===========================

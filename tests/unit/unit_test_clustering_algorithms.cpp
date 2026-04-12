@@ -16,6 +16,7 @@
 
 #include "../test_util.hpp"
 
+#include <filesystem>
 #include <set>
 #include <vector>
 
@@ -48,7 +49,9 @@ Problem make_dummy_problem(int N_data, int Nc)
   prob.set_numberOfClusters(Nc);
   prob.maxIter = 100;
   prob.N_repetition = 1;
-  prob.output_folder = ".";
+  // Write test output CSVs to the system temp dir, not the project root/CWD.
+  // Without this, tests pollute the working directory with test_clustering*.csv.
+  prob.output_folder = std::filesystem::temp_directory_path().string();
   return prob;
 }
 

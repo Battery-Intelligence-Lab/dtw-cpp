@@ -15,6 +15,16 @@ if(WIN32)
   list(SORT _gurobi_win_candidates ORDER DESCENDING)
   list(APPEND _gurobi_search_paths ${_gurobi_win_candidates})
   unset(_gurobi_win_candidates)
+elseif(APPLE)
+  # macOS: Gurobi installs to /Library/gurobiXYZ/macos_universal2 (10.0+)
+  # or /Library/gurobiXYZ/mac64 (older Intel-only releases).
+  file(GLOB _gurobi_mac_candidates "/Library/gurobi*/macos_universal2")
+  if(NOT _gurobi_mac_candidates)
+    file(GLOB _gurobi_mac_candidates "/Library/gurobi*/mac64")
+  endif()
+  list(SORT _gurobi_mac_candidates ORDER DESCENDING)
+  list(APPEND _gurobi_search_paths ${_gurobi_mac_candidates})
+  unset(_gurobi_mac_candidates)
 endif()
 
 find_path(GUROBI_HOME
@@ -43,6 +53,11 @@ if (WIN32)
         )
     # Filter out C++ wrapper libs (gurobi_c++*.lib)
     list(FILTER GUROBI_LIBRARY_LIST EXCLUDE REGEX "gurobi_c\\+\\+")
+elseif(APPLE)
+    file(GLOB GUROBI_LIBRARY_LIST
+        RELATIVE ${GUROBI_LIB_DIR}
+        ${GUROBI_LIB_DIR}/libgurobi*.dylib
+        )
 else()
     file(GLOB GUROBI_LIBRARY_LIST
         RELATIVE ${GUROBI_LIB_DIR}

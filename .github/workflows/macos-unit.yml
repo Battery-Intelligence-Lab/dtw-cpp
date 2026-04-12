@@ -14,24 +14,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       
-      - name: Install libomp without linking
+      - name: Install dependencies
         run: |
-          brew install libomp llvm && brew link --force libomp
+          brew install ninja libomp
+          brew link --force libomp
 
-      - name: Make build directory
-        run: mkdir build_dir
-
-      - name: CMake configure
+      - name: CMake configure (Release with HiGHS)
         run: |
-          cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON
-        working-directory: build_dir
+          cmake --preset clang-macos -DDTWC_BUILD_TESTING=ON -DDTWC_ENABLE_HIGHS=ON
 
       - name: CMake build
         run: |
-          cmake --build . --parallel 2
-        working-directory: build_dir
+          cmake --build build --config Release --parallel 4
 
       - name: CMake test
         run: |
-          ctest -j2 -C Debug --output-on-failure
-        working-directory: build_dir
+          ctest --test-dir build -j4 -C Release --output-on-failure

@@ -8,6 +8,31 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (macOS support)
+
+- **`FindGUROBI.cmake`**: macOS search paths (`/Library/gurobi*/macos_universal2`, `/Library/gurobi*/mac64`) and `.dylib` library glob.
+- **`CMakePresets.json`**: build and test presets for `clang-macos` (previously only `clang-win`). The preset now pins `/usr/bin/clang++` to avoid libc++ ABI conflicts when Homebrew LLVM is also installed.
+- **`README.md`**: macOS-specific installation section (Homebrew libomp, Ninja, Gurobi location).
+- **macOS CI workflow**: now installs Ninja, uses the `clang-macos` preset, enables HiGHS, tests Release config.
+
+### Added (AI-Assisted Workflow)
+
+- **Claude Code slash commands** in `.claude/commands/`: `/cluster`, `/distance`, `/evaluate`, `/convert`, `/visualize`, `/help`, `/troubleshoot`. Each command is a self-contained markdown file that guides Claude Code to drive the DTWC++ library on the user's behalf.
+- **Docs page** `docs/content/getting-started/ai-commands.md` documenting the commands with examples and design principles.
+
+### Fixed
+
+- **`soft_dtw` / `soft_dtw_gradient`**: now throw `std::invalid_argument` if `gamma <= 0` instead of producing `inf`/`NaN`. `softmin_gamma` has a debug assert on the same condition.
+- **`Problem.cpp`**: resolved TODO at line 808 — confirmed k-medoids objective uses raw DTW distances (not squared, unlike k-means).
+- **`types/Index.hpp`**: added a debug assert for pointer underflow in `Index::operator-(difference_type)`.
+- **`tests/unit/unit_test_clustering_algorithms.cpp`**: tests now write output CSVs to the system temp directory via `std::filesystem::temp_directory_path()`; previously tests polluted the project root with `test_clustering*.csv` files.
+- **`CMakeLists.txt`**: Gurobi "not found" warning message now includes the macOS install path hint.
+
+### Changed (Cleanup)
+
+- Removed obsolete session artifacts: `.claude/reports/` (8 files), `.claude/summaries/` (3 files), `.claude/superpowers/` (1 file), `benchmarks/results/*.json` (16 machine-specific timing snapshots). These directories are now in `.gitignore`.
+- No remaining PII in tracked files (paths/usernames). The `scripts/slurm/env.example` uses clear placeholder values.
+
 ### Added (I/O Formats)
 
 - **Apache Arrow IPC reader** (`dtwc/io/arrow_ipc_reader.hpp`): zero-copy mmap loading via `ArrowIPCDataSource`. List + LargeList dispatch with int64 offsets for >2B elements.

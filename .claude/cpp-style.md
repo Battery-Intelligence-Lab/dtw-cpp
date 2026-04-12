@@ -2,8 +2,8 @@
 
 ## C++ Standard
 
-- **Minimum:** C++17
-- **Compiler support:** GCC 12+, Clang 15+, MSVC 17.8+
+- **Minimum:** C++20
+- **Compiler support:** GCC 11+, Clang 14+, MSVC 17.8+, Apple Clang 15+
 
 ## Naming
 

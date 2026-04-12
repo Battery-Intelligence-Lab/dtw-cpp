@@ -52,10 +52,12 @@
     {
       "name": "clang-macos",
       "displayName": "Apple Clang (macOS)",
+      "description": "Apple Clang with Homebrew libomp. If you have Homebrew LLVM installed (which shadows Apple Clang), this preset explicitly uses /usr/bin/clang++ to avoid libc++ mismatch with HiGHS.",
       "inherits": "default",
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "/usr/bin/clang",
+        "CMAKE_CXX_COMPILER": "/usr/bin/clang++",
         "CMAKE_BUILD_TYPE": "Release"
       }
     }
@@ -70,6 +72,11 @@
       "name": "clang-win-debug",
       "configurePreset": "clang-win-debug",
       "configuration": "Debug"
+    },
+    {
+      "name": "clang-macos",
+      "configurePreset": "clang-macos",
+      "configuration": "Release"
     }
   ],
   "testPresets": [
@@ -79,6 +86,12 @@
       "configuration": "Release",
       "output": { "outputOnFailure": true },
       "execution": { "jobs": 8 }
+    },
+    {
+      "name": "clang-macos",
+      "configurePreset": "clang-macos",
+      "configuration": "Release",
+      "output": { "outputOnFailure": true }
     }
   ]
 }

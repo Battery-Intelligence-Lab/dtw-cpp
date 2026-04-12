@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <cassert>
 #include <cstddef>
 #include <iterator>
 
@@ -55,6 +56,7 @@ public:
   }
   Index operator-(const difference_type &diff) const
   {
+    assert(static_cast<difference_type>(ptr) >= diff && "Index underflow");
     return Index(static_cast<size_t>(static_cast<difference_type>(ptr) - diff));
   }
 

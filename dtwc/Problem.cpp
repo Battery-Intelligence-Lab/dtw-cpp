@@ -805,7 +805,8 @@ double Problem::findTotalCost()
       std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
                 << " which is: " << distByInd(i, centroid_of(i)) << "\n";
 
-    sum += distByInd(i, centroid_of(i)); // #TODO should cost be square or like this?
+    // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
+    sum += distByInd(i, centroid_of(i));
   }
 
   return sum;

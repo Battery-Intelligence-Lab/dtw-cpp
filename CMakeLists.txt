@@ -306,7 +306,8 @@ if(PROJECT_IS_TOP_LEVEL)
       "Gurobi requested (DTWC_ENABLE_GUROBI=ON) but not found.\n"
       "  MIP-based clustering will fall back to HiGHS (if available).\n"
       "  To fix: set GUROBI_HOME env-var to your Gurobi installation,\n"
-      "  e.g., GUROBI_HOME=C:/gurobi1301/win64 or /opt/gurobi1301/linux64\n"
+      "  e.g., GUROBI_HOME=C:/gurobi1301/win64, /opt/gurobi1301/linux64,\n"
+      "  or /Library/gurobi1301/macos_universal2\n"
       "  Or pass -DDTWC_ENABLE_GUROBI=OFF to silence this warning.")
   endif()
 
