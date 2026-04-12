@@ -15,6 +15,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
 #include <vector>
 #include <cmath>
 
@@ -134,5 +135,90 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
     REQUIRE(prob.centroids_ind.size() == 1);
     for (auto c : prob.clusters_ind)
       REQUIRE(c == 0);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Benders decomposition coverage.
+//
+// Auto-dispatch to Benders only triggers for N > 200 in Problem::cluster_by_MIP
+// (so previous small-N tests never exercise it). These tests force Benders on
+// via mip_settings.benders = "on" so the decomposition loop runs on a tractable
+// instance, covering MIP_clustering_byBenders end-to-end.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][benders]")
+{
+  auto prob = make_small_problem(10, 20);
+  // Benders warm-starts via k-medoids Lloyd which writes medoids CSVs. Route
+  // output to a temp dir so the test doesn't depend on CWD ./results/.
+  prob.output_folder = std::filesystem::temp_directory_path() / "dtwc_mip_benders_test";
+  std::filesystem::create_directories(prob.output_folder);
+  prob.set_numberOfClusters(2);
+  prob.mip_settings.benders = "on";
+  prob.mip_settings.warm_start = true;
+  prob.mip_settings.verbose_solver = false;
+  prob.set_solver(dtwc::Solver::HiGHS); // Benders uses HiGHS as the master/subproblem solver
+  prob.method = dtwc::Method::MIP;
+  prob.cluster();
+
+  if (!prob.centroids_ind.empty()) {
+    REQUIRE(prob.centroids_ind.size() == 2);
+    REQUIRE(prob.clusters_ind.size() == 10);
+    for (auto c : prob.clusters_ind)
+      REQUIRE((c >= 0 && c < 2));
+  }
+}
+
+TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][highs][benders]")
+{
+  // On a small instance both Benders and direct HiGHS must find the global
+  // optimum of the p-median MIP — costs should agree to numerical precision.
+  const auto tmp = std::filesystem::temp_directory_path() / "dtwc_mip_benders_cost_test";
+  std::filesystem::create_directories(tmp);
+
+  auto prob_direct = make_small_problem(12, 15);
+  prob_direct.output_folder = tmp;
+  prob_direct.set_numberOfClusters(3);
+  prob_direct.mip_settings.benders = "off";
+  prob_direct.mip_settings.verbose_solver = false;
+  prob_direct.set_solver(dtwc::Solver::HiGHS);
+  prob_direct.method = dtwc::Method::MIP;
+  prob_direct.cluster();
+
+  if (prob_direct.centroids_ind.empty()) return; // HiGHS not available in build
+  const double cost_direct = prob_direct.findTotalCost();
+
+  auto prob_benders = make_small_problem(12, 15);
+  prob_benders.output_folder = tmp;
+  prob_benders.set_numberOfClusters(3);
+  prob_benders.mip_settings.benders = "on";
+  prob_benders.mip_settings.verbose_solver = false;
+  prob_benders.set_solver(dtwc::Solver::HiGHS);
+  prob_benders.method = dtwc::Method::MIP;
+  prob_benders.cluster();
+
+  REQUIRE(prob_benders.centroids_ind.size() == 3);
+  const double cost_benders = prob_benders.findTotalCost();
+  REQUIRE(std::abs(cost_direct - cost_benders) <= 1e-6 * std::max(1.0, std::abs(cost_direct)));
+}
+
+TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][benders]")
+{
+  // Sanity check the dispatch logic: benders = "auto" + N <= 200 uses direct;
+  // benders = "auto" + N > 200 would use Benders (not tested here to keep
+  // runtime reasonable). We verify "auto" + small N completes successfully.
+  auto prob = make_small_problem(6, 15);
+  prob.output_folder = std::filesystem::temp_directory_path() / "dtwc_mip_benders_auto_test";
+  std::filesystem::create_directories(prob.output_folder);
+  prob.set_numberOfClusters(2);
+  prob.mip_settings.benders = "auto";
+  prob.mip_settings.verbose_solver = false;
+  prob.set_solver(dtwc::Solver::HiGHS);
+  prob.method = dtwc::Method::MIP;
+
+  REQUIRE_NOTHROW(prob.cluster());
+  if (!prob.centroids_ind.empty()) {
+    REQUIRE(prob.centroids_ind.size() == 2);
   }
 }
