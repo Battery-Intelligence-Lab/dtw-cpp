@@ -284,4 +284,53 @@ struct SpanAROWSquaredL2Cost {
   }
 };
 
+/// Multivariate AROW L1 cost. Signals "missing pair" (returns NaN) only when
+/// no channel pair is comparable — i.e. every channel has at least one NaN
+/// operand. Otherwise sums |x[d] - y[d]| over comparable channels (per-channel
+/// skip, matching SpanMVNanAwareL1Cost).
+///
+/// Design note: direct scalar->MV lift ("any channel missing -> trigger AROW")
+/// would discard usable per-channel information. This per-channel-skip
+/// semantics preserves the scalar AROW recurrence when ndim = 1 (a single
+/// missing channel = no comparable channels = NaN -> diagonal carry) and
+/// mirrors the ZeroCost MV behaviour elsewhere in the kernel family.
+template <typename T>
+struct SpanMVAROWL1Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    std::size_t comparable = 0;
+    for (std::size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      sum += std::abs(a[d] - b[d]);
+      ++comparable;
+    }
+    return (comparable == 0) ? std::numeric_limits<T>::quiet_NaN() : sum;
+  }
+};
+
+template <typename T>
+struct SpanMVAROWSquaredL2Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    std::size_t comparable = 0;
+    for (std::size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      const T diff = a[d] - b[d];
+      sum += diff * diff;
+      ++comparable;
+    }
+    return (comparable == 0) ? std::numeric_limits<T>::quiet_NaN() : sum;
+  }
+};
+
 } // namespace dtwc::core

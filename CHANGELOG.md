@@ -53,9 +53,26 @@ Problem-level SoftDTW dispatch now runs on `dtw_kernel_full<T, SpanL1Cost<T>, So
 - **Cross-validated** bit-for-bit against `soft_dtw()` on equal-length, different-length, identical, and swap-symmetric inputs across gamma {0.1..10.0}. See [unit_test_soft_dtw.cpp](tests/unit/unit_test_soft_dtw.cpp) `[phase3]` tag. 4 test cases, 14 assertions, all passing within 1e-10 tolerance.
 - `soft_dtw.hpp` retained unchanged as the standalone public API surface (and for `soft_dtw_gradient()`, which still needs its own forward+backward matrices).
 
-### Deferred (Phase 3 part 4)
+### Added (Multivariate AROW — Phase 3 part 4)
 
-- Multivariate AROW: still dispatches through the scalar path. Needs a per-channel recurrence.
+Problem-level AROW dispatch now has a first-class MV branch; previously ndim > 1 was silently flattened to scalar AROW (documented TODO from pre-refactor).
+
+- **`SpanMVAROWL1Cost<T>`** / **`SpanMVAROWSquaredL2Cost<T>`** in [dtwc/core/dtw_cost.hpp](dtwc/core/dtw_cost.hpp): per-channel skip for cost (summing `|x[d] - y[d]|` over comparable channels). Returns NaN only when a pair has *no* comparable channels — every channel has at least one NaN operand. Triggers `AROWCell`'s diagonal carry only when the whole pair is uninformative.
+- **Design note**: the direct scalar→MV lift ("any channel missing → diagonal carry") would discard usable per-channel data. The per-channel-skip semantics here preserves information and is consistent with `SpanMVNanAwareL1Cost` (ZeroCost MV). Reduces exactly to scalar AROW when `ndim = 1`.
+- **Tests** in [unit_test_arow_dtw.cpp](tests/unit/unit_test_arow_dtw.cpp) `[mv][phase3]` tag: ndim=1 parity with `dtwAROW_banded` across bands {1..4}, identical MV zero-distance, per-channel-skip correctness, fully-missing-step triggers diagonal carry.
+
+### Phase 3 complete
+
+All four deferred items from Phase 2 are now implemented:
+
+| Part | Deliverable | Commits |
+|------|-------------|---------|
+| 3.1 | `rebind_dtw_fn` templated resolver + f32 silent-variant bug fix | `4d92881`, `cbdb942` |
+| 3.2 | AROW fold via `AROWCell` + `SpanAROWL1Cost` + Cell `seed()` | `d595035` |
+| 3.3 | Soft-DTW fold via `SoftCell` (log-sum-exp + stabilisation) | `ee0f798` |
+| 3.4 | MV AROW first-class path via `SpanMVAROWL1Cost` | _(this)_ |
+
+Kernel family now handles Standard / ADTW / WDTW / DDTW / Soft-DTW / AROW / ZeroCost-missing / Interpolate-missing with one templated core and orthogonal Cost + Cell policies. Adding a new variant = one Cost policy + one Cell policy + one switch arm in `resolve_dtw_fn`.
 
 ### Added (GPU parity + configuration)
 

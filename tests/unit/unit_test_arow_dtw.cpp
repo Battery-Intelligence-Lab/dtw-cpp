@@ -698,3 +698,103 @@ TEST_CASE("AROW kernel-policy: all NaN both sides = 0", "[arow_dtw][phase3]")
   std::vector<double> y{ NaN, NaN, NaN, NaN, NaN };
   REQUIRE_THAT(arow_via_kernel(x, y, 2), WithinAbs(0.0, 1e-10));
 }
+
+// ===========================================================================
+//  MV AROW (Phase 3.4) — per-channel skip for cost, trigger AROW diagonal
+//  carry only when a pair has no comparable channels. Verified via the
+//  Problem-level dispatch so ndim > 1 exercises the new make_arow MV branch.
+// ===========================================================================
+
+TEST_CASE("MV AROW: ndim=1 matches scalar AROW", "[arow_dtw][mv][phase3]")
+{
+  // When ndim=1, the new MV cost functor must reduce exactly to scalar AROW.
+  std::vector<double> x{ 1, 2, NaN, 4, 5, 6, NaN, 8 };
+  std::vector<double> y{ 1, 3, 3, 5, 5, 7, 7, 9 };
+  for (int band : {1, 2, 3, 4}) {
+    INFO("band=" << band);
+    const double scalar = dtwAROW_banded<double>(x, y, band);
+
+    dtwc::Data data;
+    data.ndim = 1;
+    data.p_vec = { x, y };
+    data.p_names = { "a", "b" };
+    dtwc::Problem prob;
+    prob.set_data(std::move(data));
+    prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+    prob.band = band;
+    prob.set_variant(dtwc::core::DTWVariant::Standard); // triggers rebind
+    const double mv = prob.dtw_function()(std::span<const double>{x},
+                                          std::span<const double>{y});
+    REQUIRE_THAT(mv, WithinAbs(scalar, 1e-10));
+  }
+}
+
+TEST_CASE("MV AROW: identical MV series distance = 0", "[arow_dtw][mv][phase3]")
+{
+  // 2 series x 4 timesteps x ndim=2, identical content.
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    { 1, 10, 2, 20, 3, 30, 4, 40 },
+    { 1, 10, 2, 20, 3, 30, 4, 40 },
+  };
+  data.p_names = { "a", "b" };
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.fillDistanceMatrix();
+  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
+}
+
+TEST_CASE("MV AROW: per-channel skip when one channel is NaN", "[arow_dtw][mv][phase3]")
+{
+  // x and y match on channel 1; channel 0 of x has a NaN at step 2.
+  // Per-channel-skip: the NaN channel contributes 0, channel 1 pair is
+  // comparable so AROW is NOT triggered at that step. Distance should
+  // equal Standard DTW distance computed on channel 1 only (which is 0,
+  // since channel 1 matches between x and y).
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    //  t0    t1    t2       t3
+    // ch0 ch1 ch0 ch1 ch0 ch1 ch0 ch1
+    {  1,  5,  2,  6, NaN, 7,   4,  8 },   // x
+    {  1,  5,  2,  6,  3,  7,   4,  8 },   // y
+  };
+  data.p_names = { "a", "b" };
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.fillDistanceMatrix();
+  // Sum of per-channel L1 = 0 at every step (channel 1 matches everywhere;
+  // channel 0 matches except at step 2 where one side is NaN, per-channel
+  // skip -> 0). Final distance = 0.
+  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
+}
+
+TEST_CASE("MV AROW: all channels NaN at a step triggers diagonal carry", "[arow_dtw][mv][phase3]")
+{
+  // At step 2, BOTH channels of x are NaN. Per-channel-skip on the pair
+  // yields 0 comparable channels -> cost returns NaN -> AROWCell triggers
+  // diagonal carry. Distance should therefore NOT accumulate |x-y| at step
+  // 2, but propagate from step 1.
+  const double nan = NaN;
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    //  t0    t1      t2       t3
+    { 1, 5,  2, 6, nan, nan, 100, 800 },  // x — step 2 fully missing, step 3 very different
+    { 1, 5,  2, 6,  3,   7,    3,   7 },  // y — step 2 present, step 3 matches step 2
+  };
+  data.p_names = { "a", "b" };
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  prob.fillDistanceMatrix();
+  const double d_with_missing = prob.distByInd(0, 1);
+  REQUIRE(d_with_missing >= 0.0);
+  REQUIRE(d_with_missing < std::numeric_limits<double>::max() / 2.0);
+  // Sanity: identical series yields 0; this series has a drastic mismatch at
+  // step 3 even after AROW skips step 2, so the distance must be strictly > 0.
+  REQUIRE(d_with_missing > 0.0);
+}

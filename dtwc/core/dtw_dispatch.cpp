@@ -69,8 +69,25 @@ auto make_arow(const Problem &p)
   // {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN} x bands 1..4
   // (unit_test_arow_dtw.cpp [phase3]).
   //
-  // Preserves the pre-refactor behaviour: ndim>1 is treated as a flat vector
-  // — MV AROW has a per-channel recurrence that still needs a dedicated path.
+  // MV extension (SpanMVAROWL1Cost): per-channel skip for cost; AROW is
+  // triggered only when a pair has no comparable channels. Reduces to
+  // scalar AROW when ndim = 1.
+  if (p.data.ndim > 1) {
+    return [&p](std::span<const T> x, std::span<const T> y) -> double {
+      const auto ndim = p.data.ndim;
+      const auto x_steps = x.size() / ndim;
+      const auto y_steps = y.size() / ndim;
+      const bool swap = x_steps > y_steps;
+      const T* a_data = swap ? y.data() : x.data();
+      const T* b_data = swap ? x.data() : y.data();
+      const auto a_steps = swap ? y_steps : x_steps;
+      const auto b_steps = swap ? x_steps : y_steps;
+      SpanMVAROWL1Cost<T> cost{a_data, b_data, ndim};
+      return static_cast<double>(
+        dtw_kernel_banded<T, SpanMVAROWL1Cost<T>, AROWCell>(
+          a_steps, b_steps, p.band, cost, AROWCell{}));
+    };
+  }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     const bool swap = x.size() > y.size();
     const auto a = swap ? y : x;
