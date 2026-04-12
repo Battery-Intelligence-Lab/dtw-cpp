@@ -8,6 +8,34 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (Metal GPU backend — Apple Silicon)
+
+- **New `dtwc::metal` backend**: anti-diagonal wavefront DTW kernel in MSL (Metal Shading Language), compiled at runtime via `newLibraryWithSource:`. Pairwise distance matrix on the Apple GPU, one threadgroup per pair, 3 rotating threadgroup-memory buffers for anti-diagonals.
+- **CMake**: `DTWC_ENABLE_METAL` option (default ON on APPLE, silently disabled elsewhere). Adds `OBJCXX` language, links `Foundation` + `Metal` frameworks, defines `DTWC_HAS_METAL`.
+- **`DistanceMatrixStrategy::Metal`** dispatch case in `Problem::fillDistanceMatrix`; graceful CPU fallback when Metal is unavailable or when `max_L` exceeds the threadgroup-memory cap (32 KB on M1/M2/M3, equivalent to ~2730 FP32 elements).
+- **Python binding**: `DistanceMatrixStrategy.Metal`, `metal_available()`, `metal_device_info()`, `compute_distance_matrix_metal()`, `METAL_AVAILABLE` attribute. Integrated into `system_info()`. Measured Python wrapper overhead vs native C++ `compute_distance_matrix_metal`: **−0.5% to +0.9%** (well under 10% target).
+- **MATLAB binding**: `"metal"` distance strategy accepted by `set_distance_strategy`; `system_check` struct now includes `metal` + `metal_info` fields; `dtwc.check_system()` reports Metal status. Measured MATLAB wrapper overhead vs Python (both using `Problem::fillDistanceMatrix`): **≤1%** across all 6 workloads. (Initial apples-to-oranges comparison showed 8–17%, but the gap turned out to be `Problem::fillDistanceMatrix` vs direct `compute_distance_matrix_metal` — same gap appears in Python too. Language-wrapper overhead itself is sub-1%.)
+- **MATLAB R2024b linker fix**: `CMakeModules/FindMatlab.cmake` (shipped with CMake) unconditionally adds `cppMexFunction.map` to the exported-symbols list on macOS, which requires `_mexCreateMexFunction` / `_mexDestroyMexFunction` / `_mexFunctionAdapter` symbols we don't provide (we use the legacy C `mexFunction` API). [bindings/matlab/CMakeLists.txt](bindings/matlab/CMakeLists.txt) now clears `Matlab_HAS_CPP_API` before `matlab_add_mex()` so only `c_exportsmexfileversion.map` is linked.
+- **Measured on Apple M2 Max (38-core GPU)** vs the 12-thread CPU path:
+
+  | Workload | CPU (ms) | Metal (ms) | Speedup |
+  |---|---|---|---|
+  | 50 series × 500 length | 106 | 6.9 | 15.4× |
+  | 100 × 500 | 404 | 26.2 | 15.4× |
+  | 100 × 1000 | 1648 | 139 | 11.9× |
+  | 200 × 500 | 1626 | 103 | 15.8× |
+  | 50 × 2500 | n/a | 151 | — |
+  | 10 × 10000 (long series, global-mem kernel) | 3058 | 108 | **28.3×** |
+  | 30 × 10000 | 16061 | 929 | **17.3×** |
+
+  Throughput: ~30–52 × 10⁹ DTW cells/sec; ~180–320 GFLOPS (≈1.3–2.4% of 13.6 TFLOPS FP32 peak). The low FLOP fraction is expected for DTW's memory-bandwidth-bound DP recurrence; further gains require register-tiling and warp-shuffle kernels (follow-on).
+- **Two kernel variants share the same API:**
+  - `dtw_wavefront` (threadgroup memory): 3 × max_L floats in 32 KB threadgroup memory → max_L ≤ 2730 on M1/M2/M3.
+  - `dtw_wavefront_global` (device memory): scratch lives in unified GPU memory; any max_L supported. Dispatcher picks automatically.
+- **macOS GPU-watchdog avoidance**: long dispatches (>~2 s per command buffer) fail with `kIOGPUCommandBufferCallbackErrorImpactingInteractivity`. The dispatcher now chunks pairs across multiple command buffers (budget ≈ 5 × 10⁹ cells per buffer) so arbitrary N × L workloads complete without triggering the watchdog.
+- **Tests**: `test_metal_correctness.cpp` (6 cases, 66 assertions) validates GPU output against CPU reference at FP32 tolerance, covers length-2000 and the 10 000-length fallback. `test_metal_mmap.cpp` exercises the Metal strategy through `Problem::fillDistanceMatrix` into both `DenseDistanceMatrix` and the memory-mapped distance-matrix paths.
+- **Benchmark**: `benchmarks/bench_metal_dtw.cpp` (Google Benchmark) compares Metal vs CPU at matching sizes; JSON lands in `benchmarks/results/mac_m2max/`.
+
 ### Added (macOS support)
 
 - **`FindGUROBI.cmake`**: macOS search paths (`/Library/gurobi*/macos_universal2`, `/Library/gurobi*/mac64`) and `.dylib` library glob.
