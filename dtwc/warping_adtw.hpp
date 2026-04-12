@@ -337,7 +337,7 @@ data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
  */
 template <typename data_t = double>
 data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                     size_t ndim, int band = settings::DEFAULT_BAND_LENGTH, data_t penalty = 1.0)
+                     size_t ndim, int band = settings::DEFAULT_BAND, data_t penalty = 1.0)
 {
   if (band < 0) return adtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, penalty);
   if (ndim == 1) return adtwBanded(x, nx_steps, y, ny_steps, band, penalty);

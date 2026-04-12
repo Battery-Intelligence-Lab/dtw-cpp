@@ -42,10 +42,15 @@
 
 namespace dtwc {
 
-/// GPU compute settings (only used when distance_strategy == GPU).
+/// CUDA-specific compute settings. Only used when distance_strategy == CUDA.
+/// Metal has no equivalent — it auto-picks the system default device and FP32.
 struct CUDASettings {
-  int device_id = 0;              ///< CUDA device index.
-  int precision_mode = 0;          ///< 0 = Auto, 1 = FP32, 2 = FP64.
+  int device_id = 0;  ///< CUDA device index.
+  /// Compute precision. `Auto` → FP32 on consumer GPUs, FP64 on HPC GPUs.
+  /// Declared as a plain int here (rather than `dtwc::cuda::CUDAPrecision`)
+  /// so this header stays parsable when DTWC_HAS_CUDA is undefined.
+  /// Values: 0 = Auto, 1 = FP32, 2 = FP64. See settings::Precision constants.
+  int precision = 0;
 };
 
 /// MIP solver tuning parameters.
@@ -64,8 +69,8 @@ struct MIPSettings {
 enum class DistanceMatrixStrategy {
   Auto,       ///< Choose best strategy automatically
   BruteForce, ///< Parallel brute-force (no lower-bound pruning)
-  Pruned,     ///< Parallel with LB_Kim + LB_Keogh early-abandon
-  GPU,        ///< CUDA GPU (requires DTWC_HAS_CUDA)
+  Pruned,     ///< Parallel with lower-bound pruning (LB_Kim / LB_Keogh / cascade)
+  CUDA,       ///< NVIDIA CUDA GPU (requires DTWC_HAS_CUDA)
   Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
 };
 
@@ -125,7 +130,7 @@ public:
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
-  int band{ settings::DEFAULT_BAND_LENGTH }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
+  int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */

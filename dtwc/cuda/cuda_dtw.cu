@@ -1539,11 +1539,11 @@ CUDADistMatResult compute_distance_matrix_cuda(
   // ---------------------------------------------------------------------------
   // Phase 1 (optional): LB_Keogh pruning
   // ---------------------------------------------------------------------------
-  // When use_lb_pruning is enabled and band >= 0, compute LB_Keogh for all
-  // pairs on GPU. If skip_threshold > 0, pairs with LB > threshold are set
+  // When use_lb_keogh is enabled and band >= 0, compute LB_Keogh for all
+  // pairs on GPU. If lb_threshold > 0, pairs with LB > threshold are set
   // to INF and excluded from full DTW computation.
-  const bool do_lb_pruning = opts.use_lb_pruning && (opts.band >= 0);
-  const bool has_threshold = do_lb_pruning && (opts.skip_threshold > 0);
+  const bool do_lb_pruning = opts.use_lb_keogh && (opts.band >= 0);
+  const bool has_threshold = do_lb_pruning && (opts.lb_threshold > 0);
 
   if (use_fp32) {
     if (do_lb_pruning) {
@@ -1553,7 +1553,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
       if (has_threshold) {
         const size_t active_pairs = compact_active_pairs<float>(
-            workspace, N, num_pairs, static_cast<float>(opts.skip_threshold));
+            workspace, N, num_pairs, static_cast<float>(opts.lb_threshold));
         result.pairs_pruned = num_pairs - active_pairs;
         result.pairs_computed = active_pairs;
 
@@ -1587,7 +1587,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
       if (has_threshold) {
         const size_t active_pairs = compact_active_pairs<double>(
-            workspace, N, num_pairs, opts.skip_threshold);
+            workspace, N, num_pairs, opts.lb_threshold);
         result.pairs_pruned = num_pairs - active_pairs;
         result.pairs_computed = active_pairs;
 

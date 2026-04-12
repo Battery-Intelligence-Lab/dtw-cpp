@@ -2,16 +2,24 @@
  * @file metal_dtw.mm
  * @brief Metal GPU implementation of batch DTW distance computation.
  *
- * @details Anti-diagonal wavefront kernel: one threadgroup per DTW pair.
- *          Threads within a threadgroup cooperate on cells along the
- *          current anti-diagonal (cells with i+j=k are independent).
- *          Three rotating threadgroup-memory buffers hold anti-diagonals
- *          k, k-1, k-2.
+ * @details Five DTW kernel variants share the same pairwise-distance API:
+ *            - dtw_wavefront             anti-diagonal, threadgroup memory
+ *            - dtw_wavefront_global      anti-diagonal, device memory (long series)
+ *            - dtw_banded_row            row-major, one thread per pair (tight band)
+ *            - dtw_regtile_w4 / _w8      register-tile, SIMD-group per pair
+ *          Three LB_Keogh kernels gate the DTW dispatch when pruning is on:
+ *            - compute_envelopes, compute_lb_keogh, compact_active_pairs.
  *
- *          This is the initial scaffolded port of the CUDA wavefront
- *          kernel (dtwc/cuda/cuda_dtw.cu). It covers the pairwise distance
- *          matrix path only; LB_Keogh pruning, warp-shuffle, register-tile,
- *          and 1-vs-all/k-vs-all variants are follow-on work.
+ *          Algorithmic lineage:
+ *            - Register-tile + warp-shuffle cost propagation: Schmidt & Hundt
+ *              (2020), "cuDTW++: Ultra-Fast Dynamic Time Warping on CUDA-
+ *              Enabled GPUs", Euro-Par 2020, LNCS 12247 pp. 597-612
+ *              [https://doi.org/10.1007/978-3-030-57675-2_37]. Reference
+ *              implementation ported via dtwc/cuda/cuda_dtw.cu.
+ *            - LB_Keogh lower bound: Keogh & Ratanamahatana (2005), "Exact
+ *              Indexing of Dynamic Time Warping", KAIS 7(3) pp. 358-386.
+ *            - Sakoe-Chiba band constraint: Sakoe & Chiba (1978),
+ *              IEEE TASSP 26(1) pp. 43-49.
  *
  * @date 2026-04-12
  */
@@ -624,16 +632,22 @@ kernel void dtw_kvn_wavefront_global(
 // ---------------------------------------------------------------------------
 // Register-tile DTW for short/medium series (max_L <= 256, unbanded).
 //
+// Adapted from Schmidt & Hundt, "cuDTW++: Ultra-Fast Dynamic Time Warping on
+// CUDA-Enabled GPUs" (Euro-Par 2020, LNCS 12247), translated from the CUDA
+// reference in dtwc/cuda/cuda_dtw.cu (`dtw_regtile_kernel`, lines 543-780).
+//
 // One SIMD-group (32 threads) per pair, PAIRS_PER_TG warps per threadgroup.
 // Each thread holds TILE_W columns in registers; 32 threads cover 32*TILE_W
-// columns total. Left-neighbor values are fetched via simd_shuffle_up.
+// columns total. Left-neighbor values are fetched via simd_shuffle_up (MSL's
+// analogue of CUDA `__shfl_sync(..., lane - 1)` from the cuDTW++ regtile
+// kernel).
 //
 // Wavefront timing: at step s, thread t processes row i = s - t. Thread t-1
 // processed row i at step s-1, so at step s its penalty[TILE_W-1] holds
 // cost[i][col_start-1] — fetched via simd_shuffle_up(penalty[TILE_W-1], 1).
 //
-// Mirrors dtwc/cuda/cuda_dtw.cu `dtw_regtile_kernel`. Unbanded-only — the band
-// path adds register pressure that is deferred.
+// Unbanded-only for this pass — banded regtile adds register pressure that
+// is deferred.
 constant int PAIRS_PER_TG = 8;
 
 template <int TILE_W>
@@ -832,7 +846,15 @@ kernel void dtw_regtile_w8(
 //   1. compute_envelopes      — sliding min/max per series
 //   2. compute_lb_keogh       — symmetric LB per pair
 //   3. compact_active_pairs   — threshold filter, stamp INF for pruned pairs
-// Mirrors the CUDA pipeline at dtwc/cuda/cuda_dtw.cu:785-910.
+//
+// Algorithm: Keogh & Ratanamahatana (2005), "Exact Indexing of Dynamic Time
+// Warping", Knowledge and Information Systems 7(3), 358-386. Symmetric
+// variant LB = max(LB(j|env_i), LB(i|env_j)) — the tighter of the two single-
+// direction bounds, see Rakthanmanon et al. (2012) "Searching and Mining
+// Trillions of Time Series Subsequences under DTW", KDD '12.
+//
+// Ported from the CUDA pipeline at dtwc/cuda/cuda_dtw.cu:785-910 (itself
+// inspired by cuDTW++, Schmidt & Hundt 2020).
 // ---------------------------------------------------------------------------
 
 // One threadgroup per series. Each thread covers ceil(max_L / ntids) positions.
@@ -1400,7 +1422,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     // disable LB (with a verbose-mode warning).
     // -----------------------------------------------------------------------
     const bool pipeline_uses_pair_indices = !use_banded_row && !use_regtile;
-    const bool lb_requested = opts.enable_lb_keogh;
+    const bool lb_requested = opts.use_lb_keogh;
     bool lb_active = lb_requested && pipeline_uses_pair_indices && num_pairs > 0;
     if (lb_requested && !lb_active && opts.verbose) {
       std::cerr << "[Metal] LB_Keogh requested but current kernel path does "

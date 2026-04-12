@@ -267,8 +267,8 @@ static void BM_cuda_prunedDistanceMatrix(benchmark::State &state)
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = 10;
-  opts.use_lb_pruning = true;
-  opts.skip_threshold = 50.0;
+  opts.use_lb_keogh = true;
+  opts.lb_threshold = 50.0;
   opts.verbose = false;
 
   dtwc::cuda::CUDADistMatResult last;

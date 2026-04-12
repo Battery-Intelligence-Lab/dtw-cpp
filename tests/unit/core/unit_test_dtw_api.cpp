@@ -122,7 +122,7 @@ TEST_CASE("dtw_runtime with SakoeChibaBand matches dtwBanded",
 
   DTWOptions opts;
   opts.constraint = ConstraintType::SakoeChibaBand;
-  opts.band_width = band;
+  opts.band = band;
 
   const double result = dtw_runtime(x.data(), x.size(),
                                     y.data(), y.size(), opts);
@@ -176,7 +176,7 @@ TEST_CASE("dtw_runtime with SakoeChibaBand and SquaredL2",
 
   DTWOptions opts;
   opts.constraint = ConstraintType::SakoeChibaBand;
-  opts.band_width = band;
+  opts.band = band;
   opts.metric = MetricType::SquaredL2;
 
   const double result = dtw_runtime(x.data(), x.size(),

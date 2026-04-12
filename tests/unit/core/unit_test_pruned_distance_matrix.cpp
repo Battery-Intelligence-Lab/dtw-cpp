@@ -711,5 +711,5 @@ TEST_CASE("DistanceMatrixStrategy enum values are distinct",
 {
   REQUIRE(dtwc::DistanceMatrixStrategy::Auto != dtwc::DistanceMatrixStrategy::BruteForce);
   REQUIRE(dtwc::DistanceMatrixStrategy::BruteForce != dtwc::DistanceMatrixStrategy::Pruned);
-  REQUIRE(dtwc::DistanceMatrixStrategy::Pruned != dtwc::DistanceMatrixStrategy::GPU);
+  REQUIRE(dtwc::DistanceMatrixStrategy::Pruned != dtwc::DistanceMatrixStrategy::CUDA);
 }

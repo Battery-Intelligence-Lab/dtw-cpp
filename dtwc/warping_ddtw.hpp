@@ -179,7 +179,7 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
  */
 template <typename data_t = double>
 data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                  int band = settings::DEFAULT_BAND_LENGTH,
+                  int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
   thread_local std::vector<data_t> dx, dy;
@@ -213,7 +213,7 @@ data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
 // Vector convenience overloads (vector -> span implicit conversion is non-deduced).
 template <typename data_t = double>
 data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  int band = settings::DEFAULT_BAND_LENGTH,
+                  int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
   return ddtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
@@ -233,7 +233,7 @@ data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
 /// DDTW (banded) from raw pointers — avoids caller needing to construct vectors.
 template <typename data_t = double>
 data_t ddtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
-                  int band = settings::DEFAULT_BAND_LENGTH,
+                  int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
   // derivative_transform_inplace operates on vectors, so we wrap the pointers.

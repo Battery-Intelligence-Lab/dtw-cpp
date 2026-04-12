@@ -236,10 +236,10 @@ static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s
   if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
   if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
   if (s == "pruned") return dtwc::DistanceMatrixStrategy::Pruned;
-  if (s == "gpu" || s == "cuda") return dtwc::DistanceMatrixStrategy::GPU;
+  if (s == "cuda") return dtwc::DistanceMatrixStrategy::CUDA;
   if (s == "metal") return dtwc::DistanceMatrixStrategy::Metal;
   throw std::invalid_argument("Unknown distance strategy: '" + s + "'. "
-    "Valid: 'auto', 'brute_force', 'pruned', 'gpu'/'cuda', 'metal'.");
+    "Valid: 'auto', 'brute_force', 'pruned', 'cuda', 'metal'.");
 }
 
 /// Parse linkage string -> enum
@@ -499,7 +499,7 @@ static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::dtwBanded<double>(x, nx, y, ny, band));
 }
@@ -510,7 +510,7 @@ static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::ddtwBanded<double>(x, nx, y, ny, band));
 }
@@ -521,7 +521,7 @@ static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double g = 0.05;
   if (nrhs > 4) g = get_scalar(prhs[4]);
@@ -534,7 +534,7 @@ static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
   size_t ny = mxGetNumberOfElements(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double penalty = 1.0;
   if (nrhs > 4) penalty = get_scalar(prhs[4]);
@@ -568,7 +568,7 @@ static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const 
   if (nrhs < 3) throw std::invalid_argument("dtw_distance_missing requires x and y.");
   auto x = to_std_vector(prhs[1]);
   auto y = to_std_vector(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::dtwMissing_banded<double>(x, y, band));
 }
@@ -577,7 +577,7 @@ static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
   if (nrhs < 3) throw std::invalid_argument("dtw_arow_distance requires x and y.");
   auto x = to_std_vector(prhs[1]);
   auto y = to_std_vector(prhs[2]);
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::dtwAROW_banded<double>(x, y, band));
 }
@@ -586,7 +586,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   if (nrhs < 2) throw std::invalid_argument("compute_distance_matrix requires a data matrix.");
   auto series = matrix_to_series(prhs[1]);
   const size_t N = series.size();
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 2) band = static_cast<int>(get_scalar(prhs[2]));
 
   // Use Problem + fillDistanceMatrix() for OpenMP parallelism and LB pruning
@@ -812,7 +812,7 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   auto series = matrix_to_series(prhs[1]);
   int k = static_cast<int>(get_scalar(prhs[2]));
 
-  int band = dtwc::settings::DEFAULT_BAND_LENGTH;
+  int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
 
   int maxIter = 100;

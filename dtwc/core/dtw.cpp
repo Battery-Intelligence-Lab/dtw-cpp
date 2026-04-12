@@ -16,7 +16,7 @@ double dtw_runtime(const double* x, std::size_t nx,
 {
   switch (opts.constraint) {
   case ConstraintType::SakoeChibaBand:
-    return dtwBanded<double>(x, nx, y, ny, opts.band_width, -1.0, opts.metric);
+    return dtwBanded<double>(x, nx, y, ny, opts.band, -1.0, opts.metric);
   case ConstraintType::None:
   default:
     return dtwFull_L<double>(x, nx, y, ny, -1.0, opts.metric);

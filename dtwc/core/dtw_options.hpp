@@ -61,7 +61,7 @@ struct DTWOptions
 {
   ConstraintType constraint = ConstraintType::None;
   MetricType metric = MetricType::L1;
-  int band_width = -1;  ///< Band width for Sakoe-Chiba; -1 means unconstrained
+  int band = -1;  ///< Band width for Sakoe-Chiba; -1 means unconstrained
   DTWVariantParams variant_params;  ///< Variant selection and parameters
   MissingStrategy missing_strategy = MissingStrategy::Error;  ///< How to handle NaN values
 };

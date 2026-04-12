@@ -2,12 +2,20 @@
  * @file metal_dtw.hpp
  * @brief Metal GPU kernels for batch DTW computation on Apple Silicon.
  *
- * @details Mirrors the shape of cuda_dtw.cuh. Each Metal threadgroup computes
- *          one DTW pair via anti-diagonal wavefront: cells on the same
- *          anti-diagonal are independent and computed in parallel across
- *          the threadgroup.
+ * @details Mirrors the shape of cuda_dtw.cuh. Pairwise distance matrix,
+ *          K-vs-N, 1-vs-N, and LB_Keogh-pruned variants are all exposed
+ *          through a common options struct.
  *
- *          For a distance matrix, launch N*(N-1)/2 threadgroups.
+ *          Algorithmic references:
+ *            - Register-tile + warp-shuffle cost propagation: Schmidt &
+ *              Hundt (2020), "cuDTW++: Ultra-Fast Dynamic Time Warping on
+ *              CUDA-Enabled GPUs", Euro-Par 2020, LNCS 12247, 597-612.
+ *              https://doi.org/10.1007/978-3-030-57675-2_37
+ *            - LB_Keogh: Keogh & Ratanamahatana (2005), "Exact Indexing of
+ *              Dynamic Time Warping", KAIS 7(3), 358-386.
+ *            - Sakoe-Chiba band: Sakoe & Chiba (1978), IEEE TASSP 26(1).
+ *
+ *          See also `.claude/CITATIONS.md` for the full bibliography.
  *
  * @date 2026-04-12
  */
@@ -41,7 +49,7 @@ struct MetalDistMatOptions {
   /// marked `+∞` in the result matrix and skipped by the DTW kernel.
   /// Supported only on wavefront / wavefront_global paths (i.e. band == -1
   /// with max_L > 256). On other paths the flag is silently ignored.
-  bool enable_lb_keogh = false;
+  bool use_lb_keogh = false;
 
   /// Pruning threshold applied to max(LB(i→j), LB(j→i)). Pairs with lower
   /// bound > threshold are pruned. 0 means "prune everything that isn't an

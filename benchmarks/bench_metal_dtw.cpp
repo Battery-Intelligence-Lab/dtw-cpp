@@ -185,7 +185,7 @@ static void BM_metal_lb_keogh_permissive(benchmark::State &state)
   auto series = make_series_set(N, L);
 
   dtwc::metal::MetalDistMatOptions opts;
-  opts.enable_lb_keogh = true;
+  opts.use_lb_keogh = true;
   opts.lb_threshold = std::numeric_limits<double>::infinity();
   opts.lb_envelope_band = std::max(1, L / 10);
   (void)dtwc::metal::compute_distance_matrix_metal(series, opts); // warm-up
@@ -215,7 +215,7 @@ static void BM_metal_lb_keogh_strict(benchmark::State &state)
   auto series = make_series_set(N, L);
 
   dtwc::metal::MetalDistMatOptions opts;
-  opts.enable_lb_keogh = true;
+  opts.use_lb_keogh = true;
   opts.lb_threshold = 0.0; // prunes nearly everything on random data
   opts.lb_envelope_band = std::max(1, L / 10);
   (void)dtwc::metal::compute_distance_matrix_metal(series, opts);

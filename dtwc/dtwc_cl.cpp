@@ -620,11 +620,11 @@ int main(int argc, char *argv[])
 
   // Wire GPU settings from --device and --gpu-precision
   if (device.rfind("cuda", 0) == 0) {
-    prob.distance_strategy = dtwc::DistanceMatrixStrategy::GPU;
+    prob.distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
     if (device.size() > 5 && device[4] == ':')
       prob.cuda_settings.device_id = std::stoi(device.substr(5));
-    if (gpu_precision == "fp32") prob.cuda_settings.precision_mode = 1;
-    else if (gpu_precision == "fp64") prob.cuda_settings.precision_mode = 2;
+    if (gpu_precision == "fp32") prob.cuda_settings.precision = 1;
+    else if (gpu_precision == "fp64") prob.cuda_settings.precision = 2;
   }
 
   // Set DTW variant

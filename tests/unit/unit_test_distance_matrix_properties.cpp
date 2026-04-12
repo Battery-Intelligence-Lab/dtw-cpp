@@ -165,7 +165,7 @@ TEST_CASE("Default band produces same distances as dtwFull", "[Phase1][distance_
   auto prob = make_problem(N);
 
   // Default band is -1 (full DTW).
-  REQUIRE(prob.band == settings::DEFAULT_BAND_LENGTH);
+  REQUIRE(prob.band == settings::DEFAULT_BAND);
   REQUIRE(prob.band == -1);
 
   prob.fillDistanceMatrix();

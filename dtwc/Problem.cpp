@@ -469,7 +469,8 @@ void Problem::fillDistanceMatrix_BruteForce()
  *   - Auto: selects Pruned for Standard DTW variant, BruteForce otherwise.
  *   - BruteForce: parallel brute-force (all variants).
  *   - Pruned: parallel with LB_Kim + LB_Keogh early-abandon (Standard DTW only).
- *   - GPU: reserved for CUDA path (selected externally, e.g., via CLI).
+ * - CUDA: selected externally for NVIDIA GPU dispatch (e.g., via CLI).
+ * - Metal: selected externally for Apple GPU dispatch.
  */
 void Problem::fillDistanceMatrix()
 {
@@ -536,7 +537,7 @@ void Problem::fillDistanceMatrix()
     }
     break;
   }
-  case DistanceMatrixStrategy::GPU:
+  case DistanceMatrixStrategy::CUDA:
 #ifdef DTWC_HAS_CUDA
   {
     if (!dtwc::cuda::cuda_available()) {
@@ -548,9 +549,9 @@ void Problem::fillDistanceMatrix()
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;
     cuda_opts.device_id = cuda_settings.device_id;
-    if (cuda_settings.precision_mode == 1)
+    if (cuda_settings.precision == 1)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
-    else if (cuda_settings.precision_mode == 2)
+    else if (cuda_settings.precision == 2)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
     cuda_opts.use_squared_l2 = false;
     cuda_opts.verbose = verbose;
@@ -567,7 +568,7 @@ void Problem::fillDistanceMatrix()
     });
 
     if (verbose)
-      std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
+      std::cout << "CUDA distance matrix: " << cuda_result.pairs_computed
                 << " pairs in " << std::setprecision(3)
                 << cuda_result.gpu_time_sec * 1000 << " ms\n";
     break;

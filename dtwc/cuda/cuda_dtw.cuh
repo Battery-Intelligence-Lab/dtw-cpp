@@ -35,8 +35,8 @@ struct CUDADistMatOptions {
   int device_id = 0;       ///< CUDA device to use
   bool verbose = false;     ///< Print timing info
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
-  bool use_lb_pruning = false; ///< Compute LB_Keogh on GPU and skip pairs exceeding threshold
-  double skip_threshold = -1.0; ///< When positive, pairs with LB > threshold get INF (no DTW)
+  bool use_lb_keogh = false; ///< Compute LB_Keogh on GPU and skip pairs exceeding threshold
+  double lb_threshold = -1.0; ///< When positive, pairs with LB > threshold get INF (no DTW)
 };
 
 struct CUDADistMatResult {

@@ -18,7 +18,7 @@
 
 #pragma once
 
-#include "settings.hpp"           // for DEFAULT_BAND_LENGTH
+#include "settings.hpp"           // for DEFAULT_BAND
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"    // for core::MetricType
 
@@ -523,7 +523,7 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
  */
 template <typename data_t = double>
 data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                 int band = settings::DEFAULT_BAND_LENGTH,
+                 int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
@@ -567,7 +567,7 @@ data_t dtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
 /// Banded DTW (span overload).
 template <typename data_t = double>
 data_t dtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                 int band = settings::DEFAULT_BAND_LENGTH,
+                 int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
@@ -592,7 +592,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
 template <typename data_t = double>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                 int band = settings::DEFAULT_BAND_LENGTH,
+                 int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
                  core::MetricType metric = core::MetricType::L1)
 {
@@ -652,7 +652,7 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  */
 template <typename data_t = double>
 data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
-                    size_t ndim, int band = settings::DEFAULT_BAND_LENGTH,
+                    size_t ndim, int band = settings::DEFAULT_BAND,
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {

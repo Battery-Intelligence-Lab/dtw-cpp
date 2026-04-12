@@ -152,7 +152,7 @@ data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y,
 template <typename data_t>
 data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   std::type_identity_t<std::span<const data_t>> weights,
-                  int band = settings::DEFAULT_BAND_LENGTH)
+                  int band = settings::DEFAULT_BAND)
 {
   if (band < 0) return wdtwFull<data_t>(x, nx, y, ny, weights);
 
@@ -274,7 +274,7 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 
 template <typename data_t>
 data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
-                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND_LENGTH)
+                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND)
 {
   return wdtwBanded(x.data(), x.size(), y.data(), y.size(), weights, band);
 }
@@ -350,7 +350,7 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
 template <typename data_t>
 data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND_LENGTH)
+                  std::type_identity_t<std::span<const data_t>> weights, int band = settings::DEFAULT_BAND)
 {
   return wdtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, weights, band);
 }
@@ -470,7 +470,7 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
 template <typename data_t = double>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, std::type_identity_t<std::span<const data_t>> weights,
-                     int band = settings::DEFAULT_BAND_LENGTH)
+                     int band = settings::DEFAULT_BAND)
 {
   if (band < 0) return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, weights);
   if (ndim == 1)
@@ -481,7 +481,7 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
 
 template <typename data_t = double>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
-                     size_t ndim, int band = settings::DEFAULT_BAND_LENGTH, data_t g = 0.05)
+                     size_t ndim, int band = settings::DEFAULT_BAND, data_t g = 0.05)
 {
   if (ndim == 1) return wdtwBanded(x, nx_steps, y, ny_steps, band, g);
   const size_t max_steps = std::max(nx_steps, ny_steps);

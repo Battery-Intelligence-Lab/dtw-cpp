@@ -3,7 +3,7 @@
  * @brief Metal LB_Keogh pruning path correctness.
  *
  * @details Three scenarios exercise the opt-in pruning path:
- *   1. Pruning disabled (`enable_lb_keogh=false`) — result bit-identical to
+ *   1. Pruning disabled (`use_lb_keogh=false`) — result bit-identical to
  *      the non-LB call; `pairs_pruned == 0`.
  *   2. Threshold = +∞ — all pairs active; surviving results match non-LB.
  *   3. Threshold = 0 on random series — most pairs pruned; surviving pairs
@@ -81,7 +81,7 @@ TEST_CASE("Metal LB_Keogh disabled matches non-LB path", "[metal][lb_keogh]")
   auto plain = dtwc::metal::compute_distance_matrix_metal(series, opts_plain);
 
   dtwc::metal::MetalDistMatOptions opts_disabled;
-  opts_disabled.enable_lb_keogh = false;
+  opts_disabled.use_lb_keogh = false;
   auto disabled = dtwc::metal::compute_distance_matrix_metal(series,
                                                              opts_disabled);
 
@@ -104,7 +104,7 @@ TEST_CASE("Metal LB_Keogh permissive threshold keeps all pairs", "[metal][lb_keo
   auto cpu = cpu_distance_matrix(series);
 
   dtwc::metal::MetalDistMatOptions opts;
-  opts.enable_lb_keogh = true;
+  opts.use_lb_keogh = true;
   opts.lb_threshold = std::numeric_limits<double>::infinity();
   opts.lb_envelope_band = std::max<int>(1, static_cast<int>(L) / 10);
   auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
@@ -132,7 +132,7 @@ TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_k
   auto cpu = cpu_distance_matrix(series);
 
   dtwc::metal::MetalDistMatOptions opts;
-  opts.enable_lb_keogh = true;
+  opts.use_lb_keogh = true;
   opts.lb_threshold = 0.0; // prune every pair whose envelopes disagree at all
   opts.lb_envelope_band = std::max<int>(1, static_cast<int>(L) / 10);
   auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
@@ -182,7 +182,7 @@ TEST_CASE("Metal LB_Keogh silently disables on banded_row path", "[metal][lb_keo
 
   dtwc::metal::MetalDistMatOptions opts;
   opts.band = band;
-  opts.enable_lb_keogh = true;
+  opts.use_lb_keogh = true;
   opts.lb_threshold = 0.0;
   auto gpu = dtwc::metal::compute_distance_matrix_metal(series, opts);
 

@@ -381,7 +381,7 @@ data_t dtwAROW(std::span<const data_t> x, std::span<const data_t> y,
  */
 template <typename data_t = double>
 data_t dtwAROW_banded(std::span<const data_t> x, std::span<const data_t> y,
-                      int band = settings::DEFAULT_BAND_LENGTH,
+                      int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, y, metric);
@@ -410,7 +410,7 @@ data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
 
 template <typename data_t = double>
 data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
-                      int band = settings::DEFAULT_BAND_LENGTH,
+                      int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW_banded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
@@ -443,7 +443,7 @@ data_t dtwAROW(const data_t* x, size_t nx, const data_t* y, size_t ny,
 /// DTW-AROW, banded (pointer + length).
 template <typename data_t = double>
 data_t dtwAROW_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
-                      int band = settings::DEFAULT_BAND_LENGTH,
+                      int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
 {
   if (band < 0) return dtwAROW_L<data_t>(x, nx, y, ny, metric);

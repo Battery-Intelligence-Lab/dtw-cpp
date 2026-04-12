@@ -7,7 +7,7 @@
  *          from lower_bound_impl.hpp. Tests cover:
  *          - Standalone compute_lb_keogh_cuda() correctness
  *          - LB_Keogh <= DTW property (lower bound guarantee)
- *          - Pruned distance matrix via use_lb_pruning option
+ *          - Pruned distance matrix via use_lb_keogh option
  *          - Edge cases (single series, empty series, varying lengths)
  *
  * @author Volkan Kumtepeli
@@ -241,8 +241,8 @@ TEST_CASE("GPU distance matrix with LB pruning (threshold mode)", "[cuda][lb_keo
   dtwc::cuda::CUDADistMatOptions opts_pruned;
   opts_pruned.band = band;
   opts_pruned.precision = dtwc::cuda::CUDAPrecision::FP64;
-  opts_pruned.use_lb_pruning = true;
-  opts_pruned.skip_threshold = threshold;
+  opts_pruned.use_lb_keogh = true;
+  opts_pruned.lb_threshold = threshold;
   auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, opts_pruned);
 
   REQUIRE(pruned.pairs_computed + pruned.pairs_pruned == N * (N - 1) / 2);
@@ -287,8 +287,8 @@ TEST_CASE("GPU distance matrix with LB pruning can prune everything", "[cuda][lb
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = 3;
   opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-  opts.use_lb_pruning = true;
-  opts.skip_threshold = 1.0;
+  opts.use_lb_keogh = true;
+  opts.lb_threshold = 1.0;
 
   auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
   const size_t N = series.size();
@@ -324,8 +324,8 @@ TEST_CASE("GPU distance matrix with LB pruning can prune nothing", "[cuda][lb_ke
   auto ref = dtwc::cuda::compute_distance_matrix_cuda(series, ref_opts);
 
   dtwc::cuda::CUDADistMatOptions pruned_opts = ref_opts;
-  pruned_opts.use_lb_pruning = true;
-  pruned_opts.skip_threshold = 1e12;
+  pruned_opts.use_lb_keogh = true;
+  pruned_opts.lb_threshold = 1e12;
   auto pruned = dtwc::cuda::compute_distance_matrix_cuda(series, pruned_opts);
 
   REQUIRE(pruned.pairs_pruned == 0);

@@ -82,7 +82,7 @@ constexpr bool isDebug = false;
 
 /// @brief Default band length.
 /// @details If no band is required, this value should be set to -1.
-constexpr int DEFAULT_BAND_LENGTH = -1;
+constexpr int DEFAULT_BAND = -1;
 
 // Default settings:
 
