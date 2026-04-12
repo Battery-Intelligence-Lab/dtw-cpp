@@ -416,3 +416,24 @@ TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][proble
   REQUIRE(d >= 0.0);
   REQUIRE(!dtwc::is_missing(d));
 }
+
+// =========================================================================
+//  Phase 2 regression: dtwMissing_banded_mv is now a first-class banded
+//  path (previously fell back to unbanded MV per the TODO on line 324).
+//  Tight band must produce a higher distance than unbanded for a shifted-peak
+//  pattern — proves the band is actually enforced.
+// =========================================================================
+
+TEST_CASE("dtwMissing_banded_mv actually restricts the warping path", "[mv][missing][banded]")
+{
+  std::vector<double> x = {0,0, 0,0, 9,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0};
+  std::vector<double> y = {0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 0,0, 9,0, 0,0};
+
+  const double d_unbanded = dtwc::dtwMissing_L_mv<double>(
+      x.data(), 10, y.data(), 10, 2);
+  const double d_banded1  = dtwc::dtwMissing_banded_mv<double>(
+      x.data(), 10, y.data(), 10, 2, 1);
+
+  INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
+  REQUIRE(d_banded1 > d_unbanded); // band=1 forces extra cost vs free warp.
+}

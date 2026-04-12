@@ -26,6 +26,7 @@
 #pragma once
 
 #include "dtw_options.hpp" // for MetricType
+#include "../missing_utils.hpp" // for is_missing — bitwise NaN, safe under -ffast-math
 
 #include <cmath>     // std::abs
 #include <cstddef>   // size_t
@@ -180,6 +181,73 @@ struct SpanMVWeightedL1Cost {
     T sum = T(0);
     for (std::size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
     return w * sum;
+  }
+};
+
+// ===========================================================================
+// NaN-aware cost functors (ZeroCost missing-data strategy)
+// Pairs where either operand is NaN contribute 0 cost — the warping path can
+// "pass through" missing regions without penalty.
+// ===========================================================================
+
+template <typename T>
+struct SpanNanAwareL1Cost {
+  const T* x;
+  const T* y;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T a = x[row];
+    const T b = y[col];
+    if (is_missing(a) || is_missing(b)) return T(0);
+    return std::abs(a - b);
+  }
+};
+
+template <typename T>
+struct SpanNanAwareSquaredL2Cost {
+  const T* x;
+  const T* y;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T a = x[row];
+    const T b = y[col];
+    if (is_missing(a) || is_missing(b)) return T(0);
+    const T d = a - b;
+    return d * d;
+  }
+};
+
+/// Multivariate NaN-aware L1: skips channels where either operand is NaN.
+template <typename T>
+struct SpanMVNanAwareL1Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    for (std::size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      sum += std::abs(a[d] - b[d]);
+    }
+    return sum;
+  }
+};
+
+template <typename T>
+struct SpanMVNanAwareSquaredL2Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    for (std::size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      const T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return sum;
   }
 };
 
