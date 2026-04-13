@@ -51,7 +51,7 @@ Problem-level SoftDTW dispatch now runs on `dtw_kernel_full<T, SpanL1Cost<T>, So
 
 - **`SoftCell<T>{gamma}`** in [dtwc/core/dtw_kernel.hpp](dtwc/core/dtw_kernel.hpp): log-sum-exp softmin with max-subtract stabilisation. Sentinel-aware — out-of-bounds predecessors (`maxValue`) are excluded from the LSE accumulator, so first-row/column cells where only one predecessor is valid reduce automatically to `predecessor + cost` (hard accumulation), matching the legacy `soft_dtw()` boundary treatment.
 - **Cross-validated** bit-for-bit against `soft_dtw()` on equal-length, different-length, identical, and swap-symmetric inputs across gamma {0.1..10.0}. See [unit_test_soft_dtw.cpp](tests/unit/unit_test_soft_dtw.cpp) `[phase3]` tag. 4 test cases, 14 assertions, all passing within 1e-10 tolerance.
-- `soft_dtw.hpp` retained unchanged as the standalone public API surface (and for `soft_dtw_gradient()`, which still needs its own forward+backward matrices).
+- `soft_dtw.hpp` originally retained unchanged as the standalone public API surface; its forward pass has now also been folded into the unified kernel (see Phase 4 entry below). `soft_dtw_gradient()` stays separate — it needs its own forward+backward matrices for the alignment matrix E.
 
 ### Added (Multivariate AROW — Phase 3 part 4)
 
@@ -73,6 +73,15 @@ All four deferred items from Phase 2 are now implemented:
 | 3.4 | MV AROW first-class path via `SpanMVAROWL1Cost` | _(this)_ |
 
 Kernel family now handles Standard / ADTW / WDTW / DDTW / Soft-DTW / AROW / ZeroCost-missing / Interpolate-missing with one templated core and orthogonal Cost + Cell policies. Adding a new variant = one Cost policy + one Cell policy + one switch arm in `resolve_dtw_fn`.
+
+### Changed (standalone Soft-DTW forward API folded — Phase 4 cleanup)
+
+The standalone [dtwc/soft_dtw.hpp](dtwc/soft_dtw.hpp) `soft_dtw(x, y, gamma)` forward pass now delegates to `core::dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>`. Its hand-rolled DP loop (~45 LOC including first-row/column prologue and interior softmin loop) is removed.
+
+- `softmin_gamma()` helper is retained — still used by `soft_dtw_gradient()`.
+- `soft_dtw_gradient()` is **unchanged** — the Cuturi–Blondel backward pass reads the full forward cost matrix C *and* writes the alignment matrix E, so it keeps its own forward+backward loops. Folding the gradient into the kernel would require emitting C as an out-parameter.
+- **Behaviour**: identical on the existing test suite (`[soft_dtw]` tag — convergence to standard DTW as γ→0, symmetry, monotonicity, 3×3 known example, gradient finite-differences check, 22 test cases / 61 assertions passing).
+- **No API break**: `soft_dtw` and `soft_dtw_gradient` signatures unchanged. Python (`dtwcpp._core.soft_dtw`) and MATLAB (`dtwc_mex`) bindings unaffected.
 
 ### Changed (standalone AROW API folded — Phase 4 cleanup)
 

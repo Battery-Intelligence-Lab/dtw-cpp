@@ -20,12 +20,16 @@
 #include <vector>
 #include <span>
 #include <cmath>
+#include <cstddef>
 #include <limits>
 #include <algorithm>
 #include <cassert>
 #include <stdexcept>
+#include <utility>
 
 #include "core/scratch_matrix.hpp"
+#include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
+#include "core/dtw_cost.hpp"     // SpanL1Cost
 
 namespace dtwc {
 
@@ -59,9 +63,13 @@ T softmin_gamma(T a, T b, T c, T gamma)
 /**
  * @brief Compute Soft-DTW distance between two time series.
  *
- * Uses L1 (absolute difference) as the pointwise cost. Requires a full cost
- * matrix (no rolling-buffer optimisation possible because the gradient backward
- * pass needs the full matrix).
+ * Uses L1 (absolute difference) as the pointwise cost. Delegates to the
+ * unified DTW kernel via `core::SpanL1Cost<T>` + `core::SoftCell<T>{gamma}`.
+ * Out-of-bounds predecessors (`maxValue` sentinel) are excluded from the LSE
+ * inside `SoftCell::combine`, so first-row/column cells reduce automatically
+ * to `predecessor + cost` — matching the hard-accumulation boundary treatment
+ * of the original implementation (cross-validated bit-for-bit in the Phase 3
+ * fold and retained here).
  *
  * @tparam T Floating point type (default: double).
  * @param x First time series.
@@ -77,37 +85,22 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
     throw std::invalid_argument("soft_dtw: gamma must be > 0");
 
   constexpr T maxValue = std::numeric_limits<T>::max();
+  if (x.empty() || y.empty()) return maxValue;
 
-  const auto mx = static_cast<int>(x.size());
-  const auto my = static_cast<int>(y.size());
-
-  if (mx == 0 || my == 0) return maxValue;
-
-  thread_local core::ScratchMatrix<T> C;
-  C.resize(mx, my);
-
-  auto dist = [](T a, T b) -> T { return std::abs(a - b); };
-
-  // Fill cost matrix
-  C(0, 0) = dist(x[0], y[0]);
-
-  // First column: only one predecessor (above)
-  for (int i = 1; i < mx; ++i)
-    C(i, 0) = C(i - 1, 0) + dist(x[i], y[0]);
-
-  // First row: only one predecessor (left)
-  for (int j = 1; j < my; ++j)
-    C(0, j) = C(0, j - 1) + dist(x[0], y[j]);
-
-  // Interior: use softmin instead of hard min
-  for (int j = 1; j < my; ++j) {
-    for (int i = 1; i < mx; ++i) {
-      C(i, j) = dist(x[i], y[j]) +
-                softmin_gamma(C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma);
-    }
+  // Unified kernel precondition: n_short <= n_long. L1 + SoftCell are both
+  // symmetric under (x, y) swap, so orienting here is a no-op on the result.
+  const T* xs = x.data();
+  const T* ys = y.data();
+  std::size_t n_short = x.size();
+  std::size_t n_long  = y.size();
+  if (n_short > n_long) {
+    std::swap(xs, ys);
+    std::swap(n_short, n_long);
   }
 
-  return C(mx - 1, my - 1);
+  core::SpanL1Cost<T> cost{xs, ys};
+  core::SoftCell<T> cell{gamma};
+  return core::dtw_kernel_full<T>(n_short, n_long, cost, cell);
 }
 
 /**
