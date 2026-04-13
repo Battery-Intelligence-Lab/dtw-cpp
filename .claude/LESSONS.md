@@ -9,7 +9,7 @@ Critical knowledge to avoid repeating mistakes.
 - **DTW is NOT a metric.** Violates triangle inequality. MIP gap bounds don't formally apply.
 - **DTW-AROW ≠ zero-cost DTW.** AROW constrains missing values to diagonal alignment.
 - **LB_Keogh valid only for L1 and squared L2.** Not cosine or Huber.
-- **WDTW/ADTW/DDTW/Soft-DTW are separate functions, not metric swaps.** Each modifies the recurrence differently.
+- **WDTW/ADTW/DDTW/Soft-DTW are distinct recurrence/cost policies, not metric swaps.** They share the unified kernel family, but each still changes DTW semantics in a real way.
 
 ## Apple Silicon / macOS (benchmarked 2026-04-12, M2 Max 8P+4E)
 

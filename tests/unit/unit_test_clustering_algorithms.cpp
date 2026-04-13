@@ -229,6 +229,7 @@ TEST_CASE("After assignClusters, each medoid belongs to its own cluster", "[Phas
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
+  prob.fillDistanceMatrix();
   init::random(prob);
   prob.assignClusters();
 

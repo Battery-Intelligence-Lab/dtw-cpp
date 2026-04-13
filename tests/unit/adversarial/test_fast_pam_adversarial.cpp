@@ -292,6 +292,7 @@ TEST_CASE("Adversarial: Better than random medoid selection", "[adversarial][pam
 
     // Create a fresh problem and assign clusters using these medoids
     auto rprob = make_synthetic_problem(series);
+    rprob.fillDistanceMatrix();
     rprob.set_numberOfClusters(k);
     rprob.set_clusters(random_medoids);
     rprob.assignClusters();

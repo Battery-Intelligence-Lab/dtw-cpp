@@ -569,7 +569,14 @@ void Problem::assignClusters()
   };
 
   clusters_ind.resize(data.size()); // Resize before assigning.
-  run(assignClustersTask, data.size());
+
+  // If the full matrix is not materialised yet, distByInd() may lazily compute
+  // symmetric entries on demand. Different points can request the same packed
+  // (i,j)/(j,i) slot concurrently, so the lazy-compute path is not safe to run
+  // in parallel. Once fillDistanceMatrix() has completed, all lookups are
+  // read-only and the parallel path is safe again.
+  const size_t workers = isDistanceMatrixFilled() ? 32u : 1u;
+  run(assignClustersTask, data.size(), workers);
 }
 
 /**
