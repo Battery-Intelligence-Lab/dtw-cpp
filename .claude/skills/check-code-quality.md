@@ -1,5 +1,5 @@
 ---
-description: "Adversarial read-only code-quality audit of the DTWC++ repository. Runs 12 concrete checks across Turner/Iglberger/FFmpeg/Rust-safety/MISRA philosophies and emits a structured PASS/WARN/FAIL report with machine-parseable trailer. Never edits; diagnosis only."
+description: "Adversarial read-only code-quality audit of the DTWC++ repository. Runs 13 concrete checks plus a hardening appendix, handles multi-config builds, and catches docs/code drift and misleading test coverage. Never edits tracked source files; diagnosis only."
 allowed-tools:
   - Read
   - Grep
@@ -15,12 +15,14 @@ This skill does **not** rubber-stamp. If a check is ambiguous, mark it WARN with
 
 ## Input
 
-`$ARGUMENTS` = optional scope. Default: whole repo (`/Users/engs2321/Desktop/git/dtw-cpp`). Accepts a subdirectory (e.g. `dtwc/core`) or comma-separated list.
+`$ARGUMENTS` = optional scope. Default: whole repo. Accepts a subdirectory (e.g. `dtwc/core`) or comma-separated list.
 
 Inside the skill, set:
 ```bash
-REPO=/Users/engs2321/Desktop/git/dtw-cpp
+REPO="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+BUILD_DIR="${BUILD_DIR:-$REPO/build}"
 SCOPE="${ARGUMENTS:-$REPO}"
+SCOPE_GREP="${SCOPE//,/ }"
 # Canonical source directories (repo has NO dtwc/src/ subtree — code lives directly under dtwc/)
 SRC_DIRS="dtwc dtwc/core dtwc/algorithms dtwc/io dtwc/mip dtwc/cuda dtwc/metal dtwc/mpi dtwc/enums dtwc/types"
 HOT_DIRS="dtwc dtwc/core dtwc/algorithms dtwc/cuda dtwc/metal"
@@ -31,13 +33,18 @@ Every `rg` below must be run with `cd "$REPO"` so relative paths resolve. Global
 ## Tool availability check (run first, WARN on missing)
 
 ```bash
-for tool in rg cmake ctest nm awk uv; do
+for tool in git rg cmake ctest awk uv; do
   command -v "$tool" >/dev/null 2>&1 || echo "MISSING_TOOL: $tool"
 done
+NM_TOOL=""
+for tool in nm llvm-nm; do
+  command -v "$tool" >/dev/null 2>&1 && NM_TOOL="$tool" && break
+done
+[ -n "$NM_TOOL" ] || echo "MISSING_TOOL: nm_like"
 # `fd` is optional — all fd lines below have a `find` fallback.
 ```
 
-If `rg` is missing, abort with `FAIL: ripgrep required`. If `cmake`/`ctest`/`nm` missing, downgrade the checks that need them to WARN with reason.
+If `git` or `rg` is missing, abort with `FAIL`. If `cmake`/`ctest`/`nm_like` missing, downgrade the checks that need them to WARN with reason.
 
 ## Philosophical baseline (apply when judging every sub-check)
 
@@ -86,22 +93,41 @@ If `rg` is missing, abort with `FAIL: ripgrep required`. If `cmake`/`ctest`/`nm`
 
 ## Execution contract
 
-1. Run checks A–L in order. Each emits `Status: PASS | WARN | FAIL`, a Findings block, and Remediation.
-2. After check L, emit aggregate `## Verdict` using the worst status seen. Emit a machine-parseable JSON trailer so downstream tools can pipe it.
-3. Do NOT write/edit any file. Benchmarks may be READ; do not run benchmarks that emit artefacts into the repo tree.
+1. Run checks A–M in order. Section N is informational only.
+2. Each verdict-bearing section emits `Status: PASS | WARN | FAIL`, a Findings block, and Remediation.
+3. After check M, emit aggregate `## Verdict` using the worst status seen. Emit a machine-parseable JSON trailer so downstream tools can pipe it.
+4. Do NOT edit tracked source files. Builds/tests may write inside the existing build directory or system temp, but never intentionally write into the tracked source tree.
 
 ---
 
 ## A. Test quality (tautologies, skipped, always-pass)
 
 ```bash
-# Build — do NOT silence errors (adversarial fix: `2>/dev/null` hid "no such target" failures)
-cd "$REPO/build" || { echo "FAIL: build/ not configured"; exit 1; }
-cmake --build . -j 8 2>&1 | tail -20
-ctest -j 4 --output-on-failure 2>&1 | tail -40
-# Record counts:
-PASS_N=$(ctest 2>&1 | grep -oE '[0-9]+ tests? passed' | awk '{print $1}')
-FAIL_N=$(ctest 2>&1 | grep -oE '[0-9]+ tests? failed' | awk '{print $1}')
+# Build/test — do NOT silence errors.
+cd "$REPO" || exit 1
+if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+  echo "WARN: $BUILD_DIR not configured"
+else
+  BUILD_ARGS=()
+  CTEST_ARGS=()
+  if rg -n '^CMAKE_CONFIGURATION_TYPES:STRING=' "$BUILD_DIR/CMakeCache.txt" >/dev/null 2>&1; then
+    BUILD_ARGS+=(--config Release)
+    CTEST_ARGS+=(-C Release)
+  fi
+
+  cmake --build "$BUILD_DIR" "${BUILD_ARGS[@]}" -j 8 2>&1 | tail -40
+
+  CTEST_OUTPUT="$(ctest --test-dir "$BUILD_DIR" "${CTEST_ARGS[@]}" -j 4 --output-on-failure 2>&1)"
+  printf '%s\n' "$CTEST_OUTPUT" | tail -80
+
+  FAILED_TESTS="$(printf '%s\n' "$CTEST_OUTPUT" \
+    | awk '/The following tests FAILED:/{flag=1; next} /^Errors while running CTest/{flag=0} flag && $2=="-" {print $3}')"
+
+  for t in $FAILED_TESTS; do
+    echo "=== SERIAL_RERUN: $t ==="
+    ctest --test-dir "$BUILD_DIR" "${CTEST_ARGS[@]}" --output-on-failure -R "^${t}$" 2>&1 | tail -60
+  done
+fi
 ```
 
 Tautology / skip scans (ripgrep's default regex engine does NOT support backreferences — use `--pcre2`):
@@ -125,7 +151,8 @@ rg -n --type py 'assert\s+True\b|pytest\.skip(?!IfInstalled)' tests/ python/
 Status rules:
 - any `REQUIRE(x == x)` / `ASSERT_EQ(x,x)` → **FAIL**
 - `REQUIRE(true)` or `assert True` without a justifying `// WHY:` comment on the previous or same line → **FAIL**
-- ctest reports any failing test → **FAIL**
+- a failed/crashed test that also fails on serial rerun → **FAIL**
+- a test that fails only under parallel ctest and passes on serial rerun → **WARN** (flake / shared-state issue)
 - skipped tests with no justification string in the skip call → **WARN**
 - tests tagged `[.]` (hidden from default run) → **WARN**
 
@@ -135,24 +162,36 @@ Use a symbol index from the compiled library — far more reliable than string-g
 
 ```bash
 cd "$REPO"
-# Public symbols from the compiled static lib (non-local text/data)
-if [ -f build/bin/libdtwc++.a ]; then
-  nm --defined-only -g build/bin/libdtwc++.a 2>/dev/null \
+# Public symbols from the compiled library (non-local text/data)
+LIB_PATH=""
+for candidate in \
+  "$BUILD_DIR/bin/libdtwc++.a" \
+  "$BUILD_DIR/bin/Release/dtwc++.lib" \
+  "$BUILD_DIR/bin/Debug/dtwc++.lib" \
+  "$BUILD_DIR/bin/dtwc++.lib"; do
+  [ -f "$candidate" ] && LIB_PATH="$candidate" && break
+done
+
+NM_TOOL=""
+for tool in nm llvm-nm; do
+  command -v "$tool" >/dev/null 2>&1 && NM_TOOL="$tool" && break
+done
+
+if [ -n "$LIB_PATH" ] && [ -n "$NM_TOOL" ]; then
+  PUBLIC_SYMS="$("$NM_TOOL" --defined-only -g "$LIB_PATH" 2>/dev/null \
     | awk '$2 ~ /[TWDR]/ {print $3}' \
     | c++filt \
     | grep -E '^dtwc::' \
-    | sort -u > /tmp/ccq_symbols.txt
+    | sort -u)"
+  TEST_SYMS="$(rg -o --no-filename --type cpp '\bdtwc::\w+(::\w+)*\b' tests/ 2>/dev/null | sort -u)"
+  UNCOVERED="$(comm -23 <(printf '%s\n' "$PUBLIC_SYMS") <(printf '%s\n' "$TEST_SYMS"))"
+  PUB_N="$(printf '%s\n' "$PUBLIC_SYMS" | sed '/^$/d' | wc -l | awk '{print $1}')"
+  UNC_N="$(printf '%s\n' "$UNCOVERED" | sed '/^$/d' | wc -l | awk '{print $1}')"
+  printf 'public_symbols=%s uncovered=%s\n' "$PUB_N" "$UNC_N"
+  printf '%s\n' "$UNCOVERED" | head -30
 else
-  echo "WARN: libdtwc++.a not built — coverage check degraded."
-  > /tmp/ccq_symbols.txt
+  echo "WARN: compiled library or nm-like tool missing — coverage check degraded."
 fi
-
-# Symbols actually referenced by tests: grep test cpp files for mentions
-rg -o --no-filename --type cpp '\bdtwc::\w+(::\w+)*\b' tests/ 2>/dev/null \
-  | sort -u > /tmp/ccq_tested.txt
-
-# Public symbols never mentioned in tests/
-comm -23 /tmp/ccq_symbols.txt /tmp/ccq_tested.txt | head -30
 ```
 
 Status rules:
@@ -349,8 +388,8 @@ rg -n 'gethostname|hostname\s*\(|HOST_NAME_MAX|uname.*nodename|socket\.gethostna
 
 # L3) Tests must not write CSVs into repo root or repo-level `results/`
 rg -n --type cpp '("|\b)\.\.?/[^"]*\.csv|"[A-Za-z0-9_]+\.csv"' tests/
-ls "$REPO"/*.csv 2>/dev/null
-ls "$REPO"/results/*.csv 2>/dev/null
+find "$REPO" -maxdepth 1 -type f -name '*.csv' 2>/dev/null
+find "$REPO/results" -maxdepth 1 -type f -name '*.csv' 2>/dev/null
 # Must also be covered by .gitignore
 rg -n 'results/|\*\.csv' .gitignore 2>/dev/null
 
@@ -379,7 +418,33 @@ Status rules (each is an independent hard gate):
 - L6 naked `new`/`delete` in `$SRC_DIRS` → **FAIL**
 - L7 public-API change without Unreleased entry (cross-check against `git diff HEAD~10 CHANGELOG.md`) → **WARN**
 
-## M. Senior-eng hardening (informational, one-pass)
+## M. Truthfulness / drift
+
+```bash
+cd "$REPO"
+# Internal architecture docs vs shipped implementation
+rg -n 'Separate functions per variant|std::function dispatch in Problem|Soft-DTW is a separate algorithm|WDTW/ADTW need recurrence changes' .claude/design.md
+rg -n 'dtw_kernel_|resolve_dtw_fn|AROWCell|SoftCell' \
+  dtwc/core/dtw_kernel.hpp dtwc/core/dtw_dispatch.cpp .claude/summaries/handoff-2026-04-13-phase4-wheel-fix.md
+
+# User-facing docs vs implementation
+rg -n 'CLI flags take precedence|command-line flags take precedence' \
+  docs/content/getting-started/configuration.md docs/content/getting-started/cli.md
+rg -n 'TODO: This always overrides CLI values if the YAML key exists' dtwc/dtwc_cl.cpp
+
+# Test / algorithm naming drift
+rg -n 'fast_pam' tests/unit/adversarial/test_fast_pam_adversarial.cpp tests/unit/algorithms/unit_test_fast_pam.cpp
+rg -n 'Method::Kmedoids|cluster_by_kMedoidsLloyd' \
+  tests/unit/adversarial/test_fast_pam_adversarial.cpp tests/unit/algorithms/unit_test_fast_pam.cpp
+```
+
+Status rules:
+- user-facing docs claim behaviour that the code explicitly contradicts → **FAIL**
+- a test file/title claims algorithm X but drives algorithm Y, creating false coverage confidence → **FAIL**
+- stale internal design docs contradict shipped architecture → **WARN**
+- else → **PASS**
+
+## N. Senior-eng hardening (informational, one-pass)
 
 Report status, don't block PASS/FAIL on these unless dire:
 
@@ -392,7 +457,10 @@ rg -n 'Werror|WARNINGS_AS_ERRORS' cmake/ CMakeLists.txt | head
 # CI matrix
 find .github/workflows -name '*.yml' -o -name '*.yaml' 2>/dev/null | head
 # compile_commands freshness (required for clang-tidy / IDE)
-test -f build/compile_commands.json && stat -f "%Sm %N" build/compile_commands.json 2>/dev/null
+if [ -f "$BUILD_DIR/compile_commands.json" ]; then
+  stat -c "%y %n" "$BUILD_DIR/compile_commands.json" 2>/dev/null \
+    || stat -f "%Sm %N" "$BUILD_DIR/compile_commands.json" 2>/dev/null
+fi
 # clang-tidy config
 test -f .clang-tidy && head -3 .clang-tidy
 # Reproducible build flags
@@ -408,7 +476,7 @@ Report each as present/absent. No PASS/FAIL — surface as `Info:` bullets so th
 ```
 # Code Quality Audit — DTWC++ <ISO-date>
 Scope: <path or "whole repo">
-Tool availability: rg=OK cmake=OK ctest=OK nm=OK uv=OK fd=MISSING
+Tool availability: git=OK rg=OK cmake=OK ctest=OK nm_like=OK uv=OK fd=MISSING
 
 ## A. Test quality
 Status: PASS|WARN|FAIL
@@ -423,7 +491,10 @@ Remediation:
 ## L. Project-specific invariants
 ...
 
-## M. Hardening (info only)
+## M. Truthfulness / drift
+...
+
+## N. Hardening (info only)
 - sanitizers: present|absent
 - -Werror: present|absent
 - CI matrix: <count> workflows
@@ -441,14 +512,15 @@ Summary: <3 sentences, blunt>
   "sections": {
     "A": "PASS", "B": "WARN", "C": "FAIL", "D": "PASS",
     "E": "PASS", "F": "WARN", "G": "PASS", "H": "PASS",
-    "I": "PASS", "J": "WARN", "K": "FAIL", "L": "PASS"
+    "I": "PASS", "J": "WARN", "K": "FAIL", "L": "PASS",
+    "M": "FAIL"
   },
-  "tool_availability": {"rg": true, "cmake": true, "fd": false}
+  "tool_availability": {"git": true, "rg": true, "cmake": true, "ctest": true, "nm_like": true, "fd": false}
 }
 ```
 ```
 
-Aggregation rule: any FAIL in A–L → FAIL; else any WARN → WARN; else PASS. Section M is informational and does NOT feed the verdict.
+Aggregation rule: any FAIL in A–M → FAIL; else any WARN → WARN; else PASS. Section N is informational and does NOT feed the verdict.
 
 No emojis. No congratulatory filler. If verdict is PASS, the summary names the single weakest area. If FAIL, the summary lists the top 3 blockers in priority order.
 
@@ -456,6 +528,6 @@ No emojis. No congratulatory filler. If verdict is PASS, the summary names the s
 
 - Each finding gets ≤2 remediation bullets. No prescriptions longer than that.
 - Do not read files outside the declared scope unless a cross-reference demands it (e.g. CITATIONS.md referenced from a hot-path header).
-- Do not run any command that writes to disk (no `cmake --install`, no test output redirected into the repo tree, no formatter run).
+- Do not edit tracked files. Build/test output under `$BUILD_DIR` or system temp is acceptable; do not intentionally write under the tracked source tree.
 - If a check cannot be run (tool missing, build/ not primed), emit `Status: WARN — could not evaluate: <reason>` rather than silently skipping or guessing.
 - If a grep returns zero hits because its paths are wrong, that is a **skill bug**, not a clean result — cross-check against `find $SCOPE -type d` when a check claims PASS with zero output.

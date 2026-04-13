@@ -89,6 +89,11 @@ Critical knowledge to avoid repeating mistakes.
 - **Silent-dispatch bugs hide in asymmetries.** `Problem::dtw_function_f32()` was hardwired to Standard DTW regardless of `variant_params.variant` / `missing_strategy` — nobody noticed because every existing test exercised only the f64 path. Found when unifying dispatch via a templated resolver. **Pattern: dual-type APIs (f32/f64) need parity tests, not just one-side tests.** Same failure mode showed up twice in this codebase (also `dtw_runtime()` silently ignoring variant pre-Phase 1).
 - **Cell/Cost policy contracts are forward-extensible.** Adding `seed(cost, i, j)` to the Cell policy to support AROW's `C(0,0) = 0 on NaN` semantics did NOT require touching existing cells — `StandardCell::seed` defaulted to `return cost`, which is identical to the pre-refactor `col[0] = cost(0, 0)` assignment. Pattern: new contract methods with sensible defaults are additive, not breaking.
 
+## Audit / Testing
+
+- **Always rerun ctest failures serially after the first parallel pass.** A clean handoff on another platform is not evidence of a green local tree. On Windows Release (2026-04-13), `ctest -j 4 -C Release` failed with `0xc0000409`; serial rerun showed `test_fast_pam_adversarial` was a deterministic crash while `unit_test_clustering_algorithms` was a parallel-only failure mode. Audit skills must distinguish "real blocker" from "flake".
+- **A test name must match the algorithm path it actually exercises.** `tests/unit/adversarial/test_fast_pam_adversarial.cpp` sounds like FastPAM coverage, but its helper sets `prob.method = Method::Kmedoids` and calls the legacy Lloyd path. That creates false confidence. For algorithm migrations, mislabeled tests are worse than missing tests because they silently certify the wrong implementation.
+
 ## Research Process
 
 - **Always verify citations.** Author names, venues, volume numbers can be hallucinated.
