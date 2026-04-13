@@ -43,7 +43,7 @@ The `Problem`-level AROW missing-data path now runs on `dtw_kernel_banded` with 
 - **Cell contract extended with `seed(cost, i, j)`**: seed value at DP cell (0,0). Default (`StandardCell`/`ADTWCell`) returns `cost` unchanged. `AROWCell` returns 0 when cost is NaN, preventing NaN propagation through the DP when both (0,0) operands are missing.
 - **Cross-validated** bit-for-bit against the legacy `dtwAROW_banded` on {no-NaN, interior-NaN, leading-NaN, trailing-NaN, all-NaN} × bands {1,2,3,4}. See [unit_test_arow_dtw.cpp](tests/unit/unit_test_arow_dtw.cpp) `[phase3]` tag.
 - **Perf**: `BM_dtwBanded/1000/50` 146 μs → 145 μs (−0.7%); `seed()` method is inlined to a direct assignment for non-AROW cells — zero overhead on Standard/ADTW/WDTW/DDTW hot paths.
-- `warping_missing_arow.hpp` is retained unchanged as the standalone public API surface; the Problem-level dispatch no longer depends on it.
+- `warping_missing_arow.hpp` was retained unchanged as the standalone public API surface; it has now been folded into the unified kernel (see Phase 4 entry below).
 
 ### Changed (Soft-DTW via unified kernel — Phase 3 part 3)
 
@@ -73,6 +73,15 @@ All four deferred items from Phase 2 are now implemented:
 | 3.4 | MV AROW first-class path via `SpanMVAROWL1Cost` | _(this)_ |
 
 Kernel family now handles Standard / ADTW / WDTW / DDTW / Soft-DTW / AROW / ZeroCost-missing / Interpolate-missing with one templated core and orthogonal Cost + Cell policies. Adding a new variant = one Cost policy + one Cell policy + one switch arm in `resolve_dtw_fn`.
+
+### Changed (standalone AROW API folded — Phase 4 cleanup)
+
+The standalone [dtwc/warping_missing_arow.hpp](dtwc/warping_missing_arow.hpp) public API (`dtwAROW`, `dtwAROW_L`, `dtwAROW_banded`) now delegates to the unified DTW kernel. The hand-rolled `detail::dtwAROW_*_impl` helpers (full / linear / banded × span / pointer overloads, ~260 LOC) are removed — each wrapper builds a `SpanAROW{L1,SquaredL2}Cost` functor and calls `core::dtw_kernel_{full,linear,banded}<T, Cost, AROWCell>`.
+
+- **Behaviour**: identical within the test suite (AROW tests, adversarial tests, MV tests, Problem-level AROW tests — 70/70 ctest passing). The legacy banded impl used a simpler `std::ceil/std::floor` band-bounds calculation and the unified kernel uses the `round-100` variant from [dtw_kernel.hpp:157-163](dtwc/core/dtw_kernel.hpp#L157-L163); the legacy's own comment (now removed) called out that the difference is harmless because out-of-band cells are sentinel-valued and never selected.
+- **No API break**: all span / vector / pointer+size overloads retained with identical signatures.
+- **No perf regression**: `dtw_kernel_banded` is the same kernel already exercised on the Problem-level AROW hot path via `resolve_dtw_fn` — the standalone wrapper now joins it. `BM_dtwBanded/1000/50` unchanged (145 μs).
+- Wrapper header shrinks from 459 LOC to 214 LOC.
 
 ### Added (GPU parity + configuration)
 
