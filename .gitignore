@@ -60,9 +60,9 @@ uv.lock
 
 # Claude Code worktrees and session artifacts (not for version control)
 .claude/worktrees/
-.claude/reports/
-.claude/summaries/
-.claude/superpowers/
+# .claude/reports/
+# .claude/summaries/
+# .claude/superpowers/
 
 # Virtual environments
 .venv*/
