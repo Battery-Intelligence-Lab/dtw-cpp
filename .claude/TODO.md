@@ -42,7 +42,6 @@
 
 ## Deferred (explicit non-goals for now)
 
-- [ ] **Fold standalone `dtwAROW_banded` + `soft_dtw()` APIs** into unified kernel. ~300 LOC removal, zero correctness/perf benefit — `Problem`-level dispatch already uses the unified kernel. Gradient path for Soft-DTW would stay separate (has its own forward/backward matrix ownership).
 - [ ] DDTW kernel fusion — derivative on-the-fly in DTW recurrence
 - [ ] Stale cache detection — hash input filenames + sizes in mmap header
 - [ ] nanoarrow C Data Interface — eliminate Arrow C++ dependency entirely
@@ -54,6 +53,7 @@
 
 ## Completed (reverse-chron, one line each)
 
+- **2026-04-13** — **Phase 4 (standalone API fold)**: `warping_missing_arow.hpp` (dtwAROW / dtwAROW_L / dtwAROW_banded) and `soft_dtw.hpp` forward pass now delegate to `core::dtw_kernel_{full,linear,banded}`. ~305 LOC net removed. `soft_dtw_gradient()` stays separate (Cuturi–Blondel backward pass owns its forward matrix).
 - **2026-04-13** — Audit hardening: `DTWC_REPRODUCIBLE_BUILD` option (`-ffile-prefix-map`), AROW `std::isnan` cleanup, `Problem::{write,read}DistanceMatrix` roundtrip test, mmap `c_str()` lint fix.
 - **2026-04-13** — Audit follow-ups: MIP Benders test coverage (`[mip][highs][benders]`), `LoadOptions` struct for `load_folder`/`load_batch_file`, `.clang-tidy` config with `dtwc/` + `tests/` header filter.
 - **2026-04-13** — **Phase 3 (kernel unification)**: templated `resolve_dtw_fn<T>` replaces 130-line switch; AROW / Soft-DTW folded into unified kernel via `AROWCell` + `SoftCell`; MV AROW first-class via per-channel-skip cost. Shipped with f32 dispatch bug fix (`dtw_function_f32()` was hardwired to Standard DTW).
