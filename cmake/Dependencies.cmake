@@ -131,6 +131,102 @@ function(dtwc_setup_dependencies)
       DOWNLOAD_ONLY YES
     )
     if(llfio_ADDED)
+      # ---------------------------------------------------------------------
+      # quickcpplib ninja-propagation patch
+      #
+      # llfio's `find_quickcpplib_library()` (in QuickCppLibUtils.cmake) calls
+      # `download_build_install()`, which runs
+      #     execute_process(COMMAND "${CMAKE_COMMAND}" .)
+      # with no `-G` and no `-DCMAKE_MAKE_PROGRAM`. The grandchild CMake then
+      # re-detects a generator from scratch. In sandboxed wheel builds
+      # (scikit-build-core's `pip-build-env`, cibuildwheel) the ninja binary
+      # lives under an ephemeral path (e.g. `/.../uv/builds-v0/.tmpXXX/bin/`)
+      # that isn't on the default PATH and — worse — gets rewritten on every
+      # reinstall, making any cached `CMakeCache.txt` in the sub-build point
+      # at a dead path. `-DCMAKE_MAKE_PROGRAM` on the sub-CMake command line
+      # is the only thing that reliably overrides that stale cache.
+      #
+      # Fix: pre-clone quickcpplib into the location llfio's bootstrap uses
+      # (`${CMAKE_BINARY_DIR}/quickcpplib/repo`) and patch
+      # `download_build_install()` to forward `-G` and `-DCMAKE_MAKE_PROGRAM`.
+      # llfio's bootstrap will then see the pre-existing repo and skip its
+      # own git clone, and subsequently `include(QuickCppLibUtils)` picks up
+      # the patched version.
+      # ---------------------------------------------------------------------
+      set(_dtwc_qcl_root "${CMAKE_BINARY_DIR}/quickcpplib")
+      set(_dtwc_qcl_repo "${_dtwc_qcl_root}/repo")
+      if(NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
+        find_package(Git REQUIRED)
+        file(MAKE_DIRECTORY "${_dtwc_qcl_root}")
+        message(STATUS "Pre-cloning quickcpplib into ${_dtwc_qcl_repo} ...")
+        execute_process(
+          COMMAND "${GIT_EXECUTABLE}" clone
+            --recurse-submodules --depth 1 --jobs 8 --shallow-submodules
+            "https://github.com/ned14/quickcpplib.git" repo
+          WORKING_DIRECTORY "${_dtwc_qcl_root}"
+          RESULT_VARIABLE _dtwc_clone_rc
+        )
+        if(NOT _dtwc_clone_rc EQUAL 0
+            OR NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
+          message(FATAL_ERROR
+            "Failed to pre-clone quickcpplib (rc=${_dtwc_clone_rc}). "
+            "If your build environment is offline, clone manually: "
+            "git clone --recursive https://github.com/ned14/quickcpplib.git "
+            "${_dtwc_qcl_repo}")
+        endif()
+      endif()
+
+      # Two patches — each checks its own pattern is still present so we can
+      # recover from partially-patched state without touching an
+      # already-modified line twice.
+      #
+      #   A) `download_build_install()` spawns a CHILD CMake with `cmake .`
+      #      (no -G, no -DCMAKE_MAKE_PROGRAM).
+      #   B) `find_quickcpplib_library()` builds a `cmakeargs` string that
+      #      template-substitutes into ExternalProject_Add's CMAKE_ARGS,
+      #      driving the GRANDCHILD CMake that configures outcome/etc.
+      #      Upstream includes -G here but not -DCMAKE_MAKE_PROGRAM.
+      set(_dtwc_qcl_utils "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
+      file(READ "${_dtwc_qcl_utils}" _dtwc_qcl_orig)
+      set(_dtwc_qcl_current "${_dtwc_qcl_orig}")
+
+      set(_dtwc_qcl_from_A "COMMAND \"\${CMAKE_COMMAND}\" .\n    WORKING_DIRECTORY \"\${DBI_DESTINATION}\"")
+      set(_dtwc_qcl_to_A   "# DTWC_NINJA_PROPAGATION_PATCH (child)\n    COMMAND \"\${CMAKE_COMMAND}\" . -G \"\${CMAKE_GENERATOR}\" \"-DCMAKE_MAKE_PROGRAM=\${CMAKE_MAKE_PROGRAM}\"\n    WORKING_DIRECTORY \"\${DBI_DESTINATION}\"")
+      if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .child.")
+        string(REPLACE "${_dtwc_qcl_from_A}" "${_dtwc_qcl_to_A}"
+          _dtwc_qcl_current "${_dtwc_qcl_current}")
+      endif()
+
+      set(_dtwc_qcl_from_B "set(cmakeargs \"-DCMAKE_BUILD_TYPE=\${config} -G \\\"\${CMAKE_GENERATOR}\\\" -DBUILD_TESTING=OFF \\\"-DQUICKCPPLIB_ROOT_BINARY_DIR=\${QUICKCPPLIB_ROOT_BINARY_DIR}\\\"\")")
+      set(_dtwc_qcl_to_B   "# DTWC_NINJA_PROPAGATION_PATCH (grandchild)\n        set(cmakeargs \"-DCMAKE_BUILD_TYPE=\${config} -G \\\"\${CMAKE_GENERATOR}\\\" -DBUILD_TESTING=OFF \\\"-DQUICKCPPLIB_ROOT_BINARY_DIR=\${QUICKCPPLIB_ROOT_BINARY_DIR}\\\" \\\"-DCMAKE_MAKE_PROGRAM=\${CMAKE_MAKE_PROGRAM}\\\"\")")
+      if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .grandchild.")
+        string(REPLACE "${_dtwc_qcl_from_B}" "${_dtwc_qcl_to_B}"
+          _dtwc_qcl_current "${_dtwc_qcl_current}")
+      endif()
+
+      if(NOT _dtwc_qcl_current STREQUAL _dtwc_qcl_orig)
+        file(WRITE "${_dtwc_qcl_utils}" "${_dtwc_qcl_current}")
+        message(STATUS "Patched QuickCppLibUtils.cmake "
+          "(forward -G + -DCMAKE_MAKE_PROGRAM to child + grandchild CMake)")
+      elseif(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH")
+        message(WARNING
+          "Could not apply QuickCppLibUtils ninja-propagation patches — the "
+          "upstream pattern may have changed. Python wheel builds in "
+          "sandboxed environments may fail at llfio configure. File: "
+          "${_dtwc_qcl_utils}")
+      endif()
+      unset(_dtwc_qcl_orig)
+      unset(_dtwc_qcl_current)
+      unset(_dtwc_qcl_from_A)
+      unset(_dtwc_qcl_to_A)
+      unset(_dtwc_qcl_from_B)
+      unset(_dtwc_qcl_to_B)
+      unset(_dtwc_qcl_root)
+      unset(_dtwc_qcl_repo)
+      unset(_dtwc_qcl_utils)
+      unset(_dtwc_qcl_contents)
+      unset(_dtwc_qcl_patched)
+
       add_subdirectory(${llfio_SOURCE_DIR} ${llfio_BINARY_DIR} EXCLUDE_FROM_ALL)
     endif()
   endif()

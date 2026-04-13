@@ -74,6 +74,21 @@ All four deferred items from Phase 2 are now implemented:
 
 Kernel family now handles Standard / ADTW / WDTW / DDTW / Soft-DTW / AROW / ZeroCost-missing / Interpolate-missing with one templated core and orthogonal Cost + Cell policies. Adding a new variant = one Cost policy + one Cell policy + one switch arm in `resolve_dtw_fn`.
 
+### Fixed (Python wheel build — llfio + quickcpplib ninja propagation)
+
+`uv pip install -e .` / `pip install .` / any scikit-build-core-driven wheel build previously failed at llfio's nested `download_build_install()` configure step with `no such file or directory '.../ninja' --version`. Root cause: quickcpplib's `QuickCppLibUtils.cmake` spawns nested CMake processes at two levels without forwarding the build tool:
+
+1. **Child** (line 261 — `download_build_install`): `execute_process(COMMAND "${CMAKE_COMMAND}" .)` — no `-G`, no `-DCMAKE_MAKE_PROGRAM`.
+2. **Grandchild** (line 344 — `find_quickcpplib_library` builds a `cmakeargs` string template-substituted into an `ExternalProject_Add`): includes `-G` but not `-DCMAKE_MAKE_PROGRAM`.
+
+In sandboxed wheel builds (scikit-build-core's `pip-build-env`, cibuildwheel) ninja lives at an ephemeral path like `/.../uv/builds-v0/.tmpXXX/bin/ninja` which is rewritten per reinstall — any cached `CMakeCache.txt` in the sub-build points at a dead path, and PATH-forwarding alone is insufficient because the child's generator autodetect runs once and freezes the stale path into its own cache. Only `-DCMAKE_MAKE_PROGRAM` passed on the command line reliably overrides the stale cache.
+
+- **Fix in [cmake/Dependencies.cmake](cmake/Dependencies.cmake)**: pre-clone `quickcpplib` into the location llfio's bootstrap expects (`${CMAKE_BINARY_DIR}/quickcpplib/repo`) and apply two idempotent text patches to `QuickCppLibUtils.cmake` — one at the child-spawn site (adds `-G` + `-DCMAKE_MAKE_PROGRAM`), one at the grandchild `cmakeargs` assembly (appends `-DCMAKE_MAKE_PROGRAM`). Sentinel comments (`DTWC_NINJA_PROPAGATION_PATCH (child)` / `(grandchild)`) detect already-patched state per-patch so partially patched files self-heal. llfio's own bootstrap then finds the pre-existing repo and skips its own `git clone`, picking up our patched version via `include(QuickCppLibUtils)`.
+- **No upstream dependency** — no `brew install ninja` workaround, no fork of llfio/quickcpplib. Upstream may eventually fix this (an issue is warranted); the patch self-retires once the sentinel pattern stops matching unpatched upstream.
+- **No behavioural change for dev builds** where ninja is already on PATH and build dirs are fresh — the patch still applies but the added `-D` args match the autodetected value.
+- **Verified** end-to-end: `env -i PATH=/minimal/path uv pip install --reinstall --no-cache -e .` completes on macOS arm64 in ~90s with no system ninja.
+- Unblocks `tests/integration/test_cross_language.py` (C++ ≡ Python ≡ MATLAB numerical parity).
+
 ### Changed (standalone Soft-DTW forward API folded — Phase 4 cleanup)
 
 The standalone [dtwc/soft_dtw.hpp](dtwc/soft_dtw.hpp) `soft_dtw(x, y, gamma)` forward pass now delegates to `core::dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>`. Its hand-rolled DP loop (~45 LOC including first-row/column prologue and interior softmin loop) is removed.

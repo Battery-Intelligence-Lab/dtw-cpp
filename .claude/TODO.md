@@ -49,10 +49,15 @@
 
 ## Blocked
 
-- [ ] **Python wheel cross-language parity test** (`tests/integration/test_cross_language.py`). `uv pip install -e .` fails at llfio's quickcpplib sub-CMake configure: `no such file or directory '.../ninja'`. Root cause: quickcpplib spawns a sub-CMake that does not inherit scikit-build-core's ninja-path injection; passing `CMAKE_MAKE_PROGRAM` via `[tool.scikit-build.cmake.define]` propagates to the top-level but not the sub-build. Workarounds: (a) `brew install ninja` system-wide before `uv pip install -e .` — simplest local fix, doesn't help CI; (b) make llfio truly optional via `DTWC_ENABLE_MMAP` and guard `MmapDistanceMatrix` behind `#ifdef DTWC_HAS_MMAP` — non-trivial, touches `Problem::distMat` `std::variant` + `visit_distmat` + CUDA/Metal backends; (c) file upstream issue against quickcpplib (`QuickCppLibUtils.cmake:79`) for `CMAKE_MAKE_PROGRAM` propagation.
+_None currently._
+
+## Needs a PR / upstream nudge (nice to have)
+
+- [ ] File upstream issue against [quickcpplib](https://github.com/ned14/quickcpplib) for the `QuickCppLibUtils.cmake:download_build_install` + `find_quickcpplib_library:cmakeargs` lack of `-DCMAKE_MAKE_PROGRAM` forwarding. We carry a local patch (see `cmake/Dependencies.cmake`); once upstream fixes it, our sentinel-guarded patch self-retires.
 
 ## Completed (reverse-chron, one line each)
 
+- **2026-04-13** — **Python wheel build unblocked**: patched `QuickCppLibUtils.cmake` via pre-clone in `cmake/Dependencies.cmake` to forward `-G` + `-DCMAKE_MAKE_PROGRAM` at both the child and grandchild CMake spawn sites. Verified end-to-end: `env -i PATH=/minimal uv pip install --reinstall --no-cache -e .` succeeds on macOS arm64 with no system ninja.
 - **2026-04-13** — **Phase 4 (standalone API fold)**: `warping_missing_arow.hpp` (dtwAROW / dtwAROW_L / dtwAROW_banded) and `soft_dtw.hpp` forward pass now delegate to `core::dtw_kernel_{full,linear,banded}`. ~305 LOC net removed. `soft_dtw_gradient()` stays separate (Cuturi–Blondel backward pass owns its forward matrix).
 - **2026-04-13** — Audit hardening: `DTWC_REPRODUCIBLE_BUILD` option (`-ffile-prefix-map`), AROW `std::isnan` cleanup, `Problem::{write,read}DistanceMatrix` roundtrip test, mmap `c_str()` lint fix.
 - **2026-04-13** — Audit follow-ups: MIP Benders test coverage (`[mip][highs][benders]`), `LoadOptions` struct for `load_folder`/`load_batch_file`, `.clang-tidy` config with `dtwc/` + `tests/` header filter.
