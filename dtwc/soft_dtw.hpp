@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file soft_dtw.hpp
  * @brief Soft-DTW: a differentiable variant of Dynamic Time Warping.
  *
@@ -16,6 +16,8 @@
  */
 
 #pragma once
+
+#include "settings.hpp"
 
 #include <vector>
 #include <span>
@@ -67,18 +69,18 @@ T softmin_gamma(T a, T b, T c, T gamma)
  * unified DTW kernel via `core::SpanL1Cost<T>` + `core::SoftCell<T>{gamma}`.
  * Out-of-bounds predecessors (`maxValue` sentinel) are excluded from the LSE
  * inside `SoftCell::combine`, so first-row/column cells reduce automatically
- * to `predecessor + cost` — matching the hard-accumulation boundary treatment
+ * to `predecessor + cost` â€” matching the hard-accumulation boundary treatment
  * of the original implementation (cross-validated bit-for-bit in the Phase 3
  * fold and retained here).
  *
- * @tparam T Floating point type (default: double).
+ * @tparam T Floating point type (default: `settings::default_data_t`, currently `float`).
  * @param x First time series.
  * @param y Second time series.
  * @param gamma Smoothing parameter (must be > 0). As gamma -> 0, result
  *              converges to standard DTW distance.
  * @return The Soft-DTW distance.
  */
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
   if (gamma <= T(0))
@@ -114,13 +116,13 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
  *   For each (i,j), E(i,j) accumulates contributions from cells (i',j') where
  *   (i,j) is a predecessor, weighted by the softmin Jacobian.
  *
- * @tparam T Floating point type (default: double).
+ * @tparam T Floating point type (default: `settings::default_data_t`, currently `float`).
  * @param x First time series (gradient is w.r.t. this).
  * @param y Second time series.
  * @param gamma Smoothing parameter (must be > 0).
  * @return Gradient vector of size x.size().
  */
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
   if (gamma <= T(0))
@@ -232,16 +234,17 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
 }
 
 // Vector convenience overloads (vector -> span implicit conversion is non-deduced).
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
 {
   return soft_dtw<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
 }
 
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(const std::vector<T> &x, const std::vector<T> &y, T gamma = T(1))
 {
   return soft_dtw_gradient<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
 }
 
 } // namespace dtwc
+

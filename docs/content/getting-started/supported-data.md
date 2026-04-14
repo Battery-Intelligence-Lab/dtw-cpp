@@ -6,7 +6,12 @@ weight: 3
 
 # Supported data formats
 
-DTW-C++ supports importing data from a limited range of data structures at present. We assume that every time series is one-dimensional. There is no-support at the moment for multidimensional input data. Input data can either be read in from multiple files (one per time series), or from a single file, where each time series is a separate row.
+DTW-C++ supports importing data from several data structures. The core
+`Data`/`Problem` APIs support both univariate and multivariate series, but the
+row-oriented file examples on this page are still mostly univariate. Input data
+can either be read from multiple files (one per series), or from a single
+file, where each time series is represented row-wise or through one of the
+columnar formats below.
 
 ## Reading data from disk
 

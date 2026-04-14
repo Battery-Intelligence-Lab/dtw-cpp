@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file warping_missing.hpp
- * @brief DTW with missing data (ZeroCost strategy) — thin wrappers over the
+ * @brief DTW with missing data (ZeroCost strategy) â€” thin wrappers over the
  *        unified core::dtw_kernel_*.
  *
  * @details Missing values (NaN) contribute 0 cost so the warping path can pass
@@ -94,7 +94,7 @@ struct MissingMVSquaredL2Dist {
 } // namespace detail
 
 // =========================================================================
-//  Scalar missing-data DTW (ZeroCost) — pointer + length entry points
+//  Scalar missing-data DTW (ZeroCost) â€” pointer + length entry points
 // =========================================================================
 
 template <typename data_t>
@@ -148,7 +148,7 @@ data_t dtwMissing(const data_t* x, size_t nx, const data_t* y, size_t ny,
       core::StandardCell{});
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwMissing_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                          int band = settings::DEFAULT_BAND,
                          data_t early_abandon = -1,
@@ -196,7 +196,7 @@ data_t dtwMissing(std::span<const data_t> x, std::span<const data_t> y,
   return dtwMissing<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwMissing_banded(std::span<const data_t> x, std::span<const data_t> y,
                          int band = settings::DEFAULT_BAND,
                          data_t early_abandon = -1,
@@ -226,7 +226,7 @@ data_t dtwMissing(const std::vector<data_t>& x, const std::vector<data_t>& y,
   return dtwMissing<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwMissing_banded(const std::vector<data_t>& x, const std::vector<data_t>& y,
                          int band = settings::DEFAULT_BAND,
                          data_t early_abandon = -1,
@@ -240,7 +240,7 @@ data_t dtwMissing_banded(const std::vector<data_t>& x, const std::vector<data_t>
 //  Multivariate missing-data DTW (interleaved layout)
 // =========================================================================
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
                        size_t ndim, data_t early_abandon = -1,
                        core::MetricType metric = core::MetricType::L1)
@@ -269,7 +269,7 @@ data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t
 
 /// Multivariate missing-data banded DTW. With the unified kernel, banded MV
 /// is now a first-class path (previously fell back to unbanded).
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwMissing_banded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
                             size_t ndim, int band = settings::DEFAULT_BAND,
                             data_t early_abandon = -1,
@@ -299,3 +299,4 @@ data_t dtwMissing_banded_mv(const data_t* x, size_t nx_steps, const data_t* y, s
 }
 
 } // namespace dtwc
+

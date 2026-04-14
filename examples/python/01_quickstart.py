@@ -1,6 +1,6 @@
-"""
+﻿"""
 @file 01_quickstart.py
-@brief DTWC++ Quick Start — DTW distance and clustering in 10 lines.
+@brief DTWC++ Quick Start â€” DTW distance and clustering in 10 lines.
 @details Install: pip install dtwcpp
 @author Volkan Kumtepeli
 """
@@ -12,11 +12,11 @@ import dtwcpp
 x = [1.0, 2.0, 3.0, 4.0, 5.0]
 y = [2.0, 4.0, 6.0, 3.0, 1.0]
 
-d = dtwcpp.dtw_distance(x, y)
+d = dtwcpp.distance.dtw(x, y)
 print(f"DTW distance: {d}")
 
-# Banded DTW (Sakoe-Chiba constraint) — much faster for long series
-d_banded = dtwcpp.dtw_distance(x, y, band=2)
+# Banded DTW (Sakoe-Chiba constraint) â€” much faster for long series
+d_banded = dtwcpp.distance.dtw(x, y, band=2)
 print(f"DTW distance (band=2): {d_banded}")
 
 # --- 2. Cluster time series with sklearn-like API ---
@@ -40,3 +40,4 @@ print(f"Iterations: {clf.n_iter_}")
 new_series = rng.randn(3, 50) + 5  # should be assigned to group_b's cluster
 predicted = clf.predict(new_series)
 print(f"Predicted labels for new data: {predicted}")
+

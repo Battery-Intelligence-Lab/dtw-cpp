@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file dtw.hpp
  * @brief Unified DTW entry point wrapping existing warping.hpp functions.
  *
@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include "../settings.hpp"
 #include "../warping.hpp"        // existing DTW implementations
 #include "dtw_options.hpp"
 #include "distance_metric.hpp"
@@ -30,13 +31,13 @@ namespace dtwc::core {
 
 /// Compute the DTW distance between two time series.
 ///
-/// @tparam T        Element type (default: double).
+/// @tparam T        Element type (default: `settings::default_data_t`, currently `float`).
 /// @param  x        First time series.
 /// @param  y        Second time series.
 /// @param  band     Sakoe-Chiba band width; negative means unconstrained.
 /// @param  metric   Runtime metric selector (default: L1).
 /// @return DTW distance.
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
                int band = -1, MetricType metric = MetricType::L1)
 {
@@ -51,7 +52,7 @@ T dtw_distance(const std::vector<T>& x, const std::vector<T>& y,
 // -----------------------------------------------------------------------
 
 /// Pointer + length overload; calls warping.hpp pointer overloads directly (zero-copy).
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 T dtw_distance(const T* x, std::size_t nx, const T* y, std::size_t ny,
                int band = -1, MetricType metric = MetricType::L1)
 {
@@ -71,3 +72,4 @@ double dtw_runtime(const double* x, std::size_t nx,
                    const DTWOptions& opts);
 
 } // namespace dtwc::core
+

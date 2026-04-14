@@ -1,4 +1,4 @@
-"""
+﻿"""
 @file test_problem.py
 @brief Tests for the Problem class Python bindings.
 @author Volkan Kumtepeli
@@ -88,10 +88,10 @@ class TestDistanceMatrix:
                 assert p.dist_by_ind(i, j) == pytest.approx(p.dist_by_ind(j, i))
 
     def test_known_distance(self):
-        """dist_by_ind matches standalone dtw_distance."""
+        """dist_by_ind matches standalone dtwcpp.distance.dtw."""
         data = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
         p = self._make_problem(data)
-        expected = dtwcpp.dtw_distance([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
+        expected = dtwcpp.distance.dtw([1.0, 2.0, 3.0], [4.0, 5.0, 6.0])
         assert p.dist_by_ind(0, 1) == pytest.approx(expected)
 
 
@@ -166,3 +166,4 @@ class TestVariant:
 
         # WDTW should differ from standard
         assert d_wdtw != pytest.approx(d_std, abs=1e-6)
+

@@ -1,12 +1,12 @@
 ---
 name: handoff-2026-04-13-adversarial-audit
-description: Session handoff - adversarial audit on Windows, code-quality skill hardened, runtime and design drift documented, next simplification targets prioritised.
+description: Session handoff - adversarial audit on Windows, code-quality skill hardened, runtime/design drift documented, and cross-language docs/API parity work staged with local Hugo+Doxygen output.
 type: project
 ---
 
 # Session Handoff - 2026-04-13 - Adversarial Audit + Skill Hardening
 
-Branch: **Claude**. Working tree at session end: modified `dtwc/Problem.cpp`, `tests/unit/adversarial/test_fast_pam_adversarial.cpp`, `tests/unit/unit_test_clustering_algorithms.cpp`, plus local `.claude` notes and skills.
+Branch: **Claude**. Working tree at session end: modified `dtwc/Problem.cpp`, `tests/unit/adversarial/test_fast_pam_adversarial.cpp`, `tests/unit/unit_test_clustering_algorithms.cpp`, docs pages/config, additive distance facades for C++/Python/MATLAB, plus local `.claude` notes and skills.
 
 ## Session intent
 
@@ -16,6 +16,7 @@ User asked to:
 3. Find redundancies and dedup opportunities.
 4. Improve the local skills, especially `check-code-quality`, so future audits miss less.
 5. Write a handoff focused on next steps, design cleanup, simplification, performance, and portability.
+6. Continue by compiling the Hugo docs site including API docs, checking interface divergence across C++, Python, and MATLAB, and pushing the docs toward a more consistent flow.
 
 ## What was verified
 
@@ -46,6 +47,32 @@ Release tests:
   - `tests/unit/adversarial/test_fast_pam_adversarial.cpp`: prefill the matrix before the random-medoid comparison path.
 
 The important current truth is that the repository is green on this Windows Release tree, but the earlier failure exposed a real thread-safety hole in the lazy distance path.
+
+### Docs / API build state on this Windows tree
+
+- Local prerequisites installed during the session:
+  - Hugo already present
+  - installed `GoLang.Go` so `hugo mod get -u` works locally
+  - installed `DimitriVanHeesch.Doxygen`
+  - installed `Graphviz.Graphviz`
+- Local docs build now works:
+  - `docs/`: `hugo mod get -u`
+  - `docs/`: `hugo --minify --baseURL "https://battery-intelligence-lab.github.io/dtw-cpp/"`
+  - repo root: `doxygen docs/Doxyfile`
+- Generated Doxygen HTML was staged into `docs/public/Doxygen` to match the CI workflow layout.
+- Important machine-safety fix:
+  - `NUM_PROC_THREADS` was already `1`
+  - `DOT_NUM_THREADS` was `0`, which let Graphviz use all available cores
+  - updated `docs/Doxyfile` to `DOT_NUM_THREADS = 2` so future local API builds do not freeze the machine
+- Doxygen now indexes:
+  - C++ core headers
+  - checked-in Python wrapper sources
+  - MATLAB package sources
+- Graph pages confirmed in the generated output:
+  - `classdtwc_1_1_problem__coll__graph.svg`
+  - `classdtwcpp_1_1__clustering_1_1_d_t_w_clustering__coll__graph.svg`
+  - `namespacedtwc_1_1distance.html`
+  - `namespacedtwcpp_1_1distance.html`
 
 ## Audit findings
 
@@ -90,6 +117,32 @@ The important current truth is that the repository is green on this Windows Rele
    - Python mirrors the same enum surface manually (`python/src/_dtwcpp_core.cpp:51-95`).
    - This is a good dedup target: centralise enum/string mapping in core, then reuse everywhere.
 
+8. **The cross-language public surface has drifted even where functionality is broadly similar.**
+   - CLI is config-first and already handles YAML/TOML.
+   - C++ is `Problem`-centric but examples had drifted toward older `DataLoader` + Lloyd flows.
+   - Python exposed many pairwise distances at the package root (`dtwcpp.dtw_distance`, `soft_dtw_distance`, etc.).
+   - MATLAB similarly favored root package functions (`dtwc.dtw_distance`, etc.).
+   - Result: examples made the bindings feel more different than the actual implementation warrants.
+
+9. **The repository lacked one obvious cross-language "distance namespace" story.**
+   - This session added and standardized facades:
+     - C++: `dtwc::distance::*`
+     - Python: `dtwcpp.distance.*`
+     - MATLAB: `dtwc.distance.*`
+   - A generic dispatcher entry point was also added in Python/MATLAB:
+     - `dtwcpp.distance.dtw(..., variant="soft_dtw", ...)`
+     - `dtwc.distance.dtw(..., 'Variant', 'soft_dtw', ...)`
+   - Python and MATLAB root-level distance aliases were then removed as part of an intentional breaking change.
+
+10. **Doxygen/Hugo output needed a more explicit parity map instead of raw API dumps alone.**
+   - Added `docs/content/api/interface-parity.md`.
+   - The page now:
+     - states the intended shared flow
+     - links to the generated namespace/class pages
+     - embeds a cross-language interface-flow diagram
+     - embeds the generated Doxygen collaboration graphs for C++ `Problem` and Python `DTWClustering`
+   - This is the clearest current entry point for future API convergence work.
+
 ## Skill changes made
 
 Updated `.claude/skills/check-code-quality.md` to make future audits materially stricter and more accurate:
@@ -126,6 +179,36 @@ Also updated `.claude/LESSONS.md` with two durable lessons:
 Also corrected internal architecture notes:
 - `.claude/design.md` now describes the unified kernel plus policy-based DTW architecture instead of the pre-Phase-3 split.
 - `.claude/LESSONS.md` now says DTW variants are distinct recurrence/cost policies, not mere metric swaps, without implying they still require totally separate loops/functions.
+
+## Docs / interface changes made
+
+1. **Added additive `distance` namespaces in all three library surfaces.**
+1. **Added `distance` namespaces in all three library surfaces and made them the documented pairwise API.**
+   - `dtwc/distance.hpp`
+   - `python/dtwcpp/distance.py`
+   - `bindings/matlab/+dtwc/+distance/*`
+   - Python root exports such as `dtwcpp.dtw_distance(...)` were removed.
+   - MATLAB root wrapper files such as `+dtwc/dtw_distance.m` were removed.
+
+2. **Updated the C++ umbrella header to expose the new namespace.**
+   - `dtwc/dtwc.hpp` now includes `distance.hpp`.
+
+3. **Updated the docs content to reflect the newer preferred flow.**
+   - `docs/content/getting-started/examples.md`
+   - `docs/content/getting-started/python.md`
+   - `docs/content/getting-started/matlab.md`
+   - `docs/content/getting-started/configuration.md`
+   - `docs/content/getting-started/supported-data.md`
+
+4. **Expanded Doxygen coverage to checked-in wrapper sources.**
+   - `docs/Doxyfile` now includes `python/` and `bindings/matlab/`.
+   - Heavy graph settings remained bounded:
+     - kept class/collaboration graphs
+     - disabled call/caller graphs
+     - capped Graphviz worker count
+
+5. **Fixed the broken extra stylesheet reference.**
+   - Added `docs/custom.css` so Doxygen no longer points at a missing file.
 
 ## Recommended next steps
 
@@ -167,6 +250,26 @@ Priority order:
    - `distByInd()` is safe as a serial convenience path, not as a parallel fill strategy.
    - If future refactors want fully parallel on-demand assignment, that requires a proper atomic/locked materialisation design rather than assuming packed-matrix writes are benign.
 
+7. **Introduce one shared settings/config object across library bindings.**
+   - User expectation is now explicit: a similar flow in C++, Python, and MATLAB:
+     - define settings / load YAML
+     - load data
+     - construct `Problem`
+     - run clustering
+     - inspect scores / outputs
+   - Recommended direction:
+     - add a small `Settings` / `ProblemConfig` object in core
+     - add YAML loading once in core or a thin shared adapter
+     - project that consistently into Python and MATLAB rather than inventing binding-specific loaders
+
+8. **Decide the long-term status of generic vs specific distance entry points.**
+   - Current additive approach is good:
+     - generic dispatcher: `distance.dtw(..., variant=...)`
+     - direct fast/specific entry points: `distance.soft_dtw(...)`, `distance.wdtw(...)`, etc.
+   - Still open:
+     - whether to expose lower-level fast-specialized names such as `dtw_L`
+   - Recommendation: keep the namespace-only public surface for Python/MATLAB and decide separately whether C++ should also hide or formally deprecate low-level free functions.
+
 ## Design simplifications that should preserve performance / portability
 
 1. **Do not undo the unified DTW kernel family.**
@@ -177,6 +280,7 @@ Priority order:
      - string parsing / enum conversions
      - algorithm naming and dispatch
      - reporting / file I/O
+     - config/settings loading
      - docs/truthfulness checks
    - Poor targets:
      - reintroducing per-variant recurrence loops
@@ -196,3 +300,7 @@ Priority order:
 If continuing next session, the best follow-on is:
 
 > Fix the YAML-vs-CLI precedence mismatch, then rename/split the misleading FastPAM vs Lloyd adversarial tests so the file names, docs, and actual implementation paths line up.
+
+If continuing the docs/API convergence thread instead, the next best follow-on is:
+
+> Introduce one shared settings/config object for C++/Python/MATLAB, then migrate examples so each binding shows the same high-level flow: settings -> data -> Problem -> algorithm -> scores/results.

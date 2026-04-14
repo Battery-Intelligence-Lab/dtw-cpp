@@ -4,8 +4,6 @@
 @author Volkan Kumtepeli
 """
 
-import numpy as _np
-
 from dtwcpp._dtwcpp_core import (
     # Enums
     Method,
@@ -30,10 +28,10 @@ from dtwcpp._dtwcpp_core import (
     Problem,
     # DTW functions (raw C++ bindings — require numpy arrays)
     dtw_distance as _dtw_distance_raw,
-    ddtw_distance,
-    wdtw_distance,
-    adtw_distance,
-    soft_dtw_distance,
+    ddtw_distance as _ddtw_distance_raw,
+    wdtw_distance as _wdtw_distance_raw,
+    adtw_distance as _adtw_distance_raw,
+    soft_dtw_distance as _soft_dtw_distance_raw,
     soft_dtw_gradient,
     dtw_distance_missing as _dtw_distance_missing_raw,
     dtw_arow_distance as _dtw_arow_distance_raw,
@@ -76,47 +74,6 @@ from dtwcpp._dtwcpp_core import (
 )
 
 __version__ = "2.0.0"
-
-
-# Wrappers that accept both lists and numpy arrays (the C++ nb::ndarray
-# binding only accepts numpy arrays; these auto-convert for convenience).
-def dtw_distance(x, y, band=-1, metric="l1"):
-    """Compute DTW distance between two time series.
-
-    Accepts lists or numpy arrays. metric: 'l1' (default) or 'squared_euclidean'.
-    band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.
-    """
-    return _dtw_distance_raw(
-        _np.asarray(x, dtype=_np.float64),
-        _np.asarray(y, dtype=_np.float64),
-        band, metric)
-
-
-def dtw_distance_missing(x, y, band=-1, metric="l1"):
-    """DTW distance with missing data support (NaN = missing).
-
-    Accepts lists or numpy arrays. NaN values contribute zero cost.
-    """
-    return _dtw_distance_missing_raw(
-        _np.asarray(x, dtype=_np.float64),
-        _np.asarray(y, dtype=_np.float64),
-        band, metric)
-
-
-def dtw_arow_distance(x, y, band=-1, metric="l1"):
-    """DTW-AROW distance with diagonal-only alignment for missing values.
-
-    When x[i] or y[j] is NaN, the warping path is restricted to the
-    diagonal direction only (one-to-one), preventing free stretching
-    through missing regions.
-
-    Accepts lists or numpy arrays.
-    Reference: Yurtman et al. (ECML-PKDD 2023).
-    """
-    return _dtw_arow_distance_raw(
-        _np.asarray(x, dtype=_np.float64),
-        _np.asarray(y, dtype=_np.float64),
-        band, metric)
 
 def _parse_device(device):
     """Parse PyTorch-style device string (case-insensitive). Returns (backend, device_id)."""
@@ -203,6 +160,8 @@ from dtwcpp.io import (
     load_dataset_parquet,
 )
 
+from . import distance
+
 def check_system():
     """Print a diagnostic summary of available DTWC++ backends.
 
@@ -256,9 +215,7 @@ __all__ = [
     "MIPSettings", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
     "CLARANSOptions",
     "Problem",
-    "dtw_distance", "ddtw_distance", "wdtw_distance", "adtw_distance",
-    "soft_dtw_distance", "soft_dtw_gradient", "dtw_distance_missing",
-    "dtw_arow_distance",
+    "soft_dtw_gradient",
     "fast_pam", "fast_clara", "CLARAOptions",
     "clarans", "build_dendrogram", "cut_dendrogram",
     "silhouette", "davies_bouldin_index",
@@ -266,6 +223,7 @@ __all__ = [
     "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
+    "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "OPENMP_AVAILABLE", "openmp_max_threads",
     "MPI_AVAILABLE",

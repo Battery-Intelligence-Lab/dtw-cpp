@@ -1,4 +1,4 @@
-function tests = test_dtwc
+﻿function tests = test_dtwc
 %TEST_DTWC Unit tests for the dtwc MATLAB package.
 %   Run with: results = runtests('test_dtwc');
     tests = functiontests(localfunctions);
@@ -10,14 +10,14 @@ function test_dtw_distance_basic(testCase)
 %TEST_DTW_DISTANCE_BASIC Verify DTW distance is positive for different series.
     x = [1 2 3 4 5];
     y = [2 4 6 3 1];
-    d = dtwc.dtw_distance(x, y);
+    d = dtwc.distance.dtw(x, y);
     verifyGreaterThan(testCase, d, 0);
 end
 
 function test_dtw_distance_identical(testCase)
 %TEST_DTW_DISTANCE_IDENTICAL Identical series should have zero distance.
     x = [1 2 3 4 5];
-    d = dtwc.dtw_distance(x, x);
+    d = dtwc.distance.dtw(x, x);
     verifyEqual(testCase, d, 0, 'AbsTol', 1e-12);
 end
 
@@ -25,8 +25,8 @@ function test_dtw_distance_symmetric(testCase)
 %TEST_DTW_DISTANCE_SYMMETRIC DTW distance should be symmetric.
     x = [1 3 5 2 4];
     y = [2 4 1 5 3];
-    d1 = dtwc.dtw_distance(x, y);
-    d2 = dtwc.dtw_distance(y, x);
+    d1 = dtwc.distance.dtw(x, y);
+    d2 = dtwc.distance.dtw(y, x);
     verifyEqual(testCase, d1, d2, 'AbsTol', 1e-12);
 end
 
@@ -34,8 +34,8 @@ function test_dtw_distance_banded(testCase)
 %TEST_DTW_DISTANCE_BANDED Banded DTW should be >= full DTW.
     x = [1 2 3 4 5 6 7 8 9 10];
     y = [2 4 6 8 10 9 7 5 3 1];
-    d_full = dtwc.dtw_distance(x, y);
-    d_band = dtwc.dtw_distance(x, y, 'Band', 2);
+    d_full = dtwc.distance.dtw(x, y);
+    d_band = dtwc.distance.dtw(x, y, 'Band', 2);
     verifyGreaterThanOrEqual(testCase, d_band, d_full - 1e-12);
 end
 
@@ -43,7 +43,7 @@ function test_dtw_distance_unequal_length(testCase)
 %TEST_DTW_DISTANCE_UNEQUAL_LENGTH DTW handles series of different lengths.
     x = [1 2 3];
     y = [1 2 3 4 5];
-    d = dtwc.dtw_distance(x, y);
+    d = dtwc.distance.dtw(x, y);
     verifyClass(testCase, d, 'double');
     verifyGreaterThanOrEqual(testCase, d, 0);
 end
@@ -52,7 +52,7 @@ function test_dtw_distance_column_vectors(testCase)
 %TEST_DTW_DISTANCE_COLUMN_VECTORS Column vector inputs should work.
     x = [1; 2; 3; 4; 5];
     y = [5; 4; 3; 2; 1];
-    d = dtwc.dtw_distance(x, y);
+    d = dtwc.distance.dtw(x, y);
     verifyGreaterThan(testCase, d, 0);
 end
 
@@ -127,3 +127,4 @@ function test_clustering_constructor_defaults(testCase)
     verifyEqual(testCase, c.MaxIter, 100);
     verifyEqual(testCase, c.NInit, 1);
 end
+

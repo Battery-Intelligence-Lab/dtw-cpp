@@ -1,4 +1,4 @@
-"""Cross-language integration tests: verify C++ and Python produce identical results.
+﻿"""Cross-language integration tests: verify C++ and Python produce identical results.
 
 These tests exercise the C++ core through the Python bindings, verifying that
 different entry points (standalone functions, Problem class, DTWClustering wrapper)
@@ -48,22 +48,22 @@ class TestDTWMetricConsistency:
         """DTW([0,1,2], [0,0,0]) with L1 metric = |0|+|1|+|2| = 3."""
         x = [0.0, 1.0, 2.0]
         y = [0.0, 0.0, 0.0]
-        d = dtwcpp.dtw_distance(x, y, metric='l1')
+        d = dtwcpp.distance.dtw(x, y, metric='l1')
         assert d == pytest.approx(3.0)
 
     def test_squared_euclidean_known_value(self):
         """DTW([0,1,2], [0,0,0]) with squared_euclidean = 0+1+4 = 5."""
         x = [0.0, 1.0, 2.0]
         y = [0.0, 0.0, 0.0]
-        d = dtwcpp.dtw_distance(x, y, metric='squared_euclidean')
+        d = dtwcpp.distance.dtw(x, y, metric='squared_euclidean')
         assert d == pytest.approx(5.0)
 
     def test_l1_vs_sqeuclidean_differ(self):
         """L1 and squared_euclidean metrics produce different distances."""
         x = make_series(50, 42)
         y = make_series(50, 43)
-        d_l1 = dtwcpp.dtw_distance(x, y, metric='l1')
-        d_sq = dtwcpp.dtw_distance(x, y, metric='squared_euclidean')
+        d_l1 = dtwcpp.distance.dtw(x, y, metric='l1')
+        d_sq = dtwcpp.distance.dtw(x, y, metric='squared_euclidean')
         # They should differ for non-trivial series
         assert d_l1 != pytest.approx(d_sq, abs=1e-6)
 
@@ -72,8 +72,8 @@ class TestDTWMetricConsistency:
         x = make_series(30, 10)
         y = make_series(30, 11)
         for metric in ['l1', 'squared_euclidean']:
-            d_xy = dtwcpp.dtw_distance(x, y, metric=metric)
-            d_yx = dtwcpp.dtw_distance(y, x, metric=metric)
+            d_xy = dtwcpp.distance.dtw(x, y, metric=metric)
+            d_yx = dtwcpp.distance.dtw(y, x, metric=metric)
             assert d_xy == pytest.approx(d_yx), \
                 f"Symmetry violated for metric={metric}"
 
@@ -84,16 +84,16 @@ class TestDTWBandedVsFull:
     def test_banded_ge_full_short(self):
         x = [1.0, 2.0, 3.0, 4.0, 5.0]
         y = [5.0, 4.0, 3.0, 2.0, 1.0]
-        d_full = dtwcpp.dtw_distance(x, y, band=-1)
-        d_band = dtwcpp.dtw_distance(x, y, band=1)
+        d_full = dtwcpp.distance.dtw(x, y, band=-1)
+        d_band = dtwcpp.distance.dtw(x, y, band=1)
         assert d_band >= d_full - 1e-12
 
     def test_banded_ge_full_long(self):
         x = make_series(100, 42)
         y = make_series(100, 43)
-        d_full = dtwcpp.dtw_distance(x, y, band=-1)
+        d_full = dtwcpp.distance.dtw(x, y, band=-1)
         for band in [5, 10, 50]:
-            d_band = dtwcpp.dtw_distance(x, y, band=band)
+            d_band = dtwcpp.distance.dtw(x, y, band=band)
             assert d_band >= d_full - 1e-10, \
                 f"band={band}: {d_band} < {d_full}"
 
@@ -101,8 +101,8 @@ class TestDTWBandedVsFull:
         """Band >= n-1 should give same result as full DTW."""
         x = make_series(20, 1)
         y = make_series(20, 2)
-        d_full = dtwcpp.dtw_distance(x, y, band=-1)
-        d_wide = dtwcpp.dtw_distance(x, y, band=19)
+        d_full = dtwcpp.distance.dtw(x, y, band=-1)
+        d_wide = dtwcpp.distance.dtw(x, y, band=19)
         assert d_wide == pytest.approx(d_full, abs=1e-12)
 
 
@@ -118,38 +118,38 @@ class TestDTWMissing:
         """Without NaN, dtw_distance_missing should match dtw_distance."""
         x = [1.0, 2.0, 3.0, 4.0]
         y = [4.0, 3.0, 2.0, 1.0]
-        d_std = dtwcpp.dtw_distance(x, y)
-        d_miss = dtwcpp.dtw_distance_missing(x, y)
+        d_std = dtwcpp.distance.dtw(x, y)
+        d_miss = dtwcpp.distance.missing(x, y)
         assert d_miss == pytest.approx(d_std)
 
     def test_nan_reduces_or_equals_distance(self):
         """NaN positions contribute 0 cost, so distance <= full distance."""
         x = [1.0, float('nan'), 3.0]
         y = [1.0, 2.0, 3.0]
-        d_miss = dtwcpp.dtw_distance_missing(x, y)
-        d_full = dtwcpp.dtw_distance([1.0, 2.0, 3.0], y)
+        d_miss = dtwcpp.distance.missing(x, y)
+        d_full = dtwcpp.distance.dtw([1.0, 2.0, 3.0], y)
         assert d_miss <= d_full + 1e-10
 
     def test_all_nan_is_zero(self):
         """All-NaN series should have distance 0 (every pair is missing)."""
         x = [float('nan')] * 5
         y = [1.0, 2.0, 3.0, 4.0, 5.0]
-        d = dtwcpp.dtw_distance_missing(x, y)
+        d = dtwcpp.distance.missing(x, y)
         assert d == pytest.approx(0.0)
 
     def test_symmetry_with_nan(self):
         """Missing DTW should be symmetric even with NaN."""
         x = [1.0, float('nan'), 3.0, 4.0]
         y = [2.0, 3.0, float('nan'), 5.0]
-        d_xy = dtwcpp.dtw_distance_missing(x, y)
-        d_yx = dtwcpp.dtw_distance_missing(y, x)
+        d_xy = dtwcpp.distance.missing(x, y)
+        d_yx = dtwcpp.distance.missing(y, x)
         assert d_xy == pytest.approx(d_yx)
 
     def test_missing_banded(self):
         """Missing DTW works with band constraint."""
         x = [1.0, float('nan'), 3.0, 4.0, 5.0]
         y = [2.0, 3.0, 4.0, float('nan'), 6.0]
-        d = dtwcpp.dtw_distance_missing(x, y, band=2)
+        d = dtwcpp.distance.missing(x, y, band=2)
         assert math.isfinite(d) and d >= 0.0
 
 
@@ -182,12 +182,12 @@ class TestComputeDistanceMatrix:
         assert np.all(dm >= -1e-15)
 
     def test_matches_pairwise_dtw_distance(self):
-        """Each entry matches a standalone dtw_distance call."""
+        """Each entry matches a standalone dtwcpp.distance.dtw call."""
         data = make_dataset(5, 20)
         dm = dtwcpp.compute_distance_matrix(data)
         for i in range(5):
             for j in range(i + 1, 5):
-                expected = dtwcpp.dtw_distance(data[i], data[j])
+                expected = dtwcpp.distance.dtw(data[i], data[j])
                 assert dm[i, j] == pytest.approx(expected, abs=1e-12), \
                     f"dm[{i},{j}]={dm[i, j]} != dtw_distance={expected}"
 
@@ -325,7 +325,7 @@ class TestVariantsIntegration:
         x = make_series(30, 1)
         y = make_series(30, 2)
 
-        d_func = dtwcpp.ddtw_distance(x, y)
+        d_func = dtwcpp.distance.ddtw(x, y)
 
         prob = dtwcpp.Problem("ddtw_xval")
         prob.set_data([x, y], ["s0", "s1"])
@@ -341,7 +341,7 @@ class TestVariantsIntegration:
         y = make_series(30, 4)
         g = 0.1
 
-        d_func = dtwcpp.wdtw_distance(x, y, g=g)
+        d_func = dtwcpp.distance.wdtw(x, y, g=g)
 
         prob = dtwcpp.Problem("wdtw_xval")
         prob.set_data([x, y], ["s0", "s1"])
@@ -361,7 +361,7 @@ class TestVariantsIntegration:
         y = make_series(30, 6)
         penalty = 1.5
 
-        d_func = dtwcpp.adtw_distance(x, y, penalty=penalty)
+        d_func = dtwcpp.distance.adtw(x, y, penalty=penalty)
 
         prob = dtwcpp.Problem("adtw_xval")
         prob.set_data([x, y], ["s0", "s1"])
@@ -378,15 +378,15 @@ class TestVariantsIntegration:
     def test_soft_dtw_self_distance(self):
         """Soft-DTW self-distance is <= 0 (softmin effect)."""
         x = make_series(20, 7)
-        d = dtwcpp.soft_dtw_distance(x, x, gamma=1.0)
+        d = dtwcpp.distance.soft_dtw(x, x, gamma=1.0)
         assert d <= 1e-10
 
     def test_soft_dtw_symmetry(self):
         """Soft-DTW is symmetric."""
         x = make_series(20, 8)
         y = make_series(20, 9)
-        d_xy = dtwcpp.soft_dtw_distance(x, y)
-        d_yx = dtwcpp.soft_dtw_distance(y, x)
+        d_xy = dtwcpp.distance.soft_dtw(x, y)
+        d_yx = dtwcpp.distance.soft_dtw(y, x)
         assert d_xy == pytest.approx(d_yx)
 
 
@@ -494,3 +494,4 @@ class TestEndToEndPipeline:
                 assert dm_standalone[i, j] == pytest.approx(
                     prob.dist_by_ind(i, j), abs=1e-12
                 )
+

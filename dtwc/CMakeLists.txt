@@ -27,6 +27,7 @@ target_sources(dtwc++
   DataLoader.hpp
   checkpoint.hpp
   dtwc.hpp
+  distance.hpp
   fileOperations.hpp
   initialisation.hpp
   parallelisation.hpp

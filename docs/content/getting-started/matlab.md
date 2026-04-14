@@ -1,4 +1,4 @@
----
+﻿---
 title: MATLAB Bindings
 weight: 7
 ---
@@ -27,19 +27,28 @@ This produces the `dtwc_mex` MEX file. Ensure it is on your MATLAB path along wi
 
 ## DTW distance
 
-Compute the DTW distance between two time series using `dtwc.dtw_distance`:
+Compute the DTW distance between two time series using the `dtwc.distance`
+namespace:
 
 ```matlab
 x = [1 2 3 4 5];
 y = [2 4 6 3 1];
 
-d = dtwc.dtw_distance(x, y);
+d = dtwc.distance.dtw(x, y);
 fprintf('DTW distance: %.4f\n', d);
 
 % Banded DTW (Sakoe-Chiba constraint)
-d_banded = dtwc.dtw_distance(x, y, 'Band', 2);
+d_banded = dtwc.distance.dtw(x, y, 'Band', 2);
 fprintf('DTW distance (band=2): %.4f\n', d_banded);
+
+% Variant dispatch convenience
+d_soft = dtwc.distance.dtw(x, y, 'Variant', 'soft_dtw', 'Gamma', 1.0);
+fprintf('Soft-DTW distance: %.4f\n', d_soft);
 ```
+
+Pairwise distances now live under `dtwc.distance.*`. The old root-level
+helpers such as `dtwc.dtw_distance(...)` were removed in this breaking
+release.
 
 Parameters:
 
@@ -127,10 +136,10 @@ This example reproduces the workflow from `examples/example_quickstart.m`:
 x = sin(linspace(0, 2*pi, 100));
 y = cos(linspace(0, 2*pi, 100));
 
-d = dtwc.dtw_distance(x, y);
+d = dtwc.distance.dtw(x, y);
 fprintf('DTW distance (sin vs cos): %.4f\n', d);
 
-d_banded = dtwc.dtw_distance(x, y, 'Band', 10);
+d_banded = dtwc.distance.dtw(x, y, 'Band', 10);
 fprintf('DTW distance (band=10):    %.4f\n', d_banded);
 
 %% 2. Distance matrix
@@ -167,10 +176,12 @@ The MATLAB and Python APIs are designed to mirror each other where reasonable:
 
 | Python | MATLAB | Notes |
 |--------|--------|-------|
-| `dtwcpp.dtw_distance(x, y)` | `dtwc.dtw_distance(x, y)` | |
+| `dtwcpp.distance.dtw(x, y)` | `dtwc.distance.dtw(x, y)` | Preferred namespace |
 | `dtwcpp.compute_distance_matrix(X)` | `dtwc.compute_distance_matrix(X)` | |
 | `DTWClustering(n_clusters=3)` | `DTWClustering('NClusters', 3)` | Name-value pairs |
 | `clf.fit_predict(X)` | `clust.fit_predict(X)` | |
 | `clf.labels_` | `clust.Labels` | 0-based vs 1-based |
 | `clf.medoid_indices_` | `clust.MedoidIndices` | 0-based vs 1-based |
 | `clf.inertia_` | `clust.TotalCost` | |
+
+

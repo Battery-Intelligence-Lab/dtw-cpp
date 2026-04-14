@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file time_series.hpp
  * @brief Non-owning view and owning container for time series data.
  *
@@ -12,13 +12,15 @@
 
 #pragma once
 
+#include "../settings.hpp"
+
 #include <vector>
 #include <string>
 #include <cstddef>
 
 namespace dtwc::core {
 
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 struct TimeSeriesView {
   const T *data;
   size_t length;        //!< Number of timesteps
@@ -48,7 +50,7 @@ struct TimeSeriesView {
   bool operator!=(const TimeSeriesView &other) const { return !(*this == other); }
 };
 
-template <typename T = double>
+template <typename T = dtwc::settings::default_data_t>
 struct TimeSeries {
   std::vector<T> data;
   std::string name;
@@ -65,3 +67,4 @@ struct TimeSeries {
 };
 
 } // namespace dtwc::core
+

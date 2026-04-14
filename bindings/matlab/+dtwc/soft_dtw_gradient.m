@@ -27,7 +27,7 @@ function g = soft_dtw_gradient(x, y, varargin)
 %   Reference: Cuturi & Blondel (2017), "Soft-DTW: a Differentiable Loss
 %              Function for Time-Series"
 %
-%   See also dtwc.soft_dtw_distance
+%   See also dtwc.distance.soft_dtw
 
     p = inputParser;
     addRequired(p, 'x', @isnumeric);

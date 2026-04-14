@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file warping.hpp
  * @brief Time warping functions.
  *
@@ -35,7 +35,7 @@
 namespace dtwc {
 
 // =========================================================================
-//  Implementation helpers — THIN shims over the unified core::dtw_kernel_*.
+//  Implementation helpers â€” THIN shims over the unified core::dtw_kernel_*.
 //  Kept for warping_missing.hpp / warping_missing_arow.hpp which still use
 //  `distance(a, b)`-style functors. New code should prefer the kernel
 //  directly with a Cost functor from core/dtw_cost.hpp.
@@ -44,14 +44,14 @@ namespace dtwc {
 namespace detail {
 
 /// Compute inclusive [lo, hi) column range for a banded DTW at the given row.
-/// Kept as a thin alias over the core::dtw_band_bounds helper — several older
+/// Kept as a thin alias over the core::dtw_band_bounds helper â€” several older
 /// variant files depend on this name.
 inline std::pair<int, int> band_bounds(double slope, double window, int row)
 {
   return core::dtw_band_bounds(slope, window, row);
 }
 
-/// Full-matrix DTW shim — forwards to core::dtw_kernel_full with StandardCell.
+/// Full-matrix DTW shim â€” forwards to core::dtw_kernel_full with StandardCell.
 template <typename data_t, typename DistFn>
 data_t dtwFull_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
                     DistFn distance)
@@ -133,7 +133,7 @@ data_t dtwBanded_impl(std::span<const data_t> x, std::span<const data_t> y,
   return dtwBanded_impl(x.data(), x.size(), y.data(), y.size(), band, early_abandon, distance);
 }
 
-/// Linear-space multivariate DTW shim — ndim-aware distance functor.
+/// Linear-space multivariate DTW shim â€” ndim-aware distance functor.
 /// Each timestep has ndim features in interleaved layout: [t0_f0, t0_f1, ..., t1_f0, ...].
 /// distance(const T*, const T*, size_t ndim) -> T
 template <typename data_t, typename DistFn>
@@ -155,7 +155,7 @@ data_t dtwFull_L_mv_impl(const data_t* x, size_t nx_steps, const data_t* y, size
   return core::dtw_kernel_linear<data_t>(ns, nl, cost, core::StandardCell{}, early_abandon);
 }
 
-/// Sakoe-Chiba banded multivariate DTW shim — ndim-aware distance functor.
+/// Sakoe-Chiba banded multivariate DTW shim â€” ndim-aware distance functor.
 template <typename data_t, typename DistFn>
 data_t dtwBanded_mv_impl(const data_t* x, size_t nx, const data_t* y, size_t ny,
                           size_t ndim, int band, data_t early_abandon, DistFn distance)
@@ -246,7 +246,7 @@ auto dispatch_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{}))
 } // namespace detail
 
 // =========================================================================
-//  Public API — pointer + length overloads (zero-copy for bindings)
+//  Public API â€” pointer + length overloads (zero-copy for bindings)
 // =========================================================================
 
 /**
@@ -306,7 +306,7 @@ data_t dtwFull_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
  * @param metric Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                  int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
@@ -329,7 +329,7 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
 }
 
 // =========================================================================
-//  Public API — vector overloads (forward to pointer versions)
+//  Public API â€” vector overloads (forward to pointer versions)
 // =========================================================================
 
 /// Full-matrix DTW (span overload).
@@ -350,7 +350,7 @@ data_t dtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
 }
 
 /// Banded DTW (span overload).
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                  int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
@@ -375,7 +375,7 @@ data_t dtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return dtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, early_abandon, metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  int band = settings::DEFAULT_BAND,
                  data_t early_abandon = -1,
@@ -385,7 +385,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 }
 
 // =========================================================================
-//  Public API — multivariate (interleaved layout: [t0_f0, t0_f1, ..., t1_f0, ...])
+//  Public API â€” multivariate (interleaved layout: [t0_f0, t0_f1, ..., t1_f0, ...])
 // =========================================================================
 
 /**
@@ -405,7 +405,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
  * @param metric  Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
                     size_t ndim, data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
@@ -435,7 +435,7 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  * @param metric  Pointwise distance metric (default: L1).
  * @return The dynamic time warping distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
                     size_t ndim, int band = settings::DEFAULT_BAND,
                     data_t early_abandon = -1,
@@ -456,3 +456,4 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
 }
 
 } // namespace dtwc
+

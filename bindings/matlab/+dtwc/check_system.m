@@ -19,7 +19,7 @@ function check_system()
 %       %    ❌ MPI:    not compiled
 %       %  ========================================
 %
-%   See also dtwc.Problem, dtwc.dtw_distance
+%   See also dtwc.Problem, dtwc.distance.dtw
 
     info = dtwc_mex('system_check');
 

@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file warping_adtw.hpp
- * @brief Amerced Dynamic Time Warping (ADTW) — thin wrappers over the unified DTW kernel.
+ * @brief Amerced Dynamic Time Warping (ADTW) â€” thin wrappers over the unified DTW kernel.
  *
  * @details ADTW adds a penalty for non-diagonal (horizontal/vertical) warping
  *          steps, discouraging time stretching/compression:
@@ -10,7 +10,7 @@
  *                                         C(i,j-1) + penalty)
  *
  *          Implementation-wise, ADTW differs from Standard DTW only in the
- *          cell-recurrence rule — so every ADTW entry point is now a 5-line
+ *          cell-recurrence rule â€” so every ADTW entry point is now a 5-line
  *          wrapper that calls `core::dtw_kernel_*` with `core::ADTWCell<T>`
  *          and an L1 / MV-L1 cost functor. The loop body itself lives in
  *          core/dtw_kernel.hpp (one copy, shared with Standard + WDTW).
@@ -68,7 +68,7 @@ data_t adtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
   return adtwFull_L(x.data(), x.size(), y.data(), y.size(), penalty, early_abandon);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band, data_t penalty, data_t early_abandon = data_t{-1})
 {
@@ -89,7 +89,7 @@ data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
       early_abandon);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band, data_t penalty, data_t early_abandon = data_t{-1})
 {
@@ -104,7 +104,7 @@ data_t adtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return adtwFull_L<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, penalty, early_abandon);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   int band, data_t penalty, data_t early_abandon = data_t{-1})
 {
@@ -115,7 +115,7 @@ data_t adtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 // Multivariate ADTW (interleaved layout: x[t*ndim + d])
 // ---------------------------------------------------------------------------
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, data_t penalty = 1.0)
 {
@@ -136,8 +136,8 @@ data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
 }
 
 /// Multivariate ADTW banded. With the unified kernel, banded MV is now a
-/// first-class path — no fallback to unbanded.
-template <typename data_t = double>
+/// first-class path â€” no fallback to unbanded.
+template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND, data_t penalty = 1.0)
 {
@@ -159,3 +159,4 @@ data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
 }
 
 } // namespace dtwc
+

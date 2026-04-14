@@ -22,8 +22,16 @@
 namespace dtwc {
 // Data type settings:
 
-/// @brief Alias for the default data type used throughout the code.
-/// @note The default data type can be either double or float, depending on precision requirements.
+namespace settings {
+/// @brief Default scalar type for public templated APIs.
+/// @details This controls default template arguments such as
+///          `template <typename T = settings::default_data_t>`.
+using default_data_t = float;
+} // namespace settings
+
+/// @brief Alias for the core storage / internal precision type.
+/// @note This is still distinct from `settings::default_data_t`, which controls
+///       default template arguments on public distance helpers.
 using data_t = double;
 
 // Random number settings:

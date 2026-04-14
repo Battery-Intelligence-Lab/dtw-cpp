@@ -13,6 +13,7 @@
 #include "Problem.hpp"
 #include "checkpoint.hpp"
 #include "DataLoader.hpp"
+#include "distance.hpp"
 #include "scores.hpp"
 #include "utility.hpp"
 #include "warping.hpp"

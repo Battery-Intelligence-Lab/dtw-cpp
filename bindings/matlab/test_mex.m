@@ -17,7 +17,7 @@ failed = 0;
 try
     x = sin(linspace(0, 2*pi, 100));
     y = cos(linspace(0, 2*pi, 100));
-    d = dtwc.dtw_distance(x, y);
+    d = dtwc.distance.dtw(x, y);
     assert(d > 0, 'DTW distance should be positive');
     fprintf('Test  1 - DTW distance (full): %.4f  [PASS]\n', d);
     passed = passed + 1;
@@ -27,11 +27,10 @@ catch e
 end
 
 %% Test 2: DTW distance (banded)
-% @author Volkan Kumtepeli
 try
     x = sin(linspace(0, 2*pi, 100));
     y = cos(linspace(0, 2*pi, 100));
-    d = dtwc.dtw_distance(x, y, 'Band', 10);
+    d = dtwc.distance.dtw(x, y, 'Band', 10);
     assert(d > 0, 'Banded DTW distance should be positive');
     fprintf('Test  2 - DTW distance (band=10): %.4f  [PASS]\n', d);
     passed = passed + 1;
@@ -41,9 +40,8 @@ catch e
 end
 
 %% Test 3: Self-distance = 0
-% @author Volkan Kumtepeli
 try
-    d = dtwc.dtw_distance([1 2 3 4], [1 2 3 4]);
+    d = dtwc.distance.dtw([1 2 3 4], [1 2 3 4]);
     assert(d == 0, 'Self-distance should be zero');
     fprintf('Test  3 - Self-distance = 0  [PASS]\n');
     passed = passed + 1;
@@ -53,7 +51,6 @@ catch e
 end
 
 %% Test 4: Distance matrix
-% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 50);
@@ -69,14 +66,13 @@ catch e
 end
 
 %% Test 5: DDTW distance
-% @author Volkan Kumtepeli
 try
     x = [1 3 5 7 5 3 1];
     y = [2 4 6 8 6 4 2];
-    d = dtwc.ddtw_distance(x, y);
+    d = dtwc.distance.ddtw(x, y);
     assert(d >= 0, 'DDTW distance should be non-negative');
     % DDTW should detect similar shapes
-    d_same_shape = dtwc.ddtw_distance(x, x * 2 + 1);
+    d_same_shape = dtwc.distance.ddtw(x, x * 2 + 1);
     assert(d_same_shape < d || d_same_shape >= 0, 'DDTW should handle scaled signals');
     fprintf('Test  5 - DDTW distance: %.4f  [PASS]\n', d);
     passed = passed + 1;
@@ -86,14 +82,13 @@ catch e
 end
 
 %% Test 6: WDTW distance
-% @author Volkan Kumtepeli
 try
     x = [1 2 3 4 5];
     y = [2 3 4 5 6];
-    d = dtwc.wdtw_distance(x, y);
+    d = dtwc.distance.wdtw(x, y);
     assert(d > 0, 'WDTW distance should be positive');
     % Different g should give different distances
-    d2 = dtwc.wdtw_distance(x, y, 'G', 1.0);
+    d2 = dtwc.distance.wdtw(x, y, 'G', 1.0);
     fprintf('Test  6 - WDTW distance: %.4f (g=0.05), %.4f (g=1.0)  [PASS]\n', d, d2);
     passed = passed + 1;
 catch e
@@ -102,12 +97,11 @@ catch e
 end
 
 %% Test 7: ADTW distance
-% @author Volkan Kumtepeli
 try
     x = [1 2 3 4 5];
     y = [1 1 2 3 4 5]; % shifted
-    d_std = dtwc.dtw_distance(x, y);
-    d_adtw = dtwc.adtw_distance(x, y, 'Penalty', 1.0);
+    d_std = dtwc.distance.dtw(x, y);
+    d_adtw = dtwc.distance.adtw(x, y, 'Penalty', 1.0);
     assert(d_adtw >= d_std, 'ADTW with penalty should be >= standard DTW');
     fprintf('Test  7 - ADTW distance: %.4f (std DTW: %.4f)  [PASS]\n', d_adtw, d_std);
     passed = passed + 1;
@@ -121,7 +115,7 @@ end
 try
     x = [1 2 3 4 5];
     y = [2 3 4 5 6];
-    d = dtwc.soft_dtw_distance(x, y, 'Gamma', 1.0);
+    d = dtwc.distance.soft_dtw(x, y, 'Gamma', 1.0);
     g = dtwc.soft_dtw_gradient(x, y, 'Gamma', 1.0);
     assert(isscalar(d), 'Soft-DTW should return scalar');
     assert(numel(g) == numel(x), 'Gradient should have same length as x');
@@ -133,15 +127,14 @@ catch e
 end
 
 %% Test 9: DTW with missing data (zero-cost)
-% @author Volkan Kumtepeli
 try
     x = [1 2 NaN 4 5];
     y = [1 2 3 4 5];
-    d = dtwc.dtw_distance_missing(x, y);
+    d = dtwc.distance.missing(x, y);
     assert(d >= 0, 'Missing DTW should be non-negative');
     % NaN positions should contribute zero cost
     x_no_nan = [1 2 3 4 5];
-    d_full = dtwc.dtw_distance(x_no_nan, y);
+    d_full = dtwc.distance.dtw(x_no_nan, y);
     assert(d <= d_full, 'Missing DTW should be <= full DTW (zero-cost NaN)');
     fprintf('Test  9 - DTW missing (zero-cost): %.4f  [PASS]\n', d);
     passed = passed + 1;
@@ -155,7 +148,7 @@ end
 try
     x = [1 2 NaN 4 5];
     y = [1 2 3 4 5];
-    d = dtwc.dtw_arow_distance(x, y);
+    d = dtwc.distance.arow(x, y);
     assert(d >= 0, 'AROW distance should be non-negative');
     fprintf('Test 10 - DTW-AROW: %.4f  [PASS]\n', d);
     passed = passed + 1;
@@ -165,7 +158,6 @@ catch e
 end
 
 %% Test 11: Problem class lifecycle
-% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('test_problem');
     assert(strcmp(prob.Name, 'test_problem'), 'Name should match');
@@ -223,7 +215,6 @@ catch e
 end
 
 %% Test 13: FastPAM via Problem
-% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('fastpam_test');
     rng(42);
@@ -253,7 +244,6 @@ catch e
 end
 
 %% Test 14: FastCLARA
-% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('clara_test');
     rng(42);
@@ -293,7 +283,6 @@ catch e
 end
 
 %% Test 16: Hierarchical clustering (build + cut)
-% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('hier_test');
     rng(42);
@@ -383,7 +372,6 @@ catch e
 end
 
 %% Test 19: Derivative transform and z_normalize utilities
-% @author Volkan Kumtepeli
 try
     x = [1 3 5 7 5 3 1];
     dx = dtwc.derivative_transform(x);
@@ -404,7 +392,6 @@ catch e
 end
 
 %% Test 20: DTWClustering high-level API
-% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 50);
@@ -424,7 +411,6 @@ catch e
 end
 
 %% Test 21: DTWClustering with variant
-% @author Volkan Kumtepeli
 try
     rng(42);
     data = randn(10, 30);
@@ -486,7 +472,6 @@ catch e
 end
 
 %% Test 24: Error handling (invalid handle)
-% @author Volkan Kumtepeli
 try
     caught = false;
     try
@@ -504,7 +489,6 @@ catch e
 end
 
 %% Test 25: Error handling (unknown command)
-% @author Volkan Kumtepeli
 try
     caught = false;
     try
@@ -522,7 +506,6 @@ catch e
 end
 
 %% Test 26: Problem delete and handle cleanup
-% @author Volkan Kumtepeli
 try
     prob = dtwc.Problem('delete_test');
     h = prob.get_handle();
@@ -544,7 +527,6 @@ catch e
 end
 
 %% Summary
-% @author Volkan Kumtepeli
 fprintf('\n=== Results: %d passed, %d failed out of %d ===\n', passed, failed, passed + failed);
 
 if failed == 0
@@ -552,3 +534,4 @@ if failed == 0
 else
     fprintf('SOME TESTS FAILED\n');
 end
+

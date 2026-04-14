@@ -3,93 +3,65 @@ title: Examples
 weight: 5
 ---
 
-# Examples 
+# Examples
 
-<!--- Here will be some Google Colab files as example. -->
+These examples use the current `Problem`-centric flow rather than the older
+loader-heavy examples. The goal is to mirror the Python and MATLAB surfaces as
+closely as the C++ API allows today.
 
-You may directly edit `main.cpp` and use these examples. 
-
-## k-medoids clustering
-Example code using k-mediods for clustering:
+## Pairwise DTW distance
 
 ```cpp
 #include <dtwc.hpp>
 
-#include <filesystem>  // for operator/, path
-#include <iostream>    // for operator<<, ostream, basic_ostream, cout
-#include <string>      // for allocator, string, char_traits
+#include <vector>
 
 int main()
 {
-  dtwc::Clock clk; // Create a clock object
-  std::string probName = "DTW_kMeans_results";
+  std::vector<double> x{1.0, 2.0, 3.0, 4.0};
+  std::vector<double> y{1.2, 2.1, 2.9, 4.2};
 
-  auto Nc = 3; // Number of clusters
+  const double d_standard = dtwc::distance::dtw(x, y, 10);
 
-  dtwc::DataLoader dl{ dtwc::settings::paths::data / "dummy" };
-  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+  dtwc::core::DTWVariantParams params;
+  params.variant = dtwc::core::DTWVariant::WDTW;
+  params.wdtw_g = 0.05;
 
-  dtwc::Problem prob{ probName, dl }; // Create a problem.
-  prob.maxIter = 100;
+  const double d_weighted = dtwc::distance::dtw(
+    x, y, params, 10, dtwc::core::MetricType::L1);
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.N_repetition = 5;
-
-  prob.cluster_by_kMedoidsLloyd();
-
-  prob.printClusters(); // Prints to screen.
-  prob.writeClusters(); // Prints to file.
-  prob.writeSilhouettes();
-
-  std::cout << "Finished all tasks " << clk << "\n";
-
-  return EXIT_SUCCESS;
+  return (d_standard >= 0.0 && d_weighted >= 0.0) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 ```
 
-## MIP clustering
-Example code using multiple MIP for clustering:
+## FastPAM clustering
 
 ```cpp
 #include <dtwc.hpp>
 
-#include <filesystem> // for operator/, path
-#include <iostream>   // for operator<<, ostream, basic_ostream, cout
-#include <string>     // for allocator, string, char_traits
+#include <iostream>
+#include <string>
+#include <vector>
 
 int main()
 {
-  dtwc::Clock clk; // Create a clock object
+  std::vector<std::vector<double>> series{
+    {1.0, 2.0, 3.0, 4.0},
+    {1.1, 2.1, 3.1, 4.1},
+    {9.0, 8.0, 7.0, 6.0},
+    {9.2, 8.1, 7.1, 6.2}
+  };
+  std::vector<std::string> names{"a", "b", "c", "d"};
 
-  int Ndata_max = 100;         // Load 100 data maximum.
-  auto Nc = dtwc::Range(3, 6); // Clustering for Nc = 3,4,5. Range function like Python so 6 is not included.
+  dtwc::Problem prob("demo");
+  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+  prob.band = 10;
+  prob.set_numberOfClusters(2);
 
-  dtwc::DataLoader dl{ dtwc::settings::paths::data / "dummy", Ndata_max };
-  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+  auto result = dtwc::fast_pam(prob, 2, 100);
 
-  dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
-
-  std::cout << "Data loading finished at " << clk << "\n";
-
-  // prob.readDistanceMatrix("../matlab/DTWdist_band_all.csv"); // Comment out if recalculating the matrix.
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
-  std::cout << "Finished calculating distances " << clk << std::endl;
-  std::cout << "Band used " << prob.band << "\n\n\n";
-
-  std::string reportName = "DTW_MILP_results";
-
-  // Calculate for number of clusters Nc = 3,4,5;
-  for (auto nc : Nc) {
-    std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
-    prob.set_numberOfClusters(nc); // Nc = number of clusters.
-    prob.cluster_by_MIP();         // Uses MILP to do clustering.
-    prob.writeClusters();
-    prob.writeSilhouettes();
-  }
-
-  std::cout << "Finished all tasks " << clk << "\n";
-
-  return EXIT_SUCCESS;
+  std::cout << "Total cost: " << result.total_cost << '\n';
+  std::cout << "Iterations: " << result.iterations << '\n';
+  return result.converged ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 ```

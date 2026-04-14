@@ -144,7 +144,10 @@ Then use the `--yaml-config` flag:
 dtwc_cl --yaml-config config.yaml
 ```
 
-As with TOML, command-line flags take precedence over values in the YAML file.
+Unlike TOML, YAML precedence is currently not fully aligned with the docs or
+the intended behavior: when a key is present in the YAML file, the YAML value
+currently wins over the CLI value for some options. Treat YAML as the source of
+truth until this precedence bug is fixed in the CLI implementation.
 
 ### Full YAML example
 
@@ -155,7 +158,8 @@ As with TOML, command-line flags take precedence over values in the YAML file.
 # Requires: build with -DDTWC_ENABLE_YAML=ON
 #
 # All options can also be set via command line flags.
-# Command line flags override values from this file.
+# Current limitation: for YAML-backed keys, the YAML value may still override
+# the CLI value when the key is present.
 # Key names use kebab-case, matching CLI flags and TOML keys.
 
 # Input CSV file or folder containing time series data.

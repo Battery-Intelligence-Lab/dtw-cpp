@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file warping_wdtw.hpp
- * @brief Weighted Dynamic Time Warping (WDTW) — thin wrappers over the
+ * @brief Weighted Dynamic Time Warping (WDTW) â€” thin wrappers over the
  *        unified DTW kernel.
  *
  * @details WDTW multiplies each pointwise cost by a weight that depends on the
@@ -58,7 +58,7 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
 }
 
 // ---------------------------------------------------------------------------
-// Scalar WDTW — full matrix / banded, with precomputed weights
+// Scalar WDTW â€” full matrix / banded, with precomputed weights
 // ---------------------------------------------------------------------------
 
 template <typename data_t>
@@ -137,7 +137,7 @@ const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 }
 } // namespace detail
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band, data_t g)
 {
@@ -148,14 +148,14 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
   return wdtwBanded(x, nx, y, ny, std::span<const data_t>{w}, band);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band, data_t g)
 {
   return wdtwBanded(x.data(), x.size(), y.data(), y.size(), band, g);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
                 data_t g)
 {
@@ -166,7 +166,7 @@ data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
   return wdtwFull(x, nx, y, ny, std::span<const data_t>{w});
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwFull(std::span<const data_t> x, std::span<const data_t> y, data_t g)
 {
   return wdtwFull(x.data(), x.size(), y.data(), y.size(), g);
@@ -188,14 +188,14 @@ data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return wdtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, weights, band);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   int band, data_t g)
 {
   return wdtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, g);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y, data_t g)
 {
   return wdtwFull<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, g);
@@ -205,7 +205,7 @@ data_t wdtwFull(const std::vector<data_t> &x, const std::vector<data_t> &y, data
 // Multivariate WDTW (interleaved layout x[t * ndim + d])
 // ---------------------------------------------------------------------------
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                    size_t ndim, std::type_identity_t<std::span<const data_t>> weights)
 {
@@ -225,7 +225,7 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
       core::StandardCell{});
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                    size_t ndim, data_t g = 0.05)
 {
@@ -235,9 +235,9 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
   return wdtwFull_mv(x, nx_steps, y, ny_steps, ndim, std::span<const data_t>{w});
 }
 
-/// Multivariate WDTW banded — now a first-class path via the unified kernel
+/// Multivariate WDTW banded â€” now a first-class path via the unified kernel
 /// (previously fell back to unbanded MV).
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, std::type_identity_t<std::span<const data_t>> weights,
                      int band = settings::DEFAULT_BAND)
@@ -259,7 +259,7 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
       core::StandardCell{});
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND, data_t g = 0.05)
 {
@@ -271,3 +271,4 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
 }
 
 } // namespace dtwc
+

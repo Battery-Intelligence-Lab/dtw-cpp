@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file warping_missing_arow.hpp
  * @brief DTW-AROW: diagonal-only alignment for missing values (NaN-aware).
  *
@@ -75,7 +75,7 @@ ArowOriented<T> arow_orient(const T* x, std::size_t nx,
 } // namespace detail
 
 // =========================================================================
-//  Public API — DTW-AROW
+//  Public API â€” DTW-AROW
 // =========================================================================
 
 /**
@@ -83,7 +83,7 @@ ArowOriented<T> arow_orient(const T* x, std::size_t nx,
  *
  * @details When x[i] or y[j] is NaN, the warping path is restricted to the
  * diagonal direction only (zero local cost), preventing free stretching through
- * missing regions. Uses O(min(m,n)) space — no backtracking.
+ * missing regions. Uses O(min(m,n)) space â€” no backtracking.
  *
  * @tparam data_t Data type of the elements in the sequences.
  * @param x First sequence (may contain NaN for missing values).
@@ -91,7 +91,7 @@ ArowOriented<T> arow_orient(const T* x, std::size_t nx,
  * @param metric Pointwise distance metric (default: L1).
  * @return The DTW-AROW distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_L(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
                  core::MetricType metric = core::MetricType::L1)
 {
@@ -116,7 +116,7 @@ data_t dtwAROW_L(const data_t* x, std::size_t nx, const data_t* y, std::size_t n
  * @param metric Pointwise distance metric (default: L1).
  * @return The DTW-AROW distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
                core::MetricType metric = core::MetricType::L1)
 {
@@ -143,7 +143,7 @@ data_t dtwAROW(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
  * @param metric Pointwise distance metric (default: L1).
  * @return The banded DTW-AROW distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
                       int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
@@ -167,21 +167,21 @@ data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::siz
 //  Span + vector convenience overloads
 // =========================================================================
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_L(std::span<const data_t> x, std::span<const data_t> y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW(std::span<const data_t> x, std::span<const data_t> y,
                core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_banded(std::span<const data_t> x, std::span<const data_t> y,
                       int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
@@ -189,21 +189,21 @@ data_t dtwAROW_banded(std::span<const data_t> x, std::span<const data_t> y,
   return dtwAROW_banded<data_t>(x.data(), x.size(), y.data(), y.size(), band, metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                  core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW_L<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW(const std::vector<data_t> &x, const std::vector<data_t> &y,
                core::MetricType metric = core::MetricType::L1)
 {
   return dtwAROW<data_t>(x.data(), x.size(), y.data(), y.size(), metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                       int band = settings::DEFAULT_BAND,
                       core::MetricType metric = core::MetricType::L1)
@@ -212,3 +212,4 @@ data_t dtwAROW_banded(const std::vector<data_t> &x, const std::vector<data_t> &y
 }
 
 } // namespace dtwc
+

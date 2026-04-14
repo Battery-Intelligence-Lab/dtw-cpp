@@ -1,4 +1,4 @@
----
+﻿---
 title: Missing Data
 weight: 7
 ---
@@ -163,13 +163,13 @@ x = np.array([1.0, np.nan, 3.0, 4.0])
 y = np.array([1.0, 2.0, 3.0, 4.0])
 
 # ZeroCost DTW
-dist = dtwcpp.dtw_distance_missing(x, y, band=-1)
+dist = dtwcpp.distance.missing(x, y, band=-1)
 
 # DTW-AROW
-dist_arow = dtwcpp.dtw_arow_distance(x, y, band=-1)
+dist_arow = dtwcpp.distance.arow(x, y, band=-1)
 
 # With squared Euclidean metric
-dist_sq = dtwcpp.dtw_distance_missing(x, y, metric="squared_euclidean")
+dist_sq = dtwcpp.distance.missing(x, y, metric="squared_euclidean")
 
 # Via Problem (for clustering with missing data)
 prob = dtwcpp.Problem()
@@ -182,3 +182,4 @@ prob.missing_strategy = dtwcpp.MissingStrategy.ZeroCost  # or AROW, Interpolate
 ```note
 Missing data strategy is currently configured through the Python and C++ APIs only. The CLI does not yet expose a `--missing-strategy` flag. Use the Python `DTWClustering` class or the C++ `Problem` API to set the missing data strategy.
 ```
+

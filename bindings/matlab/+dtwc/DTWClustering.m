@@ -44,7 +44,7 @@ classdef DTWClustering
 %   TotalCost : double
 %       Sum of intra-cluster DTW distances.
 %
-%   See also dtwc.Problem, dtwc.fast_pam, dtwc.dtw_distance
+%   See also dtwc.Problem, dtwc.fast_pam, dtwc.distance.dtw
 % @author Volkan Kumtepeli
 
     properties

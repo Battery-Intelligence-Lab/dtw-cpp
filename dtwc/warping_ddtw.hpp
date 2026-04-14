@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file warping_ddtw.hpp
  * @brief Derivative Dynamic Time Warping (DDTW) functions.
  *
@@ -177,7 +177,7 @@ std::vector<data_t> derivative_transform_mv(const std::vector<data_t> &x, size_t
  * @param band Sakoe-Chiba band width. Use -1 for full (unconstrained) DTW.
  * @return The DDTW distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
@@ -200,7 +200,7 @@ data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
  * @param y Second time series.
  * @return The DDTW distance.
  */
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
@@ -211,7 +211,7 @@ data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
 }
 
 // Vector convenience overloads (vector -> span implicit conversion is non-deduced).
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
@@ -219,7 +219,7 @@ data_t ddtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
   return ddtwBanded<data_t>(std::span<const data_t>{x}, std::span<const data_t>{y}, band, metric);
 }
 
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
                   core::MetricType metric = core::MetricType::L1)
 {
@@ -230,8 +230,8 @@ data_t ddtwFull_L(const std::vector<data_t> &x, const std::vector<data_t> &y,
 // Pointer-based overloads for Python/MATLAB zero-copy bindings.
 // -------------------------------------------------------------------------
 
-/// DDTW (banded) from raw pointers — avoids caller needing to construct vectors.
-template <typename data_t = double>
+/// DDTW (banded) from raw pointers â€” avoids caller needing to construct vectors.
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
@@ -247,7 +247,7 @@ data_t ddtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 /// DDTW (full, linear-space) from raw pointers.
-template <typename data_t = double>
+template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   core::MetricType metric = core::MetricType::L1)
 {
@@ -260,3 +260,4 @@ data_t ddtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
 }
 
 } // namespace dtwc
+

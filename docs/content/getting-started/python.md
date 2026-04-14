@@ -1,4 +1,4 @@
----
+﻿---
 title: Python API
 weight: 6
 ---
@@ -35,15 +35,23 @@ import dtwcpp
 x = [1.0, 2.0, 3.0, 4.0, 5.0]
 y = [2.0, 4.0, 6.0, 3.0, 1.0]
 
-d = dtwcpp.dtw_distance(x, y)
+d = dtwcpp.distance.dtw(x, y)
 print(f"DTW distance: {d}")
 
-# Banded DTW (Sakoe-Chiba constraint) --- much faster for long series
-d_banded = dtwcpp.dtw_distance(x, y, band=2)
+# Banded DTW (Sakoe-Chiba constraint)
+d_banded = dtwcpp.distance.dtw(x, y, band=2)
 print(f"DTW distance (band=2): {d_banded}")
+
+# Variant dispatch convenience
+d_soft = dtwcpp.distance.dtw(x, y, variant="soft_dtw", gamma=1.0)
+print(f"Soft-DTW distance: {d_soft}")
 ```
 
 Both plain Python lists and NumPy arrays are accepted. Lists are automatically converted to `float64` arrays.
+
+Pairwise distances live under `dtwcpp.distance.*`. The old root-level
+distance helpers such as `dtwcpp.dtw_distance(...)` were removed in this
+breaking release.
 
 ### Distance matrix
 
@@ -137,7 +145,7 @@ All DTW functions accept lists or NumPy arrays.
 ### Standard DTW
 
 ```python
-d = dtwcpp.dtw_distance(x, y, band=-1, metric="l1")
+d = dtwcpp.distance.dtw(x, y, band=-1, metric="l1")
 ```
 
 ### Derivative DTW (DDTW)
@@ -145,7 +153,7 @@ d = dtwcpp.dtw_distance(x, y, band=-1, metric="l1")
 Applies a derivative transform before computing standard DTW:
 
 ```python
-d = dtwcpp.ddtw_distance(list(x), list(y), band=-1)
+d = dtwcpp.distance.ddtw(list(x), list(y), band=-1)
 ```
 
 ### Weighted DTW (WDTW)
@@ -153,7 +161,7 @@ d = dtwcpp.ddtw_distance(list(x), list(y), band=-1)
 Applies logistic weights based on the warping step index:
 
 ```python
-d = dtwcpp.wdtw_distance(list(x), list(y), band=-1, g=0.05)
+d = dtwcpp.distance.wdtw(list(x), list(y), band=-1, g=0.05)
 ```
 
 ### Amerced DTW (ADTW)
@@ -161,7 +169,7 @@ d = dtwcpp.wdtw_distance(list(x), list(y), band=-1, g=0.05)
 Adds a penalty for non-diagonal warping steps:
 
 ```python
-d = dtwcpp.adtw_distance(list(x), list(y), band=-1, penalty=1.0)
+d = dtwcpp.distance.adtw(list(x), list(y), band=-1, penalty=1.0)
 ```
 
 ### Soft-DTW
@@ -169,7 +177,7 @@ d = dtwcpp.adtw_distance(list(x), list(y), band=-1, penalty=1.0)
 A differentiable relaxation of DTW using softmin:
 
 ```python
-d = dtwcpp.soft_dtw_distance(list(x), list(y), gamma=1.0)
+d = dtwcpp.distance.soft_dtw(list(x), list(y), gamma=1.0)
 ```
 
 ### DTW with missing data
@@ -178,7 +186,7 @@ NaN values contribute zero cost:
 
 ```python
 x_missing = [1.0, float('nan'), 3.0, 4.0, 5.0]
-d = dtwcpp.dtw_distance_missing(x_missing, y, band=-1, metric="l1")
+d = dtwcpp.distance.missing(x_missing, y, band=-1, metric="l1")
 ```
 
 ### DTW-AROW (diagonal-only alignment for missing values)
@@ -186,7 +194,7 @@ d = dtwcpp.dtw_distance_missing(x_missing, y, band=-1, metric="l1")
 When a value is NaN, the warping path is restricted to the diagonal direction only:
 
 ```python
-d = dtwcpp.dtw_arow_distance(x_missing, y, band=-1, metric="l1")
+d = dtwcpp.distance.arow(x_missing, y, band=-1, metric="l1")
 ```
 
 ## Clustering functions
@@ -194,11 +202,14 @@ d = dtwcpp.dtw_arow_distance(x_missing, y, band=-1, metric="l1")
 ### FastPAM
 
 ```python
-from dtwcpp import Problem, fast_pam
+import dtwcpp
 
-prob = Problem("my_clustering")
+prob = dtwcpp.Problem("my_clustering")
 prob.set_data(series, names)
-result = fast_pam(prob, n_clusters=3, max_iter=100)
+prob.band = 10
+prob.set_number_of_clusters(3)
+
+result = dtwcpp.fast_pam(prob, n_clusters=3, max_iter=100)
 print(result.labels, result.medoid_indices, result.total_cost)
 ```
 
@@ -369,3 +380,4 @@ transformed = dtwcpp.derivative_transform(series)
 # Z-normalization (zero mean, unit variance)
 normalized = dtwcpp.z_normalize(series)
 ```
+

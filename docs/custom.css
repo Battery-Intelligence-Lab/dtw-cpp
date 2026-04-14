@@ -1,0 +1,12 @@
+/* Local Doxygen tweaks layered on top of doxygen-awesome. */
+
+div.contents img,
+div.contents object[type="image/svg+xml"] {
+  height: auto;
+  max-width: 100%;
+}
+
+table.memberdecls code,
+table.fieldtable code {
+  white-space: normal;
+}

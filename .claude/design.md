@@ -41,6 +41,28 @@
 - snake_case function names for parity with Python. PascalCase properties remain acceptable on the MATLAB side.
 - All indices are shifted at the MEX boundary for MATLAB's 1-based indexing.
 
+## Cross-Language API Direction
+
+- **Pairwise distances should converge on a `distance.*` namespace** across all bindings.
+  - C++: `dtwc::distance::dtw(...)`
+  - Python: `dtwcpp.distance.dtw(...)`
+  - MATLAB: `dtwc.distance.dtw(...)`
+- **Python and MATLAB should treat `distance.*` as the public pairwise surface.**
+  - Root helpers such as `dtwcpp.dtw_distance(...)` and `dtwc.dtw_distance(...)` should not be preserved just for compatibility.
+  - If lower-level helpers remain anywhere, they should be considered internal/back-end plumbing, not the documented API.
+- **Keep direct specialized entry points alongside the generic dispatcher.**
+  - Generic `dtw(..., variant=...)` is good for discoverability and docs parity.
+  - Direct `soft_dtw(...)`, `wdtw(...)`, etc. remain important for repeated calls and explicitness.
+- **Stateful workflows should converge on one documented flow:**
+  - settings/config
+  - data
+  - `Problem`
+  - clustering algorithm
+  - scores / persisted outputs
+- **Config-file loading is still a gap outside the CLI.**
+  - The clean path is to add one shared settings/config representation, then expose it in Python and MATLAB.
+  - Do not invent separate YAML schemas or binding-specific config loaders.
+
 ## MIP Solver
 
 - Balinski p-median formulation. HiGHS (default) or Gurobi.

@@ -27,7 +27,7 @@ function dx = derivative_transform(x)
 %
 %   Reference: Keogh & Pazzani (2001), "Derivative Dynamic Time Warping"
 %
-%   See also dtwc.ddtw_distance
+%   See also dtwc.distance.ddtw
 
     validateattributes(x, {'numeric'}, {'vector', 'nonempty'}, 'derivative_transform', 'x');
     dx = dtwc_mex('derivative_transform', double(x(:)'));

@@ -5,6 +5,8 @@ weight: 6
 
 Here you may find API-related documentation and test results. 
 
+[Cross-language interface map](interface-parity.md)
+
 [Doxygen-generated documentation](doxygen.md)
 
 [Code coverage report (LCOV)](lcov-report.md)
