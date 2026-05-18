@@ -161,7 +161,11 @@ void Problem::refresh_variant_caches()
   }
 
   for (size_t i = 0; i < data.size(); ++i) {
-    const size_t max_dev = data.series_flat_size(i);
+    const size_t len = data.series_flat_size(i);
+    if (len == 0) continue;
+    // max_dev = len - 1 to match the canonical wdtwBanded(x, y, band, g)
+    // convention (Jeong et al. 2011). Dispatch lambda uses the same key.
+    const size_t max_dev = len - 1;
     wdtw_weights_cache_.try_emplace(max_dev, wdtw_weights<data_t>(static_cast<int>(max_dev), g));
   }
 }

@@ -161,6 +161,9 @@ from dtwcpp.io import (
 )
 
 from . import distance
+from . import preprocess
+from . import diagnose
+from . import features
 
 def check_system():
     """Print a diagnostic summary of available DTWC++ backends.
@@ -233,4 +236,5 @@ __all__ = [
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
     "save_dataset_parquet", "load_dataset_parquet",
+    "preprocess", "diagnose", "features",
 ]

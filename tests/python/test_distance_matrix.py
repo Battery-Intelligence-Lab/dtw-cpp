@@ -65,14 +65,17 @@ class TestDenseDistanceMatrix:
         arr = dm.to_numpy()
         np.testing.assert_array_almost_equal(arr, arr.T)
 
-    def test_to_numpy_zero_copy(self):
-        """Modifying the numpy array changes the C++ matrix (zero-copy)."""
+    def test_to_numpy_is_independent_copy(self):
+        """to_numpy() returns an independent copy — DenseDistanceMatrix uses
+        packed triangular storage so a zero-copy full-NxN view is structurally
+        impossible. Mutating the returned array must NOT affect the C++ matrix;
+        use ``set(i, j, v)`` for that."""
         dm = dtwcpp.DenseDistanceMatrix(4)
         dm.set(0, 1, 1.0)
         arr = dm.to_numpy()
-        assert not arr.flags["OWNDATA"], "Expected zero-copy (OWNDATA=False)"
         arr[0, 1] = 42.0
-        assert dm.get(0, 1) == pytest.approx(42.0)
+        arr[1, 0] = 99.0
+        assert dm.get(0, 1) == pytest.approx(1.0)
 
     def test_to_numpy_dtype(self):
         """to_numpy() returns float64 array."""

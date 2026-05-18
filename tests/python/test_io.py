@@ -187,3 +187,71 @@ class TestParquet:
         loaded, names = load_dataset_parquet(p)
         np.testing.assert_allclose(loaded, data, atol=1e-10)
         assert len(names) == 500
+
+
+@pytest.mark.skipif(not _has_pyarrow, reason="pyarrow not installed")
+class TestParquetListColumn:
+    """Polars writes time-series as a single ``large_list<float>`` column with
+    metadata columns alongside. ``load_dataset_parquet`` must detect and load
+    that layout instead of crashing on ``np.column_stack`` of ragged rows."""
+
+    @staticmethod
+    def _write_list_column_parquet(path, series, ride_numbers=None,
+                                    list_type="large_list"):
+        import pyarrow as pa
+        import pyarrow.parquet as pq
+        if list_type == "large_list":
+            arr = pa.array(series, type=pa.large_list(pa.float64()))
+        else:
+            arr = pa.array(series, type=pa.list_(pa.float64()))
+        cols = {"sequence": arr}
+        if ride_numbers is not None:
+            cols["ride_number"] = pa.array(ride_numbers, type=pa.uint32())
+        pq.write_table(pa.table(cols), str(path), compression="snappy")
+
+    def test_large_list_autodetect(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        rides = [[1.0, 2.0, 3.0], [4.0, 5.0], [6.0, 7.0, 8.0, 9.0]]
+        self._write_list_column_parquet(p, rides)
+        data, names = load_dataset_parquet(p)
+        assert isinstance(data, list)
+        assert len(data) == 3
+        np.testing.assert_array_equal(data[0], [1.0, 2.0, 3.0])
+        np.testing.assert_array_equal(data[2], [6.0, 7.0, 8.0, 9.0])
+        assert names == ["series_0", "series_1", "series_2"]
+
+    def test_explicit_column_and_name_column(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        rides = [[10.0, 20.0], [30.0, 40.0, 50.0]]
+        self._write_list_column_parquet(p, rides, ride_numbers=[7, 42])
+        data, names = load_dataset_parquet(
+            p, column="sequence", name_column="ride_number")
+        assert names == ["7", "42"]
+        np.testing.assert_array_equal(data[1], [30.0, 40.0, 50.0])
+
+    def test_plain_list_type_supported(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        rides = [[1.0, 2.0], [3.0, 4.0, 5.0]]
+        self._write_list_column_parquet(p, rides, list_type="list")
+        data, names = load_dataset_parquet(p)
+        assert isinstance(data, list)
+        assert len(data) == 2
+
+    def test_missing_column_raises(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        self._write_list_column_parquet(p, [[1.0, 2.0]])
+        with pytest.raises(ValueError, match="not found"):
+            load_dataset_parquet(p, column="nope")
+
+    def test_wrong_column_type_raises(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        self._write_list_column_parquet(p, [[1.0]], ride_numbers=[1])
+        with pytest.raises(ValueError, match="list / large_list"):
+            load_dataset_parquet(p, column="ride_number")
+
+    def test_variable_length_preserved(self, tmp_path):
+        p = tmp_path / "rides.parquet"
+        rides = [list(range(n)) for n in (3, 7, 5, 11)]
+        self._write_list_column_parquet(p, rides)
+        data, _ = load_dataset_parquet(p)
+        assert [len(s) for s in data] == [3, 7, 5, 11]

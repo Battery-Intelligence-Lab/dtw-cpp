@@ -233,22 +233,53 @@ def save_dataset_parquet(
     pq.write_table(table, str(path), compression="snappy")
 
 
-def load_dataset_parquet(path: str | Path) -> tuple[np.ndarray, list[str]]:
+def load_dataset_parquet(
+    path: str | Path,
+    column: str | None = None,
+    name_column: str | None = None,
+) -> tuple[np.ndarray | list[np.ndarray], list[str]]:
     """Load a time-series dataset from Parquet.
+
+    Two layouts are supported:
+
+    1. **Columnar (rectangular)** — each column is one time step, each row one
+       series. Returns ``(ndarray of shape (N, L), list[str] column names)``.
+       This is the format written by :func:`save_dataset_parquet`.
+    2. **List-column (ragged)** — one column of type ``list<float>`` or
+       ``large_list<float>`` holds one variable-length series per row. This is
+       what Polars writes when you store a Series-of-arrays. Returns
+       ``(list of ndarrays, list[str] series names)``.
+
+    Parameters
+    ----------
+    path :
+        Path to the ``.parquet`` file.
+    column :
+        Name of the list column to extract for layout 2. If ``None``,
+        auto-detected as the first list / large-list column in the schema.
+        Ignored for layout 1.
+    name_column :
+        Name of a column to use for series names in layout 2 (e.g. ``"id"`` or
+        ``"ride_number"``). If ``None``, names are generated as
+        ``series_0, series_1, ...``. Ignored for layout 1.
 
     Returns
     -------
-    data : np.ndarray
-        (N, L) float64 array.
+    data : ndarray or list of ndarray
+        Layout 1: ``(N, L)`` float64 array. Layout 2: list of N float64 arrays
+        with potentially different lengths.
     names : list[str]
-        Column names.
+        Column names (layout 1) or series names (layout 2).
 
     Raises
     ------
     ImportError
         If *pyarrow* is not installed.
+    ValueError
+        If ``column`` is given but does not exist or is not a list type.
     """
     try:
+        import pyarrow as pa
         import pyarrow.parquet as pq
     except ImportError:
         raise ImportError(
@@ -257,6 +288,43 @@ def load_dataset_parquet(path: str | Path) -> tuple[np.ndarray, list[str]]:
 
     path = Path(path)
     table = pq.read_table(str(path))
+    schema = table.schema
+
+    list_col_idx: int | None = None
+    if column is not None:
+        idx = schema.get_field_index(column)
+        if idx < 0:
+            raise ValueError(
+                f"Column '{column}' not found in Parquet schema: {schema.names}"
+            )
+        ftype = schema.field(idx).type
+        if not (pa.types.is_list(ftype) or pa.types.is_large_list(ftype)):
+            raise ValueError(
+                f"Column '{column}' has type {ftype}, expected list / large_list. "
+                f"Drop the `column` argument to use the rectangular layout."
+            )
+        list_col_idx = idx
+    else:
+        for i in range(len(schema)):
+            ftype = schema.field(i).type
+            if pa.types.is_list(ftype) or pa.types.is_large_list(ftype):
+                list_col_idx = i
+                break
+
+    if list_col_idx is not None:
+        col = table.column(list_col_idx).to_pylist()
+        series = [np.asarray(s, dtype=np.float64) for s in col]
+        if name_column is not None:
+            if schema.get_field_index(name_column) < 0:
+                raise ValueError(
+                    f"name_column '{name_column}' not found in Parquet schema: "
+                    f"{schema.names}"
+                )
+            names_out = [str(x) for x in table.column(name_column).to_pylist()]
+        else:
+            names_out = [f"series_{i}" for i in range(len(series))]
+        return series, names_out
+
     names_out = table.column_names
     data = np.column_stack([table.column(c).to_numpy() for c in names_out])
     return data, names_out

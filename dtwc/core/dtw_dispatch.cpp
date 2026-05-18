@@ -163,7 +163,13 @@ inline auto make_wdtw_f64(const Problem &p)
     };
   }
   return [&p](std::span<const data_t> x, std::span<const data_t> y) -> double {
-    const auto max_dev = std::max(x.size(), y.size());
+    // max_dev must equal max_len - 1 to match the canonical wdtwBanded(x,y,band,g)
+    // convention (Jeong et al. 2011: weights are indexed by |i-j| ∈ [0, m-1]).
+    // Stored cache keys mirror this in refresh_variant_caches().
+    const auto max_len = std::max(x.size(), y.size());
+    if (max_len == 0)
+      return std::numeric_limits<double>::max();
+    const auto max_dev = max_len - 1;
     auto it = p.wdtw_weights_cache().find(max_dev);
     if (it == p.wdtw_weights_cache().end()) {
       const auto g = static_cast<data_t>(p.variant_params.wdtw_g);

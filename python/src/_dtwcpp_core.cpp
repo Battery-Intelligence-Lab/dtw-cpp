@@ -255,18 +255,23 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_prop_ro("size", &dtwc::core::DenseDistanceMatrix::size)
     .def("max", &dtwc::core::DenseDistanceMatrix::max)
     .def("to_numpy", [](const dtwc::core::DenseDistanceMatrix &dm) {
-      // Expand packed triangular storage to full N*N numpy array.
+      // Expand packed triangular storage to a full N*N numpy array.
+      // This is always a COPY — the C++ matrix stores only the upper triangle
+      // (n*(n+1)/2 entries) so a true zero-copy view into a full N*N layout
+      // is structurally impossible. Modifying the returned array does NOT
+      // mutate the C++ matrix; use set(i, j, v) for that.
       const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
       const size_t n = dm.size();
-      // Eigen is column-major; numpy expects row-major (C order).
-      // Use nb::ndarray with explicit strides to handle this, or just copy
-      // row-major since the matrix is symmetric (col-major == row-major for symmetric).
       double *ptr = new double[n * n];
-      // Copy from Eigen column-major to row-major (symmetric, so identical)
+      // Eigen is column-major; numpy expects row-major. The matrix is
+      // symmetric, so the byte layout is identical and memcpy is correct.
       std::memcpy(ptr, full.data(), n * n * sizeof(double));
       nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
       return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
-    }, "Return a numpy array of the full N*N distance matrix.")
+    }, "Return an independent copy of the full N*N distance matrix.\n\n"
+       "The C++ matrix stores only the upper triangle, so this expands to a\n"
+       "full symmetric N*N numpy array. Modifying the returned array does NOT\n"
+       "affect the C++ matrix — use set(i, j, v) for that.")
     .def("write_csv", [](const dtwc::core::DenseDistanceMatrix &dm,
                           const std::filesystem::path &path) {
       dtwc::io::write_csv(dm, path);
@@ -602,13 +607,24 @@ NB_MODULE(_dtwcpp_core, m) {
     opts.n_samples = n_samples;
     opts.max_iter = max_iter;
     opts.random_seed = seed;
-    nb::gil_scoped_release release;
-    return dtwc::algorithms::fast_clara(prob, opts);
+    dtwc::core::ClusteringResult result;
+    {
+      nb::gil_scoped_release release;
+      result = dtwc::algorithms::fast_clara(prob, opts);
+    }
+    // Store results back into Problem so silhouette(prob) and DBI(prob) work
+    // (mirrors the auto-wire fast_pam and clarans already do).
+    prob.set_numberOfClusters(n_clusters);
+    prob.centroids_ind = result.medoid_indices;
+    prob.clusters_ind = result.labels;
+    return result;
   }, "prob"_a, "n_clusters"_a, "sample_size"_a = -1,
      "n_samples"_a = 5, "max_iter"_a = 100, "seed"_a = 42,
      "Run FastCLARA scalable k-medoids clustering.\n\n"
      "Runs FastPAM on random subsamples and assigns all points to the\n"
      "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
+     "Results are also stored back into prob, so silhouette(prob) and\n"
+     "davies_bouldin_index(prob) work after this call.\n\n"
      "Parameters:\n"
      "  prob: Problem with data loaded.\n"
      "  n_clusters: Number of clusters (k).\n"

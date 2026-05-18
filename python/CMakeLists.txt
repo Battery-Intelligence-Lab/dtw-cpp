@@ -30,6 +30,12 @@ else()
   nanobind_add_module(_dtwcpp_core src/_dtwcpp_core.cpp)
 endif()
 
-target_link_libraries(_dtwcpp_core PRIVATE dtwc++)
+target_link_libraries(_dtwcpp_core PRIVATE dtwc++ project_options)
+# `project_options` propagates the MSVC `/openmp:experimental` compile flag
+# (set in dtwc/CMakeLists.txt). Without it, the python module's TU contains
+# `#pragma omp parallel for` (e.g. in `compute_distance_matrix`) but compiles
+# without an OpenMP runtime, leaving every parallel loop running serially and
+# `_OPENMP` undefined — so `dtwcpp.OPENMP_AVAILABLE` reports False even when
+# the underlying dtwc++ static library was built with OpenMP.
 
 install(TARGETS _dtwcpp_core DESTINATION dtwcpp)
