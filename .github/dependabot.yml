@@ -7,3 +7,11 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Python build/runtime deps declared in pyproject.toml (numpy, scikit-build-core,
+  # nanobind, cmake, ninja, pyarrow, h5py, pytest, scikit-learn). Without this they
+  # receive no automated security/version updates.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"

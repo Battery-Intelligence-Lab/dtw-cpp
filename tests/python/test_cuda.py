@@ -147,9 +147,11 @@ class TestCUDAClustering:
 # DTWClustering device parameter (always runs)
 # ---------------------------------------------------------------------------
 class TestDTWClusteringDevice:
-    def test_default_device_is_cpu(self):
+    def test_default_device_is_none(self):
+        """Default device is None -> resolves to the global default (cpu) at fit."""
         model = dtwcpp.DTWClustering(n_clusters=2)
-        assert model.device == "cpu"
+        assert model.device is None
+        assert dtwcpp.get_device() == "cpu"
 
     def test_device_parameter_stored(self):
         model = dtwcpp.DTWClustering(n_clusters=2, device="cuda")

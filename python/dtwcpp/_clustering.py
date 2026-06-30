@@ -59,8 +59,13 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         How to handle NaN values in time series. One of ``"error"`` (throw),
         ``"zero_cost"`` (NaN pairs contribute zero cost), ``"arow"``
         (diagonal-only alignment), or ``"interpolate"`` (linear interpolation).
-    device : str, default="cpu"
-        Computation device for distance matrix. ``"cpu"``, ``"cuda"``, or ``"cuda:N"``.
+    device : str or None, default=None
+        Computation device. ``"cpu"``, ``"gpu"`` (alias for ``"cuda"``, CPU
+        fallback if no GPU), ``"cuda"``/``"cuda:N"``, or ``"hpc"`` (offload the
+        whole clustering job to a SLURM cluster). ``None`` uses the global
+        default set via :func:`dtwcpp.device` (itself ``"cpu"`` unless changed).
+        With ``"hpc"``, only ``labels_`` is populated (the cluster computes
+        remotely); ``predict`` is unavailable until a local fit is run.
 
     Attributes
     ----------
@@ -78,7 +83,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
-                 missing_strategy="error", device="cpu"):
+                 missing_strategy="error", device=None):
         self.n_clusters = n_clusters
         self.variant = variant
         self.band = band
@@ -180,20 +185,33 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         """
         series = self._prepare_data(X)
 
+        from dtwcpp import compute_distance_matrix, _resolve_device, get_device
+        eff_device = self.device if self.device is not None else get_device()
+        backend, _ = _resolve_device(eff_device)
+
+        # 'hpc' offloads the entire job to a SLURM cluster and returns labels.
+        if backend == "hpc":
+            from dtwcpp import _hpc
+            self.labels_ = _hpc.cluster_on_hpc(
+                series, self.n_clusters, method="pam", band=self.band,
+                name=f"dtwc_k{self.n_clusters}",
+            )
+            self.medoid_indices_ = None
+            self.inertia_ = None
+            self.n_iter_ = None
+            return self
+
         # Pre-compute GPU distance matrix once (shared across n_init restarts)
         dm_precomputed = None
-        if self.device != "cpu":
-            from dtwcpp import compute_distance_matrix, _resolve_device
-            backend, _ = _resolve_device(self.device)
-            if backend == "cuda":
-                if self.variant != "standard":
-                    raise ValueError(
-                        f"device='cuda' only supports variant='standard', "
-                        f"got variant='{self.variant}'"
-                    )
-                dm_precomputed = compute_distance_matrix(
-                    series, band=self.band, device=self.device
+        if backend == "cuda":
+            if self.variant != "standard":
+                raise ValueError(
+                    f"device='cuda' only supports variant='standard', "
+                    f"got variant='{self.variant}'"
                 )
+            dm_precomputed = compute_distance_matrix(
+                series, band=self.band, device=eff_device
+            )
 
         best_result = None
         best_cost = float("inf")

@@ -14,6 +14,7 @@
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
+#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
@@ -264,6 +265,54 @@ cmd_submit_benchmark_gpu() {
     _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${extra_args}"
 }
 
+# Generic clustering: upload an arbitrary input file + submit cluster_generic.slurm.
+# Args: <input_file> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job]
+# Used by the Python device='hpc' offload path (dtwcpp._hpc.cluster_on_hpc).
+cmd_submit_cluster() {
+    local INPUT_FILE="${1:?input file required}"
+    local K="${2:?number of clusters required}"
+    local METHOD="${3:-pam}"
+    local DEVICE="${4:-cpu}"
+    local BAND="${5:--1}"
+    local NAME="${6:-dtwc_job}"
+
+    [[ -f "${INPUT_FILE}" ]] || { echo "ERROR: input not found: ${INPUT_FILE}"; exit 1; }
+    banner "Submitting clustering job (${NAME}, k=${K}, device=${DEVICE})"
+
+    # Preflight: a build must exist on the cluster
+    local EXISTS
+    EXISTS=$(remote "ls ${REMOTE}/src/build-*/bin/dtwc_cl 2>/dev/null | head -1" || true)
+    if [[ -z "${EXISTS}" ]]; then
+        echo "  ERROR: no dtwc_cl build on cluster. Run 'slurm_remote.sh build' first." >&2
+        exit 1
+    fi
+
+    # Upload the input data + the (possibly updated) generic job script
+    local BASE; BASE="$(basename "${INPUT_FILE}")"
+    remote "mkdir -p ${REMOTE}/data/userjobs"
+    if command -v rsync &>/dev/null; then
+        rsync -az "${INPUT_FILE}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+    else
+        scp "${INPUT_FILE}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+    fi
+    scp "${PROJECT_ROOT}/scripts/slurm/jobs/cluster_generic.slurm" \
+        "${SSH_TARGET}:${REMOTE}/src/scripts/slurm/jobs/cluster_generic.slurm"
+
+    # GPU runs need a GRES request (the job file is partition-agnostic)
+    local GPU_FLAGS=""
+    if [[ "${DEVICE}" == cuda* || "${DEVICE}" == gpu ]]; then
+        GPU_FLAGS="--gres=${GPU_GRES}"
+    fi
+
+    local EXPORTS="ALL,DTWC_INPUT=${REMOTE}/data/userjobs/${BASE},DTWC_K=${K}"
+    EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME}"
+
+    local JOB_ID
+    JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${GPU_FLAGS} --export=${EXPORTS} scripts/slurm/jobs/cluster_generic.slurm")
+    echo "  Job ID: ${JOB_ID}"
+    echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
+}
+
 cmd_status() {
     banner "SLURM Job Status"
     remote "squeue -u ${SLURM_USER} ${CLUSTER_FLAG} 2>/dev/null || squeue -u ${SLURM_USER}"
@@ -332,6 +381,7 @@ case "${CMD}" in
     submit-parquet)    cmd_submit_parquet ;;
     submit-benchmark-cpu) cmd_submit_benchmark_cpu ;;
     submit-benchmark-gpu) cmd_submit_benchmark_gpu "$@" ;;
+    submit-cluster)    cmd_submit_cluster "$@" ;;
     status)            cmd_status ;;
     download)          cmd_download ;;
     ssh)               cmd_ssh "$@" ;;
@@ -349,6 +399,8 @@ case "${CMD}" in
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  Submit full UCR benchmark (GPU, e.g. a100, l40s)"
+        echo "  submit-cluster <input> <k> [method] [device] [band] [name]"
+        echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
         echo "  ssh \"command\"     Run arbitrary command on cluster"

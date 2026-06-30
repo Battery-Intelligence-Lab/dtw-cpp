@@ -82,11 +82,17 @@ def _parse_device(device):
     device = device.strip().lower()
     if device == "cpu":
         return ("cpu", 0)
+    if device == "gpu":
+        return ("cuda", 0)          # friendly alias; falls back to CPU if no GPU
     if device == "cuda" or device.startswith("cuda:"):
         parts = device.split(":", 1)
         device_id = int(parts[1]) if len(parts) > 1 else 0
         return ("cuda", device_id)
-    raise ValueError(f"Unknown device '{device}'. Expected 'cpu', 'cuda', or 'cuda:N'.")
+    if device == "hpc":
+        return ("hpc", 0)           # execution location, not a local compute backend
+    raise ValueError(
+        f"Unknown device '{device}'. Expected 'cpu', 'gpu', 'cuda', 'cuda:N', or 'hpc'."
+    )
 
 
 def _resolve_device(device):
@@ -111,7 +117,38 @@ def _resolve_device(device):
     return (backend, device_id)
 
 
-def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, device="cpu"):
+_DEFAULT_DEVICE = "cpu"
+
+
+def device(device=None):
+    """Get or set the global default device, PyTorch-style.
+
+    Call with no argument to read the current default; pass a name to set it.
+    Accepts ``"cpu"``, ``"gpu"``, ``"cuda"``, ``"cuda:N"``, or ``"hpc"``. The
+    friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call.
+    An explicit ``device=`` argument always overrides this global default.
+
+    Examples
+    --------
+    >>> dtwcpp.device("gpu")     # subsequent ops default to GPU (CPU fallback)
+    'gpu'
+    >>> dtwcpp.device()          # read the current default
+    'gpu'
+    """
+    global _DEFAULT_DEVICE
+    if device is None:
+        return _DEFAULT_DEVICE
+    _parse_device(device)                 # validate; raises ValueError on unknown
+    _DEFAULT_DEVICE = device.strip().lower()
+    return _DEFAULT_DEVICE
+
+
+def get_device():
+    """Return the current global default device string."""
+    return _DEFAULT_DEVICE
+
+
+def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, device=None):
     """Compute pairwise DTW distance matrix.
 
     Parameters
@@ -124,8 +161,11 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
         Distance metric: 'l1' or 'squared_euclidean'.
     use_pruning : bool, default=True
         Use LB_Keogh pruning (CPU only).
-    device : str, default='cpu'
-        Computation device: 'cpu', 'cuda', or 'cuda:N'.
+    device : str or None, default=None
+        Computation device: 'cpu', 'gpu', 'cuda', or 'cuda:N'. ``None`` uses
+        the global default set via :func:`device` (itself 'cpu' unless changed).
+        ``'hpc'`` is rejected here — it offloads the whole job, not just the
+        matrix; use the high-level clustering path instead.
 
     Returns
     -------
@@ -137,7 +177,15 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
             f"Unknown metric '{metric}'. Expected one of: {sorted(_valid_metrics)}"
         )
 
+    if device is None:
+        device = _DEFAULT_DEVICE
     backend, device_id = _resolve_device(device)
+    if backend == "hpc":
+        raise ValueError(
+            "device='hpc' offloads the entire clustering job to a cluster and is "
+            "not a local compute backend. Use DTWClustering(device='hpc').fit(X) "
+            "or examples/python/09_device_clustering.py hpc."
+        )
     if backend == "cuda":
         use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
         return _compute_distance_matrix_cuda(
@@ -226,6 +274,7 @@ __all__ = [
     "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
+    "device", "get_device",
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "OPENMP_AVAILABLE", "openmp_max_threads",
