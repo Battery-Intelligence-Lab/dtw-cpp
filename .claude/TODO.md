@@ -1,5 +1,37 @@
 # DTWC++ Development TODO
 
+
+## Volkan's instructions
+
+Now we are doing a huge-refactor and upgrade our DTWC++ library. 
+
+I want a very detailed analysis and a plan for Opus 4.8 -effort=xhigh to implement. Please you do yourself do not implement the plan but call it as the subagent to implement. Your output tokens are very valuable. So you need to focus on high-level thinking and guiding other agents. Not implementing things yourself nor bloating your context. I want following things
+
+
+1) Top-to-down library and interface redesign. 
+
+2) Interface is consistent in all languages (C++, MATLAB and Python, like how Casadi is doing) 
+
+3) I want device selection like Pytorch so you create the DTWC environment then you set the device somehow. So it is like  device=cpu, device=gpu, device=hpc. The cpu and gpu are local, and hpc is the SLURM interface we have. So it should use the credientials to connect HPC in the ".env" file. If they are not there then it should give an error that the connection is not established for the reason (no password -> then tell user how to put their things to .env,  or wrong password etc. then tell user, so informative message then close). Maybe we could have some lazy loading so that if it is hpc then it doesn't load the data, or if the data is too big then it uses some mmap or something else. Meticulously decide these important design questions. 
+
+4) Automated compilation for executables and mex files, python wheels for all platforms. I think we can consider uploading the pypi when we are hundred percent sure our software is working. So we will release as DTWC++ 2.0.  
+
+5) The code is cross-platform, works on all supported platforms (windows, macos (both intel and amd), Linux (ubuntu)). 
+
+6) All parallelisation etc. things work out of the box. I don't want it to cannot activate parallelisation due to missing oneTBB etc. then fall back to sequential. Otherwise I would be happier probably for using std algorithms but this was the issue. Maybe we could make user-facing test interface like. dtwc.test.parallelisation() so this tries how many cores and how we can use it. Same for GPU testing. Once these functions are called it can just report back how many gpu what it is using etc.
+
+7) See literature and other abilities we can add.
+
+8) Zero overhead abstraction. So if we have the ability to choose L1 and L2 norms or inject another cost function. These should have nearly zero cost, you could in C++ especially inject things with compile time. And in other languages you could compile multiple options then the main function can select so the selection is not on the hotpath. Or anything that doesn't sacrifice speed. I want this library to be the fastest available DTWC++ library for large data etc. Or maybe multi-dim DTWC++ etc.
+
+9) See my other attempts of writing my own solver, it doesn't work nicely but we could I think can improve. See also my work in UNIMODULAR.md where I believe this problem is almost unimodular, so in MIP programming I believe we could solve this very easily with a much more clever branching rather than leaving the solver to take the branches. And having a large MILP is impossible when you have lots of time series. LP would be more feasible and probably reducing this to a network problem and then solving somehow to global optimality would be amazing. Maybe you could throw another Claude Fable with max effort to investigate the math in the UNIMODULAR.md and maybe come up with a better solver also using my previous attempts. It would be nice to have something nice.
+
+10) Once everything is there, we should update the documentation website.
+
+11) Please think deeply and also remind me if I forgot anything. Like maybe you could write huge CUDA kernels other things or improve some algorithms to make this library EVEN FASTER. You could use some profiler some other thing see cache hit etc. You are free to change data types, how to hold data, how to do things. As long as this library is very fast, accurate, and portable.
+
+## Other updates
+
 **Last Updated:** 2026-07-06
 
 > Refreshed from stale 2026-04-13 state. Reconciled against CHANGELOG (Unreleased),
