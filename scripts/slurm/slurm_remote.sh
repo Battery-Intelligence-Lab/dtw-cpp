@@ -265,18 +265,21 @@ cmd_submit_benchmark_gpu() {
     _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${extra_args}"
 }
 
-# Generic clustering: upload an arbitrary input file + submit cluster_generic.slurm.
-# Args: <input_file> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job]
+# Generic clustering: submit cluster_generic.slurm on an arbitrary input.
+# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job] [skip_cols=0] [upload=1]
+#   upload=1 : <input> is a local file -> rsync it to the cluster.
+#   upload=0 : <input> is a path ON the cluster (pre-staged) -> used as-is, no read/upload.
 # Used by the Python device='hpc' offload path (dtwcpp._hpc.cluster_on_hpc).
 cmd_submit_cluster() {
-    local INPUT_FILE="${1:?input file required}"
+    local INPUT="${1:?input required}"
     local K="${2:?number of clusters required}"
     local METHOD="${3:-pam}"
     local DEVICE="${4:-cpu}"
     local BAND="${5:--1}"
     local NAME="${6:-dtwc_job}"
+    local SKIP_COLS="${7:-0}"
+    local UPLOAD="${8:-1}"
 
-    [[ -f "${INPUT_FILE}" ]] || { echo "ERROR: input not found: ${INPUT_FILE}"; exit 1; }
     banner "Submitting clustering job (${NAME}, k=${K}, device=${DEVICE})"
 
     # Preflight: a build must exist on the cluster
@@ -287,14 +290,23 @@ cmd_submit_cluster() {
         exit 1
     fi
 
-    # Upload the input data + the (possibly updated) generic job script
-    local BASE; BASE="$(basename "${INPUT_FILE}")"
-    remote "mkdir -p ${REMOTE}/data/userjobs"
-    if command -v rsync &>/dev/null; then
-        rsync -az "${INPUT_FILE}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+    # Resolve the cluster-side input path (upload a local file, or use as-is)
+    local REMOTE_INPUT
+    if [[ "${UPLOAD}" == "1" ]]; then
+        [[ -f "${INPUT}" ]] || { echo "ERROR: input not found: ${INPUT}"; exit 1; }
+        local BASE; BASE="$(basename "${INPUT}")"
+        remote "mkdir -p ${REMOTE}/data/userjobs"
+        if command -v rsync &>/dev/null; then
+            rsync -az "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+        else
+            scp "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+        fi
+        REMOTE_INPUT="${REMOTE}/data/userjobs/${BASE}"
     else
-        scp "${INPUT_FILE}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+        REMOTE_INPUT="${INPUT}"          # pre-staged on the cluster
     fi
+
+    # Refresh the generic job script
     scp "${PROJECT_ROOT}/scripts/slurm/jobs/cluster_generic.slurm" \
         "${SSH_TARGET}:${REMOTE}/src/scripts/slurm/jobs/cluster_generic.slurm"
 
@@ -304,7 +316,7 @@ cmd_submit_cluster() {
         GPU_FLAGS="--gres=${GPU_GRES}"
     fi
 
-    local EXPORTS="ALL,DTWC_INPUT=${REMOTE}/data/userjobs/${BASE},DTWC_K=${K}"
+    local EXPORTS="ALL,DTWC_INPUT=${REMOTE_INPUT},DTWC_K=${K},DTWC_SKIP_COLS=${SKIP_COLS}"
     EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME}"
 
     local JOB_ID

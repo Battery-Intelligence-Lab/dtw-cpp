@@ -198,6 +198,9 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
 # Pure-Python sklearn-compatible layer
 from dtwcpp._clustering import DTWClustering
 
+# Unified high-level interface: device() -> load() -> cluster() -> result.plot()
+from dtwcpp._api import Dataset, load, cluster, ClusterResult, plot
+
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
 from dtwcpp.io import (
     save_dataset_csv,
@@ -275,6 +278,7 @@ __all__ = [
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "device", "get_device",
+    "Dataset", "load", "cluster", "ClusterResult", "plot",
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "OPENMP_AVAILABLE", "openmp_max_threads",

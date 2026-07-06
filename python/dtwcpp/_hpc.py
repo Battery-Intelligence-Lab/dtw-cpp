@@ -42,19 +42,23 @@ def write_series_tsv(series, path):
     return path
 
 
-def parse_labels_csv(path, n):
+def parse_labels_csv(path, n=None):
     """Parse dtwc_cl's ``NAME_labels.csv`` into labels in INPUT order.
 
     The file has header ``name,cluster``; dtwc_cl names batch-row series ``1..N``
     (1-based). Row order is not guaranteed (it may be lexically sorted), so the
     mapping is by name: ``labels[i] = cluster_of[str(i + 1)]``.
 
-    Raises KeyError if any input series (1..n) is absent from the file.
+    ``n`` is the expected number of series; when ``None`` (e.g. an HPC path source
+    whose length isn't known locally) it is inferred from the file row count.
+    Raises KeyError if any series ``1..n`` is absent from the file.
     """
     mapping = {}
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
             mapping[str(row["name"]).strip()] = int(row["cluster"])
+    if n is None:
+        n = len(mapping)
     labels = np.empty(n, dtype=int)
     for i in range(n):
         labels[i] = mapping[str(i + 1)]          # KeyError if a series is missing
@@ -126,9 +130,9 @@ class SlurmRemoteRunner:
                               cwd=self.repo_root, capture_output=True, text=True)
 
     def submit_cluster(self, input_tsv, k, *, method="pam", device="cpu",
-                       band=-1, name="dtwc_job"):
+                       band=-1, skip_cols=0, name="dtwc_job", upload=True):
         res = self._run("submit-cluster", input_tsv, str(k), method, device,
-                        str(band), name)
+                        str(band), name, str(skip_cols), "1" if upload else "0")
         out = (res.stdout or "") + (res.stderr or "")
         m = re.search(r"Job ID:\s*(\d+)", out)
         if not m:
@@ -159,10 +163,14 @@ class SlurmRemoteRunner:
         return max(hits, key=os.path.getmtime)
 
 
-def cluster_on_hpc(series, n_clusters, *, method="pam", device="cpu", band=-1,
-                   name="dtwc_job", poll_seconds=20, timeout_seconds=86400,
-                   repo_root=None, runner=None):
+def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
+                   skip_cols=0, name="dtwc_job", poll_seconds=20,
+                   timeout_seconds=86400, repo_root=None, runner=None):
     """Offload clustering to a SLURM cluster and return labels in input order.
+
+    ``source`` is either an in-memory list of series (serialized + uploaded) or a
+    path string interpreted **on the cluster** (pre-staged data — never read or
+    uploaded locally, so it scales to data too large to hold on a laptop).
 
     Requires a configured ``.env`` at the repo root and ssh + rsync (Git Bash on
     Windows). The build must already exist on the cluster — run
@@ -171,18 +179,23 @@ def cluster_on_hpc(series, n_clusters, *, method="pam", device="cpu", band=-1,
     NOTE: the remote submission cannot be verified on a dev laptop; run on ARC.
     """
     repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
-    n = len(series)
     rundir = os.path.join(repo_root, "results", "hpc", name)
     os.makedirs(rundir, exist_ok=True)
-    tsv = write_series_tsv(series, os.path.join(rundir, "input.tsv"))
-    # Pass a repo-relative path: the wrapper runs with cwd=repo_root, and Git Bash
-    # rsync would otherwise read a Windows 'C:/...' path as a 'host:path' target.
-    tsv_arg = os.path.relpath(tsv, repo_root).replace(os.sep, "/")
+
+    if isinstance(source, (str, os.PathLike)):
+        # Cluster-side path: pass through, no local read, no upload.
+        input_arg, upload, n = str(source).replace(os.sep, "/"), False, None
+    else:
+        # In-memory series: serialize to a repo-relative TSV and upload it.
+        # (Repo-relative so Git Bash rsync doesn't read 'C:/...' as 'host:path'.)
+        n = len(source)
+        tsv = write_series_tsv(source, os.path.join(rundir, "input.tsv"))
+        input_arg, upload = os.path.relpath(tsv, repo_root).replace(os.sep, "/"), True
 
     runner = runner or SlurmRemoteRunner(repo_root)
     runner.preflight()
-    job_id = runner.submit_cluster(tsv_arg, n_clusters, method=method, device=device,
-                                   band=band, name=name)
+    job_id = runner.submit_cluster(input_arg, n_clusters, method=method, device=device,
+                                   band=band, skip_cols=skip_cols, name=name, upload=upload)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
     labels_csv = runner.download_labels(name)
     return parse_labels_csv(labels_csv, n)

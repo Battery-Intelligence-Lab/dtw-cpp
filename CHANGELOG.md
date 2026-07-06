@@ -8,6 +8,23 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (unified `device()` → `load()` → `cluster()` → `result.plot()` interface)
+
+- **One high-level flow** in new [python/dtwcpp/_api.py](python/dtwcpp/_api.py): set the device once, then cluster — the library handles device resolution, local-vs-remote execution, and plotting, so callers never touch internal plumbing:
+
+  ```python
+  import dtwcpp as dtwc
+  dtwc.device("hpc")                  # cpu | gpu | hpc  (set once, sticky)
+  data = dtwc.load("Crop_TRAIN.tsv")  # lazy handle — NOT read locally on hpc
+  res  = dtwc.cluster(data, k=3)      # local for cpu/gpu; offloaded for hpc
+  print(res.summary()); res.plot()
+  ```
+
+- **`dtwcpp.load(source, skip_cols=…)`** returns a lazy `Dataset` (a path or array); the file is only read when a *local* backend needs it. On `device="hpc"` a path is passed straight to the cluster and never read locally — so it scales past what fits on the calling machine.
+- **`dtwcpp.cluster(data, k, …)`** reads the global device (or a per-call `device=`), runs FastPAM k-medoids locally for cpu/gpu (full distance matrix on the chosen device) or offloads the whole job for hpc, and returns a **`ClusterResult`** with `labels`, timing, `cost`/`medoid_indices` (local), and `summary()` / `plot()` (classical-MDS 2D scatter, moved out of the example into the library).
+- [examples/python/09_device_clustering.py](examples/python/09_device_clustering.py) rewritten to this flow — ~6 lines of logic, no `resolve_device` or other internals leaked to the user.
+- Covered by 12 tests in [tests/python/test_api.py](tests/python/test_api.py): lazy load (a missing path doesn't raise), local group recovery, result fields/summary, plot output, and that `device="hpc"` **does not read a path source locally**.
+
 ### Added (PyTorch-style device selection: `gpu`/`hpc` names + global `dtwcpp.device()`)
 
 - **Friendly device names.** [python/dtwcpp/__init__.py](python/dtwcpp/__init__.py) `_parse_device` now accepts `"gpu"` (alias for `"cuda"`, so it auto-falls-back to CPU with a warning when no GPU is present) and `"hpc"` (an *execution location*, not a local compute backend). The previous `"cpu"`/`"cuda"`/`"cuda:N"` spellings are unchanged.

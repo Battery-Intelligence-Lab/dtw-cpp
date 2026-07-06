@@ -17,6 +17,12 @@ Critical knowledge to avoid repeating mistakes.
 - **`OMP_PROC_BIND` / `OMP_PLACES` are no-ops on Darwin** with Homebrew libomp. Pinning sweep at T=12: default / close / spread all within 0.3% of each other (1606 / 1610 / 1609 ms). macOS QoS scheduler handles placement. Don't document them as tuning knobs — they do nothing.
 - **`sysctlbyname("hw.perflevel0.logicalcpu")` is not worth calling** for thread-count tuning. `omp_get_max_threads()` gives the right answer. Skip the P-core auto-cap code path unless a future benchmark contradicts this.
 
+## Python packaging / bindings
+
+- **The installed `dtwcpp` is a non-editable wheel** (built to `Z:/dist/...whl`). `import dtwcpp` resolves to `.venv/.../site-packages/dtwcpp`, NOT `python/dtwcpp/`. Editing the repo's pure-Python files does **nothing** until you reinstall. To TEST pure-Python changes without a full C++ rebuild: copy the installed package dir to scratch (keeps the compiled `_dtwcpp_core.pyd` + DLLs), overlay the repo's `*.py` on top, and run `PYTHONPATH=<overlay> pytest`. For real use, `pip install -e .` (rebuilds the extension) or rebuild the wheel.
+- **`dtwc_cl` names batch-row series `1..N` (1-based row index), ignoring any id column.** With a TSV of one series per row + `--skip-cols 0`, the `NAME_labels.csv` (`name,cluster`) uses names `1..N`. Its rows are **not guaranteed in input order** (the binary may lexically sort: `1,10,11,2,...`). ALWAYS map labels by name (`labels[i] = clusters[str(i+1)]`), never by row position. Verified against `build/bin/dtwc_cl.exe` 2026-06-30.
+- **`./bin/dtwc_cl.exe` can be stale.** A top-level `bin/` binary may predate current flags (it rejected `--skip-cols`/`-k`). Prefer `build-*/bin/dtwc_cl` (current builds) — `find_dtwc_binary` does this.
+
 ## C++ Performance
 
 - **Generalising can beat specialising.** Phase 1 unified the Standard/ADTW/WDTW/DDTW/ZeroCost-missing banded paths behind one `dtw_kernel_banded<T, Cost, Cell>`. The per-variant loops had accumulated divergent bookkeeping — WDTW had a ~50-line `if (low == 0)` block that didn't exist in Standard, etc. Unification produced **1.54× (dtwBanded), 1.77× (wdtwBanded), 2.83× (wdtwBanded_g)** speedups on 1000-length series. Register pressure, icache behaviour, and constant-folding under `-O2` all favoured the uniform loop. Template Cost/Cell policies are pass-by-value 8-24-byte structs kept in registers — zero runtime indirection. Counter to the assumption that specialised loops should always win.
