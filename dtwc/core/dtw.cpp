@@ -10,6 +10,9 @@
 #include "../warping_adtw.hpp"
 #include "../warping_ddtw.hpp"
 #include "../warping_wdtw.hpp"
+#include "../soft_dtw.hpp"
+
+#include <span>
 
 namespace dtwc::core {
 
@@ -48,12 +51,19 @@ double dtw_runtime(const double* x, std::size_t nx,
         : dtwc::ddtwFull_L<double>(xs, ys, opts.metric);
     }
 
-    case DTWVariant::SoftDTW:
-      // SoftDTW needs log-sum-exp recurrence and a different scratch layout.
-      // Phase 1 does not migrate SoftDTW into the unified kernel; users must
-      // call dtwc::soft_dtw() directly. Fall through to Standard for now so
-      // the call still returns a finite distance rather than throwing.
-      [[fallthrough]];
+    case DTWVariant::SoftDTW: {
+      // BUGFIX (Task 0.6): this case previously `[[fallthrough]]`-ed to Standard,
+      // so a SoftDTW request SILENTLY returned a Standard-L1 distance (a wrong
+      // number, not a differentiable Soft-DTW value) and the gamma>0 precondition
+      // was skipped (NaN poison for gamma<=0). Route to the dedicated soft_dtw()
+      // kernel, which computes the real Soft-DTW and throws std::invalid_argument
+      // for gamma<=0. soft_dtw() uses an L1 pointwise cost and is unbanded, so
+      // opts.band / opts.metric do not apply on this path (SoftDTW support is
+      // L1/full-matrix only) — consistent with ADTW/WDTW above ignoring metric.
+      const double gamma = opts.variant_params.sdtw_gamma;
+      return dtwc::soft_dtw<double>(std::span<const double>{x, nx},
+                                    std::span<const double>{y, ny}, gamma);
+    }
 
     case DTWVariant::Standard:
     default:
