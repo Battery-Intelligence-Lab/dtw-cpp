@@ -406,10 +406,11 @@ PruningStats compute_distance_matrix_pruned(
         }
       }
 
-      // nn_dist[i] is only written by thread owning row i (the outer loop).
-      // nn_dist[j] may be read here while another thread writes it —
-      // this is benign: stale values only reduce pruning, not correctness.
-      // The design ensures each thread WRITES only to nn_dist[i] (its own row).
+      // nn_dist[i] and nn_dist[j] are both updated atomically (CAS) after each
+      // pair (see lines 446-451), so either may be concurrently written by other
+      // threads while read here. This is benign: a stale value only reduces
+      // pruning effectiveness, never correctness (nn_dist feeds an early-abandon
+      // threshold only).
       const double threshold = std::min(nn_dist[i], nn_dist[j]);
 
       double dist;
