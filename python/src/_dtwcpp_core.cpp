@@ -718,6 +718,12 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
                                         int band, const std::string &metric,
                                         bool use_pruning) {
+    // Task 3.6 (review H1): this high-level Python compute path never constructs
+    // dtwc::env(), so its OpenMP warning would otherwise be silent under
+    // OMP_NUM_THREADS=1. Warn once, deterministically, before either branch (the
+    // pruned branch also warns via get_max_threads; this covers the unpruned one).
+    dtwc::warn_if_single_threaded();
+
     auto mt = dtwc::core::MetricType::L1;
     if (metric == "squared_euclidean" || metric == "sqeuclidean")
         mt = dtwc::core::MetricType::SquaredL2;

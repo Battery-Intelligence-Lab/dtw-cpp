@@ -146,4 +146,20 @@ private:
 /// @brief The process-wide Env singleton (api-contract-2.0.md §6).
 Env &env();
 
+/// @brief Emit ONE process-wide stderr warning when DTWC++ is running
+///        single-threaded — the RuntimeSingleThread case (OpenMP present but only
+///        1 usable thread on a multicore host, e.g. OMP_NUM_THREADS=1) or a
+///        DTWC_SEQUENTIAL_BUILD (Task 3.6, review finding H1).
+///
+/// @details Task 3.2 wired this warning into the dtwc::Env constructor, but the
+/// compute hot paths (Problem::fill_distance_matrix, the Python distance-matrix
+/// bindings, direct C++ Problem use) never construct dtwc::env(), so on such a
+/// build they ran SILENTLY single-threaded. Every compute path funnels through
+/// dtwc::get_max_threads() (parallelisation.hpp), which now calls this; the Python
+/// free function calls it directly too. Shares the single process-once guard with
+/// the Env constructor, so a front-end that both builds env() and computes (the
+/// CLI) still warns at most once. Thread-safe; O(1) atomic load after the first
+/// call. The exact strings are the SSOT in detail::sequential_warning_text.
+void warn_if_single_threaded();
+
 } // namespace dtwc

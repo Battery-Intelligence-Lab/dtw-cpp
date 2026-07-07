@@ -234,27 +234,50 @@ Env::Env()
   warn_if_sequential(); // Task 3.2: loud stderr warning when running single-threaded.
 }
 
-void Env::warn_if_sequential() const
+namespace {
+
+/// ONE single-thread warning per process, SHARED between the dtwc::Env
+/// constructor (Task 3.2) and dtwc::warn_if_single_threaded() reached from the
+/// compute entry points (Task 3.6). A single flag is what keeps the CLI — which
+/// both constructs env() and computes — from warning twice. std::once_flag has a
+/// constexpr constructor, so it is constant-initialised (no static-init-order
+/// hazard).
+std::once_flag g_seq_warned_flag;
+
+/// omp_get_max_threads() (or 1 without OpenMP): reflects OMP_NUM_THREADS /
+/// omp_set_num_threads() at the moment of the call. Mirrors Env::threads().
+int effective_max_threads() noexcept
 {
-  // ONE warning per process. The front-ends run through the singleton dtwc::env()
-  // (constructed once), but even if several Env instances are created we want a
-  // single loud line rather than repeated spam. std::call_once consumes the flag
-  // on the first Env construction regardless of whether it actually warns.
-  static std::once_flag warned_flag;
-  std::call_once(warned_flag, [this] {
+#ifdef DTWC_HAS_OPENMP
+  return omp_get_max_threads();
+#else
+  return 1;
+#endif
+}
+
+} // namespace
+
+void warn_if_single_threaded()
+{
+  std::call_once(g_seq_warned_flag, [] {
     constexpr bool sequential_build =
 #ifdef DTWC_SEQUENTIAL_BUILD
       true; // Task 3.1 defines this when configured with -DDTWC_ALLOW_SEQUENTIAL=ON.
 #else
       false;
 #endif
-    // threads() == omp_get_max_threads() (or 1 without OpenMP): reflects OMP_NUM_THREADS
-    // / omp_set_num_threads() at construction time.
     const auto cause = detail::sequential_cause(
-      threads(), std::thread::hardware_concurrency(), sequential_build);
+      effective_max_threads(), std::thread::hardware_concurrency(), sequential_build);
     if (cause != detail::SeqCause::None)
       std::cerr << detail::sequential_warning_text(cause);
   });
+}
+
+void Env::warn_if_sequential() const
+{
+  // Delegate to the shared, process-once emitter so the Env-constructor path and
+  // the compute-path calls consume the SAME guard (never a double warning).
+  warn_if_single_threaded();
 }
 
 void Env::set_device(std::string_view name)

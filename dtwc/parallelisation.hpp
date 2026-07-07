@@ -28,20 +28,27 @@
 
 namespace dtwc {
 
+/// @brief Emit ONE process-wide single-thread warning (Task 3.6). Defined in
+///        env.cpp; forward-declared here — not via `#include "env.hpp"` — to keep
+///        this hot-path header light and free of an include cycle. Shares the
+///        single process-once guard with the dtwc::Env constructor, so a
+///        front-end that both constructs env() and computes warns at most once.
+void warn_if_single_threaded();
+
 /// @brief Returns the number of available OpenMP threads (1 if OpenMP is absent).
-///        On first call, emits a warning to stderr if running single-threaded.
+///        On first call, emits a loud stderr warning if running single-threaded —
+///        this is the chokepoint every compute path funnels through (via
+///        omp_chunk_size / run), so paths that never construct dtwc::env() (Python
+///        compute bindings, direct C++ Problem use) are not silently serial
+///        (Task 3.6, review finding H1). The warning string is the SSOT in
+///        env.cpp (detail::sequential_warning_text) — no duplication here.
 inline int get_max_threads()
 {
 #ifdef _OPENMP
+  warn_if_single_threaded();
   return omp_get_max_threads();
 #else
-  static bool warned = [] {
-    std::cerr << "[DTWC++ WARNING] OpenMP not available — running single-threaded.\n"
-              << "  Distance matrix computation will be extremely slow for large datasets.\n"
-              << "  Rebuild with OpenMP support for parallel execution.\n";
-    return true;
-  }();
-  (void)warned;
+  warn_if_single_threaded();
   return 1;
 #endif
 }
