@@ -286,7 +286,7 @@ Implements `docs/api-contract-2.0.md` verbatim. Known gaps to close (api-surface
 - [x] One fixture: load recorded dataset → banded DTW → fast_pam k=3, fixed seed → labels + medoids + 3 scores. Run from C++, Python, MATLAB (MATLAB skippable, loud), CLI. Assert digit-identical labels/medoids and scores equal to 1e-12 rel.
 - [x] This fixture is the permanent parity gate — wire into CI. Commit.
 
-## Phase 3 — Parallelism & GPU out-of-the-box [DRAFT — build-state report landed; tasks being finalised]
+## Phase 3 — Parallelism & GPU out-of-the-box [FINAL 2026-07-07]
 
 Current state (`.claude/reports/build-state-2026-07-06.md`): OpenMP is the ONLY backend (no std::execution/TBB anywhere). Known silent-fallback holes to close:
 1. OpenMP-missing is only a configure-time `message(WARNING)` (`dtwc/CMakeLists.txt:118-123`) — build/wheel succeeds serial.
@@ -295,12 +295,48 @@ Current state (`.claude/reports/build-state-2026-07-06.md`): OpenMP is the ONLY 
 4. macOS-Intel cross-built wheels likely serial (arm64 runner installs arm64-only libomp) [inferred — verify one CI log].
 5. MSVC OpenMP rides `project_options` INTERFACE (`/openmp:experimental`); consumers that drop `project_options` silently serialise (`dtwc/CMakeLists.txt:113`, `python/CMakeLists.txt:33-40`).
 
-Plan:
-- Keep OpenMP as the backend (only one wired everywhere; std::execution was the user's earlier pain point). Make it FAIL the build when absent unless `-DDTWC_ALLOW_SEQUENTIAL=ON`; runtime `omp_get_max_threads()==1` on multi-core hardware → loud warning at Env construction, not buried in one helper.
-- Un-gate GPU→CPU fallback messages from `verbose` — always warn (no-silent-fallback global constraint).
-- CI gate: built wheels must assert `OPENMP_AVAILABLE==True` on all platforms + `CIBW_TEST_COMMAND` import test.
-- Introspection: building blocks already bound (`system_info`/`cuda_device_info`/`metal_available`/`openmp_max_threads` in `_dtwcpp_core.cpp:813-939`; `dtwcpp.check_system()`; MATLAB `dtwc_mex('system_check')`). Build `dtwc.test.parallelisation()` / `dtwc.test.gpu()` on top: structured pass/fail return (not prints), proof-of-engagement (threads actually spawn; GPU kernel actually executes and validates against CPU oracle), same output schema in all 3 languages. Add Metal to Python `check_system` (bound but not reported).
-- CUDA H100 items from TODO backlog fold in here (arch-aware dispatch, k-vs-all kernel wiring, multi-stream).
+**NEW FACT (2026-07-07, orchestrator-verified):** local machine has nvcc 13.0 (`C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.0`) + NVIDIA RTX 4000 Ada Generation (sm_89). The 2026-06-01 "GPU fixes need a separate CUDA box" constraint is STALE — CUDA can be compiled and runtime-verified locally. Metal still needs macOS CI.
+
+**Design decision (logged):** OpenMP stays the only CPU backend. Absence becomes a configure-time FATAL_ERROR unless `-DDTWC_ALLOW_SEQUENTIAL=ON` is given explicitly. This strengthens "optional dependency" to "explicit opt-out" — the runbook's "core must build without them" holds via the flag; silent-serial wheels/builds die. (TODO item 6; no-silent-fallback global constraint.)
+
+Batching: **wave A** = 3.1 ∥ 3.2 ∥ 3.4 (disjoint files) → gate → commits; **wave B** = 3.3 ∥ 3.5 (needs A's CMake + Problem.cpp state) → gate → commits → phase adversarial review.
+
+### Task 3.1: Build-time parallelism guarantee [wave A]
+
+**Files:** Modify: `dtwc/CMakeLists.txt`, `python/CMakeLists.txt`, root `CMakeLists.txt`/cmake modules as needed.
+- [ ] OpenMP not found → `FATAL_ERROR` naming the escape hatch `-DDTWC_ALLOW_SEQUENTIAL=ON`; with the flag → configure succeeds, loud warning, `DTWC_SEQUENTIAL_BUILD` compile definition set.
+- [ ] Close hole 5: link `OpenMP::OpenMP_CXX` (or MSVC flags) on the dtwc targets directly, not only via `project_options` INTERFACE.
+- [ ] Registered configure matrix (run all three, quote verbatim): (a) normal configure exit 0; (b) `-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON` exit ≠0 with error text containing `DTWC_ALLOW_SEQUENTIAL`; (c) both flags exit 0 + warning. Full rebuild + ctest floor (75 non-skip, 0 fail) unchanged.
+
+### Task 3.2: Runtime loudness — Env thread warning + un-gated GPU fallbacks [wave A]
+
+**Files:** Modify: `dtwc/parallelisation.hpp`, `dtwc/Problem.cpp` (:404,450,470,477,493), `dtwc/env.cpp`/`env.hpp`.
+- [ ] Env construction: effective threads==1 while `hardware_concurrency()>1` (or `DTWC_SEQUENTIAL_BUILD`) → one loud stderr warning, exact string documented and asserted byte-for-byte in a test.
+- [ ] The 5 `if (verbose)`-gated GPU→CPU fallback messages → ALWAYS emitted to stderr (verbose adds detail only, never gates the warning).
+- [ ] Tests: stderr-capture test for both warning classes; ctest floor unchanged.
+
+### Task 3.3: `dtwc.test` introspection API — same schema in C++/Python/MATLAB [wave B]
+
+**Files:** Create: `dtwc/test_api.hpp` (header-only — avoids CMake source-list edits). Modify: `python/src/_dtwcpp_core.cpp` + `python/dtwcpp/` (test namespace), `bindings/matlab/dtwc_mex.cpp` + wrapper `.m`. Tests per language.
+- [ ] `parallelisation()`: run a real OMP region, collect distinct thread ids → `{available, max_threads, threads_engaged, pass}`. Proof-of-engagement: distinct ids ≥2 on multicore, not a flag read.
+- [ ] `gpu()`: if CUDA/Metal compiled in, execute a tiny kernel and validate vs CPU oracle (≤1e-12) → `{available, backend, device_name, validated, pass}`; else `{available:false, reason:"..."}` — never throws, never silent, reason names what is missing.
+- [ ] Same field names in all three languages (C++ `dtwc::test::*`, Python `dtwcpp.test.*`, MATLAB `dtwc_mex('test_parallelisation')` + wrapper). Add Metal to Python `check_system` report (bound but unreported).
+- [ ] Registered (local, baseline CUDA-OFF build): parallelisation `pass=true, threads_engaged>=2`; gpu `available=false` with non-empty reason. (Real-GPU validation of the same API happens in 3.5's CUDA build.)
+
+### Task 3.4: CI wheel parallelism gate [wave A]
+
+**Files:** Modify: `.github/workflows/*.yml`, `pyproject.toml` (cibuildwheel).
+- [ ] `CIBW_TEST_COMMAND`: import test + assert OpenMP available via the EXISTING bound introspection (`dtwcpp.check_system()`/`OPENMP_AVAILABLE`) — do NOT depend on 3.3's new API (wave order). Phase 6 upgrades this to `dtwcpp.test.parallelisation()`.
+- [ ] Hole 4 (macOS-Intel serial wheels): fix cross-arch libomp install, or explicitly drop x86_64-macOS wheels with a loud release-notes line — decide from the CI config evidence, document which.
+- [ ] Gate (local): every changed YAML parses (`python -c "yaml.safe_load"` exit 0); logic reviewed against band. Runtime CI confirmation = NEEDS-CI-RUN, recorded advisory (no push from agents).
+
+### Task 3.5: CUDA enablement + first-ever runtime verification (local RTX 4000 Ada) [wave B]
+
+**Files:** Modify: `dtwc/cuda/**` (`.cu`/`.hpp`), GPU dispatch sites in `Problem.cpp` (after 3.2), CUDA CMake as needed. New scratch build dir: `build/cuda-verify`.
+- [ ] Configure `build/cuda-verify` with `-DDTWC_ENABLE_CUDA=ON` (nvcc 13.0 needs MSVC host on Windows — try MSVC generator/clang-cl host; ≤3 distinct configure strategies, then report FAILED with verbatim errors).
+- [ ] Run `test_cuda_correctness` + `test_cuda_lb_keogh` on the real GPU (permanently skipped until now) — first runtime verification of Phase 0 CUDA audit fixes (wavefront max_L>2048 double-buffer, int64 pair indexing). Registered: both suites RUN (not skipped), 0 failed, tolerances per the tests' own bands.
+- [ ] TODO backlog: arch-aware dispatch (sm_89 local + sm_90/H100 in fat binary or PTX), k-vs-all kernel wiring, multi-stream. Correctness runtime-verified on RTX 4000; H100 PERF claims stay ADVISORY until an ARC run.
+- [ ] Baseline build (CUDA OFF) ctest floor unchanged — CUDA work must not perturb CPU paths.
 
 ## Phase 4 — Solver upgrade: "LR-core" [FINAL — from solver-math report]
 
