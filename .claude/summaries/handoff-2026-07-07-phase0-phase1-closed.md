@@ -38,6 +38,11 @@ New OPEN residuals from Phase 2 gate (also in PLAN.md):
 
 Max 4 concurrent agents (5-hr limit; two session kills so far — resume protocol proven). Benchmarks ADVISORY ONLY (parallel workloads on machine). MATLAB installed (R2024b preferred). uv only. No silent fallbacks. Commits end with Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>. Orchestrator plans, Opus-xhigh subagents implement. PLAN.md owned by orchestrator only.
 
-## Next after Phase 2
+## Phase 3 — FINAL (commit `0bab3c7`), wave A IN FLIGHT
 
-Phase 3 (parallelism/GPU out-of-the-box — PLAN.md DRAFT section needs task finalisation), Phase 4 LR-core solver (FINAL, registered P1–P4), Phase 5 speed program (FasterPAM first), Phases 6–7 (packaging, docs site).
+**NEW FACT 2026-07-07:** local machine has nvcc 13.0 + NVIDIA RTX 4000 Ada (sm_89) — verified `where nvcc` + `nvidia-smi`. Stale 2026-06-01 "GPU fixes need separate CUDA box" OVERTURNED. CUDA compiles + runtime-verifies locally; Metal still needs macOS.
+
+Wave A running: run `wf_d43062ea-0a6` (task w59dwa2bh) — 3.1 CMake OpenMP FATAL_ERROR + `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out ∥ 3.2 Env sequential warning + un-gated GPU fallbacks ∥ 3.4 CIBW wheel gate → gate → commits.
+Resume after kill: `Workflow({scriptPath: 'C:\Users\engs2321\.claude\projects\C--D-git-dtw-cpp\b3179291-e4e2-417f-929b-4f8596c78042\workflows\scripts\phase3-wave-a-wf_d43062ea-0a6.js', resumeFromRunId: 'wf_d43062ea-0a6'})`. On kill: `git status`, revert only dead agents' partials.
+
+Wave B after A commits: 3.3 `dtwc.test` introspection API (3 languages, header-only `dtwc/test_api.hpp`) ∥ 3.5 CUDA enablement + first runtime verification on RTX 4000 (build/cuda-verify, MSVC host for nvcc; the two skipped CUDA tests must RUN) → gate → commits → phase adversarial review. Then Phase 4 LR-core (FINAL, registered P1–P4), Phase 5 speed (FasterPAM first), Phases 6–7.
