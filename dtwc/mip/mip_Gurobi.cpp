@@ -14,9 +14,11 @@
 
 
 #include <vector>
+#include <string>
 #include <string_view>
 #include <memory>
 #include <limits>
+#include <stdexcept>
 
 #ifdef DTWC_ENABLE_GUROBI
 #include "gurobi_c++.h"
@@ -106,6 +108,17 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     model.optimize();
 
+    // Task 0.5 / audit finding #7: the old code read GRB_DoubleAttr_X with no
+    // status check. On a non-optimal solve (infeasible / unbounded / limit hit)
+    // Gurobi has no solution, so .get(X) throws GRBException, which the catch
+    // below swallowed — leaving empty centroids_ind and no error. Check the
+    // optimisation status explicitly and fail loudly before extracting.
+    const int opt_status = model.get(GRB_IntAttr_Status);
+    if (opt_status != GRB_OPTIMAL)
+      throw std::runtime_error(
+        "Gurobi MIP did not solve to optimality (status code "
+        + std::to_string(opt_status) + "). No valid clustering produced.");
+
     for (auto i : Range(Nb))
       if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
         prob.centroids_ind.push_back(static_cast<int>(i));
@@ -117,11 +130,13 @@ void MIP_clustering_byGurobi(Problem &prob)
         if (w[prob.centroids_ind[i] + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
           prob.clusters_ind[j] = static_cast<int>(i);
 
+  } catch (const std::runtime_error &) {
+    throw; // Propagate our own status error (see above) — never swallow it.
   } catch (GRBException &e) {
-    std::cout << "Error code = " << e.getErrorCode() << '\n'
-              << e.getMessage() << '\n';
+    throw std::runtime_error("Gurobi optimisation failed (error code "
+                             + std::to_string(e.getErrorCode()) + "): " + e.getMessage());
   } catch (...) {
-    std::cout << "Unknown Exception during Gurobi optimisation" << '\n';
+    throw std::runtime_error("Unknown exception during Gurobi optimisation.");
   }
 #else
   std::cout << "Gurobi solver is not activated but is being used!" << '\n';

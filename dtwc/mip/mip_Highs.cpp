@@ -19,11 +19,11 @@
 #endif
 
 #include <vector>
-#include <cassert>   // for assert
+#include <stdexcept> // for std::runtime_error
 #include <cstddef>   // for size_t
 #include <algorithm> // for sort
 #include <iostream>  // for operator<<, basic_ostream, ost...
-#include <string>    // for operator<<
+#include <string>    // for operator<<, std::to_string
 
 namespace dtwc {
 
@@ -163,10 +163,9 @@ void MIP_clustering_byHiGHS(Problem &prob)
     highs.setOptionValue("output_flag", false);
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
-  if (return_status != HighsStatus::kOk) {
-    std::cout << "Passing the model to HiGHS was unsuccessful!" << '\n';
-    return;
-  }
+  if (return_status != HighsStatus::kOk)
+    throw std::runtime_error("HiGHS rejected the MIP model (passModel returned status "
+                             + std::to_string(static_cast<int>(return_status)) + ").");
 
   // Warm start: run FastPAM and feed solution as MIP start
   if (prob.mip_settings.warm_start) {
@@ -189,14 +188,19 @@ void MIP_clustering_byHiGHS(Problem &prob)
   }
 
   return_status = highs.run(); // Solve the model
-  if (return_status != HighsStatus::kOk) {
-    std::cout << "Solving the model with HiGHS was unsuccessful!" << '\n';
-    return;
-  }
+  if (return_status != HighsStatus::kOk)
+    throw std::runtime_error("HiGHS failed to solve the MIP (run returned status "
+                             + std::to_string(static_cast<int>(return_status)) + ").");
 
-  // Get the model status
+  // Get the model status. Task 0.5 / audit finding #7: this guard used to be
+  // assert(model_status == kOptimal), which is a no-op under NDEBUG (release
+  // builds). A non-optimal solve (infeasible, unbounded, time/iteration limit)
+  // then fell through to extract_mip_solution(), which reads an empty/invalid
+  // solution vector and returns garbage or empty centroids (UB). Fail loudly.
   const HighsModelStatus &model_status = highs.getModelStatus();
-  assert(model_status == HighsModelStatus::kOptimal);
+  if (model_status != HighsModelStatus::kOptimal)
+    throw std::runtime_error("HiGHS MIP did not solve to optimality. Model status: "
+                             + highs.modelStatusToString(model_status));
 
   if (prob.mip_settings.verbose_solver || prob.verbose) {
     std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';

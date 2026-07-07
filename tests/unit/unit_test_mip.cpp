@@ -18,6 +18,7 @@
 #include <filesystem>
 #include <vector>
 #include <cmath>
+#include <stdexcept>
 
 /// Build a small Problem with N synthetic series of length L.
 static dtwc::Problem make_small_problem(int N, int L)
@@ -201,6 +202,60 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   REQUIRE(prob_benders.centroids_ind.size() == 3);
   const double cost_benders = prob_benders.findTotalCost();
   REQUIRE(std::abs(cost_direct - cost_benders) <= 1e-6 * std::max(1.0, std::abs(cost_direct)));
+}
+
+// ---------------------------------------------------------------------------
+// Task 0.5 regression: MIP status handling — assert() → real error path.
+//
+// Targets audit finding #7 (handoff-2026-06-01-adversarial-audit.md:17):
+// mip_Highs.cpp guarded the HiGHS model status with
+//     assert(model_status == HighsModelStatus::kOptimal);
+// which is a NO-OP under NDEBUG (release builds). A non-optimal solve therefore
+// fell through to extract_mip_solution(), which reads an empty/invalid solution
+// vector and returns garbage / empty centroids (and indexes an empty
+// centroids_ind out of bounds -> UB). The fix replaces the assert with an
+// explicit status check that throws std::runtime_error carrying the solver
+// status text. This test drives an INFEASIBLE p-median instance (more clusters
+// than series, so the cardinality constraint "sum of N diagonal binaries == k"
+// with k > N cannot hold) and requires a throw.
+//
+// Why the UNFIXED code fails this test: pre-fix, MIP_clustering_byHiGHS returns
+// normally (assert compiled out) instead of throwing, so REQUIRE_THROWS_AS
+// fails. Post-fix it throws. (Gurobi's analogous status/catch path is fixed the
+// same way but is not exercised here — Gurobi requires a licensed install that
+// this build does not have; the HiGHS path is the one wired in CI.)
+// ---------------------------------------------------------------------------
+TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty result", "[mip][highs]")
+{
+  // DTWC_ENABLE_HIGHS is defined PUBLIC on the mip-solvers object library, which
+  // links PRIVATE into dtwc++, so the macro is NOT visible in this test TU.
+  // Detect HiGHS availability at runtime: a feasible instance produces a
+  // non-empty result only when HiGHS is actually compiled in (otherwise the
+  // #else branch merely warns and returns empty).
+  {
+    auto probe = make_small_problem(6, 15);
+    probe.set_numberOfClusters(2);
+    probe.mip_settings.warm_start = false;
+    probe.mip_settings.verbose_solver = false;
+    probe.set_solver(dtwc::Solver::HiGHS);
+    probe.method = dtwc::Method::MIP;
+    probe.cluster();
+    if (probe.centroids_ind.empty())
+      return; // HiGHS not compiled into this build — nothing to exercise.
+    REQUIRE(probe.centroids_ind.size() == 2); // sanity: the solver really ran.
+  }
+
+  // Infeasible instance: 4 series but 5 clusters requested. warm_start=false so
+  // we bypass fast_pam (which independently rejects k>N) and drive the solver
+  // status path directly.
+  auto prob = make_small_problem(4, 12);
+  prob.set_numberOfClusters(5);
+  prob.mip_settings.warm_start = false;
+  prob.mip_settings.verbose_solver = false;
+  prob.set_solver(dtwc::Solver::HiGHS);
+  prob.method = dtwc::Method::MIP;
+
+  REQUIRE_THROWS_AS(prob.cluster(), std::runtime_error);
 }
 
 TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][benders]")
