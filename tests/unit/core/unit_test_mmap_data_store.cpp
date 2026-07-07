@@ -11,7 +11,9 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <string>
 #include <vector>
@@ -163,6 +165,43 @@ TEST_CASE("MmapDataStore edge cases", "[mmap][data]")
   {
     REQUIRE_THROWS(MmapDataStore::open("nonexistent_file.cache"));
   }
+}
+
+// Regression for audit CRITICAL #5 (mmap_data_store.hpp open()).
+// Before the fix, open() validated only the offset-table END and the sentinel
+// offsets_[N]; interior offsets_[0..N-1] came straight from the (attacker-controllable)
+// file with NO monotonicity/bounds check. A patched interior offset makes
+// series_flat_size(i) = (offsets_[i+1]-offsets_[i])/8 underflow to a huge size_t and
+// series_data(i) point out of bounds. The unfixed open() does NOT throw here (the header
+// CRC covers only bytes 0-27, not the offset table, so the patch is invisible to it, and
+// the sentinel/data-size check still passes because offsets_[N] is unchanged). The fix
+// validates the whole offset table: first offset 0, monotone, 8-aligned, in bounds.
+TEST_CASE("MmapDataStore open rejects out-of-bounds interior offset", "[mmap][data][security]")
+{
+  auto path = temp_store("data_bad_offset.cache");
+
+  std::vector<std::vector<double>> vecs = { { 1, 2, 3 }, { 4, 5 }, { 6, 7, 8, 9, 10 } };
+  std::vector<std::string> names = { "a", "b", "c" };
+  Data data(std::move(vecs), std::move(names));
+  {
+    auto store = MmapDataStore::create(path, data);
+    store.sync();
+  } // close/unmap so the file is flushed for the raw patch below
+
+  // Offset table starts at byte 64 (HEADER_SIZE); entry i is at 64 + i*8.
+  // offsets = [0, 24, 40, 80]; total data = 80 bytes. Patch interior offset[1] to a
+  // value far beyond the data section: OOB and non-monotone (offset[1] > offset[2]).
+  const std::streamoff offset1_pos = 64 + 1 * static_cast<std::streamoff>(sizeof(uint64_t));
+  const uint64_t bad_offset = uint64_t{ 1 } << 40; // >> total data bytes (80)
+  {
+    std::fstream f(path, std::ios::binary | std::ios::in | std::ios::out);
+    f.seekp(offset1_pos);
+    f.write(reinterpret_cast<const char *>(&bad_offset), sizeof(bad_offset));
+  }
+
+  REQUIRE_THROWS_AS(MmapDataStore::open(path), std::runtime_error);
+
+  if (fs::exists(path)) fs::remove(path);
 }
 
 TEST_CASE("MmapDataStore large N=5000", "[mmap][data]")

@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -225,19 +226,38 @@ public:
     store.n_ = static_cast<size_t>(n64);
     store.ndim_ = static_cast<size_t>(ndim64);
 
-    // Validate file size
+    // Validate offset-table size. Guard the multiplication: a crafted huge N would
+    // otherwise wrap offset_table_end to a small value and pass the truncation check.
+    constexpr size_t max_sz = std::numeric_limits<size_t>::max();
+    if (store.n_ > (max_sz - HEADER_SIZE) / sizeof(uint64_t) - 1)
+      throw std::runtime_error("MmapDataStore::open: N too large (offset table overflows size_t)");
     const size_t offset_table_end = HEADER_SIZE + (store.n_ + 1) * sizeof(uint64_t);
     if (file_len < offset_table_end)
       throw std::runtime_error("MmapDataStore::open: file truncated (offset table)");
 
     store.setup_pointers(base);
 
-    // Validate total data size against file
+    // Validate the offset table. Interior offsets come straight from the file
+    // (attacker-controllable); without these checks a non-monotone or out-of-bounds
+    // offset makes series_flat_size() = (offsets_[i+1]-offsets_[i])/8 underflow to a
+    // huge size_t and series_data() read out of bounds (audit CRITICAL #5). The loop
+    // also validates the sentinel offsets_[N] in bounds, subsuming the old data-size
+    // check in an overflow-safe form (subtraction, since file_len >= offset_table_end).
     if (store.n_ > 0) {
-      const size_t total_data_bytes = static_cast<size_t>(store.offsets_[store.n_]);
-      const size_t expected = offset_table_end + total_data_bytes;
-      if (file_len < expected)
-        throw std::runtime_error("MmapDataStore::open: file truncated (data section)");
+      const size_t data_bytes_avail = file_len - offset_table_end;
+      if (store.offsets_[0] != 0)
+        throw std::runtime_error("MmapDataStore::open: offset table corrupt (first offset must be 0)");
+      uint64_t prev = 0;
+      for (size_t i = 0; i <= store.n_; ++i) {
+        const uint64_t off = store.offsets_[i];
+        if (off < prev)
+          throw std::runtime_error("MmapDataStore::open: offset table not monotone (corrupt or malicious file)");
+        if ((off % sizeof(double)) != 0)
+          throw std::runtime_error("MmapDataStore::open: offset table misaligned (not a multiple of 8)");
+        if (off > data_bytes_avail)
+          throw std::runtime_error("MmapDataStore::open: offset out of bounds (corrupt or malicious file)");
+        prev = off;
+      }
     }
 
     return store;

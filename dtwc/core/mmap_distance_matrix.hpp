@@ -60,9 +60,25 @@ private:
   size_t n_{ 0 };
 
   /// Compute total file size: header + packed doubles.
+  /// Throws if n*(n+1)/2 or the byte total overflows size_t. Without this guard a
+  /// crafted N (e.g. 2^62, where packed_size(n)*8 == 2^64 == 0 mod 2^64) wraps the
+  /// size to header_size, defeating the truncation check and enabling OOB reads
+  /// (audit CRITICAL #4).
   static size_t file_size(size_t n)
   {
-    return header_size + packed_size(n) * sizeof(double);
+    constexpr size_t max_sz = std::numeric_limits<size_t>::max();
+    // Guard n+1 (n == SIZE_MAX would wrap to 0 and hide the overflow below).
+    if (n == max_sz)
+      throw std::runtime_error("MmapDistanceMatrix: N too large (overflow)");
+    const size_t np1 = n + 1;
+    // Guard n*(n+1); one of the two factors is even, so packed = n*(n+1)/2 is exact.
+    if (n != 0 && np1 > max_sz / n)
+      throw std::runtime_error("MmapDistanceMatrix: N too large (packed size overflows size_t)");
+    const size_t packed = n * np1 / 2; // == packed_size(n)
+    // Guard packed * sizeof(double) + header_size.
+    if (packed > (max_sz - header_size) / sizeof(double))
+      throw std::runtime_error("MmapDistanceMatrix: file size overflows size_t");
+    return header_size + packed * sizeof(double);
   }
 
   /// Write the 32-byte header at base.
@@ -117,7 +133,7 @@ private:
     std::memcpy(&n64, base + 12, 8);
     const auto n = static_cast<size_t>(n64);
 
-    const size_t expected = header_size + packed_size(n) * sizeof(double);
+    const size_t expected = file_size(n); // throws if n*(n+1)/2 or the byte total overflows size_t
     if (file_len < expected)
       throw std::runtime_error("MmapDistanceMatrix: file truncated (expected " +
                                std::to_string(expected) + " bytes, got " + std::to_string(file_len) + ")");

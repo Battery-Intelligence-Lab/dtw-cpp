@@ -10,8 +10,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <array>
 #include <cmath>
+#include <cstdint>
+#include <cstring>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 using Catch::Matchers::WithinAbs;
@@ -362,6 +366,43 @@ TEST_CASE("MmapDistanceMatrix open nonexistent file throws", "[MmapDistanceMatri
   fs::path nonexistent = fs::temp_directory_path() / "dtwc_mmap_nonexistent_test_12345.bin";
   fs::remove(nonexistent); // ensure it doesn't exist
   REQUIRE_THROWS_AS(MmapDistanceMatrix::open(nonexistent), std::runtime_error);
+}
+
+// Regression for audit CRITICAL #4 (mmap_distance_matrix.hpp validate_header).
+// Before the fix, validate_header computed `expected = header_size + packed_size(n)*8`
+// with NO overflow guard. A crafted header with n = 2^62 makes packed_size(n) = 2^61,
+// and 2^61 * 8 == 2^64 == 0 (mod 2^64), so `expected` wraps to header_size (32). The
+// truncation check `file_len < expected` then PASSES on a 32-byte file, and open()
+// returns a matrix reporting size()==2^62 backed by a 32-byte mapping -> OOB reads.
+// The unfixed code does NOT throw here; the fix routes validate_header through a
+// checked file_size() that throws on the multiplication overflow.
+TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[MmapDistanceMatrix][security]")
+{
+  TempFile tmp;
+
+  const uint64_t bad_n = uint64_t{ 1 } << 62; // packed_size = 2^61; *8 wraps to 0 mod 2^64
+
+  // Build a 32-byte header that passes magic/version/endian/elem_size/CRC checks so
+  // that the ONLY thing standing between the file and acceptance is the size check.
+  std::array<uint8_t, MmapDistanceMatrix::header_size> hdr{};
+  std::memcpy(hdr.data() + 0, MmapDistanceMatrix::magic, 4);
+  const uint16_t ver = MmapDistanceMatrix::version;
+  std::memcpy(hdr.data() + 4, &ver, 2);
+  const uint32_t em = MmapDistanceMatrix::endian_marker;
+  std::memcpy(hdr.data() + 6, &em, 4);
+  hdr[10] = MmapDistanceMatrix::elem_size;
+  hdr[11] = 0;
+  std::memcpy(hdr.data() + 12, &bad_n, 8);
+  const uint32_t crc = detail::crc32_naive(hdr.data(), 20); // CRC of bytes 0-19
+  std::memcpy(hdr.data() + 20, &crc, 4);
+  // bytes 24-31 already zero from value-initialisation
+
+  {
+    std::ofstream f(tmp.path, std::ios::binary);
+    f.write(reinterpret_cast<const char *>(hdr.data()), static_cast<std::streamsize>(hdr.size()));
+  }
+
+  REQUIRE_THROWS_AS(MmapDistanceMatrix::open(tmp.path), std::runtime_error);
 }
 
 // ============================================================================
