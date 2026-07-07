@@ -17,7 +17,10 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <iterator>
 #include <limits>
+#include <numeric>
+#include <random>
 #include <set>
 #include <string>
 #include <system_error>
@@ -540,4 +543,127 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
   // All medoids distinct and valid
   std::set<int> unique_medoids(result.medoid_indices.begin(), result.medoid_indices.end());
   REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
+}
+
+// ===========================================================================
+// Task 0.11 — Test A: in-RAM path uses std::mt19937_64 + std::sample.
+//
+// Bug (2026-06-01 audit): the in-RAM subsample used std::mt19937 + std::shuffle
+// while the chunked (Parquet) path uses std::mt19937_64 + std::sample, so for the
+// same seed the two paths drew DIFFERENT subsamples and returned DIFFERENT
+// medoids. The fix makes the in-RAM path use the chunked path's exact contract
+// (mt19937_64 + std::sample over the sorted index population [0, N)).
+//
+// This test pins that contract WITHOUT needing Parquet, using a deterministic
+// oracle (no RNG-order guessing):
+//   * series i is the constant vector [i, i, ..., i] (length L), so for equal
+//     length series DTW(i, j) = L * |i - j|.
+//   * with k = 1 the single medoid is, for ANY Kmeanspp init, the point that
+//     minimises total distance = the MEDIAN of the sampled indices (fast_pam's
+//     k=1 swap converges to it — verified against fast_pam.cpp: second_dist is
+//     +inf for k=1, so each swap delta is (total dist to candidate) − (to medoid),
+//     minimised by the median).
+//   * std::sample over the sorted population [0, N) returns a SORTED subset, so an
+//     odd-sized sample's median sits at position sample_size/2.
+// Expected medoid = std::sample(mt19937_64(seed), [0,N), S)[S/2].
+//
+// PRE-FIX (mt19937 + shuffle) selects a different subsample -> different median
+// -> this assertion FAILS. POST-FIX it matches exactly. Six seeds make an
+// accidental median collision (a false pre-fix pass) negligible (~1e-10).
+// ===========================================================================
+TEST_CASE("FastCLARA in-RAM uses mt19937_64 + std::sample (Task 0.11 seed fix)",
+          "[fast_clara][task0_11][seed]")
+{
+  constexpr int N = 200;
+  constexpr int L = 8;
+  constexpr int sample_size = 51; // odd -> unique median at index 25 of the sample
+
+  // Constant series: series i has value i, so DTW(i, j) = L * |i - j|.
+  std::vector<std::vector<data_t>> vecs;
+  std::vector<std::string> names;
+  for (int i = 0; i < N; ++i) {
+    vecs.emplace_back(static_cast<size_t>(L), static_cast<data_t>(i));
+    names.push_back("s" + std::to_string(i));
+  }
+
+  for (unsigned seed : { 1u, 7u, 42u, 123u, 999u, 2024u }) {
+    // Fresh problem per seed (no cached-matrix carry-over between seeds).
+    std::vector<std::vector<data_t>> v = vecs;
+    std::vector<std::string> nm = names;
+    Problem prob("clara_seed_" + std::to_string(seed));
+    prob.set_data(Data(std::move(v), std::move(nm)));
+    prob.verbose = false;
+
+    algorithms::CLARAOptions opts;
+    opts.n_clusters = 1;
+    opts.sample_size = sample_size; // < N -> CLARA path (not the FastPAM fallback)
+    opts.n_samples = 1;
+    opts.random_seed = seed;
+
+    dtwc::randGenerator.seed(42); // k=1 is init-independent; reseed for hygiene
+    auto result = algorithms::fast_clara(prob, opts);
+
+    // Oracle: reproduce the (fixed) selection contract bit-for-bit.
+    std::vector<int> all_indices(N);
+    std::iota(all_indices.begin(), all_indices.end(), 0);
+    std::vector<int> expected_sample;
+    expected_sample.reserve(static_cast<size_t>(sample_size));
+    std::mt19937_64 rng(seed);
+    std::sample(all_indices.begin(), all_indices.end(),
+                std::back_inserter(expected_sample), sample_size, rng);
+    const int expected_medoid = expected_sample[sample_size / 2];
+
+    REQUIRE(result.medoid_indices.size() == 1);
+    INFO("seed=" << seed << " expected median index=" << expected_medoid
+                 << " got=" << result.medoid_indices[0]);
+    REQUIRE(result.medoid_indices[0] == expected_medoid);
+  }
+}
+
+// ===========================================================================
+// Task 0.11 — Test B: parallel in-RAM assignment stays deterministic + correct.
+//
+// assign_all_points() is now OpenMP-parallel over the N points (its distByInd
+// cache is primed serially first so the lazy alloc/compute path never races —
+// see fast_clara.cpp). A data race would corrupt labels / total_cost
+// non-deterministically. N > 64 forces the parallel branch. This guards the
+// parallelisation: results must be reproducible run-to-run and self-consistent
+// (total_cost == cost recomputed from the returned labels + medoids). total_cost
+// uses a serial index-ordered reduction, so it is deterministic despite threads.
+// ===========================================================================
+TEST_CASE("FastCLARA parallel in-RAM assignment is deterministic and consistent",
+          "[fast_clara][task0_11][parallel]")
+{
+  constexpr int N = 200; // > 64 -> exercises the OpenMP assign branch
+  constexpr int k = 3;
+
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = k;
+  opts.n_samples = 3;
+  opts.sample_size = 60; // < N -> CLARA path, so assign_all_points runs
+  opts.random_seed = 7;
+
+  dtwc::randGenerator.seed(42);
+  Problem prob1 = make_clara_problem(N);
+  auto r1 = algorithms::fast_clara(prob1, opts);
+
+  dtwc::randGenerator.seed(42);
+  Problem prob2 = make_clara_problem(N);
+  auto r2 = algorithms::fast_clara(prob2, opts);
+
+  // Reproducible across runs (deterministic parallel assignment + serial sum).
+  REQUIRE(r1.labels == r2.labels);
+  REQUIRE(r1.medoid_indices == r2.medoid_indices);
+  REQUIRE_THAT(r1.total_cost, WithinAbs(r2.total_cost, 1e-12));
+
+  // Valid + self-consistent: total_cost equals cost recomputed from labels.
+  REQUIRE(r1.labels.size() == static_cast<size_t>(N));
+  double recomputed = 0.0;
+  for (int p = 0; p < N; ++p) {
+    REQUIRE(r1.labels[p] >= 0);
+    REQUIRE(r1.labels[p] < k);
+    const int medoid = r1.medoid_indices[r1.labels[p]];
+    recomputed += prob1.distByInd(p, medoid);
+  }
+  REQUIRE_THAT(r1.total_cost, WithinAbs(recomputed, 1e-9));
 }

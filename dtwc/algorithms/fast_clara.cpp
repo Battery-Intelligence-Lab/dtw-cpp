@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -73,10 +74,38 @@ double assign_all_points(
   const int k = static_cast<int>(medoid_indices.size());
   labels.resize(N);
 
-  double total_cost = 0.0;
+  // ---------------------------------------------------------------------------
+  // Thread-safety pre-warm (Task 0.11: parallelise the in-RAM assignment).
+  //
+  // distByInd() caches into prob's dense distance matrix. Its lazy
+  // allocate-and-compute path is NOT thread-safe — Problem::distByInd documents
+  // "call fillDistanceMatrix() before any parallel region; afterwards all calls
+  // are read-only lookups". CLARA must never fill the full N*N matrix (that is
+  // the whole point), so instead we serially prime exactly the cells that could
+  // otherwise race:
+  //   (1) an anchor pair forces the one-time matrix allocation + dtw_fn rebind
+  //       (needed even when k == 1), and
+  //   (2) every medoid<->medoid distance.
+  // After this, the only cell two distinct loop points p != q could both target
+  // is {p, q} when BOTH are medoids — and those are now already computed, so the
+  // parallel loop only READS them. Every remaining write is to a distinct
+  // {non-medoid, medoid} cell owned by the single thread handling that point's
+  // row, matching DenseDistanceMatrix's "disjoint (i,j) pairs -> lock-free"
+  // contract. No net DTW work is added: the primed cells are ones the loop needs.
+  if (N > 1) {
+    const int anchor_j = (medoid_indices[0] == N - 1) ? 0 : N - 1;
+    prob.distByInd(medoid_indices[0], anchor_j);
+    for (int a = 0; a < k; ++a)
+      for (int b = a + 1; b < k; ++b)
+        prob.distByInd(medoid_indices[a], medoid_indices[b]);
+  }
 
-  // We compute DTW on-the-fly via distByInd (lazy: computes and caches).
-  // This only touches N*k entries, not the full N^2 matrix.
+  // Per-point nearest-medoid scan. Lock-free: thread p writes only labels[p] and
+  // best_dists[p] (its own indices); shared distance-matrix writes are disjoint
+  // by the pre-warm above. Only touches N*k distance entries, not the full N^2.
+  std::vector<double> best_dists(static_cast<size_t>(N));
+
+  #pragma omp parallel for schedule(static) if (N > 64)
   for (int p = 0; p < N; ++p) {
     double best_dist = std::numeric_limits<double>::max();
     int best_label = 0;
@@ -90,10 +119,12 @@ double assign_all_points(
     }
 
     labels[p] = best_label;
-    total_cost += best_dist;
+    best_dists[static_cast<size_t>(p)] = best_dist;
   }
 
-  return total_cost;
+  // Serial, index-ordered reduction keeps total_cost bit-identical to the
+  // original serial loop regardless of thread count (order-independent sum).
+  return std::accumulate(best_dists.begin(), best_dists.end(), 0.0);
 }
 
 #ifdef DTWC_HAS_PARQUET
@@ -377,7 +408,11 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
     return fast_pam(prob, opts.n_clusters, opts.max_iter);
   }
 
-  std::mt19937 rng(opts.random_seed);
+  // Task 0.11: use mt19937_64 + std::sample to match the chunked path exactly, so
+  // the in-RAM and Parquet-streaming code paths draw the SAME subsample for a
+  // given seed. Previously this path used mt19937 + std::shuffle while the chunked
+  // path (above) used mt19937_64 + std::sample, so the same seed silently diverged.
+  std::mt19937_64 rng(opts.random_seed);
 
   // All indices [0, N).
   std::vector<int> all_indices(N);
@@ -387,10 +422,12 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
   best_result.total_cost = std::numeric_limits<double>::max();
 
   for (int s = 0; s < opts.n_samples; ++s) {
-    // 1. Draw a random subsample of indices.
-    std::vector<int> sample_indices(all_indices.begin(), all_indices.end());
-    std::shuffle(sample_indices.begin(), sample_indices.end(), rng);
-    sample_indices.resize(sample_size);
+    // 1. Draw a random subsample of indices. std::sample keeps them sorted and
+    //    matches the chunked path's selection bit-for-bit for the same rng.
+    std::vector<int> sample_indices;
+    sample_indices.reserve(static_cast<size_t>(sample_size));
+    std::sample(all_indices.begin(), all_indices.end(),
+                std::back_inserter(sample_indices), sample_size, rng);
 
     // 2. Create a sub-Problem with zero-copy span views into parent data.
     std::vector<std::string_view> sub_names;
