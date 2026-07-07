@@ -23,9 +23,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 - Add `dtwc.test` self-introspection API with an identical result schema in C++ (`dtwc::test::parallelisation()`/`gpu()`, header-only `dtwc/test_api.hpp`), Python (`dtwcpp.test.parallelisation()`/`gpu()`) and MATLAB (`dtwc_mex('test_parallelisation'|'test_gpu')` + `dtwc.test.*`): `parallelisation()` proves engagement by running a real OpenMP region and counting distinct thread ids (fields available, max_threads, threads_engaged, pass, reason); `gpu()` executes a tiny real GPU kernel validated against a CPU oracle (fields available, backend, device_name, validated, pass, reason), naming exactly what is missing when no backend/device is present and never silently degrading.
 - Report Metal availability in `dtwcpp.check_system()` (metal_available was bound but previously unreported), matching the MATLAB `dtwc.check_system` report.
-- Build: CUDA GPU acceleration now builds and is runtime-verified on Windows (nvcc 13.0 + MSVC 14.50) via `-DDTWC_ENABLE_CUDA=ON`; fat binary covers sm_89 (Ada) + sm_90 (H100).
+- Build: CUDA GPU acceleration now builds and is runtime-verified on Windows (nvcc 13.0 + MSVC 14.50) via `-DDTWC_ENABLE_CUDA=ON`. The fat-binary arch list (incl. sm_89 Ada, sm_90 H100) pre-dates this change (2026-04, commits 3550bb9/367a9b4) — no new dispatch code was needed; the deliverable is the working Windows build recipe plus the verification below.
 - Fix: add missing `#include <numeric>` in tests/unit/test_cuda_correctness.cpp (std::iota) so the CUDA correctness suite compiles under MSVC's STL (latent — the suite had never been compiled before CUDA was enabled).
-- Test: first-ever runtime verification of the Phase 0 CUDA audit fixes (wavefront max_L>2048 3-buffer routing; int64 pair indexing) on NVIDIA RTX 4000 Ada — test_cuda_correctness (55 cases) and test_cuda_lb_keogh (8 cases) pass with 0 failures.
+- Test: first-ever runtime verification of the Phase 0 CUDA audit fixes (wavefront max_L>2048 3-buffer routing; int64 pair indexing) on NVIDIA RTX 4000 Ada — test_cuda_correctness (55 cases) and test_cuda_lb_keogh (8 cases) pass with 0 failures (verbatim run log: `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`).
 
 ### Changed (Python · Phase 2 Task 2.1)
 
