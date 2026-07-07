@@ -52,8 +52,10 @@ Adversarial review triage (Fable): **H1 CONFIRMED → Task 3.6** (RuntimeSingleT
 
 **The single source of truth is `PLAN.md`.** Read, in order: header status block → §Execution protocol → §Orchestrator handoff (floors, workflow pattern, proven recipes/gotchas — everything session-critical is there, not here).
 
-**FIRST ACTION: Task 3.6** (PLAN.md Phase 3) — closes the H1 silent-fallback hole. One Opus-xhigh agent + gate. Blocks Phase 4.
+**Task 3.6 DONE 2026-07-07 (commit `6df3c80`, Opus 4.8, done inline not via subagent).** H1 silent-fallback closed: shared process-once `warn_if_single_threaded()` reached from `get_max_threads()` + the Python compute free function; one guard shared with the Env ctor. Verified live — C++ `test_runtime_loudness_compute`, Python subprocess H1 repro, `dtwc_cl` warns exactly once, floors ctest 86 / pytest 391 / MATLAB 25/25. **Phase 3 fully closed.**
 
-**Then the sequence:** Phase 4 LR-core (STRICTLY sequential 4.1→4.4, registered bands P1–P4, FALSIFIED is a deliverable) → Phase 5 speed (3 waves of ≤4 + 5.11 last; perf bands ADVISORY locally, digit-identity HARD) → Phase 6 packaging (6.0 residual burn-down first; CI runs need user-triggered push) → Phase 7 docs → Release v2.0.0 (PyPI only on explicit user go).
+**FIRST ACTION: Phase 4 (LR-core solver)** — PLAN.md Phase 4, STRICTLY sequential 4.1→4.4, one Opus-xhigh agent per task + gate, registered bands P1–P4, a FALSIFIED band (esp. 4.3 wall-time) is a deliverable. Validate the brute-force IP oracle on a NON-degenerate case first.
+
+**Then:** Phase 5 speed (3 waves of ≤4 + 5.11 last; perf bands ADVISORY locally, digit-identity HARD) → Phase 6 packaging (6.0 residual burn-down first; CI runs need user-triggered push) → Phase 7 docs → Release v2.0.0 (PyPI only on explicit user go).
 
 **Standing user rules (verbatim spirit):** max 4 concurrent agents (5-hr limit); Opus-xhigh subagents implement, orchestrator plans/verifies/commits docs; PLAN.md orchestrator-owned (agents never stage it); benchmarks ADVISORY on this machine; uv only, never pip; no silent fallbacks; never write outside git root, data read-only; commits end `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`; write a session handoff to `.claude/summaries/` before every session end.
