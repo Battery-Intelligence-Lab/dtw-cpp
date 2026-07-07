@@ -286,7 +286,16 @@ Implements `docs/api-contract-2.0.md` verbatim. Known gaps to close (api-surface
 - [x] One fixture: load recorded dataset → banded DTW → fast_pam k=3, fixed seed → labels + medoids + 3 scores. Run from C++, Python, MATLAB (MATLAB skippable, loud), CLI. Assert digit-identical labels/medoids and scores equal to 1e-12 rel.
 - [x] This fixture is the permanent parity gate — wire into CI. Commit.
 
-## Phase 3 — Parallelism & GPU out-of-the-box [FINAL 2026-07-07]
+## Phase 3 — Parallelism & GPU out-of-the-box [FINAL 2026-07-07 — wave A DONE, wave B in flight]
+
+**Wave A status (2026-07-07):** 3.1/3.2/3.4 done, committed `c2f8e99` (build: OpenMP FATAL_ERROR + opt-out), `3f4c755` (feat: Env sequential warning + always-on GPU fallback warnings), `65df555` (ci: CIBW wheel gate). Run `wf_d43062ea-0a6` (one session-limit kill; gate re-run on resume).
+
+- **Gate PASS** [confirmed]: configure matrix re-run by gate — (a) exit 0 OpenMP found; (b) disable-OpenMP exit 1, error names `DTWC_ALLOW_SEQUENTIAL`; (c) opt-out exit 0 + loud warning. ctest verbatim "100% tests passed, 0 tests failed out of 84" (78 non-skip = 75 floor + 3 new; 6 documented skips; no clustering flake). pytest "387 passed, 10 skipped" on fresh clang-built .pyd. MATLAB floors 19/19, 20/20, 1/1 (test_dtwc 12/14 pre-existing, quoted).
+- **Orchestrator live check** [confirmed]: `OMP_NUM_THREADS=1 dtwc_cl --input ... --device cpu` → stderr "[DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED." byte-identical to env.cpp SSOT.
+- **Known-unverified**: MSVC `/openmp:experimental` direct-attach branch not exercisable locally (clang toolchain) — needs one MSVC CI run. 3.4's CIBW gate is NEEDS-CI-RUN (advisory until next push).
+- **Residuals surfaced by wave A:**
+  - `build/mex-verify` is deliberately SERIAL (OpenMP disabled at Phase 2 to avoid MATLAB/libomp clash; now requires the explicit `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out). MATLAB users currently get single-threaded DTW — loud (3.2 warning + DTWC_SEQUENTIAL_BUILD) but slow. Decide MEX OpenMP strategy (MATLAB-bundled libomp? iomp?) in Phase 6.
+  - `dtwc_cl` "--input is required (via CLI or YAML config)" message says YAML where TOML is primary — cosmetic, fold into any later CLI touch.
 
 Current state (`.claude/reports/build-state-2026-07-06.md`): OpenMP is the ONLY backend (no std::execution/TBB anywhere). Known silent-fallback holes to close:
 1. OpenMP-missing is only a configure-time `message(WARNING)` (`dtwc/CMakeLists.txt:118-123`) — build/wheel succeeds serial.
@@ -304,16 +313,16 @@ Batching: **wave A** = 3.1 ∥ 3.2 ∥ 3.4 (disjoint files) → gate → commits
 ### Task 3.1: Build-time parallelism guarantee [wave A]
 
 **Files:** Modify: `dtwc/CMakeLists.txt`, `python/CMakeLists.txt`, root `CMakeLists.txt`/cmake modules as needed.
-- [ ] OpenMP not found → `FATAL_ERROR` naming the escape hatch `-DDTWC_ALLOW_SEQUENTIAL=ON`; with the flag → configure succeeds, loud warning, `DTWC_SEQUENTIAL_BUILD` compile definition set.
-- [ ] Close hole 5: link `OpenMP::OpenMP_CXX` (or MSVC flags) on the dtwc targets directly, not only via `project_options` INTERFACE.
-- [ ] Registered configure matrix (run all three, quote verbatim): (a) normal configure exit 0; (b) `-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON` exit ≠0 with error text containing `DTWC_ALLOW_SEQUENTIAL`; (c) both flags exit 0 + warning. Full rebuild + ctest floor (75 non-skip, 0 fail) unchanged.
+- [x] OpenMP not found → `FATAL_ERROR` naming the escape hatch `-DDTWC_ALLOW_SEQUENTIAL=ON`; with the flag → configure succeeds, loud warning, `DTWC_SEQUENTIAL_BUILD` compile definition set.
+- [x] Close hole 5: link `OpenMP::OpenMP_CXX` (or MSVC flags) on the dtwc targets directly, not only via `project_options` INTERFACE.
+- [x] Registered configure matrix (run all three, quote verbatim): (a) normal configure exit 0; (b) `-DCMAKE_DISABLE_FIND_PACKAGE_OpenMP=ON` exit ≠0 with error text containing `DTWC_ALLOW_SEQUENTIAL`; (c) both flags exit 0 + warning. Full rebuild + ctest floor (75 non-skip, 0 fail) unchanged.
 
 ### Task 3.2: Runtime loudness — Env thread warning + un-gated GPU fallbacks [wave A]
 
 **Files:** Modify: `dtwc/parallelisation.hpp`, `dtwc/Problem.cpp` (:404,450,470,477,493), `dtwc/env.cpp`/`env.hpp`.
-- [ ] Env construction: effective threads==1 while `hardware_concurrency()>1` (or `DTWC_SEQUENTIAL_BUILD`) → one loud stderr warning, exact string documented and asserted byte-for-byte in a test.
-- [ ] The 5 `if (verbose)`-gated GPU→CPU fallback messages → ALWAYS emitted to stderr (verbose adds detail only, never gates the warning).
-- [ ] Tests: stderr-capture test for both warning classes; ctest floor unchanged.
+- [x] Env construction: effective threads==1 while `hardware_concurrency()>1` (or `DTWC_SEQUENTIAL_BUILD`) → one loud stderr warning, exact string documented and asserted byte-for-byte in a test.
+- [x] The 5 `if (verbose)`-gated GPU→CPU fallback messages → ALWAYS emitted to stderr (verbose adds detail only, never gates the warning).
+- [x] Tests: stderr-capture test for both warning classes; ctest floor unchanged.
 
 ### Task 3.3: `dtwc.test` introspection API — same schema in C++/Python/MATLAB [wave B]
 
@@ -326,9 +335,9 @@ Batching: **wave A** = 3.1 ∥ 3.2 ∥ 3.4 (disjoint files) → gate → commits
 ### Task 3.4: CI wheel parallelism gate [wave A]
 
 **Files:** Modify: `.github/workflows/*.yml`, `pyproject.toml` (cibuildwheel).
-- [ ] `CIBW_TEST_COMMAND`: import test + assert OpenMP available via the EXISTING bound introspection (`dtwcpp.check_system()`/`OPENMP_AVAILABLE`) — do NOT depend on 3.3's new API (wave order). Phase 6 upgrades this to `dtwcpp.test.parallelisation()`.
-- [ ] Hole 4 (macOS-Intel serial wheels): fix cross-arch libomp install, or explicitly drop x86_64-macOS wheels with a loud release-notes line — decide from the CI config evidence, document which.
-- [ ] Gate (local): every changed YAML parses (`python -c "yaml.safe_load"` exit 0); logic reviewed against band. Runtime CI confirmation = NEEDS-CI-RUN, recorded advisory (no push from agents).
+- [x] `CIBW_TEST_COMMAND`: import test + assert OpenMP available via the EXISTING bound introspection (`dtwcpp.check_system()`/`OPENMP_AVAILABLE`) — do NOT depend on 3.3's new API (wave order). Phase 6 upgrades this to `dtwcpp.test.parallelisation()`.
+- [x] Hole 4 (macOS-Intel serial wheels): fix cross-arch libomp install, or explicitly drop x86_64-macOS wheels with a loud release-notes line — decide from the CI config evidence, document which.
+- [x] Gate (local): every changed YAML parses (`python -c "yaml.safe_load"` exit 0); logic reviewed against band. Runtime CI confirmation = NEEDS-CI-RUN, recorded advisory (no push from agents).
 
 ### Task 3.5: CUDA enablement + first-ever runtime verification (local RTX 4000 Ada) [wave B]
 
