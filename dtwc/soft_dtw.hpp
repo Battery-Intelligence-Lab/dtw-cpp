@@ -74,7 +74,7 @@ T softmin_gamma(T a, T b, T c, T gamma)
  * of the original implementation (cross-validated bit-for-bit in the Phase 3
  * fold and retained here).
  *
- * @tparam T Floating point type (default: `settings::default_data_t`, currently `float`).
+ * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
  * @param x First time series.
  * @param y Second time series.
  * @param gamma Smoothing parameter (must be > 0). As gamma -> 0, result
@@ -117,7 +117,7 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
  *   For each (i,j), E(i,j) accumulates contributions from cells (i',j') where
  *   (i,j) is a predecessor, weighted by the softmin Jacobian.
  *
- * @tparam T Floating point type (default: `settings::default_data_t`, currently `float`).
+ * @tparam T Floating point type (default: `settings::default_data_t`, currently `double`).
  * @param x First time series (gradient is w.r.t. this).
  * @param y Second time series.
  * @param gamma Smoothing parameter (must be > 0).

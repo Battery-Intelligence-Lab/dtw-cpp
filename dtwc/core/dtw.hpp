@@ -31,7 +31,7 @@ namespace dtwc::core {
 
 /// Compute the DTW distance between two time series.
 ///
-/// @tparam T        Element type (default: `settings::default_data_t`, currently `float`).
+/// @tparam T        Element type (default: `settings::default_data_t`, currently `double`).
 /// @param  x        First time series.
 /// @param  y        Second time series.
 /// @param  band     Sakoe-Chiba band width; negative means unconstrained.

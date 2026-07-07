@@ -26,12 +26,14 @@ namespace settings {
 /// @brief Default scalar type for public templated APIs.
 /// @details This controls default template arguments such as
 ///          `template <typename T = settings::default_data_t>`.
-using default_data_t = float;
+using default_data_t = double;
 } // namespace settings
 
 /// @brief Alias for the core storage / internal precision type.
-/// @note This is still distinct from `settings::default_data_t`, which controls
-///       default template arguments on public distance helpers.
+/// @note As of DTWC++ 2.0 this coincides in type with `settings::default_data_t`
+///       (both `double`); the names stay separate by role — `data_t` is the
+///       internal storage/accumulation type, `settings::default_data_t` the
+///       default template argument on public distance helpers.
 using data_t = double;
 
 // Random number settings:

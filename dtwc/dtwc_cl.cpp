@@ -18,6 +18,7 @@
  */
 
 #include "dtwc.hpp"
+#include "env.hpp"
 #include "core/mmap_data_store.hpp"
 
 #ifdef DTWC_HAS_ARROW
@@ -223,9 +224,9 @@ int main(int argc, char *argv[])
   app.add_option("--name", prob_name, "Problem name (used in output filenames)");
   app.add_option("--column", parquet_column, "Column name to use as time series (Parquet only)");
 
-  std::string dtype_str = "float32";
+  std::string dtype_str = "float64";
   app.add_option("--dtype,--data-precision,--data-type", dtype_str,
-      "Series data type: float32 (default, 2x memory saving) or float64 (aliases: f32, f64, float, double)")
+      "Series data type: float64 (default, full precision) or float32 (2x memory saving) (aliases: f32, f64, float, double)")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
               {"float32", "float32"}, {"f32", "float32"}, {"fp32", "float32"},
@@ -479,6 +480,18 @@ int main(int argc, char *argv[])
   if (const std::string merr = validate_metric_for_device(metric, dev.is_cuda);
       !merr.empty()) {
     std::cerr << "Error: " << merr << "\n";
+    return EXIT_FAILURE;
+  }
+
+  // Forward --device to the process-wide dtwc::Env (Task 1.3) so device selection
+  // has ONE source of truth and the no-silent-fallback rules apply — e.g. a GPU
+  // request on a build with no GPU backend becomes a hard DeviceError here rather
+  // than a quiet CPU fallback. cpu/cuda/cuda:N (validated above) all pass on a GPU
+  // build; on a CPU-only build a cuda request stops here with the rebuild hint.
+  try {
+    dtwc::env().set_device(device);
+  } catch (const dtwc::DeviceError &e) {
+    std::cerr << "Error: " << e.what() << "\n";
     return EXIT_FAILURE;
   }
 
