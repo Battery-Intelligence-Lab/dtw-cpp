@@ -1,5 +1,7 @@
 # Total Unimodularity of the k-Medoids LP Relaxation
 
+> **§8 (2026-07-06) consolidates the computational verification of §§2–3 and the derived exact solver ("LR-core").** Read §8 alongside the analytical sections: it **confirms** the TU boundary (§2.2), **strengthens** the block-TU results to all N (§2.8 → §8.2), **FALSIFIES** the half-integrality claim (§3.3 → §8.1), and turns the Lagrangian relaxation (§5.3) into the recommended matrix-free exact solver with registered predictions P1–P4 (§8.3–8.5). §8 exists because its source report is not committed to git — this file is the durable record.
+
 ## 1. The DTWC++ Formulation
 
 The k-medoids clustering problem in DTWC++ is formulated as a **Binary Integer Program** (the standard **Balinski formulation** of the p-median problem).
@@ -222,8 +224,8 @@ A critical finding is that the **cardinality constraint is irrelevant** to the T
 |-----------------------------|---------|--------|
 | Assignment only             | **Yes** | Bipartite graph incidence matrix (Hoffman & Kruskal, 1956) |
 | Linking only                | **Yes** | Node-arc incidence matrix of a directed graph (each row has one +1 and one -1; each linking constraint is an arc from A[i,j] to A[i,i]) |
-| Cardinality + Assignment    | **Yes** | {0,1} matrix; each column has at most 2 nonzeros; no odd-cycle obstruction possible (verified computationally for p <= 4) |
-| Cardinality + Linking       | **Yes** | Network-like structure; cardinality row adds +1 on diagonals which are already -1 in linking, preserving {0,±1} network incidence (verified computationally for p <= 4) |
+| Cardinality + Assignment    | **Yes** | {0,1} matrix; each column has at most 2 nonzeros; the row-graph is a **star** (all edges join the cardinality row to some Ass(i)), hence bipartite — TU for **all N** (Ghouila-Houri proof, §8.2; was only "verified for p ≤ 4") |
+| Cardinality + Linking       | **Yes** | Cardinality row adds +1 on diagonals already carrying −1 in linking; a Ghouila-Houri alternating-sign split keeps every signed column sum in {−1, 0, 1} — TU for **all N** (§8.2; was only "verified for p ≤ 4") |
 | **Assignment + Linking**    | **No**  | Same 6x6 cycle submatrix with det = -2 (cardinality row not used!) |
 | Full (all three)            | **No**  | Inherited from assignment + linking |
 
@@ -287,7 +289,9 @@ For non-metric D, the gap can be unbounded.
 
 ### 3.3 Half-Integrality and Odd-Cycle Extreme Points
 
-Fractional LP solutions are typically **half-integral** (values in {0, 1/2, 1}). This is explained by the odd-cycle theory:
+> **⚠ FALSIFIED 2026-07-06 — see §8.1.** The "typically half-integral" claim below does **not** hold for this cardinality-constrained formulation. Computationally, only **63.0%** of 664 fractional components fell in [0.45, 0.55]; observed values include 1/4, 1/3, 3/4. The cardinality row `Σy_i = k` manifestly creates non-half-integral vertices (e.g. three facilities at 1/3 sharing one cardinality unit). **Consequence: {0,½}-Chvátal-Gomory / odd-cycle cuts alone cannot close all fractional instances — branching is mandatory**, and the TODO "odd-cycle cutting planes" item is demoted. The odd-cycle *structure* (below) is still the correct account of *where* fractionality lives; it is the *half-integral value* claim that is wrong. Baiou-Barahona half-integrality concerns UFL-type polytopes without the cardinality equality.
+
+Fractional LP solutions were long assumed **half-integral** (values in {0, 1/2, 1}) — falsified above. The odd-cycle theory still explains the support of fractional vertices:
 
 - Each fractional extreme point corresponds to an odd cycle in the facility assignment graph (Baiou and Barahona, 2009)
 - Variables on the cycle take value 1/2; all other variables are integral
@@ -374,6 +378,8 @@ Step 6: If still fractional, branch on facility variables (Tier 2)
 ```
 
 ### 5.3 Lagrangian Relaxation
+
+> **★ CHOSEN ENGINE (2026-07-06) — full design in §8.3.** This relaxation is the root of the recommended **"LR-core"** exact solver. Because the inner polytope (Cardinality + Linking) is TU for **all N** (§8.2), Geoffrion's theorem makes this cheap dual attain the *full LP bound* without ever forming the N²-column LP — the single most load-bearing fact for the architecture. §8.3 gives the facility-score derivation, subgradient, Polyak steps, primal repair, reduced-cost fixing, and the Benders core finish, plus registered predictions P1–P4.
 
 The most effective Lagrangian relaxation dualizes the **assignment constraints** `sum_i A[i,j] = 1`:
 
@@ -557,8 +563,8 @@ Benders is expected to outperform compact MIP for N > 200 and becomes essential 
 | When is LP naturally integer? | Well-separated clusters, small instances, no odd cycles in assignment graph (Baiou-Barahona, Section 3.2). |
 | Is the assignment subproblem TU? | **Yes.** Fixed medoids => transportation problem. |
 | Best decomposition? | Benders: master selects medoids (binary), subproblem assigns (TU). |
-| How to interpret fractional values? | Fractional A[i,i] = 1/2 indicates facility i is on an odd cycle in the LP solution. Fractional A[i,j] means point j is "shared" between clusters. |
-| Practical strategy? | LP first -> branch on A[i,i] only -> full MIP fallback. |
+| How to interpret fractional values? | Fractional A[i,i] indicates facility i is on an odd cycle in the LP solution; A[i,j] means point j is "shared". **NOT generally 1/2** — values 1/4, 1/3, 3/4 occur (half-integrality FALSIFIED, §3.3 / §8.1). |
+| Practical strategy? | **LR-core** (§8.3): Lagrangian root bound (= LP bound, matrix-free) → reduced-cost fixing → Benders finish on the surviving core, branching on y only. On clustered/real data the root typically certifies FastPAM optimal with no branching (P1). |
 
 ### k-Medoids constraint matrix is NOT totally unimodular
 - TU boundary is p=3. For p≤2, the matrix IS TU.
@@ -568,7 +574,120 @@ Benders is expected to outperform compact MIP for N > 200 and becomes essential 
 ---
 
 
-## 8. References
+## 8. Computational Verification (2026-07-06) and the LR-core Solver
+
+This section records an independent computational re-derivation of the claims above and the exact-solver design that follows from them. It is written into this tracked document deliberately: the working investigation (`.claude/reports/solver-math-2026-07-06.md`, Fable-max analysis) lives in a **non-committed** directory, so the load-bearing math is consolidated here to be durable and re-derivable. Method: hand re-derivation plus scratch experiments (numpy + scipy HiGHS vertex LPs, brute-force IP as oracle); every band was registered before its run. Tags: **[confirmed]** = re-derived or enumerated here; **FALSIFIED** = a registered prediction that failed, kept visible.
+
+### 8.1 Verification verdict — what held, what was corrected
+
+| Earlier claim | Verdict | Evidence |
+|---|---|---|
+| §2.2 TU for N≤2, not for N≥3; 6×6 3-cycle det = −2 | **[confirmed]** | Hand cofactor expansion (det = −1 − 1 = −2) + exhaustive enumeration: N=2 → 0/125 submatrix violations; N=3 → exactly 2/92,377, both 6×6 with dets {−2, +2} (the two directed 3-cycles) |
+| §2.5 odd-cycle formula det = (−1)ⁿ − 1 | **[confirmed]** | Hand-verified n=2 (0) and n=3 (−2); general n via the block-band / two-triangular-minor argument |
+| §2.8 Card+Assignment and Card+Linking TU ("verified for p ≤ 4") | **STRENGTHENED → all N** | Ghouila-Houri proofs, §8.2 below |
+| §3.3 fractional vertices "typically half-integral" | **FALSIFIED** | Only 63.0% of 664 fractional components in [0.45, 0.55]; observed 1/4, 1/3, 3/4. Cardinality row breaks half-integrality ⇒ branching mandatory |
+| §2.11 "x_ij = 1/3 is a fractional solution" | **Clarified** | It is the *barycenter* of the 3 integer optima, not an extreme point — proves nothing about non-integrality. Genuine fractional vertices exist (35 at N=10, max gap 13.7%) |
+| §3.2 "LP integer ~80–90%" | **Regime-dependent** | Uniform-random non-metric D: 82% integral at N=10 but **26% at N=20** (decays with N). Clustered non-metric D: **100% integral across 250 instances** (N∈{15,30}, k∈{2,3,4}, incl. mis-specified k). ReVelle folklore is a statement about *data*, not the polytope |
+| §5.4 "fixed medoids ⇒ transportation problem" | **Overstated** | With y fixed there are *no* coupling constraints; each point independently takes `argmin_{i: y_i=1} D_ij` — an O(Nk) scan. No LP / network simplex / transportation machinery needed |
+
+Consistency check: TU would give LP = IP for every D — a polynomial exact p-median algorithm, contradicting NP-hardness (Kariv & Hakimi 1979). Non-TU for N ≥ 3 is therefore *necessary*.
+
+### 8.2 The two constraint blocks are TU for all N (strengthens §2.8)
+
+Both were previously only "verified computationally for p ≤ 4." Ghouila-Houri (every row subset R admits a ±1 signing with all column sums in {−1,0,1}) proves them for every N:
+
+**Cardinality + Assignment.** Every entry is 0/1. Column x_ii has two ones (Card row, Ass(i)); column x_ij (i≠j) has one (Ass(j)). A 0/1 matrix with ≤ 2 ones per column is the incidence matrix of a graph on the rows; it is TU iff that graph is bipartite (Hoffman-Kruskal). Here every edge joins the single Card row to some Ass(i) — a **star**, trivially bipartite. ∎
+
+**Cardinality + Linking.** Take any row subset R; sign the Card row (if present) +1. For each facility i, the rows L(i,·) ∩ R are the only other rows touching column x_ii, each with entry −1; their +1 entries sit in columns x_ij carrying no other nonzero in the subsystem. Sign those m_i rows **alternately** (⌈m_i/2⌉ as +1, ⌊m_i/2⌋ as −1). Then the signed sum on column x_ii is `|1 − (m_i mod 2)·(±1)| ≤ 1`, and every off-diagonal column has a single signed ±1 entry. All column sums lie in {−1, 0, 1}. ∎
+
+**Corollary (load-bearing).** The inner polytope `{ Σ_i y_i = k, x_ij ≤ y_i, 0 ≤ x,y ≤ 1 }` has an all-TU matrix (Cardinality + Linking), hence integral optima. By **Geoffrion's theorem (1974)**, the Lagrangian dual obtained by dualizing the *assignment* equalities attains the full LP-relaxation bound — **without ever forming the N²-column LP**. This is the fact the whole solver rests on. Only the Assignment × Linking interaction (through the shared diagonal columns) breaks TU — exactly the odd-cycle obstruction of §2.4.
+
+### 8.3 The LR-core solver
+
+Architecture: **Lagrangian root bound → reduced-cost fixing → Benders core finish.** All hardness lives in the k-subset choice of y (N binaries); x is implicit (§2.4 (c)).
+
+**8.3.1 Bound engine.** Dualize the assignment equalities with multipliers μ ∈ R^N (free sign):
+
+```
+L(μ) = Σ_j μ_j + min { Σ_ij (D_ij − μ_j) x_ij : Σ_i y_i = k, x_ij ≤ y_i, x,y ∈ [0,1] }
+```
+
+The inner minimization decomposes per facility. Define the **facility score**
+
+```
+ρ_i(μ) = Σ_j min(0, D_ij − μ_j)          (an open facility attracts exactly its profitable points)
+```
+
+Under the cardinality constraint, open the k most negative scores, S_k(μ) = argmin-k ρ_i. Then
+
+```
+L(μ) = Σ_j μ_j + Σ_{i ∈ S_k(μ)} ρ_i(μ)          — a valid lower bound for every μ.
+```
+
+Exact by the §8.2 corollary (Geoffrion). **Subgradient**, computed in the same O(N²) pass:
+
+```
+g_j = 1 − Σ_{i ∈ S_k(μ)} 1[D_ij < μ_j]     (= 1 − #chosen medoids that serve j)
+```
+
+Maximize L over μ by **subgradient ascent with Polyak steps**, `μ ← μ + t·g`, `t = λ·(UB − L(μ)) / ‖g‖²`, λ ∈ (0,2], UB from FastPAM (already in-repo). *Dimensional check:* μ, ρ carry distance units; g is a dimensionless count — consistent.
+
+**8.3.2 Primal repair + reduced-cost fixing.** Each major iteration, open S_k(μ) and assign every point by row-min scan (O(Nk)) → a feasible incumbent (candidate UB). **Reduced-cost fixing (Beasley-style):** with LB = L(μ) and incumbent UB, a facility i ∉ S_k is *fixed closed* if forcing it in would cost more than the gap, `LB + (ρ_i − ρ_(k)) > UB` (ρ_(k) = k-th best score); facilities in S_k are *fixed open* by the symmetric swap test. On near-zero-gap (clustered) data this closes almost all of y.
+
+**8.3.3 Exact finish.** If gap ≤ tol → the repaired/PAM solution is **certified optimal, done** (expected path on real data). Else run Benders (`benders.cpp`) restricted to the surviving core (n_core candidates ≪ N), warm-started with the incumbent + the Lagrangian LB; branch **on y only** — justified by §2.4 (c) (fixed y ⇒ trivial scan), *not* by the falsified "few fractional y" heuristic (§8.1). Upgrade to single-tree lazy cuts where the solver allows (Gurobi `addLazy`; HiGHS lazy-callback support **OPEN**).
+
+**8.3.4 Why this beats the alternatives.**
+
+| Option | Verdict | Reason |
+|---|---|---|
+| LP-first + branch on fractional y | Subsumed | LR *is* the LP bound, obtained matrix-free at O(N²)/iter instead of solving a 10⁸-column LP |
+| Lagrangian + subgradient + repair | **Chosen** | Same bound, cheapest per unit; streams D like the DTW kernels; OpenMP / H100-trivial (row reductions) |
+| Column generation / branch-and-price | Rejected | Identical Dantzig-Wolfe bound (same TU blocks), higher constants, stabilized-master machinery |
+| Network simplex | Rejected | The only flow substructure is the fixed-y assignment — an O(Nk) scan; nothing flows across the y-choice (that is what the TU failure proves) |
+
+**8.3.5 Cost model (N = 10⁴, k = 20).** D packed = 400 MB f64 / 200 MB f32 (packed-triangular + mmap exist). Each subgradient iter streams D once (10⁸ reads ≈ 0.8 GB f64): at 20–40 GB/s DRAM, **20–40 ms/iter**; T ≈ 300–1000 iters ⇒ **10–40 s single node** (H100 HBM 3.3 TB/s: ≲1 ms/iter, root < 1 s). Leading-order cost: T·N² memory traffic. At N = 10⁵ (f32 packed = 20 GB, fits a 2 TB node) the root bound is minutes on CPU — no other exact approach touches this size without forming an intractable master.
+
+### 8.4 Previous own-solver attempts — keep killed ideas killed
+
+All removed in `f7064b3` ("removed specialised solvers", 2023-12-07). They failed for one architectural reason with three faces: they tried to solve the **N²-variable compact LP explicitly**.
+
+- **Dense tableau primal simplex + Gomory cuts** (Oct 2023, `Simplex.cpp`): tableau ~2N⁴ doubles (N=316 ⇒ ~160 GB); basis found by scanning for unit columns; textbook Gomory cuts numerically fragile, glacial. Commit `5968fb9` "Simplex table takes huge space!" says it all.
+- **Sparse tableau + dual simplex graft** (`SparseSimplex`): still tableau-updating (not revised + LU), sparsity dies after a few pivots; correctness never achieved (`1ececcd` "still not solving").
+- **First-order LP (OSQP / ADMM / CG):** ~1e-3 accuracy — cannot certify vertex optimality or integrality. Wrong tool for exact certification.
+
+**Lesson (durable):** never materialize the x-space LP. Work in y-space; keep x implicit. The 2026 Benders code is the first attempt pointed the right way; LR-core is its bound engine.
+
+### 8.5 Registered predictions and numbers ledger
+
+**Predictions for the implementation phase (falsifiable, pre-stated):**
+
+- **P1 (root exactness on real data):** on ≥ **90%** of UCR datasets (DTW distances, k = class count, N ≤ 3000), the Lagrangian root closes the gap to the FastPAM UB within relative **0.1%** (PAM certified optimal, no branching). Falsified below 70%.
+- **P2 (fixing power):** whenever root gap ≤ 1%, reduced-cost fixing eliminates ≥ **80%** of candidate medoids. Falsified if median elimination < 50%.
+- **P3 (throughput):** subgradient iteration within **2×** of bytes(D)/STREAM bandwidth; end-to-end exact solve at N=10⁴, k=20 in ≤ **10 min** single node. Falsified if > 2× off or > 1 h.
+- **P4 (cut insufficiency — expected to hold, guards against over-investment):** on uniform-random fractional-root instances, {0,½}-CG / odd-cycle cuts alone close ≤ **80%**. Revisit §8.1 only if someone measures > 95% closure.
+
+**Numbers ledger (registered band → verbatim verdict, 2026-07-06):**
+
+| Band (registered before run) | Result | Verdict |
+|---|---|---|
+| B1: N=2, 0 TU violations | 0 | **PASS** |
+| B2: N=3, exactly 2 violations, 6×6, \|det\|=2 | 2, sizes [6], dets {−2,+2} | **PASS** |
+| B3: §2.4 submatrix det = −2 | −2 | **PASS** |
+| B4: uniform N=10,k=3: ≥50% integral, mean gap ≤1%, max ≤5% | 82% integral, mean 0.732%, max **13.718%** | **FAIL (max-gap)** |
+| B5: clustered N=15,k=3: ≥90% integral | 100/100 | **PASS** |
+| B6: fractional components ≥90% in [0.45,0.55] | **63.0%** of 664; incl. 1/4,1/3,3/4 | **FAIL** (half-integrality falsified) |
+| A1: fractional instances ≤4 fractional y (median) | median **6**, max 8 (of N=10) | **FAIL** |
+| A2: ≥20% of fractional vertices zero-gap | **0/35** | **FAIL** (fractional ⇒ real gap) |
+| A3: uniform N=20,k=4 ≥60% integral | **26%** | **FAIL** (integrality decays with N) |
+| A4/A5/A6: clustered N=30, k∈{3,4,2} ≥{90,50,50}% integral | 100% / 100% / 100% | **PASS** (robust to mis-specified k) |
+
+**Most-likely-wrong claim:** P1's 90% — clustered-line surrogates may flatter DTW matrices, whose non-metric quirks could activate odd-cycle vertices more often. If P1 fails, the architecture degrades gracefully: the Benders core finish does more work, and the LR bound remains valid regardless.
+
+**Implementation status:** Task 4.1 (`dtwc/mip/lagrangian_root.{hpp,cpp}` — bound engine + subgradient + primal repair + reduced-cost fixing) is registered in PLAN.md Phase 4; oracle = brute-force IP on N ≤ 14 (non-degenerate random D, never uniform/symmetric).
+
+---
+
+## 9. References
 
 1. **Balinski, M.L.** (1965). "Integer programming: methods, uses, computation." Management Science 12(3), 253-313. *Original p-median formulation.*
 
@@ -611,3 +730,13 @@ Benders is expected to outperform compact MIP for N > 200 and becomes essential 
 20. **Seymour, P.D.** (1980). "Decomposition of regular matroids." Journal of Combinatorial Theory, Series B, 28(3), 305-359. *Every TU matrix decomposes via 1/2/3-sums from network matrices.*
 
 21. **Schrijver, A.** (1986). "Theory of Linear and Integer Programming." Wiley. *Standard textbook reference for TU theory, Ghouila-Houri characterisation, sufficient conditions.*
+
+22. **Geoffrion, A.M.** (1974). "Lagrangean relaxation for integer programming." Mathematical Programming Study 2, 82-114. *The integrality-property theorem: when the Lagrangian subproblem has integral optima, its dual bound equals the LP-relaxation bound. Load-bearing for §8.2.*
+
+23. **Cornuejols, G., Fisher, M.L., and Nemhauser, G.L.** (1977). "Location of bank accounts to optimize float: an analytic study of exact and approximate algorithms." Management Science 23(8), 789-810. *Lagrangian relaxation of the assignment constraints for p-median-type location; dual bound = LP bound.*
+
+24. **Fisher, M.L.** (1981). "The Lagrangian relaxation method for solving integer programming problems." Management Science 27(1), 1-18. *Subgradient optimization and Polyak step practice (reprinted Management Science 50(12), 2004).*
+
+25. **Beasley, J.E.** (1993). "Lagrangean heuristics for location problems." European Journal of Operational Research 65(3), 383-399. *Reduced-cost / Lagrangian variable fixing for facility location — the §8.3.2 fixing test.*
+
+26. **ReVelle, C.S. and Swain, R.W.** (1970). "Central facilities location." Geographical Analysis 2(1), 30-42. *Original empirical observation that the p-median LP relaxation is "almost always integral" on real geographic data — a statement about data regime, not the polytope (§8.1).*
