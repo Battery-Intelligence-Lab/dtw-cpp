@@ -9,12 +9,6 @@ target_link_libraries(bench_dtw_baseline
     benchmark::benchmark_main
 )
 
-# Link Highway for SIMD benchmarks if available
-if(DTWC_ENABLE_SIMD AND (TARGET hwy::hwy OR TARGET hwy))
-  set(_hwy_target "$<IF:$<TARGET_EXISTS:hwy::hwy>,hwy::hwy,hwy>")
-  target_link_libraries(bench_dtw_baseline PRIVATE "${_hwy_target}")
-endif()
-
 # Mmap access pattern benchmarks
 add_executable(bench_mmap_access bench_mmap_access.cpp)
 target_link_libraries(bench_mmap_access
