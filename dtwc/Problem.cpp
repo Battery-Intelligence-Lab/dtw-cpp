@@ -401,7 +401,8 @@ void Problem::fill_distance_matrix()
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
   auto dispatch_gpu_backend = [&](const auto &result, const char *backend) -> bool {
     if (result.pairs_computed == 0 && data.size() > 1) {
-      if (verbose) std::cout << backend << " returned empty — falling back to CPU.\n";
+      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
+      std::cerr << backend << " returned empty — falling back to CPU.\n";
       return false;
     }
     visit_distmat([&](auto &m) {
@@ -447,7 +448,8 @@ void Problem::fill_distance_matrix()
 #ifdef DTWC_HAS_CUDA
   {
     if (!dtwc::cuda::cuda_available()) {
-      if (verbose) std::cout << "No CUDA GPU detected, falling back to CPU.\n";
+      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
+      std::cerr << "No CUDA GPU detected, falling back to CPU.\n";
       fillDistanceMatrix_BruteForce();
       break;
     }
@@ -467,14 +469,16 @@ void Problem::fill_distance_matrix()
     break;
   }
 #else
-    if (verbose) std::cout << "CUDA not compiled in, falling back to CPU brute-force.\n";
+    // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
+    std::cerr << "CUDA not compiled in, falling back to CPU brute-force.\n";
     [[fallthrough]];
 #endif
   case DistanceMatrixStrategy::Metal:
 #ifdef DTWC_HAS_METAL
   {
     if (!dtwc::metal::metal_available()) {
-      if (verbose) std::cout << "No Metal GPU detected, falling back to CPU.\n";
+      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
+      std::cerr << "No Metal GPU detected, falling back to CPU.\n";
       fillDistanceMatrix_BruteForce();
       break;
     }
@@ -490,7 +494,8 @@ void Problem::fill_distance_matrix()
     break;
   }
 #else
-    if (verbose) std::cout << "Metal not compiled in, falling back to CPU brute-force.\n";
+    // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
+    std::cerr << "Metal not compiled in, falling back to CPU brute-force.\n";
     [[fallthrough]];
 #endif
   case DistanceMatrixStrategy::BruteForce:

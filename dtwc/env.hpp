@@ -45,6 +45,37 @@ enum class Device {
 /// @brief Canonical lower-case name of a Device ("cpu" / "gpu" / "hpc").
 std::string to_string(Device d);
 
+namespace detail {
+
+/// @brief Why DTWC++ would run single-threaded — drives the Env sequential
+///        loudness warning (Task 3.2). `None` means parallelism is available.
+enum class SeqCause {
+  None,               ///< Parallel execution available — no warning.
+  RuntimeSingleThread,///< OpenMP present but only 1 thread usable (e.g. OMP_NUM_THREADS=1) on a multicore host.
+  SequentialBuild     ///< Compiled without OpenMP via -DDTWC_ALLOW_SEQUENTIAL=ON (DTWC_SEQUENTIAL_BUILD).
+};
+
+/// @brief Decide whether (and why) to emit the sequential warning. PURE — depends
+///        only on its arguments, so the message/predicate is unit-testable without
+///        touching global OpenMP state or the build configuration.
+/// @param effective_max_threads  omp_get_max_threads() (or 1 without OpenMP).
+/// @param hw_concurrency         std::thread::hardware_concurrency() (0 = unknown).
+/// @param sequential_build       true iff compiled with DTWC_SEQUENTIAL_BUILD.
+/// @return SequentialBuild if @p sequential_build; else RuntimeSingleThread when
+///         only 1 thread is usable on a host that reports >1 hardware thread; else
+///         None (a genuine single-core host or unknown concurrency never warns —
+///         no crying wolf).
+SeqCause sequential_cause(int effective_max_threads, unsigned hw_concurrency,
+                          bool sequential_build) noexcept;
+
+/// @brief The exact stderr warning string for a given cause (empty for None).
+/// @details Single source of truth for the two loudness messages emitted by the
+///          dtwc::Env constructor; the strings are asserted byte-for-byte in
+///          tests/unit/test_runtime_loudness.cpp. Each ends with a trailing '\n'.
+std::string sequential_warning_text(SeqCause cause);
+
+} // namespace detail
+
 /**
  * @brief Owns the process-wide compute-device and thread policy.
  *
@@ -100,6 +131,11 @@ public:
 private:
   /// Validate `.env` (file, keys) then authenticate; sets device_ only on success.
   void select_hpc();
+
+  /// Emit ONE loud stderr warning (process-wide) when DTWC++ is running
+  /// single-threaded — either forced to 1 thread at runtime or compiled without
+  /// OpenMP (DTWC_SEQUENTIAL_BUILD). Called from the constructor (Task 3.2).
+  void warn_if_sequential() const;
 
   Device device_{ Device::CPU };
   int device_index_{ 0 };

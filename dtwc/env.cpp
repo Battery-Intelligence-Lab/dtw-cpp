@@ -19,10 +19,13 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <iostream> // std::cerr for the sequential loudness warning (Task 3.2)
 #include <map>
+#include <mutex>    // std::once_flag / std::call_once — ONE warning per process
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>   // std::thread::hardware_concurrency()
 
 #ifdef DTWC_HAS_OPENMP
 #include <omp.h>
@@ -177,6 +180,45 @@ std::string to_string(Device d)
 }
 
 // ---------------------------------------------------------------------------
+// Sequential-execution loudness (Task 3.2). PURE predicate + message SSOT.
+// The two strings below are the EXACT stderr warnings emitted by the Env
+// constructor; they are transcribed and asserted byte-for-byte in
+// tests/unit/test_runtime_loudness.cpp. Do not reword without updating that test.
+// ---------------------------------------------------------------------------
+
+namespace detail {
+
+SeqCause sequential_cause(int effective_max_threads, unsigned hw_concurrency,
+                          bool sequential_build) noexcept
+{
+  if (sequential_build) return SeqCause::SequentialBuild;
+  // Only warn about a runtime single-thread cap on a host that actually has more
+  // than one hardware thread — a genuine single-core machine (or hw_concurrency==0,
+  // meaning "unknown") is legitimately serial and must not be nagged.
+  if (effective_max_threads <= 1 && hw_concurrency > 1) return SeqCause::RuntimeSingleThread;
+  return SeqCause::None;
+}
+
+std::string sequential_warning_text(SeqCause cause)
+{
+  switch (cause) {
+  case SeqCause::RuntimeSingleThread:
+    return "[DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.\n"
+           "  Distance-matrix computation will be extremely slow for large datasets.\n"
+           "  Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.\n";
+  case SeqCause::SequentialBuild:
+    return "[DTWC++ WARNING] This build was compiled WITHOUT OpenMP (-DDTWC_ALLOW_SEQUENTIAL=ON) — DTWC++ is running SINGLE-THREADED.\n"
+           "  Distance-matrix computation will be extremely slow for large datasets.\n"
+           "  Rebuild without -DDTWC_ALLOW_SEQUENTIAL=ON (with OpenMP available) for parallel execution.\n";
+  case SeqCause::None:
+    break;
+  }
+  return {};
+}
+
+} // namespace detail
+
+// ---------------------------------------------------------------------------
 // Env.
 // ---------------------------------------------------------------------------
 
@@ -189,6 +231,30 @@ Env::Env()
     env_file_dir_ = fs::current_path(ec);
   }
   auth_probe_ = &default_ssh_auth_probe;
+  warn_if_sequential(); // Task 3.2: loud stderr warning when running single-threaded.
+}
+
+void Env::warn_if_sequential() const
+{
+  // ONE warning per process. The front-ends run through the singleton dtwc::env()
+  // (constructed once), but even if several Env instances are created we want a
+  // single loud line rather than repeated spam. std::call_once consumes the flag
+  // on the first Env construction regardless of whether it actually warns.
+  static std::once_flag warned_flag;
+  std::call_once(warned_flag, [this] {
+    constexpr bool sequential_build =
+#ifdef DTWC_SEQUENTIAL_BUILD
+      true; // Task 3.1 defines this when configured with -DDTWC_ALLOW_SEQUENTIAL=ON.
+#else
+      false;
+#endif
+    // threads() == omp_get_max_threads() (or 1 without OpenMP): reflects OMP_NUM_THREADS
+    // / omp_set_num_threads() at construction time.
+    const auto cause = detail::sequential_cause(
+      threads(), std::thread::hardware_concurrency(), sequential_build);
+    if (cause != detail::SeqCause::None)
+      std::cerr << detail::sequential_warning_text(cause);
+  });
 }
 
 void Env::set_device(std::string_view name)
