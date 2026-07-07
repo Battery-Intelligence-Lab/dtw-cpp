@@ -12,11 +12,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 Hardening pass from the full-repo audit; each item ships with regression tests.
 
-- **GPU/MPI pair decoding** — replaced the FP32 pair-index decode (wrong past N=8192, overflows int32 at N=46342) with an exact integer `decode_pair` shared by CUDA, Metal, and MPI paths (tasks 0.1, 0.2, 0.7).
+- **Pair-index decode SSOT** — replaced three divergent linear-upper-triangle decoders (CUDA int32, MPI `size_t`, Metal FP32-`sqrt`; the FP32 copy returned out-of-bounds pairs past N≈4096 and every int32 copy overflowed the `i*(2N-i-1)` intermediate at N≥46341) with a single `dtwc::detail::decode_pair` (FP64 seed + 64-bit integer correction loop). The C++ SSOT is compiled directly into the **CUDA and MPI** paths; Metal mirrors it as an integer-only MSL string (`kDecodePairMSL`) in the same header — bit-identical by construction but verified by **inspection only** (no local GPU CI) (tasks 0.2, 0.7).
+- **CUDA wavefront long-series cap** — task 0.1 lifts the anti-diagonal cell cap (`MAX_SI`×blockDim = 2048) that silently truncated anti-diagonals for `max_L > 2048`, producing wrong DTW on long series. Inspection-verified locally; runtime confirmation needs H100 CI (task 0.1).
 - **mmap stores** — `MmapDistanceMatrix`/`MmapDataStore` now reject sizes that overflow the packed layout and out-of-bounds interior offsets instead of mapping past the file (task 0.3).
 - **MATLAB MEX inputs** — `dtwc_mex` validates argument types, rejecting int32/single/complex/logical/empty/struct/sparse inputs rather than misreading raw bytes (task 0.4).
 - **MIP HiGHS** — a non-optimal (infeasible) solve now throws instead of silently returning an empty result (task 0.5).
-- **DTW runtime dispatch** — Soft-DTW actually computes Soft-DTW (was Standard-L1) and throws on `gamma <= 0`; multivariate L2 is Euclidean and distinct from L1 (task 0.6).
+- **DTW runtime dispatch** — Soft-DTW actually computes Soft-DTW (was Standard-L1) and throws on `gamma <= 0` (task 0.6); multivariate L2 is now a true Euclidean per-step cost, distinct from L1, on the **live** `dtwBanded_mv`/`dtwFull_L_mv` dispatch path. (Task 0.6's L2 fix had landed on a dead duplicate dispatcher — `core::dispatch_mv_metric`, zero call sites — so the live multivariate path still aliased L2→L1; the duplicate dispatcher was deleted and the live `dtwc::detail::dispatch_mv_metric` corrected in **R1**.)
 - **Arrow/Parquet readers** — reject Float32 lists mislabelled as Float64, `ndim=0` metadata (div-by-zero), and out-of-bounds list offsets; scalar and list Float32 columns are now converted to double (task 0.8).
 - **CLI device parsing** — `parse_device` handles `cpu`/`cuda`/`cuda:N` case-insensitively, rejects unknown devices (no silent CPU fallback) and non-L1 metrics on the CPU path (task 0.9).
 - **TimeSeries views** — `view()` and explicit conversion preserve `ndim` for multivariate series (task 0.10).

@@ -269,32 +269,65 @@ TEST_CASE("dtw_runtime SoftDTW throws on gamma <= 0",
 
 // ----- (b) Multivariate L2 must be Euclidean, not L1 -----------------------
 //
-// BUG (dtw_cost.hpp): core::dispatch_mv_metric mapped MetricType::L2 to the
-// multivariate L1 functor, so a multivariate "L2" request computed a Manhattan
-// (sum-of-|diff|) cost. Hand-computed 2-point / 3-channel example; expected
-// values REGISTERED BEFORE the fix:
-//   a = (0,0,0), b = (1,2,2)
-//   L1        = |0-1| + |0-2| + |0-2|      = 5
-//   SquaredL2 = 1 + 4 + 4                   = 9
-//   L2 (true) = sqrt(1 + 4 + 4) = sqrt(9)   = 3   <-- fix target
-// On the UNFIXED dispatcher the L2 branch returns 5 (L1), failing the 3.0
+// LIVE PATH: this drives dtwc::dtwBanded_mv — the *exact* public entry the
+// library dispatches to for multivariate DTW (dtw_dispatch.cpp:113/132 ->
+// dtwBanded_mv -> warping.hpp detail::dispatch_mv_metric). The prior wave's
+// test validated the now-deleted core::dispatch_mv_metric — a DEAD function
+// with zero library call sites — so it never noticed that the LIVE dispatcher
+// still aliased MetricType::L2 to the multivariate L1 (Manhattan) functor.
+//
+// BUG (warping.hpp detail::dispatch_mv_metric): `case L2:` fell through to
+// MVL1Dist, so a multivariate "L2" request computed sum-of-|diff| instead of a
+// Euclidean per-step cost.
+//
+// Hand-computed 2-channel example; values REGISTERED BEFORE the run:
+//   x = 4 timesteps of (0, 0)   (interleaved: 8 zeros)
+//   y = 4 timesteps of (3, 4)   (interleaved: {3,4,3,4,3,4,3,4})
+//   band = 1, ndim = 2
+//   Per-step pointwise cost is CONSTANT across every (i, j) cell:
+//     L1        = |0-3| + |0-4|     = 7
+//     L2 (true) = sqrt(3^2 + 4^2)   = 5
+//     SquaredL2 = 3^2 + 4^2         = 25
+//   Equal-length-4 series with constant cell cost c => the banded (band=1) DP
+//   walks the diagonal, so DTW = 4 * c:
+//     L1        DTW = 4 * 7  = 28
+//     L2 (true) DTW = 4 * 5  = 20   <-- fix target
+//     SquaredL2 DTW = 4 * 25 = 100
+// On the UNFIXED dispatcher the L2 branch returns 28 (L1), failing the 20.0
 // assertion and the `!=` check below.
-TEST_CASE("core::dispatch_mv_metric L2 is Euclidean, distinct from L1",
-          "[dtw_api][dtw_cost][mv][L2]")
+TEST_CASE("dtwBanded_mv L2 is Euclidean, distinct from L1 (live path)",
+          "[dtw_api][warping][mv][L2]")
 {
-  const double a[3] = {0.0, 0.0, 0.0};
-  const double b[3] = {1.0, 2.0, 2.0};
+  // interleaved layout: x[t * ndim + d]
+  const std::vector<double> x(8, 0.0);                     // 4 steps of (0, 0)
+  const std::vector<double> y{3, 4, 3, 4, 3, 4, 3, 4};     // 4 steps of (3, 4)
+  const std::size_t ndim = 2;
+  const int band = 1;
 
-  const auto eval = [&](MetricType m) {
-    return dispatch_mv_metric(
-      m, [&](auto dist) { return dist(a, b, std::size_t{3}); });
+  const auto mv = [&](MetricType m) {
+    return dtwc::dtwBanded_mv<double>(
+      x.data(), 4, y.data(), 4, ndim, band, -1.0, m);
   };
 
-  REQUIRE_THAT(eval(MetricType::L1), WithinAbs(5.0, 1e-12));
-  REQUIRE_THAT(eval(MetricType::SquaredL2), WithinAbs(9.0, 1e-12));
-  REQUIRE_THAT(eval(MetricType::L2), WithinAbs(3.0, 1e-12));  // was 5.0 (L1) pre-fix
-  REQUIRE(eval(MetricType::L2) != eval(MetricType::L1));      // L2 must not alias L1
+  const double l1 = mv(MetricType::L1);
+  const double l2 = mv(MetricType::L2);
+  const double sq = mv(MetricType::SquaredL2);
 
-  // Direct functor check on the same hand-computed example.
-  REQUIRE_THAT(MVL2Dist{}(a, b, std::size_t{3}), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(l1, WithinAbs(28.0, 1e-12));
+  REQUIRE_THAT(sq, WithinAbs(100.0, 1e-12));
+  REQUIRE_THAT(l2, WithinAbs(20.0, 1e-12));   // Euclidean, was 28.0 (L1) pre-fix
+  REQUIRE(l2 != l1);                          // L2 must NOT alias L1
+
+  // Same fix must be visible through the unbanded live path (dtwFull_L_mv);
+  // constant-cost equal-length DTW is 4 * c there too.
+  const double l2_full =
+    dtwc::dtwFull_L_mv<double>(x.data(), 4, y.data(), 4, ndim, -1.0, MetricType::L2);
+  REQUIRE_THAT(l2_full, WithinAbs(20.0, 1e-12));
+
+  // Direct check on the functor the live dispatcher now selects for L2
+  // (migrated from the deleted core::MVL2Dist). One step (0,0) vs (3,4):
+  //   sqrt(3^2 + 4^2) = 5.
+  const double a[2] = {0.0, 0.0};
+  const double b[2] = {3.0, 4.0};
+  REQUIRE_THAT(dtwc::detail::MVL2Dist{}(a, b, std::size_t{2}), WithinAbs(5.0, 1e-12));
 }

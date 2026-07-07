@@ -31,7 +31,6 @@
 #include <cmath>     // std::abs
 #include <cstddef>   // size_t
 #include <limits>    // std::numeric_limits (AROW NaN sentinel)
-#include <utility>   // std::forward
 
 namespace dtwc::core {
 
@@ -74,46 +73,19 @@ struct MVSquaredL2Dist {
   }
 };
 
-/// Multivariate L2 (Euclidean) across `ndim` channels: sqrt(sum (a[d] - b[d])^2).
-/// Distinct from MVL1Dist when ndim > 1; for ndim == 1 it reduces to |a - b|,
-/// which is why the univariate metric path treats L1 and L2 identically.
-struct MVL2Dist {
-  template <typename T>
-  T operator()(const T* a, const T* b, std::size_t ndim) const noexcept {
-    T sum = T(0);
-    for (std::size_t d = 0; d < ndim; ++d) {
-      const T diff = a[d] - b[d];
-      sum += diff * diff;
-    }
-    return std::sqrt(sum);
-  }
-};
-
-// Task 0.6: the scalar `dispatch_metric` bridge was removed here — it had zero
-// call sites (grep-verified). The live scalar dispatch is
-// dtwc::detail::dispatch_metric in warping.hpp, and univariate L1 == L2 pointwise,
-// so no scalar L2 fix is required.
-
-/// Runtime-metric → compile-time-functor bridge (multivariate).
-///
-/// Task 0.6: MetricType::L2 now selects a TRUE Euclidean cost (MVL2Dist) instead
-/// of silently aliasing MVL1Dist. For ndim == 1 this still equals |a - b|; for
-/// ndim > 1 it differs from the Manhattan (L1) cost.
-///
-/// NOTE: the multivariate dispatch actually reached by dtwc::dtwFull_L_mv /
-/// dtwBanded_mv is a SEPARATE copy — dtwc::detail::dispatch_mv_metric in
-/// warping.hpp — which still aliases L2 -> L1. That file is outside Task 0.6's
-/// file ownership; the divergence is flagged for a follow-up dedup so both
-/// dispatchers agree (see audit handoff 2026-06-01, "Cost functors ... duplicated").
-template <typename Fn>
-auto dispatch_mv_metric(MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{})) {
-  switch (m) {
-    case MetricType::SquaredL2: return std::forward<Fn>(fn)(MVSquaredL2Dist{});
-    case MetricType::L2:        return std::forward<Fn>(fn)(MVL2Dist{});
-    case MetricType::L1:
-    default:                    return std::forward<Fn>(fn)(MVL1Dist{});
-  }
-}
+// -----------------------------------------------------------------------------
+// Metric -> cost-functor dispatch lives in EXACTLY ONE place: dtwc::detail in
+// warping.hpp (both dispatch_metric and dispatch_mv_metric).
+//
+// Task R1: a duplicate `core::dispatch_mv_metric` (and the `core::MVL2Dist`
+// Euclidean functor it selected) used to live here. It had ZERO call sites and
+// had DIVERGED from the live dispatcher — it mapped MetricType::L2 to a true
+// Euclidean cost while the live warping.hpp dispatcher still aliased L2 -> L1,
+// so the "L2 is Euclidean" fix (task 0.6) was inert. Both were deleted and the
+// Euclidean functor was migrated to dtwc::detail::MVL2Dist (warping.hpp), which
+// the single live dispatcher now selects. A second dispatcher is precisely the
+// hazard that caused this bug, so this file intentionally hosts none.
+// -----------------------------------------------------------------------------
 
 // ===========================================================================
 // Cost functors for the unified DTW kernel — index-based (i, j)

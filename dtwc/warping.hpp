@@ -219,12 +219,33 @@ struct MVSquaredL2Dist {
   }
 };
 
+/// Multivariate L2 (Euclidean): sqrt(sum_d (a[d] - b[d])^2) across ndim dims.
+/// Distinct from MVL1Dist (Manhattan) whenever ndim > 1; for ndim == 1 it
+/// reduces to |a - b|. Migrated here from the deleted, dead core::MVL2Dist
+/// (task R1) so the single live dispatcher can select a real Euclidean cost
+/// for MetricType::L2 instead of silently aliasing MVL1Dist.
+struct MVL2Dist {
+  template <typename T>
+  T operator()(const T* a, const T* b, size_t ndim) const noexcept {
+    T sum = T(0);
+    for (size_t d = 0; d < ndim; ++d) {
+      T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return std::sqrt(sum);
+  }
+};
+
 /// Dispatch MetricType to scalar distance functor, invoke fn(functor).
 template <typename Fn>
 auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
 {
   switch (m) {
   case core::MetricType::SquaredL2: return fn(SquaredL2Dist{});
+  // Univariate L2 IS L1: the pointwise Euclidean cost sqrt((a-b)^2) == |a-b|,
+  // so a per-element L2 metric reduces exactly to L1 for scalar (ndim==1)
+  // series. This is a genuine mathematical identity, NOT the multivariate
+  // L2 -> L1 aliasing bug fixed in dispatch_mv_metric below (task R1).
   case core::MetricType::L2:
   case core::MetricType::L1:
   default: return fn(L1Dist{});
@@ -232,14 +253,17 @@ auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
 }
 
 /// Dispatch MetricType to multivariate distance functor, invoke fn(functor).
+/// This is the SINGLE live multivariate metric dispatcher — dtwFull_L_mv and
+/// dtwBanded_mv both route here (the former dead duplicate that lived in
+/// core/dtw_cost.hpp was removed in task R1 to prevent the two from diverging).
 template <typename Fn>
 auto dispatch_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{}))
 {
   switch (m) {
   case core::MetricType::SquaredL2: return fn(MVSquaredL2Dist{});
-  case core::MetricType::L2:
+  case core::MetricType::L2:        return fn(MVL2Dist{});  // true Euclidean (task R1)
   case core::MetricType::L1:
-  default: return fn(MVL1Dist{});
+  default:                          return fn(MVL1Dist{});
   }
 }
 
