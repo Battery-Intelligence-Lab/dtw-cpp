@@ -242,38 +242,49 @@ Basis: `.claude/reports/api-surface-2026-07-06.md`. Current shape: `DataLoader` 
 - [ ] Tests: deprecated shim still works + emits warning; `silhouette(prob)` works in pure C++ after `fast_pam` without manual wiring; `variant_params` write → `dtw_fn_` rebound (behavioral test on a known distance).
 - [ ] Full suite + bench vs baseline (Global Constraint ≤2%). Commit.
 
-## Phase 2 — Cross-language parity [FINAL pending 1.1 contract]
+## Phase 2 — Cross-language parity [DONE 2026-07-07]
+
+**Status (2026-07-07):** All four tasks done, committed `83e7668` (2.1 Python), `c4ba175` (2.2 MATLAB), `b6fe07f` (2.3 CLI/TOML), `0ff0e9b` (2.4 conformance fixture + CHANGELOG). Run `wf_d2e27165-0c8`.
+
+- **Gate PASS** [confirmed — gate transcript + orchestrator re-run]: full rebuild "EXIT_BUILD=0"; decisive ctest verbatim "100% tests passed, 0 tests failed out of 81" (75 non-skip + 6 documented skips; one intermittent 0xc0000409 in unit_test_clustering_algorithms arbitered pre-existing/unchanged-by-Phase-2, passed 3/3 isolated + clean full re-run); pytest verbatim "387 passed, 10 skipped" against freshness-verified .pyd (mtime 11:50:52 > source 11:24:54, all 2.1 symbols present); MATLAB R2024b real runs: validation floor 19/19, new parity 20/20, conformance 1/1.
+- **Conformance fixture (2.4)** — the permanent parity gate: `tests/conformance/` fixture, k=3 seed=29, all four routes (C++/Python/CLI/MATLAB) digit-identical labels/medoids, scores ≤1e-12 rel vs `conformance_reference.txt` (silhouette 0.96894972764334841, DB 0.038333333333333337, dunn 11.5). Orchestrator independently re-ran cpp_conformance + unit_test_cli_args post-workflow: both Passed.
+- **CLI deprecation smoke**: `--clusters` → exit 0 + stderr "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead"; `--n-clusters` → silent. SSOT mapping in `cli_renames()`.
+- **OPEN residuals surfaced by Phase 2:**
+  - `tests/matlab/test_dtwc.m` 12/14 — test_clustering_medoids + test_clustering_fit_predict assume obsolete columns=series orientation; PRE-EXISTING (April MEX binary digit-identical 12/14, same two names). Own task: fix stale assertions to rows=series.
+  - From-scratch wheel rebuild (`pip --no-build-isolation`) blocked by llfio→quickcpplib→outcome MSBuild superbuild "error MSB3491"; pre-existing env issue, clang/ninja core build green. Fold into Phase 6 packaging.
+  - `bindings/matlab/dtwc_mex.mexw64` stale April binary in git shadows fresh MEX if addpath mis-ordered (caused real 0xc0000005 in gate harness until precedence fixed) — strengthens Phase 6 MEX-binary-in-git removal case.
+  - unit_test_clustering_algorithms: repo-relative path dependency (".\data\dummy") + rare 0xc0000409 flake; separate owner.
 
 Implements `docs/api-contract-2.0.md` verbatim. Known gaps to close (api-surface report top-10):
 
 ### Task 2.1: Python parity
 
 **Files:** Modify: `python/src/_dtwcpp_core.cpp` (nanobind), `python/dtwcpp/_api.py`, `python/dtwcpp/__init__.py`.
-- [ ] Bind missing: `Problem.set_solver`, `MIPSettings.benders`/`max_benders_iter`, `output_folder`, `storage_policy`, `lb_strategy`, `cuda_settings`, `use_mmap_distance_matrix`, f32/view data modes, `ndim` (multivariate) in load path.
-- [ ] Unify distance-matrix access per contract (one name, zero-copy where safe); fix mixed list-vs-ndarray arg types (all distance functions take ndarray zero-copy).
-- [ ] Delete wrapper-side result auto-wiring (now in C++, Task 1.6). Add `Metric` param (MATLAB has it, Python lacks it).
-- [ ] Parity test: enumerate contract symbols via introspection → assert all present with exact names/defaults.
-- [ ] Commit.
+- [x] Bind missing: `Problem.set_solver`, `MIPSettings.benders`/`max_benders_iter`, `output_folder`, `storage_policy`, `lb_strategy`, `cuda_settings`, `use_mmap_distance_matrix`, f32/view data modes, `ndim` (multivariate) in load path.
+- [x] Unify distance-matrix access per contract (one name, zero-copy where safe); fix mixed list-vs-ndarray arg types (all distance functions take ndarray zero-copy).
+- [x] Delete wrapper-side result auto-wiring (now in C++, Task 1.6). Add `Metric` param (MATLAB has it, Python lacks it).
+- [x] Parity test: enumerate contract symbols via introspection → assert all present with exact names/defaults.
+- [x] Commit.
 
 ### Task 2.2: MATLAB parity
 
 **Files:** Modify: `bindings/matlab/dtwc_mex.cpp`, `bindings/matlab/*.m` (Problem.m, DTWClustering.m, +dtwc/ namespace as needed).
-- [ ] Add: ragged input (cell arrays), series names, `ndim` multivariate, MIP surface (MIPSettings + set_solver + benders), `device` param, checkpointing controls, CUDA dispatch — the "MATLAB Phase 2" backlog folded in.
-- [ ] Rename to contract names (snake_case methods; keep MATLAB 1-based conversion at MEX boundary only).
-- [ ] Parity test: MATLAB script asserting contract symbols (run in CI when MEX CI lands in Phase 6; locally via user's MATLAB meanwhile — mark test skippable-with-loud-notice).
-- [ ] Commit.
+- [x] Add: ragged input (cell arrays), series names, `ndim` multivariate, MIP surface (MIPSettings + set_solver + benders), `device` param, checkpointing controls, CUDA dispatch — the "MATLAB Phase 2" backlog folded in.
+- [x] Rename to contract names (snake_case methods; keep MATLAB 1-based conversion at MEX boundary only).
+- [x] Parity test: MATLAB script asserting contract symbols (run in CI when MEX CI lands in Phase 6; locally via user's MATLAB meanwhile — mark test skippable-with-loud-notice).
+- [x] Commit.
 
 ### Task 2.3: CLI conformance
 
 **Files:** Modify: `dtwc/dtwc_cl.cpp`, TOML config schema.
-- [ ] CLI flags/TOML keys renamed to contract vocabulary WITH old names accepted + deprecation warning (CLI is a de-facto API for `cluster_generic.slurm` + `_hpc.build_dtwc_command` — those two callers updated in the same commit).
-- [ ] Commit.
+- [x] CLI flags/TOML keys renamed to contract vocabulary WITH old names accepted + deprecation warning (CLI is a de-facto API for `cluster_generic.slurm` + `_hpc.build_dtwc_command` — those two callers updated in the same commit).
+- [x] Commit.
 
 ### Task 2.4: Cross-language conformance fixture
 
 **Files:** Create: `tests/conformance/` (TOML fixture + small recorded dataset + runner per language).
-- [ ] One fixture: load recorded dataset → banded DTW → fast_pam k=3, fixed seed → labels + medoids + 3 scores. Run from C++, Python, MATLAB (MATLAB skippable, loud), CLI. Assert digit-identical labels/medoids and scores equal to 1e-12 rel.
-- [ ] This fixture is the permanent parity gate — wire into CI. Commit.
+- [x] One fixture: load recorded dataset → banded DTW → fast_pam k=3, fixed seed → labels + medoids + 3 scores. Run from C++, Python, MATLAB (MATLAB skippable, loud), CLI. Assert digit-identical labels/medoids and scores equal to 1e-12 rel.
+- [x] This fixture is the permanent parity gate — wire into CI. Commit.
 
 ## Phase 3 — Parallelism & GPU out-of-the-box [DRAFT — build-state report landed; tasks being finalised]
 
