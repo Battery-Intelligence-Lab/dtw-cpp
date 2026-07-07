@@ -8,6 +8,23 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Fixed (Phase 0 correctness & security audit)
+
+Hardening pass from the full-repo audit; each item ships with regression tests.
+
+- **GPU/MPI pair decoding** — replaced the FP32 pair-index decode (wrong past N=8192, overflows int32 at N=46342) with an exact integer `decode_pair` shared by CUDA, Metal, and MPI paths (tasks 0.1, 0.2, 0.7).
+- **mmap stores** — `MmapDistanceMatrix`/`MmapDataStore` now reject sizes that overflow the packed layout and out-of-bounds interior offsets instead of mapping past the file (task 0.3).
+- **MATLAB MEX inputs** — `dtwc_mex` validates argument types, rejecting int32/single/complex/logical/empty/struct/sparse inputs rather than misreading raw bytes (task 0.4).
+- **MIP HiGHS** — a non-optimal (infeasible) solve now throws instead of silently returning an empty result (task 0.5).
+- **DTW runtime dispatch** — Soft-DTW actually computes Soft-DTW (was Standard-L1) and throws on `gamma <= 0`; multivariate L2 is Euclidean and distinct from L1 (task 0.6).
+- **Arrow/Parquet readers** — reject Float32 lists mislabelled as Float64, `ndim=0` metadata (div-by-zero), and out-of-bounds list offsets; scalar and list Float32 columns are now converted to double (task 0.8).
+- **CLI device parsing** — `parse_device` handles `cpu`/`cuda`/`cuda:N` case-insensitively, rejects unknown devices (no silent CPU fallback) and non-L1 metrics on the CPU path (task 0.9).
+- **TimeSeries views** — `view()` and explicit conversion preserve `ndim` for multivariate series (task 0.10).
+- **FastCLARA sampling** — deterministic `mt19937_64` + `std::sample` seeding for reproducible in-RAM subsampling (task 0.11).
+- **Supply-chain pinning** — `Dependencies.cmake` pins llfio/quickcpplib by SHA with URL hashes; CI no longer pipes a remote script into a shell (task 0.12).
+- **Type utilities / build** — corrected `types_util.hpp`, README, and benchmark CMake wiring (task 0.13).
+- **Python `cluster()` dispatch** — unknown methods raise before any HPC offload; local dispatch routes CLARA vs FastPAM correctly and normalizes the `hclust` alias (task 0.14).
+
 ### Added (unified `device()` → `load()` → `cluster()` → `result.plot()` interface)
 
 - **One high-level flow** in new [python/dtwcpp/_api.py](python/dtwcpp/_api.py): set the device once, then cluster — the library handles device resolution, local-vs-remote execution, and plotting, so callers never touch internal plumbing:

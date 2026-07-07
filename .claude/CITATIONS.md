@@ -71,3 +71,56 @@ References used during development. Verify each citation independently before pu
 - Latta-Lin, D., & Padilla Munoz, S. I. (2024). *Optimizing sDTW for AMD GPUs*. arXiv:2403.06931. https://doi.org/10.48550/arXiv.2403.06931 - Informed tuning of values-per-thread/reference-width ownership and architecture-aware wavefront design.
 - NVIDIA. *CUDA C++ Programming Guide*. https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html - Informed warp shuffle intrinsics, shared-memory carveout, and dynamic shared-memory opt-in behavior.
 - NVIDIA. *Hopper Tuning Guide*. https://docs.nvidia.com/cuda/archive/12.1.0/hopper-tuning-guide/index.html - Informed DPX, TMA, distributed shared memory, and Hopper-specific performance ceilings.
+
+## Literature survey 2026-07-06 (see .claude/reports/literature-2026-07-06.md)
+
+### Correction
+
+- **CORRECTION** to the entry above listing Schubert & Rousseeuw (2021) as *JMLR 22(1), 4653-4688*: the FasterPAM paper is Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804 (arXiv:2008.05171). Conference precursor: Schubert & Rousseeuw, SISAP 2019 (arXiv:1810.05691). Verified against arXiv abstract 2026-07-06.
+
+### k-medoids and scalable clustering
+
+- Schubert, E. & Lenssen, L. (2022). Fast k-medoids Clustering in Rust and Python. *Journal of Open Source Software*, 7(75), 4183. https://joss.theoj.org/papers/10.21105/joss.04183 — Reference FasterPAM/LAB implementation; parallel rayon variant.
+- Tiwari, M., Zhang, M. J., Mayclin, J., Thrun, S., Piech, C., & Shomorony, I. (2020). BanditPAM: Almost Linear Time k-Medoids Clustering via Multi-Armed Bandits. *NeurIPS 2020*. arXiv:2006.06856 — O(n log n) per iteration under distributional assumptions; wins only when distances are computed on demand.
+- Tiwari, M., et al. (2023). BanditPAM++: Faster k-medoids Clustering. *NeurIPS 2023*. arXiv:2310.18844 — "O(k) faster than BanditPAM"; 10x on CIFAR10.
+- (2025). OneBatchPAM: A Fast and Frugal K-Medoids Algorithm. *AAAI 2025*. arXiv:2501.19285 — O(mn) dissimilarity computations, m = O(log n); candidate for the 100M-series tier.
+- Lenssen, L. & Schubert, E. (2024). Medoid Silhouette clustering with automatic cluster number selection (FasterMSC, DynMSC). *Information Systems*, 120. arXiv:2209.12553.
+- Begum, N., Ulanova, L., Wang, J., & Keogh, E. (2015). Accelerating Dynamic Time Warping Clustering with a Novel Admissible Pruning Strategy (TADPole). *ACM SIGKDD 2015*. Extended: arXiv:1612.00637 — envelope UB/LB pruning of the pairwise matrix, ~order-of-magnitude speedup, results identical to brute force.
+- Paparrizos, J. & Gravano, L. (2015). k-Shape: Efficient and Accurate Clustering of Time Series. *SIGMOD 2015* (journal: *TODS* 2017). https://www.paparrizos.org/papers/PaparrizosSIGMOD15.pdf — FFT-based SBD distance, O(L log L).
+- Holder, C., Middlehurst, M., & Bagnall, A. (2024). A Review and Evaluation of Elastic Distance Functions for Time Series Clustering. *Knowledge and Information Systems*, 66, 765-809. arXiv:2205.15181 — MSM best, TWE second; DTW+k-medoids not significantly better than Euclidean; k-medoids > k-means for all nine elastic distances.
+- Holder, C. & Bagnall, A. (2024). KASBA: MSM-based accelerated k-means for time series. arXiv:2411.17838.
+- Van Craenendonck, T., Meert, W., Dumančić, S., & Blockeel, H. (2018). COBRAS-TS: A new approach to Semi-Supervised Clustering of Time Series. *Discovery Science 2018*. arXiv:1805.00779.
+
+### Barycenters / DTW averaging
+
+- Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering (DBA). *Pattern Recognition*, 44(3), 678-693.
+- Schultz, D. & Jain, B. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces (SSG). *Pattern Recognition*, 74, 340-358. arXiv:1701.06393 — SSG more stable and better than DBA on average at larger sample sizes.
+
+### Lower bounds, pruning, fast exact DTW (additions)
+
+- Wu, R. & Keogh, E. (2022). FastDTW is approximate and Generally Slower than the Algorithm it Approximates. *IEEE TKDE*, 34(8), 3779-3785 (also ICDE 2021). arXiv:2003.11246 — verbatim: "In any realistic data mining application, the approximate FastDTW is much slower than the exact DTW." Do not add FastDTW.
+- Herrmann, M. & Webb, G. I. (2021). Early abandoning and pruning for elastic distances including dynamic time warping (EAPruned). *Data Mining and Knowledge Discovery*. arXiv:2102.05221 — covers DTW, CDTW, WDTW, ERP, MSM, TWE; reference C++ impl: https://github.com/MonashTS/tempo
+- Silva, D. F. & Batista, G. E. A. P. A. (2016). Speeding Up All-Pairwise Dynamic Time Warping Matrix Calculation (PrunedDTW). *SIAM SDM 2016*.
+- Tan, C. W., Petitjean, F., & Webb, G. I. (2019). Elastic bands across the path: A new framework and method to lower bound DTW (LB_Enhanced). *SIAM SDM 2019*. arXiv:1808.09617.
+- Webb, G. I. & Petitjean, F. (2021). Tight lower bounds for Dynamic Time Warping (LB_Petitjean, LB_Webb). *Pattern Recognition*, 115, 107895. arXiv:2102.07076 — LB_Webb always tighter than LB_Keogh, cheaper than LB_Improved.
+- Ratanamahatana, C. A. & Keogh, E. (2004). Everything you know about Dynamic Time Warping is Wrong. *KDD Workshop on Mining Temporal and Sequential Data* — narrow bands (~10%) typically match or beat full DTW.
+- Tan, C. W., Herrmann, M., & Webb, G. I. (2021). Ultra fast warping window optimization for Dynamic Time Warping (UltraFastWWSearch). *IEEE ICDM 2021*.
+- Mueen, A., Chavoshi, N., Abu-El-Rub, N., et al. (2016). AWarp: Fast Warping Distance for Sparse Time Series. *IEEE ICDM 2016* — exact on binary series, orders of magnitude faster on sparse data.
+- Froese, V., et al. (2022). Fast Exact Dynamic Time Warping on Run-Length Encoded Time Series. *Algorithmica*.
+- (2026). A New Lower Bounding Paradigm and Tighter Lower Bounds for Elastic Similarity Measures (BGLB/DBGLB). arXiv:2603.14899 — general LB for DTW/ERP/MSM/TWED/EDR/LCSS.
+- Shen, D., et al. (2021). TC-DTW: Accelerating Multivariate Dynamic Time Warping Through Triangle Inequality and Point Clustering. arXiv:2101.07731 — multivariate LB tightening, "speedups up to 25x (7.5x average)".
+- Tang, Y., et al. (2015). Cache-Oblivious Wavefront: Improving Parallelism of Recursive Dynamic Programming Algorithms without Losing Cache-Efficiency. *PPoPP 2015*.
+
+### Distance variants (additions)
+
+- Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438.
+- Zhao, J. & Itti, L. (2018). shapeDTW: Shape Dynamic Time Warping. *Pattern Recognition*, 74, 171-184. arXiv:1606.01601.
+- Shokoohi-Yekta, M., et al. (2017). Generalizing DTW to the multi-dimensional case requires an adaptive approach (independent vs dependent multivariate DTW). *Data Mining and Knowledge Discovery*, 31, 1-31.
+- (2026). Memory-efficient differentiable soft-DTW on GPU. arXiv:2602.17206 — tiled anti-diagonal kernel, "up to 98% memory reduction" via fused distance computation.
+
+### Ecosystem
+
+- Apache Arrow. The Arrow C Data Interface. https://arrow.apache.org/docs/format/CDataInterface.html — zero-copy interchange with no Arrow build dependency; nanoarrow helpers: https://arrow.apache.org/nanoarrow/
+- scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
+- conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
+- cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/
