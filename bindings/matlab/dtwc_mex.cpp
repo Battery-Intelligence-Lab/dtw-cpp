@@ -35,6 +35,7 @@
 #include "../../dtwc/env.hpp"          // dtwc::Env / device() (contract §1.1, §6)
 #include "../../dtwc/error.hpp"        // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
+#include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
 
 #include <string>
 #include <vector>
@@ -697,6 +698,43 @@ static void cmd_get_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
 }
 
 // =========================================================================
+//  dtwc.test introspection API (Task 3.3) — struct with the SAME field names
+//  as C++ dtwc::test::* and Python dtwcpp.test.*. Both take no data arguments
+//  (like get_device / system_check), so there is nothing to require_*-validate.
+// =========================================================================
+
+/// test_parallelisation() -> struct {available, max_threads, threads_engaged, pass, reason}.
+/// Runs a REAL OpenMP region via dtwc::test::parallelisation(); on the serial MEX
+/// build (DTWC_SEQUENTIAL_BUILD) available=false with a non-empty reason.
+static void cmd_test_parallelisation(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  const dtwc::test::ParallelReport r = dtwc::test::parallelisation();
+  const char *fields[] = { "available", "max_threads", "threads_engaged", "pass", "reason" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 5, fields);
+  mxSetField(s, 0, "available", mxCreateLogicalScalar(r.available));
+  mxSetField(s, 0, "max_threads", mxCreateDoubleScalar(static_cast<double>(r.max_threads)));
+  mxSetField(s, 0, "threads_engaged", mxCreateDoubleScalar(static_cast<double>(r.threads_engaged)));
+  mxSetField(s, 0, "pass", mxCreateLogicalScalar(r.pass));
+  mxSetField(s, 0, "reason", mxCreateString(r.reason.c_str()));
+  plhs[0] = s;
+}
+
+/// test_gpu() -> struct {available, backend, device_name, validated, pass, reason}.
+/// Executes a tiny real GPU kernel + CPU-oracle validation via dtwc::test::gpu();
+/// when no GPU backend is compiled in, available=false with a naming reason.
+static void cmd_test_gpu(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  const dtwc::test::GpuReport r = dtwc::test::gpu();
+  const char *fields[] = { "available", "backend", "device_name", "validated", "pass", "reason" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 6, fields);
+  mxSetField(s, 0, "available", mxCreateLogicalScalar(r.available));
+  mxSetField(s, 0, "backend", mxCreateString(r.backend.c_str()));
+  mxSetField(s, 0, "device_name", mxCreateString(r.device_name.c_str()));
+  mxSetField(s, 0, "validated", mxCreateLogicalScalar(r.validated));
+  mxSetField(s, 0, "pass", mxCreateLogicalScalar(r.pass));
+  mxSetField(s, 0, "reason", mxCreateString(r.reason.c_str()));
+  plhs[0] = s;
+}
+
+// =========================================================================
 //  Problem: MIP surface, solver, strategies, output folder, CUDA dispatch
 // =========================================================================
 
@@ -1280,6 +1318,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Device / Env (contract §1.1, §6)
     if (cmd == "set_device") cmd_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "get_device") cmd_get_device(nlhs, plhs, nrhs, prhs);
+    // dtwc.test introspection API (Task 3.3)
+    else if (cmd == "test_parallelisation") cmd_test_parallelisation(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "test_gpu") cmd_test_gpu(nlhs, plhs, nrhs, prhs);
     // Problem lifecycle
     else if (cmd == "Problem_new") cmd_Problem_new(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_delete") cmd_Problem_delete(nlhs, plhs, nrhs, prhs);

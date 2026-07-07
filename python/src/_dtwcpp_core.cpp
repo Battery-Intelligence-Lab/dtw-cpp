@@ -42,6 +42,7 @@
 #include <core/dtw_options.hpp>
 #include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
+#include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 
 #include <Eigen/Core>
 
@@ -1148,4 +1149,52 @@ NB_MODULE(_dtwcpp_core, m) {
 #endif
     return info;
   }, "Return a string summarizing available backends and capabilities.");
+
+  // =========================================================================
+  // dtwc.test introspection API (Task 3.3) — SAME schema/field names as the C++
+  // dtwc::test::* structs and the MATLAB dtwc_mex('test_*') structs. Each returns
+  // a dict so `except`-free front-end code reads identical keys in all three
+  // languages. The heavy probe (a real OpenMP region / a real GPU kernel) runs
+  // with the GIL released, then the dict is built under the GIL.
+  // =========================================================================
+
+  m.def("test_parallelisation", []() {
+    dtwc::test::ParallelReport r;
+    {
+      nb::gil_scoped_release release;
+      r = dtwc::test::parallelisation();
+    }
+    nb::dict d;
+    d["available"] = r.available;
+    d["max_threads"] = r.max_threads;
+    d["threads_engaged"] = r.threads_engaged;
+    d["pass"] = r.pass;
+    d["reason"] = r.reason;
+    return d;
+  }, "Run a REAL OpenMP parallel region and report DISTINCT engaged thread ids.\n\n"
+     "Returns a dict {available, max_threads, threads_engaged, pass, reason} — the\n"
+     "same schema as C++ dtwc::test::parallelisation() and MATLAB\n"
+     "dtwc_mex('test_parallelisation'). Proof-of-engagement, not a flag read: on a\n"
+     "sequential build available=False with a non-empty reason (never raises).");
+
+  m.def("test_gpu", []() {
+    dtwc::test::GpuReport r;
+    {
+      nb::gil_scoped_release release;
+      r = dtwc::test::gpu();
+    }
+    nb::dict d;
+    d["available"] = r.available;
+    d["backend"] = r.backend;
+    d["device_name"] = r.device_name;
+    d["validated"] = r.validated;
+    d["pass"] = r.pass;
+    d["reason"] = r.reason;
+    return d;
+  }, "Execute a tiny REAL GPU kernel and validate it against a CPU oracle.\n\n"
+     "Returns a dict {available, backend, device_name, validated, pass, reason} —\n"
+     "the same schema as C++ dtwc::test::gpu() and MATLAB dtwc_mex('test_gpu').\n"
+     "When no GPU backend is compiled in (or no device is present) available=False\n"
+     "and reason names exactly what is missing (never raises, never silently\n"
+     "degrades).");
 }

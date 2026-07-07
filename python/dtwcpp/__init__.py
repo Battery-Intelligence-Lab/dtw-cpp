@@ -87,6 +87,9 @@ from dtwcpp._dtwcpp_core import (
     cuda_device_info,
     compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
     compute_lb_keogh_cuda,
+    METAL_AVAILABLE,
+    metal_available,
+    metal_device_info,
     OPENMP_AVAILABLE,
     openmp_max_threads,
     MPI_AVAILABLE,
@@ -256,6 +259,7 @@ from . import distance
 from . import preprocess
 from . import diagnose
 from . import features
+from . import test
 
 def check_system():
     """Print a diagnostic summary of available DTWC++ backends.
@@ -292,6 +296,16 @@ def check_system():
         print(f"  {_no} CUDA:   not compiled")
         print("     Rebuild with: cmake -DDTWC_ENABLE_CUDA=ON ...")
 
+    # Metal (Apple GPU) — metal_available/metal_device_info are bound in the core
+    # extension; surface them here for parity with the MATLAB check_system report.
+    if METAL_AVAILABLE:
+        if metal_available():
+            print(f"  {_ok} Metal:  {metal_device_info()}")
+        else:
+            print(f"  {_no} Metal:  compiled but no GPU detected")
+    else:
+        print(f"  {_no} Metal:  not compiled (macOS only)")
+
     # MPI
     if MPI_AVAILABLE:
         print(f"  {_ok} MPI:    available")
@@ -327,6 +341,7 @@ __all__ = [
     "Dataset", "load", "cluster", "Result", "ClusterResult", "plot",
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
+    "METAL_AVAILABLE", "metal_available", "metal_device_info",
     "OPENMP_AVAILABLE", "openmp_max_threads",
     "MPI_AVAILABLE",
     "check_system",
@@ -335,5 +350,5 @@ __all__ = [
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
     "save_dataset_parquet", "load_dataset_parquet",
-    "preprocess", "diagnose", "features",
+    "preprocess", "diagnose", "features", "test",
 ]
