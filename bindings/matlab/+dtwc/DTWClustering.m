@@ -57,6 +57,7 @@ classdef DTWClustering
         WdtwG (1,1) double = 0.05
         AdtwPenalty (1,1) double = 1.0
         MissingStrategy (1,:) char = 'error'
+        Device (1,:) char = ''
     end
 
     properties (SetAccess = private)
@@ -80,6 +81,7 @@ classdef DTWClustering
             addParameter(p, 'WdtwG', 0.05, @(v) isnumeric(v) && isscalar(v));
             addParameter(p, 'AdtwPenalty', 1.0, @(v) isnumeric(v) && isscalar(v));
             addParameter(p, 'MissingStrategy', 'error', @ischar);
+            addParameter(p, 'Device', '', @(v) ischar(v) || isstring(v));
             parse(p, varargin{:});
 
             obj.NClusters = p.Results.NClusters;
@@ -91,6 +93,7 @@ classdef DTWClustering
             obj.WdtwG = p.Results.WdtwG;
             obj.AdtwPenalty = p.Results.AdtwPenalty;
             obj.MissingStrategy = p.Results.MissingStrategy;
+            obj.Device = char(p.Results.Device);
         end
 
         function obj = fit(obj, X)
@@ -102,6 +105,12 @@ classdef DTWClustering
         %   X : double matrix (N x L)
         %       Each row is a time series of length L.
             validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
+
+            % Device selection delegates to dtwc::Env (contract §1.5). An unknown
+            % device / gpu-without-backend raises dtwc:deviceError (no silent fallback).
+            if ~isempty(obj.Device)
+                dtwc.device(obj.Device);
+            end
 
             bestCost = Inf;
             bestLabels = [];
