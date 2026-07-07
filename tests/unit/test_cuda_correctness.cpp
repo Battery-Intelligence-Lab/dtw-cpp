@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
 #include <vector>
 
