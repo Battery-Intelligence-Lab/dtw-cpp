@@ -1,0 +1,15 @@
+# DTWC++ 2.0 cross-language conformance reference (Phase 2 Task 2.4).
+# Recorded by the C++ route (tests/conformance/cpp_conformance.cpp) which
+# runs the LIVE pipeline: DataLoader -> set_band(3) -> fillDistanceMatrix
+# -> fast_pam(k=3, seed=29) -> silhouette/davies_bouldin/dunn. The Python,
+# MATLAB and CLI routes assert digit-identical labels/medoids and scores
+# within 1e-12 rel against THIS file.
+# REGENERATE: run this test with env DTWC_CONFORMANCE_REGEN=1 (rebuild the
+# CSV first only if data/generate_conformance_data.py changed). Values are
+# canonical: medoids = sorted series indices; labels[i] = rank of series i's
+# medoid; silhouette = mean of the per-point vector.
+labels,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2
+medoids,4,13,22
+silhouette,0.96894972764334841
+davies_bouldin,0.038333333333333337
+dunn,11.5

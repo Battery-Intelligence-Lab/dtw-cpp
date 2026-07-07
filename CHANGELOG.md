@@ -10,6 +10,33 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 - API contract 2.0 frozen: docs/api-contract-2.0.md
 
+### Changed (Python · Phase 2 Task 2.1)
+
+- Python (Task 2.1): bound the full 2.0 canonical Python surface in the nanobind module — error taxonomy `DtwcError`/`InvalidInput`/`SolverError`/`DeviceError`/`IOError` (each subclassing DtwcError plus the closest built-in ValueError/RuntimeError/OSError, with C++-exception translators, api-contract §5); `dtwc::Env`/`Device`/`env()`/`device_to_string` device registry (§6); `StoragePolicy`/`LowerBoundStrategy` enums and `CUDASettings`; `MIPSettings.benders`/`max_benders_iter`; and `Problem.{set_solver, set_variant_params, set_view_data, output_folder, storage_policy, lb_strategy, cuda_settings, use_mmap_distance_matrix, read_distance_matrix, print_distance_matrix, write_medoid_members, n_clusters, labels, medoids, series, series_name, centroid_of}`, plus multivariate `ndim` and float32 storage (`Data.from_float32`, `Problem.set_data(Data)`) in the load path.
+- Python: unified distance-matrix access — `Problem.distance_matrix()`/`set_distance_matrix()` are canonical (old `distance_matrix_numpy`/`set_distance_matrix_from_numpy` kept one cycle as deprecated aliases, §4). All pairwise distance functions now take zero-copy float64 ndarrays uniformly — `ddtw`/`wdtw`/`adtw`/`soft_dtw`/`soft_dtw_gradient` were `std::vector` copies (§2.6).
+- Python: canonical scores `davies_bouldin`/`dunn`/`calinski_harabasz`/`adjusted_rand`/`normalized_mutual_info` added; the `*_index`/`*_information` spellings kept one cycle as deprecated aliases (§2.4/§4).
+- Python: deleted the wrapper-side result auto-wiring in the nanobind `fast_pam`/`fast_clara`/`clarans` bindings — the C++ core writes labels/medoids/k back into `Problem` since 1.6 (§2.5); behaviour preserved end-to-end.
+- Python: Tier-1 `ClusterResult` renamed to `Result` (deprecated alias kept), gaining `medoids` (deprecated `medoid_indices` alias), `score(name)` (silhouette mean / davies_bouldin / dunn / calinski_harabasz / inertia; unknown -> InvalidInput), and `save(dir)` (4 result CSVs); `DTWClustering` gained the `metric='l1'` constructor param (parity with MATLAB, §1.5). `dtwcpp.device()` mirrors the selection into the shared `dtwc::Env` registry (§6).
+
+### Changed (MATLAB · Phase 2 Task 2.2)
+
+- MATLAB: add Tier-1 API (dtwc.device/load/cluster, dtwc.Dataset, dtwc.Result) delegating device selection to dtwc::Env with no silent fallback (api-contract-2.0.md §1, §6).
+- MATLAB: extend dtwc.Problem with snake_case config setters (set_method/set_band/set_max_iter/set_n_repetitions/set_solver/set_lb_strategy/set_storage_policy/set_output_folder/set_mip_settings/set_cuda_settings/set_verbose), 2.0 methods (refresh_distance_matrix/read_distance_matrix/max_distance/distance_matrix/cluster) and read accessors (size/n_clusters/name/labels/medoids); PascalCase properties retained as aliases (§2.1-§2.2).
+- MATLAB: set_data now accepts ragged cell arrays, series names, and ndim multivariate input, validated before any mx dereference (§2.1).
+- MATLAB: add snake_case score names davies_bouldin/dunn/calinski_harabasz/adjusted_rand/normalized_mutual_info (§2.4) and the checkpoint surface CheckpointOptions/save_checkpoint/load_checkpoint/save_binary_checkpoint/load_binary_checkpoint (§2.7).
+- MATLAB: dtwc.DTWClustering gains a Device parameter delegating to dtwc::Env (§1.5).
+- MEX: map dtwc error taxonomy (InvalidInput/SolverError/DeviceError/IOError) to dtwc:invalidArgument/solverError/deviceError/ioError, keeping the std fallbacks so the 19 pinned input-validation cases still fire dtwc:invalidArgument (§5).
+- MATLAB: add tests/matlab/test_contract_parity.m asserting every api-contract-2.0.md MATLAB-column symbol is callable.
+
+### Changed (CLI · Phase 2 Task 2.3)
+
+- **CLI/TOML flag conformance to api-contract-2.0.md.** Renamed `--clusters` -> `--n-clusters` (§1.5/§2.1 `n_clusters`; `-k` kept as the canonical short form) and `--restart` -> `--resume` (§2.7). The old spellings — as CLI flags AND as `--config` TOML / `--yaml-config` config keys (`clusters`, `restart`) — remain **accepted** but each emits one stderr deprecation warning per use: `[dtwc] warning: '<old>' is deprecated, use '<new>' instead`. The canonical spelling wins when both are supplied; deprecated flags are hidden from `--help`. The rename SSOT lives in `dtwc/dtwc_cl.cpp::cli_renames()`.
+- The two known CLI callers (`scripts/slurm/jobs/cluster_generic.slurm`, `python/dtwcpp/_hpc.py::build_dtwc_command`) already compose only canonical flags (`-k`, `--skip-cols`, `--dtype`, `--method`, `--band`/`-b`, `--device`/`-d`, `--name`, `--output`/`-o`, `--input`/`-i`, `--verbose`/`-v`) and emit zero deprecation warnings (verified).
+
+### Added (conformance · Phase 2 Task 2.4)
+
+- Add cross-language conformance fixture (tests/conformance/): the permanent Phase 2 parity gate. One recorded dataset -> banded DTW (band=3) -> FastPAM k=3 -> silhouette/davies_bouldin/dunn, run from C++, Python, MATLAB and the CLI, asserting digit-identical canonical labels/medoids and scores within 1e-12 rel against a C++-recorded reference (docs/api-contract-2.0.md §9).
+
 ### Changed (Phase 1 · wave 2)
 
 - Precision unification (Task 1.5): `dtwc::settings::default_data_t` default template scalar flipped `float` -> `double`, so `double` is now the default on every public `dtwc::distance::*`/`dtwBanded`/`soft_dtw` helper (api-contract-2.0.md §8, rename row 41). Explicit `float`/`Precision::Float32` remains a fully supported opt-in.

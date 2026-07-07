@@ -1,0 +1,21 @@
+# DTWC++ 2.0 cross-language conformance fixture (Phase 2 Task 2.4).
+#
+# The CLI route of the permanent parity gate. Consumed by the built dtwc_cl
+# binary via `--config` (CLI11 reads these TOML keys as the canonical long-flag
+# names without the leading "--"). This file pins ONLY the algorithm pipeline;
+# the input CSV and output directory are runtime paths supplied by the runner on
+# the command line (-i / -o), so the fixture carries no machine-specific path
+# (Global Constraint: no runtime dependence on repo-relative paths).
+#
+# Pipeline (identical across the C++, Python, MATLAB and CLI routes):
+#   load conformance_series.csv -> banded DTW (band = 3) -> FastPAM k = 3 -> scores.
+# Keep these values in lockstep with cpp_conformance.cpp (kNClusters/kBand/...),
+# test_conformance.py and test_conformance.m.
+
+n-clusters = 3
+method     = "pam"
+band       = 3
+metric     = "l1"
+variant    = "standard"
+max-iter   = 100
+name       = "conformance"
