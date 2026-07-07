@@ -112,15 +112,40 @@ if(OpenMP_CXX_FOUND)
   message(STATUS "OpenMP ${OpenMP_CXX_VERSION} found — parallel execution enabled")
   target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_OPENMP)
   if(MSVC)
+    # Attach the OpenMP flag DIRECTLY to dtwc++ (PUBLIC) so that ANY consumer
+    # linking dtwc++ gets /openmp:experimental for its own `#pragma omp` TUs —
+    # even if it drops project_options. Previously this rode ONLY on the
+    # project_options INTERFACE, so a consumer that linked dtwc++ but not
+    # project_options (e.g. the nanobind module) silently serialised its OMP
+    # loops on MSVC (build-state report §1 hole 5). Keep project_options
+    # carrying it too (intact) for consumers that link project_options WITHOUT
+    # dtwc++ (e.g. mip-solvers).
+    target_compile_options(dtwc++ PUBLIC $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
     target_compile_options(dtwc_options INTERFACE $<$<COMPILE_LANGUAGE:C,CXX>:/openmp:experimental>)
   else()
+    # OpenMP::OpenMP_CXX carries -fopenmp + the libomp link PUBLIC-ly on dtwc++,
+    # so consumers of dtwc++ are covered directly — no project_options dependency.
     target_link_libraries(dtwc++ PUBLIC OpenMP::OpenMP_CXX)
   endif()
-else()
+elseif(DTWC_ALLOW_SEQUENTIAL)
+  # Explicit opt-out of the parallelism requirement (keeps the "core builds
+  # without optional deps" contract as a DELIBERATE choice). Loud warning + the
+  # DTWC_SEQUENTIAL_BUILD compile definition consumed by the runtime thread
+  # warning (parallelisation/Env layer, Task 3.2) — DO NOT rename this macro.
   message(WARNING
-    "OpenMP NOT found — DTWC++ will run single-threaded.\n"
-    "  This will be extremely slow for large datasets.\n"
-    "  To fix: install libomp (Clang), enable OpenMP in your compiler,\n"
+    "OpenMP NOT found and -DDTWC_ALLOW_SEQUENTIAL=ON given — building SEQUENTIAL.\n"
+    "  DTWC++ will run SINGLE-THREADED; this is EXTREMELY slow for large datasets.\n"
+    "  DTWC_SEQUENTIAL_BUILD is defined on the dtwc targets; the runtime will warn.")
+  target_compile_definitions(dtwc++ PUBLIC DTWC_SEQUENTIAL_BUILD)
+else()
+  # No silent serial builds (global no-silent-fallback constraint). OpenMP is
+  # required for shipped artifacts unless sequential is EXPLICITLY allowed.
+  message(FATAL_ERROR
+    "OpenMP NOT found — DTWC++ requires OpenMP for parallel execution.\n"
+    "  Silent single-threaded builds are disabled by design (no-silent-fallback).\n"
+    "  To build anyway (SINGLE-THREADED, EXTREMELY slow for large datasets),\n"
+    "  re-run configure with -DDTWC_ALLOW_SEQUENTIAL=ON.\n"
+    "  To fix properly: install libomp (Clang), enable OpenMP in your compiler,\n"
     "  or pass -DOpenMP_CXX_FLAGS / -DOpenMP_CXX_LIB_NAMES manually.")
 endif()
 

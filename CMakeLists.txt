@@ -34,6 +34,14 @@ option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
 option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
 option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
 
+# Parallelism is a hard requirement, not a silent-optional: if OpenMP is not
+# found the configure FAILS (dtwc/CMakeLists.txt) unless this explicit opt-out is
+# given. With it ON, the build proceeds single-threaded with a loud warning and
+# defines DTWC_SEQUENTIAL_BUILD on the dtwc targets (consumed by the runtime
+# thread-warning in the parallelisation layer). This keeps "core builds without
+# optional deps" as an EXPLICIT choice, never a silent serial fallback.
+option(DTWC_ALLOW_SEQUENTIAL "Allow configuring without OpenMP (single-threaded, EXTREMELY slow) — explicit opt-out of the parallelism requirement" OFF)
+
 # CUDA must be detected at directory scope (enable_language cannot be called
 # inside a function). Do it here before dtwc_setup_dependencies().
 if(DTWC_ENABLE_CUDA)
