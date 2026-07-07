@@ -54,16 +54,20 @@ template <typename T = dtwc::settings::default_data_t>
 struct TimeSeries {
   std::vector<T> data;
   std::string name;
+  size_t ndim = 1;      //!< Number of features (dimensions) per timestep
 
   size_t size() const { return data.size(); }
   bool empty() const { return data.empty(); }
   const T &operator[](size_t i) const { return data[i]; }
   T &operator[](size_t i) { return data[i]; }
+  /// Number of timesteps (flat length / ndim); ndim==0 guarded to avoid div-by-zero.
+  size_t timesteps() const { return ndim ? data.size() / ndim : data.size(); }
   // Explicit conversion to prevent dangling from temporaries.
-  // Use .view() for intentional conversion.
-  explicit operator TimeSeriesView<T>() const & { return { data.data(), data.size() }; }
+  // Use .view() for intentional conversion. Carries ndim so multivariate
+  // series survive the round-trip (length is timesteps, not flat size).
+  explicit operator TimeSeriesView<T>() const & { return { data.data(), timesteps(), ndim }; }
   operator TimeSeriesView<T>() const && = delete; // prevent dangling from temporaries
-  TimeSeriesView<T> view() const { return { data.data(), data.size() }; }
+  TimeSeriesView<T> view() const { return { data.data(), timesteps(), ndim }; }
 };
 
 } // namespace dtwc::core
