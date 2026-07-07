@@ -436,8 +436,11 @@ struct KVNParams {
   int max_L;
   int band;
   int use_sq_l2;
-  int pair_offset;
-  int num_pairs;
+  // 64-bit: pair_offset (chunk base) and num_pairs (= Kq * N_target) both
+  // overflow int32 once Kq * N_target > 2^31 (Task R2). `long` is 64-bit in MSL
+  // and byte-matches std::int64_t in the host-side KVNParams (LP64 macOS).
+  long pair_offset;
+  long num_pairs;
 };
 
 kernel void dtw_kvn_wavefront(
@@ -456,14 +459,18 @@ kernel void dtw_kvn_wavefront(
   const int max_L    = p.max_L;
   const int band     = p.band;
   const int use_sq_l2 = p.use_sq_l2;
-  const int pair_offset = p.pair_offset;
-  const int num_pairs = p.num_pairs;
+  const long pair_offset = p.pair_offset;
+  const long num_pairs = p.num_pairs;
 
-  const int real_pid = (int)pid + pair_offset;
+  // 64-bit pair/index math (Task R2; mirrors the NxN wavefront kernels above):
+  // real_pid, the K*N output index (q_idx*N_target + t_idx) and the query/
+  // target buffer offsets (q_idx/t_idx * max_L) all overflow int32 once
+  // Kq * N_target > 2^31.
+  const long real_pid = (long)pid + pair_offset;
   if (real_pid >= num_pairs) return;
 
-  const int q_idx = real_pid / N_target;
-  const int t_idx = real_pid - q_idx * N_target;
+  const long q_idx = real_pid / N_target;
+  const long t_idx = real_pid - q_idx * N_target;
 
   const int La = q_lengths[q_idx];
   const int Lb = t_lengths[t_idx];
@@ -547,14 +554,18 @@ kernel void dtw_kvn_wavefront_global(
   const int max_L    = p.max_L;
   const int band     = p.band;
   const int use_sq_l2 = p.use_sq_l2;
-  const int pair_offset = p.pair_offset;
-  const int num_pairs = p.num_pairs;
+  const long pair_offset = p.pair_offset;
+  const long num_pairs = p.num_pairs;
 
-  const int real_pid = (int)pid + pair_offset;
+  // 64-bit pair/index math (Task R2; mirrors the NxN wavefront kernels above):
+  // real_pid, the K*N output index (q_idx*N_target + t_idx) and the query/
+  // target buffer offsets (q_idx/t_idx * max_L) all overflow int32 once
+  // Kq * N_target > 2^31.
+  const long real_pid = (long)pid + pair_offset;
   if (real_pid >= num_pairs) return;
 
-  const int q_idx = real_pid / N_target;
-  const int t_idx = real_pid - q_idx * N_target;
+  const long q_idx = real_pid / N_target;
+  const long t_idx = real_pid - q_idx * N_target;
 
   const int La = q_lengths[q_idx];
   const int Lb = t_lengths[t_idx];
@@ -908,10 +919,12 @@ kernel void compute_lb_keogh(
     device float*         lb_values       [[buffer(4)]],
     constant int&         N_series        [[buffer(5)]],
     constant int&         max_L           [[buffer(6)]],
-    constant int&         num_pairs       [[buffer(7)]],
+    constant long&        num_pairs       [[buffer(7)]],
     uint gid [[thread_position_in_grid]])
 {
-  const int pid = (int)gid;
+  // 64-bit pair index (Task R2): num_pairs = N*(N-1)/2 overflows int32 for
+  // N >~ 65536, so gid is widened to `long` before the bounds check and decode.
+  const long pid = (long)gid;
   if (pid >= num_pairs) return;
 
   long si, sj;
@@ -948,17 +961,23 @@ kernel void compact_active_pairs(
     device atomic_int*    active_count  [[buffer(2)]],
     device float*         result_matrix [[buffer(3)]],
     constant int&         N_series      [[buffer(4)]],
-    constant int&         num_pairs     [[buffer(5)]],
+    constant long&        num_pairs     [[buffer(5)]],
     constant float&       threshold     [[buffer(6)]],
     uint gid [[thread_position_in_grid]])
 {
-  const int pid = (int)gid;
+  // 64-bit pair index (Task R2): num_pairs = N*(N-1)/2 overflows int32 for
+  // N >~ 65536, so gid is widened to `long` before the bounds check and decode.
+  const long pid = (long)gid;
   if (pid >= num_pairs) return;
 
   if (lb_values[pid] <= threshold) {
     const int slot =
         atomic_fetch_add_explicit(active_count, 1, memory_order_relaxed);
-    active_pairs[slot] = pid;
+    // active_pairs (and its consumer pair_indices at buffer(10) in the NxN
+    // wavefront kernels) is an int32 buffer, so the stored survivor index is
+    // still capped at int32. Widening that buffer chain is out of this task's
+    // scope; the fix here is the 64-bit num_pairs bounds check + decode.
+    active_pairs[slot] = (int)pid;
     return;
   }
 
@@ -1478,7 +1497,10 @@ MetalDistMatResult compute_distance_matrix_metal(
       if (env_band < 0) {
         env_band = (opts.band > 0) ? opts.band : std::max(1, max_L / 10);
       }
-      const int num_pairs_int = static_cast<int>(num_pairs);
+      // 64-bit (Task R2): N*(N-1)/2 overflows int32 for N >~ 65536. Passed to
+      // compute_lb_keogh (buffer 7) and compact_active_pairs (buffer 5), whose
+      // MSL `num_pairs` params are now `long`.
+      const std::int64_t num_pairs_i64 = static_cast<std::int64_t>(num_pairs);
       const float threshold_f32 = static_cast<float>(opts.lb_threshold);
 
       const size_t env_bytes = (size_t)N * (size_t)max_L * sizeof(float);
@@ -1556,7 +1578,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           [enc setBuffer:buf_lb      offset:0 atIndex:4];
           [enc setBytes:&N_int          length:sizeof(int) atIndex:5];
           [enc setBytes:&max_L          length:sizeof(int) atIndex:6];
-          [enc setBytes:&num_pairs_int  length:sizeof(int) atIndex:7];
+          [enc setBytes:&num_pairs_i64  length:sizeof(std::int64_t) atIndex:7];
           const NSUInteger lb_max =
               ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
           const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
@@ -1584,7 +1606,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           [enc setBuffer:buf_active_count offset:0 atIndex:2];
           [enc setBuffer:buf_out          offset:0 atIndex:3];
           [enc setBytes:&N_int         length:sizeof(int)   atIndex:4];
-          [enc setBytes:&num_pairs_int length:sizeof(int)   atIndex:5];
+          [enc setBytes:&num_pairs_i64 length:sizeof(std::int64_t) atIndex:5];
           [enc setBytes:&threshold_f32 length:sizeof(float) atIndex:6];
           const NSUInteger ct_max =
               ctx.pipeline_compact.maxTotalThreadsPerThreadgroup;
@@ -1774,7 +1796,9 @@ MetalLBResult compute_lb_keogh_metal(
 
   const size_t num_pairs = N * (N - 1) / 2;
   const int N_int = static_cast<int>(N);
-  const int num_pairs_int = static_cast<int>(num_pairs);
+  // 64-bit (Task R2): N*(N-1)/2 overflows int32 for N >~ 65536; the MSL
+  // compute_lb_keogh `num_pairs` param (buffer 7) is now `long`.
+  const std::int64_t num_pairs_i64 = static_cast<std::int64_t>(num_pairs);
 
   @autoreleasepool {
     const auto t0 = std::chrono::steady_clock::now();
@@ -1858,7 +1882,7 @@ MetalLBResult compute_lb_keogh_metal(
       [enc setBuffer:buf_lb      offset:0 atIndex:4];
       [enc setBytes:&N_int         length:sizeof(int) atIndex:5];
       [enc setBytes:&max_L         length:sizeof(int) atIndex:6];
-      [enc setBytes:&num_pairs_int length:sizeof(int) atIndex:7];
+      [enc setBytes:&num_pairs_i64 length:sizeof(std::int64_t) atIndex:7];
       const NSUInteger lb_max =
           ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
       const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
@@ -1992,8 +2016,10 @@ MetalKVsNResult compute_kvn_impl(
       int max_L;
       int band;
       int use_sq_l2;
-      int pair_offset;
-      int num_pairs;
+      // 64-bit, byte-matching the MSL KVNParams `long` fields (LP64 macOS):
+      // pair_offset and num_pairs both exceed int32 once Kq * N > 2^31 (Task R2).
+      std::int64_t pair_offset;
+      std::int64_t num_pairs;
     };
     KVNParams params{};
     params.N_target    = static_cast<int>(N);
@@ -2001,7 +2027,7 @@ MetalKVsNResult compute_kvn_impl(
     params.band        = opts.band;
     params.use_sq_l2   = opts.use_squared_l2 ? 1 : 0;
     params.pair_offset = 0;
-    params.num_pairs   = static_cast<int>(num_pairs);
+    params.num_pairs   = static_cast<std::int64_t>(num_pairs);
 
     const NSUInteger tg_mem_len = 3 * (NSUInteger)max_L * sizeof(float);
     const NSUInteger tg_mem_cap = ctx.device.maxThreadgroupMemoryLength;
@@ -2042,7 +2068,7 @@ MetalKVsNResult compute_kvn_impl(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < num_pairs; off += chunk) {
-      params.pair_offset = static_cast<int>(off);
+      params.pair_offset = static_cast<std::int64_t>(off);
       const size_t this_chunk = std::min(chunk, num_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];

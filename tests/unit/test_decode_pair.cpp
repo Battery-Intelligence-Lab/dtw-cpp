@@ -28,6 +28,7 @@
 
 #include <detail/decode_pair.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <limits>
@@ -110,6 +111,46 @@ std::int64_t first_failing_row_boundary(std::int64_t N, std::int64_t i)
   for (std::int64_t k : ks)
     if (!shared_decode_ok(k, N)) return k;
   return -1;
+}
+
+/// Oracle C: host transliteration of kDecodePairMSL
+/// (dtwc/detail/decode_pair.hpp:88-116) — the integer-only, 64-bit `long` decode
+/// the Metal backend prepends to its runtime-compiled kernel library, because
+/// MSL has neither `double` nor a wide-enough FP32 mantissa for large N.
+///
+/// The body below is copied VERBATIM from that MSL source, with only the two
+/// mechanical language substitutions MSL->C++ require:
+///   MSL `long`               -> std::int64_t   (both are 64-bit signed)
+///   MSL `sqrt((float)disc)`  -> std::sqrt(static_cast<float>(disc))
+/// Nothing else changes: the `float` seed is deliberately preserved so this is
+/// the SAME computation the GPU performs. The two integer correction loops
+/// (`while ((s+1)*(s+1) <= disc)` / `while (s*s > disc)`) compute the EXACT
+/// integer square root of the int64 `disc`, so the final (i, j) is independent
+/// of any last-ULP difference between this host's float sqrt and a Metal GPU's.
+///
+/// Passing the test below therefore proves the ALGORITHM in kDecodePairMSL is
+/// bit-identical to the SSOT dtwc::detail::decode_pair. It does NOT execute the
+/// MSL *string*: that is compiled only by a Metal driver, so the string itself
+/// stays RUNTIME-UNVERIFIED until a macOS Metal CI job exists (there is no Metal
+/// toolchain on this host).
+void msl_isqrt_decode(std::int64_t k, std::int64_t N, std::int64_t &i, std::int64_t &j)
+{
+  // ---- begin verbatim transliteration of kDecodePairMSL body ----
+  const std::int64_t a = 2 * N - 1;
+  const std::int64_t disc = a * a - 8 * k;                     // < 4N^2, fits int64
+  std::int64_t s = static_cast<std::int64_t>(std::sqrt(static_cast<float>(disc)));
+  while ((s + 1) * (s + 1) <= disc) ++s;                       // correct up
+  while (s * s > disc) --s;                                    // correct down -> isqrt(disc)
+  std::int64_t row = (a - s) / 2;
+  while (row > 0 && row * (2 * N - row - 1) / 2 > k) --row;    // correct down
+  std::int64_t row_start = row * (2 * N - row - 1) / 2;
+  while (row_start + (N - row - 1) <= k) {                     // correct up
+    row_start += (N - row - 1);
+    ++row;
+  }
+  i = row;
+  j = row + 1 + (k - row_start);
+  // ---- end verbatim transliteration ----
 }
 
 } // namespace
@@ -230,4 +271,78 @@ TEST_CASE("last-pair matrix index overflows int32 at N=46342 (pins Task 0.7)", "
   CHECK(idx_sym > int32_max);
   CHECK(idx == (N - 2) * N + (N - 1));
   CHECK(idx_sym == (N - 1) * N + (N - 2));
+}
+
+// ---------------------------------------------------------------------------
+// Task R2 — Metal kDecodePairMSL algorithm equivalence
+// ---------------------------------------------------------------------------
+
+TEST_CASE("kDecodePairMSL integer-isqrt algorithm matches SSOT decode_pair",
+          "[decode_pair][metal]")
+{
+  // LIVE code path exercised: dtwc::detail::decode_pair — the single source of
+  // truth compiled into this build and consumed by the host / CUDA / MPI
+  // backends. The Metal backend uses a hand-transliterated copy of the SAME
+  // algorithm (kDecodePairMSL, an MSL string in metal_dtw.mm); msl_isqrt_decode
+  // above is a verbatim host copy of that string's body. This test compares the
+  // two decoders. It proves the ALGORITHM matches; the MSL string itself is
+  // compiled only by a Metal driver and stays runtime-unverified until a macOS
+  // CI job exists (no Metal toolchain on this host).
+  //
+  // REGISTERED pass band (written BEFORE running, zero tolerance): for every
+  // sampled k in [0, N*(N-1)/2), the MSL algorithm and decode_pair MUST return
+  // identical (i, j), both must satisfy 0 <= i < j < N, and encode_pair must
+  // round-trip to k. A single mismatch FAILS the test.
+  //
+  // N = 70000 makes num_pairs = 70000*69999/2 = 2,449,965,000 > 2^31 (INT32_MAX
+  // = 2,147,483,647) — the exact regime where the retired int32 num_pairs / pid
+  // plumbing (now widened to 64-bit `long` in the KVN and LB/compact kernels)
+  // overflowed. int64 disc for N=70000 is a*a = 139999^2 = 19,599,720,001, well
+  // within int64.
+  auto agree = [](std::int64_t k, std::int64_t N) {
+    std::int64_t mi = -1, mj = -1, si = -1, sj = -1;
+    msl_isqrt_decode(k, N, mi, mj);
+    dtwc::detail::decode_pair(k, N, si, sj);
+    return mi == si && mj == sj && 0 <= mi && mi < mj && mj < N
+        && encode_pair(mi, mj, N) == k;
+  };
+
+  for (std::int64_t N : { std::int64_t(8192), std::int64_t(50000),
+                          std::int64_t(70000) }) {
+    const std::int64_t num_pairs = N * (N - 1) / 2;
+
+    // Coarse global sweep (~20000 samples per N, bounded regardless of N).
+    const std::int64_t stride = std::max<std::int64_t>(1, num_pairs / 20000);
+    std::int64_t mismatch = -1;
+    for (std::int64_t k = 0; k < num_pairs; k += stride) {
+      if (!agree(k, N)) { mismatch = k; break; }
+    }
+    CAPTURE(N, num_pairs, mismatch);
+    CHECK(mismatch == -1);
+
+    // Endpoints and the last 64 pairs (where an off-by-one in the isqrt seed or
+    // the row-correction loops would surface first).
+    CHECK(agree(0, N));                     // (0, 1)
+    CHECK(agree(num_pairs - 1, N));         // last pair == (N-2, N-1)
+    for (std::int64_t k = num_pairs - 64; k < num_pairs; ++k) CHECK(agree(k, N));
+
+    // Every row boundary for sampled rows, including the int32-multiply overflow
+    // point at i = 46341 and the final rows.
+    for (std::int64_t i : { std::int64_t(0), std::int64_t(1), std::int64_t(46341),
+                            N / 4, N / 2, 3 * N / 4, N - 3, N - 2 }) {
+      if (i < 0 || i >= N - 1) continue;
+      const std::int64_t row_start = encode_pair(i, i + 1, N);
+      const std::int64_t row_len = N - i - 1;
+      CHECK(agree(row_start, N));                    // (i, i+1)
+      CHECK(agree(row_start + row_len - 1, N));       // (i, N-1) last pair of row i
+      CHECK(agree(row_start + row_len / 2, N));       // interior
+    }
+
+    // Explicit last-pair identity under the MSL algorithm.
+    std::int64_t li = -1, lj = -1;
+    msl_isqrt_decode(num_pairs - 1, N, li, lj);
+    CAPTURE(N, li, lj);
+    CHECK(li == N - 2);
+    CHECK(lj == N - 1);
+  }
 }
