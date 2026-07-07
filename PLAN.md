@@ -184,7 +184,11 @@ All items are CONFIRMED findings from the 2026-06-01 60-agent audit, re-verified
 
 ---
 
-## Phase 1 — Core C++ API redesign [FINAL pending 1.1 design review]
+## Phase 1 — Core C++ API redesign [DONE 2026-07-07]
+
+**1.1 DONE:** `docs/api-contract-2.0.md` FROZEN (commit `c8c74bd`). Adversarial review round 1 FAIL (missing `set_method` row; MATLAB `cluster()`/`refresh_distance_matrix()` mislabeled live vs [new]) → fixed → re-review PASS.
+**1.2 DONE:** `dtwc/error.hpp` taxonomy landed (commit `1f4d985`): soft_dtw.hpp assert→InvalidInput, MIP Gurobi/HiGHS status→SolverError (3 sites each). Gate PASS: ctest verbatim "100% tests passed, 0 tests failed out of 77" (71 ran+passed, 6 documented env skips; Release/NDEBUG = the config where old asserts were no-ops).
+**Wave 2 DONE (1.5 → 1.3∥1.4∥1.6), commits `442676a` (1.5), `95b8d10` (1.3), `4778377` (1.4), `59bf4de` (1.6 + CHANGELOG).** Gate PASS: full rebuild exit 0 (165/165), ctest verbatim "100% tests passed, 0 tests failed out of 80" (74 ran+passed, +3 new suites test_env_device/test_problem_api_2_0/test_storage_policy, 6 documented skips, zero regressions). 1.5 registered digit-identity held: three f64 fingerprints identical to 20 digits pre/post default flip (82.15998622421159325, 127.22830559900998537, 49.45496556469289828; 240 assertions both runs). env.cpp no-silent-fallback read-verified (GPU-on-CPU throw at :233, .env failures throw before device change, HPC set only after full success). 13 Problem shims + 5 scores shims `[[deprecated]]` forwarding. Corrections vs plan text: CLI `--dtype` default was at dtwc_cl.cpp:226 (not :148); storage.hpp is `dtwc/core/storage.hpp`. Bench: advisory-only, skipped (machine under load) — run before release.
 
 Basis: `.claude/reports/api-surface-2026-07-06.md`. Current shape: `DataLoader` (CSV/TSV builder) → `Data` (4 modes, public `p_vec` wrong in 3 of them) → `Problem` god-object (data + distMat variant + naked public config fields + clustering state + CSV writers) ← free algorithms returning `ClusteringResult`; results NOT written back into Problem in C++ (but auto-wired in Python/MATLAB — behavioral divergence).
 
