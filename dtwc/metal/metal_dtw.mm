@@ -39,6 +39,8 @@
 #include <mutex>
 #include <stdexcept>
 
+#include "../detail/decode_pair.hpp"
+
 namespace dtwc::metal {
 
 // ---------------------------------------------------------------------------
@@ -48,25 +50,13 @@ namespace dtwc::metal {
 // no metallib artifact to locate at runtime. Apple's runtime shader
 // compiler caches compiled libraries internally, so the one-time cost is
 // amortized across all kernel dispatches in a process.
-static NSString *const kDTWMetalSource = @R"METAL(
-#include <metal_stdlib>
-using namespace metal;
-
-// Decode flat upper-triangle pair index k into (i, j) row-column pair.
-// Matches CPU enumeration: k=0 -> (0,1), k=1 -> (0,2), ...
-static inline void decode_pair(int k, int N, thread int &i, thread int &j)
-{
-  float Nf = float(N);
-  float kf = float(k);
-  i = int(floor(Nf - 0.5f - sqrt((Nf - 0.5f) * (Nf - 0.5f) - 2.0f * kf)));
-  int row_start = i * (2 * N - i - 1) / 2;
-  if (row_start + (N - i - 1) <= k) {
-    row_start += (N - i - 1);
-    ++i;
-  }
-  j = i + 1 + (k - row_start);
-}
-
+// This MSL source holds only the kernels. The metal_stdlib include, the
+// `using namespace metal;`, and the SSOT decode_pair() are prepended at
+// library-compile time from dtwc::detail::kDecodePairMSL (see context()), so
+// the decode lives in exactly one place across CUDA / Metal / MPI. The retired
+// inline copy used an FP32 sqrt + int32 arithmetic (wrong / OOB for N > ~4096;
+// overflow at N >= 46341).
+static NSString *const kDTWMetalKernelSource = @R"METAL(
 // Anti-diagonal wavefront DTW (one threadgroup per pair).
 //
 // Buffers:
@@ -99,15 +89,16 @@ kernel void dtw_wavefront(
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
-  const int num_pairs = N_series * (N_series - 1) / 2;
-  const int work_idx  = (int)pid + pair_offset;
+  // 64-bit num_pairs/index math: int32 overflowed N*(N-1) at N >= 46341 (Task 0.2).
+  const long num_pairs = (long)N_series * (N_series - 1) / 2;
+  const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
   // Pruning path: resolve the work index through the compacted pair list so
   // we only touch active pairs (pruned pairs have their +∞ already stamped
   // by compact_active_pairs).
-  const int real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
+  const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
-  int a_idx, b_idx;
+  long a_idx, b_idx;
   decode_pair(real_pid, N_series, a_idx, b_idx);
 
   const int La = lengths[a_idx];
@@ -217,12 +208,13 @@ kernel void dtw_wavefront_global(
     uint pid   [[threadgroup_position_in_grid]],
     uint ntids [[threads_per_threadgroup]])
 {
-  const int num_pairs = N_series * (N_series - 1) / 2;
-  const int work_idx  = (int)pid + pair_offset;
+  // 64-bit num_pairs/index math (Task 0.2).
+  const long num_pairs = (long)N_series * (N_series - 1) / 2;
+  const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
-  const int real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
+  const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
-  int a_idx, b_idx;
+  long a_idx, b_idx;
   decode_pair(real_pid, N_series, a_idx, b_idx);
 
   const int La = lengths[a_idx];
@@ -338,11 +330,12 @@ kernel void dtw_banded_row(
     constant int&         stride      [[buffer(9)]],
     uint gid [[thread_position_in_grid]])
 {
-  const int num_pairs = N_series * (N_series - 1) / 2;
-  const int real_pid = (int)gid + pair_offset;
+  // 64-bit num_pairs/index math (Task 0.2).
+  const long num_pairs = (long)N_series * (N_series - 1) / 2;
+  const long real_pid = (long)gid + pair_offset;
   if (real_pid >= num_pairs) return;
 
-  int a_idx, b_idx;
+  long a_idx, b_idx;
   decode_pair(real_pid, N_series, a_idx, b_idx);
 
   const int La = lengths[a_idx];
@@ -758,12 +751,13 @@ static void dtw_regtile_kernel_body(
     uint simd_id,
     uint tg_idx)
 {
-  const int num_pairs = N_series * (N_series - 1) / 2;
-  const int work_idx  = (int)tg_idx * PAIRS_PER_TG + (int)simd_id;
-  const int real_pid  = work_idx + pair_offset;
+  // 64-bit num_pairs/index math (Task 0.2).
+  const long num_pairs = (long)N_series * (N_series - 1) / 2;
+  const long work_idx  = (long)tg_idx * PAIRS_PER_TG + (long)simd_id;
+  const long real_pid  = work_idx + pair_offset;
   if (real_pid >= num_pairs) return;
 
-  int si, sj;
+  long si, sj;
   decode_pair(real_pid, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
@@ -920,7 +914,7 @@ kernel void compute_lb_keogh(
   const int pid = (int)gid;
   if (pid >= num_pairs) return;
 
-  int si, sj;
+  long si, sj;
   decode_pair(pid, N_series, si, sj);
 
   const int Li = lengths[si];
@@ -969,7 +963,7 @@ kernel void compact_active_pairs(
   }
 
   const float INF = 3.402823466e+38f;
-  int si, sj;
+  long si, sj;
   decode_pair(pid, N_series, si, sj);
   result_matrix[si * N_series + sj] = INF;
   result_matrix[sj * N_series + si] = INF;
@@ -1019,7 +1013,13 @@ static MetalContext &context()
       }
 
       NSError *err = nil;
-      id<MTLLibrary> lib = [ctx.device newLibraryWithSource:kDTWMetalSource
+      // Prepend the SSOT decode (metal_stdlib include + using + decode_pair)
+      // so the kernels below can call it. stringByAppendingString avoids the
+      // '%' format pitfalls of stringWithFormat (kernels contain `k % 3`).
+      NSString *metalSource =
+          [[NSString stringWithUTF8String:dtwc::detail::kDecodePairMSL]
+              stringByAppendingString:kDTWMetalKernelSource];
+      id<MTLLibrary> lib = [ctx.device newLibraryWithSource:metalSource
                                                    options:nil
                                                      error:&err];
       if (!lib) {

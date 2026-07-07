@@ -17,6 +17,8 @@
 // gpu_config.cuh is an internal header — tested indirectly via compute_distance_matrix_cuda()
 #endif
 
+#include <algorithm>
+#include <cmath>
 #include <random>
 #include <vector>
 
@@ -162,6 +164,96 @@ TEST_CASE("test_gpu_matches_cpu_large", "[cuda]")
                    WithinRel(cpu_mat[i * N + j], 1e-10));
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Task 0.1 regression: long series (max_L > 2048) must not drop anti-diagonal
+// cells. The retired double-buffer wavefront path cached each thread's cost-
+// diagonal in a fixed MAX_SI=8 register array (256 threads * 8 = 2048), so any
+// anti-diagonal longer than 2048 was silently truncated -> wrong DTW. The fix
+// routes max_L > 2048 to the 3-buffer path, which grid-strides every cell.
+// Non-degenerate random-walk series (NOT constant / symmetric) are used so a
+// dropped cell changes the result.
+// ---------------------------------------------------------------------------
+namespace {
+
+std::vector<std::vector<double>> generate_random_walks(
+    size_t n, size_t length, unsigned seed)
+{
+  std::mt19937 rng(seed);
+  std::normal_distribution<double> step(0.0, 1.0);
+
+  std::vector<std::vector<double>> series(n);
+  for (auto &s : series) {
+    s.resize(length);
+    double acc = 0.0;
+    for (auto &v : s) { acc += step(rng); v = acc; }
+  }
+  return series;
+}
+
+} // anonymous namespace
+
+TEST_CASE("test_gpu_long_series_wavefront_full", "[cuda][long]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  // L = 4096 forces max_L > 2048 (the double-buffer -> 3-buffer routing).
+  // Keep N small: the CPU oracle costs O(N^2 * L^2).
+  constexpr size_t N = 5;
+  constexpr size_t L = 4096;
+  auto series = generate_random_walks(N, L, /*seed=*/20240701);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_distance_matrix(series);
+
+  REQUIRE(gpu_result.n == N);
+  REQUIRE(gpu_result.matrix.size() == N * N);
+
+  // REGISTERED pass band (recorded before the run): max |GPU - CPU| <= 1e-9
+  // over all pairs (FP64). The unfixed kernel dropped cells and produced
+  // grossly wrong distances, blowing past this band.
+  double max_abs_diff = 0.0;
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = 0; j < N; ++j)
+      max_abs_diff = std::max(
+          max_abs_diff, std::abs(gpu_result.matrix[i * N + j] - cpu_mat[i * N + j]));
+
+  INFO("max |GPU - CPU| = " << max_abs_diff);
+  CHECK(max_abs_diff <= 1e-9);
+}
+
+TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  // L = 3072 > 2048 still exercises the 3-buffer routing; the size keeps the
+  // extended shared-memory request (diag + band arrays) at the same ~96 KB
+  // ceiling as the unbanded L=4096 case above.
+  constexpr size_t N = 5;
+  constexpr size_t L = 3072;
+  constexpr int band = 64;
+  auto series = generate_random_walks(N, L, /*seed=*/20240702);
+
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = band;
+  opts.precision = dtwc::cuda::CUDAPrecision::FP64;
+  auto gpu_result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+  auto cpu_mat    = cpu_banded_distance_matrix(series, band);
+
+  REQUIRE(gpu_result.n == N);
+
+  // REGISTERED pass band (recorded before the run): max |GPU - CPU| <= 1e-9.
+  double max_abs_diff = 0.0;
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = 0; j < N; ++j)
+      max_abs_diff = std::max(
+          max_abs_diff, std::abs(gpu_result.matrix[i * N + j] - cpu_mat[i * N + j]));
+
+  INFO("max |GPU - CPU| = " << max_abs_diff);
+  CHECK(max_abs_diff <= 1e-9);
 }
 
 // ---------------------------------------------------------------------------

@@ -28,6 +28,7 @@
 #include <utility>
 
 #include "../warping.hpp"
+#include "../detail/decode_pair.hpp"
 
 namespace dtwc::mpi {
 
@@ -54,30 +55,17 @@ namespace {
 /**
  * @brief Decode a linear upper-triangle index to (i, j) pair indices.
  *
- * The upper triangle of an NxN matrix has N(N-1)/2 entries.
- * Linear index k maps to pair (i, j) where 0 <= i < j < N.
- *
- * Row i starts at linear index: i * (2*N - i - 1) / 2
+ * Thin adapter over the SSOT dtwc::detail::decode_pair (see
+ * dtwc/detail/decode_pair.hpp). Previously this file held one of three
+ * divergent copies; the shared FP64 + int64 implementation is the audited-
+ * correct one, so all three backends now share it.
  */
 std::pair<size_t, size_t> decode_pair(size_t k, size_t N)
 {
-  // Approximate i from the quadratic formula, then correct
-  const double Nd = static_cast<double>(N);
-  auto i = static_cast<size_t>(
-      std::floor(Nd - 0.5 - std::sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * static_cast<double>(k))));
-
-  // Row i contains pairs (i, i+1), (i, i+2), ..., (i, N-1)
-  // Row i starts at linear index: i * (2*N - i - 1) / 2
-  size_t row_start = i * (2 * N - i - 1) / 2;
-
-  // Correct for floating-point imprecision
-  while (row_start + (N - i - 1) <= k) {
-    row_start += (N - i - 1);
-    ++i;
-  }
-
-  const size_t j = i + 1 + (k - row_start);
-  return { i, j };
+  std::int64_t i = 0, j = 0;
+  dtwc::detail::decode_pair(static_cast<std::int64_t>(k),
+                            static_cast<std::int64_t>(N), i, j);
+  return { static_cast<size_t>(i), static_cast<size_t>(j) };
 }
 
 } // anonymous namespace

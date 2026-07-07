@@ -22,6 +22,7 @@
 #include "cuda_dtw.cuh"
 #include "cuda_memory.cuh"
 #include "gpu_config.cuh"
+#include "../detail/decode_pair.hpp"
 
 #ifdef DTWC_HAS_CUDA
 
@@ -56,30 +57,11 @@ namespace dtwc::cuda {
 // Device helper: decode flat upper-triangle pair index to (i, j)
 // =========================================================================
 //
-// The upper triangle of an NxN matrix has N*(N-1)/2 entries enumerated as:
-//   k=0: (0,1), k=1: (0,2), ..., k=N-2: (0,N-1), k=N-1: (1,2), ...
-// Row i starts at linear index: i * (2*N - i - 1) / 2.
-// This matches the CPU enumeration in compute_distance_matrix_cuda() and
-// the MPI decode_pair() in mpi_distance_matrix.cpp.
-
-__device__ __forceinline__ void decode_pair(int k, int N, int &i, int &j)
-{
-  const double Nd = static_cast<double>(N);
-  const double kd = static_cast<double>(k);
-  i = static_cast<int>(
-      floor(Nd - 0.5 - sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd)));
-
-  // Row i starts at linear index: i * (2*N - i - 1) / 2
-  int row_start = i * (2 * N - i - 1) / 2;
-
-  // Correct for floating-point imprecision
-  if (row_start + (N - i - 1) <= k) {
-    row_start += (N - i - 1);
-    ++i;
-  }
-
-  j = i + 1 + (k - row_start);
-}
+// The decode is the SSOT dtwc::detail::decode_pair (dtwc/detail/decode_pair.hpp),
+// shared with the CPU/MPI path and marked __host__ __device__. It uses an FP64
+// seed + int64 correction, fixing the int32 overflow of the retired local copy
+// (Task 0.7) and matching the audited-correct MPI enumeration.
+using dtwc::detail::decode_pair;
 
 // =========================================================================
 // Device kernel: anti-diagonal wavefront — multiple threads per block
@@ -137,7 +119,14 @@ __global__ void dtw_wavefront_kernel(
   // for long series at the cost of an extra sync + register pressure per anti-diag.
   // For medium series the 3-buffer mode is faster (no extra sync overhead).
   constexpr int DOUBLE_BUF_THRESHOLD = 1024;
-  const bool use_double_buf = (max_L > DOUBLE_BUF_THRESHOLD) && !preload;
+  // Task 0.1: the double-buffer path caches each thread's cost-diagonal in a
+  // fixed MAX_SI(8)-element register array, so an anti-diagonal longer than
+  // blockDim.x(256)*MAX_SI = 2048 silently drops cells -> wrong DTW. Cap the
+  // double-buffer path at 2048; longer series take the 3-buffer path (which
+  // grid-strides every cell). The host mirrors this cap in n_bufs.
+  constexpr int DOUBLE_BUF_MAX = 2048;
+  const bool use_double_buf =
+      (max_L > DOUBLE_BUF_THRESHOLD) && (max_L <= DOUBLE_BUF_MAX) && !preload;
 
   T *s_row_buf = nullptr;
   T *s_col_buf = nullptr;
@@ -182,8 +171,12 @@ __global__ void dtw_wavefront_kernel(
 
     const int pair_idx = pair_indices ? pair_indices[pid] : pid;
 
-    int si, sj;
+    std::int64_t si, sj;
     decode_pair(pair_idx, N_series, si, sj);
+    // Task 0.7: si/sj are int64 so the result_matrix[si*N_series+sj] writes
+    // below are evaluated in 64-bit (the int32 index wrapped for N >= 46341).
+    static_assert(sizeof(decltype(si * N_series + sj)) >= 8,
+                  "matrix index must be 64-bit to avoid overflow at N>=46341");
     const int ni = lengths[si];
     const int nj = lengths[sj];
 
@@ -392,7 +385,7 @@ __global__ void dtw_warp_kernel(
 
   const int pid = pair_indices ? pair_indices[work_idx] : work_idx;
 
-  int si, sj;
+  std::int64_t si, sj;
   decode_pair(pid, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
@@ -563,7 +556,7 @@ __global__ void dtw_regtile_kernel(
   const int pid = pair_indices ? pair_indices[work_idx] : work_idx;
 
   // Decode pair from flat upper-triangle index
-  int si, sj;
+  std::int64_t si, sj;
   decode_pair(pid, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
@@ -844,7 +837,7 @@ __global__ void compute_lb_keogh_kernel(
   if (pid >= num_pairs) return;
 
   // Decode flat pair index to (i, j) using the same upper-triangle encoding
-  int si, sj;
+  std::int64_t si, sj;
   decode_pair(pid, N, si, sj);
 
   const int Li = lengths[si];
@@ -903,7 +896,7 @@ __global__ void compact_active_pairs_kernel(
       ? static_cast<T>(3.402823466e+38f)
       : static_cast<T>(1.7976931348623157e+308);
 
-  int si, sj;
+  std::int64_t si, sj;
   decode_pair(pid, N, si, sj);
   result_matrix[si * N + sj] = INF;
   result_matrix[sj * N + si] = INF;
@@ -1291,8 +1284,20 @@ std::vector<double> launch_dtw_kernel(
     const bool preload = (max_L <= 512);
     // L<=512: preload mode (2 series + 3 anti-diag buffers = 5)
     // 512<L<=1024: 3-buffer mode (3 anti-diag buffers)
-    // L>1024: double-buffer mode (2 anti-diag buffers, saves occupancy)
-    const size_t n_bufs = preload ? 5 : (max_L > 1024 ? 2 : 3);
+    // 1024<L<=2048: double-buffer mode (2 anti-diag buffers, saves occupancy)
+    // L>2048: 3-buffer mode — the double-buffer register cache (MAX_SI=8 per
+    //         thread * 256 threads = 2048) would drop anti-diagonal cells (Task 0.1).
+    const size_t n_bufs =
+        preload ? 5 : ((max_L > 1024 && max_L <= 2048) ? 2 : 3);
+    if (max_L > 2048) {
+      static bool logged = false;
+      if (!logged) {
+        logged = true;
+        std::cerr << "[CUDA] max_L=" << max_L
+                  << " > 2048: using the 3-buffer wavefront path "
+                     "(the double-buffer register cache would drop cells).\n";
+      }
+    }
     // Base shared memory for diag/series buffers
     size_t shared_mem = n_bufs * max_L * sizeof(T);
     // Fix 3: Add space for precomputed band boundary arrays (2 * max_L ints)
@@ -1716,7 +1721,12 @@ __global__ void dtw_one_vs_all_wavefront_kernel(
   constexpr int PRELOAD_THRESHOLD = 512;
   const bool preload = (max_L <= PRELOAD_THRESHOLD);
   constexpr int DOUBLE_BUF_THRESHOLD = 1024;
-  const bool use_double_buf = (max_L > DOUBLE_BUF_THRESHOLD) && !preload;
+  // Task 0.1: cap the double-buffer path at blockDim.x(256)*MAX_SI(8) = 2048;
+  // longer anti-diagonals overflow the register cache and drop cells. Longer
+  // series use the 3-buffer path instead (host mirrors this cap in n_bufs).
+  constexpr int DOUBLE_BUF_MAX = 2048;
+  const bool use_double_buf =
+      (max_L > DOUBLE_BUF_THRESHOLD) && (max_L <= DOUBLE_BUF_MAX) && !preload;
 
   extern __shared__ char smem_raw[];
   T *smem = reinterpret_cast<T *>(smem_raw);
@@ -2315,7 +2325,19 @@ std::vector<double> launch_one_vs_all_kernel(
   } else {
     // Wavefront kernel: one block per target, grid.y = K queries
     const bool preload = (max_L <= 512);
-    const size_t n_bufs = preload ? 5 : (max_L > 1024 ? 2 : 3);
+    // Task 0.1: L>2048 uses the 3-buffer path (the double-buffer register
+    // cache of MAX_SI*256=2048 cells would drop longer anti-diagonals).
+    const size_t n_bufs =
+        preload ? 5 : ((max_L > 1024 && max_L <= 2048) ? 2 : 3);
+    if (max_L > 2048) {
+      static bool logged = false;
+      if (!logged) {
+        logged = true;
+        std::cerr << "[CUDA] 1-vs-N max_L=" << max_L
+                  << " > 2048: using the 3-buffer wavefront path "
+                     "(the double-buffer register cache would drop cells).\n";
+      }
+    }
     size_t shared_mem = n_bufs * max_L * sizeof(T);
     if (band >= 0)
       shared_mem += 2 * max_L * sizeof(int);
