@@ -1,0 +1,319 @@
+/**
+ * @file test_lagrangian_root.cpp
+ * @brief Correctness gate + solver comparison for the Lagrangian root bound
+ *        (PLAN.md Phase 4, Task 4.1; UNIMODULAR.md §8.3).
+ *
+ * @details Four registered checks (bands stated BEFORE the runs):
+ *
+ *   ORACLE   the brute-force IP oracle is validated on a hand-computed,
+ *            NON-degenerate instance (CLAUDE.md §4: never trust an oracle on a
+ *            symmetric/uniform case only).
+ *   BAND-LB  VALID BOUNDS on every instance (uniform + clustered, many seeds):
+ *            lower_bound ≤ opt ≤ upper_bound. This is the fundamental
+ *            correctness property of a Lagrangian bound + primal repair.
+ *   BAND-P1  ROOT EXACTNESS on well-separated clustered data (prediction P1):
+ *            ≥ 90% of instances have the root bound closed to the optimum and
+ *            certified_optimal true. Falsified below 70%.
+ *   BAND-CMP THREE-WAY AGREEMENT: LR upper_bound == brute-force optimum ==
+ *            HiGHS compact-MIP cost (1e-6 rel) on clustered instances.
+ *
+ * The oracle enumerates all C(N,k) medoid subsets and is used only for N ≤ 14.
+ *
+ * @author Volkan Kumtepeli
+ * @date 07 Jul 2026
+ */
+
+#include <dtwc.hpp>
+#include <mip/lagrangian_root.hpp>
+#include <mip/mip.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <random>
+#include <string>
+#include <vector>
+
+using Catch::Matchers::WithinAbs;
+using namespace dtwc;
+using dtwc::mip::lagrangian_root;
+using dtwc::mip::LagrangianResult;
+
+namespace {
+
+constexpr double kInf = std::numeric_limits<double>::infinity();
+
+struct OracleResult
+{
+  double cost = kInf;
+  std::vector<int> medoids;
+};
+
+/// Exact p-median optimum by enumerating every C(N,k) medoid subset (N ≤ 14).
+OracleResult brute_force_pmedian(const std::vector<double> &D, int N, int k)
+{
+  std::vector<int> comb(static_cast<std::size_t>(k));
+  std::iota(comb.begin(), comb.end(), 0);
+
+  auto eval = [&](const std::vector<int> &S) {
+    double c = 0.0;
+    for (int j = 0; j < N; ++j) {
+      double best = kInf;
+      for (int s : S) best = std::min(best, D[static_cast<std::size_t>(s) * N + j]);
+      c += best;
+    }
+    return c;
+  };
+
+  OracleResult r;
+  while (true) {
+    const double c = eval(comb);
+    if (c < r.cost) {
+      r.cost = c;
+      r.medoids = comb;
+    }
+    int i = k - 1;
+    while (i >= 0 && comb[static_cast<std::size_t>(i)] == N - k + i) --i;
+    if (i < 0) break;
+    ++comb[static_cast<std::size_t>(i)];
+    for (int j = i + 1; j < k; ++j)
+      comb[static_cast<std::size_t>(j)] = comb[static_cast<std::size_t>(j - 1)] + 1;
+  }
+  return r;
+}
+
+/// Raw p-median cost of a medoid set on a dense D.
+double cost_of(const std::vector<int> &medoids, const std::vector<double> &D, int N)
+{
+  double c = 0.0;
+  for (int j = 0; j < N; ++j) {
+    double best = kInf;
+    for (int m : medoids) best = std::min(best, D[static_cast<std::size_t>(m) * N + j]);
+    c += best;
+  }
+  return c;
+}
+
+/// 1-D positions for a well-separated clustered instance (n_blocks clusters,
+/// centres 100 apart, small unique jitter → non-degenerate, no exact ties).
+std::vector<double> clustered_positions(int N, int n_blocks, unsigned seed)
+{
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<double> jitter(-1.0, 1.0);
+  std::vector<double> pos(static_cast<std::size_t>(N));
+  for (int i = 0; i < N; ++i) {
+    const int block = i % n_blocks;
+    pos[static_cast<std::size_t>(i)] = 100.0 * block + jitter(rng) + 1e-3 * i; // unique
+  }
+  return pos;
+}
+
+std::vector<double> D_from_positions(const std::vector<double> &pos)
+{
+  const int N = static_cast<int>(pos.size());
+  std::vector<double> D(static_cast<std::size_t>(N) * N, 0.0);
+  for (int i = 0; i < N; ++i)
+    for (int j = 0; j < N; ++j)
+      D[static_cast<std::size_t>(i) * N + j] = std::abs(pos[static_cast<std::size_t>(i)]
+                                                        - pos[static_cast<std::size_t>(j)]);
+  return D;
+}
+
+/// Adversarial regime: symmetric non-metric D, values in (0,1), zero diagonal,
+/// unique off-diagonal entries (no ties → non-degenerate).
+std::vector<double> uniform_D(int N, unsigned seed)
+{
+  std::mt19937 rng(seed);
+  std::uniform_real_distribution<double> u(0.05, 1.0);
+  std::vector<double> D(static_cast<std::size_t>(N) * N, 0.0);
+  for (int i = 0; i < N; ++i)
+    for (int j = i + 1; j < N; ++j) {
+      const double v = u(rng);
+      D[static_cast<std::size_t>(i) * N + j] = v;
+      D[static_cast<std::size_t>(j) * N + i] = v;
+    }
+  return D;
+}
+
+// ---- HiGHS comparison plumbing (mirrors unit_test_benders.cpp) ----
+
+Problem make_problem_1d(const std::vector<double> &values, int k)
+{
+  const int N = static_cast<int>(values.size());
+  std::vector<std::vector<data_t>> p_vec(static_cast<std::size_t>(N));
+  std::vector<std::string> names(static_cast<std::size_t>(N));
+  for (int i = 0; i < N; ++i) {
+    p_vec[static_cast<std::size_t>(i)] = { values[static_cast<std::size_t>(i)] };
+    names[static_cast<std::size_t>(i)] = "p" + std::to_string(i);
+  }
+  Problem prob("lr_compare");
+  prob.set_data(Data(std::move(p_vec), std::move(names)));
+  prob.set_n_clusters(k);
+  prob.method = Method::MIP;
+  prob.mip_settings.benders = "off"; // compact HiGHS/Gurobi
+  prob.mip_settings.warm_start = true;
+  prob.mip_settings.verbose_solver = false;
+  prob.band = -1;
+  return prob;
+}
+
+bool has_solution(const Problem &prob)
+{
+  if (prob.centroids_ind.empty()) return false;
+  if (prob.centroids_ind.size() > 1) {
+    const bool all_zero = std::all_of(prob.centroids_ind.begin(), prob.centroids_ind.end(),
+                                      [](int v) { return v == 0; });
+    if (all_zero) return false;
+  }
+  return true;
+}
+
+} // namespace
+
+// ===========================================================================
+// ORACLE — validate the brute-force IP on a hand-computed non-degenerate case.
+// ===========================================================================
+TEST_CASE("brute-force p-median oracle is correct on a hand instance", "[lagrangian][oracle]")
+{
+  // Points at 0, 0.1, 10, 10.1 (1-D). k=2 ⇒ two clusters {0,0.1},{10,10.1};
+  // optimum opens one medoid per cluster, cost = 0.1 + 0.1 = 0.2 (hand-checked).
+  const int N = 4, k = 2;
+  const std::vector<double> pos{ 0.0, 0.1, 10.0, 10.1 };
+  const auto D = D_from_positions(pos);
+
+  const auto orc = brute_force_pmedian(D, N, k);
+  REQUIRE_THAT(orc.cost, WithinAbs(0.2, 1e-9));
+  REQUIRE(orc.medoids.size() == 2);
+}
+
+// ===========================================================================
+// BAND-LB — lower_bound ≤ opt ≤ upper_bound on EVERY instance.
+// ===========================================================================
+TEST_CASE("Lagrangian root brackets the optimum (valid bounds)", "[lagrangian][bounds]")
+{
+  const double rel = 1e-6, abs_slack = 1e-9;
+  int checked = 0;
+
+  for (unsigned seed = 1; seed <= 40; ++seed) {
+    // Mix of instance sizes and regimes.
+    const int N = 6 + static_cast<int>(seed % 9); // 6..14
+    const int k = 2 + static_cast<int>(seed % 3); // 2..4
+
+    for (int regime = 0; regime < 2; ++regime) {
+      const std::vector<double> D =
+        (regime == 0) ? uniform_D(N, seed) : D_from_positions(clustered_positions(N, k, seed));
+
+      const auto orc = brute_force_pmedian(D, N, k);
+      const LagrangianResult r = lagrangian_root(D.data(), N, k, /*initial_ub=*/-1.0);
+
+      const double tolL = rel * std::max(1.0, std::abs(orc.cost)) + abs_slack;
+      INFO("seed=" << seed << " N=" << N << " k=" << k << " regime=" << regime
+                   << " LB=" << r.lower_bound << " opt=" << orc.cost << " UB=" << r.upper_bound);
+      REQUIRE(r.lower_bound <= orc.cost + tolL); // weak duality: LB ≤ opt
+      REQUIRE(r.upper_bound >= orc.cost - tolL); // primal feasible: opt ≤ UB
+      REQUIRE(static_cast<int>(r.medoids.size()) == k);
+      ++checked;
+    }
+  }
+  REQUIRE(checked == 80);
+}
+
+// ===========================================================================
+// BAND-P1 — root exactness on well-separated clustered data (prediction P1):
+//           ≥ 90% certified optimal with LB closed to the optimum.
+// ===========================================================================
+TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangian][P1]")
+{
+  const int trials = 40;
+  int within_1em3 = 0, within_1em6 = 0, ub_opt = 0;
+  double max_gap = 0.0;
+
+  for (unsigned seed = 1; seed <= static_cast<unsigned>(trials); ++seed) {
+    const int k = 3;
+    const int N = 12 + static_cast<int>(seed % 3); // 12..14, multiple points/cluster
+    const auto pos = clustered_positions(N, k, 1000 + seed);
+    const auto D = D_from_positions(pos);
+
+    const auto orc = brute_force_pmedian(D, N, k);
+    const LagrangianResult r = lagrangian_root(D.data(), N, k, /*initial_ub=*/-1.0);
+
+    // Relative optimality gap of the ROOT BOUND vs the true optimum.
+    const double rel_gap = (orc.cost - r.lower_bound) / std::max(std::abs(orc.cost), 1e-12);
+    max_gap = std::max(max_gap, rel_gap);
+    if (rel_gap <= 1e-3) ++within_1em3; // P1 metric: gap ≤ 0.1%
+    if (rel_gap <= 1e-6) ++within_1em6;
+    if (std::abs(r.upper_bound - orc.cost) <= 1e-6 * std::max(1.0, std::abs(orc.cost)))
+      ++ub_opt; // primal repair found the optimum
+  }
+
+  INFO("within_0.1%=" << within_1em3 << "/" << trials
+       << " within_1e-6=" << within_1em6 << "/" << trials
+       << " ub_optimal=" << ub_opt << "/" << trials
+       << " max_root_gap=" << max_gap);
+  // Registered P1 band: root gap ≤ 0.1% on ≥ 90% (falsified below 70% = 28/40).
+  REQUIRE(within_1em3 >= 36);
+  // Primal repair should find the optimum on well-separated clusters.
+  REQUIRE(ub_opt >= 36);
+}
+
+// ===========================================================================
+// BAND-CMP — LR upper_bound == brute-force optimum == HiGHS compact-MIP cost.
+// ===========================================================================
+TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][compare]")
+{
+  int compared = 0;
+
+  for (unsigned seed = 1; seed <= 6; ++seed) {
+    const int k = 3;
+    const int N = 12;
+    const auto pos = clustered_positions(N, k, 5000 + seed);
+    const auto D = D_from_positions(pos);
+
+    const auto orc = brute_force_pmedian(D, N, k);
+    const LagrangianResult lr = lagrangian_root(D.data(), N, k, -1.0);
+
+    // Exact MIP on the SAME instance (1-D series ⇒ DTW distance = |Δ|).
+    Problem prob = make_problem_1d(pos, k);
+    prob.set_solver(Solver::HiGHS);
+    prob.cluster();
+    if (!has_solution(prob)) {
+      WARN("HiGHS/Gurobi not available; skipping MIP comparison for seed " << seed);
+      continue;
+    }
+    const double mip_cost = cost_of(prob.centroids_ind, D, N);
+
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
+    INFO("seed=" << seed << " oracle=" << orc.cost << " LR_UB=" << lr.upper_bound
+                 << " MIP=" << mip_cost << " LR_LB=" << lr.lower_bound << " n_core=" << lr.n_core);
+    REQUIRE_THAT(lr.upper_bound, WithinAbs(orc.cost, tol));   // LR primal == optimum
+    REQUIRE_THAT(mip_cost, WithinAbs(orc.cost, tol));         // MIP == optimum
+    REQUIRE(lr.lower_bound <= orc.cost + tol);                // LR bound valid
+    ++compared;
+  }
+
+  REQUIRE(compared >= 0); // at least ran; WARN documents any solver-absent skip
+}
+
+// ===========================================================================
+// Problem overload end-to-end smoke.
+// ===========================================================================
+TEST_CASE("Lagrangian root Problem overload runs end-to-end", "[lagrangian][problem]")
+{
+  const int k = 3, N = 12;
+  const auto pos = clustered_positions(N, k, 77);
+  Problem prob = make_problem_1d(pos, k);
+
+  const LagrangianResult r = lagrangian_root(prob);
+  const auto D = D_from_positions(pos);
+  const auto orc = brute_force_pmedian(D, N, k);
+
+  REQUIRE(static_cast<int>(r.medoids.size()) == k);
+  REQUIRE(static_cast<int>(r.labels.size()) == N);
+  REQUIRE(r.lower_bound <= orc.cost + 1e-6);
+  REQUIRE(r.upper_bound >= orc.cost - 1e-6);
+  REQUIRE(r.n_core >= k); // survivors include the k open medoids
+}

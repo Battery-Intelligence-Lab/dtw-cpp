@@ -7,9 +7,11 @@ target_sources(mip-solvers
     mip_Gurobi.cpp
     mip_Highs.cpp
     benders.cpp
+    lagrangian_root.cpp
   PUBLIC
     mip.hpp
     benders.hpp
+    lagrangian_root.hpp
   )
 
 target_include_directories(mip-solvers PUBLIC .)

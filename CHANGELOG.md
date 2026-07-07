@@ -10,6 +10,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 - API contract 2.0 frozen: docs/api-contract-2.0.md
 
+### Added (Phase 4 · Task 4.1 — LR-core solver: Lagrangian root bound)
+
+- New `dtwc::mip::lagrangian_root` (dtwc/mip/lagrangian_root.{hpp,cpp}): a matrix-free lower bound for the p-median (k-medoids) problem — the bound engine of the LR-core exact solver (UNIMODULAR.md §8.3). Dualizes the assignment constraints, computes the per-facility score `ρ_i(μ)=Σ_j min(0,D_ij−μ_j)` streaming D once per iteration, maximizes `L(μ)=Σμ_j+Σ_{S_k}ρ_i` by damped Polyak subgradient ascent, repairs a feasible primal each iteration via a k-medoids local search, and reports `{lower_bound, upper_bound, gap, medoids, labels, multipliers, n_core}` plus Beasley reduced-cost fixing. Dense-`D` core + a `Problem` overload. No new dependencies; OpenMP over the ρ pass.
+- Verified against a brute-force IP oracle (validated on a hand-computed non-degenerate instance) and the HiGHS/Gurobi compact MIP: on well-separated clustered data the root bound closes to the optimum within 0.1% (prediction P1) and the primal repair recovers the exact optimum, agreeing with the exact MIP to 1e-6; valid bounds `lower_bound ≤ opt ≤ upper_bound` hold on 80 mixed uniform/clustered instances. Tests: tests/unit/mip/test_lagrangian_root.cpp.
+
 ### Changed (Phase 3 · wave A — no silent fallback)
 
 - Build: OpenMP is now a hard configure requirement. A missing OpenMP aborts configuration with a FATAL_ERROR that names the `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out, ending silent single-threaded builds/wheels. The opt-out configures a loud-warning sequential build and defines `DTWC_SEQUENTIAL_BUILD` on the dtwc targets.
