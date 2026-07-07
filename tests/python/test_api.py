@@ -250,3 +250,148 @@ class TestClusterMethodDispatch:
         dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
                        k=2, device="hpc", method="hclust")
         assert captured["method"] == "hierarchical"
+
+
+# ---------------------------------------------------------------------------
+# LOCAL dispatch binding names — Task 0.14 gap closed by R4(c)
+#
+# The prior wave only spied the clara/pam LOCAL routes (above). These tests pin
+# the remaining LOCAL routes — 'mip', 'kmedoids', 'hierarchical' — by exercising
+# the LIVE dispatch function dtwcpp._api._run_local_method directly and asserting
+# EXACTLY the binding names it calls. This is the class of bug the test exists to
+# catch: if _api.py names a binding that does not exist (e.g. a typo'd
+# build_dendrogram / cut_dendrogram / Method.MIP / Problem.cluster), these fail.
+#
+# All binding names below were verified present in python/src/_dtwcpp_core.cpp:
+#   build_dendrogram (m.def, prob + default opts), cut_dendrogram (dend, prob, k),
+#   Problem.set_number_of_clusters / .method / .cluster / .clusters_ind /
+#   .centroids_ind / .find_total_cost, Method.MIP / Method.Kmedoids.
+# ---------------------------------------------------------------------------
+class TestLocalDispatchBindingNames:
+    def test_local_mip_sets_method_mip_and_calls_cluster(self):
+        """method='mip' -> Problem.method = Method.MIP, Problem.cluster(), then
+        read back clusters_ind / centroids_ind / find_total_cost().
+
+        No solver needed: a fake Problem stands in for the C++ binding, so this
+        isolates the dispatch (the binding NAMES) from the MIP solve."""
+        from dtwcpp import _api
+
+        class FakeProblem:
+            def __init__(self):
+                self.method = None
+                self.nc = None
+                self.cluster_calls = 0
+                self.clusters_ind = [0, 1, 0, 1]
+                self.centroids_ind = [0, 1]
+
+            def set_number_of_clusters(self, k):
+                self.nc = k
+
+            def cluster(self):
+                self.cluster_calls += 1
+
+            def find_total_cost(self):
+                return 7.5
+
+        fake = FakeProblem()
+        labels, medoids, cost = _api._run_local_method(
+            fake, "mip", k=2, max_iter=100, n=4)
+        assert fake.method == dtwcpp.Method.MIP        # NOT Kmedoids
+        assert fake.nc == 2
+        assert fake.cluster_calls == 1
+        assert labels == [0, 1, 0, 1]
+        assert medoids == [0, 1]
+        assert cost == 7.5
+
+    def test_local_kmedoids_sets_method_kmedoids_and_calls_cluster(self):
+        """method='kmedoids' -> Problem.method = Method.Kmedoids, Problem.cluster()."""
+        from dtwcpp import _api
+
+        class FakeProblem:
+            def __init__(self):
+                self.method = None
+                self.nc = None
+                self.cluster_calls = 0
+                self.clusters_ind = [0, 0, 1]
+                self.centroids_ind = [0, 2]
+
+            def set_number_of_clusters(self, k):
+                self.nc = k
+
+            def cluster(self):
+                self.cluster_calls += 1
+
+            def find_total_cost(self):
+                return 1.0
+
+        fake = FakeProblem()
+        labels, medoids, cost = _api._run_local_method(
+            fake, "kmedoids", k=2, max_iter=100, n=3)
+        assert fake.method == dtwcpp.Method.Kmedoids   # NOT MIP
+        assert fake.nc == 2
+        assert fake.cluster_calls == 1
+        assert (labels, medoids, cost) == ([0, 0, 1], [0, 2], 1.0)
+
+    def test_local_hierarchical_calls_build_then_cut(self, monkeypatch):
+        """method='hierarchical' -> build_dendrogram(prob) then
+        cut_dendrogram(dend, prob, k); read labels/medoid_indices/total_cost off
+        the cut result. Must NOT fall through to fast_pam."""
+        from dtwcpp import _api
+
+        calls = {"build": 0, "cut": 0}
+        sentinel_prob = object()
+        dend_token = object()
+
+        class FakeCut:
+            labels = [0, 0, 1, 1]
+            medoid_indices = [0, 2]
+            total_cost = 3.25
+
+        def spy_build(prob, *a, **kw):
+            calls["build"] += 1
+            assert prob is sentinel_prob
+            return dend_token
+
+        def spy_cut(dend, prob, k, *a, **kw):
+            calls["cut"] += 1
+            assert dend is dend_token        # build's output threaded into cut
+            assert prob is sentinel_prob
+            assert k == 3
+            return FakeCut()
+
+        def poison_pam(*a, **kw):
+            raise AssertionError("hierarchical must not fall through to fast_pam")
+
+        monkeypatch.setattr(dtwcpp, "build_dendrogram", spy_build)
+        monkeypatch.setattr(dtwcpp, "cut_dendrogram", spy_cut)
+        monkeypatch.setattr(dtwcpp, "fast_pam", poison_pam)
+
+        labels, medoids, cost = _api._run_local_method(
+            sentinel_prob, "hierarchical", k=3, max_iter=100, n=4)
+        assert calls == {"build": 1, "cut": 1}
+        assert labels == [0, 0, 1, 1]
+        assert medoids == [0, 2]
+        assert cost == 3.25
+
+    def test_local_kmedoids_end_to_end_does_not_fall_through(self, monkeypatch):
+        """Through the LIVE full local cluster() path, method='kmedoids' runs
+        Lloyd via Problem.cluster() and must NOT call fast_pam/fast_clara/
+        build_dendrogram (the pre-0.14 bug ran FastPAM for every method).
+
+        Solver-free (Lloyd needs no MIP solver)."""
+        def poison(name):
+            def _p(*a, **kw):
+                raise AssertionError(f"kmedoids must not call {name}")
+            return _p
+
+        monkeypatch.setattr(dtwcpp, "fast_pam", poison("fast_pam"))
+        monkeypatch.setattr(dtwcpp, "fast_clara", poison("fast_clara"))
+        monkeypatch.setattr(dtwcpp, "build_dendrogram", poison("build_dendrogram"))
+
+        res = dtwcpp.cluster(_two_groups(), k=2, method="kmedoids")
+        assert res.n_series == 12
+        assert res.cost is not None            # find_total_cost() was read back
+        assert res.distance_matrix is not None
+        # Valid k=2 labeling produced by the real Lloyd path (no fallthrough).
+        assert len(res.labels) == 12
+        assert set(res.labels).issubset({0, 1})

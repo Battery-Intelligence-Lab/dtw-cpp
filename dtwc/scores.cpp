@@ -109,6 +109,15 @@ double daviesBouldinIndex(Problem &prob)
     throw std::runtime_error("Cluster before calculating DBI");
   }
 
+  // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
+  // second cluster (j != i) to form any similarity ratio, so the max_{j!=i}
+  // loop below finds nothing and the index silently collapses to 0. Reject
+  // Nc < 2 with a clear error instead (audit handoff-2026-06-01:25).
+  if (Nc < 2)
+    throw std::invalid_argument(
+      "daviesBouldinIndex requires at least 2 clusters; the Davies-Bouldin index "
+      "is undefined for a single cluster (no inter-cluster separation).");
+
   prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
 
   // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
@@ -156,6 +165,15 @@ double dunnIndex(Problem &prob)
 {
   if (prob.centroids_ind.empty())
     throw std::runtime_error("Cluster before calculating Dunn Index");
+
+  // The Dunn index is min(inter-cluster distance) / max(intra-cluster diameter).
+  // With a single cluster there are no inter-cluster pairs, so min_inter stays
+  // at numeric_limits::max() and the result is a meaningless huge value (or
+  // +inf). Reject Nc < 2 with a clear error (audit handoff-2026-06-01:25).
+  if (prob.cluster_size() < 2)
+    throw std::invalid_argument(
+      "dunnIndex requires at least 2 clusters; the Dunn index is undefined for a "
+      "single cluster (no inter-cluster distances exist).");
 
   prob.fillDistanceMatrix();
 

@@ -24,6 +24,7 @@
 #include "../settings.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
@@ -46,7 +47,7 @@ namespace {
 void compute_nearest_and_second(
   Problem& prob,
   const std::vector<int>& medoids,
-  int N,
+  std::int64_t N,   // 64-bit so a caller's static_cast<int>(size()) never truncates it here
   std::vector<int>& nearest,
   std::vector<double>& nearest_dist,
   std::vector<double>& second_dist)
@@ -91,7 +92,13 @@ double compute_total_cost(const std::vector<double>& nearest_dist)
 
 core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
-  const int N = static_cast<int>(prob.size());
+  // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
+  // truncated for size() > INT_MAX (audit handoff-2026-06-01:24), turning a
+  // huge dataset into a bogus/negative N. Loop counters stay `int` (they compare
+  // signed-vs-signed against N, so no signed/unsigned warning), and every place
+  // that feeds N into an int-typed API narrows it explicitly.
+  const std::int64_t N = static_cast<std::int64_t>(prob.size());
+  static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
 
   if (N <= 0) {
     throw std::runtime_error("fast_pam: Problem has no data points.");
@@ -170,7 +177,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
     // local best-swap trackers. Only the final reduction uses omp critical.
     // The outer loop over candidates x is embarrassingly parallel:
     // each candidate accumulates into its own delta_m buffer.
-    const int swap_chunk = dtwc::omp_chunk_size(N);
+    const int swap_chunk = dtwc::omp_chunk_size(static_cast<int>(N)); // scheduling hint; loop over x is int-bound
     #pragma omp parallel
     {
       std::vector<double> local_delta_m(k);

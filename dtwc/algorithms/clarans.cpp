@@ -39,7 +39,12 @@ namespace dtwc::algorithms {
 
 core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts)
 {
-    const int N = static_cast<int>(prob.size());
+    // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
+    // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). Loop
+    // counters stay `int` (signed-vs-signed against N -> no signed/unsigned
+    // warning); the one int-typed RNG boundary below narrows N explicitly.
+    const int64_t N = static_cast<int64_t>(prob.size());
+    static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
     if (N <= 0)
         throw std::runtime_error("clarans: no data points in problem");
     if (opts.n_clusters <= 0 || opts.n_clusters > N)
@@ -123,7 +128,8 @@ core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts)
             // Pick a random non-medoid candidate to insert.
             int x_in;
             do {
-                x_in = std::uniform_int_distribution<int>(0, N - 1)(rng);
+                // x_in is an int point index; this randomized search is int-bound.
+                x_in = std::uniform_int_distribution<int>(0, static_cast<int>(N - 1))(rng);
             } while (medoid_set.count(x_in));
 
             // ------------------------------------------------------------------

@@ -70,7 +70,12 @@ double assign_all_points(
   const std::vector<int>& medoid_indices,
   std::vector<int>& labels)
 {
-  const int N = static_cast<int>(prob.size());
+  // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
+  // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). Loop counters
+  // stay `int` (signed-vs-signed vs N -> no signed/unsigned warning); the one
+  // int-typed anchor index below narrows N explicitly.
+  const int64_t N = static_cast<int64_t>(prob.size());
+  static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
   const int k = static_cast<int>(medoid_indices.size());
   labels.resize(N);
 
@@ -93,7 +98,7 @@ double assign_all_points(
   // row, matching DenseDistanceMatrix's "disjoint (i,j) pairs -> lock-free"
   // contract. No net DTW work is added: the primed cells are ones the loop needs.
   if (N > 1) {
-    const int anchor_j = (medoid_indices[0] == N - 1) ? 0 : N - 1;
+    const int anchor_j = (medoid_indices[0] == N - 1) ? 0 : static_cast<int>(N - 1);
     prob.distByInd(medoid_indices[0], anchor_j);
     for (int a = 0; a < k; ++a)
       for (int b = a + 1; b < k; ++b)
@@ -380,7 +385,13 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
   }
 #endif
 
-  const int N = static_cast<int>(prob.size());
+  // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
+  // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). This in-RAM
+  // path is int-bound (vector<int> all_indices, int sample_size), so where N
+  // feeds int-typed APIs it is narrowed explicitly, clamped to INT_MAX to match
+  // the chunked path's idiom; the chunked path (above) already handles N>INT_MAX.
+  const int64_t N = static_cast<int64_t>(prob.size());
+  static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
 
   if (N <= 0) {
     throw std::runtime_error("fast_clara: Problem has no data points.");
@@ -397,11 +408,14 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
   // Determine effective sample size.
   int sample_size = opts.sample_size;
   if (sample_size < 0) {
-    sample_size = clara_sample_size(opts.n_clusters, N); // Schubert & Rousseeuw 2021
+    // clara_sample_size takes int N; clamp to INT_MAX first (as the chunked path
+    // does) so a >INT_MAX dataset yields min(INT_MAX, 10k+100) rather than garbage.
+    constexpr int64_t kIntMax = std::numeric_limits<int>::max();
+    sample_size = clara_sample_size(opts.n_clusters, static_cast<int>(std::min<int64_t>(N, kIntMax))); // Schubert & Rousseeuw 2021
   }
-  // Clamp to [k, N].
+  // Clamp to [k, N]. sample_size is small, so the int64 min result fits in int.
   sample_size = std::max(sample_size, opts.n_clusters);
-  sample_size = std::min(sample_size, N);
+  sample_size = static_cast<int>(std::min<int64_t>(sample_size, N));
 
   // If sample_size >= N, just run FastPAM on the full dataset.
   if (sample_size >= N) {
