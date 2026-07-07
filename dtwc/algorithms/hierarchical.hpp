@@ -74,7 +74,9 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
  * @param k     Number of clusters (1 <= k <= dend.n_points).
  * @return core::ClusteringResult with labels, medoid_indices, and total_cost.
  *
- * @note Does NOT mutate Problem::clusters_ind or Problem::centroids_ind.
+ * @note 2.0 (Task 1.6): writes the result back into `prob` (clusters_ind,
+ *       centroids_ind, n_clusters) so scores work with no manual wiring. 1.x
+ *       left prob untouched (and the bindings did not wire cut_dendrogram).
  */
 core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int k);
 

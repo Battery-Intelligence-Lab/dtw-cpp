@@ -209,6 +209,13 @@ core::ClusteringResult clarans(Problem& prob, const CLARANSOptions& opts)
         }
     } // end restarts
 
+    // 2.0 result write-back (Task 1.6): store labels/medoids/k into `prob` so
+    // scoring functions work with NO manual wiring (mirrors the binding auto-wire
+    // at _dtwcpp_core.cpp:744-747, which Phase 2 deletes).
+    prob.set_n_clusters(opts.n_clusters);
+    prob.centroids_ind = best.medoid_indices;
+    prob.clusters_ind  = best.labels;
+
     return best;
 }
 

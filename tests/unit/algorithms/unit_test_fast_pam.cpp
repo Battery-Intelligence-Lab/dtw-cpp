@@ -318,24 +318,26 @@ TEST_CASE("FastPAM throws on invalid inputs", "[fast_pam][errors]")
 }
 
 // ===========================================================================
-// Test 11: Does not modify Problem's centroids_ind or clusters_ind.
+// Test 11: 2.0 (Task 1.6) write-back — fast_pam stores the result INTO prob.
+// (1.x asserted non-mutation; API contract §2.5 moves the binding auto-wire into
+//  core, so pure-C++ users get prob.centroids_ind/clusters_ind/n_clusters set.)
 // ===========================================================================
-TEST_CASE("FastPAM does not modify Problem state", "[fast_pam][no_side_effects]")
+TEST_CASE("FastPAM writes result back into Problem", "[fast_pam][write_back]")
 {
   constexpr int N = 8;
   constexpr int k = 2;
 
   Problem prob = make_small_problem(N);
 
-  // Set up some initial state on prob.
-  prob.set_numberOfClusters(3);
-  auto orig_centroids = prob.centroids_ind;
-  auto orig_clusters = prob.clusters_ind;
+  // Set up some unrelated initial state on prob (k=3) to prove fast_pam overwrites it.
+  prob.set_n_clusters(3);
 
   auto result = fast_pam(prob, k);
 
-  // prob's internal state should be restored.
-  REQUIRE(prob.centroids_ind == orig_centroids);
-  REQUIRE(prob.clusters_ind == orig_clusters);
-  REQUIRE(prob.cluster_size() == 3);
+  // prob now holds the fast_pam result (labels/medoids/k), with NO manual wiring.
+  REQUIRE(prob.n_clusters() == k);
+  REQUIRE(prob.centroids_ind == result.medoid_indices);
+  REQUIRE(prob.clusters_ind == result.labels);
+  REQUIRE(static_cast<int>(prob.centroids_ind.size()) == k);
+  REQUIRE(static_cast<int>(prob.clusters_ind.size()) == N);
 }

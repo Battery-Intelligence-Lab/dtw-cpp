@@ -117,6 +117,7 @@ private:
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
   void refresh_variant_caches(); ///< Refresh precomputed variant-specific caches.
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
+  void resize(); ///< Resize cluster/centroid buffers to size()/Nc. Internal invariant maintenance (Task 1.6: private).
 
   // Private functions:
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(int rep);
@@ -131,7 +132,12 @@ public:
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
   int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
-  core::DTWVariantParams variant_params;     /*!< DTW variant selection and parameters. */
+  /// DTW variant selection and parameters.
+  /// INVARIANT: a direct write to this field does NOT rebind `dtw_fn_` — always
+  /// use `set_variant(...)` (which rebinds) to change the variant safely. The
+  /// field stays public only because the Python bindings bind it by address
+  /// (`_dtwcpp_core.cpp:426`); it becomes private behind `set_variant` in Phase 2.
+  core::DTWVariantParams variant_params;
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
   LowerBoundStrategy lb_strategy{ LowerBoundStrategy::Auto }; /*!< Lower-bound selection for the Pruned CPU path. */
@@ -155,11 +161,13 @@ public:
   Problem(std::string_view name_, DataLoader &loader_)
     : name{ name_ }, data{ loader_.load() }
   {
-    refreshDistanceMatrix(); // also calls rebind_dtw_fn()
+    refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
 
   auto size() const { return data.size(); }
-  auto cluster_size() const { return Nc; }
+  /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
+  auto n_clusters() const { return Nc; }
+  [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
   /// Mutable name access (heap-mode only — asserts if view-mode).
   auto &get_name(size_t i) { assert(!data.is_view()); return data.p_names[i]; }
@@ -175,22 +183,50 @@ public:
   /// Name of series i as a string_view.
   std::string_view series_name(size_t i) const { return data.name(i); }
 
-  void refreshDistanceMatrix();
-  void resize();
+  /// Canonical read accessors (API contract §2.2): the raw fields
+  /// `clusters_ind`/`centroids_ind` stay public, but `labels()`/`medoids()` are
+  /// the cross-language read path (parity with `Result::labels`/`Result::medoids`).
+  const std::vector<int> &labels() const { return clusters_ind; }
+  const std::vector<int> &medoids() const { return centroids_ind; }
+
+  void refresh_distance_matrix();
+  [[deprecated("use refresh_distance_matrix")]] void refreshDistanceMatrix() { refresh_distance_matrix(); }
 
   // Getters and setters:
   int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
 
+  // read_distance_matrix / write_* are defined out-of-line in Problem_IO.cpp under
+  // their camelCase names; the snake_case canonical names are additive forwarders
+  // this phase (the camelCase originals retire in the Phase 2 IO pass).
   void readDistanceMatrix(const fs::path &distMat_path);
-  void set_numberOfClusters(int Nc_);
+  void read_distance_matrix(const fs::path &p) { readDistanceMatrix(p); }
+
+  void set_n_clusters(int Nc_);
+  [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
+
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);
+
+  // Canonical 2.0 config setters/accessors. The underlying fields (`method`,
+  // `band`, `maxIter`, `N_repetition`) stay public this phase for binding
+  // compatibility — the Python bindings take `&Problem::maxIter` /
+  // `&Problem::N_repetition` by address (`_dtwcpp_core.cpp:423-424`); full field
+  // privatisation lands with the Phase 2 binding rewrite. None of these fields
+  // de-sync derived state (the bound DTW fn reads `band` live; `method` is read
+  // at cluster() time), so a naked write is safe — only `variant_params` needs
+  // the rebinding `set_variant`.
+  void set_method(Method m) { method = m; }
+  void set_band(int b) { band = b; }
+  void set_max_iter(int n) { maxIter = n; }
+  int max_iter() const { return maxIter; }
+  void set_n_repetitions(int n) { N_repetition = n; }
+  int n_repetitions() const { return N_repetition; }
 
   void set_data(dtwc::Data data_)
   {
     data = std::move(data_);
     data.validate_ndim();
-    refreshDistanceMatrix();
+    refresh_distance_matrix();
   }
 
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
@@ -206,8 +242,11 @@ public:
   void set_variant(core::DTWVariant v);
   void set_variant(core::DTWVariantParams params);
 
-  data_t maxDistance() const { return visit_distmat([](const auto &m) { return m.max(); }); }
-  data_t distByInd(int i, int j);
+  data_t max_distance() const { return visit_distmat([](const auto &m) { return m.max(); }); }
+  [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
+
+  data_t dist_by_ind(int i, int j);
+  [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j) { return dist_by_ind(i, j); }
 
   /// Access the bound DTW distance function (float64).
   const dtw_fn_t &dtw_function() const { return dtw_fn_; }
@@ -222,10 +261,11 @@ public:
   {
     return wdtw_weights_cache_;
   }
-  bool isDistanceMatrixFilled() const
+  bool is_distance_matrix_filled() const
   {
     return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });
   }
+  [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
   /// Access the underlying distance matrix (const).
   const distMat_t &distance_matrix() const { return distMat; }
@@ -243,33 +283,49 @@ public:
   }
   void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
 
-  void fillDistanceMatrix();
-  void printDistanceMatrix() const;
+  void fill_distance_matrix();
+  [[deprecated("use fill_distance_matrix")]] void fillDistanceMatrix() { fill_distance_matrix(); }
 
+  void print_distance_matrix() const;
+  [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
+
+  // I/O writers (definitions in Problem_IO.cpp). snake_case names are additive
+  // canonical forwarders; camelCase originals retire in the Phase 2 IO pass.
   void writeDistanceMatrix(const std::string &name_) const;
   void writeDistanceMatrix() const { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
+  void write_distance_matrix(const std::string &name_) const { writeDistanceMatrix(name_); }
+  void write_distance_matrix() const { writeDistanceMatrix(); }
 
   void printClusters() const;
+  void print_clusters() const { printClusters(); }
   void writeClusters();
+  void write_clusters() { writeClusters(); }
 
   void writeMedoidMembers(int iter, int rep = 0) const;
+  void write_medoid_members(int iter, int rep = 0) const { writeMedoidMembers(iter, rep); }
   void writeSilhouettes();
+  void write_silhouettes() { writeSilhouettes(); }
 
   // Initialisation of clusters:
   void init() { init_fun(*this); }
 
   // Clustering functions:
   void cluster();
-  void cluster_by_MIP();
-  void cluster_by_kMedoidsLloyd();
+  void cluster_by_mip();
+  [[deprecated("use cluster_by_mip")]] void cluster_by_MIP() { cluster_by_mip(); }
+  void cluster_by_kmedoids_lloyd();
+  [[deprecated("use cluster_by_kmedoids_lloyd")]] void cluster_by_kMedoidsLloyd() { cluster_by_kmedoids_lloyd(); }
 
   void cluster_and_process();
 
   // Auxillary
-  double findTotalCost();
-  void assignClusters();
+  double find_total_cost();
+  [[deprecated("use find_total_cost")]] double findTotalCost() { return find_total_cost(); }
+  void assign_clusters();
+  [[deprecated("use assign_clusters")]] void assignClusters() { assign_clusters(); }
 
-  void calculateMedoids();
+  void calculate_medoids();
+  [[deprecated("use calculate_medoids")]] void calculateMedoids() { calculate_medoids(); }
 };
 
 

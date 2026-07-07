@@ -53,7 +53,7 @@ namespace dtwc {
 void Problem::resize()
 {
   clusters_ind.resize(size());
-  centroids_ind.resize(cluster_size());
+  centroids_ind.resize(n_clusters());
 }
 
 /**
@@ -62,7 +62,7 @@ void Problem::resize()
  * @param Nc_ The number of clusters to set.
  * @throws std::runtime_error if the size of candidate_centroids is not equal to Nc.
  */
-void Problem::set_numberOfClusters(int Nc_)
+void Problem::set_n_clusters(int Nc_)
 {
   Nc = Nc_;
   resize();
@@ -109,7 +109,7 @@ bool Problem::set_solver(Solver solver_)
  * @brief Prints the current distance matrix to the standard output.
  * @details Outputs the distance matrix in a human-readable format, useful for debugging and verification.
  */
-void Problem::printDistanceMatrix() const
+void Problem::print_distance_matrix() const
 {
   visit_distmat([](const auto &m) { std::cout << m << '\n'; });
 }
@@ -125,7 +125,7 @@ void Problem::printDistanceMatrix() const
  * call), it is reset to size 0 so that stale entries are not reused after a
  * variant or data change.
  */
-void Problem::refreshDistanceMatrix()
+void Problem::refresh_distance_matrix()
 {
   visit_distmat([](auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
@@ -193,13 +193,13 @@ void Problem::rebind_dtw_fn()
 void Problem::set_variant(core::DTWVariant v)
 {
   variant_params.variant = v;
-  refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
+  refresh_distance_matrix(); // calls rebind_dtw_fn() internally
 }
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
   variant_params = params;
-  refreshDistanceMatrix(); // calls rebind_dtw_fn() internally
+  refresh_distance_matrix(); // calls rebind_dtw_fn() internally
 }
 
 void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
@@ -226,7 +226,7 @@ void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
  *      Call fillDistanceMatrix() before entering any parallel region.
  *      After that, all calls are read-only lookups (no race by design).
  */
-double Problem::distByInd(int i, int j)
+double Problem::dist_by_ind(int i, int j)
 {
   if (i == j) return 0.0;
 
@@ -339,9 +339,9 @@ void Problem::fillDistanceMatrix_BruteForce()
  * - CUDA: selected externally for NVIDIA GPU dispatch (e.g., via CLI).
  * - Metal: selected externally for Apple GPU dispatch.
  */
-void Problem::fillDistanceMatrix()
+void Problem::fill_distance_matrix()
 {
-  if (isDistanceMatrixFilled()) return;
+  if (is_distance_matrix_filled()) return;
 
   // Allocate the dense N×N matrix on first call (deferred from set_data / refreshDistanceMatrix).
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
@@ -365,7 +365,7 @@ void Problem::fillDistanceMatrix()
       const bool has_nan = data.is_f32() ? has_missing(data.series_f32(i)) : has_missing(series(i));
       if (has_nan) {
         throw std::runtime_error(
-          "fillDistanceMatrix: NaN detected in series '" + std::string(series_name(i))
+          "fill_distance_matrix: NaN detected in series '" + std::string(series_name(i))
           + "' (index " + std::to_string(i)
           + "). Set missing_strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
       }
@@ -510,10 +510,10 @@ void Problem::cluster()
 {
   switch (method) {
   case Method::Kmedoids:
-    cluster_by_kMedoidsLloyd();
+    cluster_by_kmedoids_lloyd();
     break;
   case Method::MIP:
-    cluster_by_MIP();
+    cluster_by_mip();
     break;
   }
 }
@@ -535,7 +535,7 @@ void Problem::cluster_and_process()
  *@brief Clusters the data using Mixed Integer Programming (MIP) based on the chosen solver.
  *@details Uses either Gurobi or HiGHS solver for MIP clustering, depending on the solver set in the Problem instance.
  */
-void Problem::cluster_by_MIP()
+void Problem::cluster_by_mip()
 {
   // Auto-dispatch to Benders decomposition for large N
   const bool use_benders = (mip_settings.benders == "on") ||
@@ -561,13 +561,13 @@ void Problem::cluster_by_MIP()
  * @brief Assigns each data point to the nearest cluster centroid.
  * @details Iterates over each data point, calculating its distance to each centroid, and assigns it to the nearest one.
  */
-void Problem::assignClusters()
+void Problem::assign_clusters()
 {
   auto assignClustersTask = [this](size_t i_p) //!< i_p  and i_c in [0, Np)
   {
     const int ip = static_cast<int>(i_p);
     auto minIt = std::min_element(centroids_ind.begin(), centroids_ind.end(), [this, ip](int ic_1, int ic_2) {
-      return distByInd(ip, ic_1) < distByInd(ip, ic_2);
+      return dist_by_ind(ip, ic_1) < dist_by_ind(ip, ic_2);
     });
     clusters_ind[i_p] = static_cast<int>(std::distance(centroids_ind.begin(), minIt));
   };
@@ -579,7 +579,7 @@ void Problem::assignClusters()
   // (i,j)/(j,i) slot concurrently, so the lazy-compute path is not safe to run
   // in parallel. Once fillDistanceMatrix() has completed, all lookups are
   // read-only and the parallel path is safe again.
-  const size_t workers = isDistanceMatrixFilled() ? 32u : 1u;
+  const size_t workers = is_distance_matrix_filled() ? 32u : 1u;
   run(assignClustersTask, data.size(), workers);
 }
 
@@ -594,7 +594,7 @@ void Problem::distanceInClusters()
     const int clusterNo{ clusters_ind[i_p] };
     for (size_t i{ i_p }; i < N; i++)
       if (clusters_ind[i] == clusterNo) // If they are in the same cluster
-        distByInd(static_cast<int>(i_p), static_cast<int>(i));
+        dist_by_ind(static_cast<int>(i_p), static_cast<int>(i));
   };
 
   run(distanceInClustersTask, size());
@@ -605,7 +605,7 @@ void Problem::distanceInClusters()
  * @details This function iterates through each data point and calculates the total cost of designating that point
  * as the medoid of its cluster. The point with the minimum total cost is set as the new medoid for that cluster.
  */
-void Problem::calculateMedoids()
+void Problem::calculate_medoids()
 {
   std::vector<double> pointCosts(size());
 
@@ -614,14 +614,14 @@ void Problem::calculateMedoids()
     double sum{ 0 };
     for (const auto i : Range(size()))
       if (clusters_ind[i] == clusters_ind[i_p]) // If they are in the same cluster
-        sum += distByInd(static_cast<int>(i_p), static_cast<int>(i));
+        sum += dist_by_ind(static_cast<int>(i_p), static_cast<int>(i));
 
     pointCosts[i_p] = sum;
   };
 
   run(findBetterMedoidTask, size());
 
-  std::vector<double> clusterCosts(cluster_size(), std::numeric_limits<double>::max());
+  std::vector<double> clusterCosts(n_clusters(), std::numeric_limits<double>::max());
   for (const auto i : Range(size()))
     if (pointCosts[i] < clusterCosts[clusters_ind[i]]) {
       clusterCosts[clusters_ind[i]] = pointCosts[i];
@@ -635,9 +635,9 @@ void Problem::calculateMedoids()
  * with multiple repetitions, each time initializing medoids randomly.
  * The repetition yielding the lowest total cost is chosen as the best solution.
  */
-void Problem::cluster_by_kMedoidsLloyd()
+void Problem::cluster_by_kmedoids_lloyd()
 {
-  fillDistanceMatrix(); // Ensure all distances computed before parallel clustering.
+  fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
@@ -694,14 +694,14 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
 
     centroids_all.push_back(centroids_ind);
 
-    assignClusters();
+    assign_clusters();
 
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
-              << findTotalCost() << ".\n"; // Uses clusters_ind to find cost.
+              << find_total_cost() << ".\n"; // Uses clusters_ind to find cost.
 
     printClusters();
     distanceInClusters(); // Just populates distance matrix ahead.
-    calculateMedoids();   // Changes centroids_ind
+    calculate_medoids();   // Changes centroids_ind
 
     if (oldmedoids == centroids_ind) {
       status = 0;
@@ -711,7 +711,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
     oldmedoids = centroids_ind;
   }
 
-  const double total_cost = findTotalCost();
+  const double total_cost = find_total_cost();
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
   writeMedoids(centroids_all, rep, total_cost);
   return {status, total_cost, actual_iters};
@@ -723,17 +723,17 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
  * This serves as a measure of the quality of the current clustering solution.
  * @return The total cost of the clustering.
  */
-double Problem::findTotalCost()
+double Problem::find_total_cost()
 {
   double sum = 0;
   for (const auto idx : Range(size())) {
     const int i = static_cast<int>(idx);
     if constexpr (settings::isDebug)
       std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
-                << " which is: " << distByInd(i, centroid_of(i)) << "\n";
+                << " which is: " << dist_by_ind(i, centroid_of(i)) << "\n";
 
     // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
-    sum += distByInd(i, centroid_of(i));
+    sum += dist_by_ind(i, centroid_of(i));
   }
 
   return sum;

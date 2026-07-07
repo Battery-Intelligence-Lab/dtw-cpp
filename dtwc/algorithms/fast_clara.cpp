@@ -360,6 +360,13 @@ core::ClusteringResult fast_clara_chunked(
     }
   }
 
+  // 2.0 result write-back (Task 1.6): mirror the in-RAM fast_clara path so the
+  // Parquet-streamed path also populates prob's labels/medoids/k (Phase 2 deletes
+  // the binding auto-wire at _dtwcpp_core.cpp:615-619).
+  prob_template.set_n_clusters(opts.n_clusters);
+  prob_template.centroids_ind = best_result.medoid_indices;
+  prob_template.clusters_ind  = best_result.labels;
+
   return best_result;
 }
 #endif // DTWC_HAS_PARQUET
@@ -493,6 +500,14 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
       best_result.converged = sub_result.converged;
     }
   }
+
+  // 2.0 result write-back (Task 1.6): store labels/medoids/k into `prob` so
+  // scores::silhouette(prob) etc. work with NO manual wiring (mirrors the binding
+  // auto-wire at _dtwcpp_core.cpp:615-619, which Phase 2 deletes). The
+  // sample_size>=N branch above delegates to fast_pam, which already writes back.
+  prob.set_n_clusters(opts.n_clusters);
+  prob.centroids_ind = best_result.medoid_indices;
+  prob.clusters_ind  = best_result.labels;
 
   return best_result;
 }

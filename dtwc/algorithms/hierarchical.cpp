@@ -236,6 +236,14 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   result.converged = true;
   result.iterations = N - 1; // dendrogram always completes in N-1 steps
 
+  // 2.0 result write-back (Task 1.6): store labels/medoids/k into `prob` so
+  // scores::silhouette(prob) etc. work with NO manual wiring. cut_dendrogram did
+  // NOT write back in 1.x (bindings left it un-wired, _dtwcpp_core.cpp:732); 2.0
+  // makes the C++ path authoritative per API contract §2.5.
+  prob.set_n_clusters(k);
+  prob.centroids_ind = result.medoid_indices;
+  prob.clusters_ind  = result.labels;
+
   return result;
 }
 

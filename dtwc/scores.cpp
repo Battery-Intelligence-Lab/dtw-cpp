@@ -45,7 +45,7 @@ namespace dtwc::scores {
 std::vector<double> silhouette(Problem &prob)
 {
   const auto Nb = prob.size();         //!< Number of profiles
-  const auto Nc = prob.cluster_size(); //!< Number of clusters
+  const auto Nc = prob.n_clusters(); //!< Number of clusters
 
   std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
@@ -54,7 +54,7 @@ std::vector<double> silhouette(Problem &prob)
     return silhouettes;
   }
 
-  prob.fillDistanceMatrix(); //!< We need all pairwise distance for silhouette score.
+  prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
 
   auto oneTask = [&](size_t i_b) {
     const auto i_c = prob.clusters_ind[i_b];
@@ -63,7 +63,7 @@ std::vector<double> silhouette(Problem &prob)
 
     for (auto i : Range(prob.size())) {
       mean_distances[prob.clusters_ind[i]].first++;
-      mean_distances[prob.clusters_ind[i]].second += prob.distByInd(static_cast<int>(i), static_cast<int>(i_b));
+      mean_distances[prob.clusters_ind[i]].second += prob.dist_by_ind(static_cast<int>(i), static_cast<int>(i_b));
     }
 
 
@@ -101,9 +101,9 @@ std::vector<double> silhouette(Problem &prob)
  * @note Requires that the data has already been clustered; throws std::runtime_error if centroids are not set.
  * @see https://en.wikipedia.org/wiki/Davies%E2%80%93Bouldin_index for more information on the Davies-Bouldin index.
  */
-double daviesBouldinIndex(Problem &prob)
+double davies_bouldin(Problem &prob)
 {
-  const auto Nc = prob.cluster_size(); //!< Number of clusters
+  const auto Nc = prob.n_clusters(); //!< Number of clusters
 
   if (prob.centroids_ind.empty()) {
     throw std::runtime_error("Cluster before calculating DBI");
@@ -115,17 +115,17 @@ double daviesBouldinIndex(Problem &prob)
   // Nc < 2 with a clear error instead (audit handoff-2026-06-01:25).
   if (Nc < 2)
     throw std::invalid_argument(
-      "daviesBouldinIndex requires at least 2 clusters; the Davies-Bouldin index "
+      "davies_bouldin requires at least 2 clusters; the Davies-Bouldin index "
       "is undefined for a single cluster (no inter-cluster separation).");
 
-  prob.fillDistanceMatrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
+  prob.fill_distance_matrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
 
   // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
   std::vector<double> scatter(Nc, 0.0);
   std::vector<int> cluster_counts(Nc, 0);
   for (auto i : Range(prob.size())) {
     int ci = prob.clusters_ind[i];
-    scatter[ci] += prob.distByInd(static_cast<int>(i), prob.centroids_ind[ci]);
+    scatter[ci] += prob.dist_by_ind(static_cast<int>(i), prob.centroids_ind[ci]);
     cluster_counts[ci]++;
   }
   for (int c = 0; c < Nc; ++c) {
@@ -140,7 +140,7 @@ double daviesBouldinIndex(Problem &prob)
     double max_ratio = 0.0;
     for (int j = 0; j < Nc; ++j) {
       if (i != j) {
-        const double d_ij = prob.distByInd(prob.centroids_ind[i], prob.centroids_ind[j]);
+        const double d_ij = prob.dist_by_ind(prob.centroids_ind[i], prob.centroids_ind[j]);
         if (d_ij > 0) {
           double ratio = (scatter[i] + scatter[j]) / d_ij;
           max_ratio = std::max(max_ratio, ratio);
@@ -161,7 +161,7 @@ double daviesBouldinIndex(Problem &prob)
  * @param prob The clustered problem instance.
  * @return double Dunn index, or infinity if max intra-cluster diameter is zero.
  */
-double dunnIndex(Problem &prob)
+double dunn(Problem &prob)
 {
   if (prob.centroids_ind.empty())
     throw std::runtime_error("Cluster before calculating Dunn Index");
@@ -170,12 +170,12 @@ double dunnIndex(Problem &prob)
   // With a single cluster there are no inter-cluster pairs, so min_inter stays
   // at numeric_limits::max() and the result is a meaningless huge value (or
   // +inf). Reject Nc < 2 with a clear error (audit handoff-2026-06-01:25).
-  if (prob.cluster_size() < 2)
+  if (prob.n_clusters() < 2)
     throw std::invalid_argument(
-      "dunnIndex requires at least 2 clusters; the Dunn index is undefined for a "
+      "dunn requires at least 2 clusters; the Dunn index is undefined for a "
       "single cluster (no inter-cluster distances exist).");
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   const auto N = static_cast<int>(prob.size());
 
@@ -184,7 +184,7 @@ double dunnIndex(Problem &prob)
 
   for (int i = 0; i < N; ++i) {
     for (int j = i + 1; j < N; ++j) {
-      const double d = prob.distByInd(i, j);
+      const double d = prob.dist_by_ind(i, j);
       if (prob.clusters_ind[i] == prob.clusters_ind[j]) 
         max_intra = std::max(max_intra, d); // Same cluster: contributes to intra-cluster diameter
        else 
@@ -212,12 +212,12 @@ double inertia(Problem &prob)
   if (prob.centroids_ind.empty())
     throw std::runtime_error("Cluster before calculating inertia");
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   double total = 0.0;
   for (auto i : Range(prob.size())) {
     int medoid = prob.centroids_ind[prob.clusters_ind[i]];
-    total += prob.distByInd(static_cast<int>(i), medoid);
+    total += prob.dist_by_ind(static_cast<int>(i), medoid);
   }
   return total;
 }
@@ -233,20 +233,20 @@ double inertia(Problem &prob)
  * @param prob The clustered problem instance.
  * @return double Calinski-Harabasz index.
  */
-double calinskiHarabaszIndex(Problem &prob)
+double calinski_harabasz(Problem &prob)
 {
   if (prob.centroids_ind.empty())
     throw std::runtime_error("Cluster before calculating Calinski-Harabasz Index");
 
   const auto N = static_cast<int>(prob.size());
-  const auto k = prob.cluster_size();
+  const auto k = prob.n_clusters();
 
   if (k <= 1)
     throw std::runtime_error("Calinski-Harabasz Index requires at least 2 clusters");
   if (N <= k)
     throw std::runtime_error("Calinski-Harabasz Index requires more points than clusters");
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Find overall medoid: point with minimum sum of distances to all other points
   int overall_medoid = 0;
@@ -254,7 +254,7 @@ double calinskiHarabaszIndex(Problem &prob)
   for (int i = 0; i < N; ++i) {
     double row_sum = 0.0;
     for (int j = 0; j < N; ++j)
-      row_sum += prob.distByInd(i, j);
+      row_sum += prob.dist_by_ind(i, j);
     if (row_sum < min_row_sum) {
       min_row_sum = row_sum;
       overall_medoid = i;
@@ -265,7 +265,7 @@ double calinskiHarabaszIndex(Problem &prob)
   double W = 0.0;
   for (int i = 0; i < N; ++i) {
     int medoid_c = prob.centroids_ind[prob.clusters_ind[i]];
-    double d = prob.distByInd(i, medoid_c);
+    double d = prob.dist_by_ind(i, medoid_c);
     W += d * d;
   }
 
@@ -276,7 +276,7 @@ double calinskiHarabaszIndex(Problem &prob)
 
   double B = 0.0;
   for (int c = 0; c < k; ++c) {
-    double d = prob.distByInd(prob.centroids_ind[c], overall_medoid);
+    double d = prob.dist_by_ind(prob.centroids_ind[c], overall_medoid);
     B += cluster_counts[c] * d * d;
   }
 
@@ -296,11 +296,11 @@ double calinskiHarabaszIndex(Problem &prob)
  * @return double ARI value.
  * @throws std::invalid_argument if label vectors have different sizes.
  */
-double adjustedRandIndex(const std::vector<int> &labels_true,
-                         const std::vector<int> &labels_pred)
+double adjusted_rand(const std::vector<int> &labels_true,
+                     const std::vector<int> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
-    throw std::invalid_argument("adjustedRandIndex: label vectors must have the same length");
+    throw std::invalid_argument("adjusted_rand: label vectors must have the same length");
 
   const auto n = static_cast<int64_t>(labels_true.size());
 
@@ -356,11 +356,11 @@ double adjustedRandIndex(const std::vector<int> &labels_true,
  * @return double NMI in [0, 1]. Returns 1.0 if both labelings are constant.
  * @throws std::invalid_argument if label vectors have different sizes.
  */
-double normalizedMutualInformation(const std::vector<int> &labels_true,
-                                   const std::vector<int> &labels_pred)
+double normalized_mutual_info(const std::vector<int> &labels_true,
+                              const std::vector<int> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
-    throw std::invalid_argument("normalizedMutualInformation: label vectors must have the same length");
+    throw std::invalid_argument("normalized_mutual_info: label vectors must have the same length");
 
   const auto n = static_cast<int>(labels_true.size());
   if (n == 0) return 0.0;

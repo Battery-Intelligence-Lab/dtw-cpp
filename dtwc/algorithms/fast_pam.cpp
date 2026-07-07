@@ -254,6 +254,14 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   result.iterations = iter;
   result.converged = converged;
 
+  // 2.0 result write-back (Task 1.6): store labels/medoids/k back into `prob` so
+  // pure-C++ users get the same state the Python/MATLAB wrappers wired by hand —
+  // scores::silhouette(prob) etc. then work with NO manual wiring. Mirrors the
+  // binding auto-wire at _dtwcpp_core.cpp:573-576 (Phase 2 deletes that wire).
+  prob.set_n_clusters(n_clusters);
+  prob.centroids_ind = result.medoid_indices;
+  prob.clusters_ind  = result.labels;
+
   return result;
 }
 

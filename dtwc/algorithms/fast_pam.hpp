@@ -38,8 +38,11 @@ using FastPAMResult = core::ClusteringResult;
  * @param max_iter  Maximum number of SWAP iterations (default: 100).
  * @return core::ClusteringResult containing labels, medoid indices, total cost, etc.
  *
- * @note This function does NOT modify prob.centroids_ind or prob.clusters_ind.
- *       It returns a standalone ClusteringResult.
+ * @note 2.0 (Task 1.6): on return this WRITES the result back into `prob`
+ *       (prob.centroids_ind = medoids, prob.clusters_ind = labels,
+ *       prob.n_clusters() = n_clusters), so scores::silhouette(prob) etc. work
+ *       with no manual wiring. In 1.x it left prob untouched and the bindings
+ *       wired the result in; that binding auto-wire moves into core here.
  * @note Requires prob to have data loaded (prob.size() > 0).
  */
 FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
