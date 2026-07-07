@@ -19,7 +19,11 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
-      OPTIONS 
+      # SHA256 pinned (Task 0.12 supply-chain). Computed from the tarball CPM
+      # downloaded, cached at build/_deps/catch2-subbuild/.../v3.13.0.tar.gz,
+      # on 2026-07-07. Immutable release tag -> GitHub serves identical bytes.
+      URL_HASH SHA256=650795f6501af514f806e78c554729847b98db6935e69076f36bb03ed2e985ef
+      OPTIONS
       "CATCH_INSTALL_DOCS OFF" "CATCH_INSTALL_EXTRAS OFF" "CATCH_BUILD_TESTING OFF"
     )
   endif()
@@ -29,6 +33,9 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.14.0.tar.gz"
+    # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
+    # build/_deps/highs-subbuild/.../v1.14.0.tar.gz. Immutable release tag.
+    URL_HASH SHA256=05931e8dd8c8cac514da8297003c31a206a0004d542b7da500810b85c87c20b9
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
@@ -48,7 +55,10 @@ function(dtwc_setup_dependencies)
   CPMAddPackage(
     NAME CLI11
     URL "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz"
-    DOWNLOAD_ONLY YES 
+    # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
+    # build/_deps/cli11-subbuild/.../v2.6.2.tar.gz. Immutable release tag.
+    URL_HASH SHA256=c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711
+    DOWNLOAD_ONLY YES
   )
 
    add_library(CLI11::CLI11 INTERFACE IMPORTED)
@@ -81,6 +91,9 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME Eigen
       URL "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2"
+      # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
+      # build/_deps/eigen-subbuild/.../eigen-5.0.1.tar.bz2. Immutable release tag.
+      URL_HASH SHA256=e4de6b08f33fd8b8985d2f204381408c660bffa6170ac65b68ae1bd3cd575c0a
       DOWNLOAD_ONLY YES
     )
     add_library(Eigen3::Eigen INTERFACE IMPORTED)
@@ -108,6 +121,11 @@ function(dtwc_setup_dependencies)
     CPMAddPackage(
       NAME yaml-cpp
       URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.9.0.tar.gz"
+      # OPEN (Task 0.12): URL_HASH SHA256 not yet pinned. This optional dep is
+      # OFF by default (DTWC_ENABLE_YAML), so it was not in the local CPM cache
+      # and no network was available to fetch the tarball and compute the hash.
+      # Maintainer TODO: download once, `sha256sum 0.9.0.tar.gz`, add
+      # `URL_HASH SHA256=<hash>` here (immutable release tag -> stable bytes).
       SYSTEM
       EXCLUDE_FROM_ALL
       OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"
@@ -122,12 +140,28 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # llfio — memory-mapped I/O for large distance matrices (required)
-  if(NOT TARGET llfio_hl)
+  # llfio — memory-mapped I/O for large distance matrices (OPTIONAL).
+  # Optional per the project "optional deps only" rule (Task 0.12): the core
+  # must configure without llfio. When disabled/absent, DTWC_HAS_MMAP is never
+  # defined (see dtwc/CMakeLists.txt, which already guards on TARGET llfio_hl)
+  # and mmap-backed stores fall back to the in-memory path.
+  #   NOTE: dtwc/mip/CMakeLists.txt still hard-links `llfio_hl` unconditionally,
+  #   so a full llfio-less configure additionally needs that link guarded — that
+  #   file is owned by the MIP task; tracked as a follow-up. With the default
+  #   (DTWC_ENABLE_LLFIO=ON) behaviour is unchanged.
+  option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ON)
+  if(DTWC_ENABLE_LLFIO AND NOT TARGET llfio_hl)
     CPMAddPackage(
       NAME llfio
       GITHUB_REPOSITORY ned14/llfio
-      GIT_TAG develop
+      # PINNED to a specific commit (Task 0.12): previously tracked the moving
+      # `develop` branch tip — a supply-chain risk (upstream force-push / hijack
+      # changes what we build). SHA below is that branch HEAD read from checkout
+      # build/_deps/llfio-src on 2026-07-07 (commit b17613fb, authored
+      # 2026-06-01). OPEN: needs maintainer blessing of this exact SHA — offline
+      # here, so no tagged release could be selected. `git describe` reported
+      # 20260506-5-gb17613fb (5 commits past tag 20260506).
+      GIT_TAG b17613fb2149a93b0cc7022c8e649dbf5a015b90
       DOWNLOAD_ONLY YES
     )
     if(llfio_ADDED)
@@ -158,21 +192,47 @@ function(dtwc_setup_dependencies)
       if(NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
         find_package(Git REQUIRED)
         file(MAKE_DIRECTORY "${_dtwc_qcl_root}")
-        message(STATUS "Pre-cloning quickcpplib into ${_dtwc_qcl_repo} ...")
+        # PINNED (Task 0.12): the previous `git clone --depth 1` checked out
+        # whatever the default branch HEAD was at configure time — a moving
+        # target and supply-chain risk. Pin to a reviewed commit. A full (non
+        # shallow) clone is used because an arbitrary historical SHA is not
+        # reachable from a depth-1 tip; we then detach onto the SHA and sync
+        # submodules (also full — pinned gitlink commits may predate any shallow
+        # tip) to reproduce that exact tree.
+        #   SHA read from the local checkout build/quickcpplib/repo on 2026-07-07
+        #   (commit 3c1d8cb5, authored 2026-03-10). OPEN: maintainer to bless.
+        set(_dtwc_qcl_sha "3c1d8cb5e94722447e4f17e87b5a9e3a0c66fb39")
+        message(STATUS
+          "Pre-cloning quickcpplib into ${_dtwc_qcl_repo} @ ${_dtwc_qcl_sha} ...")
         execute_process(
-          COMMAND "${GIT_EXECUTABLE}" clone
-            --recurse-submodules --depth 1 --jobs 8 --shallow-submodules
+          COMMAND "${GIT_EXECUTABLE}" clone --no-checkout --jobs 8
             "https://github.com/ned14/quickcpplib.git" repo
           WORKING_DIRECTORY "${_dtwc_qcl_root}"
           RESULT_VARIABLE _dtwc_clone_rc
         )
+        if(_dtwc_clone_rc EQUAL 0)
+          execute_process(
+            COMMAND "${GIT_EXECUTABLE}" checkout --detach "${_dtwc_qcl_sha}"
+            WORKING_DIRECTORY "${_dtwc_qcl_repo}"
+            RESULT_VARIABLE _dtwc_clone_rc
+          )
+        endif()
+        if(_dtwc_clone_rc EQUAL 0)
+          execute_process(
+            COMMAND "${GIT_EXECUTABLE}" submodule update --init --recursive
+              --jobs 8
+            WORKING_DIRECTORY "${_dtwc_qcl_repo}"
+            RESULT_VARIABLE _dtwc_clone_rc
+          )
+        endif()
         if(NOT _dtwc_clone_rc EQUAL 0
             OR NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
           message(FATAL_ERROR
-            "Failed to pre-clone quickcpplib (rc=${_dtwc_clone_rc}). "
-            "If your build environment is offline, clone manually: "
-            "git clone --recursive https://github.com/ned14/quickcpplib.git "
-            "${_dtwc_qcl_repo}")
+            "Failed to pre-clone quickcpplib at pinned SHA ${_dtwc_qcl_sha} "
+            "(rc=${_dtwc_clone_rc}). If your build environment is offline, clone "
+            "manually: git clone --recursive "
+            "https://github.com/ned14/quickcpplib.git ${_dtwc_qcl_repo} && "
+            "git -C ${_dtwc_qcl_repo} checkout ${_dtwc_qcl_sha}")
         endif()
       endif()
 
@@ -223,6 +283,7 @@ function(dtwc_setup_dependencies)
       unset(_dtwc_qcl_to_B)
       unset(_dtwc_qcl_root)
       unset(_dtwc_qcl_repo)
+      unset(_dtwc_qcl_sha)
       unset(_dtwc_qcl_utils)
       unset(_dtwc_qcl_contents)
       unset(_dtwc_qcl_patched)
@@ -231,11 +292,16 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
+  # OPTIONAL (Task 0.12): llfio must not abort configure when absent — that
+  # violated the "optional deps only" rule. Was `message(FATAL_ERROR ...)`.
   if(TARGET llfio_hl)
     message(STATUS "  llfio:    YES (memory-mapped distance matrix enabled)")
     set(DTWC_HAS_MMAP TRUE)
+  elseif(DTWC_ENABLE_LLFIO)
+    message(WARNING "  llfio:    requested but NOT FOUND — memory-mapped "
+      "distance matrices disabled (falls back to in-memory store).")
   else()
-    message(FATAL_ERROR "  llfio:    NOT FOUND — llfio is a required dependency")
+    message(STATUS "  llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.")
   endif()
 
   # Apache Arrow + Parquet (optional) — zero-copy IPC and Parquet reading.
@@ -287,6 +353,11 @@ function(dtwc_setup_dependencies)
         NAME Arrow
         VERSION 19.0.1
         URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
+        # OPEN (Task 0.12): URL_HASH SHA256 not yet pinned. This optional dep is
+        # OFF by default (DTWC_ENABLE_ARROW) and was not in the local CPM cache;
+        # no network was available to fetch the ~90 MB tarball and hash it.
+        # Maintainer TODO: download once, `sha256sum apache-arrow-19.0.1.tar.gz`,
+        # add `URL_HASH SHA256=<hash>` here (immutable release tag).
         SOURCE_SUBDIR cpp
         SYSTEM
         EXCLUDE_FROM_ALL

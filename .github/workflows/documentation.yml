@@ -107,15 +107,29 @@ jobs:
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
 
-      - name: Upload coverage to Codecov
+      # Generate the lcov trace file (also consumed by genhtml below).
+      - name: Generate coverage info
         run: |
           lcov --directory ./tests --capture --output-file coverage.info
           lcov --remove coverage.info '*/tests/*' '/_deps/*' '/usr/*' '*/catch2/*' --output-file coverage.info
           lcov --list coverage.info
-          bash <(curl https://codecov.io/bash) -f coverage.info
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
         working-directory: build_dir
+
+      # Task 0.12 supply-chain fix: the previous step fetched Codecov's legacy
+      # shell uploader over the network and piped it straight into a shell WITH
+      # the Codecov token in the environment — i.e. remote code execution and
+      # token exposure on every PR run. Replaced by the official maintained
+      # action below.
+      # OPEN: pin `codecov/codecov-action` to a full commit SHA once network is
+      # available (maintainer: resolve the v5 tag to its SHA, e.g.
+      # `gh api repos/codecov/codecov-action/git/ref/tags/v5`). A version tag is
+      # mutable but is a maintained, auditable action rather than curl|bash.
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: build_dir/coverage.info
+          fail_ci_if_error: false
 
       - name: Generate LCOV HTML report
         run: genhtml coverage.info -o Coverage
