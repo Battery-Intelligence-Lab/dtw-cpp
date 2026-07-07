@@ -8,6 +8,7 @@
 
 #include "mip.hpp"
 #include "../Problem.hpp"
+#include "../error.hpp" // for SolverError
 #include "../algorithms/fast_pam.hpp"
 #include "../settings.hpp"
 #include "../types/types.hpp" // for Range
@@ -115,7 +116,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     // optimisation status explicitly and fail loudly before extracting.
     const int opt_status = model.get(GRB_IntAttr_Status);
     if (opt_status != GRB_OPTIMAL)
-      throw std::runtime_error(
+      throw SolverError(
         "Gurobi MIP did not solve to optimality (status code "
         + std::to_string(opt_status) + "). No valid clustering produced.");
 
@@ -130,13 +131,18 @@ void MIP_clustering_byGurobi(Problem &prob)
         if (w[prob.centroids_ind[i] + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
           prob.clusters_ind[j] = static_cast<int>(i);
 
-  } catch (const std::runtime_error &) {
-    throw; // Propagate our own status error (see above) — never swallow it.
   } catch (GRBException &e) {
-    throw std::runtime_error("Gurobi optimisation failed (error code "
-                             + std::to_string(e.getErrorCode()) + "): " + e.getMessage());
+    // Wrap solver-native failures as SolverError. GRBException derives from
+    // std::runtime_error in this Gurobi version, so this handler MUST precede the
+    // std::runtime_error handler below — otherwise it is shadowed and never runs.
+    throw SolverError("Gurobi optimisation failed (error code "
+                      + std::to_string(e.getErrorCode()) + "): " + e.getMessage());
+  } catch (const std::runtime_error &) {
+    // Propagate our own SolverError (see above) — and any other std::runtime_error
+    // raised inside the try (e.g. fast_pam validation) — unchanged; never swallow it.
+    throw;
   } catch (...) {
-    throw std::runtime_error("Unknown exception during Gurobi optimisation.");
+    throw SolverError("Unknown exception during Gurobi optimisation.");
   }
 #else
   std::cout << "Gurobi solver is not activated but is being used!" << '\n';

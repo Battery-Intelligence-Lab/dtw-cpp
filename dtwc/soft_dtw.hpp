@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "error.hpp"
 #include "settings.hpp"
 
 #include <vector>
@@ -131,7 +132,10 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());
 
-  assert(mx > 0 && my > 0);
+  // Input validation (was assert(mx > 0 && my > 0), a no-op under NDEBUG that
+  // let an empty span fall through to x[0]/y[0] below -> out-of-bounds read).
+  if (mx <= 0 || my <= 0)
+    throw InvalidInput("soft_dtw_gradient: input series must be non-empty");
 
   // Forward pass: compute cost matrix C
   thread_local core::ScratchMatrix<T> C;

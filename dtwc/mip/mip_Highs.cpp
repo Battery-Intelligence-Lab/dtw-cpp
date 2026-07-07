@@ -8,6 +8,7 @@
 
 #include "mip.hpp"
 #include "../Data.hpp"        // for Data
+#include "../error.hpp"       // for SolverError
 #include "../types/types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
 #include "../algorithms/fast_pam.hpp"
@@ -164,8 +165,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   if (return_status != HighsStatus::kOk)
-    throw std::runtime_error("HiGHS rejected the MIP model (passModel returned status "
-                             + std::to_string(static_cast<int>(return_status)) + ").");
+    throw SolverError("HiGHS rejected the MIP model (passModel returned status "
+                      + std::to_string(static_cast<int>(return_status)) + ").");
 
   // Warm start: run FastPAM and feed solution as MIP start
   if (prob.mip_settings.warm_start) {
@@ -189,8 +190,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   return_status = highs.run(); // Solve the model
   if (return_status != HighsStatus::kOk)
-    throw std::runtime_error("HiGHS failed to solve the MIP (run returned status "
-                             + std::to_string(static_cast<int>(return_status)) + ").");
+    throw SolverError("HiGHS failed to solve the MIP (run returned status "
+                      + std::to_string(static_cast<int>(return_status)) + ").");
 
   // Get the model status. Task 0.5 / audit finding #7: this guard used to be
   // assert(model_status == kOptimal), which is a no-op under NDEBUG (release
@@ -199,8 +200,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // solution vector and returns garbage or empty centroids (UB). Fail loudly.
   const HighsModelStatus &model_status = highs.getModelStatus();
   if (model_status != HighsModelStatus::kOptimal)
-    throw std::runtime_error("HiGHS MIP did not solve to optimality. Model status: "
-                             + highs.modelStatusToString(model_status));
+    throw SolverError("HiGHS MIP did not solve to optimality. Model status: "
+                      + highs.modelStatusToString(model_status));
 
   if (prob.mip_settings.verbose_solver || prob.verbose) {
     std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';

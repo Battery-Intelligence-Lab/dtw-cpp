@@ -8,6 +8,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+### Added (Phase 1 · error taxonomy)
+
+- **New header [dtwc/error.hpp](dtwc/error.hpp)** — a small, header-only exception hierarchy rooted at `dtwc::Error : std::runtime_error`, with `dtwc::InvalidInput`, `dtwc::SolverError`, `dtwc::DeviceError`, and `dtwc::IOError` deriving from it. Message-preserving (constructors inherited from `std::runtime_error`); no error codes, no macros. Because every type derives from `std::runtime_error`, existing `catch (const std::runtime_error &)` / `catch (const std::exception &)` handlers — and tests that pin those types — keep working unchanged (task 1.2).
+- **Migrated to the taxonomy** (task 1.2):
+  - `soft_dtw_gradient` (dtwc/soft_dtw.hpp) now throws `dtwc::InvalidInput` on empty input. The former `assert(mx > 0 && my > 0)` was a no-op under `NDEBUG`, letting an empty span fall through to an out-of-bounds read of `x[0]`/`y[0]`.
+  - The MIP solver status checks in [dtwc/mip/mip_Highs.cpp](dtwc/mip/mip_Highs.cpp) (model rejected / run failed / non-optimal status) and [dtwc/mip/mip_Gurobi.cpp](dtwc/mip/mip_Gurobi.cpp) (non-optimal status, `GRBException` wrap, unknown-exception wrap) now throw `dtwc::SolverError` instead of a bare `std::runtime_error`. Behaviour is unchanged for callers catching `std::runtime_error` (the Phase 0 task 0.5 regression test still passes).
+- **New tests** in [tests/unit/test_error_taxonomy.cpp](tests/unit/test_error_taxonomy.cpp): constructibility + `what()` preservation, catchability up the hierarchy, sibling-type distinctness, and a live-path assertion that `soft_dtw_gradient` on an empty series throws `dtwc::InvalidInput` with the expected message.
+
 ### Fixed (Phase 0 correctness & security audit)
 
 Hardening pass from the full-repo audit; each item ships with regression tests.
