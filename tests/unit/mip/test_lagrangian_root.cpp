@@ -30,8 +30,11 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <timing.hpp> // dtwc::Clock
+
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -296,6 +299,51 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
   }
 
   REQUIRE(compared >= 0); // at least ran; WARN documents any solver-absent skip
+}
+
+// ===========================================================================
+// BENCH — LR-core vs compact MIP wall-time across N (hidden: tag [.] so ctest
+// never runs it). Run explicitly: test_lagrangian_root "[bench]".
+// ADVISORY ONLY: this machine runs parallel workloads; read the SCALING, not ms.
+// ===========================================================================
+TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
+{
+  std::printf("\n  N     k | LR_ms  iters   gap      | MIP_ms  solver | LR_cost      MIP_cost     match\n");
+  std::printf("  --------+----------------------------+----------------+--------------------------------\n");
+
+  for (int N : { 20, 50, 100, 200, 400, 800 }) {
+    const int k = 3;
+    const auto pos = clustered_positions(N, k, 20240707u);
+    const auto D = D_from_positions(pos);
+
+    // --- LR-core (bound + certified primal) on the dense matrix ---
+    dtwc::Clock lr_clk;
+    const LagrangianResult lr = lagrangian_root(D.data(), N, k, -1.0);
+    const double lr_ms = lr_clk.duration() * 1000.0;
+
+    // --- Compact MIP through the production Problem path (HiGHS/Gurobi) ---
+    Problem prob = make_problem_1d(pos, k);
+    prob.set_solver(Solver::HiGHS);
+    dtwc::Clock mip_clk;
+    prob.cluster();
+    const double mip_ms = mip_clk.duration() * 1000.0;
+
+    double mip_cost = std::nan("");
+    const char *solver = "none";
+    if (has_solution(prob)) {
+      mip_cost = cost_of(prob.centroids_ind, D, N);
+      solver = "HiGHS";
+    }
+    const bool match = has_solution(prob)
+                       && std::abs(lr.upper_bound - mip_cost) <= 1e-6 * std::max(1.0, std::abs(mip_cost));
+
+    std::printf("  %4d  %2d | %6.1f %5d  %.2e | %7.1f  %-6s | %-12.5f %-12.5f %s\n",
+                N, k, lr_ms, lr.iterations, lr.gap, mip_ms, solver,
+                lr.upper_bound, mip_cost, match ? "yes" : (has_solution(prob) ? "NO" : "n/a"));
+  }
+  std::printf("\n  (timings ADVISORY — shared machine; certified LR gap ~1e-6 means the\n"
+              "   root bound proved the primal optimal with NO branching.)\n\n");
+  SUCCEED();
 }
 
 // ===========================================================================
