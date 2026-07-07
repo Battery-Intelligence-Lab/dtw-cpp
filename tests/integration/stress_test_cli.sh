@@ -91,6 +91,23 @@ validate() {
     record_pass "$name"
 }
 
+# Negative test: expect a NON-zero exit (clean error, not a silent fallback or
+# a crash) and, optionally, a substring in stderr. Used for Task 0.9 CLI
+# argument-handling regressions (audit cli-ux).
+expect_error() {
+    local name="$1" ec="$2" needle="${3:-}"
+    local dir="$OUT_BASE/$name"
+    if [[ "$ec" -eq 0 ]]; then
+        record_fail "$name" "expected non-zero exit (got 0 — silent fallback / bad input accepted)"
+        return
+    fi
+    if [[ -n "$needle" ]] && ! grep -qi "$needle" "$dir/stderr.txt" 2>/dev/null; then
+        record_fail "$name" "stderr missing expected text: '$needle'"
+        return
+    fi
+    record_pass "$name"
+}
+
 # ======================================================================
 echo "============================================"
 echo "  DTWC++ CLI Stress Test"
@@ -129,12 +146,32 @@ for method in "${METHODS[@]}"; do
     done
 done
 
-# Metric variation: SquaredL2
-name="p1_pam_standard_sqeucl"
+# Metric variation: SquaredL2 on the CPU path is unsupported and MUST error
+# (Task 0.9). Before the fix --metric was consumed only by the CUDA path, so on
+# CPU this silently computed L1 and exited 0.
+name="p1_pam_standard_sqeucl_cpu_rejected"
 ec=$(run_test "$name" \
     --input "$DUMMY_DIR" --clusters 3 --method pam --variant standard \
     --metric squared_euclidean --band -1 --skip-rows 1 --skip-cols 1)
-validate "$name" "$ec" 25 3
+expect_error "$name" "$ec" "unsupported on the cpu"
+
+# --- CLI argument-handling regressions (Task 0.9 / audit cli-ux) ---
+# These are build-independent: parse_device runs before any CUDA guard.
+
+# A bad "cuda:N" id must be a clean error, NOT std::terminate (the old
+# std::stoi(device.substr(5)) threw std::invalid_argument uncaught).
+name="p1_device_cuda_bad_id"
+ec=$(run_test "$name" \
+    --input "$DUMMY_DIR" --clusters 3 --method pam \
+    --skip-rows 1 --skip-cols 1 --device "cuda:abc")
+expect_error "$name" "$ec" "Invalid CUDA device id"
+
+# An unknown device must error, never silently fall back to CPU.
+name="p1_device_unknown"
+ec=$(run_test "$name" \
+    --input "$DUMMY_DIR" --clusters 3 --method pam \
+    --skip-rows 1 --skip-cols 1 --device "foo")
+expect_error "$name" "$ec" "Unknown --device"
 
 # Band variation: band=5
 name="p1_pam_standard_band5"

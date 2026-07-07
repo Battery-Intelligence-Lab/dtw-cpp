@@ -27,10 +27,15 @@
 #include "io/parquet_reader.hpp"
 #endif
 
+// CLI11 is only used inside main(). Guard it (and main) behind DTWC_CL_NO_MAIN
+// so the pure argument-parsing helpers below can be #included and unit-tested
+// without linking CLI11 (see tests/unit/unit_test_cli_args.cpp, Task 0.9).
+#ifndef DTWC_CL_NO_MAIN
 #include <CLI/CLI.hpp>
 
 #ifdef DTWC_HAS_YAML
 #include <yaml-cpp/yaml.h>
+#endif
 #endif
 
 #include <algorithm>
@@ -40,6 +45,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 
 namespace fs = std::filesystem;
@@ -60,6 +66,77 @@ static size_t parse_ram_limit(const std::string &s)
   case 'K': return static_cast<size_t>(val * (1ULL << 10));
   default:  return static_cast<size_t>(val);
   }
+}
+
+/// Parsed and validated `--device` specification.
+struct DeviceSpec
+{
+  bool valid = true;      ///< false → parse/validate error (message in `error`).
+  bool is_cuda = false;   ///< true if a CUDA device was requested.
+  int cuda_id = 0;        ///< CUDA device ordinal (0 for a bare "cuda").
+  std::string error;      ///< Actionable message; populated only when !valid.
+};
+
+/// Parse and validate a `--device` string (case-insensitive).
+/// Accepts exactly: "cpu", "cuda", "cuda:N" (N a non-negative integer).
+///
+/// Task 0.9 / audit cli-ux fixes (all three were silent or fatal before):
+///  - case-insensitive: "CUDA:0" no longer misses the case-sensitive
+///    `rfind("cuda")` and silently fall back to CPU;
+///  - an unknown device name returns valid=false (hard error) instead of a
+///    silent CPU fallback (no-silent-fallback global constraint);
+///  - "cuda:abc" / "cuda:" return valid=false instead of letting
+///    `std::stoi(device.substr(5))` throw std::invalid_argument uncaught,
+///    which propagated out of main() and called std::terminate.
+static DeviceSpec parse_device(std::string device)
+{
+  for (auto &c : device)
+    c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+
+  DeviceSpec spec;
+  if (device == "cpu")
+    return spec;
+  if (device == "cuda") {
+    spec.is_cuda = true;
+    return spec;
+  }
+  if (device.rfind("cuda:", 0) == 0) {
+    const std::string id = device.substr(5);
+    if (id.empty() || id.find_first_not_of("0123456789") != std::string::npos) {
+      spec.valid = false;
+      spec.error = "Invalid CUDA device id in --device '" + device
+                 + "': expected a non-negative integer after 'cuda:' (e.g. cuda:0).";
+      return spec;
+    }
+    try {
+      spec.cuda_id = std::stoi(id);
+    } catch (const std::out_of_range &) {
+      spec.valid = false;
+      spec.error = "CUDA device id out of range in --device '" + device + "'.";
+      return spec;
+    }
+    spec.is_cuda = true;
+    return spec;
+  }
+  spec.valid = false;
+  spec.error = "Unknown --device '" + device
+             + "'. Valid devices: cpu, cuda, cuda:N (N a non-negative integer).";
+  return spec;
+}
+
+/// Validate that the requested pointwise metric can be honoured on the chosen
+/// device. Returns an empty string when OK, otherwise an actionable message.
+///
+/// Task 0.9 / audit cli-ux fix: `--metric` was consumed ONLY by the CUDA path
+/// (use_squared_l2). On the CPU path resolve_dtw_fn() always binds
+/// MetricType::L1, so a non-L1 metric was silently ignored (it computed L1).
+/// Per the no-silent-fallback rule we reject it rather than quietly degrade.
+static std::string validate_metric_for_device(const std::string &metric, bool is_cuda)
+{
+  if (!is_cuda && metric != "l1")
+    return "metric '" + metric + "' is unsupported on the cpu path "
+           "(only 'l1' is implemented on CPU; use --device cuda for '" + metric + "').";
+  return "";
 }
 
 /// Convert float64 Data to float32 in-place.
@@ -124,6 +201,7 @@ static void write_silhouettes_csv(const fs::path &path,
   }
 }
 
+#ifndef DTWC_CL_NO_MAIN
 int main(int argc, char *argv[])
 {
   CLI::App app{"DTWC++ -- Dynamic Time Warping Clustering"};
@@ -389,6 +467,21 @@ int main(int argc, char *argv[])
   if (gpu_precision == "float32" || gpu_precision == "f32" || gpu_precision == "float") gpu_precision = "fp32";
   if (gpu_precision == "float64" || gpu_precision == "f64" || gpu_precision == "double") gpu_precision = "fp64";
 
+  // ---- Device + metric validation (Task 0.9) ----
+  // Parse the device ONCE, up front. An invalid device is a hard error (never a
+  // silent CPU fallback); this also folds "cuda:N" id parsing into one checked
+  // place so a bad id can no longer std::terminate.
+  const DeviceSpec dev = parse_device(device);
+  if (!dev.valid) {
+    std::cerr << "Error: " << dev.error << "\n";
+    return EXIT_FAILURE;
+  }
+  if (const std::string merr = validate_metric_for_device(metric, dev.is_cuda);
+      !merr.empty()) {
+    std::cerr << "Error: " << merr << "\n";
+    return EXIT_FAILURE;
+  }
+
   // ---- Setup ----
   dtwc::Clock clk;
 
@@ -619,10 +712,9 @@ int main(int argc, char *argv[])
   prob.mip_settings.benders = benders_mode;
 
   // Wire GPU settings from --device and --gpu-precision
-  if (device.rfind("cuda", 0) == 0) {
+  if (dev.is_cuda) {
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
-    if (device.size() > 5 && device[4] == ':')
-      prob.cuda_settings.device_id = std::stoi(device.substr(5));
+    prob.cuda_settings.device_id = dev.cuda_id;
     if (gpu_precision == "fp32") prob.cuda_settings.precision = 1;
     else if (gpu_precision == "fp64") prob.cuda_settings.precision = 2;
   }
@@ -674,17 +766,15 @@ int main(int argc, char *argv[])
   }
 
   // ---- GPU distance matrix (if --device cuda) ----
-  if (device.rfind("cuda", 0) == 0 && !prob.isDistanceMatrixFilled()) {
+  if (dev.is_cuda && !prob.isDistanceMatrixFilled()) {
 #ifdef DTWC_HAS_CUDA
     if (!dtwc::cuda::cuda_available()) {
       std::cerr << "Error: --device cuda requested but no CUDA GPU detected.\n";
       return EXIT_FAILURE;
     }
 
-    // Parse device ID from "cuda:N" syntax
-    int cuda_device_id = 0;
-    if (device.size() > 5 && device[4] == ':')
-      cuda_device_id = std::stoi(device.substr(5));
+    // Device id already parsed & validated by parse_device (Task 0.9).
+    const int cuda_device_id = dev.cuda_id;
 
     if (variant != "standard") {
       std::cerr << "Error: --device cuda only supports --variant standard "
@@ -914,3 +1004,4 @@ int main(int argc, char *argv[])
 
   return EXIT_SUCCESS;
 }
+#endif // DTWC_CL_NO_MAIN
