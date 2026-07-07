@@ -15,8 +15,8 @@ output = "./results"
 # Problem name used in output filenames (e.g., "myrun_labels.csv").
 name = "example"
 
-# Number of clusters.
-clusters = 5
+# Number of clusters. (Deprecated key `clusters` is still accepted with a warning.)
+n-clusters = 5
 
 # Clustering method: "pam", "clara", "kmedoids", "mip"
 method = "pam"

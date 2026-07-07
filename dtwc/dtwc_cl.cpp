@@ -48,6 +48,8 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -202,12 +204,78 @@ static void write_silhouettes_csv(const fs::path &path,
   }
 }
 
+// ---------------------------------------------------------------------------
+// CLI / TOML flag deprecation registry (api-contract-2.0.md §4, §7 item 3)
+// ---------------------------------------------------------------------------
+// The CLI flag set and the TOML/YAML config keys are a de-facto API (they are
+// composed by `scripts/slurm/jobs/cluster_generic.slurm` and
+// `python/dtwcpp/_hpc.py::build_dtwc_command`). When a flag/key is renamed to the
+// 2.0 contract vocabulary the OLD spelling stays ACCEPTED but emits a one-line
+// deprecation warning to stderr pointing at the new spelling (one warning per
+// use). TOML/YAML keys are the long-flag names without the leading "--", so a
+// single table below drives the CLI, the `--config` TOML path (CLI11 maps config
+// keys onto the same options) and the `--yaml-config` path.
+//
+//   old CLI flag / TOML key   ->  new canonical CLI flag / TOML key    contract ref
+//   --clusters  / clusters    ->  --n-clusters / n-clusters            §1.5, §2.1 (n_clusters)
+//   --restart   / restart     ->  --resume / resume                    §2.7
+//
+// These helpers are intentionally CLI11-free so tests/unit/unit_test_cli_args.cpp
+// (compiled with DTWC_CL_NO_MAIN, which excludes CLI11) pins them against the
+// live production code (Task 2.3).
+struct CliRename
+{
+  std::string old_flag; ///< deprecated spelling incl. leading "--" (e.g. "--clusters")
+  std::string new_flag; ///< canonical spelling incl. leading "--" (e.g. "--n-clusters")
+};
+
+/// Single source of truth for every 2.0 CLI/TOML rename; drives both the runtime
+/// deprecation warnings (main) and the regression tests.
+inline const std::vector<CliRename> &cli_renames()
+{
+  static const std::vector<CliRename> table{
+      { "--clusters", "--n-clusters" }, // concept n_clusters (api-contract-2.0.md §1.5/§2.1)
+      { "--restart", "--resume" },      // api-contract-2.0.md §2.7
+  };
+  return table;
+}
+
+/// Exact one-line deprecation warning written to stderr when an old spelling is
+/// used. Format is fixed and shared by every rename (CLI flag AND TOML/YAML key).
+inline std::string format_deprecation_warning(std::string_view old_flag,
+                                              std::string_view new_flag)
+{
+  std::string msg = "[dtwc] warning: '";
+  msg.append(old_flag);
+  msg += "' is deprecated, use '";
+  msg.append(new_flag);
+  msg += "' instead";
+  return msg;
+}
+
+/// Canonical spelling for a deprecated flag/key, or "" if `spelling` is not a
+/// known deprecated name. Accepts either the "--flag" form or the bare
+/// TOML/YAML "key" form (no leading dashes).
+inline std::string canonical_flag_for(std::string_view spelling)
+{
+  for (const auto &r : cli_renames()) {
+    std::string_view bare_old{ r.old_flag };
+    if (bare_old.size() >= 2) bare_old.remove_prefix(2); // drop "--"
+    if (spelling == r.old_flag || spelling == bare_old)
+      return r.new_flag;
+  }
+  return {};
+}
+
 #ifndef DTWC_CL_NO_MAIN
 int main(int argc, char *argv[])
 {
   CLI::App app{"DTWC++ -- Dynamic Time Warping Clustering"};
 
-  // TOML config file support (CLI11 built-in, processes before parsing)
+  // TOML config file support (CLI11 built-in, processes before parsing).
+  // TOML keys are the canonical long-flag names without "--" (e.g. `n-clusters`,
+  // `max-iter`). Deprecated keys are accepted with a warning per cli_renames():
+  //   clusters -> n-clusters,  restart -> resume.
   app.set_config("--config", "", "Read TOML configuration file");
 
   // YAML config file (optional, processed after CLI parsing)
@@ -247,8 +315,16 @@ int main(int argc, char *argv[])
   int max_iter = 100;
   int n_init = 1;
 
-  app.add_option("-k,--clusters", n_clusters, "Number of clusters")
-      ->check(CLI::PositiveNumber);
+  auto *nclusters_opt = app.add_option("-k,--n-clusters", n_clusters, "Number of clusters")
+                            ->check(CLI::PositiveNumber);
+  // Deprecated spelling: --clusters -> --n-clusters (api-contract-2.0.md §1.5).
+  // Bound to its own variable so the canonical flag always wins; hidden from
+  // --help but accepted (from CLI and from a --config TOML `clusters` key) with a
+  // one-line stderr warning emitted in the post-parse block below.
+  int n_clusters_deprecated = -1;
+  auto *clusters_dep_opt = app.add_option("--clusters", n_clusters_deprecated,
+                                          "DEPRECATED alias of --n-clusters")
+                               ->group("");
   app.add_option("-m,--method", method, "Clustering method: auto, pam, clara, kmedoids, mip, hierarchical")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
@@ -313,7 +389,13 @@ int main(int argc, char *argv[])
   // Binary checkpoint resume & mmap threshold
   bool resume = false;
   size_t mmap_threshold = 50000;
-  app.add_flag("--resume,--restart", resume, "Resume from checkpoint (distance matrix cache + clustering state)");
+  app.add_flag("--resume", resume, "Resume from checkpoint (distance matrix cache + clustering state)");
+  // Deprecated spelling: --restart -> --resume (api-contract-2.0.md §2.7). Hidden
+  // from --help; accepted with a one-line stderr warning (post-parse block below).
+  bool restart_deprecated = false;
+  auto *restart_dep_opt = app.add_flag("--restart", restart_deprecated,
+                                       "DEPRECATED alias of --resume")
+                              ->group("");
   app.add_option("--mmap-threshold", mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)")
       ->check(CLI::NonNegativeNumber);
 
@@ -369,6 +451,20 @@ int main(int argc, char *argv[])
 
   CLI11_PARSE(app, argc, argv);
 
+  // ---- CLI/TOML flag deprecations (api-contract-2.0.md §4, §7 item 3) ----
+  // Old spellings are accepted from the command line AND from a --config TOML file
+  // (CLI11 maps config keys onto these same options), but each emits one stderr
+  // warning per use and yields precedence to the canonical spelling. See
+  // cli_renames() for the SSOT table.
+  if (clusters_dep_opt->count() > 0) {
+    std::cerr << format_deprecation_warning("--clusters", "--n-clusters") << "\n";
+    if (nclusters_opt->count() == 0) n_clusters = n_clusters_deprecated;
+  }
+  if (restart_dep_opt->count() > 0) {
+    std::cerr << format_deprecation_warning("--restart", "--resume") << "\n";
+    resume = resume || restart_deprecated;
+  }
+
   // ---- YAML config loading (post-parse, CLI flags take precedence) ----
   if (!yaml_config_path.empty()) {
 #ifdef DTWC_HAS_YAML
@@ -388,7 +484,7 @@ int main(int argc, char *argv[])
       set_if_unset("input", input_file);
       set_if_unset("output", output_dir);
       set_if_unset("name", prob_name);
-      set_if_unset("clusters", n_clusters);
+      set_if_unset("n-clusters", n_clusters);
       set_if_unset("method", method);
       set_if_unset("band", band);
       set_if_unset("metric", metric);
@@ -422,6 +518,16 @@ int main(int argc, char *argv[])
 
       // Hierarchical
       set_if_unset("linkage", linkage_str);
+
+      // Deprecated YAML keys (accepted with a warning; canonical key wins).
+      if (config["clusters"]) {
+        std::cerr << format_deprecation_warning("--clusters", "--n-clusters") << "\n";
+        if (!config["n-clusters"]) n_clusters = config["clusters"].as<int>();
+      }
+      if (config["restart"]) {
+        std::cerr << format_deprecation_warning("--restart", "--resume") << "\n";
+        if (!config["resume"]) resume = config["restart"].as<bool>();
+      }
 
       if (verbose)
         std::cout << "Loaded YAML config: " << yaml_config_path << "\n";

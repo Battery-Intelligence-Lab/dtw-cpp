@@ -16,8 +16,8 @@ output: ./results
 # Problem name used in output filenames.
 name: example
 
-# Number of clusters.
-clusters: 5
+# Number of clusters. (Deprecated key `clusters` is still accepted with a warning.)
+n-clusters: 5
 
 # Clustering method: pam, clara, kmedoids, mip, hierarchical
 method: pam

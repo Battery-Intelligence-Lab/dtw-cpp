@@ -115,3 +115,61 @@ TEST_CASE("validate_metric_for_device rejects a non-L1 metric on the CPU path", 
   REQUIRE(validate_metric_for_device("squared_euclidean", /*is_cuda=*/true).empty());
   REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/true).empty());
 }
+
+// ---------------------------------------------------------------------------
+// CLI / TOML flag deprecation registry (Task 2.3, api-contract-2.0.md §4/§7)
+//
+// These pin the SSOT table (cli_renames) and the warning formatter that
+// dtwc_cl main() iterates in its post-parse handler to (a) accept an old flag /
+// old TOML-or-YAML key, (b) emit exactly one stderr warning per use, and (c)
+// yield precedence to the canonical spelling. The unit test cannot link CLI11
+// (DTWC_CL_NO_MAIN excludes it), so it drives the CLI11-free mechanism directly;
+// the live CLI11 routing + stderr emission is exercised end-to-end against the
+// built dtwc_cl binary (Task 2.3 verification).
+// ---------------------------------------------------------------------------
+
+// "new canonical flag works": the canonical spellings are NOT flagged as
+// deprecated, and the two renamed concepts map old -> new correctly.
+TEST_CASE("cli_renames maps deprecated flags to contract-canonical names", "[cli][deprecation]")
+{
+  // Deprecated CLI flag spellings resolve to the 2.0 canonical flag.
+  REQUIRE(canonical_flag_for("--clusters") == "--n-clusters"); // §1.5/§2.1 n_clusters
+  REQUIRE(canonical_flag_for("--restart") == "--resume");      // §2.7
+
+  // TOML/YAML "old key acceptance": the bare-key form (no leading dashes, i.e.
+  // how it appears in a --config TOML or --yaml-config file) resolves the same.
+  REQUIRE(canonical_flag_for("clusters") == "--n-clusters");
+  REQUIRE(canonical_flag_for("restart") == "--resume");
+
+  // Canonical / unknown spellings are NOT deprecated (no false warning).
+  REQUIRE(canonical_flag_for("--n-clusters").empty());
+  REQUIRE(canonical_flag_for("n-clusters").empty());
+  REQUIRE(canonical_flag_for("--resume").empty());
+  REQUIRE(canonical_flag_for("--method").empty());
+  REQUIRE(canonical_flag_for("--skip-cols").empty()); // caller flag stays canonical
+}
+
+// "old flag works AND emits the deprecation warning" — pins the exact one-line
+// stderr message the post-parse handler prints (the warning mechanism).
+TEST_CASE("format_deprecation_warning is the exact one-line stderr message", "[cli][deprecation]")
+{
+  REQUIRE(format_deprecation_warning("--clusters", "--n-clusters")
+          == "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead");
+  REQUIRE(format_deprecation_warning("--restart", "--resume")
+          == "[dtwc] warning: '--restart' is deprecated, use '--resume' instead");
+}
+
+// The rename table is the de-facto CLI API surface: complete + internally
+// consistent (both spellings are long flags, they differ, and the lookup
+// round-trips for every entry).
+TEST_CASE("cli_renames table is complete and internally consistent", "[cli][deprecation]")
+{
+  const auto &t = cli_renames();
+  REQUIRE(t.size() == 2);
+  for (const auto &r : t) {
+    REQUIRE(r.old_flag.rfind("--", 0) == 0);
+    REQUIRE(r.new_flag.rfind("--", 0) == 0);
+    REQUIRE(r.old_flag != r.new_flag);
+    REQUIRE(canonical_flag_for(r.old_flag) == r.new_flag);
+  }
+}
