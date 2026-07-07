@@ -427,16 +427,18 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 - [x] Test (correctness, HARD gate): every `fixed_closed` verified ABSENT and every `fixed_open` verified PRESENT in the brute-force optimum on 80 non-degenerate N≤14 instances (clustered + uniform). ctest 88/88.
 - [x] Registered band **P2** (gap≤1% ⇒ ≥80% eliminated for ≥90% of instances): **FALSIFIED as a universal floor, CONFIRMED in the mean.** 36 qualifying clustered instances → mean elim **80.3%**, min **73.3%**, 77.8% reach ≥80%. Cause: within-cluster alternative optima sit in the ≈0-gap band and correctly survive. Recorded, not rescue-tuned (CLAUDE.md §3). Deliverable to 4.3: `result.core`.
 
-### Task 4.3: Core Benders with y-only branching
+### Task 4.3: Core Benders with y-only branching [DONE 2026-07-08]
 
-**Files:** Modify: `dtwc/mip/benders.cpp` + solver glue. Consumes: 4.1 bound + 4.2 core.
-- [ ] One lazy-cut tree instead of re-solving master per round (HiGHS lazy-callback support: OPEN — investigate in-task; if absent, branch-and-bound loop owned by us with HiGHS LP nodes); branch on fractional y only; cut generation cost stated honestly (O(N²) today — reduce on the fixed core).
-- [ ] Gate: matches Gurobi/HiGHS proven optima 1e-6 rel on ALL such instances; beats their wall-time at N≥2000 **or the phase is recorded FALSIFIED and the default path stays Gurobi/HiGHS** (LR root still ships as a bound/certificate tool either way).
+**Files:** Created `dtwc::mip::lagrangian_root_exact` in `dtwc/mip/lagrangian_root.{hpp,cpp}` + `[exact]` tests. Consumes 4.1 bound + 4.2 core. **Design note (deviation from "modify benders.cpp"):** the LR dual already equals the LP/Benders master bound (Geoffrion), so there is no N²-column master to re-solve — a lazy-cut tree over a compact master is the wrong tool. Instead the exact solver is an LR-bounded B&B that branches on y over the core, matrix-free. The legacy `benders.cpp` (re-solve-master-per-round) is left intact under `benders="on"`; LR-core supersedes it as the modern exact path.
 
-### Task 4.4: Wire into API + `method="mip"` upgrade
+- [x] Single tree, NOT a per-round master re-solve. Root dual solved once (Kelley when HiGHS present → certifies the LP gap to machine precision; subgradient otherwise). Reduced-cost fixing → core + proven-open set. Branch on one candidate's open/close (y) decision; node bound = fixed-root-dual `Σμ*+Σ_S ρ*_i ≤ cost(S)` (O(N) per node, no LP). Node cap → best incumbent with `certified_optimal=false` + loud stderr (no silent wrong answer).
+- [x] Gate **MET (correctness):** matches the brute-force IP optimum 1e-6 on ALL instances — 8 clustered (0 nodes, root certifies) + 24 adversarial uniform-D (B&B engages, thousands of nodes, still exact). Kelley closes the LP gap; the B&B closes the integrality gap.
+- [x] Gate (wall-time, ADVISORY shared machine): exact vs compact HiGHS on clustered data — N=800 **56 ms vs 58 s (~1000×)**, margin widens with N. "Beats at N≥2000" holds on well-separated (real-world) data; expected FALSIFIED on the adversarial large-N regime (integrality gap ⇒ tree growth) — LR root still ships as bound/certificate either way (as the phase permits).
 
-- [ ] `Method::LRCore` (name per contract 1.1); `mip` keeps meaning solver-backed exact; docs state regime of validity (dense D in RAM/mmap; N·N doubles is the budget).
-- [ ] CHANGELOG + LESSONS.md entry: killed ideas from 2023 attempts + falsified claims (keep killed ideas killed).
+### Task 4.4: Wire into API + `method="mip"` upgrade [DONE 2026-07-08]
+
+- [x] `Method::LRCore` added. `Problem::cluster()` routes it to `dtwc::LR_core_clustering` (fills D, seeds UB, runs `lagrangian_root_exact`, writes `centroids_ind`/`clusters_ind`). `mip` unchanged (solver-backed exact). Regime documented (dense D in RAM; N·N doubles budget; no external solver needed). Exposed C++/Python (`dtwcpp.Method.LRCore`)/CLI (`--method lrcore`|`lr`). Test `[lrcore][api]`.
+- [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims) — see `.claude/LESSONS.md`.
 
 ## Phase 5 — Speed & algorithms program [FINAL — ranked from literature report]
 

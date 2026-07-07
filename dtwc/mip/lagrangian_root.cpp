@@ -30,8 +30,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <limits>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 namespace dtwc::mip {
@@ -475,15 +477,184 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
 #endif
 }
 
-LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params)
+LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
+                                       double initial_ub, const LagrangianParams &params)
 {
-  const int N = static_cast<int>(prob.size());
-  const int k = static_cast<int>(prob.n_clusters());
-  if (N <= 0) throw InvalidInput("lagrangian_root(Problem): no data set");
+  // 1. Root Lagrangian dual + primal. Prefer the Kelley cutting-plane root when
+  //    HiGHS is present: it certifies to machine precision where the subgradient
+  //    stalls, so far more instances close at the root (0 B&B nodes). Without
+  //    HiGHS the solver-free subgradient root is used and the B&B closes the gap.
+  //    If it already certifies, the tree is a single node — return immediately.
+#ifdef DTWC_ENABLE_HIGHS
+  LagrangianResult root = lagrangian_root_kelley(D, N, k, initial_ub, params);
+#else
+  LagrangianResult root = lagrangian_root(D, N, k, initial_ub, params);
+#endif
+  if (root.certified_optimal) { root.nodes = 0; return root; }
+
+  const std::size_t Nz = static_cast<std::size_t>(N);
+  const double inf = std::numeric_limits<double>::infinity();
+
+  // 2. Recompute ρ* and Σμ* at the root multipliers (the fixed dual we bound with).
+  const std::vector<double> &mu = root.multipliers;
+  double sum_mu = 0.0;
+  for (int j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
+  std::vector<double> rho(Nz, 0.0);
+  for (int i = 0; i < N; ++i) {
+    const double *Di = D + static_cast<std::size_t>(i) * Nz;
+    double s = 0.0;
+    for (int j = 0; j < N; ++j) {
+      const double dd = Di[j] - mu[static_cast<std::size_t>(j)];
+      if (dd < 0.0) s += dd;
+    }
+    rho[static_cast<std::size_t>(i)] = s;
+  }
+
+  // 3. Reduced-cost fixing (Task 4.2): the optimum ⊆ core, and fixed_open ⊆ every
+  //    optimum. Pre-open the proven-open facilities; branch only over the rest.
+  //    Use the dual value CONSISTENT with this ρ*, i.e. L(μ*) = Σμ* + Σ_{k
+  //    smallest ρ*}, NOT root.lower_bound: the Kelley stability centre μ* can
+  //    trail best_lb by a hair (serious-step threshold), and pairing a larger LB
+  //    with this ρ* would OVER-fix and could drop an optimal medoid from the core.
+  //    L(μ*) ≤ best_lb ⇒ fixing is weaker but provably valid (never loses the optimum).
+  double lb_star = sum_mu;
+  {
+    std::vector<double> rho_sorted = rho;
+    std::nth_element(rho_sorted.begin(), rho_sorted.begin() + (k - 1), rho_sorted.end());
+    for (int t = 0; t < k; ++t) lb_star += rho_sorted[static_cast<std::size_t>(t)];
+  }
+  root.lower_bound = std::max(root.lower_bound, lb_star); // keep the tighter valid LB for reporting.
+  const FixingResult fx = reduced_cost_fixing(rho, k, lb_star, root.upper_bound);
+  const std::vector<int> forced = fx.fixed_open;
+  std::vector<char> is_forced(Nz, 0);
+  for (int f : forced) is_forced[static_cast<std::size_t>(f)] = 1;
+  std::vector<int> cand;
+  cand.reserve(fx.core.size());
+  for (int c : fx.core)
+    if (!is_forced[static_cast<std::size_t>(c)]) cand.push_back(c);
+  // Sort branch candidates by ρ* ascending: the k−|forced| smallest form the LP's
+  // tentative open set, so the prefix is both the best incumbent guess and the
+  // tightest bound term.
+  std::sort(cand.begin(), cand.end(), [&](int a, int b) {
+    const double ra = rho[static_cast<std::size_t>(a)], rb = rho[static_cast<std::size_t>(b)];
+    return ra < rb || (ra == rb && a < b);
+  });
+  const int C = static_cast<int>(cand.size());
+  const int need = k - static_cast<int>(forced.size());
+
+  double forced_rho = 0.0;
+  for (int f : forced) forced_rho += rho[static_cast<std::size_t>(f)];
+  std::vector<double> csum(static_cast<std::size_t>(C) + 1, 0.0); // prefix sums of sorted cand ρ*.
+  for (int t = 0; t < C; ++t)
+    csum[static_cast<std::size_t>(t) + 1] = csum[static_cast<std::size_t>(t)]
+                                          + rho[cand[static_cast<std::size_t>(t)]];
+
+  // Actual p-median cost of an open set S (O(N·|S|)).
+  auto cost_of = [&](const std::vector<int> &S) {
+    double c = 0.0;
+    for (int j = 0; j < N; ++j) {
+      double best = inf;
+      for (int m : S)
+        best = std::min(best, D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)]);
+      c += best;
+    }
+    return c;
+  };
+
+  double best_cost = root.upper_bound;
+  std::vector<int> best_medoids = root.medoids;
+  const double tol = 1e-9 * (1.0 + std::abs(best_cost));
+
+  // 4. DFS branch-and-bound on the open/close decision of one candidate at a time.
+  struct Frame { int pos; int opened; double opened_rho; std::vector<int> S; };
+  std::vector<Frame> stack;
+  stack.push_back({ 0, 0, 0.0, {} });
+  long nodes = 0;
+  bool capped = false;
+
+  while (!stack.empty()) {
+    if (nodes >= params.max_nodes) { capped = true; break; }
+    Frame fr = std::move(stack.back());
+    stack.pop_back();
+    ++nodes;
+
+    const int remaining_need = need - fr.opened;
+    if (remaining_need == 0) { // leaf: all k chosen ⇒ evaluate the exact cost.
+      std::vector<int> S = forced;
+      S.insert(S.end(), fr.S.begin(), fr.S.end());
+      const double c = cost_of(S);
+      if (c < best_cost - tol) { best_cost = c; best_medoids = std::move(S); }
+      continue;
+    }
+    const int rem = C - fr.pos;
+    if (rem < remaining_need) continue; // not enough candidates left ⇒ infeasible.
+
+    // Node bound: fixed-dual value with the remaining_need SMALLEST candidate ρ*
+    // (the sorted-ascending prefix). Valid: Σμ* + Σ_S ρ*_i ≤ cost(S) for every S.
+    const double node_lb = sum_mu + forced_rho + fr.opened_rho
+                         + (csum[static_cast<std::size_t>(fr.pos) + static_cast<std::size_t>(remaining_need)]
+                            - csum[static_cast<std::size_t>(fr.pos)]);
+    if (node_lb >= best_cost - tol) continue; // prune.
+
+    // Branch on cand[pos]: push the SKIP child first so the OPEN child is explored
+    // first (drives strong incumbents early).
+    stack.push_back({ fr.pos + 1, fr.opened, fr.opened_rho, fr.S });
+    std::vector<int> S_open = fr.S;
+    S_open.push_back(cand[static_cast<std::size_t>(fr.pos)]);
+    stack.push_back({ fr.pos + 1, fr.opened + 1,
+                      fr.opened_rho + rho[cand[static_cast<std::size_t>(fr.pos)]],
+                      std::move(S_open) });
+  }
+
+  // 5. Assemble the result. On completion the incumbent is the proven optimum.
+  std::sort(best_medoids.begin(), best_medoids.end());
+  LagrangianResult r = root;                 // keep μ, iterations, core, n_core.
+  r.medoids = best_medoids;
+  r.labels.assign(Nz, best_medoids.empty() ? 0 : best_medoids[0]);
+  for (int j = 0; j < N; ++j) {
+    double bd = inf;
+    int bm = best_medoids.empty() ? 0 : best_medoids[0];
+    for (int m : best_medoids) {
+      const double d = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
+      if (d < bd) { bd = d; bm = m; }
+    }
+    r.labels[static_cast<std::size_t>(j)] = bm;
+  }
+  r.upper_bound = best_cost;
+  r.nodes = nodes;
+  if (capped) {
+    // Node cap hit before the tree closed — report best-so-far, NEVER a silent
+    // wrong "optimal". lower_bound stays the valid root bound.
+    r.lower_bound = root.lower_bound;
+    const double denom = std::max(std::abs(best_cost), kEps);
+    r.gap = (best_cost - r.lower_bound) / denom;
+    r.certified_optimal = false;
+    std::fprintf(stderr,
+                 "lagrangian_root_exact: node cap %ld reached at N=%d k=%d before the tree "
+                 "closed; returning best incumbent (cost %.10g, gap %.3e) UNCERTIFIED. "
+                 "Raise params.max_nodes or use an exact MIP solver for a certificate.\n",
+                 params.max_nodes, N, k, best_cost, r.gap);
+  } else {
+    r.lower_bound = best_cost; // tree fully explored ⇒ incumbent is optimal.
+    r.gap = 0.0;
+    r.certified_optimal = true;
+  }
+  return r;
+}
+
+namespace {
+/// Shared Problem→dense-D preparation for the Problem-facing entry points: fills
+/// the distance matrix if needed, seeds an upper bound from the in-repo k-medoids
+/// heuristic (FastPAM/Lloyd), and materializes a row-major copy of D. Sets @p N,
+/// @p k, @p D; returns the seed UB (or -1 if unavailable).
+double prepare_dense_D(Problem &prob, int &N, int &k, std::vector<double> &D)
+{
+  N = static_cast<int>(prob.size());
+  k = static_cast<int>(prob.n_clusters());
+  if (N <= 0) throw InvalidInput("LR-core (Problem): no data set");
 
   if (!prob.is_distance_matrix_filled()) prob.fill_distance_matrix();
 
-  // Seed the upper bound with the in-repo k-medoids heuristic (FastPAM/Lloyd).
   double ub = -1.0;
   prob.cluster_by_kmedoids_lloyd();
   if (static_cast<int>(prob.centroids_ind.size()) == k
@@ -493,14 +664,52 @@ LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params)
     ub = c;
   }
 
-  // Materialize a dense row-major copy of D for the streaming solver.
-  std::vector<double> D(static_cast<std::size_t>(N) * static_cast<std::size_t>(N), 0.0);
+  D.assign(static_cast<std::size_t>(N) * static_cast<std::size_t>(N), 0.0);
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
       D[static_cast<std::size_t>(i) * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)]
         = static_cast<double>(prob.dist_by_ind(i, j));
+  return ub;
+}
+} // namespace
 
+LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params)
+{
+  int N = 0, k = 0;
+  std::vector<double> D;
+  const double ub = prepare_dense_D(prob, N, k, D);
   return lagrangian_root(D.data(), N, k, ub, params);
 }
 
 } // namespace dtwc::mip
+
+namespace dtwc {
+
+void LR_core_clustering(Problem &prob)
+{
+  int N = 0, k = 0;
+  std::vector<double> D;
+  const double ub = mip::prepare_dense_D(prob, N, k, D);
+
+  // Trivial k handled by the exact solver directly (k==N ⇒ all medoids; k==1 ⇒
+  // the 1-medoid) — no special-casing needed, the B&B certifies them at the root.
+  const mip::LagrangianResult r = mip::lagrangian_root_exact(D.data(), N, k, ub);
+
+  // Write the proven-optimal solution back in Problem's convention: centroids_ind
+  // holds the medoid POINT indices; clusters_ind[j] is the 0..k-1 index of j's
+  // medoid within centroids_ind (mirrors MIP_clustering_byBenders' final block).
+  prob.centroids_ind = r.medoids;
+  prob.clusters_ind.assign(static_cast<std::size_t>(N), 0);
+  for (int j = 0; j < N; ++j) {
+    double bd = std::numeric_limits<double>::infinity();
+    int bc = 0;
+    for (int c = 0; c < static_cast<int>(r.medoids.size()); ++c) {
+      const double d = D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
+                         * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
+      if (d < bd) { bd = d; bc = c; }
+    }
+    prob.clusters_ind[static_cast<std::size_t>(j)] = bc;
+  }
+}
+
+} // namespace dtwc

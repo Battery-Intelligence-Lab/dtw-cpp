@@ -44,6 +44,7 @@
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 using dtwc::mip::lagrangian_root;
+using dtwc::mip::lagrangian_root_exact;
 using dtwc::mip::lagrangian_root_kelley;
 using dtwc::mip::LagrangianResult;
 
@@ -303,6 +304,57 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
 }
 
 // ===========================================================================
+// EXACT (Task 4.3) — LR-bounded branch-and-bound on y over the core certifies
+// the TRUE optimum on every instance (the primary 4.3 gate: matches proven
+// optima 1e-6 rel), and the tree engages on the adversarial regime.
+// ===========================================================================
+TEST_CASE("Exact LR-core B&B certifies the optimum on clustered data", "[lagrangian][exact]")
+{
+  for (unsigned seed = 1; seed <= 8; ++seed) {
+    const int N = 12, k = 3;
+    const auto pos = clustered_positions(N, k, 6000 + seed);
+    const auto D = D_from_positions(pos);
+    const auto orc = brute_force_pmedian(D, N, k);
+
+    const LagrangianResult ex = lagrangian_root_exact(D.data(), N, k, -1.0);
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
+    INFO("seed=" << seed << " oracle=" << orc.cost << " exact_UB=" << ex.upper_bound
+                 << " exact_LB=" << ex.lower_bound << " nodes=" << ex.nodes);
+    REQUIRE(ex.certified_optimal);                            // proven optimal.
+    REQUIRE_THAT(ex.upper_bound, WithinAbs(orc.cost, tol));   // == the true optimum.
+    REQUIRE_THAT(ex.lower_bound, WithinAbs(ex.upper_bound, tol)); // gap closed.
+    REQUIRE_THAT(cost_of(ex.medoids, D, N), WithinAbs(orc.cost, tol)); // medoids realise it.
+  }
+}
+
+TEST_CASE("Exact LR-core B&B matches the oracle on the adversarial regime", "[lagrangian][exact]")
+{
+  int checked = 0, engaged = 0;
+  long total_nodes = 0;
+  for (unsigned seed = 1; seed <= 24; ++seed) {
+    const int N = 12 + static_cast<int>(seed % 3); // 12..14
+    const int k = 3 + static_cast<int>(seed % 2);  // 3..4
+    const auto D = uniform_D(N, 9000 + seed);      // uniform non-metric ⇒ nonzero integrality gap.
+    const auto orc = brute_force_pmedian(D, N, k);
+
+    const LagrangianResult ex = lagrangian_root_exact(D.data(), N, k, -1.0);
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
+    INFO("seed=" << seed << " N=" << N << " k=" << k << " oracle=" << orc.cost
+                 << " exact=" << ex.upper_bound << " nodes=" << ex.nodes);
+    REQUIRE(ex.certified_optimal);
+    REQUIRE_THAT(ex.upper_bound, WithinAbs(orc.cost, tol)); // exact even when the root gap is open.
+    REQUIRE_THAT(cost_of(ex.medoids, D, N), WithinAbs(orc.cost, tol));
+    total_nodes += ex.nodes;
+    if (ex.nodes > 0) ++engaged;
+    ++checked;
+  }
+  std::printf("[lagrangian][exact] adversarial: %d instances, tree engaged on %d, total nodes=%ld\n",
+              checked, engaged, total_nodes);
+  REQUIRE(checked == 24);
+  REQUIRE(engaged >= 1); // the branch-and-bound must actually run on the adversarial regime.
+}
+
+// ===========================================================================
 // KELLEY — the cutting-plane dual matches the optimum and certifies where the
 // subgradient stalls. Skips loudly if HiGHS is not compiled in.
 // ===========================================================================
@@ -386,6 +438,44 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
+// BENCH (Task 4.3 gate) — EXACT LR-core B&B vs compact MIP wall-time. Hidden [.]
+// ADVISORY. The 4.3 gate asks "beats their wall-time at N≥2000 OR FALSIFIED";
+// this records the number. On well-separated (real-world) data the root certifies
+// so the exact solve is a single node ≈ the LR root time.
+// ===========================================================================
+TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
+{
+  std::printf("\n   N    k | exact: ms   nodes  cert | MIP_ms   | agree | cost\n");
+  std::printf("  -------+-------------------------+----------+-------+------------\n");
+  for (int N : { 50, 100, 200, 400, 800 }) {
+    const int k = 3;
+    const auto pos = clustered_positions(N, k, 20240707u);
+    const auto D = D_from_positions(pos);
+
+    dtwc::Clock ex_clk;
+    const LagrangianResult ex = lagrangian_root_exact(D.data(), N, k, -1.0);
+    const double ex_ms = ex_clk.duration() * 1000.0;
+
+    Problem prob = make_problem_1d(pos, k);
+    prob.set_solver(Solver::HiGHS);
+    dtwc::Clock mip_clk;
+    prob.cluster();
+    const double mip_ms = mip_clk.duration() * 1000.0;
+    const bool ok = has_solution(prob);
+    const double mip_cost = ok ? cost_of(prob.centroids_ind, D, N) : std::nan("");
+    const bool agree = ok && std::abs(mip_cost - ex.upper_bound) <= 1e-6 * std::max(1.0, ex.upper_bound);
+
+    std::printf("  %4d  %2d | %8.1f %6ld  %s | %8.1f | %-5s | %-.5f\n",
+                N, k, ex_ms, ex.nodes, ex.certified_optimal ? "yes" : "NO ", mip_ms,
+                ok ? (agree ? "yes" : "NO") : "n/a", ex.upper_bound);
+  }
+  std::printf("\n  (ADVISORY — shared machine. On clustered data the root certifies (0 nodes)\n"
+              "   so exact ≈ LR root time; the adversarial large-N regime may FALSIFY the\n"
+              "   wall-time clause — LR root still ships as the bound/certificate tool.)\n\n");
+  SUCCEED();
+}
+
+// ===========================================================================
 // Problem overload end-to-end smoke.
 // ===========================================================================
 TEST_CASE("Lagrangian root Problem overload runs end-to-end", "[lagrangian][problem]")
@@ -403,4 +493,34 @@ TEST_CASE("Lagrangian root Problem overload runs end-to-end", "[lagrangian][prob
   REQUIRE(r.lower_bound <= orc.cost + 1e-6);
   REQUIRE(r.upper_bound >= orc.cost - 1e-6);
   REQUIRE(r.n_core >= k); // survivors include the k open medoids
+}
+
+// ===========================================================================
+// API (Task 4.4) — Method::LRCore drives Problem::cluster() to the exact optimum.
+// ===========================================================================
+TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangian][lrcore][api]")
+{
+  for (unsigned seed = 1; seed <= 6; ++seed) {
+    const int k = 3, N = 12;
+    const auto pos = clustered_positions(N, k, 4200 + seed);
+    const auto D = D_from_positions(pos);
+    const auto orc = brute_force_pmedian(D, N, k);
+
+    Problem prob = make_problem_1d(pos, k);
+    prob.method = Method::LRCore;
+    prob.cluster();
+
+    REQUIRE(static_cast<int>(prob.centroids_ind.size()) == k);
+    REQUIRE(static_cast<int>(prob.clusters_ind.size()) == N);
+    // centroids_ind holds medoid point indices; its cost must be the optimum.
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost));
+    INFO("seed=" << seed << " oracle=" << orc.cost
+                 << " lrcore=" << cost_of(prob.centroids_ind, D, N));
+    REQUIRE_THAT(cost_of(prob.centroids_ind, D, N), WithinAbs(orc.cost, tol));
+    // clusters_ind[j] indexes into centroids_ind ⇒ each label is a valid cluster.
+    for (int j = 0; j < N; ++j) {
+      REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] >= 0);
+      REQUIRE(prob.clusters_ind[static_cast<std::size_t>(j)] < k);
+    }
+  }
 }

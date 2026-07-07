@@ -138,7 +138,8 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::enum_<dtwc::Method>(m, "Method")
     .value("Kmedoids", dtwc::Method::Kmedoids)
-    .value("MIP", dtwc::Method::MIP);
+    .value("MIP", dtwc::Method::MIP)
+    .value("LRCore", dtwc::Method::LRCore);
 
   nb::enum_<dtwc::Solver>(m, "Solver")
     .value("Gurobi", dtwc::Solver::Gurobi)

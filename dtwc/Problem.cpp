@@ -520,6 +520,9 @@ void Problem::cluster()
   case Method::MIP:
     cluster_by_mip();
     break;
+  case Method::LRCore:
+    LR_core_clustering(*this);
+    break;
   }
 }
 

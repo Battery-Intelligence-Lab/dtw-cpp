@@ -49,6 +49,7 @@ struct LagrangianParams
   double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
   int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
   int kelley_max_major = 500;  ///< Cutting-plane (Kelley) variant only: cap on major iterations (each adds one cut + re-solves the small master LP).
+  long max_nodes = 2000000;    ///< Exact B&B (lagrangian_root_exact) only: cap on branch-and-bound nodes before giving up (returns best-so-far, certified_optimal=false — never silent).
 };
 
 /// @brief Result of a Lagrangian-root solve. Bounds are in RAW distance units
@@ -63,9 +64,10 @@ struct LagrangianResult
   std::vector<int> medoids;         ///< k medoid point indices of the best primal (ascending).
   std::vector<int> labels;          ///< labels[j] = medoid POINT INDEX serving point j.
   std::vector<double> multipliers;  ///< μ at termination (size N).
-  int iterations = 0;               ///< subgradient iterations actually run.
+  int iterations = 0;               ///< subgradient iterations actually run (root dual).
   int n_core = 0;                   ///< candidate medoids surviving reduced-cost fixing (≤ N) = core.size().
   std::vector<int> core;            ///< the surviving candidate facilities (Task 4.2), ascending; consumed by 4.3.
+  long nodes = 0;                   ///< exact B&B nodes explored (lagrangian_root_exact); 0 for the bound-only routines.
 };
 
 /**
@@ -105,6 +107,36 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
 LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
                                         double initial_ub = -1.0,
                                         const LagrangianParams &params = {});
+
+/**
+ * @brief EXACT p-median solve: LR-bounded branch-and-bound on y over the core —
+ *        "core Benders with y-only branching" (PLAN.md Phase 4, Task 4.3).
+ *
+ * @details The Lagrangian dual (Task 4.1) already equals the LP/Benders master
+ * bound (Geoffrion), obtained matrix-free — so there is no N²-column master to
+ * re-solve per round. This routine solves the root dual once, applies
+ * reduced-cost fixing (Task 4.2) to obtain the candidate `core` and the facilities
+ * proven open in every optimum, then closes any residual integrality gap by
+ * branch-and-bound that branches on the open/close (y) decision of a single
+ * candidate at a time. Each node's lower bound is the fixed-root-dual value
+ * `Σμ* + Σ_{S}ρ*_i ≤ cost(S)` (valid for every candidate open set S), so a node
+ * is pruned as soon as its bound reaches the incumbent. Because the optimum is
+ * a subset of the core (reduced-cost fixing never removes an optimal medoid,
+ * verified in tests), the tree is exact.
+ *
+ * On well-separated data the root certifies immediately and the tree is a single
+ * node (the P1 regime). On the adversarial regime (uniform non-metric D, large
+ * integrality gap) the tree can grow; @p params.max_nodes caps it and the routine
+ * then returns the best incumbent with `certified_optimal = false` (never a silent
+ * wrong answer).
+ *
+ * @param D,N,k,initial_ub,params  As lagrangian_root; uses params.max_nodes.
+ * @return `certified_optimal = true` and `lower_bound == upper_bound == optimum`
+ *         when the tree is fully explored within the node cap.
+ */
+LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
+                                       double initial_ub = -1.0,
+                                       const LagrangianParams &params = {});
 
 /**
  * @brief Lagrangian root bound for a Problem: fills the distance matrix (if

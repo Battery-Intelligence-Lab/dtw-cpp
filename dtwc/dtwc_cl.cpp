@@ -1020,6 +1020,20 @@ int main(int argc, char *argv[])
     if (verbose)
       std::cout << "MIP clustering finished, cost=" << result.total_cost
                 << " [" << clk << "]\n";
+  } else if (method == "lrcore" || method == "lr") {
+    // LR-core exact (Lagrangian bound + reduced-cost fixing + y-branching).
+    prob.set_numberOfClusters(n_clusters);
+    prob.method = dtwc::Method::LRCore;
+    prob.cluster();
+
+    result.labels = prob.clusters_ind;
+    result.medoid_indices = prob.centroids_ind;
+    result.total_cost = prob.findTotalCost();
+    result.converged = true;
+
+    if (verbose)
+      std::cout << "LR-core clustering finished, cost=" << result.total_cost
+                << " [" << clk << "]\n";
   } else if (method == "hierarchical") {
     // Agglomerative hierarchical clustering
     if (verbose)
