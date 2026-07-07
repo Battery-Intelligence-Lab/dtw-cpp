@@ -12,6 +12,7 @@ target_sources(dtwc++
   Problem.cpp
   Problem_IO.cpp
   checkpoint.cpp
+  env.cpp
   initialisation.cpp
   scores.cpp
   core/dtw.cpp
@@ -28,6 +29,7 @@ target_sources(dtwc++
   checkpoint.hpp
   dtwc.hpp
   distance.hpp
+  env.hpp
   fileOperations.hpp
   initialisation.hpp
   parallelisation.hpp
