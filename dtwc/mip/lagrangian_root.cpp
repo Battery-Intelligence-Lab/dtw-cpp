@@ -17,6 +17,8 @@
 
 #include "lagrangian_root.hpp"
 
+#include "reduced_cost_fixing.hpp"
+
 #include "../error.hpp"
 #include "../parallelisation.hpp"
 #include "../Problem.hpp"
@@ -185,7 +187,7 @@ LagrangianResult finalize(const double *D, int N, int k, double best_lb,
                           double best_primal, double seed_ub,
                           std::vector<int> best_medoids, std::vector<int> best_labels,
                           std::vector<double> mu, const std::vector<double> &rho_at_best,
-                          double rhok_at_best, int iterations, double rel_gap_tol)
+                          int iterations, double rel_gap_tol)
 {
   const double inf = std::numeric_limits<double>::infinity();
   if (!best_medoids.empty()) {
@@ -198,11 +200,11 @@ LagrangianResult finalize(const double *D, int N, int k, double best_lb,
     }
   }
   const double fix_ub = std::min(best_primal, seed_ub);
-  int n_core = 0;
-  for (int i = 0; i < N; ++i) {
-    const double extra = rho_at_best[static_cast<std::size_t>(i)] - rhok_at_best; // ≥ 0 for i ∉ S_k.
-    if (!(best_lb + std::max(0.0, extra) > fix_ub)) ++n_core;
-  }
+  // Beasley reduced-cost fixing on the dual state at best_lb (Task 4.2). Uses the
+  // RAW best_lb (not the display-clamped value below): with best_lb = -inf the
+  // module correctly fixes nothing. rho_at_best/k determine S_k internally.
+  FixingResult fix = reduced_cost_fixing(rho_at_best, k, best_lb, fix_ub);
+
   LagrangianResult r;
   r.lower_bound = (best_lb == -inf) ? 0.0 : best_lb;
   r.upper_bound = best_primal;
@@ -213,7 +215,8 @@ LagrangianResult finalize(const double *D, int N, int k, double best_lb,
   r.labels = std::move(best_labels);
   r.multipliers = std::move(mu);
   r.iterations = iterations;
-  r.n_core = n_core;
+  r.core = std::move(fix.core);
+  r.n_core = static_cast<int>(r.core.size());
   return r;
 }
 } // namespace
@@ -244,10 +247,9 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   const double seed_ub = (initial_ub > 0.0) ? initial_ub : inf; // external heuristic UB (step target only).
   std::vector<int> best_medoids, best_labels;
 
-  // Snapshot of (ρ, ρ_(k)) at the μ that produced best_lb — the valid triple for
-  // reduced-cost fixing (LB + (ρ_i − ρ_(k)) > UB ⇒ facility i cannot be open).
+  // Snapshot of ρ at the μ that produced best_lb — the state reduced-cost fixing
+  // consumes (LB + (ρ_i − ρ_(k)) > UB ⇒ facility i cannot be open; Task 4.2).
   std::vector<double> rho_at_best(Nz, 0.0);
-  double rhok_at_best = 0.0;
 
   double lambda = params.lambda0;
   int stall = 0;
@@ -266,7 +268,6 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
     if (L > best_lb) {
       best_lb = L;
       rho_at_best = rho;      // snapshot for reduced-cost fixing.
-      rhok_at_best = rho_k;
       stall = 0;
     } else {
       ++stall;
@@ -332,7 +333,7 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   }
 
   return finalize(D, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids),
-                  std::move(best_labels), std::move(mu), rho_at_best, rhok_at_best,
+                  std::move(best_labels), std::move(mu), rho_at_best,
                   iter, params.rel_gap_tol);
 }
 
@@ -365,7 +366,6 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
   const double seed_ub = (initial_ub > 0.0) ? initial_ub : inf;
   std::vector<int> best_medoids, best_labels;
   std::vector<double> rho_at_best(Nz, 0.0);
-  double rhok_at_best = 0.0;
 
   (void)omp_chunk_size(N, 8); // Task 3.6 loudness.
 
@@ -420,7 +420,6 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
   double rho_k = 0.0;
   best_lb = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
   rho_at_best = rho;
-  rhok_at_best = rho_k;
   try_primal(D, N, Nz, k, idx, /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
   highs.changeColBounds(static_cast<HighsInt>(N), -kHighsInf, best_primal); // θ ≤ UB
   add_cut(best_lb);
@@ -452,7 +451,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
     }
     add_cut(L_new);
 
-    if (L_new > best_lb) { best_lb = L_new; rho_at_best = rho; rhok_at_best = rho_k; }
+    if (L_new > best_lb) { best_lb = L_new; rho_at_best = rho; }
     if (L_new > L_hat + 1e-12 * std::max(1.0, std::abs(L_hat))) {
       mu_hat = mu;               // serious step: move centre, grow the region.
       L_hat = L_new;
@@ -471,7 +470,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
   }
 
   return finalize(D, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids),
-                  std::move(best_labels), std::move(mu_hat), rho_at_best, rhok_at_best,
+                  std::move(best_labels), std::move(mu_hat), rho_at_best,
                   major, params.rel_gap_tol);
 #endif
 }

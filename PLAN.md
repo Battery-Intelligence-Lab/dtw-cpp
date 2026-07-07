@@ -419,11 +419,13 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 - [x] **Cutting-plane dual ("the right tool", commit `8375aef`):** `dtwc::mip::lagrangian_root_kelley` — same bound via a stabilized (boxstep trust-region) Kelley cutting-plane over the N-dim μ dual (tiny warm-started LP master, needs HiGHS). Converges FINITELY where the subgradient stalls: N=800 goes 4000 iters/5.8e-5 (subgradient) → **15 major iters/6.6e-14** (Kelley), ~64× faster, ~1000× vs compact MIP; major-iter count ~15 flat in N. Shared oracle/primal/finalize refactor. (Unstabilized Kelley verified to stall — boxstep is essential.) The subgradient stays the solver-free default.
 - [ ] NOTE: not yet wired into `Problem::cluster()` / `Method::LRCore` — that is Task 4.4. Standalone solvers + comparison only so far. Task 4.4 should default to Kelley when HiGHS is present (tight bound, finite convergence) and fall back to the subgradient otherwise.
 
-### Task 4.2: Reduced-cost fixing
+### Task 4.2: Reduced-cost fixing [DONE 2026-07-07]
 
-**Files:** Create: `dtwc/mip/reduced_cost_fixing.{hpp,cpp}` (Beasley-style, driven by 4.1 multipliers).
-- [ ] Registered band **P2**: when root gap ≤1%, fixing eliminates ≥80% of candidate medoids.
-- [ ] Test: every fixed-out medoid verified absent from the brute-force optimum on N≤14 instances.
+**Files:** Created: `dtwc/mip/reduced_cost_fixing.{hpp,cpp}` (Beasley-style, driven by 4.1 dual state), `tests/unit/mip/test_reduced_cost_fixing.cpp`. `LagrangianResult` gains `core` (survivor list, `n_core = core.size()`); `lagrangian_root::finalize` now computes it via the module (inline count removed — one path).
+
+- [x] Two exact conditional tests: force-open `LB+(ρ_i−ρ_(k))>UB ⇒ close i`; force-close `LB+(ρ_(k+1)−ρ_i)>UB ⇒ open i`. Sort-based S_k for deterministic tie handling. Returns `{core, fixed_closed, fixed_open}`. **Numerical guard:** fix only when the bound clears UB by `tol=1e-9·(1+max(|LB|,|UB|))` — without it a certified instance (gap≈0) whose ρ ties ρ_(k) (a legit alternative optimum) is wrongly fixed by a few-ULP `>`. That bug was caught by the correctness test (N=14,k=2) and fixed before merge.
+- [x] Test (correctness, HARD gate): every `fixed_closed` verified ABSENT and every `fixed_open` verified PRESENT in the brute-force optimum on 80 non-degenerate N≤14 instances (clustered + uniform). ctest 88/88.
+- [x] Registered band **P2** (gap≤1% ⇒ ≥80% eliminated for ≥90% of instances): **FALSIFIED as a universal floor, CONFIRMED in the mean.** 36 qualifying clustered instances → mean elim **80.3%**, min **73.3%**, 77.8% reach ≥80%. Cause: within-cluster alternative optima sit in the ≈0-gap band and correctly survive. Recorded, not rescue-tuned (CLAUDE.md §3). Deliverable to 4.3: `result.core`.
 
 ### Task 4.3: Core Benders with y-only branching
 

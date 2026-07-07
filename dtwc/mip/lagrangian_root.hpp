@@ -64,7 +64,8 @@ struct LagrangianResult
   std::vector<int> labels;          ///< labels[j] = medoid POINT INDEX serving point j.
   std::vector<double> multipliers;  ///< μ at termination (size N).
   int iterations = 0;               ///< subgradient iterations actually run.
-  int n_core = 0;                   ///< candidate medoids surviving reduced-cost fixing (≤ N).
+  int n_core = 0;                   ///< candidate medoids surviving reduced-cost fixing (≤ N) = core.size().
+  std::vector<int> core;            ///< the surviving candidate facilities (Task 4.2), ascending; consumed by 4.3.
 };
 
 /**
