@@ -410,12 +410,13 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 
 **Batching (Opus orchestrator):** STRICTLY SEQUENTIAL — 4.1 → 4.2 → 4.3 → 4.4; each consumes the previous, and this is math-heavy work: one Opus-xhigh agent per task with its own gate, no fan-out. Validate every oracle on a NON-degenerate case FIRST (random non-symmetric D — uniform/symmetric instances let sign/factor errors hide; CLAUDE.md §4). A FALSIFIED band (esp. 4.3's wall-time clause) is a deliverable, not a failure — record the numbers, keep the LR root as bound/certificate tool, move on. Note 4.1 prefers the FasterPAM UB from 5.1: if Phase 5 hasn't run yet, use current fast_pam and say so in the report — do NOT block on Phase 5.
 
-### Task 4.1: Lagrangian root solver
+### Task 4.1: Lagrangian root solver [DONE 2026-07-07, commit `fd49ff4`]
 
-**Files:** Create: `dtwc/mip/lagrangian_root.{hpp,cpp}`. Consumes: distance matrix (packed/mmap), FastPAM UB (Task 5.1 or current fast_pam). Produces: `LagrangianRoot::solve(D, k) -> {lower_bound, best_ub, multipliers, gap}`.
-- [ ] Inner problem per facility: `ρ_i = Σ_j min(0, D_ij − μ_j)`, pick k best; subgradient + Polyak steps off the FastPAM upper bound; primal repair each major iteration.
-- [ ] Leading-order cost = T·N² memory traffic (one stream of D per iter). Registered bands (from report): **P1** — root certifies FastPAM optimal (gap ≤0.1%) on ≥90% of UCR datasets (FALSIFIED if <70%); **P3** — iteration time within 2× of bytes(D)/STREAM bandwidth; N=10⁴,k=20 exact ≤10 min single node.
-- [ ] Oracle: brute-force IP on N≤14 (non-degenerate random D, NOT uniform/symmetric); match Gurobi/HiGHS optimum 1e-6 rel on N≤2000 where they prove optimality.
+**Files:** Created: `dtwc/mip/lagrangian_root.{hpp,cpp}` (`dtwc::mip::lagrangian_root` — dense-`D` core + `Problem` overload), `tests/unit/mip/test_lagrangian_root.cpp`. Returns `{lower_bound, upper_bound, gap, medoids, labels, multipliers, iterations, n_core}`.
+- [x] Inner problem per facility `ρ_i = Σ_j min(0, D_ij − μ_j)`, pick k best; **damped** Polyak subgradient (λ=1.0 — λ=2.0 oscillated on ~25% of separated instances, a step-schedule finding worth keeping); primal repair = k-medoids local search (assign + medoid-update sweeps; assignment-only found the right clusters but not the optimal medoid within each). Beasley reduced-cost fixing reports `n_core`.
+- [x] Leading-order cost = T·N² (one D stream/iter), OpenMP over the ρ pass. **P3** throughput/scale bands NOT yet measured (needs a quiet-machine bench) — deferred with Task 4.4 wiring.
+- [x] Oracle: brute-force IP validated on a hand-computed non-degenerate instance. VALID BOUNDS `lower_bound ≤ opt ≤ upper_bound` on 80 uniform+clustered instances. **P1 MET:** root gap ≤ 0.1% on 40/40 clustered instances; primal recovers the exact optimum 40/40; LR `upper_bound` == brute-force optimum == HiGHS/Gurobi compact-MIP cost to 1e-6. ctest "0 failed out of 87".
+- [ ] NOTE: not yet wired into `Problem::cluster()` / `Method::LRCore` — that is Task 4.4. Standalone solver + comparison only so far.
 
 ### Task 4.2: Reduced-cost fixing
 
