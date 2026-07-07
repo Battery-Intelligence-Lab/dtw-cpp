@@ -1,4 +1,4 @@
-# Handoff 2026-07-07 — Phase 0 CLOSED, Phase 1 DONE, Phase 2 DONE
+# Handoff 2026-07-07 — Phases 0–3 CLOSED; Opus 4.8 takes over on grand plan (PLAN.md v1.0)
 
 ## Accomplished today
 
@@ -38,13 +38,22 @@ New OPEN residuals from Phase 2 gate (also in PLAN.md):
 
 Max 4 concurrent agents (5-hr limit; two session kills so far — resume protocol proven). Benchmarks ADVISORY ONLY (parallel workloads on machine). MATLAB installed (R2024b preferred). uv only. No silent fallbacks. Commits end with Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>. Orchestrator plans, Opus-xhigh subagents implement. PLAN.md owned by orchestrator only.
 
-## Phase 3 — FINAL (commit `0bab3c7`), wave A IN FLIGHT
+## Phase 3 — CLOSED 2026-07-07 (one follow-up: Task 3.6)
 
 **NEW FACT 2026-07-07:** local machine has nvcc 13.0 + NVIDIA RTX 4000 Ada (sm_89) — verified `where nvcc` + `nvidia-smi`. Stale 2026-06-01 "GPU fixes need separate CUDA box" OVERTURNED. CUDA compiles + runtime-verifies locally; Metal still needs macOS.
 
-Wave A DONE (run `wf_d43062ea-0a6`, one session-limit kill + successful resume): commits `c2f8e99` (3.1 OpenMP FATAL_ERROR + `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out + `DTWC_SEQUENTIAL_BUILD` macro), `3f4c755` (3.2 Env sequential warning + always-on GPU fallback warnings), `65df555` (3.4 CIBW wheel gate). Gate PASS: configure matrix a/b/c verbatim; ctest "0 tests failed out of 84" (78 non-skip floor); pytest 387; MATLAB 19/20/1. Orchestrator live-confirmed the single-thread warning on the real dtwc_cl binary. PLAN.md status commit `1ff2c6e`. Wave-A residuals in PLAN.md (MEX deliberately serial → Phase 6 strategy; MSVC branch + CIBW need CI).
+Wave A DONE (run `wf_d43062ea-0a6`): commits `c2f8e99` (3.1 OpenMP FATAL_ERROR + `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out), `3f4c755` (3.2 Env sequential warning + always-on GPU fallback warnings), `65df555` (3.4 CIBW wheel gate). Gate PASS; orchestrator live-confirmed the single-thread warning on the real dtwc_cl binary.
 
-Wave B IN FLIGHT: run `wf_abeeee64-25f` (task wacg6wy73) — 3.3 `dtwc.test` introspection API (header-only `dtwc/test_api.hpp`, 3 languages, proof-of-engagement) ∥ 3.5 CUDA enablement (build/cuda-verify, MSVC host for nvcc 13.0, CMAKE_CUDA_ARCHITECTURES 89;90; registered: test_cuda_correctness + test_cuda_lb_keogh RUN not-skipped, 0 fail on the RTX 4000) → gate → commits → Phase 3 adversarial review agent.
-Resume after kill: `Workflow({scriptPath: 'C:\Users\engs2321\.claude\projects\C--D-git-dtw-cpp\b3179291-e4e2-417f-929b-4f8596c78042\workflows\scripts\phase3-wave-b-wf_abeeee64-25f.js', resumeFromRunId: 'wf_abeeee64-25f'})`. On kill: `git status`, revert only dead agents' partials, keep completed edits.
+Wave B DONE (run `wf_abeeee64-25f`): commits `ad34b6a` (3.3 dtwc.test introspection API, 3 languages) + `ecc522c` (3.5 CUDA). Gate PASS: baseline ctest "0 tests failed out of 85" (79 non-skip); **CUDA first-ever runtime verification** — build/cuda-verify "0 tests failed out of 2", verbatim "All tests passed (7312 assertions in 55 test cases)" / "(688 assertions in 8 test cases)"; pytest 390/10; MATLAB 19/20/6/1 (serial MEX honestly reports pass=0). Orchestrator independently re-ran CUDA ctest ("0 tests failed out of 2") + live `dtwcpp.test.parallelisation()` ({available: True, threads_engaged: 24, pass: True}). Run-log artifact: `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`.
 
-After Phase 3: triage review findings, close Phase 3 in PLAN.md → Phase 4 LR-core (FINAL, registered P1–P4), Phase 5 speed (FasterPAM first), Phases 6–7.
+Adversarial review triage (Fable): **H1 CONFIRMED → Task 3.6** (RuntimeSingleThread silent fallback survives on Python-compute + direct-C++ paths — Env-ctor-only warning; spec in PLAN.md); **M1 upheld → fixed** (ecc522c CHANGELOG over-claim reworded + artifact committed); **L1 upheld → folded into Task 6.1** (1-vCPU proof-of-engagement blind spot). Review CLEAN on ODR, oracle non-degeneracy, un-gated fallbacks.
+
+## → OPUS 4.8 ORCHESTRATOR TAKES OVER FROM HERE (grand plan by Fable, 2026-07-07)
+
+**The single source of truth is `PLAN.md`.** Read, in order: header status block → §Execution protocol → §Orchestrator handoff (floors, workflow pattern, proven recipes/gotchas — everything session-critical is there, not here).
+
+**FIRST ACTION: Task 3.6** (PLAN.md Phase 3) — closes the H1 silent-fallback hole. One Opus-xhigh agent + gate. Blocks Phase 4.
+
+**Then the sequence:** Phase 4 LR-core (STRICTLY sequential 4.1→4.4, registered bands P1–P4, FALSIFIED is a deliverable) → Phase 5 speed (3 waves of ≤4 + 5.11 last; perf bands ADVISORY locally, digit-identity HARD) → Phase 6 packaging (6.0 residual burn-down first; CI runs need user-triggered push) → Phase 7 docs → Release v2.0.0 (PyPI only on explicit user go).
+
+**Standing user rules (verbatim spirit):** max 4 concurrent agents (5-hr limit); Opus-xhigh subagents implement, orchestrator plans/verifies/commits docs; PLAN.md orchestrator-owned (agents never stage it); benchmarks ADVISORY on this machine; uv only, never pip; no silent fallbacks; never write outside git root, data read-only; commits end `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>`; write a session handoff to `.claude/summaries/` before every session end.

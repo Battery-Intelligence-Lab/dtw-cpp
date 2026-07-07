@@ -2,7 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Status: DRAFT v0.1 — Phase 0 is final; Phases 1–7 are being filled in from research reports (`.claude/reports/*-2026-07-06.md`) as they land. Do not start Phase ≥1 tasks until this header says FINAL for that phase.**
+> **Status: v1.0 GRAND PLAN (2026-07-07, written by Fable for the Opus 4.8 orchestrator).**
+> Phases 0–2 DONE. Phase 3 wave A DONE, wave B IN FLIGHT at handoff — resume/verify it FIRST (see §Orchestrator handoff).
+> Phases 4–7 FINAL and executable as written. Read §Execution protocol + §Orchestrator handoff before dispatching any agent.
 
 **Goal:** Ship DTWC++ 2.0: a top-down redesigned, cross-language-consistent (C++/Python/MATLAB), device-selectable (cpu/gpu/hpc), zero-overhead, cross-platform DTW clustering library that is the fastest available for large-N workloads — with all 2026-06-01 audit criticals fixed, automated packaging (wheels + MEX + executables) for all platforms, and an improved exact solver.
 
@@ -45,6 +47,30 @@ Parallelisable: Phase 0 tasks are mutually independent (per-file). Phase 4 resea
 - Each task ends: build + run the named test gate + report delta vs recorded baseline. A task that cannot meet its gate reports FAILED with numbers — no silent partial completion.
 - After each phase: one adversarial review agent checks the phase's diff against this plan; findings triaged before next phase starts.
 - Orchestrator updates the checkboxes and the per-phase status lines in this file after verifying each agent's evidence.
+
+### Orchestrator handoff (Fable → Opus 4.8, 2026-07-07)
+
+Fable wrote this plan and orchestrated Phases 0–3A. An Opus 4.8 orchestrator continues from here. Contract unchanged: orchestrator plans/verifies/commits docs; Opus-xhigh implementation agents write the code; PLAN.md is orchestrator-owned (agents never stage it).
+
+**FIRST ACTION — Task 3.6** (Phase 3 adversarial-review finding H1, triaged CONFIRMED by Fable 2026-07-07): the RuntimeSingleThread silent-fallback hole on compute entry points. Spec in Phase 3 below. Do it BEFORE Phase 4 — it is a direct violation of the no-silent-fallback Global Constraint that survived Phase 3's own gate. Wave B itself is DONE and verified (commits `ad34b6a`, `ecc522c`); nothing to resume.
+
+**Test floors (regression bands — every later gate holds these or explains the delta with names). Re-recorded at Phase 3 close:**
+
+- ctest (`build/baseline-2026-07-06`, clang 21.1.8 + Ninja + Release, Gurobi+HiGHS ON, CUDA/Metal OFF): "0 tests failed out of 85", 79 non-skip; 6 documented skips (test_cuda_correctness, test_cuda_lb_keogh, test_io_readers, test_metal_correctness, test_metal_lb_keogh, test_metal_mmap).
+- CUDA (`build/cuda-verify`, MSVC host, RTX 4000 Ada): `ctest -R cuda` → "0 tests failed out of 2" — these two suites now RUN here, never skip-only. Run log: `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`.
+- pytest: "390 passed, 10 skipped" (fresh `.pyd` verified per the rebuild recipe below).
+- MATLAB `-batch` (gate used R2025b; R2024b also installed): validation 19/19, parity 20/20, test_api 6/6, conformance 1/1. `tests/matlab/test_dtwc.m` 12/14 is PRE-EXISTING (fix = Task 6.0c), not a gate failure. Serial MEX must report `parallelisation() pass=0` with a reason naming the sequential build — honest, not faked availability.
+- Conformance (permanent parity gate): labels/medoids digit-identical across all 4 routes; silhouette 0.96894972764334841, DB 0.038333333333333337, dunn 11.5 vs `tests/conformance/conformance_reference.txt` (≤1e-12 rel).
+
+**Workflow pattern (proven over 4 runs incl. 3 session-limit kills + clean resumes):** one Workflow-tool script per wave — impl agents (≤4 concurrent, disjoint file ownership, REPORT_SCHEMA `{taskId,status,filesTouched,testsAdded,changelogLines,notes}`) → one gate agent (GATE_SCHEMA `{verdict,testsPassed,testsFailed,testsSkipped,details}`; quotes decisive outputs VERBATIM; registered bands written into the script BEFORE launch) → repair loop ≤3 rounds on gate FAIL → one commit agent per task (conventional message + `Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>` trailer; never stages PLAN.md) → per phase, one adversarial review agent (REVIEW_SCHEMA `{verdict: CLEAN|FINDINGS, findings[{severity,file,claim,evidence}], notes}`) whose findings the orchestrator triages before the next phase. Prior wave scripts to crib from live in `C:\Users\engs2321\.claude\projects\C--D-git-dtw-cpp\b3179291-e4e2-417f-929b-4f8596c78042\workflows\scripts\`.
+
+**Proven recipes / gotchas:**
+
+- Build dirs: `build/baseline-2026-07-06` = canonical clang gate dir. `build/cfg-normal|cfg-noomp|cfg-seq` = 3.1 configure-matrix scratch. `build/mex-verify` = MEX, deliberately SERIAL (needs `-DDTWC_ALLOW_SEQUENTIAL=ON` since 3.1; MEX OpenMP decision = Task 6.2). `build/cuda-verify` = CUDA with MSVC host (nvcc 13.0 rejects clang 21; RTX 4000 Ada sm_89 is LOCAL — CUDA tests run live here, never inspection-only).
+- Python extension rebuild (from-scratch pip wheel BLOCKED by MSB3491 → Task 6.5): configure `build/cfg-gate-normal` with `-DDTWC_BUILD_PYTHON=ON -DDTWC_ENABLE_GUROBI=OFF -DDTWC_ENABLE_HIGHS=OFF` + venv Python; build target `_dtwcpp_core`; copy fresh `.pyd` + `libomp.dll` into venv site-packages; verify import + one NEW symbol before pytest (stale-.pyd false-greens are real).
+- `dtwc::Env` constructs only after CLI arg validation — runtime-loudness checks need a real `--input`; `--help` proves nothing.
+- clangd diagnostics on mex.h / nanobind includes = stale-PCH IDE noise; the arbiter is always the gate's fresh full rebuild.
+- Benchmarks ADVISORY ONLY on this machine (parallel workloads); hard perf verdicts need a quiet machine or CI. uv only, never pip. Max 4 concurrent agents (5-hr session limit). Never write outside the git root; data read-only. PyPI publish only on explicit user go.
 
 ---
 
@@ -286,7 +312,7 @@ Implements `docs/api-contract-2.0.md` verbatim. Known gaps to close (api-surface
 - [x] One fixture: load recorded dataset → banded DTW → fast_pam k=3, fixed seed → labels + medoids + 3 scores. Run from C++, Python, MATLAB (MATLAB skippable, loud), CLI. Assert digit-identical labels/medoids and scores equal to 1e-12 rel.
 - [x] This fixture is the permanent parity gate — wire into CI. Commit.
 
-## Phase 3 — Parallelism & GPU out-of-the-box [FINAL 2026-07-07 — wave A DONE, wave B in flight]
+## Phase 3 — Parallelism & GPU out-of-the-box [CLOSED 2026-07-07 — one follow-up: Task 3.6, do before Phase 4]
 
 **Wave A status (2026-07-07):** 3.1/3.2/3.4 done, committed `c2f8e99` (build: OpenMP FATAL_ERROR + opt-out), `3f4c755` (feat: Env sequential warning + always-on GPU fallback warnings), `65df555` (ci: CIBW wheel gate). Run `wf_d43062ea-0a6` (one session-limit kill; gate re-run on resume).
 
@@ -295,7 +321,22 @@ Implements `docs/api-contract-2.0.md` verbatim. Known gaps to close (api-surface
 - **Known-unverified**: MSVC `/openmp:experimental` direct-attach branch not exercisable locally (clang toolchain) — needs one MSVC CI run. 3.4's CIBW gate is NEEDS-CI-RUN (advisory until next push).
 - **Residuals surfaced by wave A:**
   - `build/mex-verify` is deliberately SERIAL (OpenMP disabled at Phase 2 to avoid MATLAB/libomp clash; now requires the explicit `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out). MATLAB users currently get single-threaded DTW — loud (3.2 warning + DTWC_SEQUENTIAL_BUILD) but slow. Decide MEX OpenMP strategy (MATLAB-bundled libomp? iomp?) in Phase 6.
-  - `dtwc_cl` "--input is required (via CLI or YAML config)" message says YAML where TOML is primary — cosmetic, fold into any later CLI touch.
+  - `dtwc_cl` "--input is required (via CLI or YAML config)" message says YAML where TOML is primary — cosmetic, fold into any later CLI touch (Task 6.0e).
+
+**Wave B status (2026-07-07):** 3.3 + 3.5 done, committed `ad34b6a` (3.3 dtwc.test API), `ecc522c` (3.5 CUDA verification). Run `wf_abeeee64-25f`. Gate PASS [confirmed — gate re-ran every suite itself; orchestrator independently re-ran CUDA ctest + Python live check]:
+
+- Baseline ctest verbatim "100% tests passed, 0 tests failed out of 85" (79 non-skip = 78 wave-A floor + test_test_api; 6 documented skips; no clustering flake).
+- **CUDA first-ever runtime verification on the local RTX 4000 Ada** — `build/cuda-verify` `ctest -R cuda` "0 tests failed out of 2"; binaries verbatim "All tests passed (7312 assertions in 55 test cases)" + "All tests passed (688 assertions in 8 test cases)". Gate also built test_test_api CUDA-ON: `gpu available=1 backend=cuda device_name="NVIDIA RTX 4000 Ada Generation (compute 8.9, 20474 MB)" validated=1 pass=1` (real kernel vs FP64 CPU oracle). Run log artifact: `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`.
+- Python: pytest "390 passed, 10 skipped" on fresh `.pyd`; live `dtwcpp.test.parallelisation()` = `{available: True, max_threads: 24, threads_engaged: 24, pass: True}`; `gpu()` on the CUDA-OFF baseline honestly returns `available: False` with an actionable reason string [confirmed — orchestrator re-ran both].
+- MATLAB (R2025b, serial MEX, fresh-MEX precedence verified): 19/19, 20/20, new test_test_api 6/6, conformance 1/1; `parallelisation()` honestly reports `pass=0` naming the sequential build. test_dtwc 12/14 pre-existing (non-gating → Task 6.0c).
+- Gate env note: MSYS printf backslash-escaping corrupted the vcvars path in the CUDA build batch; fixed via heredoc+CRLF (recipe gotcha for future CUDA builds).
+
+**Phase 3 adversarial review — triage (Fable, 2026-07-07; full findings in run journal):**
+
+- **H1 CONFIRMED → Task 3.6 (blocks Phase 4).** RuntimeSingleThread silent fallback SURVIVES for Python compute paths and direct C++ `Problem` usage: the 3.2 warning fires only from the `Env` constructor (env.cpp:234), but `Problem.cpp` has zero `env()` references and the nanobind compute bindings (`compute_distance_matrix` :718, `fill_distance_matrix` :670, `cluster` :690) never construct it; `get_max_threads()` (parallelisation.hpp) warns only in its no-OpenMP `#else` branch, not when OpenMP is capped to 1 thread. Scenario: `OMP_NUM_THREADS=1` (common on SLURM/containers) + `import dtwcpp; dtwcpp.cluster(X,k)` without calling `dtwcpp.device()` → single-threaded, zero stderr. Falsifies the earlier "front-ends run through the singleton dtwc::env()" claim (verified only on dtwc_cl, over-generalised).
+- **M1 UPHELD → fixed by orchestrator (docs commit).** `ecc522c` over-claimed: its code delta is one `#include <numeric>` line; the CUDA arch list predates Phase 3 (blame 3550bb9 2026-04-09, 367a9b4 2026-04-04); verification numbers had no committed artifact. Fixed: CHANGELOG reworded (no new dispatch code; deliverable = build recipe + verification event) + verbatim run-log artifact committed at `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`.
+- **L1 UPHELD → folded into Task 6.1.** Proof-of-engagement self-disables on 1-vCPU/thread-capped runners (`test_test_api.cpp:51` guards the `threads_engaged >= 2` REQUIRE behind `max_threads >= 2`); the CIBW gate asserts only the compile-time `OPENMP_AVAILABLE` flag. 6.1's wheel-gate upgrade must assert runtime engagement conditioned on runner CPU count.
+- **Review CLEAN on:** DTWC_SEQUENTIAL_BUILD ODR safety (PUBLIC on dtwc++, single-TU test_api.hpp inclusion), project_options alias accuracy, hole-5 fix compile-time regression guard, gpu() oracle non-degeneracy (3 distinct series, shape+max-abs-error checks — not exploitable by zero buffers), all 5 un-gated GPU fallback warnings.
 
 Current state (`.claude/reports/build-state-2026-07-06.md`): OpenMP is the ONLY backend (no std::execution/TBB anywhere). Known silent-fallback holes to close:
 1. OpenMP-missing is only a configure-time `message(WARNING)` (`dtwc/CMakeLists.txt:118-123`) — build/wheel succeeds serial.
@@ -327,10 +368,10 @@ Batching: **wave A** = 3.1 ∥ 3.2 ∥ 3.4 (disjoint files) → gate → commits
 ### Task 3.3: `dtwc.test` introspection API — same schema in C++/Python/MATLAB [wave B]
 
 **Files:** Create: `dtwc/test_api.hpp` (header-only — avoids CMake source-list edits). Modify: `python/src/_dtwcpp_core.cpp` + `python/dtwcpp/` (test namespace), `bindings/matlab/dtwc_mex.cpp` + wrapper `.m`. Tests per language.
-- [ ] `parallelisation()`: run a real OMP region, collect distinct thread ids → `{available, max_threads, threads_engaged, pass}`. Proof-of-engagement: distinct ids ≥2 on multicore, not a flag read.
-- [ ] `gpu()`: if CUDA/Metal compiled in, execute a tiny kernel and validate vs CPU oracle (≤1e-12) → `{available, backend, device_name, validated, pass}`; else `{available:false, reason:"..."}` — never throws, never silent, reason names what is missing.
-- [ ] Same field names in all three languages (C++ `dtwc::test::*`, Python `dtwcpp.test.*`, MATLAB `dtwc_mex('test_parallelisation')` + wrapper). Add Metal to Python `check_system` report (bound but unreported).
-- [ ] Registered (local, baseline CUDA-OFF build): parallelisation `pass=true, threads_engaged>=2`; gpu `available=false` with non-empty reason. (Real-GPU validation of the same API happens in 3.5's CUDA build.)
+- [x] `parallelisation()`: run a real OMP region, collect distinct thread ids → `{available, max_threads, threads_engaged, pass}`. Proof-of-engagement: distinct ids ≥2 on multicore, not a flag read.
+- [x] `gpu()`: if CUDA/Metal compiled in, execute a tiny kernel and validate vs CPU oracle (≤1e-12) → `{available, backend, device_name, validated, pass}`; else `{available:false, reason:"..."}` — never throws, never silent, reason names what is missing.
+- [x] Same field names in all three languages (C++ `dtwc::test::*`, Python `dtwcpp.test.*`, MATLAB `dtwc_mex('test_parallelisation')` + wrapper). Add Metal to Python `check_system` report (bound but unreported).
+- [x] Registered (local, baseline CUDA-OFF build): parallelisation `pass=true, threads_engaged>=2`; gpu `available=false` with non-empty reason. (Real-GPU validation of the same API happens in 3.5's CUDA build.)
 
 ### Task 3.4: CI wheel parallelism gate [wave A]
 
@@ -342,10 +383,19 @@ Batching: **wave A** = 3.1 ∥ 3.2 ∥ 3.4 (disjoint files) → gate → commits
 ### Task 3.5: CUDA enablement + first-ever runtime verification (local RTX 4000 Ada) [wave B]
 
 **Files:** Modify: `dtwc/cuda/**` (`.cu`/`.hpp`), GPU dispatch sites in `Problem.cpp` (after 3.2), CUDA CMake as needed. New scratch build dir: `build/cuda-verify`.
-- [ ] Configure `build/cuda-verify` with `-DDTWC_ENABLE_CUDA=ON` (nvcc 13.0 needs MSVC host on Windows — try MSVC generator/clang-cl host; ≤3 distinct configure strategies, then report FAILED with verbatim errors).
-- [ ] Run `test_cuda_correctness` + `test_cuda_lb_keogh` on the real GPU (permanently skipped until now) — first runtime verification of Phase 0 CUDA audit fixes (wavefront max_L>2048 double-buffer, int64 pair indexing). Registered: both suites RUN (not skipped), 0 failed, tolerances per the tests' own bands.
-- [ ] TODO backlog: arch-aware dispatch (sm_89 local + sm_90/H100 in fat binary or PTX), k-vs-all kernel wiring, multi-stream. Correctness runtime-verified on RTX 4000; H100 PERF claims stay ADVISORY until an ARC run.
-- [ ] Baseline build (CUDA OFF) ctest floor unchanged — CUDA work must not perturb CPU paths.
+- [x] Configure `build/cuda-verify` with `-DDTWC_ENABLE_CUDA=ON` (nvcc 13.0 needs MSVC host on Windows — try MSVC generator/clang-cl host; ≤3 distinct configure strategies, then report FAILED with verbatim errors).
+- [x] Run `test_cuda_correctness` + `test_cuda_lb_keogh` on the real GPU (permanently skipped until now) — first runtime verification of Phase 0 CUDA audit fixes (wavefront max_L>2048 double-buffer, int64 pair indexing). Registered: both suites RUN (not skipped), 0 failed, tolerances per the tests' own bands.
+- [x] TODO backlog: arch-aware dispatch (sm_89 local + sm_90/H100 in fat binary or PTX), k-vs-all kernel wiring, multi-stream. Correctness runtime-verified on RTX 4000; H100 PERF claims stay ADVISORY until an ARC run.
+- [x] Baseline build (CUDA OFF) ctest floor unchanged — CUDA work must not perturb CPU paths.
+
+### Task 3.6: Close the RuntimeSingleThread silent fallback on compute entry points [review H1 — FIRST ACTION, before Phase 4]
+
+**Files:** Modify: `dtwc/parallelisation.hpp` (`get_max_threads()` `_OPENMP` branch), `dtwc/env.cpp`/`env.hpp` (expose the SSOT warning emitter — verbatim string lives at env.cpp:206). Test: extend `tests/unit/test_runtime_loudness_env.cpp` (or a sibling).
+
+- [ ] In the `_OPENMP` branch of `get_max_threads()`: when `omp_get_max_threads()==1 && std::thread::hardware_concurrency()>1`, emit the SSOT single-thread warning ONCE per process. Route emission through ONE exported function in env.cpp shared with the `Env`-constructor path (single `std::once_flag` — no double-warning when both paths run; no string duplication; header carries a declaration only).
+- [ ] Design intent unchanged from 3.2: deliberate `OMP_NUM_THREADS=1` still warns — loud is the contract; the warning text already tells the user how to raise threads.
+- [ ] Registered bands: (a) stderr-capture C++ test: `OMP_NUM_THREADS=1`, call a compute path DIRECTLY (no `Env` construction — e.g. distance-matrix fill on 3 tiny series) → warning appears EXACTLY once, byte-identical to the SSOT string; (b) live Python check: `OMP_NUM_THREADS=1 python -c "import dtwcpp; <cluster tiny fixture>"` → warning on stderr WITHOUT any `dtwcpp.device()` call; (c) `dtwc_cl` path still warns exactly once (no double-warn regression); (d) floors hold (ctest 85/79 non-skip, pytest 390, MATLAB 19/20/6/1, conformance digit-identical).
+- [ ] CHANGELOG line; commit `fix: warn on single-thread OpenMP from all compute entry points (Phase 3 review H1)`.
 
 ## Phase 4 — Solver upgrade: "LR-core" [FINAL — from solver-math report]
 
@@ -355,6 +405,8 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 - FALSIFIED (registered bands, scipy/HiGHS vertex LPs + brute-force IP oracle): half-integrality of fractional vertices (§3.3); "LP integral 80–90%" as a polytope property — it is data-regime-dependent (clustered non-metric D: 250/250 integral; uniform D: 26% at N=20, max gap 13.7%). User's "almost unimodular" observation = his data lives in the integral regime.
 - Previous attempts (2023, removed in `f7064b3`) all failed by solving the x-space LP explicitly (dense/sparse tableau simplex, Gomory, OSQP/ADMM). Live 2026 `benders.cpp` is directionally right but re-solves the master MIP per round; its "O(pk)" cut generation is actually O(N²).
 - **P4 guard:** odd-cycle cuts alone cannot close instances (cardinality row breaks Baiou–Barahona) — the TODO "odd-cycle cutting planes" item is DEPRIORITISED; do not over-invest.
+
+**Batching (Opus orchestrator):** STRICTLY SEQUENTIAL — 4.1 → 4.2 → 4.3 → 4.4; each consumes the previous, and this is math-heavy work: one Opus-xhigh agent per task with its own gate, no fan-out. Validate every oracle on a NON-degenerate case FIRST (random non-symmetric D — uniform/symmetric instances let sign/factor errors hide; CLAUDE.md §4). A FALSIFIED band (esp. 4.3's wall-time clause) is a deliverable, not a failure — record the numbers, keep the LR root as bound/certificate tool, move on. Note 4.1 prefers the FasterPAM UB from 5.1: if Phase 5 hasn't run yet, use current fast_pam and say so in the report — do NOT block on Phase 5.
 
 ### Task 4.1: Lagrangian root solver
 
@@ -383,6 +435,8 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 ## Phase 5 — Speed & algorithms program [FINAL — ranked from literature report]
 
 Source: `.claude/reports/literature-2026-07-06.md` (citations in `.claude/CITATIONS.md`). Every task: register the benchmark band in the bench script BEFORE the run; a candidate that misses its band is recorded FALSIFIED and dropped — no rescue-tuning past 2 attempts. DTW is memory-bound (0.125 FLOP/byte): memory layout before SIMD, always.
+
+**Batching (Opus orchestrator, ≤4 concurrent, disjoint file ownership):** wave 1 = 5.1 ∥ 5.2 ∥ 5.5 ∥ 5.7 → gate; wave 2 = 5.3 ∥ 5.4 ∥ 5.10 → gate (5.3 consumes 5.2's envelopes; 5.4 owns `dtwc/core/` kernels ALONE in its wave); wave 3 = 5.6 ∥ 5.8 ∥ 5.9 → gate (5.6 touches kernel dispatch only after 5.4 settles); 5.11 LAST and alone (its whole point is measure-first). ALL speedup bands are ADVISORY on this machine (parallel workloads — record numbers + "machine under load" flag); the digit-identity/correctness halves of each band remain HARD gates. Hard perf verdicts only on a quiet machine or CI.
 
 Priority order (impact ÷ effort):
 
@@ -453,24 +507,101 @@ Priority order (impact ÷ effort):
 - Elkan/triangle pruning on DTW: invalid, DTW not a metric.
 - ONNX export: no sensible story (custom ops kill portability). R/Julia bindings: deferred, native competitors saturate.
 
-## Phase 6 — Packaging & release [DRAFT — build-state report landed; tasks being finalised]
+## Phase 6 — Packaging & release [FINAL 2026-07-07]
 
-Current state (`.claude/reports/build-state-2026-07-06.md`): wheel CI ALREADY EXISTS — cibuildwheel on 3 OS incl. macOS x86_64+arm64, sdist, **PyPI OIDC trusted publishing wired on `v*` tags** (`python-wheels.yml:74-103`). Gaps to close:
+Current state (`.claude/reports/build-state-2026-07-06.md` + Phase 3 additions): wheel CI ALREADY EXISTS — cibuildwheel on 3 OS, sdist, **PyPI OIDC trusted publishing wired on `v*` tags** (`python-wheels.yml:74-103`); 3.4 added the CIBW OpenMP gate (NEEDS-CI-RUN) and dropped macOS x86_64 wheels (arm64-only libomp on the runner — documented in CHANGELOG).
 
-- cibuildwheel pinned at v2.21 → **cp314 silently skipped** — bump pin.
-- **No `CIBW_TEST_COMMAND`** — wheels are never imported in CI. Add import + smoke-cluster test + `OPENMP_AVAILABLE==True` assert per platform.
-- **No MEX CI at all** (zero matlab/mex hits in `.github/`); distribution today = committed `dtwc_mex.mexw64` binary. Add MEX build job per platform (needs `matlab-actions/setup-matlab` or header-only MEX shim build — decide in-task); resolves the tracked-binary question (Decision log).
-- **No executable distribution** — only MEX + python module have install() rules. Add CPack/release workflow producing `dtwc_main`/`dtwc_cl`/`dtwc-convert` archives per platform on `v*` tags.
-- Version SSOT: `VERSION` file vs `pyproject.toml:7` duplicated — single source.
-- Wheels ship no MIP solver (HiGHS OFF in `pyproject.toml:60`) — decide: bundle HiGHS in wheels (size cost) or document CLI/C++ as the MIP path. Leaning bundle-HiGHS (it is the free solver; MIP-in-Python is a 2.0 headline feature). Gurobi stays external always.
-- linux-aarch64 wheel: add if runner available, else document.
-- CI push triggers: branch `Claude` runs almost nothing (only cuda-mpi-detect) — add `Claude` to unit-test workflow triggers for the duration of this refactor, remove before release.
-- PyPI publish ONLY after Phases 0–5 gates green + end-to-end run per platform. Release: DTWC++ 2.0 (`v2.0.0` tag drives everything).
-- `device="hpc"` end-to-end on Oxford ARC stays BLOCKED (needs a real cluster run — user action); release notes mark HPC as beta until verified.
+**Batching:** 6.0 first (residual burn-down; its sub-tasks are independent — one wave of ≤4, then the remainder) → 6.1 ∥ 6.2 ∥ 6.3 ∥ 6.4 → 6.5 ∥ 6.6 → phase gate → adversarial review. CI-run verification needs a push: agents NEVER push — the orchestrator asks the user to push/trigger, then reads the Actions log and quotes it verbatim.
 
-## Phase 7 — Documentation [DRAFT]
+### Task 6.0: Residual burn-down (tracked debt — close each or formally defer with owner+reason in the Decision log)
 
-- Hugo site: new API contract pages (all 3 languages), device-selection guide, `.env` HPC setup guide, data-conversion page (TODO backlog), Mermaid architecture diagram, migration guide 1.x → 2.0.
+- [ ] **a. Metal NxN `pair_offset` int32 → wider type**: kernels dtw_wavefront/:84, dtw_wavefront_global/:204, dtw_banded_row/:329, dtw_regtile_w4/:820, dtw_regtile_w8/:838, regtile body :759; host cast :1666 + setBytes :1686 (all `metal/metal_dtw.mm`). N≳65536 wraps negative today. No macOS locally: compile-inspection + host-side index-arithmetic unit test reproducing the wrap; flag NEEDS-MACOS-CI. Also document the pre-existing int32 `pair_indices`/`active_pairs` 2^31 cap (0.2 design).
+- [ ] **b. `DTWC_ENABLE_LLFIO=OFF` full BUILD**: guard `Problem.hpp:24`, `core/mmap_distance_matrix.hpp:43`, `core/mmap_data_store.hpp:45` behind `DTWC_HAS_MMAP`. Registered: LLFIO=OFF configure+BUILD exit 0; mmap-dependent suites skip LOUDLY (named skip reason); baseline-config floors unchanged.
+- [ ] **c. `tests/matlab/test_dtwc.m` stale assertions**: test_clustering_medoids + test_clustering_fit_predict assume obsolete columns=series → fix to rows=series. Registered: 14/14 in local MATLAB.
+- [ ] **d. unit_test_clustering_algorithms**: replace repo-relative `".\data\dummy"` with a path resolved from the test binary location or a configure-time definition (Global Constraint: no repo-relative runtime paths). Then chase the intermittent 0xc0000409: 20 repeats; if it persists, minimise and open a dedicated task — do NOT paper over with retries.
+- [ ] **e. `dtwc_cl` required-arg message**: "via CLI or YAML config" → name TOML as primary, e.g. "via CLI or config file (TOML; YAML if built with DTWC_ENABLE_YAML)". One-line + test string update.
+- [ ] **f. Supply chain**: pin yaml-cpp to a tag/SHA; record the candidate llfio SHA + date (maintainer blessing stays OPEN in Decision log — do not silently self-bless).
+
+### Task 6.1: Wheel pipeline hardening
+
+**Files:** `.github/workflows/python-wheels.yml`, `pyproject.toml`.
+
+- [ ] Bump the cibuildwheel pin (v2.21 silently skips cp314); enumerate the resulting python-tag matrix in the report.
+- [ ] Upgrade `CIBW_TEST_COMMAND` to the 3.3 API with the review-L1 fix built in: assert `r=dtwcpp.test.parallelisation(); r['available']` always, and `r['threads_engaged']>=2` whenever `os.cpu_count()>=2` (runner-CPU-conditioned so 1-vCPU runners can't vacuously green a runtime-serialisation regression) + a smoke-cluster on the conformance mini-fixture asserting the reference labels.
+- [ ] **HiGHS-in-wheels DECISION** (leaning bundle — MIP-in-Python is a 2.0 headline; Gurobi stays external always): implement, measure wheel size; if any wheel exceeds ~100 MB, reconsider and document the choice either way in the Decision log.
+- [ ] linux-aarch64 wheel if a hosted runner exists; else one release-notes line. Carry the 3.4 macOS-x86_64 drop through consistently (classifiers, docs).
+- [ ] Registered: one full wheel-CI matrix run green INCLUDING the test command on every platform — requires user-triggered push; quote the Actions log verbatim.
+
+### Task 6.2: MEX packaging + OpenMP strategy + binary-in-git removal
+
+**Files:** `bindings/matlab/`, MEX CMake target, new `.github/workflows/` MEX job.
+
+- [ ] **DECIDE MEX OpenMP** (today `build/mex-verify` is deliberately SERIAL — Phase 2 MATLAB/libomp clash). Candidates, evidence-based in `build/mex-verify-omp`: (i) link MATLAB's own bundled iomp/libomp (locate under `matlabroot`, link that exact library), (ii) statically link LLVM libomp, (iii) stay serial + loud warning. Run the full MATLAB suite + `dtwc_mex('test_parallelisation')` per candidate in local MATLAB. Registered: chosen build 19/19 + 20/20 + 6/6 + 1/1 AND `threads_engaged>=2` — or a documented serial verdict with the 3.2 warning quoted verbatim.
+- [ ] MEX CI: `matlab-actions/setup-matlab` build+test job per platform. If licensing blocks CI, document the local-verify protocol as the release gate instead (exact commands).
+- [ ] Remove stale committed `bindings/matlab/dtwc_mex.mexw64` from git (Decision-log OPEN → needs explicit user sign-off in the PR; the stale April binary shadowed fresh MEX and caused a real 0xc0000005 in the Phase 2 gate). Distribution becomes CI artifacts / release archives.
+
+### Task 6.3: Executable distribution
+
+**Files:** CPack config + release workflow (new or extended).
+
+- [ ] CPack zip/tgz of every install()-ed executable (enumerate in-task — at minimum `dtwc_cl`) per platform on `v*` tags, with LICENSE + minimal README. Registered: unpack into a bare temp dir OUTSIDE the repo, run with an absolute `--input` → works (proves Global Constraint 1, no repo-relative paths).
+
+### Task 6.4: Version SSOT
+
+- [ ] Single source: root `VERSION` file feeding CMake AND `pyproject.toml` (scikit-build-core dynamic metadata). `dtwcpp.__version__`, `dtwc_cl --version`, MEX version string all read the same value; one test asserts all four match. Set `2.0.0rc1`.
+
+### Task 6.5: MSB3491 wheel-rebuild blocker
+
+- [ ] Root-cause the llfio→quickcpplib→outcome MSVC superbuild failure (verbatim "error MSB3491"; pre-existing — blocks `pip wheel --no-build-isolation` from scratch on this machine while clang/Ninja core builds stay green). Ranked candidates: (i) pin/patch quickcpplib, (ii) wheels built llfio-free (mmap OFF in wheels — FIRST measure what that costs: the 48× CLARA view-mode path; if wheels lose mmap, docs must say so loudly), (iii) prebuilt llfio. Reproduce → fix → registered: a from-scratch wheel build exits 0 locally (`uv build` or the pip equivalent).
+
+### Task 6.6: CI trigger hygiene + release dry-run
+
+- [ ] Add branch `Claude` to unit-test workflow triggers (temporary — leave a `TODO(release): remove` comment).
+- [ ] TestPyPI dry-run of the complete publish path on a `v2.0.0rc1` tag. REAL PyPI publish: ONLY after Phases 0–6 gates green + end-to-end smoke per platform + **explicit user go** (user rule: publish only when 100% sure).
+
+### Phase 6 gate
+
+- [ ] Every 6.0 sub-task closed or formally deferred (owner + reason in Decision log).
+- [ ] Local floors hold (§Orchestrator handoff values, updated for any new suites).
+- [ ] One full CI run green: wheel matrix + test commands, MEX job (or documented local protocol), release archives produced and tempdir-tested.
+- [ ] Adversarial review agent on the phase diff. Hunt list: version skew between the four version strings; wheels missing modules (`dtwcpp.test`, sklearn wrapper if 5.10 landed); CI-green-but-vacuous test commands (exit-code swallowing, unconditional `|| true`, asserts that can't fail on the runner); packaging paths violating Constraint 1; HiGHS licence/attribution files if bundled.
+
+## Phase 7 — Documentation website [FINAL 2026-07-07]
+
+Prereq: Phase 6 version SSOT + the frozen contract. **Batching:** 7.1 alone (scaffold) → 7.2 ∥ 7.3 ∥ 7.4 ∥ 7.5 → 7.6 docs gate.
+
+### Task 7.1: Site scaffold
+
+- [ ] FIRST inspect what exists (`docs/`, any Doxygen config, gh-pages branch, the plan header says Hugo — but decide from repo evidence, log the decision): Hugo vs MkDocs-Material, CI deploy to GitHub Pages on main. Landing page: what/why + 60-second quickstart shown side-by-side in all 3 languages (same fixture as conformance — the snippets are then provably runnable).
+
+### Task 7.2: API reference
+
+- [ ] Generate the 3-language API pages FROM `docs/api-contract-2.0.md` (it is the SSOT — never hand-duplicate signatures): Tier-1 (`device`/`load`/`cluster`/`Result`) and Tier-2 (`Problem`) pages with C++/Python/MATLAB tabs textually aligned. Doxygen for deep C++ reference only if cheap; the contract pages are the primary surface.
+
+### Task 7.3: Guides
+
+- [ ] Device selection (cpu/gpu/hpc) incl. `.env` HPC setup — document the three exact error messages (missing file / missing key / bad host) VERBATIM from env.cpp; `dtwc.test.parallelisation()`/`gpu()` usage page; the no-silent-fallback design note (why configure fails without OpenMP, the `-DDTWC_ALLOW_SEQUENTIAL=ON` escape hatch, what the single-thread warning means); data formats + conversion (CSV/TSV/Arrow/Parquet, converter tool); solver guide (HiGHS default, Gurobi optional, LR-core if Phase 4 landed — with its regime of validity and the FALSIFIED-claims honesty from the report); Mermaid architecture diagram.
+- [ ] Migration guide 1.x → 2.0: full rename table from contract 1.1, deprecation list + removal schedule, behavioural changes (double default, C++ result write-back, loud warnings, OpenMP requirement).
+
+### Task 7.4: Math documentation
+
+- [ ] Move the solver derivations OUT of gitignored `.claude/reports/solver-math-2026-07-06.md` into `docs/math/lr-core.md`: full re-derivable derivation (TU substructure proof, Geoffrion equality, the falsified claims WITH their registered bands — killed ideas stay visibly killed). CLAUDE.md rule: every analytic result of lasting value gets a full derivation in docs the reader can re-derive from scratch.
+
+### Task 7.5: Benchmarks page
+
+- [ ] UCR results (128 datasets, 4 architectures, H100 14.2×): publish ONLY numbers from quiet-machine/CI runs with methodology + hardware stated per table; local advisory numbers stay OUT (Global Constraint / user caveat 2026-07-06).
+
+### Task 7.6: Docs gate
+
+- [ ] Adversarial review agent diffs every documented signature/flag/error-string against the code (contract drift, stale messages, dead flags). Link checker green. All three quickstarts EXECUTED verbatim (copy-paste → run → output matches the page).
+
+## Release — v2.0.0 (after Phases 3.6–7 closed)
+
+- [ ] Re-record perf numbers on a QUIET machine (this is where advisory becomes real) + fresh UCR spot-bench vs the Phase 0 baseline artifact.
+- [ ] CHANGELOG.md: collapse Unreleased → `2.0.0` with date; link the migration guide.
+- [ ] Tag `v2.0.0` → wheels + MEX + archives; TestPyPI-verified path → PyPI on **explicit user go**.
+- [ ] Release notes: HPC device marked BETA (blocked on a real Oxford ARC end-to-end run — user action); Metal marked build-verified/runtime-unverified unless macOS CI landed; MSVC `/openmp:experimental` branch verified by then or called out.
+- [ ] Post-release: 2.1 milestone with everything formally deferred (Decision log is the source).
 
 ---
 
@@ -491,3 +622,4 @@ Current state (`.claude/reports/build-state-2026-07-06.md`): wheel CI ALREADY EX
 - 2026-07-06: Baseline GREEN (65/0/5, clang 21.1.8; bench anchors ADVISORY — machine shared). Fix wave launched; bench demoted to advisory mid-flight per user (parallel workloads).
 - 2026-07-07 (user): **MATLAB IS INSTALLED locally** (R2024b + R2025b, `C:\Program Files\MATLAB\`). MATLAB-side tests are runnable here via `matlab -batch` — Task 0.4's MEX validation test and Phase 2.2 parity tests get real local verification, not skip-only. Post-gate step added: build MEX + run the 0.4 test in MATLAB.
 - 2026-07-07: Session limit killed 9/12 fixers + gate mid-wave. Completed & kept: 0.5 (MIP status→throw), 0.10 (ndim view — fix added `ndim` field + `timesteps()`, larger than planned one-liner, justified), 0.13 (dead code; `isFractional` found dead but out-of-scope, left in). Partial edits from dead agents reverted (`git checkout`); wave resumed from cache.
+- 2026-07-07 (evening): **Fable → Opus 4.8 orchestrator handoff. Grand plan v1.0.** Phase 3 CLOSED (wave B gate PASS; commits `ad34b6a`/`ecc522c`; CUDA runtime-verified on local RTX 4000 — first ever). Review triaged: H1 → Task 3.6 (FIRST ACTION), M1 → fixed (CHANGELOG + `.claude/baselines/2026-07-07-cuda-first-runtime-verification.md`), L1 → folded into 6.1. Phases 6–7 finalised; §Orchestrator handoff added with floors, workflow pattern, proven recipes. Remaining sequence: 3.6 → Phase 4 (sequential) → Phase 5 (3 waves + 5.11) → Phase 6 → Phase 7 → Release.
