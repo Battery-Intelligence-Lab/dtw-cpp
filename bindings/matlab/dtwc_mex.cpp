@@ -84,18 +84,65 @@ template <typename T>
 uint64_t HandleManager<T>::counter_ = 0;
 
 // =========================================================================
+//  Input validation guards (fix: audit CRITICAL #6 -- mxGetDoubles NULL-deref)
+//
+//  In the R2018a+ interleaved-complex API, mxGetDoubles() returns NULL when the
+//  array is not a REAL DOUBLE (int32/single/logical/char, complex, or sparse).
+//  The previous code fed that NULL straight into the DTW kernels, NULL-dereffing
+//  and crashing MATLAB. Every entry point now validates class / complexity /
+//  shape BEFORE any data-pointer access and throws std::invalid_argument, which
+//  mexFunction maps to mexErrMsgIdAndTxt("dtwc:invalidArgument", ...).
+// =========================================================================
+
+/// Require a full (non-sparse), real, double, non-empty, <=2-D array.
+/// Throws std::invalid_argument BEFORE any mxGetDoubles() access.
+static void require_real_double(const mxArray *mx, const char *arg_name) {
+  if (mx == nullptr)
+    throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
+  if (mxIsComplex(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be real, not complex.");
+  if (mxIsSparse(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be a full (non-sparse) array.");
+  if (!mxIsDouble(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be of class 'double' (got '"
+      + std::string(mxGetClassName(mx)) + "'); convert with double(...) in MATLAB.");
+  if (mxIsEmpty(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
+  if (mxGetNumberOfDimensions(mx) != 2)
+    throw std::invalid_argument(std::string(arg_name) + " must be 1-D or 2-D (got an N-D array).");
+}
+
+/// Require a label vector: real, non-empty, full, class int32 OR double.
+/// The ARI/NMI entry points intentionally accept both int32 and double labels.
+static void require_label_vector(const mxArray *mx, const char *arg_name) {
+  if (mx == nullptr)
+    throw std::invalid_argument(std::string(arg_name) + ": argument is missing.");
+  if (mxIsComplex(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be real, not complex.");
+  if (mxIsSparse(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be a full (non-sparse) array.");
+  if (!mxIsInt32(mx) && !mxIsDouble(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must be an int32 or double vector (got '"
+      + std::string(mxGetClassName(mx)) + "').");
+  if (mxIsEmpty(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
+}
+
+// =========================================================================
 //  Helpers: MATLAB <-> C++ type conversion
 // =========================================================================
 
 /// MATLAB double vector/row -> std::vector<double>
-static std::vector<double> to_std_vector(const mxArray *mx) {
+static std::vector<double> to_std_vector(const mxArray *mx, const char *arg_name = "input") {
+  require_real_double(mx, arg_name);
   const double *data = mxGetDoubles(mx);
   size_t n = mxGetNumberOfElements(mx);
   return std::vector<double>(data, data + n);
 }
 
 /// MATLAB N x L matrix -> vector of series (each row is one series)
-static std::vector<std::vector<double>> matrix_to_series(const mxArray *mx) {
+static std::vector<std::vector<double>> matrix_to_series(const mxArray *mx, const char *arg_name = "data") {
+  require_real_double(mx, arg_name);
   size_t N = mxGetM(mx);  // rows = number of series
   size_t L = mxGetN(mx);  // cols = series length
   const double *data = mxGetDoubles(mx);
@@ -118,19 +165,27 @@ static mxArray *ivec_to_mx_1based(const std::vector<int> &v) {
   return mx;
 }
 
-/// Extract scalar double from mxArray
-static double get_scalar(const mxArray *mx) {
+/// Extract scalar double from mxArray (validates numeric/logical + non-empty).
+static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
+  if (mx == nullptr || (!mxIsNumeric(mx) && !mxIsLogical(mx)))
+    throw std::invalid_argument(std::string(arg_name) + " must be a numeric scalar.");
+  if (mxIsEmpty(mx))
+    throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
   return mxGetScalar(mx);
 }
 
 /// Extract uint64 handle from mxArray
 static uint64_t get_handle(const mxArray *mx) {
+  if (mx == nullptr)
+    throw std::invalid_argument("handle argument is missing.");
   if (mxIsUint64(mx)) {
+    if (mxIsEmpty(mx))
+      throw std::invalid_argument("handle must not be empty.");
     uint64_t *p = static_cast<uint64_t *>(mxGetData(mx));
     return p[0];
   }
   // Accept double as well (MATLAB defaults to double)
-  return static_cast<uint64_t>(mxGetScalar(mx));
+  return static_cast<uint64_t>(get_scalar(mx, "handle"));
 }
 
 /// Extract string from mxArray (char array or string)
@@ -206,7 +261,12 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   if (!merges_mx || !np_mx)
     throw std::invalid_argument("Invalid dendrogram struct: missing 'merges' or 'n_points' field.");
 
-  dend.n_points = static_cast<int>(mxGetScalar(np_mx));
+  // Guard before data access: 'merges' must be a real double matrix (empty is a
+  // valid single-point dendrogram, so non-empty is NOT required here).
+  if (mxIsComplex(merges_mx) || mxIsSparse(merges_mx) || !mxIsDouble(merges_mx))
+    throw std::invalid_argument("dendrogram.merges must be a real, full, double matrix.");
+
+  dend.n_points = static_cast<int>(get_scalar(np_mx, "dendrogram.n_points"));
 
   size_t n_merges = mxGetM(merges_mx);
   const double *data = mxGetDoubles(merges_mx);
@@ -474,6 +534,7 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
   if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_matrix requires handle and matrix.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
+  require_real_double(prhs[2], "distance_matrix");
   size_t N = mxGetM(prhs[2]);
   if (N != mxGetN(prhs[2]))
     throw std::invalid_argument("Distance matrix must be square.");
@@ -495,6 +556,8 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 
 static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("dtw_distance requires x and y.");
+  require_real_double(prhs[1], "x");
+  require_real_double(prhs[2], "y");
   const double *x = mxGetDoubles(prhs[1]);
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
@@ -506,6 +569,8 @@ static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
 
 static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("ddtw_distance requires x and y.");
+  require_real_double(prhs[1], "x");
+  require_real_double(prhs[2], "y");
   const double *x = mxGetDoubles(prhs[1]);
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
@@ -517,6 +582,8 @@ static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 
 static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("wdtw_distance requires x and y.");
+  require_real_double(prhs[1], "x");
+  require_real_double(prhs[2], "y");
   const double *x = mxGetDoubles(prhs[1]);
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
@@ -530,6 +597,8 @@ static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 
 static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adtw_distance requires x and y.");
+  require_real_double(prhs[1], "x");
+  require_real_double(prhs[2], "y");
   const double *x = mxGetDoubles(prhs[1]);
   size_t nx = mxGetNumberOfElements(prhs[1]);
   const double *y = mxGetDoubles(prhs[2]);
@@ -543,8 +612,8 @@ static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 
 static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("soft_dtw_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  auto x = to_std_vector(prhs[1], "x");
+  auto y = to_std_vector(prhs[2], "y");
   double gamma = 1.0;
   if (nrhs > 3) gamma = get_scalar(prhs[3]);
   plhs[0] = mxCreateDoubleScalar(dtwc::soft_dtw<double>(x, y, gamma));
@@ -552,8 +621,8 @@ static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
 
 static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("soft_dtw_gradient requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  auto x = to_std_vector(prhs[1], "x");
+  auto y = to_std_vector(prhs[2], "y");
   double gamma = 1.0;
   if (nrhs > 3) gamma = get_scalar(prhs[3]);
   auto grad = dtwc::soft_dtw_gradient<double>(x, y, gamma);
@@ -566,8 +635,8 @@ static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxA
 
 static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("dtw_distance_missing requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  auto x = to_std_vector(prhs[1], "x");
+  auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::dtwMissing_banded<double>(x, y, band));
@@ -575,8 +644,8 @@ static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const 
 
 static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("dtw_arow_distance requires x and y.");
-  auto x = to_std_vector(prhs[1]);
-  auto y = to_std_vector(prhs[2]);
+  auto x = to_std_vector(prhs[1], "x");
+  auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   plhs[0] = mxCreateDoubleScalar(dtwc::dtwAROW_banded<double>(x, y, band));
@@ -748,6 +817,8 @@ static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const m
   if (nrhs < 3) throw std::invalid_argument("adjusted_rand_index requires two label vectors.");
   auto mx1 = prhs[1];
   auto mx2 = prhs[2];
+  require_label_vector(mx1, "labels_1");
+  require_label_vector(mx2, "labels_2");
 
   size_t n1 = mxGetNumberOfElements(mx1);
   size_t n2 = mxGetNumberOfElements(mx2);
@@ -777,6 +848,8 @@ static void cmd_normalized_mutual_information(int nlhs, mxArray *plhs[], int nrh
   if (nrhs < 3) throw std::invalid_argument("normalized_mutual_information requires two label vectors.");
   auto mx1 = prhs[1];
   auto mx2 = prhs[2];
+  require_label_vector(mx1, "labels_1");
+  require_label_vector(mx2, "labels_2");
 
   size_t n1 = mxGetNumberOfElements(mx1);
   size_t n2 = mxGetNumberOfElements(mx2);
