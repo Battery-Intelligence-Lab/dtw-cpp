@@ -10,6 +10,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 
 - API contract 2.0 frozen: docs/api-contract-2.0.md
 
+### Changed (Phase 3 · wave A — no silent fallback)
+
+- Build: OpenMP is now a hard configure requirement. A missing OpenMP aborts configuration with a FATAL_ERROR that names the `-DDTWC_ALLOW_SEQUENTIAL=ON` opt-out, ending silent single-threaded builds/wheels. The opt-out configures a loud-warning sequential build and defines `DTWC_SEQUENTIAL_BUILD` on the dtwc targets.
+- Build: the OpenMP compile flag/link is now attached directly (PUBLIC) to the `dtwc++` target, not only via the `project_options` INTERFACE, so consumers linking `dtwc++` without `project_options` (e.g. the nanobind module on MSVC) no longer silently serialise their OpenMP loops.
+- Parallelism: `dtwc::Env` now emits one loud stderr warning when DTWC++ would run single-threaded — OpenMP forced to 1 thread on a multicore host, or compiled without OpenMP via `-DDTWC_ALLOW_SEQUENTIAL=ON` (`DTWC_SEQUENTIAL_BUILD`). No silent serial execution (Task 3.2).
+- GPU: GPU->CPU distance-matrix fallback messages are now always written to stderr (previously `if (verbose)`-gated on stdout), so a requested GPU path that degrades to CPU is never silent (Task 3.2).
+- CI/wheels: add `CIBW_TEST_COMMAND` that imports every built wheel and asserts `dtwcpp.OPENMP_AVAILABLE` — a runtime belt-and-braces for the OpenMP no-silent-fallback guarantee, complementing the Task 3.1 build-time FATAL_ERROR. Uses the existing bound introspection symbol, not the future `dtwcpp.test.*` API.
+- CI/wheels: drop macOS x86_64 (Intel) wheels (`CIBW_ARCHS_MACOS: arm64`). The arm64 `macos-latest` runner installs an arm64-only libomp, so cross-built x86_64 wheels would ship serial and cannot be import-tested by cibuildwheel; with Task 3.1's OpenMP FATAL_ERROR they would hard-fail the build outright. Intel-Mac users install from the sdist. Re-add x86_64 only behind a genuine x86_64 libomp on an Intel runner.
+
 ### Changed (Python · Phase 2 Task 2.1)
 
 - Python (Task 2.1): bound the full 2.0 canonical Python surface in the nanobind module — error taxonomy `DtwcError`/`InvalidInput`/`SolverError`/`DeviceError`/`IOError` (each subclassing DtwcError plus the closest built-in ValueError/RuntimeError/OSError, with C++-exception translators, api-contract §5); `dtwc::Env`/`Device`/`env()`/`device_to_string` device registry (§6); `StoragePolicy`/`LowerBoundStrategy` enums and `CUDASettings`; `MIPSettings.benders`/`max_benders_iter`; and `Problem.{set_solver, set_variant_params, set_view_data, output_folder, storage_policy, lb_strategy, cuda_settings, use_mmap_distance_matrix, read_distance_matrix, print_distance_matrix, write_medoid_members, n_clusters, labels, medoids, series, series_name, centroid_of}`, plus multivariate `ndim` and float32 storage (`Data.from_float32`, `Problem.set_data(Data)`) in the load path.

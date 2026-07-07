@@ -25,7 +25,19 @@ jobs:
         env:
           CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-* cp314-*"
           CIBW_SKIP: "*-musllinux_* *-win32 *-manylinux_i686"
-          CIBW_ARCHS_MACOS: "x86_64 arm64"
+
+          # macOS: arm64 ONLY (x86_64 DROPPED — Task 3.4, build-state 2026-07-06 hole 4).
+          # The GitHub `macos-latest` runner is Apple Silicon (arm64); the
+          # `brew install libomp` step below installs an arm64-only libomp, so a
+          # cross-compiled x86_64 wheel's find_package(OpenMP) finds nothing and
+          # would ship SERIAL. Three reasons this is a hard drop, not a "fix later":
+          #   1. no-silent-fallback global constraint forbids shipping a serial wheel;
+          #   2. Task 3.1 makes missing OpenMP a configure FATAL_ERROR, so the
+          #      x86_64 cross-build would hard-fail the whole macOS wheel job anyway;
+          #   3. cibuildwheel cannot run CIBW_TEST_COMMAND (below) on a cross-arch
+          #      wheel, so the OpenMP belt-and-braces could never verify x86_64.
+          # Re-add x86_64 ONLY behind a genuine x86_64 libomp on an Intel runner.
+          CIBW_ARCHS_MACOS: "arm64"
 
           # Release build, no tests/benchmarks, no heavy solvers
           CIBW_CONFIG_SETTINGS: >-
@@ -41,6 +53,19 @@ jobs:
             MACOSX_DEPLOYMENT_TARGET=10.15
           CIBW_BEFORE_BUILD_MACOS: "brew install libomp || true"
           CIBW_BUILD_VERBOSITY: 1
+
+          # Runtime belt-and-braces (Task 3.4): import every produced wheel and
+          # assert OpenMP is compiled in. This complements Task 3.1's build-time
+          # FATAL_ERROR — if a serial wheel ever slips through the build, this
+          # import test fails the wheel loudly instead of publishing it silent.
+          # Live entry point: dtwcpp.OPENMP_AVAILABLE (bound in
+          # python/dtwcpp/__init__.py:90, re-exported from the _dtwcpp_core
+          # nanobind module). Deliberately does NOT use Task 3.3's future
+          # dtwcpp.test.* API (wave ordering). cibuildwheel installs the wheel and
+          # its numpy dependency before running this, and skips it on cross-arch
+          # wheels (none remain after the x86_64 drop above).
+          CIBW_TEST_COMMAND: >-
+            python -c "import dtwcpp; assert dtwcpp.OPENMP_AVAILABLE, 'FATAL: wheel built without OpenMP (serial) - see Task 3.1/3.4 no-silent-fallback gate'; print('dtwcpp import OK, OpenMP threads =', dtwcpp.openmp_max_threads())"
 
       - uses: actions/upload-artifact@v7
         with:
