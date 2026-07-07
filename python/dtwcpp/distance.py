@@ -28,31 +28,23 @@ def standard(x, y, band=-1, metric="l1"):
 
 
 def ddtw(x, y, band=-1):
-    """Derivative DTW distance."""
-    xa = _as_array(x)
-    ya = _as_array(y)
-    return _ddtw_distance_raw(list(xa), list(ya), band)
+    """Derivative DTW distance (zero-copy from numpy)."""
+    return _ddtw_distance_raw(_as_array(x), _as_array(y), band)
 
 
 def wdtw(x, y, band=-1, g=0.05):
-    """Weighted DTW distance."""
-    xa = _as_array(x)
-    ya = _as_array(y)
-    return _wdtw_distance_raw(list(xa), list(ya), band, g)
+    """Weighted DTW distance (zero-copy from numpy)."""
+    return _wdtw_distance_raw(_as_array(x), _as_array(y), band, g)
 
 
 def adtw(x, y, band=-1, penalty=1.0):
-    """Amerced DTW distance."""
-    xa = _as_array(x)
-    ya = _as_array(y)
-    return _adtw_distance_raw(list(xa), list(ya), band, penalty)
+    """Amerced DTW distance (zero-copy from numpy)."""
+    return _adtw_distance_raw(_as_array(x), _as_array(y), band, penalty)
 
 
 def soft_dtw(x, y, gamma=1.0):
-    """Soft-DTW distance."""
-    xa = _as_array(x)
-    ya = _as_array(y)
-    return _soft_dtw_distance_raw(list(xa), list(ya), gamma)
+    """Soft-DTW distance (zero-copy from numpy)."""
+    return _soft_dtw_distance_raw(_as_array(x), _as_array(y), gamma)
 
 
 def missing(x, y, band=-1, metric="l1"):

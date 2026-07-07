@@ -58,7 +58,7 @@ class TestClusterLocal:
         assert res.device == "cpu"
         assert res.cost is not None
         assert res.distance_matrix is not None
-        assert res.medoid_indices is not None
+        assert res.medoids is not None      # canonical 2.0 name (§1.4)
         assert res.elapsed_s >= 0.0
 
     def test_summary_contains_device_and_timing(self):
@@ -264,8 +264,10 @@ class TestClusterMethodDispatch:
 #
 # All binding names below were verified present in python/src/_dtwcpp_core.cpp:
 #   build_dendrogram (m.def, prob + default opts), cut_dendrogram (dend, prob, k),
-#   Problem.set_number_of_clusters / .method / .cluster / .clusters_ind /
+#   Problem.set_n_clusters / .method / .cluster / .clusters_ind /
 #   .centroids_ind / .find_total_cost, Method.MIP / Method.Kmedoids.
+# Task 2.1: _run_local_method now calls the canonical Problem.set_n_clusters
+# (was the deprecated set_number_of_clusters); the fakes below pin that name.
 # ---------------------------------------------------------------------------
 class TestLocalDispatchBindingNames:
     def test_local_mip_sets_method_mip_and_calls_cluster(self):
@@ -284,7 +286,7 @@ class TestLocalDispatchBindingNames:
                 self.clusters_ind = [0, 1, 0, 1]
                 self.centroids_ind = [0, 1]
 
-            def set_number_of_clusters(self, k):
+            def set_n_clusters(self, k):
                 self.nc = k
 
             def cluster(self):
@@ -315,7 +317,7 @@ class TestLocalDispatchBindingNames:
                 self.clusters_ind = [0, 0, 1]
                 self.centroids_ind = [0, 2]
 
-            def set_number_of_clusters(self, k):
+            def set_n_clusters(self, k):
                 self.nc = k
 
             def cluster(self):
@@ -395,3 +397,75 @@ class TestLocalDispatchBindingNames:
         # Valid k=2 labeling produced by the real Lloyd path (no fallthrough).
         assert len(res.labels) == 12
         assert set(res.labels).issubset({0, 1})
+
+
+# ---------------------------------------------------------------------------
+# Result write-back moved to the C++ core (api-contract-2.0.md §2.5, Task 1.6/2.1)
+#
+# 1.x wired labels/medoids/k back into Problem inside the *binding* lambdas
+# (_dtwcpp_core.cpp fast_pam/fast_clara/clarans, lines 573-576/615-619/744-747).
+# Task 2.1 DELETES that wrapper-side wiring — the C++ algorithm free functions now
+# do it (fast_pam.cpp:261-263, fast_clara.cpp:508-510, clarans.cpp:215-217,
+# hierarchical.cpp:243-245). These tests pin the behaviour END-TO-END: after a
+# REAL algorithm call on a REAL Problem, with NO Python-side assignment to
+# clusters_ind/centroids_ind, the results are already visible on the Problem
+# (labels()/medoids()) and the scores read them. If the write-back regressed,
+# silhouette(prob) would see empty/stale state and these fail. The mechanism
+# moved to C++; the end-to-end behaviour is preserved and asserted here.
+# ---------------------------------------------------------------------------
+class TestResultWriteBackInCpp:
+    @staticmethod
+    def _filled_problem(seed=1, n=12):
+        rng = np.random.default_rng(seed)
+        X = [list(rng.standard_normal(10) * 0.1 + (0.0 if i < n // 2 else 9.0))
+             for i in range(n)]
+        p = dtwcpp.Problem("wb")
+        p.set_data(X, [str(i) for i in range(n)])
+        p.fill_distance_matrix()
+        return p
+
+    def test_fast_pam_writes_back_without_wrapper(self):
+        """drives dtwcpp.fast_pam(prob, k) — C++ core writes labels/medoids/k back."""
+        p = self._filled_problem()
+        res = dtwcpp.fast_pam(p, 2)            # NO Python wiring after this call
+        assert list(p.labels()) == list(res.labels)
+        assert sorted(p.medoids()) == sorted(res.medoid_indices)
+        assert p.n_clusters() == 2
+        # Scores read Problem state — only works if the write-back happened.
+        assert len(dtwcpp.silhouette(p)) == 12
+
+    def test_fast_clara_writes_back_without_wrapper(self):
+        """drives dtwcpp.fast_clara(prob, k)."""
+        p = self._filled_problem()
+        res = dtwcpp.fast_clara(p, 2)
+        assert list(p.labels()) == list(res.labels)
+        assert p.n_clusters() == 2
+        assert len(dtwcpp.silhouette(p)) == 12
+
+    def test_clarans_writes_back_without_wrapper(self):
+        """drives dtwcpp.clarans(prob, opts)."""
+        p = self._filled_problem()
+        opts = dtwcpp.CLARANSOptions()
+        opts.n_clusters = 2
+        res = dtwcpp.clarans(p, opts)
+        assert list(p.labels()) == list(res.labels)
+        assert p.n_clusters() == 2
+
+    def test_cut_dendrogram_writes_back_without_wrapper(self):
+        """drives build_dendrogram + cut_dendrogram — 2.0 also writes back (§2.5)."""
+        p = self._filled_problem()
+        dend = dtwcpp.build_dendrogram(p)
+        res = dtwcpp.cut_dendrogram(dend, p, 2)
+        assert list(p.labels()) == list(res.labels)
+        assert p.n_clusters() == 2
+
+    def test_cluster_tier1_end_to_end_results_visible(self):
+        """drives dtwcpp.cluster() Tier-1 — labels/medoids/score visible with NO
+        wrapper wiring (the preserved end-to-end contract; must not weaken)."""
+        rng = np.random.default_rng(7)
+        X = np.array([rng.standard_normal(12) * 0.1 + (0.0 if i < 6 else 9.0)
+                      for i in range(12)])
+        res = dtwcpp.cluster(X, k=2)
+        assert res.medoids is not None
+        assert len(set(res.labels[:6])) == 1 and len(set(res.labels[6:])) == 1
+        assert res.score("silhouette") > 0.5

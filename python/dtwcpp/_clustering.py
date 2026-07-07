@@ -59,6 +59,10 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         How to handle NaN values in time series. One of ``"error"`` (throw),
         ``"zero_cost"`` (NaN pairs contribute zero cost), ``"arow"``
         (diagonal-only alignment), or ``"interpolate"`` (linear interpolation).
+    metric : str, default="l1"
+        Pointwise cost metric for the ``"standard"`` variant: ``"l1"`` (default)
+        or ``"squared_euclidean"``. Matches the ``metric`` argument of the
+        distance free functions (api-contract-2.0.md §1.5/§2.6).
     device : str or None, default=None
         Computation device. ``"cpu"``, ``"gpu"`` (alias for ``"cuda"``, CPU
         fallback if no GPU), ``"cuda"``/``"cuda:N"``, or ``"hpc"`` (offload the
@@ -83,7 +87,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
-                 missing_strategy="error", device=None):
+                 missing_strategy="error", metric="l1", device=None):
         self.n_clusters = n_clusters
         self.variant = variant
         self.band = band
@@ -92,6 +96,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.wdtw_g = wdtw_g
         self.adtw_penalty = adtw_penalty
         self.missing_strategy = missing_strategy
+        self.metric = metric
         self.device = device
 
     def _variant_enum(self):
@@ -129,16 +134,16 @@ class DTWClustering(BaseEstimator, ClusterMixin):
     def _dtw_fn(self, x, y):
         """Compute DTW distance between two series using current variant."""
         v = self.variant
-        # dtw_distance requires numpy arrays (nb::ndarray binding);
-        # variant functions accept lists (std::vector binding).
+        # All raw distance bindings take zero-copy float64 ndarrays (§2.6).
+        xa = np.asarray(x, dtype=np.float64)
+        ya = np.asarray(y, dtype=np.float64)
         if v == "ddtw":
-            return ddtw_distance(list(x), list(y), self.band)
+            return ddtw_distance(xa, ya, self.band)
         if v == "wdtw":
-            return wdtw_distance(list(x), list(y), self.band, self.wdtw_g)
+            return wdtw_distance(xa, ya, self.band, self.wdtw_g)
         if v == "adtw":
-            return adtw_distance(list(x), list(y), self.band, self.adtw_penalty)
-        return dtw_distance(np.asarray(x, dtype=np.float64),
-                            np.asarray(y, dtype=np.float64), self.band)
+            return adtw_distance(xa, ya, self.band, self.adtw_penalty)
+        return dtw_distance(xa, ya, self.band, self.metric)
 
     @staticmethod
     def _prepare_data(X):
@@ -219,7 +224,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         for _ in range(self.n_init):
             prob = self._build_problem(series)
             if dm_precomputed is not None:
-                prob.set_distance_matrix_from_numpy(dm_precomputed)
+                prob.set_distance_matrix(dm_precomputed)
 
             result = fast_pam(prob, self.n_clusters, self.max_iter)
             if result.total_cost < best_cost:

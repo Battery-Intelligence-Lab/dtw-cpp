@@ -13,19 +13,33 @@ from dtwcpp._dtwcpp_core import (
     DTWVariant,
     MissingStrategy,
     DistanceMatrixStrategy,
+    StoragePolicy,
+    LowerBoundStrategy,
     Linkage,
+    Device,
     # Structs
     DTWVariantParams,
     ClusteringResult,
     DenseDistanceMatrix,
     Data,
     MIPSettings,
+    CUDASettings,
     DendrogramStep,
     Dendrogram,
     HierarchicalOptions,
     CLARANSOptions,
     # Classes
     Problem,
+    Env,
+    # Error taxonomy (api-contract-2.0.md §5)
+    DtwcError,
+    InvalidInput,
+    SolverError,
+    DeviceError,
+    IOError,
+    # Device registry (api-contract-2.0.md §6)
+    env,
+    device_to_string,
     # DTW functions (raw C++ bindings — require numpy arrays)
     dtw_distance as _dtw_distance_raw,
     ddtw_distance as _ddtw_distance_raw,
@@ -42,11 +56,17 @@ from dtwcpp._dtwcpp_core import (
     clarans,
     build_dendrogram,
     cut_dendrogram,
-    # Scores
+    # Scores (canonical 2.0 names)
     silhouette,
+    davies_bouldin,
+    dunn,
+    inertia,
+    calinski_harabasz,
+    adjusted_rand,
+    normalized_mutual_info,
+    # Scores (deprecated aliases, kept one cycle — api-contract §4)
     davies_bouldin_index,
     dunn_index,
-    inertia,
     calinski_harabasz_index,
     adjusted_rand_index,
     normalized_mutual_information,
@@ -120,13 +140,33 @@ def _resolve_device(device):
 _DEFAULT_DEVICE = "cpu"
 
 
+def _sync_env(name):
+    """Best-effort mirror of the Python device selection into the shared
+    ``dtwc::Env`` registry (api-contract-2.0.md §6 — "device() delegates to Env").
+
+    ``cpu`` always syncs; ``gpu``/``cuda`` sync only when a GPU backend is compiled
+    in (otherwise ``Env`` raises :class:`DeviceError` per the no-silent-fallback
+    rule, and the Tier-1 path keeps its documented CPU fallback, §1.1). ``hpc`` is
+    NOT eagerly validated here — its ``.env``/SSH credential check runs at offload
+    submit time, not at ``device()`` set-time, so declaring ``device("hpc")`` never
+    blocks on the network.
+    """
+    base = name.split(":", 1)[0]
+    if base in ("cpu", "gpu", "cuda"):
+        try:
+            env().set_device(name)
+        except DeviceError:
+            pass  # keep the documented Tier-1 gpu->cpu fallback (§1.1)
+
+
 def device(device=None):
     """Get or set the global default device, PyTorch-style.
 
     Call with no argument to read the current default; pass a name to set it.
     Accepts ``"cpu"``, ``"gpu"``, ``"cuda"``, ``"cuda:N"``, or ``"hpc"``. The
-    friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call.
-    An explicit ``device=`` argument always overrides this global default.
+    friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call, and
+    the selection is mirrored into the shared ``dtwc::Env`` registry (§6). An
+    explicit ``device=`` argument always overrides this global default.
 
     Examples
     --------
@@ -140,6 +180,7 @@ def device(device=None):
         return _DEFAULT_DEVICE
     _parse_device(device)                 # validate; raises ValueError on unknown
     _DEFAULT_DEVICE = device.strip().lower()
+    _sync_env(_DEFAULT_DEVICE)            # mirror into dtwc::Env (shared source of truth)
     return _DEFAULT_DEVICE
 
 
@@ -199,7 +240,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
 from dtwcpp._clustering import DTWClustering
 
 # Unified high-level interface: device() -> load() -> cluster() -> result.plot()
-from dtwcpp._api import Dataset, load, cluster, ClusterResult, plot
+from dtwcpp._api import Dataset, load, cluster, Result, ClusterResult, plot
 
 # Pure-Python I/O utilities (CSV always available; HDF5/Parquet optional)
 from dtwcpp.io import (
@@ -264,21 +305,26 @@ def check_system():
 
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
+    "MissingStrategy", "DistanceMatrixStrategy", "StoragePolicy",
+    "LowerBoundStrategy", "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
-    "MIPSettings", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
-    "CLARANSOptions",
-    "Problem",
+    "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
+    "HierarchicalOptions", "CLARANSOptions",
+    "Problem", "Env", "env", "device_to_string",
+    "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
     "soft_dtw_gradient",
     "fast_pam", "fast_clara", "CLARAOptions",
     "clarans", "build_dendrogram", "cut_dendrogram",
-    "silhouette", "davies_bouldin_index",
-    "dunn_index", "inertia", "calinski_harabasz_index",
+    # Scores (canonical 2.0 names)
+    "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
+    "adjusted_rand", "normalized_mutual_info",
+    # Scores (deprecated aliases, §4)
+    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
     "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "device", "get_device",
-    "Dataset", "load", "cluster", "ClusterResult", "plot",
+    "Dataset", "load", "cluster", "Result", "ClusterResult", "plot",
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "OPENMP_AVAILABLE", "openmp_max_threads",

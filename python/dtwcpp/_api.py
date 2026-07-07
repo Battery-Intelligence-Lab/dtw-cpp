@@ -70,25 +70,131 @@ def load(source, *, skip_cols=0, delimiter=None, name=None):
     return Dataset(source, skip_cols=skip_cols, delimiter=delimiter, name=name)
 
 
-class ClusterResult:
-    """Outcome of :func:`cluster` — labels plus timing, and a 2D plot."""
+# score() names accepted by Result.score (api-contract-2.0.md §1.4). Each resolves
+# to the Tier-2 scores::* function; "silhouette" returns the MEAN silhouette.
+_SCORE_NAMES = ("silhouette", "davies_bouldin", "dunn", "calinski_harabasz", "inertia")
+
+
+class Result:
+    """Outcome of :func:`cluster` — the canonical 2.0 ``Result`` (api-contract §1.4).
+
+    Members: ``labels``, ``medoids``, ``score(name)``, ``save(dir)``, ``plot()``,
+    plus ``cost`` and ``device``. ``ClusterResult`` is a deprecated alias name.
+    """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,
-                 medoid_indices=None, distance_matrix=None, cost=None, name="dataset"):
+                 medoid_indices=None, distance_matrix=None, cost=None, name="dataset",
+                 series_names=None):
         self.labels = np.asarray(labels)
         self.device = device
         self.elapsed_s = elapsed_s
         self.k = k
         self.n_series = n_series
-        self.medoid_indices = None if medoid_indices is None else np.asarray(medoid_indices)
+        self.medoids = None if medoid_indices is None else np.asarray(medoid_indices)
         self.distance_matrix = distance_matrix
         self.cost = cost
         self.name = name
+        self._series_names = series_names
+
+    @property
+    def medoid_indices(self):
+        """Deprecated alias for :attr:`medoids` (kept one cycle, api-contract §4)."""
+        import warnings
+        warnings.warn("Result.medoid_indices is deprecated; use Result.medoids",
+                      DeprecationWarning, stacklevel=2)
+        return self.medoids
 
     def summary(self):
         extra = f", cost={self.cost:.2f}" if self.cost is not None else ""
         return (f"[device={self.device}] {self.n_series} series, k={self.k}  ->  "
                 f"{self.elapsed_s * 1e3:7.1f} ms{extra}")
+
+    def _scoring_problem(self):
+        """Rebuild a Tier-2 Problem carrying this result's distance matrix + labels.
+
+        Scores read state from a Problem (its distance matrix + clusters_ind +
+        centroids_ind), so score()/save() reconstruct a minimal one. Dummy series
+        stand in — the scores use only the distance matrix and the labels.
+        """
+        import dtwcpp
+        if self.distance_matrix is None:
+            raise dtwcpp.InvalidInput(
+                "no local distance matrix available to score (an hpc run returns "
+                "labels only; score()/save(silhouettes) need cpu/gpu output)."
+            )
+        D = np.asarray(self.distance_matrix, dtype=float)
+        n = D.shape[0]
+        names = list(self._series_names) if self._series_names is not None \
+            else [str(i) for i in range(n)]
+        prob = dtwcpp.Problem(self.name)
+        prob.set_data([[0.0] for _ in range(n)], names)
+        prob.set_distance_matrix(D)
+        prob.set_n_clusters(int(self.k))
+        prob.clusters_ind = [int(x) for x in self.labels]
+        if self.medoids is not None:
+            prob.centroids_ind = [int(x) for x in self.medoids]
+        return prob
+
+    def score(self, name):
+        """Return a clustering-quality score by name (api-contract §1.4).
+
+        ``name`` is one of ``"silhouette"`` (the MEAN silhouette),
+        ``"davies_bouldin"``, ``"dunn"``, ``"calinski_harabasz"``, ``"inertia"``.
+        An unknown name raises :class:`dtwcpp.InvalidInput`.
+        """
+        import dtwcpp
+        key = str(name).strip().lower()
+        if key not in _SCORE_NAMES:
+            raise dtwcpp.InvalidInput(
+                f"unknown score {name!r}. Valid names: {', '.join(_SCORE_NAMES)}."
+            )
+        prob = self._scoring_problem()
+        if key == "silhouette":
+            return float(np.mean(dtwcpp.silhouette(prob)))
+        if key == "davies_bouldin":
+            return float(dtwcpp.davies_bouldin(prob))
+        if key == "dunn":
+            return float(dtwcpp.dunn(prob))
+        if key == "calinski_harabasz":
+            return float(dtwcpp.calinski_harabasz(prob))
+        return float(dtwcpp.inertia(prob))
+
+    def save(self, directory):
+        """Write the four human-readable result CSVs into ``directory`` (§1.4/§7).
+
+        Emits ``<name>_labels.csv`` (``name,cluster``), ``<name>_medoids.csv``
+        (``cluster,medoid_index,medoid_name``), ``<name>_distance_matrix.csv`` and
+        ``<name>_silhouettes.csv`` (``name,cluster,silhouette``). Byte-identity
+        with the CLI output is the Phase 2.4 conformance fixture's contract.
+        """
+        import dtwcpp
+        os.makedirs(directory, exist_ok=True)
+        n = len(self.labels)
+        names = list(self._series_names) if self._series_names is not None \
+            else [str(i) for i in range(n)]
+        base = os.path.join(directory, self.name)
+
+        with open(base + "_labels.csv", "w", newline="") as f:
+            f.write("name,cluster\n")
+            for nm, lab in zip(names, self.labels):
+                f.write(f"{nm},{int(lab)}\n")
+
+        with open(base + "_medoids.csv", "w", newline="") as f:
+            f.write("cluster,medoid_index,medoid_name\n")
+            if self.medoids is not None:
+                for c, m in enumerate(self.medoids):
+                    f.write(f"{c},{int(m)},{names[int(m)]}\n")
+
+        if self.distance_matrix is not None:
+            np.savetxt(base + "_distance_matrix.csv",
+                       np.asarray(self.distance_matrix, dtype=float), delimiter=",")
+            prob = self._scoring_problem()
+            sil = dtwcpp.silhouette(prob)
+            with open(base + "_silhouettes.csv", "w", newline="") as f:
+                f.write("name,cluster,silhouette\n")
+                for nm, lab, s in zip(names, self.labels, sil):
+                    f.write(f"{nm},{int(lab)},{s}\n")
+        return directory
 
     def plot(self, png="clusters_2d.png", show=True):
         """Classical-MDS 2D scatter of the distance matrix, coloured by cluster.
@@ -116,8 +222,8 @@ class ClusterResult:
         fig, ax = plt.subplots(figsize=(6, 5))
         ax.scatter(XY[:, 0], XY[:, 1], c=self.labels, cmap="tab10", s=45,
                    edgecolor="white", linewidth=0.5)
-        if self.medoid_indices is not None:
-            ax.scatter(XY[self.medoid_indices, 0], XY[self.medoid_indices, 1],
+        if self.medoids is not None:
+            ax.scatter(XY[self.medoids, 0], XY[self.medoids, 1],
                        marker="*", s=320, c="black", label="medoids", zorder=3)
             ax.legend(loc="best")
         ax.set_title(f"DTW k-medoids  (device={self.device}, {n} series)")
@@ -128,6 +234,10 @@ class ClusterResult:
         if show and "agg" not in matplotlib.get_backend().lower():
             plt.show()
         return png
+
+
+# Deprecated alias name for the Tier-1 result (kept one cycle, api-contract §4).
+ClusterResult = Result
 
 
 # Canonical clustering methods. This is exactly the dtwc_cl CLI vocabulary
@@ -182,7 +292,7 @@ def _run_local_method(prob, method, k, max_iter, n):
         return res.labels, res.medoid_indices, res.total_cost
 
     # kmedoids (Lloyd) and mip run through Problem.cluster() and read back state.
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.method = dtwcpp.Method.MIP if method == "mip" else dtwcpp.Method.Kmedoids
     prob.cluster()
     return prob.clusters_ind, prob.centroids_ind, prob.find_total_cost()
@@ -211,8 +321,8 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         source = data.source if data.is_path else data.as_series()
         labels = _hpc.cluster_on_hpc(source, k, method=method, band=band,
                                      skip_cols=data.skip_cols, name=f"dtwc_{data.name}")
-        return ClusterResult(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
-                             k=k, n_series=len(labels), name=data.name)
+        return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
+                      k=k, n_series=len(labels), name=data.name)
 
     # Local cpu / gpu: full distance matrix on the device, then the chosen method.
     from dtwcpp import compute_distance_matrix, Problem
@@ -221,12 +331,12 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     D = compute_distance_matrix(series, band=band, device=eff)
     prob = Problem(data.name)
     prob.set_data(series, names)
-    prob.set_distance_matrix_from_numpy(D)
+    prob.set_distance_matrix(D)
     labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter, len(series))
-    return ClusterResult(labels, device=("cuda" if backend == "cuda" else "cpu"),
-                         elapsed_s=time.perf_counter() - t0, k=k, n_series=len(series),
-                         medoid_indices=medoid_indices, distance_matrix=D,
-                         cost=cost, name=data.name)
+    return Result(labels, device=("cuda" if backend == "cuda" else "cpu"),
+                  elapsed_s=time.perf_counter() - t0, k=k, n_series=len(series),
+                  medoid_indices=medoid_indices, distance_matrix=D,
+                  cost=cost, name=data.name, series_names=names)
 
 
 def plot(result, **kwargs):
