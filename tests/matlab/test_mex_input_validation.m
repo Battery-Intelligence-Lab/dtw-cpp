@@ -198,5 +198,3 @@ function test_valid_int32_labels_still_work(testCase)
     v = dtwc_mex('adjusted_rand_index', int32([1 2 1 2]), int32([1 2 1 2]));
     verifyEqual(testCase, v, 1, 'AbsTol', 1e-12);   % identical labelings -> ARI 1
 end
-
-end
