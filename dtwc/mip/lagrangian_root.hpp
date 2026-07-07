@@ -46,6 +46,8 @@ struct LagrangianParams
   double lambda0 = 1.0;        ///< Initial Polyak step scale λ ∈ (0, 2] (1.0 = damped, well inside the convergent range).
   int stall_halve = 20;        ///< Halve λ after this many iters with no LB improvement.
   double lambda_min = 1e-4;    ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
+  double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
+  int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
 };
 
 /// @brief Result of a Lagrangian-root solve. Bounds are in RAW distance units

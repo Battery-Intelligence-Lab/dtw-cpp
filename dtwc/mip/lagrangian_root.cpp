@@ -103,7 +103,12 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   std::vector<double> mu(Nz, 0.0);   // Lagrange multipliers (start at 0 ⇒ L(0)=0).
   std::vector<double> rho(Nz, 0.0);   // facility scores this iteration.
   std::vector<double> g(Nz, 0.0);     // subgradient this iteration.
+  std::vector<double> d(Nz, 0.0);     // deflected step direction (CFM).
+  std::vector<double> d_prev(Nz, 0.0);// previous deflected direction.
   std::vector<int> idx(Nz);           // scratch for k-smallest selection.
+  std::vector<int> cheap_lab(Nz, 0);  // per-iter cheap assignment labels.
+  double dprev_norm2 = 0.0;
+  bool have_dprev = false;
 
   double best_lb = -inf;
   double best_primal = inf;                              // best cost of LR's OWN primal repair.
@@ -164,15 +169,40 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
     }
 
     // S_k = idx[0..k-1] drives the bound and the subgradient (below).
-    // (4) Primal repair: a k-medoids local search seeded by S_k (a SEPARATE copy
-    // so the subgradient still keys off the Lagrangian selection, not the repair).
-    std::vector<int> repair_med(idx.begin(), idx.begin() + k);
-    std::vector<int> repair_lab;
-    const double repair_cost = pmedian_local_search(D, N, k, repair_med, repair_lab);
-    if (repair_cost < best_primal) { // strict < from +inf ⇒ populated on iteration 0.
-      best_primal = repair_cost;
-      best_medoids = std::move(repair_med);
-      best_labels = std::move(repair_lab);
+    // (4a) Cheap primal EVERY iter: assign each j to its nearest facility in S_k
+    // (O(Nk)). A valid upper bound that keeps the Polyak target sharp; the
+    // subgradient still keys off S_k, not this repair.
+    double cheap_cost = 0.0;
+    for (int j = 0; j < N; ++j) {
+      double bd = inf;
+      int bm = idx[0];
+      for (int t = 0; t < k; ++t) {
+        const int m = idx[static_cast<std::size_t>(t)];
+        const double dd = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
+        if (dd < bd) { bd = dd; bm = m; }
+      }
+      cheap_lab[static_cast<std::size_t>(j)] = bm;
+      cheap_cost += bd;
+    }
+    if (cheap_cost < best_primal) {
+      best_primal = cheap_cost;
+      best_medoids.assign(idx.begin(), idx.begin() + k);
+      std::sort(best_medoids.begin(), best_medoids.end());
+      best_labels = cheap_lab;
+    }
+
+    // (4b) Full O(N²) k-medoids polish only PERIODICALLY (the assignment above
+    // finds the right clusters; the polish moves each medoid to the intra-cluster
+    // optimum). Throttling this is the dominant per-iter saving at large N.
+    if (params.polish_period > 0 && (iter % params.polish_period) == 0) {
+      std::vector<int> repair_med(idx.begin(), idx.begin() + k);
+      std::vector<int> repair_lab;
+      const double repair_cost = pmedian_local_search(D, N, k, repair_med, repair_lab);
+      if (repair_cost < best_primal) {
+        best_primal = repair_cost;
+        best_medoids = std::move(repair_med);
+        best_labels = std::move(repair_lab);
+      }
     }
 
     // (6) Gap / certificate against LR's own primal (self-consistent with the
@@ -213,11 +243,49 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
       stall = 0;
     }
 
-    // (7) Polyak step toward the best available upper bound (external seed or
-    // LR's own primal — whichever is tighter; both are ≥ L, so step ≥ 0).
+    // (7) CFM deflection: steer the step off the previous direction to damp the
+    // zig-zag that stalls a plain subgradient. β > 0 only when the new subgradient
+    // conflicts with the previous direction.
+    double beta = 0.0;
+    if (have_dprev && params.deflect > 0.0 && dprev_norm2 > 0.0) {
+      double dot = 0.0;
+      for (int j = 0; j < N; ++j) dot += g[static_cast<std::size_t>(j)] * d_prev[static_cast<std::size_t>(j)];
+      if (dot < 0.0) beta = -params.deflect * dot / dprev_norm2;
+    }
+    double dnorm2 = 0.0, dg = 0.0;
+    for (int j = 0; j < N; ++j) {
+      const double dj = g[static_cast<std::size_t>(j)] + beta * d_prev[static_cast<std::size_t>(j)];
+      d[static_cast<std::size_t>(j)] = dj;
+      dnorm2 += dj * dj;
+      dg += dj * g[static_cast<std::size_t>(j)];
+    }
+    if (dnorm2 <= 0.0 || dg <= 0.0) { // deflection degenerate / not ascent ⇒ plain subgradient.
+      d = g;
+      dnorm2 = gnorm2;
+    }
+
+    // Polyak step along d toward the best available UB (≥ L ⇒ step ≥ 0).
     const double ub_step = std::min(best_primal, seed_ub);
-    const double step = lambda * (ub_step - L) / gnorm2;
-    for (int j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] += step * g[static_cast<std::size_t>(j)];
+    const double step = lambda * (ub_step - L) / dnorm2;
+    for (int j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] += step * d[static_cast<std::size_t>(j)];
+
+    d_prev = d;
+    dprev_norm2 = dnorm2;
+    have_dprev = true;
+  }
+
+  // Final polish: the best cheap incumbent may have appeared between polish
+  // periods, so polish the best medoid set once more to guarantee a true local
+  // optimum in the reported primal.
+  if (!best_medoids.empty()) {
+    std::vector<int> fm = best_medoids;
+    std::vector<int> fl;
+    const double fc = pmedian_local_search(D, N, k, fm, fl);
+    if (fc < best_primal) {
+      best_primal = fc;
+      best_medoids = std::move(fm);
+      best_labels = std::move(fl);
+    }
   }
 
   // Reduced-cost (Beasley) fixing: facility i is fixed CLOSED when opening it
@@ -235,7 +303,8 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   r.upper_bound = best_primal;
   const double denom = std::max(std::abs(best_primal), kEps);
   r.gap = (best_primal - r.lower_bound) / denom;
-  r.certified_optimal = certified;
+  r.certified_optimal = (r.gap <= params.rel_gap_tol); // final gap between valid LB and valid UB.
+  (void)certified;
   r.medoids = std::move(best_medoids);
   r.labels = std::move(best_labels);
   r.multipliers = std::move(mu);
