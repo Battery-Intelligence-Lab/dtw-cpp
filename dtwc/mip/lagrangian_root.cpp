@@ -21,6 +21,10 @@
 #include "../parallelisation.hpp"
 #include "../Problem.hpp"
 
+#ifdef DTWC_ENABLE_HIGHS
+#include <Highs.h>
+#endif
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -87,6 +91,131 @@ double pmedian_local_search(const double *D, int N, int k,
   std::sort(medoids.begin(), medoids.end());
   return cost;
 }
+
+/// Evaluate the Lagrangian dual at μ: fills @p rho (facility scores), @p g (a
+/// subgradient of L), and @p idx (idx[0..k-1] = S_k, the k smallest ρ); sets
+/// @p rho_k (the k-th smallest ρ) and returns L(μ). Shared by the subgradient
+/// and cutting-plane solvers so the "dual oracle" lives in exactly one place.
+double evaluate_dual(const double *D, int N, std::size_t Nz, int k,
+                     const std::vector<double> &mu, std::vector<double> &rho,
+                     std::vector<double> &g, std::vector<int> &idx, double &rho_k)
+{
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (int i = 0; i < N; ++i) {
+    const double *Di = D + static_cast<std::size_t>(i) * Nz;
+    double s = 0.0;
+    for (int j = 0; j < N; ++j) {
+      const double dd = Di[j] - mu[static_cast<std::size_t>(j)];
+      if (dd < 0.0) s += dd;
+    }
+    rho[static_cast<std::size_t>(i)] = s;
+  }
+
+  std::iota(idx.begin(), idx.end(), 0);
+  std::nth_element(idx.begin(), idx.begin() + (k - 1), idx.end(),
+                   [&](int a, int b) { return rho[static_cast<std::size_t>(a)]
+                                            < rho[static_cast<std::size_t>(b)]; });
+  rho_k = rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(k - 1)])];
+
+  double sum_mu = 0.0;
+  for (int j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
+  double sum_rho_S = 0.0;
+  for (int t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
+  const double L = sum_mu + sum_rho_S;
+
+  // g_j = 1 − #{i ∈ S_k : D_ij < μ_j}  (a subgradient of the concave L at μ).
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
+  for (int j = 0; j < N; ++j) {
+    int served = 0;
+    const double muj = mu[static_cast<std::size_t>(j)];
+    for (int t = 0; t < k; ++t) {
+      const int m = idx[static_cast<std::size_t>(t)];
+      if (D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)] < muj) ++served;
+    }
+    g[static_cast<std::size_t>(j)] = 1.0 - static_cast<double>(served);
+  }
+  return L;
+}
+
+/// Update the primal incumbent from S_k (idx[0..k-1]): a cheap O(Nk) nearest
+/// assignment always; a full O(N²) medoid polish when @p do_polish. Mutates
+/// best_* only on strict improvement.
+void try_primal(const double *D, int N, std::size_t Nz, int k,
+                const std::vector<int> &idx, bool do_polish, double &best_primal,
+                std::vector<int> &best_medoids, std::vector<int> &best_labels,
+                std::vector<int> &cheap_lab)
+{
+  const double inf = std::numeric_limits<double>::infinity();
+  double cheap_cost = 0.0;
+  for (int j = 0; j < N; ++j) {
+    double bd = inf;
+    int bm = idx[0];
+    for (int t = 0; t < k; ++t) {
+      const int m = idx[static_cast<std::size_t>(t)];
+      const double dd = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
+      if (dd < bd) { bd = dd; bm = m; }
+    }
+    cheap_lab[static_cast<std::size_t>(j)] = bm;
+    cheap_cost += bd;
+  }
+  if (cheap_cost < best_primal) {
+    best_primal = cheap_cost;
+    best_medoids.assign(idx.begin(), idx.begin() + k);
+    std::sort(best_medoids.begin(), best_medoids.end());
+    best_labels = cheap_lab;
+  }
+  if (do_polish) {
+    std::vector<int> rm(idx.begin(), idx.begin() + k), rl;
+    const double rc = pmedian_local_search(D, N, k, rm, rl);
+    if (rc < best_primal) {
+      best_primal = rc;
+      best_medoids = std::move(rm);
+      best_labels = std::move(rl);
+    }
+  }
+}
+
+/// Shared tail for both solvers: one final polish (guarantees a true local
+/// optimum), Beasley reduced-cost fixing (n_core), and result assembly.
+LagrangianResult finalize(const double *D, int N, int k, double best_lb,
+                          double best_primal, double seed_ub,
+                          std::vector<int> best_medoids, std::vector<int> best_labels,
+                          std::vector<double> mu, const std::vector<double> &rho_at_best,
+                          double rhok_at_best, int iterations, double rel_gap_tol)
+{
+  const double inf = std::numeric_limits<double>::infinity();
+  if (!best_medoids.empty()) {
+    std::vector<int> fm = best_medoids, fl;
+    const double fc = pmedian_local_search(D, N, k, fm, fl);
+    if (fc < best_primal) {
+      best_primal = fc;
+      best_medoids = std::move(fm);
+      best_labels = std::move(fl);
+    }
+  }
+  const double fix_ub = std::min(best_primal, seed_ub);
+  int n_core = 0;
+  for (int i = 0; i < N; ++i) {
+    const double extra = rho_at_best[static_cast<std::size_t>(i)] - rhok_at_best; // ≥ 0 for i ∉ S_k.
+    if (!(best_lb + std::max(0.0, extra) > fix_ub)) ++n_core;
+  }
+  LagrangianResult r;
+  r.lower_bound = (best_lb == -inf) ? 0.0 : best_lb;
+  r.upper_bound = best_primal;
+  const double denom = std::max(std::abs(best_primal), kEps);
+  r.gap = (best_primal - r.lower_bound) / denom;
+  r.certified_optimal = (r.gap <= rel_gap_tol);
+  r.medoids = std::move(best_medoids);
+  r.labels = std::move(best_labels);
+  r.multipliers = std::move(mu);
+  r.iterations = iterations;
+  r.n_core = n_core;
+  return r;
+}
 } // namespace
 
 LagrangianResult lagrangian_root(const double *D, int N, int k,
@@ -123,7 +252,6 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   double lambda = params.lambda0;
   int stall = 0;
   int iter = 0;
-  bool certified = false;
 
   // Trigger the shared single-thread loudness check once (Task 3.6) and get a
   // scheduling hint; the reductions below are correct serial or parallel.
@@ -131,33 +259,9 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
   (void)chunk;
 
   for (iter = 0; iter < params.max_iters; ++iter) {
-    // (1) ρ_i(μ) = Σ_j min(0, D_ij − μ_j). Independent per i ⇒ lock-free.
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-    for (int i = 0; i < N; ++i) {
-      const double *Di = D + static_cast<std::size_t>(i) * Nz;
-      double s = 0.0;
-      for (int j = 0; j < N; ++j) {
-        const double d = Di[j] - mu[static_cast<std::size_t>(j)];
-        if (d < 0.0) s += d;
-      }
-      rho[static_cast<std::size_t>(i)] = s;
-    }
-
-    // (2) S_k = the k facilities with the smallest (most negative) ρ.
-    std::iota(idx.begin(), idx.end(), 0);
-    std::nth_element(idx.begin(), idx.begin() + (k - 1), idx.end(),
-                     [&](int a, int b) { return rho[static_cast<std::size_t>(a)]
-                                              < rho[static_cast<std::size_t>(b)]; });
-    const double rho_k = rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(k - 1)])]; // k-th smallest.
-
-    // (3) L(μ) = Σ_j μ_j + Σ_{i∈S_k} ρ_i — a valid lower bound for this μ.
-    double sum_mu = 0.0;
-    for (int j = 0; j < N; ++j) sum_mu += mu[static_cast<std::size_t>(j)];
-    double sum_rho_S = 0.0;
-    for (int t = 0; t < k; ++t) sum_rho_S += rho[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)])];
-    const double L = sum_mu + sum_rho_S;
+    // (1)–(3),(5) Dual oracle: L(μ), subgradient g, and S_k (idx[0..k-1]).
+    double rho_k = 0.0;
+    const double L = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
 
     if (L > best_lb) {
       best_lb = L;
@@ -168,69 +272,22 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
       ++stall;
     }
 
-    // S_k = idx[0..k-1] drives the bound and the subgradient (below).
-    // (4a) Cheap primal EVERY iter: assign each j to its nearest facility in S_k
-    // (O(Nk)). A valid upper bound that keeps the Polyak target sharp; the
-    // subgradient still keys off S_k, not this repair.
-    double cheap_cost = 0.0;
-    for (int j = 0; j < N; ++j) {
-      double bd = inf;
-      int bm = idx[0];
-      for (int t = 0; t < k; ++t) {
-        const int m = idx[static_cast<std::size_t>(t)];
-        const double dd = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
-        if (dd < bd) { bd = dd; bm = m; }
-      }
-      cheap_lab[static_cast<std::size_t>(j)] = bm;
-      cheap_cost += bd;
-    }
-    if (cheap_cost < best_primal) {
-      best_primal = cheap_cost;
-      best_medoids.assign(idx.begin(), idx.begin() + k);
-      std::sort(best_medoids.begin(), best_medoids.end());
-      best_labels = cheap_lab;
-    }
-
-    // (4b) Full O(N²) k-medoids polish only PERIODICALLY (the assignment above
-    // finds the right clusters; the polish moves each medoid to the intra-cluster
-    // optimum). Throttling this is the dominant per-iter saving at large N.
-    if (params.polish_period > 0 && (iter % params.polish_period) == 0) {
-      std::vector<int> repair_med(idx.begin(), idx.begin() + k);
-      std::vector<int> repair_lab;
-      const double repair_cost = pmedian_local_search(D, N, k, repair_med, repair_lab);
-      if (repair_cost < best_primal) {
-        best_primal = repair_cost;
-        best_medoids = std::move(repair_med);
-        best_labels = std::move(repair_lab);
-      }
-    }
+    // (4) Primal repair from S_k: cheap assignment every iter, full polish
+    // periodically (throttling the O(N²) polish is the dominant large-N saving).
+    try_primal(D, N, Nz, k, idx,
+               params.polish_period > 0 && (iter % params.polish_period) == 0,
+               best_primal, best_medoids, best_labels, cheap_lab);
 
     // (6) Gap / certificate against LR's own primal (self-consistent with the
     // reported medoids). best_primal is finite from iteration 0.
     const double denom = std::max(std::abs(best_primal), kEps);
     if (best_primal - best_lb <= params.rel_gap_tol * denom) {
-      certified = true;
       ++iter; // count this iteration.
       break;
     }
 
-    // (5) Subgradient g_j = 1 − #{i∈S_k : D_ij < μ_j}.
     double gnorm2 = 0.0;
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static) reduction(+ : gnorm2)
-#endif
-    for (int j = 0; j < N; ++j) {
-      int served = 0;
-      const double muj = mu[static_cast<std::size_t>(j)];
-      for (int t = 0; t < k; ++t) { // S_k = idx[0..k-1].
-        const int m = idx[static_cast<std::size_t>(t)];
-        if (D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)] < muj) ++served;
-      }
-      const double gj = 1.0 - static_cast<double>(served);
-      g[static_cast<std::size_t>(j)] = gj;
-      gnorm2 += gj * gj;
-    }
-
+    for (int j = 0; j < N; ++j) gnorm2 += g[static_cast<std::size_t>(j)] * g[static_cast<std::size_t>(j)];
     if (gnorm2 == 0.0) { // μ stationary: no ascent direction ⇒ done.
       ++iter;
       break;
@@ -274,43 +331,149 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
     have_dprev = true;
   }
 
-  // Final polish: the best cheap incumbent may have appeared between polish
-  // periods, so polish the best medoid set once more to guarantee a true local
-  // optimum in the reported primal.
-  if (!best_medoids.empty()) {
-    std::vector<int> fm = best_medoids;
-    std::vector<int> fl;
-    const double fc = pmedian_local_search(D, N, k, fm, fl);
-    if (fc < best_primal) {
-      best_primal = fc;
-      best_medoids = std::move(fm);
-      best_labels = std::move(fl);
+  return finalize(D, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids),
+                  std::move(best_labels), std::move(mu), rho_at_best, rhok_at_best,
+                  iter, params.rel_gap_tol);
+}
+
+LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
+                                        double initial_ub, const LagrangianParams &params)
+{
+#ifndef DTWC_ENABLE_HIGHS
+  (void)D; (void)N; (void)k; (void)initial_ub; (void)params;
+  throw SolverError(
+    "lagrangian_root_kelley: the cutting-plane master requires HiGHS. Rebuild with "
+    "-DDTWC_ENABLE_HIGHS=ON, or use lagrangian_root (the solver-free subgradient variant).");
+#else
+  if (N <= 0) throw InvalidInput("lagrangian_root_kelley: N must be positive");
+  if (k < 1 || k > N)
+    throw InvalidInput("lagrangian_root_kelley: require 1 <= k <= N (k=" + std::to_string(k)
+                       + ", N=" + std::to_string(N) + ")");
+
+  const std::size_t Nz = static_cast<std::size_t>(N);
+  const double inf = std::numeric_limits<double>::infinity();
+
+  // Box μ_j ∈ [0, maxD] contains the dual optimum (a point's assignment price is
+  // ≤ its farthest distance ≤ maxD) and keeps the master bounded.
+  double maxD = 0.0;
+  for (std::size_t t = 0; t < Nz * Nz; ++t) maxD = std::max(maxD, D[t]);
+  if (!(maxD > 0.0)) maxD = 1.0;
+
+  std::vector<double> mu(Nz, 0.0), rho(Nz, 0.0), g(Nz, 0.0);
+  std::vector<int> idx(Nz), cheap_lab(Nz, 0);
+  double best_lb = -inf, best_primal = inf;
+  const double seed_ub = (initial_ub > 0.0) ? initial_ub : inf;
+  std::vector<int> best_medoids, best_labels;
+  std::vector<double> rho_at_best(Nz, 0.0);
+  double rhok_at_best = 0.0;
+
+  (void)omp_chunk_size(N, 8); // Task 3.6 loudness.
+
+  // Master LP: cols μ_0..μ_{N-1} ∈ [0,maxD] and θ (col N) ∈ [-inf, UB]; maximize θ.
+  HighsModel model;
+  const std::size_t ncol = Nz + 1;
+  model.lp_.num_col_ = static_cast<HighsInt>(ncol);
+  model.lp_.num_row_ = 0;
+  model.lp_.sense_ = ObjSense::kMaximize;
+  model.lp_.col_cost_.assign(ncol, 0.0);
+  model.lp_.col_cost_[Nz] = 1.0; // maximize θ
+  model.lp_.col_lower_.assign(ncol, 0.0);
+  model.lp_.col_upper_.assign(ncol, maxD);
+  model.lp_.col_lower_[Nz] = -kHighsInf;
+  model.lp_.col_upper_[Nz] = (seed_ub < inf) ? seed_ub : kHighsInf; // θ ≤ UB (valid: L* ≤ opt ≤ UB)
+  model.lp_.a_matrix_.format_ = MatrixFormat::kColwise;
+  model.lp_.a_matrix_.num_col_ = static_cast<HighsInt>(ncol);
+  model.lp_.a_matrix_.num_row_ = 0;
+  model.lp_.a_matrix_.start_.assign(ncol + 1, 0); // empty matrix
+
+  Highs highs;
+  highs.setOptionValue("output_flag", false);
+  if (highs.passModel(model) != HighsStatus::kOk)
+    throw SolverError("lagrangian_root_kelley: HiGHS rejected the master LP model.");
+
+  int major = 0;
+  std::vector<HighsInt> ridx;
+  std::vector<double> rval;
+
+  // Add the supporting hyperplane θ ≤ L + g·(μ'−μ) for the CURRENT (μ, L, g).
+  auto add_cut = [&](double L) {
+    ridx.clear();
+    rval.clear();
+    ridx.push_back(static_cast<HighsInt>(N)); // θ column, coeff +1
+    rval.push_back(1.0);
+    double gdotmu = 0.0;
+    for (int j = 0; j < N; ++j) {
+      const double gj = g[static_cast<std::size_t>(j)];
+      gdotmu += gj * mu[static_cast<std::size_t>(j)];
+      if (gj != 0.0) {
+        ridx.push_back(static_cast<HighsInt>(j));
+        rval.push_back(-gj);
+      }
     }
+    highs.addRow(-kHighsInf, L - gdotmu, static_cast<HighsInt>(ridx.size()),
+                 ridx.data(), rval.data());
+  };
+
+  // Initial evaluation at μ = 0: seed the LB, the primal, and the θ ≤ UB bound
+  // (unstabilized Kelley throws μ to box corners where L is terrible and the LB
+  // never rises — so we stabilize with a BOXSTEP trust region around the best μ).
+  double rho_k = 0.0;
+  best_lb = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
+  rho_at_best = rho;
+  rhok_at_best = rho_k;
+  try_primal(D, N, Nz, k, idx, /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
+  highs.changeColBounds(static_cast<HighsInt>(N), -kHighsInf, best_primal); // θ ≤ UB
+  add_cut(best_lb);
+
+  std::vector<double> mu_hat = mu; // stability centre (best-L point so far)
+  double L_hat = best_lb;
+  double delta = maxD;             // trust radius (grows on serious steps, shrinks on null)
+  double prev_ub = best_primal;
+
+  for (major = 1; major <= params.kelley_max_major; ++major) {
+    // Trust region: μ_j ∈ [μ̂_j − δ, μ̂_j + δ] ∩ [0, maxD].
+    for (int j = 0; j < N; ++j) {
+      const double lo = std::max(0.0, mu_hat[static_cast<std::size_t>(j)] - delta);
+      const double hi = std::min(maxD, mu_hat[static_cast<std::size_t>(j)] + delta);
+      highs.changeColBounds(static_cast<HighsInt>(j), lo, hi);
+    }
+    if (highs.run() != HighsStatus::kOk) break;
+    if (highs.getModelStatus() != HighsModelStatus::kOptimal) break;
+    const std::vector<double> &sol = highs.getSolution().col_value;
+    const double theta_master = sol[Nz]; // model max over the trust region.
+    for (int j = 0; j < N; ++j) mu[static_cast<std::size_t>(j)] = sol[static_cast<std::size_t>(j)];
+
+    // Oracle at the new point; refine the model and the incumbents.
+    const double L_new = evaluate_dual(D, N, Nz, k, mu, rho, g, idx, rho_k);
+    try_primal(D, N, Nz, k, idx, /*do_polish=*/true, best_primal, best_medoids, best_labels, cheap_lab);
+    if (best_primal < prev_ub) { // tightened UB ⇒ tighten θ bound too.
+      highs.changeColBounds(static_cast<HighsInt>(N), -kHighsInf, best_primal);
+      prev_ub = best_primal;
+    }
+    add_cut(L_new);
+
+    if (L_new > best_lb) { best_lb = L_new; rho_at_best = rho; rhok_at_best = rho_k; }
+    if (L_new > L_hat + 1e-12 * std::max(1.0, std::abs(L_hat))) {
+      mu_hat = mu;               // serious step: move centre, grow the region.
+      L_hat = L_new;
+      delta = std::min(delta * 2.0, maxD);
+    } else {
+      delta *= 0.5;              // null step: contract around the centre.
+    }
+
+    const double denom = std::max(std::abs(best_primal), kEps);
+    if (best_primal - best_lb <= params.rel_gap_tol * denom) break; // primal certifies.
+    // Global dual certificate: only valid when the trust region spans the full box.
+    if (delta >= maxD
+        && theta_master - best_lb <= params.rel_gap_tol * std::max(std::abs(theta_master), kEps))
+      break;
+    if (delta < maxD * 1e-12) break; // trust region collapsed ⇒ converged/stalled.
   }
 
-  // Reduced-cost (Beasley) fixing: facility i is fixed CLOSED when opening it
-  // would push the bound past the incumbent. n_core = survivors.
-  const double fix_ub = std::min(best_primal, seed_ub);
-  int n_core = 0;
-  for (int i = 0; i < N; ++i) {
-    const double extra = rho_at_best[static_cast<std::size_t>(i)] - rhok_at_best; // ≥ 0 for i ∉ S_k.
-    const bool fixed_closed = (best_lb + std::max(0.0, extra) > fix_ub);
-    if (!fixed_closed) ++n_core;
-  }
-
-  LagrangianResult r;
-  r.lower_bound = (best_lb == -inf) ? 0.0 : best_lb;
-  r.upper_bound = best_primal;
-  const double denom = std::max(std::abs(best_primal), kEps);
-  r.gap = (best_primal - r.lower_bound) / denom;
-  r.certified_optimal = (r.gap <= params.rel_gap_tol); // final gap between valid LB and valid UB.
-  (void)certified;
-  r.medoids = std::move(best_medoids);
-  r.labels = std::move(best_labels);
-  r.multipliers = std::move(mu);
-  r.iterations = iter;
-  r.n_core = n_core;
-  return r;
+  return finalize(D, N, k, best_lb, best_primal, seed_ub, std::move(best_medoids),
+                  std::move(best_labels), std::move(mu_hat), rho_at_best, rhok_at_best,
+                  major, params.rel_gap_tol);
+#endif
 }
 
 LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params)

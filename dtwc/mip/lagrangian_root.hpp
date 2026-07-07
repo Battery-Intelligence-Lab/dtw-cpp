@@ -48,6 +48,7 @@ struct LagrangianParams
   double lambda_min = 1e-4;    ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
   double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
   int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
+  int kelley_max_major = 500;  ///< Cutting-plane (Kelley) variant only: cap on major iterations (each adds one cut + re-solves the small master LP).
 };
 
 /// @brief Result of a Lagrangian-root solve. Bounds are in RAW distance units
@@ -81,6 +82,28 @@ struct LagrangianResult
 LagrangianResult lagrangian_root(const double *D, int N, int k,
                                  double initial_ub = -1.0,
                                  const LagrangianParams &params = {});
+
+/**
+ * @brief Same Lagrangian bound, solved by a Kelley CUTTING-PLANE method — the
+ *        "right tool" for the concave piecewise-linear dual.
+ *
+ * @details Rather than stepping a subgradient (O(1/√k) convergence, stalls at
+ * the non-smooth optimum), this accumulates each evaluated `(L, subgradient)`
+ * as a supporting hyperplane and maximizes the polyhedral outer model exactly by
+ * a small LP master over the N multipliers μ (bounded to a box) plus one scalar
+ * θ. Kelley converges FINITELY on a piecewise-linear function — a handful of
+ * major iterations close gaps the subgradient cannot. The master LP is tiny
+ * (N+1 columns, one row per major iteration), warm-started across iterations —
+ * NOT the intractable N²-column compact LP.
+ *
+ * Requires HiGHS for the master LP (the subgradient variant above is the
+ * solver-free default). Throws dtwc::SolverError if HiGHS is not compiled in.
+ *
+ * @param D,N,k,initial_ub,params  As lagrangian_root; uses params.kelley_max_major.
+ */
+LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
+                                        double initial_ub = -1.0,
+                                        const LagrangianParams &params = {});
 
 /**
  * @brief Lagrangian root bound for a Problem: fills the distance matrix (if

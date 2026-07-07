@@ -44,6 +44,7 @@
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 using dtwc::mip::lagrangian_root;
+using dtwc::mip::lagrangian_root_kelley;
 using dtwc::mip::LagrangianResult;
 
 namespace {
@@ -302,47 +303,85 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
 }
 
 // ===========================================================================
-// BENCH — LR-core vs compact MIP wall-time across N (hidden: tag [.] so ctest
-// never runs it). Run explicitly: test_lagrangian_root "[bench]".
+// KELLEY — the cutting-plane dual matches the optimum and certifies where the
+// subgradient stalls. Skips loudly if HiGHS is not compiled in.
+// ===========================================================================
+TEST_CASE("Lagrangian root (Kelley cutting-plane) matches the optimum", "[lagrangian][kelley]")
+{
+  int checked = 0;
+  for (unsigned seed = 1; seed <= 20; ++seed) {
+    const int N = 8 + static_cast<int>(seed % 7);  // 8..14
+    const int k = 2 + static_cast<int>(seed % 3);  // 2..4
+    const std::vector<double> D =
+      (seed % 2 == 0) ? uniform_D(N, seed) : D_from_positions(clustered_positions(N, k, seed));
+    const auto orc = brute_force_pmedian(D, N, k);
+
+    LagrangianResult r;
+    try {
+      r = lagrangian_root_kelley(D.data(), N, k, -1.0);
+    } catch (const dtwc::SolverError &) {
+      WARN("HiGHS not available; skipping Kelley cutting-plane test.");
+      return;
+    }
+
+    const double tol = 1e-6 * std::max(1.0, std::abs(orc.cost)) + 1e-9;
+    INFO("seed=" << seed << " N=" << N << " k=" << k << " LB=" << r.lower_bound
+                 << " opt=" << orc.cost << " UB=" << r.upper_bound << " major=" << r.iterations);
+    REQUIRE(r.lower_bound <= orc.cost + tol);            // valid lower bound
+    REQUIRE(r.upper_bound >= orc.cost - tol);            // valid upper bound
+    REQUIRE(std::abs(r.upper_bound - orc.cost) <= tol);  // primal exactly optimal
+    REQUIRE(static_cast<int>(r.medoids.size()) == k);
+    ++checked;
+  }
+  REQUIRE(checked == 20);
+}
+
+// ===========================================================================
+// BENCH — LR-core (subgradient AND Kelley) vs compact MIP across N (hidden: tag
+// [.] so ctest never runs it). Run explicitly: test_lagrangian_root "[bench]".
 // ADVISORY ONLY: this machine runs parallel workloads; read the SCALING, not ms.
 // ===========================================================================
 TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 {
-  std::printf("\n  N     k | LR_ms  iters   gap      | MIP_ms  solver | LR_cost      MIP_cost     match\n");
-  std::printf("  --------+----------------------------+----------------+--------------------------------\n");
+  std::printf("\n   N    k | subgrad: ms  iters  gap     | kelley: ms  major gap     | MIP_ms   | opt\n");
+  std::printf("  -------+-----------------------------+----------------------------+----------+--------------\n");
 
   for (int N : { 20, 50, 100, 200, 400, 800 }) {
     const int k = 3;
     const auto pos = clustered_positions(N, k, 20240707u);
     const auto D = D_from_positions(pos);
 
-    // --- LR-core (bound + certified primal) on the dense matrix ---
-    dtwc::Clock lr_clk;
-    const LagrangianResult lr = lagrangian_root(D.data(), N, k, -1.0);
-    const double lr_ms = lr_clk.duration() * 1000.0;
+    // --- LR-core subgradient ---
+    dtwc::Clock sg_clk;
+    const LagrangianResult sg = lagrangian_root(D.data(), N, k, -1.0);
+    const double sg_ms = sg_clk.duration() * 1000.0;
 
-    // --- Compact MIP through the production Problem path (HiGHS/Gurobi) ---
+    // --- LR-core Kelley cutting-plane (needs HiGHS) ---
+    double kel_ms = -1.0, kel_gap = -1.0, kel_cost = std::nan("");
+    int kel_major = -1;
+    try {
+      dtwc::Clock kel_clk;
+      const LagrangianResult kr = lagrangian_root_kelley(D.data(), N, k, -1.0);
+      kel_ms = kel_clk.duration() * 1000.0;
+      kel_major = kr.iterations;
+      kel_gap = kr.gap;
+      kel_cost = kr.upper_bound;
+    } catch (const dtwc::SolverError &) { /* HiGHS absent */ }
+
+    // --- Compact MIP through the production Problem path ---
     Problem prob = make_problem_1d(pos, k);
     prob.set_solver(Solver::HiGHS);
     dtwc::Clock mip_clk;
     prob.cluster();
     const double mip_ms = mip_clk.duration() * 1000.0;
+    const double mip_cost = has_solution(prob) ? cost_of(prob.centroids_ind, D, N) : std::nan("");
 
-    double mip_cost = std::nan("");
-    const char *solver = "none";
-    if (has_solution(prob)) {
-      mip_cost = cost_of(prob.centroids_ind, D, N);
-      solver = "HiGHS";
-    }
-    const bool match = has_solution(prob)
-                       && std::abs(lr.upper_bound - mip_cost) <= 1e-6 * std::max(1.0, std::abs(mip_cost));
-
-    std::printf("  %4d  %2d | %6.1f %5d  %.2e | %7.1f  %-6s | %-12.5f %-12.5f %s\n",
-                N, k, lr_ms, lr.iterations, lr.gap, mip_ms, solver,
-                lr.upper_bound, mip_cost, match ? "yes" : (has_solution(prob) ? "NO" : "n/a"));
+    std::printf("  %4d  %2d | %8.1f %5d  %.1e | %8.1f  %4d  %.1e | %8.1f | %-12.5f\n",
+                N, k, sg_ms, sg.iterations, sg.gap, kel_ms, kel_major, kel_gap, mip_ms,
+                has_solution(prob) ? mip_cost : sg.upper_bound);
   }
-  std::printf("\n  (timings ADVISORY — shared machine; certified LR gap ~1e-6 means the\n"
-              "   root bound proved the primal optimal with NO branching.)\n\n");
+  std::printf("\n  (ADVISORY timings — shared machine. gap = (UB-LB)/UB of the dual bound;\n"
+              "   Kelley converges FINITELY on the piecewise-linear dual — few major iters.)\n\n");
   SUCCEED();
 }
 
