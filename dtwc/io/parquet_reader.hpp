@@ -100,42 +100,76 @@ inline Data load_parquet_file(const std::filesystem::path &path,
     vecs.reserve(static_cast<size_t>(N));
     names.reserve(static_cast<size_t>(N));
 
+    // Append every list element as one series, converting Float32 -> data_t and
+    // validating that offsets stay within the values buffer. find_column accepts
+    // Float32 columns, so the values array may be Float32 or Float64. (audit
+    // io-security: no Float64 check + no bounds on list offsets)
+    auto append_list_series = [&](auto list) {
+      auto values = list->values();
+      const int64_t vlen = values->length();
+      const bool is_double = values->type_id() == arrow::Type::DOUBLE;
+      const bool is_float = values->type_id() == arrow::Type::FLOAT;
+      if (!is_double && !is_float)
+        throw std::runtime_error(
+          "load_parquet_file: list value type must be Float64 or Float32, got " +
+          values->type()->ToString());
+      const double *draw = is_double
+        ? std::static_pointer_cast<arrow::DoubleArray>(values)->raw_values() : nullptr;
+      const float *fraw = is_float
+        ? std::static_pointer_cast<arrow::FloatArray>(values)->raw_values() : nullptr;
+
+      const int64_t len = list->length();
+      for (int64_t i = 0; i < len; ++i) {
+        const int64_t start = list->value_offset(i);
+        const int64_t end = list->value_offset(i + 1);
+        if (start < 0 || end < start || end > vlen)
+          throw std::runtime_error(
+            "load_parquet_file: list offset [" + std::to_string(start) + ", " +
+            std::to_string(end) + ") out of bounds [0, " + std::to_string(vlen) + "]");
+        const auto sz = static_cast<size_t>(end - start);
+        std::vector<data_t> series(sz);
+        if (is_double)
+          std::copy_n(draw + start, sz, series.begin());
+        else
+          for (size_t j = 0; j < sz; ++j)
+            series[j] = static_cast<data_t>(fraw[start + static_cast<int64_t>(j)]);
+        vecs.push_back(std::move(series));
+        names.push_back("series_" + std::to_string(vecs.size() - 1));
+      }
+    };
+
     for (int c = 0; c < col->num_chunks(); ++c) {
       auto chunk = col->chunk(c);
-      int64_t len = chunk->length();
-
-      if (col_type->id() == arrow::Type::LIST) {
-        auto list = std::static_pointer_cast<arrow::ListArray>(chunk);
-        auto values = std::static_pointer_cast<arrow::DoubleArray>(list->values());
-        for (int64_t i = 0; i < len; ++i) {
-          auto start = list->value_offset(i);
-          auto end = list->value_offset(i + 1);
-          auto sz = static_cast<size_t>(end - start);
-          vecs.emplace_back(values->raw_values() + start, values->raw_values() + start + sz);
-          names.push_back("series_" + std::to_string(vecs.size() - 1));
-        }
-      } else {
-        auto list = std::static_pointer_cast<arrow::LargeListArray>(chunk);
-        auto values = std::static_pointer_cast<arrow::DoubleArray>(list->values());
-        for (int64_t i = 0; i < len; ++i) {
-          auto start = list->value_offset(i);
-          auto end = list->value_offset(i + 1);
-          auto sz = static_cast<size_t>(end - start);
-          vecs.emplace_back(values->raw_values() + start, values->raw_values() + start + sz);
-          names.push_back("series_" + std::to_string(vecs.size() - 1));
-        }
-      }
+      if (col_type->id() == arrow::Type::LIST)
+        append_list_series(std::static_pointer_cast<arrow::ListArray>(chunk));
+      else
+        append_list_series(std::static_pointer_cast<arrow::LargeListArray>(chunk));
     }
   } else {
-    // Scalar column: entire column is one series (one file = one series)
+    // Scalar column: entire column is one series (one file = one series).
+    // find_column accepts Float32 columns, so handle both value types rather than
+    // blindly casting to DoubleArray. (audit io-security: reader path lacked the
+    // FLOAT branch the chunk reader has -> latent garbage / OOB on f32 files)
     std::vector<data_t> series;
     series.reserve(static_cast<size_t>(N));
 
     for (int c = 0; c < col->num_chunks(); ++c) {
-      auto chunk = std::static_pointer_cast<arrow::DoubleArray>(col->chunk(c));
-      const double *raw = chunk->raw_values();
-      for (int64_t i = 0; i < chunk->length(); ++i)
-        series.push_back(raw[i]);
+      auto arr = col->chunk(c);
+      if (arr->type_id() == arrow::Type::DOUBLE) {
+        auto dbl = std::static_pointer_cast<arrow::DoubleArray>(arr);
+        const double *raw = dbl->raw_values();
+        for (int64_t i = 0; i < dbl->length(); ++i)
+          series.push_back(raw[i]);
+      } else if (arr->type_id() == arrow::Type::FLOAT) {
+        auto flt = std::static_pointer_cast<arrow::FloatArray>(arr);
+        const float *raw = flt->raw_values();
+        for (int64_t i = 0; i < flt->length(); ++i)
+          series.push_back(static_cast<data_t>(raw[i]));
+      } else {
+        throw std::runtime_error(
+          "load_parquet_file: scalar column type must be Float64 or Float32, got " +
+          arr->type()->ToString());
+      }
     }
 
     std::string name = path.stem().string();

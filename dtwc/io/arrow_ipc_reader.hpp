@@ -97,13 +97,14 @@ public:
     const arrow::DoubleArray *values = nullptr;
 
     // Dispatch on List vs LargeList (type-safe, no reinterpret_cast)
+    std::shared_ptr<arrow::Array> value_array;
     if (chunk->type_id() == arrow::Type::LIST) {
       src.list_ = static_cast<const arrow::ListArray *>(chunk.get());
-      values = static_cast<const arrow::DoubleArray *>(src.list_->values().get());
+      value_array = src.list_->values();
       src.n_ = static_cast<size_t>(src.list_->length());
     } else if (chunk->type_id() == arrow::Type::LARGE_LIST) {
       src.large_list_ = static_cast<const arrow::LargeListArray *>(chunk.get());
-      values = static_cast<const arrow::DoubleArray *>(src.large_list_->values().get());
+      value_array = src.large_list_->values();
       src.n_ = static_cast<size_t>(src.large_list_->length());
     } else {
       throw std::runtime_error(
@@ -111,7 +112,35 @@ public:
         chunk->type()->ToString());
     }
 
+    // The zero-copy span contract returns raw double pointers into the mmap'd
+    // values buffer, so a non-Float64 value array (e.g. Float32) cannot be
+    // reinterpreted as double without reading garbage / out of bounds. Reject it
+    // by name instead of silently misreading. (audit io-security: no Float64 check)
+    if (value_array->type_id() != arrow::Type::DOUBLE)
+      throw std::runtime_error(
+        "ArrowIPCDataSource: 'data' values must be Float64, got " +
+        value_array->type()->ToString());
+    values = static_cast<const arrow::DoubleArray *>(value_array.get());
+
     src.flat_values_ = values->raw_values();
+
+    // Validate list offsets are monotone non-decreasing and stay within the
+    // values buffer, so series() never dereferences out of bounds on a crafted
+    // or corrupt file. (audit io-security: no bounds on list offsets)
+    {
+      const int64_t values_len = values->length();
+      int64_t prev = 0;
+      for (size_t i = 0; i <= src.n_; ++i) {
+        const int64_t off = src.list_
+          ? src.list_->value_offset(static_cast<int64_t>(i))
+          : src.large_list_->value_offset(static_cast<int64_t>(i));
+        if (off < prev || off > values_len)
+          throw std::runtime_error(
+            "ArrowIPCDataSource: 'data' list offset " + std::to_string(off) +
+            " out of bounds [0, " + std::to_string(values_len) + "] or non-monotone");
+        prev = off;
+      }
+    }
 
     // Find optional name column
     auto name_col = src.table_->GetColumnByName("name");
@@ -126,6 +155,11 @@ public:
       if (idx >= 0)
         src.ndim_ = static_cast<size_t>(std::stoul(metadata->value(idx)));
     }
+
+    // ndim must be >= 1: series_length() divides the flat size by ndim_, so
+    // ndim == 0 is a division by zero. (audit io-security: ndim=0 div-by-zero)
+    if (src.ndim_ == 0)
+      throw std::runtime_error("ArrowIPCDataSource: 'ndim' metadata must be >= 1, got 0");
 
     return src;
   }
