@@ -8,6 +8,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- API contract 2.0 frozen: docs/api-contract-2.0.md
+
 ### Added (Phase 1 · error taxonomy)
 
 - **New header [dtwc/error.hpp](dtwc/error.hpp)** — a small, header-only exception hierarchy rooted at `dtwc::Error : std::runtime_error`, with `dtwc::InvalidInput`, `dtwc::SolverError`, `dtwc::DeviceError`, and `dtwc::IOError` deriving from it. Message-preserving (constructors inherited from `std::runtime_error`); no error codes, no macros. Because every type derives from `std::runtime_error`, existing `catch (const std::runtime_error &)` / `catch (const std::exception &)` handlers — and tests that pin those types — keep working unchanged (task 1.2).
