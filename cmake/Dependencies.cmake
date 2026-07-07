@@ -145,9 +145,10 @@ function(dtwc_setup_dependencies)
   # must configure without llfio. When disabled/absent, DTWC_HAS_MMAP is never
   # defined (see dtwc/CMakeLists.txt, which already guards on TARGET llfio_hl)
   # and mmap-backed stores fall back to the in-memory path.
-  #   NOTE: dtwc/mip/CMakeLists.txt still hard-links `llfio_hl` unconditionally,
-  #   so a full llfio-less configure additionally needs that link guarded — that
-  #   file is owned by the MIP task; tracked as a follow-up. With the default
+  #   RESOLVED (Task R3): dtwc/mip/CMakeLists.txt now guards its `llfio_hl` link
+  #   (and a mirrored DTWC_HAS_MMAP define) on `if(TARGET llfio_hl)`, so a full
+  #   llfio-less configure+generate succeeds — verified by a live configure-only
+  #   run with -DDTWC_ENABLE_LLFIO=OFF (exit 0). With the default
   #   (DTWC_ENABLE_LLFIO=ON) behaviour is unchanged.
   option(DTWC_ENABLE_LLFIO "Enable llfio memory-mapped distance matrices" ON)
   if(DTWC_ENABLE_LLFIO AND NOT TARGET llfio_hl)
