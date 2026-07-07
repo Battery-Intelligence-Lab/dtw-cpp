@@ -130,15 +130,78 @@ class ClusterResult:
         return png
 
 
+# Canonical clustering methods. This is exactly the dtwc_cl CLI vocabulary
+# (dtwc_cl.cpp: "auto, pam, clara, kmedoids, mip, hierarchical"), so the SAME
+# name is valid on cpu/gpu (dispatched here) and on hpc (forwarded to
+# dtwc_cl --method). "hclust" is the CLI's alias for "hierarchical".
+_METHODS = ("auto", "pam", "clara", "kmedoids", "mip", "hierarchical")
+
+
+def _normalize_method(method):
+    """Lower-case, alias-resolve, and validate a clustering method name.
+
+    Raises ``ValueError`` on anything outside the documented set. This enforces
+    the 2.0 no-silent-fallback rule: an unrecognised method must NEVER quietly
+    run a different algorithm. Before Task 0.14 the local path ran FastPAM for
+    *every* value of ``method`` (the argument was accepted but ignored).
+    """
+    m = str(method).strip().lower()
+    if m == "hclust":
+        m = "hierarchical"
+    if m not in _METHODS:
+        raise ValueError(
+            f"unknown method: {method!r}. Expected one of: {', '.join(_METHODS)} "
+            f"(or 'hclust' as an alias for 'hierarchical')."
+        )
+    return m
+
+
+def _run_local_method(prob, method, k, max_iter, n):
+    """Dispatch the local (cpu/gpu) clustering call for a validated ``method``.
+
+    ``prob`` already has its distance matrix loaded. Returns
+    ``(labels, medoid_indices, cost)``. Each documented method routes to its OWN
+    algorithm — Task 0.14: before this, the local path ran FastPAM for EVERY
+    method value. The kmedoids/mip/hierarchical branches mirror the verified CLI
+    dispatch (dtwc_cl.cpp:874-926).
+    """
+    import dtwcpp
+
+    if method == "auto":                       # CLI rule: pam for small N, else clara
+        method = "pam" if n <= 5000 else "clara"
+
+    if method == "pam":
+        res = dtwcpp.fast_pam(prob, k, max_iter)
+        return res.labels, res.medoid_indices, res.total_cost
+    if method == "clara":
+        res = dtwcpp.fast_clara(prob, k, max_iter=max_iter)
+        return res.labels, res.medoid_indices, res.total_cost
+    if method == "hierarchical":
+        dend = dtwcpp.build_dendrogram(prob)
+        res = dtwcpp.cut_dendrogram(dend, prob, k)
+        return res.labels, res.medoid_indices, res.total_cost
+
+    # kmedoids (Lloyd) and mip run through Problem.cluster() and read back state.
+    prob.set_number_of_clusters(k)
+    prob.method = dtwcpp.Method.MIP if method == "mip" else dtwcpp.Method.Kmedoids
+    prob.cluster()
+    return prob.clusters_ind, prob.centroids_ind, prob.find_total_cost()
+
+
 def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
-    """Cluster a dataset with DTW k-medoids, honoring the global/over-ridden device.
+    """Cluster a dataset with DTW, honoring the global/over-ridden device.
 
     ``data`` may be a :class:`Dataset`, a path, or an array. ``device=None`` uses
     the global default (see :func:`dtwcpp.device`). For ``"hpc"`` the work is
     offloaded to a SLURM cluster and the data is never read locally.
+
+    ``method`` selects the clustering algorithm: one of ``"pam"`` (default),
+    ``"clara"``, ``"kmedoids"``, ``"mip"``, ``"hierarchical"``, or ``"auto"``.
+    An unrecognised method raises ``ValueError`` — it is NEVER silently ignored.
     """
     from dtwcpp import get_device, _resolve_device
     data = load(data)
+    method = _normalize_method(method)          # validate BEFORE any backend work
     eff = device if device is not None else get_device()
     backend, _ = _resolve_device(eff)
 
@@ -151,19 +214,19 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         return ClusterResult(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                              k=k, n_series=len(labels), name=data.name)
 
-    # Local cpu / gpu: full distance matrix on the device, then FastPAM.
-    from dtwcpp import compute_distance_matrix, Problem, fast_pam
+    # Local cpu / gpu: full distance matrix on the device, then the chosen method.
+    from dtwcpp import compute_distance_matrix, Problem
     series = data.as_series()
     names = [str(i) for i in range(len(series))]
     D = compute_distance_matrix(series, band=band, device=eff)
     prob = Problem(data.name)
     prob.set_data(series, names)
     prob.set_distance_matrix_from_numpy(D)
-    res = fast_pam(prob, k, max_iter)
-    return ClusterResult(res.labels, device=("cuda" if backend == "cuda" else "cpu"),
+    labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter, len(series))
+    return ClusterResult(labels, device=("cuda" if backend == "cuda" else "cpu"),
                          elapsed_s=time.perf_counter() - t0, k=k, n_series=len(series),
-                         medoid_indices=res.medoid_indices, distance_matrix=D,
-                         cost=res.total_cost, name=data.name)
+                         medoid_indices=medoid_indices, distance_matrix=D,
+                         cost=cost, name=data.name)
 
 
 def plot(result, **kwargs):

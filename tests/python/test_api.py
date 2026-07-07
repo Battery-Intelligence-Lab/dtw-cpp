@@ -128,3 +128,125 @@ class TestClusterHpc:
         dtwcpp.device("hpc")
         dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0]], k=2)
         assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]   # materialized series
+
+
+# ---------------------------------------------------------------------------
+# cluster(method=...) dispatch — Task 0.14
+#
+# BUG BEING PINNED: the local (cpu/gpu) path of cluster() accepted a ``method``
+# argument but never consulted it — it ran FastPAM unconditionally
+# (old _api.py: ``res = fast_pam(prob, k, max_iter)``). So ``method="mip"``,
+# ``method="clara"``, and even a nonsense ``method="xyz"`` all silently produced
+# a FastPAM result. The fix validates the name (unknown -> ValueError) and
+# dispatches each documented method to its own algorithm.
+# ---------------------------------------------------------------------------
+class TestClusterMethodDispatch:
+    def test_unknown_method_raises(self):
+        """Unknown method must raise, not silently run FastPAM.
+
+        Pre-fix: method is ignored, FastPAM runs, a ClusterResult is returned
+        with NO exception -> this test fails. Post-fix: ValueError."""
+        with pytest.raises(ValueError, match="unknown method"):
+            dtwcpp.cluster(_two_groups(), k=2, method="not_a_real_method")
+
+    def test_unknown_method_rejected_before_hpc_offload(self, monkeypatch):
+        """Validation is central: a bad method must never reach the cluster.
+
+        Pre-fix: the hpc path forwarded any raw string to cluster_on_hpc, so a
+        nonsense method was submitted to SLURM. Post-fix: ValueError first."""
+        from dtwcpp import _hpc
+
+        def boom(*a, **k):
+            raise AssertionError("cluster_on_hpc must not be called for a bad method")
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", boom)
+        with pytest.raises(ValueError, match="unknown method"):
+            dtwcpp.cluster("data.tsv", k=2, device="hpc", method="bogus")
+
+    def test_local_dispatch_routes_to_clara_not_fastpam(self, monkeypatch):
+        """method='clara' must call fast_clara, NOT fast_pam.
+
+        Pre-fix: the clara branch did not exist and fast_pam ran instead, so
+        the fast_clara spy is never called (called['clara'] stays 0) -> fails.
+        Post-fix: fast_clara is invoked exactly once and fast_pam is not."""
+        import dtwcpp
+        called = {"pam": 0, "clara": 0}
+        real_clara = dtwcpp.fast_clara
+
+        def spy_clara(*a, **kw):
+            called["clara"] += 1
+            return real_clara(*a, **kw)
+
+        def poisoned_pam(*a, **kw):
+            called["pam"] += 1
+            raise AssertionError("method='clara' fell through to fast_pam")
+
+        monkeypatch.setattr(dtwcpp, "fast_clara", spy_clara)
+        monkeypatch.setattr(dtwcpp, "fast_pam", poisoned_pam)
+        res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
+        assert called["clara"] == 1
+        assert called["pam"] == 0
+        assert res.n_series == 12
+
+    def test_local_default_still_routes_to_fastpam(self, monkeypatch):
+        """method='pam' (the default) must still call fast_pam — no regression."""
+        import dtwcpp
+        called = {"pam": 0}
+        real_pam = dtwcpp.fast_pam
+
+        def spy_pam(*a, **kw):
+            called["pam"] += 1
+            return real_pam(*a, **kw)
+
+        monkeypatch.setattr(dtwcpp, "fast_pam", spy_pam)
+        dtwcpp.cluster(_two_groups(), k=2)          # default method="pam"
+        assert called["pam"] == 1
+
+    def test_local_clara_runs_end_to_end(self):
+        """The clara branch must actually work end-to-end (no solver needed).
+
+        Recovers the two well-separated groups, proving real dispatch — not
+        just that a non-ValueError was returned."""
+        res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
+        assert res.n_series == 12
+        assert res.distance_matrix is not None
+        assert len(set(res.labels[:6])) == 1
+        assert len(set(res.labels[6:])) == 1
+        assert res.labels[0] != res.labels[11]
+
+    @pytest.mark.parametrize(
+        "method", ["auto", "pam", "clara", "kmedoids", "mip", "hierarchical"])
+    def test_documented_methods_accepted_and_forwarded_to_hpc(self, monkeypatch, method):
+        """Every documented method is accepted (no ValueError) and forwarded.
+
+        Uses the hpc path (cluster_on_hpc stubbed) so mip/kmedoids do not need a
+        solver and no local files are written — this asserts the name survives
+        validation and is passed through to dtwc_cl --method verbatim."""
+        from dtwcpp import _hpc
+        captured = {}
+
+        def fake(source, k, **kwargs):
+            captured["method"] = kwargs.get("method")
+            return np.zeros(4, dtype=int)
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
+        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
+                       k=2, device="hpc", method=method)
+        assert captured["method"] == method
+
+    def test_hclust_alias_normalizes_to_hierarchical(self, monkeypatch):
+        """'hclust' is the CLI alias for 'hierarchical' and must normalize.
+
+        Pre-fix: the raw 'hclust' string was forwarded unchanged. Post-fix it
+        is normalized to 'hierarchical' before being forwarded."""
+        from dtwcpp import _hpc
+        captured = {}
+
+        def fake(source, k, **kwargs):
+            captured["method"] = kwargs.get("method")
+            return np.zeros(4, dtype=int)
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
+        dtwcpp.cluster([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0], [7.0, 8.0]],
+                       k=2, device="hpc", method="hclust")
+        assert captured["method"] == "hierarchical"
