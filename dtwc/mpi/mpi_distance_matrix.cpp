@@ -29,6 +29,7 @@
 
 #include "../warping.hpp"
 #include "../detail/decode_pair.hpp"
+#include "allreduce_chunking.hpp"
 
 namespace dtwc::mpi {
 
@@ -90,7 +91,15 @@ MPIDistMatResult compute_distance_matrix_mpi(
     return result;
   }
 
-  // Divide pairs among ranks: contiguous blocks with remainder distributed
+  // Divide pairs among ranks: contiguous blocks with remainder distributed.
+  //
+  // TODO(Phase 5, perf — PLAN.md "Phase 5 — Speed & algorithms program"):
+  // Contiguous linear-index blocks give each rank an equal *count* of pairs,
+  // but not an equal amount of *work*. A contiguous block clusters around
+  // specific rows i, so with variable-length series the O(L_i * L_j) DTW cost
+  // is unbalanced across ranks (the triangular-partition load imbalance noted
+  // in the 2026-06-01 audit). This is a performance concern only — results are
+  // correct — so it is deferred to Phase 5 and deliberately not fixed here.
   const size_t pairs_per_rank = total_pairs / static_cast<size_t>(world_size);
   const size_t remainder = total_pairs % static_cast<size_t>(world_size);
 
@@ -148,15 +157,27 @@ MPIDistMatResult compute_distance_matrix_mpi(
   // Combine across ranks: MPI_Allreduce with SUM.
   // Each rank wrote to non-overlapping (i,j) positions; uncomputed
   // positions are 0.0. Summing yields the full matrix on every rank.
-  std::vector<double> global_matrix(N * N, 0.0);
-  MPI_Allreduce(
-      result.matrix.data(),
-      global_matrix.data(),
-      static_cast<int>(N * N),
-      MPI_DOUBLE,
-      MPI_SUM,
-      MPI_COMM_WORLD);
-  result.matrix = std::move(global_matrix);
+  //
+  // Reduce in place (MPI_IN_PLACE): every rank's send and receive buffer is
+  // result.matrix, so no duplicate N*N scratch buffer is allocated (the send
+  // data is taken from the receive buffer and replaced by the reduced result).
+  //
+  // MPI_Allreduce's count argument is a 32-bit int, but N*N exceeds INT_MAX
+  // once N > ~46340 (mirrors the CUDA 64-bit index fix, Task 0.7). The former
+  // static_cast<int>(N*N) wrapped to a negative count and corrupted the
+  // reduction, so issue it in consecutive chunks each <= INT_MAX elements. The
+  // buffer offset stays 64-bit (size_t); only the per-call count is int.
+  const size_t total_elems = N * N;
+  for (size_t off = 0; off < total_elems; off += max_allreduce_chunk) {
+    const int count = allreduce_chunk_count(off, total_elems);
+    MPI_Allreduce(
+        MPI_IN_PLACE,
+        result.matrix.data() + off,
+        count,
+        MPI_DOUBLE,
+        MPI_SUM,
+        MPI_COMM_WORLD);
+  }
 
   if (opts.verbose && rank == 0) {
     std::cout << "[MPI] distance matrix complete: "
