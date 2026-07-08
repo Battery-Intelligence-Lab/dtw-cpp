@@ -713,3 +713,44 @@ TEST_CASE("DistanceMatrixStrategy enum values are distinct",
   REQUIRE(dtwc::DistanceMatrixStrategy::BruteForce != dtwc::DistanceMatrixStrategy::Pruned);
   REQUIRE(dtwc::DistanceMatrixStrategy::Pruned != dtwc::DistanceMatrixStrategy::CUDA);
 }
+
+// LB_Enhanced / LB_Webb strategies feed a tighter bound into the early-abandon
+// path; the matrix must remain DIGIT-IDENTICAL to BruteForce (the bound only
+// gates abandon; abandoned pairs are recomputed exactly). Task 5.2.
+TEST_CASE("Pruned Enhanced/Webb lower-bound strategies match BruteForce exactly",
+          "[pruned_distance_matrix][strategy][enhanced][webb]")
+{
+  std::vector<std::vector<double>> vecs = {
+    { 1.0, 2.0, 3.0, 4.0, 5.0, 4.0, 3.0 },
+    { 2.0, 3.0, 4.0, 5.0, 6.0, 5.0, 4.0 },
+    { 5.0, 4.0, 3.0, 2.0, 1.0, 2.0, 3.0 },
+    { 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0 },
+    { 10.0, 20.0, 30.0, 40.0, 50.0, 40.0, 30.0 },
+    { 3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0 }
+  };
+  std::vector<std::string> names = { "a", "b", "c", "d", "e", "f" };
+  const int N = static_cast<int>(vecs.size());
+
+  for (int band : { 1, 2, 3 }) {
+    auto prob_brute = make_problem_with_data(vecs, names, band);
+    prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+    prob_brute.fillDistanceMatrix();
+
+    for (auto strat : { dtwc::LowerBoundStrategy::Enhanced,
+                        dtwc::LowerBoundStrategy::Webb,
+                        dtwc::LowerBoundStrategy::Keogh }) {
+      auto prob = make_problem_with_data(vecs, names, band);
+      prob.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+      prob.lb_strategy = strat;
+      prob.fillDistanceMatrix();
+
+      for (int i = 0; i < N; ++i)
+        for (int j = 0; j < N; ++j) {
+          INFO("band=" << band << " strat=" << static_cast<int>(strat)
+               << " (" << i << "," << j << ")");
+          REQUIRE_THAT(prob.distByInd(i, j),
+                       WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+        }
+    }
+  }
+}

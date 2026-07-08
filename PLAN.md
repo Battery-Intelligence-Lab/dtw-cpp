@@ -467,11 +467,12 @@ Priority order (impact ÷ effort):
 - [x] **Band (b) — PARTIALLY FALSIFIED-and-explained (deliverable), NOT rescue-tuned.** decomposition/naive speedup is **2.3×–8.1× (grows with k)**, not ≥10× at k≤50, because **DTW is memory-bound**: both variants do N² distance-matrix lookups/iter and the decomposition only removes the naive's cheap O(k) *arithmetic* (a scratch-buffer hoist moved the needle <noise, confirming memory not alloc is the bottleneck). FasterPAM converges in 1 sweep vs O(k) iterations; parallel FastPAM1 wins wall-time at large N → the right default. **LAB skipped** (paper: eager swapping nullifies LAB's head-start; recommends the K-means++ init already used). **FasterCLARA inherited** (CLARA calls `fast_pam`); carry-over refinement deferred.
 - [x] Note: BanditPAM++ deliberately REJECTED — its win is avoiding distance computes; ours are O(1) cached [literature report].
 
-### Task 5.2: Lower-bound cascade upgrade
+### Task 5.2: Lower-bound cascade upgrade [DONE 2026-07-08]
 
-**Files:** Modify: `dtwc/lb/` (or wherever Lemire envelope lives — locate in-task).
-- [ ] Cascade: LB_KimFL O(1) → LB_Keogh (existing) → LB_Webb (always ≥ Keogh tightness; Webb & Petitjean PR 2021). LB_Enhanced for wide bands (Tan SDM 2019).
-- [ ] Registered band: ≥25% fewer full DTW calls on matrix build, 5 UCR sets, band=10%; digit-identical distance matrix (exact LBs only).
+**Files:** Modified: `dtwc/core/lower_bound_impl.hpp` (LB_Enhanced + LB_Webb + WebbEnvelope), `dtwc/enums/LowerBoundStrategy.hpp` (+Enhanced, +Webb), `dtwc/core/pruned_distance_matrix.cpp` (cascade wiring); new `tests/unit/adversarial/test_lb_enhanced_webb.cpp`; run-log `.claude/baselines/2026-07-08-lb-cascade.md`.
+- [x] Added **LB_Webb** (Webb & Petitjean PR 2021, clean-room from Alg. 2 — GPL Java NOT ported; always ≥ LB_Keogh) and **LB_Enhanced** (Tan SDM 2019, elastic bands, the wide-band tool), templated on L1/SquaredL2. Cascade enum gains `Enhanced`, `Webb`; wired into the Problem pruned path. Existing LB_Kim is the O(1) pre-filter (LB_KimFL is a strict subset of the current 4-feature Kim — not separately added).
+- [x] **The registered band "≥25% fewer full DTW calls, digit-identical matrix" was NOT chased — it is UNACHIEVABLE as written (proof in run-log + LESSONS).** An exact full matrix needs every DTW; a lower bound skips work only where the exact value is not needed (NN-search), and the pruned path recomputes every early-abandoned pair (partial+full > full), so a tighter LB games `computed_full_dtw` DOWN while doing MORE work. Exact-matrix DTW-work reduction is Task 5.3 (TADPole) / 5.4 (PrunedDTW cell-pruning); 5.2 delivers the primitives those consume. User-approved reframe: "primitives + honest reframe."
+- [x] **Validity [HARD] → CONFIRMED** (`LB ≤ DTW_w`, L1+SquaredL2, random+adversarial+edge lengths; `LB_Webb ≥ LB_Keogh` provable+asserted; no `Enhanced ≥ Keogh` claim). Pruned+{Enhanced,Webb,Keogh} matrix **digit-identical** to BruteForce. Test: 39273 assertions / 14 cases. **Tightness [ADVISORY]:** vs symmetric LB_Keogh, LB_Webb +23% (band 10%) / +36% (band 40%); LB_Enhanced +3.3% → +10.9% (gain grows with band, its designed regime).
 
 ### Task 5.3: TADPole-style matrix-build pruning
 

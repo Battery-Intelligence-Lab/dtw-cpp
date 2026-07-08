@@ -27,6 +27,8 @@
 #include <type_traits> // for is_same_v
 #include <vector>      // for vector
 
+#include "distance_metric.hpp" // for L1Metric, SquaredL2Metric (delta functors)
+
 namespace dtwc::core {
 
 /**
@@ -551,6 +553,262 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
     }
   }
   return sum;
+}
+
+// ======================================================================
+//  LB_Enhanced (Tan, Petitjean & Webb, SDM 2019) — elastic-band bound
+// ======================================================================
+//
+//  Reference: C. W. Tan, F. Petitjean, G. I. Webb, "Elastic bands across the
+//  path: A new framework and method to lower bound DTW," SDM 2019
+//  (arXiv:1808.09617), Eq. 3.7 & Theorem 3.2. Cross-checked against the
+//  authors' MATLAB (lbEnhanced.m) and Java (LbEnhanced.java).
+//
+//  Idea. Near the two ends the boundary conditions pin the warping path
+//  (A[0]<->B[0], A[n-1]<->B[n-1]), so the first/last V columns admit only a
+//  narrow set of alignments; we take the exact minimum over each such "band".
+//  The middle uses the ordinary LB_Keogh envelope term. Theorem 3.2 proves the
+//  band sets L_1..L_V, the middle envelope sets, and the mirror sets R_1..R_V
+//  are MUTUALLY DISJOINT and each is crossed by every warping path, so the sum
+//  of per-set minima is <= DTW_w for any V <= n/2 and any nonnegative metric.
+//
+//  The near-side clip (j < i only) is what keeps the sets disjoint: extending a
+//  band arm to j > i would place a cell in two adjacent bands and can push the
+//  sum above DTW. NOTE: LB_Enhanced is NOT provably >= LB_Keogh pointwise — the
+//  column arm delta(A[j],B[i]) may undercut the Keogh term at a position; its
+//  advantage over Keogh is empirical/on-average (SDM 2019 §5).
+//
+//  Validity requires: |A|==|B|==n, the SAME window w in the bound and the DTW
+//  it bounds, the SAME metric, and V <= n/2 (enforced by nBands=min(V,n/2)).
+
+/**
+ * @brief LB_Enhanced core: elastic-band lower bound on banded DTW_w.
+ *
+ * @tparam T      Numeric type.
+ * @tparam Metric Pointwise cost functor, metric(a,b) (L1Metric or SquaredL2Metric).
+ * @param A       Query series pointer (length n).
+ * @param B       Candidate series pointer (length n).
+ * @param n       Common series length.
+ * @param upper_B Upper envelope of B (radius = band).
+ * @param lower_B Lower envelope of B.
+ * @param band    Sakoe-Chiba window radius w (>= 0).
+ * @param V       Bands per end (>= 1); clamped to n/2 for validity.
+ * @param metric  Pointwise cost (default L1).
+ * @return Lower bound (summed cost, same metric as the bounded DTW).
+ */
+template <typename T, typename Metric = L1Metric>
+T lb_enhanced(const T *A, const T *B, std::size_t n,
+              const T *upper_B, const T *lower_B,
+              int band, int V = 5, Metric metric = Metric{})
+{
+  if (n == 0) return T(0);
+  if (n == 1) return metric(A[0], B[0]);
+
+  const int ni = static_cast<int>(n);
+  const int w = std::max(band, 0);
+  int nBands = std::min(V, ni / 2);
+  if (nBands < 1) nBands = 1;
+
+  // (1) Forced corners (boundary conditions).
+  T d = metric(A[0], B[0]) + metric(A[ni - 1], B[ni - 1]);
+
+  // (2) V-1 elastic bands at each end (band 0 == the corner, already counted).
+  for (int i = 1; i < nBands; ++i) {
+    const int ir = ni - 1 - i;                     // mirror index from the right
+    T minL = metric(A[i], B[i]);                   // diagonal cell (i,i)
+    T minR = metric(A[ir], B[ir]);                 // diagonal cell (ir,ir)
+    const int jlo = std::max(0, i - w);
+    for (int j = jlo; j < i; ++j) {                // near side only: j < i
+      const int jr = ni - 1 - j;
+      minL = std::min(minL, std::min(metric(A[i], B[j]), metric(A[j], B[i])));
+      minR = std::min(minR, std::min(metric(A[ir], B[jr]), metric(A[jr], B[ir])));
+    }
+    d += minL + minR;
+  }
+
+  // (3) LB_Keogh middle over [nBands, n-nBands) (A vs envelope of B).
+  for (int i = nBands; i < ni - nBands; ++i) {
+    if (A[i] > upper_B[i]) d += metric(A[i], upper_B[i]);
+    else if (A[i] < lower_B[i]) d += metric(A[i], lower_B[i]);
+  }
+  return d;
+}
+
+/// LB_Enhanced from span query + precomputed Envelope of the candidate (L1).
+template <typename Metric = L1Metric>
+double lb_enhanced(std::span<const double> query, std::span<const double> candidate,
+                   const Envelope &env_candidate, int band, int V = 5,
+                   Metric metric = Metric{})
+{
+  const std::size_t n = query.size();
+  if (n == 0 || candidate.size() != n || env_candidate.upper.size() != n) return 0.0;
+  return lb_enhanced<double, Metric>(query.data(), candidate.data(), n,
+                                     env_candidate.upper.data(),
+                                     env_candidate.lower.data(), band, V, metric);
+}
+
+/// Symmetric LB_Enhanced: max over both query/candidate roles (>= either direction).
+template <typename Metric = L1Metric>
+double lb_enhanced_symmetric(std::span<const double> x, const Envelope &env_x,
+                             std::span<const double> y, const Envelope &env_y,
+                             int band, int V = 5, Metric metric = Metric{})
+{
+  const double lb_xy = lb_enhanced<Metric>(x, y, env_y, band, V, metric);
+  const double lb_yx = lb_enhanced<Metric>(y, x, env_x, band, V, metric);
+  return std::max(lb_xy, lb_yx);
+}
+
+// ======================================================================
+//  LB_Webb (Webb & Petitjean, Pattern Recognition 2021) — envelope bound
+// ======================================================================
+//
+//  Reference: G. I. Webb & F. Petitjean, "Tight lower bounds for dynamic time
+//  warping," Pattern Recognition 115 (2021) 107895 (arXiv:2102.07076), Alg. 2
+//  & Thm 2. Implemented clean-room from the algorithm (the authors' Java is
+//  GPL-3.0 and is NOT reproduced here).
+//
+//  Two passes over equal-length A, B with window w:
+//    Pass 1 (bridge, A vs envelope of B): the ordinary one-directional LB_Keogh
+//      contribution, while tracking how many CONSECUTIVE positions A has stayed
+//      "free" (inside, or outside in a way covered by the secondary envelope).
+//    Pass 2 (B vs envelope of A): add a correction term for each B position
+//      outside A's envelope. Thm 2 guarantees these terms do not double-count
+//      the pass-1 contribution: when the surrounding window is fully free the
+//      full term delta(B_i,U^A_i) is safe; otherwise the secondary envelope
+//      UL^B/LU^B supplies the exact overlap to subtract off.
+//
+//  Because pass 1 IS one-directional LB_Keogh and every pass-2 term is
+//  nonnegative, LB_Webb(A,B) >= LB_Keogh(A, env B) ALWAYS; the symmetric
+//  version therefore dominates symmetric LB_Keogh. (LB_Webb is NOT ordered
+//  against LB_Improved — tighter on most UCR sets, looser on some.)
+//
+//  This implementation OMITS the paper's MinLRPaths corner DP (an O(1) exact
+//  tightening of the first/last 3 alignments): running the plain bridge at the
+//  corners only LOOSENS the bound, never breaks validity. The validity contract
+//  LB_Webb <= DTW_w is the hard gate (adversarial test).
+//
+//  Free-flag alignment: pass 1 sets free[k] once the trailing window [k-2w, k]
+//  is entirely free; a B column j is "free" iff its centred window [j-w, j+w]
+//  is free, i.e. free[j+w] (capped at n-1 in the tail — a conservative, still
+//  valid, subset test). Counters init to w to model the pinned pre/post-series
+//  boundary as free.
+//
+//  Validity requires: |A|==|B|==n, the SAME window w in the bound, envelopes,
+//  and the DTW it bounds, and a metric satisfying Thm 2 (L1 with equality;
+//  SquaredL2 satisfied).
+
+/// Precomputed envelopes for LB_Webb: primary U,L plus secondary LU=L(U), UL=U(L).
+struct WebbEnvelope {
+  std::vector<double> upper;  ///< U(S)
+  std::vector<double> lower;  ///< L(S)
+  std::vector<double> lu;     ///< L(U(S)) — lower envelope of the upper envelope
+  std::vector<double> ul;     ///< U(L(S)) — upper envelope of the lower envelope
+};
+
+/// Compute the four LB_Webb envelope arrays for a series (window radius = band).
+inline WebbEnvelope compute_webb_envelope(std::span<const double> series, int band)
+{
+  WebbEnvelope we;
+  const std::size_t n = series.size();
+  we.upper.resize(n); we.lower.resize(n); we.lu.resize(n); we.ul.resize(n);
+  if (n == 0) return we;
+  compute_envelopes(series.data(), n, band, we.upper.data(), we.lower.data());
+  std::vector<double> scratch(n);
+  // LU = lower envelope of the upper envelope (discard the upper-of-upper).
+  compute_envelopes(we.upper.data(), n, band, scratch.data(), we.lu.data());
+  // UL = upper envelope of the lower envelope (discard the lower-of-lower).
+  compute_envelopes(we.lower.data(), n, band, we.ul.data(), scratch.data());
+  return we;
+}
+
+/// Convenience overload from a std::vector.
+inline WebbEnvelope compute_webb_envelope(const std::vector<double> &series, int band)
+{
+  return compute_webb_envelope(std::span<const double>(series), band);
+}
+
+/**
+ * @brief LB_Webb (one-directional): lower bound on banded DTW_w, A query, B candidate.
+ *
+ * @tparam Metric Pointwise cost functor (L1Metric or SquaredL2Metric).
+ * @param A     Query series (length n).
+ * @param ea    Webb envelopes of A (window = band).
+ * @param B     Candidate series (length n).
+ * @param eb    Webb envelopes of B (window = band).
+ * @param band  Window radius w.
+ * @param free_scratch  Scratch of at least n chars, reused across calls (may be nullptr).
+ * @param metric Pointwise cost.
+ * @return Lower bound (summed cost). >= LB_Keogh(A, env B).
+ */
+template <typename Metric = L1Metric>
+double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
+               std::span<const double> B, const WebbEnvelope &eb,
+               int band, std::vector<char> *free_scratch = nullptr,
+               Metric metric = Metric{})
+{
+  const std::size_t n = A.size();
+  if (n == 0 || B.size() != n || ea.upper.size() != n || eb.upper.size() != n)
+    return 0.0;
+  const int w = std::max(band, 0);
+  const int twoW = 2 * w;
+
+  std::vector<char> local;
+  std::vector<char> &freeAbove = free_scratch ? *free_scratch : local;
+  // Layout: first n entries = free-above flags, next n = free-below flags.
+  freeAbove.assign(2 * n, 0);
+  char *Fa = freeAbove.data();
+  char *Fb = freeAbove.data() + n;
+
+  const auto &UB = eb.upper; const auto &LB = eb.lower;   // envelope of B
+  const auto &ULA = ea.ul;   const auto &LUA = ea.lu;     // secondary of A
+
+  double b = 0.0;
+  int cUp = w, cLo = w;                                   // pre-series counted free
+  for (std::size_t i = 0; i < n; ++i) {
+    const double ai = A[i];
+    if (ai > UB[i]) {
+      b += metric(ai, UB[i]);
+      cUp = 0;
+      cLo = (UB[i] >= ULA[i]) ? cLo + 1 : 0;
+    } else if (ai < LB[i]) {
+      b += metric(ai, LB[i]);
+      cLo = 0;
+      cUp = (LB[i] <= LUA[i]) ? cUp + 1 : 0;
+    } else {
+      ++cUp; ++cLo;
+    }
+    Fa[i] = (cUp > twoW) ? 1 : 0;
+    Fb[i] = (cLo > twoW) ? 1 : 0;
+  }
+
+  const auto &UA = ea.upper; const auto &LA = ea.lower;   // envelope of A
+  const auto &ULB = eb.ul;   const auto &LUB = eb.lu;     // secondary of B
+  for (std::size_t j = 0; j < n; ++j) {
+    const std::size_t idx = std::min(j + static_cast<std::size_t>(w), n - 1);
+    const double bj = B[j];
+    if (Fa[idx] && bj > UA[j]) {
+      b += metric(bj, UA[j]);
+    } else if (Fb[idx] && bj < LA[j]) {
+      b += metric(bj, LA[j]);
+    } else if (bj > ULB[j] && ULB[j] >= UA[j]) {
+      b += metric(bj, UA[j]) - metric(ULB[j], UA[j]);
+    } else if (bj < LUB[j] && LUB[j] <= LA[j]) {
+      b += metric(bj, LA[j]) - metric(LUB[j], LA[j]);
+    }
+  }
+  return b;
+}
+
+/// Symmetric LB_Webb: max over both roles. Dominates symmetric LB_Keogh.
+template <typename Metric = L1Metric>
+double lb_webb_symmetric(std::span<const double> x, const WebbEnvelope &ex,
+                         std::span<const double> y, const WebbEnvelope &ey,
+                         int band, std::vector<char> *free_scratch = nullptr,
+                         Metric metric = Metric{})
+{
+  const double lb_xy = lb_webb<Metric>(x, ex, y, ey, band, free_scratch, metric);
+  const double lb_yx = lb_webb<Metric>(y, ey, x, ex, band, free_scratch, metric);
+  return std::max(lb_xy, lb_yx);
 }
 
 } // namespace dtwc::core

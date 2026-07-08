@@ -143,18 +143,24 @@ PruningStats fill_distance_matrix_pruned(
   // bounds on or off.
   bool use_lb_kim_flag = false;
   bool use_lb_keogh_flag = false;
+  bool use_lb_enhanced_flag = false;
+  bool use_lb_webb_flag = false;
   switch (lb_strat) {
     case dtwc::LowerBoundStrategy::None:
-      use_lb_kim_flag = false;
-      use_lb_keogh_flag = false;
       break;
     case dtwc::LowerBoundStrategy::Kim:
       use_lb_kim_flag = true;
-      use_lb_keogh_flag = false;
       break;
     case dtwc::LowerBoundStrategy::Keogh:
-      use_lb_kim_flag = false;
       use_lb_keogh_flag = true;
+      break;
+    case dtwc::LowerBoundStrategy::Enhanced:
+      use_lb_kim_flag = true;
+      use_lb_enhanced_flag = true;
+      break;
+    case dtwc::LowerBoundStrategy::Webb:
+      use_lb_kim_flag = true;
+      use_lb_webb_flag = true;
       break;
     case dtwc::LowerBoundStrategy::KimKeogh:
     case dtwc::LowerBoundStrategy::Auto:
@@ -175,16 +181,28 @@ PruningStats fill_distance_matrix_pruned(
       summaries[i] = compute_summary(prob.series(i));
   }
 
-  // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0) — parallel
-  // Lock-free by design: each iteration writes only to envelopes[i] at its own index.
+  // Step 2: Precompute envelopes for LB_Keogh / LB_Enhanced (band >= 0) — parallel.
+  // Lock-free by design: each iteration writes only to its own index.
+  // LB_Enhanced reuses the same (upper,lower) Envelope as LB_Keogh; LB_Webb needs
+  // the extended envelope set (adds the secondary L(U), U(L) arrays).
   const bool use_lb_keogh = use_lb_keogh_flag && (band >= 0);
+  const bool use_lb_enhanced = use_lb_enhanced_flag && (band >= 0);
+  const bool use_lb_webb = use_lb_webb_flag && (band >= 0);
   std::vector<Envelope> envelopes(N);
-  if (use_lb_keogh) {
+  if (use_lb_keogh || use_lb_enhanced) {
     #ifdef _OPENMP
     #pragma omp parallel for schedule(static)
     #endif
     for (int i = 0; i < N; ++i)
       envelopes[i] = compute_envelope(prob.series(i), band);
+  }
+  std::vector<WebbEnvelope> webb_envs(N);
+  if (use_lb_webb) {
+    #ifdef _OPENMP
+    #pragma omp parallel for schedule(static)
+    #endif
+    for (int i = 0; i < N; ++i)
+      webb_envs[i] = compute_webb_envelope(prob.series(i), band);
   }
 
   // Step 3: Per-row nearest-neighbor tracking (shared, updated atomically)
@@ -217,9 +235,10 @@ PruningStats fill_distance_matrix_pruned(
   #endif
   {
     size_t local_pruned_kim = 0;
-    size_t local_pruned_keogh = 0;
+    size_t local_pruned_keogh = 0;   // envelope bound (Keogh/Enhanced/Webb) fired
     size_t local_early_abandoned = 0;
     size_t local_full_dtw = 0;
+    std::vector<char> webb_scratch;  // per-thread scratch, reused across pairs
 
     #ifdef _OPENMP
     #pragma omp for schedule(dynamic, pair_chunk)
@@ -242,15 +261,28 @@ PruningStats fill_distance_matrix_pruned(
       // If Kim is disabled, start at 0 (no-op threshold); Keogh may still fire.
       double lb = use_lb_kim_flag ? lb_kim(summaries[i], summaries[j]) : 0.0;
 
+      // Envelope-based bounds (Keogh / Enhanced / Webb) all require equal lengths.
+      // Take the max: each is a valid lower bound, the tightest is best. Only one
+      // of keogh/enhanced/webb is active per strategy, but the code is uniform.
       bool lb_keogh_used = false;
-      if (use_lb_keogh && prob.series(i).size() == prob.series(j).size()) {
+      const bool equal_len = prob.series(i).size() == prob.series(j).size();
+      if (use_lb_keogh && equal_len) {
         const double lb_k = lb_keogh_symmetric(
           prob.series(i), envelopes[i],
           prob.series(j), envelopes[j]);
-        if (lb_k > lb) {
-          lb = lb_k;
-          lb_keogh_used = true;
-        }
+        if (lb_k > lb) { lb = lb_k; lb_keogh_used = true; }
+      }
+      if (use_lb_enhanced && equal_len) {
+        const double lb_e = lb_enhanced_symmetric(
+          prob.series(i), envelopes[i],
+          prob.series(j), envelopes[j], band);
+        if (lb_e > lb) { lb = lb_e; lb_keogh_used = true; }
+      }
+      if (use_lb_webb && equal_len) {
+        const double lb_w = lb_webb_symmetric(
+          prob.series(i), webb_envs[i],
+          prob.series(j), webb_envs[j], band, &webb_scratch);
+        if (lb_w > lb) { lb = lb_w; lb_keogh_used = true; }
       }
 
       // Early-abandon threshold: smallest NN distance for either endpoint.
