@@ -44,8 +44,10 @@ struct PdlpParams
   std::string variant = "pdlp"; ///< HiGHS first-order LP: "pdlp" (cuPDLP-C) or "hipdlp" (HiGHS PDHG).
   double tol = 1e-8;            ///< PDLP KKT / optimality tolerance (first-order — see registered arbiter band).
   long iteration_limit = 0;    ///< PDLP iteration cap; 0 ⇒ leave the HiGHS default.
-  bool use_gpu = false;        ///< Request the GPU backend. Requires HiGHS built with CUPDLP_GPU=ON; if it was
-                               ///< not, the call WARNS to stderr and runs on CPU (never a silent downgrade).
+  bool use_gpu = false;        ///< Ask for the GPU backend. The device is a COMPILE-TIME property of the HiGHS
+                               ///< build (CUPDLP_GPU), not a per-call toggle: on a GPU build solver="pdlp" always
+                               ///< runs on the GPU regardless of this flag; on a CPU build this flag=true only
+                               ///< WARNS to stderr (never a silent downgrade). See gpu_used / pdlp_gpu_available().
   bool verbose = false;        ///< Let HiGHS print its solver log.
 };
 
@@ -56,7 +58,8 @@ struct PdlpResult
   double lp_bound = 0.0; ///< p-median LP-relaxation optimum (raw units); a valid lower bound on the integer cost.
   bool solved = false;   ///< true iff HiGHS reported the LP optimal within tolerance.
   long iterations = 0;   ///< PDLP iterations run.
-  bool gpu_used = false; ///< true iff the GPU backend actually ran (needs the CUPDLP_GPU build).
+  bool gpu_used = false; ///< true iff the solve actually ran on the GPU — i.e. a CUPDLP_GPU build AND
+                         ///< variant=="pdlp". Reflects the build+variant, not the use_gpu request flag.
 };
 
 /**

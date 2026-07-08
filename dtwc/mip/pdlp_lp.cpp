@@ -147,17 +147,18 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
   if (params.iteration_limit > 0)
     highs.setOptionValue("pdlp_iteration_limit", static_cast<HighsInt>(params.iteration_limit));
 
-  bool gpu_used = false;
-  if (params.use_gpu) {
-#ifdef DTWC_HIGHS_GPU
-    // HiGHS compiled with CUPDLP_GPU=ON: the GPU backend runs for solver="pdlp".
-    gpu_used = true;
-#else
+  // The compute device is a COMPILE-TIME property of the HiGHS build
+  // (CUPDLP_GPU), not a per-solve toggle: on a CUPDLP_GPU build, solver="pdlp"
+  // (cuPDLP-C) ALWAYS runs on the GPU — there is no per-call CPU path — while
+  // "hipdlp" (HiGHS's own PDHG) stays on the CPU. So gpu_used reflects the build
+  // and the chosen variant, NOT the request flag: reporting gpu_used=false for a
+  // solve that actually ran on the GPU would be a false report (CLAUDE.md §1).
+  // use_gpu only governs the warning when the GPU is asked for but not built in.
+  const bool gpu_used = pdlp_gpu_available() && (params.variant == "pdlp");
+  if (params.use_gpu && !pdlp_gpu_available())
     std::fprintf(stderr,
       "pdlp_lp_bound: GPU PDLP requested but HiGHS was built without CUPDLP_GPU; "
-      "running on CPU. Rebuild HiGHS with -DCUPDLP_GPU=ON to enable the GPU backend.\n");
-#endif
-  }
+      "running on CPU. Rebuild with -DDTWC_HIGHS_GPU=ON to enable the GPU backend.\n");
 
   if (highs.passModel(model) == HighsStatus::kError)
     throw SolverError("pdlp_lp_bound: HiGHS rejected the LP model (passModel returned error).");

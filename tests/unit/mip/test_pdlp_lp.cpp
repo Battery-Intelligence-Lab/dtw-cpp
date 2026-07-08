@@ -203,11 +203,13 @@ TEST_CASE("PDLP LP relaxation is tight on clustered data", "[pdlp][tight]")
 }
 
 // ===========================================================================
-// GPU no-silent-fallback — requesting the GPU on a CPU-only HiGHS build must
-// still return the correct bound and report gpu_used=false (it warns to stderr).
-// On a CUPDLP_GPU build (DTWC_HIGHS_GPU) it would report gpu_used=true.
+// GPU device is a COMPILE-TIME property, honestly reported — the CUPDLP_GPU
+// build decides the device, NOT the per-call use_gpu flag (HiGHS has no per-solve
+// CPU path on a GPU build). So gpu_used must equal pdlp_gpu_available() for the
+// default "pdlp" variant, whether or not the caller requested the GPU; and a GPU
+// request on a CPU-only build still returns the correct bound (warns to stderr).
 // ===========================================================================
-TEST_CASE("PDLP GPU request is honoured or warned, never silently wrong", "[pdlp][gpu]")
+TEST_CASE("PDLP gpu_used reflects the build, never silently wrong", "[pdlp][gpu]")
 {
   if (!highs_present()) {
     WARN("HiGHS not compiled in; skipping PDLP GPU test.");
@@ -217,20 +219,23 @@ TEST_CASE("PDLP GPU request is honoured or warned, never silently wrong", "[pdlp
   const int N = 12, k = 3;
   const std::vector<double> D = clustered_D(N, k, 424242);
   const double opt = brute_force_opt(D, N, k);
+  const bool built_gpu = dtwc::mip::pdlp_gpu_available(); // this build's OWN capability
 
-  PdlpParams p;
-  p.use_gpu = true; // on a CPU build this warns and runs CPU (see stderr).
-  const PdlpResult pd = pdlp_lp_bound(D.data(), N, k, p);
+  // Requesting the GPU: correct bound on either build; gpu_used == build capability.
+  PdlpParams req;
+  req.use_gpu = true; // on a CPU build this warns and runs CPU (see stderr).
+  const PdlpResult on = pdlp_lp_bound(D.data(), N, k, req);
+  REQUIRE(on.solved);
+  REQUIRE(on.lp_bound <= opt + 1e-6 * std::max(1.0, std::abs(opt)));
+  REQUIRE_THAT(on.lp_bound, WithinAbs(opt, 1e-4 * std::max(1.0, std::abs(opt)))); // tight (clustered)
+  REQUIRE(on.gpu_used == built_gpu);
 
-  REQUIRE(pd.solved);
-  REQUIRE(pd.lp_bound <= opt + 1e-6 * std::max(1.0, std::abs(opt)));
-  REQUIRE_THAT(pd.lp_bound, WithinAbs(opt, 1e-4 * std::max(1.0, std::abs(opt)))); // tight (clustered)
-  // Expectation is driven by the library's OWN build, queried at runtime — the
-  // DTWC_HIGHS_GPU compile define lives in mip-solvers and does not reach this TU.
-  if (dtwc::mip::pdlp_gpu_available())
-    REQUIRE(pd.gpu_used);       // GPU build: the GPU backend actually ran.
-  else
-    REQUIRE_FALSE(pd.gpu_used); // CPU build: honest report, no silent GPU claim.
+  // NOT requesting the GPU: on a GPU build solver="pdlp" STILL runs on the GPU
+  // (compile-time switch), so gpu_used must NOT depend on the request flag.
+  PdlpParams noreq; // use_gpu = false (default)
+  const PdlpResult off = pdlp_lp_bound(D.data(), N, k, noreq);
+  REQUIRE(off.solved);
+  REQUIRE(off.gpu_used == built_gpu); // device is the build's, not the caller's, choice
 }
 
 // ===========================================================================
@@ -245,8 +250,14 @@ TEST_CASE("BENCH PDLP vs Kelley vs MIP on the p-median LP", "[.][pdlp][bench]")
     WARN("HiGHS not compiled in; skipping PDLP bench.");
     return;
   }
-  std::printf("\n   N    k | pdlp: ms   iters  bound        | kelley: ms  LB           | rel\n");
-  std::printf("  -------+----------------------------------+--------------------------+--------\n");
+  // Device is a COMPILE-TIME property of the HiGHS build (CUPDLP_GPU) — one PDLP
+  // column, self-labelled by the build. Cross-build (CPU vs GPU) comparison is
+  // assembled in the run-log by running this same bench on both builds.
+  const bool gpu = dtwc::mip::pdlp_gpu_available();
+  std::printf("\n  PDLP build: %s  →  device = %s\n",
+              gpu ? "CUPDLP_GPU=ON" : "CPU-only", gpu ? "GPU (cuPDLP-C)" : "CPU");
+  std::printf("\n   N    k | pdlp ms    iters  gpu? | kelley ms   LB          | rel      | pdlp/kel\n");
+  std::printf("  -------+-------------------------+-------------------------+----------+---------\n");
   for (int N : { 20, 50, 100, 200, 400 }) {
     const int k = 3;
     const std::vector<double> D = clustered_D(N, k, 20240708u);
@@ -260,12 +271,17 @@ TEST_CASE("BENCH PDLP vs Kelley vs MIP on the p-median LP", "[.][pdlp][bench]")
     const double kel_ms = kel_clk.duration() * 1000.0;
 
     const double rel = std::abs(pd.lp_bound - kel.lower_bound) / std::max(1.0, std::abs(kel.lower_bound));
-    std::printf("  %4d  %2d | %8.1f %6ld  %-11.4f | %8.1f  %-11.4f | %.1e\n",
-                N, k, pd_ms, pd.iterations, pd.lp_bound, kel_ms, kel.lower_bound, rel);
+    // Arbiter stays live inside the bench: the two bounds are the same LP optimum.
+    REQUIRE(rel <= 1e-4);
+    const double ratio = pd_ms / std::max(kel_ms, 1e-9);
+    std::printf("  %4d  %2d | %9.1f %6ld %4s | %9.1f  %-10.4f | %.1e | %7.1f\n",
+                N, k, pd_ms, pd.iterations, pd.gpu_used ? "yes" : "no",
+                kel_ms, kel.lower_bound, rel, ratio);
   }
-  std::printf("\n  (ADVISORY — shared machine. The matrix-free Lagrangian streams D once per\n"
-              "   iteration and never forms the ~3N²-nonzero LP that PDLP must; expect Kelley\n"
-              "   to dominate on this TU-structured p-median. A GPU PDLP build changes the\n"
-              "   PDLP column but not this structural conclusion.)\n\n");
+  std::printf("\n  (ADVISORY — shared machine; read the SCALING, not the milliseconds. The\n"
+              "   matrix-free Lagrangian streams D once per iteration and never forms the\n"
+              "   ~3N²-nonzero LP that PDLP must, so it dominates on this TU-structured\n"
+              "   p-median. A GPU build only shifts the PDLP column (fixed launch floor,\n"
+              "   gentler large-N slope) — the structural verdict (Kelley wins) holds.)\n\n");
   SUCCEED();
 }
