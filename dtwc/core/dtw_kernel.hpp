@@ -243,6 +243,131 @@ T dtw_kernel_linear(std::size_t n_short, std::size_t n_long,
 }
 
 // ===========================================================================
+// Kernel 2b: EAPruned — exact unbanded DTW with cell pruning.
+//
+// Herrmann & Webb, "Early abandoning and pruning for elastic distances
+// including dynamic time warping", DMKD 35(6), 2021 (arXiv:2102.05221);
+// DTW-specific precursor arXiv:2010.05371. Standard recurrence only
+// (min-of-3 + cost) — the pruning invariant below relies on non-negative
+// edge costs and the standard DP, so ADTW/WDTW/Soft do NOT use this kernel.
+//
+// Idea: seed an upper bound UB = the cost of ONE concrete warping path (the
+// diagonal "L-path": step diagonally to the corner, then straight along the
+// last short-row). Any cell (s,L) on the optimal path satisfies
+//     partial_cost(s,L) <= DTW <= UB,
+// so pruning every cell whose DP value exceeds UB never removes an optimal-path
+// cell — the returned value stays EXACT — while cutting the corners of the
+// cost matrix that the diagonal already beats. No NN cutoff is needed, so this
+// works for an all-pairs exact matrix (the k-medoids / MIP consumer).
+//
+// Layout: outer loop over the LONG axis (index L), rolling buffers `prev`/`curr`
+// of size n_short over the SHORT axis (index s). The recurrence at grid cell
+// (s, L) is
+//     D[s][L] = cost(s, L) + min(D[s-1][L]  (left),
+//                                D[s][L-1]  (up   = prev[s]),
+//                                D[s-1][L-1](diag = prev[s-1])).
+// Per row we track a live column window [comp_start, pp): cells below
+// comp_start and at/after pp are treated as +inf and skipped. `comp_start`
+// (the next row's left border) only moves right; `pp` (exclusive right border)
+// grows through the "overhang" so the window tracks the diagonal when
+// n_long > n_short. Because UB >= DTW, every row contains at least the
+// optimal-path cell (value <= UB), so no early-abandon fires — the window is
+// simply the band of cells that can still beat the diagonal.
+// ===========================================================================
+
+template <typename T, typename Cost>
+T dtw_kernel_eap(std::size_t n_short, std::size_t n_long, Cost cost)
+{
+  constexpr T maxValue = std::numeric_limits<T>::max();
+  if (n_short == 0 || n_long == 0) return maxValue;
+
+  // --- Upper bound: diagonal L-path cost (O(n_long), always >= DTW). --------
+  T ub = cost(0, 0);
+  std::size_t sd = 1, ld = 1;
+  while (sd < n_short && ld < n_long) { ub += cost(sd, ld); ++sd; ++ld; }
+  const std::size_t s_last = n_short - 1;
+  while (ld < n_long) { ub += cost(s_last, ld); ++ld; } // straight along last row
+
+  // Prune against a RELAXED threshold, not `ub` itself. The DP and the UB sums
+  // accumulate the same terms in different orders; under -ffast-math (this
+  // build) reassociation can make the optimal final cell exceed `ub` by a few
+  // ULP, which would spuriously prune it and return +inf. Slack ~ n_long*ULP
+  // covers the worst-case accumulation error. Relaxing the threshold only ADDS
+  // cells to the computed set — it can never drop an optimal-path cell nor
+  // change the returned recurrence value, so the result stays exact.
+  const T thr = ub + std::abs(ub)
+              * (static_cast<T>(n_long) * T(16) * std::numeric_limits<T>::epsilon());
+
+  thread_local std::vector<T> prev_buf, curr_buf;
+  prev_buf.assign(n_short, maxValue);
+  curr_buf.assign(n_short, maxValue);
+  T* prev = prev_buf.data();
+  T* curr = curr_buf.data();
+
+  // Guard bounds for reading `prev` (written range of the previous row).
+  std::size_t prev_lo = 0, prev_hi = 0;
+  std::size_t comp_start = 0; // left border of the current row's computation
+
+  // --- Row L = 0: first DP column, cumulative along the short axis. ---------
+  {
+    std::size_t last_live = 0;
+    for (std::size_t s = 0; s < n_short; ++s) {
+      const T d = (s == 0) ? cost(0, 0)
+                           : (curr[s - 1] == maxValue ? maxValue
+                                                      : curr[s - 1] + cost(s, 0));
+      if (d <= thr) { curr[s] = d; last_live = s; }
+      else { curr[s] = maxValue; break; } // cumulative: everything after is >thr
+    }
+    prev_lo = 0;
+    prev_hi = last_live + 1;
+    comp_start = 0; // D[0][0] = cost(0,0) <= ub always, so the path starts here
+  }
+
+  // --- Rows L = 1 .. n_long-1. ----------------------------------------------
+  for (std::size_t L = 1; L < n_long; ++L) {
+    std::swap(prev, curr);
+    // prev now holds row L-1 over [prev_lo, prev_hi); curr is scratch.
+
+    std::size_t first_live = n_short; // sentinel: none yet
+    std::size_t last_live = comp_start;
+
+    for (std::size_t s = comp_start; s < n_short; ++s) {
+      const T up   = (s >= prev_lo && s < prev_hi) ? prev[s] : maxValue;
+      const T diag = (s >= 1 && (s - 1) >= prev_lo && (s - 1) < prev_hi)
+                       ? prev[s - 1] : maxValue;
+      const T left = (s > comp_start) ? curr[s - 1] : maxValue;
+
+      T m = up;
+      if (left < m) m = left;
+      if (diag < m) m = diag;
+      const T d = (m == maxValue) ? maxValue : m + cost(s, L);
+
+      if (d <= thr) {
+        curr[s] = d;
+        last_live = s;
+        if (first_live == n_short) first_live = s;
+      } else {
+        curr[s] = maxValue;
+      }
+
+      // Keep computing through the previous row's support region; only stop
+      // once we are at/past prev_hi (no up/diag support) AND the cell died —
+      // beyond that the overhang is left-only and can never revive.
+      if (s < prev_hi) continue;
+      if (d > thr) break;
+    }
+
+    // ub >= DTW guarantees the optimal-path cell of this row is <= ub, so
+    // first_live is always found; assert-free by construction.
+    comp_start = (first_live == n_short) ? last_live : first_live;
+    prev_lo = (first_live == n_short) ? last_live : comp_start;
+    prev_hi = last_live + 1;
+  }
+
+  return curr[n_short - 1];
+}
+
+// ===========================================================================
 // Kernel 3: Sakoe-Chiba banded DTW (outer = short, inner = long).
 // Rolling column of size n_long plus per-row band bounds. Optional early abandon.
 // ===========================================================================

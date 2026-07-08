@@ -481,10 +481,11 @@ Priority order (impact ÷ effort):
 - [x] **Admissibility [HARD] → CONFIRMED** (Begum Theorem 1): `prune=true` == `prune=false` == an independent brute-force density-peaks oracle, digit-identical labels + medoids (+cost 1e-9). Bounds `LB_Keogh ≤ DTW ≤ Σ|x−y|` CONFIRMED. **Pruning band ≥50% floor → CONFIRMED at 78.0%** (N=200, band=10%, dc auto; 16000 LB + 247 UB skips of 19900 pairs; paper 80–88%). Test 6 cases / 2572 assertions; full gate 92/92 (baseline 91 → +1 suite), no regression.
 - [x] Note: exact-matrix DTW-work reduction (the k-medoids/MIP path) still lives in **Task 5.4 (PrunedDTW cell-pruning, returns exact)** — that is the remaining Phase-5 pruning lever for the existing methods. TADPole covers the NN/density regime.
 
-### Task 5.4: EAPruned kernel restructure
+### Task 5.4: EAPruned kernel restructure [DONE 2026-07-08]
 
-**Files:** Modify: core DTW kernels (`dtwc/core/`), reference MonashTS/tempo implementation.
-- [ ] Fuse pruning + early-abandon per Herrmann & Webb DMKD 2021 (claims 2.88× vs classic EA). Registered band: ≥1.5× kernel-level on UCR mix, digit-identical distances.
+**Files:** Modified: `dtwc/core/dtw_kernel.hpp` (`dtw_kernel_eap`), `dtwc/warping.hpp` (`dtwFull_eap` shim), `dtwc/core/dtw_dispatch.cpp` (route unbanded Standard through EAP); new `tests/unit/adversarial/test_eap_dtw.cpp`; run-log `.claude/baselines/2026-07-08-eap.md`.
+- [x] Fused pruning + early-abandon (Herrmann & Webb DMKD 2021, arXiv:2102.05221) as an EXACT unbanded kernel: diagonal L-path UB seeds the prune, every optimal-path cell ≤ DTW ≤ UB ⇒ exact. Clean-room from the paper (tempo/MonashTS is GPL — NOT ported). Standard recurrence + L1/SquaredL2. Routed into `make_standard`'s scalar unbanded path (the default, `DEFAULT_BAND == -1`); banded builds keep `dtwBanded` (band already excises the prunable region). This is the exact-matrix DTW-work lever for the k-medoids/MIP consumers (the 5.3 note).
+- [x] **DIGIT-IDENTICAL [HARD] → CONFIRMED** (`dtwFull_eap == dtwFull_L`, 2511 assertions L1+SquaredL2 + edge; whole 93-test gate digit-identical through the wiring). UB≥DTW CONFIRMED. **Speedup band ≥1.5× → CONFIRMED** (warm timing): near-diagonal **6.26×→12.17×** (cells 21%→11%), mild-warp 5.07×→9.89×, unrelated 1.46–1.69× (≈98% cells = leaner kernel not pruning). Registered "2.88×" is the paper's NN-search figure; exact all-pairs (diagonal UB, no NN cutoff) is data-cohesion-dependent — honest reframe. Gate 93/93 (baseline 92 → +1 suite), no regression.
 
 ### Task 5.5: MSM + TWE distances (quality lever — falsifies DTW-only)
 

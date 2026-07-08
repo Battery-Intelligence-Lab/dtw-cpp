@@ -115,6 +115,14 @@ auto make_standard(const Problem &p)
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
+    // Unbanded Standard DTW (the default, band < 0) routes through the EAPruned
+    // kernel: EXACT (digit-identical to dtwFull_L, verified in test_eap_dtw.cpp)
+    // but prunes cells the diagonal upper bound already beats (Herrmann & Webb
+    // DMKD 2021, Task 5.4). This is the exact-matrix DTW-work reduction lever
+    // for the k-medoids / MIP consumers. Banded builds keep dtwBanded — the
+    // band already excises the region EAP would prune.
+    if (p.band < 0)
+      return static_cast<double>(dtwFull_eap<T>(x, y));
     return static_cast<double>(dtwBanded<T>(x, y, p.band));
   };
 }
