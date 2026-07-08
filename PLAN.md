@@ -459,12 +459,13 @@ Source: `.claude/reports/literature-2026-07-06.md` (citations in `.claude/CITATI
 
 Priority order (impact ÷ effort):
 
-### Task 5.1: FasterPAM + LAB init + FasterCLARA
+### Task 5.1: FasterPAM + LAB init + FasterCLARA [DONE 2026-07-08]
 
-**Files:** Modify: `dtwc/algorithms/fast_pam.cpp` (replace O(N²k) swap — audit High), `fast_clara.cpp`.
-- [ ] Implement Schubert & Rousseeuw FasterPAM swap (O(1)-per-medoid update; *Information Systems* 101:101804, 2021 — verified 458×/1191× at k=100/200) on the existing cached/mmap matrix; LAB init; CLARA upgrade.
-- [ ] Registered bands: (a) identical or better final objective vs current fast_pam on 10 UCR sets, fixed seeds; (b) swap-phase wall-time ≥10× faster at N=5000,k=50.
-- [ ] Note: BanditPAM++ deliberately REJECTED — its win is avoiding distance computes; ours are O(1) cached [literature report].
+**Files:** Modified: `dtwc/algorithms/fast_pam.{cpp,hpp}` (replaced the O(N²k) swap — audit High); new `tests/unit/algorithms/unit_test_faster_pam.cpp`; run-log `.claude/baselines/2026-07-08-faster-pam-bench.md`.
+- [x] Replaced the naive O(N²·k) swap with the paper's **FastPAM1 O(N)-decomposition** (`ΔTD = acc + ploss[m]`, removal loss `ρ`; Schubert & Rousseeuw 2021, arXiv:2008.05171 Alg. 3–4 — derivation cross-checked by a research agent against the Rust `kmedoids` ref, line-for-line). `PAMVariant { FastPAM1Naive, FastPAM1, FasterPAM }` via `fast_pam_swap`; `fast_pam` defaults to the parallel **FastPAM1** (O(N²)/iter). New eager **FasterPAM** (O(N²)/sweep, ≈1 sweep). Naive kept as bench baseline + digit-oracle.
+- [x] **Band (a) — CONFIRMED (identical-or-better objective).** decomposition FastPAM1 ≡ naive objective to 1e-9; FasterPAM ≤ FastPAM1 from identical BUILD (strictly better when best-swap hits max_iter). Every variant reaches a brute-force-verified local optimum (independent ΔTD arbiter). Fixed a k=1 NaN the change introduced (`second_dist=inf` ⇒ special-cased to direct argmin; caught by CLARA's exact-median oracle). Full gate **90/90**.
+- [x] **Band (b) — PARTIALLY FALSIFIED-and-explained (deliverable), NOT rescue-tuned.** decomposition/naive speedup is **2.3×–8.1× (grows with k)**, not ≥10× at k≤50, because **DTW is memory-bound**: both variants do N² distance-matrix lookups/iter and the decomposition only removes the naive's cheap O(k) *arithmetic* (a scratch-buffer hoist moved the needle <noise, confirming memory not alloc is the bottleneck). FasterPAM converges in 1 sweep vs O(k) iterations; parallel FastPAM1 wins wall-time at large N → the right default. **LAB skipped** (paper: eager swapping nullifies LAB's head-start; recommends the K-means++ init already used). **FasterCLARA inherited** (CLARA calls `fast_pam`); carry-over refinement deferred.
+- [x] Note: BanditPAM++ deliberately REJECTED — its win is avoiding distance computes; ours are O(1) cached [literature report].
 
 ### Task 5.2: Lower-bound cascade upgrade
 
