@@ -365,6 +365,9 @@ int main(int argc, char *argv[])
   app.add_option("--msm-c", msm_c, "MSM split/merge cost (default 1.0)");
   app.add_option("--twe-nu", twe_nu, "TWE stiffness nu (default 0.001)");
   app.add_option("--twe-lambda", twe_lambda, "TWE edit penalty lambda (default 1.0)");
+  std::string mv_mode = "dependent";
+  app.add_option("--mv-mode", mv_mode, "Multivariate mode (ndim>1): dependent, independent")
+    ->check(CLI::IsMember({ "dependent", "independent" }));
 
   // CLARA-specific
   int sample_size = -1;
@@ -523,6 +526,7 @@ int main(int argc, char *argv[])
       set_if_unset("msm-c", msm_c);
       set_if_unset("twe-nu", twe_nu);
       set_if_unset("twe-lambda", twe_lambda);
+      set_if_unset("mv-mode", mv_mode);
 
       // CLARA parameters
       set_if_unset("sample-size", sample_size);
@@ -874,6 +878,9 @@ int main(int argc, char *argv[])
     vparams.twe_nu = twe_nu;
     vparams.twe_lambda = twe_lambda;
   }
+  to_lower(mv_mode);
+  vparams.mv_mode = (mv_mode == "independent") ? dtwc::core::MVMode::Independent
+                                               : dtwc::core::MVMode::Dependent;
   prob.set_variant(vparams);
 
   // Set MIP solver (relevant for method=mip)

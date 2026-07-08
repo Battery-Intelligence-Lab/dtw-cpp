@@ -6,7 +6,7 @@
 import numpy as np
 from dtwcpp._dtwcpp_core import (
     Problem, fast_pam, silhouette, DTWVariant, DTWVariantParams,
-    MissingStrategy,
+    MVMode, MissingStrategy,
     dtw_distance, ddtw_distance, wdtw_distance, adtw_distance,
 )
 
@@ -55,6 +55,12 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         Logistic weight steepness for WDTW (ignored unless ``variant="wdtw"``).
     adtw_penalty : float, default=1.0
         Non-diagonal step penalty for ADTW (ignored unless ``variant="adtw"``).
+    mv_mode : str, default="dependent"
+        Multivariate combination mode when ``ndim > 1`` (Shokoohi-Yekta et al.,
+        DMKD 2017; ignored for univariate series). ``"dependent"`` (DTW_D: one
+        shared warping path) or ``"independent"`` (DTW_I: per-channel DTW summed).
+        ``"independent"`` requires ``variant="standard"`` and
+        ``missing_strategy="error"`` in this release.
     missing_strategy : str, default="error"
         How to handle NaN values in time series. One of ``"error"`` (throw),
         ``"zero_cost"`` (NaN pairs contribute zero cost), ``"arow"``
@@ -87,7 +93,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
-                 msm_c=1.0, twe_nu=0.001, twe_lambda=1.0,
+                 msm_c=1.0, twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
                  missing_strategy="error", metric="l1", device=None):
         self.n_clusters = n_clusters
         self.variant = variant
@@ -99,6 +105,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.msm_c = msm_c
         self.twe_nu = twe_nu
         self.twe_lambda = twe_lambda
+        self.mv_mode = mv_mode
         self.missing_strategy = missing_strategy
         self.metric = metric
         self.device = device
@@ -181,6 +188,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         vp.msm_c = self.msm_c
         vp.twe_nu = self.twe_nu
         vp.twe_lambda = self.twe_lambda
+        vp.mv_mode = (MVMode.Independent if str(self.mv_mode).lower() == "independent"
+                      else MVMode.Dependent)
         prob.variant_params = vp
         return prob
 

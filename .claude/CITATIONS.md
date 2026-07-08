@@ -131,3 +131,8 @@ References used during development. Verify each citation independently before pu
 - Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
 - Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
 - HiGHS. ERGO-Code/HiGHS v1.15.1, `highs/pdlp/` (cuPDLP-C port + `hipdlp/` PDHG); GPU behind CMake `CUPDLP_GPU`. https://github.com/ERGO-Code/HiGHS — the maintained library used as the LP arbiter of the LR-core Lagrangian bound (supersedes the killed 2023 custom OSLP).
+
+## Multivariate DTW (Phase 5 · Task 5.6 — independent DTW)
+
+- Shokoohi-Yekta, M., Hu, B., Jin, H., Wang, J., & Keogh, E. (2017). *Generalizing DTW to the multi-dimensional case requires an adaptive approach*. Data Mining and Knowledge Discovery, 31(1), 1–31. — DTW_I (independent, per-channel sum) vs DTW_D (dependent, shared path); the finding that neither dominates and both are needed. Basis for `MVMode{Dependent,Independent}` + `dtw_independent_mv`.
+- Shen, Y., & Chen, Y. (2021). *TC-DTW: Accelerating Multivariate DTW Through Triangle Inequality and Point Clustering*. arXiv:2101.07731. — multivariate LB tightening (triangle inequality + point clustering). NOTED, DEFERRED (bound-tightening for the pruning/NN path, orthogonal to the DTW_I distance deliverable).

@@ -40,6 +40,14 @@ enum class DTWVariant
   TWE        ///< Time Warp Edit (Marteau 2009): stiffness ν + edit penalty λ, univariate/unbanded
 };
 
+/// Multivariate combination mode (Shokoohi-Yekta et al., DMKD 2017).
+/// Only meaningful when Data::ndim > 1; ignored for univariate series.
+enum class MVMode
+{
+  Dependent,   ///< DTW_D: one warping path, per-cell cost summed over channels (default; existing behaviour)
+  Independent  ///< DTW_I: independent per-channel univariate DTW, distances summed
+};
+
 /// Strategy for handling missing data (NaN values) in time series.
 enum class MissingStrategy
 {
@@ -59,6 +67,7 @@ struct DTWVariantParams
   double msm_c = 1.0;         ///< MSM: split/merge cost (Stefan et al. 2013; aeon default 1.0)
   double twe_nu = 0.001;      ///< TWE: stiffness ν, > 0 (Marteau 2009; aeon default 0.001)
   double twe_lambda = 1.0;    ///< TWE: edit penalty λ, ≥ 1 (Marteau 2009; aeon default 1.0)
+  MVMode mv_mode = MVMode::Dependent;  ///< Multivariate mode (ndim>1); default keeps DTW_D
 };
 
 /// Runtime DTW configuration.

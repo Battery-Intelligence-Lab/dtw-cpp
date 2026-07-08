@@ -543,5 +543,59 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
   });
 }
 
+/**
+ * @brief Independent multivariate DTW (DTW_I; Shokoohi-Yekta et al., DMKD 2017).
+ *
+ * @details Runs an independent univariate DTW on each channel and sums the
+ *          per-channel distances: DTW_I = Σ_c DTW(x[:,c], y[:,c]). This differs
+ *          from the dependent DTW_D (dtwBanded_mv / dtwFull_L_mv), which forces a
+ *          single warping path shared by all channels. Neither mode dominates for
+ *          clustering accuracy (Shokoohi-Yekta 2017) — both are provided. With an
+ *          additive local cost and the same band, DTW_I ≤ DTW_D always (each
+ *          channel is free to pick its own optimal path).
+ *
+ *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t
+ *          (same as dtwFull_L_mv). Unbanded (band < 0) uses the exact EAPruned
+ *          kernel per channel (matches the scalar Standard default); banded uses
+ *          dtwBanded per channel. L1 / SquaredL2 metrics only (per-channel scalar).
+ *
+ * @tparam data_t Data type of the elements.
+ * @param x       Pointer to first series (interleaved, nx_steps * ndim elements).
+ * @param nx_steps Number of timesteps in x.
+ * @param y       Pointer to second series (interleaved, ny_steps * ndim elements).
+ * @param ny_steps Number of timesteps in y.
+ * @param ndim    Number of features per timestep.
+ * @param band    Sakoe-Chiba band width; negative means unconstrained.
+ * @param metric  Pointwise distance metric (default: L1).
+ * @return The summed independent multivariate DTW distance.
+ */
+template <typename data_t = dtwc::settings::default_data_t>
+data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
+                          size_t ndim, int band = settings::DEFAULT_BAND,
+                          core::MetricType metric = core::MetricType::L1)
+{
+  if (ndim == 1) {
+    return band < 0 ? dtwFull_eap<data_t>(x, nx_steps, y, ny_steps, metric)
+                    : dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
+  }
+  if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
+
+  // De-interleave one channel at a time into contiguous scratch, then run the
+  // univariate kernel. thread_local buffers keep the parallel matrix fill
+  // heap-allocation-free after the first pair per thread.
+  thread_local std::vector<data_t> cx, cy;
+  cx.resize(nx_steps);
+  cy.resize(ny_steps);
+
+  data_t total = data_t(0);
+  for (size_t c = 0; c < ndim; ++c) {
+    for (size_t t = 0; t < nx_steps; ++t) cx[t] = x[t * ndim + c];
+    for (size_t t = 0; t < ny_steps; ++t) cy[t] = y[t * ndim + c];
+    total += band < 0 ? dtwFull_eap<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, metric)
+                      : dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
+  }
+  return total;
+}
+
 } // namespace dtwc
 

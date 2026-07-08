@@ -164,6 +164,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("MSM", dtwc::core::DTWVariant::MSM)
     .value("TWE", dtwc::core::DTWVariant::TWE);
 
+  nb::enum_<dtwc::core::MVMode>(m, "MVMode")
+    .value("Dependent", dtwc::core::MVMode::Dependent)
+    .value("Independent", dtwc::core::MVMode::Independent);
+
   nb::enum_<dtwc::core::MissingStrategy>(m, "MissingStrategy")
     .value("Error", dtwc::core::MissingStrategy::Error)
     .value("ZeroCost", dtwc::core::MissingStrategy::ZeroCost)
@@ -224,7 +228,8 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("sdtw_gamma", &dtwc::core::DTWVariantParams::sdtw_gamma)
     .def_rw("msm_c", &dtwc::core::DTWVariantParams::msm_c)
     .def_rw("twe_nu", &dtwc::core::DTWVariantParams::twe_nu)
-    .def_rw("twe_lambda", &dtwc::core::DTWVariantParams::twe_lambda);
+    .def_rw("twe_lambda", &dtwc::core::DTWVariantParams::twe_lambda)
+    .def_rw("mv_mode", &dtwc::core::DTWVariantParams::mv_mode);
 
   // =========================================================================
   // MIPSettings

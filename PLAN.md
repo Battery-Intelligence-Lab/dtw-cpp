@@ -493,11 +493,12 @@ Priority order (impact ÷ effort):
 - [x] Two standalone O(n·m) DP kernels (rolling buffer, O(min) scratch — full matrix would be ~512MB/thread at n≈8k; both metrics ⇒ symmetric). MSM (Stefan et al. TKDE 2013) + TWE (Marteau TPAMI 2009). **Oracle → CONFIRMED: == aeon 1.5.0 to 1e-10 on 20 non-degenerate pairs each** (recurrences read from aeon source). Metric props (d≥0, d(x,x)=0, symmetry, triangle-ineq) CONFIRMED; Problem/CLI wiring CONFIRMED (1676 assertions). Gate 94/94 (baseline 93 → +1 suite), no regression.
 - [x] Bench (ADVISORY ≤1.3× plain DTW DP, same structure): **MSM 1.01–1.06× CONFIRMED**; **TWE 1.26–1.30× CONFIRMED at boundary** (TWE cell does strictly more work — front pad + 2 |·| + 2ν|i−j|). v1 = univariate + unbanded (MV rejected at bind time, not silent; band ignored — default is unbanded). Python runtime parity DEFERRED (pre-existing wheel-build env failure, C++/CLI fully gated).
 
-### Task 5.6: Multivariate independent DTW + TC-DTW bounds
+### Task 5.6: Multivariate independent DTW + TC-DTW bounds [DONE 2026-07-08]
 
-**Files:** Modify: multivariate kernel dispatch; add channel-wise-sum mode alongside dependent mode.
-- [ ] Independent-DTW (Shokoohi-Yekta DMKD 2017 — neither mode dominates, both needed); TC-DTW LB tightening if time (arXiv:2101.07731).
-- [ ] Oracle: hand-computed 2-channel example + aeon cross-check.
+**Files:** Modified: `dtwc/core/dtw_options.hpp` (MVMode + mv_mode), `dtwc/warping.hpp` (`dtw_independent_mv`), `dtwc/core/dtw_dispatch.cpp` (`make_independent` + interception), CLI/Python wiring; new `tests/unit/core/unit_test_independent_mv.cpp`; run-log `.claude/baselines/2026-07-08-independent-mv.md`.
+- [x] Independent-DTW (Shokoohi-Yekta DMKD 2017) as an orthogonal `MVMode{Dependent,Independent}` (default Dependent = existing DTW_D). `dtw_independent_mv` = Σ_c univariate DTW per channel (EAPruned unbanded / dtwBanded banded); pre-existing `dtwFull_L_mv`/`dtwBanded_mv` stay DTW_D. Wired CLI `--mv-mode` + TOML + Python `MVMode`/`mv_mode`/`KMedoids`. v1 = Standard variant + Error strategy; other combos rejected at bind (`set_variant`), never silent.
+- [x] **Oracle → CONFIRMED:** hand-computed 2-channel example (DTW_I=4) + aeon 1.5.0 cross-check (`Σ_c dtw_distance`, squared-L2) to rel 1e-9 on 10 pairs. **DTW_I ≤ DTW_D [HARD] → CONFIRMED** (200 pairs, L1+sqL2, banded+unbanded — independent-math arbiter). Wiring/reject/univariate-no-op CONFIRMED. Test 7 cases / 889 assertions; full gate **95/95** (baseline 94 → +1 suite), no regression.
+- [ ] **TC-DTW LB (arXiv:2101.07731) DEFERRED** ("if time"): a lower-bound tightening for the pruning/NN path (Tasks 5.2 LB cascade + 5.3 TADPole), orthogonal to the DTW_I distance deliverable. Left OPEN for a later LB-focused task.
 
 ### Task 5.7: Arrow C Data / PyCapsule zero-copy ingest
 

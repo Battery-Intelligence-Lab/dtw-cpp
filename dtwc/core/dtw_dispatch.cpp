@@ -296,6 +296,29 @@ auto make_twe(const Problem &p)
   };
 }
 
+// Independent multivariate DTW (DTW_I; Shokoohi-Yekta et al., DMKD 2017).
+// Runs an independent univariate DTW per channel and sums (dtw_independent_mv).
+// v1 scope: Standard variant only, MissingStrategy::Error only. Any other
+// combination is rejected at bind time (serial — before the parallel fill)
+// rather than silently collapsing to dependent mode. `ndim > 1` is guaranteed
+// by the caller (resolve_dtw_fn only takes this path when ndim > 1).
+template <typename T>
+auto make_independent(const Problem &p)
+  -> std::function<double(std::span<const T>, std::span<const T>)>
+{
+  if (p.variant_params.variant != DTWVariant::Standard)
+    throw InvalidInput("Independent multivariate mode is implemented for the Standard "
+                       "DTW variant only in this release");
+  if (p.missing_strategy != MissingStrategy::Error)
+    throw InvalidInput("Independent multivariate mode does not support a missing-data "
+                       "strategy in this release (set missing_strategy = Error)");
+  return [&p](std::span<const T> x, std::span<const T> y) -> double {
+    const auto ndim = p.data.ndim;
+    return static_cast<double>(dtw_independent_mv<T>(
+      x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
+  };
+}
+
 } // unnamed namespace
 
 // ----------------------------------------------------------------------------
@@ -306,6 +329,11 @@ template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const Problem &p)
 {
+  // Independent multivariate mode intercepts before every other axis: it is a
+  // per-channel decomposition, not a cell-cost or missing-data choice.
+  if (p.variant_params.mv_mode == MVMode::Independent && p.data.ndim > 1)
+    return make_independent<T>(p);
+
   // Missing-data strategies override variant dispatch — pre-refactor behaviour.
   switch (p.missing_strategy) {
   case MissingStrategy::ZeroCost:    return make_zero_cost<T>(p);
