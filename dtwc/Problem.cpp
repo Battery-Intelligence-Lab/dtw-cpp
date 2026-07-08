@@ -29,6 +29,7 @@
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "missing_utils.hpp"               // for has_missing
+#include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 
 #include <algorithm> // for max_element, min, min_element, sample
@@ -523,6 +524,11 @@ void Problem::cluster()
   case Method::LRCore:
     LR_core_clustering(*this);
     break;
+  case Method::TADPole: {
+    const double dc = (tadpole_dc > 0.0) ? tadpole_dc : algorithms::tadpole_auto_dc(*this);
+    algorithms::tadpole(*this, Nc, dc);
+    break;
+  }
   }
 }
 

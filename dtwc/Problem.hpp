@@ -132,6 +132,7 @@ public:
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
   int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
+  double tadpole_dc{ -1.0 };          /*!< TADPole density cutoff dc (Method::TADPole). <0 ⇒ auto-select from a DTW subsample. */
   /// DTW variant selection and parameters.
   /// INVARIANT: a direct write to this field does NOT rebind `dtw_fn_` — always
   /// use `set_variant(...)` (which rebinds) to change the variant safely. The

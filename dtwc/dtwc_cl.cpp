@@ -325,12 +325,13 @@ int main(int argc, char *argv[])
   auto *clusters_dep_opt = app.add_option("--clusters", n_clusters_deprecated,
                                           "DEPRECATED alias of --n-clusters")
                                ->group("");
-  app.add_option("-m,--method", method, "Clustering method: auto, pam, clara, kmedoids, mip, hierarchical")
+  app.add_option("-m,--method", method, "Clustering method: auto, pam, clara, kmedoids, mip, hierarchical, tadpole")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
               {"auto", "auto"}, {"pam", "pam"}, {"clara", "clara"},
               {"kmedoids", "kmedoids"}, {"mip", "mip"},
-              {"hierarchical", "hierarchical"}, {"hclust", "hierarchical"}},
+              {"hierarchical", "hierarchical"}, {"hclust", "hierarchical"},
+              {"tadpole", "tadpole"}},
           CLI::ignore_case));
   app.add_option("-b,--band", band, "Sakoe-Chiba band width (-1 = full DTW)");
   app.add_option("--metric", metric, "Distance metric: l1, squared_euclidean")
@@ -347,6 +348,8 @@ int main(int argc, char *argv[])
           CLI::ignore_case));
   app.add_option("--max-iter", max_iter, "Maximum iterations");
   app.add_option("--n-init", n_init, "Number of random restarts (PAM/kMedoids)");
+  double tadpole_dc = -1.0;
+  app.add_option("--dc", tadpole_dc, "TADPole density cutoff distance (default: auto-select)");
 
   // DTW variant parameters
   double wdtw_g = 0.05;
@@ -1033,6 +1036,21 @@ int main(int argc, char *argv[])
 
     if (verbose)
       std::cout << "LR-core clustering finished, cost=" << result.total_cost
+                << " [" << clk << "]\n";
+  } else if (method == "tadpole") {
+    // TADPole density-peaks with admissible LB/UB DTW pruning.
+    prob.set_numberOfClusters(n_clusters);
+    prob.tadpole_dc = tadpole_dc; // <0 ⇒ auto-select from a DTW subsample
+    prob.method = dtwc::Method::TADPole;
+    prob.cluster();
+
+    result.labels = prob.clusters_ind;
+    result.medoid_indices = prob.centroids_ind;
+    result.total_cost = prob.findTotalCost();
+    result.converged = true;
+
+    if (verbose)
+      std::cout << "TADPole clustering finished, cost=" << result.total_cost
                 << " [" << clk << "]\n";
   } else if (method == "hierarchical") {
     // Agglomerative hierarchical clustering

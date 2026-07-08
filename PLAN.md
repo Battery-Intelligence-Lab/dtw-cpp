@@ -474,11 +474,12 @@ Priority order (impact ÷ effort):
 - [x] **The registered band "≥25% fewer full DTW calls, digit-identical matrix" was NOT chased — it is UNACHIEVABLE as written (proof in run-log + LESSONS).** An exact full matrix needs every DTW; a lower bound skips work only where the exact value is not needed (NN-search), and the pruned path recomputes every early-abandoned pair (partial+full > full), so a tighter LB games `computed_full_dtw` DOWN while doing MORE work. Exact-matrix DTW-work reduction is Task 5.3 (TADPole) / 5.4 (PrunedDTW cell-pruning); 5.2 delivers the primitives those consume. User-approved reframe: "primitives + honest reframe."
 - [x] **Validity [HARD] → CONFIRMED** (`LB ≤ DTW_w`, L1+SquaredL2, random+adversarial+edge lengths; `LB_Webb ≥ LB_Keogh` provable+asserted; no `Enhanced ≥ Keogh` claim). Pruned+{Enhanced,Webb,Keogh} matrix **digit-identical** to BruteForce. Test: 39273 assertions / 14 cases. **Tightness [ADVISORY]:** vs symmetric LB_Keogh, LB_Webb +23% (band 10%) / +36% (band 40%); LB_Enhanced +3.3% → +10.9% (gain grows with band, its designed regime).
 
-### Task 5.3: TADPole-style matrix-build pruning
+### Task 5.3: TADPole-style matrix-build pruning [DONE 2026-07-08]
 
-**Files:** Create: `dtwc/algorithms/pruned_matrix_build.{hpp,cpp}`.
-- [ ] Reuse per-series envelopes + Euclidean UBs across all pairs (Begum KDD 2015); provably identical results clause is the test: labels digit-identical, ≥50% DTW calls pruned (paper claims ~94% — register 50% as pass floor).
-- [ ] Explicit anti-goal: NO Elkan/triangle-inequality pruning — DTW is not a metric [literature report].
+**Files:** Created: `dtwc/algorithms/tadpole.{hpp,cpp}` (registered as `pruned_matrix_build` — renamed; the pruning is internal to the clusterer), `Method::TADPole` wiring (Problem/CLI/Python), new `tests/unit/algorithms/unit_test_tadpole.cpp`; run-log `.claude/baselines/2026-07-08-tadpole.md`.
+- [x] **SCOPE REFRAME (user-approved "add density-peaks clusterer").** The registered "prune *inside* k-medoids" path is **not admissible** — PAM/MIP/LR-core all consume the full N×N matrix (`fast_pam_swap` fills it; the SWAP loop reads every candidate pair), so no LB/UB can skip a DTW there (same wall as Task 5.2). A bound only skips work for a consumer that never needs exact far-pair distances → the faithful Begum 2015 IS density-peaks clustering. Delivered as a new `Method::TADPole` (Rodriguez & Laio density peaks + Begum admissible pruning), reusing per-series LB_Keogh envelopes + the no-warp Euclidean UB across all pairs. NO Elkan/triangle pruning (anti-goal kept — DTW is not a metric).
+- [x] **Admissibility [HARD] → CONFIRMED** (Begum Theorem 1): `prune=true` == `prune=false` == an independent brute-force density-peaks oracle, digit-identical labels + medoids (+cost 1e-9). Bounds `LB_Keogh ≤ DTW ≤ Σ|x−y|` CONFIRMED. **Pruning band ≥50% floor → CONFIRMED at 78.0%** (N=200, band=10%, dc auto; 16000 LB + 247 UB skips of 19900 pairs; paper 80–88%). Test 6 cases / 2572 assertions; full gate 92/92 (baseline 91 → +1 suite), no regression.
+- [x] Note: exact-matrix DTW-work reduction (the k-medoids/MIP path) still lives in **Task 5.4 (PrunedDTW cell-pruning, returns exact)** — that is the remaining Phase-5 pruning lever for the existing methods. TADPole covers the NN/density regime.
 
 ### Task 5.4: EAPruned kernel restructure
 
