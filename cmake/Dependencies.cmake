@@ -30,19 +30,23 @@ function(dtwc_setup_dependencies)
 
   # HiGHS library:
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
+  # v1.15.1 ships PDLP (first-order LP: solver="pdlp"/"hipdlp"). The GPU/cuPDLP
+  # backend is behind HiGHS's own CUPDLP_GPU option (default OFF ⇒ CPU PDLP, same
+  # bound). We forward it only when DTWC_HIGHS_GPU is set; on Windows HiGHS then
+  # forces itself shared (highs.dll) and pulls cudart/cublas/cusparse.
+  set(_highs_options "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON")
+  if(DTWC_HIGHS_GPU)
+    list(APPEND _highs_options "CUPDLP_GPU ON")
+  endif()
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
     # SHA256 pinned (Task 0.12). Computed 2026-07-08 from the GitHub release
     # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
-    # v1.15.1 ships PDLP (first-order LP: solver="pdlp"/"hipdlp") with an
-    # optional GPU/cuPDLP backend (HiGHS CMake option CUPDLP_GPU, default OFF —
-    # our build uses CPU PDLP unless that flag is forwarded).
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM
     EXCLUDE_FROM_ALL
-    OPTIONS
-    "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON"
+    OPTIONS ${_highs_options}
     )
     # Historically HiGHS <=1.14.0 had a debug assertion (ub_consistent) that
     # fired on valid warm-start MIP solves (primal-dual integral bookkeeping

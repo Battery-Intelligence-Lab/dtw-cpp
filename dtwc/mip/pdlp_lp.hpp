@@ -72,4 +72,15 @@ struct PdlpResult
  */
 PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params = {});
 
+/**
+ * @brief Whether this build's HiGHS was compiled with the CUDA/cuPDLP GPU backend
+ *        (DTWC_HIGHS_GPU, forwarded to HiGHS as CUPDLP_GPU=ON).
+ *
+ * A runtime capability query — the library reports its own build, since the
+ * compile-time define does not propagate to consumer translation units. When
+ * false, `pdlp_lp_bound` with `use_gpu=true` warns and runs on CPU; when true it
+ * runs on the GPU and reports `gpu_used=true`.
+ */
+bool pdlp_gpu_available();
+
 } // namespace dtwc::mip

@@ -24,6 +24,15 @@
 
 namespace dtwc::mip {
 
+bool pdlp_gpu_available()
+{
+#ifdef DTWC_HIGHS_GPU
+  return true;
+#else
+  return false;
+#endif
+}
+
 PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params)
 {
 #ifndef DTWC_ENABLE_HIGHS

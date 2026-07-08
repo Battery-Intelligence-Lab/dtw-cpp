@@ -225,11 +225,12 @@ TEST_CASE("PDLP GPU request is honoured or warned, never silently wrong", "[pdlp
   REQUIRE(pd.solved);
   REQUIRE(pd.lp_bound <= opt + 1e-6 * std::max(1.0, std::abs(opt)));
   REQUIRE_THAT(pd.lp_bound, WithinAbs(opt, 1e-4 * std::max(1.0, std::abs(opt)))); // tight (clustered)
-#ifdef DTWC_HIGHS_GPU
-  REQUIRE(pd.gpu_used); // GPU build: the GPU backend actually ran.
-#else
-  REQUIRE_FALSE(pd.gpu_used); // CPU build: honest report, no silent GPU claim.
-#endif
+  // Expectation is driven by the library's OWN build, queried at runtime — the
+  // DTWC_HIGHS_GPU compile define lives in mip-solvers and does not reach this TU.
+  if (dtwc::mip::pdlp_gpu_available())
+    REQUIRE(pd.gpu_used);       // GPU build: the GPU backend actually ran.
+  else
+    REQUIRE_FALSE(pd.gpu_used); // CPU build: honest report, no silent GPU claim.
 }
 
 // ===========================================================================
