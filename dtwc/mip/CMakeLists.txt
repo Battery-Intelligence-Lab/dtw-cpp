@@ -9,11 +9,13 @@ target_sources(mip-solvers
     benders.cpp
     lagrangian_root.cpp
     reduced_cost_fixing.cpp
+    pdlp_lp.cpp
   PUBLIC
     mip.hpp
     benders.hpp
     lagrangian_root.hpp
     reduced_cost_fixing.hpp
+    pdlp_lp.hpp
   )
 
 target_include_directories(mip-solvers PUBLIC .)

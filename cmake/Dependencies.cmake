@@ -32,20 +32,23 @@ function(dtwc_setup_dependencies)
   if(NOT TARGET highs::highs AND DTWC_ENABLE_HIGHS)# HiGHS library:
   CPMAddPackage(
     NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.14.0.tar.gz"
-    # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
-    # build/_deps/highs-subbuild/.../v1.14.0.tar.gz. Immutable release tag.
-    URL_HASH SHA256=05931e8dd8c8cac514da8297003c31a206a0004d542b7da500810b85c87c20b9
+    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
+    # SHA256 pinned (Task 0.12). Computed 2026-07-08 from the GitHub release
+    # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
+    # v1.15.1 ships PDLP (first-order LP: solver="pdlp"/"hipdlp") with an
+    # optional GPU/cuPDLP backend (HiGHS CMake option CUPDLP_GPU, default OFF —
+    # our build uses CPU PDLP unless that flag is forwarded).
+    URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM
     EXCLUDE_FROM_ALL
     OPTIONS
     "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON"
     )
-    # HiGHS <=1.14.0 has a debug assertion (ub_consistent) that fires on valid
-    # warm-start MIP solves due to rounding in primal-dual integral tracking
-    # after presolve reset. The solution is correct; the bookkeeping tolerance
-    # (1e-12) is too tight. Suppress by defining NDEBUG on HiGHS target.
-    # Upstream: https://github.com/ERGO-Code/HiGHS — not yet fixed as of 1.14.0.
+    # Historically HiGHS <=1.14.0 had a debug assertion (ub_consistent) that
+    # fired on valid warm-start MIP solves (primal-dual integral bookkeeping
+    # tolerance 1e-12 too tight after a presolve reset). Retained defensively:
+    # forcing NDEBUG on the HiGHS target keeps its internal asserts off in Debug
+    # builds of DTWC++ regardless of whether 1.15.1 tightened the tolerance.
     if(TARGET highs)
       target_compile_definitions(highs PRIVATE NDEBUG)
     endif()

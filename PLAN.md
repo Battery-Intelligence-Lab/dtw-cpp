@@ -440,6 +440,16 @@ Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `
 - [x] `Method::LRCore` added. `Problem::cluster()` routes it to `dtwc::LR_core_clustering` (fills D, seeds UB, runs `lagrangian_root_exact`, writes `centroids_ind`/`clusters_ind`). `mip` unchanged (solver-backed exact). Regime documented (dense D in RAM; N·N doubles budget; no external solver needed). Exposed C++/Python (`dtwcpp.Method.LRCore`)/CLI (`--method lrcore`|`lr`). Test `[lrcore][api]`.
 - [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims) — see `.claude/LESSONS.md`.
 
+### Task 4.5: PDLP first-order LP arbiter [DONE 2026-07-08]
+
+Scope decision (user-directed): the "third solver" is NOT the resurrected 2023 custom OSLP (killed `3a87ea3`: 3× slower than OSQP, cannot certify — reviving it would violate the prefer-libraries rule). Instead, integrate HiGHS's maintained, GPU-capable PDLP as an **LP solver in the LR-core LP machinery** (explicitly "not the MIP path"). Custom OSLP stays retired.
+
+- [x] Bump pinned HiGHS `v1.14.0 → v1.15.1` (cmake/Dependencies.cmake; SHA256 re-pinned `a840d269…`). v1.15.1 ships PDLP (`solver="pdlp"`/`"hipdlp"`) + optional GPU behind HiGHS `CUPDLP_GPU` (default OFF). Bump validated in isolation: build exit 0, ctest **88/88** no regression.
+- [x] `dtwc::mip::pdlp_lp_bound` (dtwc/mip/pdlp_lp.{hpp,cpp}): forms the explicit p-median LP relaxation from dense D, solves with HiGHS PDLP, returns the LP optimum (raw units). LP-only — a lower bound, not a clustering; does not replace LR-core or the compact MIP.
+- [x] **BAND-ARB registered before run:** `|pdlp − kelley_LB| / max(1,|kelley|) ≤ 1e-4` over ≥24 instances (both = the LP-relaxation optimum by Geoffrion; different mathematics). **CONFIRMED, max rel = 7.14e-09.** Plus valid-lower-bound vs the IP oracle, and tight-on-clustered. Test: tests/unit/mip/test_pdlp_lp.cpp. Full gate **89/89**.
+- [x] No-silent-fallback: `use_gpu=true` on a non-`CUPDLP_GPU` build warns to stderr and runs CPU (`gpu_used=false`); `DTWC_HIGHS_GPU` build flips it. Test `[pdlp][gpu]`.
+- [ ] FOLLOW-ON (not yet done): forward `CUPDLP_GPU=ON` to HiGHS + define `DTWC_HIGHS_GPU` (dev box has nvcc 13.0 + RTX 4000) to run PDLP on the GPU. CPU PDLP yields the identical LP bound; GPU changes only speed. Gated on a user go — the arbiter/correctness value is already banked on CPU.
+
 ## Phase 5 — Speed & algorithms program [FINAL — ranked from literature report]
 
 Source: `.claude/reports/literature-2026-07-06.md` (citations in `.claude/CITATIONS.md`). Every task: register the benchmark band in the bench script BEFORE the run; a candidate that misses its band is recorded FALSIFIED and dropped — no rescue-tuning past 2 attempts. DTW is memory-bound (0.125 FLOP/byte): memory layout before SIMD, always.

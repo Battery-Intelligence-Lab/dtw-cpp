@@ -124,3 +124,9 @@ References used during development. Verify each citation independently before pu
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
 - cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/
+
+## First-Order LP / PDLP (Phase 4 · Task 4.5 — HiGHS PDLP arbiter)
+
+- Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
+- Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
+- HiGHS. ERGO-Code/HiGHS v1.15.1, `highs/pdlp/` (cuPDLP-C port + `hipdlp/` PDHG); GPU behind CMake `CUPDLP_GPU`. https://github.com/ERGO-Code/HiGHS — the maintained library used as the LP arbiter of the LR-core Lagrangian bound (supersedes the killed 2023 custom OSLP).
