@@ -87,6 +87,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
     def __init__(self, n_clusters=3, variant="standard", band=-1,
                  max_iter=100, n_init=1, wdtw_g=0.05, adtw_penalty=1.0,
+                 msm_c=1.0, twe_nu=0.001, twe_lambda=1.0,
                  missing_strategy="error", metric="l1", device=None):
         self.n_clusters = n_clusters
         self.variant = variant
@@ -95,6 +96,9 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         self.n_init = n_init
         self.wdtw_g = wdtw_g
         self.adtw_penalty = adtw_penalty
+        self.msm_c = msm_c
+        self.twe_nu = twe_nu
+        self.twe_lambda = twe_lambda
         self.missing_strategy = missing_strategy
         self.metric = metric
         self.device = device
@@ -106,6 +110,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             "ddtw": DTWVariant.DDTW,
             "wdtw": DTWVariant.WDTW,
             "adtw": DTWVariant.ADTW,
+            "msm": DTWVariant.MSM,
+            "twe": DTWVariant.TWE,
         }
         v = mapping.get(self.variant)
         if v is None:
@@ -172,6 +178,9 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         vp.variant = self._variant_enum()
         vp.wdtw_g = self.wdtw_g
         vp.adtw_penalty = self.adtw_penalty
+        vp.msm_c = self.msm_c
+        vp.twe_nu = self.twe_nu
+        vp.twe_lambda = self.twe_lambda
         prob.variant_params = vp
         return prob
 

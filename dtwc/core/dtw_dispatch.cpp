@@ -15,6 +15,11 @@
 #include "dtw_cost.hpp"              // SpanAROWL1Cost
 #include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
 #include "dtw_options.hpp"           // DTWVariant, MissingStrategy
+#include "msm.hpp"                   // msm_distance
+#include "twe.hpp"                   // twe_distance
+#include "../error.hpp"              // InvalidInput
+
+#include <stdexcept>
 
 #include <algorithm>
 #include <limits>
@@ -262,6 +267,35 @@ auto make_wdtw(const Problem &p)
   else                                     return make_wdtw_f32(p);
 }
 
+// MSM / TWE (Task 5.5). Univariate + unbanded only (v1); a multivariate request
+// is rejected at bind time (serial — before the parallel fill) rather than
+// silently collapsing channels. `Problem::band` is intentionally ignored:
+// these are full O(n·m) elastic metrics here (the default build is unbanded).
+template <typename T>
+auto make_msm(const Problem &p)
+  -> std::function<double(std::span<const T>, std::span<const T>)>
+{
+  if (p.data.ndim > 1)
+    throw InvalidInput("MSM distance is univariate in this release (ndim must be 1)");
+  const T c = static_cast<T>(p.variant_params.msm_c);
+  return [c](std::span<const T> x, std::span<const T> y) -> double {
+    return static_cast<double>(msm_distance<T>(x, y, c));
+  };
+}
+
+template <typename T>
+auto make_twe(const Problem &p)
+  -> std::function<double(std::span<const T>, std::span<const T>)>
+{
+  if (p.data.ndim > 1)
+    throw InvalidInput("TWE distance is univariate in this release (ndim must be 1)");
+  const T nu  = static_cast<T>(p.variant_params.twe_nu);
+  const T lam = static_cast<T>(p.variant_params.twe_lambda);
+  return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {
+    return static_cast<double>(twe_distance<T>(x, y, nu, lam));
+  };
+}
+
 } // unnamed namespace
 
 // ----------------------------------------------------------------------------
@@ -286,6 +320,8 @@ resolve_dtw_fn(const Problem &p)
   case DTWVariant::WDTW:    return make_wdtw<T>(p);
   case DTWVariant::ADTW:    return make_adtw<T>(p);
   case DTWVariant::SoftDTW: return make_soft_dtw<T>(p);
+  case DTWVariant::MSM:     return make_msm<T>(p);
+  case DTWVariant::TWE:     return make_twe<T>(p);
   case DTWVariant::Standard:
   default:                  return make_standard<T>(p);
   }

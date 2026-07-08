@@ -487,11 +487,11 @@ Priority order (impact ÷ effort):
 - [x] Fused pruning + early-abandon (Herrmann & Webb DMKD 2021, arXiv:2102.05221) as an EXACT unbanded kernel: diagonal L-path UB seeds the prune, every optimal-path cell ≤ DTW ≤ UB ⇒ exact. Clean-room from the paper (tempo/MonashTS is GPL — NOT ported). Standard recurrence + L1/SquaredL2. Routed into `make_standard`'s scalar unbanded path (the default, `DEFAULT_BAND == -1`); banded builds keep `dtwBanded` (band already excises the prunable region). This is the exact-matrix DTW-work lever for the k-medoids/MIP consumers (the 5.3 note).
 - [x] **DIGIT-IDENTICAL [HARD] → CONFIRMED** (`dtwFull_eap == dtwFull_L`, 2511 assertions L1+SquaredL2 + edge; whole 93-test gate digit-identical through the wiring). UB≥DTW CONFIRMED. **Speedup band ≥1.5× → CONFIRMED** (warm timing): near-diagonal **6.26×→12.17×** (cells 21%→11%), mild-warp 5.07×→9.89×, unrelated 1.46–1.69× (≈98% cells = leaner kernel not pruning). Registered "2.88×" is the paper's NN-search figure; exact all-pairs (diagonal UB, no NN cutoff) is data-cohesion-dependent — honest reframe. Gate 93/93 (baseline 92 → +1 suite), no regression.
 
-### Task 5.5: MSM + TWE distances (quality lever — falsifies DTW-only)
+### Task 5.5: MSM + TWE distances (quality lever — falsifies DTW-only) [DONE 2026-07-08]
 
-**Files:** Create: `dtwc/core/msm.hpp`, `dtwc/core/twe.hpp`; wire into variant enum + bindings + contract.
-- [ ] Two O(n²) DP kernels in the existing kernel framework (KAIS 2024: MSM best clustering distance, DTW ≈ Euclidean for k-medoids quality). Oracle: reference values from aeon on 20 series pairs (non-degenerate), 1e-10 rel.
-- [ ] Bench: matrix-build time within 1.3× of DTW-same-band (same DP structure).
+**Files:** Created: `dtwc/core/msm.hpp`, `dtwc/core/twe.hpp`; wired `DTWVariant::{MSM,TWE}` + params across dtw_options/dispatch/dtw.cpp/distance.hpp/checkpoint/CLI/Python/`KMedoids`; new `tests/unit/core/unit_test_msm_twe.cpp`; run-log `.claude/baselines/2026-07-08-msm-twe.md`.
+- [x] Two standalone O(n·m) DP kernels (rolling buffer, O(min) scratch — full matrix would be ~512MB/thread at n≈8k; both metrics ⇒ symmetric). MSM (Stefan et al. TKDE 2013) + TWE (Marteau TPAMI 2009). **Oracle → CONFIRMED: == aeon 1.5.0 to 1e-10 on 20 non-degenerate pairs each** (recurrences read from aeon source). Metric props (d≥0, d(x,x)=0, symmetry, triangle-ineq) CONFIRMED; Problem/CLI wiring CONFIRMED (1676 assertions). Gate 94/94 (baseline 93 → +1 suite), no regression.
+- [x] Bench (ADVISORY ≤1.3× plain DTW DP, same structure): **MSM 1.01–1.06× CONFIRMED**; **TWE 1.26–1.30× CONFIRMED at boundary** (TWE cell does strictly more work — front pad + 2 |·| + 2ν|i−j|). v1 = univariate + unbanded (MV rejected at bind time, not silent; band ignored — default is unbanded). Python runtime parity DEFERRED (pre-existing wheel-build env failure, C++/CLI fully gated).
 
 ### Task 5.6: Multivariate independent DTW + TC-DTW bounds
 

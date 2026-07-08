@@ -11,6 +11,8 @@
 #include "../warping_ddtw.hpp"
 #include "../warping_wdtw.hpp"
 #include "../soft_dtw.hpp"
+#include "msm.hpp"
+#include "twe.hpp"
 
 #include <span>
 
@@ -64,6 +66,17 @@ double dtw_runtime(const double* x, std::size_t nx,
       return dtwc::soft_dtw<double>(std::span<const double>{x, nx},
                                     std::span<const double>{y, ny}, gamma);
     }
+
+    case DTWVariant::MSM:
+      // MSM/TWE are univariate + unbanded (v1); opts.band/metric do not apply
+      // (same as ADTW/WDTW/SoftDTW above ignoring some axes).
+      return dtwc::core::msm_distance<double>(x, nx, y, ny,
+                                              opts.variant_params.msm_c);
+
+    case DTWVariant::TWE:
+      return dtwc::core::twe_distance<double>(x, nx, y, ny,
+                                              opts.variant_params.twe_nu,
+                                              opts.variant_params.twe_lambda);
 
     case DTWVariant::Standard:
     default:

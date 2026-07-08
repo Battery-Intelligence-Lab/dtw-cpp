@@ -13,6 +13,8 @@
 
 #include "settings.hpp"
 #include "core/dtw_options.hpp"
+#include "core/msm.hpp"
+#include "core/twe.hpp"
 #include "missing_utils.hpp"
 #include "soft_dtw.hpp"
 #include "warping.hpp"
@@ -132,6 +134,11 @@ T dtw(std::span<const T> x, std::span<const T> y,
     return adtw<T>(x, y, band, static_cast<T>(params.adtw_penalty));
   case core::DTWVariant::SoftDTW:
     return soft_dtw<T>(x, y, static_cast<T>(params.sdtw_gamma));
+  case core::DTWVariant::MSM:
+    return core::msm_distance<T>(x, y, static_cast<T>(params.msm_c));
+  case core::DTWVariant::TWE:
+    return core::twe_distance<T>(x, y, static_cast<T>(params.twe_nu),
+                                 static_cast<T>(params.twe_lambda));
   case core::DTWVariant::Standard:
   default:
     return dtw<T>(x, y, band, metric);
@@ -187,6 +194,34 @@ T soft_dtw(const std::vector<T> &x, const std::vector<T> &y,
            T gamma = static_cast<T>(1.0))
 {
   return soft_dtw<T>(std::span<const T>{x}, std::span<const T>{y}, gamma);
+}
+
+/// Move-Split-Merge distance (Stefan et al. 2013), univariate/unbanded.
+template <typename T = dtwc::settings::default_data_t>
+T msm(std::span<const T> x, std::span<const T> y, T c = static_cast<T>(1.0))
+{
+  return core::msm_distance<T>(x, y, c);
+}
+
+template <typename T = dtwc::settings::default_data_t>
+T msm(const std::vector<T> &x, const std::vector<T> &y, T c = static_cast<T>(1.0))
+{
+  return core::msm_distance<T>(std::span<const T>{x}, std::span<const T>{y}, c);
+}
+
+/// Time Warp Edit distance (Marteau 2009), univariate/unbanded.
+template <typename T = dtwc::settings::default_data_t>
+T twe(std::span<const T> x, std::span<const T> y,
+      T nu = static_cast<T>(0.001), T lambda = static_cast<T>(1.0))
+{
+  return core::twe_distance<T>(x, y, nu, lambda);
+}
+
+template <typename T = dtwc::settings::default_data_t>
+T twe(const std::vector<T> &x, const std::vector<T> &y,
+      T nu = static_cast<T>(0.001), T lambda = static_cast<T>(1.0))
+{
+  return core::twe_distance<T>(std::span<const T>{x}, std::span<const T>{y}, nu, lambda);
 }
 
 template <typename T = dtwc::settings::default_data_t>

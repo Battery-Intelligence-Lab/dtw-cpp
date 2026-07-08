@@ -53,6 +53,8 @@ std::string variant_to_string(core::DTWVariant v)
   case core::DTWVariant::WDTW: return "WDTW";
   case core::DTWVariant::ADTW: return "ADTW";
   case core::DTWVariant::SoftDTW: return "SoftDTW";
+  case core::DTWVariant::MSM: return "MSM";
+  case core::DTWVariant::TWE: return "TWE";
   default: return "Unknown";
   }
 }
@@ -64,6 +66,8 @@ core::DTWVariant string_to_variant(const std::string &s)
   if (s == "WDTW") return core::DTWVariant::WDTW;
   if (s == "ADTW") return core::DTWVariant::ADTW;
   if (s == "SoftDTW") return core::DTWVariant::SoftDTW;
+  if (s == "MSM") return core::DTWVariant::MSM;
+  if (s == "TWE") return core::DTWVariant::TWE;
   return core::DTWVariant::Standard;
 }
 

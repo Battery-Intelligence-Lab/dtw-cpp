@@ -35,7 +35,9 @@ enum class DTWVariant
   DDTW,      ///< Derivative DTW: derivative preprocessing + standard DTW
   WDTW,      ///< Weighted DTW: position-dependent weight w(|i-j|) on local cost
   ADTW,      ///< Amerced DTW: penalty on non-diagonal (horizontal/vertical) steps
-  SoftDTW    ///< Soft-DTW: softmin replaces min (differentiable, Cuturi & Blondel 2017)
+  SoftDTW,   ///< Soft-DTW: softmin replaces min (differentiable, Cuturi & Blondel 2017)
+  MSM,       ///< Move-Split-Merge (Stefan et al. 2013): metric elastic distance, univariate/unbanded
+  TWE        ///< Time Warp Edit (Marteau 2009): stiffness ν + edit penalty λ, univariate/unbanded
 };
 
 /// Strategy for handling missing data (NaN values) in time series.
@@ -54,6 +56,9 @@ struct DTWVariantParams
   double wdtw_g = 0.05;       ///< WDTW: logistic weight steepness (Jeong et al. 2011)
   double adtw_penalty = 1.0;  ///< ADTW: penalty for non-diagonal steps
   double sdtw_gamma = 1.0;    ///< Soft-DTW: smoothing parameter (lower = closer to hard DTW)
+  double msm_c = 1.0;         ///< MSM: split/merge cost (Stefan et al. 2013; aeon default 1.0)
+  double twe_nu = 0.001;      ///< TWE: stiffness ν, > 0 (Marteau 2009; aeon default 0.001)
+  double twe_lambda = 1.0;    ///< TWE: edit penalty λ, ≥ 1 (Marteau 2009; aeon default 1.0)
 };
 
 /// Runtime DTW configuration.

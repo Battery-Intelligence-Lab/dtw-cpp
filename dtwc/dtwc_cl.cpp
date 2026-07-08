@@ -340,11 +340,12 @@ int main(int argc, char *argv[])
               {"l1", "l1"}, {"squared_euclidean", "squared_euclidean"},
               {"sqeuclidean", "squared_euclidean"}, {"l2sq", "squared_euclidean"}},
           CLI::ignore_case));
-  app.add_option("--variant", variant, "DTW variant: standard, ddtw, wdtw, adtw, softdtw")
+  app.add_option("--variant", variant, "DTW variant: standard, ddtw, wdtw, adtw, softdtw, msm, twe")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
               {"standard", "standard"}, {"ddtw", "ddtw"}, {"wdtw", "wdtw"},
-              {"adtw", "adtw"}, {"softdtw", "softdtw"}, {"soft-dtw", "softdtw"}},
+              {"adtw", "adtw"}, {"softdtw", "softdtw"}, {"soft-dtw", "softdtw"},
+              {"msm", "msm"}, {"twe", "twe"}},
           CLI::ignore_case));
   app.add_option("--max-iter", max_iter, "Maximum iterations");
   app.add_option("--n-init", n_init, "Number of random restarts (PAM/kMedoids)");
@@ -355,9 +356,15 @@ int main(int argc, char *argv[])
   double wdtw_g = 0.05;
   double adtw_penalty = 1.0;
   double sdtw_gamma = 1.0;
+  double msm_c = 1.0;
+  double twe_nu = 0.001;
+  double twe_lambda = 1.0;
   app.add_option("--wdtw-g", wdtw_g, "WDTW logistic weight steepness");
   app.add_option("--adtw-penalty", adtw_penalty, "ADTW non-diagonal step penalty");
   app.add_option("--sdtw-gamma", sdtw_gamma, "Soft-DTW smoothing parameter");
+  app.add_option("--msm-c", msm_c, "MSM split/merge cost (default 1.0)");
+  app.add_option("--twe-nu", twe_nu, "TWE stiffness nu (default 0.001)");
+  app.add_option("--twe-lambda", twe_lambda, "TWE edit penalty lambda (default 1.0)");
 
   // CLARA-specific
   int sample_size = -1;
@@ -513,6 +520,9 @@ int main(int argc, char *argv[])
       set_if_unset("wdtw-g", wdtw_g);
       set_if_unset("adtw-penalty", adtw_penalty);
       set_if_unset("sdtw-gamma", sdtw_gamma);
+      set_if_unset("msm-c", msm_c);
+      set_if_unset("twe-nu", twe_nu);
+      set_if_unset("twe-lambda", twe_lambda);
 
       // CLARA parameters
       set_if_unset("sample-size", sample_size);
@@ -856,6 +866,13 @@ int main(int argc, char *argv[])
   } else if (variant == "softdtw") {
     vparams.variant = dtwc::core::DTWVariant::SoftDTW;
     vparams.sdtw_gamma = sdtw_gamma;
+  } else if (variant == "msm") {
+    vparams.variant = dtwc::core::DTWVariant::MSM;
+    vparams.msm_c = msm_c;
+  } else if (variant == "twe") {
+    vparams.variant = dtwc::core::DTWVariant::TWE;
+    vparams.twe_nu = twe_nu;
+    vparams.twe_lambda = twe_lambda;
   }
   prob.set_variant(vparams);
 

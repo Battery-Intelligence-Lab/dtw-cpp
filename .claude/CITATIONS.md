@@ -7,7 +7,7 @@ References used during development. Verify each citation independently before pu
 ## DTW and Time Series
 
 - Sakoe, H. & Chiba, S. (1978). Dynamic programming algorithm optimization for spoken word recognition. *IEEE Transactions on Acoustics, Speech, and Signal Processing*, 26(1), 43-49.
-- Marteau, P.-F. (2009). Time warp edit distances with stiffness adjustment for time series matching. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 31(2), 306-318.
+- Marteau, P.-F. (2009). Time warp edit distances with stiffness adjustment for time series matching. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 31(2), 306-318. Task 5.5 `dtwc::core::twe_distance` matches aeon 1.5.0 exactly (front zero-pad both series; d = |a−b| for univariate; defaults ν=0.001, λ=1.0, window=None).
 - Jain, B. J. (2018). Semi-Metrification of the Dynamic Time Warping Distance. arXiv:1808.09964.
 - Yurtman, A., Soenen, J., Meert, W., & Blockeel, H. (2023). Estimating DTW Distance Between Time Series with Missing Data. *ECML-PKDD 2023*, LNCS 14173.
 
@@ -114,7 +114,7 @@ References used during development. Verify each citation independently before pu
 
 ### Distance variants (additions)
 
-- Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438.
+- Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438. Task 5.5 `dtwc::core::msm_distance` matches aeon 1.5.0 exactly (split/merge cost `C(new,a,b)=c` if a≤new≤b else c+min(|new−a|,|new−b|); default c=1.0, window=None).
 - Zhao, J. & Itti, L. (2018). shapeDTW: Shape Dynamic Time Warping. *Pattern Recognition*, 74, 171-184. arXiv:1606.01601.
 - Shokoohi-Yekta, M., et al. (2017). Generalizing DTW to the multi-dimensional case requires an adaptive approach (independent vs dependent multivariate DTW). *Data Mining and Knowledge Discovery*, 31, 1-31.
 - (2026). Memory-efficient differentiable soft-DTW on GPU. arXiv:2602.17206 — tiled anti-diagonal kernel, "up to 98% memory reduction" via fused distance computation.

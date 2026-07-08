@@ -160,7 +160,9 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("DDTW", dtwc::core::DTWVariant::DDTW)
     .value("WDTW", dtwc::core::DTWVariant::WDTW)
     .value("ADTW", dtwc::core::DTWVariant::ADTW)
-    .value("SoftDTW", dtwc::core::DTWVariant::SoftDTW);
+    .value("SoftDTW", dtwc::core::DTWVariant::SoftDTW)
+    .value("MSM", dtwc::core::DTWVariant::MSM)
+    .value("TWE", dtwc::core::DTWVariant::TWE);
 
   nb::enum_<dtwc::core::MissingStrategy>(m, "MissingStrategy")
     .value("Error", dtwc::core::MissingStrategy::Error)
@@ -219,7 +221,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("variant", &dtwc::core::DTWVariantParams::variant)
     .def_rw("wdtw_g", &dtwc::core::DTWVariantParams::wdtw_g)
     .def_rw("adtw_penalty", &dtwc::core::DTWVariantParams::adtw_penalty)
-    .def_rw("sdtw_gamma", &dtwc::core::DTWVariantParams::sdtw_gamma);
+    .def_rw("sdtw_gamma", &dtwc::core::DTWVariantParams::sdtw_gamma)
+    .def_rw("msm_c", &dtwc::core::DTWVariantParams::msm_c)
+    .def_rw("twe_nu", &dtwc::core::DTWVariantParams::twe_nu)
+    .def_rw("twe_lambda", &dtwc::core::DTWVariantParams::twe_lambda);
 
   // =========================================================================
   // MIPSettings
