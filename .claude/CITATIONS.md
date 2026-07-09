@@ -136,3 +136,8 @@ References used during development. Verify each citation independently before pu
 
 - Shokoohi-Yekta, M., Hu, B., Jin, H., Wang, J., & Keogh, E. (2017). *Generalizing DTW to the multi-dimensional case requires an adaptive approach*. Data Mining and Knowledge Discovery, 31(1), 1–31. — DTW_I (independent, per-channel sum) vs DTW_D (dependent, shared path); the finding that neither dominates and both are needed. Basis for `MVMode{Dependent,Independent}` + `dtw_independent_mv`.
 - Shen, Y., & Chen, Y. (2021). *TC-DTW: Accelerating Multivariate DTW Through Triangle Inequality and Point Clustering*. arXiv:2101.07731. — multivariate LB tightening (triangle inequality + point clustering). NOTED, DEFERRED (bound-tightening for the pruning/NN path, orthogonal to the DTW_I distance deliverable).
+
+## Arrow ingest (Phase 5 · Task 5.7)
+
+- Apache Arrow. *The Arrow C Data Interface* and *The Arrow PyCapsule Interface* (`__arrow_c_array__` / `__arrow_c_stream__`). https://arrow.apache.org/docs/format/CDataInterface.html + .../format/CDataInterface/PyCapsuleInterface.html — the stable C ABI (ArrowSchema/ArrowArray/ArrowArrayStream) and Python capsule protocol used to ingest zero-copy from polars/DuckDB/pyarrow/pandas without a pyarrow dependency.
+- Apache Arrow nanoarrow 0.8.0 (Apache-2.0). https://github.com/apache/arrow-nanoarrow — dependency-free C reader/builder for the Arrow C Data interface; vendored as the namespaced amalgamation `dtwc/extern/nanoarrow/nanoarrow.{h,c}` (`NANOARROW_NAMESPACE=DtwcNanoarrow`). Used by `dtwc::io::data_from_arrow`.

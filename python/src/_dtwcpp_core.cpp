@@ -25,6 +25,7 @@
 #include <dtwc.hpp>
 #include <env.hpp>
 #include <error.hpp>
+#include <io/arrow_c_data.hpp>
 #include <checkpoint.hpp>
 #include <warping.hpp>
 #include <warping_ddtw.hpp>
@@ -553,6 +554,63 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("validate_ndim", &dtwc::Data::validate_ndim,
          "Validate that all series flat sizes are divisible by ndim.\n\n"
          "Raises RuntimeError if any series has incompatible size.");
+
+  // Zero-copy Arrow C Data interface ingest (Task 5.7). Consumes the PyCapsule
+  // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
+  // vendored nanoarrow — NO pyarrow dependency. Each list element becomes one
+  // (univariate) series; see dtwc::io::data_from_arrow for accepted layouts.
+  m.def("data_from_arrow_c_array", [](nb::object obj) -> dtwc::Data {
+    // Producers expose one of two PyCapsule protocols. pyarrow.Array / DuckDB
+    // give a single array (__arrow_c_array__); polars / pandas give a batch
+    // stream (__arrow_c_stream__). Support both; prefer the single-array form.
+    if (!nb::hasattr(obj, "__arrow_c_array__") && nb::hasattr(obj, "__arrow_c_stream__")) {
+      nb::object cap = obj.attr("__arrow_c_stream__")();
+      auto *stream = static_cast<ArrowArrayStream *>(
+        PyCapsule_GetPointer(cap.ptr(), "arrow_array_stream"));
+      if (stream == nullptr) {
+        if (PyErr_Occurred()) throw nb::python_error();
+        throw dtwc::InvalidInput("data_from_arrow_c_array: null Arrow stream capsule.");
+      }
+      return dtwc::io::data_from_arrow_stream(stream);
+    }
+
+    if (!nb::hasattr(obj, "__arrow_c_array__"))
+      throw dtwc::InvalidInput(
+        "data_from_arrow_c_array: object does not implement the Arrow C Data "
+        "interface (__arrow_c_array__ / __arrow_c_stream__). Pass a "
+        "polars/DuckDB/pyarrow/pandas array.");
+
+    nb::object capsules = obj.attr("__arrow_c_array__")();
+    nb::tuple pair = nb::cast<nb::tuple>(capsules);
+    if (pair.size() != 2)
+      throw dtwc::InvalidInput("data_from_arrow_c_array: __arrow_c_array__ did not "
+                               "return a (schema, array) capsule pair.");
+
+    auto *schema = static_cast<ArrowSchema *>(
+      PyCapsule_GetPointer(pair[0].ptr(), "arrow_schema"));
+    auto *array = static_cast<ArrowArray *>(
+      PyCapsule_GetPointer(pair[1].ptr(), "arrow_array"));
+    if (schema == nullptr || array == nullptr) {
+      if (PyErr_Occurred()) throw nb::python_error();
+      throw dtwc::InvalidInput("data_from_arrow_c_array: null Arrow capsule pointer.");
+    }
+
+    // Read (copies into owning Data), then release the borrowed structs. The
+    // capsule destructors see release==nullptr afterwards and become no-ops, so
+    // there is no double free.
+    dtwc::Data data;
+    try {
+      data = dtwc::io::data_from_arrow(schema, array);
+    } catch (...) {
+      dtwc::io::release_arrow(schema, array);
+      throw;
+    }
+    dtwc::io::release_arrow(schema, array);
+    return data;
+  }, "obj"_a,
+     "Build a Data object from an Arrow C Data interface source (zero-copy,\n"
+     "no pyarrow). `obj` must implement __arrow_c_array__ over a list/large_list\n"
+     "of float32/float64 (each element one series) or a struct containing one.");
 
   // =========================================================================
   // Problem class

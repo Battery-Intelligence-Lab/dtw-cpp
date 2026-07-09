@@ -8,6 +8,7 @@ from dtwcpp._dtwcpp_core import (
     Problem, fast_pam, silhouette, DTWVariant, DTWVariantParams,
     MVMode, MissingStrategy,
     dtw_distance, ddtw_distance, wdtw_distance, adtw_distance,
+    data_from_arrow_c_array,
 )
 
 try:
@@ -164,14 +165,23 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
         Parameters
         ----------
-        X : array-like of shape (n_samples, n_timesteps) or list of 1-D arrays
+        X : array-like of shape (n_samples, n_timesteps), list of 1-D arrays,
+            or any Arrow C Data interface source implementing __arrow_c_array__
+            (polars/DuckDB/pyarrow/pandas -- read zero-copy, without pyarrow).
         """
+        if hasattr(X, "__arrow_c_array__") or hasattr(X, "__arrow_c_stream__"):
+            # nanoarrow reads the Arrow buffers directly (no pyarrow) into a C++
+            # Data; hand the series back as numpy arrays for the fit pipeline.
+            data = data_from_arrow_c_array(X)
+            return [np.asarray(s, dtype=np.float64) for s in data.p_vec]
         if isinstance(X, np.ndarray) and X.ndim == 2:
             return [list(row) for row in X]
         elif isinstance(X, list):
             return [list(s) for s in X]
         else:
-            raise ValueError("X must be a 2D numpy array or list of 1D arrays")
+            raise ValueError(
+                "X must be a 2D numpy array, list of 1D arrays, or an Arrow C "
+                "Data interface source (__arrow_c_array__)")
 
     def _build_problem(self, series):
         """Construct a C++ Problem object with current settings."""

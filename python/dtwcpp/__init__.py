@@ -31,6 +31,8 @@ from dtwcpp._dtwcpp_core import (
     # Classes
     Problem,
     Env,
+    # Arrow C Data / stream ingest (Task 5.7 — zero-copy, no pyarrow)
+    data_from_arrow_c_array,
     # Error taxonomy (api-contract-2.0.md §5)
     DtwcError,
     InvalidInput,
@@ -324,7 +326,7 @@ __all__ = [
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
     "HierarchicalOptions", "CLARANSOptions",
-    "Problem", "Env", "env", "device_to_string",
+    "Problem", "Env", "env", "device_to_string", "data_from_arrow_c_array",
     "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
     "soft_dtw_gradient",
     "fast_pam", "fast_clara", "CLARAOptions",

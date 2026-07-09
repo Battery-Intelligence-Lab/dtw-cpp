@@ -4,3 +4,10 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE
 foreach(TEST_SOURCE ${TEST_SOURCES})
     add_executable_with_coverage_and_test(${TEST_SOURCE})    # Add executable with coverage
 endforeach()
+
+# The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
+# vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
+# a PRIVATE include of dtwc++, so grant this one test target the include path.
+if(TARGET test_arrow_c_data)
+    target_include_directories(test_arrow_c_data PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
+endif()

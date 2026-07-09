@@ -42,6 +42,13 @@
 #include <stdexcept>
 #include <string>
 
+// llfio is OPTIONAL (DTWC_HAS_MMAP). MmapDataStore is a pure memory-mapping
+// wrapper with no non-mmap fallback, so — unlike MmapDistanceMatrix — the whole
+// class is compiled out when llfio is absent. Every include site is already
+// guarded by `#ifdef DTWC_HAS_MMAP` (DataLoader.hpp, dtwc_cl.cpp), so a no-llfio
+// build never references this type.
+#ifdef DTWC_HAS_MMAP
+
 #include <llfio/v2.0/llfio.hpp>
 
 namespace dtwc::core {
@@ -303,3 +310,5 @@ public:
 };
 
 } // namespace dtwc::core
+
+#endif // DTWC_HAS_MMAP

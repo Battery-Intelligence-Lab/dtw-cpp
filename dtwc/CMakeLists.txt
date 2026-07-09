@@ -23,7 +23,10 @@ target_sources(dtwc++
   algorithms/clarans.cpp
   algorithms/tadpole.cpp
   core/pruned_distance_matrix.cpp
+  io/arrow_c_data.cpp
+  extern/nanoarrow/nanoarrow.c
   PUBLIC
+  io/arrow_c_data.hpp
   # Top-level headers
   Data.hpp
   DataLoader.hpp
@@ -70,6 +73,14 @@ target_sources(dtwc++
 )
 
 target_include_directories(dtwc++ PUBLIC .)
+# Vendored, dependency-free nanoarrow (dtwc/extern/nanoarrow) for Arrow C Data
+# interface ingest. Symbols are namespaced (NANOARROW_NAMESPACE=DtwcNanoarrow) to
+# avoid ODR clashes with any other Arrow library loaded in the same process.
+# PRIVATE: only io/arrow_c_data.cpp compiles against it; the public surface is the
+# forward-declared pointers in io/arrow_c_data.hpp, so nanoarrow never leaks to
+# consumers. The Python binding reaches it only through data_from_arrow /
+# release_arrow (see python/CMakeLists.txt, which does not add this path).
+target_include_directories(dtwc++ PRIVATE extern)
 
 target_link_libraries(dtwc++
   PRIVATE

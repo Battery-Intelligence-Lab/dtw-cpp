@@ -500,10 +500,12 @@ Priority order (impact ÷ effort):
 - [x] **Oracle → CONFIRMED:** hand-computed 2-channel example (DTW_I=4) + aeon 1.5.0 cross-check (`Σ_c dtw_distance`, squared-L2) to rel 1e-9 on 10 pairs. **DTW_I ≤ DTW_D [HARD] → CONFIRMED** (200 pairs, L1+sqL2, banded+unbanded — independent-math arbiter). Wiring/reject/univariate-no-op CONFIRMED. Test 7 cases / 889 assertions; full gate **95/95** (baseline 94 → +1 suite), no regression.
 - [ ] **TC-DTW LB (arXiv:2101.07731) DEFERRED** ("if time"): a lower-bound tightening for the pruning/NN path (Tasks 5.2 LB cascade + 5.3 TADPole), orthogonal to the DTW_I distance deliverable. Left OPEN for a later LB-focused task.
 
-### Task 5.7: Arrow C Data / PyCapsule zero-copy ingest
+### Task 5.7: Arrow C Data / PyCapsule zero-copy ingest [DONE 2026-07-09]
 
-**Files:** Modify: Python load path (`_dtwcpp_core.cpp`), vendor nanoarrow (two files, no dep).
-- [ ] Consume `__arrow_c_array__` from polars/DuckDB/pyarrow/pandas zero-copy. Test: polars large_list → cluster without pyarrow installed.
+**Files:** Created: `dtwc/io/arrow_c_data.{hpp,cpp}`, vendored `dtwc/extern/nanoarrow/nanoarrow.{h,c}` (0.8.0, namespaced), `tests/unit/io/test_arrow_c_data.cpp`; modified: `dtwc/CMakeLists.txt`, `tests/CMakeLists.txt`, `python/src/_dtwcpp_core.cpp`, `python/dtwcpp/{_clustering,__init__}.py`; run-log `.claude/baselines/2026-07-09-arrow-ingest.md`. **PLUS prerequisite fix:** guarded `mmap_distance_matrix.hpp`/`mmap_data_store.hpp`/`dtwc_cl.cpp` behind `DTWC_HAS_MMAP` so core builds with `-DDTWC_ENABLE_LLFIO=OFF` (was broken → blocked the wheel; violated non-negotiable #3).
+- [x] Consume `__arrow_c_array__` (+ `__arrow_c_stream__`, which is what polars/pandas actually expose) from polars/DuckDB/pyarrow/pandas via vendored nanoarrow — **no pyarrow**. `dtwcpp.data_from_arrow_c_array` + `DTWClustering.fit(polars_series)`.
+- [x] **C++ gate [HARD] → CONFIRMED:** test_arrow_c_data 7 cases / 75 assertions (round-trip f64+f32, name override, empty, 3 rejection paths). **Python polars gate [HARD] → CONFIRMED** with pyarrow forcibly blocked: reader exact vs polars (f64+f32), `fit_predict(polars)` recovers 2 clusters, pyarrow never imported. Full ctest 95→96 (+1 suite), Python 391 passed, no regression.
+- [ ] TC-DTW LB (arXiv:2101.07731, "if time") — DEFERRED (pruning bound, orthogonal to ingest).
 
 ### Task 5.8: OneBatchPAM (100M-tier scaling)
 

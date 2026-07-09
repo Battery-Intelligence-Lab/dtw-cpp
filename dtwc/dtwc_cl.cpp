@@ -19,7 +19,9 @@
 
 #include "dtwc.hpp"
 #include "env.hpp"
+#ifdef DTWC_HAS_MMAP
 #include "core/mmap_data_store.hpp"
+#endif
 
 #ifdef DTWC_HAS_ARROW
 #include "io/arrow_ipc_reader.hpp"
@@ -716,6 +718,11 @@ int main(int argc, char *argv[])
 #endif
 
   if (input_ext == ".dtws") {
+#ifndef DTWC_HAS_MMAP
+    throw std::runtime_error(
+      ".dtws memory-mapped input requires a build with llfio "
+      "(-DDTWC_ENABLE_LLFIO=ON). This binary was built without mmap support.");
+#else
     // Memory-mapped binary cache — zero-copy load
     auto store = dtwc::core::MmapDataStore::open(input_file);
     const size_t n = store.size();
@@ -741,6 +748,7 @@ int main(int argc, char *argv[])
     prob.set_data(dtwc::Data(std::move(vecs), std::move(names), ndim));
     if (verbose)
       std::cout << "Data loaded from .dtws cache: " << prob.size() << " series [" << clk << "]\n";
+#endif // DTWC_HAS_MMAP
   }
 #ifdef DTWC_HAS_ARROW
   else if (input_ext == ".arrow" || input_ext == ".ipc" || input_ext == ".feather") {
