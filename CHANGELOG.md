@@ -8,6 +8,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Replaced unauthenticated dense CSV checkpoints with versioned immutable
+  generations selected by an atomically replaced `CURRENT`. The strict v2
+  manifest binds exact bit-round-trippable N-by-N CSV bytes to the full
+  dataset/distance-configuration identity and a payload SHA-256; malformed,
+  asymmetric, non-finite, torn, stale, or legacy payloads fail without changing
+  the existing `Problem` or cache. Save validates all source semantics and
+  values before filesystem effects, failed overwrites preserve the active
+  generation, and load publishes only by one non-throwing move. Payload streams
+  are closed but not explicitly fsync'd, so power-loss tears fail closed and may
+  sacrifice resume availability rather than expose unauthenticated distances.
 - Made CUDA `KernelOverride` effective and observable across pairwise,
   one-vs-N, and K-vs-N APIs. Implemented Wavefront and RegTile requests now
   force those kernel families within their supported ranges; CUDA-only missing
