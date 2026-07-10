@@ -461,3 +461,33 @@ The all-zero table remains finite with exact cost zero. Verdict: **PASS after
 correction.** A separate source audit confirmed another real issue:
 `relative_tolerance * max(1,cost)` rejects a 33.3% improvement when cost<1.
 That independent behavior is registered as M9 rather than hidden in this fix.
+
+## M9 — sub-unit relative stopping tolerance
+
+Registered counterexample: values `[0, .01, .02, 1]`, k=2, full uniform batch,
+seed 0, one sweep, and `relative_tolerance=.2`. Initial medoids `{3,2}` have
+estimated/exact objective .03; swapping 2→1 gains .01 and reaches .02. The
+relative gain is 33.3%, so the registered .2 threshold must accept it.
+
+Red with the old `tolerance * max(1, cost)` formula:
+
+```text
+unit_test_one_batch_pam.exe "[tolerance]" --reporter compact
+  failed: medoids {3,2} == expected {3,1}
+  1 test case, 1 assertion, 1 failure
+```
+
+Green after using the actual current estimate:
+
+```text
+unit_test_one_batch_pam.exe "[tolerance]" --reporter compact
+  All tests passed (4 assertions in 1 test case)
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^unit_test_one_batch_pam$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+Verdict: **PASS.** For zero objective the threshold is zero, which is safe:
+nonnegative distances have no genuine positive improvement left. Both pinned
+authors' implementations likewise multiply tolerance by the live loss without
+an absolute unit floor.

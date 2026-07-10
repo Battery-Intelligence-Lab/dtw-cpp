@@ -168,6 +168,34 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
   }
 }
 
+TEST_CASE("OneBatchPAM relative tolerance scales below unit cost",
+          "[one_batch_pam][tolerance][regression]")
+{
+  Problem problem("one_batch_subunit_tolerance");
+  problem.set_data(Data(std::vector<std::vector<data_t>>{
+                          {0.0}, {0.01}, {0.02}, {1.0}},
+                        std::vector<std::string>{"zero", "one", "two", "far"}));
+
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = 2;
+  options.batch_size = 4;
+  options.max_iter = 1;
+  options.relative_tolerance = 0.2;
+  options.random_seed = 0;
+  options.weighting = algorithms::OneBatchWeighting::Uniform;
+  algorithms::OneBatchPAMStats stats;
+
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+  // The initial {3,2} medoids cost 0.03. Replacing 2 by 1 lowers that to
+  // 0.02: an absolute gain of 0.01 and a 33.3% relative improvement. A 20%
+  // threshold must therefore accept the swap even though the objective is <1.
+  REQUIRE(result.medoid_indices == std::vector<int>{3, 1});
+  REQUIRE(std::abs(result.total_cost - 0.02) <= 1e-12);
+  REQUIRE(stats.accepted_swaps == 1);
+  REQUIRE(std::abs(stats.estimated_objective - 0.02) <= 1e-12);
+}
+
 TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",
           "[one_batch_pam][edge]")
 {

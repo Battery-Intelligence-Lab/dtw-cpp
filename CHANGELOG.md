@@ -38,6 +38,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Corrected OneBatchPAM finite-maximum debiasing for distance tables with
   `0 < Dmax < 1`; normalization now uses the actual table maximum, with a
   finite fallback only for all-zero tables, and its hybrid provenance is explicit.
+- Fixed OneBatchPAM's relative stopping tolerance below unit objective values;
+  it now scales by the current estimate instead of an absolute floor of one.
 
 # 2.0.0rc1 - 2026-07-10
 

@@ -32,7 +32,7 @@ struct OneBatchPAMOptions {
   int max_iter = 100;        ///< Maximum eager-swap sweeps.
   std::uint64_t random_seed = 42;
   OneBatchWeighting weighting = OneBatchWeighting::NearestNeighbor;
-  double relative_tolerance = 1e-9;
+  double relative_tolerance = 1e-9; ///< Accept gain > tolerance * current estimate.
 };
 
 /** Observable work and approximation diagnostics for a OneBatchPAM run. */

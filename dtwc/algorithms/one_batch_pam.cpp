@@ -284,7 +284,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         const int slot = static_cast<int>(std::distance(removal_gain.begin(), best_it));
         const double gain = add_gain + *best_it;
         const double tolerance = options.relative_tolerance
-          * std::max(1.0, estimated_cost(nearest_distance));
+          * estimated_cost(nearest_distance);
         if (gain > tolerance) {
           is_medoid[static_cast<std::size_t>(medoids[slot])] = false;
           medoids[slot] = static_cast<int>(candidate);
