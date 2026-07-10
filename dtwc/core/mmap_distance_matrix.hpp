@@ -15,7 +15,8 @@
  *   byte  11:     fingerprint algorithm = 1 (SHA-256)
  *   bytes 12-19:  N (uint64_t) — matrix dimension
  *   bytes 20-51:  SHA-256 distance-semantics fingerprint
- *   bytes 52-59:  reserved (zero)
+ *   byte  52:     publication state (0 = initializing, 1 = ready)
+ *   bytes 53-59:  reserved (zero)
  *   bytes 60-63:  header CRC32 (of bytes 0-59)
  *   bytes 64+:    double[N*(N+1)/2], NaN = uncomputed
  *
@@ -71,6 +72,9 @@ public:
   static constexpr uint32_t endian_marker = 0x01020304u;
   static constexpr uint8_t elem_size = 8;
   static constexpr uint8_t fingerprint_algorithm = 1; // SHA-256
+  static constexpr size_t publication_state_offset = 52;
+  static constexpr uint8_t publication_state_initializing = 0;
+  static constexpr uint8_t publication_state_ready = 1;
   static constexpr fingerprint_type unbound_fingerprint{};
 
 private:
@@ -110,8 +114,10 @@ private:
 
   /// Write the 64-byte v2 header at base.
   static void write_header(uint8_t *base, size_t n,
-                           const fingerprint_type &fingerprint)
+                           const fingerprint_type &fingerprint,
+                           uint8_t publication_state)
   {
+    std::memset(base, 0, header_size);
     std::memcpy(base + 0, magic, 4);
     const uint16_t ver = version;
     std::memcpy(base + 4, &ver, 2);
@@ -122,10 +128,20 @@ private:
     const uint64_t n64 = static_cast<uint64_t>(n);
     std::memcpy(base + 12, &n64, 8);
     std::memcpy(base + 20, fingerprint.data(), fingerprint.size());
-    std::memset(base + 52, 0, 8);
+    base[publication_state_offset] = publication_state;
     // The CRC covers every metadata byte, including the fingerprint and
-    // reserved area. A corrupted identity can therefore never degrade into a
-    // merely different-but-valid cache identity by accident.
+    // publication state/reserved area. A corrupted identity or torn state
+    // transition can therefore never degrade into a valid ready cache.
+    const uint32_t crc = detail::crc32_naive(base, 60);
+    std::memcpy(base + 60, &crc, 4);
+  }
+
+  /// Publish a fully initialized cache by changing only the state and its CRC.
+  /// The caller must durably flush the NaN-initialized data region before this
+  /// transition and durably flush the updated header before returning.
+  static void publish_ready_header(uint8_t *base)
+  {
+    base[publication_state_offset] = publication_state_ready;
     const uint32_t crc = detail::crc32_naive(base, 60);
     std::memcpy(base + 60, &crc, 4);
   }
@@ -178,9 +194,21 @@ private:
     if (stored_crc != computed_crc)
       throw std::runtime_error("MmapDistanceMatrix: header CRC mismatch");
 
-    if (std::any_of(base + 52, base + 60,
+    if (std::any_of(base + publication_state_offset + 1, base + 60,
                     [](std::uint8_t byte) { return byte != 0; }))
       throw std::runtime_error("MmapDistanceMatrix: reserved header bytes are nonzero");
+
+    const uint8_t publication_state = base[publication_state_offset];
+    if (publication_state == publication_state_initializing) {
+      throw std::runtime_error(
+        "MmapDistanceMatrix: cache initialization incomplete; its ready header "
+        "was never durably published. Delete or rename the cache and recompute it.");
+    }
+    if (publication_state != publication_state_ready) {
+      throw std::runtime_error(
+        "MmapDistanceMatrix: unsupported publication state "
+        + std::to_string(publication_state));
+    }
 
     uint64_t n64{};
     std::memcpy(&n64, base + 12, 8);
@@ -203,6 +231,22 @@ private:
                      fingerprint_type fingerprint)
     : mfh_(std::move(mfh)), data_(data), n_(n),
       fingerprint_(std::move(fingerprint)) {}
+
+  /// Durably flush one mapped range. The second publication barrier only
+  /// needs the 64-byte header; flushing the complete O(N^2) packed region a
+  /// second time would make safe creation unnecessarily twice as expensive.
+  static void persist_range(
+    llfio::mapped_file_handle &mfh, const uint8_t *base,
+    size_t offset, size_t length,
+    llfio::mapped_file_handle::barrier_kind kind)
+  {
+    llfio::mapped_file_handle::const_buffer_type buffer(
+      reinterpret_cast<const llfio::byte *>(base + offset), length);
+    const llfio::mapped_file_handle::const_buffers_type buffers(&buffer, 1);
+    const llfio::mapped_file_handle::io_request<
+      llfio::mapped_file_handle::const_buffers_type> request(buffers, offset);
+    mfh.barrier(request, kind).value();
+  }
 
   static MmapDistanceMatrix open_impl(
     const std::filesystem::path &cache_path,
@@ -290,13 +334,16 @@ public:
     auto result = llfio::mapped_file_handle::mapped_file(
       total, {}, cache_path,
       llfio::file_handle::mode::write,
-      llfio::file_handle::creation::if_needed,
+      llfio::file_handle::creation::only_if_not_exist,
       llfio::file_handle::caching::all,
       llfio::file_handle::flag::none);
 
     if (!result)
-      throw std::runtime_error(std::string("MmapDistanceMatrix: failed to create file: ") +
-                               result.error().message());
+      throw std::runtime_error(
+        std::string("MmapDistanceMatrix: failed to create cache exclusively; "
+                    "the path must not already exist and another creator may "
+                    "have won the race: ")
+        + result.error().message());
 
     mfh_ = std::move(result.value());
     mfh_.truncate(total).value();
@@ -306,7 +353,7 @@ public:
     if (!base)
       throw std::runtime_error("MmapDistanceMatrix: null address after mapping");
 
-    write_header(base, n, fingerprint);
+    write_header(base, n, fingerprint, publication_state_initializing);
     data_ = reinterpret_cast<double *>(base + header_size);
     n_ = n;
     fingerprint_ = fingerprint;
@@ -316,6 +363,16 @@ public:
     const double nan_val = std::numeric_limits<double>::quiet_NaN();
     for (size_t i = 0; i < count; ++i)
       data_[i] = nan_val;
+
+    // Crash-consistent two-phase publication. The first blocking barrier makes
+    // both file metadata and every NaN sentinel durable while the CRC-valid
+    // header still says "initializing". Only then may a ready header be
+    // published. A crash before/during the second barrier yields either the
+    // initializing state or a CRC mismatch, never a valid zero-filled cache.
+    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_all).value();
+    publish_ready_header(base);
+    persist_range(mfh_, base, 0, header_size,
+                  llfio::mapped_file_handle::barrier_kind::wait_all);
   }
 
   /// Open an existing memory-mapped distance matrix (warm-start).
@@ -397,7 +454,7 @@ public:
   /// Flush mapped memory to disk.
   void sync()
   {
-    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::nowait_data_only).value();
+    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_data_only).value();
   }
 #endif
 };

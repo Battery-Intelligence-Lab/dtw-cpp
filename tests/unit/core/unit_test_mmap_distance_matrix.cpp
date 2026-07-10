@@ -12,12 +12,16 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <array>
+#include <atomic>
+#include <barrier>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
+#include <vector>
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc::core;
@@ -403,6 +407,8 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
   hdr[10] = MmapDistanceMatrix::elem_size;
   hdr[11] = MmapDistanceMatrix::fingerprint_algorithm;
   std::memcpy(hdr.data() + 12, &bad_n, 8);
+  hdr[MmapDistanceMatrix::publication_state_offset] =
+    MmapDistanceMatrix::publication_state_ready;
   // Fingerprint and reserved bytes remain zero; only overflow is under test.
   const uint32_t crc = detail::crc32_naive(hdr.data(), 60);
   std::memcpy(hdr.data() + 60, &crc, 4);
@@ -500,6 +506,88 @@ TEST_CASE("MmapDistanceMatrix rejects legacy version-1 cache headers loudly",
   REQUIRE_THROWS_WITH(
     MmapDistanceMatrix::open(tmp.path),
     Catch::Matchers::ContainsSubstring("unsupported version 1"));
+}
+
+TEST_CASE("MmapDistanceMatrix rejects a published header whose data initialization is incomplete",
+          "[MmapDistanceMatrix][mmap][durability]")
+{
+  TempFile tmp;
+
+  // Reproduce the crash window in the pre-M15 constructor: the complete v2
+  // header has reached disk, but the newly extended packed region still
+  // contains filesystem-provided zero bits rather than NaN sentinels. Without
+  // a publication state, open() accepts all three zeros as computed distances.
+  constexpr size_t n = 2;
+  std::vector<uint8_t> bytes(
+    MmapDistanceMatrix::header_size + 3 * sizeof(double), 0);
+  std::memcpy(bytes.data() + 0, MmapDistanceMatrix::magic, 4);
+  const uint16_t ver = MmapDistanceMatrix::version;
+  std::memcpy(bytes.data() + 4, &ver, 2);
+  const uint32_t endian = MmapDistanceMatrix::endian_marker;
+  std::memcpy(bytes.data() + 6, &endian, 4);
+  bytes[10] = MmapDistanceMatrix::elem_size;
+  bytes[11] = MmapDistanceMatrix::fingerprint_algorithm;
+  const uint64_t n64 = n;
+  std::memcpy(bytes.data() + 12, &n64, 8);
+  // Byte 52 is the v2 publication state. Zero means initializing. The
+  // fingerprint, state, remaining reserved bytes, and data tail stay zero.
+  bytes[MmapDistanceMatrix::publication_state_offset] =
+    MmapDistanceMatrix::publication_state_initializing;
+  const uint32_t crc = detail::crc32_naive(bytes.data(), 60);
+  std::memcpy(bytes.data() + 60, &crc, 4);
+
+  {
+    std::ofstream out(tmp.path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+  }
+
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path),
+    Catch::Matchers::ContainsSubstring("initialization incomplete"));
+}
+
+TEST_CASE("MmapDistanceMatrix allows exactly one concurrent creator per cache path",
+          "[MmapDistanceMatrix][mmap][race]")
+{
+  TempFile tmp;
+  std::barrier start_line(3);
+  std::barrier finish_line(2);
+  std::atomic<int> successes{ 0 };
+  std::atomic<int> failures{ 0 };
+  std::array<std::string, 2> errors;
+
+  auto create = [&](size_t slot) {
+    start_line.arrive_and_wait();
+    try {
+      MmapDistanceMatrix matrix(tmp.path, 128);
+      successes.fetch_add(1, std::memory_order_relaxed);
+      // Keep the winning mapping alive until both creation attempts finish;
+      // the loser must fail at atomic path creation, not after winner teardown.
+      finish_line.arrive_and_wait();
+    } catch (const std::exception &error) {
+      errors[slot] = error.what();
+      failures.fetch_add(1, std::memory_order_relaxed);
+      finish_line.arrive_and_wait();
+    }
+  };
+
+  std::thread first(create, 0);
+  std::thread second(create, 1);
+  start_line.arrive_and_wait();
+  first.join();
+  second.join();
+
+  INFO("creator 0: " << errors[0]);
+  INFO("creator 1: " << errors[1]);
+  REQUIRE(successes.load(std::memory_order_relaxed) == 1);
+  REQUIRE(failures.load(std::memory_order_relaxed) == 1);
+
+  // The winner must leave one fully initialized, reopenable cache. The losing
+  // creator cannot truncate it, alias it, or publish its own header/data.
+  const auto reopened = MmapDistanceMatrix::open(tmp.path);
+  REQUIRE(reopened.size() == 128);
+  REQUIRE(reopened.count_computed() == 0);
 }
 
 // ============================================================================

@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made mmap distance-cache creation crash-consistent and single-writer. A
+  CRC-covered initializing/ready state now publishes only after every NaN
+  sentinel is durably flushed; incomplete caches fail with recompute guidance,
+  concurrent creators cannot truncate or alias one path, and explicit sync is
+  blocking. The 64-byte v2 layout is retained by consuming a reserved byte;
+  unreleased pre-fix v2 caches are deliberately rejected as incomplete.
 - Unified seed-aware PAM, OneBatchPAM, and CLARA defaults on invocation-local
   seed 42 across C++, Python, MATLAB, sklearn, and CLI. Estimator restarts now
   use distinct deterministic seeds and FastCLARA no longer consumes the legacy
