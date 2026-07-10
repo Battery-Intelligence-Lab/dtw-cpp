@@ -21,6 +21,7 @@
 #include <vector>
 #include <string>
 #include <cmath>
+#include <limits>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -747,6 +748,77 @@ TEST_CASE("Pruned thresholds preserve exact matrices across thread counts",
       REQUIRE(serial.matrix[j * N + i] == expected);
     }
   }
+}
+
+TEST_CASE("Pruned routing preserves configured missing-data semantics at N=63/64",
+          "[pruned_distance_matrix][strategy][missing][m41]")
+{
+  {
+    const std::vector<double> raw_a{
+      0.0, 1.0, std::numeric_limits<double>::quiet_NaN(), 0.0, 9.0};
+    const std::vector<double> raw_b{0.25, 2.0, 1.0 / 3.0, 5.0, 8.875};
+    const auto interpolated_a = dtwc::interpolate_linear(raw_a);
+    const double raw = dtwc::dtwBanded<double>(raw_a, raw_b, 0);
+    const double interpolated = dtwc::dtwBanded<double>(interpolated_a, raw_b, 0);
+    INFO("raw=" << raw << " interpolated=" << interpolated);
+    REQUIRE(raw != interpolated);
+  }
+
+  auto make_fixture = [](size_t n, bool with_missing) {
+    std::vector<std::vector<double>> series;
+    std::vector<std::string> names;
+    for (size_t i = 0; i < n; ++i) {
+      const double x = static_cast<double>(i);
+      series.push_back({x / 4.0, 1.0 + static_cast<double>(i % 7),
+                        x / 3.0, static_cast<double>((i * 5) % 11),
+                        9.0 - x / 8.0});
+      names.push_back("missing-route-" + std::to_string(i));
+    }
+    if (with_missing)
+      series[0][2] = std::numeric_limits<double>::quiet_NaN();
+    return std::pair{std::move(series), std::move(names)};
+  };
+
+  auto compute = [&](size_t n, bool with_missing,
+                     dtwc::DistanceMatrixStrategy strategy,
+                     dtwc::core::MissingStrategy missing) {
+    auto [series, names] = make_fixture(n, with_missing);
+    // band=0 forces the interior NaN onto the diagonal path. Interpolation
+    // produces a finite midpoint; a raw Standard kernel cannot route around it.
+    auto prob = make_problem_with_data(std::move(series), std::move(names), 0);
+    prob.set_missing_strategy(missing);
+    prob.set_distance_strategy(strategy);
+    prob.fill_distance_matrix();
+    REQUIRE(prob.is_distance_matrix_filled());
+    std::vector<double> matrix(n * n);
+    for (size_t i = 0; i < n; ++i)
+      for (size_t j = 0; j < n; ++j)
+        matrix[i * n + j] = prob.dense_distance_matrix().get(i, j);
+    return matrix;
+  };
+
+  for (const size_t n : {size_t{63}, size_t{64}}) {
+    const auto reference = compute(n, true, dtwc::DistanceMatrixStrategy::BruteForce,
+                                   dtwc::core::MissingStrategy::Interpolate);
+    REQUIRE(std::isfinite(reference[1]));
+    REQUIRE(reference[1] < std::numeric_limits<double>::max());
+    const auto automatic = compute(n, true, dtwc::DistanceMatrixStrategy::Auto,
+                                   dtwc::core::MissingStrategy::Interpolate);
+    REQUIRE(automatic == reference);
+
+    if (n == 64) {
+      const auto explicit_pruned = compute(
+        n, true, dtwc::DistanceMatrixStrategy::Pruned,
+        dtwc::core::MissingStrategy::Interpolate);
+      REQUIRE(explicit_pruned == reference);
+    }
+  }
+
+  const auto finite_brute = compute(64, false, dtwc::DistanceMatrixStrategy::BruteForce,
+                                    dtwc::core::MissingStrategy::Error);
+  const auto finite_auto = compute(64, false, dtwc::DistanceMatrixStrategy::Auto,
+                                   dtwc::core::MissingStrategy::Error);
+  REQUIRE(finite_auto == finite_brute);
 }
 
 
