@@ -2838,3 +2838,74 @@ cross-products cannot execute an L1 or Standard substitute at any requested
 language boundary; accepted routes retain exact fingerprints, and the adjacent
 invalid-enum and transactional-setter defects have their own reproduced,
 preregistered remediation items.
+
+## M45 - active float32 variant-parameter representability
+
+Variant parameters intentionally remain public `double` values, but the
+float32 `Problem` dispatcher captured them with unchecked casts. A finite
+`DBL_MIN` positive control therefore became forbidden float zero, while a
+finite `DBL_MAX` value became float infinity. Because `Problem` normally bound
+both precisions, simply validating every parameter for float would also have
+incorrectly removed valid f64 configurations.
+
+The first permanent preregistration (`6e435d7`) covered all six parameter
+fields, both `set_variant` overloads, owning/view f32 data replacement, raw
+dispatcher reconciliation, dense fill/lazy lookup/public refresh, explicit
+mutable/const f32 access, and mmap bind/detach ordering. The source/direct-
+resolver guard followed in `006715b`. With deterministic order and seed, the
+unfixed implementation produced:
+
+```text
+unit_test_variant_precision preregistration:
+  test cases:   7 | 1 passed | 6 failed
+  assertions: 113 | 65 passed | 48 failed
+```
+
+Failures showed that rejected variant and data candidates were published,
+filled dense caches were cleared, mmap files were created or detached, and
+direct f32 access returned a callable whose captured parameter was already
+zero or infinity. The 65 passing assertions were the ordinary-domain and
+minimum-float controls. A further adversarial matrix (`c116cd4`) added the
+opposite narrowing direction for every field: nonzero `DBL_MIN` must also fail
+for active WDTW/ADTW even though exact zero is valid, and `DBL_MAX` must also
+fail for Soft-DTW/MSM/TWE. That extension was committed before the production
+fix, but no separate red assertion count was captured; the earlier 65/48
+record above is deliberately retained rather than reconstructed.
+
+The shared representability helper first compares a validated double with
+`float::max()`, avoiding an out-of-range cast and any dependency on floating-
+point optimization behavior. It then casts an in-range value and rejects only
+a requested nonzero that becomes zero. Only active variant fields participate;
+Standard/DDTW ignore inactive numeric values and TWE checks both active fields.
+The full double-domain validator still runs first for raw public-field edits.
+
+For a valid f64 configuration that is not f32-representable, `Problem` binds
+its f64 callable and deliberately stores no f32 callable. Both public f32
+accessors and `resolve_dtw_fn<float>` raise the field-specific `InvalidInput`
+before returning it. Every private invocation in `Problem.cpp` now uses one
+validated accessor, enforced by a source mutation guard, so no empty
+`std::function` can be called. Active-f32 preflight runs before owning/view data
+publication, variant publication, raw-state reconciliation, dense allocation
+or invalidation, lazy writes, public refresh, mmap creation, and mmap detach.
+
+Green evidence from the canonical clang Release configurations:
+
+```text
+LLFIO ON focused M45:   390 assertions / 7 cases
+LLFIO OFF focused M45:  379 assertions / 6 cases, 1 expected mmap skip
+surrounding LLFIO ON:   6/6 suites passed
+  variant domains, Problem core, dispatcher semantics, DTW variants,
+  multivariate variants, and dense/mmap variant storage
+```
+
+The control matrix proves that every active `DBL_MIN` and `DBL_MAX` candidate
+remains accepted for f64 computation while explicit f32 access fails without
+cache mutation. Float32 retains inactive unrepresentable parameters, exact
+zero WDTW/ADTW limits, and `float::denorm_min()` Soft-DTW/MSM/TWE controls with
+finite results. Ordinary f32 cache fingerprints, data, labels, medoids, dense
+addresses/computed bits/values, and mmap bindings remain unchanged after a
+rejected operation.
+
+Verdict: **PASS.** Precision narrowing cannot silently change an active f32
+recurrence or damage prior state, while the public double domain and all exact
+float32 boundary controls remain intact. Production fix: `c3e0ccf`.

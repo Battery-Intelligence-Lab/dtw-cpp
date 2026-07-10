@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made float32 `Problem` variant binding reject active double parameters that
+  overflow float or collapse from nonzero to zero before any data, cache,
+  dispatcher, or mmap mutation. Float64 retains its full parameter domain;
+  inactive float32 fields, exact-zero WDTW/ADTW limits, and minimum-positive
+  float controls remain valid. Direct and algorithmic f32 callable access now
+  crosses one validated boundary, so an unavailable f32 dispatcher cannot
+  surface `std::bad_function_call`.
 - Made public distance dispatch fail closed across C++, Python, and MATLAB.
   Unknown raw metric tokens now raise typed invalid-input errors instead of
   silently selecting L1, and non-Standard/non-Error cross-products fail before
