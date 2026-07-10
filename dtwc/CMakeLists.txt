@@ -11,6 +11,7 @@ target_sources(dtwc++
   PRIVATE
   Problem.cpp
   Problem_IO.cpp
+  api.cpp
   checkpoint.cpp
   env.cpp
   initialisation.cpp
@@ -19,6 +20,8 @@ target_sources(dtwc++
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp
   algorithms/fast_clara.cpp
+  algorithms/one_batch_pam.cpp
+  algorithms/barycenter.cpp
   algorithms/hierarchical.cpp
   algorithms/clarans.cpp
   algorithms/tadpole.cpp
@@ -30,6 +33,7 @@ target_sources(dtwc++
   # Top-level headers
   Data.hpp
   DataLoader.hpp
+  api.hpp
   checkpoint.hpp
   dtwc.hpp
   distance.hpp
@@ -66,6 +70,8 @@ target_sources(dtwc++
   # Algorithm headers
   algorithms/fast_pam.hpp
   algorithms/fast_clara.hpp
+  algorithms/one_batch_pam.hpp
+  algorithms/barycenter.hpp
   algorithms/hierarchical.hpp
   algorithms/clarans.hpp
   algorithms/tadpole.hpp

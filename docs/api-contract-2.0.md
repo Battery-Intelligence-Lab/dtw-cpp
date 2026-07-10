@@ -1,12 +1,11 @@
-STATUS: FROZEN 2026-07-07 — Phase 2 implements this verbatim; changes require a PLAN.md decision entry
+STATUS: FROZEN 2026-07-07; implementation-audited for 2.0.0rc1 on 2026-07-10
 
 # DTWC++ 2.0 — API Contract (freeze artifact)
 
 > **Task 1.1 deliverable.** This document is the frozen cross-language API surface
-> that Phase 2 (Python / MATLAB / CLI parity) implements **verbatim**. Every
-> signature below is either (a) a symbol that exists today (cited to the file I
-> read) or (b) a 2.0 target derived from the *fixed* design decisions in
-> `PLAN.md` §"Phase 1 — Core C++ API redesign".
+> implemented by 2.0. The 2026-07-10 release audit replaced pre-implementation
+> status notes with live 2.0.0rc1 status and added post-freeze algorithms without
+> changing the original naming, indexing, error, or output contracts.
 >
 > **Provenance tags.** `[live]` = the symbol exists now at the cited location;
 > `[new]` = introduced by 2.0; `[rename]` = a live symbol whose canonical name
@@ -19,10 +18,10 @@ STATUS: FROZEN 2026-07-07 — Phase 2 implements this verbatim; changes require 
 > `bindings/matlab/+dtwc/DTWClustering.m`, and the API-surface inventory
 > `.claude/reports/api-surface-2026-07-06.md`.
 >
-> **What this document does NOT do.** It does not modify any implementation.
-> Task 1.1 owns only this file. The error-type header (`dtwc/error.hpp`),
-> `dtwc::Env`, storage policy, precision flip, and the `Problem` cleanup land in
-> Tasks 1.2–1.6 and Phase 2 against this contract.
+> **Implementation anchors.** Tier 1 lives in `dtwc/api.hpp`,
+> `python/dtwcpp/_api.py`, and `bindings/matlab/+dtwc/`; the permanent live
+> conformance routes are under `tests/conformance/` and
+> `tests/unit/test_tier1_cpp_api.cpp`.
 
 ---
 
@@ -52,8 +51,8 @@ three languages; Tier 1 is what most users touch.
 
 **No silent fallback.** Any requested capability that cannot be delivered
 (device, GPU backend, method, metric) raises a typed error (§5) — it never
-quietly degrades. This *changes* current Python behaviour, which warns and
-falls back to CPU (`__init__.py:102-117`); §6 states the change explicitly.
+quietly degrades. The Python, C++, MATLAB, and CLI routes enforce this before
+expensive work.
 
 ---
 
@@ -67,9 +66,9 @@ data = dtwc.load("Crop.tsv")  # lazy handle — not read yet on hpc
 res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir), plot()
 ```
 
-### 1.1 `device(name)` — global device get/set  `[Python: live · C++/MATLAB: new]`
+### 1.1 `device(name)` — global device get/set  `[live in C++/Python/MATLAB]`
 
-| Aspect | C++ `[new]` | Python `[live]` | MATLAB `[new]` |
+| Aspect | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
 | Set | `std::string dtwc::device(std::string_view name)` | `dtwcpp.device(name: str) -> str` | `dtwc.device(name)` |
 | Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:123`) | `name = dtwc.device()` |
@@ -78,14 +77,14 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 | Errors | `DeviceError` on unknown name (§6) | `InvalidInput`/`ValueError` today; `DeviceError` in 2.0 | `dtwc:deviceError` |
 | Delegates to | `dtwc::env().set_device(name)` (Task 1.3) | module global `_DEFAULT_DEVICE` → to be backed by `Env` | MEX `set_device` → `Env` |
 
-*Note:* Python `device()` currently returns the string and validates only; in 2.0
-it and its C++/MATLAB twins delegate to the single `dtwc::Env` device registry
-(Task 1.3) so all three share one source of truth. The friendly name `"gpu"`
-resolves to CUDA (or Metal on macOS) at call time.
+All three front ends delegate device validation to `dtwc::Env`. The friendly
+name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++ Tier-1 HPC
+job submission remains beta and fails loudly with transport instructions; the
+Python route owns the tested SLURM orchestration until a real ARC run closes it.
 
-### 1.2 `load(source, ...)` — lazy dataset handle  `[Python: live · C++/MATLAB: new]`
+### 1.2 `load(source, ...)` — lazy dataset handle  `[live in C++/Python/MATLAB]`
 
-| Parameter | C++ `[new]` | Python `[live]` (`_api.py:66`) | MATLAB `[new]` |
+| Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
 | signature | `dtwc::Dataset dtwc::load(source, int skip_cols=0, char delimiter=0, std::string_view name="")` | `load(source, *, skip_cols=0, delimiter=None, name=None) -> Dataset` | `ds = dtwc.load(source, 'skip_cols',0, 'delimiter','', 'name','')` |
 | `source` | `std::filesystem::path` **or** `std::vector<std::vector<double>>` (overloads) | path `str`/`os.PathLike` **or** array-like | char path **or** N×L double matrix |
@@ -97,26 +96,25 @@ resolves to CUDA (or Metal on macOS) at call time.
 *Contract:* `load()` performs **no I/O** — on `device="hpc"` the path is forwarded
 to the cluster and never read locally (preserves the 100M-series scaling story).
 
-### 1.3 `cluster(data, k, ...) -> Result`  `[Python: live · C++/MATLAB: new]`
+### 1.3 `cluster(data, k, ...) -> Result`  `[live in C++/Python/MATLAB]`
 
-| Parameter | C++ `[new]` | Python `[live]` (`_api.py:191`) | MATLAB `[new]` |
+| Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
-| signature | `dtwc::Result dtwc::cluster(const Dataset& data, int k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> ClusterResult` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
+| signature | `dtwc::Result dtwc::cluster(const Dataset& data, int k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix |
 | `k` | `int` clusters | `int` | `int` |
-| `method` | `"auto"·"pam"·"clara"·"kmedoids"·"mip"·"hierarchical"` (alias `"hclust"`) | same set (`_METHODS`, `_api.py:137`) | same set |
+| `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (alias `"hclust"`) | same set | MATLAB Tier 1 supports `auto`, `pam`, `clara`, `kmedoids`, `mip`, and `hierarchical`; newer algorithms use Tier 2 where bound |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
 | `device` | `""` = global default; else per-call override | `None` = global | `''` = global |
 | `max_iter` | `100` | `100` | `100` |
 | unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:151`) | `dtwc:invalidArgument` |
 
-### 1.4 `Result` — clustering outcome  `[Python: live as `ClusterResult` · C++/MATLAB: new]`
+### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
 
-Canonical class name is **`Result`** in all three languages. Python currently
-ships `ClusterResult` (`_api.py:73`); 2.0 renames it to `Result` and keeps
+Canonical class name is **`Result`** in all three languages. Python keeps
 `ClusterResult` as a deprecated alias (§4).
 
-| Member | C++ `dtwc::Result` `[new]` | Python `dtwcpp.Result` `[rename]` | MATLAB `dtwc.Result` `[new]` |
+| Member | C++ `dtwc::Result` `[live]` | Python `dtwcpp.Result` `[live]` | MATLAB `dtwc.Result` `[live]` |
 |---|---|---|---|
 | `labels` | `const std::vector<int>& labels() const` | `res.labels` → `np.ndarray[int]` | `res.labels` → int32 row (1-based) |
 | `medoids` | `const std::vector<int>& medoids() const` | `res.medoids` → `np.ndarray[int]` | `res.medoids` → int32 row (1-based) |
@@ -548,10 +546,9 @@ Canonical: `cpu`, `gpu`, `hpc`. Aliases accepted: `gpu:N`, `cuda`, `cuda:N`
   This build will not silently fall back to CPU.
   ```
 
-**Behaviour change (call it out).** Python today *warns and falls back to CPU*
-when CUDA is requested but absent (`__init__.py:102-117`, `_resolve_device`). In
-2.0 this becomes a hard `DeviceError` per the no-silent-fallback global
-constraint. The migration guide (Phase 7) documents this.
+**Behaviour change (implemented).** Python 1.x warned and fell back to CPU when
+CUDA was requested but absent. In 2.0 this is a hard `DeviceError` in every
+front end. The user selects `cpu` explicitly if that is what they want.
 
 ### 6.2 `device="hpc"` — `.env` credential contract
 

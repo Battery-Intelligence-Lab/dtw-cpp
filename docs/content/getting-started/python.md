@@ -300,7 +300,8 @@ clf = dtwcpp.DTWClustering(n_clusters=3, band=10, device="cuda")
 labels = clf.fit_predict(X)
 ```
 
-If CUDA is not available, a warning is issued and computation falls back to CPU automatically.
+If CUDA is not compiled or no CUDA device is present, the request raises
+`dtwcpp.DeviceError`. Select `device="cpu"` explicitly if CPU execution is wanted.
 
 **Note:** GPU mode currently only supports `variant="standard"`. Other DTW variants require CPU computation.
 
@@ -369,7 +370,7 @@ if loaded:
     print("Resumed from checkpoint")
 ```
 
-See [Checkpointing](checkpointing/) for full details.
+See [Checkpointing](../checkpointing/) for full details.
 
 ## Utility functions
 

@@ -20,6 +20,14 @@ using Catch::Matchers::WithinAbs;
 
 using namespace dtwc;
 
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+namespace {
+fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
+}
+
 TEST_CASE("DataLoader class functionality", "[DataLoader]")
 {
   SECTION("DataLoader Default Constructor")
@@ -87,26 +95,26 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
 
   SECTION("Count directory mode")
   {
-    DataLoader loader("data/dummy");
+    DataLoader loader(dummy_data_path());
     REQUIRE(loader.count() == 25);
   }
 
   SECTION("Count directory mode with Ndata limit")
   {
-    DataLoader loader("data/dummy", 5);
+    DataLoader loader(dummy_data_path(), 5);
     REQUIRE(loader.count() == 5);
   }
 
   SECTION("Count matches load for directory")
   {
-    DataLoader loader("data/dummy");
+    DataLoader loader(dummy_data_path());
     loader.verbosity(0);
     REQUIRE(loader.count() == loader.load().size());
   }
 
   SECTION("Count matches load with Ndata limit")
   {
-    DataLoader loader("data/dummy", 10);
+    DataLoader loader(dummy_data_path(), 10);
     loader.verbosity(0);
     REQUIRE(loader.count() == 10);
     REQUIRE(loader.count() == loader.load().size());

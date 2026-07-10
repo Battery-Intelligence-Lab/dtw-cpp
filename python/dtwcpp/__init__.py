@@ -28,6 +28,13 @@ from dtwcpp._dtwcpp_core import (
     Dendrogram,
     HierarchicalOptions,
     CLARANSOptions,
+    OneBatchWeighting,
+    OneBatchPAMOptions,
+    OneBatchPAMStats,
+    BarycenterMethod,
+    BarycenterOptions,
+    BarycenterClusteringOptions,
+    BarycenterClusteringResult,
     # Classes
     Problem,
     Env,
@@ -53,7 +60,12 @@ from dtwcpp._dtwcpp_core import (
     dtw_arow_distance as _dtw_arow_distance_raw,
     # Algorithms
     fast_pam,
+    fast_pam_seeded,
     fast_clara,
+    one_batch_pam,
+    one_batch_pam_with_stats,
+    dtw_barycenter,
+    barycenter_kmeans,
     CLARAOptions,
     clarans,
     build_dendrogram,
@@ -92,13 +104,14 @@ from dtwcpp._dtwcpp_core import (
     METAL_AVAILABLE,
     metal_available,
     metal_device_info,
+    compute_distance_matrix_metal as _compute_distance_matrix_metal,
     OPENMP_AVAILABLE,
     openmp_max_threads,
     MPI_AVAILABLE,
+    HIGHS_AVAILABLE,
     system_info as _system_info_raw,
+    __version__,
 )
-
-__version__ = "2.0.0"
 
 def _parse_device(device):
     """Parse PyTorch-style device string (case-insensitive). Returns (backend, device_id)."""
@@ -108,10 +121,23 @@ def _parse_device(device):
     if device == "cpu":
         return ("cpu", 0)
     if device == "gpu":
-        return ("cuda", 0)          # friendly alias; falls back to CPU if no GPU
+        return ("gpu", 0)           # friendly alias; resolver picks CUDA or Metal
     if device == "cuda" or device.startswith("cuda:"):
         parts = device.split(":", 1)
-        device_id = int(parts[1]) if len(parts) > 1 else 0
+        if len(parts) > 1 and not parts[1]:
+            raise ValueError(
+                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
+            )
+        try:
+            device_id = int(parts[1]) if len(parts) > 1 else 0
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
+            ) from exc
+        if device_id < 0:
+            raise ValueError(
+                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
+            )
         return ("cuda", device_id)
     if device == "hpc":
         return ("hpc", 0)           # execution location, not a local compute backend
@@ -121,24 +147,32 @@ def _parse_device(device):
 
 
 def _resolve_device(device):
-    """Parse device and fall back to CPU if CUDA unavailable."""
-    import warnings
+    """Resolve a requested device, failing loudly when it cannot be used."""
     backend, device_id = _parse_device(device)
+    if backend == "gpu":
+        if CUDA_AVAILABLE and cuda_available():
+            return ("cuda", device_id)
+        if METAL_AVAILABLE and metal_available():
+            return ("metal", 0)
+        compiled = CUDA_AVAILABLE or METAL_AVAILABLE
+        detail = ("no compatible GPU device was detected"
+                  if compiled else "this build has no GPU backend compiled in")
+        raise DeviceError(
+            f"[dtwc] device='gpu' requested but {detail}. "
+            "This request will not silently fall back to CPU."
+        )
     if backend == "cuda":
         if not CUDA_AVAILABLE:
-            warnings.warn(
-                "device='cuda' requested but CUDA was not compiled in. "
-                "Falling back to CPU. Rebuild with -DDTWC_ENABLE_CUDA=ON.",
-                RuntimeWarning, stacklevel=3,
+            raise DeviceError(
+                "[dtwc] device='cuda' requested but CUDA was not compiled in. "
+                "Rebuild with -DDTWC_ENABLE_CUDA=ON. This request will not "
+                "silently fall back to CPU."
             )
-            return ("cpu", 0)
         if not cuda_available():
-            warnings.warn(
-                "device='cuda' requested but no CUDA GPU detected. "
-                "Falling back to CPU.",
-                RuntimeWarning, stacklevel=3,
+            raise DeviceError(
+                "[dtwc] device='cuda' requested but no CUDA GPU was detected. "
+                "This request will not silently fall back to CPU."
             )
-            return ("cpu", 0)
     return (backend, device_id)
 
 
@@ -146,22 +180,17 @@ _DEFAULT_DEVICE = "cpu"
 
 
 def _sync_env(name):
-    """Best-effort mirror of the Python device selection into the shared
+    """Mirror the Python device selection into the shared
     ``dtwc::Env`` registry (api-contract-2.0.md §6 — "device() delegates to Env").
 
-    ``cpu`` always syncs; ``gpu``/``cuda`` sync only when a GPU backend is compiled
-    in (otherwise ``Env`` raises :class:`DeviceError` per the no-silent-fallback
-    rule, and the Tier-1 path keeps its documented CPU fallback, §1.1). ``hpc`` is
-    NOT eagerly validated here — its ``.env``/SSH credential check runs at offload
+    ``cpu``/``gpu``/``cuda`` sync after operational validation. ``hpc`` is NOT
+    eagerly validated here — its ``.env``/SSH credential check runs at offload
     submit time, not at ``device()`` set-time, so declaring ``device("hpc")`` never
     blocks on the network.
     """
     base = name.split(":", 1)[0]
     if base in ("cpu", "gpu", "cuda"):
-        try:
-            env().set_device(name)
-        except DeviceError:
-            pass  # keep the documented Tier-1 gpu->cpu fallback (§1.1)
+        env().set_device(name)
 
 
 def device(device=None):
@@ -175,7 +204,7 @@ def device(device=None):
 
     Examples
     --------
-    >>> dtwcpp.device("gpu")     # subsequent ops default to GPU (CPU fallback)
+    >>> dtwcpp.device("gpu")     # subsequent ops require an available GPU
     'gpu'
     >>> dtwcpp.device()          # read the current default
     'gpu'
@@ -183,9 +212,12 @@ def device(device=None):
     global _DEFAULT_DEVICE
     if device is None:
         return _DEFAULT_DEVICE
-    _parse_device(device)                 # validate; raises ValueError on unknown
-    _DEFAULT_DEVICE = device.strip().lower()
-    _sync_env(_DEFAULT_DEVICE)            # mirror into dtwc::Env (shared source of truth)
+    backend, _ = _parse_device(device)     # type + syntax validation
+    normalized = device.strip().lower()
+    if backend != "hpc":
+        _resolve_device(normalized)        # operational validation; no fallback
+    _sync_env(normalized)                  # mirror into dtwc::Env (shared source of truth)
+    _DEFAULT_DEVICE = normalized           # update only after successful validation
     return _DEFAULT_DEVICE
 
 
@@ -238,11 +270,17 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
             series, band=band, use_squared_l2=use_squared_l2,
             device_id=device_id, verbose=False,
         )
+    if backend == "metal":
+        use_squared_l2 = metric in ("squared_euclidean", "sqeuclidean")
+        return _compute_distance_matrix_metal(
+            series, band=band, use_squared_l2=use_squared_l2, verbose=False,
+        )
     return _compute_distance_matrix_cpu(series, band, metric, use_pruning)
 
 
 # Pure-Python sklearn-compatible layer
 from dtwcpp._clustering import DTWClustering
+from dtwcpp.sklearn import DTWCKMedoids
 
 # Unified high-level interface: device() -> load() -> cluster() -> result.plot()
 from dtwcpp._api import Dataset, load, cluster, Result, ClusterResult, plot
@@ -325,11 +363,16 @@ __all__ = [
     "LowerBoundStrategy", "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
-    "HierarchicalOptions", "CLARANSOptions",
+    "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
+    "OneBatchPAMOptions", "OneBatchPAMStats",
+    "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",
+    "BarycenterClusteringResult",
     "Problem", "Env", "env", "device_to_string", "data_from_arrow_c_array",
     "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
     "soft_dtw_gradient",
-    "fast_pam", "fast_clara", "CLARAOptions",
+    "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
+    "one_batch_pam_with_stats",
+    "dtw_barycenter", "barycenter_kmeans",
     "clarans", "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
@@ -344,11 +387,11 @@ __all__ = [
     "distance",
     "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
     "METAL_AVAILABLE", "metal_available", "metal_device_info",
-    "OPENMP_AVAILABLE", "openmp_max_threads",
+    "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "MPI_AVAILABLE",
     "check_system",
     "save_checkpoint", "load_checkpoint", "CheckpointOptions",
-    "DTWClustering",
+    "DTWClustering", "DTWCKMedoids",
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",
     "save_dataset_parquet", "load_dataset_parquet",

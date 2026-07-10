@@ -18,9 +18,17 @@
 using namespace dtwc;
 namespace fs = std::filesystem;
 
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
+
+namespace {
+fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
+}
+
 TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][distmat]")
 {
-  DataLoader dl("data/dummy");
+  DataLoader dl(dummy_data_path());
   Problem prob("test_variant", dl);
   REQUIRE(prob.size() == 25);
 
@@ -34,11 +42,14 @@ TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][
 
 TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mmap]")
 {
+#ifndef DTWC_HAS_MMAP
+  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
+#else
   auto cache_path = fs::temp_directory_path() / "dtwc_test" / "variant_mmap.dtwcache";
   fs::create_directories(cache_path.parent_path());
   if (fs::exists(cache_path)) fs::remove(cache_path);
 
-  DataLoader dl("data/dummy");
+  DataLoader dl(dummy_data_path());
   Problem prob("test_mmap", dl);
 
   // Force mmap mode
@@ -56,10 +67,14 @@ TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mma
 
   // Cleanup
   fs::remove_all(cache_path.parent_path());
+#endif
 }
 
 TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]")
 {
+#ifndef DTWC_HAS_MMAP
+  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
+#else
   auto cache_path = fs::temp_directory_path() / "dtwc_test" / "warmstart_prob.dtwcache";
   fs::create_directories(cache_path.parent_path());
   if (fs::exists(cache_path)) fs::remove(cache_path);
@@ -68,7 +83,7 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
 
   // First run: fill distance matrix
   {
-    DataLoader dl("data/dummy");
+    DataLoader dl(dummy_data_path());
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
     prob.fillDistanceMatrix();
@@ -77,7 +92,7 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
 
   // Second run: reopen - distances should persist
   {
-    DataLoader dl("data/dummy");
+    DataLoader dl(dummy_data_path());
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
     REQUIRE(prob.isDistanceMatrixFilled());
@@ -86,4 +101,5 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
 
   // Cleanup
   fs::remove_all(cache_path.parent_path());
+#endif
 }

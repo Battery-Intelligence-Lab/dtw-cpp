@@ -10,7 +10,10 @@ DTW is embarrassingly parallel across pairs but **sequential within** each pair 
 - **CUDA** (NVIDIA) — targets consumer and HPC discrete GPUs.
 - **Metal** (Apple Silicon) — targets M-series integrated GPUs.
 
-Both expose the same C++ option surface and the same CPU fallback on error. This page explains the kernels, how to pick between them, and how lower-bound pruning (LB_Keogh) accelerates large workloads.
+Both expose the same C++ option surface. An explicitly requested backend raises
+`DeviceError` if it is not compiled, no device is present, or dispatch fails;
+DTWC++ never changes that request to CPU. This page explains the kernels, how to
+pick between them, and how lower-bound pruning (LB_Keogh) accelerates large workloads.
 
 > **Compile-time flags.** Backends are opt-in: `-DDTWC_ENABLE_CUDA=ON` and/or `-DDTWC_ENABLE_METAL=ON`. If neither is enabled, `Problem::fillDistanceMatrix` runs on CPU (`BruteForce` or `Pruned`).
 

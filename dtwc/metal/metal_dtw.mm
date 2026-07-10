@@ -67,7 +67,7 @@ static NSString *const kDTWMetalKernelSource = @R"METAL(
 //   4: max_L       — int32 (row pitch of all_series)
 //   5: band        — int32 (Sakoe-Chiba band width; -1 = unbounded)
 //   6: use_sq_l2   — int32 (0 = |a-b|, 1 = (a-b)^2)
-//   8: pair_offset — int32 (base for chunked dispatch)
+//   8: pair_offset — int64 (base for chunked dispatch)
 //  10: pair_indices — [[optional]] int32 buffer mapping work_idx -> real pair id
 //                    (nonempty only when has_pair_indices != 0, used for LB_Keogh pruning)
 //  11: has_pair_indices — int32 flag (0 = ignore buffer(10))
@@ -81,7 +81,7 @@ kernel void dtw_wavefront(
     constant int&         max_L      [[buffer(4)]],
     constant int&         band       [[buffer(5)]],
     constant int&         use_sq_l2  [[buffer(6)]],
-    constant int&         pair_offset [[buffer(8)]],
+    constant long&        pair_offset [[buffer(8)]],
     device const int*     pair_indices [[buffer(10)]],
     constant int&         has_pair_indices [[buffer(11)]],
     threadgroup float*    smem       [[threadgroup(0)]],
@@ -201,7 +201,7 @@ kernel void dtw_wavefront_global(
     constant int&         band       [[buffer(5)]],
     constant int&         use_sq_l2  [[buffer(6)]],
     device float*         scratch    [[buffer(7)]],
-    constant int&         pair_offset [[buffer(8)]],
+    constant long&        pair_offset [[buffer(8)]],
     device const int*     pair_indices [[buffer(10)]],
     constant int&         has_pair_indices [[buffer(11)]],
     uint tid   [[thread_position_in_threadgroup]],
@@ -326,7 +326,7 @@ kernel void dtw_banded_row(
     constant int&         band        [[buffer(5)]],
     constant int&         use_sq_l2   [[buffer(6)]],
     device float*         scratch     [[buffer(7)]],
-    constant int&         pair_offset [[buffer(8)]],
+    constant long&        pair_offset [[buffer(8)]],
     constant int&         stride      [[buffer(9)]],
     uint gid [[thread_position_in_grid]])
 {
@@ -756,7 +756,7 @@ static void dtw_regtile_kernel_body(
     int  N_series,
     int  max_L,
     int  use_sq_l2,
-    int  pair_offset,
+    long pair_offset,
     threadgroup float  *smem,
     uint simd_lane,
     uint simd_id,
@@ -817,7 +817,7 @@ kernel void dtw_regtile_w4(
     constant int&         N_series   [[buffer(3)]],
     constant int&         max_L      [[buffer(4)]],
     constant int&         use_sq_l2  [[buffer(6)]],
-    constant int&         pair_offset [[buffer(8)]],
+    constant long&        pair_offset [[buffer(8)]],
     threadgroup float*    smem       [[threadgroup(0)]],
     uint simd_lane [[thread_index_in_simdgroup]],
     uint simd_id   [[simdgroup_index_in_threadgroup]],
@@ -835,7 +835,7 @@ kernel void dtw_regtile_w8(
     constant int&         N_series   [[buffer(3)]],
     constant int&         max_L      [[buffer(4)]],
     constant int&         use_sq_l2  [[buffer(6)]],
-    constant int&         pair_offset [[buffer(8)]],
+    constant long&        pair_offset [[buffer(8)]],
     threadgroup float*    smem       [[threadgroup(0)]],
     uint simd_lane [[thread_index_in_simdgroup]],
     uint simd_id   [[simdgroup_index_in_threadgroup]],
@@ -1663,7 +1663,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < effective_pairs; off += chunk) {
-      const int pair_offset = static_cast<int>(off);
+      const std::int64_t pair_offset = static_cast<std::int64_t>(off);
       const size_t this_chunk = std::min(chunk, effective_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
@@ -1683,7 +1683,7 @@ MetalDistMatResult compute_distance_matrix_metal(
       } else {
         [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
       }
-      [enc setBytes:&pair_offset length:sizeof(int) atIndex:8];
+      [enc setBytes:&pair_offset length:sizeof(std::int64_t) atIndex:8];
       if (use_banded_row) {
         [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
       }

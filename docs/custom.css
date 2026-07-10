@@ -10,3 +10,24 @@ table.memberdecls code,
 table.fieldtable code {
   white-space: normal;
 }
+/* Three executable language quickstarts share one visual row on wide screens. */
+.quickstart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+.quickstart-card {
+  min-width: 0;
+}
+
+.quickstart-card pre {
+  max-height: 42rem;
+  overflow: auto;
+  white-space: pre;
+}
+
+@media (max-width: 1100px) {
+  .quickstart-grid { grid-template-columns: 1fr; }
+}

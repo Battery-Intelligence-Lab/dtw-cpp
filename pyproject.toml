@@ -1,13 +1,14 @@
 [build-system]
-requires = ["scikit-build-core>=0.10", "nanobind>=2.0", "cmake>=3.21", "ninja"]
+requires = ["scikit-build-core>=1.0", "nanobind>=2.0"]
 build-backend = "scikit_build_core.build"
 
 [project]
 name = "dtwcpp"
-version = "2.0.0"
+dynamic = ["version"]
 description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
 readme = "README.md"
-license = {text = "BSD-3-Clause"}
+license = "BSD-3-Clause"
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
 authors = [
     { name = "Volkan Kumtepeli" },
     { name = "Rebecca Perriment" },
@@ -23,7 +24,6 @@ dependencies = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: BSD License",
     "Operating System :: OS Independent",
     "Programming Language :: C++",
     "Programming Language :: Python :: 3",
@@ -57,6 +57,15 @@ dev = ["pytest>=6.0", "scikit-learn>=1.0"]
 dtwc-convert = "dtwcpp.convert:main"
 
 [tool.scikit-build]
-cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=OFF"]
+cmake.version = ">=3.26"
+ninja.version = ">=1.11"
+cmake.args = ["-DDTWC_BUILD_PYTHON=ON", "-DDTWC_ENABLE_GUROBI=OFF", "-DDTWC_ENABLE_HIGHS=ON", "-DDTWC_ENABLE_LLFIO=OFF"]
 wheel.packages = ["python/dtwcpp"]
-build-dir = "build_python/{wheel_tag}"
+wheel.exclude = ["include/**", "lib/**", "bin/**", "share/**"]
+sdist.exclude = ["build/**", "build_*/**", "docs/public*/**"]
+
+[[tool.dynamic-metadata]]
+provider = "scikit_build_core.metadata.regex"
+field = "version"
+input = "VERSION"
+regex = '''^(?P<value>[0-9]+(?:\.[0-9]+)*(?:(?:a|b|rc)[0-9]+|\.post[0-9]+|\.dev[0-9]+)?)\s*$'''

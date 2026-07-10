@@ -99,7 +99,7 @@ function test_clustering_medoids(testCase)
     c = c.fit(X);
     verifySize(testCase, c.MedoidIndices, [1, 2]);
     verifyGreaterThanOrEqual(testCase, min(c.MedoidIndices), 1);
-    verifyLessThanOrEqual(testCase, max(c.MedoidIndices), 8);
+    verifyLessThanOrEqual(testCase, max(c.MedoidIndices), 10);
 end
 
 function test_clustering_cost_nonneg(testCase)
@@ -115,7 +115,7 @@ function test_clustering_fit_predict(testCase)
     X = [ones(5,6); 10*ones(5,6)];
     c = dtwc.DTWClustering('NClusters', 2);
     labels = c.fit_predict(X);
-    verifySize(testCase, labels, [1, 6]);
+    verifySize(testCase, labels, [1, 10]);
 end
 
 function test_clustering_constructor_defaults(testCase)

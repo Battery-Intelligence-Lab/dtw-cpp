@@ -7,12 +7,9 @@ function tests = test_test_api
 %   names as the C++ (tests/unit/test_test_api.cpp) and Python
 %   (tests/python/test_test_api.py) suites.
 %
-%   REGISTERED EXPECTATION (this build is the deliberately SERIAL MEX —
-%   configured with -DDTWC_ALLOW_SEQUENTIAL=ON, so DTWC_SEQUENTIAL_BUILD is
-%   defined, and CUDA is OFF):
-%     test_parallelisation -> available=false, pass=false, reason non-empty and
-%                             naming the sequential build (the honest loud answer,
-%                             NOT a faked availability);
+%   REGISTERED EXPECTATION (release MEX uses a validated OpenMP runtime):
+%     test_parallelisation -> available=true, pass=true, reason empty and
+%                             threads_engaged>=2 on the multicore release gate;
 %     test_gpu             -> available=false, validated=false, pass=false,
 %                             reason non-empty naming the missing GPU backend.
 %
@@ -20,6 +17,12 @@ function tests = test_test_api
 %   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
 %    with a loud notice.)
     tests = functiontests(localfunctions);
+end
+
+function test_version_matches_ssot(testCase)
+    repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+    expected = strtrim(fileread(fullfile(repoRoot, 'VERSION')));
+    verifyEqual(testCase, dtwc_mex('version'), expected);
 end
 
 % -------------------------------------------------------------------------
@@ -59,24 +62,23 @@ function test_parallelisation_schema(testCase)
     verifyGreaterThanOrEqual(testCase, r.threads_engaged, 1);
 end
 
-function test_parallelisation_serial_is_honest(testCase)
-%TEST_PARALLELISATION_SERIAL_IS_HONEST Registered: serial MEX -> available=false.
-%   Pins dtwc_mex('test_parallelisation') on the SERIAL build. The honest loud
-%   answer is available=false with a non-empty reason naming the sequential
-%   build — availability is NEVER faked.
+function test_parallelisation_runtime_engages(testCase)
+%TEST_PARALLELISATION_RUNTIME_ENGAGES Release MEX runs a real parallel region.
     r = dtwc_mex('test_parallelisation');
-    verifyFalse(testCase, r.available);
-    verifyFalse(testCase, r.pass);
-    verifyNotEmpty(testCase, r.reason);
-    verifyTrue(testCase, contains(lower(r.reason), 'sequential'));
+    verifyTrue(testCase, r.available);
+    verifyTrue(testCase, r.pass);
+    verifyEmpty(testCase, r.reason);
+    verifyGreaterThanOrEqual(testCase, r.threads_engaged, 2);
 end
 
 function test_parallelisation_wrapper_matches_mex(testCase)
 %TEST_PARALLELISATION_WRAPPER_MATCHES_MEX Pins dtwc.test.parallelisation().
     r = dtwc.test.parallelisation();
     verifyTrue(testCase, isstruct(r));
-    verifyFalse(testCase, r.available);           % same serial answer as the MEX
-    verifyNotEmpty(testCase, r.reason);
+    verifyTrue(testCase, r.available);
+    verifyTrue(testCase, r.pass);
+    verifyEmpty(testCase, r.reason);
+    verifyGreaterThanOrEqual(testCase, r.threads_engaged, 2);
 end
 
 % =========================================================================

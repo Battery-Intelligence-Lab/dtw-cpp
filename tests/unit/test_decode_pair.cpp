@@ -273,6 +273,20 @@ TEST_CASE("last-pair matrix index overflows int32 at N=46342 (pins Task 0.7)", "
   CHECK(idx_sym == (N - 1) * N + (N - 2));
 }
 
+TEST_CASE("Metal chunk pair_offset stays correct beyond int32", "[decode_pair][metal][offset]")
+{
+  // The Metal host dispatch chunks a triangular pair space. Before Phase 6,
+  // `off` was narrowed to int before binding buffer(8), so the first chunk at
+  // 2^31 wrapped negative even though the shader's work index was otherwise
+  // 64-bit. Mirror the host+MSL arithmetic with the now-shared ABI width.
+  constexpr std::int64_t offset = (std::int64_t{1} << 31) + 12345;
+  constexpr std::uint32_t local_id = 777;
+  constexpr std::int64_t work_index = static_cast<std::int64_t>(local_id) + offset;
+  STATIC_REQUIRE(sizeof(offset) == 8);
+  STATIC_REQUIRE(work_index == (std::int64_t{1} << 31) + 13122);
+  STATIC_REQUIRE(work_index > std::numeric_limits<std::int32_t>::max());
+}
+
 // ---------------------------------------------------------------------------
 // Task R2 — Metal kDecodePairMSL algorithm equivalence
 // ---------------------------------------------------------------------------

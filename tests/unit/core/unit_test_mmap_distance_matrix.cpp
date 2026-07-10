@@ -22,6 +22,15 @@ using Catch::Matchers::WithinAbs;
 using namespace dtwc::core;
 namespace fs = std::filesystem;
 
+#ifndef DTWC_HAS_MMAP
+
+TEST_CASE("MmapDistanceMatrix tests require LLFIO", "[MmapDistanceMatrix][mmap]")
+{
+  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
+}
+
+#else
+
 namespace {
 
 /// RAII helper to create a unique temp file path and remove it on destruction.
@@ -425,3 +434,5 @@ TEST_CASE("packed_size", "[MmapDistanceMatrix][packed_size]")
   REQUIRE(packed_size(10) == 55);
   REQUIRE(packed_size(1000) == 500500);
 }
+
+#endif // DTWC_HAS_MMAP

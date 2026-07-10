@@ -62,13 +62,13 @@ CLI surfaces without reading each binding page independently.
 
 Use the generated Doxygen site for the structural view:
 
-- [Full class index](../Doxygen/annotated.html)
-- [Full namespace index](../Doxygen/namespaces.html)
-- [C++ `dtwc::Problem` class page with collaboration/call graphs](../Doxygen/classdtwc_1_1_problem.html)
-- [C++ `dtwc::distance` namespace](../Doxygen/namespacedtwc_1_1distance.html)
-- [Python `dtwcpp.distance` namespace](../Doxygen/namespacedtwcpp_1_1distance.html)
-- [Python `DTWClustering` class page](../Doxygen/classdtwcpp_1_1__clustering_1_1_d_t_w_clustering.html)
-- [MATLAB `Problem.m` page](../Doxygen/_problem_8m.html)
+- [Full class index](../../Doxygen/annotated.html)
+- [Full namespace index](../../Doxygen/namespaces.html)
+- [C++ `dtwc::Problem` class page with collaboration/call graphs](../../Doxygen/classdtwc_1_1_problem.html)
+- [C++ `dtwc::distance` namespace](../../Doxygen/namespacedtwc_1_1distance.html)
+- [Python `dtwcpp.distance` namespace](../../Doxygen/namespacedtwcpp_1_1distance.html)
+- [Python `DTWClustering` class page](../../Doxygen/classdtwcpp_1_1__clustering_1_1_d_t_w_clustering.html)
+- [MATLAB `Problem.m` page](../../Doxygen/_problem_8m.html)
 
 The generated Python reference is limited to the checked-in Python sources.
 `dtwcpp.Problem` comes from the extension module, so Doxygen does not emit a
@@ -76,15 +76,8 @@ standalone Python class page for it.
 
 ## Generated structure snapshots
 
-These images come directly from the generated Doxygen output:
-
-### C++ `dtwc::Problem` collaboration graph
-
-<img src="../Doxygen/classdtwc_1_1_problem__coll__graph.svg" alt="C++ Problem collaboration graph from Doxygen" />
-
-### Python `dtwcpp.DTWClustering` collaboration graph
-
-<img src="../Doxygen/classdtwcpp_1_1__clustering_1_1_d_t_w_clustering__coll__graph.svg" alt="Python DTWClustering collaboration graph from Doxygen" />
+Collaboration and call graphs are linked from the generated class pages when
+Graphviz is available in the documentation build.
 
 ## Shared flow
 

@@ -15,7 +15,7 @@ function(dtwc_setup_dependencies)
     VERSION 0.0.7
   )
 
-  if(NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
+  if(DTWC_BUILD_TESTING AND NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
     CPMAddPackage(
       NAME Catch2
       URL "https://github.com/catchorg/Catch2/archive/refs/tags/v3.13.0.tar.gz"
@@ -34,7 +34,7 @@ function(dtwc_setup_dependencies)
   # backend is behind HiGHS's own CUPDLP_GPU option (default OFF ⇒ CPU PDLP, same
   # bound). We forward it only when DTWC_HIGHS_GPU is set; on Windows HiGHS then
   # forces itself shared (highs.dll) and pulls cudart/cublas/cusparse.
-  set(_highs_options "CI OFF" "ZLIB OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON")
+  set(_highs_options "CI OFF" "ZLIB OFF" "BUILD_CXX_EXE OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON")
   if(DTWC_HIGHS_GPU)
     list(APPEND _highs_options "CUPDLP_GPU ON")
   endif()
@@ -127,12 +127,11 @@ function(dtwc_setup_dependencies)
   if(DTWC_ENABLE_YAML AND NOT TARGET yaml-cpp)
     CPMAddPackage(
       NAME yaml-cpp
-      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/0.9.0.tar.gz"
-      # OPEN (Task 0.12): URL_HASH SHA256 not yet pinned. This optional dep is
-      # OFF by default (DTWC_ENABLE_YAML), so it was not in the local CPM cache
-      # and no network was available to fetch the tarball and compute the hash.
-      # Maintainer TODO: download once, `sha256sum 0.9.0.tar.gz`, add
-      # `URL_HASH SHA256=<hash>` here (immutable release tag -> stable bytes).
+      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.9.0.tar.gz"
+      URL_HASH SHA256=25cb043240f828a8c51beb830569634bc7ac603978e0f69d6b63558dadefd49a
+      # yaml-cpp-0.9.0 release, published 2026-02-04. The previous URL omitted
+      # the `yaml-cpp-` tag prefix and returned 404; the content hash both fixes
+      # that live build bug and pins the archive bytes.
       SYSTEM
       EXCLUDE_FROM_ALL
       OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"

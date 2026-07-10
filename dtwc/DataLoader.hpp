@@ -184,7 +184,7 @@ public:
     data_path = data_path_;
     if (data_path_.extension() == ".csv")
       delim = ',';
-    else if (data_path_.extension() == ".tsv")
+    else if (data_path_.extension() == ".tsv" || data_path_.extension() == ".txt")
       delim = '\t';
     return *this;
   }
@@ -233,6 +233,16 @@ public:
       return load_metadata();
     return load_heap();
   }
+
+  /**
+   * @brief Materialise the payload irrespective of the process-wide device.
+   * @details The Tier-1 `cluster(..., device="cpu")` API supports a per-call
+   *          override.  That override must not mutate the global Env merely so
+   *          DataLoader::load() takes its local branch.  This explicit entry
+   *          point keeps the loader policy visible and avoids hidden global
+   *          state changes; normal callers should continue to use load().
+   */
+  Data load_local() { return load_heap(); }
 
   /**
    * @brief Metadata-only load: reads shapes/counts/names WITHOUT materialising any

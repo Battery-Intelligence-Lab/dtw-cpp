@@ -24,10 +24,6 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-static struct TestDataInit {
-  TestDataInit() { dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR); }
-} test_data_init_;
-
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -42,7 +38,11 @@ namespace {
  */
 Problem make_dummy_problem(int N_data, int Nc)
 {
-  dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
+  // Use the configure-time absolute fixture path directly. A former global
+  // TestDataInit mutated settings::paths::data during static initialization;
+  // cross-TU initialization order could then reset it to "./data", making the
+  // test CWD-dependent and causing the intermittent Windows 0xc0000409 hunt.
+  dtwc::DataLoader dl{ std::filesystem::path{DTWC_TEST_DATA_DIR} / "dummy", N_data };
   dl.startColumn(1).startRow(1);
 
   dtwc::Problem prob{ "test_clustering", dl };

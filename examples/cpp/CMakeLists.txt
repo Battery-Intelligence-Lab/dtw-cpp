@@ -8,3 +8,6 @@ target_link_libraries(example_MIP_single PRIVATE dtwc++)
 
 add_executable(example_MIP_multiple MIP_multiple.cpp)
 target_link_libraries(example_MIP_multiple PRIVATE dtwc++)
+
+add_executable(example_quickstart quickstart.cpp)
+target_link_libraries(example_quickstart PRIVATE dtwc++)

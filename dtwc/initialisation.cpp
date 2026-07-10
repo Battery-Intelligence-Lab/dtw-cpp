@@ -55,10 +55,12 @@ namespace dtwc::init {
  */
 void random(Problem &prob)
 {
-  const auto Nc = prob.cluster_size();
+  const auto Nc = prob.n_clusters();
 
   if (Nc <= 0)
     throw std::runtime_error("init::random has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
+  if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
+    throw std::runtime_error("init::random requires 1 <= number of clusters <= number of series");
 
   std::vector<int> candidate_centroids(prob.size());
   std::iota(candidate_centroids.begin(), candidate_centroids.end(), 0);
@@ -84,10 +86,12 @@ void random(Problem &prob)
 void Kmeanspp(Problem &prob)
 {
   // First cluster is selected at random, others are selected based on distance.
-  const auto Nc = prob.cluster_size();
+  const auto Nc = prob.n_clusters();
 
   if (Nc <= 0)
     throw std::runtime_error("init::Kmeanspp has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
+  if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
+    throw std::runtime_error("init::Kmeanspp requires 1 <= number of clusters <= number of series");
 
   prob.centroids_ind.clear();
 
@@ -99,8 +103,22 @@ void Kmeanspp(Problem &prob)
 
   std::vector<data_t> distances(prob.size(), std::numeric_limits<data_t>::max());
 
+  // Prime the lazy DenseDistanceMatrix allocation and DTW-function rebind on
+  // the caller thread before `run()` enters OpenMP. Direct public calls to
+  // Kmeanspp do not necessarily come through Problem::fill_distance_matrix().
+  // Previously every worker could observe the uninitialised matrix and race in
+  // Problem::dist_by_ind's rebind_dtw_fn(), corrupting the shared std::function
+  // and intermittently fast-failing on Windows with 0xc0000409. This computes
+  // one pair that the first scan needs anyway; subsequent parallel writes are
+  // disjoint {fixed candidate, i} cells.
+  if (!prob.is_distance_matrix_filled() && prob.size() > 1) {
+    const int first_centroid = candidate_centroids.front();
+    const int anchor = (first_centroid == 0) ? 1 : 0;
+    (void)prob.dist_by_ind(first_centroid, anchor);
+  }
+
   auto distTask = [&](size_t i_p) {
-    distances[i_p] = std::min(distances[i_p], prob.distByInd(candidate_centroids.back(), static_cast<int>(i_p)));
+    distances[i_p] = std::min(distances[i_p], prob.dist_by_ind(candidate_centroids.back(), static_cast<int>(i_p)));
   };
 
   for (int i = 1; i < Nc; i++) {

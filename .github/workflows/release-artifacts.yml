@@ -1,0 +1,50 @@
+name: Native release archives
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  archive:
+    name: Archive on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install macOS OpenMP runtime
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Configure release CLI
+        run: >-
+          cmake -S . -B build/release
+          -DDTWC_ENABLE_GUROBI=OFF
+          -DDTWC_ENABLE_HIGHS=ON
+          -DDTWC_ENABLE_LLFIO=OFF
+          -DDTWC_BUILD_TESTING=OFF
+          -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build CLI and dependency notices
+        run: cmake --build build/release --config Release --target dtwc_cl write-licenses --parallel 2
+
+      - name: Package
+        working-directory: build/release
+        run: cpack -C Release
+
+      - name: Smoke unpacked archive outside checkout
+        run: python scripts/smoke_release_archive.py build/release
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dtwc-native-${{ matrix.os }}
+          path: |
+            build/release/dtwc-*.zip
+            build/release/dtwc-*.tar.gz
+            build/release/dtwc-*.sha256
+          if-no-files-found: error

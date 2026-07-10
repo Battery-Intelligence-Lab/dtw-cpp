@@ -40,6 +40,7 @@
 #include <cstdint>
 #include <limits>
 #include <numeric>
+#include <random>
 #include <stdexcept>
 #include <vector>
 
@@ -454,6 +455,44 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   // naive O(N²·k) swap but O(N²) per iteration and parallel over candidates, so it
   // never regresses the common small-k / large-N case. FasterPAM (eager) wins at
   // large k but is sequential; callers pick it explicitly via fast_pam_swap.
+  return fast_pam_swap(prob, medoids, max_iter, PAMVariant::FastPAM1);
+}
+
+core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
+                                       std::uint64_t random_seed, int max_iter)
+{
+  const auto N = static_cast<int>(prob.size());
+  if (N <= 0)
+    throw std::runtime_error("fast_pam_seeded: Problem has no data points.");
+  if (n_clusters <= 0 || n_clusters > N)
+    throw std::runtime_error("fast_pam_seeded: n_clusters must be in [1, N].");
+  prob.fillDistanceMatrix();
+
+  std::mt19937_64 rng(random_seed);
+  std::uniform_int_distribution<int> first(0, N - 1);
+  std::vector<int> medoids{first(rng)};
+  medoids.reserve(static_cast<std::size_t>(n_clusters));
+  std::vector<double> distances(static_cast<std::size_t>(N),
+                                std::numeric_limits<double>::infinity());
+  while (static_cast<int>(medoids.size()) < n_clusters) {
+    for (int i = 0; i < N; ++i)
+      distances[static_cast<std::size_t>(i)] = std::min(
+        distances[static_cast<std::size_t>(i)], prob.distByInd(medoids.back(), i));
+    for (int medoid : medoids) distances[static_cast<std::size_t>(medoid)] = 0.0;
+    const double total = std::accumulate(distances.begin(), distances.end(), 0.0);
+    int chosen = 0;
+    if (total <= 0.0) {
+      while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
+    } else {
+      std::discrete_distribution<int> distribution(distances.begin(), distances.end());
+      chosen = distribution(rng);
+      if (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) {
+        chosen = 0;
+        while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
+      }
+    }
+    medoids.push_back(chosen);
+  }
   return fast_pam_swap(prob, medoids, max_iter, PAMVariant::FastPAM1);
 }
 

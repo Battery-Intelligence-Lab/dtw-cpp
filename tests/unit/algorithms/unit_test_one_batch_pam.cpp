@@ -1,0 +1,168 @@
+/**
+ * @file unit_test_one_batch_pam.cpp
+ * @brief Correctness, work-bound, and registered quality bands for OneBatchPAM.
+ *
+ * Registered bands (before execution):
+ *   HARD-WORK: actual distance calls / N^2 <= (m+k)/N and the Problem's full
+ *              distance matrix remains unfilled.
+ *   HARD-QUALITY: on separated synthetic data, objective <= 1.05 * FasterPAM.
+ *   HARD-STATE: deterministic for a fixed seed; result is written to Problem.
+ *   ADVISORY-50K [.] bench: N=50,000, calls <=10% of N^2 and objective within
+ *              5% of the exact separated-line/FasterPAM oracle.
+ */
+
+#include <dtwc.hpp>
+#include <algorithms/one_batch_pam.hpp>
+
+#include <catch2/catch_test_macros.hpp>
+
+#include <algorithm>
+#include <cmath>
+#include <numeric>
+#include <set>
+#include <string>
+#include <vector>
+
+using namespace dtwc;
+
+namespace {
+
+Problem make_problem(int n, int groups, int length = 8)
+{
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> names;
+  series.reserve(static_cast<std::size_t>(n));
+  names.reserve(static_cast<std::size_t>(n));
+  for (int i = 0; i < n; ++i) {
+    const int group = (i * groups) / n;
+    const double within = static_cast<double>(i % (n / groups)) * 0.015;
+    std::vector<data_t> values(static_cast<std::size_t>(length));
+    for (int t = 0; t < length; ++t)
+      values[static_cast<std::size_t>(t)] = group * 100.0 + within + t * (group + 1) * 0.03;
+    series.push_back(std::move(values));
+    names.push_back("s" + std::to_string(i));
+  }
+  Problem problem("one_batch_test");
+  problem.set_data(Data(std::move(series), std::move(names)));
+  return problem;
+}
+
+void require_valid(const core::ClusteringResult& result, int n, int k)
+{
+  REQUIRE(result.labels.size() == static_cast<std::size_t>(n));
+  REQUIRE(result.medoid_indices.size() == static_cast<std::size_t>(k));
+  REQUIRE(std::set<int>(result.medoid_indices.begin(), result.medoid_indices.end()).size()
+          == static_cast<std::size_t>(k));
+  for (int label : result.labels) REQUIRE(label >= 0); 
+  for (int label : result.labels) REQUIRE(label < k);
+  for (int medoid : result.medoid_indices) REQUIRE(medoid >= 0);
+  for (int medoid : result.medoid_indices) REQUIRE(medoid < n);
+}
+
+} // namespace
+
+TEST_CASE("OneBatchPAM stays within its fixed-batch distance budget",
+          "[one_batch_pam][work]")
+{
+  constexpr int n = 240;
+  constexpr int k = 4;
+  constexpr int m = 72;
+  auto problem = make_problem(n, k);
+
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = k;
+  options.batch_size = m;
+  options.random_seed = 19;
+  algorithms::OneBatchPAMStats stats;
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+  require_valid(result, n, k);
+  REQUIRE(stats.batch_size == m);
+  REQUIRE(stats.distance_evaluations <= static_cast<std::uint64_t>(n) * (m + k));
+  REQUIRE(stats.full_matrix_fraction <= static_cast<double>(m + k) / n);
+  REQUIRE_FALSE(problem.is_distance_matrix_filled());
+  REQUIRE(problem.labels() == result.labels);
+  REQUIRE(problem.medoids() == result.medoid_indices);
+}
+
+TEST_CASE("OneBatchPAM is reproducible and within five percent of FasterPAM",
+          "[one_batch_pam][quality][reproducibility]")
+{
+  constexpr int n = 240;
+  constexpr int k = 4;
+  auto p1 = make_problem(n, k);
+  auto p2 = make_problem(n, k);
+  auto oracle_problem = make_problem(n, k);
+
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = k;
+  options.batch_size = 96;
+  options.random_seed = 7;
+  const auto first = algorithms::one_batch_pam(p1, options);
+  const auto second = algorithms::one_batch_pam(p2, options);
+  const auto oracle = fast_pam(oracle_problem, k);
+
+  REQUIRE(first.medoid_indices == second.medoid_indices);
+  REQUIRE(first.labels == second.labels);
+  REQUIRE(first.total_cost == second.total_cost);
+  REQUIRE(first.total_cost <= oracle.total_cost * 1.05 + 1e-9);
+}
+
+TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",
+          "[one_batch_pam][edge]")
+{
+  SECTION("k=1") {
+    auto problem = make_problem(30, 1);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 1;
+    options.batch_size = 12;
+    const auto result = algorithms::one_batch_pam(problem, options);
+    require_valid(result, 30, 1);
+    REQUIRE(result.converged);
+  }
+  SECTION("k=N") {
+    auto problem = make_problem(12, 3);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 12;
+    const auto result = algorithms::one_batch_pam(problem, options);
+    REQUIRE(result.total_cost == 0.0);
+    REQUIRE(result.labels == result.medoid_indices);
+  }
+  SECTION("invalid") {
+    auto problem = make_problem(12, 3);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 0;
+    REQUIRE_THROWS_AS(algorithms::one_batch_pam(problem, options), InvalidInput);
+    options.n_clusters = 2;
+    options.batch_size = 0;
+    REQUIRE_THROWS_AS(algorithms::one_batch_pam(problem, options), InvalidInput);
+  }
+}
+
+TEST_CASE("OneBatchPAM 50k registered scaling and quality band",
+          "[.][one_batch_pam][bench][50k]")
+{
+  constexpr int n = 50000;
+  constexpr int k = 5;
+  auto problem = make_problem(n, k, 1);
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = k;
+  options.batch_size = 256;
+  options.random_seed = 42;
+  algorithms::OneBatchPAMStats stats;
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+  // On this separated one-dimensional construction, the exact group medians
+  // are the FasterPAM fixed point. Compute that oracle directly without
+  // materialising the infeasible 50k-by-50k matrix.
+  const int group_size = n / k;
+  double oracle_cost = 0.0;
+  for (int group = 0; group < k; ++group) {
+    const int median_offset = (group_size - 1) / 2;
+    for (int offset = 0; offset < group_size; ++offset)
+      oracle_cost += std::abs(offset - median_offset) * 0.015;
+  }
+  REQUIRE(result.total_cost <= oracle_cost * 1.05 + 1e-9);
+  REQUIRE(stats.full_matrix_fraction <= 0.10);
+}
+

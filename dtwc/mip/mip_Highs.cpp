@@ -28,6 +28,15 @@
 
 namespace dtwc {
 
+bool highs_solver_available() noexcept
+{
+#ifdef DTWC_ENABLE_HIGHS
+  return true;
+#else
+  return false;
+#endif
+}
+
 template <typename T>
 void extract_mip_solution(Problem &prob, const T &solution)
 {
@@ -217,7 +226,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Get the solution values
   extract_mip_solution(prob, highs.getSolution().col_value);
 #else
-  std::cout << "Highs solver is not activated but is being used!" << '\n';
+  throw SolverError(
+      "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON");
 #endif
 }
 

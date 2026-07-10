@@ -22,6 +22,15 @@ using namespace dtwc;
 using namespace dtwc::core;
 namespace fs = std::filesystem;
 
+#ifndef DTWC_HAS_MMAP
+
+TEST_CASE("MmapDataStore tests require LLFIO", "[mmap][data]")
+{
+  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
+}
+
+#else
+
 static fs::path temp_store(const std::string &name)
 {
   auto p = fs::temp_directory_path() / "dtwc_test" / name;
@@ -226,3 +235,5 @@ TEST_CASE("MmapDataStore large N=5000", "[mmap][data]")
 
   if (fs::exists(path)) fs::remove(path);
 }
+
+#endif // DTWC_HAS_MMAP

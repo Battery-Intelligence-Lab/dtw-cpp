@@ -50,6 +50,14 @@ target_link_libraries(bench_f32_vs_f64
     benchmark::benchmark_main
 )
 
+# Measure-first OpenMP schedule sweep (Task 5.11).
+add_executable(bench_openmp_schedule bench_openmp_schedule.cpp)
+target_link_libraries(bench_openmp_schedule
+  PRIVATE
+    dtwc++
+    benchmark::benchmark
+)
+
 # Legacy UCR benchmark
 add_executable(benchmark_UCR UCR_dtwc.cpp)
 target_link_libraries(benchmark_UCR PRIVATE dtwc++)

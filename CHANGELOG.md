@@ -8,6 +8,29 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- No unreleased changes after the 2.0.0 release candidate.
+
+# 2.0.0rc1 - 2026-07-10
+
+- Release-candidate packaging is reproducible from the root `VERSION` file:
+  Python wheel/sdist, MATLAB MEX, and CPack executable archives report the same
+  version. The [2.0 migration guide](docs/content/guides/migration.md) covers
+  renamed APIs and behavioural changes.
+- Added the owning Tier-1 C++ `device` / `load` / `cluster` / `Result` API and
+  executable C++, Python, and MATLAB quickstarts backed by one conformance
+  fixture.
+- Added OneBatchPAM, DBA/SSG/soft-DTW barycenters, barycenter k-means, and the
+  sklearn-compatible `DTWCKMedoids` estimator. The profiler gate retained the
+  adaptive OpenMP schedule and rejected a speculative SIMD layer for lack of
+  evidence.
+- Wheels bundle HiGHS and its attribution, exercise a real MIP solve after
+  installation, and exclude build headers/libraries. Source distributions now
+  exclude local build and generated-site trees.
+- Added Hugo contract/guides/math/benchmark documentation with generated-SSOT,
+  live CLI/error-string drift checks, and internal-link validation.
+- See the [2.0.0rc1 release notes](docs/content/releases/2.0.0rc1.md) for
+  platform status and the deliberately gated production-release steps.
+
 - API contract 2.0 frozen: docs/api-contract-2.0.md
 
 ### Added (Phase 5 · Task 5.7 — Arrow C Data interface ingest, zero-copy, no pyarrow)
@@ -859,4 +882,4 @@ This is the initial release of DTWC.
 
 ## Dependencies
   * A compiler with C++17 support. 
-  * We require at least CMake 3.16. 
+  * We require at least CMake 3.16.

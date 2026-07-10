@@ -140,6 +140,17 @@ class TestDTWClusteringHpcDispatch:
 
 @pytest.mark.skipif(_local_binary() is None, reason="no local dtwc_cl binary built")
 class TestLocalRoundTrip:
+    def test_required_input_message_names_toml_first(self):
+        completed = subprocess.run(
+            [_local_binary(), "--n-clusters", "2"],
+            check=False, capture_output=True, text=True,
+        )
+        assert completed.returncode != 0
+        assert completed.stderr == (
+            "Error: --input is required via CLI or config file "
+            "(TOML; YAML if built with DTWC_ENABLE_YAML)\n"
+        )
+
     def test_two_groups_recovered(self, tmp_path):
         rng = np.random.default_rng(7)
         series = [list(rng.standard_normal(8) * 0.1 + (0.0 if i < 5 else 9.0))

@@ -9,6 +9,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"
 #include "checkpoint.hpp"
@@ -26,6 +27,8 @@
 #include "soft_dtw.hpp"
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/fast_clara.hpp"
+#include "algorithms/one_batch_pam.hpp"
+#include "algorithms/barycenter.hpp"
 #include "algorithms/hierarchical.hpp"
 #include "algorithms/clarans.hpp"
 #include "algorithms/detail/medoid_utils.hpp"

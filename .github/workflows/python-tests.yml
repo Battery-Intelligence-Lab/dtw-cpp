@@ -2,7 +2,7 @@ name: Python tests
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, Claude] # TODO(release): remove temporary Claude trigger
   pull_request:
     branches: [main]
 

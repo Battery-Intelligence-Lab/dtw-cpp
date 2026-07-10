@@ -36,6 +36,8 @@
 #include <soft_dtw.hpp>
 #include <algorithms/fast_pam.hpp>
 #include <algorithms/fast_clara.hpp>
+#include <algorithms/one_batch_pam.hpp>
+#include <algorithms/barycenter.hpp>
 #include <algorithms/clarans.hpp>
 #include <algorithms/hierarchical.hpp>
 #include <scores.hpp>
@@ -44,6 +46,7 @@
 #include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
+#include <mip/mip.hpp>
 
 #include <Eigen/Core>
 
@@ -55,6 +58,8 @@ namespace nb = nanobind;
 using namespace nb::literals; // for _a arg names
 
 NB_MODULE(_dtwcpp_core, m) {
+  m.attr("__version__") = DTWC_VERSION_STRING;
+  m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
   // =========================================================================
@@ -216,6 +221,64 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Single", dtwc::algorithms::Linkage::Single)
     .value("Complete", dtwc::algorithms::Linkage::Complete)
     .value("Average", dtwc::algorithms::Linkage::Average);
+
+  nb::enum_<dtwc::algorithms::OneBatchWeighting>(m, "OneBatchWeighting")
+    .value("Uniform", dtwc::algorithms::OneBatchWeighting::Uniform)
+    .value("Debiased", dtwc::algorithms::OneBatchWeighting::Debiased)
+    .value("NearestNeighbor", dtwc::algorithms::OneBatchWeighting::NearestNeighbor);
+
+  nb::enum_<dtwc::algorithms::BarycenterMethod>(m, "BarycenterMethod")
+    .value("SSG", dtwc::algorithms::BarycenterMethod::SSG)
+    .value("DBA", dtwc::algorithms::BarycenterMethod::DBA)
+    .value("SoftDTW", dtwc::algorithms::BarycenterMethod::SoftDTW);
+
+  nb::class_<dtwc::algorithms::OneBatchPAMOptions>(m, "OneBatchPAMOptions")
+    .def(nb::init<>())
+    .def_rw("n_clusters", &dtwc::algorithms::OneBatchPAMOptions::n_clusters)
+    .def_rw("batch_size", &dtwc::algorithms::OneBatchPAMOptions::batch_size)
+    .def_rw("max_iter", &dtwc::algorithms::OneBatchPAMOptions::max_iter)
+    .def_rw("random_seed", &dtwc::algorithms::OneBatchPAMOptions::random_seed)
+    .def_rw("weighting", &dtwc::algorithms::OneBatchPAMOptions::weighting)
+    .def_rw("relative_tolerance", &dtwc::algorithms::OneBatchPAMOptions::relative_tolerance);
+
+  nb::class_<dtwc::algorithms::OneBatchPAMStats>(m, "OneBatchPAMStats")
+    .def(nb::init<>())
+    .def_ro("batch_size", &dtwc::algorithms::OneBatchPAMStats::batch_size)
+    .def_ro("distance_evaluations", &dtwc::algorithms::OneBatchPAMStats::distance_evaluations)
+    .def_ro("full_matrix_fraction", &dtwc::algorithms::OneBatchPAMStats::full_matrix_fraction)
+    .def_ro("estimated_objective", &dtwc::algorithms::OneBatchPAMStats::estimated_objective)
+    .def_ro("accepted_swaps", &dtwc::algorithms::OneBatchPAMStats::accepted_swaps);
+
+  nb::class_<dtwc::algorithms::BarycenterOptions>(m, "BarycenterOptions")
+    .def(nb::init<>())
+    .def_rw("method", &dtwc::algorithms::BarycenterOptions::method)
+    .def_rw("max_iter", &dtwc::algorithms::BarycenterOptions::max_iter)
+    .def_rw("learning_rate", &dtwc::algorithms::BarycenterOptions::learning_rate)
+    .def_rw("learning_rate_decay", &dtwc::algorithms::BarycenterOptions::learning_rate_decay)
+    .def_rw("gamma", &dtwc::algorithms::BarycenterOptions::gamma)
+    .def_rw("tolerance", &dtwc::algorithms::BarycenterOptions::tolerance)
+    .def_rw("random_seed", &dtwc::algorithms::BarycenterOptions::random_seed);
+
+  nb::class_<dtwc::algorithms::BarycenterClusteringOptions>(m, "BarycenterClusteringOptions")
+    .def(nb::init<>())
+    .def_rw("n_clusters", &dtwc::algorithms::BarycenterClusteringOptions::n_clusters)
+    .def_rw("max_iter", &dtwc::algorithms::BarycenterClusteringOptions::max_iter)
+    .def_rw("barycenter_max_iter", &dtwc::algorithms::BarycenterClusteringOptions::barycenter_max_iter)
+    .def_rw("target_length", &dtwc::algorithms::BarycenterClusteringOptions::target_length)
+    .def_rw("method", &dtwc::algorithms::BarycenterClusteringOptions::method)
+    .def_rw("learning_rate", &dtwc::algorithms::BarycenterClusteringOptions::learning_rate)
+    .def_rw("learning_rate_decay", &dtwc::algorithms::BarycenterClusteringOptions::learning_rate_decay)
+    .def_rw("gamma", &dtwc::algorithms::BarycenterClusteringOptions::gamma)
+    .def_rw("tolerance", &dtwc::algorithms::BarycenterClusteringOptions::tolerance)
+    .def_rw("random_seed", &dtwc::algorithms::BarycenterClusteringOptions::random_seed);
+
+  nb::class_<dtwc::algorithms::BarycenterClusteringResult>(m, "BarycenterClusteringResult")
+    .def(nb::init<>())
+    .def_ro("labels", &dtwc::algorithms::BarycenterClusteringResult::labels)
+    .def_ro("barycenters", &dtwc::algorithms::BarycenterClusteringResult::barycenters)
+    .def_ro("total_cost", &dtwc::algorithms::BarycenterClusteringResult::total_cost)
+    .def_ro("iterations", &dtwc::algorithms::BarycenterClusteringResult::iterations)
+    .def_ro("converged", &dtwc::algorithms::BarycenterClusteringResult::converged);
 
   // =========================================================================
   // DTWVariantParams
@@ -851,6 +914,13 @@ NB_MODULE(_dtwcpp_core, m) {
      "silhouette(prob) and davies_bouldin(prob) work after this call with no\n"
      "wrapper-side wiring (api-contract-2.0.md §2.5).");
 
+  m.def("fast_pam_seeded",
+        [](dtwc::Problem &prob, int n_clusters, std::uint64_t seed, int max_iter) {
+    nb::gil_scoped_release release;
+    return dtwc::fast_pam_seeded(prob, n_clusters, seed, max_iter);
+  }, "prob"_a, "n_clusters"_a, "seed"_a, "max_iter"_a = 100,
+     "Run FastPAM with an invocation-local deterministic BUILD seed.");
+
   // =========================================================================
   // FastCLARA
   // =========================================================================
@@ -894,6 +964,59 @@ NB_MODULE(_dtwcpp_core, m) {
      "  n_samples: Number of subsamples to try (default 5).\n"
      "  max_iter: Max PAM iterations per subsample (default 100).\n"
      "  seed: Random seed for reproducibility (default 42).");
+
+  // =========================================================================
+  // OneBatchPAM
+  // =========================================================================
+
+  m.def("one_batch_pam", [](dtwc::Problem &prob, int n_clusters, int batch_size,
+                              int max_iter, std::uint64_t seed,
+                              dtwc::algorithms::OneBatchWeighting weighting) {
+    dtwc::algorithms::OneBatchPAMOptions options;
+    options.n_clusters = n_clusters;
+    options.batch_size = batch_size;
+    options.max_iter = max_iter;
+    options.random_seed = seed;
+    options.weighting = weighting;
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::one_batch_pam(prob, options);
+  }, "prob"_a, "n_clusters"_a, "batch_size"_a = -1, "max_iter"_a = 100,
+     "seed"_a = 42,
+     "weighting"_a = dtwc::algorithms::OneBatchWeighting::NearestNeighbor,
+     "Run OneBatchPAM using one fixed N-by-m distance table (AAAI 2025).");
+
+  m.def("one_batch_pam_with_stats",
+        [](dtwc::Problem &prob, const dtwc::algorithms::OneBatchPAMOptions &options) {
+    dtwc::algorithms::OneBatchPAMStats stats;
+    dtwc::core::ClusteringResult result;
+    {
+      nb::gil_scoped_release release;
+      result = dtwc::algorithms::one_batch_pam(prob, options, &stats);
+    }
+    return nb::make_tuple(std::move(result), std::move(stats));
+  }, "prob"_a, "options"_a,
+     "Run OneBatchPAM and return (ClusteringResult, OneBatchPAMStats).");
+
+  // =========================================================================
+  // DTW barycenters
+  // =========================================================================
+
+  m.def("dtw_barycenter",
+        [](const dtwc::Problem &prob, const std::vector<int> &indices,
+           std::size_t target_length, const dtwc::algorithms::BarycenterOptions &options) {
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::dtw_barycenter(prob, indices, target_length, options);
+  }, "prob"_a, "series_indices"_a, "target_length"_a,
+     "options"_a = dtwc::algorithms::BarycenterOptions{},
+     "Compute an SSG, DBA, or soft-DTW barycenter for selected series.");
+
+  m.def("barycenter_kmeans",
+        [](const dtwc::Problem &prob,
+           const dtwc::algorithms::BarycenterClusteringOptions &options) {
+    nb::gil_scoped_release release;
+    return dtwc::algorithms::barycenter_kmeans(prob, options);
+  }, "prob"_a, "options"_a = dtwc::algorithms::BarycenterClusteringOptions{},
+     "Cluster univariate series around sequence-valued DTW barycenters.");
 
   // =========================================================================
   // Checkpointing

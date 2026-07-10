@@ -1,7 +1,7 @@
 name: Ubuntu unit # adapted from: https://github.com/trase-cpp/trase/tree/master/.github/workflows
 on:
   push:
-    branches: [develop]
+    branches: [develop, Claude] # TODO(release): remove temporary Claude trigger
   pull_request:
     branches: [main]
 

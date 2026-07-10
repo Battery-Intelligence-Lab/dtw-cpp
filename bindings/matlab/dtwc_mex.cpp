@@ -1316,7 +1316,10 @@ void mexFunction(int nlhs, mxArray *plhs[],
   std::string error_id, error_msg;
   try {
     // Device / Env (contract §1.1, §6)
-    if (cmd == "set_device") cmd_set_device(nlhs, plhs, nrhs, prhs);
+    if (cmd == "version") {
+      if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
+    }
+    else if (cmd == "set_device") cmd_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "get_device") cmd_get_device(nlhs, plhs, nrhs, prhs);
     // dtwc.test introspection API (Task 3.3)
     else if (cmd == "test_parallelisation") cmd_test_parallelisation(nlhs, plhs, nrhs, prhs);

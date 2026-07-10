@@ -145,7 +145,8 @@ void MIP_clustering_byGurobi(Problem &prob)
     throw SolverError("Unknown exception during Gurobi optimisation.");
   }
 #else
-  std::cout << "Gurobi solver is not activated but is being used!" << '\n';
+  throw SolverError(
+      "Gurobi solver is unavailable; rebuild with -DDTWC_ENABLE_GUROBI=ON");
 #endif
 }
 

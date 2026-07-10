@@ -3,8 +3,6 @@
 @brief Tests for CUDA/GPU functionality in DTWC++ Python bindings.
 @author Volkan Kumtepeli
 """
-import warnings
-
 import numpy as np
 import pytest
 
@@ -36,7 +34,7 @@ class TestCUDAIntrospection:
 
 
 # ---------------------------------------------------------------------------
-# Device parsing and fallback
+# Device parsing and no-silent-fallback
 # ---------------------------------------------------------------------------
 class TestDeviceParsing:
     def test_cpu_default(self):
@@ -57,17 +55,13 @@ class TestDeviceParsing:
         with pytest.raises(ValueError, match="Unknown device"):
             dtwcpp.compute_distance_matrix(series, device="tpu")
 
-    def test_cuda_fallback_warns_when_unavailable(self):
-        """When CUDA not available, device='cuda' warns and falls back."""
+    def test_cuda_request_fails_loudly_when_unavailable(self):
+        """An explicit CUDA request never silently computes on CPU."""
         if getattr(dtwcpp, "CUDA_AVAILABLE", False) and dtwcpp.cuda_available():
-            pytest.skip("CUDA is available; fallback won't trigger")
+            pytest.skip("CUDA is available; unavailable-device path not exercised")
         series = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            dm = dtwcpp.compute_distance_matrix(series, device="cuda")
-            assert len(w) >= 1
-            assert any("Falling back to CPU" in str(x.message) for x in w)
-        assert dm.shape == (2, 2)
+        with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
+            dtwcpp.compute_distance_matrix(series, device="cuda")
 
 
 # ---------------------------------------------------------------------------

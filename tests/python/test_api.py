@@ -209,7 +209,9 @@ class TestClusterMethodDispatch:
         just that a non-ValueError was returned."""
         res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
         assert res.n_series == 12
-        assert res.distance_matrix is not None
+        # CLARA's scaling contract is O(Ns), not O(N²): Tier 1 must not
+        # materialise a full matrix merely to populate an auxiliary result field.
+        assert res.distance_matrix is None
         assert len(set(res.labels[:6])) == 1
         assert len(set(res.labels[6:])) == 1
         assert res.labels[0] != res.labels[11]

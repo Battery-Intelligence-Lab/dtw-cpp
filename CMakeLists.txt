@@ -6,10 +6,18 @@ cmake_minimum_required(VERSION 3.26)
 # so that it works well with tools like CPM or other
 # manual dependency management
 
-# Read version from single source of truth
-file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DTWC_VERSION_STRING)
+# Read the full PEP 440 release string from the single source of truth. CMake's
+# project(VERSION) grammar accepts numeric components only, so prerelease tags
+# (for example 2.0.0rc1) are stripped only for PROJECT_VERSION;
+# DTWC_VERSION_STRING remains the exact artifact/API version everywhere else.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" DTWC_VERSION_STRING)
+string(STRIP "${DTWC_VERSION_STRING}" DTWC_VERSION_STRING)
+string(REGEX MATCH "^[0-9]+(\\.[0-9]+)*" DTWC_CMAKE_VERSION "${DTWC_VERSION_STRING}")
+if(NOT DTWC_CMAKE_VERSION)
+  message(FATAL_ERROR "VERSION must begin with a numeric CMake-compatible version")
+endif()
 
-project(DTWC++ VERSION "${DTWC_VERSION_STRING}"
+project(DTWC++ VERSION "${DTWC_CMAKE_VERSION}"
   DESCRIPTION "A C++ library for fast Dynamic Time Warping Clustering"
   HOMEPAGE_URL https://battery-intelligence-lab.github.io/dtw-cpp/
   LANGUAGES CXX C)
@@ -219,7 +227,11 @@ add_library(project_options ALIAS dtwc_options)
 
 add_subdirectory(dtwc bin)
 
-if(PROJECT_IS_TOP_LEVEL)
+# Runtime bindings and executables consume the full version through this
+# PUBLIC definition, avoiding hand-maintained Python/MATLAB/CLI literals.
+target_compile_definitions(dtwc++ PUBLIC DTWC_VERSION_STRING="${DTWC_VERSION_STRING}")
+
+if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   add_executable(dtwc_main
     dtwc/main.cpp
   )
@@ -242,6 +254,25 @@ if(PROJECT_IS_TOP_LEVEL)
     project_warnings
     project_options
   )
+
+  install(TARGETS dtwc_cl
+    RUNTIME DESTINATION bin
+    COMPONENT runtime)
+  install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/README.md"
+    "${CMAKE_CURRENT_SOURCE_DIR}/THIRD_PARTY_LICENSES.md"
+    DESTINATION share/doc/dtwc
+    COMPONENT runtime)
+  install(FILES "${CMAKE_BINARY_DIR}/third_party.txt"
+    DESTINATION share/doc/dtwc
+    COMPONENT runtime
+    OPTIONAL)
+
+  if(APPLE AND OpenMP_CXX_FOUND AND OpenMP_omp_LIBRARY)
+    install(FILES "${OpenMP_omp_LIBRARY}" DESTINATION lib COMPONENT runtime)
+    set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "@loader_path/../lib")
+  endif()
 
   # Optional YAML config support for CLI tool
   if(DTWC_ENABLE_YAML AND TARGET yaml-cpp::yaml-cpp)
@@ -273,7 +304,28 @@ if(DTWC_BUILD_MATLAB)
   add_subdirectory(bindings/matlab)
 endif()
 
-cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_CURRENT_SOURCE_DIR}/bin/third_party.txt" "${CPM_PACKAGES}")
+cpm_licenses_create_disclaimer_target(write-licenses "${CMAKE_BINARY_DIR}/third_party.txt" "${CPM_PACKAGES}")
+
+if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
+  set(CPACK_PACKAGE_NAME "dtwc")
+  set(CPACK_PACKAGE_VENDOR "Battery Intelligence Lab, University of Oxford")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "DTWC++ Dynamic Time Warping clustering CLI")
+  set(CPACK_PACKAGE_VERSION "${DTWC_VERSION_STRING}")
+  set(CPACK_PACKAGE_FILE_NAME
+      "dtwc-${DTWC_VERSION_STRING}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+  set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+  set(CPACK_RESOURCE_FILE_README "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+  set(CPACK_COMPONENTS_ALL runtime)
+  set(CPACK_ARCHIVE_COMPONENT_INSTALL OFF)
+  set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY ON)
+  set(CPACK_PACKAGE_CHECKSUM SHA256)
+  if(WIN32)
+    set(CPACK_GENERATOR "ZIP")
+  else()
+    set(CPACK_GENERATOR "TGZ")
+  endif()
+  include(CPack)
+endif()
 
 # ── Configuration summary ──────────────────────────────────────────────────
 if(PROJECT_IS_TOP_LEVEL)
@@ -291,7 +343,7 @@ if(PROJECT_IS_TOP_LEVEL)
   endif()
 
   set(_gurobi_status "OFF")
-  if(TARGET Gurobi::GurobiCXX)
+  if(DTWC_ENABLE_GUROBI AND TARGET Gurobi::GurobiCXX)
     set(_gurobi_status "ON (${GUROBI_HOME})")
   elseif(DTWC_ENABLE_GUROBI)
     set(_gurobi_status "REQUESTED BUT NOT FOUND")

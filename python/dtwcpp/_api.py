@@ -244,7 +244,8 @@ ClusterResult = Result
 # (dtwc_cl.cpp: "auto, pam, clara, kmedoids, mip, hierarchical"), so the SAME
 # name is valid on cpu/gpu (dispatched here) and on hpc (forwarded to
 # dtwc_cl --method). "hclust" is the CLI's alias for "hierarchical".
-_METHODS = ("auto", "pam", "clara", "kmedoids", "mip", "hierarchical")
+_METHODS = ("auto", "pam", "onebatch", "clara", "kmedoids", "mip",
+            "lrcore", "hierarchical", "tadpole")
 
 
 def _normalize_method(method):
@@ -258,10 +259,14 @@ def _normalize_method(method):
     m = str(method).strip().lower()
     if m == "hclust":
         m = "hierarchical"
+    if m == "lr":
+        m = "lrcore"
+    if m == "obp":
+        m = "onebatch"
     if m not in _METHODS:
         raise ValueError(
             f"unknown method: {method!r}. Expected one of: {', '.join(_METHODS)} "
-            f"(or 'hclust' as an alias for 'hierarchical')."
+            f"(aliases: 'obp', 'lr', 'hclust')."
         )
     return m
 
@@ -283,6 +288,9 @@ def _run_local_method(prob, method, k, max_iter, n):
     if method == "pam":
         res = dtwcpp.fast_pam(prob, k, max_iter)
         return res.labels, res.medoid_indices, res.total_cost
+    if method == "onebatch":
+        res = dtwcpp.one_batch_pam(prob, k, max_iter=max_iter)
+        return res.labels, res.medoid_indices, res.total_cost
     if method == "clara":
         res = dtwcpp.fast_clara(prob, k, max_iter=max_iter)
         return res.labels, res.medoid_indices, res.total_cost
@@ -293,7 +301,14 @@ def _run_local_method(prob, method, k, max_iter, n):
 
     # kmedoids (Lloyd) and mip run through Problem.cluster() and read back state.
     prob.set_n_clusters(k)
-    prob.method = dtwcpp.Method.MIP if method == "mip" else dtwcpp.Method.Kmedoids
+    if method == "mip":
+        prob.method = dtwcpp.Method.MIP
+    elif method == "lrcore":
+        prob.method = dtwcpp.Method.LRCore
+    elif method == "tadpole":
+        prob.method = dtwcpp.Method.TADPole
+    else:
+        prob.method = dtwcpp.Method.Kmedoids
     prob.cluster()
     return prob.clusters_ind, prob.centroids_ind, prob.find_total_cost()
 
@@ -306,7 +321,8 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     offloaded to a SLURM cluster and the data is never read locally.
 
     ``method`` selects the clustering algorithm: one of ``"pam"`` (default),
-    ``"clara"``, ``"kmedoids"``, ``"mip"``, ``"hierarchical"``, or ``"auto"``.
+    ``"onebatch"``, ``"clara"``, ``"kmedoids"``, ``"mip"``, ``"lrcore"``,
+    ``"tadpole"``, ``"hierarchical"``, or ``"auto"``.
     An unrecognised method raises ``ValueError`` — it is NEVER silently ignored.
     """
     from dtwcpp import get_device, _resolve_device
@@ -324,16 +340,30 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=data.name)
 
-    # Local cpu / gpu: full distance matrix on the device, then the chosen method.
+    # Matrix-free methods must not accidentally pay the N^2 cost in this Tier-1
+    # wrapper. They currently execute on CPU; an explicit GPU request is rejected
+    # loudly instead of silently defeating their scaling contract.
     from dtwcpp import compute_distance_matrix, Problem
     series = data.as_series()
     names = [str(i) for i in range(len(series))]
-    D = compute_distance_matrix(series, band=band, device=eff)
     prob = Problem(data.name)
     prob.set_data(series, names)
-    prob.set_distance_matrix(D)
+    # CLARA is matrix-free too: it computes only sample and assignment
+    # distances. Treating it as a matrix method here defeated its O(Ns)
+    # scaling contract by materialising N^2 distances before dispatch.
+    matrix_free = method in ("onebatch", "clara", "tadpole")
+    if matrix_free and backend in ("cuda", "metal"):
+        from dtwcpp import DeviceError
+        raise DeviceError(
+            f"method='{method}' uses its own matrix-free CPU distance schedule; "
+            "CUDA execution is not implemented for that schedule. Use device='cpu'."
+        )
+    D = None if matrix_free else compute_distance_matrix(
+        series, band=band, device=eff)
+    if D is not None:
+        prob.set_distance_matrix(D)
     labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter, len(series))
-    return Result(labels, device=("cuda" if backend == "cuda" else "cpu"),
+    return Result(labels, device=backend,
                   elapsed_s=time.perf_counter() - t0, k=k, n_series=len(series),
                   medoid_indices=medoid_indices, distance_matrix=D,
                   cost=cost, name=data.name, series_names=names)

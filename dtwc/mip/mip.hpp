@@ -15,6 +15,9 @@ void MIP_clustering_byGurobi(Problem &prob);
 void MIP_clustering_byHiGHS(Problem &prob);
 void MIP_clustering_byBenders(Problem &prob);
 
+/// Runtime capability query used by bindings and artifact smoke tests.
+[[nodiscard]] bool highs_solver_available() noexcept;
+
 /// @brief LR-core EXACT clustering entry point (Method::LRCore, Phase 4 Task 4.4).
 /// Fills the distance matrix, seeds an upper bound from the k-medoids heuristic,
 /// runs `mip::lagrangian_root_exact` on a dense copy of D, and writes the proven

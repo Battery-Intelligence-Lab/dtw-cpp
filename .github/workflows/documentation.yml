@@ -4,6 +4,7 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
@@ -19,44 +20,13 @@ jobs:
       - name: Checkout current branch
         uses: actions/checkout@v6
 
-      # --- Prepare contributing docs (copy from repo root into Hugo content) ---
-      - name: Prepare contributing docs
-        run: |
-          mkdir -p docs/content/contributing
+      - name: Set up Python for generated-doc and drift gates
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
 
-          # CONTRIBUTING.md -> guideline.md (with Hugo frontmatter)
-          {
-            echo '---'
-            echo 'title: Guideline'
-            echo 'weight: 2'
-            echo '---'
-            echo ''
-            # Strip any existing Jekyll frontmatter (between --- markers)
-            sed '1{/^---$/!b};1,/^---$/d' ./CONTRIBUTING.md
-          } > docs/content/contributing/guideline.md
-
-          # conventions.md
-          {
-            echo '---'
-            echo 'title: Coding conventions'
-            echo 'weight: 3'
-            echo '---'
-            echo ''
-            sed '1{/^---$/!b};1,/^---$/d' ./develop/conventions.md
-          } > docs/content/contributing/conventions.md
-
-          # contributors.md
-          {
-            echo '---'
-            echo 'title: Contributors'
-            echo 'weight: 4'
-            echo '---'
-            echo ''
-            sed '1{/^---$/!b};1,/^---$/d' ./develop/contributors.md
-          } > docs/content/contributing/contributors.md
-
-          # Fix internal links (strip develop/ prefix)
-          find docs/content/contributing/ -name '*.md' -exec sed -i 's|](develop/|](|g' {} +
+      - name: Verify generated documentation and live API contract
+        run: python scripts/check_docs_contract.py
 
       # --- Hugo build ---
       - name: Setup Go
@@ -67,13 +37,13 @@ jobs:
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
         with:
-          hugo-version: 'latest'
+          hugo-version: '0.147.8'
           extended: true
 
       - name: Build Hugo site
         working-directory: docs
         run: |
-          hugo mod get -u
+          hugo mod get
           hugo --minify --baseURL "https://battery-intelligence-lab.github.io/dtw-cpp/"
 
       - name: Build Pagefind search index
@@ -95,7 +65,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gcc-13 g++-13 lcov
 
       - name: CMake configure
-        run: cmake -B build_dir -DCMAKE_BUILD_TYPE=Debug -DDTWC_ENABLE_COVERAGE:BOOL=TRUE -DDTWC_BUILD_TESTING=ON
+        run: >-
+          cmake -B build_dir
+          -DCMAKE_BUILD_TYPE=Debug
+          -DDTWC_ENABLE_COVERAGE:BOOL=TRUE
+          -DDTWC_BUILD_TESTING=ON
+          -DDTWC_BUILD_EXAMPLES=ON
+          -DDTWC_ENABLE_HIGHS=OFF
+          -DDTWC_ENABLE_GUROBI=OFF
+          -DDTWC_ENABLE_LLFIO=OFF
         env:
           CC: gcc-13
           CXX: g++-13
@@ -106,6 +84,12 @@ jobs:
       - name: Run tests
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
+
+      - name: Execute documented C++ quickstart verbatim
+        run: ./build_dir/bin/example_quickstart tests/conformance/data/conformance_series.csv
+
+      - name: Diff documented CLI flags against live --help
+        run: python scripts/check_docs_contract.py --cli build_dir/bin/dtwc_cl
 
       # Generate the lcov trace file (also consumed by genhtml below).
       - name: Generate coverage info
@@ -120,12 +104,8 @@ jobs:
       # the Codecov token in the environment — i.e. remote code execution and
       # token exposure on every PR run. Replaced by the official maintained
       # action below.
-      # OPEN: pin `codecov/codecov-action` to a full commit SHA once network is
-      # available (maintainer: resolve the v5 tag to its SHA, e.g.
-      # `gh api repos/codecov/codecov-action/git/ref/tags/v5`). A version tag is
-      # mutable but is a maintained, auditable action rather than curl|bash.
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@04b047e8bb82a0c002c8312c1c880fbc6a999d45 # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: build_dir/coverage.info
@@ -137,12 +117,16 @@ jobs:
 
       - run: mv ./build_dir/Coverage ./docs/public/Coverage
 
+      - name: Check every internal link in the built site
+        run: python scripts/check_site_links.py docs/public --base-path /dtw-cpp/
+
       # --- Upload combined site artifact ---
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
 
   # Publication job
   publish:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

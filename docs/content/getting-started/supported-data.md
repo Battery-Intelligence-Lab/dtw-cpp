@@ -126,7 +126,7 @@ with ipc.open_file("data.arrow") as f:
     table = f.read_all()
 ```
 
-**Schema:** `LargeList<Float64>` for series data (supports >2 billion elements per list). Create Arrow IPC files with the `dtwc-convert` tool — see [Data Conversion](data-conversion.md).
+**Schema:** `LargeList<Float64>` for series data (supports >2 billion elements per list). Create Arrow IPC files with the `dtwc-convert` tool — see [Data formats and conversion](../../guides/data-formats/).
 
 ---
 

@@ -9,13 +9,13 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 
 ## Features
 
-- **Multiple clustering methods**: FastPAM, FastCLARA, Lloyd's k-medoids, MIP (exact), and hierarchical clustering
-- **DTW variants**: Standard, DDTW, WDTW, ADTW, and Soft-DTW
+- **Multiple clustering methods**: FastPAM, OneBatchPAM, FastCLARA, Lloyd's k-medoids, MIP, LR-core, hierarchical, and TADPole
+- **DTW variants**: Standard, DDTW, WDTW, ADTW, Soft-DTW, MSM, and TWE
 - **Distance metrics**: L1 (default) and squared Euclidean
 - **GPU acceleration**: CUDA support for distance matrix computation
 - **Configuration files**: TOML (native) and YAML (optional) configuration support
 - **Checkpointing**: Save and resume distance matrix computation
-- **Flexible I/O**: CSV input with configurable row/column skipping, multiple output formats
+- **Flexible I/O**: CSV/TSV plus optional Arrow/Parquet input, configurable row/column skipping, and stable CSV outputs
 
 ## Quick Start
 
@@ -36,13 +36,15 @@ dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-i, --input <path>` | Input file or folder. Supported: `.csv`, `.tsv`, `.parquet`, `.arrow`, `.ipc`, `.feather`, `.dtws` | — |
+| `-h, --help` | Print the live command reference | — |
+| `--version` | Print the version from the repository `VERSION` source of truth | — |
+| `-i, --input <path>` | Input file or folder. CSV/TSV and `.dtws` are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
 | `-o, --output <path>` | Output directory | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | `dtwc` |
-| `-k, --clusters <int>` | Number of clusters | 3 |
+| `-k, --n-clusters <int>` | Number of clusters | 3 |
 | `-v, --verbose` | Verbose output | off |
 | `--column <name>` | Parquet column to use as time series (required for Parquet single-file mode) | — |
-| `--dtype <string>` | Data type for in-memory storage. Aliases: `--data-precision`, `--data-type`, `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float32` |
+| `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
 | `--ram-limit <size>` | Memory budget, e.g. `2G`, `500M`, `128G` (parsed; used for chunked processing) | — |
 
 ### Clustering Method
@@ -53,7 +55,9 @@ dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
 | `--max-iter <int>` | Maximum iterations | 100 |
 | `--n-init <int>` | Number of random restarts (PAM/kMedoids) | 1 |
 
-Available methods: `pam`, `clara`, `kmedoids`, `mip`, `hierarchical` (alias: `hclust`).
+Available methods: `auto`, `pam`, `onebatch` (alias `obp`), `clara`,
+`kmedoids`, `mip`, `lrcore` (alias `lr`), `hierarchical` (alias `hclust`),
+and `tadpole`.
 
 ### DTW Options
 
@@ -65,7 +69,8 @@ Available methods: `pam`, `clara`, `kmedoids`, `mip`, `hierarchical` (alias: `hc
 
 Available metrics: `l1`, `squared_euclidean` (aliases: `sqeuclidean`, `l2sq`).
 
-Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias: `soft-dtw`).
+Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
+`soft-dtw`), `msm`, and `twe`.
 
 ### DTW Variant Parameters
 
@@ -74,6 +79,10 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias: `soft-
 | `--wdtw-g <float>` | WDTW logistic weight steepness | 0.05 |
 | `--adtw-penalty <float>` | ADTW non-diagonal step penalty | 1.0 |
 | `--sdtw-gamma <float>` | Soft-DTW smoothing parameter | 1.0 |
+| `--msm-c <float>` | MSM split/merge cost | 1.0 |
+| `--twe-nu <float>` | TWE stiffness | 0.001 |
+| `--twe-lambda <float>` | TWE edit penalty | 1.0 |
+| `--mv-mode <string>` | Multivariate mode: `dependent`, `independent` | `dependent` |
 
 ### CLARA-Specific Options
 
@@ -82,6 +91,14 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias: `soft-
 | `--sample-size <int>` | Subsample size (-1 = auto) | -1 |
 | `--n-samples <int>` | Number of independent subsamples | 5 |
 | `--seed <int>` | Random seed for reproducibility | 42 |
+
+### OneBatchPAM and TADPole options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--batch-size <int>` | OneBatchPAM objective batch size (-1 = logarithmic auto) | -1 |
+| `--batch-weighting <string>` | `uniform`, `debiased`, or nearest-neighbour weighting `nniw` | `nniw` |
+| `--dc <float>` | TADPole density cutoff (omitted/negative = deterministic auto-selection) | auto |
 
 ### Hierarchical Clustering Options
 
@@ -143,7 +160,7 @@ The CLI writes the following files to the output directory:
 | `<name>_labels.csv` | Point name and cluster assignment |
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score |
-| `<name>_distmatrix.csv` | Full pairwise distance matrix |
+| `<name>_distance_matrix.csv` | Full pairwise distance matrix (when materialised) |
 
 ## Examples
 

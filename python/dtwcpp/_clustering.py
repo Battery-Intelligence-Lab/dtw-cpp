@@ -71,8 +71,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         or ``"squared_euclidean"``. Matches the ``metric`` argument of the
         distance free functions (api-contract-2.0.md §1.5/§2.6).
     device : str or None, default=None
-        Computation device. ``"cpu"``, ``"gpu"`` (alias for ``"cuda"``, CPU
-        fallback if no GPU), ``"cuda"``/``"cuda:N"``, or ``"hpc"`` (offload the
+        Computation device. ``"cpu"``, ``"gpu"`` (CUDA or Metal, requiring a
+        live GPU), ``"cuda"``/``"cuda:N"``, or ``"hpc"`` (offload the
         whole clustering job to a SLURM cluster). ``None`` uses the global
         default set via :func:`dtwcpp.device` (itself ``"cpu"`` unless changed).
         With ``"hpc"``, only ``labels_`` is populated (the cluster computes
@@ -236,10 +236,10 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
         # Pre-compute GPU distance matrix once (shared across n_init restarts)
         dm_precomputed = None
-        if backend == "cuda":
+        if backend in ("cuda", "metal"):
             if self.variant != "standard":
                 raise ValueError(
-                    f"device='cuda' only supports variant='standard', "
+                    f"device='{backend}' only supports variant='standard', "
                     f"got variant='{self.variant}'"
                 )
             dm_precomputed = compute_distance_matrix(

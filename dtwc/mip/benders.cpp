@@ -27,6 +27,7 @@
 #include "benders.hpp"
 #include "mip.hpp"
 #include "../Problem.hpp"
+#include "../error.hpp"
 #include "../settings.hpp"
 #include "../timing.hpp"
 #include "../types/types.hpp" // for Range
@@ -362,8 +363,8 @@ void MIP_clustering_byBenders(Problem &prob)
             << " (" << clk << ")\n";
 
 #else
-  std::cout << "Benders decomposition requires HiGHS. "
-            << "Please rebuild with -DDTWC_ENABLE_HIGHS=ON\n";
+  throw SolverError(
+      "Benders decomposition requires HiGHS; rebuild with -DDTWC_ENABLE_HIGHS=ON");
 #endif
 }
 

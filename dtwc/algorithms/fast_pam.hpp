@@ -21,6 +21,7 @@
 #include "../core/clustering_result.hpp"
 
 #include <vector>
+#include <cstdint>
 
 namespace dtwc {
 
@@ -66,6 +67,10 @@ enum class PAMVariant { FastPAM1Naive, FastPAM1, FasterPAM };
  * @note Requires prob to have data loaded (prob.size() > 0).
  */
 FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
+
+/** Deterministic FastPAM entry point with an invocation-local BUILD seed. */
+FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
+                              std::uint64_t random_seed, int max_iter = 100);
 
 /**
  * @brief Run the SWAP phase only, from a caller-supplied initial medoid set.

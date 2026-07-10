@@ -273,6 +273,8 @@ inline std::string canonical_flag_for(std::string_view spelling)
 int main(int argc, char *argv[])
 {
   CLI::App app{"DTWC++ -- Dynamic Time Warping Clustering"};
+  app.set_version_flag("--version", DTWC_VERSION_STRING,
+                       "Print the DTWC++ version and exit");
 
   // TOML config file support (CLI11 built-in, processes before parsing).
   // TOML keys are the canonical long-flag names without "--" (e.g. `n-clusters`,
@@ -327,11 +329,13 @@ int main(int argc, char *argv[])
   auto *clusters_dep_opt = app.add_option("--clusters", n_clusters_deprecated,
                                           "DEPRECATED alias of --n-clusters")
                                ->group("");
-  app.add_option("-m,--method", method, "Clustering method: auto, pam, clara, kmedoids, mip, hierarchical, tadpole")
+  app.add_option("-m,--method", method, "Clustering method: auto, pam, onebatch, clara, kmedoids, mip, lrcore, hierarchical, tadpole")
       ->transform(CLI::CheckedTransformer(
           std::map<std::string, std::string>{
-              {"auto", "auto"}, {"pam", "pam"}, {"clara", "clara"},
+              {"auto", "auto"}, {"pam", "pam"}, {"onebatch", "onebatch"},
+              {"obp", "onebatch"}, {"clara", "clara"},
               {"kmedoids", "kmedoids"}, {"mip", "mip"},
+              {"lrcore", "lrcore"}, {"lr", "lrcore"},
               {"hierarchical", "hierarchical"}, {"hclust", "hierarchical"},
               {"tadpole", "tadpole"}},
           CLI::ignore_case));
@@ -378,6 +382,21 @@ int main(int argc, char *argv[])
   app.add_option("--sample-size", sample_size, "CLARA subsample size (-1 = auto)");
   app.add_option("--n-samples", n_samples, "CLARA number of subsamples");
   app.add_option("--seed", clara_seed, "Random seed for CLARA");
+
+  // OneBatchPAM-specific. The seed is shared with CLARA so reproducibility has
+  // one CLI spelling across sampling-based methods.
+  int onebatch_size = -1;
+  std::string onebatch_weighting = "nniw";
+  app.add_option("--batch-size", onebatch_size,
+                 "OneBatchPAM fixed objective batch size (-1 = logarithmic auto)");
+  app.add_option("--batch-weighting", onebatch_weighting,
+                 "OneBatchPAM weighting: uniform, debiased, nniw")
+    ->transform(CLI::CheckedTransformer(
+        std::map<std::string, std::string>{{"uniform", "uniform"},
+                                           {"debiased", "debiased"},
+                                           {"debias", "debiased"},
+                                           {"nniw", "nniw"}},
+        CLI::ignore_case));
 
   // Hierarchical-specific
   std::string linkage_str = "average";
@@ -562,7 +581,8 @@ int main(int argc, char *argv[])
 
   // ---- Post-parse validation (catches both CLI and YAML values) ----
   if (input_file.empty()) {
-    std::cerr << "Error: --input is required (via CLI or YAML config)\n";
+    std::cerr << "Error: --input is required via CLI or config file "
+                 "(TOML; YAML if built with DTWC_ENABLE_YAML)\n";
     return EXIT_FAILURE;
   }
   if (n_clusters < 1) {
@@ -822,7 +842,8 @@ int main(int argc, char *argv[])
       std::cout << "Auto-selected method: " << method << " (N=" << N << ")\n";
   }
 
-  if (mmap_threshold == 0 || prob.size() >= mmap_threshold) {
+  const bool matrix_free_method = (method == "onebatch" || method == "tadpole");
+  if (!matrix_free_method && (mmap_threshold == 0 || prob.size() >= mmap_threshold)) {
     auto cache_path = fs::path(output_dir) / (prob_name + "_distmat.cache");
     prob.use_mmap_distance_matrix(cache_path);
     if (verbose)
@@ -920,6 +941,12 @@ int main(int argc, char *argv[])
   }
 
   // ---- GPU distance matrix (if --device cuda) ----
+  if (dev.is_cuda && matrix_free_method) {
+    std::cerr << "Error: --method " << method
+              << " uses a matrix-free CPU distance schedule; CUDA execution is not "
+                 "implemented for that schedule. Use --device cpu.\n";
+    return EXIT_FAILURE;
+  }
   if (dev.is_cuda && !prob.isDistanceMatrixFilled()) {
 #ifdef DTWC_HAS_CUDA
     if (!dtwc::cuda::cuda_available()) {
@@ -987,6 +1014,27 @@ int main(int argc, char *argv[])
                 << " in " << result.iterations << " iterations"
                 << ", cost=" << std::setprecision(6) << result.total_cost
                 << " [" << clk << "]\n";
+    }
+  } else if (method == "onebatch") {
+    dtwc::algorithms::OneBatchPAMOptions onebatch_options;
+    onebatch_options.n_clusters = n_clusters;
+    onebatch_options.batch_size = onebatch_size;
+    onebatch_options.max_iter = max_iter;
+    onebatch_options.random_seed = clara_seed;
+    if (onebatch_weighting == "uniform")
+      onebatch_options.weighting = dtwc::algorithms::OneBatchWeighting::Uniform;
+    else if (onebatch_weighting == "debiased")
+      onebatch_options.weighting = dtwc::algorithms::OneBatchWeighting::Debiased;
+    else
+      onebatch_options.weighting = dtwc::algorithms::OneBatchWeighting::NearestNeighbor;
+
+    dtwc::algorithms::OneBatchPAMStats onebatch_stats;
+    result = dtwc::algorithms::one_batch_pam(prob, onebatch_options, &onebatch_stats);
+    if (verbose) {
+      std::cout << "OneBatchPAM finished, cost=" << std::setprecision(6)
+                << result.total_cost << ", batch=" << onebatch_stats.batch_size
+                << ", distance-matrix fraction=" << std::setprecision(3)
+                << onebatch_stats.full_matrix_fraction << " [" << clk << "]\n";
     }
   } else if (method == "clara") {
     // FastCLARA

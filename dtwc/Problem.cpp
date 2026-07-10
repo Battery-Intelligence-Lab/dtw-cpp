@@ -11,6 +11,7 @@
  */
 
 #include "Problem.hpp"
+#include "error.hpp"           // for DeviceError
 #include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byBenders
 #include "parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
@@ -235,23 +236,26 @@ double Problem::dist_by_ind(int i, int j)
 
   // Lazily allocate the dense matrix on first individual distance request.
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
-  // The critical section ensures thread safety if called from a parallel region
-  // before fillDistanceMatrix(). Double-check pattern: fast path skips the lock.
+  // The critical section prevents duplicate allocation. Callers that enter a
+  // parallel region must still prime one non-diagonal distance serially first
+  // (or call fillDistanceMatrix), because rebind_dtw_fn mutates shared state.
   bool needs_init = visit_distmat([&](const auto &m) { return m.size() != N; });
   if (needs_init) {
 #ifdef _OPENMP
     #pragma omp critical(distByInd_init)
 #endif
     {
+      bool initialised_here = false;
       visit_distmat([&](auto &m) {
         if (m.size() != N) {
           if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
             m.resize(N);
+            initialised_here = true;
           }
         }
       });
+      if (initialised_here) rebind_dtw_fn();
     }
-    rebind_dtw_fn();
   }
 
   bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
@@ -398,13 +402,12 @@ void Problem::fill_distance_matrix()
   // Shared post-GPU handler. Templated on the backend's result type (both
   // CUDADistMatResult and MetalDistMatResult derive from gpu::DistMatResultBase,
   // so any base accessor works). Returns true on success; false signals the
-  // caller to fall back to brute-force.
+  // caller to continue. An explicitly requested backend never changes to CPU.
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
   auto dispatch_gpu_backend = [&](const auto &result, const char *backend) -> bool {
     if (result.pairs_computed == 0 && data.size() > 1) {
-      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
-      std::cerr << backend << " returned empty — falling back to CPU.\n";
-      return false;
+      throw DeviceError(std::string(backend)
+                        + " returned no distance pairs. No CPU fallback was attempted.");
     }
     visit_distmat([&](auto &m) {
       if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
@@ -449,10 +452,9 @@ void Problem::fill_distance_matrix()
 #ifdef DTWC_HAS_CUDA
   {
     if (!dtwc::cuda::cuda_available()) {
-      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
-      std::cerr << "No CUDA GPU detected, falling back to CPU.\n";
-      fillDistanceMatrix_BruteForce();
-      break;
+      throw DeviceError(
+        "CUDA distance strategy requested but no CUDA GPU was detected. "
+        "No CPU fallback was attempted.");
     }
 
     dtwc::cuda::CUDADistMatOptions cuda_opts;
@@ -466,22 +468,21 @@ void Problem::fill_distance_matrix()
     cuda_opts.verbose = verbose;
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(data.p_vec, cuda_opts);
-    if (!dispatch_gpu_backend(cuda_result, "CUDA")) fillDistanceMatrix_BruteForce();
+    (void)dispatch_gpu_backend(cuda_result, "CUDA");
     break;
   }
 #else
-    // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
-    std::cerr << "CUDA not compiled in, falling back to CPU brute-force.\n";
-    [[fallthrough]];
+    throw DeviceError(
+      "CUDA distance strategy requested but CUDA is not compiled in. "
+      "Rebuild with -DDTWC_ENABLE_CUDA=ON. No CPU fallback was attempted.");
 #endif
   case DistanceMatrixStrategy::Metal:
 #ifdef DTWC_HAS_METAL
   {
     if (!dtwc::metal::metal_available()) {
-      // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
-      std::cerr << "No Metal GPU detected, falling back to CPU.\n";
-      fillDistanceMatrix_BruteForce();
-      break;
+      throw DeviceError(
+        "Metal distance strategy requested but no Metal GPU was detected. "
+        "No CPU fallback was attempted.");
     }
 
     dtwc::metal::MetalDistMatOptions metal_opts;
@@ -491,13 +492,13 @@ void Problem::fill_distance_matrix()
 
     auto metal_result = dtwc::metal::compute_distance_matrix_metal(
         data.p_vec, metal_opts);
-    if (!dispatch_gpu_backend(metal_result, "Metal")) fillDistanceMatrix_BruteForce();
+    (void)dispatch_gpu_backend(metal_result, "Metal");
     break;
   }
 #else
-    // No-silent-fallback (Task 3.2): ALWAYS warn to stderr; verbose is not a gate.
-    std::cerr << "Metal not compiled in, falling back to CPU brute-force.\n";
-    [[fallthrough]];
+    throw DeviceError(
+      "Metal distance strategy requested but Metal is not compiled in. "
+      "Rebuild on macOS with -DDTWC_ENABLE_METAL=ON. No CPU fallback was attempted.");
 #endif
   case DistanceMatrixStrategy::BruteForce:
   default:
