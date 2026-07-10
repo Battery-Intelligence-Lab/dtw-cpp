@@ -276,6 +276,7 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
             }
         tags.input_tags.two_d_array = True
         tags.input_tags.allow_nan = False
+        tags.input_tags.pairwise = self.metric == "precomputed"
         tags.requires_fit = True
         tags.non_deterministic = False
         return tags

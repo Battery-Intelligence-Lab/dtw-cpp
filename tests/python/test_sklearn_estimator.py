@@ -64,6 +64,38 @@ def test_sklearn_common_estimator_contract():
     check_estimator(DTWCKMedoids(n_clusters=2))
 
 
+def test_precomputed_native_pairwise_tag():
+    pytest.importorskip("sklearn", minversion="1.6")
+    from sklearn.utils import get_tags
+
+    precomputed = DTWCKMedoids(n_clusters=2, metric="precomputed")
+    raw = DTWCKMedoids(n_clusters=2, metric="dtw")
+
+    assert precomputed.__sklearn_tags__().input_tags.pairwise is True
+    assert get_tags(precomputed).input_tags.pairwise is True
+    assert raw.__sklearn_tags__().input_tags.pairwise is False
+    assert get_tags(raw).input_tags.pairwise is False
+
+
+def test_grid_search_slices_precomputed_matrix_on_both_axes():
+    pytest.importorskip("sklearn", minversion="1.6")
+    from sklearn.model_selection import GridSearchCV, KFold
+
+    positions = np.array([0.0, 0.2, 0.4, 10.0, 10.2, 10.4])
+    distances = np.abs(positions[:, None] - positions[None, :])
+    search = GridSearchCV(
+        DTWCKMedoids(metric="precomputed", random_state=7),
+        {"n_clusters": [2]},
+        cv=KFold(n_splits=3, shuffle=True, random_state=11),
+        error_score="raise",
+    )
+
+    search.fit(distances)
+
+    assert search.best_estimator_.n_samples_fit_ == distances.shape[0]
+    assert np.isfinite(search.best_score_)
+
+
 @pytest.mark.parametrize(
     "matrix,message",
     [
