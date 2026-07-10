@@ -16,8 +16,11 @@
 
 #include "../test_util.hpp"
 
+#include <chrono>
 #include <filesystem>
 #include <set>
+#include <string>
+#include <system_error>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -53,6 +56,47 @@ Problem make_dummy_problem(int N_data, int Nc)
   // Without this, tests pollute the working directory with test_clustering*.csv.
   prob.output_folder = std::filesystem::temp_directory_path().string();
   return prob;
+}
+
+struct TemporaryOutputDirectory {
+  std::filesystem::path path;
+
+  TemporaryOutputDirectory()
+  {
+    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+    path = std::filesystem::temp_directory_path()
+         / ("dtwc_capped_lloyd_" + std::to_string(nonce));
+    std::filesystem::create_directories(path);
+  }
+
+  ~TemporaryOutputDirectory()
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+};
+
+Problem make_capped_lloyd_problem(
+  const std::filesystem::path &output, std::string name, int max_iter)
+{
+  Problem problem(name);
+  problem.set_data(Data(
+    std::vector<std::vector<data_t>>{
+      {0.0}, {40.0}, {40.0}, {46.0}, {49.0},
+      {51.0}, {51.0}, {51.0}, {100.0}
+    },
+    std::vector<std::string>{
+      "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"
+    }));
+  problem.set_n_clusters(2);
+  problem.set_max_iter(max_iter);
+  problem.set_n_repetitions(1);
+  problem.output_folder = output;
+  problem.init_fun = [](Problem &candidate) {
+    std::vector<int> initial_medoids{0, 8};
+    candidate.set_clusters(initial_medoids);
+  };
+  return problem;
 }
 
 } // anonymous namespace
@@ -244,4 +288,49 @@ TEST_CASE("After assignClusters, each medoid belongs to its own cluster", "[Phas
     medoid_labels.insert(label);
   }
   REQUIRE(medoid_labels.size() == static_cast<size_t>(Nc));
+}
+
+TEST_CASE("Capped Lloyd returns labels assigned to its final medoids",
+          "[Phase1][clustering][lloyd][capped][m29]")
+{
+  TemporaryOutputDirectory output;
+  auto capped = make_capped_lloyd_problem(output.path, "capped", 1);
+  auto converged = make_capped_lloyd_problem(output.path, "converged", 100);
+
+  capped.cluster_by_kmedoids_lloyd();
+  converged.cluster_by_kmedoids_lloyd();
+
+  const std::vector<int> expected_medoids{1, 5};
+  const std::vector<int> expected_labels{0, 0, 0, 1, 1, 1, 1, 1, 1};
+  REQUIRE(capped.medoids() == expected_medoids);
+  CHECK(capped.last_iterations == 1);
+  REQUIRE(converged.medoids() == expected_medoids);
+  REQUIRE(converged.labels() == expected_labels);
+  CHECK(converged.last_iterations == 2);
+  CHECK_THAT(converged.find_total_cost(), WithinAbs(96.0, 1e-12));
+
+  std::vector<int> nearest_labels;
+  nearest_labels.reserve(capped.size());
+  double nearest_cost = 0.0;
+  for (std::size_t point = 0; point < capped.size(); ++point) {
+    int nearest_cluster = 0;
+    double nearest_distance = capped.dist_by_ind(
+      static_cast<int>(point), capped.medoids().front());
+    for (std::size_t cluster = 1; cluster < capped.medoids().size(); ++cluster) {
+      const double candidate_distance = capped.dist_by_ind(
+        static_cast<int>(point), capped.medoids()[cluster]);
+      if (candidate_distance < nearest_distance) {
+        nearest_cluster = static_cast<int>(cluster);
+        nearest_distance = candidate_distance;
+      }
+    }
+    nearest_labels.push_back(nearest_cluster);
+    nearest_cost += nearest_distance;
+  }
+
+  REQUIRE(nearest_labels == expected_labels);
+  REQUIRE_THAT(nearest_cost, WithinAbs(96.0, 1e-12));
+  CHECK(capped.labels() == nearest_labels);
+  CHECK_THAT(capped.find_total_cost(), WithinAbs(nearest_cost, 1e-12));
+  CHECK(capped.labels() == converged.labels());
 }

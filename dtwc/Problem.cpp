@@ -1060,6 +1060,12 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
     oldmedoids = centroids_ind;
   }
 
+  // A converged iteration leaves the medoids unchanged, so its assignment is
+  // already current. A capped iteration may have just updated the medoids;
+  // realign once before costing and snapshotting the returned state.
+  if (status == -1)
+    assign_clusters();
+
   const double total_cost = find_total_cost();
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
   if (persist_artifacts)

@@ -1907,3 +1907,81 @@ fresh R2025b MEX:
 Verdict: **PASS.** Dense/precomputed work survives an identical configuration
 and no semantic mutation can expose an old cached distance; legacy mutation is
 detected in O(1), and persistent mmap identity remains loud.
+
+## M29 — capped Lloyd final assignment coherence
+
+Lloyd's loop assigned every point to the current medoids and then replaced the
+medoids with the best members of those clusters. When the loop stopped because
+it exhausted `max_iter`, it returned immediately: `centroids_ind` held the new
+medoids, while `clusters_ind` still described the preceding medoids.
+`find_total_cost()` follows the stored labels, so restart comparison and the
+public result were internally inconsistent as well.
+
+The preregistered scalar fixture is
+`{0,40,40,46,49,51,51,51,100}`, with k=2, initial medoids `{0,8}`, and
+`max_iter=1`. The single update selects medoid indices `{1,5}` (values 40 and
+51). Against those final medoids, 46 and 49 both belong to cluster 1 and the
+independent nearest-medoid objective is
+`40 + 5 + 2 + 49 = 96`. The stale labels left both points in cluster 0 and
+therefore produced 104.
+
+Red command:
+
+```powershell
+build/phase8-capped-lloyd/bin/unit_test_clustering_algorithms.exe `
+  "[m29]" --reporter compact
+```
+
+Decisive pre-fix output:
+
+```text
+final medoids:  {1,5}
+stale labels:   {0,0,0,0,0,1,1,1,1}
+nearest labels: {0,0,0,1,1,1,1,1,1}
+reported cost:  104
+nearest cost:   96
+test cases: 1 | 1 failed
+assertions: 11 | 8 passed | 3 failed
+```
+
+The regression also runs the same problem to convergence. It independently
+recomputes every nearest label and distance from the returned medoids, then
+requires the capped and converged states to match. The converged path reaches
+the same medoids, labels, and cost after two iterations, which pins the
+no-change branch as well as the capped correction.
+
+The implementation performs one final `assign_clusters()` only for status -1,
+immediately before cost calculation and restart snapshotting. Status 0 proves
+that the update left medoids unchanged, so its preceding assignment is already
+current and receives no extra work. The full distance matrix is materialized
+before the loop, making the added capped assignment read-only and parallel-safe.
+It consumes no RNG and does not change initialization or iteration counts.
+
+Green evidence:
+
+```text
+Clang Release, HiGHS/LLFIO ON (build/highs-1151)
+  focused [m29]:                         11 assertions / 1 case passed
+  full unit_test_clustering_algorithms:  67 assertions / 11 cases passed
+  Tier-1 [lloyd] contracts:              16 assertions / 4 cases passed
+  k-means++ FastPAM quality contrast:      1 assertion  / 1 case passed
+  Problem Phase-0 artifact failures:      50 assertions / 3 cases passed
+  focused CTest group:                     5 tests / 0 failed
+
+Clang Release, HiGHS/Gurobi/LLFIO OFF (build/phase8-capped-lloyd)
+  focused [m29]:                         11 assertions / 1 case passed
+  full unit_test_clustering_algorithms:  67 assertions / 11 cases passed
+  Tier-1 [lloyd] contracts:              16 assertions / 4 cases passed
+  direct initialization gates:            4 assertions / 2 cases passed
+  k-means++ FastPAM quality contrast:      1 assertion  / 1 case passed
+  Problem Phase-0 artifact failures:      50 assertions / 3 cases passed
+```
+
+The Tier-1 group covers best-restart restoration, local seed scheduling,
+restart-count rejection, checked seed overflow, custom callbacks, and a first
+infinite-cost result. The focused CTest group additionally runs the complete
+FastPAM and adversarial FastPAM suites.
+
+Verdict: **PASS.** Capped Lloyd results now expose one coherent final state;
+converged arithmetic, seed/restart schedules, k-means++ behavior, non-finite
+selection, artifact errors, and optional-dependency floors remain green.

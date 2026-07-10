@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made iteration-capped Lloyd k-medoids return one coherent final state by
+  assigning labels to the final medoids before calculating restart costs.
+  Fully converged runs retain their existing assignment and iteration path.
 - Bound dense and injected precomputed distance matrices to the exact band,
   variant parameters, multivariate mode, missing-data policy, backend, and CUDA
   settings that produced them. Semantic setters now invalidate stale work;
