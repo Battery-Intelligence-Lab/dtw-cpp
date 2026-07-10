@@ -1025,8 +1025,8 @@ Labels, every center, cost `3.0910791478147139`, iterations, and convergence
 were bit-identical between the post-edit 1/2/24-thread runs and the pre-edit
 fingerprint. Timing remains advisory on the shared host, but every registered
 band passed. The two direct-extension timing modules both emitted the same
-nanobind teardown leak diagnostic; because it predates and survives L6 unchanged,
-it is retained for the Phase-8.2 leak/sanitizer audit rather than misattributed.
+nanobind teardown diagnostic. M18 later isolated this to the timing harness's
+unregistered `importlib` module lifetime, not a DTWC binding leak; see below.
 
 Verdict: **PASS.** The hot path removes repeated large allocation, provides real
 parallel speedup, and preserves the serial numerical/RNG contract exactly.
@@ -1315,3 +1315,74 @@ not contacted on the development machine.
 Verdict: **PASS.** `n_init` now changes PAM work and results consistently on the
 local CLI and Python HPC route, with deterministic best-result retention and no
 silent seed-default override.
+
+## M18 — nanobind teardown diagnostic (FALSIFIED as a normal-use leak)
+
+L6's pre/post timing processes both exited 0 after printing the same nanobind
+shutdown warning: 3 instances, 33 types, and 325 functions. The three instances
+were `BarycenterOptions`, `BarycenterClusteringOptions`, and
+`HierarchicalOptions`. The exact archived commands proved that pre and post ran
+in separate Python processes, each loading one extension as `_dtwcpp_core`:
+
+```python
+spec = importlib.util.spec_from_file_location("_dtwcpp_core", path)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+```
+
+The harness did not place the module in `sys.modules`. A minimal load with no
+DTWC call reproduced the full 3/33/325 diagnostic, so neither barycenter work
+nor L6's parallel changes caused it. Controlled subprocesses then separated the
+loader lifetime from the binding:
+
+```text
+case                                           exit          stderr
+unregistered direct load, no DTWC call         0             3 instances / 33 types / 325 functions
+same load with sys.modules[spec.name] = m       0             empty
+normal package import + all 3 defaulted calls  0             empty (stdout: 3 3 2)
+unregistered load, delete 3 defaulted funcs    0             empty
+two extension copies in one interpreter        0xC0000409    duplicate Device/CPU registration abort
+```
+
+The normal-use case constructed a `Problem`, invoked `dtw_barycenter` and
+`barycenter_kmeans` without explicit options, filled its distance matrix, and
+invoked `build_dendrogram` without explicit options. It therefore exercised all
+three objects named by the warning, not merely an import-only happy path.
+
+The counts have an exact source explanation. `_dtwcpp_core.cpp` has exactly
+three bound custom-object defaults:
+
+```text
+dtw_barycenter(..., options=BarycenterOptions{})
+barycenter_kmeans(..., options=BarycenterClusteringOptions{})
+build_dendrogram(..., opts=HierarchicalOptions{})
+```
+
+Nanobind converts each default into a Python instance stored by the bound
+function. Its `nb_func_dealloc` decrements every `arg.value` during orderly
+module teardown. The installed nanobind 2.12.0 `internals_cleanup()` runs from
+`Py_AtExit`, counts still-live `inst_c2p` entries, and deliberately prints type
+and function registries only when an instance/keep-alive record remains. Thus
+the 33 types and 325 functions were consequences of those three module-owned
+defaults still being alive, not 358 independent leaks. Registering the module
+lets normal interpreter module cleanup release the functions/defaults before
+the leak checker runs. The harness's unregistered local module instead remained
+live through that check.
+
+Both extensions were Release builds and `NB_ABORT_ON_LEAK` was absent, which
+explains the warning with exit 0 and falsifies the debug-build hypothesis. The
+two-copy control was also not the original scenario: two copies in one
+interpreter fail earlier and loudly because the same nanobind types/enumerators
+cannot be registered twice.
+
+The ownership audit found no `keep_alive` policies. The only reference return
+policy is `env()`, which exposes a process-static singleton, and every allocated
+NumPy buffer has a deleting capsule owner. The custom exception references are
+also process-lifetime translator state and do not appear in nanobind's instance
+tracker.
+
+Verdict: **FALSIFIED.** Normal one-module DTWC import/use exits cleanly with no
+nanobind diagnostic. No production change, PLAN finding, or suppressing leak
+checker call is warranted. Future direct-extension harnesses must insert the
+module into `sys.modules` before `exec_module` (or use normal import machinery)
+so interpreter teardown owns its lifetime.
