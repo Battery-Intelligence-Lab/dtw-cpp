@@ -11,3 +11,11 @@ endforeach()
 if(TARGET test_arrow_c_data)
     target_include_directories(test_arrow_c_data PRIVATE ${CMAKE_SOURCE_DIR}/dtwc/extern)
 endif()
+
+# This adversarial target contains a wall-clock parity assertion comparing the
+# scalar and ndim=1 multivariate kernels.  Running it beside other compute-heavy
+# tests can deschedule only one side of that comparison and create a false
+# performance regression, so keep its measurement uncontended under CTest.
+if(TEST test_multivariate_adversarial)
+    set_tests_properties(test_multivariate_adversarial PROPERTIES RUN_SERIAL TRUE)
+endif()
