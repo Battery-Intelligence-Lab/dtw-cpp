@@ -129,6 +129,15 @@ std::vector<double> m50_cpu_matrix(const std::vector<std::vector<double>> &serie
   return result;
 }
 
+std::vector<double> m50_cpu_row(const std::vector<double> &query,
+                                const std::vector<std::vector<double>> &series)
+{
+  std::vector<double> result(series.size());
+  for (std::size_t i = 0; i < series.size(); ++i)
+    result[i] = dtwc::dtwFull_L<double>(query, series[i]);
+  return result;
+}
+
 void require_m50_matrix(const std::vector<double> &actual,
                         const std::vector<double> &expected)
 {
@@ -156,19 +165,20 @@ TEST_CASE("M50 CUDA override executes or reports the real Auto fallback",
     KernelOverride requested;
     std::string_view expected_auto;
     std::string_view expected_actual;
+    bool expected_fallback;
   };
 
   const std::array cases{
       // Force a different implemented family than Auto would choose.
-      DeviceCase{16, KernelOverride::Wavefront, "warp", "wavefront"},
-      DeviceCase{16, KernelOverride::RegTile, "warp", "regtile_w4"},
-      DeviceCase{200, KernelOverride::Wavefront, "regtile_w8", "wavefront"},
+      DeviceCase{16, KernelOverride::Wavefront, "warp", "wavefront", false},
+      DeviceCase{16, KernelOverride::RegTile, "warp", "regtile_w4", false},
+      DeviceCase{200, KernelOverride::Wavefront, "regtile_w8", "wavefront", false},
 
       // Supported and unsupported boundary behavior.
-      DeviceCase{200, KernelOverride::RegTile, "regtile_w8", "regtile_w8"},
-      DeviceCase{300, KernelOverride::RegTile, "wavefront", "wavefront"},
-      DeviceCase{64, KernelOverride::BandedRow, "regtile_w4", "regtile_w4"},
-      DeviceCase{64, KernelOverride::WavefrontGlobal, "regtile_w4", "regtile_w4"},
+      DeviceCase{200, KernelOverride::RegTile, "regtile_w8", "regtile_w8", false},
+      DeviceCase{300, KernelOverride::RegTile, "wavefront", "wavefront", true},
+      DeviceCase{64, KernelOverride::BandedRow, "regtile_w4", "regtile_w4", true},
+      DeviceCase{64, KernelOverride::WavefrontGlobal, "regtile_w4", "regtile_w4", true},
   };
 
   for (const auto &tc : cases) {
@@ -186,9 +196,116 @@ TEST_CASE("M50 CUDA override executes or reports the real Auto fallback",
 
     CHECK(automatic.kernel_used == tc.expected_auto);
     CHECK(selected.kernel_used == tc.expected_actual);
+    CHECK_FALSE(automatic.kernel_override_fell_back);
+    CHECK(selected.kernel_override_fell_back == tc.expected_fallback);
     require_m50_matrix(automatic.matrix, cpu);
     require_m50_matrix(selected.matrix, cpu);
     require_m50_matrix(selected.matrix, automatic.matrix);
+  }
+}
+
+TEST_CASE("M50 CUDA row and batched entry points share override dispatch",
+          "[cuda][kernel_override][device][one_vs_n][k_vs_n][m50]")
+{
+  if (!dtwc::cuda::cuda_available()) {
+    SKIP("No CUDA device");
+    return;
+  }
+
+  using dtwc::KernelOverride;
+
+  SECTION("one-vs-N by index forces Wavefront instead of Auto Warp") {
+    const auto series = m50_series(16);
+    const auto cpu = m50_cpu_row(series[1], series);
+
+    dtwc::cuda::CUDADistMatOptions automatic_options;
+    automatic_options.precision = dtwc::cuda::CUDAPrecision::FP64;
+    const auto automatic = dtwc::cuda::compute_dtw_one_vs_all(series, 1, automatic_options);
+
+    auto forced_options = automatic_options;
+    forced_options.kernel_override = KernelOverride::Wavefront;
+    const auto forced = dtwc::cuda::compute_dtw_one_vs_all(series, 1, forced_options);
+
+    CHECK(automatic.kernel_used == "warp");
+    CHECK(forced.kernel_used == "wavefront");
+    CHECK_FALSE(automatic.kernel_override_fell_back);
+    CHECK_FALSE(forced.kernel_override_fell_back);
+    require_m50_matrix(automatic.distances, cpu);
+    require_m50_matrix(forced.distances, cpu);
+    require_m50_matrix(forced.distances, automatic.distances);
+  }
+
+  SECTION("one-vs-N by external query reports unsupported BandedRow fallback") {
+    const auto series = m50_series(64);
+    std::vector<double> query = series[2];
+    for (double &value : query) value += 0.25;
+    const auto cpu = m50_cpu_row(query, series);
+
+    dtwc::cuda::CUDADistMatOptions automatic_options;
+    automatic_options.precision = dtwc::cuda::CUDAPrecision::FP64;
+    const auto automatic = dtwc::cuda::compute_dtw_one_vs_all(
+        query, series, automatic_options);
+
+    auto fallback_options = automatic_options;
+    fallback_options.kernel_override = KernelOverride::BandedRow;
+    const auto fallback = dtwc::cuda::compute_dtw_one_vs_all(
+        query, series, fallback_options);
+
+    CHECK(automatic.kernel_used == "regtile_w4");
+    CHECK(fallback.kernel_used == "regtile_w4");
+    CHECK_FALSE(automatic.kernel_override_fell_back);
+    CHECK(fallback.kernel_override_fell_back);
+    require_m50_matrix(automatic.distances, cpu);
+    require_m50_matrix(fallback.distances, cpu);
+    require_m50_matrix(fallback.distances, automatic.distances);
+  }
+
+  SECTION("K-vs-N forces Wavefront and preserves every requested row") {
+    const auto series = m50_series(200);
+    const std::vector<std::size_t> queries{0, 2, 3};
+    std::vector<double> cpu;
+    for (const std::size_t query : queries) {
+      const auto row = m50_cpu_row(series[query], series);
+      cpu.insert(cpu.end(), row.begin(), row.end());
+    }
+
+    dtwc::cuda::CUDADistMatOptions automatic_options;
+    automatic_options.precision = dtwc::cuda::CUDAPrecision::FP64;
+    const auto automatic = dtwc::cuda::compute_dtw_k_vs_all(
+        series, queries, automatic_options);
+
+    auto forced_options = automatic_options;
+    forced_options.kernel_override = KernelOverride::Wavefront;
+    const auto forced = dtwc::cuda::compute_dtw_k_vs_all(
+        series, queries, forced_options);
+
+    CHECK(automatic.kernel_used == "regtile_w8");
+    CHECK(forced.kernel_used == "wavefront");
+    CHECK_FALSE(automatic.kernel_override_fell_back);
+    CHECK_FALSE(forced.kernel_override_fell_back);
+    require_m50_matrix(automatic.distances, cpu);
+    require_m50_matrix(forced.distances, cpu);
+    require_m50_matrix(forced.distances, automatic.distances);
+  }
+
+  SECTION("K-vs-N reports RegTile fallback above its supported length") {
+    const auto series = m50_series(300);
+    const std::vector<std::size_t> queries{1, 3};
+    std::vector<double> cpu;
+    for (const std::size_t query : queries) {
+      const auto row = m50_cpu_row(series[query], series);
+      cpu.insert(cpu.end(), row.begin(), row.end());
+    }
+
+    dtwc::cuda::CUDADistMatOptions fallback_options;
+    fallback_options.precision = dtwc::cuda::CUDAPrecision::FP64;
+    fallback_options.kernel_override = KernelOverride::RegTile;
+    const auto fallback = dtwc::cuda::compute_dtw_k_vs_all(
+        series, queries, fallback_options);
+
+    CHECK(fallback.kernel_used == "wavefront");
+    CHECK(fallback.kernel_override_fell_back);
+    require_m50_matrix(fallback.distances, cpu);
   }
 }
 
