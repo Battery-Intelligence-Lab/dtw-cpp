@@ -360,11 +360,7 @@ function(dtwc_setup_dependencies)
         NAME Arrow
         VERSION 19.0.1
         URL "https://github.com/apache/arrow/archive/refs/tags/apache-arrow-19.0.1.tar.gz"
-        # OPEN (Task 0.12): URL_HASH SHA256 not yet pinned. This optional dep is
-        # OFF by default (DTWC_ENABLE_ARROW) and was not in the local CPM cache;
-        # no network was available to fetch the ~90 MB tarball and hash it.
-        # Maintainer TODO: download once, `sha256sum apache-arrow-19.0.1.tar.gz`,
-        # add `URL_HASH SHA256=<hash>` here (immutable release tag).
+        URL_HASH SHA256=4c898504958841cc86b6f8710ecb2919f96b5e10fa8989ac10ac4fca8362d86a
         SOURCE_SUBDIR cpp
         SYSTEM
         EXCLUDE_FROM_ALL

@@ -18,24 +18,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout current branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up Python for generated-doc and drift gates
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.13'
 
       - name: Verify generated documentation and live API contract
         run: python scripts/check_docs_contract.py
 
+      - name: Verify immutable supply-chain pins
+        run: python scripts/check_supply_chain_pins.py
+
       # --- Hugo build ---
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: '1.22'
 
       - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
+        uses: peaceiris/actions-hugo@2752ce1d29631191ea3f27c23495fa06139a5b78 # v3
         with:
           hugo-version: '0.147.8'
           extended: true
@@ -53,7 +56,7 @@ jobs:
       # --- Doxygen API reference ---
       - run: mkdir -p build
       - name: Create Doxygen Files
-        uses: mattnotmitt/doxygen-action@v1.12.0
+        uses: mattnotmitt/doxygen-action@b84fe17600245bb5db3d6c247cc274ea98c15a3b # v1.12
         with:
           doxyfile-path: 'docs/Doxyfile'
       - run: sed -ri 's/<div id="projectname">(.*)/<div id="projectname"><a href="..\/index.html">\1 <\/a>/g' ./build/Doxygen/html/index.html
@@ -122,7 +125,7 @@ jobs:
 
       # --- Upload combined site artifact ---
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
 
   # Publication job
   publish:
@@ -135,4 +138,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5

@@ -18,10 +18,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
       - name: Set up MATLAB
-        uses: matlab-actions/setup-matlab@v3.0.1
+        uses: matlab-actions/setup-matlab@a0180c939fb1a28de13f44f7b778b912384ced1f # v3.0.1
         with:
           release: R2024b
 
@@ -43,7 +43,7 @@ jobs:
         run: cmake --build build/mex-ci --config Release --target dtwc_mex --parallel 2
 
       - name: Run complete MATLAB contract and OpenMP gate
-        uses: matlab-actions/run-command@v3
+        uses: matlab-actions/run-command@bcd446a219949c24051c1d04a4b4e0274c42f23b # v3
         with:
           command: >-
             addpath(fullfile(pwd,'bindings','matlab'));
@@ -59,7 +59,7 @@ jobs:
             p=dtwc_mex('test_parallelisation');
             assert(p.available && p.pass && p.threads_engaged>=2);
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: dtwc-mex-${{ matrix.os }}
           path: build/mex-ci/bin/dtwc_mex.*

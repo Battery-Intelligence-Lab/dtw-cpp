@@ -491,3 +491,67 @@ Verdict: **PASS.** For zero objective the threshold is zero, which is safe:
 nonnegative distances have no genuine positive improvement left. Both pinned
 authors' implementations likewise multiply tolerance by the live loss without
 an absolute unit floor.
+
+## L1 — workflow and Arrow supply-chain pins
+
+Registered band: every non-local `uses:` reference in every workflow must be a
+40-hex commit; the Arrow 19.0.1 URL must carry its independently reproduced
+SHA-256. A standard-library script enforces both and runs in CI.
+
+Red before remediation:
+
+```text
+mutable GitHub Action references:
+  36 occurrences across 10 workflow files
+  (checkout, artifact, Python/Go/uv/MATLAB/Hugo/Doxygen/JOSS/cibuildwheel,
+   Pages deployment; codecov was the sole existing full-SHA pin)
+Arrow archive is missing URL_HASH SHA256
+```
+
+`git ls-remote` resolved tag refs directly from each upstream repository; for
+annotated tags the peeled commit (`^{}`), not the tag object, is pinned:
+
+```text
+actions/checkout              v4       34e114876b0b11c390a56381ad16ebd13914f8d5
+actions/checkout              v6       df4cb1c069e1874edd31b4311f1884172cec0e10
+actions/deploy-pages          v5       cd2ce8fcbc39b97be8ca5fce6e763baed58fa128
+actions/download-artifact     v4       d3f86a106a0bac45b974a628896c90dbdf5c8093
+actions/setup-go              v5       40f1582b2485089dde7abd97c1529aa768e1baff
+actions/setup-python          v6       ece7cb06caefa5fff74198d8649806c4678c61a1
+actions/upload-artifact       v7       043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+actions/upload-pages-artifact v4       7b1f4a764d45c48632c6b24a0339c27f5614fb0b
+astral-sh/setup-uv            v6       d0cc045d04ccac9d8b7881df0226f9e82c39688e
+matlab-actions/run-command    v3       bcd446a219949c24051c1d04a4b4e0274c42f23b
+matlab-actions/setup-matlab   v3.0.1   a0180c939fb1a28de13f44f7b778b912384ced1f
+mattnotmitt/doxygen-action    v1.12    b84fe17600245bb5db3d6c247cc274ea98c15a3b
+openjournals/draft-action     master   85a18372e48f551d8af9ddb7a747de685fbbb01c
+peaceiris/actions-hugo        v3       2752ce1d29631191ea3f27c23495fa06139a5b78
+pypa/cibuildwheel             v3.4.1   8d2b08b68458a16aeb24b64e68a09ab1c8e82084
+```
+
+The prior Doxygen reference `v1.12.0` returned no tag; v1.12 is the actual
+upstream release. The pre-existing Codecov v5 commit remains pinned.
+
+Arrow was downloaded twice from the exact CPM URL:
+
+```text
+first =4C898504958841CC86B6F8710ECB2919F96B5E10FA8989AC10AC4FCA8362D86A
+repeat=4C898504958841CC86B6F8710ECB2919F96B5E10FA8989AC10AC4FCA8362D86A
+```
+
+Green gates:
+
+```text
+uv run --no-sync python scripts/check_supply_chain_pins.py
+  supply-chain pins verified
+PyYAML safe_load(all .github/workflows/*.yml)
+  workflow YAML parsed
+rg mutable uses-pattern .github/workflows
+  no matches
+git diff --check
+  exit 0
+```
+
+Verdict: **PASS.** The new job runs on the active Python workflow and the docs
+workflow invokes the same gate. Full SHAs are the immutable execution identity;
+human-readable release refs remain comments for update tooling and review.

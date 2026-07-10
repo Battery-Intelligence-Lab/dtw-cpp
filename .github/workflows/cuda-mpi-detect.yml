@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container: nvidia/cuda:12.6.0-devel-ubuntu22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install CMake and build tools
         run: |
           apt-get update && apt-get install -y build-essential git python3-pip
@@ -31,7 +31,7 @@ jobs:
     name: Linux MPI build + test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install MPI
         run: sudo apt-get update && sudo apt-get install -y libopenmpi-dev openmpi-bin
       - name: CMake configure with MPI
@@ -49,7 +49,7 @@ jobs:
     name: macOS CUDA graceful rejection
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install dependencies
         run: brew install libomp llvm && brew link --force libomp
       - name: CMake configure with CUDA (should warn and disable)
@@ -63,7 +63,7 @@ jobs:
     name: macOS MPI build
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install dependencies
         run: brew install libomp llvm open-mpi && brew link --force libomp
       - name: CMake configure with MPI
@@ -79,7 +79,7 @@ jobs:
     name: Windows MPI configure
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install MS-MPI
         shell: pwsh
         run: |

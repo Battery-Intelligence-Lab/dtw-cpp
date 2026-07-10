@@ -40,6 +40,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   finite fallback only for all-zero tables, and its hybrid provenance is explicit.
 - Fixed OneBatchPAM's relative stopping tolerance below unit objective values;
   it now scales by the current estimate instead of an absolute floor of one.
+- Pinned every external GitHub Action to a reviewed full commit SHA, corrected
+  the nonexistent Doxygen action tag, and SHA-256 pinned the optional Arrow
+  19.0.1 source archive with an executable repository-wide drift gate.
 
 # 2.0.0rc1 - 2026-07-10
 
