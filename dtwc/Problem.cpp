@@ -582,8 +582,8 @@ double Problem::dist_by_ind(int i, int j)
 
 /**
  * @brief Determines whether the pruned distance matrix strategy is applicable.
- * @details The pruned strategy requires Standard DTW variant (LB_Kim/LB_Keogh
- *          are only valid for the standard recurrence with L1 metric).
+ * @details The pruned strategy requires Standard/ADTW with MissingStrategy::Error
+ *          (raw lower-bound kernels cannot implement a missing-data dispatcher).
  * @return true if pruned strategy can be used.
  */
 static bool pruned_strategy_applicable(const Problem &prob)
@@ -593,6 +593,7 @@ static bool pruned_strategy_applicable(const Problem &prob)
   const bool supported_variant = prob.variant_params.variant == core::DTWVariant::Standard
                                || prob.variant_params.variant == core::DTWVariant::ADTW;
   return supported_variant
+      && prob.missing_strategy == core::MissingStrategy::Error
       && prob.band >= 0
       && prob.size() >= 64;
 }
@@ -703,17 +704,17 @@ void Problem::fill_distance_matrix()
       effective = DistanceMatrixStrategy::BruteForce;
   }
 
-  // Disable LB pruning if dataset has missing values (LB bounds are invalid with NaN)
-  if (missing_strategy != core::MissingStrategy::Error
-      && missing_strategy != core::MissingStrategy::Interpolate) {
-    if (effective == DistanceMatrixStrategy::Pruned) {
-      for (size_t i = 0; i < data.size(); ++i) {
-        if (has_missing(series(i))) {
-          effective = DistanceMatrixStrategy::BruteForce;
-          break;
-        }
-      }
+  // The pruned builder calls raw Standard/ADTW kernels; it cannot implement a
+  // configured missing-data dispatcher. DistanceMatrixStrategy::Pruned is an
+  // exact optimization hint (like lb_strategy=None below), so preserve the
+  // requested distance semantics by routing the ordinary bound dispatcher.
+  if (effective == DistanceMatrixStrategy::Pruned
+      && missing_strategy != core::MissingStrategy::Error) {
+    if (verbose) {
+      std::cout << "Pruned lower bounds support missing_strategy=Error only; "
+                   "using exact BruteForce to preserve the configured missing-data policy.\n";
     }
+    effective = DistanceMatrixStrategy::BruteForce;
   }
 
   // Shared post-GPU handler. Templated on the backend's result type (both

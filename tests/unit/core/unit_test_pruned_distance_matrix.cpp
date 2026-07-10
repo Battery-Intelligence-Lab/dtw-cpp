@@ -22,6 +22,7 @@
 #include <string>
 #include <cmath>
 #include <limits>
+#include <sstream>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -819,6 +820,24 @@ TEST_CASE("Pruned routing preserves configured missing-data semantics at N=63/64
   const auto finite_auto = compute(64, false, dtwc::DistanceMatrixStrategy::Auto,
                                    dtwc::core::MissingStrategy::Error);
   REQUIRE(finite_auto == finite_brute);
+
+  auto [verbose_series, verbose_names] = make_fixture(64, true);
+  auto verbose_prob = make_problem_with_data(
+    std::move(verbose_series), std::move(verbose_names), 0);
+  verbose_prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate);
+  verbose_prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::Pruned);
+  verbose_prob.verbose = true;
+  std::ostringstream verbose_output;
+  auto *previous_buffer = std::cout.rdbuf(verbose_output.rdbuf());
+  struct RestoreCout {
+    std::streambuf *buffer;
+    ~RestoreCout() { std::cout.rdbuf(buffer); }
+  } restore_cout{previous_buffer};
+  verbose_prob.fill_distance_matrix();
+  REQUIRE(verbose_output.str().find(
+    "Pruned lower bounds support missing_strategy=Error only; using exact "
+    "BruteForce to preserve the configured missing-data policy.")
+    != std::string::npos);
 }
 
 
