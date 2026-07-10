@@ -1030,3 +1030,63 @@ it is retained for the Phase-8.2 leak/sanitizer audit rather than misattributed.
 
 Verdict: **PASS.** The hot path removes repeated large allocation, provides real
 parallel speedup, and preserves the serial numerical/RNG contract exactly.
+
+## M13 — cross-language invocation-local random defaults
+
+The pre-edit audit found four incompatible public stories: C++ Tier-1 PAM fixed
+seed 29, Python and MATLAB PAM consumed the mutable process-global FastPAM
+engine, sklearn treated `random_state=None` as 42, and CLI `--seed` affected
+CLARA/OneBatchPAM but not PAM. The first red gates were structural rather than
+well-separated-output tests: Python lacked `DEFAULT_RANDOM_SEED` in both public
+modules (2/2 failures), and the C++ contract fixture did not compile because no
+shared constant existed. A source audit then found all three FastCLARA branches
+(in-memory sample, chunked sample, and full-data fallback) still called unseeded
+FastPAM; a red regression proved those calls advanced the global engine.
+
+The discriminating fixture is eight translated copies of the nonconstant
+waveform `[0, .01, -.02, .03]`, clustered at k=3. It intentionally avoids both
+the old length-one DTW shortcut and a well-separated case whose optimum would
+hide initialization differences:
+
+```text
+seed 29: initial [4,2,7], final medoids [4,1,7], cost 20
+seed 42: initial [6,2,5], final medoids [6,2,5], cost 24
+seed 43: second restart reaches cost 20
+```
+
+`settings::DEFAULT_RANDOM_SEED`, `dtwcpp.DEFAULT_RANDOM_SEED`, and
+`dtwc.default_random_seed()` now expose 42. C++/Python/MATLAB Tier-1 PAM and the
+seed-aware OneBatchPAM/CLARA routes construct local engines. FastCLARA seeds its
+internal PAM solve with `base_seed + sample_index` identically in chunked and
+in-memory paths and uses the base seed for its full-data fallback. Estimator
+restart `i` uses `42+i` and retains the strict best objective. MATLAB's optional
+`Seed` preserves omitted-seed Tier-2 compatibility and validates finite integral
+ranges before conversion; CLI accepts `[0, UINT_MAX]` and applies the same flag
+to PAM, OneBatchPAM, and CLARA.
+
+The legacy boundary is deliberate: `dtwc::randGenerator` remains a mutable
+`std::mt19937` initially seeded 29, and the unseeded Tier-2 FastPAM overload
+continues to consume it. New non-consumption tests place that engine in different
+states before identical Tier-1/FastCLARA calls and verify both equal results and
+bit-identical engine state afterward.
+
+Final evidence after the FastCLARA closure:
+
+```text
+focused CTest (Tier-1 API, CLI args, FastCLARA): 3/3 passed
+FastCLARA full executable: 816 assertions / 18 cases passed
+isolated built-extension Python API/sklearn/cross-validation/HPC: 93 passed
+MATLAB test_contract_parity.m: assertSuccess passed
+fresh MEX: build/mex-verify-msvc/bin/dtwc_mex.mexw64
+           501248 bytes, timestamp 2026-07-10 15:00:22
+targeted py_compile: passed
+git diff --check: clean
+```
+
+The audit also found two distinct follow-ups and kept them out of this claim:
+M16 owns ignored CLI/HPC restart propagation; M17 owns Lloyd initialization and
+MIP warm starts that still use the legacy engine.
+
+Verdict: **PASS.** Every seed-aware route in M13's stated scope is reproducible
+per invocation and cross-language, while the documented legacy overload remains
+source- and behavior-compatible.

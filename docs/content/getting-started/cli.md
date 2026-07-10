@@ -84,13 +84,17 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 | `--twe-lambda <float>` | TWE edit penalty | 1.0 |
 | `--mv-mode <string>` | Multivariate mode: `dependent`, `independent` | `dependent` |
 
-### CLARA-Specific Options
+### Sampling-method options
 
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--sample-size <int>` | Subsample size (-1 = auto) | -1 |
 | `--n-samples <int>` | Number of independent subsamples | 5 |
-| `--seed <int>` | Random seed for reproducibility | 42 |
+| `--seed <int>` | Invocation-local seed for PAM, OneBatchPAM, and CLARA | 42 |
+
+The default seed is identical across the C++, Python, MATLAB, sklearn, and CLI
+seed-aware routes. Supplying `--seed` does not consume the legacy process-global
+FastPAM engine. Valid CLI seeds are integers from 0 through `UINT_MAX`.
 
 ### OneBatchPAM and TADPole options
 

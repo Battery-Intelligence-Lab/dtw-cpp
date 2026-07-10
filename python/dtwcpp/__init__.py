@@ -46,6 +46,7 @@ from dtwcpp._dtwcpp_core import (
     SolverError,
     DeviceError,
     IOError,
+    DEFAULT_RANDOM_SEED,
     # Device registry (api-contract-2.0.md §6)
     env,
     device_to_string,
@@ -379,6 +380,7 @@ __all__ = [
     "BarycenterClusteringResult",
     "Problem", "Env", "env", "device_to_string", "data_from_arrow_c_array",
     "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
+    "DEFAULT_RANDOM_SEED",
     "soft_dtw_gradient",
     "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
     "one_batch_pam_with_stats",

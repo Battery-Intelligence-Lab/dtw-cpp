@@ -5,7 +5,8 @@
 """
 import numpy as np
 from dtwcpp._dtwcpp_core import (
-    Problem, fast_pam, silhouette, DTWVariant, DTWVariantParams,
+    DEFAULT_RANDOM_SEED, Problem, fast_pam_seeded, silhouette,
+    DTWVariant, DTWVariantParams,
     MVMode, MissingStrategy,
     dtw_distance, ddtw_distance, wdtw_distance, adtw_distance,
     data_from_arrow_c_array,
@@ -51,7 +52,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
     max_iter : int, default=100
         Maximum number of FastPAM iterations.
     n_init : int, default=1
-        Number of random restarts (best result kept).
+        Number of deterministic random restarts (best result kept). Restart
+        ``i`` uses the invocation-local seed ``DEFAULT_RANDOM_SEED + i``.
     wdtw_g : float, default=0.05
         Logistic weight steepness for WDTW (ignored unless ``variant="wdtw"``).
     adtw_penalty : float, default=1.0
@@ -218,6 +220,17 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         """
         series = self._prepare_data(X)
 
+        if isinstance(self.n_init, (bool, np.bool_)) or not isinstance(
+            self.n_init, (int, np.integer)
+        ):
+            raise TypeError("n_init must be an integer")
+        restart_count = int(self.n_init)
+        if restart_count < 1:
+            raise ValueError("n_init must be at least 1")
+        max_seed = (1 << 64) - 1
+        if restart_count - 1 > max_seed - DEFAULT_RANDOM_SEED:
+            raise ValueError("n_init is too large for distinct uint64 restart seeds")
+
         from dtwcpp import compute_distance_matrix, _resolve_device, get_device
         eff_device = self.device if self.device is not None else get_device()
         backend, _ = _resolve_device(eff_device)
@@ -249,12 +262,17 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         best_result = None
         best_cost = float("inf")
 
-        for _ in range(self.n_init):
+        for restart in range(restart_count):
             prob = self._build_problem(series)
             if dm_precomputed is not None:
                 prob.set_distance_matrix(dm_precomputed)
 
-            result = fast_pam(prob, self.n_clusters, self.max_iter)
+            result = fast_pam_seeded(
+                prob,
+                self.n_clusters,
+                DEFAULT_RANDOM_SEED + restart,
+                self.max_iter,
+            )
             if result.total_cost < best_cost:
                 best_cost = result.total_cost
                 best_result = result

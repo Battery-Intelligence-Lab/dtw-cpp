@@ -79,14 +79,14 @@ adtw-penalty = 1.0
 # Soft-DTW smoothing parameter (only used when variant = "softdtw").
 sdtw-gamma = 1.0
 
-# --- CLARA-specific options (only used when method = "clara") ---
+# --- Sampling-method options ---
 # Subsample size. -1 = auto (40 + 2*k).
 sample-size = -1
 
 # Number of subsamples to try.
 n-samples = 5
 
-# Random seed for CLARA reproducibility.
+# Invocation-local seed for PAM, OneBatchPAM, and CLARA reproducibility.
 seed = 42
 
 # --- Checkpointing ---
@@ -204,7 +204,7 @@ wdtw-g: 0.05
 adtw-penalty: 1.0
 sdtw-gamma: 1.0
 
-# CLARA-specific options (only used when method = "clara").
+# Sampling-method options.
 sample-size: -1
 n-samples: 5
 seed: 42
@@ -261,13 +261,13 @@ The following table maps CLI flags to configuration file keys. All keys use keba
 | `--adtw-penalty` | `adtw-penalty` | float | `1.0` | ADTW non-diagonal step penalty |
 | `--sdtw-gamma` | `sdtw-gamma` | float | `1.0` | Soft-DTW smoothing parameter |
 
-### CLARA options
+### Sampling-method options
 
 | CLI flag | Config key | Type | Default | Description |
 |----------|-----------|------|---------|-------------|
 | `--sample-size` | `sample-size` | int | `-1` | Subsample size (`-1` = auto) |
 | `--n-samples` | `n-samples` | int | `5` | Number of subsamples |
-| `--seed` | `seed` | int | `42` | Random seed |
+| `--seed` | `seed` | int | `42` | Invocation-local PAM, OneBatchPAM, and CLARA seed |
 
 ### Hierarchical clustering
 

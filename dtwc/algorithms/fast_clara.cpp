@@ -57,6 +57,15 @@ int clara_sample_size(int k, int N)
   return std::max(40 + 2 * k, std::min(N, 10 * k + 100));
 }
 
+/// Invocation-local PAM seed for one CLARA subsample. CLARAOptions uses an
+/// unsigned base and n_samples is a positive int, so widening both operands to
+/// uint64_t makes the addition overflow-safe for every representable input.
+std::uint64_t clara_pam_seed(const CLARAOptions& opts, int sample_index)
+{
+  return static_cast<std::uint64_t>(opts.random_seed)
+       + static_cast<std::uint64_t>(sample_index);
+}
+
 /**
  * @brief Assign all N points to the nearest medoid, computing only N*k distances.
  *
@@ -311,7 +320,8 @@ core::ClusteringResult fast_clara_chunked(
     sub_prob.set_data(std::move(sample_data));
 
     // 4. Run FastPAM on subsample
-    auto sub_result = fast_pam(sub_prob, opts.n_clusters, opts.max_iter);
+    auto sub_result = fast_pam_seeded(
+      sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
 
     // 5. Map medoid indices back to global dataset indices
     std::vector<int> full_medoids(opts.n_clusters);
@@ -426,7 +436,8 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
 
   // If sample_size >= N, just run FastPAM on the full dataset.
   if (sample_size >= N) {
-    return fast_pam(prob, opts.n_clusters, opts.max_iter);
+    return fast_pam_seeded(
+      prob, opts.n_clusters, clara_pam_seed(opts, 0), opts.max_iter);
   }
 
   // Task 0.11: use mt19937_64 + std::sample to match the chunked path exactly, so
@@ -479,7 +490,8 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
     }
 
     // 3. Run FastPAM on the sub-Problem.
-    auto sub_result = fast_pam(sub_prob, opts.n_clusters, opts.max_iter);
+    auto sub_result = fast_pam_seeded(
+      sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
 
     // 4. Map sub-Problem medoid indices back to full dataset indices.
     std::vector<int> full_medoids(opts.n_clusters);

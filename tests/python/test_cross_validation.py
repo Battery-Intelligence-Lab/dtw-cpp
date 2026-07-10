@@ -179,30 +179,48 @@ class TestDistanceMatrixCrossValidation:
 # ---------------------------------------------------------------------------
 
 class TestClusteringCrossValidation:
-    """Verify DTWClustering produces same results as raw fast_pam."""
+    """Verify DTWClustering produces the seeded Tier-1 FastPAM result."""
 
     def test_dtw_clustering_matches_fast_pam(self, three_cluster_data):
         series = three_cluster_data
         names = [f"s{i}" for i in range(len(series))]
         k = 3
 
-        # Raw fast_pam via Problem
+        # Raw invocation-local FastPAM via Problem.
         prob = dtwcpp.Problem("xval_pam")
         prob.set_data(series, names)
         prob.band = -1
-        result_raw = dtwcpp.fast_pam(prob, k)
+        result_raw = dtwcpp.fast_pam_seeded(
+            prob, k, dtwcpp.DEFAULT_RANDOM_SEED
+        )
 
         # Via DTWClustering sugar
         X = np.array(series)
         clf = dtwcpp.DTWClustering(n_clusters=k, band=-1)
         clf.fit(X)
 
-        # Both should find the same clusters (labels may differ in numbering)
-        # Check: total cost should be identical or very close
-        # (May differ slightly due to different initialization seeds)
-        assert clf.inertia_ >= 0
-        assert len(clf.labels_) == len(series)
-        assert len(clf.medoid_indices_) == k
+        assert clf.inertia_ == result_raw.total_cost
+        np.testing.assert_array_equal(clf.labels_, result_raw.labels)
+        np.testing.assert_array_equal(
+            clf.medoid_indices_, result_raw.medoid_indices
+        )
+
+    def test_dtw_clustering_restarts_use_distinct_local_seeds(self):
+        base = np.array([0.0, 0.01, -0.02, 0.03])
+        X = base[None, :] + np.arange(8.0)[:, None]
+
+        one = dtwcpp.DTWClustering(n_clusters=3, n_init=1).fit(X)
+        two = dtwcpp.DTWClustering(n_clusters=3, n_init=2).fit(X)
+
+        assert one.inertia_ == 24.0  # seed 42
+        assert two.inertia_ == 20.0  # seed 43 improves the retained result
+        assert two.inertia_ < one.inertia_
+
+    @pytest.mark.parametrize("n_init", [0, -1, 1.5, True, (1 << 64)])
+    def test_dtw_clustering_rejects_invalid_restart_schedule(self, n_init):
+        X = np.arange(16.0).reshape(4, 4)
+        with pytest.raises((TypeError, ValueError), match="n_init"):
+            dtwcpp.DTWClustering(n_clusters=2, n_init=n_init).fit(X)
 
     def test_predict_assigns_to_nearest_medoid(self, three_cluster_data):
         series = three_cluster_data

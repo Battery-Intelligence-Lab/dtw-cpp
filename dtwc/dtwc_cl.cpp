@@ -148,6 +148,15 @@ static std::string validate_metric_for_device(const std::string &metric, bool is
   return "";
 }
 
+/// Run the CLI PAM route with the user-visible `--seed` on an invocation-local
+/// engine. Keeping this seam outside main() lets the CLI regression exercise the
+/// production dispatch without depending on CLI11 in the unit-test executable.
+static dtwc::core::ClusteringResult run_cli_pam(
+  dtwc::Problem &prob, int n_clusters, int max_iter, std::uint64_t random_seed)
+{
+  return dtwc::fast_pam_seeded(prob, n_clusters, random_seed, max_iter);
+}
+
 /// Apply the CLI's distance-matrix storage policy after data and `auto` method
 /// resolution. Returns the selected mmap cache path, or nullopt when the method
 /// stays on its own storage / below the threshold.
@@ -429,13 +438,16 @@ int main(int argc, char *argv[])
   app.add_option("--mv-mode", mv_mode, "Multivariate mode (ndim>1): dependent, independent")
     ->check(CLI::IsMember({ "dependent", "independent" }));
 
-  // CLARA-specific
+  // Sampling-based clustering. One seed spelling and default cover PAM,
+  // OneBatchPAM, and CLARA.
   int sample_size = -1;
   int n_samples = 5;
-  unsigned clara_seed = 42;
+  unsigned clara_seed = dtwc::settings::DEFAULT_RANDOM_SEED;
   app.add_option("--sample-size", sample_size, "CLARA subsample size (-1 = auto)");
   app.add_option("--n-samples", n_samples, "CLARA number of subsamples");
-  app.add_option("--seed", clara_seed, "Random seed for CLARA");
+  app.add_option("--seed", clara_seed,
+                 "Random seed for PAM, OneBatchPAM, and CLARA")
+      ->check(CLI::Range(0u, std::numeric_limits<unsigned>::max()));
 
   // OneBatchPAM-specific. The seed is shared with CLARA so reproducibility has
   // one CLI spelling across sampling-based methods.
@@ -1080,7 +1092,7 @@ int main(int argc, char *argv[])
     if (verbose)
       std::cout << "Running FastPAM (k=" << n_clusters << ") ...\n";
 
-    result = dtwc::fast_pam(prob, n_clusters, max_iter);
+    result = run_cli_pam(prob, n_clusters, max_iter, clara_seed);
 
     if (verbose) {
       std::cout << "FastPAM "

@@ -24,6 +24,12 @@ def _two_groups(seed=7):
                      for i in range(12)])
 
 
+def _seed_sensitive_series():
+    """Ambiguous nonconstant waveforms whose PAM local optimum depends on seed."""
+    base = np.array([0.0, 0.01, -0.02, 0.03])
+    return base[None, :] + np.arange(8.0)[:, None]
+
+
 # ---------------------------------------------------------------------------
 # load() — lazy handle
 # ---------------------------------------------------------------------------
@@ -54,6 +60,42 @@ class TestClusterLocal:
         assert len(set(res.labels[:6])) == 1
         assert len(set(res.labels[6:])) == 1
         assert res.labels[0] != res.labels[11]
+
+    def test_default_pam_seed_is_local_and_matches_cpp_tier1(self):
+        assert dtwcpp.DEFAULT_RANDOM_SEED == 42
+
+        series = _seed_sensitive_series()
+        names = [str(i) for i in range(len(series))]
+
+        def seeded(seed, max_iter=100):
+            problem = dtwcpp.Problem("seed_oracle")
+            problem.set_data(series.tolist(), names)
+            return dtwcpp.fast_pam_seeded(problem, 3, seed, max_iter)
+
+        init_29 = seeded(29, max_iter=0)
+        init_42 = seeded(42, max_iter=0)
+        assert list(init_29.medoid_indices) == [4, 2, 7]
+        assert list(init_42.medoid_indices) == [6, 2, 5]
+
+        final_29 = seeded(29)
+        final_42 = seeded(42)
+        assert list(final_29.medoid_indices) == [4, 1, 7]
+        assert final_29.total_cost == 20.0
+        assert list(final_42.medoid_indices) == [6, 2, 5]
+        assert final_42.total_cost == 24.0
+
+        first = dtwcpp.cluster(series, k=3, method="pam")
+
+        # Consume the mutable legacy engine through the unseeded Tier-2 API.
+        legacy_problem = dtwcpp.Problem("legacy_rng_consumer")
+        legacy_problem.set_data(series.tolist(), names)
+        dtwcpp.fast_pam(legacy_problem, 3)
+
+        second = dtwcpp.cluster(series, k=3, method="pam")
+        for result in (first, second):
+            np.testing.assert_array_equal(result.medoids, final_42.medoid_indices)
+            np.testing.assert_array_equal(result.labels, final_42.labels)
+            assert result.cost == final_42.total_cost
 
     def test_result_fields_populated(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
@@ -211,8 +253,8 @@ class TestClusterMethodDispatch:
         matrix = object()
         calls = []
 
-        def fake_pam(prob, k, max_iter):
-            calls.append(("pam", k, max_iter, prob.matrix))
+        def fake_pam(prob, k, seed, max_iter):
+            calls.append(("pam", k, seed, max_iter, prob.matrix))
             return SimpleNamespace(
                 labels=np.zeros(5001, dtype=int), medoid_indices=[0], total_cost=0.0
             )
@@ -223,13 +265,13 @@ class TestClusterMethodDispatch:
         monkeypatch.setattr(dtwcpp, "_resolve_device", lambda device: ("cuda", 3))
         monkeypatch.setattr(dtwcpp, "Problem", FakeProblem)
         monkeypatch.setattr(dtwcpp, "compute_distance_matrix", lambda *a, **k: matrix)
-        monkeypatch.setattr(dtwcpp, "fast_pam", fake_pam)
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", fake_pam)
         monkeypatch.setattr(dtwcpp, "fast_clara", poison_clara)
 
         series = [[float(i)] for i in range(5001)]
         result = dtwcpp.cluster(series, k=1, method="auto", device="gpu:3", max_iter=7)
 
-        assert calls == [("pam", 1, 7, matrix)]
+        assert calls == [("pam", 1, dtwcpp.DEFAULT_RANDOM_SEED, 7, matrix)]
         assert result.device == "cuda"
         assert result.distance_matrix is matrix
 
@@ -256,43 +298,57 @@ class TestClusterMethodDispatch:
             dtwcpp.cluster("data.tsv", k=2, device="hpc", method="bogus")
 
     def test_local_dispatch_routes_to_clara_not_fastpam(self, monkeypatch):
-        """method='clara' must call fast_clara, NOT fast_pam.
+        """method='clara' must call seeded fast_clara, NOT FastPAM.
 
-        Pre-fix: the clara branch did not exist and fast_pam ran instead, so
+        Pre-fix: the clara branch did not exist and FastPAM ran instead, so
         the fast_clara spy is never called (called['clara'] stays 0) -> fails.
-        Post-fix: fast_clara is invoked exactly once and fast_pam is not."""
+        Post-fix: fast_clara is invoked exactly once with the Tier-1 seed."""
         import dtwcpp
         called = {"pam": 0, "clara": 0}
         real_clara = dtwcpp.fast_clara
 
         def spy_clara(*a, **kw):
             called["clara"] += 1
+            assert kw["seed"] == dtwcpp.DEFAULT_RANDOM_SEED
             return real_clara(*a, **kw)
 
         def poisoned_pam(*a, **kw):
             called["pam"] += 1
-            raise AssertionError("method='clara' fell through to fast_pam")
+            raise AssertionError("method='clara' fell through to FastPAM")
 
         monkeypatch.setattr(dtwcpp, "fast_clara", spy_clara)
-        monkeypatch.setattr(dtwcpp, "fast_pam", poisoned_pam)
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poisoned_pam)
         res = dtwcpp.cluster(_two_groups(), k=2, method="clara")
         assert called["clara"] == 1
         assert called["pam"] == 0
         assert res.n_series == 12
 
-    def test_local_default_still_routes_to_fastpam(self, monkeypatch):
-        """method='pam' (the default) must still call fast_pam — no regression."""
+    def test_local_default_routes_to_invocation_local_fastpam(self, monkeypatch):
+        """Default PAM must use the seeded entry point and shared Tier-1 seed."""
         import dtwcpp
         called = {"pam": 0}
-        real_pam = dtwcpp.fast_pam
+        real_pam = dtwcpp.fast_pam_seeded
 
         def spy_pam(*a, **kw):
             called["pam"] += 1
+            assert a[2] == dtwcpp.DEFAULT_RANDOM_SEED
             return real_pam(*a, **kw)
 
-        monkeypatch.setattr(dtwcpp, "fast_pam", spy_pam)
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", spy_pam)
         dtwcpp.cluster(_two_groups(), k=2)          # default method="pam"
         assert called["pam"] == 1
+
+    def test_local_onebatch_receives_shared_tier1_seed(self, monkeypatch):
+        real_onebatch = dtwcpp.one_batch_pam
+        seen = []
+
+        def spy_onebatch(*args, **kwargs):
+            seen.append(kwargs["seed"])
+            return real_onebatch(*args, **kwargs)
+
+        monkeypatch.setattr(dtwcpp, "one_batch_pam", spy_onebatch)
+        dtwcpp.cluster(_two_groups(), k=2, method="onebatch")
+        assert seen == [dtwcpp.DEFAULT_RANDOM_SEED]
 
     def test_local_clara_runs_end_to_end(self):
         """The clara branch must actually work end-to-end (no solver needed).
@@ -431,7 +487,7 @@ class TestLocalDispatchBindingNames:
     def test_local_hierarchical_calls_build_then_cut(self, monkeypatch):
         """method='hierarchical' -> build_dendrogram(prob) then
         cut_dendrogram(dend, prob, k); read labels/medoid_indices/total_cost off
-        the cut result. Must NOT fall through to fast_pam."""
+        the cut result. Must NOT fall through to FastPAM."""
         from dtwcpp import _api
 
         calls = {"build": 0, "cut": 0}
@@ -456,11 +512,11 @@ class TestLocalDispatchBindingNames:
             return FakeCut()
 
         def poison_pam(*a, **kw):
-            raise AssertionError("hierarchical must not fall through to fast_pam")
+            raise AssertionError("hierarchical must not fall through to FastPAM")
 
         monkeypatch.setattr(dtwcpp, "build_dendrogram", spy_build)
         monkeypatch.setattr(dtwcpp, "cut_dendrogram", spy_cut)
-        monkeypatch.setattr(dtwcpp, "fast_pam", poison_pam)
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poison_pam)
 
         labels, medoids, cost = _api._run_local_method(
             sentinel_prob, "hierarchical", k=3, max_iter=100)
@@ -471,7 +527,7 @@ class TestLocalDispatchBindingNames:
 
     def test_local_kmedoids_end_to_end_does_not_fall_through(self, monkeypatch):
         """Through the LIVE full local cluster() path, method='kmedoids' runs
-        Lloyd via Problem.cluster() and must NOT call fast_pam/fast_clara/
+        Lloyd via Problem.cluster() and must NOT call FastPAM/fast_clara/
         build_dendrogram (the pre-0.14 bug ran FastPAM for every method).
 
         Solver-free (Lloyd needs no MIP solver)."""
@@ -480,7 +536,7 @@ class TestLocalDispatchBindingNames:
                 raise AssertionError(f"kmedoids must not call {name}")
             return _p
 
-        monkeypatch.setattr(dtwcpp, "fast_pam", poison("fast_pam"))
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", poison("fast_pam_seeded"))
         monkeypatch.setattr(dtwcpp, "fast_clara", poison("fast_clara"))
         monkeypatch.setattr(dtwcpp, "build_dendrogram", poison("build_dendrogram"))
 

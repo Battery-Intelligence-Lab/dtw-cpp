@@ -299,13 +299,19 @@ def _run_local_method(prob, method, k, max_iter):
     import dtwcpp
 
     if method == "pam":
-        res = dtwcpp.fast_pam(prob, k, max_iter)
+        res = dtwcpp.fast_pam_seeded(
+            prob, k, dtwcpp.DEFAULT_RANDOM_SEED, max_iter
+        )
         return res.labels, res.medoid_indices, res.total_cost
     if method == "onebatch":
-        res = dtwcpp.one_batch_pam(prob, k, max_iter=max_iter)
+        res = dtwcpp.one_batch_pam(
+            prob, k, max_iter=max_iter, seed=dtwcpp.DEFAULT_RANDOM_SEED
+        )
         return res.labels, res.medoid_indices, res.total_cost
     if method == "clara":
-        res = dtwcpp.fast_clara(prob, k, max_iter=max_iter)
+        res = dtwcpp.fast_clara(
+            prob, k, max_iter=max_iter, seed=dtwcpp.DEFAULT_RANDOM_SEED
+        )
         return res.labels, res.medoid_indices, res.total_cost
     if method == "hierarchical":
         dend = dtwcpp.build_dendrogram(prob)

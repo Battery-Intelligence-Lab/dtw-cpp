@@ -158,7 +158,43 @@ dtwc::Problem tiny_storage_problem()
   return prob;
 }
 
+dtwc::Problem seed_sensitive_pam_problem()
+{
+  const std::vector<dtwc::data_t> base{0.0, 0.01, -0.02, 0.03};
+  std::vector<std::vector<dtwc::data_t>> series;
+  std::vector<std::string> names;
+  for (int offset = 0; offset < 8; ++offset) {
+    auto waveform = base;
+    for (auto &value : waveform) value += static_cast<dtwc::data_t>(offset);
+    series.push_back(std::move(waveform));
+    names.push_back(std::to_string(offset));
+  }
+  dtwc::Problem prob{"cli_seed_fixture"};
+  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+  return prob;
+}
+
 } // namespace
+
+TEST_CASE("CLI PAM honors default seed 42 and explicit seed override 29",
+          "[cli][seed][pam]")
+{
+  REQUIRE(dtwc::settings::DEFAULT_RANDOM_SEED == 42);
+
+  auto default_problem = seed_sensitive_pam_problem();
+  const auto default_result = run_cli_pam(
+    default_problem, 3, 100, dtwc::settings::DEFAULT_RANDOM_SEED);
+  CHECK(default_result.medoid_indices == std::vector<int>{6, 2, 5});
+  CHECK(default_result.labels == std::vector<int>{1, 1, 1, 1, 2, 2, 0, 0});
+  CHECK(default_result.total_cost == 24.0);
+
+  auto override_problem = seed_sensitive_pam_problem();
+  const auto override_result = run_cli_pam(
+    override_problem, 3, 100, /* --seed */ 29);
+  CHECK(override_result.medoid_indices == std::vector<int>{4, 1, 7});
+  CHECK(override_result.labels == std::vector<int>{1, 1, 1, 0, 0, 0, 2, 2});
+  CHECK(override_result.total_cost == 20.0);
+}
 
 TEST_CASE("CLI TADPole threshold uses mmap or fails before dense allocation",
           "[cli][storage][mmap][tadpole]")

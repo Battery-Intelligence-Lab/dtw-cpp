@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../settings.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,7 +31,7 @@ struct OneBatchPAMOptions {
   int n_clusters = 3;
   int batch_size = -1;       ///< -1: min(N, max(64, 20*ceil(log2(N+1)))).
   int max_iter = 100;        ///< Maximum eager-swap sweeps.
-  std::uint64_t random_seed = 42;
+  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
   OneBatchWeighting weighting = OneBatchWeighting::NearestNeighbor;
   double relative_tolerance = 1e-9; ///< Accept gain > tolerance * current estimate.
 };

@@ -26,6 +26,18 @@ def test_raw_fit_predict_transform_and_score():
     assert len(estimator.cluster_centers_) == 2
 
 
+def test_default_seed_matches_tier1_seed_contract():
+    X = (np.array([0.0, 0.01, -0.02, 0.03])[None, :]
+         + np.arange(8.0)[:, None])
+    tier1 = dtwcpp.cluster(X, k=3, method="pam")
+    estimator = DTWCKMedoids(n_clusters=3).fit(X)
+
+    assert dtwcpp.DEFAULT_RANDOM_SEED == 42
+    np.testing.assert_array_equal(estimator.medoid_indices_, tier1.medoids)
+    np.testing.assert_array_equal(estimator.labels_, tier1.labels)
+    assert estimator.inertia_ == tier1.cost == 24.0
+
+
 def test_precomputed_fit_and_rectangular_query_both_work():
     X = separated_series()
     D = dtwcpp.compute_distance_matrix(X.tolist(), use_pruning=False)

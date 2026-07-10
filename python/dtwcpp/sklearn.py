@@ -130,7 +130,8 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
     batch_size : int, default=-1
         Fixed batch size for ``method='onebatch'``.
     random_state : int or None, default=None
-        Seed for sampling-based methods.
+        Seed for sampling-based methods. ``None`` uses the cross-language
+        Tier-1 default, :data:`dtwcpp.DEFAULT_RANDOM_SEED` (42).
     """
 
     def __init__(self, n_clusters=3, *, metric="dtw", method="pam", band=-1,
@@ -175,7 +176,12 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
     def fit(self, X, y=None):
         """Fit the estimator; ``y`` is accepted and ignored."""
         del y
-        from dtwcpp import fast_pam_seeded, fast_clara, one_batch_pam
+        from dtwcpp import (
+            DEFAULT_RANDOM_SEED,
+            fast_pam_seeded,
+            fast_clara,
+            one_batch_pam,
+        )
 
         if self.metric == "precomputed":
             matrix = _precomputed_matrix(X, square=True)
@@ -199,7 +205,11 @@ class DTWCKMedoids(ClusterMixin, TransformerMixin, BaseEstimator):
             self.n_features_in_ = int(series[0].size) if all(
                 row.size == series[0].size for row in series) else None
 
-        seed = 42 if self.random_state is None else int(self.random_state)
+        seed = (
+            DEFAULT_RANDOM_SEED
+            if self.random_state is None
+            else int(self.random_state)
+        )
         if self.method == "onebatch":
             result = one_batch_pam(
                 problem, int(self.n_clusters), batch_size=int(self.batch_size),

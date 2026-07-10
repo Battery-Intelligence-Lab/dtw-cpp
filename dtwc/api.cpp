@@ -16,6 +16,7 @@
 #include "env.hpp"
 #include "error.hpp"
 #include "scores.hpp"
+#include "settings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -317,16 +318,19 @@ Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
   if (!matrix_free) problem->fill_distance_matrix();
 
   if (method == "pam") {
-    result = fast_pam_seeded(*problem, k, 29, max_iter);
+    result = fast_pam_seeded(
+      *problem, k, settings::DEFAULT_RANDOM_SEED, max_iter);
   } else if (method == "onebatch") {
     algorithms::OneBatchPAMOptions options;
     options.n_clusters = k;
     options.max_iter = max_iter;
+    options.random_seed = settings::DEFAULT_RANDOM_SEED;
     result = algorithms::one_batch_pam(*problem, options);
   } else if (method == "clara") {
     algorithms::CLARAOptions options;
     options.n_clusters = k;
     options.max_iter = max_iter;
+    options.random_seed = settings::DEFAULT_RANDOM_SEED;
     result = algorithms::fast_clara(*problem, options);
   } else if (method == "hierarchical") {
     const auto dendrogram = algorithms::build_dendrogram(*problem);

@@ -39,7 +39,9 @@ function result = fast_clara(prob, k, varargin)
     addParameter(p, 'SampleSize', -1, @(v) isnumeric(v) && isscalar(v));
     addParameter(p, 'NSamples', 5, @(v) isnumeric(v) && isscalar(v) && v > 0);
     addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
-    addParameter(p, 'Seed', 42, @(v) isnumeric(v) && isscalar(v));
+    addParameter(p, 'Seed', dtwc.default_random_seed(), ...
+        @(v) isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 ...
+             && v <= double(intmax('uint32')) && v == fix(v));
     parse(p, prob, k, varargin{:});
 
     result = dtwc_mex('fast_clara', prob.get_handle(), ...

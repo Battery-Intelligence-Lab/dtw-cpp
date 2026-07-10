@@ -32,7 +32,7 @@ struct BarycenterOptions {
   double learning_rate_decay = 0.01;
   double gamma = 1.0;
   double tolerance = 1e-6;
-  std::uint64_t random_seed = 42;
+  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
 };
 
 struct BarycenterClusteringOptions {
@@ -47,7 +47,7 @@ struct BarycenterClusteringOptions {
   double learning_rate_decay = 0.01;
   double gamma = 1.0;
   double tolerance = 1e-6;
-  std::uint64_t random_seed = 42;
+  std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
 };
 
 /** Barycentric clustering has sequence-valued centres, not medoid indices. */

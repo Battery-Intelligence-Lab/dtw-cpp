@@ -90,6 +90,56 @@ function test_tier1_cluster_returns_result(testCase)
     verifyEqual(testCase, res.device, 'cpu');
 end
 
+function test_tier1_default_seed_matches_cpp_and_python(testCase)
+%   M13: ambiguous waveforms expose 29-vs-42 initialization/local-optimum drift.
+    X = (0:7)' + [0 0.01 -0.02 0.03];
+    verifyEqual(testCase, dtwc.default_random_seed(), 42);
+
+    tier1 = dtwc.cluster(X, 3, 'method', 'pam');
+
+    prob42 = dtwc.Problem('seed42');
+    prob42.set_data(X);
+    seeded42 = dtwc.fast_pam(prob42, 3, 'Seed', 42);
+
+    prob29 = dtwc.Problem('seed29');
+    prob29.set_data(X);
+    seeded29 = dtwc.fast_pam(prob29, 3, 'Seed', 29);
+
+    verifyEqual(testCase, seeded42.medoid_indices, int32([7 3 6]));
+    verifyEqual(testCase, seeded42.labels, int32([2 2 2 2 3 3 1 1]));
+    verifyEqual(testCase, seeded42.total_cost, 24);
+    verifyEqual(testCase, seeded29.medoid_indices, int32([5 2 8]));
+    verifyEqual(testCase, seeded29.labels, int32([2 2 2 1 1 1 3 3]));
+    verifyEqual(testCase, seeded29.total_cost, 20);
+
+    verifyEqual(testCase, tier1.medoids, seeded42.medoid_indices);
+    verifyEqual(testCase, tier1.labels, seeded42.labels);
+    verifyEqual(testCase, tier1.cost, seeded42.total_cost);
+    verifyNotEqual(testCase, tier1.medoids, seeded29.medoid_indices);
+end
+
+function test_dtwclustering_restarts_use_distinct_local_seeds(testCase)
+%   NInit=2 must try seeds 42 and 43; repeating 42 makes the second run useless.
+    X = (0:7)' + [0 0.01 -0.02 0.03];
+    one = dtwc.DTWClustering('NClusters', 3, 'NInit', 1);
+    one = one.fit(X);
+    two = dtwc.DTWClustering('NClusters', 3, 'NInit', 2);
+    two = two.fit(X);
+    verifyEqual(testCase, one.TotalCost, 24);
+    verifyEqual(testCase, two.TotalCost, 20);
+    verifyLessThan(testCase, two.TotalCost, one.TotalCost);
+end
+
+function test_fast_pam_mex_rejects_invalid_seed_before_cast(testCase)
+%   Direct gateway calls are defensive even when bypassing inputParser.
+    prob = dtwc.Problem('invalid_seed');
+    prob.set_data((0:3)' + [0 0.01 -0.02 0.03]);
+    call = @(seed) dtwc_mex('fast_pam', prob.get_handle(), 2, 100, seed);
+    verifyError(testCase, @() call(-1), 'dtwc:invalidArgument');
+    verifyError(testCase, @() call(NaN), 'dtwc:invalidArgument');
+    verifyError(testCase, @() call(flintmax + 1), 'dtwc:invalidArgument');
+end
+
 function test_tier1_cluster_unknown_method_raises(testCase)
 %   §1.3 unknown method -> dtwc:invalidArgument (never silently PAM).
     verifyError(testCase, ...

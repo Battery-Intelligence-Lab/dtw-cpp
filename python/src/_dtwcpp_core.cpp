@@ -59,6 +59,7 @@ using namespace nb::literals; // for _a arg names
 
 NB_MODULE(_dtwcpp_core, m) {
   m.attr("__version__") = DTWC_VERSION_STRING;
+  m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
@@ -954,7 +955,8 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::algorithms::fast_clara(prob, opts);
   }, "prob"_a, "n_clusters"_a, "sample_size"_a = -1,
-     "n_samples"_a = 5, "max_iter"_a = 100, "seed"_a = 42,
+     "n_samples"_a = 5, "max_iter"_a = 100,
+     "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
      "Run FastCLARA scalable k-medoids clustering.\n\n"
      "Runs FastPAM on random subsamples and assigns all points to the\n"
      "best medoids found. Avoids O(N^2) memory of full PAM.\n\n"
@@ -984,7 +986,7 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::algorithms::one_batch_pam(prob, options);
   }, "prob"_a, "n_clusters"_a, "batch_size"_a = -1, "max_iter"_a = 100,
-     "seed"_a = 42,
+     "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
      "weighting"_a = dtwc::algorithms::OneBatchWeighting::NearestNeighbor,
      "Run OneBatchPAM using one fixed N-by-m distance table (AAAI 2025).");
 

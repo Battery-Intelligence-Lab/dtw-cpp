@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Unified seed-aware PAM, OneBatchPAM, and CLARA defaults on invocation-local
+  seed 42 across C++, Python, MATLAB, sklearn, and CLI. Estimator restarts now
+  use distinct deterministic seeds and FastCLARA no longer consumes the legacy
+  global seed-29 engine; the unseeded Tier-2 FastPAM overload remains compatible.
 - Reused preallocated hard-DTW barycenter workspaces and parallelized independent
   assignment and cluster-update work while preserving digit-identical results,
   deterministic RNG streams, serial reductions, and empty-cluster repair.

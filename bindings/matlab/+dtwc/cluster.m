@@ -65,10 +65,12 @@ function res = cluster(data, k, varargin)
 
     switch method
         case {'pam', 'kmedoids', 'auto'}
-            r = dtwc.fast_pam(prob, k, 'MaxIter', max_iter);
+            r = dtwc.fast_pam(prob, k, 'MaxIter', max_iter, ...
+                'Seed', dtwc.default_random_seed());
             labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
         case 'clara'
-            r = dtwc.fast_clara(prob, k);
+            r = dtwc.fast_clara(prob, k, ...
+                'Seed', dtwc.default_random_seed());
             labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
         case 'mip'
             prob.set_method('mip');

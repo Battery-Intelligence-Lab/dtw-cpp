@@ -60,6 +60,23 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | `max_iter` | `100` | `100` | `100` |
 | unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:151`) | `dtwc:invalidArgument` |
 
+**Deterministic Tier-1 seed (2.0 addendum).** The cross-language
+invocation-local default is 42, exposed as
+`dtwc::settings::DEFAULT_RANDOM_SEED`, `dtwcpp.DEFAULT_RANDOM_SEED`, and
+`dtwc.default_random_seed()`. The C++/Python/MATLAB Tier-1 PAM route and the
+seed-aware OneBatchPAM/CLARA routes construct or receive a local engine from
+this value; `auto` inherits the resolved method. `DTWClustering` restart `i`
+uses `DEFAULT_RANDOM_SEED + i` and retains the lowest-cost result, with the
+schedule range-checked. `DTWCKMedoids(random_state=None)` means the same default.
+CLI `--seed` defaults to 42, applies to PAM, OneBatchPAM, and CLARA, and accepts
+`[0, UINT_MAX]`. These calls do not consume `dtwc::randGenerator`.
+
+The unseeded Tier-2 `fast_pam` overload intentionally retains its legacy mutable
+`std::mt19937` engine, initially seeded 29; use `fast_pam_seeded` or MATLAB's
+`Seed` option for invocation-local reproducibility. Lloyd k-medoids and MIP warm
+starts are not covered by this addendum until their separate local-seed plumbing
+lands; they must not be inferred to share the seed-aware PAM contract.
+
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
 
 Canonical class name is **`Result`** in all three languages. Python keeps

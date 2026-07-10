@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <unordered_map>
 #include <cstdint>
@@ -234,6 +236,21 @@ static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
   if (mxIsEmpty(mx))
     throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
   return mxGetScalar(mx);
+}
+
+/// Decode a MATLAB double seed without invoking an out-of-range float-to-int
+/// conversion. MATLAB represents every integer exactly only through flintmax.
+static std::uint64_t get_random_seed(
+  const mxArray *mx,
+  std::uint64_t max_seed = (std::uint64_t{1} << 53) - 1)
+{
+  const double seed = get_scalar(mx, "seed");
+  if (!std::isfinite(seed) || seed < 0.0 || std::floor(seed) != seed
+      || seed > static_cast<double>(max_seed)) {
+    throw std::invalid_argument(
+      "seed must be a finite integer in [0, " + std::to_string(max_seed) + "].");
+  }
+  return static_cast<std::uint64_t>(seed);
 }
 
 /// Extract uint64 handle from mxArray
@@ -1083,7 +1100,12 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
   int max_iter = 100;
   if (nrhs > 3) max_iter = static_cast<int>(get_scalar(prhs[3]));
 
-  auto result = dtwc::fast_pam(prob, k, max_iter);
+  // Omitted seed preserves the mutable legacy Tier-2 behaviour. MATLAB Tier-1
+  // passes the shared default explicitly, so it never consumes global RNG state.
+  auto result = nrhs > 4
+    ? dtwc::fast_pam_seeded(
+        prob, k, get_random_seed(prhs[4]), max_iter)
+    : dtwc::fast_pam(prob, k, max_iter);
 
   // Store results back into Problem (CRITICAL for scoring)
   store_result_in_problem(prob, result);
@@ -1100,7 +1122,9 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   if (nrhs > 3) opts.sample_size = static_cast<int>(get_scalar(prhs[3]));
   if (nrhs > 4) opts.n_samples = static_cast<int>(get_scalar(prhs[4]));
   if (nrhs > 5) opts.max_iter = static_cast<int>(get_scalar(prhs[5]));
-  if (nrhs > 6) opts.random_seed = static_cast<unsigned>(get_scalar(prhs[6]));
+  if (nrhs > 6)
+    opts.random_seed = static_cast<unsigned>(
+      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
 
   auto result = dtwc::algorithms::fast_clara(prob, opts);
   store_result_in_problem(prob, result);
@@ -1116,7 +1140,9 @@ static void cmd_clarans(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs
   if (nrhs > 3) opts.num_local = static_cast<int>(get_scalar(prhs[3]));
   if (nrhs > 4) opts.max_neighbor = static_cast<int>(get_scalar(prhs[4]));
   if (nrhs > 5) opts.max_dtw_evals = static_cast<int64_t>(get_scalar(prhs[5]));
-  if (nrhs > 6) opts.random_seed = static_cast<unsigned>(get_scalar(prhs[6]));
+  if (nrhs > 6)
+    opts.random_seed = static_cast<unsigned>(
+      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
 
   auto result = dtwc::algorithms::clarans(prob, opts);
   store_result_in_problem(prob, result);
@@ -1318,6 +1344,11 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Device / Env (contract §1.1, §6)
     if (cmd == "version") {
       if (nlhs > 0) plhs[0] = mxCreateString(DTWC_VERSION_STRING);
+    }
+    else if (cmd == "default_random_seed") {
+      if (nlhs > 0)
+        plhs[0] = mxCreateDoubleScalar(
+          static_cast<double>(dtwc::settings::DEFAULT_RANDOM_SEED));
     }
     else if (cmd == "set_device") cmd_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "get_device") cmd_get_device(nlhs, plhs, nrhs, prhs);

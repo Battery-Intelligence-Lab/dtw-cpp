@@ -20,6 +20,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../settings.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -37,7 +38,7 @@ struct CLARAOptions {
   int sample_size = -1;     ///< Subsample size. -1 = auto (40 + 2*k).
   int n_samples = 5;        ///< Number of subsamples to try.
   int max_iter = 100;       ///< Max PAM iterations per subsample.
-  unsigned random_seed = 42; ///< RNG seed for reproducibility.
+  unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
 
   // RAM-aware chunked processing
   size_t ram_limit_bytes = 0;                ///< 0 = no limit (all data in RAM).

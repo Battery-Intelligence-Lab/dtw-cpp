@@ -115,6 +115,11 @@ classdef DTWClustering
             bestCost = Inf;
             bestLabels = [];
             bestMedoids = [];
+            baseSeed = dtwc.default_random_seed();
+            if obj.NInit - 1 > flintmax - baseSeed
+                error('dtwc:invalidArgument', ...
+                    'NInit is too large to assign distinct exact MATLAB seeds.');
+            end
 
             for rep = 1:obj.NInit
                 % Create a Problem for each repetition
@@ -142,7 +147,8 @@ classdef DTWClustering
                 end
 
                 % Run FastPAM
-                result = dtwc.fast_pam(prob, obj.NClusters, 'MaxIter', obj.MaxIter);
+                result = dtwc.fast_pam(prob, obj.NClusters, ...
+                    'MaxIter', obj.MaxIter, 'Seed', baseSeed + (rep - 1));
 
                 if result.total_cost < bestCost
                     bestCost = result.total_cost;

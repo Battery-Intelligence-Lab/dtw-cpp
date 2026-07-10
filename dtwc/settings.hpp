@@ -14,6 +14,7 @@
 
 #include "enums/enums.hpp"
 
+#include <cstdint>
 #include <string>
 #include <filesystem>
 #include <iostream>
@@ -38,10 +39,10 @@ using data_t = double;
 
 // Random number settings:
 
-/// @brief Mersenne Twister random number generator.
-/// @details This random number generator is used for all random number generation in the code.
-///          The seed value is fixed to 29 for reproducibility.
-///          To use a non-deterministic seed, replace '29' with 'std::random_device{}()'.
+/// @brief Legacy mutable Mersenne Twister engine for unseeded Tier-2 calls.
+/// @details Its initial seed remains 29 for compatibility. Deterministic Tier-1
+///          entry points instead construct invocation-local engines from
+///          `settings::DEFAULT_RANDOM_SEED`; they never consume this state.
 inline std::mt19937 randGenerator(29);
 } // namespace dtwc
 
@@ -89,6 +90,13 @@ inline void setResultsPath(const char *path) { results = fs::path(path); }
 /// @brief Flag for debug mode for developers.
 /// @details When set to true, the program may output additional debug information.
 constexpr bool isDebug = false;
+
+/// Invocation-local default seed for deterministic Tier-1 sampling algorithms.
+///
+/// The mutable `dtwc::randGenerator` above is a legacy Tier-2 facility whose
+/// seed remains 29 for source/behaviour compatibility.  Tier-1 entry points do
+/// not read, reseed, or otherwise consume that process-global engine.
+inline constexpr std::uint64_t DEFAULT_RANDOM_SEED = 42;
 
 /// @brief Default band length.
 /// @details If no band is required, this value should be set to -1.

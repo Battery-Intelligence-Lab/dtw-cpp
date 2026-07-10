@@ -22,6 +22,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../settings.hpp"
 #include <cstdint>
 
 namespace dtwc {
@@ -34,7 +35,7 @@ struct CLARANSOptions {
     int num_local    = 2;    ///< Number of random restarts.
     int max_neighbor = -1;   ///< Max non-improving swaps per restart (-1 = auto).
     int64_t max_dtw_evals = -1; ///< Hard budget on total DTW computations (-1 = no limit).
-    unsigned random_seed = 42;  ///< RNG seed for determinism.
+    unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Deterministic seed.
 };
 
 /**

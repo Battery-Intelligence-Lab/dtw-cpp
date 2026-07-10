@@ -190,15 +190,22 @@ TEST_CASE("FastCLARA is reproducible with same seed", "[fast_clara][reproducibil
   opts.n_samples = 3;
   opts.random_seed = 123;
 
-  // Reset the global RNG before each run to ensure determinism,
-  // since fast_pam uses the global randGenerator for Kmeanspp init.
-  dtwc::randGenerator.seed(42);
+  // CLARA owns a complete invocation-local seed schedule. Deliberately give the
+  // legacy Tier-2 engine different states: neither run may consume it, and the
+  // results must still agree.
+  const auto legacy_rng_original = dtwc::randGenerator;
+  dtwc::randGenerator.seed(17);
+  const auto legacy_rng_before_1 = dtwc::randGenerator;
   Problem prob1 = make_clara_problem(N);
   auto result1 = algorithms::fast_clara(prob1, opts);
+  CHECK(dtwc::randGenerator == legacy_rng_before_1);
 
-  dtwc::randGenerator.seed(42);
+  dtwc::randGenerator.seed(8675309);
+  const auto legacy_rng_before_2 = dtwc::randGenerator;
   Problem prob2 = make_clara_problem(N);
   auto result2 = algorithms::fast_clara(prob2, opts);
+  CHECK(dtwc::randGenerator == legacy_rng_before_2);
+  dtwc::randGenerator = legacy_rng_original;
 
   REQUIRE(result1.labels == result2.labels);
   REQUIRE(result1.medoid_indices == result2.medoid_indices);
@@ -221,14 +228,16 @@ TEST_CASE("FastCLARA falls back to FastPAM when sample_size >= N", "[fast_clara]
   opts.n_samples = 1;
   opts.random_seed = 42;
 
-  // Reset the global RNG to a known state for FastPAM init consistency.
-  dtwc::randGenerator.seed(42);
+  const auto legacy_rng_original = dtwc::randGenerator;
+  dtwc::randGenerator.seed(314159);
+  const auto legacy_rng_before = dtwc::randGenerator;
   auto clara_result = algorithms::fast_clara(prob_clara, opts);
+  CHECK(dtwc::randGenerator == legacy_rng_before);
+  dtwc::randGenerator = legacy_rng_original;
 
-  // Run FastPAM directly.
+  // Run the exact invocation-local FastPAM fallback oracle directly.
   Problem prob_pam = make_clara_problem(N);
-  dtwc::randGenerator.seed(42);
-  auto pam_result = fast_pam(prob_pam, k, 100);
+  auto pam_result = fast_pam_seeded(prob_pam, k, opts.random_seed, 100);
 
   // Results should be identical (same algorithm, same seed).
   REQUIRE(clara_result.medoid_indices == pam_result.medoid_indices);

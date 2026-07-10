@@ -6,6 +6,7 @@ function result = fast_pam(prob, k, varargin)
 %
 %   result = dtwc.fast_pam(prob, k)
 %   result = dtwc.fast_pam(prob, k, 'MaxIter', 200)
+%   result = dtwc.fast_pam(prob, k, 'Seed', 42)
 %
 %   FastPAM1 considers swapping any medoid with any non-medoid globally
 %   (true PAM SWAP), achieving the same quality as PAM with O(k) speedup.
@@ -18,6 +19,10 @@ function result = fast_pam(prob, k, varargin)
 %       Number of clusters.
 %   MaxIter : int, optional (default 100)
 %       Maximum SWAP iterations.
+%   Seed : non-negative integer, optional
+%       Invocation-local BUILD seed. When omitted, the legacy mutable Tier-2
+%       RNG is preserved for compatibility. dtwc.cluster always supplies the
+%       cross-language Tier-1 default explicitly.
 %
 %   Returns
 %   -------
@@ -39,7 +44,16 @@ function result = fast_pam(prob, k, varargin)
     addRequired(p, 'prob');
     addRequired(p, 'k', @(v) isnumeric(v) && isscalar(v) && v > 0);
     addParameter(p, 'MaxIter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
+    addParameter(p, 'Seed', [], @(v) isempty(v) || ...
+        (isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 ...
+         && v <= flintmax && v == fix(v)));
     parse(p, prob, k, varargin{:});
 
-    result = dtwc_mex('fast_pam', prob.get_handle(), double(k), double(p.Results.MaxIter));
+    if isempty(p.Results.Seed)
+        result = dtwc_mex('fast_pam', prob.get_handle(), ...
+            double(k), double(p.Results.MaxIter));
+    else
+        result = dtwc_mex('fast_pam', prob.get_handle(), ...
+            double(k), double(p.Results.MaxIter), double(p.Results.Seed));
+    end
 end

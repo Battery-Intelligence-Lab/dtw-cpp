@@ -39,7 +39,9 @@ function result = clarans(prob, k, varargin)
     addParameter(p, 'NumLocal', 2, @(v) isnumeric(v) && isscalar(v) && v > 0);
     addParameter(p, 'MaxNeighbor', -1, @(v) isnumeric(v) && isscalar(v));
     addParameter(p, 'MaxDtwEvals', -1, @(v) isnumeric(v) && isscalar(v));
-    addParameter(p, 'Seed', 42, @(v) isnumeric(v) && isscalar(v));
+    addParameter(p, 'Seed', dtwc.default_random_seed(), ...
+        @(v) isnumeric(v) && isscalar(v) && isfinite(v) && v >= 0 ...
+             && v <= double(intmax('uint32')) && v == fix(v));
     parse(p, prob, k, varargin{:});
 
     result = dtwc_mex('clarans', prob.get_handle(), ...
