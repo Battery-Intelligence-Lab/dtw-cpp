@@ -143,6 +143,14 @@ threshold is reached in a binary built without LLFIO, the CLI exits before a
 heap allocation and tells you to enable LLFIO, raise the threshold only when the
 packed matrix fits in RAM, or select `onebatch`.
 
+The mmap cache resumes automatically only when its version-2 fingerprint matches
+the exact data and distance configuration. A legacy version-1 or mismatched cache
+fails loudly and must be deleted/renamed and recomputed. When the threshold
+selects mmap, `--checkpoint` and `--dist-matrix` are incompatible because they
+require a dense CSV matrix; the CLI rejects the combination before opening
+either path. CUDA mmap runs must select explicit `--gpu-precision fp32` or
+`fp64`; the hardware-dependent `auto` setting is not a stable cache identity.
+
 ### GPU Options
 
 | Flag                       | Description                                  | Default |

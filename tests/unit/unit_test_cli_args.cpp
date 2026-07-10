@@ -213,6 +213,72 @@ TEST_CASE("CLI OneBatch keeps its own O(Nm) storage when mmap threshold fires",
   REQUIRE_FALSE(std::filesystem::exists(cache));
 }
 
+TEST_CASE("CLI mmap storage binds the selected pointwise metric",
+          "[cli][storage][mmap][fingerprint]")
+{
+#ifndef DTWC_HAS_MMAP
+  SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
+#else
+  ScratchDirectory scratch{"dtwc_cli_metric_fingerprint"};
+  const auto cache = scratch.path / "metric_distmat.cache";
+
+  {
+    auto squared = tiny_storage_problem();
+    REQUIRE(configure_cli_distance_storage(
+              squared, "pam", /*mmap_threshold=*/0, cache,
+              dtwc::core::MetricType::SquaredL2) == cache);
+    // Simulate an externally produced GPU entry; the cache identity, not CPU
+    // dispatch, is what this CLI helper owns.
+    std::get<dtwc::core::MmapDistanceMatrix>(squared.distance_matrix())
+      .set(0, 1, 7.0);
+  }
+
+  auto l1 = tiny_storage_problem();
+  REQUIRE_THROWS_WITH(
+    configure_cli_distance_storage(
+      l1, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1),
+    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+#endif
+}
+
+TEST_CASE("CLI rejects legacy CSV checkpoint plus mmap before either is opened",
+          "[cli][storage][mmap][checkpoint]")
+{
+  ScratchDirectory scratch{"dtwc_cli_checkpoint_mmap"};
+  auto prob = tiny_storage_problem();
+  const auto cache = scratch.path / "checkpoint_distmat.cache";
+
+  REQUIRE_THROWS_WITH(
+    configure_cli_distance_storage(
+      prob, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1,
+      /*legacy_checkpoint_requested=*/true),
+    Catch::Matchers::ContainsSubstring("cannot be combined")
+      && Catch::Matchers::ContainsSubstring("resumes automatically"));
+  REQUIRE_FALSE(std::filesystem::exists(cache));
+  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
+    prob.distance_matrix()));
+}
+
+TEST_CASE("CLI rejects legacy precomputed CSV plus mmap before false success",
+          "[cli][storage][mmap][dist-matrix]")
+{
+  ScratchDirectory scratch{"dtwc_cli_precomputed_mmap"};
+  auto prob = tiny_storage_problem();
+  const auto cache = scratch.path / "precomputed_distmat.cache";
+
+  REQUIRE_THROWS_WITH(
+    configure_cli_distance_storage(
+      prob, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1,
+      /*legacy_checkpoint_requested=*/false,
+      /*legacy_distance_matrix_requested=*/true),
+    Catch::Matchers::ContainsSubstring("--dist-matrix")
+      && Catch::Matchers::ContainsSubstring("cannot be combined")
+      && Catch::Matchers::ContainsSubstring("importing"));
+  REQUIRE_FALSE(std::filesystem::exists(cache));
+  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
+    prob.distance_matrix()));
+}
+
 // ---------------------------------------------------------------------------
 // CLI / TOML flag deprecation registry (Task 2.3, api-contract-2.0.md §4/§7)
 //

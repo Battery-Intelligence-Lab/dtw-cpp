@@ -7,6 +7,12 @@ weight: 8
 
 Checkpointing allows you to save and resume distance matrix computations. For large datasets, computing the full pairwise DTW distance matrix can take hours. If the process is interrupted, checkpointing lets you resume from where you left off instead of restarting from scratch.
 
+DTWC++ has three persistence mechanisms: the directory checkpoint documented
+below, a binary clustering-result checkpoint used by `--resume`, and the packed
+memory-mapped distance cache selected by `--mmap-threshold`. The mmap cache
+resumes automatically when its identity matches; it is not the same format as
+the dense CSV directory checkpoint.
+
 ## How it works
 
 A checkpoint is a directory containing two files:
@@ -118,6 +124,31 @@ When `--checkpoint` is specified, the CLI will:
 
 1. **On startup**: attempt to load a checkpoint from the given directory. If a valid checkpoint is found and the dimensions match, the saved distance matrix is restored.
 2. **On completion**: save the current state to the checkpoint directory, so it can be resumed if run again.
+
+### Memory-mapped cache safety and migration
+
+The current mmap cache is format version 2. Its 64-byte header contains a
+SHA-256 fingerprint of all inputs that can change a distance: exact series bits,
+order, lengths, dtype and `ndim`; band and every variant/multivariate parameter;
+missing-data strategy; pointwise metric; backend; and backend precision. Names
+are intentionally excluded. Header CRC, reserved bytes, and exact file length
+are validated before cached distances can be read.
+
+A same-sized cache from different data or configuration therefore fails loudly
+instead of returning stale distances. Version-1 caches contained only the matrix
+dimension and are rejected as unverifiable. Delete or rename a v1/mismatched
+cache and rerun to recompute it; the source data is not modified.
+
+Set data, band, variant, backend, metric, and precision before binding a cache.
+Use the semantic setters after binding; they detach the old mapping. Raw in-place
+series edits after the first cache use are unsupported because warm lookup is
+kept O(1): call `refresh_distance_matrix()` before editing, or use `set_data()`.
+CUDA-backed mmap caches require explicit FP32 or FP64 rather than `auto`.
+
+When `--mmap-threshold` selects mmap storage, `--checkpoint` and
+`--dist-matrix` are rejected because both require a legacy dense CSV matrix.
+Omit those options to use the fingerprinted cache's automatic resume, or raise
+the threshold only if the dense matrix and CSV checkpoint fit in RAM.
 
 ## Example workflow
 

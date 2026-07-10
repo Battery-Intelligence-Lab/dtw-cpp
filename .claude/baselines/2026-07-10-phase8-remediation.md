@@ -909,3 +909,55 @@ exactly. The non-hidden suite also passed 10,235 assertions in seven cases.
 Verdict: **PASS.** The release gate now exercises real unequal-length DTW work,
 has a proved exact global oracle, and measures a tight implementation-derived
 work fraction rather than relying on the old length-1 special case.
+
+## M14 — semantic mmap distance-cache identity
+
+The M11 follow-up reproduced the defect before implementation: a v1 mmap header
+identified only magic/version/endianness/element-size/N, so five same-N cases
+reopened cached bits under changed data or distance semantics. A deliberately
+constructed legacy-v1 file also opened under the old reader. The registered red
+suite therefore had five stale-reuse failures plus the legacy-format failure.
+
+The replacement 64-byte v2 header stores a SHA-256 identity and CRC-protects all
+metadata. The identity includes raw IEEE values, series order/lengths, storage
+precision and `ndim`, band, all variant parameters and multivariate mode,
+missing-data policy, pointwise metric, backend, and backend precision. Names are
+excluded because they cannot alter a distance. Exact file length, reserved bytes,
+algorithm ID, version, endian marker, element size, and CRC are all checked before
+the computed-bit region is exposed. CUDA `Auto` precision is rejected because
+the runtime GPU would make persistence semantics ambiguous; non-L1 caches are
+external-fill-only on the L1 CPU path.
+
+Mutation review found that hashing the full data on every pair lookup would turn
+warm access into O(series length). The final design validates the full identity
+at bind and once at first use, then checks an immutable-width configuration
+snapshot. Semantic setters detach the mapping; naked config edits are caught on
+every access. Raw in-place data edits after first validation are explicitly
+unsupported and documented to require refresh-before-edit or `set_data()`.
+
+Green evidence from clean authoritative builds:
+
+```text
+LLFIO ON focused mmap/identity/CLI/SHA suites:
+  4/4 tests passed, 0 failed (10.51 s)
+LLFIO OFF focused suites:
+  3 passed + 1 capability skip, 0 failed (4.14 s)
+
+O(1) lookup discriminator, 100000 cached reads each:
+  length=1:    3284600 ns
+  length=4096:  734600 ns
+  registered upper bound: 46276800 ns
+  3 assertions passed
+```
+
+The CLI now applies band/variant/multivariate/backend/precision settings before
+binding storage, carries the selected pointwise metric into the identity, writes
+GPU results through either dense or mmap storage, and rejects dense CSV
+`--checkpoint`/`--dist-matrix` combinations at the mmap threshold before opening
+either path. A production Metal mmap test was reordered to bind only after its
+backend setting. `git diff --check` was clean.
+
+Verdict: **PASS.** Warm-start reuse is now conditional on exact distance
+semantics rather than filename and N. Version-1 caches are intentionally invalid
+and have actionable recomputation guidance; the frozen-format exception is
+recorded in the PLAN decision log and migration documentation.

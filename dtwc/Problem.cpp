@@ -29,22 +29,73 @@
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
+#include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "missing_utils.hpp"               // for has_missing
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 
 #include <algorithm> // for max_element, min, min_element, sample
+#include <array>     // for array
 #include <cmath>     // for sqrt, floor
+#include <cstdint>   // for uint32_t, uint64_t
+#include <cstring>   // for memcpy
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <iterator>  // for back_insert_iterator, back_inserter
 #include <limits>    // for numeric_limits
 #include <random>    // for mt19937, discrete_distribution, unifo...
 #include <string>    // for allocator, char_traits, operator+
+#include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
 #include <vector>    // for vector, operator==
 
 namespace dtwc {
+
+namespace {
+
+using FingerprintHash = core::detail::Sha256;
+
+void hash_u32(FingerprintHash &hash, std::uint32_t value)
+{
+  std::array<std::uint8_t, 4> encoded{};
+  for (std::size_t i = 0; i < encoded.size(); ++i)
+    encoded[i] = static_cast<std::uint8_t>(value >> (i * 8));
+  hash.update(encoded);
+}
+
+void hash_u64(FingerprintHash &hash, std::uint64_t value)
+{
+  std::array<std::uint8_t, 8> encoded{};
+  for (std::size_t i = 0; i < encoded.size(); ++i)
+    encoded[i] = static_cast<std::uint8_t>(value >> (i * 8));
+  hash.update(encoded);
+}
+
+template <typename Enum>
+void hash_enum(FingerprintHash &hash, Enum value)
+{
+  static_assert(std::is_enum_v<Enum>);
+  using Unsigned = std::make_unsigned_t<std::underlying_type_t<Enum>>;
+  hash_u64(hash, static_cast<std::uint64_t>(static_cast<Unsigned>(value)));
+}
+
+void hash_double(FingerprintHash &hash, double value)
+{
+  static_assert(sizeof(double) == sizeof(std::uint64_t));
+  std::uint64_t bits{};
+  std::memcpy(&bits, &value, sizeof(bits));
+  hash_u64(hash, bits);
+}
+
+void hash_float(FingerprintHash &hash, float value)
+{
+  static_assert(sizeof(float) == sizeof(std::uint32_t));
+  std::uint32_t bits{};
+  std::memcpy(&bits, &value, sizeof(bits));
+  hash_u32(hash, bits);
+}
+
+} // namespace
 
 /**
  * @brief Resizes data structures based on the current number of clusters.
@@ -113,6 +164,7 @@ bool Problem::set_solver(Solver solver_)
  */
 void Problem::print_distance_matrix() const
 {
+  validate_mmap_cache_identity();
   visit_distmat([](const auto &m) { std::cout << m << '\n'; });
 }
 
@@ -129,13 +181,18 @@ void Problem::print_distance_matrix() const
  */
 void Problem::refresh_distance_matrix()
 {
-  visit_distmat([](auto &m) {
-    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      if (m.size() != 0)
-        m.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
-    }
-    // MmapDistanceMatrix: no-op (mmap is pre-allocated and persistent).
-  });
+  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)) {
+    // A semantic mutation (set_data/set_band/set_variant) must never keep a
+    // mapped matrix whose computed bits describe the prior configuration.
+    // Detach without deleting or rewriting the persistent file; rebinding it
+    // under changed semantics will then fail its fingerprint check loudly.
+    distMat = core::DenseDistanceMatrix{};
+    clear_mmap_cache_identity();
+  } else {
+    auto &m = std::get<core::DenseDistanceMatrix>(distMat);
+    if (m.size() != 0)
+      m.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
+  }
   rebind_dtw_fn();
 }
 
@@ -204,18 +261,188 @@ void Problem::set_variant(core::DTWVariantParams params)
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
 }
 
-void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
+Problem::cache_fingerprint_t
+Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
+{
+  FingerprintHash hash;
+  static constexpr char domain[] = "dtwc-distance-cache-configuration-v1";
+  hash.update(domain, sizeof(domain) - 1);
+
+  // Distance semantics. All variant parameters are included, even when
+  // inactive for the selected variant. This deliberately prefers a harmless
+  // cache miss over trusting distances after an ambiguous configuration edit.
+  hash_enum(hash, metric);
+  hash_u64(hash, static_cast<std::uint64_t>(static_cast<std::int64_t>(band)));
+  hash_enum(hash, variant_params.variant);
+  hash_double(hash, variant_params.wdtw_g);
+  hash_double(hash, variant_params.adtw_penalty);
+  hash_double(hash, variant_params.sdtw_gamma);
+  hash_double(hash, variant_params.msm_c);
+  hash_double(hash, variant_params.twe_nu);
+  hash_double(hash, variant_params.twe_lambda);
+  hash_enum(hash, variant_params.mv_mode);
+  hash_enum(hash, missing_strategy);
+
+  // Backend/precision can change the stored numeric result even when the
+  // mathematical recurrence is the same (notably GPU FP32 versus CPU FP64).
+  hash_enum(hash, distance_strategy);
+  hash_u64(hash, static_cast<std::uint64_t>(
+                   static_cast<std::int64_t>(cuda_settings.device_id)));
+  hash_u64(hash, static_cast<std::uint64_t>(
+                   static_cast<std::int64_t>(cuda_settings.precision)));
+
+  return hash.digest();
+}
+
+Problem::DistanceCacheConfiguration
+Problem::distance_cache_configuration(core::MetricType metric) const
+{
+  return {
+    metric,
+    band,
+    variant_params,
+    missing_strategy,
+    distance_strategy,
+    cuda_settings.device_id,
+    cuda_settings.precision
+  };
+}
+
+bool Problem::distance_cache_configuration_matches(
+  const DistanceCacheConfiguration &expected) const
+{
+  const auto &a = variant_params;
+  const auto &b = expected.variant_params;
+  return expected.band == band
+      && b.variant == a.variant
+      && b.wdtw_g == a.wdtw_g
+      && b.adtw_penalty == a.adtw_penalty
+      && b.sdtw_gamma == a.sdtw_gamma
+      && b.msm_c == a.msm_c
+      && b.twe_nu == a.twe_nu
+      && b.twe_lambda == a.twe_lambda
+      && b.mv_mode == a.mv_mode
+      && expected.missing_strategy == missing_strategy
+      && expected.distance_strategy == distance_strategy
+      && expected.cuda_device_id == cuda_settings.device_id
+      && expected.cuda_precision == cuda_settings.precision;
+}
+
+Problem::DistanceCacheIdentity
+Problem::distance_cache_identity(core::MetricType metric) const
+{
+  if (data.is_metadata_only()) {
+    throw std::runtime_error(
+      "use_mmap_distance_matrix: cannot fingerprint metadata-only data; "
+      "time-series values must be resident before a distance cache can be bound");
+  }
+  if (distance_strategy == DistanceMatrixStrategy::CUDA
+      && cuda_settings.precision == 0) {
+    throw std::runtime_error(
+      "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
+      "warm-start caches because its resolved FP32/FP64 semantics depend on the "
+      "runtime GPU. Select explicit FP32 or FP64 before binding the cache.");
+  }
+
+  DistanceCacheIdentity identity;
+  identity.configuration_values = distance_cache_configuration(metric);
+  identity.precision = data.precision;
+  identity.n = data.size();
+  identity.ndim = data.ndim;
+  identity.configuration = distance_cache_configuration_fingerprint(metric);
+
+  FingerprintHash hash;
+  static constexpr char domain[] = "dtwc-distance-cache-fingerprint-v1";
+  hash.update(domain, sizeof(domain) - 1);
+  hash.update(identity.configuration);
+
+  // Dataset identity: representation, dimensions, series ordering, each flat
+  // length, and every IEEE value bit. Names are intentionally excluded because
+  // they cannot affect a distance. Canonical integer encoding keeps the digest
+  // independent of std::hash and host word width.
+  hash_u64(hash, static_cast<std::uint64_t>(data.size()));
+  hash_u64(hash, static_cast<std::uint64_t>(data.ndim));
+  hash_enum(hash, data.precision);
+  for (std::size_t i = 0; i < data.size(); ++i) {
+    hash_u64(hash, static_cast<std::uint64_t>(data.series_flat_size(i)));
+    if (data.is_f32()) {
+      for (const float value : data.series_f32(i))
+        hash_float(hash, value);
+    } else {
+      for (const data_t value : series(i))
+        hash_double(hash, value);
+    }
+  }
+
+  identity.full = hash.digest();
+  return identity;
+}
+
+void Problem::clear_mmap_cache_identity()
+{
+  mmap_cache_identity_bound_ = false;
+  mmap_cache_data_validated_ = false;
+  mmap_cache_identity_ = DistanceCacheIdentity{};
+}
+
+void Problem::validate_mmap_cache_identity() const
+{
+  if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
+  if (!mmap_cache_identity_bound_) {
+    throw std::runtime_error(
+      "MmapDistanceMatrix: mapped storage has no bound Problem cache identity");
+  }
+
+  const auto &matrix = std::get<core::MmapDistanceMatrix>(distMat);
+  if (matrix.fingerprint() != mmap_cache_identity_.full
+      || data.size() != mmap_cache_identity_.n
+      || data.ndim != mmap_cache_identity_.ndim
+      || data.precision != mmap_cache_identity_.precision
+      || !distance_cache_configuration_matches(
+           mmap_cache_identity_.configuration_values)) {
+    throw std::runtime_error(
+      "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+      "or distance configuration changed. Call refresh_distance_matrix(), then "
+      "bind a cache created for the new semantics.");
+  }
+
+  // Exactly one full data hash starts a bound-cache use session. Subsequent
+  // cached lookups retain their O(1) contract and compare only the fixed-size
+  // configuration snapshot above. Semantic setters detach the cache; mutating
+  // public raw Data storage after this point is unsupported and requires an
+  // explicit refresh_distance_matrix() before the edit.
+  if (!mmap_cache_data_validated_) {
+    const DistanceCacheIdentity current = distance_cache_identity(
+      mmap_cache_identity_.configuration_values.metric);
+    if (current.full != mmap_cache_identity_.full) {
+      throw std::runtime_error(
+        "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
+        "changed before first use. Call refresh_distance_matrix(), then bind a "
+        "cache created for the new data.");
+    }
+    mmap_cache_data_validated_ = true;
+  }
+}
+
+void Problem::use_mmap_distance_matrix(
+  const std::filesystem::path &cache_path, core::MetricType metric)
 {
   const size_t N = data.size();
+  DistanceCacheIdentity identity = distance_cache_identity(metric);
   if (std::filesystem::exists(cache_path)) {
-    distMat = core::MmapDistanceMatrix::open(cache_path);
+    // open(path, expected) validates version, header integrity, length, and the
+    // full semantic fingerprint before exposing the mapped computed-bit region.
+    distMat = core::MmapDistanceMatrix::open(cache_path, identity.full);
     auto &m = std::get<core::MmapDistanceMatrix>(distMat);
     if (m.size() != N)
       throw std::runtime_error("Mmap cache N=" + std::to_string(m.size())
                                + " != data N=" + std::to_string(N));
   } else {
-    distMat = core::MmapDistanceMatrix(cache_path, N);
+    distMat = core::MmapDistanceMatrix(cache_path, N, identity.full);
   }
+  mmap_cache_identity_ = std::move(identity);
+  mmap_cache_identity_bound_ = true;
+  mmap_cache_data_validated_ = false;
 }
 
 /**
@@ -227,9 +454,13 @@ void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
  *@note Thread safety: the lazy-alloc + compute path is NOT thread-safe.
  *      Call fillDistanceMatrix() before entering any parallel region.
  *      After that, all calls are read-only lookups (no race by design).
+ *      A bound mmap cache's first-use data validation also initializes its
+ *      session flag; perform fill_distance_matrix() or
+ *      is_distance_matrix_filled() once serially before parallel lookups.
  */
 double Problem::dist_by_ind(int i, int j)
 {
+  validate_mmap_cache_identity();
   if (i == j) return 0.0;
 
   const size_t N = data.size();
@@ -261,6 +492,14 @@ double Problem::dist_by_ind(int i, int j)
   bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
   if (computed)
     return visit_distmat([&](const auto &m) { return m.get(i, j); });
+
+  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)
+      && mmap_cache_identity_.configuration_values.metric != core::MetricType::L1) {
+    throw std::runtime_error(
+      "MmapDistanceMatrix: a non-L1 cache is external-fill-only; lazy CPU "
+      "dist_by_ind computes L1 and cannot populate this cache. Fill it through "
+      "the matching GPU/backend producer before reading the pair.");
+  }
 
   const double d = data.is_f32()
     ? dtw_fn_f32_(data.series_f32(i), data.series_f32(j))
@@ -347,6 +586,13 @@ void Problem::fillDistanceMatrix_BruteForce()
 void Problem::fill_distance_matrix()
 {
   if (is_distance_matrix_filled()) return;
+
+  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)
+      && mmap_cache_identity_.configuration_values.metric != core::MetricType::L1) {
+    throw std::runtime_error(
+      "MmapDistanceMatrix: a non-L1 cache is external-fill-only; the Problem CPU "
+      "fill path computes L1. Fill it through the matching GPU/backend producer.");
+  }
 
   // Allocate the dense N×N matrix on first call (deferred from set_data / refreshDistanceMatrix).
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.

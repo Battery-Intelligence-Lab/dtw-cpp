@@ -487,7 +487,7 @@ static void cmd_Problem_set_data(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_set_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_band requires handle and band value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.band = static_cast<int>(get_scalar(prhs[2]));
+  prob.set_band(static_cast<int>(get_scalar(prhs[2])));
 }
 
 static void cmd_Problem_get_band(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

@@ -96,8 +96,8 @@ TEST_CASE("Metal strategy via Problem::fillDistanceMatrix (mmap)", "[metal][mmap
 
   auto prob_gpu = make_problem(N, L, 777);
   prob_gpu.output_folder = tmpdir;
-  prob_gpu.use_mmap_distance_matrix(tmpdir / "metal_mmap_distmat.bin");
   prob_gpu.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  prob_gpu.use_mmap_distance_matrix(tmpdir / "metal_mmap_distmat.bin");
   prob_gpu.fillDistanceMatrix();
 
   for (size_t i = 0; i < N; ++i) {

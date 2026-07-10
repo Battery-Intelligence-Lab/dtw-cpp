@@ -817,7 +817,10 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("read_distance_matrix", &dtwc::Problem::read_distance_matrix, "path"_a,
          "Read a distance matrix from a CSV file.")
     .def("print_distance_matrix", &dtwc::Problem::print_distance_matrix)
-    .def("use_mmap_distance_matrix", &dtwc::Problem::use_mmap_distance_matrix, "cache_path"_a,
+    .def("use_mmap_distance_matrix",
+         [](dtwc::Problem &p, const std::filesystem::path &cache_path) {
+           p.use_mmap_distance_matrix(cache_path);
+         }, "cache_path"_a,
          "Back the distance matrix with a memory-mapped cache file (big-N / resume).")
     // ---- clustering ----
     .def("cluster", [](dtwc::Problem &p) {

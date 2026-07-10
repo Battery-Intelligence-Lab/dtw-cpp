@@ -155,6 +155,7 @@ void Problem::writeMedoidMembers(int iter, int rep) const
  */
 void Problem::writeDistanceMatrix(const std::string &name_) const
 {
+  validate_mmap_cache_identity();
   visit_distmat([&](const auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
       io::write_csv(m, output_folder / name_);

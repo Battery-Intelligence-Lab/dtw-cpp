@@ -9,6 +9,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <array>
 #include <cmath>
@@ -380,9 +381,9 @@ TEST_CASE("MmapDistanceMatrix open nonexistent file throws", "[MmapDistanceMatri
 // Regression for audit CRITICAL #4 (mmap_distance_matrix.hpp validate_header).
 // Before the fix, validate_header computed `expected = header_size + packed_size(n)*8`
 // with NO overflow guard. A crafted header with n = 2^62 makes packed_size(n) = 2^61,
-// and 2^61 * 8 == 2^64 == 0 (mod 2^64), so `expected` wraps to header_size (32). The
-// truncation check `file_len < expected` then PASSES on a 32-byte file, and open()
-// returns a matrix reporting size()==2^62 backed by a 32-byte mapping -> OOB reads.
+// and 2^61 * 8 == 2^64 == 0 (mod 2^64), so `expected` wraps to header_size. The
+// truncation check `file_len < expected` then PASSES on a header-only file, and open()
+// returns a matrix reporting size()==2^62 backed by that mapping -> OOB reads.
 // The unfixed code does NOT throw here; the fix routes validate_header through a
 // checked file_size() that throws on the multiplication overflow.
 TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[MmapDistanceMatrix][security]")
@@ -391,7 +392,7 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
 
   const uint64_t bad_n = uint64_t{ 1 } << 62; // packed_size = 2^61; *8 wraps to 0 mod 2^64
 
-  // Build a 32-byte header that passes magic/version/endian/elem_size/CRC checks so
+  // Build a v2 header that passes magic/version/endian/elem_size/fingerprint/CRC checks so
   // that the ONLY thing standing between the file and acceptance is the size check.
   std::array<uint8_t, MmapDistanceMatrix::header_size> hdr{};
   std::memcpy(hdr.data() + 0, MmapDistanceMatrix::magic, 4);
@@ -400,11 +401,11 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
   const uint32_t em = MmapDistanceMatrix::endian_marker;
   std::memcpy(hdr.data() + 6, &em, 4);
   hdr[10] = MmapDistanceMatrix::elem_size;
-  hdr[11] = 0;
+  hdr[11] = MmapDistanceMatrix::fingerprint_algorithm;
   std::memcpy(hdr.data() + 12, &bad_n, 8);
-  const uint32_t crc = detail::crc32_naive(hdr.data(), 20); // CRC of bytes 0-19
-  std::memcpy(hdr.data() + 20, &crc, 4);
-  // bytes 24-31 already zero from value-initialisation
+  // Fingerprint and reserved bytes remain zero; only overflow is under test.
+  const uint32_t crc = detail::crc32_naive(hdr.data(), 60);
+  std::memcpy(hdr.data() + 60, &crc, 4);
 
   {
     std::ofstream f(tmp.path, std::ios::binary);
@@ -412,6 +413,93 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
   }
 
   REQUIRE_THROWS_AS(MmapDistanceMatrix::open(tmp.path), std::runtime_error);
+}
+
+TEST_CASE("MmapDistanceMatrix rejects corrupted fingerprint metadata before data access",
+          "[MmapDistanceMatrix][mmap][fingerprint][security]")
+{
+  TempFile tmp;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x5au);
+
+  {
+    MmapDistanceMatrix dm(tmp.path, 2, fingerprint);
+    dm.set(0, 1, 123.0);
+    dm.sync();
+  }
+
+  // Flip one fingerprint byte without repairing the CRC. Header integrity must
+  // fail before open() can expose the persisted 123.0 computed entry.
+  {
+    std::fstream file(tmp.path, std::ios::in | std::ios::out | std::ios::binary);
+    file.seekg(20);
+    char byte{};
+    file.read(&byte, 1);
+    byte = static_cast<char>(static_cast<unsigned char>(byte) ^ 0x01u);
+    file.seekp(20);
+    file.write(&byte, 1);
+  }
+
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path, fingerprint),
+    Catch::Matchers::ContainsSubstring("header CRC mismatch"));
+}
+
+TEST_CASE("MmapDistanceMatrix rejects a well-formed unexpected fingerprint",
+          "[MmapDistanceMatrix][mmap][fingerprint]")
+{
+  TempFile tmp;
+  MmapDistanceMatrix::fingerprint_type stored{};
+  MmapDistanceMatrix::fingerprint_type expected{};
+  stored.fill(0x11u);
+  expected.fill(0x22u);
+
+  {
+    MmapDistanceMatrix dm(tmp.path, 2, stored);
+    dm.set(0, 1, 123.0);
+    dm.sync();
+  }
+
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path, expected),
+    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+
+  // The convenience overload is not an unchecked escape hatch: it explicitly
+  // expects the all-zero identity used by low-level unbound matrices.
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path),
+    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+}
+
+TEST_CASE("MmapDistanceMatrix rejects legacy version-1 cache headers loudly",
+          "[MmapDistanceMatrix][mmap][version]")
+{
+  TempFile tmp;
+
+  // The released pre-fingerprint layout was a 32-byte v1 header. N=0 makes
+  // that header a complete valid v1 file, so accepting it would silently trust
+  // metadata that cannot bind distances to their source data/configuration.
+  std::array<uint8_t, 32> legacy{};
+  std::memcpy(legacy.data(), MmapDistanceMatrix::magic, 4);
+  const uint16_t legacy_version = 1;
+  std::memcpy(legacy.data() + 4, &legacy_version, 2);
+  const uint32_t endian = MmapDistanceMatrix::endian_marker;
+  std::memcpy(legacy.data() + 6, &endian, 4);
+  legacy[10] = MmapDistanceMatrix::elem_size;
+  const uint64_t n = 0;
+  std::memcpy(legacy.data() + 12, &n, 8);
+  const uint32_t crc = detail::crc32_naive(legacy.data(), 20);
+  std::memcpy(legacy.data() + 20, &crc, 4);
+
+  {
+    std::ofstream out(tmp.path, std::ios::binary);
+    out.write(reinterpret_cast<const char *>(legacy.data()),
+              static_cast<std::streamsize>(legacy.size()));
+  }
+
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path),
+    Catch::Matchers::ContainsSubstring("unsupported version 1"));
 }
 
 // ============================================================================

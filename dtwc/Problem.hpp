@@ -101,6 +101,28 @@ private:
   dtw_fn_f32_t dtw_fn_f32_;                         /*!< DTW distance function for float32. */
   std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
 
+  using cache_fingerprint_t = core::MmapDistanceMatrix::fingerprint_type;
+  struct DistanceCacheConfiguration {
+    core::MetricType metric{ core::MetricType::L1 };
+    int band{ settings::DEFAULT_BAND };
+    core::DTWVariantParams variant_params{};
+    core::MissingStrategy missing_strategy{ core::MissingStrategy::Error };
+    DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto };
+    int cuda_device_id{ 0 };
+    int cuda_precision{ 0 };
+  };
+  struct DistanceCacheIdentity {
+    cache_fingerprint_t full{};
+    cache_fingerprint_t configuration{};
+    DistanceCacheConfiguration configuration_values{};
+    core::Precision precision{ core::Precision::Float64 };
+    size_t n{ 0 };
+    size_t ndim{ 1 };
+  };
+  DistanceCacheIdentity mmap_cache_identity_{};
+  bool mmap_cache_identity_bound_{ false };
+  mutable bool mmap_cache_data_validated_{ false };
+
   /// Dispatch through variant via std::visit.
   template <typename F>
   decltype(auto) visit_distmat(F &&f)
@@ -116,6 +138,15 @@ private:
 
   void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
   void refresh_variant_caches(); ///< Refresh precomputed variant-specific caches.
+  cache_fingerprint_t distance_cache_configuration_fingerprint(
+    core::MetricType metric) const;
+  DistanceCacheConfiguration distance_cache_configuration(
+    core::MetricType metric) const;
+  bool distance_cache_configuration_matches(
+    const DistanceCacheConfiguration &expected) const;
+  DistanceCacheIdentity distance_cache_identity(core::MetricType metric) const;
+  void validate_mmap_cache_identity() const;
+  void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
   void resize(); ///< Resize cluster/centroid buffers to size()/Nc. Internal invariant maintenance (Task 1.6: private).
 
@@ -175,6 +206,9 @@ public:
   auto const &get_name(size_t i) const { assert(!data.is_view()); return data.p_names[i]; }
 
   /// Mutable vector access (heap-mode only — asserts if view-mode).
+  /// Call refresh_distance_matrix() before mutating values when any distance
+  /// cache has been used; raw in-place edits during a bound-cache session are
+  /// unsupported because warm lookups intentionally remain O(1).
   auto &p_vec(size_t i) { assert(!data.is_view()); return data.p_vec[i]; }
   auto const &p_vec(size_t i) const { assert(!data.is_view()); return data.p_vec[i]; }
 
@@ -212,12 +246,17 @@ public:
   // `band`, `maxIter`, `N_repetition`) stay public this phase for binding
   // compatibility — the Python bindings take `&Problem::maxIter` /
   // `&Problem::N_repetition` by address (`_dtwcpp_core.cpp:423-424`); full field
-  // privatisation lands with the Phase 2 binding rewrite. None of these fields
-  // de-sync derived state (the bound DTW fn reads `band` live; `method` is read
-  // at cluster() time), so a naked write is safe — only `variant_params` needs
-  // the rebinding `set_variant`.
+  // privatisation lands with the Phase 2 binding rewrite. Prefer these setters:
+  // `set_band` also invalidates any populated dense/mmap matrix. Legacy naked
+  // writes remain source-compatible; a bound mmap cache detects them before
+  // returning a computed distance.
   void set_method(Method m) { method = m; }
-  void set_band(int b) { band = b; }
+  void set_band(int b)
+  {
+    if (band == b) return;
+    band = b;
+    refresh_distance_matrix();
+  }
   void set_max_iter(int n) { maxIter = n; }
   int max_iter() const { return maxIter; }
   void set_n_repetitions(int n) { N_repetition = n; }
@@ -225,8 +264,8 @@ public:
 
   void set_data(dtwc::Data data_)
   {
+    data_.validate_ndim();
     data = std::move(data_);
-    data.validate_ndim();
     refresh_distance_matrix();
   }
 
@@ -235,7 +274,7 @@ public:
   {
     data = std::move(data_);
     // validate_ndim() already called by Data's view-mode constructor
-    rebind_dtw_fn();
+    refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }
 
@@ -243,7 +282,11 @@ public:
   void set_variant(core::DTWVariant v);
   void set_variant(core::DTWVariantParams params);
 
-  data_t max_distance() const { return visit_distmat([](const auto &m) { return m.max(); }); }
+  data_t max_distance() const
+  {
+    validate_mmap_cache_identity();
+    return visit_distmat([](const auto &m) { return m.max(); });
+  }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
 
   data_t dist_by_ind(int i, int j);
@@ -264,14 +307,23 @@ public:
   }
   bool is_distance_matrix_filled() const
   {
+    validate_mmap_cache_identity();
     return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });
   }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
 
   /// Access the underlying distance matrix (const).
-  const distMat_t &distance_matrix() const { return distMat; }
+  const distMat_t &distance_matrix() const
+  {
+    validate_mmap_cache_identity();
+    return distMat;
+  }
   /// Access the underlying distance matrix (mutable).
-  distMat_t &distance_matrix() { return distMat; }
+  distMat_t &distance_matrix()
+  {
+    validate_mmap_cache_identity();
+    return distMat;
+  }
 
   /// Access the Dense distance matrix. Throws std::bad_variant_access if mmap is active.
   const core::DenseDistanceMatrix &dense_distance_matrix() const
@@ -282,7 +334,18 @@ public:
   {
     return std::get<core::DenseDistanceMatrix>(distMat);
   }
-  void use_mmap_distance_matrix(const std::filesystem::path &cache_path);
+  /// Bind persistent storage to this Problem's exact data/configuration.
+  /// Non-L1 identities are for matching external/GPU producers only; the CPU
+  /// lazy/fill paths reject them before writing because their local cost is L1.
+  /// The full data fingerprint is verified at bind and once again on first use;
+  /// subsequent warm lookups compare a fixed-size configuration snapshot to
+  /// preserve O(1) access. After first use, replace data through set_data and
+  /// distance-semantic setters, or call refresh_distance_matrix() before any
+  /// raw in-place Data edit; mutating raw storage during a bound session is
+  /// unsupported.
+  void use_mmap_distance_matrix(
+    const std::filesystem::path &cache_path,
+    core::MetricType metric = core::MetricType::L1);
 
   void fill_distance_matrix();
   [[deprecated("use fill_distance_matrix")]] void fillDistanceMatrix() { fill_distance_matrix(); }

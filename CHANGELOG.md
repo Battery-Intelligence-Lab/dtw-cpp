@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Replaced N-only mmap warm-start validation with a version-2 SHA-256 identity
+  over the exact data and every distance-affecting setting. Stale, corrupted,
+  legacy-v1, or ambiguous-backend caches now fail before exposing distances;
+  legacy dense CSV checkpoint/matrix combinations are rejected at mmap scale.
 - Restored the frozen API contract's decision-log governance and recorded the
   approved 2.0 scope for MATLAB's Tier-1 method set and the C++ HPC
   throwing-beta transport boundary.

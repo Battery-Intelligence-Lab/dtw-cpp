@@ -64,6 +64,7 @@ target_sources(dtwc++
   core/lower_bounds.hpp
   core/lower_bound_impl.hpp
   core/pruned_distance_matrix.hpp
+  core/sha256.hpp
   core/scratch_matrix.hpp
   core/time_series.hpp
   core/z_normalize.hpp

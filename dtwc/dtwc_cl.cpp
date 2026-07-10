@@ -47,11 +47,14 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
+#include <variant>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -159,13 +162,30 @@ static std::optional<fs::path> configure_cli_distance_storage(
   dtwc::Problem &prob,
   std::string_view method,
   size_t mmap_threshold,
-  const fs::path &cache_path)
+  const fs::path &cache_path,
+  dtwc::core::MetricType cache_metric = dtwc::core::MetricType::L1,
+  bool legacy_checkpoint_requested = false,
+  bool legacy_distance_matrix_requested = false)
 {
   if (method == "onebatch") return std::nullopt;
   if (mmap_threshold != 0 && prob.size() < mmap_threshold) return std::nullopt;
+  if (legacy_checkpoint_requested) {
+    throw std::runtime_error(
+      "--checkpoint uses the legacy dense CSV checkpoint format and cannot be "
+      "combined with memory-mapped distance storage. The mmap cache already "
+      "resumes automatically; omit --checkpoint, or raise --mmap-threshold if "
+      "the dense matrix and CSV checkpoint fit in RAM.");
+  }
+  if (legacy_distance_matrix_requested) {
+    throw std::runtime_error(
+      "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
+      "with memory-mapped distance storage. Omit --dist-matrix to resume the "
+      "fingerprinted mmap cache, or raise --mmap-threshold if importing the "
+      "dense CSV matrix fits in RAM.");
+  }
 
 #ifdef DTWC_HAS_MMAP
-  prob.use_mmap_distance_matrix(cache_path);
+  prob.use_mmap_distance_matrix(cache_path, cache_metric);
   return cache_path;
 #else
   throw std::runtime_error(
@@ -877,16 +897,6 @@ int main(int argc, char *argv[])
   }
 
   const bool matrix_free_method = (method == "onebatch" || method == "tadpole");
-  try {
-    const auto mmap_cache = configure_cli_distance_storage(
-      prob, method, mmap_threshold,
-      fs::path(output_dir) / (prob_name + "_distmat.cache"));
-    if (mmap_cache && verbose)
-      std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << "\n";
-    return EXIT_FAILURE;
-  }
 
   if (resume) {
     auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
@@ -899,7 +909,7 @@ int main(int argc, char *argv[])
   }
 
   // ---- Configure DTW ----
-  prob.band = band;
+  prob.set_band(band);
   prob.maxIter = max_iter;
   prob.N_repetition = n_init;
   prob.output_folder = output_dir;
@@ -949,6 +959,24 @@ int main(int argc, char *argv[])
   vparams.mv_mode = (mv_mode == "independent") ? dtwc::core::MVMode::Independent
                                                : dtwc::core::MVMode::Dependent;
   prob.set_variant(vparams);
+
+  // Bind persistent distance storage only after every distance-affecting CLI
+  // option has reached Problem. Opening earlier made the cache identity observe
+  // the default band/variant/backend rather than the user's configuration.
+  const auto cache_metric = metric == "squared_euclidean"
+    ? dtwc::core::MetricType::SquaredL2
+    : dtwc::core::MetricType::L1;
+  try {
+    const auto mmap_cache = configure_cli_distance_storage(
+      prob, method, mmap_threshold,
+      fs::path(output_dir) / (prob_name + "_distmat.cache"), cache_metric,
+      !checkpoint_dir.empty(), !dist_mat_path.empty());
+    if (mmap_cache && verbose)
+      std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
+  } catch (const std::exception &e) {
+    std::cerr << "Error: " << e.what() << "\n";
+    return EXIT_FAILURE;
+  }
 
   // Set MIP solver (relevant for method=mip)
   if (solver == "highs")
@@ -1019,12 +1047,20 @@ int main(int argc, char *argv[])
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(prob.data.p_vec, cuda_opts);
 
-    // Inject GPU distance matrix into Problem (Dense only)
-    auto &dm = prob.dense_distance_matrix();
-    dm.resize(cuda_result.n);
-    for (size_t i = 0; i < cuda_result.n; ++i)
-      for (size_t j = i; j < cuda_result.n; ++j)
-        dm.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    // Inject GPU results into whichever storage policy was selected. The mmap
+    // path is essential when the CLI threshold was crossed; its fingerprint
+    // already binds the cache to the CUDA metric/precision configuration.
+    std::visit([&](auto &dm) {
+      using Matrix = std::decay_t<decltype(dm)>;
+      if constexpr (std::is_same_v<Matrix, dtwc::core::DenseDistanceMatrix>) {
+        dm.resize(cuda_result.n);
+      } else if (dm.size() != cuda_result.n) {
+        throw std::runtime_error("CUDA result size does not match mmap distance cache");
+      }
+      for (size_t i = 0; i < cuda_result.n; ++i)
+        for (size_t j = i; j < cuda_result.n; ++j)
+          dm.set(i, j, cuda_result.matrix[i * cuda_result.n + j]);
+    }, prob.distance_matrix());
     if (verbose)
       std::cout << "GPU distance matrix: " << cuda_result.pairs_computed
                 << " pairs in " << std::setprecision(3)

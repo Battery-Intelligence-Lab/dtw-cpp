@@ -412,6 +412,26 @@ driven via `use_mmap_distance_matrix(path)` (§2.2) + CLI `--resume`. MATLAB
 checkpointing (`TODO.md:105`, "MATLAB Phase 2: checkpointing") is `[new]` and
 lands in Phase 2.2 against this table.
 
+**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses the
+64-byte version-2 header. Its SHA-256 identity covers the raw IEEE series values,
+series order and lengths, storage precision, `ndim`, band, every DTW-variant
+parameter, multivariate mode, missing-data strategy, pointwise metric, compute
+backend, and backend precision. Series names are excluded because they do not
+affect distance semantics. Header metadata has a CRC, reserved bytes are checked,
+and the file length must match the packed matrix exactly. A mismatch is a hard
+error before any cached value is exposed; callers must use the original semantics
+or delete/rename the cache and recompute it.
+
+Version-1 mmap caches are deliberately rejected because their N-only identity
+cannot prove safe reuse. Semantic setters detach a bound cache without deleting
+it. The complete data identity is checked at bind and once at first use; later
+lookups compare a fixed-size configuration snapshot so warm access remains O(1).
+Consequently raw in-place `Data` mutation after first use is unsupported: call
+`refresh_distance_matrix()` before the edit, or replace the data through
+`set_data()`. CUDA mmap caches require explicit FP32 or FP64 (not hardware-
+dependent `Auto`), and non-L1 identities are external/GPU-fill-only because the
+CPU lazy path computes L1.
+
 ---
 
 ## 3. Full 1.x → 2.0 rename table
@@ -472,6 +492,14 @@ or `removed` (dropped from bindings — 2.0 is the break point, surface report �
 | 40 | medoids field (Result) | `ClusterResult.medoid_indices` (`_api.py:83`) | `Result.medoids` | alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:29) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:226) | `--dtype float64` | old accepted, default flips (§8) |
+
+**Mmap-cache migration.** The unsafe version-1 `<name>_distmat.cache` format is
+not resumed by 2.0. Delete or rename that cache and rerun to create a fingerprinted
+version-2 cache; source data and result checkpoints are unaffected. At the CLI
+mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
+combined with the mmap cache and fail before either storage path is opened. Omit
+the dense option to use automatic mmap resume, or raise the threshold only when
+the dense matrix and CSV checkpoint fit in memory.
 
 **Duplicate-elimination principle (surface report §7).** Where the same concept
 had three different names (surface report inconsistency table rows 1, 5, 12), 2.0
@@ -652,7 +680,9 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      set.* `<name>_checkpoint.bin` and `<name>_distmat.cache` are written by the
      **CLI during the run** (`dtwc_cl.cpp:682/689`) for resume (invariant 4), **not**
      by `Result::save(dir)`. Their format is preserved for `--resume` compatibility,
-     but they are explicitly outside the `save()`↔CLI byte-identity claim.
+     but they are explicitly outside the `save()`↔CLI byte-identity claim. The
+     mmap cache's safety-mandated v1→v2 invalidation is the authorized exception:
+     v1 caches must be recomputed because they cannot identify their data/config.
 3. **CLI flag set + TOML/YAML keys** (kebab-case) are a de-facto API:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:68-84`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
