@@ -255,6 +255,38 @@ function test_valid_semantic_setters_publish_and_invalidate_matlab_cache(testCas
     verifyFalse(testCase, variant.is_distance_matrix_filled());
 end
 
+function test_invalid_cuda_precision_values_are_typed(testCase)
+%   M47: validate the exact integer selector before static_cast<int>, Problem
+%   publication, cache invalidation, or backend capability selection.
+    invalid = {-1, 3, NaN, Inf, 1.5, double(intmax('int32')) + 1};
+    for i = 1:numel(invalid)
+        h = dtwc_mex('Problem_new', 'm47_cuda_precision');
+        guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+        dtwc_mex('Problem_set_data', h, [0; 1]);
+        verifyError(testCase, ...
+            @() dtwc_mex('Problem_set_cuda_settings', h, 0, invalid{i}), ...
+            'dtwc:invalidArgument');
+        clear guard;
+    end
+end
+
+function test_unknown_problem_selector_tokens_remain_typed(testCase)
+%   Text parsers are an independent first boundary; M47 must not weaken their
+%   established invalidArgument behavior while hardening raw C++ enum values.
+    h = dtwc_mex('Problem_new', 'm47_unknown_selectors');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    calls = {
+        @() dtwc_mex('Problem_set_variant', h, 'bogus'), ...
+        @() dtwc_mex('Problem_set_missing_strategy', h, 'bogus'), ...
+        @() dtwc_mex('Problem_set_distance_strategy', h, 'bogus'), ...
+        @() dtwc_mex('Problem_set_lb_strategy', h, 'bogus'), ...
+        @() dtwc_mex('Problem_set_storage_policy', h, 'bogus')
+    };
+    for i = 1:numel(calls)
+        verifyError(testCase, calls{i}, 'dtwc:invalidArgument');
+    end
+end
+
 function prob = m48_problem()
     prob = dtwc.Problem('m48_matlab');
     prob.set_data([0; 1]);
