@@ -2688,3 +2688,64 @@ route unavailable storage.
 Verdict: **PASS.** No mapped Problem route can enter the dense-only builder,
 both supported recurrences fill mmap exactly across the 63/64 threshold, direct
 misuse is typed/actionable, and optional-dependency behavior stays loud.
+
+## M46 — public softmin gamma and minimum-positive arithmetic
+
+`soft_dtw` and `soft_dtw_gradient` already used M34's centralized gamma
+validator, but the public `softmin_gamma` helper retained only a C `assert`.
+The canonical Release/NDEBUG build therefore evaluated every invalid value
+instead of throwing the public typed error. The preregistered float64/float32
+matrix produced:
+
+```text
+gamma {0, -1, NaN, +Inf, -Inf}: 10 failed / 12 assertions
+minimum positive normal controls: 2 passed
+```
+
+The public helper now calls `validate_sdtw_gamma` once and delegates to a
+`detail`-scoped `noexcept` primitive. The validated gradient forward loop calls
+that primitive directly, so it does not repeat public domain validation per DP
+cell. A dedicated replacement-allocation probe runs 100,000 varied unchecked
+cells with zero allocations. After warming the two thread-local gradient
+matrices at 257x255, a second gradient call performs no allocation at or above
+500 KiB; only its documented returned vector remains caller-owned.
+
+The first adversarial review expanded "minimum positive" from the normal
+`numeric_limits<T>::min()` controls to the actual float/double `denorm_min()`.
+That red exposed a second defect in the helper, unified `SoftCell`, and gradient
+Jacobian: `1/gamma` overflowed to infinity, so equal predecessor deltas formed
+`0*Inf` and returned NaN.
+
+```text
+denorm_min helper/value/gradient red: 14 failed / 18 assertions
+```
+
+A direct-division fallback was tested and **FALSIFIED**: the project's
+intentional `-freciprocal-math` transformed it back into reciprocal
+multiplication, leaving 9 of 18 assertions failing. The final overflow-only
+path normalizes gamma with `frexp` and scales ratios with `scalbn`, which cannot
+be rewritten into the overflowing expression. Gamma reciprocal, finite-state,
+fraction, and exponent are precomputed once in `SoftGammaScale`; ordinary
+finite-reciprocal cells execute the original multiply/exponential operation
+order exactly. The same state drives forward softmin and backward Jacobian
+weights.
+
+Green evidence in both the LLFIO-off protocol build and canonical LLFIO-on
+Release build:
+
+```text
+unit_test_soft_dtw:                    101 assertions / 24 cases
+unit_test_soft_dtw_hotpath:              6 assertions / 2 cases
+unit_test_variant_domains:              85 assertions / 3 cases
+unit_test_dtw_api (LLFIO off):          26 assertions / 14 cases
+unit_test_barycenter:                  113 assertions / 14 cases
+unit_test_barycenter_allocations:        2 assertions / 1 case
+test_error_taxonomy (LLFIO off):        25 assertions / 7 cases
+focused float64/float32 denorm gate:     18 assertions / 1 case
+```
+
+Verdict: **PASS.** Release builds enforce one exact public Soft-DTW gamma
+contract; invalid values cannot reach logarithmic arithmetic, the validated
+inner loops retain their non-throwing allocation-free cell path, minimum
+positive float/double values remain numerically defined, and ordinary
+value/gradient/barycenter behavior is unchanged.

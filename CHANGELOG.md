@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made public `softmin_gamma` enforce Soft-DTW's exact finite-positive gamma
+  contract with typed `InvalidInput` failures in Release builds. Validated
+  gradient/DP loops use a non-throwing unchecked cell primitive with scaling
+  state precomputed once; denormal float/double gamma remains finite through a
+  `frexp`/`scalbn` fallback resistant to reciprocal-math optimization, while
+  ordinary arithmetic order and warmed allocation behavior are unchanged.
 - Guarded matrix-free `Problem::dtw_function()` access with the same fixed-size
   semantic snapshot as cached distances. Mutable f64/f32 access now rebinds
   after legacy raw configuration edits, const access rejects stale dispatch,
