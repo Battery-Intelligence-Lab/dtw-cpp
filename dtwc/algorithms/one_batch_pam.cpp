@@ -87,8 +87,11 @@ struct FixedBatchDistances {
     for (std::size_t j = 0; j < m; ++j)
       sample_position[static_cast<std::size_t>(sample[j])] = static_cast<int>(j);
 
-    // The bound DTW functions are immutable after Problem::set_data/rebind.
-    // Each worker writes a disjoint row, so the table build is race-free.
+    // Resolve both getters serially before entering OpenMP: a legacy raw
+    // semantic mutation may require the mutable getter to rebind once. Each
+    // worker then reads stable function objects and writes a disjoint row.
+    const auto &dtw_f32 = prob.dtw_function_f32();
+    const auto &dtw_f64 = prob.dtw_function();
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
     std::exception_ptr failure;
@@ -101,11 +104,11 @@ struct FixedBatchDistances {
           double d = 0.0;
           if (i != sample[j]) {
             if (prob.data.is_f32())
-              d = prob.dtw_function_f32()(prob.data.series_f32(static_cast<std::size_t>(i)),
-                                          prob.data.series_f32(static_cast<std::size_t>(sample[j])));
+              d = dtw_f32(prob.data.series_f32(static_cast<std::size_t>(i)),
+                          prob.data.series_f32(static_cast<std::size_t>(sample[j])));
             else
-              d = prob.dtw_function()(prob.series(static_cast<std::size_t>(i)),
-                                      prob.series(static_cast<std::size_t>(sample[j])));
+              d = dtw_f64(prob.series(static_cast<std::size_t>(i)),
+                          prob.series(static_cast<std::size_t>(sample[j])));
             ++calls;
           }
           if (!std::isfinite(d) || d < 0.0)

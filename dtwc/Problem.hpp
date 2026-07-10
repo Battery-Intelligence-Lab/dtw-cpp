@@ -149,6 +149,8 @@ private:
   bool dense_cache_configuration_is_current() const;
   void ensure_dense_cache_configuration_current();
   void validate_dense_cache_configuration() const;
+  void ensure_dtw_function_configuration_current();
+  void validate_dtw_function_configuration() const;
   DistanceCacheIdentity distance_cache_identity(core::MetricType metric) const;
   void validate_mmap_cache_identity() const;
   void clear_mmap_cache_identity();
@@ -324,11 +326,31 @@ public:
   data_t dist_by_ind(int i, int j);
   [[deprecated("use dist_by_ind")]] data_t distByInd(int i, int j) { return dist_by_ind(i, j); }
 
-  /// Access the bound DTW distance function (float64).
-  const dtw_fn_t &dtw_function() const { return dtw_fn_; }
+  /// Access the bound DTW distance function (float64). Mutable access repairs
+  /// legacy raw configuration mutations before returning the dispatcher;
+  /// const access rejects stale semantics instead of silently using them.
+  const dtw_fn_t &dtw_function()
+  {
+    ensure_dtw_function_configuration_current();
+    return dtw_fn_;
+  }
+  const dtw_fn_t &dtw_function() const
+  {
+    validate_dtw_function_configuration();
+    return dtw_fn_;
+  }
 
-  /// Access the bound DTW distance function (float32).
-  const dtw_fn_f32_t &dtw_function_f32() const { return dtw_fn_f32_; }
+  /// Float32 counterpart of dtw_function(), with the same semantic guard.
+  const dtw_fn_f32_t &dtw_function_f32()
+  {
+    ensure_dtw_function_configuration_current();
+    return dtw_fn_f32_;
+  }
+  const dtw_fn_f32_t &dtw_function_f32() const
+  {
+    validate_dtw_function_configuration();
+    return dtw_fn_f32_;
+  }
 
   /// Read-only access to the WDTW weights cache (consumed by core::resolve_dtw_fn).
   /// Cache is populated serially by refresh_variant_caches() before parallel fill

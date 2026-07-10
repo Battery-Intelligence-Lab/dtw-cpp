@@ -372,6 +372,28 @@ void Problem::validate_dense_cache_configuration() const
     "refresh the matrix before reading cached values.");
 }
 
+void Problem::ensure_dtw_function_configuration_current()
+{
+  if (dense_cache_configuration_is_current()) return;
+
+  // The fixed-size M25 snapshot records every input used when the dispatcher
+  // was last bound. Reconcile legacy public-field edits exactly like a semantic
+  // setter: discard any distance cache whose values now describe old semantics
+  // (including a mapped cache), refresh variant-specific state, and bind both
+  // precisions to the current configuration.
+  refresh_distance_matrix();
+}
+
+void Problem::validate_dtw_function_configuration() const
+{
+  if (dense_cache_configuration_is_current()) return;
+
+  throw std::runtime_error(
+    "Problem: bound DTW function configuration changed through a raw or nested "
+    "mutation. Use a semantic setter or a mutable dtw_function accessor to "
+    "refresh the dispatcher before const access.");
+}
+
 Problem::DistanceCacheIdentity
 Problem::distance_cache_identity(core::MetricType metric) const
 {
@@ -471,7 +493,11 @@ void Problem::validate_mmap_cache_identity() const
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
-  ensure_dense_cache_configuration_current();
+  // Reconcile dispatcher semantics before publishing a new mapped identity.
+  // Without this generic guard, replacing an already-bound mmap after a raw
+  // configuration mutation could label Standard-DTW writes with an ADTW (or
+  // missing-policy) fingerprint.
+  ensure_dtw_function_configuration_current();
   const size_t N = data.size();
   DistanceCacheIdentity identity = distance_cache_identity(metric);
   if (std::filesystem::exists(cache_path)) {
