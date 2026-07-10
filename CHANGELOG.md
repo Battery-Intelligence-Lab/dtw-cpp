@@ -57,6 +57,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Made Tier-1 `method="auto"` device-compatible: CUDA and Metal now select PAM
   at every N instead of resolving large datasets to unsupported CPU-only CLARA;
   explicit incompatible methods remain loud and unchanged.
+- OneBatchPAM now warns on every explicit `batch_size < n_clusters` correction,
+  including requested/effective values and remediation; automatic sizing and
+  already-valid explicit sizes stay silent.
 
 # 2.0.0rc1 - 2026-07-10
 

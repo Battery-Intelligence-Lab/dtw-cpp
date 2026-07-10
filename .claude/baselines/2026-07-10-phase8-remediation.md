@@ -761,3 +761,45 @@ Verdict: **PASS.** Resolution now precedes matrix-policy selection in both
 languages. Task 8.3 will bind the pure C++ `resolve_tier1_method` seam privately
 through nanobind and delete Python's mirror/threshold constant; this commit keeps
 that later refactor behavior-neutral.
+
+## L3 — loud OneBatchPAM batch-size correction
+
+Registered behavior:
+
+```text
+explicit batch_size < k: exact warning per invocation; effective m=k
+explicit batch_size >= k: no stderr
+batch_size=-1 auto: no stderr, including internal max(auto,k)
+```
+
+Red before the warning:
+
+```text
+failed: stderr_output == expected
+actual: ""
+```
+
+Green exact line (emitted twice for two calls in the regression):
+
+```text
+[dtwc] warning: one_batch_pam requested batch_size=2, but n_clusters=4 requires
+batch_size >= 4; using effective batch_size=4. Set batch_size to at least
+n_clusters to avoid this adjustment.
+```
+
+Focused and suite results:
+
+```text
+unit_test_one_batch_pam.exe "[loudness]" --reporter compact
+  All tests passed (6 assertions in 1 test case)
+unit_test_one_batch_pam.exe
+  All tests passed (597 assertions in 6 test cases)
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^unit_test_one_batch_pam$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+Verdict: **PASS.** A process-once guard was rejected: different later calls can
+request different invalid sizes, and suppressing them would recreate a silent
+configuration change. A mutex serializes whole per-use lines for concurrent
+callers without hiding information.

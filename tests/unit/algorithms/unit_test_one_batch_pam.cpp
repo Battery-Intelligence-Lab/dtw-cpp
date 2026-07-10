@@ -19,9 +19,11 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 #include <numeric>
 #include <random>
 #include <set>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -59,6 +61,21 @@ void require_valid(const core::ClusteringResult& result, int n, int k)
   for (int label : result.labels) REQUIRE(label < k);
   for (int medoid : result.medoid_indices) REQUIRE(medoid >= 0);
   for (int medoid : result.medoid_indices) REQUIRE(medoid < n);
+}
+
+template <typename Function>
+std::string capture_stderr(Function&& function)
+{
+  std::ostringstream captured;
+  std::streambuf* previous = std::cerr.rdbuf(captured.rdbuf());
+  try {
+    function();
+  } catch (...) {
+    std::cerr.rdbuf(previous);
+    throw;
+  }
+  std::cerr.rdbuf(previous);
+  return captured.str();
 }
 
 } // namespace
@@ -224,6 +241,61 @@ TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",
     options.n_clusters = 2;
     options.batch_size = 0;
     REQUIRE_THROWS_AS(algorithms::one_batch_pam(problem, options), InvalidInput);
+  }
+}
+
+TEST_CASE("OneBatchPAM reports explicit batch sizes raised to the cluster count",
+          "[one_batch_pam][loudness][options]")
+{
+  constexpr auto expected =
+    "[dtwc] warning: one_batch_pam requested batch_size=2, but n_clusters=4 "
+    "requires batch_size >= 4; using effective batch_size=4. Set batch_size "
+    "to at least n_clusters to avoid this adjustment.\n";
+
+  SECTION("an explicit undersized batch reports every corrected invocation") {
+    auto first_problem = make_problem(12, 4);
+    auto second_problem = make_problem(12, 4);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 4;
+    options.batch_size = 2;
+    options.max_iter = 1;
+    algorithms::OneBatchPAMStats first_stats;
+    algorithms::OneBatchPAMStats second_stats;
+
+    const std::string stderr_output = capture_stderr([&] {
+      algorithms::one_batch_pam(first_problem, options, &first_stats);
+      algorithms::one_batch_pam(second_problem, options, &second_stats);
+    });
+
+    REQUIRE(stderr_output == std::string(expected) + expected);
+    REQUIRE(first_stats.batch_size == 4);
+    REQUIRE(second_stats.batch_size == 4);
+  }
+
+  SECTION("automatic batch selection remains silent") {
+    // N=256 selects m=180 automatically; k=181 exercises the same m >= k
+    // correction without turning an internal auto-policy choice into noise.
+    auto problem = make_problem(256, 181);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 181;
+    options.batch_size = -1;
+    options.max_iter = 1;
+    algorithms::OneBatchPAMStats stats;
+
+    REQUIRE(capture_stderr([&] {
+      algorithms::one_batch_pam(problem, options, &stats);
+    }).empty());
+    REQUIRE(stats.batch_size == 181);
+  }
+
+  SECTION("an explicit batch at least as large as k remains silent") {
+    auto problem = make_problem(12, 4);
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 4;
+    options.batch_size = 4;
+    options.max_iter = 1;
+
+    REQUIRE(capture_stderr([&] { algorithms::one_batch_pam(problem, options); }).empty());
   }
 }
 

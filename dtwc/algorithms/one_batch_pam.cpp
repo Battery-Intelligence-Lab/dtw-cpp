@@ -12,7 +12,9 @@
 #include <cmath>
 #include <cstdint>
 #include <exception>
+#include <iostream>
 #include <limits>
+#include <mutex>
 #include <numeric>
 #include <random>
 #include <string>
@@ -27,6 +29,22 @@ std::size_t automatic_batch_size(std::size_t n)
   const auto logarithmic = static_cast<std::size_t>(
     20.0 * std::ceil(std::log2(static_cast<double>(n) + 1.0)));
   return std::min(n, std::max<std::size_t>(64, logarithmic));
+}
+
+void warn_batch_size_adjustment(int requested, std::size_t effective)
+{
+  // This is intentionally per invocation, not process-once: each call can
+  // request a different invalid value, and hiding later corrections would
+  // make the effective configuration silent again. Serialize the complete
+  // line so concurrent OneBatchPAM calls cannot interleave their diagnostics.
+  static std::mutex warning_mutex;
+  const std::lock_guard<std::mutex> lock(warning_mutex);
+  std::cerr
+    << "[dtwc] warning: one_batch_pam requested batch_size=" << requested
+    << ", but n_clusters=" << effective
+    << " requires batch_size >= " << effective
+    << "; using effective batch_size=" << effective
+    << ". Set batch_size to at least n_clusters to avoid this adjustment.\n";
 }
 
 void validate_options(std::size_t n, const OneBatchPAMOptions& options)
@@ -214,8 +232,12 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   std::size_t m = options.batch_size < 0
                     ? automatic_batch_size(n)
                     : std::min(n, static_cast<std::size_t>(options.batch_size));
-  // The O(Nm) promise assumes m >= k; silently using fewer evaluation points
-  // than clusters is both statistically weak and usually accidental.
+  // The O(Nm) promise assumes m >= k. Explicitly requesting fewer evaluation
+  // points than clusters is statistically weak and usually accidental, so the
+  // correction must be visible. Automatic selection remains an internal policy
+  // and intentionally stays silent.
+  if (options.batch_size > 0 && m < static_cast<std::size_t>(k))
+    warn_batch_size_adjustment(options.batch_size, static_cast<std::size_t>(k));
   m = std::max(m, static_cast<std::size_t>(k));
 
   std::mt19937_64 rng(options.random_seed);
