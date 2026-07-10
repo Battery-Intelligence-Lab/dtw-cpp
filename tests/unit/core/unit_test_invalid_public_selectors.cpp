@@ -128,12 +128,26 @@ struct ProblemSnapshot
   int n_clusters;
   std::vector<int> medoids;
   std::vector<int> labels;
-  std::vector<std::vector<data_t>> series;
+  std::vector<std::vector<std::uint64_t>> series_bits;
   std::vector<std::string> names;
   std::size_t matrix_alternative;
   std::size_t matrix_size;
   std::vector<std::uint64_t> packed_bits;
 };
+
+std::vector<std::vector<std::uint64_t>> exact_series_bits(const Problem &problem)
+{
+  std::vector<std::vector<std::uint64_t>> result;
+  result.reserve(problem.data.p_vec.size());
+  for (const auto &series : problem.data.p_vec) {
+    std::vector<std::uint64_t> bits;
+    bits.reserve(series.size());
+    for (const double value : series)
+      bits.push_back(std::bit_cast<std::uint64_t>(value));
+    result.push_back(std::move(bits));
+  }
+  return result;
+}
 
 ProblemSnapshot snapshot(const Problem &problem)
 {
@@ -147,7 +161,7 @@ ProblemSnapshot snapshot(const Problem &problem)
     problem.n_clusters(),
     problem.centroids_ind,
     problem.clusters_ind,
-    problem.data.p_vec,
+    exact_series_bits(problem),
     problem.data.p_names,
     problem.distance_matrix().index(),
     matrix.size(),
@@ -161,7 +175,7 @@ void check_snapshot(const Problem &problem, const ProblemSnapshot &before)
   CHECK(problem.n_clusters() == before.n_clusters);
   CHECK(problem.centroids_ind == before.medoids);
   CHECK(problem.clusters_ind == before.labels);
-  CHECK(problem.data.p_vec == before.series);
+  CHECK(exact_series_bits(problem) == before.series_bits);
   CHECK(problem.data.p_names == before.names);
   CHECK(problem.distance_matrix().index() == before.matrix_alternative);
   const auto &matrix = problem.dense_distance_matrix();
