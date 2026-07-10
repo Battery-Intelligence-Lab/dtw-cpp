@@ -673,24 +673,31 @@ TEST_CASE("MmapDistanceMatrix rejects a second live session without mutation",
   MmapDistanceMatrix::fingerprint_type fingerprint{};
   fingerprint.fill(0x53u);
 
-  MmapDistanceMatrix owner(tmp.path, 4, fingerprint);
-  owner.set(0, 3, 53.25);
-  owner.sync();
+  {
+    MmapDistanceMatrix initial(tmp.path, 4, fingerprint);
+    initial.set(0, 3, 53.25);
+    initial.sync();
+  }
   const auto before = read_file_bytes(tmp.path);
 
   bool returned = false;
   bool typed_runtime_error = false;
   std::string error;
-  try {
-    auto competing = MmapDistanceMatrix::open(tmp.path, fingerprint);
-    returned = true;
-  } catch (const std::runtime_error &exception) {
-    typed_runtime_error = true;
-    error = exception.what();
-  } catch (const std::exception &exception) {
-    error = exception.what();
-  } catch (...) {
-    error = "non-standard exception";
+  {
+    auto owner = MmapDistanceMatrix::open(tmp.path, fingerprint);
+    try {
+      auto competing = MmapDistanceMatrix::open(tmp.path, fingerprint);
+      returned = true;
+    } catch (const std::runtime_error &exception) {
+      typed_runtime_error = true;
+      error = exception.what();
+    } catch (const std::exception &exception) {
+      error = exception.what();
+    } catch (...) {
+      error = "non-standard exception";
+    }
+    CHECK(std::bit_cast<std::uint64_t>(owner.get(0, 3))
+          == std::bit_cast<std::uint64_t>(53.25));
   }
 
   INFO("second live open error: " << error);
@@ -698,8 +705,6 @@ TEST_CASE("MmapDistanceMatrix rejects a second live session without mutation",
   CHECK(typed_runtime_error);
   CHECK(error.find("exclusive session lease") != std::string::npos);
   CHECK(read_file_bytes(tmp.path) == before);
-  CHECK(std::bit_cast<std::uint64_t>(owner.get(0, 3))
-        == std::bit_cast<std::uint64_t>(53.25));
 }
 
 TEST_CASE("Mmap set path contains no full scan or blocking lock",
