@@ -846,6 +846,15 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
   {
     for_each_invalid_enum<LowerBoundStrategy, LowerBoundStrategy::Webb>(
       [&](LowerBoundStrategy invalid) {
+        Problem setter{"m47_lower_bound_setter"};
+        seed_dense_sentinel(setter);
+        setter.lb_strategy = LowerBoundStrategy::Webb;
+        check_invalid_input("Problem::set_lb_strategy", lower_bound_error, [&] {
+          setter.set_lb_strategy(invalid);
+        });
+        CHECK(setter.lb_strategy == LowerBoundStrategy::Webb);
+        check_dense_sentinel(setter);
+
         Problem direct{"m47_lower_bound_direct"};
         direct.set_data(basic_f64_data());
         check_invalid_input("fill_distance_matrix_pruned", lower_bound_error, [&] {
@@ -919,6 +928,16 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
         check_invalid_input("DataLoader::storage_policy", storage_policy_error, [&] {
           (void)loader.storage_policy(invalid);
         });
+
+        Problem setter{"m47_storage_policy_setter"};
+        seed_dense_sentinel(setter);
+        setter.storage_policy = core::StoragePolicy::Heap;
+        check_invalid_input("Problem::set_storage_policy",
+                            storage_policy_error, [&] {
+          setter.set_storage_policy(invalid);
+        });
+        CHECK(setter.storage_policy == core::StoragePolicy::Heap);
+        check_dense_sentinel(setter);
       });
   }
 
@@ -1141,6 +1160,9 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
          core::StoragePolicy::Mmap}) {
     DataLoader loader;
     CHECK_NOTHROW((void)loader.storage_policy(policy));
+    Problem problem{"m47_valid_problem_storage_policy"};
+    CHECK_NOTHROW(problem.set_storage_policy(policy));
+    CHECK(problem.storage_policy == policy);
   }
 
   for (const auto lower_bound : {
@@ -1158,6 +1180,8 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
       std::vector<std::string>{"x", "y"}));
     CHECK_NOTHROW((void)core::fill_distance_matrix_pruned(
       problem, 1, lower_bound));
+    CHECK_NOTHROW(problem.set_lb_strategy(lower_bound));
+    CHECK(problem.lb_strategy == lower_bound);
   }
 
   Problem f32_problem{"m47_valid_f32_precision"};
