@@ -52,7 +52,7 @@ class TestDeviceParsing:
 
     def test_invalid_device_raises(self):
         series = [[1.0, 2.0], [3.0, 4.0]]
-        with pytest.raises(ValueError, match="Unknown device"):
+        with pytest.raises(dtwcpp.DeviceError, match="unknown device"):
             dtwcpp.compute_distance_matrix(series, device="tpu")
 
     def test_cuda_request_fails_loudly_when_unavailable(self):

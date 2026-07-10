@@ -305,3 +305,39 @@ band configuration but no metric state or setter. Adding one merely to satisfy
 the finding would expand the frozen API and imply semantics that the distance
 dispatcher does not own. The supported squared-cost barycenter objective is now
 documented explicitly instead.
+
+## M1 — Python/C++ device-alias parity
+
+Registered band: Python must agree with live `dtwc::Env` on 62 valid and
+adversarial GPU spellings, preserve `gpu:N` through both CUDA and Metal
+resolution, and keep explicit CUDA from falling through to Metal. C++ whitespace
+and 32-bit ordinal boundaries are part of the grammar.
+
+Red progression before the final parser:
+
+```text
+gpu:0, gpu:07, and gpu:2147483647: rejected by Python, accepted by Env
+1 failed, 75 passed, 1 skipped
+  Metal resolved gpu:7 as ('metal', 0), expected ('metal', 7)
+adversarial follow-up: vertical-tab-wrapped aliases were accepted by Python
+  strip() but rejected by C++ trim()
+```
+
+Green decisive commands:
+
+```text
+uv run --no-sync pytest \
+  tests/python/test_device.py tests/python/test_cuda.py \
+  tests/python/test_contract_parity.py -q
+  244 passed, 10 skipped in 2.80s
+uv run --no-sync pytest tests/python -q
+  480 passed, 11 skipped in 11.20s
+git diff --check
+  exit 0
+```
+
+Verdict: **PASS.** Python now delegates syntactic truth to the same grammar
+contract as `Env`: four explicit trim characters, ASCII decimal ordinals, and a
+C++ `int` maximum. Syntax failures are `DeviceError`; non-string inputs are
+`InvalidInput`; operational GPU failures remain loud and never change the
+stored global selection.

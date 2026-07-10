@@ -9,6 +9,35 @@ import pytest
 import dtwcpp
 
 
+_GPU_ALIAS_CANDIDATES = tuple(
+    f"{prefix}{suffix}"
+    for prefix in ("gpu", "cuda", "GPU", "CUDA")
+    for suffix in (
+        "",
+        ":0",
+        ":07",
+        ":2147483647",
+        ":",
+        ":-1",
+        ":+1",
+        ": 1",
+        ":1 ",
+        ":1.0",
+        ":1_0",
+        ":2147483648",
+        ":999999999999999999999999999999999999",
+        ":\N{ARABIC-INDIC DIGIT ONE}",
+    )
+) + (
+    " gpu:3 ",                 # C++ trim characters around a valid alias
+    "\tCUDA:3\r\n",
+    "\vgpu:3",                 # Python strip() characters C++ does not trim
+    "gpu:3\v",
+    "\fgpu",
+    "gpu\N{NO-BREAK SPACE}",
+)
+
+
 @pytest.fixture(autouse=True)
 def _reset_device():
     """Each test starts and ends with the default device restored to 'cpu'."""
@@ -22,7 +51,74 @@ def _series(n=5, length=20, seed=42):
     return [list(rng.standard_normal(length)) for _ in range(n)]
 
 
+def _cpp_gpu_alias_result(name):
+    """Ask the live C++ Env whether *name* belongs to its GPU alias grammar.
+
+    A CPU-only build raises the GPU-not-built DeviceError even for a syntactically
+    valid alias, so that error is an accepted parse result.  Unknown-name errors
+    are rejected parse results.  This keeps C++ as the acceptance oracle instead
+    of copying its valid-alias list into the Python test.
+    """
+    registry = dtwcpp.env()
+    try:
+        registry.set_device(name)
+    except dtwcpp.DeviceError as exc:
+        message = str(exc)
+        if message.startswith("[dtwc] unknown device '"):
+            return False, message, None
+        if message.startswith("[dtwc] device='gpu' requested"):
+            return True, message, None
+        raise AssertionError(f"Unexpected C++ device error for {name!r}: {message}") from exc
+    else:
+        assert registry.device() == dtwcpp.Device.GPU
+        return True, None, registry.device_index()
+    finally:
+        registry.set_device("cpu")
+
+
 class TestGpuAlias:
+    @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES)
+    def test_python_gpu_alias_grammar_matches_live_cpp(self, name):
+        """Python accepts/rejects the same GPU spellings as Env::set_device."""
+        cpp_accepts, cpp_error, cpp_ordinal = _cpp_gpu_alias_result(name)
+
+        if not cpp_accepts:
+            with pytest.raises(dtwcpp.DeviceError) as py_error:
+                dtwcpp._parse_device(name)
+            assert str(py_error.value) == cpp_error
+            return
+
+        backend, ordinal = dtwcpp._parse_device(name)
+        normalized = name.strip(" \t\r\n").lower()
+        assert backend == normalized.partition(":")[0]
+        assert ordinal == (int(normalized.partition(":")[2]) if ":" in normalized else 0)
+        if cpp_ordinal is not None:
+            assert ordinal == cpp_ordinal
+
+    @pytest.mark.parametrize(
+        ("cuda_available", "metal_available", "expected_backend"),
+        [(True, True, "cuda"), (False, True, "metal")],
+    )
+    def test_gpu_ordinal_survives_backend_resolution(
+        self, monkeypatch, cuda_available, metal_available, expected_backend
+    ):
+        """The friendly alias keeps N after resolving to either GPU backend."""
+        monkeypatch.setattr(dtwcpp, "CUDA_AVAILABLE", cuda_available)
+        monkeypatch.setattr(dtwcpp, "cuda_available", lambda: cuda_available)
+        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", metal_available)
+        monkeypatch.setattr(dtwcpp, "metal_available", lambda: metal_available)
+
+        assert dtwcpp._resolve_device("gpu:7") == (expected_backend, 7)
+
+    def test_explicit_cuda_never_falls_back_to_metal(self, monkeypatch):
+        monkeypatch.setattr(dtwcpp, "CUDA_AVAILABLE", False)
+        monkeypatch.setattr(dtwcpp, "cuda_available", lambda: False)
+        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", True)
+        monkeypatch.setattr(dtwcpp, "metal_available", lambda: True)
+
+        with pytest.raises(dtwcpp.DeviceError, match="CUDA was not compiled in"):
+            dtwcpp._resolve_device("cuda:7")
+
     def test_gpu_alias_resolves_like_cuda(self):
         """device='gpu' selects an available CUDA or Metal backend."""
         if not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or
@@ -67,16 +163,18 @@ class TestGlobalDevice:
         assert dtwcpp.device() == "cpu"
 
     def test_invalid_device_rejected(self):
-        with pytest.raises(ValueError, match="Unknown device"):
+        with pytest.raises(dtwcpp.DeviceError, match="unknown device"):
             dtwcpp.device("tpu")
+        assert dtwcpp.get_device() == "cpu"
 
-    @pytest.mark.parametrize("name", ["cuda:", "cuda:abc", "cuda:-1"])
-    def test_invalid_cuda_ordinal_rejected_cleanly(self, name):
-        with pytest.raises(ValueError, match="CUDA device ordinal"):
+    @pytest.mark.parametrize("name", ["gpu:", "gpu:abc", "gpu:-1", "cuda:", "cuda:abc", "cuda:-1"])
+    def test_invalid_gpu_ordinal_rejected_cleanly(self, name):
+        with pytest.raises(dtwcpp.DeviceError, match="unknown device"):
             dtwcpp.device(name)
+        assert dtwcpp.get_device() == "cpu"
 
     def test_non_string_device_rejected_cleanly(self):
-        with pytest.raises(ValueError, match="device must be a string"):
+        with pytest.raises(dtwcpp.InvalidInput, match="device must be a string"):
             dtwcpp.device(1)
 
     def test_global_default_used_when_device_unset(self):

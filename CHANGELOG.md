@@ -27,6 +27,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Fixed both barycenter entry points to reject non-Standard DTW variants and
   finite bands with actionable `InvalidInput` errors instead of silently
   computing an unbanded Standard squared-cost objective.
+- Fixed Python device parsing to accept `gpu:N` with the same grammar as C++,
+  preserve ordinals through CUDA and Metal resolution, and use the frozen typed
+  errors without falling back to another backend.
 
 # 2.0.0rc1 - 2026-07-10
 

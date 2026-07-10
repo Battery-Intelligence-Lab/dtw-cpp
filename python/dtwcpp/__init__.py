@@ -113,37 +113,47 @@ from dtwcpp._dtwcpp_core import (
     __version__,
 )
 
-def _parse_device(device):
-    """Parse PyTorch-style device string (case-insensitive). Returns (backend, device_id)."""
-    if not isinstance(device, str):
-        raise ValueError(f"device must be a string, got {type(device).__name__}")
-    device = device.strip().lower()
-    if device == "cpu":
-        return ("cpu", 0)
-    if device == "gpu":
-        return ("gpu", 0)           # friendly alias; resolver picks CUDA or Metal
-    if device == "cuda" or device.startswith("cuda:"):
-        parts = device.split(":", 1)
-        if len(parts) > 1 and not parts[1]:
-            raise ValueError(
-                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
-            )
-        try:
-            device_id = int(parts[1]) if len(parts) > 1 else 0
-        except ValueError as exc:
-            raise ValueError(
-                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
-            ) from exc
-        if device_id < 0:
-            raise ValueError(
-                f"Invalid CUDA device ordinal in {device!r}; expected cuda:N with N >= 0."
-            )
-        return ("cuda", device_id)
-    if device == "hpc":
-        return ("hpc", 0)           # execution location, not a local compute backend
-    raise ValueError(
-        f"Unknown device '{device}'. Expected 'cpu', 'gpu', 'cuda', 'cuda:N', or 'hpc'."
+_CXX_INT_MAX = (1 << 31) - 1
+_CXX_TRIM_CHARS = " \t\r\n"
+
+
+def _unknown_device(name):
+    """Raise the frozen §6 device-name error used by ``dtwc::Env``."""
+    raise DeviceError(
+        f"[dtwc] unknown device '{name}'. Valid devices: "
+        "cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc."
     )
+
+
+def _parse_device(device):
+    """Parse the C++ ``Env`` device grammar into ``(backend, ordinal)``."""
+    if not isinstance(device, str):
+        raise InvalidInput(f"device must be a string, got {type(device).__name__}")
+
+    raw = device.strip(_CXX_TRIM_CHARS)
+    normalized = raw.lower()
+    if normalized == "cpu":
+        return ("cpu", 0)
+
+    backend, separator, ordinal_text = normalized.partition(":")
+    if backend in ("gpu", "cuda"):
+        if not separator:
+            return (backend, 0)
+        # Match Env::set_device exactly: ASCII decimal digits only, with the
+        # value representable by its C++ ``int`` device_index_ field.  Python's
+        # int() is deliberately not the grammar oracle because it also accepts
+        # whitespace, signs, underscores, and arbitrary-size integers.
+        if (not ordinal_text or not ordinal_text.isascii()
+                or not ordinal_text.isdigit()):
+            _unknown_device(raw)
+        device_id = int(ordinal_text)
+        if device_id > _CXX_INT_MAX:
+            _unknown_device(raw)
+        return (backend, device_id)
+
+    if normalized == "hpc":
+        return ("hpc", 0)           # execution location, not a local compute backend
+    _unknown_device(raw)
 
 
 def _resolve_device(device):
@@ -153,7 +163,7 @@ def _resolve_device(device):
         if CUDA_AVAILABLE and cuda_available():
             return ("cuda", device_id)
         if METAL_AVAILABLE and metal_available():
-            return ("metal", 0)
+            return ("metal", device_id)
         compiled = CUDA_AVAILABLE or METAL_AVAILABLE
         detail = ("no compatible GPU device was detected"
                   if compiled else "this build has no GPU backend compiled in")
@@ -197,8 +207,8 @@ def device(device=None):
     """Get or set the global default device, PyTorch-style.
 
     Call with no argument to read the current default; pass a name to set it.
-    Accepts ``"cpu"``, ``"gpu"``, ``"cuda"``, ``"cuda:N"``, or ``"hpc"``. The
-    friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call, and
+    Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``, or
+    ``"hpc"``. The friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call, and
     the selection is mirrored into the shared ``dtwc::Env`` registry (§6). An
     explicit ``device=`` argument always overrides this global default.
 
@@ -240,7 +250,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
     use_pruning : bool, default=True
         Use LB_Keogh pruning (CPU only).
     device : str or None, default=None
-        Computation device: 'cpu', 'gpu', 'cuda', or 'cuda:N'. ``None`` uses
+        Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', or 'cuda:N'. ``None`` uses
         the global default set via :func:`device` (itself 'cpu' unless changed).
         ``'hpc'`` is rejected here — it offloads the whole job, not just the
         matrix; use the high-level clustering path instead.
