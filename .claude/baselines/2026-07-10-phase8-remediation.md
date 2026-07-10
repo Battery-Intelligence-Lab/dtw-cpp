@@ -2482,3 +2482,61 @@ independent read-only adversarial review:   PASS
 Verdict: **PASS.** Caller-visible failures are normal typed errors, no exception
 leaves the repaired OpenMP row boundary, scheduling cannot change the selected
 failure, and partial distance work cannot masquerade as a complete cache.
+
+## M37 — matrix-free dispatcher semantic guard
+
+M25 bound dense/precomputed values to a fixed-size configuration snapshot, but
+the public matrix-free f64/f32 getters still returned the `std::function`
+selected at the previous rebind. Raw `variant_params` or `missing_strategy`
+edits therefore left both precisions on the old dispatch specialization.
+
+Two test-only preregistration commits preserved the failure before production
+changes. In LLFIO-off, raw ADTW returned Standard distance 3 instead of 4 for
+both precisions, raw ZeroCost returned the Error-path maximum instead of 0 for
+both precisions, and neither const getter rejected variant/missing drift:
+
+```text
+unit_test_dtw_function_semantics red: 8 failed / 2058 assertions
+```
+
+The LLFIO-on adversary then exposed a publication mismatch beyond the original
+getter report. Replacing a bound mmap after raw ADTW drift created a cache with
+the current ADTW fingerprint, but `dist_by_ind` wrote stale Standard distance 3
+into it. Mutable getter access also failed to detach the stale mapping, and
+const access failed to reject it:
+
+```text
+LLFIO-on mapped semantic red: 3 failed / 7 assertions
+```
+
+Both getter precisions now compare the already-bound M25 snapshot. Mutable
+access handles drift like a semantic setter: it detaches stale mmap or clears
+dense work, refreshes variant caches, and rebinds both dispatchers. Const access
+throws without mutation. The current path performs only primitive/enum
+comparisons and returns the same resident callable; 1,024 reads per precision
+pin stable storage. Mmap binding performs the same reconciliation before it
+computes or publishes a new identity, while unchanged mappings remain mapped
+and a const rejection leaves the original mapping recoverable and unmodified.
+
+OneBatchPAM was the only matrix-free caller retrieving these mutable getters
+inside OpenMP. It now resolves both callable references once on the caller
+thread before the structured block. A 66-series oracle forces that parallel
+path after raw ADTW mutation: 33 opposite-shape replicas at exact distance 4
+must yield cost 132 (the stale Standard dispatcher yields 99), without
+allocating the dense matrix.
+
+Green evidence:
+
+```text
+LLFIO-off unit_test_dtw_function_semantics: 2058 assertions / 4 pass, 1 capability skip
+LLFIO-on  unit_test_dtw_function_semantics: 2068 assertions / 5 cases
+LLFIO-on  unit_test_variant_distmat:          97 assertions / 13 cases
+LLFIO-off unit_test_one_batch_pam:         10237 assertions / 8 cases
+LLFIO-on  unit_test_one_batch_pam:         10237 assertions / 8 cases
+canonical LLFIO-on single-threaded rebuild: passed
+```
+
+Verdict: **PASS.** Raw matrix-free semantic drift can no longer execute or
+publish a stale dispatcher; const observation remains side-effect free,
+unchanged access remains allocation-free, mapped-cache identity stays honest,
+and the parallel consumer repairs at a serial boundary.

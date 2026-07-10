@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Guarded matrix-free `Problem::dtw_function()` access with the same fixed-size
+  semantic snapshot as cached distances. Mutable f64/f32 access now rebinds
+  after legacy raw configuration edits, const access rejects stale dispatch,
+  and mmap replacement reconciles the callable before publishing its identity;
+  unchanged getters remain allocation-free. OneBatchPAM resolves both callables
+  serially before its OpenMP table build so first-use repair cannot race.
 - Replaced formatted-stream batch parsing with exact-delimiter, full-token
   numeric parsing. Textual NaNs and later fields are preserved; malformed,
   empty, out-of-range, or unapproved non-finite values fail with file/row/column
