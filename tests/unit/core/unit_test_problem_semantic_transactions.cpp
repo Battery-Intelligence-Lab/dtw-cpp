@@ -20,6 +20,7 @@
 #include <string_view>
 #include <system_error>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -50,6 +51,24 @@ void set_two_series_mv(dtwc::Problem &problem)
   REQUIRE(problem.data.ndim == 2);
 }
 
+dtwc::Data owning_mv_data(double offset = 10.0)
+{
+  return dtwc::Data(
+    std::vector<std::vector<dtwc::data_t>>{
+      {offset, offset + 1.0}, {offset + 2.0, offset + 3.0}},
+    std::vector<std::string>{"mx", "my"}, 2);
+}
+
+void check_original_univariate_data(const dtwc::Problem &problem)
+{
+  CHECK_FALSE(problem.data.is_view());
+  CHECK_FALSE(problem.data.is_f32());
+  CHECK(problem.data.ndim == 1);
+  CHECK(problem.data.size() == 2);
+  CHECK(problem.series(0)[0] == 0.0);
+  CHECK(problem.series(1)[0] == 1.0);
+}
+
 void inject_complete_dense_cache(dtwc::Problem &problem, double sentinel)
 {
   auto &matrix = problem.dense_distance_matrix();
@@ -71,6 +90,16 @@ void check_complete_dense_cache(dtwc::Problem &problem, double sentinel)
   double after = std::numeric_limits<double>::quiet_NaN();
   CHECK_NOTHROW(after = problem.dist_by_ind(0, 1));
   CHECK(after == sentinel);
+}
+
+void check_candidate_rejection_cache(dtwc::Problem &problem, double sentinel)
+{
+  // A post-move capability failure leaves current state internally invalid;
+  // do not trigger a second reconciliation merely to inspect the red. Once
+  // prevalidation is fixed, the still-visible cache must retain its exact bit.
+  const bool filled = problem.is_distance_matrix_filled();
+  CHECK(filled);
+  if (filled) CHECK(problem.dist_by_ind(0, 1) == sentinel);
 }
 
 constexpr const char *cross_product_error =
@@ -306,6 +335,85 @@ TEST_CASE("M48 rejected capability mutations preserve multivariate state and cac
       CHECK(problem.missing_strategy == dtwc::core::MissingStrategy::Error);
       check_complete_dense_cache(problem, test.sentinel);
     }
+  }
+}
+
+TEST_CASE("M48 data candidates validate dimensional capabilities before publication",
+          "[m48][problem][transaction][data]")
+{
+  SECTION("owning set_data cannot move an MSM Problem into multivariate state")
+  {
+    dtwc::Problem problem("m48-data-msm");
+    set_two_series<double>(problem);
+    problem.set_variant(dtwc::core::DTWVariant::MSM);
+    inject_complete_dense_cache(problem, 444.0);
+    require_complete_dense_cache(problem, 444.0);
+
+    auto candidate = owning_mv_data();
+    CHECK_THROWS_WITH(
+      problem.set_data(std::move(candidate)),
+      Catch::Matchers::Equals(
+        "MSM distance is univariate in this release (ndim must be 1)"));
+    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::MSM);
+    check_original_univariate_data(problem);
+    check_candidate_rejection_cache(problem, 444.0);
+  }
+
+  SECTION("set_view_data cannot move a TWE Problem into multivariate state")
+  {
+    dtwc::Problem problem("m48-view-twe");
+    set_two_series<double>(problem);
+    problem.set_variant(dtwc::core::DTWVariant::TWE);
+    inject_complete_dense_cache(problem, 555.0);
+    require_complete_dense_cache(problem, 555.0);
+
+    std::vector<double> x{10.0, 11.0};
+    std::vector<double> y{12.0, 13.0};
+    std::vector<std::span<const double>> spans{
+      std::span<const double>{x}, std::span<const double>{y}};
+    std::vector<std::string_view> names{"vx", "vy"};
+    dtwc::Data candidate(std::move(spans), std::move(names), 2);
+    CHECK_THROWS_WITH(
+      problem.set_view_data(std::move(candidate)),
+      Catch::Matchers::Equals(
+        "TWE distance is univariate in this release (ndim must be 1)"));
+    CHECK(problem.variant_params.variant == dtwc::core::DTWVariant::TWE);
+    check_original_univariate_data(problem);
+    check_candidate_rejection_cache(problem, 555.0);
+  }
+}
+
+TEST_CASE("M48 valid multivariate data replacements retain existing behavior",
+          "[m48][problem][transaction][data][control]")
+{
+  SECTION("owning set_data publishes Standard multivariate data")
+  {
+    dtwc::Problem problem("m48-data-valid");
+    set_two_series<double>(problem);
+    inject_complete_dense_cache(problem, 666.0);
+    CHECK_NOTHROW(problem.set_data(owning_mv_data(20.0)));
+    CHECK(problem.data.ndim == 2);
+    CHECK_FALSE(problem.data.is_view());
+    CHECK(problem.series(0)[0] == 20.0);
+    CHECK_FALSE(problem.is_distance_matrix_filled());
+  }
+
+  SECTION("set_view_data publishes Standard multivariate view data")
+  {
+    dtwc::Problem problem("m48-view-valid");
+    set_two_series<double>(problem);
+    inject_complete_dense_cache(problem, 777.0);
+    std::vector<double> x{30.0, 31.0};
+    std::vector<double> y{32.0, 33.0};
+    std::vector<std::span<const double>> spans{
+      std::span<const double>{x}, std::span<const double>{y}};
+    std::vector<std::string_view> names{"vx", "vy"};
+    dtwc::Data candidate(std::move(spans), std::move(names), 2);
+    CHECK_NOTHROW(problem.set_view_data(std::move(candidate)));
+    CHECK(problem.data.ndim == 2);
+    CHECK(problem.data.is_view());
+    CHECK(problem.series(1)[0] == 32.0);
+    CHECK_FALSE(problem.is_distance_matrix_filled());
   }
 }
 
