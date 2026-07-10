@@ -490,7 +490,7 @@ void require_missing_mv_l2_metric_contract()
   const T missing_l2 = dtwc::dtwMissing_L_mv<T>(
       clean_x.data(), 3, clean_y.data(), 3, 2, T(-1), dtwc::core::MetricType::L2);
   const T ordinary_l2 = dtwc::dtwFull_L_mv<T>(
-      clean_x.data(), clean_y.data(), 3, 3, 2, T(-1), dtwc::core::MetricType::L2);
+      clean_x.data(), 3, clean_y.data(), 3, 2, T(-1), dtwc::core::MetricType::L2);
   CHECK(missing_l2 == T(15));
   CHECK(missing_l2 == ordinary_l2);
 
