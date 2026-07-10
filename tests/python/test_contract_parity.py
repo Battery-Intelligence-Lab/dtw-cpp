@@ -162,6 +162,15 @@ def test_problem_deprecated_alias_still_resolves(name):
     assert hasattr(p, name), f"Problem.{name} should still resolve one cycle (§4)"
 
 
+@pytest.mark.parametrize("name", ["Enhanced", "Webb"])
+def test_lower_bound_strategy_new_members_roundtrip(name):
+    """Every core lower-bound strategy is selectable through the Python enum."""
+    strategy = getattr(dtwcpp.LowerBoundStrategy, name)
+    p = dtwcpp.Problem("lb_strategy_parity")
+    p.lb_strategy = strategy
+    assert p.lb_strategy == strategy
+
+
 # ===========================================================================
 # §5 error taxonomy — class hierarchy (dual-catch contract)
 # ===========================================================================

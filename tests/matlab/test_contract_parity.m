@@ -208,6 +208,13 @@ function test_problem_setters_all_callable(testCase)
     verifyEqual(testCase, prob.size(), 6);
 end
 
+function test_problem_enhanced_webb_lb_strategies(testCase)
+%   Every core lower-bound strategy is selectable through the MATLAB parser.
+    prob = dtwc.Problem('lb_strategy_parity');
+    prob.set_lb_strategy('enhanced');
+    prob.set_lb_strategy('webb');
+end
+
 function test_problem_set_mip_settings_roundtrip(testCase)
 %   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings + benders).
     prob = dtwc.Problem('mip');
