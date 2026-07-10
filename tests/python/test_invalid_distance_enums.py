@@ -61,19 +61,25 @@ def test_raw_integer_enum_properties_remain_typed(
 
 
 @pytest.mark.parametrize("raw", (-1, 3, -(2**31), 2**31 - 1))
-def test_invalid_cuda_precision_candidate_is_rejected_transactionally(raw):
+def test_invalid_cuda_precision_property_is_rejected_transactionally(raw):
     problem = core.Problem("m47_python_cuda_precision")
     problem.set_data([[0.0], [1.0]], ["x", "y"])
     expected = np.array([[0.0, 123.0], [123.0, 0.0]])
     problem.set_distance_matrix(expected)
 
     candidate = core.CUDASettings()
-    candidate.precision = raw
     with pytest.raises(
         dtwcpp.InvalidInput,
         match=f"^{re.escape('Invalid CUDA precision value.')}$",
     ):
-        problem.cuda_settings = candidate
+        candidate.precision = raw
+    assert candidate.precision == 0
+
+    with pytest.raises(
+        dtwcpp.InvalidInput,
+        match=f"^{re.escape('Invalid CUDA precision value.')}$",
+    ):
+        problem.cuda_settings.precision = raw
 
     assert problem.cuda_settings.precision == 0
     assert problem.is_distance_matrix_filled()
