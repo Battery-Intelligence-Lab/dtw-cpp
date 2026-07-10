@@ -20,7 +20,6 @@
 #include <cmath>
 #include <array>
 #include <string>
-#include <type_traits>
 #include <vector>
 #include <limits>
 

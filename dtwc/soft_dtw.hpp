@@ -26,7 +26,6 @@
 #include <cstddef>
 #include <limits>
 #include <algorithm>
-#include <cassert>
 #include <stdexcept>
 #include <utility>
 
@@ -36,6 +35,26 @@
 #include "core/variant_validation.hpp"
 
 namespace dtwc {
+
+namespace detail {
+
+/**
+ * Internal soft minimum for callers that already validated gamma once at
+ * their public boundary. Keeping this primitive non-throwing avoids repeating
+ * the finite-positive domain check in every dynamic-programming cell.
+ */
+template <typename T>
+T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
+{
+  const T minimum = std::min(a, std::min(b, c));
+  const T inv_gamma = T(1) / gamma;
+  return minimum - gamma * std::log(
+                             std::exp(-(a - minimum) * inv_gamma) +
+                             std::exp(-(b - minimum) * inv_gamma) +
+                             std::exp(-(c - minimum) * inv_gamma));
+}
+
+} // namespace detail
 
 /**
  * @brief Numerically stable softmin of three values using log-sum-exp trick.
@@ -55,13 +74,8 @@ namespace dtwc {
 template <typename T>
 T softmin_gamma(T a, T b, T c, T gamma)
 {
-  assert(gamma > T(0) && "softmin_gamma requires gamma > 0");
-  const T M = std::min(a, std::min(b, c));
-  const T inv_gamma = T(1) / gamma;
-  return M - gamma * std::log(
-                        std::exp(-(a - M) * inv_gamma) +
-                        std::exp(-(b - M) * inv_gamma) +
-                        std::exp(-(c - M) * inv_gamma));
+  core::validate_sdtw_gamma(gamma);
+  return detail::softmin_gamma_unchecked(a, b, c, gamma);
 }
 
 /**
@@ -153,7 +167,8 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   for (int j = 1; j < my; ++j) {
     for (int i = 1; i < mx; ++i) {
       C(i, j) = dist(x[i], y[j]) +
-                softmin_gamma(C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma);
+                detail::softmin_gamma_unchecked(
+                  C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma);
     }
   }
 
