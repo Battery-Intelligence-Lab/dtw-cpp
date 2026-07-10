@@ -7,9 +7,12 @@
  * to disk and resuming later, avoiding re-computation of already
  * computed pairs.
  *
- * Checkpoint format (CSV + metadata text file, no extra dependencies):
- *   - distances.csv  -- the NxN distance matrix (NaN for uncomputed pairs)
- *   - metadata.txt   -- key=value pairs: n, band, variant, pairs_computed, timestamp
+ * Dense checkpoint v2 publishes immutable generations:
+ *   - CURRENT -- one lowercase 64-hex generation identifier
+ *   - generations/<id>/distances.csv -- exact full NxN matrix; an empty field
+ *     is the only uncomputed representation
+ *   - generations/<id>/metadata.txt -- strict version, dimension, pair count,
+ *     UTC timestamp, full Problem identity, and payload SHA-256
  *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
@@ -36,9 +39,10 @@ struct CheckpointOptions {
 
 /// Save the current distance matrix state to a checkpoint directory.
 ///
-/// Creates the directory if it does not exist. Writes:
-///   - distances.csv: the full NxN matrix (NaN for uncomputed entries)
-///   - metadata.txt: key=value metadata (n, band, variant, pairs_computed, timestamp)
+/// Validates the complete source before filesystem effects, streams a new
+/// immutable generation, and atomically replaces CURRENT. Existing active
+/// generations are never overwritten. Unverifiable legacy direct-file
+/// directories are upgraded only by a successful save.
 ///
 /// @param prob  The Problem whose distance matrix to save.
 /// @param path  Directory path for checkpoint files.
@@ -47,13 +51,17 @@ void save_checkpoint(const Problem &prob, const std::string &path);
 
 /// Load a checkpoint and restore the distance matrix into the Problem.
 ///
-/// Reads distances.csv and metadata.txt from the given directory.
-/// Validates that the matrix dimension matches the Problem's data size.
-/// The Problem's isDistanceMatrixFilled() will return true if all pairs are computed.
+/// Validates CURRENT, the exact seven-key v2 manifest, the full Problem
+/// data/configuration identity, payload digest, CSV shape, finite full-token
+/// numbers, bit-identical symmetry, and pair count. Parsing occurs into a local
+/// candidate and publishes with one non-throwing move only after every check.
+/// Legacy direct-file directories are rejected because their data identity is
+/// unverifiable.
 ///
 /// @param prob  The Problem to restore the distance matrix into.
 /// @param path  Directory path containing checkpoint files.
-/// @return true if checkpoint was loaded successfully, false if not found or invalid.
+/// @return true if checkpoint was loaded successfully; false without changing
+///         Problem state if it is absent, incompatible, or malformed.
 bool load_checkpoint(Problem &prob, const std::string &path);
 
 // ---- Binary checkpoint for ClusteringResult --------------------------------

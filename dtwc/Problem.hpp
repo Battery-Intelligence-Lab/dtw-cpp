@@ -43,6 +43,9 @@
 
 namespace dtwc {
 
+class Problem;
+bool load_checkpoint(Problem &prob, const std::string &path);
+
 /// CUDA-specific compute settings. Only used when distance_strategy == CUDA.
 /// Metal has no equivalent — it auto-picks the system default device and FP32.
 struct CUDASettings {
@@ -188,6 +191,7 @@ private:
   void resize(); ///< Resize cluster/centroid buffers to size()/Nc. Internal invariant maintenance (Task 1.6: private).
 
   // Private functions:
+  friend bool load_checkpoint(Problem &prob, const std::string &path);
   friend void MIP_clustering_byBenders(Problem &prob);
   // Benders disables only heuristic artifact files; public Lloyd always passes true.
   void cluster_by_kmedoids_lloyd_impl(bool persist_artifacts);
@@ -456,6 +460,10 @@ public:
     ensure_dense_cache_configuration_current();
     return std::get<core::DenseDistanceMatrix>(distMat);
   }
+  /// Full data-plus-distance-semantics identity used by durable checkpoints.
+  /// Names and clustering outputs are intentionally excluded because they do
+  /// not affect any stored distance.
+  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
   /// Bind persistent storage to this Problem's exact data/configuration.
   /// Non-L1 identities are for matching external/GPU producers only; the CPU
   /// lazy/fill paths reject them before writing because their local cost is L1.

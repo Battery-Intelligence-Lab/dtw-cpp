@@ -503,6 +503,13 @@ Problem::distance_cache_identity(core::MetricType metric) const
   return identity;
 }
 
+core::MmapDistanceMatrix::fingerprint_type
+Problem::distance_checkpoint_identity() const
+{
+  preflight_current_distance_semantics();
+  return distance_cache_identity(core::MetricType::L1).full;
+}
+
 void Problem::clear_mmap_cache_identity()
 {
   mmap_cache_identity_bound_ = false;
