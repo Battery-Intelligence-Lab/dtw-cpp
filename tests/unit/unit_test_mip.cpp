@@ -20,7 +20,9 @@
 #include <chrono>
 #include <cmath>
 #include <filesystem>
+#include <iostream>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <typeindex>
 #include <utility>
@@ -61,6 +63,20 @@ static dtwc::Problem make_seed_sensitive_problem()
   prob.set_n_clusters(3);
   return prob;
 }
+
+class ScopedCoutCapture {
+public:
+  ScopedCoutCapture() : previous_(std::cout.rdbuf(output_.rdbuf())) {}
+  ScopedCoutCapture(const ScopedCoutCapture &) = delete;
+  ScopedCoutCapture &operator=(const ScopedCoutCapture &) = delete;
+  ~ScopedCoutCapture() { std::cout.rdbuf(previous_); }
+
+  std::string str() const { return output_.str(); }
+
+private:
+  std::ostringstream output_;
+  std::streambuf *previous_;
+};
 
 using ProblemInitializerFunction = void (*)(dtwc::Problem &);
 
@@ -458,17 +474,7 @@ TEST_CASE("MIP Benders warm start preserves caller configuration on success",
 TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
           "[mip][highs][benders][state]")
 {
-  const auto nonce = std::to_string(
-    std::chrono::steady_clock::now().time_since_epoch().count())
-    + "_" + std::to_string(std::random_device{}());
-  const auto tmp_root = std::filesystem::temp_directory_path()
-                      / ("dtwc_mip_benders_state_throw_" + nonce);
-  const auto missing_output = tmp_root / "missing";
-  std::error_code ec;
-  std::filesystem::remove_all(tmp_root, ec);
-
   auto prob = make_small_problem(8, 12);
-  prob.output_folder = missing_output;
   prob.set_n_clusters(2);
   prob.method = dtwc::Method::MIP;
   prob.N_repetition = 5;
@@ -478,6 +484,14 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
   prob.mip_settings.warm_start = true;
   prob.centroids_ind = {6, 7};
   prob.clusters_ind.assign(prob.size(), 1);
+  prob.init_fun = [](dtwc::Problem &nested) {
+    nested.method = dtwc::Method::TADPole;
+    nested.N_repetition = 17;
+    nested.last_iterations = 999;
+    nested.centroids_ind = {0, 1};
+    nested.clusters_ind.assign(nested.size(), 0);
+    throw std::runtime_error("forced nested Lloyd failure after state mutation");
+  };
   prob.fill_distance_matrix();
   const auto before = snapshot_configuration(prob);
   const auto labels_before = prob.clusters_ind;
@@ -488,15 +502,78 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
     prob.cluster();
   } catch (const std::runtime_error &error) {
     threw = true;
-    CHECK(std::string(error.what()).find("Failed to open medoids output file:")
-          != std::string::npos);
+    CHECK(std::string(error.what())
+          == "forced nested Lloyd failure after state mutation");
   }
   REQUIRE(threw);
 
   check_configuration_unchanged(prob, before);
   CHECK(prob.clusters_ind == labels_before);
   CHECK(prob.centroids_ind == medoids_before);
+}
 
+TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
+          "[mip][highs][benders][io]")
+{
+  const auto nonce = std::to_string(
+    std::chrono::steady_clock::now().time_since_epoch().count())
+    + "_" + std::to_string(std::random_device{}());
+  const auto tmp_root = std::filesystem::temp_directory_path()
+                      / ("dtwc_mip_benders_io_" + nonce);
+  const auto benders_output = tmp_root / "benders";
+  const auto lloyd_output = tmp_root / "lloyd";
+  std::filesystem::create_directories(benders_output);
+  std::filesystem::create_directories(lloyd_output);
+
+  auto benders = make_small_problem(10, 16);
+  benders.output_folder = benders_output;
+  benders.name = "nested_";
+  benders.set_n_clusters(2);
+  benders.method = dtwc::Method::MIP;
+  benders.random_seed = 1234;
+  benders.mip_settings.benders = "on";
+  benders.mip_settings.warm_start = true;
+  benders.mip_settings.max_benders_iter = 50;
+  std::string benders_stdout;
+  {
+    ScopedCoutCapture capture;
+    benders.cluster();
+    benders_stdout = capture.str();
+  }
+
+  const auto nested_medoids = benders_output / "nested_medoids_rep_0.csv";
+  const auto nested_best_rep = benders_output / "nested__bestRepetition_Nc_2.csv";
+  CHECK_FALSE(std::filesystem::exists(nested_medoids));
+  CHECK_FALSE(std::filesystem::exists(nested_best_rep));
+  CHECK(benders_stdout.find("Best repetition: 0\n") != std::string::npos);
+  CHECK(benders_stdout.find("Benders warm start: PAM cost = 22.498")
+        != std::string::npos);
+  CHECK(benders_stdout.find("Benders converged at iteration 4")
+        != std::string::npos);
+  const double benders_cost = benders.find_total_cost();
+
+  auto lloyd = make_small_problem(10, 16);
+  lloyd.output_folder = lloyd_output;
+  lloyd.name = "direct_";
+  lloyd.set_n_clusters(2);
+  lloyd.N_repetition = 1;
+  lloyd.random_seed = 1234;
+  std::string lloyd_stdout;
+  {
+    ScopedCoutCapture capture;
+    lloyd.cluster_by_kmedoids_lloyd();
+    lloyd_stdout = capture.str();
+  }
+
+  const auto medoids_artifact = lloyd_output / "direct_medoids_rep_0.csv";
+  const auto best_rep_artifact = lloyd_output / "direct__bestRepetition_Nc_2.csv";
+  CHECK(std::filesystem::is_regular_file(medoids_artifact));
+  CHECK(std::filesystem::is_regular_file(best_rep_artifact));
+  CHECK(lloyd_stdout.find("Best repetition: 0\n") != std::string::npos);
+  CHECK((std::isfinite(benders_cost)
+         && benders_cost <= lloyd.find_total_cost() + 1e-9));
+
+  std::error_code ec;
   std::filesystem::remove_all(tmp_root, ec);
 }
 

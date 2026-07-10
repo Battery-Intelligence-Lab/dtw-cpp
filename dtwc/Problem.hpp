@@ -151,7 +151,11 @@ private:
   void resize(); ///< Resize cluster/centroid buffers to size()/Nc. Internal invariant maintenance (Task 1.6: private).
 
   // Private functions:
-  std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(int rep);
+  friend void MIP_clustering_byBenders(Problem &prob);
+  // Benders disables only heuristic artifact files; public Lloyd always passes true.
+  void cluster_by_kmedoids_lloyd_impl(bool persist_artifacts);
+  std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
+    int rep, bool persist_artifacts);
   void init_with_seed(std::uint64_t seed);
 
   void writeBestRep(int best_rep);

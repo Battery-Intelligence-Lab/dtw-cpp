@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Stopped Benders warm starts from writing nested Lloyd medoid and
+  best-repetition artifacts. The private no-persistence route retains identical
+  initialization, incumbent, progress output, and exact-solver trajectory;
+  direct public Lloyd clustering keeps its documented files and stdout.
 - Honored deterministic PAM restart counts in the CLI and Python HPC path.
   Restart `i` uses checked `seed+i` and the strict best objective is retained;
   count/seed now reach the final SLURM command without overriding the CLI seed

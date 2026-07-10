@@ -138,7 +138,7 @@ void MIP_clustering_byBenders(Problem &prob)
       BendersWarmStartStateGuard restore_caller_state(prob);
       prob.method = Method::Kmedoids;
       prob.N_repetition = 1;
-      prob.cluster_by_kMedoidsLloyd();
+      prob.cluster_by_kmedoids_lloyd_impl(false);
 
       best_medoids = prob.centroids_ind;
       best_cost = prob.findTotalCost();

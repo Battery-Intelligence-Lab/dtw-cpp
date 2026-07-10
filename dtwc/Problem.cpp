@@ -917,6 +917,11 @@ void Problem::init_with_seed(std::uint64_t seed)
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
+  cluster_by_kmedoids_lloyd_impl(true);
+}
+
+void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
+{
   if (N_repetition <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
   const auto restart_offset = static_cast<std::uint64_t>(N_repetition - 1);
@@ -939,7 +944,8 @@ void Problem::cluster_by_kmedoids_lloyd()
               << Nc << " medoids are initialised.\n"
               << "Start clustering:\n";
 
-    auto [status, total_cost, iters] = cluster_by_kMedoidsLloyd_single(i_rand);
+    auto [status, total_cost, iters] =
+      cluster_by_kMedoidsLloyd_single(i_rand, persist_artifacts);
     last_iterations = iters;
 
     if (status == 0)
@@ -960,7 +966,10 @@ void Problem::cluster_by_kmedoids_lloyd()
   centroids_ind = std::move(best_medoids);
   clusters_ind = std::move(best_labels);
   last_iterations = best_iterations;
-  writeBestRep(best_rep);
+  if (persist_artifacts)
+    writeBestRep(best_rep);
+  else
+    std::cout << "Best repetition: " << best_rep << '\n';
 }
 
 /**
@@ -970,7 +979,8 @@ void Problem::cluster_by_kmedoids_lloyd()
  * @param rep The current repetition number.
  * @return A pair containing the status (whether the algorithm converged or not) and the total cost of clustering for this repetition.
  */
-std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
+std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
+  int rep, bool persist_artifacts)
 {
   if (centroids_ind.empty())
     init_with_seed(random_seed + static_cast<std::uint64_t>(rep));
@@ -1009,7 +1019,8 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
 
   const double total_cost = find_total_cost();
   std::cout << "Procedure is completed with cost: " << total_cost << '\n';
-  writeMedoids(centroids_all, rep, total_cost);
+  if (persist_artifacts)
+    writeMedoids(centroids_all, rep, total_cost);
   return {status, total_cost, actual_iters};
 }
 

@@ -1386,3 +1386,65 @@ nanobind diagnostic. No production change, PLAN finding, or suppressing leak
 checker call is warranted. Future direct-extension harnesses must insert the
 module into `sys.modules` before `exec_module` (or use normal import machinery)
 so interpreter teardown owns its lifetime.
+
+## M22 — Benders nested-Lloyd persistence isolation
+
+M20's forced-unwind discriminator exposed a separate behavior defect: Benders
+used the public Lloyd entry point for its internal incumbent and therefore
+wrote `medoids_rep_0.csv` plus `_bestRepetition_Nc_*.csv` into the caller's
+result directory. Those files describe the heuristic intermediate result, not
+the exact Benders solution, and an unwritable output path could abort an exact
+solve before the solver started.
+
+The registered discriminator uses independent unique empty directories for a
+Benders solve and a direct public Lloyd solve on the same N=10, length-16,
+k=2, seed-1234 fixture. It requires the nested files to be absent, while pinning
+the existing `Best repetition: 0` line, warm-start cost prefix `22.498`, and
+four-iteration Benders convergence. The direct call must still create both
+documented artifacts and print its best-repetition line. Before remediation,
+only the two Benders absence assertions failed:
+
+```text
+build/highs-1151/bin/unit_test_mip.exe "[io]" --reporter compact
+failed: !exists(nested_medoids)   for: !true
+failed: !exists(nested_best_rep)  for: !true
+test cases: 1 | 1 failed
+assertions: 9 | 7 passed | 2 failed
+```
+
+The public `Problem::cluster_by_kmedoids_lloyd()` signature and behavior remain
+unchanged. It forwards to a private implementation with persistence enabled.
+Only the single `MIP_clustering_byBenders(Problem&)` friend can select the
+disabled mode. Both modes execute the same distance fill, seed/restart loop,
+assignment/update arithmetic, best-state retention, and stdout; the disabled
+mode gates only `writeMedoids` and the file-writing part of `writeBestRep`.
+
+Because the old M20 unwind test deliberately threw from the nested file write,
+M22 migrated that current oracle to a custom initializer that mutates method,
+restart count, iteration count, medoids, and labels, then throws inside Lloyd.
+The guard still restores the broad caller snapshot and all five changed fields.
+M20's historical output-failure red evidence above remains accurate for the
+pre-M22 implementation.
+
+Green evidence from fresh rebuilt artifacts:
+
+```text
+build/highs-1151 (HiGHS 1.15.1 ON)
+  [io]:                  9 assertions / 1 case passed
+  [state]:              87 assertions / 2 cases passed
+  full unit_test_mip:  151 assertions / 14 cases passed
+
+build/phase8-m13 (HiGHS/Gurobi OFF)
+  full unit_test_mip target rebuilt and linked
+  [seed]:                9 assertions / 1 case passed
+```
+
+The call-graph audit finds one disabled-mode call in `benders.cpp`, one enabled
+call in the public wrapper, and no other private implementation callers. Thus
+LR-core and every direct/deprecated public Lloyd route retain persistence by
+construction, while the no-solver build confirms the friend/private seam adds
+no optional dependency.
+
+Verdict: **PASS.** Benders exposes only its exact in-memory result, no longer
+leaks or depends on intermediate Lloyd files, and preserves the incumbent and
+solver trajectory exercised before the fix.
