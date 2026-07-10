@@ -6,6 +6,7 @@ target_sources(mip-solvers
   PRIVATE
     mip_Gurobi.cpp
     mip_Highs.cpp
+    solution_transaction.cpp
     warm_start.cpp
     benders.cpp
     lagrangian_root.cpp
@@ -13,6 +14,7 @@ target_sources(mip-solvers
     pdlp_lp.cpp
   PUBLIC
     mip.hpp
+    solution_transaction.hpp
     warm_start.hpp
     benders.hpp
     lagrangian_root.hpp

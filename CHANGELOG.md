@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made direct HiGHS and Gurobi clustering transactional: FastPAM incumbents no
+  longer overwrite caller state, exact assignments are decoded and validated
+  privately, and only a complete k-medoid/N-label result is published. Solver
+  or extraction failures restore the caller's prior medoids and labels.
 - Made Python HPC clustering submissions transactionally job-specific: local
   inputs, remote uploads, and submitted scripts no longer collide; polling has
   a real wall-clock bound and propagates configured-cluster failures; and label

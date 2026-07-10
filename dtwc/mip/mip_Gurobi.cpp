@@ -7,6 +7,7 @@
  */
 
 #include "mip.hpp"
+#include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Problem.hpp"
 #include "../error.hpp" // for SolverError
@@ -20,6 +21,7 @@
 #include <memory>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 #ifdef DTWC_ENABLE_GUROBI
 #include "gurobi_c++.h"
@@ -33,7 +35,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
   const auto Nb = prob.size();
   const auto Nc = prob.cluster_size();
-  prob.centroids_ind.clear();
+  mip::ExactClusteringTransaction result_transaction(prob);
 
   try {
     GRBEnv env = GRBEnv();
@@ -120,16 +122,17 @@ void MIP_clustering_byGurobi(Problem &prob)
         "Gurobi MIP did not solve to optimality (status code "
         + std::to_string(opt_status) + "). No valid clustering produced.");
 
-    for (auto i : Range(Nb))
-      if (w[i * (Nb + 1)].get(GRB_DoubleAttr_X) > 0.5)
-        prob.centroids_ind.push_back(static_cast<int>(i));
+    std::vector<double> solution(Nb * Nb);
+    for (std::size_t index = 0; index < solution.size(); ++index)
+      solution[index] = w[index].get(GRB_DoubleAttr_X);
 
-    prob.clusters_ind.resize(Nb);
-
-    for (auto i : Range(prob.cluster_size()))
-      for (auto j : Range(Nb))
-        if (w[prob.centroids_ind[i] + j * Nb].get(GRB_DoubleAttr_X) > 0.5)
-          prob.clusters_ind[j] = static_cast<int>(i);
+    auto exact_result = mip::extract_exact_clustering(
+      solution,
+      Nb,
+      Nc,
+      mip::AssignmentMatrixLayout::PointMajor,
+      "Gurobi");
+    result_transaction.publish(std::move(exact_result), "Gurobi");
 
   } catch (GRBException &e) {
     // Wrap solver-native failures as SolverError. GRBException derives from

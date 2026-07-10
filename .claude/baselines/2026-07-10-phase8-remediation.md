@@ -2102,3 +2102,82 @@ git diff --check:                        passed
 Verdict: **PASS.** Submission input, script, status, timeout, and result are now
 bound to one job identity; transport ambiguity is loud and stale/cross-job
 labels cannot be selected.
+
+## M33 — transactional direct-MIP state publication
+
+The direct HiGHS and Gurobi paths both called the shared seeded FastPAM helper
+on the caller's `Problem`. FastPAM returns a value result but also writes its
+heuristic medoids and labels back into that object. HiGHS later cleared those
+vectors only while extracting a successful exact solution, so any solve or
+extraction failure exposed the incumbent. Gurobi cleared medoids before setup,
+then FastPAM repopulated them, and successful extraction appended exact medoids
+without another clear. Its normal warm-start result could therefore contain 2k
+medoids; setup, solve, or extraction failure exposed empty, heuristic, or
+partially decoded state.
+
+The first discriminator preloaded a valid, distinct clustering before calling
+`mip::make_warm_start`. The returned seed-42 incumbent remained the registered
+medoids `{6,2,5}` at cost 24, but the caller had to retain its original vectors.
+The unfixed helper instead published the incumbent:
+
+```text
+unit_test_mip "MIP FastPAM warm-start medoids are invocation-local"
+  first_problem.centroids_ind: {6,2,5} != {0,3,7}
+  first_problem.clusters_ind:  {1,1,1,1,2,2,0,0}
+                            != {0,0,0,1,1,1,2,2}
+test cases: 1 | 1 failed
+assertions: 11 | 9 passed | 2 failed
+```
+
+The Gurobi append was independently confirmed in the production source: its
+entry clear preceded FastPAM, while the exact diagonal scan used `push_back`
+against the now-populated vector. The corresponding runtime requires a licensed
+solver, so the repair is pinned with a Gurobi-ON production compile plus the
+same point-major extraction seam exercised without a license.
+
+`ExactClusteringTransaction` snapshots the two caller-visible clustering
+vectors and restores them with non-throwing swaps unless a result is published.
+The warm-start helper uses this transaction solely as a restore guard, making
+its returned incumbent private. Each direct backend owns another transaction
+for its complete setup/solve/extract lifetime.
+
+The shared extractor understands HiGHS facility-major and Gurobi point-major
+layouts. Before returning local vectors it requires a finite N-by-N solution,
+exactly k selected medoids, exactly one active assignment per point, assignment
+only to selected medoids, and medoid self-assignment. Publication independently
+checks k unique in-range medoids and N labels in `[0,k)`, then swaps both vectors
+into `Problem`; no throwing work follows publication. Backend-neutral tests
+mutation-pin both layouts, a forced solve failure after incumbent exposure, a
+partial extraction with two active assignments, duplicate-medoid rejection,
+and the compiled-out HiGHS error path.
+
+Green evidence:
+
+```text
+Clang Release, HiGHS 1.15.1 + Gurobi 13.0.1 + LLFIO ON
+  focused [m33]:                       36 assertions / 3 cases passed
+  state-neutral seeded warm start:     11 assertions / 1 case passed
+  live HiGHS warm exact invariants:    16 assertions / 1 case passed
+  full unit_test_mip:                 194 assertions / 17 cases passed
+  M20/M22 [benders] selection:        112 assertions / 6 cases passed
+  full unit_test_benders:              42 assertions / 7 cases passed
+  Tier-1 [lloyd] compatibility:        16 assertions / 4 cases passed
+  focused CTest group:                  4 tests / 0 failed
+  mip_Gurobi.cpp:                       compiled with DTWC_ENABLE_GUROBI=ON
+
+Clang Release, HiGHS/Gurobi/LLFIO OFF
+  focused [m33]:                       38 assertions / 3 cases passed
+  state-neutral seeded warm start:     11 assertions / 1 case passed
+  Tier-1 [lloyd] compatibility:        16 assertions / 4 cases passed
+  unit_test_mip + direct-MIP objects:   compiled and linked
+```
+
+The focused CTest group comprises full `unit_test_mip`, `unit_test_benders`,
+`test_tier1_cpp_api`, and `unit_test_clustering_algorithms`. Benders does not use
+the shared direct FastPAM seam and retains its M20 state guard and M22 artifact
+policy unchanged. The no-solver backend still raises the same typed
+unavailable-HiGHS error and now explicitly proves the caller vectors unchanged.
+
+Verdict: **PASS.** Direct exact solvers expose no heuristic or partially decoded
+clustering state: failure restores the caller, and success publishes exactly k
+unique medoids plus N valid labels only after complete validation.

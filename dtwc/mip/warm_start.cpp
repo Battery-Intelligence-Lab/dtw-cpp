@@ -1,4 +1,5 @@
 #include "warm_start.hpp"
+#include "solution_transaction.hpp"
 
 #include "../Problem.hpp"
 #include "../algorithms/fast_pam.hpp"
@@ -9,6 +10,7 @@ namespace dtwc::mip {
 core::ClusteringResult make_warm_start(
   Problem &prob, std::uint64_t random_seed)
 {
+  ExactClusteringTransaction transaction(prob);
   return fast_pam_seeded(
     prob, prob.n_clusters(), random_seed, settings::DEFAULT_MAX_ITER);
 }

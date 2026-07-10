@@ -7,6 +7,7 @@
  */
 
 #include "mip.hpp"
+#include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Data.hpp"        // for Data
 #include "../error.hpp"       // for SolverError
@@ -25,6 +26,7 @@
 #include <algorithm> // for sort
 #include <iostream>  // for operator<<, basic_ostream, ost...
 #include <string>    // for operator<<, std::to_string
+#include <utility>   // for move
 
 namespace dtwc {
 
@@ -37,24 +39,6 @@ bool highs_solver_available() noexcept
 #endif
 }
 
-template <typename T>
-void extract_mip_solution(Problem &prob, const T &solution)
-{
-  prob.centroids_ind.clear();
-  const auto Nb = prob.data.size();
-
-  for (auto i : Range(Nb))
-    if (solution[i * (Nb + 1)] > 0.5)
-      prob.centroids_ind.push_back(static_cast<int>(i));
-
-  prob.clusters_ind.resize(Nb);
-
-  for (auto i : Range(prob.cluster_size()))
-    for (auto j : Range(Nb))
-      if (solution[prob.centroids_ind[i] * Nb + j] > 0.5)
-        prob.clusters_ind[j] = static_cast<int>(i);
-}
-
 void MIP_clustering_byHiGHS(Problem &prob)
 {
   if (prob.mip_settings.verbose_solver || prob.verbose)
@@ -64,6 +48,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 #ifdef DTWC_ENABLE_HIGHS
   const auto Nb = prob.data.size();
   const auto Nc = prob.cluster_size();
+  mip::ExactClusteringTransaction result_transaction(prob);
 
   const auto Neq = Nb + 1;
   const auto Nineq = Nb * (Nb - 1);
@@ -205,8 +190,8 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Get the model status. Task 0.5 / audit finding #7: this guard used to be
   // assert(model_status == kOptimal), which is a no-op under NDEBUG (release
   // builds). A non-optimal solve (infeasible, unbounded, time/iteration limit)
-  // then fell through to extract_mip_solution(), which reads an empty/invalid
-  // solution vector and returns garbage or empty centroids (UB). Fail loudly.
+  // then fell through to decoding an empty/invalid solution vector and returned
+  // garbage or empty centroids (UB). Fail loudly.
   const HighsModelStatus &model_status = highs.getModelStatus();
   if (model_status != HighsModelStatus::kOptimal)
     throw SolverError("HiGHS MIP did not solve to optimality. Model status: "
@@ -223,8 +208,14 @@ void MIP_clustering_byHiGHS(Problem &prob)
               << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
   }
 
-  // Get the solution values
-  extract_mip_solution(prob, highs.getSolution().col_value);
+  // Decode and validate into private vectors before atomically publishing.
+  auto exact_result = mip::extract_exact_clustering(
+    highs.getSolution().col_value,
+    Nb,
+    Nc,
+    mip::AssignmentMatrixLayout::FacilityMajor,
+    "HiGHS");
+  result_transaction.publish(std::move(exact_result), "HiGHS");
 #else
   throw SolverError(
       "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON");
