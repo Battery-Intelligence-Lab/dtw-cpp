@@ -8,6 +8,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made `Problem` distance-semantic rejection effect-free across C++, Python,
+  and MATLAB. One ordered preflight now validates complete variant parameters,
+  variant/missing compatibility, active float32 narrowing, and multivariate
+  capability before selector/data publication, cache clear or resize,
+  dispatcher rebinding, mmap detachment, or file creation. Rejected variant,
+  missing-strategy, owning-data, and view-data candidates preserve exact prior
+  state and dense/mapped cache values; valid and no-op routes are unchanged.
+  Invalid enum membership remains the separate M47 hardening scope. This
+  guarantee covers deterministic semantic validation, not later allocation or
+  filesystem failures after a successful preflight.
 - Made float32 `Problem` variant binding reject active double parameters that
   overflow float or collapse from nonzero to zero before any data, cache,
   dispatcher, or mmap mutation. Float64 retains its full parameter domain;

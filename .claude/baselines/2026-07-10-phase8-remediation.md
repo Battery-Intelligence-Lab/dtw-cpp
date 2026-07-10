@@ -2909,3 +2909,92 @@ rejected operation.
 Verdict: **PASS.** Precision narrowing cannot silently change an active f32
 recurrence or damage prior state, while the public double domain and all exact
 float32 boundary controls remain intact. Production fix: `c3e0ccf`.
+
+## M48 - whole-semantic `Problem` preflight transactions
+
+M36 originally proved that `set_missing_strategy` and both `set_variant`
+overloads assigned an incompatible candidate before `refresh_distance_matrix`
+asked the resolver to reject it. The first dense oracle injected exact cache
+sentinels 123 and 456; 8/16 assertions failed because the rejected selector
+remained installed, the completed cache was cleared, and later lookup rethrew.
+The permanent preregistration was then expanded before production in
+`2de20da`, `cfe2c08`, and `898e7fa`.
+
+The expanded reds separated independent claims instead of relying on one
+setter symptom:
+
+```text
+C++ LLFIO OFF, pre-data extension: 160 assertions | 119 passed | 41 failed
+  cases:                               7 total | 2 passed | 3 failed | 2 mmap skips
+C++ LLFIO ON, pre-data extension:  204 assertions | 147 passed | 57 failed
+  cases:                               7 total | 2 passed | 5 failed
+mmap f64/f32 Cartesian filter:      44 assertions |  28 passed | 16 failed
+capability cross-product filter:    36 assertions |  21 passed | 15 failed
+owning/view data-candidate filter:  36 assertions |  27 passed |  9 failed
+Python semantic transactions:      23 cases      |   9 passed | 14 failed
+fresh-MEX MATLAB input validation:  31 cases      |  27 passed |  4 failed
+```
+
+The mmap Cartesian matrix covered f64 and f32 in both mutation directions and
+kept ready-cache reopen controls green. The capability matrix independently
+covered MSM and TWE with `ndim > 1`, plus Independent multivariate mode unless
+the candidate is Standard/Error. The data-candidate extension attempted an
+owning MSM univariate-to-multivariate replacement and a view-mode TWE
+univariate-to-multivariate replacement: the unfixed code installed the new
+data and lost the prior callable/cache. Standard multivariate owning/view
+controls stayed valid. Python covered four whole-object routes (missing
+property, variant property, enum method, and full-params method), three
+independent state/filled/matrix observables, a nested
+`variant_params.variant` raw-edit guard, and valid/no-op controls. MATLAB
+covered the public property routes with exact cache values.
+
+Production introduces one ordered helper in `distance_semantics.hpp`:
+
+1. validate the complete M34 parameter object;
+2. validate M36 variant/missing compatibility;
+3. validate active M45 float32 representability when requested;
+4. require Standard/Error for Independent multivariate data; and
+5. require univariate data for MSM and TWE.
+
+`resolve_dtw_fn<T>` uses the same helper, with `T=float` selecting the
+float32 check. `Problem` candidate setters pass the candidate selector or data
+to it before assignment. Current/raw-state reconciliation, public refresh,
+dense fill and lazy lookup, f64/f32 callable access, and mmap bind/detach pass
+the current state before cache, dispatcher, allocation, resize, or file
+effects. Diagnostic ordering and valid/no-op behavior remain unchanged. Enum
+membership is deliberately not added here: M47 owns that contract, and its
+permanent invalid-selector suite remains red (679 assertions: 99 passed,
+580 failed; 2/9 cases passed).
+
+Green evidence used the exact production source and fresh language artifacts:
+
+```text
+C++ LLFIO OFF semantic transactions: 198/198 assertions, 9 cases
+  7 passed, 2 expected mmap capability skips
+C++ LLFIO ON semantic transactions:  242/242 assertions, 9 cases
+LLFIO OFF/ON variant precision:       379/379 and 390/390 assertions
+LLFIO OFF/ON resolver semantics:      2058/2058 and 2068/2068 assertions
+LLFIO OFF/ON variant distmat:         61/61 and 97/97 assertions
+distance semantics / Independent MV: 48/48 and 889/889 assertions
+fresh Python focused/surrounding:     23/23 and 264/264 cases
+Python compileall:                    passed
+fresh R2025b MEX input validation:   31/31 cases
+```
+
+The surrounding C++ missing, multivariate-variant, multivariate-missing, and
+runtime API suites also passed. The LLFIO-on 97-assertion storage gate includes
+real ready-cache reopen and exact mapped values. The fresh Python extension was
+path-verified before execution; the R2025b MATLAB run asserted the exact newly
+built MSVC MEX path. A supplemental contract-parity run reached only the
+separately preregistered M52 `enhanced` lower-bound red and is not counted as
+M48 evidence.
+
+Limitation: this is a strong guarantee for deterministic, known semantic
+validation failures. Once preflight succeeds, later `std::bad_alloc`, callable
+or variant-cache allocation, and mmap/filesystem failures can still arise
+after selector/data publication, cache detachment, or file work. M48 does not
+claim a general rollback transaction for those exceptional resources.
+
+Verdict: **PASS.** Every supported semantic candidate and every recoverable raw
+semantic edit is rejected before its observable state/cache/file effect, while
+the exact accepted behavior remains live. Production fix: `77c0ebe`.
