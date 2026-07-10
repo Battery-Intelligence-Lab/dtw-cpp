@@ -43,6 +43,7 @@
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
+#include <core/variant_validation.hpp>
 #include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
@@ -288,12 +289,42 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::class_<dtwc::core::DTWVariantParams>(m, "DTWVariantParams")
     .def(nb::init<>())
     .def_rw("variant", &dtwc::core::DTWVariantParams::variant)
-    .def_rw("wdtw_g", &dtwc::core::DTWVariantParams::wdtw_g)
-    .def_rw("adtw_penalty", &dtwc::core::DTWVariantParams::adtw_penalty)
-    .def_rw("sdtw_gamma", &dtwc::core::DTWVariantParams::sdtw_gamma)
-    .def_rw("msm_c", &dtwc::core::DTWVariantParams::msm_c)
-    .def_rw("twe_nu", &dtwc::core::DTWVariantParams::twe_nu)
-    .def_rw("twe_lambda", &dtwc::core::DTWVariantParams::twe_lambda)
+    .def_prop_rw("wdtw_g",
+      [](const dtwc::core::DTWVariantParams &p) { return p.wdtw_g; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_wdtw_g(value);
+        p.wdtw_g = value;
+      })
+    .def_prop_rw("adtw_penalty",
+      [](const dtwc::core::DTWVariantParams &p) { return p.adtw_penalty; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_adtw_penalty(value);
+        p.adtw_penalty = value;
+      })
+    .def_prop_rw("sdtw_gamma",
+      [](const dtwc::core::DTWVariantParams &p) { return p.sdtw_gamma; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_sdtw_gamma(value);
+        p.sdtw_gamma = value;
+      })
+    .def_prop_rw("msm_c",
+      [](const dtwc::core::DTWVariantParams &p) { return p.msm_c; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_msm_c(value);
+        p.msm_c = value;
+      })
+    .def_prop_rw("twe_nu",
+      [](const dtwc::core::DTWVariantParams &p) { return p.twe_nu; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_twe_nu(value);
+        p.twe_nu = value;
+      })
+    .def_prop_rw("twe_lambda",
+      [](const dtwc::core::DTWVariantParams &p) { return p.twe_lambda; },
+      [](dtwc::core::DTWVariantParams &p, double value) {
+        dtwc::core::validate_twe_lambda(value);
+        p.twe_lambda = value;
+      })
     .def_rw("mv_mode", &dtwc::core::DTWVariantParams::mv_mode);
 
   // =========================================================================

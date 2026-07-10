@@ -109,6 +109,43 @@ function test_soft_dtw_int32_rejected(testCase)
         'dtwc:invalidArgument');
 end
 
+function test_variant_parameter_domains_are_typed(testCase)
+%   M34: malformed recurrence parameters must fail at the MEX boundary rather
+%   than entering arithmetic (or taking an identity/empty shortcut).
+    badCalls = {
+        @() dtwc_mex('wdtw_distance', [0], [0 0], -1, -1), ...
+        @() dtwc_mex('adtw_distance', [0], [0 0], -1, -1), ...
+        @() dtwc_mex('soft_dtw_distance', [0], [0 0], 0), ...
+        @() dtwc_mex('soft_dtw_gradient', [0], [0 0], NaN)
+    };
+    for i = 1:numel(badCalls)
+        verifyError(testCase, badCalls{i}, 'dtwc:invalidArgument');
+    end
+end
+
+function test_variant_wrappers_preserve_dtwc_error_type(testCase)
+%   Wrapper-side validation uses the same public identifier as the raw MEX
+%   gateway, so callers do not see inputParser-specific error types.
+    verifyError(testCase, ...
+        @() dtwc.distance.wdtw([0], [0 0], 'G', -1), ...
+        'dtwc:invalidArgument');
+    verifyError(testCase, ...
+        @() dtwc.distance.adtw([0], [0 0], 'Penalty', -1), ...
+        'dtwc:invalidArgument');
+    verifyError(testCase, ...
+        @() dtwc.distance.soft_dtw([0], [0 0], 'Gamma', 0), ...
+        'dtwc:invalidArgument');
+end
+
+function test_variant_zero_and_near_zero_boundaries_are_valid(testCase)
+    verifyEqual(testCase, dtwc.distance.wdtw([0], [0 0], 'G', 0), 0, ...
+        'AbsTol', 0);
+    verifyEqual(testCase, dtwc.distance.adtw([0], [0 0], 'Penalty', 0), 0, ...
+        'AbsTol', 0);
+    d = dtwc.distance.soft_dtw([0], [0 0], 'Gamma', realmin('double'));
+    verifyTrue(testCase, isfinite(d));
+end
+
 % -------------------------------------------------------------------------
 %  Matrix entry points: matrix_to_series path (set_data / distance matrix)
 % -------------------------------------------------------------------------

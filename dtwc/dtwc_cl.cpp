@@ -20,6 +20,7 @@
 #include "dtwc.hpp"
 #include "env.hpp"
 #include "error.hpp"
+#include "core/variant_validation.hpp"
 #ifdef DTWC_HAS_MMAP
 #include "core/mmap_data_store.hpp"
 #endif
@@ -771,6 +772,45 @@ int main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  // Materialize and validate the complete parameter value object before Env,
+  // output-directory, input, cache, or distance effects.  Validate inactive
+  // fields too: all CLI/YAML values are public and participate in cache identity.
+  dtwc::core::DTWVariantParams vparams;
+  if (variant == "ddtw")
+    vparams.variant = dtwc::core::DTWVariant::DDTW;
+  else if (variant == "wdtw") {
+    vparams.variant = dtwc::core::DTWVariant::WDTW;
+    vparams.wdtw_g = wdtw_g;
+  } else if (variant == "adtw") {
+    vparams.variant = dtwc::core::DTWVariant::ADTW;
+    vparams.adtw_penalty = adtw_penalty;
+  } else if (variant == "softdtw") {
+    vparams.variant = dtwc::core::DTWVariant::SoftDTW;
+    vparams.sdtw_gamma = sdtw_gamma;
+  } else if (variant == "msm") {
+    vparams.variant = dtwc::core::DTWVariant::MSM;
+    vparams.msm_c = msm_c;
+  } else if (variant == "twe") {
+    vparams.variant = dtwc::core::DTWVariant::TWE;
+    vparams.twe_nu = twe_nu;
+    vparams.twe_lambda = twe_lambda;
+  }
+  // Inactive options still belong to the aggregate public value object.
+  vparams.wdtw_g = wdtw_g;
+  vparams.adtw_penalty = adtw_penalty;
+  vparams.sdtw_gamma = sdtw_gamma;
+  vparams.msm_c = msm_c;
+  vparams.twe_nu = twe_nu;
+  vparams.twe_lambda = twe_lambda;
+  vparams.mv_mode = (mv_mode == "independent") ? dtwc::core::MVMode::Independent
+                                               : dtwc::core::MVMode::Dependent;
+  try {
+    dtwc::core::validate_variant_params(vparams);
+  } catch (const dtwc::InvalidInput &error) {
+    std::cerr << "Error: " << error.what() << "\n";
+    return EXIT_FAILURE;
+  }
+
   // Forward --device to the process-wide dtwc::Env (Task 1.3) so device selection
   // has ONE source of truth and the no-silent-fallback rules apply — e.g. a GPU
   // request on a build with no GPU backend becomes a hard DeviceError here rather
@@ -1032,31 +1072,7 @@ int main(int argc, char *argv[])
   else
     prob.missing_strategy = dtwc::core::MissingStrategy::Error;
 
-  // Set DTW variant
-  dtwc::core::DTWVariantParams vparams;
-  if (variant == "standard")
-    vparams.variant = dtwc::core::DTWVariant::Standard;
-  else if (variant == "ddtw")
-    vparams.variant = dtwc::core::DTWVariant::DDTW;
-  else if (variant == "wdtw") {
-    vparams.variant = dtwc::core::DTWVariant::WDTW;
-    vparams.wdtw_g = wdtw_g;
-  } else if (variant == "adtw") {
-    vparams.variant = dtwc::core::DTWVariant::ADTW;
-    vparams.adtw_penalty = adtw_penalty;
-  } else if (variant == "softdtw") {
-    vparams.variant = dtwc::core::DTWVariant::SoftDTW;
-    vparams.sdtw_gamma = sdtw_gamma;
-  } else if (variant == "msm") {
-    vparams.variant = dtwc::core::DTWVariant::MSM;
-    vparams.msm_c = msm_c;
-  } else if (variant == "twe") {
-    vparams.variant = dtwc::core::DTWVariant::TWE;
-    vparams.twe_nu = twe_nu;
-    vparams.twe_lambda = twe_lambda;
-  }
-  vparams.mv_mode = (mv_mode == "independent") ? dtwc::core::MVMode::Independent
-                                               : dtwc::core::MVMode::Dependent;
+  // Set the already validated DTW variant value object.
   prob.set_variant(vparams);
 
   // Bind persistent distance storage only after every distance-affecting CLI

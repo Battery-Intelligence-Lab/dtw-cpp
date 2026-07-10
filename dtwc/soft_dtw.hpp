@@ -33,6 +33,7 @@
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
+#include "core/variant_validation.hpp"
 
 namespace dtwc {
 
@@ -84,8 +85,7 @@ T softmin_gamma(T a, T b, T c, T gamma)
 template <typename T = dtwc::settings::default_data_t>
 T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  if (gamma <= T(0))
-    throw std::invalid_argument("soft_dtw: gamma must be > 0");
+  core::validate_sdtw_gamma(gamma);
 
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (x.empty() || y.empty()) return maxValue;
@@ -126,8 +126,7 @@ T soft_dtw(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 template <typename T = dtwc::settings::default_data_t>
 std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T gamma = T(1))
 {
-  if (gamma <= T(0))
-    throw std::invalid_argument("soft_dtw_gradient: gamma must be > 0");
+  core::validate_sdtw_gamma(gamma);
 
   const auto mx = static_cast<int>(x.size());
   const auto my = static_cast<int>(y.size());

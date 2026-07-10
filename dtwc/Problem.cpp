@@ -28,6 +28,7 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
+#include "core/variant_validation.hpp"     // validate_variant_params
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "missing_utils.hpp"               // for has_missing
@@ -267,6 +268,9 @@ void Problem::rebind_dtw_fn()
 
 void Problem::set_variant(core::DTWVariant v)
 {
+  auto candidate = variant_params;
+  candidate.variant = v;
+  core::validate_variant_params(candidate);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -274,6 +278,7 @@ void Problem::set_variant(core::DTWVariant v)
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
+  core::validate_variant_params(params);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally

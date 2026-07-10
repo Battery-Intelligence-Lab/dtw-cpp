@@ -31,6 +31,7 @@
 #include "warping.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
+#include "core/variant_validation.hpp"
 
 #include <cmath>          // std::exp
 #include <cstddef>        // size_t
@@ -49,6 +50,7 @@ namespace dtwc {
 template <typename data_t>
 std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.0)
 {
+  core::validate_wdtw_g(g);
   std::vector<data_t> weights(max_dev + 1);
   const data_t half_dev = static_cast<data_t>(max_dev) / 2.0;
   for (int d = 0; d <= max_dev; ++d) {
@@ -125,6 +127,7 @@ namespace detail {
 template <typename data_t>
 const std::vector<data_t>& cached_wdtw_weights(int max_dev, data_t g)
 {
+  core::validate_wdtw_g(g);
   thread_local std::vector<data_t> cached_w;
   thread_local int cached_max_dev = -1;
   thread_local data_t cached_g = data_t(-1);

@@ -94,6 +94,7 @@ classdef DTWClustering
             obj.AdtwPenalty = p.Results.AdtwPenalty;
             obj.MissingStrategy = p.Results.MissingStrategy;
             obj.Device = char(p.Results.Device);
+            obj.validate_variant_parameters();
         end
 
         function obj = fit(obj, X)
@@ -104,6 +105,9 @@ classdef DTWClustering
         %   ----------
         %   X : double matrix (N x L)
         %       Each row is a time series of length L.
+            % Validate the executable distance contract before input/device or
+            % Problem effects, including values changed after construction.
+            obj.validate_variant_parameters();
             validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
 
             % Device selection delegates to dtwc::Env (contract §1.5). An unknown
@@ -181,6 +185,19 @@ classdef DTWClustering
             end
             error('dtwc:notImplemented', ...
                   'predict() for new data is not yet implemented.');
+        end
+    end
+
+    methods (Access = private)
+        function validate_variant_parameters(obj)
+            if ~isfinite(obj.WdtwG) || obj.WdtwG < 0
+                error('dtwc:invalidArgument', ...
+                      'WDTW g must be finite and non-negative.');
+            end
+            if ~isfinite(obj.AdtwPenalty) || obj.AdtwPenalty < 0
+                error('dtwc:invalidArgument', ...
+                      'ADTW penalty must be finite and non-negative.');
+            end
         end
     end
 end

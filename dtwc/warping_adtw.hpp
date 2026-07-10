@@ -29,6 +29,7 @@
 #include "warping.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
+#include "core/variant_validation.hpp"
 
 #include <cstddef>   // size_t
 #include <limits>    // numeric_limits
@@ -45,6 +46,7 @@ template <typename data_t>
 data_t adtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   data_t penalty, data_t early_abandon = data_t{-1})
 {
+  core::validate_adtw_penalty(penalty);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
 
@@ -72,6 +74,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band, data_t penalty, data_t early_abandon = data_t{-1})
 {
+  core::validate_adtw_penalty(penalty);
   if (band < 0) return adtwFull_L<data_t>(x, nx, y, ny, penalty, early_abandon);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
@@ -119,6 +122,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwFull_L_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, data_t penalty = 1.0)
 {
+  core::validate_adtw_penalty(penalty);
   if (ndim == 1) return adtwFull_L<data_t>(x, nx_steps, y, ny_steps, penalty);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx_steps == ny_steps) return 0;
@@ -141,6 +145,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t adtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_steps,
                      size_t ndim, int band = settings::DEFAULT_BAND, data_t penalty = 1.0)
 {
+  core::validate_adtw_penalty(penalty);
   if (band < 0) return adtwFull_L_mv<data_t>(x, nx_steps, y, ny_steps, ndim, penalty);
   if (ndim == 1) return adtwBanded<data_t>(x, nx_steps, y, ny_steps, band, penalty);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();

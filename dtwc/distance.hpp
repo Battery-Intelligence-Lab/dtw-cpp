@@ -13,6 +13,7 @@
 
 #include "settings.hpp"
 #include "core/dtw_options.hpp"
+#include "core/variant_validation.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
 #include "missing_utils.hpp"
@@ -92,6 +93,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
       core::MetricType metric = core::MetricType::L1,
       core::MissingStrategy missing_strategy = core::MissingStrategy::Error)
 {
+  core::validate_variant_params(params);
   switch (missing_strategy) {
   case core::MissingStrategy::ZeroCost:
     if (params.variant != core::DTWVariant::Standard) {

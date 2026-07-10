@@ -61,12 +61,12 @@ enum class MissingStrategy
 struct DTWVariantParams
 {
   DTWVariant variant = DTWVariant::Standard;
-  double wdtw_g = 0.05;       ///< WDTW: logistic weight steepness (Jeong et al. 2011)
-  double adtw_penalty = 1.0;  ///< ADTW: penalty for non-diagonal steps
-  double sdtw_gamma = 1.0;    ///< Soft-DTW: smoothing parameter (lower = closer to hard DTW)
-  double msm_c = 1.0;         ///< MSM: split/merge cost (Stefan et al. 2013; aeon default 1.0)
+  double wdtw_g = 0.05;       ///< WDTW: finite logistic steepness, >= 0
+  double adtw_penalty = 1.0;  ///< ADTW: finite non-diagonal step penalty, >= 0
+  double sdtw_gamma = 1.0;    ///< Soft-DTW: finite smoothing parameter, > 0
+  double msm_c = 1.0;         ///< MSM: finite split/merge cost, > 0
   double twe_nu = 0.001;      ///< TWE: stiffness ν, > 0 (Marteau 2009; aeon default 0.001)
-  double twe_lambda = 1.0;    ///< TWE: edit penalty λ, ≥ 1 (Marteau 2009; aeon default 1.0)
+  double twe_lambda = 1.0;    ///< TWE: finite edit penalty λ, > 0 (aeon default 1.0)
   MVMode mv_mode = MVMode::Dependent;  ///< Multivariate mode (ndim>1); default keeps DTW_D
 };
 

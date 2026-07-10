@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Enforced one finite mathematical domain for every DTW-variant parameter at
+  C++ free-function/runtime/`Problem`, CLI/YAML, Python, HPC, and MATLAB
+  boundaries. WDTW `g` and ADTW penalty retain their valid zero limits;
+  Soft-DTW gamma, MSM cost, and TWE stiffness/edit penalties must be positive.
+  Invalid state now raises the typed public input error before side effects,
+  while ordinary outputs are unchanged.
 - Hardened every non-arbitrary SLURM wrapper entrypoint: build profiles,
   benchmark GPU types, SSH endpoints, remote bases, and optional Slurm settings
   now have explicit grammars before network effects. Remote build, preflight,

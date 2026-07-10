@@ -4,6 +4,7 @@
 @author Volkan Kumtepeli
 """
 import numpy as np
+from dtwcpp._variant_validation import normalize_variant_parameters
 from dtwcpp._dtwcpp_core import (
     DEFAULT_RANDOM_SEED, Problem, fast_pam_seeded, silhouette,
     DTWVariant, DTWVariantParams,
@@ -142,6 +143,13 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         mv_mode = self._normalize_choice(
             "mv_mode", self.mv_mode, {"dependent", "independent"},
         )
+        parameters = normalize_variant_parameters(
+            wdtw_g=self.wdtw_g,
+            adtw_penalty=self.adtw_penalty,
+            msm_c=self.msm_c,
+            twe_nu=self.twe_nu,
+            twe_lambda=self.twe_lambda,
+        )
 
         if variant != "standard" and metric != "l1":
             raise ValueError(
@@ -196,6 +204,7 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             "missing_strategy": missing_strategy,
             "metric": metric,
             "mv_mode": mv_mode,
+            **parameters,
         }
 
     def _variant_enum(self, variant=None):
@@ -254,9 +263,9 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         if variant == "ddtw":
             return ddtw_distance(xa, ya, self.band)
         if variant == "wdtw":
-            return wdtw_distance(xa, ya, self.band, self.wdtw_g)
+            return wdtw_distance(xa, ya, self.band, semantics["wdtw_g"])
         if variant == "adtw":
-            return adtw_distance(xa, ya, self.band, self.adtw_penalty)
+            return adtw_distance(xa, ya, self.band, semantics["adtw_penalty"])
         return dtw_distance(xa, ya, self.band, semantics["metric"])
 
     @staticmethod
@@ -296,11 +305,11 @@ class DTWClustering(BaseEstimator, ClusterMixin):
 
         vp = DTWVariantParams()
         vp.variant = self._variant_enum(semantics["variant"])
-        vp.wdtw_g = self.wdtw_g
-        vp.adtw_penalty = self.adtw_penalty
-        vp.msm_c = self.msm_c
-        vp.twe_nu = self.twe_nu
-        vp.twe_lambda = self.twe_lambda
+        vp.wdtw_g = semantics["wdtw_g"]
+        vp.adtw_penalty = semantics["adtw_penalty"]
+        vp.msm_c = semantics["msm_c"]
+        vp.twe_nu = semantics["twe_nu"]
+        vp.twe_lambda = semantics["twe_lambda"]
         vp.mv_mode = (MVMode.Independent if semantics["mv_mode"] == "independent"
                       else MVMode.Dependent)
         # Rebind after the raw missing-strategy field reaches Problem so fit and
@@ -347,9 +356,10 @@ class DTWClustering(BaseEstimator, ClusterMixin):
                 series, self.n_clusters, method="pam", band=self.band,
                 name=f"dtwc_k{self.n_clusters}", n_init=restart_count,
                 seed=DEFAULT_RANDOM_SEED, max_iter=self.max_iter,
-                variant=semantics["variant"], wdtw_g=self.wdtw_g,
-                adtw_penalty=self.adtw_penalty, msm_c=self.msm_c,
-                twe_nu=self.twe_nu, twe_lambda=self.twe_lambda,
+                variant=semantics["variant"], wdtw_g=semantics["wdtw_g"],
+                adtw_penalty=semantics["adtw_penalty"],
+                msm_c=semantics["msm_c"], twe_nu=semantics["twe_nu"],
+                twe_lambda=semantics["twe_lambda"],
                 mv_mode=semantics["mv_mode"],
                 missing_strategy=semantics["missing_strategy"],
                 metric=semantics["metric"],

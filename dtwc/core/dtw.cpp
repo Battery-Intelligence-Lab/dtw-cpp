@@ -13,6 +13,7 @@
 #include "../soft_dtw.hpp"
 #include "msm.hpp"
 #include "twe.hpp"
+#include "variant_validation.hpp"
 
 #include <span>
 
@@ -22,6 +23,7 @@ double dtw_runtime(const double* x, std::size_t nx,
                    const double* y, std::size_t ny,
                    const DTWOptions& opts)
 {
+  validate_variant_params(opts.variant_params);
   const int band = opts.band;
   const bool banded = (opts.constraint == ConstraintType::SakoeChibaBand) && (band >= 0);
 

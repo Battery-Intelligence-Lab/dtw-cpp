@@ -2363,3 +2363,41 @@ check_docs_contract.py --cli build/highs-1151/bin/dtwc_cl: passed
 Verdict: **PASS.** No non-arbitrary public wrapper/config value becomes remote
 shell syntax, invalid values stop before transport, and every documented ARC
 profile/type/configuration remains live.
+
+## M34 — finite DTW-variant parameter domains
+
+Registered domains before production edits: WDTW `g` is finite and
+nonnegative (`g=0` is the constant-half-weight limit); ADTW penalty is finite
+and nonnegative (`0` is Standard DTW); Soft-DTW gamma, MSM `c`, and TWE
+`nu`/`lambda` are finite and positive. TWE lambda `0.8` remains valid. Every
+aggregate value validates inactive fields too, before it can be stored,
+serialized, cached, or later activated.
+
+The preregistered C++ target failed all three cases (7 of 14 assertions): WDTW,
+ADTW, MSM, TWE, aggregate dispatch, and Problem accepted invalid state, while
+Soft-DTW used the wrong standard exception type/text. Python failed 23 of 24
+cases across raw functions, writable parameter properties, estimator ordering,
+and HPC serialization. The executable CLI gate reached later handling without
+the registered domain diagnostic.
+
+`core/variant_validation.hpp` is now the single C++ contract. Direct kernels
+validate before empty/identity shortcuts; aggregate runtime/facade/Problem
+dispatch validates the complete value; and `Problem::set_variant` validates
+before mutation. Python properties use the C++ guard, while one Python helper
+normalizes estimator/HPC values before data or transport. MATLAB wrappers/MEX
+inherit the typed boundary. CLI/YAML values validate before Env, output, input,
+cache, or compute effects.
+
+Green evidence:
+
+```text
+unit_test_variant_domains:                              85 assertions / 3 cases
+tests/python/test_variant_domains.py:                   24 passed
+DTW/Problem/semantics/cross-validation Python gate:    102 passed
+focused existing HPC validation gate:                   40 passed
+real CLI invalid/valid domain matrix:              8 rejected / 6 accepted
+```
+
+Verdict: **PASS.** Invalid recurrence parameters cannot enter arithmetic or
+side-effecting boundaries, both legitimate zero limits and minimum-positive
+controls execute, and ordinary registered variant outputs remain unchanged.

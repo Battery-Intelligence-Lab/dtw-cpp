@@ -25,6 +25,8 @@ import time
 
 import numpy as np
 
+from dtwcpp._variant_validation import normalize_variant_parameters
+
 
 _UINT64_MAX = (1 << 64) - 1
 _CLI_INT_MAX = (1 << 31) - 1
@@ -80,17 +82,6 @@ def _normalize_choice(name, value, aliases):
     return normalized
 
 
-def _normalize_finite_real(name, value):
-    if isinstance(value, (bool, np.bool_)) or not isinstance(
-        value, (int, float, np.integer, np.floating)
-    ):
-        raise TypeError(f"{name} must be a real number")
-    value = float(value)
-    if not np.isfinite(value):
-        raise ValueError(f"{name} must be finite")
-    return value
-
-
 def _validate_remote_configuration(
     *, device, max_iter, variant, wdtw_g, adtw_penalty, msm_c,
     twe_nu, twe_lambda, mv_mode, missing_strategy, metric,
@@ -142,6 +133,13 @@ def _validate_remote_configuration(
             "sqeuclidean": "squared_euclidean", "l2sq": "squared_euclidean",
         },
     )
+    parameters = normalize_variant_parameters(
+        wdtw_g=wdtw_g,
+        adtw_penalty=adtw_penalty,
+        msm_c=msm_c,
+        twe_nu=twe_nu,
+        twe_lambda=twe_lambda,
+    )
 
     if mv_mode == "independent" and (
         variant != "standard" or missing_strategy != "error"
@@ -172,11 +170,7 @@ def _validate_remote_configuration(
         "device": device,
         "max_iter": max_iter,
         "variant": variant,
-        "wdtw_g": _normalize_finite_real("wdtw_g", wdtw_g),
-        "adtw_penalty": _normalize_finite_real("adtw_penalty", adtw_penalty),
-        "msm_c": _normalize_finite_real("msm_c", msm_c),
-        "twe_nu": _normalize_finite_real("twe_nu", twe_nu),
-        "twe_lambda": _normalize_finite_real("twe_lambda", twe_lambda),
+        **parameters,
         "mv_mode": mv_mode,
         "missing_strategy": missing_strategy,
         "metric": metric,
