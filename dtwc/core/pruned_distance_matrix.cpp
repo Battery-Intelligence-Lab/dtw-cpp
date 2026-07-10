@@ -24,93 +24,24 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <cstring>
 #include <limits>
+#include <memory>
 #include <stdexcept>
-
-#ifdef _OPENMP
-#include <omp.h>
-#endif
 
 namespace dtwc::core {
 
 // =========================================================================
-//  C++17 lock-free atomic min for non-negative doubles.
-//
-//  Uses uint64_t CAS via compiler intrinsics. For non-negative IEEE-754
-//  doubles, the bit representation preserves ordering: if a < b (and both
-//  >= 0), then memcpy-to-uint64_t(a) < memcpy-to-uint64_t(b). This means
-//  we can do atomic CAS on the uint64_t bits directly.
-//
-//  Relaxed memory order is sufficient: stale reads only reduce pruning
-//  effectiveness, not correctness.
+//  Standards-safe atomic min for non-negative doubles. Relaxed ordering is
+//  sufficient: stale values only reduce pruning effectiveness, not correctness.
 // =========================================================================
 
-#if defined(_MSC_VER)
-#include <intrin.h>
-#endif
-
-static inline void atomic_min_double(double *addr, double val)
+static inline void atomic_min_double(std::atomic<double> &value, double candidate) noexcept
 {
-#ifdef _OPENMP
-  static_assert(sizeof(double) == sizeof(uint64_t), "double must be 64 bits");
-
-  // Reinterpret as uint64_t pointer for atomic CAS.
-  // This is technically UB per strict aliasing, but every major compiler
-  // (GCC/Clang/MSVC/ICC) supports it, and the alternative (memcpy + CAS)
-  // generates identical code.
-  volatile uint64_t *iaddr = reinterpret_cast<volatile uint64_t *>(addr);
-
-  uint64_t new_bits;
-  std::memcpy(&new_bits, &val, sizeof(double));
-
-  for (;;) {
-    // Load current value
-    uint64_t old_bits;
-#if defined(_MSC_VER)
-    old_bits = *iaddr;  // volatile read is sufficient on x86
-#elif defined(__GNUC__) || defined(__clang__)
-    old_bits = __atomic_load_n(reinterpret_cast<uint64_t *>(const_cast<uint64_t *>(iaddr)),
-                               __ATOMIC_RELAXED);
-#else
-    old_bits = *iaddr;
-#endif
-
-    double old_val;
-    std::memcpy(&old_val, &old_bits, sizeof(double));
-
-    // If current value is already <= val, nothing to do
-    if (old_val <= val) return;
-
-    // Try to swap in the new (smaller) value
-#if defined(_MSC_VER)
-    uint64_t prev = static_cast<uint64_t>(
-      _InterlockedCompareExchange64(
-        reinterpret_cast<volatile long long *>(iaddr),
-        static_cast<long long>(new_bits),
-        static_cast<long long>(old_bits)));
-    if (prev == old_bits) return;  // Success
-#elif defined(__GNUC__) || defined(__clang__)
-    uint64_t expected = old_bits;
-    if (__atomic_compare_exchange_n(
-          reinterpret_cast<uint64_t *>(const_cast<uint64_t *>(iaddr)),
-          &expected, new_bits, /*weak=*/true,
-          __ATOMIC_RELAXED, __ATOMIC_RELAXED))
-      return;  // Success
-#else
-    // Fallback: omp critical (should not be reached on major compilers)
-    #pragma omp critical(nn_dist_update)
-    {
-      if (val < *addr) *addr = val;
-    }
-    return;
-#endif
-    // CAS failed (another thread updated concurrently) — retry
-  }
-#else
-  // Serial fallback — no synchronisation needed.
-  if (val < *addr) *addr = val;
-#endif
+  double observed = value.load(std::memory_order_relaxed);
+  while (candidate < observed
+         && !value.compare_exchange_weak(observed, candidate,
+                                         std::memory_order_relaxed,
+                                         std::memory_order_relaxed)) {}
 }
 
 // =========================================================================
@@ -205,7 +136,9 @@ PruningStats fill_distance_matrix_pruned(
 
   // Step 3: Per-row nearest-neighbor tracking (shared, updated atomically)
   constexpr double inf = std::numeric_limits<double>::max();
-  std::vector<double> nn_dist(N, inf);
+  auto nn_dist = std::make_unique<std::atomic<double>[]>(static_cast<size_t>(N));
+  for (int i = 0; i < N; ++i)
+    nn_dist[static_cast<size_t>(i)].store(inf, std::memory_order_relaxed);
 
   // Step 4: Set diagonal to 0
   for (int i = 0; i < N; ++i)
@@ -292,7 +225,9 @@ PruningStats fill_distance_matrix_pruned(
 
       // Early-abandon threshold: smallest NN distance for either endpoint.
       // Reads may be stale from other threads — this is benign.
-      const double threshold = std::min(nn_dist[i], nn_dist[j]);
+      const double threshold = std::min(
+        nn_dist[static_cast<size_t>(i)].load(std::memory_order_relaxed),
+        nn_dist[static_cast<size_t>(j)].load(std::memory_order_relaxed));
 
       // Helper lambdas to dispatch Standard vs ADTW, with or without early abandon.
       auto dtw_with_abandon = [&](double abandon) -> double {
@@ -333,8 +268,8 @@ PruningStats fill_distance_matrix_pruned(
       dm.set(static_cast<size_t>(i), static_cast<size_t>(j), dist);
 
       // Update nearest-neighbor tracking (atomic min).
-      atomic_min_double(&nn_dist[i], dist);
-      atomic_min_double(&nn_dist[j], dist);
+      atomic_min_double(nn_dist[static_cast<size_t>(i)], dist);
+      atomic_min_double(nn_dist[static_cast<size_t>(j)], dist);
     }
 
     global_pruned_kim.fetch_add(local_pruned_kim, std::memory_order_relaxed);
@@ -396,7 +331,9 @@ PruningStats compute_distance_matrix_pruned(
 
   // Step 3: Per-row nearest-neighbor tracking
   constexpr double inf = std::numeric_limits<double>::max();
-  std::vector<double> nn_dist(N, inf);
+  auto nn_dist = std::make_unique<std::atomic<double>[]>(N);
+  for (size_t i = 0; i < N; ++i)
+    nn_dist[i].store(inf, std::memory_order_relaxed);
 
   // Step 4: Compute all upper-triangle pairs with OpenMP parallelism.
   // Each thread gets contiguous rows. nn_dist reads may be stale across
@@ -434,7 +371,9 @@ PruningStats compute_distance_matrix_pruned(
       // threads while read here. This is benign: a stale value only reduces
       // pruning effectiveness, never correctness (nn_dist feeds an early-abandon
       // threshold only).
-      const double threshold = std::min(nn_dist[i], nn_dist[j]);
+      const double threshold = std::min(
+        nn_dist[i].load(std::memory_order_relaxed),
+        nn_dist[j].load(std::memory_order_relaxed));
 
       double dist;
       if (use_lb && lb > threshold && threshold < inf) {
@@ -471,8 +410,8 @@ PruningStats compute_distance_matrix_pruned(
       // Use atomic min for both endpoints — matches the Problem-based version
       // (lines 256-257). The previous design only updated nn_dist[i], reducing
       // pruning effectiveness for later pairs involving series j.
-      atomic_min_double(&nn_dist[i], dist);
-      atomic_min_double(&nn_dist[j], dist);
+      atomic_min_double(nn_dist[i], dist);
+      atomic_min_double(nn_dist[j], dist);
     }
   };
   run_openmp(compute_row, N, true, 8);
