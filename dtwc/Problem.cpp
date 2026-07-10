@@ -46,6 +46,7 @@
 #include <iterator>  // for back_insert_iterator, back_inserter
 #include <limits>    // for numeric_limits
 #include <random>    // for mt19937, discrete_distribution, unifo...
+#include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
 #include <utility>   // for pair
@@ -158,6 +159,7 @@ void Problem::set_clusters(std::vector<int> &candidate_centroids)
  */
 bool Problem::set_solver(Solver solver_)
 {
+  validate_solver(solver_);
   if (solver_ == Solver::Gurobi) {
 #ifdef DTWC_ENABLE_GUROBI
     mipSolver = Solver::Gurobi;
@@ -929,6 +931,7 @@ void Problem::fill_distance_matrix()
  */
 void Problem::cluster()
 {
+  validate_method(method);
   switch (method) {
   case Method::Kmedoids:
     cluster_by_kmedoids_lloyd();
@@ -944,6 +947,8 @@ void Problem::cluster()
     algorithms::tadpole(*this, Nc, dc);
     break;
   }
+  default:
+    throw std::logic_error("Problem::cluster: unreachable Method");
   }
 }
 
@@ -966,6 +971,9 @@ void Problem::cluster_and_process()
  */
 void Problem::cluster_by_mip()
 {
+  // Validate before Benders policy: an invalid stored selector must not bypass
+  // membership checks merely because the large-N route ignores mipSolver.
+  validate_solver(mipSolver);
   // Auto-dispatch to Benders decomposition for large N
   const bool use_benders = (mip_settings.benders == "on") ||
     (mip_settings.benders == "auto" && data.size() > 200);
@@ -982,6 +990,8 @@ void Problem::cluster_by_mip()
   case Solver::HiGHS:
     MIP_clustering_byHiGHS(*this);
     break;
+  default:
+    throw std::logic_error("Problem::cluster_by_mip: unreachable Solver");
   }
 }
 

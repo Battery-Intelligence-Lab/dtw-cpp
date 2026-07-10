@@ -296,7 +296,11 @@ public:
   // `set_band` also invalidates any populated dense/mmap matrix. Legacy naked
   // writes remain source-compatible; a bound mmap cache detects them before
   // returning a computed distance.
-  void set_method(Method m) { method = m; }
+  void set_method(Method m)
+  {
+    validate_method(m);
+    method = m;
+  }
   void set_band(int b)
   {
     preflight_current_distance_semantics();

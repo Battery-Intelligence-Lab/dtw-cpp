@@ -19,6 +19,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../error.hpp"
 
 #include <vector>
 #include <cstdint>
@@ -49,6 +50,17 @@ using FastPAMResult = core::ClusteringResult;
  * the bench A/B them on an identical BUILD (isolating swap cost).
  */
 enum class PAMVariant { FastPAM1Naive, FastPAM1, FasterPAM };
+
+inline void validate_pam_variant(PAMVariant value)
+{
+  switch (value) {
+  case PAMVariant::FastPAM1Naive:
+  case PAMVariant::FastPAM1:
+  case PAMVariant::FasterPAM:
+    return;
+  }
+  throw InvalidInput("Invalid PAMVariant value.");
+}
 
 /**
  * @brief Run FastPAM/FasterPAM k-medoids clustering (BUILD via K-means++).

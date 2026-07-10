@@ -129,7 +129,11 @@ struct FixedBatchDistances {
     evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),
                                   std::uint64_t{0});
 
-    if (weighting == OneBatchWeighting::NearestNeighbor) {
+    switch (weighting) {
+    case OneBatchWeighting::Uniform:
+    case OneBatchWeighting::Debiased:
+      break;
+    case OneBatchWeighting::NearestNeighbor: {
       // Count/mean NNIW (Loog 2012): the fixed table already contains
       // everything needed to estimate each sampled point's Voronoi-cell mass.
       // This is deliberately combined with the obpam experiment code's
@@ -148,17 +152,29 @@ struct FixedBatchDistances {
       }
       const double mean = static_cast<double>(n) / static_cast<double>(m);
       for (double& weight : weights) weight /= mean;
+      break;
+    }
+    default:
+      throw std::logic_error(
+        "FixedBatchDistances: unreachable OneBatchWeighting");
     }
   }
 
   double estimate(std::size_t candidate, std::size_t batch_column) const
   {
-    if (weighting != OneBatchWeighting::Uniform
-        && candidate == static_cast<std::size_t>(sample[batch_column])) {
+    switch (weighting) {
+    case OneBatchWeighting::Uniform:
+      break;
+    case OneBatchWeighting::Debiased:
+    case OneBatchWeighting::NearestNeighbor:
+      if (candidate != static_cast<std::size_t>(sample[batch_column])) break;
       // The authors' obpam experiment code replaces d(x,x)=0 by the actual
       // finite table maximum, i.e. exactly 1 after normalization.  Do not use
       // the zero-table fallback scale as an unnormalized replacement value.
       return weights[batch_column];
+    default:
+      throw std::logic_error(
+        "FixedBatchDistances::estimate: unreachable OneBatchWeighting");
     }
     return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
   }
@@ -214,6 +230,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
                                      const OneBatchPAMOptions& options,
                                      OneBatchPAMStats* stats)
 {
+  validate_one_batch_weighting(options.weighting);
   const std::size_t n = prob.size();
   validate_options(n, options);
   const int k = options.n_clusters;

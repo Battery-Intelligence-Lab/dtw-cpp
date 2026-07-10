@@ -42,6 +42,17 @@ enum class Device {
   HPC  ///< Remote SLURM cluster; credentials read from `.env`.
 };
 
+inline void validate_device(Device value)
+{
+  switch (value) {
+  case Device::CPU:
+  case Device::GPU:
+  case Device::HPC:
+    return;
+  }
+  throw InvalidInput("Invalid Device value.");
+}
+
 /// @brief Canonical lower-case name of a Device ("cpu" / "gpu" / "hpc").
 std::string to_string(Device d);
 

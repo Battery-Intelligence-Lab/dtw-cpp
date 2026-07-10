@@ -22,6 +22,7 @@
 #include <iostream> // std::cerr for the sequential loudness warning (Task 3.2)
 #include <map>
 #include <mutex>    // std::once_flag / std::call_once — ONE warning per process
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -171,12 +172,13 @@ bool default_ssh_auth_probe(const std::string &host, const std::string &user)
 
 std::string to_string(Device d)
 {
+  validate_device(d);
   switch (d) {
   case Device::CPU: return "cpu";
   case Device::GPU: return "gpu";
   case Device::HPC: return "hpc";
   }
-  return "cpu";
+  throw std::logic_error("to_string: unreachable Device");
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <stdexcept>
 #include <string>
 
 namespace dtwc::mip {
@@ -24,9 +25,14 @@ std::size_t assignment_index(
   std::size_t n_points,
   AssignmentMatrixLayout layout)
 {
-  if (layout == AssignmentMatrixLayout::FacilityMajor)
+  switch (layout) {
+  case AssignmentMatrixLayout::FacilityMajor:
     return facility * n_points + point;
-  return facility + point * n_points;
+  case AssignmentMatrixLayout::PointMajor:
+    return facility + point * n_points;
+  }
+  throw std::logic_error(
+    "assignment_index: unreachable AssignmentMatrixLayout");
 }
 
 void validate_result(
@@ -81,6 +87,7 @@ core::ClusteringResult extract_exact_clustering(
   AssignmentMatrixLayout layout,
   std::string_view backend)
 {
+  validate_assignment_matrix_layout(layout);
   if (n_points == 0)
     invalid_solution(backend, "the assignment matrix has no points.");
   if (n_points > static_cast<std::size_t>(std::numeric_limits<int>::max()))

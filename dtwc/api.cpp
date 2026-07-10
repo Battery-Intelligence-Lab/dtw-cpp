@@ -23,6 +23,7 @@
 #include <fstream>
 #include <iomanip>
 #include <numeric>
+#include <stdexcept>
 #include <system_error>
 #include <utility>
 
@@ -83,6 +84,7 @@ std::string normalize_method(std::string_view value)
 
 void configure_device(Problem &prob, Device selected, int index)
 {
+  validate_device(selected);
   if (selected == Device::CPU) {
     // Auto is a CPU policy (brute-force vs admissible pruning), never a GPU
     // selector, so it is safe and usually faster than forcing BruteForce.
@@ -100,7 +102,11 @@ void configure_device(Problem &prob, Device selected, int index)
       "cluster: GPU was selected but this build has no GPU backend. Rebuild with "
       "-DDTWC_ENABLE_CUDA=ON or use a macOS Metal build.");
 #endif
+    return;
   }
+  if (selected == Device::HPC)
+    throw std::logic_error("configure_device: HPC handled before local setup");
+  throw std::logic_error("configure_device: unreachable Device");
 }
 
 void ensure_output(std::ofstream &stream, const std::filesystem::path &path)

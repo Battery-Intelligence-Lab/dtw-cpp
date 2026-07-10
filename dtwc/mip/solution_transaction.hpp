@@ -6,6 +6,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../error.hpp"
 
 #include <cstddef>
 #include <span>
@@ -21,6 +22,16 @@ enum class AssignmentMatrixLayout {
   FacilityMajor, ///< A[facility, point] at facility * N + point (HiGHS).
   PointMajor     ///< A[facility, point] at facility + point * N (Gurobi).
 };
+
+inline void validate_assignment_matrix_layout(AssignmentMatrixLayout value)
+{
+  switch (value) {
+  case AssignmentMatrixLayout::FacilityMajor:
+  case AssignmentMatrixLayout::PointMajor:
+    return;
+  }
+  throw InvalidInput("Invalid AssignmentMatrixLayout value.");
+}
 
 /**
  * Decode and validate an exact p-median assignment matrix without mutating a

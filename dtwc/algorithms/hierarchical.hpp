@@ -14,6 +14,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../error.hpp"
 
 #include <vector>
 
@@ -29,6 +30,17 @@ enum class Linkage {
   Complete, ///< d(A∪B, C) = max(d(A,C), d(B,C))
   Average   ///< d(A∪B, C) = (|A|*d(A,C) + |B|*d(B,C)) / (|A|+|B|)  [UPGMA]
 };
+
+inline void validate_linkage(Linkage value)
+{
+  switch (value) {
+  case Linkage::Single:
+  case Linkage::Complete:
+  case Linkage::Average:
+    return;
+  }
+  throw InvalidInput("Invalid Linkage value.");
+}
 
 /// A single merge step recorded in the dendrogram.
 struct DendrogramStep {

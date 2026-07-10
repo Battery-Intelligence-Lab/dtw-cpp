@@ -28,6 +28,7 @@ namespace dtwc::algorithms {
 
 Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
 {
+  validate_linkage(opts.linkage);
   const int N = static_cast<int>(prob.size());
 
   if (N > opts.max_points)
@@ -110,6 +111,9 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
                    static_cast<double>(sz_b) * d_bc) /
                   static_cast<double>(sz_a + sz_b);
           break;
+        default:
+          throw std::logic_error(
+            "build_dendrogram: unreachable Linkage");
       }
 
       // Write symmetrically so future lookups see the updated value.

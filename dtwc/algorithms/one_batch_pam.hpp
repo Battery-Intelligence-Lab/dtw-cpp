@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
+#include "../error.hpp"
 #include "../settings.hpp"
 
 #include <cstddef>
@@ -26,6 +27,17 @@ enum class OneBatchWeighting {
   Debiased,         ///< Finite-max diagonal correction from the obpam experiments.
   NearestNeighbor  ///< Count/mean NNIW plus the same finite-max correction.
 };
+
+inline void validate_one_batch_weighting(OneBatchWeighting value)
+{
+  switch (value) {
+  case OneBatchWeighting::Uniform:
+  case OneBatchWeighting::Debiased:
+  case OneBatchWeighting::NearestNeighbor:
+    return;
+  }
+  throw InvalidInput("Invalid OneBatchWeighting value.");
+}
 
 struct OneBatchPAMOptions {
   int n_clusters = 3;

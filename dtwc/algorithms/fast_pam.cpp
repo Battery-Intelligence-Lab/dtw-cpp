@@ -339,6 +339,7 @@ void fasterpam_swap_impl(Problem& prob, std::int64_t N, int k,
 core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& initial_medoids,
                                      int max_iter, PAMVariant variant)
 {
+  validate_pam_variant(variant);
   // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
   // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). Loop counters
   // stay `int` (signed-vs-signed against N), narrowing N explicitly where needed.
@@ -402,6 +403,8 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
         fasterpam_swap_impl(prob, N, k, medoids, is_medoid, nearest, nearest_dist,
                             second_dist, max_iter, iter, converged);
         break;
+      default:
+        throw std::logic_error("fast_pam_swap: unreachable PAMVariant");
     }
   }
 
