@@ -7,6 +7,7 @@
  */
 
 #include "dtw.hpp"
+#include "../distance.hpp"
 #include "../warping_adtw.hpp"
 #include "../warping_ddtw.hpp"
 #include "../warping_wdtw.hpp"
@@ -26,6 +27,16 @@ double dtw_runtime(const double* x, std::size_t nx,
   validate_variant_params(opts.variant_params);
   const int band = opts.band;
   const bool banded = (opts.constraint == ConstraintType::SakoeChibaBand) && (band >= 0);
+
+  // Missing-data recurrences live in the shared public facade. Delegating the
+  // accepted Standard cross-product here prevents runtime dispatch from
+  // ignoring the requested policy; the facade also rejects non-Standard mixes.
+  if (opts.missing_strategy != MissingStrategy::Error) {
+    return dtwc::distance::dtw<double>(
+      std::span<const double>{x, nx}, std::span<const double>{y, ny},
+      opts.variant_params, banded ? band : -1, opts.metric,
+      opts.missing_strategy);
+  }
 
   // Dispatch on variant. Historically this function always used Standard DTW,
   // silently dropping `opts.variant_params.variant` — that bug is fixed here.

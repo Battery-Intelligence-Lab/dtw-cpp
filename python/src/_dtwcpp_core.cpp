@@ -43,6 +43,7 @@
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
 #include <core/dtw_options.hpp>
+#include <core/distance_semantics.hpp>
 #include <core/variant_validation.hpp>
 #include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
@@ -511,10 +512,8 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                             nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                             int band, const std::string &metric) {
+    const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    auto mt = dtwc::core::MetricType::L1;
-    if (metric == "squared_euclidean" || metric == "sqeuclidean")
-        mt = dtwc::core::MetricType::SquaredL2;
     return dtwc::dtwBanded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "Compute DTW distance (zero-copy from numpy).\n\n"
@@ -571,10 +570,8 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_distance_missing", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                     nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                     int band, const std::string &metric) {
+    const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    auto mt = dtwc::core::MetricType::L1;
-    if (metric == "squared_euclidean" || metric == "sqeuclidean")
-        mt = dtwc::core::MetricType::SquaredL2;
     return dtwc::dtwMissing_banded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "DTW distance with missing data support (NaN = missing).\n\n"
@@ -586,10 +583,8 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("dtw_arow_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                   nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                   int band, const std::string &metric) {
+    const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    auto mt = dtwc::core::MetricType::L1;
-    if (metric == "squared_euclidean" || metric == "sqeuclidean")
-        mt = dtwc::core::MetricType::SquaredL2;
     if (band >= 0)
       return dtwc::dtwAROW_banded<double>(x.data(), x.size(), y.data(), y.size(), band, mt);
     else
@@ -911,15 +906,13 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
                                         int band, const std::string &metric,
                                         bool use_pruning) {
+    const auto mt = dtwc::core::parse_metric_token(metric);
+
     // Task 3.6 (review H1): this high-level Python compute path never constructs
     // dtwc::env(), so its OpenMP warning would otherwise be silent under
     // OMP_NUM_THREADS=1. Warn once, deterministically, before either branch (the
     // pruned branch also warns via get_max_threads; this covers the unpruned one).
     dtwc::warn_if_single_threaded();
-
-    auto mt = dtwc::core::MetricType::L1;
-    if (metric == "squared_euclidean" || metric == "sqeuclidean")
-        mt = dtwc::core::MetricType::SquaredL2;
 
     const size_t n = series.size();
     double* ptr = new double[n * n]();  // zero-init

@@ -20,12 +20,12 @@ function d = dtw(x, y, varargin)
 
     variant = lower(strrep(p.Results.Variant, '-', '_'));
     missing = lower(strrep(p.Results.MissingStrategy, '-', '_'));
+    validate_metric(p.Results.Metric, 'dtw');
 
     if ~strcmp(missing, 'error')
         if ~strcmp(variant, 'standard')
-            error(['dtwc:distance:invalidCombination', ...
-                   ' MissingStrategy dispatch currently requires Variant=''standard''. ', ...
-                   'Use dtwc.Problem for combined variant + missing-data workflows.']);
+            error('dtwc:invalidArgument', ...
+                  'Non-Standard DTW variants require MissingStrategy::Error.');
         end
         switch missing
             case {'zero_cost', 'missing'}

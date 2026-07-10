@@ -22,8 +22,20 @@ def _as_array(x):
     return np.asarray(x, dtype=np.float64)
 
 
+def _normalize_metric(metric):
+    if not isinstance(metric, str):
+        raise TypeError("metric must be a string")
+    if metric not in {"l1", "squared_euclidean", "sqeuclidean"}:
+        raise ValueError(
+            f"Unknown metric '{metric}'. Expected one of: "
+            "l1, squared_euclidean, sqeuclidean."
+        )
+    return metric
+
+
 def standard(x, y, band=-1, metric="l1"):
     """Standard DTW distance."""
+    metric = _normalize_metric(metric)
     return _dtw_distance_raw(_as_array(x), _as_array(y), band, metric)
 
 
@@ -49,11 +61,13 @@ def soft_dtw(x, y, gamma=1.0):
 
 def missing(x, y, band=-1, metric="l1"):
     """Zero-cost DTW with missing values."""
+    metric = _normalize_metric(metric)
     return _dtw_distance_missing_raw(_as_array(x), _as_array(y), band, metric)
 
 
 def arow(x, y, band=-1, metric="l1"):
     """DTW-AROW distance."""
+    metric = _normalize_metric(metric)
     return _dtw_arow_distance_raw(_as_array(x), _as_array(y), band, metric)
 
 
@@ -75,14 +89,15 @@ def dtw(
     loops, prefer the explicit `distance.ddtw`, `distance.wdtw`, etc. entry
     points to avoid repeated dispatch and argument normalization.
     """
+    metric = _normalize_metric(metric)
     variant_key = variant.strip().lower().replace("-", "_")
     missing_key = missing_strategy.strip().lower().replace("-", "_")
 
     if missing_key != "error":
         if variant_key != "standard":
             raise ValueError(
-                "missing_strategy dispatch currently requires variant='standard'. "
-                "Use Problem/DTWClustering for combined variant + missing-data workflows."
+                "missing_strategy dispatch requires variant='standard'; "
+                "non-Standard variants require missing_strategy='error'."
             )
         if missing_key in {"zero_cost", "missing"}:
             return missing(x, y, band=band, metric=metric)

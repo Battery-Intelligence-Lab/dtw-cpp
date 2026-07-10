@@ -12,6 +12,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include "core/distance_semantics.hpp"
 #include "core/dtw_options.hpp"
 #include "core/variant_validation.hpp"
 #include "core/msm.hpp"
@@ -94,29 +95,15 @@ T dtw(std::span<const T> x, std::span<const T> y,
       core::MissingStrategy missing_strategy = core::MissingStrategy::Error)
 {
   core::validate_variant_params(params);
+  core::validate_variant_missing_semantics(params, missing_strategy);
   switch (missing_strategy) {
   case core::MissingStrategy::ZeroCost:
-    if (params.variant != core::DTWVariant::Standard) {
-      throw std::invalid_argument(
-        "dtwc::distance::dtw: ZeroCost missing strategy currently only "
-        "dispatches with variant=Standard.");
-    }
     return missing<T>(x, y, band, metric);
 
   case core::MissingStrategy::AROW:
-    if (params.variant != core::DTWVariant::Standard) {
-      throw std::invalid_argument(
-        "dtwc::distance::dtw: AROW missing strategy currently only dispatches "
-        "with variant=Standard.");
-    }
     return arow<T>(x, y, band, metric);
 
   case core::MissingStrategy::Interpolate: {
-    if (params.variant != core::DTWVariant::Standard) {
-      throw std::invalid_argument(
-        "dtwc::distance::dtw: Interpolate missing strategy currently only "
-        "dispatches with variant=Standard.");
-    }
     auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
     auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
     return dtw<T>(std::span<const T>{xi}, std::span<const T>{yi}, band, metric);

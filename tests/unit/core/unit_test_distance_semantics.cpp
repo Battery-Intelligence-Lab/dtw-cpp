@@ -124,6 +124,21 @@ TEST_CASE("M36 accepted semantic fingerprints remain exact",
     dtwc::core::MissingStrategy::AROW);
   REQUIRE_THAT(arow, WithinAbs(dtwc::dtwAROW_banded<double>(x, y, -1), 0.0));
 
+  // The runtime API must execute—not merely accept—the same Standard/missing
+  // semantics. Before M36 it ignored this option and entered ordinary DTW.
+  for (const auto strategy : {
+         dtwc::core::MissingStrategy::ZeroCost,
+         dtwc::core::MissingStrategy::AROW,
+         dtwc::core::MissingStrategy::Interpolate}) {
+    dtwc::core::DTWOptions options;
+    options.missing_strategy = strategy;
+    const double expected = dtwc::distance::dtw<double>(
+      x, y, standard, -1, dtwc::core::MetricType::L1, strategy);
+    REQUIRE_THAT(
+      dtwc::core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), options),
+      WithinAbs(expected, 0.0));
+  }
+
   dtwc::core::DTWVariantParams adtw;
   adtw.variant = dtwc::core::DTWVariant::ADTW;
   adtw.adtw_penalty = 0.75;

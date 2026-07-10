@@ -7,11 +7,7 @@ function d = missing(x, y, varargin)
     addParameter(p, 'Metric', 'l1', @(v) ischar(v) || isstring(v));
     parse(p, x, y, varargin{:});
 
-    metric = lower(char(p.Results.Metric));
-    if ~strcmp(metric, 'l1')
-        error('dtwc:distance:unsupportedMetric', ...
-              'MATLAB distance.missing currently supports Metric=''l1'' only.');
-    end
+    validate_metric(p.Results.Metric, 'missing');
 
     d = dtwc_mex('dtw_distance_missing', ...
                  double(x(:)'), ...
