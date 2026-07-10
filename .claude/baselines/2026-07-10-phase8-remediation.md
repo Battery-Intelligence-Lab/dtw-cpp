@@ -2540,3 +2540,80 @@ Verdict: **PASS.** Raw matrix-free semantic drift can no longer execute or
 publish a stale dispatcher; const observation remains side-effect free,
 unchanged access remains allocation-free, mapped-cache identity stays honest,
 and the parallel consumer repairs at a serial boundary.
+
+## M43 — pruned worker exception boundary
+
+The pruned implementation had five direct OpenMP parallel entry points:
+summary, envelope, and Webb-envelope construction, the Problem-backed pair
+fill, and the standalone row fill. A C++ exception from any of those workers
+could leave an OpenMP structured block instead of reaching the API caller. The
+preregistered source guard failed while even one raw parallel pragma remained.
+
+All five routes now use `run_openmp`, which captures inside the structured
+block and deterministically rethrows after its join. The Problem path retains
+pair-level balancing and Webb scratch reuse through contiguous blocks. Its
+quotient/remainder partition gives the first `P mod B` blocks one extra pair,
+so every canonical index in `[0,P)` appears exactly once. An adversarial
+precommit run caught and rejected an initial ceiling-sized partition whose
+trailing blocks could exceed `P`; the committed 25-series fixture fixes
+`P=300`, `B=32` and would reproduce that access violation at four threads.
+Statistics accumulate per block/row and reduce after successful worker return;
+a thrown call cannot publish statistics or a complete distance matrix.
+
+Green evidence:
+
+```text
+source exception-boundary guard:                       3 assertions / 1 case
+metadata-only typed failure, one/two threads:           4 assertions
+M43 focused exception + 300-pair partition:           632 assertions / 2 cases
+full pruned suite at the M43 commit:                  1460 assertions / 24 cases
+distance-matrix properties, 1/2/4/24 thread gate:     3369 assertions / 9 cases
+ADTW pruned integration:                               681 assertions / 47 cases
+Enhanced/Webb lower-bound integration:              39273 assertions / 14 cases
+```
+
+Verdict: **PASS.** No pruned worker exception can cross a raw parallel region;
+canonical pair coverage and finite matrices are exact, the caller receives the
+original typed failure, and partial work remains observably incomplete.
+Pruning-work counters obey exact accounting invariants but are deliberately
+not promised identical across schedules because relaxed thresholds may change
+which valid early-abandon opportunity is observed.
+
+## M44 — race-free pruned nearest-neighbor thresholds
+
+The pruning threshold array was a `vector<double>` read through ordinary
+lvalues while compiler/Win32 CAS wrote the same objects through reinterpreted
+integer pointers. Although a stale larger threshold only loses pruning work,
+the mixed access was a C++ data race; the cast violated strict aliasing, and a
+volatile MSVC load was not a portable atomic operation. The preregistered
+representation guard rejected all three properties before the production edit.
+
+Both pruned builders now allocate a fixed `unique_ptr<atomic<double>[]>`, which
+avoids `vector<atomic<T>>` move/copy requirements. Every initialization and
+threshold read is an explicit relaxed atomic operation. A portable
+`compare_exchange_weak` loop performs min-CAS directly on `atomic<double>`;
+all integer aliasing, compiler intrinsics, volatile pseudo-atomics, and mixed
+ordinary access are removed. Relaxed ordering is sufficient because the value
+is only an optimization threshold, never publication state.
+
+Green evidence (each line passed in LLFIO ON and OFF unless noted):
+
+```text
+source exception + atomic representation guards:       8 assertions / 2 cases
+M44 64-series 1/2/max-thread exact oracle:            4107 assertions / 1 case
+full pruned distance-matrix suite:                    5567 assertions / 25 cases
+distance-matrix property suite:                       3369 assertions / 9 cases
+ADTW pruned integration (LLFIO ON):                    681 assertions / 47 cases
+Enhanced/Webb integration (LLFIO ON):               39273 assertions / 14 cases
+```
+
+The 64-series oracle compares the entire matrix byte-for-value at one, two,
+and the runtime maximum thread count, then recomputes every upper-triangle
+entry with the direct banded kernel. At each thread count it separately
+requires `total_pairs = N(N-1)/2`, `full + Kim + envelope = total`, and
+`early_abandoned <= Kim + envelope`; it does not overconstrain the legitimate
+schedule-dependent split among those work counters.
+
+Verdict: **PASS.** Nearest-neighbor threshold access is standards-safe and
+race-free on every compiler path while finite matrix semantics and exact work
+accounting remain unchanged.

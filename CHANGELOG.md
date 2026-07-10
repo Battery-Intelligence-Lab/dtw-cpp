@@ -14,6 +14,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   and mmap replacement reconciles the callable before publishing its identity;
   unchanged getters remain allocation-free. OneBatchPAM resolves both callables
   serially before its OpenMP table build so first-use repair cannot race.
+- Contained every pruned distance-matrix worker failure inside the shared
+  deterministic OpenMP boundary. Summary, envelope, pair-block, and standalone
+  row failures now rethrow their original type on the caller thread; exact
+  quotient/remainder blocks cover each pair once and partial matrices remain
+  incomplete.
+- Replaced pruned nearest-neighbor thresholds' mixed ordinary/compiler-atomic
+  access with portable `atomic<double>` storage and explicit relaxed loads/CAS.
+  This removes the C++ data race, strict-aliasing violation, and MSVC volatile
+  pseudo-atomic load without changing finite distance matrices.
 - Replaced formatted-stream batch parsing with exact-delimiter, full-token
   numeric parsing. Textual NaNs and later fields are preserved; malformed,
   empty, out-of-range, or unapproved non-finite values fail with file/row/column
