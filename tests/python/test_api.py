@@ -3,6 +3,8 @@
 @brief Tests for the unified device()/load()/cluster()/result.plot() interface.
 @author Volkan Kumtepeli
 """
+from types import SimpleNamespace
+
 import numpy as np
 import pytest
 
@@ -167,6 +169,70 @@ class TestClusterHpc:
 # dispatches each documented method to its own algorithm.
 # ---------------------------------------------------------------------------
 class TestClusterMethodDispatch:
+    @pytest.mark.parametrize(
+        ("backend", "n_series", "expected"),
+        [
+            ("cpu", 5000, "pam"),
+            ("cpu", 5001, "clara"),
+            ("cuda", 5000, "pam"),
+            ("cuda", 5001, "pam"),
+            ("metal", 5000, "pam"),
+            ("metal", 5001, "pam"),
+            ("hpc", 5000, "auto"),
+            ("hpc", 5001, "auto"),
+        ],
+    )
+    def test_auto_resolution_is_device_compatible(
+        self, backend, n_series, expected
+    ):
+        """Only CPU crosses from PAM to CLARA above the 5,000-series limit."""
+        from dtwcpp import _api
+
+        assert _api._resolve_tier1_method("auto", n_series, backend) == expected
+        # Explicit requests are not substituted; cluster() owns the loud error.
+        assert _api._resolve_tier1_method("clara", n_series, backend) == "clara"
+
+    def test_large_auto_gpu_full_route_dispatches_pam(self, monkeypatch):
+        """The full wrapper resolves auto before matrix policy without a real GPU."""
+        class FakeProblem:
+            def __init__(self, name):
+                self.name = name
+
+            def set_band(self, band):
+                self.band = band
+
+            def set_data(self, series, names):
+                self.series = series
+                self.names = names
+
+            def set_distance_matrix(self, matrix):
+                self.matrix = matrix
+
+        matrix = object()
+        calls = []
+
+        def fake_pam(prob, k, max_iter):
+            calls.append(("pam", k, max_iter, prob.matrix))
+            return SimpleNamespace(
+                labels=np.zeros(5001, dtype=int), medoid_indices=[0], total_cost=0.0
+            )
+
+        def poison_clara(*args, **kwargs):
+            raise AssertionError("GPU-compatible auto must not resolve to CLARA")
+
+        monkeypatch.setattr(dtwcpp, "_resolve_device", lambda device: ("cuda", 3))
+        monkeypatch.setattr(dtwcpp, "Problem", FakeProblem)
+        monkeypatch.setattr(dtwcpp, "compute_distance_matrix", lambda *a, **k: matrix)
+        monkeypatch.setattr(dtwcpp, "fast_pam", fake_pam)
+        monkeypatch.setattr(dtwcpp, "fast_clara", poison_clara)
+
+        series = [[float(i)] for i in range(5001)]
+        result = dtwcpp.cluster(series, k=1, method="auto", device="gpu:3", max_iter=7)
+
+        assert calls == [("pam", 1, 7, matrix)]
+        assert result.device == "cuda"
+        assert result.distance_matrix is matrix
+
     def test_unknown_method_raises(self):
         """Unknown method must raise, not silently run FastPAM.
 
@@ -325,7 +391,7 @@ class TestLocalDispatchBindingNames:
 
         fake = FakeProblem()
         labels, medoids, cost = _api._run_local_method(
-            fake, "mip", k=2, max_iter=100, n=4)
+            fake, "mip", k=2, max_iter=100)
         assert fake.method == dtwcpp.Method.MIP        # NOT Kmedoids
         assert fake.nc == 2
         assert fake.cluster_calls == 1
@@ -356,7 +422,7 @@ class TestLocalDispatchBindingNames:
 
         fake = FakeProblem()
         labels, medoids, cost = _api._run_local_method(
-            fake, "kmedoids", k=2, max_iter=100, n=3)
+            fake, "kmedoids", k=2, max_iter=100)
         assert fake.method == dtwcpp.Method.Kmedoids   # NOT MIP
         assert fake.nc == 2
         assert fake.cluster_calls == 1
@@ -397,7 +463,7 @@ class TestLocalDispatchBindingNames:
         monkeypatch.setattr(dtwcpp, "fast_pam", poison_pam)
 
         labels, medoids, cost = _api._run_local_method(
-            sentinel_prob, "hierarchical", k=3, max_iter=100, n=4)
+            sentinel_prob, "hierarchical", k=3, max_iter=100)
         assert calls == {"build": 1, "cut": 1}
         assert labels == [0, 0, 1, 1]
         assert medoids == [0, 2]

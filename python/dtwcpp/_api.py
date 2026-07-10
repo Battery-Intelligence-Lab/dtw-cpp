@@ -248,6 +248,7 @@ ClusterResult = Result
 # dtwc_cl --method). "hclust" is the CLI's alias for "hierarchical".
 _METHODS = ("auto", "pam", "onebatch", "clara", "kmedoids", "mip",
             "lrcore", "hierarchical", "tadpole")
+_AUTO_PAM_SERIES_LIMIT = 5000
 
 
 def _normalize_method(method):
@@ -273,7 +274,20 @@ def _normalize_method(method):
     return m
 
 
-def _run_local_method(prob, method, k, max_iter, n):
+def _resolve_tier1_method(method, n, backend):
+    """Resolve ``auto`` after the execution backend is known.
+
+    HPC keeps ``auto`` because the remote CLI owns data materialisation and the
+    final size-dependent decision. Explicit method requests are never changed.
+    """
+    if method != "auto" or backend == "hpc":
+        return method
+    if backend in ("cuda", "metal"):
+        return "pam"
+    return "pam" if n <= _AUTO_PAM_SERIES_LIMIT else "clara"
+
+
+def _run_local_method(prob, method, k, max_iter):
     """Dispatch the local (cpu/gpu) clustering call for a validated ``method``.
 
     ``prob`` already has its distance matrix loaded. Returns
@@ -283,9 +297,6 @@ def _run_local_method(prob, method, k, max_iter, n):
     dispatch (dtwc_cl.cpp:874-926).
     """
     import dtwcpp
-
-    if method == "auto":                       # CLI rule: pam for small N, else clara
-        method = "pam" if n <= 5000 else "clara"
 
     if method == "pam":
         res = dtwcpp.fast_pam(prob, k, max_iter)
@@ -325,6 +336,9 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     ``method`` selects the clustering algorithm: one of ``"pam"`` (default),
     ``"onebatch"``, ``"clara"``, ``"kmedoids"``, ``"mip"``, ``"lrcore"``,
     ``"tadpole"``, ``"hierarchical"``, or ``"auto"``.
+    Locally, ``"auto"`` selects PAM for GPU execution and for CPU datasets up
+    to 5,000 series, otherwise CPU CLARA. HPC forwards ``"auto"`` so the remote
+    process can resolve it after materialising the dataset.
     An unrecognised method raises ``ValueError`` — it is NEVER silently ignored.
     """
     from dtwcpp import get_device, _resolve_device
@@ -347,6 +361,7 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     # loudly instead of silently defeating their scaling contract.
     from dtwcpp import compute_distance_matrix, Problem
     series = data.as_series()
+    method = _resolve_tier1_method(method, len(series), backend)
     names = [str(i) for i in range(len(series))]
     prob = Problem(data.name)
     # Configure the band before set_data() refreshes/rebinds the Problem's DTW
@@ -369,7 +384,7 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         series, band=band, device=eff)
     if D is not None:
         prob.set_distance_matrix(D)
-    labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter, len(series))
+    labels, medoid_indices, cost = _run_local_method(prob, method, k, max_iter)
     return Result(labels, device=backend,
                   elapsed_s=time.perf_counter() - t0, k=k, n_series=len(series),
                   medoid_indices=medoid_indices, distance_matrix=D,

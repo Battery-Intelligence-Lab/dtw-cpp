@@ -719,3 +719,45 @@ Adjacent audit finding retained as M14: the mmap header validates magic,
 version, CRC, and N but not dataset/configuration identity. Same-N stale cache
 reuse is a separate correctness defect and is not disguised as part of this OOM
 repair.
+
+## M12 — device-aware Tier-1 auto method
+
+Registered policy at the 5000/5001 boundary:
+
+```text
+CPU:        N=5000 -> pam; N=5001 -> clara
+CUDA/Metal: N=5000 -> pam; N=5001 -> pam
+Python HPC: preserve auto for remote post-materialisation resolution
+C++ HPC:    existing loud transport-boundary DeviceError before local work
+explicit method: unchanged (so explicit clara+GPU remains loud)
+```
+
+Red before backend-aware resolution:
+
+```text
+C++ policy N=5001/GPU: actual clara, expected pam (1 failed assertion)
+Python: CUDA policy, Metal policy, and mocked full CUDA route all failed;
+        the full route raised DeviceError after resolving auto to CLARA
+```
+
+Green evidence:
+
+```text
+uv run --no-sync pytest tests/python/test_api.py -q
+  45 passed
+uv run --no-sync pytest tests/python -q
+  489 passed, 11 skipped
+ctest --test-dir build/highs-1151 -C Release \
+  -R "test_tier1_cpp_api|test_env_device|test_device_loudness|test_global_device|test_problem_device" \
+  --output-on-failure
+  5/5 passed, 0 failed
+```
+
+The Python full-route test uses 5001 real series objects but mocks GPU discovery,
+matrix computation, and clustering: it asserts `gpu:3` survives resolution, a
+matrix is produced, PAM receives it, and a poisoned CLARA path is never called.
+
+Verdict: **PASS.** Resolution now precedes matrix-policy selection in both
+languages. Task 8.3 will bind the pure C++ `resolve_tier1_method` seam privately
+through nanobind and delete Python's mirror/threshold constant; this commit keeps
+that later refactor behavior-neutral.

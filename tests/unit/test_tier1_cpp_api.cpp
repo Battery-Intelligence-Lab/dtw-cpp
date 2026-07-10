@@ -3,6 +3,7 @@
  */
 
 #include <dtwc.hpp>
+#include <detail/tier1_method_resolution.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -99,4 +100,25 @@ TEST_CASE("Tier-1 C++ rejects invalid method, k, and matrix-free GPU mismatch", 
   REQUIRE_THROWS_AS(dtwc::cluster(dataset, 2, "not-a-method"), dtwc::InvalidInput);
   REQUIRE_THROWS_AS(dtwc::cluster(dataset, 0), dtwc::InvalidInput);
   REQUIRE_THROWS_AS(dtwc::cluster(dataset, 4), dtwc::InvalidInput);
+}
+
+TEST_CASE("Tier-1 auto method resolution is compatible with its execution target",
+          "[api][tier1][device]")
+{
+  using dtwc::detail::Tier1ExecutionTarget;
+  using dtwc::detail::resolve_tier1_method;
+
+  // N=5001 is the first non-degenerate case that selects CLARA on CPU. GPU
+  // matrix-free schedules are unsupported, so auto must retain the compatible
+  // PAM path there. The remote HPC process owns its eventual size decision.
+  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::CPU) == "clara");
+  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::GPU) == "pam");
+  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::HPC) == "auto");
+
+  CHECK(resolve_tier1_method("auto", 5000, Tier1ExecutionTarget::CPU) == "pam");
+  CHECK(resolve_tier1_method("auto", 5000, Tier1ExecutionTarget::GPU) == "pam");
+
+  // Explicit incompatibilities stay explicit so the existing DeviceError path
+  // remains loud rather than silently substituting a different algorithm.
+  CHECK(resolve_tier1_method("clara", 5001, Tier1ExecutionTarget::GPU) == "clara");
 }

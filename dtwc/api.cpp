@@ -12,6 +12,7 @@
 #include "algorithms/hierarchical.hpp"
 #include "algorithms/one_batch_pam.hpp"
 #include "core/matrix_io.hpp"
+#include "detail/tier1_method_resolution.hpp"
 #include "env.hpp"
 #include "error.hpp"
 #include "scores.hpp"
@@ -299,7 +300,10 @@ Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
   problem->set_max_iter(max_iter);
   configure_device(*problem, selected, device_index);
 
-  if (method == "auto") method = problem->size() <= 5000 ? "pam" : "clara";
+  const auto execution_target = selected == Device::GPU
+    ? detail::Tier1ExecutionTarget::GPU
+    : detail::Tier1ExecutionTarget::CPU;
+  method = detail::resolve_tier1_method(method, problem->size(), execution_target);
 
   core::ClusteringResult result;
   const bool matrix_free = method == "onebatch" || method == "clara"

@@ -54,6 +54,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Fixed CLI TADPole to honor `--mmap-threshold`: exact/fallback distances now
   use the file-backed packed cache, while LLFIO-off builds fail before an O(N²)
   heap allocation with actionable alternatives. OneBatchPAM remains O(Nm)-exempt.
+- Made Tier-1 `method="auto"` device-compatible: CUDA and Metal now select PAM
+  at every N instead of resolving large datasets to unsupported CPU-only CLARA;
+  explicit incompatible methods remain loud and unchanged.
 
 # 2.0.0rc1 - 2026-07-10
 
