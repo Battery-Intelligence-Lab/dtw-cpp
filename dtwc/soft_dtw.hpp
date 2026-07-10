@@ -44,14 +44,32 @@ namespace detail {
  * the finite-positive domain check in every dynamic-programming cell.
  */
 template <typename T>
-T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
+T softmin_gamma_unchecked(
+  T a, T b, T c, const core::detail::SoftGammaScale<T> &scale) noexcept
 {
   const T minimum = std::min(a, std::min(b, c));
-  const T inv_gamma = T(1) / gamma;
-  return minimum - gamma * std::log(
-                             std::exp(-(a - minimum) * inv_gamma) +
-                             std::exp(-(b - minimum) * inv_gamma) +
-                             std::exp(-(c - minimum) * inv_gamma));
+
+  // Retain the original reciprocal-multiply operation order for ordinary
+  // gamma values. At the valid denormal boundary the reciprocal overflows;
+  // normalise the denominator before scaling so -freciprocal-math cannot turn
+  // the fallback back into 0 * Inf. frexp(gamma)=fraction*2^exponent.
+  if (!scale.finite_reciprocal) {
+    return minimum - scale.gamma * std::log(
+                                     std::exp(-scale.scaled(a - minimum)) +
+                                     std::exp(-scale.scaled(b - minimum)) +
+                                     std::exp(-scale.scaled(c - minimum)));
+  }
+  return minimum - scale.gamma * std::log(
+                                   std::exp(-(a - minimum) * scale.inv_gamma) +
+                                   std::exp(-(b - minimum) * scale.inv_gamma) +
+                                   std::exp(-(c - minimum) * scale.inv_gamma));
+}
+
+template <typename T>
+T softmin_gamma_unchecked(T a, T b, T c, T gamma) noexcept
+{
+  return softmin_gamma_unchecked(
+    a, b, c, core::detail::SoftGammaScale<T>{gamma});
 }
 
 } // namespace detail
@@ -155,6 +173,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   C.resize(mx, my);
 
   auto dist = [](T a, T b) -> T { return std::abs(a - b); };
+  const core::detail::SoftGammaScale<T> gamma_scale{gamma};
 
   C(0, 0) = dist(x[0], y[0]);
 
@@ -168,7 +187,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
     for (int i = 1; i < mx; ++i) {
       C(i, j) = dist(x[i], y[j]) +
                 detail::softmin_gamma_unchecked(
-                  C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma);
+                  C(i - 1, j), C(i, j - 1), C(i - 1, j - 1), gamma_scale);
     }
   }
 
@@ -190,7 +209,9 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   E.fill(T{0});
   E(mx - 1, my - 1) = T(1);
 
-  const T inv_gamma = T(1) / gamma;
+  const auto jacobian_weight = [&](T soft, T predecessor) noexcept {
+    return std::exp(gamma_scale.scaled(soft - predecessor));
+  };
 
   for (int j = my - 1; j >= 0; --j) {
     for (int i = mx - 1; i >= 0; --i) {
@@ -205,7 +226,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
           val += E(i + 1, j);
         } else if (i + 1 >= 1) {
           const T S = C(i + 1, j) - dist(x[i + 1], y[j]); // softmin value at successor
-          const T w = std::exp((S - C(i, j)) * inv_gamma);
+          const T w = jacobian_weight(S, C(i, j));
           val += E(i + 1, j) * w;
         }
       }
@@ -217,7 +238,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
           val += E(i, j + 1);
         } else if (j + 1 >= 1) {
           const T S = C(i, j + 1) - dist(x[i], y[j + 1]);
-          const T w = std::exp((S - C(i, j)) * inv_gamma);
+          const T w = jacobian_weight(S, C(i, j));
           val += E(i, j + 1) * w;
         }
       }
@@ -226,7 +247,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
       if (i + 1 < mx && j + 1 < my) {
         // Diagonal successor only exists for interior cells (i+1>=1 and j+1>=1)
         const T S = C(i + 1, j + 1) - dist(x[i + 1], y[j + 1]);
-        const T w = std::exp((S - C(i, j)) * inv_gamma);
+        const T w = jacobian_weight(S, C(i, j));
         val += E(i + 1, j + 1) * w;
       }
 

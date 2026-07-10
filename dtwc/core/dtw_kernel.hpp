@@ -82,6 +82,35 @@ struct ADTWCell {
   }
 };
 
+namespace detail {
+
+/** Precomputed gamma scaling for validated Soft-DTW inner loops. */
+template <typename T>
+struct SoftGammaScale {
+  T gamma;
+  T inv_gamma;
+  bool finite_reciprocal;
+  T gamma_fraction{T(1)};
+  int gamma_exponent{0};
+
+  explicit SoftGammaScale(T value) noexcept
+    : gamma(value), inv_gamma(T(1) / value),
+      finite_reciprocal(std::isfinite(inv_gamma))
+  {
+    if (!finite_reciprocal)
+      gamma_fraction = std::frexp(gamma, &gamma_exponent);
+  }
+
+  T scaled(T delta) const noexcept
+  {
+    return finite_reciprocal
+      ? delta * inv_gamma
+      : std::scalbn(delta / gamma_fraction, -gamma_exponent);
+  }
+};
+
+} // namespace detail
+
 /// Soft-DTW (Cuturi & Blondel 2017): softmin(diag, up, left) + cost with
 /// log-sum-exp stabilisation (M = min of valid predecessors; exponents are
 /// subtracted by M before exp/log).
@@ -98,6 +127,10 @@ struct ADTWCell {
 template <typename T>
 struct SoftCell {
   T gamma;
+  detail::SoftGammaScale<T> scale;
+
+  explicit SoftCell(T value) noexcept : gamma(value), scale(value) {}
+
   T combine(T diag, T up, T left, T cost,
             std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
   {
@@ -108,11 +141,13 @@ struct SoftCell {
     if (left < m) m = left;
     if (m == maxValue) return maxValue;
 
-    const T inv_gamma = T(1) / gamma;
+    const auto contribution = [&](T predecessor) noexcept {
+      return std::exp(-scale.scaled(predecessor - m));
+    };
     T acc = T(0);
-    if (diag != maxValue) acc += std::exp(-(diag - m) * inv_gamma);
-    if (up   != maxValue) acc += std::exp(-(up   - m) * inv_gamma);
-    if (left != maxValue) acc += std::exp(-(left - m) * inv_gamma);
+    if (diag != maxValue) acc += contribution(diag);
+    if (up   != maxValue) acc += contribution(up);
+    if (left != maxValue) acc += contribution(left);
     return m - gamma * std::log(acc) + cost;
   }
   T seed(T cost, std::size_t /*short_idx*/, std::size_t /*long_idx*/) const noexcept
