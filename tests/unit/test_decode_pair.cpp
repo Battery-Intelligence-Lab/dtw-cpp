@@ -27,9 +27,11 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <detail/decode_pair.hpp>
+#include <metal/detail/chunk_dispatch.hpp>
 
 #include <algorithm>
 #include <cmath>
+#include <concepts>
 #include <cstdint>
 #include <limits>
 #include <utility>
@@ -278,13 +280,26 @@ TEST_CASE("Metal chunk pair_offset stays correct beyond int32", "[decode_pair][m
   // The Metal host dispatch chunks a triangular pair space. Before Phase 6,
   // `off` was narrowed to int before binding buffer(8), so the first chunk at
   // 2^31 wrapped negative even though the shader's work index was otherwise
-  // 64-bit. Mirror the host+MSL arithmetic with the now-shared ABI width.
-  constexpr std::int64_t offset = (std::int64_t{1} << 31) + 12345;
+  // 64-bit. Exercise the host conversion used by metal_dtw.mm, then feed the
+  // resulting global pair id to the real shared decoder. Re-narrowing the
+  // production seam to int32 fails both the type assertion and value checks.
+  constexpr std::size_t chunk_begin = (std::size_t{ 1 } << 31) + 12345;
+  constexpr std::int64_t pair_offset =
+    dtwc::metal::detail::pair_chunk_offset(chunk_begin);
   constexpr std::uint32_t local_id = 777;
-  constexpr std::int64_t work_index = static_cast<std::int64_t>(local_id) + offset;
-  STATIC_REQUIRE(sizeof(offset) == 8);
-  STATIC_REQUIRE(work_index == (std::int64_t{1} << 31) + 13122);
+  constexpr std::int64_t work_index = pair_offset + local_id;
+
+  STATIC_REQUIRE(std::same_as<decltype(dtwc::metal::detail::pair_chunk_offset(chunk_begin)),
+                              std::int64_t>);
+  STATIC_REQUIRE(pair_offset == (std::int64_t{ 1 } << 31) + 12345);
+  STATIC_REQUIRE(work_index == (std::int64_t{ 1 } << 31) + 13122);
   STATIC_REQUIRE(work_index > std::numeric_limits<std::int32_t>::max());
+
+  constexpr std::int64_t N = 70000;
+  STATIC_REQUIRE(work_index < N * (N - 1) / 2);
+  std::int64_t i = -1, j = -1;
+  dtwc::detail::decode_pair(work_index, N, i, j);
+  CHECK(encode_pair(i, j, N) == work_index);
 }
 
 // ---------------------------------------------------------------------------

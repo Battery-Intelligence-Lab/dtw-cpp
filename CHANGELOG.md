@@ -32,6 +32,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   errors without falling back to another backend.
 - Promoted the LR-core derivation into tracked documentation sources and made
   generated-doc checks fail loudly if that canonical source is missing.
+- Replaced the mirrored Metal chunk-offset assertion with a host-testable
+  production `int64_t` conversion seam used by both dispatch paths and pinned
+  beyond `INT32_MAX` by a real pair-decode round trip.
 
 # 2.0.0rc1 - 2026-07-10
 

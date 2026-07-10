@@ -40,6 +40,7 @@
 #include <stdexcept>
 
 #include "../detail/decode_pair.hpp"
+#include "detail/chunk_dispatch.hpp"
 
 namespace dtwc::metal {
 
@@ -1663,7 +1664,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < effective_pairs; off += chunk) {
-      const std::int64_t pair_offset = static_cast<std::int64_t>(off);
+      const auto pair_offset = detail::pair_chunk_offset(off);
       const size_t this_chunk = std::min(chunk, effective_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
@@ -1683,7 +1684,7 @@ MetalDistMatResult compute_distance_matrix_metal(
       } else {
         [enc setThreadgroupMemoryLength:tg_mem_len atIndex:0];
       }
-      [enc setBytes:&pair_offset length:sizeof(std::int64_t) atIndex:8];
+      [enc setBytes:&pair_offset length:sizeof(pair_offset) atIndex:8];
       if (use_banded_row) {
         [enc setBytes:&banded_stride length:sizeof(int) atIndex:9];
       }
@@ -2068,7 +2069,7 @@ MetalKVsNResult compute_kvn_impl(
 
     id<MTLCommandBuffer> last_cmd = nil;
     for (size_t off = 0; off < num_pairs; off += chunk) {
-      params.pair_offset = static_cast<std::int64_t>(off);
+      params.pair_offset = detail::pair_chunk_offset(off);
       const size_t this_chunk = std::min(chunk, num_pairs - off);
 
       id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];

@@ -380,3 +380,41 @@ source perturbed: stale or missing generated documentation:
 Verdict: **PASS.** The gate cannot degrade to an existence-only check. The full
 derivation has a permanent documentation-owned source, missing-source output is
 actionable, and content changes require explicit regeneration.
+
+## M10 — Metal chunk-offset production seam
+
+Registered band: the host test must call arithmetic used by both production
+Metal dispatch loops, cross `INT32_MAX`, and drive the real shared pair decoder.
+Changing the seam's return type to `int32_t` must fail independently of any
+locally mirrored constant.
+
+Red before the seam existed:
+
+```text
+test_decode_pair.cpp: no member named 'pair_chunk_offset' in
+namespace 'dtwc::metal::detail'
+```
+
+Adversarial mutation after extraction (`int64_t` to `int32_t`) produced:
+
+```text
+static assertion failed: returned -2147471303, expected 2147495993
+static assertion failed: return type is not std::int64_t
+```
+
+Green decisive output after restoring the production type:
+
+```text
+cmake --build build/highs-1151 --config Release --target test_decode_pair -j 4
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^test_decode_pair$" --output-on-failure
+  1/1 passed, 0 failed
+ctest --test-dir build/highs-1151 -C Release --output-on-failure
+  99 registered, 0 failed, 6 documented capability skips, 26.71s
+```
+
+Verdict: **PASS (coverage defect, arithmetic already correct).** The new helper
+owns the `size_t` to Metal-ABI `int64_t` boundary for NxN and K-vs-N dispatch.
+The regression uses its result in `decode_pair` and proves a real encode/decode
+round trip beyond the old overflow boundary. The all-target build wrapper that
+timed out before CTest emitted no result and is deliberately not counted.
