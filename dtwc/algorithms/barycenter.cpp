@@ -215,10 +215,22 @@ Series ssg(const std::vector<Series>& series, Series center,
       }
       const double eta = options.learning_rate
         / (1.0 + options.learning_rate_decay * static_cast<double>(step++));
+      const double max_multiplicity = static_cast<double>(
+        *std::max_element(counts.begin(), counts.end()));
+      // The fixed-path component has Hessian 2*V and therefore gradient
+      // Lipschitz constant L = 2*max(V_ii).  Capping the scalar step at 1/L
+      // prevents high-valence paths from exploding while preserving the raw
+      // stochastic-gradient direction (unlike dividing every coordinate by
+      // its own count).
+      const double effective_eta = std::min(eta, 0.5 / max_multiplicity);
       for (std::size_t i = 0; i < center.size(); ++i) {
         if (counts[i] == 0) continue;
-        const double aligned_mean = sums[i] / static_cast<double>(counts[i]);
-        center[i] += eta * (aligned_mean - center[i]);
+        // For squared DTW and the selected optimal path, the stochastic
+        // component gradient is 2 * (V*center - W*sample).  V_ii is exactly
+        // counts[i]; dividing by it turns SSG into a coordinate-preconditioned
+        // averaging heuristic and discards repeated alignments.
+        const double multiplicity = static_cast<double>(counts[i]);
+        center[i] += 2.0 * effective_eta * (sums[i] - multiplicity * center[i]);
       }
     }
     const double objective = hard_objective(center, series);

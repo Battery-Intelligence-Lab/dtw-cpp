@@ -43,6 +43,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Pinned every external GitHub Action to a reviewed full commit SHA, corrected
   the nonexistent Doxygen action tag, and SHA-256 pinned the optional Arrow
   19.0.1 source archive with an executable repository-wide drift gate.
+- Fixed SSG barycenters to retain Schultz–Jain warping-path valence in the true
+  squared-DTW stochastic gradient, with a scalar inverse-Lipschitz step cap that
+  prevents extreme unequal-length alignments from exploding.
 
 # 2.0.0rc1 - 2026-07-10
 

@@ -98,7 +98,7 @@ References used during development. Verify each citation independently before pu
 ### Barycenters / DTW averaging
 
 - Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering (DBA). *Pattern Recognition*, 44(3), 678-693.
-- Schultz, D. & Jain, B. J. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces. *Pattern Recognition*, 74, 340–358. https://doi.org/10.1016/j.patcog.2017.08.012; arXiv:1701.06393 (https://arxiv.org/abs/1701.06393) — Analyzes DBA as majorize-minimize and proposes stochastic subgradient (SSG) averaging; the implementation-to-paper multiplicity check remains a separate Phase 8 review item.
+- Schultz, D. & Jain, B. J. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces. *Pattern Recognition*, 74, 340–358. https://doi.org/10.1016/j.patcog.2017.08.012; arXiv:1701.06393 (https://arxiv.org/abs/1701.06393) — Analyzes DBA as majorize-minimize and proposes stochastic subgradient (SSG) averaging. The squared-DTW component gradient is `2(Vz−Wx)`; Algorithm 3 absorbs the constant two into η but retains path-valence matrix V. DTWC++ now applies that raw direction and caps the single scalar step at `1/(2 max V_ii)`, the selected fixed-path quadratic's inverse gradient-Lipschitz constant, to remain stable on unequal-length resampling without coordinate preconditioning.
 
 ### Lower bounds, pruning, fast exact DTW (additions)
 

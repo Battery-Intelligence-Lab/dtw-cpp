@@ -26,6 +26,8 @@ enum class BarycenterMethod {
 struct BarycenterOptions {
   BarycenterMethod method = BarycenterMethod::SSG;
   int max_iter = 50;
+  /// Initial SSG/soft-DTW step; SSG caps it at the selected path's inverse
+  /// Lipschitz constant.
   double learning_rate = 0.2;
   double learning_rate_decay = 0.01;
   double gamma = 1.0;
@@ -39,6 +41,8 @@ struct BarycenterClusteringOptions {
   int barycenter_max_iter = 30;
   int target_length = -1; ///< -1 keeps each initial centre's length.
   BarycenterMethod method = BarycenterMethod::SSG;
+  /// Initial SSG/soft-DTW step; SSG applies the same stability cap as
+  /// dtw_barycenter().
   double learning_rate = 0.2;
   double learning_rate_decay = 0.01;
   double gamma = 1.0;

@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -63,11 +65,93 @@ TEST_CASE("DBA and SSG recover the scalar arithmetic mean",
   REQUIRE_THAT(dba[0], WithinAbs(2.0, 1e-12));
 
   options.method = algorithms::BarycenterMethod::SSG;
-  options.learning_rate = 0.25;
+  // SSG applies the full squared-DTW gradient, including its factor of two.
+  options.learning_rate = 0.125;
   options.learning_rate_decay = 0.002;
   options.random_seed = 17;
   const auto ssg = algorithms::dtw_barycenter(problem, indices, 1, options);
   REQUIRE_THAT(ssg[0], WithinAbs(2.0, 0.08));
+}
+
+TEST_CASE("SSG retains warping-path multiplicity in its stochastic gradient",
+          "[barycenter][ssg][gradient]")
+{
+  // Resampling the only input to length two initializes the centre at {0, 10}.
+  // Its unique optimal path is (0,0),(0,1),(0,2),(1,3), so coordinate zero
+  // has valence 3 and aligned sum 6.  For squared DTW the component gradient
+  // is 2 * (V*z - W*x), hence one eta=0.1 step gives 0 + 2*0.1*6 = 1.2.
+  // Replacing the aligned sum by its mean (the old implementation) gives 0.2
+  // and therefore cannot satisfy this oracle.
+  auto problem = make_problem({{0.0, 2.0, 4.0, 10.0}});
+  algorithms::BarycenterOptions options;
+  options.method = algorithms::BarycenterMethod::SSG;
+  options.max_iter = 1;
+  options.learning_rate = 0.1;
+  options.learning_rate_decay = 0.0;
+  options.tolerance = 0.0;
+
+  const auto center = algorithms::dtw_barycenter(problem, {0}, 2, options);
+
+  REQUIRE(center.size() == 2);
+  REQUIRE_THAT(center[0], WithinAbs(1.2, 1e-12));
+  REQUIRE_THAT(center[1], WithinAbs(10.0, 1e-12));
+
+  // With eta=0.2, the fixed-path Lipschitz cap is active at
+  // 1/(2*max_valence)=1/6.  It is one scalar for the entire gradient, so the
+  // multiplicity remains present and coordinate zero moves exactly to 2.0.
+  options.learning_rate = 0.2;
+  const auto capped_center = algorithms::dtw_barycenter(problem, {0}, 2, options);
+  REQUIRE_THAT(capped_center[0], WithinAbs(2.0, 1e-12));
+  REQUIRE_THAT(capped_center[1], WithinAbs(10.0, 1e-12));
+}
+
+TEST_CASE("default SSG learning rate stays finite on unequal-length series",
+          "[barycenter][ssg][stability]")
+{
+  const std::vector<std::vector<double>> values{
+    {0.0, 10.0},
+    {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0},
+    {-1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 11.0}};
+  auto problem = make_problem(values);
+  algorithms::BarycenterOptions options;
+  options.method = algorithms::BarycenterMethod::SSG;
+  double before = 0.0;
+  for (const auto& value : values) before += squared_dtw(values.front(), value);
+
+  for (const std::uint64_t seed : {0ULL, 1ULL, 11ULL, 42ULL, 999ULL}) {
+    options.random_seed = seed;
+    const auto center = algorithms::dtw_barycenter(problem, {0, 1, 2}, 2, options);
+    double after = 0.0;
+    for (const auto& value : values) after += squared_dtw(center, value);
+
+    CAPTURE(seed, center, before, after);
+    REQUIRE(std::all_of(center.begin(), center.end(),
+                        [](double value) { return std::isfinite(value); }));
+    REQUIRE(after < before);
+  }
+}
+
+TEST_CASE("default SSG learning rate handles extreme path valence",
+          "[barycenter][ssg][stability][valence]")
+{
+  for (const std::size_t length : {100U, 1000U}) {
+    std::vector<data_t> ramp(length);
+    std::iota(ramp.begin(), ramp.end(), 0.0);
+    auto problem = make_problem({ramp});
+    algorithms::BarycenterOptions options;
+    options.method = algorithms::BarycenterMethod::SSG;
+
+    const auto center = algorithms::dtw_barycenter(problem, {0}, 2, options);
+    const std::vector<data_t> initial{ramp.front(), ramp.back()};
+    const double before = squared_dtw(initial, ramp);
+    const double after = squared_dtw(center, ramp);
+
+    CAPTURE(length, center, before, after);
+    REQUIRE(std::all_of(center.begin(), center.end(),
+                        [](double value) { return std::isfinite(value); }));
+    REQUIRE(std::isfinite(after));
+    REQUIRE(after < before);
+  }
 }
 
 TEST_CASE("soft-DTW barycenter descends to the scalar optimum",

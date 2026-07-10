@@ -555,3 +555,51 @@ git diff --check
 Verdict: **PASS.** The new job runs on the active Python workflow and the docs
 workflow invokes the same gate. Full SHAs are the immutable execution identity;
 human-readable release refs remain comments for update tooling and review.
+
+## M4 — SSG path multiplicity and stable true-gradient steps
+
+Schultz–Jain define the averaged objective `F=(1/N) sum DTW²` and a sampled
+component gradient `2(Vz-Wx)`. Uniformly sampling occurrences makes that an
+unbiased gradient estimator, so no explicit `1/N` belongs in each step; `V_ii`
+is the number of path matches for center coordinate i. Their pseudocode absorbs
+the factor two into eta but does not divide coordinates by their valence.
+
+Registered one-step oracle: resampling `{0,2,4,10}` to center `{0,10}` gives a
+unique path whose first coordinate has valence 3 and aligned sum 6. At eta=.1,
+the correct first coordinate is 1.2:
+
+```text
+old coordinate-mean update: actual 0.2, expected 1.2 (RED)
+true component gradient:    actual 1.2, expected 1.2
+```
+
+Before accepting that fix, an orthogonal length-ratio attack found a second
+failure in the proposed raw-gradient implementation:
+
+```text
+single ramp length 100 -> target length 2, default eta=.2
+initial center {0,99}, first raw step {490,-391}
+objective 80,850 -> 2.86e71 after 50 iterations (RED)
+```
+
+For a selected fixed path, the quadratic Hessian is diagonal `2V`, so its
+gradient Lipschitz constant is `L=2 max(V_ii)`. The final implementation caps
+the one scalar step at `1/L`; unlike the old coordinate-wise division, this
+preserves the raw gradient direction and all relative multiplicities.
+
+Green adversarial outcomes:
+
+```text
+length 100:  center {24.5,74.5}, objective 80,850 -> 20,825
+length 1000: center {249.5,749.5}, objective 83,083,500 -> 20,833,250
+unit_test_barycenter.exe --reporter compact
+  All tests passed (77 assertions in 10 test cases)
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^unit_test_barycenter$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+Verdict: **PASS after adversarial refinement.** The original finding was real,
+and naively restoring the paper gradient would have introduced a much larger
+unequal-length bug. The scalar cap is direction-preserving, documented in both
+public option structs, and pinned by 100:2 plus 1000:2 regressions.
