@@ -18,10 +18,15 @@
 #include "settings.hpp" // for resultsPath
 
 #include <cassert>    // for assert
+#include <charconv>   // for from_chars
 #include <chrono>     // for filesystem
+#include <cctype>     // for isspace, tolower
+#include <cmath>      // for isfinite
 #include <cstdlib>    // for size_t
 #include <filesystem> // for operator<<, path, operator/, directory_iterator
 #include <iostream>   // for operator<<, ifstream, basic_ostream, operator>>
+#include <limits>
+#include <optional>
 #include <string>     // for string, getline, to_string
 #include <utility>    // for pair
 #include <vector>     // for vector
@@ -29,6 +34,8 @@
 #include <string>
 #include <sstream>
 #include <stdexcept> // for std::runtime_error
+#include <string_view>
+#include <type_traits>
 
 #include <rapidcsv.h>
 
@@ -53,6 +60,170 @@ inline void ignoreBOM(std::istream &in)
   in.seekg(start);
 }
 
+namespace text_io_detail {
+
+inline std::string_view trim_ascii(std::string_view token)
+{
+  while (!token.empty()
+         && std::isspace(static_cast<unsigned char>(token.front())) != 0)
+    token.remove_prefix(1);
+  while (!token.empty()
+         && std::isspace(static_cast<unsigned char>(token.back())) != 0)
+    token.remove_suffix(1);
+  return token;
+}
+
+inline std::vector<std::string_view> split_fields(std::string_view line,
+                                                  char delimiter)
+{
+  std::vector<std::string_view> fields;
+  if (delimiter == ' ') {
+    std::size_t pos = 0;
+    while (pos < line.size()) {
+      while (pos < line.size()
+             && std::isspace(static_cast<unsigned char>(line[pos])) != 0)
+        ++pos;
+      const std::size_t start = pos;
+      while (pos < line.size()
+             && std::isspace(static_cast<unsigned char>(line[pos])) == 0)
+        ++pos;
+      if (start != pos) fields.emplace_back(line.substr(start, pos - start));
+    }
+    return fields;
+  }
+
+  std::size_t start = 0;
+  while (true) {
+    const std::size_t end = line.find(delimiter, start);
+    if (end == std::string_view::npos) {
+      fields.emplace_back(line.substr(start));
+      break;
+    }
+    fields.emplace_back(line.substr(start, end - start));
+    start = end + 1;
+  }
+  return fields;
+}
+
+inline std::string lower_ascii(std::string_view token)
+{
+  std::string result;
+  result.reserve(token.size());
+  for (const char c : token)
+    result.push_back(static_cast<char>(
+      std::tolower(static_cast<unsigned char>(c))));
+  return result;
+}
+
+[[noreturn]] inline void throw_numeric_field_error(
+  const fs::path &path, std::size_t row, std::size_t column,
+  std::string_view reason, std::string_view token)
+{
+  constexpr std::size_t max_token_chars = 64;
+  std::string shown(token.substr(0, max_token_chars));
+  if (token.size() > max_token_chars) shown += "...";
+  throw std::runtime_error(
+    "Error in delimited text file: '" + path.string() + "' row "
+    + std::to_string(row) + ", column " + std::to_string(column)
+    + ": " + std::string(reason) + " '" + shown + "'.");
+}
+
+template <typename T>
+T parse_numeric_field(std::string_view raw_token, const fs::path &path,
+                      std::size_t row, std::size_t column)
+{
+  const std::string_view token = trim_ascii(raw_token);
+  if (token.empty())
+    throw_numeric_field_error(path, row, column, "empty numeric field", token);
+
+  const std::string lower = lower_ascii(token);
+  if (lower == "nan") {
+    if constexpr (std::is_floating_point_v<T>)
+      return std::numeric_limits<T>::quiet_NaN();
+    else
+      throw_numeric_field_error(path, row, column,
+                                "NaN is invalid for an integer field", token);
+  }
+
+  std::string_view parsed = token;
+  if (parsed.size() > 1 && parsed.front() == '+') parsed.remove_prefix(1);
+  T value{};
+  std::from_chars_result result;
+  if constexpr (std::is_floating_point_v<T>)
+    result = std::from_chars(parsed.data(), parsed.data() + parsed.size(), value,
+                             std::chars_format::general);
+  else
+    result = std::from_chars(parsed.data(), parsed.data() + parsed.size(), value);
+
+  if (result.ec == std::errc::result_out_of_range)
+    throw_numeric_field_error(path, row, column, "numeric field is out of range", token);
+  if (result.ec != std::errc{} || result.ptr != parsed.data() + parsed.size())
+    throw_numeric_field_error(path, row, column, "invalid numeric field", token);
+  if constexpr (std::is_floating_point_v<T>) {
+    if (!std::isfinite(value))
+      throw_numeric_field_error(path, row, column,
+                                "unapproved non-finite numeric field", token);
+  }
+  return value;
+}
+
+template <typename T, typename Consumer>
+std::size_t parse_numeric_row(std::string_view line, const fs::path &path,
+                              std::size_t row, int start_column,
+                              char delimiter, Consumer &&consume)
+{
+  if (start_column < 0)
+    throw std::runtime_error("Error in delimited text file: start_col must be non-negative.");
+  // A physically empty line is the existing on-disk representation of an
+  // empty series. Empty fields inside a delimited non-empty row remain errors.
+  if (trim_ascii(line).empty()) return 0;
+  const auto fields = split_fields(line, delimiter);
+  const auto first = static_cast<std::size_t>(start_column);
+  if (first > fields.size()) {
+    throw std::runtime_error(
+      "Error in delimited text file: '" + path.string() + "' row "
+      + std::to_string(row) + " has only " + std::to_string(fields.size())
+      + " fields, fewer than start_col=" + std::to_string(start_column) + ".");
+  }
+
+  std::size_t count = 0;
+  for (std::size_t i = first; i < fields.size(); ++i) {
+    consume(parse_numeric_field<T>(fields[i], path, row, i + 1));
+    ++count;
+  }
+  return count;
+}
+
+template <typename T>
+std::optional<T> parse_series_value_row(std::string_view line,
+                                        const fs::path &path,
+                                        std::size_t row, int start_column,
+                                        char delimiter,
+                                        bool allow_legacy_empty_header)
+{
+  if (start_column < 0)
+    throw std::runtime_error("Error in delimited text file: start_col must be non-negative.");
+  if (trim_ascii(line).empty()) return std::nullopt;
+  const auto fields = split_fields(line, delimiter);
+  const auto column = static_cast<std::size_t>(start_column);
+  if (column >= fields.size()) {
+    throw std::runtime_error(
+      "Error in delimited text file: '" + path.string() + "' row "
+      + std::to_string(row) + " has only " + std::to_string(fields.size())
+      + " fields, fewer than required column " + std::to_string(column + 1)
+      + ".");
+  }
+  // Preserve the repository's historical `,0` directory-file header only.
+  // Textual first-row values are not guessed to be headers: callers with a
+  // named header must opt in explicitly via start_row=1, so malformed data
+  // cannot disappear merely because it occurs on the first row.
+  if (allow_legacy_empty_header && trim_ascii(fields[column]).empty())
+    return std::nullopt;
+  return parse_numeric_field<T>(fields[column], path, row, column + 1);
+}
+
+} // namespace text_io_detail
+
 /**
  * @brief Reads a file and returns the data as a vector of a specified type.
  *
@@ -74,30 +245,21 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
 
   ignoreBOM(in);
 
-  // https://stackoverflow.com/questions/70497719/read-from-comma-separated-file-into-vector-of-objects
   std::string line{};
-  char c = '.';
 
   for (int i = 0; i < start_row; i++) // Skip first start_row rows to start from start_row.
     std::getline(in, line);
 
-
-  data_t temp, p_i;
   std::vector<data_t> p;
   p.reserve(10000);
-
+  std::size_t row = static_cast<std::size_t>(start_row);
+  bool first_data_line = true;
   while (std::getline(in, line)) {
-    std::istringstream iss(line);
-
-    for (int i = 0; i < start_col; i++) // Skip first start_col columns to start from start_col.
-    {
-      iss >> temp;
-      if (delimiter != ' ' && delimiter != '\t') // These we do not need to remove from stream.
-        iss >> c;
-    }
-
-    if (iss >> p_i)
-      p.push_back(p_i);
+    ++row;
+    const auto value = text_io_detail::parse_series_value_row<data_t>(
+      line, name, row, start_col, delimiter, first_data_line);
+    first_data_line = false;
+    if (value) p.push_back(*value);
   }
 
   p.shrink_to_fit();
@@ -203,6 +365,8 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
     throw std::runtime_error("Error in load_batch_file: File " + file_path.string() + " could not be opened.");
   }
 
+  ignoreBOM(in);
+
   std::string line;
   int line_no{ 0 };
   int n_rows{ 0 };
@@ -214,23 +378,9 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
     n_rows++;
 
     std::vector<data_t> p;
-    p.reserve(10000);
-    std::istringstream in_line(line);
-    data_t temp, p_i;
-    char c;
-
-    for (int i = 0; i < opts.start_col; i++) // Skip first start_col columns to start from start_col.
-    {
-      in_line >> temp;
-      if (opts.delimiter != ' ' && opts.delimiter != '\t') // These we do not need to remove from stream.
-        in_line >> c;
-    }
-
-    while (in_line >> p_i) {
-      p.push_back(p_i);
-      if (opts.delimiter != ' ' && opts.delimiter != '\t') // These we do not need to remove from stream.
-        in_line >> c;
-    }
+    text_io_detail::parse_numeric_row<data_t>(
+      line, file_path, static_cast<std::size_t>(line_no), opts.start_col,
+      opts.delimiter, [&](data_t value) { p.push_back(value); });
 
     p.shrink_to_fit();
 

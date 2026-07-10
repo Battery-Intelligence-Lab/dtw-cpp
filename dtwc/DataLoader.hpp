@@ -390,6 +390,7 @@ private:
     std::ifstream in(data_path, std::ios_base::in);
     if (!in.good())
       throw std::runtime_error("DataLoader::load_metadata: cannot open " + data_path.string());
+    ignoreBOM(in);
 
     std::vector<std::string> names;
     std::vector<std::size_t> flat_sizes;
@@ -399,18 +400,9 @@ private:
     while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) {
       if (line_no++ < start_row) continue;
       ++n_rows;
-      std::istringstream in_line(line);
-      data_t temp, p_i;
-      char c;
-      for (int i = 0; i < start_col; ++i) {
-        in_line >> temp;
-        if (delim != ' ' && delim != '\t') in_line >> c;
-      }
-      std::size_t count = 0;
-      while (in_line >> p_i) {
-        ++count;
-        if (delim != ' ' && delim != '\t') in_line >> c;
-      }
+      const std::size_t count = text_io_detail::parse_numeric_row<data_t>(
+        line, data_path, static_cast<std::size_t>(line_no), start_col, delim,
+        [](data_t) {});
       names.push_back(std::to_string(n_rows));
       flat_sizes.push_back(count);
     }
@@ -441,16 +433,15 @@ private:
     ignoreBOM(in);
     std::string line;
     for (int i = 0; i < start_row; ++i) std::getline(in, line);
-    data_t temp, p_i;
-    char c = '.';
     std::size_t count = 0;
+    std::size_t row = static_cast<std::size_t>(start_row);
+    bool first_data_line = true;
     while (std::getline(in, line)) {
-      std::istringstream iss(line);
-      for (int i = 0; i < start_col; ++i) {
-        iss >> temp;
-        if (delim != ' ' && delim != '\t') iss >> c;
-      }
-      if (iss >> p_i) ++count;
+      ++row;
+      const auto value = text_io_detail::parse_series_value_row<data_t>(
+        line, file, row, start_col, delim, first_data_line);
+      first_data_line = false;
+      if (value) ++count;
     }
     return count;
   }

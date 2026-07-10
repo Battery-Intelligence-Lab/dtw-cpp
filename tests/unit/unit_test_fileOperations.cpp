@@ -26,10 +26,30 @@
 #include <iterator>
 #include <set>
 #include <map>
+#include <cstdint>
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::ContainsSubstring;
 
 using namespace dtwc;
+
+namespace {
+struct TemporaryBatchFile {
+  fs::path path;
+
+  TemporaryBatchFile(std::string_view extension, std::string_view contents)
+  {
+    path = fs::temp_directory_path()
+         / ("dtwc_batch_parser_"
+            + std::to_string(reinterpret_cast<std::uintptr_t>(this))
+            + std::string(extension));
+    std::ofstream out(path, std::ios::binary);
+    out << contents;
+  }
+
+  ~TemporaryBatchFile() { std::error_code ec; fs::remove(path, ec); }
+};
+} // namespace
 
 TEST_CASE("ignoreBOM test", "[file_operations]")
 {
@@ -242,6 +262,88 @@ TEST_CASE("Load batch file", "[fileOperations]")
 
   fs::remove(tempFileName + ".csv"); // Clean up the test files
   fs::remove(tempFileName + ".tsv"); // Clean up the test files
+}
+
+TEST_CASE("Batch loader preserves textual NaN and later fields",
+          "[fileOperations][batch_parser][m26]")
+{
+  TemporaryBatchFile file(".csv",
+    "sensor-A,1,nan,3\n"
+    "sensor-B,4,5,6\n");
+  DataLoader loader(file.path);
+  loader.startColumn(1).verbosity(0);
+
+  const Data loaded = loader.load_local();
+  REQUIRE(loaded.size() == 2);
+  REQUIRE(loaded.p_vec[0].size() == 3);
+  CHECK(loaded.p_vec[0][0] == 1.0);
+  CHECK(std::isnan(loaded.p_vec[0][1]));
+  CHECK(loaded.p_vec[0][2] == 3.0);
+  CHECK(loaded.p_vec[1] == std::vector<double>{4.0, 5.0, 6.0});
+
+  const Data metadata = loader.load_metadata();
+  CHECK(metadata.series_flat_size(0) == loaded.p_vec[0].size());
+  CHECK(metadata.series_flat_size(1) == loaded.p_vec[1].size());
+}
+
+TEST_CASE("Batch loader rejects malformed and unapproved non-finite fields",
+          "[fileOperations][batch_parser][m26]")
+{
+  const std::vector<std::string> bad_tokens = {
+    "oops", "1x", "", "inf", "-inf", "infinity", "nan(payload)", "+nan"
+  };
+  for (const auto &token : bad_tokens) {
+    DYNAMIC_SECTION("token='" << token << "'") {
+      TemporaryBatchFile file(".csv", "id,1," + token + ",3\n");
+      DataLoader loader(file.path);
+      loader.startColumn(1).verbosity(0);
+      REQUIRE_THROWS_WITH(loader.load_local(),
+        ContainsSubstring("row 1, column 3"));
+      REQUIRE_THROWS_WITH(loader.load_metadata(),
+        ContainsSubstring("row 1, column 3"));
+    }
+  }
+}
+
+TEST_CASE("Batch loader uses exact delimiters and arbitrary skipped fields",
+          "[fileOperations][batch_parser][m26]")
+{
+  TemporaryBatchFile valid(".tsv",
+    "sensor A\tquality=good\t+1\t-2.5\t1e3\n");
+  DataLoader loader(valid.path);
+  loader.startColumn(2).verbosity(0);
+  const Data loaded = loader.load_local();
+  REQUIRE(loaded.p_vec.size() == 1);
+  CHECK(loaded.p_vec[0] == std::vector<double>{1.0, -2.5, 1000.0});
+  CHECK(loader.load_metadata().series_flat_size(0) == 3);
+
+  TemporaryBatchFile empty_field(".tsv", "id\t1\t\t3\n");
+  DataLoader invalid(empty_field.path);
+  invalid.startColumn(1).verbosity(0);
+  REQUIRE_THROWS_WITH(invalid.load_local(),
+    ContainsSubstring("row 1, column 3"));
+}
+
+TEST_CASE("Folder-series reader shares the strict NaN parser",
+          "[fileOperations][batch_parser][m26]")
+{
+  TemporaryBatchFile file(".csv",
+    "sample-A,1\n"
+    "sample-B,nan\n"
+    "sample-C,3\n");
+  const auto values = readFile<double>(file.path, 0, 1, ',');
+  REQUIRE(values.size() == 3);
+  CHECK(values[0] == 1.0);
+  CHECK(std::isnan(values[1]));
+  CHECK(values[2] == 3.0);
+
+  TemporaryBatchFile invalid(".csv", "sample-A,1\nsample-B,1x\n");
+  REQUIRE_THROWS_WITH(readFile<double>(invalid.path, 0, 1, ','),
+    ContainsSubstring("row 2, column 2"));
+
+  TemporaryBatchFile invalid_first(".csv", "sample-A,1x\n");
+  REQUIRE_THROWS_WITH(readFile<double>(invalid_first.path, 0, 1, ','),
+    ContainsSubstring("row 1, column 2"));
 }
 
 TEST_CASE("readFile throws on missing file", "[fileOperations]")
