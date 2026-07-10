@@ -5,7 +5,7 @@
  * Verifies:
  *  - Round-trip: save then load produces identical distance matrix
  *  - Partial checkpoint: only some pairs computed
- *  - Metadata round-trips correctly
+ *  - V2 manifest metadata is published correctly
  *  - Missing directory is created automatically
  *  - Dimension mismatch is detected
  *  - Missing checkpoint returns false
@@ -68,6 +68,19 @@ void cleanup_dir(const std::string &dir)
     fs::remove_all(dir);
 }
 
+/// Resolve the immutable payload selected by the strict CURRENT file.
+fs::path active_checkpoint_payload(const std::string &dir)
+{
+  const fs::path root(dir);
+  std::ifstream current(root / "CURRENT", std::ios::binary);
+  REQUIRE(current.good());
+  std::string generation;
+  REQUIRE(static_cast<bool>(std::getline(current, generation)));
+  REQUIRE(generation.size() == 64);
+  REQUIRE(current.peek() == std::char_traits<char>::eof());
+  return root / "generations" / generation;
+}
+
 } // anonymous namespace
 
 
@@ -87,8 +100,9 @@ TEST_CASE("Checkpoint round-trip preserves full distance matrix", "[checkpoint]"
   REQUIRE_NOTHROW(save_checkpoint(prob, ckpt_dir));
 
   // Verify files exist
-  REQUIRE(fs::exists(fs::path(ckpt_dir) / "distances.csv"));
-  REQUIRE(fs::exists(fs::path(ckpt_dir) / "metadata.txt"));
+  const fs::path payload = active_checkpoint_payload(ckpt_dir);
+  REQUIRE(fs::exists(payload / "distances.csv"));
+  REQUIRE(fs::exists(payload / "metadata.txt"));
 
   // Load into a fresh problem with same data
   auto prob2 = make_problem(N);
@@ -159,21 +173,23 @@ TEST_CASE("Checkpoint metadata file contains expected fields", "[checkpoint]")
   auto ckpt_dir = make_temp_dir("metadata");
   save_checkpoint(prob, ckpt_dir);
 
-  // Read metadata file and verify contents
+  // Read the active v2 manifest and verify its canonical fields.
   std::string content;
   {
-    std::ifstream meta_file(fs::path(ckpt_dir) / "metadata.txt");
+    std::ifstream meta_file(active_checkpoint_payload(ckpt_dir) / "metadata.txt");
     REQUIRE(meta_file.good());
     content.assign((std::istreambuf_iterator<char>(meta_file)),
                     std::istreambuf_iterator<char>());
   } // meta_file closed here
 
-  // Check key fields are present
+  // Check identity/integrity fields as well as the logical payload shape.
+  REQUIRE(content.find("format=dtwc-dense-checkpoint\n") != std::string::npos);
+  REQUIRE(content.find("version=2\n") != std::string::npos);
   REQUIRE(content.find("n=5") != std::string::npos);
-  REQUIRE(content.find("band=") != std::string::npos);
-  REQUIRE(content.find("variant=Standard") != std::string::npos);
   REQUIRE(content.find("pairs_computed=") != std::string::npos);
   REQUIRE(content.find("timestamp=") != std::string::npos);
+  REQUIRE(content.find("identity_sha256=") != std::string::npos);
+  REQUIRE(content.find("payload_sha256=") != std::string::npos);
 
   // pairs_computed = N*(N+1)/2 = 15 (packed triangular, all computed)
   REQUIRE(content.find("pairs_computed=15") != std::string::npos);
@@ -199,8 +215,9 @@ TEST_CASE("save_checkpoint creates directory if it does not exist", "[checkpoint
 
   REQUIRE_NOTHROW(save_checkpoint(prob, ckpt_dir));
   REQUIRE(fs::exists(ckpt_dir));
-  REQUIRE(fs::exists(fs::path(ckpt_dir) / "distances.csv"));
-  REQUIRE(fs::exists(fs::path(ckpt_dir) / "metadata.txt"));
+  const fs::path payload = active_checkpoint_payload(ckpt_dir);
+  REQUIRE(fs::exists(payload / "distances.csv"));
+  REQUIRE(fs::exists(payload / "metadata.txt"));
 
   cleanup_dir(ckpt_dir);
 }

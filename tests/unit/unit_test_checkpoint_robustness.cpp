@@ -737,6 +737,53 @@ TEST_CASE("dense checkpoint metadata parsing is strict and transactional",
   }
 }
 
+TEST_CASE("dense checkpoint CURRENT selection is strict and transactional",
+          "[checkpoint][current][integrity][transaction][m49]")
+{
+  ScratchDirectory scratch{"dtwc_m49_current"};
+  const fs::path checkpoint = scratch.root / "source";
+  Problem source{"m49_current_source"};
+  source.set_data(make_f64_data());
+  install_full_source_cache(source);
+  save_without_noise(source, checkpoint);
+
+  const std::string valid = read_text(checkpoint / "CURRENT");
+  REQUIRE(valid.size() == 65);
+  REQUIRE(valid.back() == '\n');
+
+  std::string uppercase = valid;
+  uppercase.front() = 'A';
+  const std::vector<std::pair<std::string, std::string>> mutations{
+    {"empty selector", ""},
+    {"missing newline", valid.substr(0, valid.size() - 1)},
+    {"extra newline", valid + "\n"},
+    {"traversal token", "../" + std::string(61, 'a') + "\n"},
+    {"uppercase hex", uppercase},
+    {"non-hex token", std::string(64, 'g') + "\n"},
+    {"missing generation", std::string(64, '0') + "\n"}
+  };
+
+  for (std::size_t i = 0; i < mutations.size(); ++i) {
+    const fs::path mutated = scratch.root / ("mutation_" + std::to_string(i));
+    copy_tree(checkpoint, mutated);
+    write_text(mutated / "CURRENT", mutations[i].second);
+
+    Problem target{"m49_current_target"};
+    target.set_data(make_f64_data());
+    install_target_cache(target, 1700.0 + static_cast<double>(i));
+    require_rejected_unchanged(target, mutated, mutations[i].first);
+  }
+
+  const fs::path non_file = scratch.root / "current_directory";
+  copy_tree(checkpoint, non_file);
+  REQUIRE(fs::remove(non_file / "CURRENT"));
+  REQUIRE(fs::create_directory(non_file / "CURRENT"));
+  Problem target{"m49_current_non_file"};
+  target.set_data(make_f64_data());
+  install_target_cache(target, 1800.0);
+  require_rejected_unchanged(target, non_file, "CURRENT is not a regular file");
+}
+
 TEST_CASE("dense checkpoint CSV parsing is exact and transactional",
           "[checkpoint][csv][transaction][m49]")
 {
