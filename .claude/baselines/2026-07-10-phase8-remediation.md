@@ -1797,3 +1797,41 @@ LF-only shell/slurm entrypoints: 11
 Verdict: **PASS.** Unsafe requests are rejected before effects at both public
 entry layers, the remote command is argv-quoted, transfer option ambiguity is
 closed twice, and accepted export bytes retain their exact value.
+
+## M30 — canonical `--missing-strategy` CLI reference
+
+The M28 closeout ran the documentation contract checker against the live
+HiGHS-enabled CLI and exposed one documentation-only mismatch. Generated pages
+were already current, but the hand-maintained canonical CLI flag set omitted the
+option added by M19. The exact retained red was:
+
+```text
+generated documentation is current
+AssertionError: CLI reference drift:
+  live but undocumented: ['--missing-strategy']
+  documented but not live: []
+```
+
+The canonical CLI DTW-options table now records `--missing-strategy`, canonical
+values `error`, `zero_cost`, `arow`, and `interpolate`, accepted aliases
+`zero-cost` and `zerocost`, and the live `error` default. The full TOML and YAML
+examples and their CLI-to-key table carry the same `missing-strategy` setting.
+The existing missing-data method guide was retained unchanged. No production
+code or drift-check arithmetic changed; `check_docs_contract.py` still compares
+the exact live and documented flag sets in both directions.
+
+Green commands and exact output:
+
+```powershell
+.venv/Scripts/python.exe scripts/generate_docs.py --check
+# generated documentation is current
+
+.venv/Scripts/python.exe scripts/check_docs_contract.py `
+  --cli build/highs-1151/bin/dtwc_cl.exe
+# generated documentation is current
+# documentation contract checks passed
+```
+
+Verdict: **PASS.** The canonical references describe the live missing-data
+option and configuration key, and the unchanged live-binary drift gate is exact
+and green.

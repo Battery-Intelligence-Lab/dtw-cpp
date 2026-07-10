@@ -66,6 +66,7 @@ and `tadpole`.
 | `-b, --band <int>` | Sakoe-Chiba band width (-1 = full DTW) | -1 |
 | `--metric <string>` | Pointwise distance metric | `l1` |
 | `--variant <string>` | DTW variant | `standard` |
+| `--missing-strategy <string>` | Missing-data strategy: `error`, `zero_cost`, `arow`, `interpolate` (aliases: `zero-cost`, `zerocost`) | `error` |
 
 Available metrics: `l1`, `squared_euclidean` (aliases: `sqeuclidean`, `l2sq`).
 

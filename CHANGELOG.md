@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Documented the live `--missing-strategy` values, aliases, default, and
+  TOML/YAML key in the canonical CLI and configuration references; the exact
+  live-binary flag drift gate now covers the option.
 - Hardened Python-to-SLURM clustering submissions with pre-side-effect job/path
   grammars, bounded positional validation, transfer option protection, and
   per-argument remote-shell quoting. Unsafe export bytes now fail locally,

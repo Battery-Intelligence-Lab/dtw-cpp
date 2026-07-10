@@ -56,6 +56,9 @@ metric = "l1"
 # DTW variant: "standard", "ddtw", "wdtw", "adtw", "softdtw"
 variant = "standard"
 
+# Missing-data strategy: "error", "zero_cost", "arow", "interpolate"
+missing-strategy = "error"
+
 # Maximum iterations for iterative algorithms.
 max-iter = 100
 
@@ -186,6 +189,9 @@ metric: l1
 # DTW variant: standard, ddtw, wdtw, adtw, softdtw
 variant: standard
 
+# Missing-data strategy: error, zero_cost, arow, interpolate
+missing-strategy: error
+
 # Maximum iterations for iterative algorithms.
 max-iter: 100
 
@@ -242,6 +248,7 @@ The following table maps CLI flags to configuration file keys. All keys use keba
 | `-b`, `--band` | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `--metric` | `metric` | string | `"l1"` | Distance metric: `l1`, `squared_euclidean` |
 | `--variant` | `variant` | string | `"standard"` | DTW variant: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` |
+| `--missing-strategy` | `missing-strategy` | string | `"error"` | Missing-data strategy: `error`, `zero_cost`, `arow`, `interpolate` (aliases: `zero-cost`, `zerocost`) |
 | `--max-iter` | `max-iter` | int | `100` | Maximum iterations |
 | `--n-init` | `n-init` | int | `1` | Number of random restarts |
 | `-v`, `--verbose` | `verbose` | bool | `false` | Verbose output |
