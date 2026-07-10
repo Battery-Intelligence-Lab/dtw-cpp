@@ -341,3 +341,42 @@ contract as `Env`: four explicit trim characters, ASCII decimal ordinals, and a
 C++ `int` maximum. Syntax failures are `DeviceError`; non-string inputs are
 `InvalidInput`; operational GPU failures remain loud and never change the
 stored global selection.
+
+## L2 — LR-core canonical derivation drift gate
+
+Registered band: a clean clone with the canonical derivation removed must fail
+the generator check. A clean clone with the source present must pass, and a
+source-only perturbation must name `docs/content/math/lr-core.md` as stale.
+
+The premise that the report was still gitignored was itself stale:
+
+```text
+git ls-files --error-unmatch .claude/reports/solver-math-2026-07-06.md
+  .claude/reports/solver-math-2026-07-06.md
+git check-ignore -v .claude/reports/solver-math-2026-07-06.md
+  no match
+```
+
+Nevertheless, the degradation was real. In an isolated clean clone, deleting
+that tracked file before the repair returned the false green:
+
+```text
+uv run --directory build/phase8-l2-red --no-sync \
+  python scripts/generate_docs.py --check
+  generated documentation is current
+```
+
+After promoting the byte-identical source to
+`docs/sources/lr-core-derivation.md` and making the read mandatory:
+
+```text
+source present: generated documentation is current
+source deleted: RuntimeError: missing canonical LR-core derivation source:
+                docs\sources\lr-core-derivation.md
+source perturbed: stale or missing generated documentation:
+                    docs\content\math\lr-core.md
+```
+
+Verdict: **PASS.** The gate cannot degrade to an existence-only check. The full
+derivation has a permanent documentation-owned source, missing-source output is
+actionable, and content changes require explicit regeneration.

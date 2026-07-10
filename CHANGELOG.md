@@ -30,6 +30,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Fixed Python device parsing to accept `gpu:N` with the same grammar as C++,
   preserve ordinals through CUDA and Metal resolution, and use the frozen typed
   errors without falling back to another backend.
+- Promoted the LR-core derivation into tracked documentation sources and made
+  generated-doc checks fail loudly if that canonical source is missing.
 
 # 2.0.0rc1 - 2026-07-10
 

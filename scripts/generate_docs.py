@@ -183,30 +183,35 @@ def generated_outputs() -> dict[Path, str]:
         body = body.replace("](develop/", "](")
         outputs[CONTENT / "contributing" / filename] = page(title, weight, body)
 
-    # One-time migration from the gitignored research ledger. In a clean clone,
-    # the tracked docs page is already authoritative and this source is absent.
-    report = ROOT / ".claude/reports/solver-math-2026-07-06.md"
-    if report.exists():
-        derivation = report.read_text(encoding="utf-8")
-        plan_text = (ROOT / "PLAN.md").read_text(encoding="utf-8")
-        outcome = re.search(
-            r"^## Phase 4 .*?(?=^## Phase 5 )",
-            plan_text,
-            flags=re.MULTILINE | re.DOTALL,
+    # The derivation is a required tracked documentation source.  Reading it
+    # unconditionally makes a missing source fail locally and in CI instead of
+    # silently reducing the drift check to output-file existence.
+    derivation_source = ROOT / "docs/sources/lr-core-derivation.md"
+    if not derivation_source.is_file():
+        raise RuntimeError(
+            "missing canonical LR-core derivation source: "
+            f"{derivation_source.relative_to(ROOT)}"
         )
-        if outcome is None:
-            raise RuntimeError("missing Phase 4 implementation outcome in PLAN.md")
-        outputs[CONTENT / "math/lr-core.md"] = page(
-            "LR-core exact solver derivation", 10,
-            """This is the complete, re-derivable solver investigation promoted
+    derivation = derivation_source.read_text(encoding="utf-8")
+    plan_text = (ROOT / "PLAN.md").read_text(encoding="utf-8")
+    outcome = re.search(
+        r"^## Phase 4 .*?(?=^## Phase 5 )",
+        plan_text,
+        flags=re.MULTILINE | re.DOTALL,
+    )
+    if outcome is None:
+        raise RuntimeError("missing Phase 4 implementation outcome in PLAN.md")
+    outputs[CONTENT / "math/lr-core.md"] = page(
+        "LR-core exact solver derivation", 10,
+        """This is the complete, re-derivable solver investigation promoted
 from the development report into permanent documentation. Confirmed results,
 registered prediction bands, and falsified claims are retained rather than
 rewritten after the implementation outcome.
 
 """ + derivation + "\n\n## Implementation outcome and registered-band verdicts\n\n"
-            + outcome.group(0).strip() + "\n",
-            "Full total-unimodularity, Lagrangian, and LR-core derivation.",
-        )
+        + outcome.group(0).strip() + "\n",
+        "Full total-unimodularity, Lagrangian, and LR-core derivation.",
+    )
     return outputs
 
 
@@ -224,12 +229,6 @@ def main() -> int:
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(expected, encoding="utf-8", newline="\n")
-
-    # If the original report no longer exists, the promoted full derivation is
-    # still a required tracked page.
-    math_page = CONTENT / "math/lr-core.md"
-    if not math_page.exists():
-        stale.append(str(math_page.relative_to(ROOT)))
 
     if stale:
         print("stale or missing generated documentation:", file=sys.stderr)

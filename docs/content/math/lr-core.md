@@ -212,7 +212,7 @@ Scripts: scratchpad `tu_verify.py`, `tu_verify2.py`, `tu_verify3.py` (numpy + sc
 
 ## Phase 4 — Solver upgrade: "LR-core" [FINAL — from solver-math report]
 
-Source: `.claude/reports/solver-math-2026-07-06.md` (full derivations; move to `docs/` in Phase 7 — `.claude/reports/` is gitignored). Math verdict, verified by independent re-derivation + enumeration:
+Source: `docs/sources/lr-core-derivation.md` (tracked canonical derivation; promoted from the research ledger). Math verdict, verified by independent re-derivation + enumeration:
 
 - p-median matrix TU for N≤2 only; the TU substructure that matters: **Cardinality+Linking rows are TU for ALL N** (Ghouila-Houri proof in report) ⇒ Lagrangian dual of assignment-dualized problem equals the LP bound (Geoffrion) **without forming the N²-column LP**. All hardness lives in the k-subset choice of y (N binaries); x is an O(Nk) scan once y is fixed.
 - FALSIFIED (registered bands, scipy/HiGHS vertex LPs + brute-force IP oracle): half-integrality of fractional vertices (§3.3); "LP integral 80–90%" as a polytope property — it is data-regime-dependent (clustered non-metric D: 250/250 integral; uniform D: 26% at N=20, max gap 13.7%). User's "almost unimodular" observation = his data lives in the integral regime.
