@@ -6,6 +6,12 @@ Platform: Windows, clang 21.1.8, Ninja, Release
 
 Scope: `dtwc::core::MmapDistanceMatrix` creation/publication and same-path races
 
+> Current-format note (Task 8.1-M53): this file records the historical M15
+> decision when v2 was current. Format v3 now preserves the same 64-byte header,
+> byte-52 publication state, and byte-64 packed-data offset, adds initial row
+> digests to the first durability barrier, and explicitly rejects every v2 file.
+> See `2026-07-10-mmap-payload-integrity.md` for current evidence.
+
 ## Registered failure before implementation
 
 The finding and tests were registered before editing production code. Both
