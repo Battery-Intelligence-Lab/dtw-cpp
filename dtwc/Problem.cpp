@@ -28,6 +28,7 @@
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
+#include "core/distance_semantics.hpp"      // validate_problem_distance_semantics
 #include "core/variant_validation.hpp"     // validate_variant_params
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
@@ -196,10 +197,10 @@ void Problem::print_distance_matrix() const
  */
 void Problem::refresh_distance_matrix()
 {
-  // Precision validation must precede cache release or mmap detachment. A raw
-  // f32-incompatible parameter edit is recoverable by correcting that edit;
-  // rejecting it must not destroy the last valid cache/callable state.
-  validate_active_precision_variant_params();
+  // Every known semantic error must precede cache release or mmap detachment.
+  // Raw public-field edits remain caller-owned and recoverable: correcting the
+  // edit exposes the last valid cache/callable state again.
+  preflight_current_distance_semantics();
   if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)) {
     // A semantic mutation (set_data/set_band/set_variant) must never keep a
     // mapped matrix whose computed bits describe the prior configuration.
@@ -263,7 +264,7 @@ void Problem::rebind_dtw_fn()
   // that also silently bound dtw_fn_f32_ to Standard DTW regardless of the
   // configured variant/missing strategy (fast_clara's chunked-Parquet path
   // hit this). Both f64 and f32 now share core::resolve_dtw_fn.
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   refresh_variant_caches();
   dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
   if (core::active_variant_params_representable_f32(variant_params))
@@ -278,8 +279,7 @@ void Problem::set_variant(core::DTWVariant v)
 {
   auto candidate = variant_params;
   candidate.variant = v;
-  core::validate_variant_params(candidate);
-  if (data.is_f32()) core::validate_active_variant_params_f32(candidate);
+  preflight_distance_semantics(candidate, missing_strategy, data);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -287,8 +287,7 @@ void Problem::set_variant(core::DTWVariant v)
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
-  core::validate_variant_params(params);
-  if (data.is_f32()) core::validate_active_variant_params_f32(params);
+  preflight_distance_semantics(params, missing_strategy, data);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -358,23 +357,31 @@ bool Problem::dense_cache_configuration_is_current() const
       && distance_cache_configuration_matches(dense_cache_configuration_);
 }
 
-void Problem::validate_float32_variant_params() const
+void Problem::preflight_distance_semantics(
+  const core::DTWVariantParams &params,
+  core::MissingStrategy missing,
+  const Data &candidate_data,
+  bool force_float32)
 {
-  // Raw public-field edits can bypass set_variant(). Preserve the canonical
-  // whole-object double-domain diagnostics before applying the additional
-  // active-field float32 contract.
-  core::validate_variant_params(variant_params);
-  core::validate_active_variant_params_f32(variant_params);
+  core::validate_problem_distance_semantics(
+    params, missing, candidate_data.ndim,
+    force_float32 || candidate_data.is_f32());
 }
 
-void Problem::validate_active_precision_variant_params() const
+void Problem::preflight_current_distance_semantics() const
 {
-  if (data.is_f32()) validate_float32_variant_params();
+  preflight_distance_semantics(variant_params, missing_strategy, data);
+}
+
+void Problem::preflight_float32_distance_semantics() const
+{
+  preflight_distance_semantics(
+    variant_params, missing_strategy, data, true);
 }
 
 const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
 {
-  validate_float32_variant_params();
+  preflight_float32_distance_semantics();
   if (!dtw_fn_f32_) {
     throw std::logic_error(
       "Problem: float32 DTW function is unavailable despite representable "
@@ -385,7 +392,7 @@ const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
 
 void Problem::ensure_dense_cache_configuration_current()
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
     return;
@@ -398,7 +405,7 @@ void Problem::ensure_dense_cache_configuration_current()
 
 void Problem::validate_dense_cache_configuration() const
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
     return;
@@ -411,7 +418,7 @@ void Problem::validate_dense_cache_configuration() const
 
 void Problem::ensure_dtw_function_configuration_current()
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   if (dense_cache_configuration_is_current()) return;
 
   // The fixed-size M25 snapshot records every input used when the dispatcher
@@ -424,7 +431,7 @@ void Problem::ensure_dtw_function_configuration_current()
 
 void Problem::validate_dtw_function_configuration() const
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   if (dense_cache_configuration_is_current()) return;
 
   throw std::runtime_error(
@@ -492,7 +499,7 @@ void Problem::clear_mmap_cache_identity()
 
 void Problem::validate_mmap_cache_identity() const
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
   if (!mmap_cache_identity_bound_) {
     throw std::runtime_error(
@@ -533,7 +540,7 @@ void Problem::validate_mmap_cache_identity() const
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
   // configuration mutation could label Standard-DTW writes with an ADTW (or
@@ -572,7 +579,7 @@ void Problem::use_mmap_distance_matrix(
  */
 double Problem::dist_by_ind(int i, int j)
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (i == j) return 0.0;
@@ -703,7 +710,7 @@ void Problem::fillDistanceMatrix_BruteForce()
  */
 void Problem::fill_distance_matrix()
 {
-  validate_active_precision_variant_params();
+  preflight_current_distance_semantics();
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;

@@ -15,8 +15,7 @@
 #include "dtw_cost.hpp"              // SpanAROWL1Cost
 #include "dtw_kernel.hpp"            // dtw_kernel_banded, AROWCell
 #include "dtw_options.hpp"           // DTWVariant, MissingStrategy
-#include "distance_semantics.hpp"    // validate_variant_missing_semantics
-#include "variant_validation.hpp"    // validate_variant_params
+#include "distance_semantics.hpp"    // validate_problem_distance_semantics
 #include "msm.hpp"                   // msm_distance
 #include "twe.hpp"                   // twe_distance
 #include "../error.hpp"              // InvalidInput
@@ -331,10 +330,9 @@ template <typename T>
 std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const Problem &p)
 {
-  validate_variant_params(p.variant_params);
-  validate_variant_missing_semantics(p.variant_params, p.missing_strategy);
-  if constexpr (std::is_same_v<T, float>)
-    validate_active_variant_params_f32(p.variant_params);
+  validate_problem_distance_semantics(
+    p.variant_params, p.missing_strategy, p.data.ndim,
+    std::is_same_v<T, float>);
 
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.

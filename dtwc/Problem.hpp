@@ -147,8 +147,13 @@ private:
   bool distance_cache_configuration_matches(
     const DistanceCacheConfiguration &expected) const;
   bool dense_cache_configuration_is_current() const;
-  void validate_float32_variant_params() const;
-  void validate_active_precision_variant_params() const;
+  static void preflight_distance_semantics(
+    const core::DTWVariantParams &params,
+    core::MissingStrategy missing,
+    const Data &candidate_data,
+    bool force_float32 = false);
+  void preflight_current_distance_semantics() const;
+  void preflight_float32_distance_semantics() const;
   const dtw_fn_f32_t &validated_dtw_function_f32() const;
   void ensure_dense_cache_configuration_current();
   void validate_dense_cache_configuration() const;
@@ -268,6 +273,7 @@ public:
   void set_method(Method m) { method = m; }
   void set_band(int b)
   {
+    preflight_current_distance_semantics();
     if (band == b) return;
     band = b;
     refresh_distance_matrix();
@@ -279,18 +285,21 @@ public:
   void set_random_seed(std::uint64_t seed) { random_seed = seed; }
   void set_missing_strategy(core::MissingStrategy strategy)
   {
+    preflight_distance_semantics(variant_params, strategy, data);
     if (missing_strategy == strategy) return;
     missing_strategy = strategy;
     refresh_distance_matrix();
   }
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
+    preflight_current_distance_semantics();
     if (distance_strategy == strategy) return;
     distance_strategy = strategy;
     refresh_distance_matrix();
   }
   void set_cuda_settings(CUDASettings settings)
   {
+    preflight_current_distance_semantics();
     if (cuda_settings.device_id == settings.device_id
         && cuda_settings.precision == settings.precision)
       return;
@@ -301,7 +310,7 @@ public:
   void set_data(dtwc::Data data_)
   {
     data_.validate_ndim();
-    if (data_.is_f32()) validate_float32_variant_params();
+    preflight_distance_semantics(variant_params, missing_strategy, data_);
     data = std::move(data_);
     refresh_distance_matrix();
   }
@@ -309,9 +318,9 @@ public:
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
   void set_view_data(dtwc::Data data_)
   {
-    if (data_.is_f32()) validate_float32_variant_params();
+    data_.validate_ndim();
+    preflight_distance_semantics(variant_params, missing_strategy, data_);
     data = std::move(data_);
-    // validate_ndim() already called by Data's view-mode constructor
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }
@@ -348,13 +357,13 @@ public:
   /// Float32 counterpart of dtw_function(), with the same semantic guard.
   const dtw_fn_f32_t &dtw_function_f32()
   {
-    validate_float32_variant_params();
+    preflight_float32_distance_semantics();
     ensure_dtw_function_configuration_current();
     return validated_dtw_function_f32();
   }
   const dtw_fn_f32_t &dtw_function_f32() const
   {
-    validate_float32_variant_params();
+    preflight_float32_distance_semantics();
     validate_dtw_function_configuration();
     return validated_dtw_function_f32();
   }
