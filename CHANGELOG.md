@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made every public non-distance enum selector fail closed. Invalid clustering
+  method, exact solver, hierarchical linkage, PAM variant, OneBatch weighting,
+  barycenter method, environment device, and assignment-matrix layout values
+  now raise typed errors before shortcuts, allocation, backend selection,
+  distance/table work, stats, or output mutation; every declared value remains
+  operational. Python's typed enum casters and MATLAB's string parsers retain
+  their existing surfaces while rejecting arbitrary numeric selector values.
 - Replaced unauthenticated dense CSV checkpoints with versioned immutable
   generations selected by an atomically replaced `CURRENT`. The strict v2
   manifest binds exact bit-round-trippable N-by-N CSV bytes to the full
