@@ -270,6 +270,20 @@ function test_invalid_cuda_precision_values_are_typed(testCase)
     end
 end
 
+function test_invalid_cuda_device_id_conversion_is_typed(testCase)
+%   M47: reject values with no defined C++ int conversion. Negative exact
+%   integers remain backend-policy inputs and are intentionally not covered.
+    invalid = {NaN, Inf, 1.5, double(intmax('int32')) + 1};
+    for i = 1:numel(invalid)
+        h = dtwc_mex('Problem_new', 'm47_cuda_device_id');
+        guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+        verifyError(testCase, ...
+            @() dtwc_mex('Problem_set_cuda_settings', h, invalid{i}, 0), ...
+            'dtwc:invalidArgument');
+        clear guard;
+    end
+end
+
 function test_unknown_problem_selector_tokens_remain_typed(testCase)
 %   Text parsers are an independent first boundary; M47 must not weaken their
 %   established invalidArgument behavior while hardening raw C++ enum values.

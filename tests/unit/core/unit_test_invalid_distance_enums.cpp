@@ -505,6 +505,15 @@ TEST_CASE("M47 rejects every invalid DTWVariant before dispatch or mutation",
       check_invalid_input("validate_variant_params", variant_error, [&] {
         core::validate_variant_params(params);
       });
+      const char *f32_error = core::active_variant_params_f32_error(params);
+      CHECK(f32_error != nullptr);
+      if (f32_error != nullptr)
+        CHECK(std::string_view(f32_error) == variant_error);
+      CHECK_FALSE(core::active_variant_params_representable_f32(params));
+      check_invalid_input("validate_active_variant_params_f32",
+                          variant_error, [&] {
+        core::validate_active_variant_params_f32(params);
+      });
       check_invalid_input("validate_variant_missing_semantics", variant_error, [&] {
         core::validate_variant_missing_semantics(
           invalid, core::MissingStrategy::Error);
