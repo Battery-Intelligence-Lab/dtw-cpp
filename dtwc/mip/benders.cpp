@@ -47,6 +47,45 @@
 
 namespace dtwc {
 
+namespace {
+
+/// Restore every caller-visible field temporarily changed by the Lloyd warm
+/// start. Copies are taken before any mutation; the destructor uses only scalar
+/// assignments and vector swaps, so restoration is safe during stack unwinding.
+class BendersWarmStartStateGuard {
+public:
+  explicit BendersWarmStartStateGuard(Problem &prob)
+    : prob_(prob),
+      method_(prob.method),
+      n_repetitions_(prob.N_repetition),
+      last_iterations_(prob.last_iterations),
+      centroids_(prob.centroids_ind),
+      clusters_(prob.clusters_ind)
+  {}
+
+  BendersWarmStartStateGuard(const BendersWarmStartStateGuard &) = delete;
+  BendersWarmStartStateGuard &operator=(const BendersWarmStartStateGuard &) = delete;
+
+  ~BendersWarmStartStateGuard() noexcept
+  {
+    prob_.method = method_;
+    prob_.N_repetition = n_repetitions_;
+    prob_.last_iterations = last_iterations_;
+    prob_.centroids_ind.swap(centroids_);
+    prob_.clusters_ind.swap(clusters_);
+  }
+
+private:
+  Problem &prob_;
+  Method method_;
+  int n_repetitions_;
+  int last_iterations_;
+  std::vector<int> centroids_;
+  std::vector<int> clusters_;
+};
+
+} // namespace
+
 void MIP_clustering_byBenders(Problem &prob)
 {
   (void)prob;
@@ -95,20 +134,15 @@ void MIP_clustering_byBenders(Problem &prob)
   double best_cost = std::numeric_limits<double>::max();
 
   if (prob.mip_settings.warm_start) {
-    auto saved_centroids = prob.centroids_ind;
-    auto saved_clusters = prob.clusters_ind;
-    auto saved_method = prob.method;
+    {
+      BendersWarmStartStateGuard restore_caller_state(prob);
+      prob.method = Method::Kmedoids;
+      prob.N_repetition = 1;
+      prob.cluster_by_kMedoidsLloyd();
 
-    prob.method = Method::Kmedoids;
-    prob.N_repetition = 1;
-    prob.cluster_by_kMedoidsLloyd();
-
-    best_medoids = prob.centroids_ind;
-    best_cost = prob.findTotalCost();
-
-    prob.centroids_ind = saved_centroids;
-    prob.clusters_ind = saved_clusters;
-    prob.method = saved_method;
+      best_medoids = prob.centroids_ind;
+      best_cost = prob.findTotalCost();
+    }
 
     std::cout << "Benders warm start: PAM cost = " << best_cost << "\n";
   }

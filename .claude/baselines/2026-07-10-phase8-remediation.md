@@ -1194,3 +1194,57 @@ job arguments remain unstaged for its own semantic commit.
 
 Verdict: **PASS.** Fresh Windows checkouts now preserve parseable LF entrypoints,
 and every current shell/SLURM script passes the same syntax gate.
+
+## M20 — exception-safe Benders warm-start state
+
+The M17 audit found that Benders runs a nested Lloyd solve after temporarily
+changing `Problem::method` and `Problem::N_repetition`. The old success cleanup
+restored method, medoids, and labels by assignment, but leaked the forced
+restart count and Lloyd's `last_iterations`; any exception skipped all cleanup
+and leaked the nested method, restart count, medoids, and labels as well.
+
+The regression snapshots every caller-visible configuration/data field and the
+fully materialized distance matrix before entering Benders. The success case
+uses non-default sentinels and permits only the intended final exact
+labels/medoids. The exception case points Lloyd's result writer at a unique
+nonexistent directory, so the failure occurs only after Lloyd has converged and
+mutated its working result. Before remediation, the focused gate failed exactly
+the six leaked-state checks:
+
+```text
+build/highs-1151/bin/unit_test_mip.exe "[state]" --reporter compact
+success: N_repetition 1 != 4; last_iterations 3 != 77
+throw:   method Kmedoids != MIP; N_repetition 1 != 5
+         labels {0,0,0,1,1,1,1,0} != the saved all-1 sentinel
+         medoids {1,4} != the saved {6,7} sentinel
+test cases: 2 | 0 passed | 2 failed
+assertions: 87 | 81 passed | 6 failed
+```
+
+`BendersWarmStartStateGuard` now copies every field the nested Lloyd operation
+can mutate before changing any of them. Its `noexcept` destructor restores the
+three scalar fields and swaps the saved vectors, so unwinding performs no
+allocation. The guard's scope ends before the exact Benders loop writes its
+final medoids and labels.
+
+Green evidence from rebuilt post-edit artifacts:
+
+```text
+build/highs-1151 (HiGHS 1.15.1 ON)
+  [state]:              87 assertions / 2 cases passed
+  full unit_test_mip:  142 assertions / 13 cases passed
+
+build/phase8-m13 (HiGHS/Gurobi OFF)
+  unit_test_mip target compiled and linked
+  [seed]:                9 assertions / 1 case passed
+```
+
+The successful state test additionally checks that Benders returns two valid
+medoids, one label per input, and a finite nonnegative final objective. The
+forced exception is matched to the expected result-file open failure, proving
+that restoration covers a real post-mutation unwind rather than an early
+synthetic throw.
+
+Verdict: **PASS.** Nested Lloyd configuration and working results no longer
+escape Benders on success or failure, and the final exact clustering result is
+preserved.

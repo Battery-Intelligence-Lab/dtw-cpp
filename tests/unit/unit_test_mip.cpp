@@ -16,10 +16,15 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <filesystem>
-#include <vector>
+#include <algorithm>
+#include <chrono>
 #include <cmath>
+#include <filesystem>
+#include <random>
 #include <stdexcept>
+#include <typeindex>
+#include <utility>
+#include <vector>
 
 /// Build a small Problem with N synthetic series of length L.
 static dtwc::Problem make_small_problem(int N, int L)
@@ -55,6 +60,146 @@ static dtwc::Problem make_seed_sensitive_problem()
   prob.set_data(dtwc::Data(std::move(series), std::move(names)));
   prob.set_n_clusters(3);
   return prob;
+}
+
+using ProblemInitializerFunction = void (*)(dtwc::Problem &);
+
+struct ProblemConfigurationSnapshot {
+  dtwc::Method method;
+  int max_iter;
+  int n_repetitions;
+  std::uint64_t random_seed;
+  int last_iterations;
+  int band;
+  double tadpole_dc;
+  dtwc::core::DTWVariantParams variant_params;
+  dtwc::core::MissingStrategy missing_strategy;
+  dtwc::DistanceMatrixStrategy distance_strategy;
+  dtwc::LowerBoundStrategy lb_strategy;
+  dtwc::core::StoragePolicy storage_policy;
+  dtwc::CUDASettings cuda_settings;
+  dtwc::MIPSettings mip_settings;
+  bool verbose;
+  std::type_index initializer_type;
+  bool initializer_is_function_pointer;
+  ProblemInitializerFunction initializer_function;
+  std::filesystem::path output_folder;
+  std::string name;
+  int n_clusters;
+  std::size_t data_size;
+  std::size_t data_ndim;
+  dtwc::core::Precision data_precision;
+  bool data_is_view;
+  bool data_is_metadata_only;
+  std::vector<std::vector<double>> series;
+  std::vector<std::vector<float>> series_f32;
+  std::vector<std::string> series_names;
+  std::size_t distance_matrix_index;
+  bool distance_matrix_filled;
+  std::vector<double> distances;
+};
+
+static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
+{
+  const auto *initializer = prob.init_fun.target<ProblemInitializerFunction>();
+  std::vector<double> distances;
+  distances.reserve(prob.size() * prob.size());
+  for (std::size_t i = 0; i < prob.size(); ++i)
+    for (std::size_t j = 0; j < prob.size(); ++j)
+      distances.push_back(prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)));
+
+  return {
+    prob.method,
+    prob.maxIter,
+    prob.N_repetition,
+    prob.random_seed,
+    prob.last_iterations,
+    prob.band,
+    prob.tadpole_dc,
+    prob.variant_params,
+    prob.missing_strategy,
+    prob.distance_strategy,
+    prob.lb_strategy,
+    prob.storage_policy,
+    prob.cuda_settings,
+    prob.mip_settings,
+    prob.verbose,
+    std::type_index(prob.init_fun.target_type()),
+    initializer != nullptr,
+    initializer == nullptr ? nullptr : *initializer,
+    prob.output_folder,
+    prob.name,
+    prob.n_clusters(),
+    prob.size(),
+    prob.data.ndim,
+    prob.data.precision,
+    prob.data.is_view(),
+    prob.data.is_metadata_only(),
+    prob.data.p_vec,
+    prob.data.p_vec_f32,
+    prob.data.p_names,
+    prob.distance_matrix().index(),
+    prob.is_distance_matrix_filled(),
+    std::move(distances)
+  };
+}
+
+static void check_configuration_unchanged(
+  dtwc::Problem &prob, const ProblemConfigurationSnapshot &before)
+{
+  CHECK(prob.method == before.method);
+  CHECK(prob.maxIter == before.max_iter);
+  CHECK(prob.N_repetition == before.n_repetitions);
+  CHECK(prob.random_seed == before.random_seed);
+  CHECK(prob.last_iterations == before.last_iterations);
+  CHECK(prob.band == before.band);
+  CHECK(prob.tadpole_dc == before.tadpole_dc);
+  CHECK(prob.variant_params.variant == before.variant_params.variant);
+  CHECK(prob.variant_params.wdtw_g == before.variant_params.wdtw_g);
+  CHECK(prob.variant_params.adtw_penalty == before.variant_params.adtw_penalty);
+  CHECK(prob.variant_params.sdtw_gamma == before.variant_params.sdtw_gamma);
+  CHECK(prob.variant_params.msm_c == before.variant_params.msm_c);
+  CHECK(prob.variant_params.twe_nu == before.variant_params.twe_nu);
+  CHECK(prob.variant_params.twe_lambda == before.variant_params.twe_lambda);
+  CHECK(prob.variant_params.mv_mode == before.variant_params.mv_mode);
+  CHECK(prob.missing_strategy == before.missing_strategy);
+  CHECK(prob.distance_strategy == before.distance_strategy);
+  CHECK(prob.lb_strategy == before.lb_strategy);
+  CHECK(prob.storage_policy == before.storage_policy);
+  CHECK(prob.cuda_settings.device_id == before.cuda_settings.device_id);
+  CHECK(prob.cuda_settings.precision == before.cuda_settings.precision);
+  CHECK(prob.mip_settings.mip_gap == before.mip_settings.mip_gap);
+  CHECK(prob.mip_settings.time_limit_sec == before.mip_settings.time_limit_sec);
+  CHECK(prob.mip_settings.warm_start == before.mip_settings.warm_start);
+  CHECK(prob.mip_settings.numeric_focus == before.mip_settings.numeric_focus);
+  CHECK(prob.mip_settings.mip_focus == before.mip_settings.mip_focus);
+  CHECK(prob.mip_settings.verbose_solver == before.mip_settings.verbose_solver);
+  CHECK(prob.mip_settings.max_benders_iter == before.mip_settings.max_benders_iter);
+  CHECK(prob.mip_settings.benders == before.mip_settings.benders);
+  CHECK(prob.verbose == before.verbose);
+  const auto *initializer = prob.init_fun.target<ProblemInitializerFunction>();
+  CHECK((std::type_index(prob.init_fun.target_type()) == before.initializer_type
+         && (initializer != nullptr) == before.initializer_is_function_pointer
+         && (initializer == nullptr || *initializer == before.initializer_function)));
+  CHECK(prob.output_folder == before.output_folder);
+  CHECK(prob.name == before.name);
+  CHECK(prob.n_clusters() == before.n_clusters);
+  CHECK((prob.size() == before.data_size
+         && prob.data.is_view() == before.data_is_view
+         && prob.data.is_metadata_only() == before.data_is_metadata_only));
+  CHECK(prob.data.ndim == before.data_ndim);
+  CHECK(prob.data.precision == before.data_precision);
+  CHECK((prob.data.p_vec == before.series && prob.data.p_vec_f32 == before.series_f32));
+  CHECK(prob.data.p_names == before.series_names);
+
+  std::vector<double> distances;
+  distances.reserve(prob.size() * prob.size());
+  for (std::size_t i = 0; i < prob.size(); ++i)
+    for (std::size_t j = 0; j < prob.size(); ++j)
+      distances.push_back(prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)));
+  CHECK((distances == before.distances
+         && prob.distance_matrix().index() == before.distance_matrix_index
+         && prob.is_distance_matrix_filled() == before.distance_matrix_filled));
 }
 
 TEST_CASE("MIPSettings: struct has correct defaults", "[mip]")
@@ -258,6 +403,101 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   REQUIRE(prob_benders.centroids_ind.size() == 3);
   const double cost_benders = prob_benders.findTotalCost();
   REQUIRE(std::abs(cost_direct - cost_benders) <= 1e-6 * std::max(1.0, std::abs(cost_direct)));
+}
+
+TEST_CASE("MIP Benders warm start preserves caller configuration on success",
+          "[mip][highs][benders][state]")
+{
+  const auto nonce = std::to_string(
+    std::chrono::steady_clock::now().time_since_epoch().count())
+    + "_" + std::to_string(std::random_device{}());
+  const auto tmp = std::filesystem::temp_directory_path()
+                 / ("dtwc_mip_benders_state_success_" + nonce);
+  std::filesystem::create_directories(tmp);
+
+  auto prob = make_small_problem(10, 16);
+  prob.output_folder = tmp;
+  prob.set_n_clusters(2);
+  prob.method = dtwc::Method::MIP;
+  prob.maxIter = 7;
+  prob.N_repetition = 4;
+  prob.random_seed = 1234;
+  prob.last_iterations = 77;
+  prob.tadpole_dc = 0.125;
+  prob.cuda_settings.device_id = 3;
+  prob.cuda_settings.precision = 2;
+  prob.mip_settings.benders = "on";
+  prob.mip_settings.warm_start = true;
+  prob.mip_settings.max_benders_iter = 50;
+  prob.mip_settings.numeric_focus = 3;
+  prob.mip_settings.mip_focus = 1;
+  prob.centroids_ind = {0, 1};
+  prob.clusters_ind.assign(prob.size(), 0);
+  prob.fill_distance_matrix();
+  const auto before = snapshot_configuration(prob);
+
+  prob.cluster();
+
+  check_configuration_unchanged(prob, before);
+  CHECK((prob.centroids_ind.size() == 2
+         && std::all_of(prob.centroids_ind.begin(), prob.centroids_ind.end(),
+                        [&prob](int medoid) {
+                          return medoid >= 0
+                                 && static_cast<std::size_t>(medoid) < prob.size();
+                        })));
+  CHECK((prob.clusters_ind.size() == prob.size()
+         && std::all_of(prob.clusters_ind.begin(), prob.clusters_ind.end(),
+                        [](int label) { return label >= 0 && label < 2; })));
+  const double final_cost = prob.find_total_cost();
+  CHECK((std::isfinite(final_cost) && final_cost >= 0.0));
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp, ec);
+}
+
+TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
+          "[mip][highs][benders][state]")
+{
+  const auto nonce = std::to_string(
+    std::chrono::steady_clock::now().time_since_epoch().count())
+    + "_" + std::to_string(std::random_device{}());
+  const auto tmp_root = std::filesystem::temp_directory_path()
+                      / ("dtwc_mip_benders_state_throw_" + nonce);
+  const auto missing_output = tmp_root / "missing";
+  std::error_code ec;
+  std::filesystem::remove_all(tmp_root, ec);
+
+  auto prob = make_small_problem(8, 12);
+  prob.output_folder = missing_output;
+  prob.set_n_clusters(2);
+  prob.method = dtwc::Method::MIP;
+  prob.N_repetition = 5;
+  prob.random_seed = 4321;
+  prob.last_iterations = 88;
+  prob.mip_settings.benders = "on";
+  prob.mip_settings.warm_start = true;
+  prob.centroids_ind = {6, 7};
+  prob.clusters_ind.assign(prob.size(), 1);
+  prob.fill_distance_matrix();
+  const auto before = snapshot_configuration(prob);
+  const auto labels_before = prob.clusters_ind;
+  const auto medoids_before = prob.centroids_ind;
+
+  bool threw = false;
+  try {
+    prob.cluster();
+  } catch (const std::runtime_error &error) {
+    threw = true;
+    CHECK(std::string(error.what()).find("Failed to open medoids output file:")
+          != std::string::npos);
+  }
+  REQUIRE(threw);
+
+  check_configuration_unchanged(prob, before);
+  CHECK(prob.clusters_ind == labels_before);
+  CHECK(prob.centroids_ind == medoids_before);
+
+  std::filesystem::remove_all(tmp_root, ec);
 }
 
 // ---------------------------------------------------------------------------

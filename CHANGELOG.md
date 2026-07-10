@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made Benders warm starts exception-safe: temporary Lloyd method, restart,
+  iteration, medoid, and label state is restored on both success and failure,
+  while the final exact Benders clustering result remains exposed to callers.
 - Enforced LF checkouts for every shell and SLURM entrypoint so documented Git
   Bash workflows remain parseable on Windows with `core.autocrlf=true`; all 11
   tracked scripts pass a repository-wide `bash -n` gate.
