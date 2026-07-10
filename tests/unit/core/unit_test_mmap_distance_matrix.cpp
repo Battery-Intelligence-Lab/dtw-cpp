@@ -707,6 +707,80 @@ TEST_CASE("MmapDistanceMatrix rejects a second live session without mutation",
   CHECK(read_file_bytes(tmp.path) == before);
 }
 
+TEST_CASE("MmapDistanceMatrix moves keep the session lease handle-tied",
+          "[MmapDistanceMatrix][mmap][integrity][lease][move][m53]")
+{
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x54u);
+
+  SECTION("move construction transfers the live lease") {
+    TempFile tmp;
+    {
+      MmapDistanceMatrix initial(tmp.path, 3, fingerprint);
+      initial.set(0, 2, 54.25);
+      initial.sync();
+    }
+
+    {
+      auto source = MmapDistanceMatrix::open(tmp.path, fingerprint);
+      MmapDistanceMatrix owner(std::move(source));
+      const OpenAttempt competing = try_open_and_read(
+        tmp.path, fingerprint, 0, 2);
+      INFO("post-move competing open: " << competing.error);
+      CHECK_FALSE(competing.returned);
+      CHECK(competing.error.find("exclusive session lease")
+            != std::string::npos);
+      CHECK(std::bit_cast<std::uint64_t>(owner.get(0, 2))
+            == std::bit_cast<std::uint64_t>(54.25));
+    }
+
+    const auto reopened = MmapDistanceMatrix::open(tmp.path, fingerprint);
+    CHECK(std::bit_cast<std::uint64_t>(reopened.get(0, 2))
+          == std::bit_cast<std::uint64_t>(54.25));
+  }
+
+  SECTION("move assignment releases the old lease and transfers the new one") {
+    TempFile source_file;
+    TempFile destination_file;
+    {
+      MmapDistanceMatrix initial(source_file.path, 3, fingerprint);
+      initial.set(0, 2, 64.25);
+      initial.sync();
+    }
+    {
+      MmapDistanceMatrix initial(destination_file.path, 3, fingerprint);
+      initial.set(0, 2, 74.25);
+      initial.sync();
+    }
+
+    {
+      auto source = MmapDistanceMatrix::open(source_file.path, fingerprint);
+      auto destination = MmapDistanceMatrix::open(
+        destination_file.path, fingerprint);
+      destination = std::move(source);
+
+      const OpenAttempt competing = try_open_and_read(
+        source_file.path, fingerprint, 0, 2);
+      INFO("post-assignment competing open: " << competing.error);
+      CHECK_FALSE(competing.returned);
+      CHECK(competing.error.find("exclusive session lease")
+            != std::string::npos);
+      CHECK(std::bit_cast<std::uint64_t>(destination.get(0, 2))
+            == std::bit_cast<std::uint64_t>(64.25));
+
+      const auto released = MmapDistanceMatrix::open(
+        destination_file.path, fingerprint);
+      CHECK(std::bit_cast<std::uint64_t>(released.get(0, 2))
+            == std::bit_cast<std::uint64_t>(74.25));
+    }
+
+    const auto reopened = MmapDistanceMatrix::open(
+      source_file.path, fingerprint);
+    CHECK(std::bit_cast<std::uint64_t>(reopened.get(0, 2))
+          == std::bit_cast<std::uint64_t>(64.25));
+  }
+}
+
 TEST_CASE("Mmap set path contains no full scan or blocking lock",
           "[MmapDistanceMatrix][mmap][integrity][source_guard][m53]")
 {
