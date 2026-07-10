@@ -18,6 +18,9 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <cmath>
+#include <array>
+#include <string>
+#include <type_traits>
 #include <vector>
 #include <limits>
 
@@ -26,9 +29,68 @@ using Catch::Matchers::WithinRel;
 
 using namespace dtwc;
 
+namespace {
+
+template <typename T>
+void check_softmin_gamma_rejects(T gamma)
+{
+  bool caught = false;
+  try {
+    (void)softmin_gamma(T(1), T(2), T(3), gamma);
+  } catch (const InvalidInput &error) {
+    caught = true;
+    CHECK(std::string(error.what())
+          == "Soft-DTW gamma must be finite and positive.");
+  } catch (const std::exception &error) {
+    FAIL("wrong exception type: " << error.what());
+  }
+  CHECK(caught);
+}
+
+} // namespace
+
 // ---------------------------------------------------------------------------
 // softmin_gamma tests
 // ---------------------------------------------------------------------------
+
+TEST_CASE("softmin_gamma enforces the public finite-positive gamma contract",
+          "[soft_dtw][softmin][variant-domain][m46]")
+{
+  const auto invalid = []<typename T> {
+    return std::array<T, 5>{
+      T(0),
+      T(-1),
+      std::numeric_limits<T>::quiet_NaN(),
+      std::numeric_limits<T>::infinity(),
+      -std::numeric_limits<T>::infinity(),
+    };
+  };
+
+  SECTION("float64 exact type and diagnostic")
+  {
+    for (const double gamma : invalid.template operator()<double>()) {
+      INFO("gamma=" << gamma);
+      check_softmin_gamma_rejects(gamma);
+    }
+  }
+
+  SECTION("float32 exact type and diagnostic")
+  {
+    for (const float gamma : invalid.template operator()<float>()) {
+      INFO("gamma=" << gamma);
+      check_softmin_gamma_rejects(gamma);
+    }
+  }
+
+  SECTION("minimum positive normal values remain valid")
+  {
+    const double gamma64 = std::numeric_limits<double>::min();
+    const float gamma32 = std::numeric_limits<float>::min();
+    REQUIRE_THAT(softmin_gamma(1.0, 2.0, 3.0, gamma64),
+                 WithinAbs(1.0, 0.0));
+    REQUIRE(softmin_gamma(1.0f, 2.0f, 3.0f, gamma32) == 1.0f);
+  }
+}
 
 TEST_CASE("softmin_gamma: three equal values", "[soft_dtw][softmin]")
 {
