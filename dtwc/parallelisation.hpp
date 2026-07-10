@@ -17,10 +17,13 @@
 #include "types/Range.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
+#include <exception>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -91,9 +94,29 @@ void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel 
 #ifdef _OPENMP
   if (isParallel) {
     const int chunk = omp_chunk_size(end);
+    // An exception may not leave an OpenMP structured block. Give each loop
+    // index its own preallocated slot, then rethrow the lowest-index failure on
+    // the caller thread after the implicit join. The atomic cutoff prevents
+    // useful work above the best known failing index while still allowing all
+    // lower indices to run, so scheduling cannot change which error wins.
+    std::vector<std::exception_ptr> failures(static_cast<size_t>(end));
+    std::atomic<int> earliest_failure{end};
 #pragma omp parallel for schedule(dynamic, chunk)
-    for (int i = 0; i < end; i++)
-      task_indv(static_cast<size_t>(i));
+    for (int i = 0; i < end; i++) {
+      if (i > earliest_failure.load(std::memory_order_acquire)) continue;
+      try {
+        task_indv(static_cast<size_t>(i));
+      } catch (...) {
+        failures[static_cast<size_t>(i)] = std::current_exception();
+        int observed = earliest_failure.load(std::memory_order_relaxed);
+        while (i < observed
+               && !earliest_failure.compare_exchange_weak(
+                 observed, i, std::memory_order_release,
+                 std::memory_order_relaxed)) {}
+      }
+    }
+    for (const auto &failure : failures)
+      if (failure) std::rethrow_exception(failure);
   } else {
     for (int i = 0; i < end; i++)
       task_indv(static_cast<size_t>(i));
