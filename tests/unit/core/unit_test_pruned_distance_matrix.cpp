@@ -681,6 +681,74 @@ TEST_CASE("Pruned pair blocks cover a non-divisible triangular range exactly",
   }
 }
 
+TEST_CASE("Pruned thresholds preserve exact matrices across thread counts",
+          "[pruned_distance_matrix][parallel][atomic][m44]")
+{
+  constexpr size_t N = 64;
+  constexpr int band = 2;
+  std::vector<std::vector<double>> series;
+  for (size_t i = 0; i < N; ++i) {
+    const double x = static_cast<double>(i);
+    series.push_back({x / 5.0, static_cast<double>((i * 11) % 17),
+                      7.0 - x / 9.0, static_cast<double>((i * i) % 23),
+                      x / 3.0, 2.0 + static_cast<double>(i % 5)});
+  }
+
+  struct Run {
+    std::vector<double> matrix;
+    dtwc::core::PruningStats stats;
+  };
+  auto compute = [&](int threads) {
+#ifdef _OPENMP
+    omp_set_num_threads(threads);
+#else
+    (void)threads;
+#endif
+    Run run{std::vector<double>(N * N, -1.0), {}};
+    run.stats = dtwc::core::compute_distance_matrix_pruned(
+      series, run.matrix.data(), band, dtwc::core::MetricType::L1);
+    return run;
+  };
+  auto require_stats_contract = [](const dtwc::core::PruningStats &stats) {
+    REQUIRE(stats.total_pairs == N * (N - 1) / 2);
+    REQUIRE(stats.computed_full_dtw + stats.pruned_by_lb_kim
+            + stats.pruned_by_lb_keogh == stats.total_pairs);
+    REQUIRE(stats.early_abandoned
+            <= stats.pruned_by_lb_kim + stats.pruned_by_lb_keogh);
+  };
+
+#ifdef _OPENMP
+  const int previous_threads = omp_get_max_threads();
+  const int previous_dynamic = omp_get_dynamic();
+  struct RestoreAtomicOpenMP {
+    int threads;
+    int dynamic;
+    ~RestoreAtomicOpenMP() { omp_set_dynamic(dynamic); omp_set_num_threads(threads); }
+  } restore{previous_threads, previous_dynamic};
+  omp_set_dynamic(0);
+#else
+  constexpr int previous_threads = 1;
+#endif
+
+  const Run serial = compute(1);
+  const Run two_threads = compute(2);
+  const Run max_threads = compute(std::max(1, previous_threads));
+  require_stats_contract(serial.stats);
+  require_stats_contract(two_threads.stats);
+  require_stats_contract(max_threads.stats);
+  REQUIRE(two_threads.matrix == serial.matrix);
+  REQUIRE(max_threads.matrix == serial.matrix);
+
+  for (size_t i = 0; i < N; ++i) {
+    REQUIRE(serial.matrix[i * N + i] == 0.0);
+    for (size_t j = i + 1; j < N; ++j) {
+      const double expected = dtwc::dtwBanded<double>(series[i], series[j], band);
+      REQUIRE(serial.matrix[i * N + j] == expected);
+      REQUIRE(serial.matrix[j * N + i] == expected);
+    }
+  }
+}
+
 
 // ======== Parallel Pruned + Strategy Integration Tests ========
 

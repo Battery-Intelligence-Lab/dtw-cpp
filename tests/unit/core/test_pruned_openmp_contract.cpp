@@ -38,3 +38,14 @@ TEST_CASE("Pruned matrix code uses the shared OpenMP exception boundary",
   REQUIRE(source.find("#pragma omp parallel") == std::string::npos);
   REQUIRE(source.find("run_openmp(") != std::string::npos);
 }
+
+TEST_CASE("Pruned nearest-neighbor thresholds use one standard atomic representation",
+          "[pruned_distance_matrix][openmp][atomic][m44]")
+{
+  const std::string source = read_pruned_source();
+
+  REQUIRE(source.find("std::vector<double> nn_dist") == std::string::npos);
+  REQUIRE(source.find("reinterpret_cast<volatile uint64_t") == std::string::npos);
+  REQUIRE(source.find("std::atomic<double>") != std::string::npos);
+  REQUIRE(source.find(".load(std::memory_order_relaxed)") != std::string::npos);
+}
