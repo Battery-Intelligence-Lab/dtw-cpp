@@ -261,6 +261,12 @@ data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t
         core::SpanMVNanAwareSquaredL2Cost<data_t>{xs, ys, ndim},
         core::StandardCell{}, early_abandon);
   }
+  if (metric == core::MetricType::L2) {
+    return core::dtw_kernel_linear<data_t>(
+        ns, nl,
+        core::SpanMVNanAwareL2Cost<data_t>{xs, ys, ndim},
+        core::StandardCell{}, early_abandon);
+  }
   return core::dtw_kernel_linear<data_t>(
       ns, nl,
       core::SpanMVNanAwareL1Cost<data_t>{xs, ys, ndim},
@@ -290,6 +296,12 @@ data_t dtwMissing_banded_mv(const data_t* x, size_t nx_steps, const data_t* y, s
     return core::dtw_kernel_banded<data_t>(
         ns, nl, band,
         core::SpanMVNanAwareSquaredL2Cost<data_t>{xs, ys, ndim},
+        core::StandardCell{}, early_abandon);
+  }
+  if (metric == core::MetricType::L2) {
+    return core::dtw_kernel_banded<data_t>(
+        ns, nl, band,
+        core::SpanMVNanAwareL2Cost<data_t>{xs, ys, ndim},
         core::StandardCell{}, early_abandon);
   }
   return core::dtw_kernel_banded<data_t>(

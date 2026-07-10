@@ -225,6 +225,25 @@ struct SpanMVNanAwareL1Cost {
   }
 };
 
+/// Multivariate NaN-aware L2: Euclidean norm over comparable channels.
+template <typename T>
+struct SpanMVNanAwareL2Cost {
+  const T* x;
+  const T* y;
+  std::size_t ndim;
+  T operator()(std::size_t row, std::size_t col) const noexcept {
+    const T* a = x + row * ndim;
+    const T* b = y + col * ndim;
+    T sum = T(0);
+    for (std::size_t d = 0; d < ndim; ++d) {
+      if (is_missing(a[d]) || is_missing(b[d])) continue;
+      const T diff = a[d] - b[d];
+      sum += diff * diff;
+    }
+    return std::sqrt(sum);
+  }
+};
+
 template <typename T>
 struct SpanMVNanAwareSquaredL2Cost {
   const T* x;
