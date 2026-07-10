@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made CUDA `KernelOverride` effective and observable across pairwise,
+  one-vs-N, and K-vs-N APIs. Implemented Wavefront and RegTile requests now
+  force those kernel families within their supported ranges; CUDA-only missing
+  families (`WavefrontGlobal` and `BandedRow`) and oversized RegTile requests
+  use Auto with an explicit fallback flag. Results report the actual kernel,
+  while no-work and fully-pruned calls report `none` without claiming fallback.
+  Invalid precision or override enums fail before device capability checks.
 - Made `Problem` distance-semantic rejection effect-free across C++, Python,
   and MATLAB. One ordered preflight now validates complete variant parameters,
   variant/missing compatibility, active float32 narrowing, and multivariate
