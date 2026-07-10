@@ -333,6 +333,8 @@ resolve_dtw_fn(const Problem &p)
 {
   validate_variant_params(p.variant_params);
   validate_variant_missing_semantics(p.variant_params, p.missing_strategy);
+  if constexpr (std::is_same_v<T, float>)
+    validate_active_variant_params_f32(p.variant_params);
 
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.

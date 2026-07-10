@@ -196,6 +196,10 @@ void Problem::print_distance_matrix() const
  */
 void Problem::refresh_distance_matrix()
 {
+  // Precision validation must precede cache release or mmap detachment. A raw
+  // f32-incompatible parameter edit is recoverable by correcting that edit;
+  // rejecting it must not destroy the last valid cache/callable state.
+  validate_active_precision_variant_params();
   if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)) {
     // A semantic mutation (set_data/set_band/set_variant) must never keep a
     // mapped matrix whose computed bits describe the prior configuration.
@@ -259,9 +263,13 @@ void Problem::rebind_dtw_fn()
   // that also silently bound dtw_fn_f32_ to Standard DTW regardless of the
   // configured variant/missing strategy (fast_clara's chunked-Parquet path
   // hit this). Both f64 and f32 now share core::resolve_dtw_fn.
+  validate_active_precision_variant_params();
   refresh_variant_caches();
-  dtw_fn_     = core::resolve_dtw_fn<data_t>(*this);
-  dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
+  dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
+  if (core::active_variant_params_representable_f32(variant_params))
+    dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
+  else
+    dtw_fn_f32_ = {};
   dense_cache_configuration_ = distance_cache_configuration(core::MetricType::L1);
   dense_cache_configuration_bound_ = true;
 }
@@ -271,6 +279,7 @@ void Problem::set_variant(core::DTWVariant v)
   auto candidate = variant_params;
   candidate.variant = v;
   core::validate_variant_params(candidate);
+  if (data.is_f32()) core::validate_active_variant_params_f32(candidate);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -279,6 +288,7 @@ void Problem::set_variant(core::DTWVariant v)
 void Problem::set_variant(core::DTWVariantParams params)
 {
   core::validate_variant_params(params);
+  if (data.is_f32()) core::validate_active_variant_params_f32(params);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -348,8 +358,34 @@ bool Problem::dense_cache_configuration_is_current() const
       && distance_cache_configuration_matches(dense_cache_configuration_);
 }
 
+void Problem::validate_float32_variant_params() const
+{
+  // Raw public-field edits can bypass set_variant(). Preserve the canonical
+  // whole-object double-domain diagnostics before applying the additional
+  // active-field float32 contract.
+  core::validate_variant_params(variant_params);
+  core::validate_active_variant_params_f32(variant_params);
+}
+
+void Problem::validate_active_precision_variant_params() const
+{
+  if (data.is_f32()) validate_float32_variant_params();
+}
+
+const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
+{
+  validate_float32_variant_params();
+  if (!dtw_fn_f32_) {
+    throw std::logic_error(
+      "Problem: float32 DTW function is unavailable despite representable "
+      "active variant parameters.");
+  }
+  return dtw_fn_f32_;
+}
+
 void Problem::ensure_dense_cache_configuration_current()
 {
+  validate_active_precision_variant_params();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
     return;
@@ -362,6 +398,7 @@ void Problem::ensure_dense_cache_configuration_current()
 
 void Problem::validate_dense_cache_configuration() const
 {
+  validate_active_precision_variant_params();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
     return;
@@ -374,6 +411,7 @@ void Problem::validate_dense_cache_configuration() const
 
 void Problem::ensure_dtw_function_configuration_current()
 {
+  validate_active_precision_variant_params();
   if (dense_cache_configuration_is_current()) return;
 
   // The fixed-size M25 snapshot records every input used when the dispatcher
@@ -386,6 +424,7 @@ void Problem::ensure_dtw_function_configuration_current()
 
 void Problem::validate_dtw_function_configuration() const
 {
+  validate_active_precision_variant_params();
   if (dense_cache_configuration_is_current()) return;
 
   throw std::runtime_error(
@@ -453,6 +492,7 @@ void Problem::clear_mmap_cache_identity()
 
 void Problem::validate_mmap_cache_identity() const
 {
+  validate_active_precision_variant_params();
   if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
   if (!mmap_cache_identity_bound_) {
     throw std::runtime_error(
@@ -493,6 +533,7 @@ void Problem::validate_mmap_cache_identity() const
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
+  validate_active_precision_variant_params();
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
   // configuration mutation could label Standard-DTW writes with an ADTW (or
@@ -531,6 +572,7 @@ void Problem::use_mmap_distance_matrix(
  */
 double Problem::dist_by_ind(int i, int j)
 {
+  validate_active_precision_variant_params();
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (i == j) return 0.0;
@@ -574,7 +616,7 @@ double Problem::dist_by_ind(int i, int j)
   }
 
   const double d = data.is_f32()
-    ? dtw_fn_f32_(data.series_f32(i), data.series_f32(j))
+    ? validated_dtw_function_f32()(data.series_f32(i), data.series_f32(j))
     : dtw_fn_(series(i), series(j));
   visit_distmat([&](auto &m) { m.set(i, j, d); });
   return d;
@@ -607,6 +649,9 @@ static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_stora
 void Problem::fillDistanceMatrix_BruteForce()
 {
   const size_t N = data.size();
+  const dtw_fn_f32_t *f32_function = data.is_f32()
+    ? &validated_dtw_function_f32()
+    : nullptr;
 
   // Resize (Dense only — mmap is pre-allocated at creation).
   visit_distmat([&](auto &m) {
@@ -631,7 +676,9 @@ void Problem::fillDistanceMatrix_BruteForce()
       for (size_t j = i + 1; j < N; ++j) {
         bool computed = visit_distmat([&](const auto &m) { return m.is_computed(i, j); });
         if (!computed)
-          visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_f32_(si, data.series_f32(j))); });
+          visit_distmat([&](auto &m) {
+            m.set(i, j, (*f32_function)(si, data.series_f32(j)));
+          });
       }
     } else {
       const auto si = series(i);
@@ -656,6 +703,7 @@ void Problem::fillDistanceMatrix_BruteForce()
  */
 void Problem::fill_distance_matrix()
 {
+  validate_active_precision_variant_params();
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;

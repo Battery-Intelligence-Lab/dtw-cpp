@@ -147,6 +147,9 @@ private:
   bool distance_cache_configuration_matches(
     const DistanceCacheConfiguration &expected) const;
   bool dense_cache_configuration_is_current() const;
+  void validate_float32_variant_params() const;
+  void validate_active_precision_variant_params() const;
+  const dtw_fn_f32_t &validated_dtw_function_f32() const;
   void ensure_dense_cache_configuration_current();
   void validate_dense_cache_configuration() const;
   void ensure_dtw_function_configuration_current();
@@ -298,6 +301,7 @@ public:
   void set_data(dtwc::Data data_)
   {
     data_.validate_ndim();
+    if (data_.is_f32()) validate_float32_variant_params();
     data = std::move(data_);
     refresh_distance_matrix();
   }
@@ -305,6 +309,7 @@ public:
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
   void set_view_data(dtwc::Data data_)
   {
+    if (data_.is_f32()) validate_float32_variant_params();
     data = std::move(data_);
     // validate_ndim() already called by Data's view-mode constructor
     refresh_distance_matrix();
@@ -343,13 +348,15 @@ public:
   /// Float32 counterpart of dtw_function(), with the same semantic guard.
   const dtw_fn_f32_t &dtw_function_f32()
   {
+    validate_float32_variant_params();
     ensure_dtw_function_configuration_current();
-    return dtw_fn_f32_;
+    return validated_dtw_function_f32();
   }
   const dtw_fn_f32_t &dtw_function_f32() const
   {
+    validate_float32_variant_params();
     validate_dtw_function_configuration();
-    return dtw_fn_f32_;
+    return validated_dtw_function_f32();
   }
 
   /// Read-only access to the WDTW weights cache (consumed by core::resolve_dtw_fn).
