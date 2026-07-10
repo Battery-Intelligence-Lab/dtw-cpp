@@ -99,24 +99,42 @@ struct NarrowingCase
   std::string_view message;
 };
 
-constexpr std::array<NarrowingCase, 6> narrowing_cases{{
+constexpr std::array<NarrowingCase, 12> narrowing_cases{{
+  {core::DTWVariant::WDTW,
+   +[](core::DTWVariantParams &p) { p.wdtw_g = std::numeric_limits<double>::min(); },
+   "WDTW g cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::WDTW,
    +[](core::DTWVariantParams &p) { p.wdtw_g = std::numeric_limits<double>::max(); },
    "WDTW g cannot be represented in float32 without becoming zero or non-finite."},
+  {core::DTWVariant::ADTW,
+   +[](core::DTWVariantParams &p) { p.adtw_penalty = std::numeric_limits<double>::min(); },
+   "ADTW penalty cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::ADTW,
    +[](core::DTWVariantParams &p) { p.adtw_penalty = std::numeric_limits<double>::max(); },
    "ADTW penalty cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::SoftDTW,
    +[](core::DTWVariantParams &p) { p.sdtw_gamma = std::numeric_limits<double>::min(); },
    "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite."},
+  {core::DTWVariant::SoftDTW,
+   +[](core::DTWVariantParams &p) { p.sdtw_gamma = std::numeric_limits<double>::max(); },
+   "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::MSM,
    +[](core::DTWVariantParams &p) { p.msm_c = std::numeric_limits<double>::min(); },
+   "MSM c cannot be represented in float32 without becoming zero or non-finite."},
+  {core::DTWVariant::MSM,
+   +[](core::DTWVariantParams &p) { p.msm_c = std::numeric_limits<double>::max(); },
    "MSM c cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::TWE,
    +[](core::DTWVariantParams &p) { p.twe_nu = std::numeric_limits<double>::min(); },
    "TWE nu cannot be represented in float32 without becoming zero or non-finite."},
   {core::DTWVariant::TWE,
+   +[](core::DTWVariantParams &p) { p.twe_nu = std::numeric_limits<double>::max(); },
+   "TWE nu cannot be represented in float32 without becoming zero or non-finite."},
+  {core::DTWVariant::TWE,
    +[](core::DTWVariantParams &p) { p.twe_lambda = std::numeric_limits<double>::min(); },
+   "TWE lambda cannot be represented in float32 without becoming zero or non-finite."},
+  {core::DTWVariant::TWE,
+   +[](core::DTWVariantParams &p) { p.twe_lambda = std::numeric_limits<double>::max(); },
    "TWE lambda cannot be represented in float32 without becoming zero or non-finite."},
 }};
 
