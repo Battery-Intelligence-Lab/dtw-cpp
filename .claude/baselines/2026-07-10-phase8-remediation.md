@@ -1985,3 +1985,61 @@ FastPAM and adversarial FastPAM suites.
 Verdict: **PASS.** Capped Lloyd results now expose one coherent final state;
 converged arithmetic, seed/restart schedules, k-means++ behavior, non-finite
 selection, artifact errors, and optional-dependency floors remain green.
+
+## M35 — explicit Python Tier-1 Lloyd seed
+
+The M23 full-suite closeout exposed a consecutive-call failure in Python's
+functional `dtwcpp.cluster(..., method="kmedoids")` route. An independent run
+against the editable environment reproduced two different results from the
+same process and data:
+
+```text
+first medoids:  [6, 1, 3]
+second medoids: [3, 6, 0]
+costs:          20, 20
+```
+
+That editable extension was stale: it did not expose `Problem.random_seed` or
+`set_random_seed`, so it predated M17's C++ seed dispatch. The competing claim
+that current C++ Lloyd remained globally random was therefore tested against
+the fresh M25-built extension (SHA-256
+`2ffafbdeaeac29d199c3888574d40c64fe6902410f183f120c4c06fa9d4f8269`) and
+**FALSIFIED**: before the Python edit it already returned `[6,1,3]`, cost 20,
+twice. This distinction prevents a stale binary from being misreported as new
+C++ arithmetic work.
+
+The Python route still had a real contract omission. Unlike PAM, OneBatchPAM,
+and CLARA, `_run_local_method` did not explicitly select the shared Tier-1
+seed. A fake-Problem dispatch test registered the source-level red:
+
+```text
+actual events:   [('cluster', None)]
+expected events: [('seed', 42), ('cluster', None)]
+```
+
+The repair calls `Problem.set_random_seed(DEFAULT_RANDOM_SEED)` only in the
+Tier-1 `kmedoids` branch, immediately before `Problem.cluster()`. It does not
+replace `init_fun`; explicit seeds and arbitrary callbacks remain owned by the
+advanced `Problem` API, and the one-argument initializers plus unseeded Tier-2
+FastPAM retain their deliberate mutable-global behavior. MIP, LR-core, TADPole,
+PAM, OneBatchPAM, CLARA, and hierarchical dispatch are unchanged.
+
+Two semantic regressions use the translated eight-waveform seed discriminator:
+one calls Tier-1 Lloyd consecutively, and one consumes the legacy Tier-2 engine
+between calls. Both return medoids `[6,1,3]`, identical labels, and cost 20. The
+dispatch spy mutation-pins the explicit seed before cluster and the existing
+MIP fake lacks a seed setter, proving the new call is kmedoids-only.
+
+Green evidence using the fresh core with the edited source `_api` loaded
+explicitly (avoiding the stale editable extension):
+
+```text
+tests/python/test_api.py:                                      49 passed
+contract + clustering semantics + CV + sklearn estimator:    221 passed
+test_tier1_cpp_api.exe "[lloyd]": 16 assertions / 4 cases passed
+py_compile _api.py + test_api.py:                              passed
+```
+
+Verdict: **PASS.** Python's functional Lloyd boundary states its seed contract
+explicitly, repeated and interleaved calls are reproducible, and no Tier-2,
+custom-initializer, explicit-seed, estimator, or other-method behavior changed.

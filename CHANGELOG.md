@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made Python Tier-1 Lloyd k-medoids explicitly select the shared
+  invocation-local seed 42 before clustering. Consecutive and legacy-Tier-2-
+  interleaved calls are reproducible; explicit advanced seeds, custom
+  initializers, the unseeded Tier-2 RNG contract, and other methods are unchanged.
 - Made iteration-capped Lloyd k-medoids return one coherent final state by
   assigning labels to the final medoids before calculating restart costs.
   Fully converged runs retain their existing assignment and iteration path.

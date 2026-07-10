@@ -327,6 +327,12 @@ def _run_local_method(prob, method, k, max_iter):
     elif method == "tadpole":
         prob.method = dtwcpp.Method.TADPole
     else:
+        # Tier-1 Lloyd owns an invocation-local default. Set it explicitly at
+        # this boundary so the standard initializer cannot inherit whatever
+        # state the deliberately mutable, unseeded Tier-2 engine last consumed.
+        # This does not replace init_fun, so custom Tier-2 callbacks retain
+        # their legacy invocation semantics.
+        prob.set_random_seed(dtwcpp.DEFAULT_RANDOM_SEED)
         prob.method = dtwcpp.Method.Kmedoids
     prob.cluster()
     return prob.clusters_ind, prob.centroids_ind, prob.find_total_cost()

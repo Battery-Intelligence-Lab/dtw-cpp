@@ -107,6 +107,24 @@ class TestClusterLocal:
         assert first.cost == second.cost == 20.0
         assert dtwcpp.Problem().random_seed == dtwcpp.DEFAULT_RANDOM_SEED
 
+    def test_default_lloyd_seed_isolated_from_legacy_tier2_rng(self):
+        series = _seed_sensitive_series()
+        names = [str(i) for i in range(len(series))]
+
+        before = dtwcpp.cluster(series, k=3, method="kmedoids")
+
+        # The unseeded Tier-2 FastPAM entry point deliberately retains its
+        # mutable-global RNG contract. Consuming it must not perturb Tier-1
+        # Lloyd's invocation-local default.
+        legacy_problem = dtwcpp.Problem("legacy_rng_consumer")
+        legacy_problem.set_data(series.tolist(), names)
+        dtwcpp.fast_pam(legacy_problem, 3)
+
+        after = dtwcpp.cluster(series, k=3, method="kmedoids")
+        np.testing.assert_array_equal(before.medoids, after.medoids)
+        np.testing.assert_array_equal(before.labels, after.labels)
+        assert before.cost == after.cost == 20.0
+
     def test_result_fields_populated(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
         assert res.device == "cpu"
@@ -473,15 +491,18 @@ class TestLocalDispatchBindingNames:
             def __init__(self):
                 self.method = None
                 self.nc = None
-                self.cluster_calls = 0
+                self.events = []
                 self.clusters_ind = [0, 0, 1]
                 self.centroids_ind = [0, 2]
 
             def set_n_clusters(self, k):
                 self.nc = k
 
+            def set_random_seed(self, seed):
+                self.events.append(("seed", seed))
+
             def cluster(self):
-                self.cluster_calls += 1
+                self.events.append(("cluster", None))
 
             def find_total_cost(self):
                 return 1.0
@@ -491,7 +512,10 @@ class TestLocalDispatchBindingNames:
             fake, "kmedoids", k=2, max_iter=100)
         assert fake.method == dtwcpp.Method.Kmedoids   # NOT MIP
         assert fake.nc == 2
-        assert fake.cluster_calls == 1
+        assert fake.events == [
+            ("seed", dtwcpp.DEFAULT_RANDOM_SEED),
+            ("cluster", None),
+        ]
         assert (labels, medoids, cost) == ([0, 0, 1], [0, 2], 1.0)
 
     def test_local_hierarchical_calls_build_then_cut(self, monkeypatch):
