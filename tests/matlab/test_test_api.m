@@ -7,9 +7,12 @@ function tests = test_test_api
 %   names as the C++ (tests/unit/test_test_api.cpp) and Python
 %   (tests/python/test_test_api.py) suites.
 %
-%   REGISTERED EXPECTATION (release MEX uses a validated OpenMP runtime):
-%     test_parallelisation -> available=true, pass=true, reason empty and
-%                             threads_engaged>=2 on the multicore release gate;
+%   REGISTERED EXPECTATIONS (both supported MEX build flavours):
+%     OpenMP MEX    -> available=true, pass=true, reason empty and
+%                      threads_engaged>=2 on the multicore release gate;
+%     sequential MEX -> available=false, pass=false and a non-empty reason
+%                       naming the explicit sequential build. The flavour-
+%                       specific test for the other build is skipped;
 %     test_gpu             -> available=false, validated=false, pass=false,
 %                             reason non-empty naming the missing GPU backend.
 %
@@ -47,7 +50,7 @@ function setup(testCase)
 end
 
 % =========================================================================
-%  parallelisation() — schema + honest serial answer
+%  parallelisation() — schema + separate OpenMP and sequential contracts
 % =========================================================================
 
 function test_parallelisation_schema(testCase)
@@ -65,20 +68,35 @@ end
 function test_parallelisation_runtime_engages(testCase)
 %TEST_PARALLELISATION_RUNTIME_ENGAGES Release MEX runs a real parallel region.
     r = dtwc_mex('test_parallelisation');
+    assumeTrue(testCase, r.available, ...
+        'OpenMP engagement applies only to an OpenMP-enabled MEX.');
     verifyTrue(testCase, r.available);
     verifyTrue(testCase, r.pass);
     verifyEmpty(testCase, r.reason);
     verifyGreaterThanOrEqual(testCase, r.threads_engaged, 2);
 end
 
+function test_parallelisation_serial_is_honest(testCase)
+%TEST_PARALLELISATION_SERIAL_IS_HONEST Explicit sequential MEX stays truthful.
+%   The serial escape-hatch build must never fake OpenMP availability. Its
+%   reason names the sequential build so users know how to restore parallelism.
+    r = dtwc_mex('test_parallelisation');
+    assumeFalse(testCase, r.available, ...
+        'Serial honesty applies only to the explicit sequential MEX.');
+    verifyFalse(testCase, r.available);
+    verifyFalse(testCase, r.pass);
+    verifyEqual(testCase, r.max_threads, 1);
+    verifyEqual(testCase, r.threads_engaged, 1);
+    verifyNotEmpty(testCase, r.reason);
+    verifyTrue(testCase, contains(lower(r.reason), 'sequential'));
+end
+
 function test_parallelisation_wrapper_matches_mex(testCase)
 %TEST_PARALLELISATION_WRAPPER_MATCHES_MEX Pins dtwc.test.parallelisation().
-    r = dtwc.test.parallelisation();
-    verifyTrue(testCase, isstruct(r));
-    verifyTrue(testCase, r.available);
-    verifyTrue(testCase, r.pass);
-    verifyEmpty(testCase, r.reason);
-    verifyGreaterThanOrEqual(testCase, r.threads_engaged, 2);
+    mexReport = dtwc_mex('test_parallelisation');
+    wrapperReport = dtwc.test.parallelisation();
+    verifyTrue(testCase, isstruct(wrapperReport));
+    verifyEqual(testCase, wrapperReport, mexReport);
 end
 
 % =========================================================================

@@ -636,3 +636,47 @@ decision is to factor one recurrence and adjoint framework behind explicit
 local-cost/value-derivative policies. Public `soft_dtw` remains L1; barycenter
 remains squared-cost. This avoids duplicated dynamic programming without a
 silent numerical API change.
+
+## L4 — separate MATLAB serial/OpenMP honesty gates
+
+Registered band: the OpenMP build must report available/pass, empty reason, and
+at least two engaged threads. The explicit sequential build must separately
+report unavailable/fail, one max/engaged thread, and a nonempty reason naming
+the sequential build. Each flavor skips only the opposite case, and the MATLAB
+wrapper must equal the raw MEX struct exactly.
+
+Red on the fresh sequential artifact before restoring the separate case:
+
+```text
+test_test_api.m: 5 passed, 2 failed
+OpenMP-only available/pass assertions rejected the truthful sequential report
+```
+
+Artifact provenance was established before any four-way run. A stale serial
+MEX that predated the version command was rejected and rebuilt. Final binaries:
+
+```text
+serial: build/mex-verify/bin/dtwc_mex.mexw64
+  Clang/Ninja, DTWC_ALLOW_SEQUENTIAL=ON, OpenMP discovery disabled
+  SHA256 93A49471292CAFC7D9BB5A89B4829E495A42623ECAFB3B75A3BA6D04E5B9AD60
+OpenMP: build/mex-verify-msvc/bin/dtwc_mex.mexw64
+  MSVC Release /openmp:experimental, imports VCOMP140.DLL
+  SHA256 595169152C9A0D4BC74061B371A90BCBB5300424D442DE150DA759C93A704E6D
+```
+
+Every command began with `restoredefaultpath`, added `bindings/matlab`, added
+the selected build directory last, cleared `dtwc_mex`, and printed `which` so
+only the intended artifact resolved. Results:
+
+```text
+R2024b serial:  7 passed, 0 failed, 1 OpenMP-case skip
+R2024b OpenMP:  7 passed, 0 failed, 1 serial-case skip
+R2025b serial:  7 passed, 0 failed, 1 OpenMP-case skip
+R2025b OpenMP:  7 passed, 0 failed, 1 serial-case skip
+serial report: available=0 pass=0 max=1 engaged=1 reason contains "sequential"
+OpenMP report: available=1 pass=1 max=24 engaged=24 reason empty
+```
+
+Verdict: **PASS.** Flavor assumptions isolate capability-specific assertions
+without converting an unsupported capability into a false pass. Exact wrapper
+struct equality prevents the MATLAB facade from embellishing the MEX truth.

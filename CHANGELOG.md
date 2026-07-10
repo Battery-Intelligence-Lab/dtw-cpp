@@ -49,6 +49,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Added a cross-implementation soft-DTW guard: public L1 and barycenter squared
   recurrences agree when their local cost matrices coincide, while a sensitivity
   assertion preserves their intentional public semantic difference.
+- Restored separate MATLAB assertions for honest sequential MEX reporting while
+  retaining the OpenMP engagement gate; both flavors are now tested explicitly.
 
 # 2.0.0rc1 - 2026-07-10
 
