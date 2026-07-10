@@ -232,7 +232,7 @@ classdef Problem < handle
 
         function set_lb_strategy(obj, s)
         %SET_LB_STRATEGY Set the lower-bound strategy for the pruned CPU path.
-        %   'auto' | 'none' | 'kim' | 'keogh' | 'kim_keogh'
+        %   'auto' | 'none' | 'kim' | 'keogh' | 'kim_keogh' | 'enhanced' | 'webb'
             dtwc_mex('Problem_set_lb_strategy', obj.Handle, char(s));
         end
 

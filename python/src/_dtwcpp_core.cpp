@@ -200,7 +200,9 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("None", dtwc::LowerBoundStrategy::None)
     .value("Kim", dtwc::LowerBoundStrategy::Kim)
     .value("Keogh", dtwc::LowerBoundStrategy::Keogh)
-    .value("KimKeogh", dtwc::LowerBoundStrategy::KimKeogh);
+    .value("KimKeogh", dtwc::LowerBoundStrategy::KimKeogh)
+    .value("Enhanced", dtwc::LowerBoundStrategy::Enhanced)
+    .value("Webb", dtwc::LowerBoundStrategy::Webb);
 
   // =========================================================================
   // CUDASettings
@@ -777,7 +779,8 @@ NB_MODULE(_dtwcpp_core, m) {
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
     .def_rw("lb_strategy", &dtwc::Problem::lb_strategy,
-            "Lower-bound selection for the Pruned CPU path (Auto/None/Kim/Keogh/KimKeogh).")
+            "Lower-bound selection for the Pruned CPU path "
+            "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
     .def_rw("storage_policy", &dtwc::Problem::storage_policy,
             "How series data is stored (Auto/Heap/Mmap).")
     .def_prop_rw("cuda_settings",

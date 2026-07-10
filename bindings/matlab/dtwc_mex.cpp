@@ -410,8 +410,10 @@ static dtwc::LowerBoundStrategy parse_lb_strategy(const std::string &s) {
   if (s == "kim") return dtwc::LowerBoundStrategy::Kim;
   if (s == "keogh") return dtwc::LowerBoundStrategy::Keogh;
   if (s == "kim_keogh" || s == "kimkeogh") return dtwc::LowerBoundStrategy::KimKeogh;
+  if (s == "enhanced") return dtwc::LowerBoundStrategy::Enhanced;
+  if (s == "webb") return dtwc::LowerBoundStrategy::Webb;
   throw std::invalid_argument("Unknown lb_strategy: '" + s + "'. "
-    "Valid: 'auto', 'none', 'kim', 'keogh', 'kim_keogh'.");
+    "Valid: 'auto', 'none', 'kim', 'keogh', 'kim_keogh', 'enhanced', 'webb'.");
 }
 
 /// Parse storage policy string -> enum (contract §2.1 set_storage_policy).
