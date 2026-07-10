@@ -176,6 +176,90 @@ function test_matlab_dispatch_rejects_variant_missing_cross_product(testCase)
         'dtwc:invalidArgument');
 end
 
+function test_rejected_missing_setter_preserves_complete_cache(testCase)
+%   M48: the whole-method setter must validate before clearing published work.
+    prob = m48_problem();
+    prob.set_variant('adtw', 2.0);
+    prob.set_distance_matrix([0 123; 123 0]);
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+
+    verifyError(testCase, @() prob.set_missing_strategy('zero_cost'), ...
+        'dtwc:invalidArgument');
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+end
+
+function test_rejected_missing_setter_preserves_exact_cache_values(testCase)
+    prob = m48_problem();
+    expected = [0 123; 123 0];
+    prob.set_variant('adtw', 2.0);
+    prob.set_distance_matrix(expected);
+
+    verifyError(testCase, @() prob.set_missing_strategy('zero_cost'), ...
+        'dtwc:invalidArgument');
+    % No selector getter exists in MATLAB. Restoring through the public method
+    % is a no-op only when the rejected candidate was never published.
+    prob.set_missing_strategy('error');
+    verifyEqual(testCase, prob.distance_matrix(), expected, 'AbsTol', 0);
+end
+
+function test_rejected_variant_setter_preserves_complete_cache(testCase)
+    prob = m48_problem();
+    prob.set_missing_strategy('zero_cost');
+    prob.set_distance_matrix([0 456; 456 0]);
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+
+    verifyError(testCase, @() prob.set_variant('adtw', 7.5), ...
+        'dtwc:invalidArgument');
+    verifyTrue(testCase, prob.is_distance_matrix_filled());
+end
+
+
+function test_rejected_variant_setter_preserves_exact_cache_values(testCase)
+    prob = m48_problem();
+    expected = [0 456; 456 0];
+    prob.set_missing_strategy('zero_cost');
+    prob.set_distance_matrix(expected);
+
+    verifyError(testCase, @() prob.set_variant('adtw', 7.5), ...
+        'dtwc:invalidArgument');
+    prob.set_variant('standard');
+    verifyEqual(testCase, prob.distance_matrix(), expected, 'AbsTol', 0);
+end
+
+function test_semantic_setter_noops_preserve_matlab_cache(testCase)
+    adtw = m48_problem();
+    adtw.set_variant('adtw', 2.0);
+    adtw.set_distance_matrix([0 321; 321 0]);
+    adtw.set_missing_strategy('error');
+    adtw.set_variant('adtw', 2.0);
+    verifyTrue(testCase, adtw.is_distance_matrix_filled());
+    verifyEqual(testCase, adtw.distance_matrix(), [0 321; 321 0], 'AbsTol', 0);
+
+    missing = m48_problem();
+    missing.set_missing_strategy('zero_cost');
+    missing.set_distance_matrix([0 654; 654 0]);
+    missing.set_variant('standard');
+    verifyTrue(testCase, missing.is_distance_matrix_filled());
+    verifyEqual(testCase, missing.distance_matrix(), [0 654; 654 0], 'AbsTol', 0);
+end
+
+function test_valid_semantic_setters_publish_and_invalidate_matlab_cache(testCase)
+    missing = m48_problem();
+    missing.set_distance_matrix([0 111; 111 0]);
+    missing.set_missing_strategy('zero_cost');
+    verifyFalse(testCase, missing.is_distance_matrix_filled());
+
+    variant = m48_problem();
+    variant.set_distance_matrix([0 222; 222 0]);
+    variant.set_variant('adtw', 2.0);
+    verifyFalse(testCase, variant.is_distance_matrix_filled());
+end
+
+function prob = m48_problem()
+    prob = dtwc.Problem('m48_matlab');
+    prob.set_data([0; 1]);
+end
+
 % -------------------------------------------------------------------------
 %  Matrix entry points: matrix_to_series path (set_data / distance matrix)
 % -------------------------------------------------------------------------
