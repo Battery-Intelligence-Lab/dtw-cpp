@@ -91,6 +91,35 @@ TEST_CASE("softmin_gamma enforces the public finite-positive gamma contract",
   }
 }
 
+TEST_CASE("minimum-positive gamma remains numerically defined across Soft-DTW",
+          "[soft_dtw][softmin][gradient][denorm][m46]")
+{
+  const auto check_precision = []<typename T> {
+    const T gamma = std::numeric_limits<T>::denorm_min();
+    REQUIRE(gamma > T(0));
+
+    const T expected_softmin = -gamma * std::log(T(3));
+    const T softmin = softmin_gamma(T(0), T(0), T(0), gamma);
+    CHECK(std::isfinite(softmin));
+    CHECK(softmin == expected_softmin);
+
+    const std::vector<T> x{T(0), T(0)};
+    const std::vector<T> y{T(0), T(0)};
+    const T value = soft_dtw<T>(x, y, gamma);
+    CHECK(std::isfinite(value));
+
+    const auto gradient = soft_dtw_gradient<T>(x, y, gamma);
+    REQUIRE(gradient.size() == x.size());
+    for (const T component : gradient) {
+      CHECK(std::isfinite(component));
+      CHECK(component == T(0));
+    }
+  };
+
+  SECTION("float64") { check_precision.template operator()<double>(); }
+  SECTION("float32") { check_precision.template operator()<float>(); }
+}
+
 TEST_CASE("softmin_gamma: three equal values", "[soft_dtw][softmin]")
 {
   // softmin(a, a, a, gamma) = a - gamma * log(3)
