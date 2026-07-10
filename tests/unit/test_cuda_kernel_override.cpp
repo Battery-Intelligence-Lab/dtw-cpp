@@ -19,7 +19,6 @@
 #else
 #define DTWC_HAS_CUDA_KERNEL_SELECTION_SEAM 0
 #endif
-
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
 #endif
@@ -202,4 +201,3 @@ TEST_CASE("M50 CUDA device discriminator requires a CUDA build",
 }
 
 #endif
-
