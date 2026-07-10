@@ -27,6 +27,8 @@
 
 #pragma once
 
+#include "../error.hpp"
+
 namespace dtwc {
 
 enum class LowerBoundStrategy {
@@ -38,5 +40,20 @@ enum class LowerBoundStrategy {
   Enhanced,
   Webb
 };
+
+inline void validate_lower_bound_strategy(LowerBoundStrategy value)
+{
+  switch (value) {
+  case LowerBoundStrategy::Auto:
+  case LowerBoundStrategy::None:
+  case LowerBoundStrategy::Kim:
+  case LowerBoundStrategy::Keogh:
+  case LowerBoundStrategy::KimKeogh:
+  case LowerBoundStrategy::Enhanced:
+  case LowerBoundStrategy::Webb:
+    return;
+  }
+  throw InvalidInput("Invalid LowerBoundStrategy value.");
+}
 
 } // namespace dtwc

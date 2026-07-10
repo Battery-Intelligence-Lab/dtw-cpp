@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include "../error.hpp"
+
 namespace dtwc {
 
 enum class KernelOverride {
@@ -23,5 +25,18 @@ enum class KernelOverride {
   BandedRow,        ///< Row-major banded kernel (Metal-only).
   RegTile           ///< Register-tile kernel (unbanded, max_L small).
 };
+
+inline void validate_kernel_override(KernelOverride value)
+{
+  switch (value) {
+  case KernelOverride::Auto:
+  case KernelOverride::Wavefront:
+  case KernelOverride::WavefrontGlobal:
+  case KernelOverride::BandedRow:
+  case KernelOverride::RegTile:
+    return;
+  }
+  throw InvalidInput("Invalid KernelOverride value.");
+}
 
 } // namespace dtwc

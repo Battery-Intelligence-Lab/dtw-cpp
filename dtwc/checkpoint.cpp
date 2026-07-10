@@ -9,6 +9,7 @@
 #include "checkpoint.hpp"
 #include "Problem.hpp"
 #include "core/matrix_io.hpp"
+#include "core/selector_validation.hpp"
 
 #include <chrono>
 #include <cstring>
@@ -55,7 +56,9 @@ std::string variant_to_string(core::DTWVariant v)
   case core::DTWVariant::SoftDTW: return "SoftDTW";
   case core::DTWVariant::MSM: return "MSM";
   case core::DTWVariant::TWE: return "TWE";
-  default: return "Unknown";
+  default:
+    core::validate_dtw_variant(v);
+    throw std::logic_error("variant_to_string: unreachable DTWVariant");
   }
 }
 
@@ -132,6 +135,9 @@ bool read_metadata(const fs::path &path, CheckpointMetadata &meta)
 
 void save_checkpoint(const Problem &prob, const std::string &path)
 {
+  // Validate the complete current configuration before creating any path.
+  // The const accessor crosses Problem's semantic/cache preflight boundary.
+  const auto &dm = prob.dense_distance_matrix();
   fs::path dir(path);
 
   // Create directory if it does not exist
@@ -140,7 +146,6 @@ void save_checkpoint(const Problem &prob, const std::string &path)
 
   // Checkpoint CSV save only works with DenseDistanceMatrix.
   // MmapDistanceMatrix is file-backed and doesn't need CSV checkpointing.
-  const auto &dm = prob.dense_distance_matrix();
   const size_t n = dm.size();
 
   // Write distance matrix CSV

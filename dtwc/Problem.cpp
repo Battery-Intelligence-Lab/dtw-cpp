@@ -279,7 +279,8 @@ void Problem::set_variant(core::DTWVariant v)
 {
   auto candidate = variant_params;
   candidate.variant = v;
-  preflight_distance_semantics(candidate, missing_strategy, data);
+  preflight_distance_semantics(
+    candidate, missing_strategy, data, distance_strategy, cuda_settings);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -287,7 +288,8 @@ void Problem::set_variant(core::DTWVariant v)
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
-  preflight_distance_semantics(params, missing_strategy, data);
+  preflight_distance_semantics(
+    params, missing_strategy, data, distance_strategy, cuda_settings);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -296,6 +298,7 @@ void Problem::set_variant(core::DTWVariantParams params)
 Problem::cache_fingerprint_t
 Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
 {
+  core::validate_metric_type(metric);
   FingerprintHash hash;
   static constexpr char domain[] = "dtwc-distance-cache-configuration-v1";
   hash.update(domain, sizeof(domain) - 1);
@@ -329,6 +332,7 @@ Problem::distance_cache_configuration_fingerprint(core::MetricType metric) const
 Problem::DistanceCacheConfiguration
 Problem::distance_cache_configuration(core::MetricType metric) const
 {
+  core::validate_metric_type(metric);
   return {
     metric,
     band,
@@ -361,8 +365,13 @@ void Problem::preflight_distance_semantics(
   const core::DTWVariantParams &params,
   core::MissingStrategy missing,
   const Data &candidate_data,
+  DistanceMatrixStrategy candidate_distance_strategy,
+  const CUDASettings &candidate_cuda_settings,
   bool force_float32)
 {
+  core::validate_precision(candidate_data.precision);
+  validate_distance_matrix_strategy(candidate_distance_strategy);
+  validate_cuda_settings_precision(candidate_cuda_settings.precision);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
@@ -370,13 +379,16 @@ void Problem::preflight_distance_semantics(
 
 void Problem::preflight_current_distance_semantics() const
 {
-  preflight_distance_semantics(variant_params, missing_strategy, data);
+  preflight_distance_semantics(
+    variant_params, missing_strategy, data,
+    distance_strategy, cuda_settings);
 }
 
 void Problem::preflight_float32_distance_semantics() const
 {
   preflight_distance_semantics(
-    variant_params, missing_strategy, data, true);
+    variant_params, missing_strategy, data,
+    distance_strategy, cuda_settings, true);
 }
 
 const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
@@ -443,6 +455,7 @@ void Problem::validate_dtw_function_configuration() const
 Problem::DistanceCacheIdentity
 Problem::distance_cache_identity(core::MetricType metric) const
 {
+  core::validate_metric_type(metric);
   if (data.is_metadata_only()) {
     throw std::runtime_error(
       "use_mmap_distance_matrix: cannot fingerprint metadata-only data; "
@@ -540,6 +553,7 @@ void Problem::validate_mmap_cache_identity() const
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
+  core::validate_metric_type(metric);
   preflight_current_distance_semantics();
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
@@ -711,6 +725,7 @@ void Problem::fillDistanceMatrix_BruteForce()
 void Problem::fill_distance_matrix()
 {
   preflight_current_distance_semantics();
+  validate_lower_bound_strategy(lb_strategy);
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;
@@ -887,9 +902,15 @@ void Problem::fill_distance_matrix()
       "Rebuild on macOS with -DDTWC_ENABLE_METAL=ON. No CPU fallback was attempted.");
 #endif
   case DistanceMatrixStrategy::BruteForce:
-  default:
     fillDistanceMatrix_BruteForce();
     break;
+  case DistanceMatrixStrategy::Auto:
+    throw std::logic_error(
+      "Problem::fill_distance_matrix: unresolved Auto strategy");
+  default:
+    validate_distance_matrix_strategy(effective);
+    throw std::logic_error(
+      "Problem::fill_distance_matrix: unreachable distance strategy");
   }
 
   if (verbose)

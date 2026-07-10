@@ -30,6 +30,7 @@
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "core/dtw_options.hpp"
+#include "core/selector_validation.hpp"
 
 #include <cmath>
 #include <cstddef>
@@ -102,6 +103,7 @@ data_t dtwMissing_L(const data_t* x, size_t nx, const data_t* y, size_t ny,
                     data_t early_abandon = -1,
                     core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
 
@@ -127,6 +129,7 @@ template <typename data_t>
 data_t dtwMissing(const data_t* x, size_t nx, const data_t* y, size_t ny,
                   core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
 
@@ -154,6 +157,7 @@ data_t dtwMissing_banded(const data_t* x, size_t nx, const data_t* y, size_t ny,
                          data_t early_abandon = -1,
                          core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   if (band < 0) return dtwMissing_L<data_t>(x, nx, y, ny, early_abandon, metric);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
@@ -245,6 +249,7 @@ data_t dtwMissing_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t
                        size_t ndim, data_t early_abandon = -1,
                        core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   if (ndim == 1) return dtwMissing_L<data_t>(x, nx_steps, y, ny_steps, early_abandon, metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx_steps == ny_steps) return 0;
@@ -281,6 +286,7 @@ data_t dtwMissing_banded_mv(const data_t* x, size_t nx_steps, const data_t* y, s
                             data_t early_abandon = -1,
                             core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   if (band < 0) return dtwMissing_L_mv<data_t>(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
   if (ndim == 1) return dtwMissing_banded<data_t>(x, nx_steps, y, ny_steps, band, early_abandon, metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();

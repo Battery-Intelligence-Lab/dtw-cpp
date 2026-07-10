@@ -15,6 +15,8 @@
 #include "msm.hpp"
 #include "twe.hpp"
 #include "variant_validation.hpp"
+#include "selector_validation.hpp"
+#include "distance_semantics.hpp"
 
 #include <span>
 
@@ -25,6 +27,10 @@ double dtw_runtime(const double* x, std::size_t nx,
                    const DTWOptions& opts)
 {
   validate_variant_params(opts.variant_params);
+  validate_variant_missing_semantics(
+    opts.variant_params, opts.missing_strategy);
+  validate_metric_type(opts.metric);
+  validate_constraint_type(opts.constraint);
   const int band = opts.band;
   const bool banded = (opts.constraint == ConstraintType::SakoeChibaBand) && (band >= 0);
 
@@ -92,10 +98,12 @@ double dtw_runtime(const double* x, std::size_t nx,
                                               opts.variant_params.twe_lambda);
 
     case DTWVariant::Standard:
-    default:
       return banded
         ? dtwBanded<double>(x, nx, y, ny, band, -1.0, opts.metric)
         : dtwFull_L<double>(x, nx, y, ny, -1.0, opts.metric);
+    default:
+      validate_dtw_variant(opts.variant_params.variant);
+      throw std::logic_error("dtw_runtime: unreachable DTWVariant");
   }
 }
 

@@ -16,6 +16,7 @@
 #include "DataLoader.hpp"     // for DataLoader
 #include "fileOperations.hpp" // for load_batch_file, readFile
 #include "settings.hpp"       // for data_t, resultsPath
+#include "error.hpp"          // for InvalidInput
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
@@ -53,6 +54,12 @@ struct CUDASettings {
   int precision = 0;
 };
 
+inline void validate_cuda_settings_precision(int value)
+{
+  if (value < 0 || value > 2)
+    throw InvalidInput("Invalid CUDA precision value.");
+}
+
 /// MIP solver tuning parameters.
 struct MIPSettings {
   double mip_gap = 1e-5;          ///< Relative MIP gap tolerance.
@@ -73,6 +80,19 @@ enum class DistanceMatrixStrategy {
   CUDA,       ///< NVIDIA CUDA GPU (requires DTWC_HAS_CUDA)
   Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
 };
+
+inline void validate_distance_matrix_strategy(DistanceMatrixStrategy value)
+{
+  switch (value) {
+  case DistanceMatrixStrategy::Auto:
+  case DistanceMatrixStrategy::BruteForce:
+  case DistanceMatrixStrategy::Pruned:
+  case DistanceMatrixStrategy::CUDA:
+  case DistanceMatrixStrategy::Metal:
+    return;
+  }
+  throw InvalidInput("Invalid DistanceMatrixStrategy value.");
+}
 
 /**
  * @class Problem
@@ -151,6 +171,8 @@ private:
     const core::DTWVariantParams &params,
     core::MissingStrategy missing,
     const Data &candidate_data,
+    DistanceMatrixStrategy candidate_distance_strategy,
+    const CUDASettings &candidate_cuda_settings,
     bool force_float32 = false);
   void preflight_current_distance_semantics() const;
   void preflight_float32_distance_semantics() const;
@@ -285,21 +307,38 @@ public:
   void set_random_seed(std::uint64_t seed) { random_seed = seed; }
   void set_missing_strategy(core::MissingStrategy strategy)
   {
-    preflight_distance_semantics(variant_params, strategy, data);
+    preflight_distance_semantics(
+      variant_params, strategy, data, distance_strategy, cuda_settings);
     if (missing_strategy == strategy) return;
     missing_strategy = strategy;
     refresh_distance_matrix();
   }
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
-    preflight_current_distance_semantics();
+    preflight_distance_semantics(
+      variant_params, missing_strategy, data, strategy, cuda_settings);
     if (distance_strategy == strategy) return;
     distance_strategy = strategy;
     refresh_distance_matrix();
   }
+  void set_lb_strategy(LowerBoundStrategy strategy)
+  {
+    validate_lower_bound_strategy(strategy);
+    if (lb_strategy == strategy) return;
+    // Lower bounds are exact optimization hints and do not change distances.
+    lb_strategy = strategy;
+  }
+  void set_storage_policy(core::StoragePolicy policy)
+  {
+    core::validate_storage_policy(policy);
+    if (storage_policy == policy) return;
+    // Advisory compatibility field only. DataLoader owns actual data routing.
+    storage_policy = policy;
+  }
   void set_cuda_settings(CUDASettings settings)
   {
-    preflight_current_distance_semantics();
+    preflight_distance_semantics(
+      variant_params, missing_strategy, data, distance_strategy, settings);
     if (cuda_settings.device_id == settings.device_id
         && cuda_settings.precision == settings.precision)
       return;
@@ -309,8 +348,11 @@ public:
 
   void set_data(dtwc::Data data_)
   {
+    core::validate_precision(data_.precision);
     data_.validate_ndim();
-    preflight_distance_semantics(variant_params, missing_strategy, data_);
+    preflight_distance_semantics(
+      variant_params, missing_strategy, data_,
+      distance_strategy, cuda_settings);
     data = std::move(data_);
     refresh_distance_matrix();
   }
@@ -318,8 +360,11 @@ public:
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
   void set_view_data(dtwc::Data data_)
   {
+    core::validate_precision(data_.precision);
     data_.validate_ndim();
-    preflight_distance_semantics(variant_params, missing_strategy, data_);
+    preflight_distance_semantics(
+      variant_params, missing_strategy, data_,
+      distance_strategy, cuda_settings);
     data = std::move(data_);
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N

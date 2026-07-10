@@ -199,6 +199,7 @@ public:
   //!< Set the storage routing policy (Auto/Heap/Mmap) used by load_stored().
   DataLoader &storage_policy(core::StoragePolicy p)
   {
+    core::validate_storage_policy(p);
     storage_policy_ = p;
     return *this;
   }
@@ -272,6 +273,7 @@ public:
    */
   LoadedData load_stored()
   {
+    core::validate_storage_policy(storage_policy_);
     LoadedData out;
     if (dtwc::env().device() == dtwc::Device::HPC) {
       out.data = load_metadata();

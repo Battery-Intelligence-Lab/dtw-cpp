@@ -37,6 +37,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
       int band = settings::DEFAULT_BAND,
       core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   return dtwBanded<T>(x, y, band, static_cast<T>(-1), metric);
 }
 
@@ -45,6 +46,7 @@ T ddtw(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   return ddtwBanded<T>(x, y, band, metric);
 }
 
@@ -76,6 +78,7 @@ T missing(std::span<const T> x, std::span<const T> y,
           int band = settings::DEFAULT_BAND,
           core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   return dtwMissing_banded<T>(x, y, band, static_cast<T>(-1), metric);
 }
 
@@ -84,6 +87,7 @@ T arow(std::span<const T> x, std::span<const T> y,
        int band = settings::DEFAULT_BAND,
        core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   return dtwAROW_banded<T>(x, y, band, metric);
 }
 
@@ -96,6 +100,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
 {
   core::validate_variant_params(params);
   core::validate_variant_missing_semantics(params, missing_strategy);
+  core::validate_metric_type(metric);
   switch (missing_strategy) {
   case core::MissingStrategy::ZeroCost:
     return missing<T>(x, y, band, metric);
@@ -110,8 +115,10 @@ T dtw(std::span<const T> x, std::span<const T> y,
   }
 
   case core::MissingStrategy::Error:
-  default:
     break;
+  default:
+    core::validate_missing_strategy(missing_strategy);
+    throw std::logic_error("distance::dtw: unreachable MissingStrategy");
   }
 
   switch (params.variant) {
@@ -129,8 +136,10 @@ T dtw(std::span<const T> x, std::span<const T> y,
     return core::twe_distance<T>(x, y, static_cast<T>(params.twe_nu),
                                  static_cast<T>(params.twe_lambda));
   case core::DTWVariant::Standard:
-  default:
     return dtw<T>(x, y, band, metric);
+  default:
+    core::validate_dtw_variant(params.variant);
+    throw std::logic_error("distance::dtw: unreachable DTWVariant");
   }
 }
 

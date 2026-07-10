@@ -15,6 +15,7 @@
 
 #include "pruned_distance_matrix.hpp"
 #include "lower_bound_impl.hpp"
+#include "selector_validation.hpp"
 #include "../warping.hpp"
 #include "../warping_adtw.hpp"
 #include "../settings.hpp"
@@ -52,6 +53,7 @@ static inline void atomic_min_double(std::atomic<double> &value, double candidat
 PruningStats fill_distance_matrix_pruned(
     dtwc::Problem &prob, int band, dtwc::LowerBoundStrategy lb_strat)
 {
+  dtwc::validate_lower_bound_strategy(lb_strat);
   // Pruned fill only operates on DenseDistanceMatrix (resize required). Keep
   // the low-level entry point typed/actionable; Problem::fill_distance_matrix
   // routes mapped storage through its exact generic fill instead.
@@ -105,10 +107,13 @@ PruningStats fill_distance_matrix_pruned(
       break;
     case dtwc::LowerBoundStrategy::KimKeogh:
     case dtwc::LowerBoundStrategy::Auto:
-    default:
       use_lb_kim_flag = true;
       use_lb_keogh_flag = true;
       break;
+    default:
+      dtwc::validate_lower_bound_strategy(lb_strat);
+      throw std::logic_error(
+        "fill_distance_matrix_pruned: unreachable lower-bound strategy");
   }
 
   // Step 1: Precompute summaries for LB_Kim (O(N * n)) — parallel
@@ -306,6 +311,7 @@ PruningStats compute_distance_matrix_pruned(
   int band,
   MetricType metric)
 {
+  validate_metric_type(metric);
   PruningStats stats;
   const size_t N = series.size();
   if (N <= 1) {

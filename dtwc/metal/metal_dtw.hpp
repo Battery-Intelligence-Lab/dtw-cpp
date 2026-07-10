@@ -25,6 +25,7 @@
 #ifdef DTWC_HAS_METAL
 
 #include "../enums/KernelOverride.hpp"
+#include "../error.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>
@@ -40,6 +41,17 @@ enum class MetalPrecision {
   FP32, ///< Single precision.
   FP64  ///< Not implemented yet — falls back to FP32 with a warning.
 };
+
+inline void validate_metal_precision(MetalPrecision value)
+{
+  switch (value) {
+  case MetalPrecision::Auto:
+  case MetalPrecision::FP32:
+  case MetalPrecision::FP64:
+    return;
+  }
+  throw InvalidInput("Invalid MetalPrecision value.");
+}
 
 struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   MetalPrecision precision = MetalPrecision::Auto;

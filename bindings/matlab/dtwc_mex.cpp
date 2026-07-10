@@ -238,6 +238,31 @@ static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
   return mxGetScalar(mx);
 }
 
+/// Decode the public CUDA precision selector without any out-of-range or
+/// non-integral floating-to-integer conversion.
+static int get_cuda_precision(const mxArray *mx) {
+  const double value = get_scalar(mx, "precision");
+  if (!std::isfinite(value) || std::floor(value) != value
+      || value < 0.0 || value > 2.0) {
+    throw dtwc::InvalidInput("Invalid CUDA precision value.");
+  }
+  return static_cast<int>(value);
+}
+
+static int get_exact_int(const mxArray *mx, const char *arg_name) {
+  const double value = get_scalar(mx, arg_name);
+  constexpr double int_min = static_cast<double>(
+    std::numeric_limits<int>::min());
+  constexpr double int_max = static_cast<double>(
+    std::numeric_limits<int>::max());
+  if (!std::isfinite(value) || std::floor(value) != value
+      || value < int_min || value > int_max) {
+    throw std::invalid_argument(
+      std::string(arg_name) + " must be a finite integer in the C++ int range.");
+  }
+  return static_cast<int>(value);
+}
+
 /// Decode a MATLAB double seed without invoking an out-of-range float-to-int
 /// conversion. MATLAB represents every integer exactly only through flintmax.
 static std::uint64_t get_random_seed(
@@ -776,14 +801,16 @@ static void cmd_Problem_set_lb_strategy(int nlhs, mxArray *plhs[], int nrhs, con
   if (nrhs < 3) throw std::invalid_argument("Problem_set_lb_strategy requires handle and strategy string.");
   require_char(prhs[2], "lb_strategy");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.lb_strategy = parse_lb_strategy(get_string(prhs[2]));
+  const auto candidate = parse_lb_strategy(get_string(prhs[2]));
+  prob.set_lb_strategy(candidate);
 }
 
 static void cmd_Problem_set_storage_policy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_storage_policy requires handle and policy string.");
   require_char(prhs[2], "storage_policy");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.storage_policy = parse_storage_policy(get_string(prhs[2]));
+  const auto candidate = parse_storage_policy(get_string(prhs[2]));
+  prob.set_storage_policy(candidate);
 }
 
 static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -842,8 +869,8 @@ static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, c
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   auto settings = prob.cuda_settings;
-  settings.device_id = static_cast<int>(get_scalar(prhs[2], "device_id"));
-  if (nrhs > 3) settings.precision = static_cast<int>(get_scalar(prhs[3], "precision"));
+  settings.device_id = get_exact_int(prhs[2], "device_id");
+  if (nrhs > 3) settings.precision = get_cuda_precision(prhs[3]);
   prob.set_cuda_settings(settings);
 }
 

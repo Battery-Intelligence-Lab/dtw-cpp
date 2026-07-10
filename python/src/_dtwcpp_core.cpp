@@ -211,8 +211,13 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::class_<dtwc::CUDASettings>(m, "CUDASettings")
     .def(nb::init<>())
     .def_rw("device_id", &dtwc::CUDASettings::device_id, "CUDA device index (default 0).")
-    .def_rw("precision", &dtwc::CUDASettings::precision,
-            "Compute precision: 0=Auto, 1=FP32, 2=FP64 (default 0).")
+    .def_prop_rw("precision",
+      [](const dtwc::CUDASettings &s) { return s.precision; },
+      [](dtwc::CUDASettings &s, int value) {
+        dtwc::validate_cuda_settings_precision(value);
+        s.precision = value;
+      },
+      "Compute precision: 0=Auto, 1=FP32, 2=FP64 (default 0).")
     .def("__repr__", [](const dtwc::CUDASettings &s) {
       return "CUDASettings(device_id=" + std::to_string(s.device_id)
              + ", precision=" + std::to_string(s.precision) + ")";
@@ -291,7 +296,12 @@ NB_MODULE(_dtwcpp_core, m) {
 
   nb::class_<dtwc::core::DTWVariantParams>(m, "DTWVariantParams")
     .def(nb::init<>())
-    .def_rw("variant", &dtwc::core::DTWVariantParams::variant)
+    .def_prop_rw("variant",
+      [](const dtwc::core::DTWVariantParams &p) { return p.variant; },
+      [](dtwc::core::DTWVariantParams &p, dtwc::core::DTWVariant value) {
+        dtwc::core::validate_dtw_variant(value);
+        p.variant = value;
+      })
     .def_prop_rw("wdtw_g",
       [](const dtwc::core::DTWVariantParams &p) { return p.wdtw_g; },
       [](dtwc::core::DTWVariantParams &p, double value) {
@@ -328,7 +338,12 @@ NB_MODULE(_dtwcpp_core, m) {
         dtwc::core::validate_twe_lambda(value);
         p.twe_lambda = value;
       })
-    .def_rw("mv_mode", &dtwc::core::DTWVariantParams::mv_mode);
+    .def_prop_rw("mv_mode",
+      [](const dtwc::core::DTWVariantParams &p) { return p.mv_mode; },
+      [](dtwc::core::DTWVariantParams &p, dtwc::core::MVMode value) {
+        dtwc::core::validate_mv_mode(value);
+        p.mv_mode = value;
+      });
 
   // =========================================================================
   // MIPSettings
@@ -778,11 +793,19 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_distance_strategy(value);
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
-    .def_rw("lb_strategy", &dtwc::Problem::lb_strategy,
-            "Lower-bound selection for the Pruned CPU path "
-            "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
-    .def_rw("storage_policy", &dtwc::Problem::storage_policy,
-            "How series data is stored (Auto/Heap/Mmap).")
+    .def_prop_rw("lb_strategy",
+                 [](const dtwc::Problem &p) { return p.lb_strategy; },
+                 [](dtwc::Problem &p, dtwc::LowerBoundStrategy value) {
+                   p.set_lb_strategy(value);
+                 },
+                 "Lower-bound selection for the Pruned CPU path "
+                 "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
+    .def_prop_rw("storage_policy",
+                 [](const dtwc::Problem &p) { return p.storage_policy; },
+                 [](dtwc::Problem &p, dtwc::core::StoragePolicy value) {
+                   p.set_storage_policy(value);
+                 },
+                 "How series data is stored (Auto/Heap/Mmap).")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;

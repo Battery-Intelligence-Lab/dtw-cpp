@@ -1230,6 +1230,8 @@ MetalDistMatResult compute_distance_matrix_metal(
     const std::vector<std::vector<double>> &series,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   MetalDistMatResult result;
   const size_t N = series.size();
   result.n = N;
@@ -1935,6 +1937,8 @@ MetalKVsNResult compute_kvn_impl(
     const std::vector<std::vector<double>> &targets,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   MetalKVsNResult result;
   const size_t Kq = queries.size();
   const size_t N  = targets.size();
@@ -2147,6 +2151,8 @@ MetalKVsNResult compute_dtw_k_vs_all_metal(
     const std::vector<size_t> &query_indices,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   std::vector<std::vector<double>> queries;
   queries.reserve(query_indices.size());
   for (size_t qi : query_indices) {
@@ -2163,6 +2169,8 @@ MetalKVsNResult compute_dtw_k_vs_all_metal(
     const std::vector<std::vector<double>> &targets,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   return compute_kvn_impl(queries, targets, opts);
 }
 
@@ -2171,6 +2179,8 @@ MetalOneVsNResult compute_dtw_one_vs_all_metal(
     size_t query_index,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   if (query_index >= series.size()) {
     throw std::out_of_range("compute_dtw_one_vs_all_metal: query_index out of range");
   }
@@ -2188,6 +2198,8 @@ MetalOneVsNResult compute_dtw_one_vs_all_metal(
     const std::vector<std::vector<double>> &targets,
     const MetalDistMatOptions &opts)
 {
+  validate_kernel_override(opts.kernel_override);
+  validate_metal_precision(opts.precision);
   auto kvn = compute_kvn_impl({query}, targets, opts);
   MetalOneVsNResult out;
   out.distances  = std::move(kvn.distances);

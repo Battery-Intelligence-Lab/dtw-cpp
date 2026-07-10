@@ -5,8 +5,7 @@
 
 #pragma once
 
-#include "dtw_options.hpp"
-#include "../error.hpp"
+#include "selector_validation.hpp"
 
 #include <cmath>
 #include <limits>
@@ -67,6 +66,8 @@ inline void validate_twe_lambda(T value)
  */
 inline void validate_variant_params(const DTWVariantParams &params)
 {
+  validate_dtw_variant(params.variant);
+  validate_mv_mode(params.mv_mode);
   validate_wdtw_g(params.wdtw_g);
   validate_adtw_penalty(params.adtw_penalty);
   validate_sdtw_gamma(params.sdtw_gamma);
@@ -124,6 +125,8 @@ inline const char *active_variant_params_f32_error(
   case DTWVariant::Standard:
   case DTWVariant::DDTW:
     break;
+  default:
+    return "Invalid DTWVariant value.";
   }
   return nullptr;
 }

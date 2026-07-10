@@ -25,6 +25,7 @@
 
 #include "warping.hpp"
 #include "settings.hpp"
+#include "core/selector_validation.hpp"
 
 #include <vector>
 #include <span>
@@ -182,6 +183,7 @@ data_t ddtwBanded(std::span<const data_t> x, std::span<const data_t> y,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   thread_local std::vector<data_t> dx, dy;
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
@@ -204,6 +206,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(std::span<const data_t> x, std::span<const data_t> y,
                   core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   thread_local std::vector<data_t> dx, dy;
   derivative_transform_inplace(x, dx);
   derivative_transform_inplace(y, dy);
@@ -236,6 +239,7 @@ data_t ddtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   int band = settings::DEFAULT_BAND,
                   core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   // derivative_transform_inplace operates on vectors, so we wrap the pointers.
   // These thread_local vectors avoid heap allocation after warmup.
   thread_local std::vector<data_t> vx, vy, dx, dy;
@@ -251,6 +255,7 @@ template <typename data_t = dtwc::settings::default_data_t>
 data_t ddtwFull_L(const data_t *x, size_t nx, const data_t *y, size_t ny,
                   core::MetricType metric = core::MetricType::L1)
 {
+  core::validate_metric_type(metric);
   thread_local std::vector<data_t> vx, vy, dx, dy;
   vx.assign(x, x + nx);
   vy.assign(y, y + ny);

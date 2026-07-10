@@ -6,6 +6,7 @@
 #pragma once
 
 #include "dtw_options.hpp"
+#include "selector_validation.hpp"
 #include "variant_validation.hpp"
 #include "../error.hpp"
 
@@ -31,6 +32,8 @@ inline MetricType parse_metric_token(std::string_view token)
 inline void validate_variant_missing_semantics(
   DTWVariant variant, MissingStrategy missing_strategy)
 {
+  validate_dtw_variant(variant);
+  validate_missing_strategy(missing_strategy);
   if (variant != DTWVariant::Standard
       && missing_strategy != MissingStrategy::Error) {
     throw InvalidInput(
@@ -51,8 +54,8 @@ inline void validate_variant_missing_semantics(
  * Ordering is part of the public diagnostic contract and mirrors the legacy
  * resolver: whole-object parameter domains, variant/missing compatibility,
  * optional active-float32 narrowing, multivariate-mode compatibility, then
- * variant dimensionality. Enum membership is intentionally outside this M48
- * preflight and remains assigned to M47.
+ * variant dimensionality. Selector membership is validated before any
+ * cross-product comparison so invalid values cannot resemble a valid branch.
  */
 inline void validate_problem_distance_semantics(
   const DTWVariantParams &params,
