@@ -106,4 +106,9 @@ TEST_CASE("OpenMP task failures rethrow the lowest-index typed exception",
 
   REQUIRE_THROWS_AS(dtwc::run_openmp(task, 64, true), std::invalid_argument);
   REQUIRE_THROWS_WITH(dtwc::run_openmp(task, 64, true), "failure at row 2");
+
+  REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, 0),
+                      "omp_chunk_size: chunks_per_thread must be positive");
+  REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, -1),
+                      "omp_chunk_size: chunks_per_thread must be positive");
 }

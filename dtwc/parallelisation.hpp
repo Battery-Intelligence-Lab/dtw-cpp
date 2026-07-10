@@ -23,7 +23,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
-#include <vector>
+#include <utility>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -66,6 +66,8 @@ inline int get_max_threads()
 /// For 168 threads with N=8926: chunk=13. For 16 threads with N=28: chunk=1.
 inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
 {
+  if (chunks_per_thread <= 0)
+    throw std::invalid_argument("omp_chunk_size: chunks_per_thread must be positive");
   const int nthreads = get_max_threads();
   return std::max(1, n_iterations / (nthreads * chunks_per_thread));
 }
@@ -81,9 +83,12 @@ inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
  * @param task_indv Reference to the task function to be executed.
  * @param i_end The upper bound of the loop index.
  * @param isParallel Flag to enable/disable parallel execution (default is true).
+ * @param chunks_per_thread Dynamic-scheduling granularity (default is 4).
  */
 template <typename Tfun>
-void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel = true)
+void run_openmp(Tfun &task_indv, size_t i_end,
+                [[maybe_unused]] bool isParallel = true,
+                [[maybe_unused]] int chunks_per_thread = 4)
 {
   // OpenMP requires signed loop variables for compatibility with older compilers
   if (i_end > static_cast<size_t>(std::numeric_limits<int>::max())) {
@@ -93,13 +98,15 @@ void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel 
 
 #ifdef _OPENMP
   if (isParallel) {
-    const int chunk = omp_chunk_size(end);
-    // An exception may not leave an OpenMP structured block. Give each loop
-    // index its own preallocated slot, then rethrow the lowest-index failure on
-    // the caller thread after the implicit join. The atomic cutoff prevents
-    // useful work above the best known failing index while still allowing all
-    // lower indices to run, so scheduling cannot change which error wins.
-    std::vector<std::exception_ptr> failures(static_cast<size_t>(end));
+    const int chunk = omp_chunk_size(end, chunks_per_thread);
+    // An exception may not leave an OpenMP structured block. Capture one
+    // O(1)-space exception pointer under a named OpenMP critical region, then
+    // rethrow the lowest-index failure on the caller thread after the implicit
+    // join. The atomic cutoff prevents useful work above the best known failing
+    // index while still allowing every lower index to run, so scheduling cannot
+    // change which error wins.
+    std::exception_ptr failure;
+    int failure_index = end;
     std::atomic<int> earliest_failure{end};
 #pragma omp parallel for schedule(dynamic, chunk)
     for (int i = 0; i < end; i++) {
@@ -107,16 +114,22 @@ void run_openmp(Tfun &task_indv, size_t i_end, [[maybe_unused]] bool isParallel 
       try {
         task_indv(static_cast<size_t>(i));
       } catch (...) {
-        failures[static_cast<size_t>(i)] = std::current_exception();
+        auto current = std::current_exception();
         int observed = earliest_failure.load(std::memory_order_relaxed);
         while (i < observed
                && !earliest_failure.compare_exchange_weak(
                  observed, i, std::memory_order_release,
                  std::memory_order_relaxed)) {}
+#pragma omp critical(dtwc_run_openmp_exception)
+        {
+          if (i < failure_index) {
+            failure = std::move(current);
+            failure_index = i;
+          }
+        }
       }
     }
-    for (const auto &failure : failures)
-      if (failure) std::rethrow_exception(failure);
+    if (failure) std::rethrow_exception(failure);
   } else {
     for (int i = 0; i < end; i++)
       task_indv(static_cast<size_t>(i));

@@ -589,14 +589,10 @@ void Problem::fillDistanceMatrix_BruteForce()
         m.set(i, i, 0.0);
   });
 
-  // Lock-free by design: each thread owns a disjoint set of rows.
-  // The row-based partitioning ensures no two threads write the same (i,j) pair.
-#ifdef _OPENMP
-  const int fill_chunk = omp_chunk_size(static_cast<int>(N), 8);
-#pragma omp parallel for schedule(dynamic, fill_chunk)
-#endif
-  for (int ii = 0; ii < static_cast<int>(N); ++ii) {
-    const size_t i = static_cast<size_t>(ii);
+  // Lock-free by design: each worker owns a disjoint row. run_openmp catches
+  // inside the structured block and deterministically rethrows the lowest-row
+  // failure after the join; a failed pair remains uncomputed.
+  auto fill_row = [&](size_t i) {
     if (data.is_f32()) {
       const auto si = data.series_f32(i);
       for (size_t j = i + 1; j < N; ++j) {
@@ -612,7 +608,8 @@ void Problem::fillDistanceMatrix_BruteForce()
           visit_distmat([&](auto &m) { m.set(i, j, dtw_fn_(si, series(j))); });
       }
     }
-  }
+  };
+  run_openmp(fill_row, N, true, 8);
 }
 
 /**
