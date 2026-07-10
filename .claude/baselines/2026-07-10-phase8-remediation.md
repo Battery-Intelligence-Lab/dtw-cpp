@@ -2749,3 +2749,92 @@ contract; invalid values cannot reach logarithmic arithmetic, the validated
 inner loops retain their non-throwing allocation-free cell path, minimum
 positive float/double values remain numerically defined, and ordinary
 value/gradient/barycenter behavior is unchanged.
+
+## M36 - fail-closed public distance semantics
+
+The semantic-surface audit found two independent silent substitutions. Four
+raw Python extension functions initialized their metric to L1 and changed it
+only for the two squared aliases, so every other string computed an L1 result.
+Separately, the public C++ facade, runtime options API, and `Problem` resolver
+allowed a non-Standard variant to coexist with a non-Error missing policy; the
+missing dispatcher then replaced the requested variant. The runtime options
+API also ignored an accepted Standard missing policy and entered ordinary DTW.
+
+Tests were committed before production changes as `c12a024`. The C++ red
+reproduced cross-product substitution at the free/runtime/`Problem` boundaries
+while its accepted-path fingerprint control remained green. The same commit
+registered executable Python raw-token and MATLAB typed-error checks; the four
+raw Python sources independently confirmed the L1 default:
+
+```text
+unit_test_distance_semantics preregistration:  3 cases
+  failed:                                      2 cases / 2 assertions
+  passed controls:                             1 case  / 3 assertions
+```
+
+`distance_semantics.hpp` now owns two small, allocation-free boundaries. The
+metric parser accepts exactly `l1`, `squared_euclidean`, and `sqeuclidean`; all
+four raw Python consumers call it before releasing the GIL, warning, allocating
+the output matrix, or invoking a kernel. Python's public distance facade applies
+the same grammar before NumPy conversion. MATLAB package wrappers share one
+private validator: unknown values are `dtwc:invalidArgument`, while the two
+recognized squared aliases retain the existing honest
+`dtwc:distance:unsupportedMetric` capability error because those direct MEX
+kernels remain L1-only.
+
+The shared variant/missing validator runs after complete M34 parameter-domain
+validation and before every dispatch switch in the C++ free facade and both
+`Problem` resolver precisions. Runtime Standard/ZeroCost, AROW, and Interpolate
+requests delegate to that facade, so the requested policy is now executed
+rather than merely accepted. The Python and MATLAB convenience dispatchers
+reject the same cross-product before calling a substitute. Registered controls
+pin L1 distance 2, squared distance 4, both squared aliases, each Standard
+missing recurrence against its direct kernel, and ADTW/Error against the direct
+nonzero-penalty kernel.
+
+Green evidence used a fresh clang Release/LLFIO-off core and a fresh MSVC MEX
+built against R2024b and loaded explicitly under R2025b:
+
+```text
+unit_test_distance_semantics:                 48 assertions / 3 cases
+focused C++ API/variant/missing matrix:       439 assertions passed
+  variant-distance-matrix capability branch: 10 expected LLFIO-off skips
+focused Python semantic/contract matrix:      302 passed
+Python API/clustering/sklearn compatibility:  258 passed
+Python source/test py_compile:                passed
+MATLAB test_mex_input_validation:              25 passed
+```
+
+The adversarial closeout also cast `99` into each public selector. Runtime and
+free-facade invalid `DTWVariant` values fell through to Standard, and an invalid
+`MissingStrategy` value fell through the resolver to Error: all three expected
+typed-error assertions failed. That is a distinct selector-membership and
+transactional-`Problem` mutation problem, registered separately as M47 in
+`c58708b`; it was deliberately not hidden inside M36.
+
+A second closeout probe checked the strong exception guarantee rather than
+kernel selection. `set_missing_strategy` and `set_variant` currently assign the
+candidate and enter `refresh_distance_matrix` before the shared resolver sees
+the invalid cross-product. The correct M36 exception is therefore thrown only
+after the dense cache is cleared. Exact injected sentinels show both mutation
+directions leave rejected state installed and make the previous cache
+inaccessible:
+
+```text
+unit_test_problem_semantic_transactions red:  8 passed / 8 failed assertions
+  ADTW/Error + rejected ZeroCost:              state changed, cache 123 lost
+  Standard/ZeroCost + rejected ADTW:           state changed, cache 456 lost
+```
+
+The permanent red was committed separately as `2de20da` and registered as
+M48. Its repair is coordinated with M45/M47 because candidate validation must
+cover active float32 representability and selector membership before any
+selector, cache, or dispatcher publication. M36's claim is intentionally
+limited to rejection before kernel selection/compute; it does not claim
+effect-free rollback for the current `Problem` setters.
+
+Verdict: **PASS.** Unknown metric text and unsupported variant/missing
+cross-products cannot execute an L1 or Standard substitute at any requested
+language boundary; accepted routes retain exact fingerprints, and the adjacent
+invalid-enum and transactional-setter defects have their own reproduced,
+preregistered remediation items.

@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made public distance dispatch fail closed across C++, Python, and MATLAB.
+  Unknown raw metric tokens now raise typed invalid-input errors instead of
+  silently selecting L1, and non-Standard/non-Error cross-products fail before
+  kernel selection. Accepted Standard missing-data routes now execute the
+  requested recurrence consistently in the runtime API, while registered
+  metric aliases and non-Standard/Error outputs remain unchanged. Transactional
+  rollback after rejected `Problem` setter calls is tracked separately.
 - Made public `softmin_gamma` enforce Soft-DTW's exact finite-positive gamma
   contract with typed `InvalidInput` failures in Release builds. Validated
   gradient/DP loops use a non-throwing unchecked cell primitive with scaling
