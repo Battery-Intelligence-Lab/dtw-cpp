@@ -666,6 +666,42 @@ TEST_CASE("Mmap disjoint parallel sets retain O(1) integrity updates",
                static_cast<double>(tri_index(42, 17)) + 0.25));
 }
 
+TEST_CASE("MmapDistanceMatrix rejects a second live session without mutation",
+          "[MmapDistanceMatrix][mmap][integrity][lease][m53]")
+{
+  TempFile tmp;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x53u);
+
+  MmapDistanceMatrix owner(tmp.path, 4, fingerprint);
+  owner.set(0, 3, 53.25);
+  owner.sync();
+  const auto before = read_file_bytes(tmp.path);
+
+  bool returned = false;
+  bool typed_runtime_error = false;
+  std::string error;
+  try {
+    auto competing = MmapDistanceMatrix::open(tmp.path, fingerprint);
+    returned = true;
+  } catch (const std::runtime_error &exception) {
+    typed_runtime_error = true;
+    error = exception.what();
+  } catch (const std::exception &exception) {
+    error = exception.what();
+  } catch (...) {
+    error = "non-standard exception";
+  }
+
+  INFO("second live open error: " << error);
+  CHECK_FALSE(returned);
+  CHECK(typed_runtime_error);
+  CHECK(error.find("exclusive session lease") != std::string::npos);
+  CHECK(read_file_bytes(tmp.path) == before);
+  CHECK(std::bit_cast<std::uint64_t>(owner.get(0, 3))
+        == std::bit_cast<std::uint64_t>(53.25));
+}
+
 TEST_CASE("Mmap set path contains no full scan or blocking lock",
           "[MmapDistanceMatrix][mmap][integrity][source_guard][m53]")
 {
