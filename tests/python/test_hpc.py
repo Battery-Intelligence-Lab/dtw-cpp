@@ -397,6 +397,68 @@ class TestSlurmLastMile:
             assert flag in job
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(("seed_arg", "expected_export"), [("", ""), ("42", "42")])
+    def test_seed_export_overrides_inherited_slurm_environment(
+        self, tmp_path, seed_arg, expected_export,
+    ):
+        """``--export=ALL`` must not override omission or an explicit seed."""
+        root = Path(__file__).resolve().parents[2]
+        project = tmp_path / "project"
+        wrapper = project / "scripts/slurm/slurm_remote.sh"
+        wrapper.parent.mkdir(parents=True)
+        shutil.copy2(root / "scripts/slurm/slurm_remote.sh", wrapper)
+        job = project / "scripts/slurm/jobs/cluster_generic.slurm"
+        job.parent.mkdir(parents=True)
+        shutil.copy2(root / "scripts/slurm/jobs/cluster_generic.slurm", job)
+        (project / ".env").write_text(
+            "SLURM_USER=test_user\n"
+            "SLURM_HOST=test_host\n"
+            "SLURM_REMOTE_BASE=/remote/dtwc\n",
+            encoding="utf-8",
+        )
+
+        fake_bin = tmp_path / "fake-bin"
+        fake_bin.mkdir()
+        capture = tmp_path / "submitted-command.txt"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "command=${2:-}\n"
+            "if [[ \"$command\" == *\"ls \"* ]]; then\n"
+            "  echo /remote/dtwc/src/build-test/bin/dtwc_cl\n"
+            "  exit 0\n"
+            "fi\n"
+            "printf '%s\\n' \"$command\" > \"$CAPTURE_SSH\"\n"
+            "echo 12345\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        fake_ssh.chmod(0o755)
+        for transfer_name in ("rsync", "scp"):
+            transfer = fake_bin / transfer_name
+            transfer.write_text(
+                "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n",
+            )
+            transfer.chmod(0o755)
+
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SSH={shlex.quote(_bash_path(capture))}; "
+            "export DTWC_SEED=29; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            "/remote/input.tsv 2 pam cpu -1 seed_export 0 0 1 "
+            f"{shlex.quote(seed_arg)}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        submitted = capture.read_text(encoding="utf-8")
+        assert f",DTWC_SEED={expected_export}" in submitted
+        assert ",DTWC_SEED=29" not in submitted
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(
         ("seed", "expect_seed", "overrides"),
         [

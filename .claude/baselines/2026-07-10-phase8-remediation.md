@@ -1605,3 +1605,40 @@ build/phase8-m13 (HiGHS/Gurobi/LLFIO OFF)
 Verdict: **PASS.** Default-tolerance clustering performs real barycenter work,
 zero-tolerance and ordinary digit-level behavior remain stable, and finite
 inputs can no longer turn non-finite computation into a silent result.
+
+## M27 — omitted HPC seed cannot leak from `--export=ALL`
+
+M16 deliberately omitted `--seed` when Python callers passed `seed=None`, so
+the remote CLI remained the single source of its default. The SLURM wrapper,
+however, built `--export=ALL,...` and appended `DTWC_SEED` only for an explicit
+seed. An ambient login-shell value could therefore reappear inside the job and
+silently turn omission into an explicit seed.
+
+The preregistered test runs the real wrapper from an isolated project under a
+fake SSH/transfer boundary. Its parent environment contains `DTWC_SEED=29`;
+the captured `sbatch` command must explicitly export an empty field when the
+seed positional is omitted. The unfixed wrapper submitted no `DTWC_SEED` field:
+
+```text
+tests/python/test_hpc.py::TestSlurmLastMile::
+  test_seed_export_overrides_inherited_slurm_environment[""-""]
+FAILED: assert ',DTWC_SEED=' in submitted
+1 failed
+```
+
+The wrapper now appends `DTWC_SEED=${SEED}` unconditionally. Empty means the
+job script omits the CLI flag; a supplied value remains explicit. The same
+executable boundary checks both ambient-29/omitted -> empty and
+ambient-29/explicit-42 -> 42.
+
+Green evidence:
+
+```text
+tests/python/test_hpc.py:              57 passed
+targeted py_compile:                   passed
+bash -n tracked *.sh/*.slurm:         11/11 passed
+git ls-files --eol shell scripts:     11/11 index/worktree LF
+```
+
+Verdict: **PASS.** Neither login state nor `--export=ALL` can select a seed
+when the API caller omitted it, and explicit schedules remain unchanged.

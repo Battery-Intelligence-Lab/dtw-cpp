@@ -430,9 +430,10 @@ cmd_submit_cluster() {
     EXPORTS+=",DTWC_MAX_ITER=${MAX_ITER},DTWC_VARIANT=${VARIANT},DTWC_WDTW_G=${WDTW_G},DTWC_ADTW_PENALTY=${ADTW_PENALTY}"
     EXPORTS+=",DTWC_MSM_C=${MSM_C},DTWC_TWE_NU=${TWE_NU},DTWC_TWE_LAMBDA=${TWE_LAMBDA},DTWC_MV_MODE=${MV_MODE}"
     EXPORTS+=",DTWC_MISSING_STRATEGY=${MISSING_STRATEGY},DTWC_METRIC=${METRIC}"
-    if [[ -n "${SEED}" ]]; then
-        EXPORTS+=",DTWC_SEED=${SEED}"
-    fi
+    # Always override an ambient login-shell value inherited through `ALL`.
+    # An empty export preserves the CLI as the single source of the default;
+    # an explicit value remains byte-for-byte unchanged.
+    EXPORTS+=",DTWC_SEED=${SEED}"
 
     local JOB_ID
     JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${GPU_FLAGS} --export=${EXPORTS} scripts/slurm/jobs/cluster_generic.slurm")

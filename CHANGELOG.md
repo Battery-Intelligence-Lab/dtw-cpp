@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Prevented inherited Slurm environments from supplying an unintended HPC
+  clustering seed when Python callers omit `seed`; omission now explicitly
+  preserves the remote CLI default while explicit seeds remain unchanged.
 - Fixed barycenter k-means falsely converging before its first center update
   under the default positive tolerance. Computed non-finite squared/soft-DTW
   costs, gradients, updates, initialization weights, and assignment costs now
