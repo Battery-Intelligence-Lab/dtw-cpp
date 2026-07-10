@@ -51,6 +51,198 @@ class TestLoad:
 
 
 # ---------------------------------------------------------------------------
+# cluster() — C++ Tier-1 validate_common parity (M39)
+# ---------------------------------------------------------------------------
+class TestClusterCommonValidation:
+    """Parity with C++ Tier-1 ``validate_common`` (M39)."""
+
+    _INT_MAX = (1 << 31) - 1
+    _METHODS = (
+        "auto", "pam", "onebatch", "clara", "kmedoids", "mip",
+        "lrcore", "tadpole", "hierarchical",
+    )
+
+    @staticmethod
+    def _source(kind, *, skip_cols=0):
+        if kind == "raw":
+            return [[0.0], [1.0]]
+        if kind == "path":
+            return "must_not_be_loaded.tsv"
+        return dtwcpp.Dataset([[0.0], [1.0]], skip_cols=skip_cols)
+
+    @staticmethod
+    def _poison_effects(monkeypatch):
+        """Make every operation after common validation observably forbidden."""
+        from dtwcpp import _api, _hpc
+
+        touched = []
+
+        def poison(name):
+            def fail(*args, **kwargs):
+                touched.append(name)
+                raise AssertionError(f"{name} ran before Tier-1 validation")
+            return fail
+
+        monkeypatch.setattr(_api, "load", poison("load"))
+        monkeypatch.setattr(_api.Dataset, "as_series", poison("as_series"))
+        monkeypatch.setattr(_api, "_run_local_method", poison("local dispatch"))
+        monkeypatch.setattr(dtwcpp, "get_device", poison("get_device"))
+        monkeypatch.setattr(dtwcpp, "_resolve_device", poison("device resolution"))
+        monkeypatch.setattr(
+            dtwcpp, "compute_distance_matrix", poison("distance compute"),
+        )
+        monkeypatch.setattr(dtwcpp, "Problem", poison("Problem construction"))
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", poison("HPC submission"))
+        return touched
+
+    @pytest.mark.parametrize("source_kind", ["raw", "path", "dataset"])
+    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
+    @pytest.mark.parametrize(
+        ("field", "bad", "error"),
+        [
+            ("k", True, TypeError),
+            ("k", np.bool_(True), TypeError),
+            ("k", 1.0, TypeError),
+            ("k", "1", TypeError),
+            ("k", 0, ValueError),
+            ("k", -1, ValueError),
+            ("k", (1 << 31), ValueError),
+            ("max_iter", True, TypeError),
+            ("max_iter", np.bool_(True), TypeError),
+            ("max_iter", 1.0, TypeError),
+            ("max_iter", "1", TypeError),
+            ("max_iter", 0, ValueError),
+            ("max_iter", -1, ValueError),
+            ("max_iter", (1 << 31), ValueError),
+        ],
+    )
+    def test_invalid_k_and_max_iter_precede_every_effect(
+        self, monkeypatch, source_kind, device, field, bad, error,
+    ):
+        source = self._source(source_kind)
+        touched = self._poison_effects(monkeypatch)
+        kwargs = {"k": 1, "max_iter": 1}
+        kwargs[field] = bad
+
+        with pytest.raises(
+            error, match=rf"\b{field}\b.*(?:integer|must be in)",
+        ) as caught:
+            dtwcpp.cluster(source, method="pam", device=device, **kwargs)
+        assert type(caught.value) is error
+        assert touched == []
+
+    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
+    @pytest.mark.parametrize(
+        ("bad", "error"),
+        [
+            (True, TypeError),
+            (np.bool_(True), TypeError),
+            (1.0, TypeError),
+            ("1", TypeError),
+            (-1, ValueError),
+            ((1 << 31), ValueError),
+        ],
+    )
+    def test_invalid_dataset_skip_cols_precedes_every_effect(
+        self, monkeypatch, device, bad, error,
+    ):
+        source = self._source("dataset", skip_cols=bad)
+        touched = self._poison_effects(monkeypatch)
+
+        with pytest.raises(
+            error, match=r"\bskip_cols\b.*(?:integer|must be in)",
+        ) as caught:
+            dtwcpp.cluster(source, k=1, max_iter=1, device=device)
+        assert type(caught.value) is error
+        assert touched == []
+
+    @pytest.mark.parametrize("method", _METHODS)
+    @pytest.mark.parametrize("device", ["cpu", "gpu", "hpc"])
+    def test_nonpositive_limit_cannot_enter_any_method_or_backend(
+        self, monkeypatch, method, device,
+    ):
+        source = self._source("dataset")
+        touched = self._poison_effects(monkeypatch)
+
+        with pytest.raises(
+            ValueError, match=r"\bmax_iter\b.*must be in",
+        ) as caught:
+            dtwcpp.cluster(
+                source, k=1, max_iter=0, method=method, device=device,
+            )
+        assert type(caught.value) is ValueError
+        assert touched == []
+
+    def test_valid_signed_int_boundaries_are_normalized_for_hpc(self, monkeypatch):
+        """The largest C++ int is valid and crosses HPC as a native int."""
+        from dtwcpp import _hpc
+
+        captured = {}
+
+        def fake(source, k, **kwargs):
+            captured.update(source=source, k=k, **kwargs)
+            return np.array([0], dtype=int)
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
+        source = dtwcpp.Dataset(
+            "/remote/already_staged.tsv", skip_cols=np.int64(self._INT_MAX),
+        )
+        result = dtwcpp.cluster(
+            source,
+            k=np.int64(self._INT_MAX),
+            max_iter=np.int64(self._INT_MAX),
+            device="hpc",
+        )
+
+        assert result.device == "hpc"
+        assert captured["source"] == "/remote/already_staged.tsv"
+        assert captured["k"] == self._INT_MAX
+        assert captured["skip_cols"] == self._INT_MAX
+        assert captured["max_iter"] == self._INT_MAX
+        assert type(captured["k"]) is int
+        assert type(captured["skip_cols"]) is int
+        assert type(captured["max_iter"]) is int
+
+    def test_valid_minimum_numpy_integers_run_locally(self):
+        source = dtwcpp.Dataset(
+            [[0.0], [1.0]], skip_cols=np.int32(0),
+        )
+        result = dtwcpp.cluster(
+            source, k=np.int32(1), max_iter=np.int64(1), device="cpu",
+        )
+
+        assert result.n_series == 2
+        assert result.k == 1
+        assert type(result.k) is int
+
+    def test_unknown_method_still_fails_before_load_or_device(self, monkeypatch):
+        from dtwcpp import _api
+
+        monkeypatch.setattr(
+            _api, "load",
+            lambda *args, **kwargs: pytest.fail("unknown method triggered load"),
+        )
+        monkeypatch.setattr(
+            dtwcpp, "_resolve_device",
+            lambda *args, **kwargs: pytest.fail("unknown method resolved device"),
+        )
+        with pytest.raises(ValueError, match="unknown method"):
+            dtwcpp.cluster("must_not_be_loaded.tsv", k=1, method="bogus")
+
+    def test_invalid_device_still_fails_before_load(self, monkeypatch):
+        from dtwcpp import _api
+
+        monkeypatch.setattr(
+            _api, "load",
+            lambda *args, **kwargs: pytest.fail("invalid device triggered load"),
+        )
+        with pytest.raises(dtwcpp.DeviceError, match="unknown device"):
+            dtwcpp.cluster(
+                "must_not_be_loaded.tsv", k=1, device="definitely-not-a-device",
+            )
+
+
+# ---------------------------------------------------------------------------
 # cluster() — local cpu path
 # ---------------------------------------------------------------------------
 class TestClusterLocal:

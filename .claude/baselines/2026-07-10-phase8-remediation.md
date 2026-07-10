@@ -2238,3 +2238,60 @@ py_compile _api.py + test_api.py:                            passed
 Verdict: **PASS.** Every Problem-backed Tier-1 method receives the caller's
 limit before dispatch, the capped Lloyd route exposes M29's coherent state,
 default behavior is unchanged, and direct-parameter methods are not double-set.
+
+## M39 — Python Tier-1 common validation
+
+The M38 closeout compared Python's functional Tier-1 boundary with the C++
+`validate_common` call that precedes method and device resolution. C++ exposes
+all three fields as signed `int`: `k` and `max_iter` must be positive, while
+`Dataset::skip_cols()` must be nonnegative. Python instead called `load()`
+first and performed no common validation. Consequently PAM accepted
+`max_iter=0` as an initialization-only run, other local methods reached their
+bindings with backend-dependent values, and direct HPC did not forward the
+public limit at all.
+
+The preregistered red matrix poisoned every operation after common validation:
+`load`, Dataset materialization, global-device lookup, device resolution,
+Problem construction, distance computation, local dispatch, and HPC
+submission. Across raw arrays, lazy paths, existing Datasets, local/HPC routes,
+Python/NumPy booleans, floats, strings, zero/negative values, and `INT_MAX+1`,
+all 118 cases failed at the old eager `load()` boundary. Independent controls
+also showed that a valid NumPy `k` leaked into `Result.k` without normalization,
+the maximum valid `max_iter` disappeared on HPC, and invalid method/device
+requests reached `load()` first.
+
+The repair adds one side-effect-free validator at the start of `cluster()`.
+It accepts only Python `int` or NumPy integer scalars, explicitly excludes both
+boolean types, converts accepted values to native `int`, and enforces
+`[1, 2147483647]` for `k`/`max_iter` and `[0, 2147483647]` for `skip_cols`.
+Wrong types raise exact `TypeError`; range and overflow failures raise exact
+`ValueError`. The common order remains C++'s `k`, `max_iter`, `skip_cols`, then
+method validation, device resolution, and finally lazy wrapping/materialization.
+The normalized values feed both local and HPC branches, including an explicit
+`max_iter` argument to `cluster_on_hpc`.
+
+The final mutation table expanded the red matrix to GPU as well as CPU/HPC and
+pins all nine public methods against a nonpositive limit. Exact exception types
+and untouched-effect lists are asserted in every invalid case. Orthogonal valid
+controls run minimum NumPy integers through a real local PAM call and forward
+`INT_MAX` for all three fields through a fake HPC boundary as native integers;
+existing unknown-method and invalid-device errors still occur before loading.
+An independent read-only adversarial review re-derived the C++ widths and
+backend ordering and returned PASS with no blocking issue.
+
+Green evidence used the M29-enabled fresh core
+`build/cfg-gate-normal/python/_dtwcpp_core.cp313-win_amd64.pyd` (SHA-256
+`b6d11d0f0cef2c33a0ee58e1b15557f7c418cacc16e8af1d046bdb2dc4868576`):
+
+```text
+focused common-validation matrix:                         175 passed
+tests/python/test_api.py:                                 230 passed
+clustering + semantics + CV + sklearn + contract parity: 237 passed
+full tests/python/test_hpc.py shared-tree gate:            120 passed (108.25 s)
+py_compile _api.py + test_api.py:                          passed
+```
+
+Verdict: **PASS.** Python now has the same signed-integer acceptance domain and
+common validation order on CPU, GPU, and HPC. Invalid requests are effect-free,
+valid NumPy integers are canonicalized, direct HPC preserves `max_iter`, and
+ordinary method/device behavior remains loud and unchanged.

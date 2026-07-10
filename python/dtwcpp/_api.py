@@ -249,6 +249,37 @@ ClusterResult = Result
 _METHODS = ("auto", "pam", "onebatch", "clara", "kmedoids", "mip",
             "lrcore", "hierarchical", "tadpole")
 _AUTO_PAM_SERIES_LIMIT = 5000
+_CPP_INT_MAX = (1 << 31) - 1
+
+
+def _normalize_tier1_int(name, value, *, minimum):
+    """Normalize one public integer to the signed C++ ``int`` domain."""
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, np.integer)
+    ):
+        raise TypeError(f"{name} must be an integer")
+    value = int(value)
+    if not minimum <= value <= _CPP_INT_MAX:
+        raise ValueError(
+            f"{name} must be in [{minimum}, {_CPP_INT_MAX}] for the C++ "
+            "Tier-1 API"
+        )
+    return value
+
+
+def _validate_common(data, k, max_iter):
+    """Mirror C++ ``validate_common`` before any Python backend side effect.
+
+    A raw array or path has the implicit ``load(..., skip_cols=0)`` value.  An
+    existing :class:`Dataset` can carry a caller-supplied value, so inspect it
+    without materializing or mutating the handle.  The order matches C++:
+    ``k``, ``max_iter``, then ``skip_cols``.
+    """
+    k = _normalize_tier1_int("k", k, minimum=1)
+    max_iter = _normalize_tier1_int("max_iter", max_iter, minimum=1)
+    skip_cols = data.skip_cols if isinstance(data, Dataset) else 0
+    skip_cols = _normalize_tier1_int("skip_cols", skip_cols, minimum=0)
+    return k, max_iter, skip_cols
 
 
 def _normalize_method(method):
@@ -356,18 +387,25 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     process can resolve it after materialising the dataset.
     An unrecognised method raises ``ValueError`` — it is NEVER silently ignored.
     """
+    # Match C++ validate_common before lazy loading, device lookup/resolution,
+    # remote submission, or local construction/compute.  Besides preventing
+    # partial side effects, normalization keeps NumPy integers from reaching
+    # nanobind or the CLI with backend-dependent conversion behavior.
+    k, max_iter, skip_cols = _validate_common(data, k, max_iter)
+    method = _normalize_method(method)
+
     from dtwcpp import get_device, _resolve_device
-    data = load(data)
-    method = _normalize_method(method)          # validate BEFORE any backend work
     eff = device if device is not None else get_device()
     backend, _ = _resolve_device(eff)
+    data = load(data)
 
     t0 = time.perf_counter()
     if backend == "hpc":
         from dtwcpp import _hpc
         source = data.source if data.is_path else data.as_series()
         labels = _hpc.cluster_on_hpc(source, k, method=method, band=band,
-                                     skip_cols=data.skip_cols, name=f"dtwc_{data.name}")
+                                     skip_cols=skip_cols, name=f"dtwc_{data.name}",
+                                     max_iter=max_iter)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=data.name)
 

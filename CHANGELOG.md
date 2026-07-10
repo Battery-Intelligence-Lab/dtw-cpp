@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Aligned Python Tier-1 `cluster()` validation with C++ `validate_common`:
+  `k` and `max_iter` must be positive signed C++ integers and `Dataset.skip_cols`
+  must be nonnegative. Python and NumPy integers are normalized consistently;
+  booleans, non-integral values, and overflow now fail before loading data,
+  resolving a device, submitting HPC work, or constructing local compute state.
+  Direct HPC calls also preserve the validated `max_iter` instead of reverting
+  to the remote default.
 - Made Python Tier-1 `kmedoids`, `mip`, `lrcore`, and `tadpole` honor the
   public `max_iter` argument before `Problem.cluster()` dispatch. The M29
   one-iteration Lloyd result is now reachable without changing the default-100
