@@ -46,6 +46,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Fixed SSG barycenters to retain Schultz–Jain warping-path valence in the true
   squared-DTW stochastic gradient, with a scalar inverse-Lipschitz step cap that
   prevents extreme unequal-length alignments from exploding.
+- Added a cross-implementation soft-DTW guard: public L1 and barycenter squared
+  recurrences agree when their local cost matrices coincide, while a sensitivity
+  assertion preserves their intentional public semantic difference.
 
 # 2.0.0rc1 - 2026-07-10
 

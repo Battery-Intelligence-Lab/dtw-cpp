@@ -603,3 +603,36 @@ Verdict: **PASS after adversarial refinement.** The original finding was real,
 and naively restoring the paper gradient would have introduced a much larger
 unequal-length bug. The scalar cap is direction-preserving, documented in both
 public option structs, and pinned by 100:2 plus 1000:2 regressions.
+
+## M5 — soft-DTW cross-implementation boundary
+
+Registered band: use unequal-length binary series (5×3), so every local pair
+satisfies `|x-y|=(x-y)^2`, and compare the independent public-L1 and
+barycenter-squared forward passes at gamma .1, 1, and 2.5 within absolute
+`1e-12`. A nonbinary case must remain separated by more than 1 to prove the
+test has not erased the intended semantic distinction.
+
+Green unchanged-production result:
+
+```text
+unit_test_barycenter.exe "[cross_implementation]" --reporter compact
+  All tests passed (4 assertions in 1 test case)
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^unit_test_barycenter$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+Mutation check: changing the barycenter local cost from squared to absolute
+left all three shared-cost comparisons green but made the sensitivity assertion
+fail exactly:
+
+```text
+failed: abs(squared_value - l1_value) > 1.0
+actual: 0.0 > 1.0
+```
+
+Verdict: **PASS (coverage/architecture finding, no arithmetic bug).** The 8.3
+decision is to factor one recurrence and adjoint framework behind explicit
+local-cost/value-derivative policies. Public `soft_dtw` remains L1; barycenter
+remains squared-cost. This avoids duplicated dynamic programming without a
+silent numerical API change.

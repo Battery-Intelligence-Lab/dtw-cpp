@@ -198,6 +198,35 @@ TEST_CASE("soft-DTW production adjoint matches finite differences",
   }
 }
 
+TEST_CASE("soft-DTW recurrences agree exactly when their local costs coincide",
+          "[barycenter][soft_dtw][cross_implementation]")
+{
+  // On binary values, |x-y| == (x-y)^2 for every pair, so the public L1
+  // soft-DTW and the barycenter's squared-cost recurrence receive the same
+  // complete local-cost matrix. This compares the independent forward passes
+  // on unequal lengths rather than duplicating either recurrence in the test.
+  const std::vector<data_t> binary_x{0.0, 1.0, 1.0, 0.0, 1.0};
+  const std::vector<data_t> binary_y{1.0, 0.0, 1.0};
+  for (const double gamma : {0.1, 1.0, 2.5}) {
+    const double l1_value = soft_dtw<double>(binary_x, binary_y, gamma);
+    const double squared_value =
+      algorithms::detail::soft_dtw_squared_value_gradient(
+        binary_x, binary_y, gamma).value;
+    CAPTURE(gamma, l1_value, squared_value);
+    REQUIRE_THAT(squared_value, WithinAbs(l1_value, 1e-12));
+  }
+
+  // Also pin the intentional public semantic difference. If either engine is
+  // silently changed to the other's local cost, this sensitivity check fails.
+  const std::vector<data_t> nonbinary_x{0.0, 2.0};
+  const std::vector<data_t> nonbinary_y{0.0, 0.0};
+  const double l1_value = soft_dtw<double>(nonbinary_x, nonbinary_y, 1.0);
+  const double squared_value =
+    algorithms::detail::soft_dtw_squared_value_gradient(
+      nonbinary_x, nonbinary_y, 1.0).value;
+  REQUIRE(std::abs(squared_value - l1_value) > 1.0);
+}
+
 TEST_CASE("barycenter reduces hard squared-DTW objective from its initializer",
           "[barycenter][objective]")
 {
