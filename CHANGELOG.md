@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made `DTWClustering` honor one distance contract across fit, inertia, and
+  predict. Standard squared DTW now drives CPU/GPU medoid selection; MSM, TWE,
+  and missing-data predictions use their configured production recurrence;
+  unsupported cross-products and all-non-finite restart sets fail loudly. The
+  default Standard-L1 CPU path remains lazy and output-compatible.
 - Prevented inherited Slurm environments from supplying an unintended HPC
   clustering seed when Python callers omit `seed`; omission now explicitly
   preserves the remote CLI default while explicit seeds remain unchanged.

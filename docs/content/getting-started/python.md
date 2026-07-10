@@ -106,14 +106,27 @@ print(f"Iterations:     {clf.n_iter_}")
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `n_clusters` | int | `3` | Number of clusters |
-| `variant` | str | `"standard"` | DTW variant: `"standard"`, `"ddtw"`, `"wdtw"`, `"adtw"` |
+| `variant` | str | `"standard"` | DTW variant: `"standard"`, `"ddtw"`, `"wdtw"`, `"adtw"`, `"msm"`, `"twe"` |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `max_iter` | int | `100` | Maximum FastPAM iterations |
 | `n_init` | int | `1` | Number of random restarts (best result kept) |
 | `wdtw_g` | float | `0.05` | WDTW logistic weight steepness (only for `variant="wdtw"`) |
 | `adtw_penalty` | float | `1.0` | ADTW non-diagonal step penalty (only for `variant="adtw"`) |
+| `msm_c` | float | `1.0` | MSM split/merge cost (only for `variant="msm"`) |
+| `twe_nu` | float | `0.001` | TWE stiffness (only for `variant="twe"`) |
+| `twe_lambda` | float | `1.0` | TWE edit penalty (only for `variant="twe"`) |
+| `mv_mode` | str | `"dependent"` | Multivariate mode: `"dependent"` or `"independent"` |
 | `missing_strategy` | str | `"error"` | NaN handling: `"error"`, `"zero_cost"`, `"arow"`, `"interpolate"` |
-| `device` | str | `"cpu"` | Distance matrix device: `"cpu"`, `"cuda"`, `"cuda:N"` |
+| `metric` | str | `"l1"` | Pointwise metric: `"l1"` or `"squared_euclidean"` |
+| `device` | str | `None` | Local `"cpu"`/`"gpu"`/`"cuda:N"`, or whole-job `"hpc"` offload |
+
+The estimator validates the complete distance contract before computing.
+Squared Euclidean cost is available for Standard dependent DTW with
+`missing_strategy="error"`; the non-Standard variants retain their intrinsic L1
+cost. Non-error missing handling requires Standard, dependent, L1 DTW, and
+independent multivariate mode requires Standard, Error, L1 DTW. Local CUDA and
+Metal execution support Standard, dependent, Error mode with either metric.
+`fit()` and `predict()` use the same validated recurrence and parameters.
 
 ### Methods
 
@@ -303,7 +316,9 @@ labels = clf.fit_predict(X)
 If CUDA is not compiled or no CUDA device is present, the request raises
 `dtwcpp.DeviceError`. Select `device="cpu"` explicitly if CPU execution is wanted.
 
-**Note:** GPU mode currently only supports `variant="standard"`. Other DTW variants require CPU computation.
+**Note:** GPU clustering supports Standard, dependent DTW with
+`missing_strategy="error"`; both L1 and squared-Euclidean metrics are available.
+Other variants and missing-data recurrences require CPU computation.
 
 ## I/O utilities
 

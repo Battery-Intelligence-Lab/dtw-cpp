@@ -1642,3 +1642,98 @@ git ls-files --eol shell scripts:     11/11 index/worktree LF
 
 Verdict: **PASS.** Neither login state nor `--export=ALL` can select a seed
 when the API caller omitted it, and explicit schedules remain unchanged.
+
+## M23 — one literal `DTWClustering` distance contract
+
+The M19 closeout compared the sklearn-style estimator's public parameters with
+its local fit and predict paths. Four independent defects shared one cause: the
+estimator had no centralized statement of which distance semantics it could
+execute.
+
+First, `metric="squared_euclidean"` affected only the old Standard prediction
+helper. CPU fit remained on `Problem`'s lazy L1 matrix and GPU fit omitted the
+metric argument. The strict seed-42, k=2 fixture
+`[[0,0,0],[0,0,1],[0,0,2],[0,0,3],[0,0,4],[0,2,2]]` returned medoids `[4,2]`
+and reported L1 inertia 4. Those medoids cost 6 under the requested squared
+matrix; independent squared-matrix injection returns `[4,1]`, cost 5.
+
+Second, `_dtw_fn` had explicit DDTW/WDTW/ADTW branches but fell through to
+Standard DTW for MSM and TWE, and ignored every missing strategy. The registered
+nearest-center discriminators reverse the Standard result:
+
+```text
+MSM(c=.7): x=000, c1=033, c2=113
+  Standard: 6, 5 -> c2; MSM: 4.4, 5 -> c1
+TWE(nu=.1, lambda=.8): x=000, c1=003, c2=020
+  Standard: 3, 2 -> c2; TWE: 3, 4 -> c1
+missing x=012, c1=0,NaN,100, c2=111
+  ZeroCost/AROW: 98, 2 -> c2; Interpolate: 147, 2 -> c2
+  old Standard fallback: NaN, 2 -> `argmin` c1
+```
+
+Third, unknown `metric`/`mv_mode` values and cross-products that the core cannot
+represent were accepted and silently collapsed: non-Standard+non-L1,
+non-Standard+non-Error missing handling, independent mode outside
+Standard/Error/L1, squared missing handling, and CUDA/Metal missing or
+independent modes. Fourth, if every restart objective was non-finite,
+`best_result` either remained `None` or selected `-inf`, exposing an attribute
+error or meaningless clustering instead of a numeric failure.
+
+After correcting one test-oracle export typo, the preregistered production
+suite failed exactly on the intended behavior:
+
+```text
+tests/python/test_clustering_semantics.py
+  25 failed, 5 passed
+```
+
+The competing hypothesis that raw `Problem.variant_params` and
+`missing_strategy` fields made local fit silently Standard was **FALSIFIED**
+before editing. Dense storage is deferred; its first allocation rebinds the
+distance function. The live pre-edit `_build_problem` produced MSM distances
+`4.4, 5.0` and ZeroCost distances `98.0, 2.0` after fill. Local variant/missing
+training was already correct; prediction and metric storage were not.
+
+`_validate_semantics` now normalizes and validates the estimator's variant,
+metric, missing strategy, multivariate mode, and resolved backend before any
+distance work. Unsupported cross-products raise actionable `ValueError`
+instead of substituting a recurrence. `_build_problem` applies the band through
+its setter, writes missing strategy, then calls `set_variant_params`, making the
+production rebind immediate and explicit.
+
+Standard squared DTW computes one exact matrix and injects it into every CPU
+restart; CUDA/Metal matrix construction receives the same metric. Standard-L1
+CPU fit still uses the previous lazy `Problem` path, preserving its output and
+storage/performance contract. Finite Standard/DDTW/WDTW/ADTW prediction keeps
+the existing raw free-function fast path. MSM, TWE, non-error missing handling,
+independent mode, and Error-on-NaN prediction use a two-series configured
+`Problem`, which is the complete production dispatcher rather than mirrored
+Python arithmetic.
+
+Restarts now ignore non-finite candidates, snapshot the first finite result
+unconditionally, replace it only for a strict improvement, and retain the
+earliest finite tie. If every restart is non-finite, `FloatingPointError` names
+each restart/seed/value and recommends checking data and parameters.
+
+Green evidence:
+
+```text
+tests/python/test_clustering_semantics.py:                    35 passed
+cross-validation + clustering + sklearn estimator suites:    49 passed
+tests/python/test_hpc.py:                                     57 passed
+tests/python/test_cuda.py:                     9 passed / 9 capability-skipped
+tests/python/test_contract_parity.py:                         153 passed
+targeted py_compile:                                          passed
+```
+
+The repository-wide Python run reached 576 passed / 12 capability-skipped but
+also executed six concurrent, already-owned reds outside M23: four unrebuilt
+M25 semantic-setter cases, the preregistered M28 unsafe-name case, and a newly
+reported Tier-1 Lloyd reproducibility failure. None touches the M23 source or
+focused gates; their owners must close them before the Phase-8 full-suite exit
+claim.
+
+Verdict: **PASS.** Every accepted estimator configuration uses the same
+distance semantics for medoid selection, inertia, and prediction; unsupported
+semantics and unusable restart results are loud; default Standard-L1 behavior
+is unchanged.
