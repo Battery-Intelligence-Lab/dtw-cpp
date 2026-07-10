@@ -4,6 +4,7 @@
  */
 
 #include <dtwc.hpp>
+#include <core/dtw_dispatch.hpp>
 #include <error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -12,7 +13,9 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <span>
 #include <string>
@@ -152,6 +155,15 @@ constexpr std::array<RawOperation, 5> raw_operations{{
   {"public refresh", +[](Problem &p) { p.refresh_distance_matrix(); }},
 }};
 
+std::string read_problem_source()
+{
+  const auto repo_root = std::filesystem::path{DTWC_TEST_DATA_DIR}.parent_path();
+  std::ifstream source(repo_root / "dtwc" / "Problem.cpp", std::ios::binary);
+  REQUIRE(source.is_open());
+  return {std::istreambuf_iterator<char>{source},
+          std::istreambuf_iterator<char>{}};
+}
+
 } // namespace
 
 TEST_CASE("float32 set_variant rejects narrowing transactionally",
@@ -224,8 +236,9 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
       [&] { problem.set_data(make_f32_data(10.0f)); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    CHECK_FALSE(problem.data.is_f32());
-    CHECK(problem.series(0)[0] == 0.0);
+    const bool preserved_f64 = !problem.data.is_f32();
+    CHECK(preserved_f64);
+    if (preserved_f64) CHECK(problem.series(0)[0] == 0.0);
     CHECK(problem.labels() == std::vector<int>{0, 1});
     CHECK(problem.medoids() == std::vector<int>{0, 1});
     if (caught) require_dense_unchanged(problem, original_cache);
@@ -246,9 +259,12 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
       [&] { problem.set_view_data(std::move(view)); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    CHECK_FALSE(problem.data.is_f32());
-    CHECK_FALSE(problem.data.is_view());
-    CHECK(problem.series(0)[0] == 0.0);
+    const bool preserved_f64 = !problem.data.is_f32();
+    CHECK(preserved_f64);
+    if (preserved_f64) {
+      CHECK_FALSE(problem.data.is_view());
+      CHECK(problem.series(0)[0] == 0.0);
+    }
     CHECK(problem.labels() == std::vector<int>{0, 1});
     CHECK(problem.medoids() == std::vector<int>{0, 1});
     if (caught) require_dense_unchanged(problem, original_cache);
@@ -356,10 +372,21 @@ TEST_CASE("f64 accepts its full domain and explicit f32 access stays transaction
     const Problem &const_problem = problem;
     CHECK(catches_exact(
       [&] { (void)const_problem.dtw_function_f32(); }, test.message));
+    CHECK(catches_exact(
+      [&] { (void)core::resolve_dtw_fn<float>(problem); }, test.message));
     CHECK(params_equal(problem.variant_params, params));
     CHECK_FALSE(problem.data.is_f32());
     if (caught) require_dense_unchanged(problem, original_cache);
   }
+}
+
+TEST_CASE("Problem float32 callable uses stay behind validated access",
+          "[problem][variant][f32][source_guard][m45]")
+{
+  const std::string source = read_problem_source();
+
+  CHECK(source.find("dtw_fn_f32_(") == std::string::npos);
+  CHECK(source.find("validated_dtw_function_f32()") != std::string::npos);
 }
 
 TEST_CASE("float32 representable boundaries and inactive parameters remain valid",
