@@ -103,13 +103,18 @@ struct FixedBatchDistances {
       }
     }
     if (failure) std::rethrow_exception(failure);
-    scale = std::max(1.0, *std::max_element(row_maxima.begin(), row_maxima.end()));
+    const double table_max = *std::max_element(row_maxima.begin(), row_maxima.end());
+    scale = table_max > 0.0 ? table_max : 1.0;
     evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),
                                   std::uint64_t{0});
 
     if (weighting == OneBatchWeighting::NearestNeighbor) {
-      // NNIW (Loog 2012): the fixed table already contains everything needed
-      // to estimate each sampled point's Voronoi-cell mass.
+      // Count/mean NNIW (Loog 2012): the fixed table already contains
+      // everything needed to estimate each sampled point's Voronoi-cell mass.
+      // This is deliberately combined with the obpam experiment code's
+      // finite-table-maximum diagonal correction in estimate().  The paper's
+      // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe
+      // this exact hybrid estimator.
       std::fill(weights.begin(), weights.end(), 0.0);
       for (std::size_t i = 0; i < n; ++i) {
         std::size_t nearest = 0;
@@ -127,14 +132,14 @@ struct FixedBatchDistances {
 
   double estimate(std::size_t candidate, std::size_t batch_column) const
   {
-    double d = raw[candidate * m + batch_column];
     if (weighting != OneBatchWeighting::Uniform
         && candidate == static_cast<std::size_t>(sample[batch_column])) {
-      // Debiasing from the reference implementation: replace d(x,x)=0 with
-      // the table maximum so sampled points are not privileged as candidates.
-      d = scale;
+      // The authors' obpam experiment code replaces d(x,x)=0 by the actual
+      // finite table maximum, i.e. exactly 1 after normalization.  Do not use
+      // the zero-table fallback scale as an unnormalized replacement value.
+      return weights[batch_column];
     }
-    return (d / scale) * weights[batch_column];
+    return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
   }
 
   double exact(std::size_t point, int medoid)

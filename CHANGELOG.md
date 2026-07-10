@@ -35,6 +35,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Replaced the mirrored Metal chunk-offset assertion with a host-testable
   production `int64_t` conversion seam used by both dispatch paths and pinned
   beyond `INT32_MAX` by a real pair-decode round trip.
+- Corrected OneBatchPAM finite-maximum debiasing for distance tables with
+  `0 < Dmax < 1`; normalization now uses the actual table maximum, with a
+  finite fallback only for all-zero tables, and its hybrid provenance is explicit.
 
 # 2.0.0rc1 - 2026-07-10
 

@@ -18,7 +18,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <numeric>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
@@ -108,6 +110,64 @@ TEST_CASE("OneBatchPAM is reproducible and within five percent of FasterPAM",
   REQUIRE(first.total_cost <= oracle.total_cost * 1.05 + 1e-9);
 }
 
+TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
+          "[one_batch_pam][debiasing][regression]")
+{
+  SECTION("Dmax below one uses the actual finite table maximum") {
+    Problem problem("one_batch_small_scale");
+    problem.set_data(Data(std::vector<std::vector<data_t>>{{0.0}, {0.01}, {0.1}},
+                          std::vector<std::string>{"zero", "near", "far"}));
+
+    // Find a deterministic seed for this standard-library implementation
+    // whose first shuffle selects the two near points.  Replaying the same
+    // engine in one_batch_pam selects the identical fixed batch, while keeping
+    // the regression portable across standard-library shuffle algorithms.
+    std::uint64_t counterexample_seed = 0;
+    for (; counterexample_seed < 1024; ++counterexample_seed) {
+      std::vector<int> permutation{0, 1, 2};
+      std::mt19937_64 rng(counterexample_seed);
+      std::shuffle(permutation.begin(), permutation.end(), rng);
+      if ((permutation[0] == 0 && permutation[1] == 1)
+          || (permutation[0] == 1 && permutation[1] == 0))
+        break;
+    }
+    REQUIRE(counterexample_seed < 1024);
+
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 1;
+    options.batch_size = 2;
+    options.random_seed = counterexample_seed;
+    options.weighting = algorithms::OneBatchWeighting::NearestNeighbor;
+
+    const auto result = algorithms::one_batch_pam(problem, options);
+
+    // The experiment-code finite-max correction normalizes the fixed table by
+    // Dmax=0.1, so the far nonsampled point cannot win merely because all
+    // off-diagonal distances are numerically below 1.
+    REQUIRE(result.medoid_indices == std::vector<int>{0});
+    REQUIRE(std::abs(result.total_cost - 0.11) <= 1e-12);
+  }
+
+  SECTION("an all-zero table uses a finite normalization fallback") {
+    Problem problem("one_batch_zero_scale");
+    problem.set_data(Data(std::vector<std::vector<data_t>>{{0.0}, {0.0}, {0.0}},
+                          std::vector<std::string>{"a", "b", "c"}));
+
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 1;
+    options.batch_size = 2;
+    options.random_seed = 0;
+    options.weighting = algorithms::OneBatchWeighting::NearestNeighbor;
+    algorithms::OneBatchPAMStats stats;
+
+    const auto result = algorithms::one_batch_pam(problem, options, &stats);
+
+    require_valid(result, 3, 1);
+    REQUIRE(result.total_cost == 0.0);
+    REQUIRE(std::isfinite(stats.estimated_objective));
+  }
+}
+
 TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",
           "[one_batch_pam][edge]")
 {
@@ -165,4 +225,3 @@ TEST_CASE("OneBatchPAM 50k registered scaling and quality band",
   REQUIRE(result.total_cost <= oracle_cost * 1.05 + 1e-9);
   REQUIRE(stats.full_matrix_fraction <= 0.10);
 }
-

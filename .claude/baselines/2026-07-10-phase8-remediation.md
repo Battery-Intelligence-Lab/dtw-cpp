@@ -418,3 +418,46 @@ owns the `size_t` to Metal-ABI `int64_t` boundary for NxN and K-vs-N dispatch.
 The regression uses its result in `decode_pair` and proves a real encode/decode
 round trip beyond the old overflow boundary. The all-target build wrapper that
 timed out before CTest emitted no result and is deliberately not counted.
+
+## M7 — OneBatchPAM estimator provenance and Dmax correction
+
+Primary-source verdict (pinned 2026-07-10):
+
+1. **CONFIRMED:** NNIW counts each fixed-batch point's Voronoi assignments and
+   divides by mean count `n/m`. This is proportional to Loog's raw counts and is
+   used by both authors' implementations.
+2. **MIXED PROVENANCE:** arXiv:2501.19285 states a literal +∞ diagonal and
+   presents Debias/NNIW separately. `obpam@ee823101...` instead normalizes by
+   finite Dmax, writes normalized diagonal 1, and combines that correction with
+   NNIW. Maintained `onebatch` v0.1.0 keeps count/mean NNIW but drops diagonal
+   replacement. DTWC++ deliberately matches the paper-linked experiment hybrid.
+3. **CORRECTED DEFECT:** DTWC++ used `scale=max(1,Dmax)` both for normalization
+   and diagonal replacement. It matched the experiment only for Dmax≥1; below
+   one it changed candidate ordering.
+
+Registered counterexample with fixed batch `{0, 0.01}` and candidate `0.1` has
+Dmax=0.1. Before the fix, the nonsampled candidate won because its off-diagonal
+costs remained below the substituted raw diagonal 1:
+
+```text
+unit_test_one_batch_pam.exe "[debiasing]" --reporter compact
+  expected medoid {0}; actual medoid {2}
+  13 assertions passed, 1 failed
+```
+
+Green output after separating actual table maximum from the all-zero fallback:
+
+```text
+unit_test_one_batch_pam.exe "[debiasing]" --reporter compact
+  All tests passed (16 assertions in 1 test case)
+unit_test_one_batch_pam.exe
+  All tests passed (587 assertions in 4 test cases)
+ctest --test-dir build/highs-1151 -C Release \
+  -R "^unit_test_one_batch_pam$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+The all-zero table remains finite with exact cost zero. Verdict: **PASS after
+correction.** A separate source audit confirmed another real issue:
+`relative_tolerance * max(1,cost)` rejects a 33.3% improvement when cost<1.
+That independent behavior is registered as M9 rather than hidden in this fix.

@@ -22,8 +22,8 @@ namespace algorithms {
 /** Weighting applied to the fixed objective-estimation batch. */
 enum class OneBatchWeighting {
   Uniform,          ///< Plain uniform sample (the theorem's baseline).
-  Debiased,         ///< Discourage choosing a sampled point solely due to d(x,x)=0.
-  NearestNeighbor  ///< NNIW: weight each sampled point by its Voronoi-cell size.
+  Debiased,         ///< Finite-max diagonal correction from the obpam experiments.
+  NearestNeighbor  ///< Count/mean NNIW plus the same finite-max correction.
 };
 
 struct OneBatchPAMOptions {
@@ -58,4 +58,3 @@ core::ClusteringResult one_batch_pam(Problem& prob,
 
 } // namespace algorithms
 } // namespace dtwc
-
