@@ -437,3 +437,72 @@ TEST_CASE("dtwMissing_banded_mv actually restricts the warping path", "[mv][miss
   INFO("d_unbanded=" << d_unbanded << " d_banded1=" << d_banded1);
   REQUIRE(d_banded1 > d_unbanded); // band=1 forces extra cost vs free warp.
 }
+
+// =========================================================================
+//  Regression: explicit multivariate L2 must remain Euclidean under ZeroCost.
+//  The third channel is incomparable at every cell, leaving a 3-4-5 triangle.
+//  Every pointwise cost is therefore exactly L1=7, L2=5, SquaredL2=25; for
+//  four equal-length steps the diagonal oracle is 28, 20, and 100.
+// =========================================================================
+
+namespace {
+
+template <typename T>
+void require_missing_mv_l2_metric_contract()
+{
+  constexpr std::size_t nsteps = 4;
+  constexpr std::size_t ndim = 3;
+  const T nan = std::numeric_limits<T>::quiet_NaN();
+
+  const std::vector<T> x = {
+      T(0), T(0), nan,
+      T(0), T(0), nan,
+      T(0), T(0), nan,
+      T(0), T(0), nan,
+  };
+  const std::vector<T> y = {
+      T(3), T(4), T(99),
+      T(3), T(4), T(99),
+      T(3), T(4), T(99),
+      T(3), T(4), T(99),
+  };
+
+  const auto full = [&](dtwc::core::MetricType metric) {
+    return dtwc::dtwMissing_L_mv<T>(
+        x.data(), nsteps, y.data(), nsteps, ndim, T(-1), metric);
+  };
+  const auto banded = [&](dtwc::core::MetricType metric) {
+    return dtwc::dtwMissing_banded_mv<T>(
+        x.data(), nsteps, y.data(), nsteps, ndim, 0, T(-1), metric);
+  };
+
+  // L1 and squared-L2 controls make a mistaken alias impossible to hide.
+  CHECK(full(dtwc::core::MetricType::L1) == T(28));
+  CHECK(full(dtwc::core::MetricType::L2) == T(20));
+  CHECK(full(dtwc::core::MetricType::SquaredL2) == T(100));
+  CHECK(banded(dtwc::core::MetricType::L1) == T(28));
+  CHECK(banded(dtwc::core::MetricType::L2) == T(20));
+  CHECK(banded(dtwc::core::MetricType::SquaredL2) == T(100));
+
+  // No-missing data must use the same L2 meaning as the ordinary MV API.
+  const std::vector<T> clean_x = {T(0), T(0), T(0), T(0), T(0), T(0)};
+  const std::vector<T> clean_y = {T(3), T(4), T(3), T(4), T(3), T(4)};
+  const T missing_l2 = dtwc::dtwMissing_L_mv<T>(
+      clean_x.data(), 3, clean_y.data(), 3, 2, T(-1), dtwc::core::MetricType::L2);
+  const T ordinary_l2 = dtwc::dtwFull_L_mv<T>(
+      clean_x.data(), clean_y.data(), 3, 3, 2, T(-1), dtwc::core::MetricType::L2);
+  CHECK(missing_l2 == T(15));
+  CHECK(missing_l2 == ordinary_l2);
+
+  CHECK(dtwc::dtwMissing_L_mv<T>(
+      x.data(), nsteps, x.data(), nsteps, ndim, T(-1), dtwc::core::MetricType::L2) == T(0));
+}
+
+} // namespace
+
+TEST_CASE("MV Missing explicit L2 is NaN-aware Euclidean in f64 and f32",
+          "[mv][missing][l2][regression]")
+{
+  require_missing_mv_l2_metric_contract<double>();
+  require_missing_mv_l2_metric_contract<float>();
+}
