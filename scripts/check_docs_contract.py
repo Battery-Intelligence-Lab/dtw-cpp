@@ -48,6 +48,17 @@ def compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def assert_freeze_governance() -> None:
+    status = (ROOT / "docs/api-contract-2.0.md").read_text(
+        encoding="utf-8"
+    ).splitlines()[0]
+    if ("STATUS: FROZEN" not in status
+            or "changes require a PLAN.md decision entry" not in status):
+        raise AssertionError(
+            "frozen API contract status must require a PLAN.md decision entry"
+        )
+
+
 def assert_tier1_signatures() -> None:
     header = compact((ROOT / "dtwc/api.hpp").read_text(encoding="utf-8"))
     cpp_api = compact((ROOT / "dtwc/api.cpp").read_text(encoding="utf-8"))
@@ -128,6 +139,7 @@ def main() -> int:
 
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_docs.py"), "--check"],
                    check=True)
+    assert_freeze_governance()
     assert_env_messages()
     assert_tier1_signatures()
     if args.cli is not None:

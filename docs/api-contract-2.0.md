@@ -1,4 +1,4 @@
-STATUS: FROZEN 2026-07-07; implementation-audited for 2.0.0rc1 on 2026-07-10
+STATUS: FROZEN 2026-07-07; implementation-audited for 2.0.0rc1 on 2026-07-10 — changes require a PLAN.md decision entry before editing
 
 # DTWC++ 2.0 — API Contract (freeze artifact)
 
@@ -22,6 +22,27 @@ STATUS: FROZEN 2026-07-07; implementation-audited for 2.0.0rc1 on 2026-07-10
 > `python/dtwcpp/_api.py`, and `bindings/matlab/+dtwc/`; the permanent live
 > conformance routes are under `tests/conformance/` and
 > `tests/unit/test_tier1_cpp_api.cpp`.
+
+## Freeze governance and approved addenda
+
+The contract remains frozen. Any non-additive or parity-affecting edit requires
+a dated decision in `PLAN.md` that states the old rule, the approved rule, the
+compatibility effect, rationale, and owner. Removing this requirement is itself
+a contract change and is not permitted without the same decision process.
+
+Two post-freeze scope decisions are approved for 2.0.0rc1 (2026-07-10):
+
+1. The original common Tier-1 MATLAB method set remains `auto`, `pam`, `clara`,
+   `kmedoids`, `mip`, and `hierarchical`/`hclust`. OneBatchPAM, LR-core, and
+   TADPole were added later to C++ and Python; MATLAB rejects those names at
+   Tier 1 rather than silently substituting another method. No previously
+   accepted MATLAB method was removed. Adding the three post-freeze methods to
+   MATLAB Tier 1 is owned by the 2.1 parity milestone.
+2. C++ continues to accept `device="hpc"` as a valid device name, but Tier-1
+   `cluster()` raises the documented `DeviceError` because the C++ API has no
+   authenticated remote-transport implementation. Python remains the tested
+   SLURM transport. A local CPU fallback would violate the no-silent-fallback
+   rule; enabling C++ submission is owned by the Oxford ARC / 2.1 HPC gate.
 
 ---
 

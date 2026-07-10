@@ -8,7 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
-- No unreleased changes after the 2.0.0 release candidate.
+- Restored the frozen API contract's decision-log governance and recorded the
+  approved 2.0 scope for MATLAB's Tier-1 method set and the C++ HPC
+  throwing-beta transport boundary.
 
 # 2.0.0rc1 - 2026-07-10
 
