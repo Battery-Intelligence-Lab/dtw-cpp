@@ -179,3 +179,74 @@ TEST_CASE("mmap vs heap load yields digit-identical DTW distances", "[storage][m
   fs::remove_all(scratch);
 #endif
 }
+
+// ===========================================================================
+// (d) Pruned is a dense-only implementation. Auto/explicit strategy routing
+//     must never enter it after a Problem has selected mapped matrix storage.
+// ===========================================================================
+TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
+          "[storage][mmap][pruned][m42]")
+{
+  const auto scratch = make_scratch_dir("m42_pruned_route");
+
+  auto make_problem = [](size_t n, core::DTWVariant variant,
+                         DistanceMatrixStrategy strategy) {
+    std::vector<std::vector<double>> series;
+    std::vector<std::string> names;
+    for (size_t i = 0; i < n; ++i) {
+      const double x = static_cast<double>(i);
+      series.push_back({x / 6.0, static_cast<double>((i * 3) % 17),
+                        4.0 + x / 9.0, static_cast<double>((i * i) % 19)});
+      names.push_back("mmap-route-" + std::to_string(i));
+    }
+    Problem prob("m42_mmap_route");
+    prob.set_data(Data(std::move(series), std::move(names)));
+    prob.set_band(0);
+    auto params = prob.variant_params;
+    params.variant = variant;
+    params.adtw_penalty = 0.75;
+    prob.set_variant(params);
+    prob.set_distance_strategy(strategy);
+    return prob;
+  };
+
+#ifndef DTWC_HAS_MMAP
+  auto prob = make_problem(64, core::DTWVariant::Standard,
+                           DistanceMatrixStrategy::Auto);
+  REQUIRE_THROWS_WITH(
+    prob.use_mmap_distance_matrix(scratch / "unsupported.dtwm"),
+    "MmapDistanceMatrix: this build has no memory-mapped support "
+    "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
+#else
+  auto run = [&](size_t n, core::DTWVariant variant,
+                 DistanceMatrixStrategy strategy, const std::string &tag) {
+    auto prob = make_problem(n, variant, strategy);
+    const auto cache = scratch / (tag + ".dtwm");
+    prob.use_mmap_distance_matrix(cache);
+    prob.fill_distance_matrix();
+    REQUIRE(prob.is_distance_matrix_filled());
+    const auto &matrix = std::get<core::MmapDistanceMatrix>(prob.distance_matrix());
+    REQUIRE(matrix.size() == n);
+    for (size_t i = 0; i < n; ++i) {
+      REQUIRE(matrix.get(i, i) == 0.0);
+      for (size_t j = i + 1; j < n; ++j) {
+        const double expected = variant == core::DTWVariant::ADTW
+          ? dtwc::adtwBanded<double>(prob.series(i), prob.series(j), 0, 0.75)
+          : dtwc::dtwBanded<double>(prob.series(i), prob.series(j), 0);
+        REQUIRE(matrix.get(i, j) == expected);
+      }
+    }
+  };
+
+  run(63, core::DTWVariant::Standard, DistanceMatrixStrategy::Auto,
+      "standard-auto-63");
+  run(64, core::DTWVariant::Standard, DistanceMatrixStrategy::Auto,
+      "standard-auto-64");
+  run(64, core::DTWVariant::ADTW, DistanceMatrixStrategy::Auto,
+      "adtw-auto-64");
+  run(64, core::DTWVariant::Standard, DistanceMatrixStrategy::Pruned,
+      "standard-explicit-64");
+#endif
+
+  fs::remove_all(scratch);
+}
