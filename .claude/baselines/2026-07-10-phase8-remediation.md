@@ -1090,3 +1090,72 @@ MIP warm starts that still use the legacy engine.
 Verdict: **PASS.** Every seed-aware route in M13's stated scope is reproducible
 per invocation and cross-language, while the documented legacy overload remains
 source- and behavior-compatible.
+
+## M17 — Lloyd and direct-MIP invocation-local seeds
+
+The M13 audit left two standard Tier-1 paths outside its claim. Lloyd called
+the public one-argument `init::random` through `Problem::init_fun`, and both
+direct solver backends called unseeded FastPAM for their MIP incumbent. A third
+bug appeared while preregistering restarts: Lloyd wrote the best repetition
+number but left the final repetition's labels/medoids in `Problem`.
+
+The red fixture reused M13's eight translated copies of the nonconstant
+waveform `[0, .01, -.02, .03]` at k=3. Different legacy-engine states changed
+both Lloyd and the solver warm-start construction. The warm-start medoids were
+`[3,6,0]` versus `[6,3,1]`, and four of five assertions failed. A controlled
+two-repetition Lloyd initializer made repetition 0 converge to medoids
+`[0,3,6]`, cost 20, then repetition 1 to `[0,2,5]`, cost 24. The implementation
+printed `Best repetition: 0` but returned repetition 1's cost and medoids:
+
+```text
+problem.find_total_cost() == 20.0  -> 24.0 == 20.0
+problem.medoids() == {0,3,6}       -> {0,2,5} == {0,3,6}
+test cases: 1 | 1 failed
+assertions: 4 | 2 passed | 2 failed
+```
+
+`Problem::random_seed` now defaults to `DEFAULT_RANDOM_SEED` (42). The private
+Lloyd dispatch recognizes only the standard `init::random` and
+`init::Kmeanspp` function-pointer targets and calls new local-engine overloads;
+any arbitrary public `init_fun` callback is invoked unchanged once per
+repetition. The restart range is checked before matrix work, restart `i` uses
+`seed+i`, and repetition zero is snapshotted unconditionally so an infinite or
+NaN comparison cannot leave the restored vectors empty. The actual strict-best
+labels, medoids, and iteration count are restored at the end.
+
+`mip::make_warm_start` is the single FastPAM incumbent seam used by HiGHS and
+Gurobi. It takes the `Problem` seed explicitly and preserves the old 100-iteration
+FastPAM warm-start limit. Solver models, tuning, objectives, and extraction were
+untouched. The one-argument initializers and unseeded Tier-2 FastPAM still use
+the mutable seed-29 `std::mt19937`.
+
+Green evidence from fresh post-edit artifacts:
+
+```text
+build/phase8-m13 (Clang 21.1.8, Release, HiGHS/Gurobi/LLFIO OFF)
+  [lloyd]:                 16 assertions / 4 cases passed
+  [seed] MIP seam:          9 assertions / 1 case passed
+  full Tier-1 C++ API:     50 assertions / 9 cases passed
+  initializer suite:      56 assertions / 10 cases passed
+  FastPAM suite:           67 assertions / 12 cases passed
+
+build/highs-1151 (HiGHS 1.15.1 ON, Gurobi 13.0.1 ON, LLFIO ON)
+  both backend sources and shared seam compiled and linked
+  full unit_test_mip:      55 assertions / 11 cases passed
+
+fresh isolated build/phase8-m13 Python extension
+  tests/python/test_api.py: 48 passed
+```
+
+The solver-runtime gate includes exact cold/warm agreement, Benders, and a
+global-engine non-consumption assertion. Gurobi's licensed runtime was not
+needed for this finding; its enabled source compiled against 13.0.1 and the
+static audit finds exactly the same shared call in both backend files.
+
+The audit separately found Benders leaking its temporary `N_repetition=1`
+configuration. That broader post-call state-corruption bug is registered as
+M20 rather than folded into this deterministic direct-solver change.
+
+Verdict: **PASS.** Lloyd and direct MIP warm starts are reproducible per
+invocation, exact solver optima are unchanged, best-restart output is truthful,
+and the explicit legacy/custom-initializer compatibility boundary is preserved.

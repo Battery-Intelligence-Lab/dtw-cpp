@@ -7,11 +7,11 @@
  */
 
 #include "mip.hpp"
+#include "warm_start.hpp"
 #include "../Data.hpp"        // for Data
 #include "../error.hpp"       // for SolverError
 #include "../types/types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
-#include "../algorithms/fast_pam.hpp"
 #include "../settings.hpp"
 #include "../timing.hpp"
 
@@ -179,7 +179,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Warm start: run FastPAM and feed solution as MIP start
   if (prob.mip_settings.warm_start) {
-    auto pam_result = fast_pam(prob, static_cast<int>(Nc));
+    auto pam_result = mip::make_warm_start(prob, prob.random_seed);
 
     HighsSolution sol;
     sol.col_value.resize(Nvar, 0.0);

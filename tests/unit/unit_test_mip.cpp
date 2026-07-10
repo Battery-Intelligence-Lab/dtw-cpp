@@ -12,6 +12,7 @@
  */
 
 #include <dtwc.hpp>
+#include <mip/warm_start.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -39,6 +40,23 @@ static dtwc::Problem make_small_problem(int N, int L)
   return prob;
 }
 
+static dtwc::Problem make_seed_sensitive_problem()
+{
+  const std::vector<double> base{0.0, 0.01, -0.02, 0.03};
+  std::vector<std::vector<double>> series;
+  std::vector<std::string> names;
+  for (int offset = 0; offset < 8; ++offset) {
+    auto waveform = base;
+    for (double &value : waveform) value += static_cast<double>(offset);
+    series.push_back(std::move(waveform));
+    names.push_back(std::to_string(offset));
+  }
+  dtwc::Problem prob("mip_seed_fixture");
+  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+  prob.set_n_clusters(3);
+  return prob;
+}
+
 TEST_CASE("MIPSettings: struct has correct defaults", "[mip]")
 {
   dtwc::MIPSettings s;
@@ -61,8 +79,44 @@ TEST_CASE("MIPSettings: Problem member accessible", "[mip]")
   REQUIRE(prob.mip_settings.time_limit_sec == 60);
 }
 
+TEST_CASE("MIP FastPAM warm-start medoids are invocation-local",
+          "[mip][seed][warm-start]")
+{
+  const auto legacy_rng_original = dtwc::randGenerator;
+
+  dtwc::randGenerator.seed(17);
+  const auto legacy_rng_before_first = dtwc::randGenerator;
+  auto first_problem = make_seed_sensitive_problem();
+  const auto first = dtwc::mip::make_warm_start(
+    first_problem, dtwc::settings::DEFAULT_RANDOM_SEED);
+  CHECK(dtwc::randGenerator == legacy_rng_before_first);
+
+  dtwc::randGenerator.seed(8675309);
+  const auto legacy_rng_before_second = dtwc::randGenerator;
+  auto second_problem = make_seed_sensitive_problem();
+  const auto second = dtwc::mip::make_warm_start(
+    second_problem, dtwc::settings::DEFAULT_RANDOM_SEED);
+  CHECK(dtwc::randGenerator == legacy_rng_before_second);
+
+  CHECK(first.medoid_indices == second.medoid_indices);
+  CHECK(first.labels == second.labels);
+  CHECK(first.total_cost == second.total_cost);
+  CHECK(first.medoid_indices == std::vector<int>{6, 2, 5});
+  CHECK(first.total_cost == 24.0);
+
+  auto override_problem = make_seed_sensitive_problem();
+  const auto override_result = dtwc::mip::make_warm_start(override_problem, 43);
+  CHECK(override_result.medoid_indices == std::vector<int>{6, 4, 1});
+  CHECK(override_result.total_cost == 20.0);
+
+  dtwc::randGenerator = legacy_rng_original;
+}
+
 TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
 {
+  const auto legacy_rng_original = dtwc::randGenerator;
+  dtwc::randGenerator.seed(314159);
+  const auto legacy_rng_before = dtwc::randGenerator;
   auto prob = make_small_problem(8, 20);
   prob.set_numberOfClusters(2);
   prob.mip_settings.warm_start = true;
@@ -70,6 +124,8 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   prob.set_solver(dtwc::Solver::HiGHS);
   prob.method = dtwc::Method::MIP;
   prob.cluster();
+  CHECK(dtwc::randGenerator == legacy_rng_before);
+  dtwc::randGenerator = legacy_rng_original;
 
   // If HiGHS is not compiled in, cluster() prints a warning and returns
   // with empty centroids_ind. Only check if solver actually ran.

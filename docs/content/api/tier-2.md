@@ -27,6 +27,7 @@ public fields present today become private with these setters in Task 1.6.
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | field `band` (Problem.hpp:133); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | field `maxIter` (Problem.hpp:130) |
 | repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | field `N_repetition` (Problem.hpp:131) |
+| random seed | `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | field `random_seed` (Problem.hpp), default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | Problem.hpp:206; `_dtwcpp_core.cpp:446` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | Problem.hpp:207 |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | field (Problem.hpp:135) |

@@ -97,6 +97,16 @@ class TestClusterLocal:
             np.testing.assert_array_equal(result.labels, final_42.labels)
             assert result.cost == final_42.total_cost
 
+    def test_default_lloyd_seed_is_reproducible_across_calls(self):
+        series = _seed_sensitive_series()
+
+        first = dtwcpp.cluster(series, k=3, method="kmedoids")
+        second = dtwcpp.cluster(series, k=3, method="kmedoids")
+        np.testing.assert_array_equal(first.medoids, second.medoids)
+        np.testing.assert_array_equal(first.labels, second.labels)
+        assert first.cost == second.cost == 20.0
+        assert dtwcpp.Problem().random_seed == dtwcpp.DEFAULT_RANDOM_SEED
+
     def test_result_fields_populated(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
         assert res.device == "cpu"

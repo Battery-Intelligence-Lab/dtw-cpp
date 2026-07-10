@@ -152,6 +152,7 @@ private:
 
   // Private functions:
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(int rep);
+  void init_with_seed(std::uint64_t seed);
 
   void writeBestRep(int best_rep);
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
@@ -161,6 +162,7 @@ public:
   Method method{ Method::Kmedoids };         /*!< Clustering method. */
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
+  std::uint64_t random_seed{ settings::DEFAULT_RANDOM_SEED }; /*!< Invocation-local seed for Tier-1 stochastic work. */
   int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
   int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   double tadpole_dc{ -1.0 };          /*!< TADPole density cutoff dc (Method::TADPole). <0 ⇒ auto-select from a DTW subsample. */
@@ -261,6 +263,7 @@ public:
   int max_iter() const { return maxIter; }
   void set_n_repetitions(int n) { N_repetition = n; }
   int n_repetitions() const { return N_repetition; }
+  void set_random_seed(std::uint64_t seed) { random_seed = seed; }
 
   void set_data(dtwc::Data data_)
   {

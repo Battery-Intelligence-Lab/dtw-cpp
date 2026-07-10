@@ -890,6 +890,25 @@ void Problem::calculate_medoids()
     }
 }
 
+void Problem::init_with_seed(std::uint64_t seed)
+{
+  using initializer_t = void (*)(Problem &);
+  const auto target = init_fun.target<initializer_t>();
+  if (target != nullptr && *target == &init::random) {
+    init::random_seeded(*this, seed);
+    return;
+  }
+  if (target != nullptr && *target == &init::Kmeanspp) {
+    init::Kmeanspp_seeded(*this, seed);
+    return;
+  }
+
+  // `init_fun` is a public extension point. An arbitrary callback has no seed
+  // parameter, so retain its exact legacy invocation semantics rather than
+  // silently replacing it with the default initializer.
+  init();
+}
+
 /**
  * @brief Performs the clustering using the Lloyd k-medoids algorithm.
  * @details Executes the Lloyd k-medoids algorithm (alternating assign + update medoids within clusters)
@@ -898,14 +917,23 @@ void Problem::calculate_medoids()
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
+  if (N_repetition <= 0)
+    throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
+  const auto restart_offset = static_cast<std::uint64_t>(N_repetition - 1);
+  if (restart_offset > std::numeric_limits<std::uint64_t>::max() - random_seed)
+    throw InvalidInput("Lloyd k-medoids random_seed + repetition index overflows uint64.");
+
   fill_distance_matrix(); // Ensure all distances computed before parallel clustering.
 
   int best_rep = 0;
   double best_cost = std::numeric_limits<data_t>::max();
+  int best_iterations = 0;
+  std::vector<int> best_medoids;
+  std::vector<int> best_labels;
 
   for (int i_rand = 0; i_rand < N_repetition; i_rand++) {
     std::cout << "Metoid initialisation is started.\n";
-    init();
+    init_with_seed(random_seed + static_cast<std::uint64_t>(i_rand));
 
     std::cout << "Metoid initialisation is finished. "
               << Nc << " medoids are initialised.\n"
@@ -919,13 +947,19 @@ void Problem::cluster_by_kmedoids_lloyd()
     else if (status == -1)
       std::cout << "Maximum iteration is reached before medoids are converged!\n";
 
-    if (total_cost < best_cost) {
+    if (i_rand == 0 || total_cost < best_cost) {
       best_cost = total_cost;
       best_rep = i_rand;
+      best_iterations = iters;
+      best_medoids = centroids_ind;
+      best_labels = clusters_ind;
     }
     std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
   }
 
+  centroids_ind = std::move(best_medoids);
+  clusters_ind = std::move(best_labels);
+  last_iterations = best_iterations;
   writeBestRep(best_rep);
 }
 
@@ -938,7 +972,8 @@ void Problem::cluster_by_kmedoids_lloyd()
  */
 std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(int rep)
 {
-  if (centroids_ind.empty()) init(); //<! Initialise if not initialised.
+  if (centroids_ind.empty())
+    init_with_seed(random_seed + static_cast<std::uint64_t>(rep));
 
   auto oldmedoids = centroids_ind;
 

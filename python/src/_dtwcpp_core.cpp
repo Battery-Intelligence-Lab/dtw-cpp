@@ -726,6 +726,8 @@ NB_MODULE(_dtwcpp_core, m) {
             "Repetitions for iterative methods.")
     .def_rw("n_repetition", &dtwc::Problem::N_repetition,
             "Deprecated alias for n_repetitions (kept one cycle, §4).")
+    .def_rw("random_seed", &dtwc::Problem::random_seed,
+            "Invocation-local seed for Lloyd and MIP warm starts.")
     .def_rw("band", &dtwc::Problem::band)
     .def_rw("variant_params", &dtwc::Problem::variant_params)
     .def_rw("missing_strategy", &dtwc::Problem::missing_strategy,
@@ -778,6 +780,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("set_band", &dtwc::Problem::set_band, "band"_a)
     .def("set_max_iter", &dtwc::Problem::set_max_iter, "max_iter"_a)
     .def("set_n_repetitions", &dtwc::Problem::set_n_repetitions, "n_repetitions"_a)
+    .def("set_random_seed", &dtwc::Problem::set_random_seed, "random_seed"_a)
     .def("set_variant", nb::overload_cast<dtwc::core::DTWVariant>(&dtwc::Problem::set_variant), "variant"_a)
     .def("set_variant_params",
          nb::overload_cast<dtwc::core::DTWVariantParams>(&dtwc::Problem::set_variant), "params"_a,

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made Lloyd k-medoids and direct HiGHS/Gurobi MIP warm starts invocation-local
+  at the shared seed-42 default. Lloyd repetitions now use checked `seed+i` and
+  return the actual lowest-cost state instead of the final run; custom
+  initializers and the unseeded Tier-2 RNG contract remain unchanged.
 - Made mmap distance-cache creation crash-consistent and single-writer. A
   CRC-covered initializing/ready state now publishes only after every NaN
   sentinel is durably flushed; incomplete caches fail with recompute guidance,

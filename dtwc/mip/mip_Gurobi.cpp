@@ -7,9 +7,9 @@
  */
 
 #include "mip.hpp"
+#include "warm_start.hpp"
 #include "../Problem.hpp"
 #include "../error.hpp" // for SolverError
-#include "../algorithms/fast_pam.hpp"
 #include "../settings.hpp"
 #include "../types/types.hpp" // for Range
 
@@ -89,7 +89,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Warm start: run FastPAM and feed solution as MIP start
     if (prob.mip_settings.warm_start) {
-      auto pam_result = fast_pam(prob, static_cast<int>(Nc));
+      auto pam_result = mip::make_warm_start(prob, prob.random_seed);
 
       for (size_t idx = 0; idx < Nb * Nb; ++idx)
         w[idx].set(GRB_DoubleAttr_Start, 0.0);

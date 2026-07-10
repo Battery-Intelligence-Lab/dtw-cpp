@@ -69,13 +69,20 @@ this value; `auto` inherits the resolved method. `DTWClustering` restart `i`
 uses `DEFAULT_RANDOM_SEED + i` and retains the lowest-cost result, with the
 schedule range-checked. `DTWCKMedoids(random_state=None)` means the same default.
 CLI `--seed` defaults to 42, applies to PAM, OneBatchPAM, and CLARA, and accepts
-`[0, UINT_MAX]`. These calls do not consume `dtwc::randGenerator`.
+`[0, UINT_MAX]`. Lloyd k-medoids uses the same invocation-local default and a
+checked `base_seed + i` schedule for its repetitions, restoring the actual
+lowest-cost repetition rather than leaving the final run in `Problem`. Direct
+HiGHS and Gurobi MIP warm starts use a shared seed-aware FastPAM incumbent;
+their exact model and optimum are unchanged. These calls do not consume
+`dtwc::randGenerator`.
 
 The unseeded Tier-2 `fast_pam` overload intentionally retains its legacy mutable
 `std::mt19937` engine, initially seeded 29; use `fast_pam_seeded` or MATLAB's
-`Seed` option for invocation-local reproducibility. Lloyd k-medoids and MIP warm
-starts are not covered by this addendum until their separate local-seed plumbing
-lands; they must not be inferred to share the seed-aware PAM contract.
+`Seed` option for invocation-local reproducibility. The one-argument
+`init::random` and `init::Kmeanspp` functions retain the same legacy engine.
+Lloyd recognizes those standard function-pointer initializers and selects their
+seeded counterparts; an arbitrary user-supplied `Problem::init_fun` callback is
+still invoked unchanged once per repetition and owns its own RNG policy.
 
 ### 1.4 `Result` — clustering outcome  `[live in C++/Python/MATLAB]`
 
