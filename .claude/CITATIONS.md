@@ -22,7 +22,7 @@ References used during development. Verify each citation independently before pu
 
 - Keogh, E. & Pazzani, M. (2001). Derivative Dynamic Time Warping. *SIAM SDM 2001*.
 - Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011). Weighted dynamic time warping for time series classification. *Pattern Recognition*, 44(9), 2231-2240.
-- Cuturi, M. & Blondel, M. (2017). Soft-DTW: A Differentiable Loss Function for Time-Series. *ICML*, PMLR 70, 894-903.
+- Cuturi, M. & Blondel, M. (2017). Soft-DTW: a Differentiable Loss Function for Time-Series. In *Proceedings of the 34th International Conference on Machine Learning*, PMLR 70, 894–903. https://proceedings.mlr.press/v70/cuturi17a.html — Defines the differentiable soft-DTW value and gradient used for soft-DTW barycenters.
 - Itakura, F. (1975). Minimum Prediction Residual Principle Applied to Speech Recognition. *IEEE TASSP*, 23(1), 67-72.
 
 ## Clustering and k-Medoids
@@ -83,7 +83,7 @@ References used during development. Verify each citation independently before pu
 - Schubert, E. & Lenssen, L. (2022). Fast k-medoids Clustering in Rust and Python. *Journal of Open Source Software*, 7(75), 4183. https://joss.theoj.org/papers/10.21105/joss.04183 — Reference FasterPAM/LAB implementation; parallel rayon variant.
 - Tiwari, M., Zhang, M. J., Mayclin, J., Thrun, S., Piech, C., & Shomorony, I. (2020). BanditPAM: Almost Linear Time k-Medoids Clustering via Multi-Armed Bandits. *NeurIPS 2020*. arXiv:2006.06856 — O(n log n) per iteration under distributional assumptions; wins only when distances are computed on demand.
 - Tiwari, M., et al. (2023). BanditPAM++: Faster k-medoids Clustering. *NeurIPS 2023*. arXiv:2310.18844 — "O(k) faster than BanditPAM"; 10x on CIFAR10.
-- (2025). OneBatchPAM: A Fast and Frugal K-Medoids Algorithm. *AAAI 2025*. arXiv:2501.19285 — O(mn) dissimilarity computations, m = O(log n); candidate for the 100M-series tier.
+- de Mathelin, A., Cecchi, N. E., Deheeger, F., Mougeot, M., & Vayatis, N. (2025). OneBatchPAM: A Fast and Frugal K-Medoids Algorithm. *Proceedings of the AAAI Conference on Artificial Intelligence*, 39(15), 16172–16180. https://doi.org/10.1609/aaai.v39i15.33776; arXiv:2501.19285 (https://arxiv.org/abs/2501.19285) — Uses one batch of size m ≪ n, reducing dissimilarity work and memory to O(mn); the paper gives m = O(log n) as sufficient under its probabilistic guarantee.
 - Lenssen, L. & Schubert, E. (2024). Medoid Silhouette clustering with automatic cluster number selection (FasterMSC, DynMSC). *Information Systems*, 120. arXiv:2209.12553.
 - Begum, N., Ulanova, L., Wang, J., & Keogh, E. (2015). Accelerating Dynamic Time Warping Clustering with a Novel Admissible Pruning Strategy (TADPole). *ACM SIGKDD 2015*. Extended: arXiv:1612.00637 — envelope UB/LB pruning of the pairwise matrix, ~order-of-magnitude speedup, results identical to brute force. Density kernel is the hard CUTOFF count ρ(i)=|{j: d(i,j)<dc}| (Table 1; the only kernel a bound-based binary test can prune); cases A–D (Table 5): UB<dc⇒neighbour, LB>dc⇒not, else exact. δ(highest-density)=max of the others' δ (Table 2, differs from Rodriguez–Laio's max_j d). Theorem 1: identical labels to brute-force DP_DTW. Used by Task 5.3 (`Method::TADPole`).
 - Rodriguez, A. & Laio, A. (2014). Clustering by fast search and find of density peaks. *Science*, 344(6191), 1492–1496. doi:10.1126/science.1242072 — density-peaks core underlying TADPole: local density ρ, separation δ = min distance to a higher-density point, centers = high ρ·δ, single-pass assignment to the nearest higher-density neighbour.
@@ -95,7 +95,7 @@ References used during development. Verify each citation independently before pu
 ### Barycenters / DTW averaging
 
 - Petitjean, F., Ketterlin, A., & Gançarski, P. (2011). A global averaging method for dynamic time warping, with applications to clustering (DBA). *Pattern Recognition*, 44(3), 678-693.
-- Schultz, D. & Jain, B. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces (SSG). *Pattern Recognition*, 74, 340-358. arXiv:1701.06393 — SSG more stable and better than DBA on average at larger sample sizes.
+- Schultz, D. & Jain, B. J. (2018). Nonsmooth analysis and subgradient methods for averaging in dynamic time warping spaces. *Pattern Recognition*, 74, 340–358. https://doi.org/10.1016/j.patcog.2017.08.012; arXiv:1701.06393 (https://arxiv.org/abs/1701.06393) — Analyzes DBA as majorize-minimize and proposes stochastic subgradient (SSG) averaging; the implementation-to-paper multiplicity check remains a separate Phase 8 review item.
 
 ### Lower bounds, pruning, fast exact DTW (additions)
 
