@@ -28,6 +28,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -215,17 +216,37 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
 #ifndef DTWC_HAS_MMAP
   auto prob = make_problem(64, core::DTWVariant::Standard,
                            DistanceMatrixStrategy::Auto);
-  REQUIRE_THROWS_WITH(
-    prob.use_mmap_distance_matrix(scratch / "unsupported.dtwm"),
-    "MmapDistanceMatrix: this build has no memory-mapped support "
-    "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
+  try {
+    prob.use_mmap_distance_matrix(scratch / "unsupported.dtwm");
+    FAIL("LLFIO-off build accepted mmap distance storage");
+  } catch (const std::runtime_error &error) {
+    REQUIRE(std::string(error.what()) ==
+      "MmapDistanceMatrix: this build has no memory-mapped support "
+      "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
+  }
 #else
   auto run = [&](size_t n, core::DTWVariant variant,
                  DistanceMatrixStrategy strategy, const std::string &tag) {
     auto prob = make_problem(n, variant, strategy);
     const auto cache = scratch / (tag + ".dtwm");
     prob.use_mmap_distance_matrix(cache);
-    prob.fill_distance_matrix();
+    if (strategy == DistanceMatrixStrategy::Pruned) {
+      prob.verbose = true;
+      std::ostringstream route_output;
+      {
+        auto *previous_buffer = std::cout.rdbuf(route_output.rdbuf());
+        struct RestoreCout {
+          std::streambuf *buffer;
+          ~RestoreCout() { std::cout.rdbuf(buffer); }
+        } restore_cout{previous_buffer};
+        prob.fill_distance_matrix();
+      }
+      REQUIRE(route_output.str().find(
+        "Pruned strategy requires dense distance storage; using exact BruteForce "
+        "to fill the configured mmap distance matrix.") != std::string::npos);
+    } else {
+      prob.fill_distance_matrix();
+    }
     REQUIRE(prob.is_distance_matrix_filled());
     const auto &matrix = std::get<core::MmapDistanceMatrix>(prob.distance_matrix());
     REQUIRE(matrix.size() == n);

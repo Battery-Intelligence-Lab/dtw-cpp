@@ -586,7 +586,7 @@ double Problem::dist_by_ind(int i, int j)
  *          (raw lower-bound kernels cannot implement a missing-data dispatcher).
  * @return true if pruned strategy can be used.
  */
-static bool pruned_strategy_applicable(const Problem &prob)
+static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_storage)
 {
   // LB_Keogh is a valid lower bound for Standard DTW and ADTW: ADTW penalties
   // only increase cost, so LB_Keogh(x,y) <= DTW(x,y) <= ADTW(x,y,penalty).
@@ -594,6 +594,7 @@ static bool pruned_strategy_applicable(const Problem &prob)
                                || prob.variant_params.variant == core::DTWVariant::ADTW;
   return supported_variant
       && prob.missing_strategy == core::MissingStrategy::Error
+      && has_dense_storage
       && prob.band >= 0
       && prob.size() >= 64;
 }
@@ -696,9 +697,11 @@ void Problem::fill_distance_matrix()
   }
 
   // Resolve Auto strategy
+  const bool has_mmap_storage =
+    std::holds_alternative<core::MmapDistanceMatrix>(distMat);
   DistanceMatrixStrategy effective = distance_strategy;
   if (effective == DistanceMatrixStrategy::Auto) {
-    if (pruned_strategy_applicable(*this))
+    if (pruned_strategy_applicable(*this, !has_mmap_storage))
       effective = DistanceMatrixStrategy::Pruned;
     else
       effective = DistanceMatrixStrategy::BruteForce;
@@ -713,6 +716,16 @@ void Problem::fill_distance_matrix()
     if (verbose) {
       std::cout << "Pruned lower bounds support missing_strategy=Error only; "
                    "using exact BruteForce to preserve the configured missing-data policy.\n";
+    }
+    effective = DistanceMatrixStrategy::BruteForce;
+  }
+
+  // Lower-bound pruning currently writes DenseDistanceMatrix directly. Mapped
+  // storage is still fully supported through the exact generic row fill.
+  if (effective == DistanceMatrixStrategy::Pruned && has_mmap_storage) {
+    if (verbose) {
+      std::cout << "Pruned strategy requires dense distance storage; using exact "
+                   "BruteForce to fill the configured mmap distance matrix.\n";
     }
     effective = DistanceMatrixStrategy::BruteForce;
   }

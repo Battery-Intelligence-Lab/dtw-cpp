@@ -19,6 +19,7 @@
 #include "../warping_adtw.hpp"
 #include "../settings.hpp"
 #include "../parallelisation.hpp"
+#include "../error.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -51,8 +52,16 @@ static inline void atomic_min_double(std::atomic<double> &value, double candidat
 PruningStats fill_distance_matrix_pruned(
     dtwc::Problem &prob, int band, dtwc::LowerBoundStrategy lb_strat)
 {
-  // Pruned fill only operates on DenseDistanceMatrix (resize required).
-  auto &dm = prob.dense_distance_matrix();
+  // Pruned fill only operates on DenseDistanceMatrix (resize required). Keep
+  // the low-level entry point typed/actionable; Problem::fill_distance_matrix
+  // routes mapped storage through its exact generic fill instead.
+  auto &matrix = prob.distance_matrix();
+  if (!std::holds_alternative<core::DenseDistanceMatrix>(matrix)) {
+    throw dtwc::InvalidInput(
+      "fill_distance_matrix_pruned: mapped distance storage is unsupported; "
+      "call Problem::fill_distance_matrix() to route an exact mapped BruteForce fill.");
+  }
+  auto &dm = std::get<core::DenseDistanceMatrix>(matrix);
 
   PruningStats stats;
   const int N = static_cast<int>(prob.size());
