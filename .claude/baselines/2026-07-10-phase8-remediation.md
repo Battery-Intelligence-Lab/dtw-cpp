@@ -1737,3 +1737,63 @@ Verdict: **PASS.** Every accepted estimator configuration uses the same
 distance semantics for medoid selection, inertia, and prediction; unsupported
 semantics and unusable restart results are loud; default Standard-L1 behavior
 is unchanged.
+
+## M28 — secure HPC submission envelope
+
+Registered band: every job name, path, integer, method, and upload flag that
+crosses Python, Bash, SSH, Slurm's comma-delimited export parser, or a transfer
+tool must be normalized before any local/remote side effect. A real copied
+wrapper must run behind an SSH executable that actually evaluates the remote
+command. A crafted name must neither submit nor execute an extra command; an
+accepted path containing otherwise sensitive-but-allowed bytes must arrive in
+the captured `DTWC_INPUT` export unchanged.
+
+The preregistered red set failed all ten new cases. Six direct-runner cases
+invoked the wrapper, three high-level cases reached the runner and created the
+run-directory boundary, and the real-wrapper malicious-name case returned
+success instead of rejecting the remote-shell syntax.
+
+The repaired Python boundary normalizes bounded CLI integers, method aliases,
+the upload boolean, a 128-byte job-name grammar, and a conservative
+comma/whitespace/metacharacter-free path grammar before creating a directory or
+calling a runner. The Bash boundary repeats every check before its first SSH or
+transfer. A follow-up adversarial pass found that a leading `-` source could
+still be interpreted as a transfer option; that path is now rejected at both
+layers and `rsync`/`scp` also receive `--` as defense in depth. An independent
+rsync 3.2.7 discriminator then proved that `--` does not prevent `foo:bar` from
+being treated as a remote source. Upload sources containing `:` are therefore
+rejected at both layers, while pre-staged remote paths retain the character.
+Missing paths and directories requested for upload are likewise rejected before
+the banner and first SSH call; a fake-SSH sentinel mutation-pins that ordering.
+
+The wrapper constructs `sbatch` as an array and shell-quotes each remote argv
+element independently. The fake SSH executes with POSIX `sh`, and a hostile
+optional cluster value `arc;touch <sentinel>;` arrives as one exact fake-Slurm
+argument without creating the sentinel; restoring the old raw interpolation
+would execute it. A real safe-upload capture also pins `rsync -az --` followed
+by the unchanged relative source and remote target. The wrapper explicitly
+exports dtype and seed in addition to all other job-consumed request fields, so
+`--export=ALL` cannot supply an omitted configuration value. The executing
+fake-SSH gate captures distinct fake-Slurm argv:
+`/remote/input:v1+tag@host%=a.tsv` is present exactly as
+`DTWC_INPUT=/remote/input:v1+tag@host%=a.tsv`, while an ambient seed 29 becomes
+empty for omission or remains caller-selected 42.
+
+Green commands and decisive output:
+
+```powershell
+.venv/Scripts/python.exe -m pytest tests/python/test_hpc.py -q
+.venv/Scripts/python.exe -m py_compile python/dtwcpp/_hpc.py tests/python/test_hpc.py
+# bash -n over every tracked *.sh; CR-byte scan over every *.sh/*.slurm
+```
+
+```text
+82 passed in 35.26s
+py_compile ok
+shell syntax ok: 4
+LF-only shell/slurm entrypoints: 11
+```
+
+Verdict: **PASS.** Unsafe requests are rejected before effects at both public
+entry layers, the remote command is argv-quoted, transfer option ambiguity is
+closed twice, and accepted export bytes retain their exact value.

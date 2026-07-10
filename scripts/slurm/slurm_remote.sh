@@ -104,6 +104,19 @@ is_finite_number() {
         }'
 }
 
+shell_join() {
+    # OpenSSH hands its arguments to a remote shell as one command string.
+    # Quote every argv element independently before crossing that boundary.
+    local DESTINATION="$1"
+    shift
+    local RESULT="" QUOTED ARG
+    for ARG in "$@"; do
+        printf -v QUOTED '%q' "${ARG}"
+        RESULT+="${RESULT:+ }${QUOTED}"
+    done
+    printf -v "${DESTINATION}" '%s' "${RESULT}"
+}
+
 # ── Commands ─────────────────────────────────────────────────────────────
 
 cmd_test() {
@@ -318,6 +331,53 @@ cmd_submit_cluster() {
     local MISSING_STRATEGY="${19:-error}"
     local METRIC="${20:-l1}"
 
+    [[ "${INPUT}" =~ ^[A-Za-z0-9_./:+@%=-]+$ ]] || {
+        echo "ERROR: input path contains bytes unsafe for SSH/Slurm export: ${INPUT}" >&2
+        exit 1
+    }
+    [[ "${INPUT}" != -* ]] || {
+        echo "ERROR: input path must not start with '-' (transfer option ambiguity): ${INPUT}" >&2
+        exit 1
+    }
+    [[ "${K}" =~ ^[1-9][0-9]*$ ]] \
+        && decimal_leq "${K}" "2147483647" || {
+        echo "ERROR: n_clusters must fit the dtwc_cl positive int range: ${K}" >&2
+        exit 1
+    }
+    [[ "${METHOD}" =~ ^(auto|pam|onebatch|clara|kmedoids|mip|lrcore|hierarchical|tadpole)$ ]] || {
+        echo "ERROR: unsupported method: ${METHOD}" >&2
+        exit 1
+    }
+    [[ "${BAND}" == "-1" || "${BAND}" =~ ^[0-9]+$ ]] || {
+        echo "ERROR: band must be -1 or a non-negative integer: ${BAND}" >&2
+        exit 1
+    }
+    if [[ "${BAND}" != "-1" ]] && ! decimal_leq "${BAND}" "2147483647"; then
+        echo "ERROR: band exceeds the dtwc_cl int range: ${BAND}" >&2
+        exit 1
+    fi
+    (( ${#NAME} >= 1 && ${#NAME} <= 128 )) \
+        && [[ "${NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
+        echo "ERROR: job name must be 1-128 ASCII letters, digits, '.', '_', or '-': ${NAME}" >&2
+        exit 1
+    }
+    [[ "${SKIP_COLS}" =~ ^[0-9]+$ ]] \
+        && decimal_leq "${SKIP_COLS}" "2147483647" || {
+        echo "ERROR: skip_cols must fit the dtwc_cl non-negative int range: ${SKIP_COLS}" >&2
+        exit 1
+    }
+    [[ "${UPLOAD}" == "0" || "${UPLOAD}" == "1" ]] || {
+        echo "ERROR: upload must be 0 or 1: ${UPLOAD}" >&2
+        exit 1
+    }
+    if [[ "${UPLOAD}" == "1" && "${INPUT}" == *:* ]]; then
+        echo "ERROR: local upload path must not contain ':' (remote-source ambiguity): ${INPUT}" >&2
+        exit 1
+    fi
+    if [[ "${UPLOAD}" == "1" && ! -f "${INPUT}" ]]; then
+        echo "ERROR: input not found or not a regular file: ${INPUT}" >&2
+        exit 1
+    fi
     [[ "${N_INIT}" =~ ^[1-9][0-9]*$ ]] || {
         echo "ERROR: n_init must be a positive integer: ${N_INIT}" >&2
         exit 1
@@ -402,13 +462,12 @@ cmd_submit_cluster() {
     # Resolve the cluster-side input path (upload a local file, or use as-is)
     local REMOTE_INPUT
     if [[ "${UPLOAD}" == "1" ]]; then
-        [[ -f "${INPUT}" ]] || { echo "ERROR: input not found: ${INPUT}"; exit 1; }
         local BASE; BASE="$(basename "${INPUT}")"
         remote "mkdir -p ${REMOTE}/data/userjobs"
         if command -v rsync &>/dev/null; then
-            rsync -az "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+            rsync -az -- "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
         else
-            scp "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+            scp -- "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
         fi
         REMOTE_INPUT="${REMOTE}/data/userjobs/${BASE}"
     else
@@ -427,6 +486,7 @@ cmd_submit_cluster() {
 
     local EXPORTS="ALL,DTWC_INPUT=${REMOTE_INPUT},DTWC_K=${K},DTWC_SKIP_COLS=${SKIP_COLS}"
     EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME},DTWC_N_INIT=${N_INIT}"
+    EXPORTS+=",DTWC_DTYPE=float64"
     EXPORTS+=",DTWC_MAX_ITER=${MAX_ITER},DTWC_VARIANT=${VARIANT},DTWC_WDTW_G=${WDTW_G},DTWC_ADTW_PENALTY=${ADTW_PENALTY}"
     EXPORTS+=",DTWC_MSM_C=${MSM_C},DTWC_TWE_NU=${TWE_NU},DTWC_TWE_LAMBDA=${TWE_LAMBDA},DTWC_MV_MODE=${MV_MODE}"
     EXPORTS+=",DTWC_MISSING_STRATEGY=${MISSING_STRATEGY},DTWC_METRIC=${METRIC}"
@@ -435,8 +495,18 @@ cmd_submit_cluster() {
     # an explicit value remains byte-for-byte unchanged.
     EXPORTS+=",DTWC_SEED=${SEED}"
 
-    local JOB_ID
-    JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${GPU_FLAGS} --export=${EXPORTS} scripts/slurm/jobs/cluster_generic.slurm")
+    local -a SBATCH_ARGS=(sbatch --parsable)
+    [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    if [[ -n "${SLURM_EMAIL:-}" ]]; then
+        SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
+    fi
+    [[ -n "${GPU_FLAGS}" ]] && SBATCH_ARGS+=("${GPU_FLAGS}")
+    SBATCH_ARGS+=("--export=${EXPORTS}" "scripts/slurm/jobs/cluster_generic.slurm")
+
+    local SBATCH_COMMAND REMOTE_SOURCE JOB_ID
+    shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
+    printf -v REMOTE_SOURCE '%q' "${REMOTE}/src"
+    JOB_ID=$(remote "cd ${REMOTE_SOURCE} && ${SBATCH_COMMAND}")
     echo "  Job ID: ${JOB_ID}"
     echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
 }

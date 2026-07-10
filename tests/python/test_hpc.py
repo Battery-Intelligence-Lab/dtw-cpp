@@ -179,6 +179,54 @@ def _bash_path(path):
     return f"/mnt/{drive}{suffix}" if uname.startswith("linux") else f"/{drive}{suffix}"
 
 
+def _isolated_slurm_wrapper(tmp_path):
+    """Copy the real wrapper behind local SSH/transfer/sbatch executables."""
+    root = Path(__file__).resolve().parents[2]
+    project = tmp_path / "project"
+    wrapper = project / "scripts/slurm/slurm_remote.sh"
+    wrapper.parent.mkdir(parents=True)
+    shutil.copy2(root / "scripts/slurm/slurm_remote.sh", wrapper)
+    job = project / "scripts/slurm/jobs/cluster_generic.slurm"
+    job.parent.mkdir(parents=True)
+    shutil.copy2(root / "scripts/slurm/jobs/cluster_generic.slurm", job)
+
+    remote = tmp_path / "remote"
+    remote_binary = remote / "src/build-test/bin/dtwc_cl"
+    remote_binary.parent.mkdir(parents=True)
+    remote_binary.write_text("", encoding="utf-8")
+    (project / ".env").write_text(
+        "SLURM_USER=test_user\n"
+        "SLURM_HOST=test_host\n"
+        f"SLURM_REMOTE_BASE={_bash_path(remote)}\n",
+        encoding="utf-8",
+    )
+
+    fake_bin = tmp_path / "fake-bin"
+    fake_bin.mkdir()
+    fake_ssh = fake_bin / "ssh"
+    fake_ssh.write_text(
+        "#!/usr/bin/env bash\nexec sh -c \"${2:-}\"\n",
+        encoding="utf-8", newline="\n",
+    )
+    fake_ssh.chmod(0o755)
+    for transfer_name in ("rsync", "scp"):
+        transfer = fake_bin / transfer_name
+        transfer.write_text(
+            "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n",
+        )
+        transfer.chmod(0o755)
+    capture = tmp_path / "sbatch-args.txt"
+    fake_sbatch = fake_bin / "sbatch"
+    fake_sbatch.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CAPTURE_SBATCH\"\n"
+        "echo 12345\n",
+        encoding="utf-8", newline="\n",
+    )
+    fake_sbatch.chmod(0o755)
+    return wrapper, fake_bin, capture
+
+
 class TestSlurmRunner:
     """The Python orchestration glue around slurm_remote.sh (no real cluster)."""
 
@@ -234,6 +282,33 @@ class TestSlurmRunner:
         seq = iter(["...111 running...", "...111 running...", "no jobs in queue"])
         r._run = lambda *a: types.SimpleNamespace(stdout=next(seq), stderr="")
         r.wait("111", poll_seconds=0)        # returns once "111" no longer present
+
+    @pytest.mark.parametrize(
+        ("kwargs", "message"),
+        [
+            ({"k": 0}, "n_clusters"),
+            ({"method": "pam;touch"}, "method"),
+            ({"band": -2}, "band"),
+            ({"skip_cols": -1}, "skip_cols"),
+            ({"name": "../escape"}, "name"),
+            ({"input_tsv": "/cluster/input,other.tsv"}, "input"),
+            ({"input_tsv": "--delete"}, "must not start"),
+            ({"input_tsv": None}, "input_tsv"),
+            ({"input_tsv": "C:/data.tsv", "upload": True}, "must not contain"),
+        ],
+    )
+    def test_submit_rejects_unsafe_envelope_before_wrapper(
+        self, kwargs, message,
+    ):
+        values = {
+            "input_tsv": "/cluster/input.tsv", "k": 2, "method": "pam",
+            "band": -1, "skip_cols": 0, "name": "safe_job",
+        }
+        values.update(kwargs)
+        runner = _hpc.SlurmRemoteRunner(".")
+        runner._run = lambda *args: pytest.fail(f"wrapper invoked: {args}")
+        with pytest.raises((TypeError, ValueError), match=message):
+            runner.submit_cluster(**values)
 
 
 class TestDTWClusteringHpcDispatch:
@@ -365,6 +440,28 @@ class TestDTWClusteringHpcDispatch:
             )
         assert not run_dir.exists()
 
+    @pytest.mark.parametrize(
+        ("source", "kwargs", "message"),
+        [
+            ("/cluster/input.tsv", {"name": "../escape"}, "name"),
+            ("/cluster/input,other.tsv", {"name": "safe_job"}, "input"),
+            ("/cluster/input.tsv", {"name": "safe_job", "method": "pam;touch"},
+             "method"),
+        ],
+    )
+    def test_submission_envelope_fails_before_run_directory_or_runner(
+        self, tmp_path, source, kwargs, message,
+    ):
+        class UntouchedRunner:
+            def preflight(self):
+                raise AssertionError("preflight must not run")
+
+        with pytest.raises((TypeError, ValueError), match=message):
+            _hpc.cluster_on_hpc(
+                source, 2, repo_root=tmp_path, runner=UntouchedRunner(), **kwargs,
+            )
+        assert not (tmp_path / "results").exists()
+
 
 class TestSlurmLastMile:
     """Pin runner exports and job-script flags without contacting SLURM."""
@@ -402,51 +499,14 @@ class TestSlurmLastMile:
         self, tmp_path, seed_arg, expected_export,
     ):
         """``--export=ALL`` must not override omission or an explicit seed."""
-        root = Path(__file__).resolve().parents[2]
-        project = tmp_path / "project"
-        wrapper = project / "scripts/slurm/slurm_remote.sh"
-        wrapper.parent.mkdir(parents=True)
-        shutil.copy2(root / "scripts/slurm/slurm_remote.sh", wrapper)
-        job = project / "scripts/slurm/jobs/cluster_generic.slurm"
-        job.parent.mkdir(parents=True)
-        shutil.copy2(root / "scripts/slurm/jobs/cluster_generic.slurm", job)
-        (project / ".env").write_text(
-            "SLURM_USER=test_user\n"
-            "SLURM_HOST=test_host\n"
-            "SLURM_REMOTE_BASE=/remote/dtwc\n",
-            encoding="utf-8",
-        )
-
-        fake_bin = tmp_path / "fake-bin"
-        fake_bin.mkdir()
-        capture = tmp_path / "submitted-command.txt"
-        fake_ssh = fake_bin / "ssh"
-        fake_ssh.write_text(
-            "#!/usr/bin/env bash\n"
-            "command=${2:-}\n"
-            "if [[ \"$command\" == *\"ls \"* ]]; then\n"
-            "  echo /remote/dtwc/src/build-test/bin/dtwc_cl\n"
-            "  exit 0\n"
-            "fi\n"
-            "printf '%s\\n' \"$command\" > \"$CAPTURE_SSH\"\n"
-            "echo 12345\n",
-            encoding="utf-8",
-            newline="\n",
-        )
-        fake_ssh.chmod(0o755)
-        for transfer_name in ("rsync", "scp"):
-            transfer = fake_bin / transfer_name
-            transfer.write_text(
-                "#!/usr/bin/env bash\nexit 0\n", encoding="utf-8", newline="\n",
-            )
-            transfer.chmod(0o755)
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
 
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
-            f"export CAPTURE_SSH={shlex.quote(_bash_path(capture))}; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
             "export DTWC_SEED=29; "
             f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input.tsv 2 pam cpu -1 seed_export 0 0 1 "
+            "/remote/input:v1+tag@host%=a.tsv 2 pam cpu -1 seed_export 0 0 1 "
             f"{shlex.quote(seed_arg)}"
         )
         completed = subprocess.run(
@@ -454,9 +514,136 @@ class TestSlurmLastMile:
             text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
-        submitted = capture.read_text(encoding="utf-8")
-        assert f",DTWC_SEED={expected_export}" in submitted
-        assert ",DTWC_SEED=29" not in submitted
+        sbatch_args = capture.read_text(encoding="utf-8").splitlines()
+        exports = next(arg for arg in sbatch_args if arg.startswith("--export="))
+        assert "DTWC_INPUT=/remote/input:v1+tag@host%=a.tsv" in exports
+        assert f",DTWC_SEED={expected_export}" in exports
+        assert ",DTWC_SEED=29" not in exports
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_unsafe_job_name_is_rejected_before_remote_shell(self, tmp_path):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        injected = tmp_path / "injected.txt"
+        malicious_name = f"safe;printf injected>{_bash_path(injected)};#"
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            "/remote/input.tsv 2 pam cpu -1 "
+            f"{shlex.quote(malicious_name)} 0 0 1 ''"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "job name" in completed.stderr.lower()
+        assert not injected.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        ("overrides", "message"),
+        [
+            ({0: "/remote/input,other.tsv"}, "input path"),
+            ({0: "--delete"}, "must not start"),
+            ({1: "0"}, "n_clusters"),
+            ({2: "pam;true"}, "method"),
+            ({4: "-2"}, "band"),
+            ({5: "../escape"}, "job name"),
+            ({6: "-1"}, "skip_cols"),
+            ({7: "2"}, "upload"),
+            ({0: "C:/data.tsv", 7: "1"}, "must not contain"),
+            ({0: "definitely-missing-m28.tsv", 7: "1"}, "input not found"),
+        ],
+    )
+    def test_wrapper_rejects_unsafe_envelope_before_ssh(
+        self, tmp_path, overrides, message,
+    ):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        ssh_called = tmp_path / "ssh-called.txt"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\nprintf called > \"$SSH_CALLED\"\nexit 97\n",
+            encoding="utf-8", newline="\n",
+        )
+        args = [
+            "/remote/input.tsv", "2", "pam", "cpu", "-1", "safe_job",
+            "0", "0",
+        ]
+        for index, value in overrides.items():
+            args[index] = value
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export SSH_CALLED={shlex.quote(_bash_path(ssh_called))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            + " ".join(shlex.quote(value) for value in args)
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert message in completed.stderr
+        assert not ssh_called.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_remote_argv_quoting_blocks_optional_config_injection(self, tmp_path):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        injected = tmp_path / "config-injected.txt"
+        cluster = f"arc;touch {_bash_path(injected)};"
+        env_file = wrapper.parents[2] / ".env"
+        with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"SLURM_CLUSTER={cluster}\n")
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            "/remote/input.tsv 2 pam cpu -1 quote_config 0 0"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        assert not injected.exists()
+        sbatch_args = capture.read_text(encoding="utf-8").splitlines()
+        assert f"--clusters={cluster}" in sbatch_args
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_safe_upload_is_local_and_option_terminated(self, tmp_path):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        project = wrapper.parents[2]
+        source = project / "input+tag%=a.tsv"
+        source.write_text("0\t1\n", encoding="utf-8")
+        transfer_capture = tmp_path / "transfer-args.txt"
+        fake_rsync = fake_bin / "rsync"
+        fake_rsync.write_text(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$CAPTURE_TRANSFER\"\n",
+            encoding="utf-8", newline="\n",
+        )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"export CAPTURE_TRANSFER={shlex.quote(_bash_path(transfer_capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            "input+tag%=a.tsv 2 pam cpu -1 safe_upload 0 1"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], cwd=project, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        transfer_args = transfer_capture.read_text(encoding="utf-8").splitlines()
+        assert transfer_args[:3] == ["-az", "--", "input+tag%=a.tsv"]
+        assert transfer_args[3].endswith("/data/userjobs/input+tag%=a.tsv")
+        exports = next(
+            arg for arg in capture.read_text(encoding="utf-8").splitlines()
+            if arg.startswith("--export=")
+        )
+        assert "DTWC_INPUT=" in exports
+        assert exports.split("DTWC_INPUT=", 1)[1].split(",", 1)[0].endswith(
+            "/data/userjobs/input+tag%=a.tsv"
+        )
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(

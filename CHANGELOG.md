@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Hardened Python-to-SLURM clustering submissions with pre-side-effect job/path
+  grammars, bounded positional validation, transfer option protection, and
+  per-argument remote-shell quoting. Unsafe export bytes now fail locally,
+  while accepted paths reach the job unchanged and inherited seed/dtype values
+  cannot silently alter the request.
 - Made `DTWClustering` honor one distance contract across fit, inertia, and
   predict. Standard squared DTW now drives CPU/GPU medoid selection; MSM, TWE,
   and missing-data predictions use their configured production recurrence;

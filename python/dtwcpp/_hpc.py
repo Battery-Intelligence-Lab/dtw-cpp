@@ -28,6 +28,15 @@ import numpy as np
 _UINT64_MAX = (1 << 64) - 1
 _CLI_INT_MAX = (1 << 31) - 1
 _CLI_UINT_MAX = (1 << 32) - 1
+_SAFE_JOB_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,127}\Z")
+_SAFE_REMOTE_PATH = re.compile(r"[A-Za-z0-9_./:+@%=-]+\Z")
+_METHOD_ALIASES = {
+    "auto": "auto", "pam": "pam", "onebatch": "onebatch",
+    "obp": "onebatch", "clara": "clara", "kmedoids": "kmedoids",
+    "mip": "mip", "lrcore": "lrcore", "lr": "lrcore",
+    "hierarchical": "hierarchical", "hclust": "hierarchical",
+    "tadpole": "tadpole",
+}
 
 
 def _validate_restart_schedule(n_init, seed):
@@ -170,6 +179,72 @@ def _validate_remote_configuration(
         "mv_mode": mv_mode,
         "missing_strategy": missing_strategy,
         "metric": metric,
+    }
+
+
+def _normalize_cli_int(name, value, *, minimum):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(
+        value, (int, np.integer)
+    ):
+        raise TypeError(f"{name} must be an integer")
+    value = int(value)
+    if not minimum <= value <= _CLI_INT_MAX:
+        raise ValueError(
+            f"{name} must be in [{minimum}, {_CLI_INT_MAX}] for dtwc_cl"
+        )
+    return value
+
+
+def _validate_submission_envelope(
+    *, input_tsv, n_clusters, method, band, skip_cols, name, upload,
+):
+    """Normalize fields that cross the local-shell/SSH/Slurm boundary."""
+    n_clusters = _normalize_cli_int("n_clusters", n_clusters, minimum=1)
+    band = _normalize_cli_int("band", band, minimum=-1)
+    skip_cols = _normalize_cli_int("skip_cols", skip_cols, minimum=0)
+    method = _normalize_choice("method", method, _METHOD_ALIASES)
+
+    if not isinstance(name, str):
+        raise TypeError("name must be a string")
+    if _SAFE_JOB_NAME.fullmatch(name) is None:
+        raise ValueError(
+            "name must be 1-128 ASCII letters, digits, '.', '_', or '-', "
+            "starting with a letter or digit"
+        )
+    if not isinstance(upload, (bool, np.bool_)):
+        raise TypeError("upload must be a boolean")
+    normalized_upload = bool(upload)
+
+    normalized_input = None
+    if input_tsv is not None:
+        try:
+            normalized_input = os.fspath(input_tsv).replace("\\", "/")
+        except TypeError as exc:
+            raise TypeError("input path must be a string or path-like value") from exc
+        if not normalized_input or _SAFE_REMOTE_PATH.fullmatch(normalized_input) is None:
+            raise ValueError(
+                "input path contains bytes unsafe for SSH/Slurm export; use only "
+                "ASCII letters, digits, '/', '.', '_', '-', ':', '+', '@', '%', or '='"
+            )
+        if normalized_input.startswith("-"):
+            raise ValueError(
+                "input path must not start with '-' because transfer tools can "
+                "interpret it as an option"
+            )
+        if normalized_upload and ":" in normalized_input:
+            raise ValueError(
+                "local upload path must not contain ':' because rsync/scp can "
+                "interpret it as a remote host path; use a relative local path"
+            )
+
+    return {
+        "input_tsv": normalized_input,
+        "n_clusters": n_clusters,
+        "method": method,
+        "band": band,
+        "skip_cols": skip_cols,
+        "name": name,
+        "upload": normalized_upload,
     }
 
 
@@ -324,6 +399,12 @@ class SlurmRemoteRunner:
                        wdtw_g=0.05, adtw_penalty=1.0, msm_c=1.0,
                        twe_nu=0.001, twe_lambda=1.0, mv_mode="dependent",
                        missing_strategy="error", metric="l1"):
+        envelope = _validate_submission_envelope(
+            input_tsv=input_tsv, n_clusters=k, method=method, band=band,
+            skip_cols=skip_cols, name=name, upload=upload,
+        )
+        if envelope["input_tsv"] is None:
+            raise TypeError("input_tsv must be a string or path-like value")
         n_init, seed = _validate_restart_schedule(n_init, seed)
         config = _validate_remote_configuration(
             device=device, max_iter=max_iter, variant=variant, wdtw_g=wdtw_g,
@@ -331,9 +412,12 @@ class SlurmRemoteRunner:
             twe_lambda=twe_lambda, mv_mode=mv_mode,
             missing_strategy=missing_strategy, metric=metric,
         )
-        res = self._run("submit-cluster", input_tsv, str(k), method,
+        res = self._run("submit-cluster", envelope["input_tsv"],
+                        str(envelope["n_clusters"]), envelope["method"],
                         config["device"],
-                        str(band), name, str(skip_cols), "1" if upload else "0",
+                        str(envelope["band"]), envelope["name"],
+                        str(envelope["skip_cols"]),
+                        "1" if envelope["upload"] else "0",
                         str(n_init), "" if seed is None else str(seed),
                         str(config["max_iter"]), config["variant"],
                         str(config["wdtw_g"]), str(config["adtw_penalty"]),
@@ -392,6 +476,12 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
 
     NOTE: the remote submission cannot be verified on a dev laptop; run on ARC.
     """
+    source_is_path = isinstance(source, (str, os.PathLike))
+    envelope = _validate_submission_envelope(
+        input_tsv=source if source_is_path else None,
+        n_clusters=n_clusters, method=method, band=band,
+        skip_cols=skip_cols, name=name, upload=not source_is_path,
+    )
     n_init, seed = _validate_restart_schedule(n_init, seed)
     config = _validate_remote_configuration(
         device=device, max_iter=max_iter, variant=variant, wdtw_g=wdtw_g,
@@ -400,12 +490,12 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
         missing_strategy=missing_strategy, metric=metric,
     )
     repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
-    rundir = os.path.join(repo_root, "results", "hpc", name)
+    rundir = os.path.join(repo_root, "results", "hpc", envelope["name"])
     os.makedirs(rundir, exist_ok=True)
 
-    if isinstance(source, (str, os.PathLike)):
+    if source_is_path:
         # Cluster-side path: pass through, no local read, no upload.
-        input_arg, upload, n = str(source).replace(os.sep, "/"), False, None
+        input_arg, upload, n = envelope["input_tsv"], False, None
     else:
         # In-memory series: serialize to a repo-relative TSV and upload it.
         # (Repo-relative so Git Bash rsync doesn't read 'C:/...' as 'host:path'.)
@@ -415,9 +505,12 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
 
     runner = runner or SlurmRemoteRunner(repo_root)
     runner.preflight()
-    job_id = runner.submit_cluster(input_arg, n_clusters, method=method,
+    job_id = runner.submit_cluster(input_arg, envelope["n_clusters"],
+                                   method=envelope["method"],
                                    device=config["device"],
-                                   band=band, skip_cols=skip_cols, name=name,
+                                   band=envelope["band"],
+                                   skip_cols=envelope["skip_cols"],
+                                   name=envelope["name"],
                                    upload=upload, n_init=n_init, seed=seed,
                                    max_iter=config["max_iter"],
                                    variant=config["variant"],
@@ -430,5 +523,5 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
                                    missing_strategy=config["missing_strategy"],
                                    metric=config["metric"])
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
-    labels_csv = runner.download_labels(name)
+    labels_csv = runner.download_labels(envelope["name"])
     return parse_labels_csv(labels_csv, n)
