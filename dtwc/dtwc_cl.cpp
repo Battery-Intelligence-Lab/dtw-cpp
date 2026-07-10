@@ -19,6 +19,7 @@
 
 #include "dtwc.hpp"
 #include "env.hpp"
+#include "error.hpp"
 #ifdef DTWC_HAS_MMAP
 #include "core/mmap_data_store.hpp"
 #endif
@@ -43,6 +44,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -54,6 +56,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -148,13 +151,32 @@ static std::string validate_metric_for_device(const std::string &metric, bool is
   return "";
 }
 
-/// Run the CLI PAM route with the user-visible `--seed` on an invocation-local
-/// engine. Keeping this seam outside main() lets the CLI regression exercise the
-/// production dispatch without depending on CLI11 in the unit-test executable.
+/// Run the CLI PAM route with invocation-local `--seed + restart` engines and
+/// retain the strict best objective. Keeping this seam outside main() lets the
+/// CLI regression exercise the production dispatch without depending on CLI11
+/// in the unit-test executable.
 static dtwc::core::ClusteringResult run_cli_pam(
-  dtwc::Problem &prob, int n_clusters, int max_iter, std::uint64_t random_seed)
+  dtwc::Problem &prob, int n_clusters, int max_iter)
 {
-  return dtwc::fast_pam_seeded(prob, n_clusters, random_seed, max_iter);
+  const int n_init = prob.n_repetitions();
+  const std::uint64_t random_seed = prob.random_seed;
+  if (n_init < 1)
+    throw dtwc::InvalidInput("run_cli_pam: n_init must be at least 1.");
+  const auto restart_offset = static_cast<std::uint64_t>(n_init - 1);
+  if (restart_offset > std::numeric_limits<std::uint64_t>::max() - random_seed)
+    throw dtwc::InvalidInput(
+      "run_cli_pam: random_seed + n_init - 1 overflows uint64.");
+
+  auto best = dtwc::fast_pam_seeded(
+    prob, n_clusters, random_seed, max_iter);
+  for (int restart = 1; restart < n_init; ++restart) {
+    auto candidate = dtwc::fast_pam_seeded(
+      prob, n_clusters, random_seed + static_cast<std::uint64_t>(restart),
+      max_iter);
+    // Strict comparison deliberately retains the earlier seed on a tie.
+    if (candidate.total_cost < best.total_cost) best = std::move(candidate);
+  }
+  return best;
 }
 
 /// Apply the CLI's distance-matrix storage policy after data and `auto` method
@@ -417,7 +439,8 @@ int main(int argc, char *argv[])
               {"msm", "msm"}, {"twe", "twe"}},
           CLI::ignore_case));
   app.add_option("--max-iter", max_iter, "Maximum iterations");
-  app.add_option("--n-init", n_init, "Number of random restarts (PAM/kMedoids)");
+  app.add_option("--n-init", n_init, "Number of random restarts (PAM/kMedoids)")
+      ->check(CLI::PositiveNumber);
   double tadpole_dc = -1.0;
   app.add_option("--dc", tadpole_dc, "TADPole density cutoff distance (default: auto-select)");
 
@@ -438,19 +461,18 @@ int main(int argc, char *argv[])
   app.add_option("--mv-mode", mv_mode, "Multivariate mode (ndim>1): dependent, independent")
     ->check(CLI::IsMember({ "dependent", "independent" }));
 
-  // Sampling-based clustering. One seed spelling and default cover PAM,
-  // OneBatchPAM, and CLARA.
+  // One invocation-local seed spelling covers PAM, OneBatchPAM, CLARA, Lloyd,
+  // and MIP warm starts.
   int sample_size = -1;
   int n_samples = 5;
   unsigned clara_seed = dtwc::settings::DEFAULT_RANDOM_SEED;
   app.add_option("--sample-size", sample_size, "CLARA subsample size (-1 = auto)");
   app.add_option("--n-samples", n_samples, "CLARA number of subsamples");
   app.add_option("--seed", clara_seed,
-                 "Random seed for PAM, OneBatchPAM, and CLARA")
+                 "Random seed for stochastic clustering and MIP warm starts")
       ->check(CLI::Range(0u, std::numeric_limits<unsigned>::max()));
 
-  // OneBatchPAM-specific. The seed is shared with CLARA so reproducibility has
-  // one CLI spelling across sampling-based methods.
+  // OneBatchPAM-specific. Reproducibility keeps the shared CLI seed above.
   int onebatch_size = -1;
   std::string onebatch_weighting = "nniw";
   app.add_option("--batch-size", onebatch_size,
@@ -653,6 +675,10 @@ int main(int argc, char *argv[])
   }
   if (n_clusters < 1) {
     std::cerr << "Error: --clusters must be a positive integer\n";
+    return EXIT_FAILURE;
+  }
+  if (n_init < 1) {
+    std::cerr << "Error: --n-init must be a positive integer\n";
     return EXIT_FAILURE;
   }
 
@@ -924,6 +950,7 @@ int main(int argc, char *argv[])
   prob.set_band(band);
   prob.maxIter = max_iter;
   prob.N_repetition = n_init;
+  prob.random_seed = static_cast<std::uint64_t>(clara_seed);
   prob.output_folder = output_dir;
   prob.verbose = verbose;
 
@@ -1092,7 +1119,7 @@ int main(int argc, char *argv[])
     if (verbose)
       std::cout << "Running FastPAM (k=" << n_clusters << ") ...\n";
 
-    result = run_cli_pam(prob, n_clusters, max_iter, clara_seed);
+    result = run_cli_pam(prob, n_clusters, max_iter);
 
     if (verbose) {
       std::cout << "FastPAM "

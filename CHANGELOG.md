@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Honored deterministic PAM restart counts in the CLI and Python HPC path.
+  Restart `i` uses checked `seed+i` and the strict best objective is retained;
+  count/seed now reach the final SLURM command without overriding the CLI seed
+  default when callers omit it.
 - Made Benders warm starts exception-safe: temporary Lloyd method, restart,
   iteration, medoid, and label state is restored on both success and failure,
   while the final exact Benders clustering result remains exposed to callers.

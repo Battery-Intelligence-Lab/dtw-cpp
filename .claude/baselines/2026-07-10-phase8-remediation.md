@@ -1248,3 +1248,70 @@ synthetic throw.
 Verdict: **PASS.** Nested Lloyd configuration and working results no longer
 escape Benders on success or failure, and the final exact clustering result is
 preserved.
+
+## M16 — effective CLI and Python-HPC PAM restarts
+
+The M13 audit found that CLI11 parsed `--n-init` and main stored it in
+`Problem::N_repetition`, but the PAM dispatch called seeded FastPAM exactly once.
+The Python estimator's local route already used `42+i`; its HPC route discarded
+the count before `_hpc.cluster_on_hpc`. The complete pre-edit transport trace was:
+
+```text
+DTWClustering.fit
+  -> cluster_on_hpc
+  -> SlurmRemoteRunner.submit_cluster
+  -> slurm_remote.sh submit-cluster
+  -> sbatch --export
+  -> cluster_generic.slurm
+  -> dtwc_cl                 (no n_init or seed after the first arrow)
+```
+
+The registered translated-waveform fixture failed red exactly where intended:
+the seed-42 first run cost 24, seed 43 cost 20, but the two-restart CLI seam still
+returned 24. Python red tests independently found the missing estimator, command
+builder, and runner arguments.
+
+CLI PAM now reads the seed and repetition count from `Problem`, validates the
+entire uint64 schedule before distance work, runs invocation-local `seed+i`, and
+replaces the incumbent only for a strictly smaller objective. Ties therefore
+retain the earliest seed. CLI/YAML counts must be positive. The Python transport
+rejects booleans, non-integral values, CLI int/unsigned range violations, and
+uint64 schedule overflow before creating a run directory or contacting a runner.
+
+`build_dtwc_command`, `cluster_on_hpc`, and `submit_cluster` accept the same
+schedule. The wrapper validates decimal positionals without signed-shell
+overflow, exports `DTWC_N_INIT` and an optional `DTWC_SEED`, and the job always
+passes `--n-init` plus `--seed` only when present. `seed=None` deliberately omits
+the flag, preserving the C++ CLI as the default's single source of truth. The
+estimator resolves its public default to 42 before dispatch. Binary discovery now
+also considers nested `build/*/bin` verification trees, preventing an older
+top-level executable from falsifying local end-to-end tests.
+
+Green evidence from the fresh HiGHS-enabled CLI and editable Python source:
+
+```text
+build/highs-1151
+  focused [n_init]:              19 assertions / 1 case passed
+  full unit_test_cli_args:       90 assertions / 16 cases passed
+
+tests/python/test_hpc.py:        29 passed
+  includes estimator -> _hpc -> runner schedule assertions
+  includes executable job-script capture with seed=42 and seed omitted
+  includes real local dtwc_cl cost 24 -> cost 20 and n_init=0 rejection
+
+tests/python/test_cross_validation.py restart/range gate:
+                                  6 passed / 15 deselected
+targeted py_compile:              passed
+bash -n wrapper + final job:      passed
+git diff --check:                 clean
+```
+
+The C++ focused case repeats the two-restart result three times and matches seed
+43's medoids, labels, cost, iteration count, and convergence exactly. It also
+pins the `n_init=0` and `UINT64_MAX + 1 restart` error text. The executable job
+uses a fake binary only for argument capture; SSH/rsync/sbatch are intentionally
+not contacted on the development machine.
+
+Verdict: **PASS.** `n_init` now changes PAM work and results consistently on the
+local CLI and Python HPC route, with deterministic best-result retention and no
+silent seed-default override.

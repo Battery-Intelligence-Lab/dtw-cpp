@@ -182,18 +182,60 @@ TEST_CASE("CLI PAM honors default seed 42 and explicit seed override 29",
   REQUIRE(dtwc::settings::DEFAULT_RANDOM_SEED == 42);
 
   auto default_problem = seed_sensitive_pam_problem();
-  const auto default_result = run_cli_pam(
-    default_problem, 3, 100, dtwc::settings::DEFAULT_RANDOM_SEED);
+  const auto default_result = run_cli_pam(default_problem, 3, 100);
   CHECK(default_result.medoid_indices == std::vector<int>{6, 2, 5});
   CHECK(default_result.labels == std::vector<int>{1, 1, 1, 1, 2, 2, 0, 0});
   CHECK(default_result.total_cost == 24.0);
 
   auto override_problem = seed_sensitive_pam_problem();
-  const auto override_result = run_cli_pam(
-    override_problem, 3, 100, /* --seed */ 29);
+  override_problem.set_random_seed(/* --seed */ 29);
+  const auto override_result = run_cli_pam(override_problem, 3, 100);
   CHECK(override_result.medoid_indices == std::vector<int>{4, 1, 7});
   CHECK(override_result.labels == std::vector<int>{1, 1, 1, 0, 0, 0, 2, 2});
   CHECK(override_result.total_cost == 20.0);
+}
+
+TEST_CASE("CLI PAM n_init retains the best deterministic restart",
+          "[cli][seed][pam][n_init]")
+{
+  constexpr auto base_seed = dtwc::settings::DEFAULT_RANDOM_SEED;
+
+  auto one_problem = seed_sensitive_pam_problem();
+  const auto one = run_cli_pam(one_problem, 3, 100);
+  CHECK(one.total_cost == 24.0);
+
+  auto improving_problem = seed_sensitive_pam_problem();
+  improving_problem.set_random_seed(base_seed + 1);
+  const auto improving = run_cli_pam(improving_problem, 3, 100);
+  CHECK(improving.total_cost == 20.0);
+
+  // --n-init=2 must try base_seed and base_seed+1, then retain the lower-cost
+  // result rather than merely returning the final or the first restart.
+  for (int repetition = 0; repetition < 3; ++repetition) {
+    auto problem = seed_sensitive_pam_problem();
+    problem.set_n_repetitions(2); // mirrors main()'s parsed CLI state
+    const auto result = run_cli_pam(problem, 3, 100);
+
+    CAPTURE(repetition);
+    CHECK(result.medoid_indices == improving.medoid_indices);
+    CHECK(result.labels == improving.labels);
+    CHECK(result.total_cost == improving.total_cost);
+    CHECK(result.iterations == improving.iterations);
+    CHECK(result.converged == improving.converged);
+  }
+
+  auto invalid_problem = seed_sensitive_pam_problem();
+  invalid_problem.set_n_repetitions(0);
+  REQUIRE_THROWS_WITH(
+    run_cli_pam(invalid_problem, 3, 100),
+    "run_cli_pam: n_init must be at least 1.");
+
+  auto overflow_problem = seed_sensitive_pam_problem();
+  overflow_problem.set_n_repetitions(2);
+  overflow_problem.set_random_seed(std::numeric_limits<std::uint64_t>::max());
+  REQUIRE_THROWS_WITH(
+    run_cli_pam(overflow_problem, 3, 100),
+    "run_cli_pam: random_seed + n_init - 1 overflows uint64.");
 }
 
 TEST_CASE("CLI TADPole threshold uses mmap or fails before dense allocation",

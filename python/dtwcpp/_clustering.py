@@ -240,7 +240,8 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             from dtwcpp import _hpc
             self.labels_ = _hpc.cluster_on_hpc(
                 series, self.n_clusters, method="pam", band=self.band,
-                name=f"dtwc_k{self.n_clusters}",
+                name=f"dtwc_k{self.n_clusters}", n_init=restart_count,
+                seed=DEFAULT_RANDOM_SEED,
             )
             self.medoid_indices_ = None
             self.inertia_ = None

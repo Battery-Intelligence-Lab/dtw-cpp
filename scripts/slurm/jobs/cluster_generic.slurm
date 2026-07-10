@@ -17,6 +17,8 @@
 #   DTWC_BAND     Sakoe-Chiba band (-1 = full)            (default: -1)
 #   DTWC_NAME     output filename prefix                   (default: dtwc_job)
 #   DTWC_SKIP_COLS / DTWC_DTYPE                            (defaults: 0 / float64)
+#   DTWC_N_INIT   deterministic PAM restart count          (default: 1)
+#   DTWC_SEED     first restart seed                        (default: CLI default)
 #
 # For GPU runs add `--gres=gpu:1` at submit time (slurm_remote.sh does this when
 # DTWC_DEVICE is cuda). Expects a build-*/bin/dtwc_cl on the cluster.
@@ -32,6 +34,8 @@ DTWC_BAND="${DTWC_BAND:--1}"
 DTWC_NAME="${DTWC_NAME:-dtwc_job}"
 DTWC_SKIP_COLS="${DTWC_SKIP_COLS:-0}"
 DTWC_DTYPE="${DTWC_DTYPE:-float64}"
+DTWC_N_INIT="${DTWC_N_INIT:-1}"
+DTWC_SEED="${DTWC_SEED:-}"
 
 # ── Module load with fallback ──────────────────────────────────────────────
 module load GCC/13.2.0 2>/dev/null || module load gcc 2>/dev/null || true
@@ -67,6 +71,7 @@ echo "  Job ID : ${SLURM_JOB_ID}   Node: ${SLURMD_NODENAME:-?}"
 echo "  Binary : ${DTWC_BIN}"
 echo "  Input  : ${DTWC_INPUT}"
 echo "  k=${DTWC_K}  method=${DTWC_METHOD}  device=${DTWC_DEVICE}  band=${DTWC_BAND}"
+echo "  n_init=${DTWC_N_INIT}  seed=${DTWC_SEED:-<CLI default>}"
 echo "  OMP_NUM_THREADS=${OMP_NUM_THREADS}"
 echo "================================================================"
 
@@ -76,6 +81,10 @@ mkdir -p "${RESULTS_DIR}"
 
 T_START=$(date +%s.%N)
 DTWC_EXIT=0
+SEED_ARGS=()
+if [[ -n "${DTWC_SEED}" ]]; then
+    SEED_ARGS=(--seed "${DTWC_SEED}")
+fi
 "${DTWC_BIN}" \
     --input "${DTWC_INPUT}" \
     -k "${DTWC_K}" \
@@ -84,6 +93,8 @@ DTWC_EXIT=0
     --method "${DTWC_METHOD}" \
     --band "${DTWC_BAND}" \
     --device "${DTWC_DEVICE}" \
+    --n-init "${DTWC_N_INIT}" \
+    "${SEED_ARGS[@]}" \
     --name "${DTWC_NAME}" \
     --output "${RESULTS_DIR}" \
     --verbose \

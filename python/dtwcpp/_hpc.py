@@ -25,6 +25,39 @@ import time
 import numpy as np
 
 
+_UINT64_MAX = (1 << 64) - 1
+_CLI_INT_MAX = (1 << 31) - 1
+_CLI_UINT_MAX = (1 << 32) - 1
+
+
+def _validate_restart_schedule(n_init, seed):
+    """Validate and normalize the deterministic PAM restart schedule."""
+    if isinstance(n_init, (bool, np.bool_)) or not isinstance(
+        n_init, (int, np.integer)
+    ):
+        raise TypeError("n_init must be an integer")
+    n_init = int(n_init)
+    if n_init < 1:
+        raise ValueError("n_init must be at least 1")
+    if n_init > _CLI_INT_MAX:
+        raise ValueError("n_init exceeds the dtwc_cl int range")
+
+    if seed is None:
+        return n_init, None
+    if isinstance(seed, (bool, np.bool_)) or not isinstance(
+        seed, (int, np.integer)
+    ):
+        raise TypeError("seed must be an integer or None")
+    seed = int(seed)
+    if not 0 <= seed <= _UINT64_MAX:
+        raise ValueError("seed must fit in uint64")
+    if n_init - 1 > _UINT64_MAX - seed:
+        raise ValueError("seed + n_init - 1 overflows uint64")
+    if seed > _CLI_UINT_MAX:
+        raise ValueError("seed exceeds the dtwc_cl unsigned range")
+    return n_init, seed
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # Pure helpers (unit tested)
 # ─────────────────────────────────────────────────────────────────────────
@@ -67,9 +100,15 @@ def parse_labels_csv(path, n=None):
 
 def build_dtwc_command(binary, input_path, k, name, output_dir, *,
                        method="pam", device="cpu", band=-1,
-                       dtype="float64", skip_cols=0):
-    """Construct the dtwc_cl argument list (pure — does not execute)."""
-    return [
+                       dtype="float64", skip_cols=0, n_init=1, seed=None):
+    """Construct the dtwc_cl argument list (pure — does not execute).
+
+    ``seed=None`` deliberately omits ``--seed`` so the C++ CLI remains the
+    single source of truth for its default; explicit schedules use
+    ``seed, seed + 1, ...`` for ``n_init`` restarts.
+    """
+    n_init, seed = _validate_restart_schedule(n_init, seed)
+    command = [
         str(binary),
         "-i", str(input_path),
         "-k", str(k),
@@ -80,25 +119,40 @@ def build_dtwc_command(binary, input_path, k, name, output_dir, *,
         "-b", str(band),
         "--name", name,
         "-o", str(output_dir),
+        "--n-init", str(n_init),
         "-v",
     ]
+    if seed is not None:
+        command.extend(["--seed", str(seed)])
+    return command
 
 
 def find_dtwc_binary(root):
     """Return a path to a built dtwc_cl binary under ``root``, or ``None``.
 
-    Prefers ``build*/bin`` (current builds) over a possibly-stale top-level
-    ``bin/``; within a group, the most recently modified wins.
+    Prefers build-tree binaries (including nested ``build/*/bin`` verification
+    trees) over a possibly-stale top-level ``bin/``; within a group, the most
+    recently modified wins.
     """
     _skip = (".pdb", ".ipdb", ".iobj", ".recipe", ".idx", ".obj", ".lib")
-    for pat in (os.path.join(root, "build*", "bin", "dtwc_cl*"),
-                os.path.join(root, "bin", "dtwc_cl*")):
-        cands = [p for p in glob.glob(pat)
-                 if os.path.isfile(p) and not p.endswith(_skip)
-                 and (p.endswith(".exe") or os.path.splitext(p)[1] == "")]
+    pattern_groups = (
+        (
+            os.path.join(root, "build", "bin", "dtwc_cl*"),
+            os.path.join(root, "build", "*", "bin", "dtwc_cl*"),
+            os.path.join(root, "build*", "bin", "dtwc_cl*"),
+        ),
+        (os.path.join(root, "bin", "dtwc_cl*"),),
+    )
+    for patterns in pattern_groups:
+        cands = {
+            p
+            for pat in patterns
+            for p in glob.glob(pat)
+            if os.path.isfile(p) and not p.endswith(_skip)
+            and (p.endswith(".exe") or os.path.splitext(p)[1] == "")
+        }
         if cands:
-            cands.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-            return cands[0]
+            return max(cands, key=os.path.getmtime)
     return None
 
 
@@ -130,9 +184,12 @@ class SlurmRemoteRunner:
                               cwd=self.repo_root, capture_output=True, text=True)
 
     def submit_cluster(self, input_tsv, k, *, method="pam", device="cpu",
-                       band=-1, skip_cols=0, name="dtwc_job", upload=True):
+                       band=-1, skip_cols=0, name="dtwc_job", upload=True,
+                       n_init=1, seed=None):
+        n_init, seed = _validate_restart_schedule(n_init, seed)
         res = self._run("submit-cluster", input_tsv, str(k), method, device,
-                        str(band), name, str(skip_cols), "1" if upload else "0")
+                        str(band), name, str(skip_cols), "1" if upload else "0",
+                        str(n_init), "" if seed is None else str(seed))
         out = (res.stdout or "") + (res.stderr or "")
         m = re.search(r"Job ID:\s*(\d+)", out)
         if not m:
@@ -165,12 +222,16 @@ class SlurmRemoteRunner:
 
 def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
                    skip_cols=0, name="dtwc_job", poll_seconds=20,
-                   timeout_seconds=86400, repo_root=None, runner=None):
+                   timeout_seconds=86400, repo_root=None, runner=None,
+                   n_init=1, seed=None):
     """Offload clustering to a SLURM cluster and return labels in input order.
 
     ``source`` is either an in-memory list of series (serialized + uploaded) or a
     path string interpreted **on the cluster** (pre-staged data — never read or
     uploaded locally, so it scales to data too large to hold on a laptop).
+
+    ``n_init`` and ``seed`` are carried unchanged to the remote CLI. When seed is
+    omitted, the remote CLI's own default supplies the first restart seed.
 
     Requires a configured ``.env`` at the repo root and ssh + rsync (Git Bash on
     Windows). The build must already exist on the cluster — run
@@ -178,6 +239,7 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
 
     NOTE: the remote submission cannot be verified on a dev laptop; run on ARC.
     """
+    n_init, seed = _validate_restart_schedule(n_init, seed)
     repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
     rundir = os.path.join(repo_root, "results", "hpc", name)
     os.makedirs(rundir, exist_ok=True)
@@ -195,7 +257,8 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
     runner = runner or SlurmRemoteRunner(repo_root)
     runner.preflight()
     job_id = runner.submit_cluster(input_arg, n_clusters, method=method, device=device,
-                                   band=band, skip_cols=skip_cols, name=name, upload=upload)
+                                   band=band, skip_cols=skip_cols, name=name,
+                                   upload=upload, n_init=n_init, seed=seed)
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
     labels_csv = runner.download_labels(name)
     return parse_labels_csv(labels_csv, n)

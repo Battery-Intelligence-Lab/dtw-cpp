@@ -14,7 +14,7 @@
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
-#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name]
+#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
@@ -80,6 +80,20 @@ banner() {
     echo "════════════════════════════════════════════════════════════"
     echo "  $1"
     echo "════════════════════════════════════════════════════════════"
+}
+
+decimal_leq() {
+    # Compare unsigned decimal strings without signed-shell-integer overflow.
+    local VALUE="$1"
+    local LIMIT="$2"
+    local LEADING_ZEROS
+    LEADING_ZEROS="${VALUE%%[!0]*}"
+    VALUE="${VALUE#"${LEADING_ZEROS}"}"
+    [[ -n "${VALUE}" ]] || VALUE="0"
+    (( ${#VALUE} < ${#LIMIT} )) || {
+        (( ${#VALUE} == ${#LIMIT} )) \
+            && [[ "${VALUE}" == "${LIMIT}" || "${VALUE}" < "${LIMIT}" ]]
+    }
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────
@@ -266,7 +280,7 @@ cmd_submit_benchmark_gpu() {
 }
 
 # Generic clustering: submit cluster_generic.slurm on an arbitrary input.
-# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job] [skip_cols=0] [upload=1]
+# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job] [skip_cols=0] [upload=1] [n_init=1] [seed]
 #   upload=1 : <input> is a local file -> rsync it to the cluster.
 #   upload=0 : <input> is a path ON the cluster (pre-staged) -> used as-is, no read/upload.
 # Used by the Python device='hpc' offload path (dtwcpp._hpc.cluster_on_hpc).
@@ -279,6 +293,25 @@ cmd_submit_cluster() {
     local NAME="${6:-dtwc_job}"
     local SKIP_COLS="${7:-0}"
     local UPLOAD="${8:-1}"
+    local N_INIT="${9:-1}"
+    local SEED="${10:-}"
+
+    [[ "${N_INIT}" =~ ^[1-9][0-9]*$ ]] || {
+        echo "ERROR: n_init must be a positive integer: ${N_INIT}" >&2
+        exit 1
+    }
+    decimal_leq "${N_INIT}" "2147483647" || {
+        echo "ERROR: n_init exceeds the dtwc_cl int range: ${N_INIT}" >&2
+        exit 1
+    }
+    [[ -z "${SEED}" || "${SEED}" =~ ^[0-9]+$ ]] || {
+        echo "ERROR: seed must be a non-negative integer: ${SEED}" >&2
+        exit 1
+    }
+    if [[ -n "${SEED}" ]] && ! decimal_leq "${SEED}" "4294967295"; then
+        echo "ERROR: seed exceeds the dtwc_cl unsigned range: ${SEED}" >&2
+        exit 1
+    fi
 
     banner "Submitting clustering job (${NAME}, k=${K}, device=${DEVICE})"
 
@@ -317,7 +350,10 @@ cmd_submit_cluster() {
     fi
 
     local EXPORTS="ALL,DTWC_INPUT=${REMOTE_INPUT},DTWC_K=${K},DTWC_SKIP_COLS=${SKIP_COLS}"
-    EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME}"
+    EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME},DTWC_N_INIT=${N_INIT}"
+    if [[ -n "${SEED}" ]]; then
+        EXPORTS+=",DTWC_SEED=${SEED}"
+    fi
 
     local JOB_ID
     JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${GPU_FLAGS} --export=${EXPORTS} scripts/slurm/jobs/cluster_generic.slurm")
@@ -411,7 +447,7 @@ case "${CMD}" in
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  Submit full UCR benchmark (GPU, e.g. a100, l40s)"
-        echo "  submit-cluster <input> <k> [method] [device] [band] [name]"
+        echo "  submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed]"
         echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
