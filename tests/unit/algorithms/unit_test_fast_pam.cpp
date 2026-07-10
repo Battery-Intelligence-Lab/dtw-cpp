@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -177,6 +178,34 @@ TEST_CASE("FastPAM medoid indices are valid", "[fast_pam][medoids]")
   REQUIRE(unique_medoids.size() == static_cast<size_t>(k));
 }
 
+TEST_CASE("seeded FastPAM BUILD samples proportional to k-median distance",
+          "[fast_pam][seeded][initialization]")
+{
+  // Conditional on first medoid 0, the remaining singleton-series distances
+  // are 1 and 3. K-median++ therefore selects point 2 with probability 3/4;
+  // incorrectly squaring the weights would move that probability to 9/10.
+  Problem prob("fast_pam_d_sampling");
+  prob.set_data(Data(std::vector<std::vector<data_t>>{{0.0}, {1.0}, {3.0}},
+                     std::vector<std::string>{"zero", "one", "three"}));
+
+  int conditioned = 0;
+  int selected_far = 0;
+  constexpr std::uint64_t seed_count = 4096;
+  for (std::uint64_t seed = 0; seed < seed_count; ++seed) {
+    // max_iter=0 observes the deterministic seeded BUILD result before SWAP.
+    const auto result = fast_pam_seeded(prob, 2, seed, 0);
+    if (result.medoid_indices.front() != 0) continue;
+    ++conditioned;
+    if (result.medoid_indices.back() == 2) ++selected_far;
+  }
+
+  REQUIRE(conditioned > 1000);
+  const double far_fraction = static_cast<double>(selected_far) / conditioned;
+  CAPTURE(conditioned, selected_far, far_fraction);
+  REQUIRE(far_fraction > 0.70);
+  REQUIRE(far_fraction < 0.80);
+}
+
 // ===========================================================================
 // Test 4: Labels are in [0, k).
 // ===========================================================================
@@ -287,7 +316,7 @@ TEST_CASE("FastPAM total_cost matches recomputed cost", "[fast_pam][cost_consist
   double recomputed_cost = 0.0;
   for (int p = 0; p < N; ++p) {
     int medoid = result.medoid_indices[result.labels[p]];
-    recomputed_cost += prob.distByInd(p, medoid);
+    recomputed_cost += prob.dist_by_ind(p, medoid);
   }
 
   REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));

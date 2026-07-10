@@ -68,7 +68,13 @@ enum class PAMVariant { FastPAM1Naive, FastPAM1, FasterPAM };
  */
 FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
 
-/** Deterministic FastPAM entry point with an invocation-local BUILD seed. */
+/**
+ * Deterministic FastPAM entry point with an invocation-local BUILD seed.
+ *
+ * BUILD uses k-median++ D-sampling because PAM minimizes the sum of DTW
+ * distances. This intentionally differs from squared-objective barycenter
+ * k-means initialization, whose weights are already squared local costs.
+ */
 FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
                               std::uint64_t random_seed, int max_iter = 100);
 

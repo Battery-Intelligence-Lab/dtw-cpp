@@ -803,3 +803,46 @@ Verdict: **PASS.** A process-once guard was rejected: different later calls can
 request different invalid sizes, and suppressing them would recreate a silent
 configuration change. A mutex serializes whole per-use lines for concurrent
 callers without hiding information.
+
+## L5 — objective-matched FastPAM BUILD sampling
+
+The code-path audit replaced all five residual `distByInd` calls in
+`fast_pam.cpp` with the canonical `dist_by_ind` API. The sampling policy is
+intentionally not textually identical to barycenter k-means: PAM minimizes
+`sum(DTW)`, so its current nearest objective contributions are sampled as D;
+the barycenter implementation's `align_squared` values already are its
+squared-local-cost objective contributions.
+
+The registered discriminator uses singleton values `{0,1,3}`, `k=2`, and
+seeds 0…4095. Conditional on point 0 being the first medoid, correct D weights
+select point 3 with probability 3/4, while the wrong D² mutation targets 9/10.
+The fixed seed census is far from either threshold:
+
+```text
+production D: conditioned=1357 selected_far=1017 fraction=0.749447
+mutated D^2:  conditioned=1357 selected_far=1224 fraction=0.90198968312453942
+registered production band: 0.70 < fraction < 0.80
+```
+
+The intentional production mutation `distance *= distance` failed exactly at
+the upper assertion:
+
+```text
+far_fraction < 0.80
+0.90198968312453942 < 0.80000000000000004
+test cases: 1 | 1 failed
+assertions: 3 | 2 passed | 1 failed
+```
+
+After restoring D weights:
+
+```text
+unit_test_fast_pam "[fast_pam][seeded][initialization]" --reporter compact
+  All tests passed (3 assertions in 1 test case)
+unit_test_fast_pam --reporter compact
+  All tests passed (67 assertions in 12 test cases)
+```
+
+Verdict: **PASS.** The two initializers share the higher-level rule “sample
+proportional to the current objective contribution”; squaring FastPAM's
+already-objective distances would optimize the wrong seeding surrogate.

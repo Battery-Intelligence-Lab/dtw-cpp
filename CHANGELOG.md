@@ -60,6 +60,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - OneBatchPAM now warns on every explicit `batch_size < n_clusters` correction,
   including requested/effective values and remediation; automatic sizing and
   already-valid explicit sizes stay silent.
+- FastPAM's seeded BUILD now documents and tests objective-matched D sampling
+  for its sum-of-DTW-distances PAM objective, and no longer uses deprecated
+  `Problem::distByInd` access internally.
 
 # 2.0.0rc1 - 2026-07-10
 

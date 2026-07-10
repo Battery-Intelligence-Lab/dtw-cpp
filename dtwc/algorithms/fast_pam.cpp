@@ -77,7 +77,7 @@ void compute_nearest_and_second(
     int best_idx = 0;
 
     for (int m = 0; m < k; ++m) {
-      double d = prob.distByInd(p, medoids[m]);
+      double d = prob.dist_by_ind(p, medoids[m]);
       if (d < best) {
         second_best = best;
         best = d;
@@ -144,7 +144,7 @@ void pam1_naive_swap_impl(Problem& prob, std::int64_t N, int k,
         if (is_medoid[x]) continue;
         std::fill(local_delta_m.begin(), local_delta_m.end(), 0.0);
         for (int p = 0; p < N; ++p) {
-          const double d_xp = prob.distByInd(p, x);
+          const double d_xp = prob.dist_by_ind(p, x);
           const int nearest_m = nearest[p];
           for (int m = 0; m < k; ++m) {
             if (m == nearest_m)
@@ -214,7 +214,7 @@ SwapEval find_best_swap(Problem& prob, std::int64_t N, int k, int xj,
   ploss.assign(rho.begin(), rho.end()); // reuse caller's buffer (no per-candidate alloc)
   double acc = 0.0;                     // shared benefit of adding x_c (Case A over all points)
   for (int o = 0; o < N; ++o) {
-    const double doj = prob.distByInd(xj, o);
+    const double doj = prob.dist_by_ind(xj, o);
     const double d1 = nearest_dist[o];
     if (doj < d1) {
       acc += doj - d1;                             // x_c becomes o's nearest
@@ -379,7 +379,7 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
       #pragma omp for schedule(dynamic, chunk) nowait
       for (int x = 0; x < N; ++x) {
         double c = 0.0;
-        for (int o = 0; o < N; ++o) c += prob.distByInd(x, o);
+        for (int o = 0; o < N; ++o) c += prob.dist_by_ind(x, o);
         if (c < loc_cost || (c == loc_cost && x < loc_x)) { loc_cost = c; loc_x = x; }
       }
       #pragma omp critical
@@ -477,8 +477,13 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
   while (static_cast<int>(medoids.size()) < n_clusters) {
     for (int i = 0; i < N; ++i)
       distances[static_cast<std::size_t>(i)] = std::min(
-        distances[static_cast<std::size_t>(i)], prob.distByInd(medoids.back(), i));
+        distances[static_cast<std::size_t>(i)], prob.dist_by_ind(medoids.back(), i));
     for (int medoid : medoids) distances[static_cast<std::size_t>(medoid)] = 0.0;
+    // This is k-median++ D-sampling: PAM minimizes a sum of DTW distances, so
+    // the sampling weight is the current nearest objective contribution d.
+    // Barycenter k-means uses D^2-sampling because its `align_squared` values
+    // are already squared-local-cost objective contributions. Squaring this
+    // vector would instead bias a different (sum-of-squares) PAM objective.
     const double total = std::accumulate(distances.begin(), distances.end(), 0.0);
     int chosen = 0;
     if (total <= 0.0) {
