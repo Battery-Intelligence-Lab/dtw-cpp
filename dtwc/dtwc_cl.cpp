@@ -392,7 +392,7 @@ inline std::string canonical_flag_for(std::string_view spelling)
 }
 
 #ifndef DTWC_CL_NO_MAIN
-int main(int argc, char *argv[])
+static int run_cli_main(int argc, char *argv[])
 {
   CLI::App app{"DTWC++ -- Dynamic Time Warping Clustering"};
   app.set_version_flag("--version", DTWC_VERSION_STRING,
@@ -1416,5 +1416,17 @@ int main(int argc, char *argv[])
             << "  Time:       " << clk << "\n";
 
   return EXIT_SUCCESS;
+}
+
+int main(int argc, char *argv[])
+{
+  try {
+    return run_cli_main(argc, argv);
+  } catch (const std::exception &e) {
+    std::cerr << "Error: " << e.what() << '\n';
+  } catch (...) {
+    std::cerr << "Error: unknown non-standard exception\n";
+  }
+  return EXIT_FAILURE;
 }
 #endif // DTWC_CL_NO_MAIN
