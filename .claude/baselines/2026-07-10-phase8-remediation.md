@@ -2295,3 +2295,71 @@ Verdict: **PASS.** Python now has the same signed-integer acceptance domain and
 common validation order on CPU, GPU, and HPC. Invalid requests are effect-free,
 valid NumPy integers are canonicalized, direct HPC preserves `max_iter`, and
 ordinary method/device behavior remains loud and unchanged.
+
+## M32 — non-clustering SLURM wrapper boundary
+
+The M28/M31 closeout traced wrapper commands beyond `submit-cluster`. Two
+public selectors and the transport configuration still crossed remote shell
+syntax without a semantic boundary. `build [profile]` inserted its argument
+inside a single-quoted script piped to remote `sbatch`, while
+`submit-benchmark-gpu [type]` concatenated its value into a raw remote command.
+Required endpoint/base settings and optional Slurm settings were likewise used
+across SSH, preflight, and transfer routes without validation.
+
+Ten real-wrapper tests were run red before the production edit:
+
+```text
+tests/python/test_hpc.py focused M32 boundary
+  10 failed / 98 deselected
+```
+
+The fake SSH executable evaluated the exact remote command with POSIX `sh`.
+Payloads in the build profile and benchmark GPU type both returned success and
+created their distinct sentinel files. A semicolon-bearing remote base also
+created its sentinel during `upload`. All seven invalid transport settings
+reached fake SSH; the wrapper accepted spaces/metacharacters in user/host,
+relative or executable remote paths, comma partitions, executable cluster/GRES
+values, and malformed email.
+
+The `.env` reader now trims all surrounding whitespace, fixing the shipped
+`KEY=   # optional` form, and rejects invalid keys. Before any SSH/rsync/scp
+call, the wrapper validates the required user/host tokens and absolute POSIX
+remote base plus optional partition, cluster, email, and GPU-GRES grammars.
+The remote path grammar excludes whitespace, rsync's `:` delimiter, leading-dot
+and traversal components. Normal Oxford ARC hostnames, account aliases,
+absolute project paths, notification addresses, and `gpu[:type]:count` values
+remain accepted.
+
+Build accepts exactly `arc`, `htc-cpu`, `htc-gpu`, `htc-v4`, `h100`, and
+`grace`, through either `build <profile>` or the already documented
+`build --profile <profile>` form. Its submitted script is static; the remote
+base/profile arrive only as one quoted `--export` argument. Benchmark GPU type
+is empty or exactly `a100`, `l40s`, or `h100`, and becomes one `--gres` argv
+element. Shared helpers now quote remote argv and working-directory changes for
+binary preflight, test/benchmark submission, cluster submission, and status.
+Transfers use option terminators and the already validated host/path language.
+The intentionally arbitrary `ssh "command"` entrypoint is unchanged and remains
+documented as the sole shell-text escape hatch.
+
+Mutation-sensitive controls execute the real wrapper behind fake SSH,
+`find`, transfer, and `sbatch` tools. They prove all six profiles, both build
+syntaxes, three GPU types plus the untyped default, empty commented optionals,
+and safe cluster/email/GRES values reach the intended single argv entries.
+
+Final evidence:
+
+```text
+focused former injection/config reds:                      10 passed
+all documented build-profile forms:                         7 passed
+documented GPU types + optional-config controls:             6 passed
+tests/python/test_hpc.py:                                  120 passed
+python py_compile (_hpc.py + test_hpc.py):                  passed
+bash -n over tracked shell/Slurm entrypoints:          11 passed
+CR-byte/LF gate:                                      11 passed
+generate_docs.py --check:                                  passed
+check_docs_contract.py --cli build/highs-1151/bin/dtwc_cl: passed
+```
+
+Verdict: **PASS.** No non-arbitrary public wrapper/config value becomes remote
+shell syntax, invalid values stop before transport, and every documented ARC
+profile/type/configuration remains live.

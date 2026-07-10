@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Hardened every non-arbitrary SLURM wrapper entrypoint: build profiles,
+  benchmark GPU types, SSH endpoints, remote bases, and optional Slurm settings
+  now have explicit grammars before network effects. Remote build, preflight,
+  status, submission, and transfer commands use quoted argv construction; the
+  documented ARC profiles/configuration remain valid and `ssh` stays the
+  explicitly arbitrary escape hatch.
 - Aligned Python Tier-1 `cluster()` validation with C++ `validate_common`:
   `k` and `max_iter` must be positive signed C++ integers and `Dataset.skip_cols`
   must be nonnegative. Python and NumPy integers are normalized consistently;

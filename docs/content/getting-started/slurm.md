@@ -28,22 +28,23 @@ cp scripts/slurm/env.example .env
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `SLURM_USER` | Your cluster username | `jdoe` |
-| `SLURM_HOST` | Login node hostname | `htc-login.arc.ox.ac.uk` |
-| `SLURM_DATA_FOLDER` | Shared data directory | `/data/project/user` |
-| `SLURM_REMOTE_BASE` | Working directory for dtw-cpp | `/data/project/user/dtw-cpp` |
+| `SLURM_USER` | ASCII cluster account/SSH alias token | `jdoe` |
+| `SLURM_HOST` | ASCII login hostname or SSH-config alias | `htc-login.arc.ox.ac.uk` |
+| `SLURM_REMOTE_BASE` | Absolute POSIX path without whitespace, `:`, or dot components | `/data/project/user/dtw-cpp` |
 
 ### Optional variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SLURM_GATEWAY` | Two-hop SSH gateway (leave empty for direct) | (empty) |
-| `SLURM_SSH_KEY` | Path to SSH private key (recommended) | `~/.ssh/id_ed25519` |
-| `SLURM_PASSWORD` | SSH password (fallback) | (empty) |
-| `SLURM_PARTITION` | Default SLURM partition | `short` |
-| `SLURM_CLUSTER` | Target cluster name | (empty) |
-| `SLURM_GPU_GRES` | GPU resource request | `gpu:1` |
-| `SLURM_EMAIL` | Job notification email | (empty) |
+| `SLURM_PARTITION` | Single Slurm-name token | `short` |
+| `SLURM_CLUSTER` | Single target-cluster token | (empty) |
+| `SLURM_GPU_GRES` | `gpu:<count>` or `gpu:<ASCII-type>:<count>` | `gpu:1` |
+| `SLURM_EMAIL` | Conventional ASCII notification address | (empty) |
+
+The wrapper validates every consumed value before its first SSH or transfer
+call. Configure proxy jumps, identity files, and authentication in your SSH
+client; `SLURM_GATEWAY`, `SLURM_SSH_KEY`, and `SLURM_PASSWORD` are advisory
+template entries and are not read by the wrapper.
 
 ## Quick Start
 

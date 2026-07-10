@@ -8,6 +8,7 @@
 #   bash scripts/slurm/slurm_remote.sh test
 #   bash scripts/slurm/slurm_remote.sh upload
 #   bash scripts/slurm/slurm_remote.sh build [profile]
+#   bash scripts/slurm/slurm_remote.sh build --profile <profile>
 #   bash scripts/slurm/slurm_remote.sh submit-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-gpu
 #   bash scripts/slurm/slurm_remote.sh submit-checkpoint
@@ -34,41 +35,81 @@ if [[ ! -f "${ENV_FILE}" ]]; then
     exit 1
 fi
 
-# Source .env (simple key=value, no shell expansion)
+# Source .env (simple key=value, no shell expansion). Whitespace surrounding
+# keys/values is ignored so the documented `KEY=   # comment` form is empty.
 while IFS= read -r line || [[ -n "${line}" ]]; do
     line="${line%$'\r'}"          # strip Windows \r
     line="${line%%#*}"            # strip comments
-    line="${line## }"             # trim leading space
-    line="${line%% }"             # trim trailing space
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
     [[ -z "${line}" ]] && continue
     [[ "${line}" != *=* ]] && continue
     key="${line%%=*}"
     value="${line#*=}"
-    key="${key// /}"              # strip spaces from key
-    [[ -z "${key}" ]] && continue
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    [[ "${key}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+        echo "ERROR: invalid .env key: ${key}" >&2
+        exit 1
+    }
     export "${key}=${value}"
 done < "${ENV_FILE}"
 
 # ── Validate required variables ──────────────────────────────────────────
 for var in SLURM_USER SLURM_HOST SLURM_REMOTE_BASE; do
     if [[ -z "${!var:-}" ]]; then
-        echo "ERROR: ${var} is not set in .env"
+        echo "ERROR: ${var} is not set in .env" >&2
         exit 1
     fi
 done
 
+transport_config_error() {
+    echo "ERROR: unsafe $1 in .env: $2" >&2
+    exit 1
+}
+
+# These values cross local argv, rsync/scp's host:path grammar, remote shell
+# argv, and Slurm option parsing. Keep the accepted language deliberately
+# narrower than those consumers rather than relying on one layer's quoting.
+(( ${#SLURM_USER} <= 64 )) \
+    && [[ "${SLURM_USER}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] \
+    || transport_config_error SLURM_USER "${SLURM_USER}"
+(( ${#SLURM_HOST} <= 253 )) \
+    && [[ "${SLURM_HOST}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]*$ ]] \
+    || transport_config_error SLURM_HOST "${SLURM_HOST}"
+(( ${#SLURM_REMOTE_BASE} <= 1024 )) \
+    && [[ "${SLURM_REMOTE_BASE}" =~ ^/[A-Za-z0-9_+@%=-][A-Za-z0-9_+@%=.-]*(/[A-Za-z0-9_+@%=-][A-Za-z0-9_+@%=.-]*)*$ ]] \
+    || transport_config_error SLURM_REMOTE_BASE "${SLURM_REMOTE_BASE}"
+
+SLURM_PARTITION="${SLURM_PARTITION:-short}"
+(( ${#SLURM_PARTITION} <= 64 )) \
+    && [[ "${SLURM_PARTITION}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+    || transport_config_error SLURM_PARTITION "${SLURM_PARTITION}"
+if [[ -n "${SLURM_CLUSTER:-}" ]]; then
+    (( ${#SLURM_CLUSTER} <= 64 )) \
+        && [[ "${SLURM_CLUSTER}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] \
+        || transport_config_error SLURM_CLUSTER "${SLURM_CLUSTER}"
+fi
+if [[ -n "${SLURM_EMAIL:-}" ]]; then
+    (( ${#SLURM_EMAIL} <= 254 )) \
+        && [[ "${SLURM_EMAIL}" =~ ^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,63}$ ]] \
+        || transport_config_error SLURM_EMAIL "${SLURM_EMAIL}"
+fi
+SLURM_GPU_GRES="${SLURM_GPU_GRES:-gpu:1}"
+(( ${#SLURM_GPU_GRES} <= 128 )) \
+    && [[ "${SLURM_GPU_GRES}" =~ ^gpu:([A-Za-z][A-Za-z0-9_.-]*:)?[1-9][0-9]*$ ]] \
+    || transport_config_error SLURM_GPU_GRES "${SLURM_GPU_GRES}"
+
 SSH_TARGET="${SLURM_USER}@${SLURM_HOST}"
 REMOTE="${SLURM_REMOTE_BASE}"
-PARTITION="${SLURM_PARTITION:-short}"
+PARTITION="${SLURM_PARTITION}"
 CLUSTER_FLAG=""
 if [[ -n "${SLURM_CLUSTER:-}" ]]; then
     CLUSTER_FLAG="--clusters=${SLURM_CLUSTER}"
 fi
-GPU_GRES="${SLURM_GPU_GRES:-gpu:1}"
-EMAIL_FLAGS=""
-if [[ -n "${SLURM_EMAIL:-}" ]]; then
-    EMAIL_FLAGS="--mail-type=BEGIN,END,FAIL --mail-user=${SLURM_EMAIL}"
-fi
+GPU_GRES="${SLURM_GPU_GRES}"
 
 # ── Helper ───────────────────────────────────────────────────────────────
 remote() {
@@ -118,6 +159,21 @@ shell_join() {
     printf -v "${DESTINATION}" '%s' "${RESULT}"
 }
 
+remote_argv() {
+    local COMMAND
+    shell_join COMMAND "$@"
+    remote "${COMMAND}"
+}
+
+remote_argv_in_dir() {
+    local DIRECTORY="$1"
+    shift
+    local CD_COMMAND COMMAND
+    shell_join CD_COMMAND cd "${DIRECTORY}"
+    shell_join COMMAND "$@"
+    remote "${CD_COMMAND} && ${COMMAND}"
+}
+
 # ── Commands ─────────────────────────────────────────────────────────────
 
 cmd_test() {
@@ -136,7 +192,11 @@ cmd_upload() {
     echo ""
 
     # Create remote directory structure
-    remote "mkdir -p ${REMOTE}/src/dtwc ${REMOTE}/src/cmake ${REMOTE}/src/scripts/slurm/jobs ${REMOTE}/data/Coffee ${REMOTE}/data/Beef ${REMOTE}/results ${REMOTE}/logs"
+    remote_argv mkdir -p \
+        "${REMOTE}/src/dtwc" "${REMOTE}/src/cmake" \
+        "${REMOTE}/src/scripts/slurm/jobs" \
+        "${REMOTE}/data/Coffee" "${REMOTE}/data/Beef" \
+        "${REMOTE}/results" "${REMOTE}/logs"
 
     # Detect transfer tool: rsync (preferred) or scp (fallback)
     local USE_RSYNC=false
@@ -147,18 +207,18 @@ cmd_upload() {
     _upload_dir() {
         local src="$1" dst="$2"
         if ${USE_RSYNC}; then
-            rsync -avz --progress "${src}/" "${SSH_TARGET}:${dst}/"
+            rsync -avz --progress -- "${src}/" "${SSH_TARGET}:${dst}/"
         else
-            scp -r "${src}/." "${SSH_TARGET}:${dst}/"
+            scp -r -- "${src}/." "${SSH_TARGET}:${dst}/"
         fi
     }
 
     _upload_file() {
         local src="$1" dst="$2"
         if ${USE_RSYNC}; then
-            rsync -avz --progress "${src}" "${SSH_TARGET}:${dst}"
+            rsync -avz --progress -- "${src}" "${SSH_TARGET}:${dst}"
         else
-            scp "${src}" "${SSH_TARGET}:${dst}"
+            scp -- "${src}" "${SSH_TARGET}:${dst}"
         fi
     }
 
@@ -197,7 +257,7 @@ cmd_upload() {
     echo "[5/5] Uploading dummy test data..."
     local DUMMY="${PROJECT_ROOT}/data/dummy"
     if [[ -d "${DUMMY}" ]]; then
-        remote "mkdir -p ${REMOTE}/data/dummy"
+        remote_argv mkdir -p "${REMOTE}/data/dummy"
         _upload_dir "${DUMMY}" "${REMOTE}/data/dummy"
     else
         echo "  SKIP: ${DUMMY} not found"
@@ -208,32 +268,57 @@ cmd_upload() {
 }
 
 cmd_build() {
-    local PROFILE="${1:-htc-cpu}"
+    local PROFILE
+    case "$#" in
+        0) PROFILE="htc-cpu" ;;
+        1) PROFILE="$1" ;;
+        2)
+            [[ "$1" == "--profile" ]] || {
+                echo "ERROR: build profile syntax is 'build [--profile] <profile>'" >&2
+                exit 1
+            }
+            PROFILE="$2"
+            ;;
+        *)
+            echo "ERROR: build profile syntax is 'build [--profile] <profile>'" >&2
+            exit 1
+            ;;
+    esac
+    case "${PROFILE}" in
+        arc|htc-cpu|htc-gpu|htc-v4|h100|grace) ;;
+        *)
+            echo "ERROR: unsupported build profile '${PROFILE}'; expected arc, htc-cpu, htc-gpu, htc-v4, h100, or grace" >&2
+            exit 1
+            ;;
+    esac
     banner "Building on cluster (profile: ${PROFILE})"
 
-    # Submit a batch build job
-    local BUILD_SCRIPT="#!/bin/bash
-#SBATCH --partition=interactive
-#SBATCH --time=01:00:00
-#SBATCH --cpus-per-task=8
-#SBATCH --mem-per-cpu=4G
-#SBATCH --job-name=dtwc-build
-#SBATCH --output=${REMOTE}/logs/build_%j.out
-#SBATCH --error=${REMOTE}/logs/build_%j.err
-${CLUSTER_FLAG:+#SBATCH ${CLUSTER_FLAG}}
-
+    # The script body is static. Dynamic values cross the boundary as individually
+    # quoted sbatch argv/environment entries rather than executable shell text.
+    local BUILD_SCRIPT='#!/bin/bash
+set -euo pipefail
 module load CMake/3.27.6 GCC/13.2.0 CUDA/12.4.0 2>/dev/null || true
 module load cmake gcc cuda 2>/dev/null || true
-cd ${REMOTE}/src
+cd "${DTWC_REMOTE_BASE}/src"
 # Disable testing (tests/ not uploaded); Arrow off until include path fix
 export DTWC_BUILD_TESTING=OFF
 export DTWC_ENABLE_ARROW=OFF
-source scripts/slurm/build-arc.sh ${PROFILE}
-"
+source scripts/slurm/build-arc.sh "${DTWC_BUILD_PROFILE}"
+'
 
     echo "  Submitting build job..."
-    local JOB_ID
-    JOB_ID=$(remote "echo '${BUILD_SCRIPT}' | sbatch --parsable")
+    local EXPORTS="ALL,DTWC_REMOTE_BASE=${REMOTE},DTWC_BUILD_PROFILE=${PROFILE}"
+    local -a SBATCH_ARGS=(
+        sbatch --parsable --partition=interactive --time=01:00:00
+        --cpus-per-task=8 --mem-per-cpu=4G --job-name=dtwc-build
+        "--output=${REMOTE}/logs/build_%j.out"
+        "--error=${REMOTE}/logs/build_%j.err"
+        "--export=${EXPORTS}"
+    )
+    [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    local SBATCH_COMMAND JOB_ID
+    shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
+    JOB_ID=$(printf '%s\n' "${BUILD_SCRIPT}" | remote "${SBATCH_COMMAND}")
     echo "  Job ID: ${JOB_ID}"
     echo "  Monitor: ssh ${SSH_TARGET} 'squeue -j ${JOB_ID}'"
     echo "  Log:     ssh ${SSH_TARGET} 'tail -f ${REMOTE}/logs/build_${JOB_ID}.out'"
@@ -252,7 +337,8 @@ _submit_job() {
     # Preflight: check binary exists
     if [[ -n "${BIN_PATTERN}" ]]; then
         local EXISTS
-        EXISTS=$(remote "ls ${REMOTE}/src/${BIN_PATTERN} 2>/dev/null | head -1" || true)
+        EXISTS=$(remote_argv find "${REMOTE}/src" \
+            -path "${REMOTE}/src/${BIN_PATTERN}" -type f -print -quit || true)
         if [[ -z "${EXISTS}" ]]; then
             echo "  ERROR: Binary not found: ${REMOTE}/src/${BIN_PATTERN}"
             echo "         Run 'bash scripts/slurm/slurm_remote.sh build' first."
@@ -262,11 +348,18 @@ _submit_job() {
     fi
 
     # Upload the latest job script
-    scp "${PROJECT_ROOT}/${SLURM_FILE}" "${SSH_TARGET}:${REMOTE}/src/${SLURM_FILE}"
+    scp -- "${PROJECT_ROOT}/${SLURM_FILE}" "${SSH_TARGET}:${REMOTE}/src/${SLURM_FILE}"
 
-    local EXTRA_SBATCH="${4:-}"
+    local EXTRA_GRES="${4:-}"
+    local -a SBATCH_ARGS=(sbatch --parsable)
+    [[ -n "${CLUSTER_FLAG}" ]] && SBATCH_ARGS+=("${CLUSTER_FLAG}")
+    if [[ -n "${SLURM_EMAIL:-}" ]]; then
+        SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
+    fi
+    [[ -n "${EXTRA_GRES}" ]] && SBATCH_ARGS+=("--gres=${EXTRA_GRES}")
+    SBATCH_ARGS+=("${SLURM_FILE}")
     local JOB_ID
-    JOB_ID=$(remote "cd ${REMOTE}/src && sbatch --parsable ${CLUSTER_FLAG} ${EMAIL_FLAGS} ${EXTRA_SBATCH} ${SLURM_FILE}")
+    JOB_ID=$(remote_argv_in_dir "${REMOTE}/src" "${SBATCH_ARGS[@]}")
     echo "  Job ID: ${JOB_ID}"
     echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
 }
@@ -292,13 +385,24 @@ cmd_submit_benchmark_cpu() {
 }
 
 cmd_submit_benchmark_gpu() {
+    (( $# <= 1 )) || {
+        echo "ERROR: benchmark GPU type accepts at most one value" >&2
+        exit 1
+    }
     local gpu_type="${1:-}"
-    local extra_args=""
+    case "${gpu_type}" in
+        ""|a100|l40s|h100) ;;
+        *)
+            echo "ERROR: unsupported benchmark GPU type '${gpu_type}'; expected a100, l40s, or h100" >&2
+            exit 1
+            ;;
+    esac
+    local gres=""
     if [[ -n "${gpu_type}" ]]; then
-        extra_args="--gres=gpu:${gpu_type}:1"
+        gres="gpu:${gpu_type}:1"
         echo "  Requesting GPU type: ${gpu_type}"
     fi
-    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${extra_args}"
+    _submit_job "scripts/slurm/jobs/ucr_benchmark_gpu.slurm" "UCR benchmark (GPU${gpu_type:+: ${gpu_type}})" "build-*/bin/dtwc_cl" "${gres}"
 }
 
 # Generic clustering: submit cluster_generic.slurm on an arbitrary input.
@@ -454,7 +558,8 @@ cmd_submit_cluster() {
 
     # Preflight: a build must exist on the cluster
     local EXISTS
-    EXISTS=$(remote "ls ${REMOTE}/src/build-*/bin/dtwc_cl 2>/dev/null | head -1" || true)
+    EXISTS=$(remote_argv find "${REMOTE}/src" \
+        -path "${REMOTE}/src/build-*/bin/dtwc_cl" -type f -print -quit || true)
     if [[ -z "${EXISTS}" ]]; then
         echo "  ERROR: no dtwc_cl build on cluster. Run 'slurm_remote.sh build' first." >&2
         exit 1
@@ -499,7 +604,7 @@ cmd_submit_cluster() {
     # Publish this exact script beside this submission's input. The sbatch path
     # below is immutable for this call rather than shared across callers.
     local REMOTE_JOB_SCRIPT="${REMOTE_JOB_DIR}/cluster_generic.slurm"
-    scp "${PROJECT_ROOT}/scripts/slurm/jobs/cluster_generic.slurm" \
+    scp -- "${PROJECT_ROOT}/scripts/slurm/jobs/cluster_generic.slurm" \
         "${SSH_TARGET}:${REMOTE_JOB_SCRIPT}"
 
     # GPU runs need a GRES request (the job file is partition-agnostic)
@@ -527,10 +632,8 @@ cmd_submit_cluster() {
     [[ -n "${GPU_FLAGS}" ]] && SBATCH_ARGS+=("${GPU_FLAGS}")
     SBATCH_ARGS+=("--export=${EXPORTS}" "${REMOTE_JOB_SCRIPT}")
 
-    local SBATCH_COMMAND REMOTE_SOURCE JOB_ID
-    shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
-    printf -v REMOTE_SOURCE '%q' "${REMOTE}/src"
-    JOB_ID=$(remote "cd ${REMOTE_SOURCE} && ${SBATCH_COMMAND}")
+    local JOB_ID
+    JOB_ID=$(remote_argv_in_dir "${REMOTE}/src" "${SBATCH_ARGS[@]}")
     echo "  Job ID: ${JOB_ID}"
     echo "  Monitor: bash scripts/slurm/slurm_remote.sh status"
 }
@@ -554,15 +657,15 @@ cmd_download() {
     echo ""
 
     if command -v rsync &>/dev/null; then
-        rsync -avz --progress "${SSH_TARGET}:${REMOTE}/src/results/" "${LOCAL_RESULTS}/"
+        rsync -avz --progress -- "${SSH_TARGET}:${REMOTE}/src/results/" "${LOCAL_RESULTS}/"
         echo ""
         echo "  Downloading logs..."
-        rsync -avz --progress "${SSH_TARGET}:${REMOTE}/src/logs/" "${LOCAL_RESULTS}/logs/" 2>/dev/null || echo "  No logs found."
+        rsync -avz --progress -- "${SSH_TARGET}:${REMOTE}/src/logs/" "${LOCAL_RESULTS}/logs/" 2>/dev/null || echo "  No logs found."
     else
-        scp -r "${SSH_TARGET}:${REMOTE}/src/results/." "${LOCAL_RESULTS}/"
+        scp -r -- "${SSH_TARGET}:${REMOTE}/src/results/." "${LOCAL_RESULTS}/"
         echo ""
         echo "  Downloading logs..."
-        scp -r "${SSH_TARGET}:${REMOTE}/src/logs/." "${LOCAL_RESULTS}/logs/" 2>/dev/null || echo "  No logs found."
+        scp -r -- "${SSH_TARGET}:${REMOTE}/src/logs/." "${LOCAL_RESULTS}/logs/" 2>/dev/null || echo "  No logs found."
     fi
 
     echo ""
@@ -646,13 +749,14 @@ case "${CMD}" in
         echo "Commands:"
         echo "  test              Test SSH connection"
         echo "  upload            Upload source + test data"
-        echo "  build [profile]   Submit batch build job (default: htc-cpu)"
+        echo "  build [profile] | build --profile <profile>"
+        echo "                    Profiles: arc, htc-cpu, htc-gpu, htc-v4, h100, grace"
         echo "  submit-cpu        Submit CPU test job"
         echo "  submit-gpu        Submit GPU test job"
         echo "  submit-checkpoint Submit checkpoint/resume test"
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
-        echo "  submit-benchmark-gpu [type]  Submit full UCR benchmark (GPU, e.g. a100, l40s)"
+        echo "  submit-benchmark-gpu [type]  GPU type: a100, l40s, or h100"
         echo "  submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]"
         echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"

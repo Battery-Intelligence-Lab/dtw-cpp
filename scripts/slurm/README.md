@@ -64,12 +64,17 @@ See `env.example` for all variables and their descriptions. Key variables:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `SLURM_USER` | Yes | Cluster username |
-| `SLURM_HOST` | Yes | Login node hostname |
-| `SLURM_DATA_FOLDER` | Yes | Shared data directory |
-| `SLURM_REMOTE_BASE` | Yes | Working directory for dtw-cpp |
-| `SLURM_SSH_KEY` | Recommended | Path to SSH private key |
-| `SLURM_PASSWORD` | Fallback | SSH password (less secure) |
+| `SLURM_USER` | Yes | ASCII cluster account/SSH alias token |
+| `SLURM_HOST` | Yes | ASCII login hostname or SSH-config alias |
+| `SLURM_REMOTE_BASE` | Yes | Absolute POSIX working path; no whitespace, `:`, or dot components |
+| `SLURM_PARTITION` | No | Single Slurm-name token (default `short`) |
+| `SLURM_CLUSTER` | No | Single Slurm-name token |
+| `SLURM_GPU_GRES` | No | `gpu:<count>` or `gpu:<type>:<count>` |
+| `SLURM_EMAIL` | No | Conventional ASCII notification address |
+
+All consumed values are validated before any SSH or transfer command. Configure
+SSH keys, passwords, and proxy jumps in your SSH client; the similarly named
+advisory `.env` entries are not consumed by this wrapper.
 
 ## Oxford ARC Quick Reference
 

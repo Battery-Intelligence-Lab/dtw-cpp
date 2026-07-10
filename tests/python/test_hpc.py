@@ -610,6 +610,209 @@ class TestDTWClusteringHpcDispatch:
 class TestSlurmLastMile:
     """Pin runner exports and job-script flags without contacting SLURM."""
 
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_build_profile_injection_is_rejected_before_ssh(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        injected = tmp_path / "build-profile-injected.txt"
+        ssh_called = tmp_path / "ssh-called.txt"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf called > \"$SSH_CALLED\"\n"
+            "exec sh -c \"${2:-}\"\n",
+            encoding="utf-8", newline="\n",
+        )
+        malicious = (
+            f"htc-cpu'; touch {_bash_path(injected)}; echo 'injected"
+        )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export SSH_CALLED={shlex.quote(_bash_path(ssh_called))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} build "
+            f"{shlex.quote(malicious)}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "build profile" in completed.stderr.lower()
+        assert not ssh_called.exists()
+        assert not injected.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_benchmark_gpu_type_injection_is_rejected_before_ssh(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        injected = tmp_path / "gpu-type-injected.txt"
+        ssh_called = tmp_path / "ssh-called.txt"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf called > \"$SSH_CALLED\"\n"
+            "exec sh -c \"${2:-}\"\n",
+            encoding="utf-8", newline="\n",
+        )
+        malicious = f"a100; touch {_bash_path(injected)}; #"
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export SSH_CALLED={shlex.quote(_bash_path(ssh_called))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} "
+            f"submit-benchmark-gpu {shlex.quote(malicious)}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "gpu type" in completed.stderr.lower()
+        assert not ssh_called.exists()
+        assert not injected.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        "profile", ["arc", "htc-cpu", "htc-gpu", "htc-v4", "h100", "grace"],
+    )
+    def test_every_documented_build_profile_is_forwarded_as_data(
+        self, tmp_path, profile,
+    ):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} build "
+            f"{shlex.quote(profile)}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        exports = next(arg for arg in args if arg.startswith("--export="))
+        assert f"DTWC_BUILD_PROFILE={profile}" in exports
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_documented_build_profile_flag_form_is_accepted(self, tmp_path):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} "
+            "build --profile htc-cpu"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        exports = next(arg for arg in args if arg.startswith("--export="))
+        assert "DTWC_BUILD_PROFILE=htc-cpu" in exports
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize("gpu_type", ["", "a100", "l40s", "h100"])
+    def test_documented_benchmark_gpu_types_are_exact_argv(
+        self, tmp_path, gpu_type,
+    ):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        type_arg = f" {shlex.quote(gpu_type)}" if gpu_type else ""
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} "
+            f"submit-benchmark-gpu{type_arg}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = capture.read_text(encoding="utf-8").splitlines()
+        gres_args = [arg for arg in args if arg.startswith("--gres=")]
+        assert gres_args == ([f"--gres=gpu:{gpu_type}:1"] if gpu_type else [])
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_commented_empty_optional_config_is_really_empty(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        env_file = wrapper.parents[2] / ".env"
+        with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(
+                "SLURM_CLUSTER=                     # optional\n"
+                "SLURM_EMAIL=                       # optional\n"
+            )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} test"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        ("key", "value"),
+        [
+            ("SLURM_USER", "bad user"),
+            ("SLURM_HOST", "host;command"),
+            ("SLURM_REMOTE_BASE", "relative/remote"),
+            ("SLURM_PARTITION", "short,long"),
+            ("SLURM_CLUSTER", "arc;command"),
+            ("SLURM_EMAIL", "not-an-email"),
+            ("SLURM_GPU_GRES", "gpu:a100:1;command"),
+        ],
+    )
+    def test_unsafe_transport_config_is_rejected_before_ssh(
+        self, tmp_path, key, value,
+    ):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        env_file = wrapper.parents[2] / ".env"
+        with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(f"{key}={value}\n")
+        ssh_called = tmp_path / "ssh-called.txt"
+        fake_ssh = fake_bin / "ssh"
+        fake_ssh.write_text(
+            "#!/usr/bin/env bash\n"
+            "printf called > \"$SSH_CALLED\"\n"
+            "exit 0\n",
+            encoding="utf-8", newline="\n",
+        )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export SSH_CALLED={shlex.quote(_bash_path(ssh_called))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} test"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert key in completed.stderr
+        assert not ssh_called.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_remote_base_injection_is_rejected_before_remote_shell(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        injected = tmp_path / "remote-base-injected.txt"
+        env_file = wrapper.parents[2] / ".env"
+        with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write(
+                "SLURM_REMOTE_BASE="
+                f"/tmp/remote;touch {_bash_path(injected)};#\n"
+            )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} upload"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "SLURM_REMOTE_BASE" in completed.stderr
+        assert not injected.exists()
+
     def test_restart_schedule_reaches_dtwc_cl(self):
         root = Path(__file__).resolve().parents[2]
         wrapper = (root / "scripts/slurm/slurm_remote.sh").read_text(
@@ -783,27 +986,33 @@ class TestSlurmLastMile:
         assert "unscoped empty queue" not in completed.stdout
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
-    def test_remote_argv_quoting_blocks_optional_config_injection(self, tmp_path):
+    def test_safe_optional_config_reaches_sbatch_as_single_argv(self, tmp_path):
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
-        injected = tmp_path / "config-injected.txt"
-        cluster = f"arc;touch {_bash_path(injected)};"
+        cluster = "arc-prod"
+        email = "first.last+dtwc@eng.ox.ac.uk"
+        gres = "gpu:a100:1"
         env_file = wrapper.parents[2] / ".env"
         with env_file.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(f"SLURM_CLUSTER={cluster}\n")
+            stream.write(
+                f"SLURM_CLUSTER={cluster}\n"
+                f"SLURM_EMAIL={email}\n"
+                f"SLURM_GPU_GRES={gres}\n"
+            )
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
             f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
-            "/remote/input.tsv 2 pam cpu -1 quote_config 0 0"
+            "/remote/input.tsv 2 pam cuda -1 quote_config 0 0"
         )
         completed = subprocess.run(
             ["bash", "-c", command], check=False, capture_output=True,
             text=True, encoding="utf-8", errors="replace",
         )
         assert completed.returncode == 0, completed.stdout + completed.stderr
-        assert not injected.exists()
         sbatch_args = capture.read_text(encoding="utf-8").splitlines()
         assert f"--clusters={cluster}" in sbatch_args
+        assert f"--mail-user={email}" in sbatch_args
+        assert f"--gres={gres}" in sbatch_args
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_safe_upload_is_local_and_option_terminated(self, tmp_path):
