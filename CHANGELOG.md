@@ -24,6 +24,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   them explicitly or use a matrix-based method.
 - Completed the rc1 migration notes for hard GPU/solver errors and separated
   the absorbed development history from the release-candidate summary.
+- Fixed both barycenter entry points to reject non-Standard DTW variants and
+  finite bands with actionable `InvalidInput` errors instead of silently
+  computing an unbanded Standard squared-cost objective.
 
 # 2.0.0rc1 - 2026-07-10
 

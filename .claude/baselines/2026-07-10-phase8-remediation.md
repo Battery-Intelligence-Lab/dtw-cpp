@@ -263,3 +263,45 @@ Verdict: **PASS.** The generated migration SSOT and its drift gate now enforce
 both breaking behaviors. The same gate also scopes the three rc1 behavior notes
 to the release summary, requires the separate absorbed-history heading, and
 rejects the old stray contract bullet.
+
+## M3 — barycenter Problem-configuration contract
+
+Registered band: both public barycenter entry points must reject all six
+non-Standard variants and every finite Problem band before silently computing
+their intrinsic Standard, unbanded, squared-local-cost objective. Error text
+must identify the entry point and the supported setting.
+
+Red decisive output before the guard:
+
+```text
+unit_test_barycenter.exe "[configuration]" --reporter compact
+  1 test case failed, 2 assertions failed
+  dtw_barycenter returned normally for DDTW and band=1
+```
+
+Green decisive output:
+
+```text
+unit_test_barycenter.exe "[configuration]" --reporter compact
+  All tests passed (28 assertions in 1 test case)
+unit_test_barycenter.exe
+  All tests passed (56 assertions in 7 test cases)
+ctest --test-dir build -R "^unit_test_barycenter$" --output-on-failure
+  1/1 passed, 0 failed
+```
+
+Adversarial premise check:
+
+```text
+rg -n "set_metric|MetricType|metric|variant_params|int band" \
+  dtwc/Problem.hpp dtwc/Problem.cpp dtwc/core/dtw_options.hpp
+  Problem.hpp:134: int band{ settings::DEFAULT_BAND };
+  Problem.hpp:141: core::DTWVariantParams variant_params;
+  dtw_options.hpp:77: MetricType metric = MetricType::L1;
+```
+
+Verdict: **PASS, metric clause FALSIFIED/N/A.** `Problem` exposes variant and
+band configuration but no metric state or setter. Adding one merely to satisfy
+the finding would expand the frozen API and imply semantics that the distance
+dispatcher does not own. The supported squared-cost barycenter objective is now
+documented explicitly instead.

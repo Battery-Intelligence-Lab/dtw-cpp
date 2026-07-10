@@ -173,3 +173,50 @@ TEST_CASE("barycenter rejects unsupported multivariate and invalid inputs",
   REQUIRE_THROWS_AS(algorithms::dtw_barycenter(problem, {9}, 1), InvalidInput);
   REQUIRE_THROWS_AS(algorithms::dtw_barycenter(problem, {0}, 0), InvalidInput);
 }
+
+TEST_CASE("barycenter entry points reject unsupported Problem DTW configuration",
+          "[barycenter][errors][configuration]")
+{
+  auto problem = make_problem({{0.0, 1.0, 0.0}, {0.0, 2.0, 0.0}});
+  algorithms::BarycenterClusteringOptions clustering_options;
+  clustering_options.n_clusters = 1;
+
+  SECTION("non-Standard variant")
+  {
+    for (const auto variant : {core::DTWVariant::DDTW, core::DTWVariant::WDTW,
+                               core::DTWVariant::ADTW, core::DTWVariant::SoftDTW,
+                               core::DTWVariant::MSM, core::DTWVariant::TWE}) {
+      CAPTURE(static_cast<int>(variant));
+      problem.set_variant(variant);
+
+      REQUIRE_THROWS_AS(
+        algorithms::dtw_barycenter(problem, {0, 1}, 3), InvalidInput);
+      REQUIRE_THROWS_WITH(
+        algorithms::dtw_barycenter(problem, {0, 1}, 3),
+        "dtw_barycenter: only DTWVariant::Standard is supported; "
+        "set the Problem variant to DTWVariant::Standard.");
+      REQUIRE_THROWS_AS(
+        algorithms::barycenter_kmeans(problem, clustering_options), InvalidInput);
+      REQUIRE_THROWS_WITH(
+        algorithms::barycenter_kmeans(problem, clustering_options),
+        "barycenter_kmeans: only DTWVariant::Standard is supported; "
+        "set the Problem variant to DTWVariant::Standard.");
+    }
+  }
+
+  SECTION("non-default band")
+  {
+    problem.set_band(1);
+
+    REQUIRE_THROWS_AS(
+      algorithms::dtw_barycenter(problem, {0, 1}, 3), InvalidInput);
+    REQUIRE_THROWS_WITH(
+      algorithms::dtw_barycenter(problem, {0, 1}, 3),
+      "dtw_barycenter: banded DTW is not supported; set the Problem band to -1.");
+    REQUIRE_THROWS_AS(
+      algorithms::barycenter_kmeans(problem, clustering_options), InvalidInput);
+    REQUIRE_THROWS_WITH(
+      algorithms::barycenter_kmeans(problem, clustering_options),
+      "barycenter_kmeans: banded DTW is not supported; set the Problem band to -1.");
+  }
+}

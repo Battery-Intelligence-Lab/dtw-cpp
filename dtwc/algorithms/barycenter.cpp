@@ -52,6 +52,18 @@ void validate_options(const BarycenterOptions& options)
     throw InvalidInput("dtw_barycenter: tolerance must be finite and non-negative.");
 }
 
+void validate_problem_configuration(const Problem& prob, const char* entry_point)
+{
+  if (prob.variant_params.variant != core::DTWVariant::Standard)
+    throw InvalidInput(
+      std::string(entry_point) + ": only DTWVariant::Standard is supported; "
+      "set the Problem variant to DTWVariant::Standard.");
+  if (prob.band != settings::DEFAULT_BAND)
+    throw InvalidInput(
+      std::string(entry_point) +
+      ": banded DTW is not supported; set the Problem band to -1.");
+}
+
 std::vector<Series> copy_problem_series(const Problem& prob)
 {
   if (prob.data.ndim != 1)
@@ -426,6 +438,7 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
                                    std::size_t target_length,
                                    const BarycenterOptions& options)
 {
+  validate_problem_configuration(prob, "dtw_barycenter");
   const auto all = copy_problem_series(prob);
   if (series_indices.empty())
     throw InvalidInput("dtw_barycenter: series_indices must not be empty.");
@@ -442,6 +455,7 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
 BarycenterClusteringResult barycenter_kmeans(
   const Problem& prob, const BarycenterClusteringOptions& options)
 {
+  validate_problem_configuration(prob, "barycenter_kmeans");
   const auto data = copy_problem_series(prob);
   const std::size_t n = data.size();
   if (options.n_clusters <= 0 || static_cast<std::size_t>(options.n_clusters) > n)

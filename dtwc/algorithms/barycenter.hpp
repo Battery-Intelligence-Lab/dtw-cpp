@@ -68,13 +68,24 @@ struct SoftDtwValueGradient {
 
 } // namespace detail
 
-/** Compute one barycenter from the selected series in a Problem. */
+/**
+ * Compute one barycenter from the selected series in a Problem.
+ *
+ * The implemented objectives use Standard, unbanded DTW with squared local
+ * costs. A Problem configured with another DTW variant or a finite band is
+ * rejected rather than silently ignored.
+ */
 std::vector<data_t> dtw_barycenter(const Problem& prob,
                                    const std::vector<int>& series_indices,
                                    std::size_t target_length,
                                    const BarycenterOptions& options = {});
 
-/** Lloyd-style clustering whose centres are DTW barycenters. */
+/**
+ * Lloyd-style clustering whose centres are DTW barycenters.
+ *
+ * The Problem configuration restrictions are the same as for
+ * dtw_barycenter().
+ */
 BarycenterClusteringResult barycenter_kmeans(
   const Problem& prob, const BarycenterClusteringOptions& options = {});
 
