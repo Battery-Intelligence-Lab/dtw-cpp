@@ -22,6 +22,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -174,11 +175,10 @@ PruningStats fill_distance_matrix_pruned(
   // Lock-free by design: each iteration writes only to summaries[i] at its own index.
   std::vector<SeriesSummary> summaries(N);
   if (use_lb_kim_flag) {
-    #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
-    #endif
-    for (int i = 0; i < N; ++i)
+    auto compute_summary_at = [&](size_t i) {
       summaries[i] = compute_summary(prob.series(i));
+    };
+    run_openmp(compute_summary_at, static_cast<size_t>(N));
   }
 
   // Step 2: Precompute envelopes for LB_Keogh / LB_Enhanced (band >= 0) — parallel.
@@ -190,19 +190,17 @@ PruningStats fill_distance_matrix_pruned(
   const bool use_lb_webb = use_lb_webb_flag && (band >= 0);
   std::vector<Envelope> envelopes(N);
   if (use_lb_keogh || use_lb_enhanced) {
-    #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
-    #endif
-    for (int i = 0; i < N; ++i)
+    auto compute_envelope_at = [&](size_t i) {
       envelopes[i] = compute_envelope(prob.series(i), band);
+    };
+    run_openmp(compute_envelope_at, static_cast<size_t>(N));
   }
   std::vector<WebbEnvelope> webb_envs(N);
   if (use_lb_webb) {
-    #ifdef _OPENMP
-    #pragma omp parallel for schedule(static)
-    #endif
-    for (int i = 0; i < N; ++i)
+    auto compute_webb_envelope_at = [&](size_t i) {
       webb_envs[i] = compute_webb_envelope(prob.series(i), band);
+    };
+    run_openmp(compute_webb_envelope_at, static_cast<size_t>(N));
   }
 
   // Step 3: Per-row nearest-neighbor tracking (shared, updated atomically)
@@ -223,27 +221,34 @@ PruningStats fill_distance_matrix_pruned(
   // this only reduces pruning effectiveness, not correctness —
   // every pair still gets the exact DTW distance.
 
-  // Thread-local accumulators for stats
-  size_t global_pruned_kim = 0;
-  size_t global_pruned_keogh = 0;
-  size_t global_early_abandoned = 0;
-  size_t global_full_dtw = 0;
+  // Use contiguous pair-index blocks so each worker accumulates statistics and
+  // reuses its Webb scratch without a shared critical section.  Blocks preserve
+  // canonical pair order: run_openmp selects the lowest failing block, and the
+  // loop below selects the first failing pair within that block.
+  const size_t pair_count = static_cast<size_t>(num_pairs);
+  const size_t worker_count = static_cast<size_t>(std::max(1, get_max_threads()));
+  const size_t block_count = std::min(pair_count, worker_count * size_t{8});
+  const size_t pairs_per_block = pair_count / block_count;
+  const size_t larger_block_count = pair_count % block_count;
 
-  #ifdef _OPENMP
-  const int pair_chunk = omp_chunk_size(static_cast<int>(num_pairs));
-  #pragma omp parallel
-  #endif
-  {
+  std::atomic<size_t> global_pruned_kim{0};
+  std::atomic<size_t> global_pruned_keogh{0};
+  std::atomic<size_t> global_early_abandoned{0};
+  std::atomic<size_t> global_full_dtw{0};
+
+  auto compute_pair_block = [&](size_t block_index) {
     size_t local_pruned_kim = 0;
     size_t local_pruned_keogh = 0;   // envelope bound (Keogh/Enhanced/Webb) fired
     size_t local_early_abandoned = 0;
     size_t local_full_dtw = 0;
-    std::vector<char> webb_scratch;  // per-thread scratch, reused across pairs
+    std::vector<char> webb_scratch;  // per-block scratch, reused across pairs
 
-    #ifdef _OPENMP
-    #pragma omp for schedule(dynamic, pair_chunk)
-    #endif
-    for (int64_t k = 0; k < num_pairs; ++k) {
+    const size_t pair_begin = block_index * pairs_per_block
+                            + std::min(block_index, larger_block_count);
+    const size_t pair_end = pair_begin + pairs_per_block
+                          + (block_index < larger_block_count ? 1 : 0);
+
+    for (size_t k = pair_begin; k < pair_end; ++k) {
       // Decode linear pair index k -> (i, j) in the upper triangle.
       // Row i: using the quadratic formula on k = i*N - i*(i+1)/2 + (j - i - 1)
       const double Nd = static_cast<double>(N);
@@ -251,11 +256,11 @@ PruningStats fill_distance_matrix_pruned(
       int i = static_cast<int>(Nd - 0.5 - std::sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd));
       // Correct for floating-point imprecision
       int64_t row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
-      if (k - row_start >= static_cast<int64_t>(N - i - 1)) {
+      if (static_cast<int64_t>(k) - row_start >= static_cast<int64_t>(N - i - 1)) {
         ++i;
         row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
       }
-      int j = static_cast<int>(k - row_start) + i + 1;
+      int j = static_cast<int>(static_cast<int64_t>(k) - row_start) + i + 1;
 
       // Compute lower bound (cascading: LB_Kim, then LB_Keogh).
       // If Kim is disabled, start at 0 (no-op threshold); Keogh may still fire.
@@ -332,22 +337,17 @@ PruningStats fill_distance_matrix_pruned(
       atomic_min_double(&nn_dist[j], dist);
     }
 
-    // Accumulate thread-local stats into globals
-    #ifdef _OPENMP
-    #pragma omp critical(stats_accumulate)
-    #endif
-    {
-      global_pruned_kim += local_pruned_kim;
-      global_pruned_keogh += local_pruned_keogh;
-      global_early_abandoned += local_early_abandoned;
-      global_full_dtw += local_full_dtw;
-    }
-  } // end parallel
+    global_pruned_kim.fetch_add(local_pruned_kim, std::memory_order_relaxed);
+    global_pruned_keogh.fetch_add(local_pruned_keogh, std::memory_order_relaxed);
+    global_early_abandoned.fetch_add(local_early_abandoned, std::memory_order_relaxed);
+    global_full_dtw.fetch_add(local_full_dtw, std::memory_order_relaxed);
+  };
+  run_openmp(compute_pair_block, block_count, true, 8);
 
-  stats.pruned_by_lb_kim = global_pruned_kim;
-  stats.pruned_by_lb_keogh = global_pruned_keogh;
-  stats.early_abandoned = global_early_abandoned;
-  stats.computed_full_dtw = global_full_dtw;
+  stats.pruned_by_lb_kim = global_pruned_kim.load(std::memory_order_relaxed);
+  stats.pruned_by_lb_keogh = global_pruned_keogh.load(std::memory_order_relaxed);
+  stats.early_abandoned = global_early_abandoned.load(std::memory_order_relaxed);
+  stats.computed_full_dtw = global_full_dtw.load(std::memory_order_relaxed);
 
   return stats;
 }
@@ -402,22 +402,13 @@ PruningStats compute_distance_matrix_pruned(
   // Each thread gets contiguous rows. nn_dist reads may be stale across
   // threads (relaxed consistency) but this only reduces pruning effectiveness,
   // not correctness -- every pair still gets the exact distance.
-  #ifdef _OPENMP
-  const int row_chunk = omp_chunk_size(static_cast<int>(N), 8);
-  #pragma omp parallel for schedule(dynamic, row_chunk)
-  #endif
-  for (int ii = 0; ii < static_cast<int>(N); ++ii) {
-    const size_t i = static_cast<size_t>(ii);
+  std::vector<PruningStats> row_stats(N);
+  auto compute_row = [&](size_t i) {
+    auto &local = row_stats[i];
 
     // Thread-local stats
-    size_t local_total = 0;
-    size_t local_pruned_kim = 0;
-    size_t local_pruned_keogh = 0;
-    size_t local_early_abandoned = 0;
-    size_t local_full_dtw = 0;
-
     for (size_t j = i + 1; j < N; ++j) {
-      local_total++;
+      local.total_pairs++;
 
       double lb = 0.0;
       bool lb_keogh_used = false;
@@ -449,9 +440,9 @@ PruningStats compute_distance_matrix_pruned(
       if (use_lb && lb > threshold && threshold < inf) {
         // LB exceeds NN threshold -- try early-abandon DTW
         if (lb_keogh_used)
-          local_pruned_keogh++;
+          local.pruned_by_lb_keogh++;
         else
-          local_pruned_kim++;
+          local.pruned_by_lb_kim++;
 
         dist = (band >= 0)
           ? dtwc::dtwBanded<double>(series[i], series[j], band, threshold, metric)
@@ -459,14 +450,14 @@ PruningStats compute_distance_matrix_pruned(
 
         if (dist >= inf * 0.5) {
           // Early abandon triggered -- recompute for exact distance
-          local_early_abandoned++;
+          local.early_abandoned++;
           dist = (band >= 0)
             ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, metric)
             : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, metric);
         }
       } else {
         // Compute without early abandon
-        local_full_dtw++;
+        local.computed_full_dtw++;
         dist = (band >= 0)
           ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, metric)
           : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, metric);
@@ -483,18 +474,16 @@ PruningStats compute_distance_matrix_pruned(
       atomic_min_double(&nn_dist[i], dist);
       atomic_min_double(&nn_dist[j], dist);
     }
+  };
+  run_openmp(compute_row, N, true, 8);
 
-    // Accumulate thread-local stats
-    #ifdef _OPENMP
-    #pragma omp critical
-    #endif
-    {
-      stats.total_pairs += local_total;
-      stats.pruned_by_lb_kim += local_pruned_kim;
-      stats.pruned_by_lb_keogh += local_pruned_keogh;
-      stats.early_abandoned += local_early_abandoned;
-      stats.computed_full_dtw += local_full_dtw;
-    }
+  // Deterministic serial reduction; each parallel row owned exactly one slot.
+  for (const auto &local : row_stats) {
+    stats.total_pairs += local.total_pairs;
+    stats.pruned_by_lb_kim += local.pruned_by_lb_kim;
+    stats.pruned_by_lb_keogh += local.pruned_by_lb_keogh;
+    stats.early_abandoned += local.early_abandoned;
+    stats.computed_full_dtw += local.computed_full_dtw;
   }
 
   return stats;
