@@ -146,6 +146,36 @@ function test_variant_zero_and_near_zero_boundaries_are_valid(testCase)
     verifyTrue(testCase, isfinite(d));
 end
 
+function test_unknown_metric_tokens_are_invalid_arguments(testCase)
+%   M36: wrappers must distinguish an unknown token from a known-but-
+%   unsupported metric and must never run the L1 kernel as a substitute.
+    calls = {
+        @() dtwc.distance.standard([0 3], [0 1], 'Metric', 'bogus'), ...
+        @() dtwc.distance.missing([0 3], [0 1], 'Metric', 'bogus'), ...
+        @() dtwc.distance.arow([0 3], [0 1], 'Metric', 'bogus')
+    };
+    for i = 1:numel(calls)
+        verifyError(testCase, calls{i}, 'dtwc:invalidArgument');
+    end
+end
+
+function test_problem_rejects_variant_missing_cross_product(testCase)
+    h = dtwc_mex('Problem_new', 'm36_cross_product');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    dtwc_mex('Problem_set_data', h, [0 0; 0 0]);
+    dtwc_mex('Problem_set_variant', h, 'adtw', 0.75);
+    verifyError(testCase, ...
+        @() dtwc_mex('Problem_set_missing_strategy', h, 'zero_cost'), ...
+        'dtwc:invalidArgument');
+end
+
+function test_matlab_dispatch_rejects_variant_missing_cross_product(testCase)
+    verifyError(testCase, ...
+        @() dtwc.distance.dtw([0], [0 0], ...
+            'Variant', 'adtw', 'MissingStrategy', 'zero_cost'), ...
+        'dtwc:invalidArgument');
+end
+
 % -------------------------------------------------------------------------
 %  Matrix entry points: matrix_to_series path (set_data / distance matrix)
 % -------------------------------------------------------------------------
