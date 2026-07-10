@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Reused preallocated hard-DTW barycenter workspaces and parallelized independent
+  assignment and cluster-update work while preserving digit-identical results,
+  deterministic RNG streams, serial reductions, and empty-cluster repair.
 - Replaced N-only mmap warm-start validation with a version-2 SHA-256 identity
   over the exact data and every distance-affecting setting. Stale, corrupted,
   legacy-v1, or ambiguous-backend caches now fail before exposing distances;

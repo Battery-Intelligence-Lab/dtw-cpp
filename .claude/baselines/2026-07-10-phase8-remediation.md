@@ -961,3 +961,72 @@ Verdict: **PASS.** Warm-start reuse is now conditional on exact distance
 semantics rather than filename and N. Version-1 caches are intentionally invalid
 and have actionable recomputation guidance; the frozen-format exception is
 recorded in the PLAN decision log and migration documentation.
+
+## L6 — reusable and deterministic parallel barycenter workspaces
+
+Before editing, a mixed-length, three-cluster SSG fixture pinned labels, every
+center value, total cost `3.92461431099334757`, iteration count, and convergence
+with exact equality (5/5 assertions). A separate DBA allocation probe used three
+series of lengths 257/255/253, target length 257, and one update. It counted heap
+requests at least 500 KiB, exposing the original allocation schedule:
+
+```text
+pre-edit exact fingerprint: 5/5 assertions passed
+pre-edit large DP allocations: 9
+registered post-edit requirement: 1
+allocation oracle: FAILED as intended
+```
+
+The implementation now passes one caller-owned matrix/path workspace through
+hard objectives, DBA, SSG, k-means++ and assignment. `barycenter_kmeans` owns a
+prewarmed worker pool; all capacity/overflow failures occur before OpenMP.
+Assignments write disjoint point slots and retain a serial index-order cost sum.
+Cluster membership and order-sensitive empty repair remain serial, while only
+independent non-empty center updates run in parallel. Each update keeps the old
+`seed + iteration*k + cluster` stream, exceptions are captured per cluster and
+re-thrown in serial cluster order, and a nested OpenMP caller forces one worker.
+
+The hard scratch bound is independent of cluster count:
+
+```text
+W * [8*Ld*max(Ld,Lt) + sizeof(index_pair)*(Ld+max(Ld,Lt)-1)]
+W = min(max_threads, N)
+```
+
+Post-edit hard gates:
+
+```text
+large DP allocations: 1 (2/2 allocation assertions passed)
+exact fingerprint, OMP_NUM_THREADS=1:  5/5
+exact fingerprint, OMP_NUM_THREADS=2:  5/5
+exact fingerprint, OMP_NUM_THREADS=24: 5/5
+full barycenter suite: 86 assertions / 12 cases passed
+```
+
+The adversarial mutation reversed the cluster-to-RNG-stream mapping, simulating
+the most likely unsafe scheduling refactor. Labels happened to stay fixed, but
+the exact center fingerprint failed; restoring cluster-indexed streams returned
+all thread counts to green.
+
+Only after those correctness checks, the preregistered workload (N=128, k=8,
+lengths 80–95, target 88, four outer and four barycenter iterations) ran one
+warmup plus five timed samples per configuration. Registered bands were post
+serial ≤1.25× pre serial, both parallel medians ≤1.25× post serial, and at least
+one parallel median ≤0.95× post serial:
+
+```text
+pre-edit serial median: 0.179682100 s
+post OMP=1 median:      0.184484300 s  (1.027x pre)
+post OMP=2 median:      0.117212400 s  (0.635x post-1)
+post OMP=24 median:     0.049031500 s  (0.266x post-1)
+```
+
+Labels, every center, cost `3.0910791478147139`, iterations, and convergence
+were bit-identical between the post-edit 1/2/24-thread runs and the pre-edit
+fingerprint. Timing remains advisory on the shared host, but every registered
+band passed. The two direct-extension timing modules both emitted the same
+nanobind teardown leak diagnostic; because it predates and survives L6 unchanged,
+it is retained for the Phase-8.2 leak/sanitizer audit rather than misattributed.
+
+Verdict: **PASS.** The hot path removes repeated large allocation, provides real
+parallel speedup, and preserves the serial numerical/RNG contract exactly.

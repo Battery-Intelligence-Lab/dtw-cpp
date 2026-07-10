@@ -275,6 +275,53 @@ TEST_CASE("barycenter k-means separates two waveform groups",
   REQUIRE(result.total_cost >= 0.0);
 }
 
+TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
+          "[barycenter][kmeans][fingerprint]")
+{
+  auto problem = make_problem({
+    {-7.20, -6.70, -5.95, -6.45},
+    {0.15, 0.85, 1.75, 1.05, 0.10},
+    {10.20, 10.95, 12.10, 11.15, 10.05, 9.80},
+    {-6.90, -6.25, -5.55, -5.90, -6.60},
+    {0.00, 0.55, 1.25, 1.90, 1.15, 0.25},
+    {9.75, 10.45, 11.60, 12.05, 10.85},
+    {-7.45, -6.85, -6.10, -5.70, -6.20, -7.00},
+    {0.35, 1.10, 1.95, 1.30},
+    {10.55, 11.20, 12.35, 11.55, 10.40, 9.95, 9.70}
+  });
+
+  algorithms::BarycenterClusteringOptions options;
+  options.n_clusters = 3;
+  options.max_iter = 8;
+  options.barycenter_max_iter = 9;
+  options.target_length = 5;
+  options.method = algorithms::BarycenterMethod::SSG;
+  options.learning_rate = 0.075;
+  options.learning_rate_decay = 0.03;
+  options.tolerance = 0.0;
+  options.random_seed = 123456789ULL;
+
+  const auto result = algorithms::barycenter_kmeans(problem, options);
+  // Captured from the serial implementation before the workspace/parallel
+  // refactor. Exact equality makes this a digit-level no-op oracle for the
+  // assignment order, cluster-local RNG streams, centres, and final inertia.
+  const std::vector<int> expected_labels{0, 2, 1, 0, 2, 1, 0, 2, 1};
+  const std::vector<std::vector<data_t>> expected_barycenters{
+    {-7.02096084493618378, -6.10134060087127494, -5.73211686478551918,
+     -6.01330273714508312, -6.67857914060372337},
+    {10.2386537222805849, 11.24943387256276139, 12.00272931380938246,
+     10.76665803972018409, 10.05450073955344159},
+    {0.25649102866830242, 1.04711847424375692, 1.86006534621057096,
+     1.16050374524605604, 0.5282954699735013}
+  };
+
+  REQUIRE(result.labels == expected_labels);
+  REQUIRE(result.barycenters == expected_barycenters);
+  REQUIRE(result.total_cost == 3.92461431099334757);
+  REQUIRE(result.iterations == 1);
+  REQUIRE(result.converged);
+}
+
 TEST_CASE("barycenter rejects unsupported multivariate and invalid inputs",
           "[barycenter][errors]")
 {
