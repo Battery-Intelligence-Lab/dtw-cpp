@@ -23,6 +23,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   access with portable `atomic<double>` storage and explicit relaxed loads/CAS.
   This removes the C++ data race, strict-aliasing violation, and MSVC volatile
   pseudo-atomic load without changing finite distance matrices.
+- Restricted lower-bound pruning to the missing-data semantics it implements.
+  Auto and explicit Pruned requests now preserve ZeroCost, AROW, and Interpolate
+  behavior through the exact generic fill instead of feeding NaNs to raw DTW;
+  explicit routing is explained in verbose output.
+- Made mapped distance storage part of pruning selection. Auto/explicit Pruned
+  now fill mmap caches through the exact generic path, while a direct low-level
+  dense-only pruned call reports actionable `InvalidInput` instead of leaking
+  `std::bad_variant_access`.
 - Replaced formatted-stream batch parsing with exact-delimiter, full-token
   numeric parsing. Textual NaNs and later fields are preserved; malformed,
   empty, out-of-range, or unapproved non-finite values fail with file/row/column

@@ -2617,3 +2617,74 @@ schedule-dependent split among those work counters.
 Verdict: **PASS.** Nearest-neighbor threshold access is standards-safe and
 race-free on every compiler path while finite matrix semantics and exact work
 accounting remain unchanged.
+
+## M41 — missing-policy-safe pruning selection
+
+Auto selected the raw Standard/ADTW pruned builder at `N >= 64` even when the
+Problem dispatcher was configured to interpolate missing values. Explicit
+Pruned did the same. The first oracle mistakenly read through `dist_by_ind` and
+passed: raw pruning had published NaN sentinels, so lazy lookup recomputed those
+pairs through the correct Interpolate callable and concealed the incomplete
+cache. The corrected preregistered test inspects `DenseDistanceMatrix::get`
+directly and requires `all_computed()` before any lazy repair. At N=64 it failed
+that requirement after the N=63 BruteForce control passed. A separate band-0
+pair proves the raw and interpolated kernels produce different values.
+
+Auto pruning now requires `MissingStrategy::Error`. An explicit Pruned request
+with ZeroCost, AROW, or Interpolate is defined as an exact optimization hint:
+it routes the ordinary bound dispatcher, preserving the requested recurrence,
+and verbose mode reports the exact reason and destination. This matches the
+existing exact `lb_strategy=None` route rather than changing a distance policy
+or rejecting a supported missing-data configuration.
+
+Green evidence in both LLFIO ON and OFF:
+
+```text
+N=63/64 raw-vs-interpolated + cache/routing oracle:    17 assertions / 1 case
+full pruned distance-matrix suite:                   5584 assertions / 26 cases
+ordinary missing-data matrix suite:                    33 assertions / 6 cases
+```
+
+Verdict: **PASS.** The 63/64 threshold cannot change missing-data semantics,
+explicit routing is intentionally observable in verbose mode, incomplete raw
+NaN work is never published, and finite Error-policy Auto retains exact pruned
+matrices.
+
+## M42 — mmap-aware pruning selection
+
+The mapped-storage red first filled Standard Auto at N=63 and completed 2,018
+checks. The N=64 call then selected `fill_distance_matrix_pruned`, whose first
+operation requested `dense_distance_matrix()` and leaked `bad variant access`.
+The same structural defect applied to ADTW and explicit Pruned. A second red
+required the low-level entry point to expose a DTWC type/message rather than
+that implementation-specific standard exception.
+
+Auto pruning now requires dense storage. Explicit Pruned is the same exact
+optimization hint as in M41: on mmap it emits a precise verbose route and fills
+the selected mapped matrix through the generic row builder. The low-level
+dense-only helper checks the matrix alternative before access and raises
+`InvalidInput` with instructions to call `Problem::fill_distance_matrix()` for
+exact mapped routing. Cache fingerprints retain the caller's requested
+strategy; the computed values are exact and therefore stable on reopen.
+
+Green evidence:
+
+```text
+LLFIO ON focused mapped routing:                    8266 assertions / 1 case
+  Standard Auto N=63/64, ADTW(0.75) Auto N=64,
+  Standard explicit Pruned N=64, typed direct rejection
+LLFIO ON full storage policy:                       8320 assertions / 4 cases
+LLFIO ON full pruned suite:                         5584 assertions / 26 cases
+LLFIO OFF focused capability contract:                 1 assertion / 1 case
+LLFIO OFF full storage policy:                        14 assertions, 2 expected skips
+LLFIO OFF full pruned suite:                        5584 assertions / 26 cases
+```
+
+Across the LLFIO-ON routes, all 8,256 packed diagonal/upper-triangle values are
+equal to direct Standard or nonzero-penalty ADTW kernels. The LLFIO-OFF branch
+preserves the complete rebuild-with-LLFIO diagnostic rather than pretending to
+route unavailable storage.
+
+Verdict: **PASS.** No mapped Problem route can enter the dense-only builder,
+both supported recurrences fill mmap exactly across the 63/64 threshold, direct
+misuse is typed/actionable, and optional-dependency behavior stays loud.
