@@ -79,7 +79,9 @@ class Result:
     """Outcome of :func:`cluster` — the canonical 2.0 ``Result`` (api-contract §1.4).
 
     Members: ``labels``, ``medoids``, ``score(name)``, ``save(dir)``, ``plot()``,
-    plus ``cost`` and ``device``. ``ClusterResult`` is a deprecated alias name.
+    plus ``cost`` and ``device``. ``distance_matrix`` is ``None`` for the
+    matrix-free OneBatchPAM, CLARA, and TADPole methods. ``ClusterResult`` is a
+    deprecated alias name.
     """
 
     def __init__(self, labels, *, device, elapsed_s, k, n_series,

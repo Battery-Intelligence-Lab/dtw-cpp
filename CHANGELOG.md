@@ -19,6 +19,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Added non-trivial finite-difference validation of the production soft-DTW
   barycenter adjoint at gamma 0.1 and 1.0; the existing arithmetic passed the
   registered `1e-5` relative band unchanged.
+- Documented that matrix-free OneBatchPAM, CLARA, and TADPole results set
+  `Result.distance_matrix` to `None`; callers needing N×N distances must compute
+  them explicitly or use a matrix-based method.
 
 # 2.0.0rc1 - 2026-07-10
 

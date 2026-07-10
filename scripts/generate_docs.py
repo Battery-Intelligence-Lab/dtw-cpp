@@ -141,6 +141,9 @@ def generated_outputs() -> dict[Path, str]:
 - Series storage and CLI `--dtype` default to float64; float32 is explicit.
 - C++ algorithms write labels, medoids, and `k` back into `Problem`.
 - Unsupported devices, methods, metrics, and solver backends fail loudly.
+- `Result.distance_matrix` is `None` for matrix-free methods (`onebatch`,
+  `clara`, and `tadpole`); code that needs an N×N matrix must request a
+  matrix-based method or compute it explicitly.
 - OpenMP is required unless `-DDTWC_ALLOW_SEQUENTIAL=ON` is explicitly set;
   that build and a runtime one-thread cap both emit a process-once warning.
 - MATLAB indices remain 1-based at its public boundary; C++ and Python are 0-based.

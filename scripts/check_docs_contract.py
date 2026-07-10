@@ -59,6 +59,16 @@ def assert_freeze_governance() -> None:
         )
 
 
+def assert_migration_behaviors() -> None:
+    migration = (ROOT / "docs/content/guides/migration.md").read_text(
+        encoding="utf-8"
+    )
+    if "`Result.distance_matrix` is `None` for matrix-free methods" not in migration:
+        raise AssertionError(
+            "migration guide omits matrix-free Result.distance_matrix behavior"
+        )
+
+
 def assert_tier1_signatures() -> None:
     header = compact((ROOT / "dtwc/api.hpp").read_text(encoding="utf-8"))
     cpp_api = compact((ROOT / "dtwc/api.cpp").read_text(encoding="utf-8"))
@@ -140,6 +150,7 @@ def main() -> int:
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_docs.py"), "--check"],
                    check=True)
     assert_freeze_governance()
+    assert_migration_behaviors()
     assert_env_messages()
     assert_tier1_signatures()
     if args.cli is not None:

@@ -186,3 +186,42 @@ Python decisive output after the five new H1/H2 tests:
 Verdict: **PASS.** This editable Python wave gate uses the already-verified
 HiGHS-enabled release core plus live pure-Python H1/H2 sources; the Phase 8 exit
 gate will rebuild a fresh wheel after all native changes.
+
+## M2 — matrix-free `Result.distance_matrix` migration contract
+
+Registered band: the documentation drift gate must fail while the generated
+migration guide omits the behavior, then pass only when the generator source,
+tracked guide, CHANGELOG, and live `Result` docstring agree.
+
+Red command and decisive output:
+
+```powershell
+uv run --no-sync python scripts/check_docs_contract.py
+```
+
+```text
+generated documentation is current
+AssertionError: migration guide omits matrix-free Result.distance_matrix behavior
+```
+
+The runtime behavior already had direct tests; this finding was a migration
+contract omission, not a new implementation change.
+
+Green commands and decisive output:
+
+```powershell
+uv run --no-sync python scripts/generate_docs.py
+uv run --no-sync python scripts/check_docs_contract.py --cli build/highs-1151/bin/dtwc_cl.exe
+uv run --no-sync pytest tests/python/test_api.py -q
+```
+
+```text
+generated documentation updated
+generated documentation is current
+documentation contract checks passed
+36 passed in 5.20s
+```
+
+Verdict: **PASS.** The tracked migration page is generated from the same source
+that the drift check validates, so a future regeneration cannot silently erase
+the behavior note.
