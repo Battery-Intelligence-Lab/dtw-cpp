@@ -2043,3 +2043,62 @@ py_compile _api.py + test_api.py:                              passed
 Verdict: **PASS.** Python's functional Lloyd boundary states its seed contract
 explicitly, repeated and interleaved calls are reproducible, and no Tier-2,
 custom-initializer, explicit-seed, estimator, or other-method behavior changed.
+
+## M31 — transactional HPC job identity and completion
+
+Registered band: two same-name submissions must never share a writable local
+input, remote upload, or remote job script; a returned Slurm job ID must be the
+only result identity. Nonzero submit/status/download exits, a configured-cluster
+query failure, a hung status process, unsafe allocator output, or a missing
+exact result must fail loudly without returning a stale label file. Polling
+controls must be validated before local or remote effects and bound by elapsed
+monotonic time rather than requested sleeps.
+
+The preregistered red command selected the new transactional cases from
+`tests/python/test_hpc.py` and produced 11 failures / 20 passes. It accepted a
+nonzero submit containing `Job ID`, matched job `111` inside `1110`, invoked
+status for invalid polling controls, had no job-aware download signature,
+reused the same local input and remote basename, reached the runner before
+poll validation, and submitted both uploads through the same destination.
+
+The repaired Python path validates positive finite poll/timeout controls before
+creating a run directory, uses atomic `submission-*` directories, rejects every
+nonzero transport result, matches a status row's exact leading job ID, and
+passes the monotonic deadline's remaining duration to each status subprocess.
+`TimeoutExpired` and elapsed calls are typed `TimeoutError`s. Label retrieval
+uses `download-cluster name job-id` and requires the exact managed
+`results/slurm/<name>_<job-id>/<name>_labels.csv`.
+
+The wrapper allocates one remote `${name}.XXXXXXXX` directory for every call,
+including pre-staged inputs. Its exact input and copied `cluster_generic.slurm`
+live there, and captured fake-Slurm argv proves `sbatch` receives that copied
+path rather than a shared script. The allocator result must equal its root plus
+one basename whose suffix is exactly eight alphanumerics; a prefix-matching
+`/../../src` response is rejected. `status` no longer falls back from a failed
+configured-cluster query to an unscoped empty queue. Exact download deletes the
+old exact target first, so a failed or no-output transfer cannot expose stale
+bytes.
+
+Independent review initially found four production gaps: masked federated
+status failure, sleep-only timeout accounting, a shared remote script, and
+prefix-only allocator validation. After those repairs it found one test gap:
+the unique copied scripts were captured but their final `sbatch` positions were
+not. The final two-call test equates each captured copy destination with that
+call's final Slurm argument and proves both differ. Final independent verdict:
+**PASS**.
+
+Green evidence:
+
+```text
+focused transaction/security selection: 46 passed, 47 deselected
+post-review focused selection:          37 passed, 61 deselected
+tests/python/test_hpc.py:                98 passed in 49.82s
+targeted py_compile:                     passed
+tracked shell syntax:                    4/4 passed
+shell/Slurm LF scan:                     11/11 passed
+git diff --check:                        passed
+```
+
+Verdict: **PASS.** Submission input, script, status, timeout, and result are now
+bound to one job identity; transport ambiguity is loud and stale/cross-job
+labels cannot be selected.

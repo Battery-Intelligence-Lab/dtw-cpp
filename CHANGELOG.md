@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made Python HPC clustering submissions transactionally job-specific: local
+  inputs, remote uploads, and submitted scripts no longer collide; polling has
+  a real wall-clock bound and propagates configured-cluster failures; and label
+  retrieval requires a successful exact job-ID transfer instead of choosing a
+  newest same-name file.
 - Made Python Tier-1 Lloyd k-medoids explicitly select the shared
   invocation-local seed 42 before clustering. Consecutive and legacy-Tier-2-
   interleaved calls are reproducible; explicit advanced seeds, custom

@@ -17,6 +17,7 @@
 #   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
+#   bash scripts/slurm/slurm_remote.sh download-cluster <name> <job-id>
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
 #   bash scripts/slurm/slurm_remote.sh interactive
 
@@ -459,24 +460,47 @@ cmd_submit_cluster() {
         exit 1
     fi
 
-    # Resolve the cluster-side input path (upload a local file, or use as-is)
+    # Allocate one immutable remote submission directory for both input and job
+    # script. Concurrent callers never publish through a shared pathname.
+    local REMOTE_JOB_ROOT="${REMOTE}/data/userjobs"
+    local MKDIR_COMMAND MKTEMP_COMMAND REMOTE_JOB_DIR REMOTE_JOB_BASENAME
+    shell_join MKDIR_COMMAND mkdir -p "${REMOTE_JOB_ROOT}"
+    remote "${MKDIR_COMMAND}"
+    shell_join MKTEMP_COMMAND mktemp -d \
+        "${REMOTE_JOB_ROOT}/${NAME}.XXXXXXXX"
+    REMOTE_JOB_DIR="$(remote "${MKTEMP_COMMAND}")"
+    REMOTE_JOB_DIR="${REMOTE_JOB_DIR%$'\r'}"
+    REMOTE_JOB_BASENAME="${REMOTE_JOB_DIR##*/}"
+    local EXPECTED_PREFIX="${NAME}."
+    local ALLOCATOR_SUFFIX=""
+    if [[ "${REMOTE_JOB_BASENAME}" == "${EXPECTED_PREFIX}"* ]]; then
+        ALLOCATOR_SUFFIX="${REMOTE_JOB_BASENAME:${#EXPECTED_PREFIX}}"
+    fi
+    [[ "${REMOTE_JOB_DIR}" == "${REMOTE_JOB_ROOT}/${REMOTE_JOB_BASENAME}" \
+       && "${ALLOCATOR_SUFFIX}" =~ ^[A-Za-z0-9]{8}$ ]] || {
+        echo "ERROR: remote submission allocator returned an unsafe path: ${REMOTE_JOB_DIR}" >&2
+        exit 1
+    }
+
+    # Resolve the cluster-side input path (upload a local file, or use as-is).
     local REMOTE_INPUT
     if [[ "${UPLOAD}" == "1" ]]; then
         local BASE; BASE="$(basename "${INPUT}")"
-        remote "mkdir -p ${REMOTE}/data/userjobs"
         if command -v rsync &>/dev/null; then
-            rsync -az -- "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+            rsync -az -- "${INPUT}" "${SSH_TARGET}:${REMOTE_JOB_DIR}/${BASE}"
         else
-            scp -- "${INPUT}" "${SSH_TARGET}:${REMOTE}/data/userjobs/${BASE}"
+            scp -- "${INPUT}" "${SSH_TARGET}:${REMOTE_JOB_DIR}/${BASE}"
         fi
-        REMOTE_INPUT="${REMOTE}/data/userjobs/${BASE}"
+        REMOTE_INPUT="${REMOTE_JOB_DIR}/${BASE}"
     else
         REMOTE_INPUT="${INPUT}"          # pre-staged on the cluster
     fi
 
-    # Refresh the generic job script
+    # Publish this exact script beside this submission's input. The sbatch path
+    # below is immutable for this call rather than shared across callers.
+    local REMOTE_JOB_SCRIPT="${REMOTE_JOB_DIR}/cluster_generic.slurm"
     scp "${PROJECT_ROOT}/scripts/slurm/jobs/cluster_generic.slurm" \
-        "${SSH_TARGET}:${REMOTE}/src/scripts/slurm/jobs/cluster_generic.slurm"
+        "${SSH_TARGET}:${REMOTE_JOB_SCRIPT}"
 
     # GPU runs need a GRES request (the job file is partition-agnostic)
     local GPU_FLAGS=""
@@ -501,7 +525,7 @@ cmd_submit_cluster() {
         SBATCH_ARGS+=("--mail-type=BEGIN,END,FAIL" "--mail-user=${SLURM_EMAIL}")
     fi
     [[ -n "${GPU_FLAGS}" ]] && SBATCH_ARGS+=("${GPU_FLAGS}")
-    SBATCH_ARGS+=("--export=${EXPORTS}" "scripts/slurm/jobs/cluster_generic.slurm")
+    SBATCH_ARGS+=("--export=${EXPORTS}" "${REMOTE_JOB_SCRIPT}")
 
     local SBATCH_COMMAND REMOTE_SOURCE JOB_ID
     shell_join SBATCH_COMMAND "${SBATCH_ARGS[@]}"
@@ -513,7 +537,11 @@ cmd_submit_cluster() {
 
 cmd_status() {
     banner "SLURM Job Status"
-    remote "squeue -u ${SLURM_USER} ${CLUSTER_FLAG} 2>/dev/null || squeue -u ${SLURM_USER}"
+    local -a STATUS_ARGS=(squeue -u "${SLURM_USER}")
+    [[ -n "${CLUSTER_FLAG}" ]] && STATUS_ARGS+=("${CLUSTER_FLAG}")
+    local STATUS_COMMAND
+    shell_join STATUS_COMMAND "${STATUS_ARGS[@]}"
+    remote "${STATUS_COMMAND}"
 }
 
 cmd_download() {
@@ -539,6 +567,33 @@ cmd_download() {
 
     echo ""
     echo "  Results downloaded to: ${LOCAL_RESULTS}/"
+}
+
+cmd_download_cluster() {
+    local NAME="${1:?job name required}"
+    local JOB_ID="${2:?job ID required}"
+    (( ${#NAME} >= 1 && ${#NAME} <= 128 )) \
+        && [[ "${NAME}" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || {
+        echo "ERROR: invalid cluster job name: ${NAME}" >&2
+        exit 1
+    }
+    [[ "${JOB_ID}" =~ ^[1-9][0-9]*$ ]] \
+        && decimal_leq "${JOB_ID}" "18446744073709551615" || {
+        echo "ERROR: job ID must be a positive uint64: ${JOB_ID}" >&2
+        exit 1
+    }
+
+    local LOCAL_DIR="${PROJECT_ROOT}/results/slurm/${NAME}_${JOB_ID}"
+    local LOCAL_TARGET="${LOCAL_DIR}/${NAME}_labels.csv"
+    local REMOTE_SOURCE="${REMOTE}/src/results/${NAME}_${JOB_ID}/${NAME}_labels.csv"
+    mkdir -p "${LOCAL_DIR}"
+    rm -f -- "${LOCAL_TARGET}"
+    if command -v rsync &>/dev/null; then
+        rsync -az -- "${SSH_TARGET}:${REMOTE_SOURCE}" "${LOCAL_TARGET}"
+    else
+        scp -- "${SSH_TARGET}:${REMOTE_SOURCE}" "${LOCAL_TARGET}"
+    fi
+    echo "  Labels downloaded: ${LOCAL_TARGET}"
 }
 
 cmd_ssh() {
@@ -582,6 +637,7 @@ case "${CMD}" in
     submit-cluster)    cmd_submit_cluster "$@" ;;
     status)            cmd_status ;;
     download)          cmd_download ;;
+    download-cluster)  cmd_download_cluster "$@" ;;
     ssh)               cmd_ssh "$@" ;;
     interactive)       cmd_interactive ;;
     help|--help|-h)
@@ -601,6 +657,7 @@ case "${CMD}" in
         echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
+        echo "  download-cluster <name> <job-id>  Download exact clustering labels"
         echo "  ssh \"command\"     Run arbitrary command on cluster"
         echo "  interactive       Print interactive session guide"
         echo ""

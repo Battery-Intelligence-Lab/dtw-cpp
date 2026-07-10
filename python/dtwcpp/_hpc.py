@@ -20,6 +20,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 
 import numpy as np
@@ -193,6 +194,27 @@ def _normalize_cli_int(name, value, *, minimum):
             f"{name} must be in [{minimum}, {_CLI_INT_MAX}] for dtwc_cl"
         )
     return value
+
+
+def _normalize_wait_controls(poll_seconds, timeout_seconds):
+    """Validate polling controls before a remote job can be submitted."""
+    normalized = []
+    for name, value, minimum, strict in (
+        ("poll_seconds", poll_seconds, 0.0, True),
+        ("timeout_seconds", timeout_seconds, 0.0, True),
+    ):
+        if isinstance(value, (bool, np.bool_)) or not isinstance(
+            value, (int, float, np.integer, np.floating)
+        ):
+            raise TypeError(f"{name} must be a finite number")
+        value = float(value)
+        if not np.isfinite(value):
+            raise ValueError(f"{name} must be finite")
+        if value < minimum or (strict and value == minimum):
+            comparator = "greater than zero" if strict else "non-negative"
+            raise ValueError(f"{name} must be {comparator}")
+        normalized.append(value)
+    return tuple(normalized)
 
 
 def _validate_submission_envelope(
@@ -389,9 +411,10 @@ class SlurmRemoteRunner:
                 "and set SLURM_USER / SLURM_HOST / SLURM_REMOTE_BASE."
             )
 
-    def _run(self, *args):
+    def _run(self, *args, timeout=None):
         return subprocess.run(["bash", self.wrapper, *args],
-                              cwd=self.repo_root, capture_output=True, text=True)
+                              cwd=self.repo_root, capture_output=True, text=True,
+                              timeout=timeout)
 
     def submit_cluster(self, input_tsv, k, *, method="pam", device="cpu",
                        band=-1, skip_cols=0, name="dtwc_job", upload=True,
@@ -425,6 +448,11 @@ class SlurmRemoteRunner:
                         str(config["twe_lambda"]), config["mv_mode"],
                         config["missing_strategy"], config["metric"])
         out = (res.stdout or "") + (res.stderr or "")
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"submit-cluster failed (exit {res.returncode}).\n"
+                f"Wrapper output:\n{out or '<empty>'}"
+            )
         m = re.search(r"Job ID:\s*(\d+)", out)
         if not m:
             raise RuntimeError(
@@ -436,22 +464,70 @@ class SlurmRemoteRunner:
         return m.group(1)
 
     def wait(self, job_id, *, poll_seconds=20, timeout_seconds=86400):
-        waited = 0
-        while job_id in self._run("status").stdout:
-            if waited >= timeout_seconds:
-                raise TimeoutError(f"job {job_id} still queued after {waited}s")
-            time.sleep(poll_seconds)
-            waited += poll_seconds
-
-    def download_labels(self, name):
-        self._run("download")
-        hits = glob.glob(os.path.join(self.repo_root, "results", "slurm", "**",
-                                      f"{name}_labels.csv"), recursive=True)
-        if not hits:
-            raise FileNotFoundError(
-                f"{name}_labels.csv not found under results/slurm/ after download"
+        poll_seconds, timeout_seconds = _normalize_wait_controls(
+            poll_seconds, timeout_seconds,
+        )
+        job_id = str(job_id)
+        if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
+            raise ValueError("job_id must be a positive decimal Slurm job ID")
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
+                )
+            try:
+                status = self._run("status", timeout=remaining)
+            except subprocess.TimeoutExpired as exc:
+                raise TimeoutError(
+                    f"status check for job {job_id} exceeded the "
+                    f"{timeout_seconds:g}s timeout"
+                ) from exc
+            if status.returncode != 0:
+                out = (status.stdout or "") + (status.stderr or "")
+                raise RuntimeError(
+                    f"status failed (exit {status.returncode}) while waiting for "
+                    f"job {job_id}.\nWrapper output:\n{out or '<empty>'}"
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
+                )
+            active = re.search(
+                rf"(?m)^\s*{re.escape(job_id)}(?:\s|$)", status.stdout or "",
             )
-        return max(hits, key=os.path.getmtime)
+            if active is None:
+                return
+            sleep_seconds = min(poll_seconds, deadline - time.monotonic())
+            if sleep_seconds <= 0:
+                raise TimeoutError(
+                    f"job {job_id} exceeded the {timeout_seconds:g}s timeout"
+                )
+            time.sleep(sleep_seconds)
+
+    def download_labels(self, name, job_id):
+        if not isinstance(name, str) or _SAFE_JOB_NAME.fullmatch(name) is None:
+            raise ValueError("name is not a valid HPC job name")
+        job_id = str(job_id)
+        if re.fullmatch(r"[1-9][0-9]*", job_id) is None:
+            raise ValueError("job_id must be a positive decimal Slurm job ID")
+        result = self._run("download-cluster", name, job_id)
+        if result.returncode != 0:
+            out = (result.stdout or "") + (result.stderr or "")
+            raise RuntimeError(
+                f"download-cluster failed (exit {result.returncode}) for job "
+                f"{job_id}.\nWrapper output:\n{out or '<empty>'}"
+            )
+        exact = os.path.join(
+            self.repo_root, "results", "slurm", f"{name}_{job_id}",
+            f"{name}_labels.csv",
+        )
+        if not os.path.isfile(exact):
+            raise FileNotFoundError(
+                f"exact labels for job {job_id} not found after download: {exact}"
+            )
+        return exact
 
 
 def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
@@ -489,9 +565,10 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
         twe_lambda=twe_lambda, mv_mode=mv_mode,
         missing_strategy=missing_strategy, metric=metric,
     )
+    poll_seconds, timeout_seconds = _normalize_wait_controls(
+        poll_seconds, timeout_seconds,
+    )
     repo_root = repo_root or os.environ.get("DTWC_REPO_ROOT", os.getcwd())
-    rundir = os.path.join(repo_root, "results", "hpc", envelope["name"])
-    os.makedirs(rundir, exist_ok=True)
 
     if source_is_path:
         # Cluster-side path: pass through, no local read, no upload.
@@ -499,6 +576,9 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
     else:
         # In-memory series: serialize to a repo-relative TSV and upload it.
         # (Repo-relative so Git Bash rsync doesn't read 'C:/...' as 'host:path'.)
+        run_root = os.path.join(repo_root, "results", "hpc", envelope["name"])
+        os.makedirs(run_root, exist_ok=True)
+        rundir = tempfile.mkdtemp(prefix="submission-", dir=run_root)
         n = len(source)
         tsv = write_series_tsv(source, os.path.join(rundir, "input.tsv"))
         input_arg, upload = os.path.relpath(tsv, repo_root).replace(os.sep, "/"), True
@@ -523,5 +603,5 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
                                    missing_strategy=config["missing_strategy"],
                                    metric=config["metric"])
     runner.wait(job_id, poll_seconds=poll_seconds, timeout_seconds=timeout_seconds)
-    labels_csv = runner.download_labels(envelope["name"])
+    labels_csv = runner.download_labels(envelope["name"], job_id)
     return parse_labels_csv(labels_csv, n)

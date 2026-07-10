@@ -237,8 +237,16 @@ class TestSlurmRunner:
 
     def test_submit_raises_without_job_id(self):
         r = _hpc.SlurmRemoteRunner(".")
-        r._run = lambda *a: types.SimpleNamespace(stdout="kaboom", stderr="", returncode=1)
+        r._run = lambda *a: types.SimpleNamespace(stdout="kaboom", stderr="", returncode=0)
         with pytest.raises(RuntimeError, match="Job ID"):
+            r.submit_cluster("in.tsv", 3)
+
+    def test_submit_rejects_nonzero_exit_even_with_job_id(self):
+        r = _hpc.SlurmRemoteRunner(".")
+        r._run = lambda *a: types.SimpleNamespace(
+            stdout="Job ID: 98765\n", stderr="submission failed", returncode=1,
+        )
+        with pytest.raises(RuntimeError, match=r"submit-cluster.*exit 1"):
             r.submit_cluster("in.tsv", 3)
 
     def test_submit_forwards_restart_schedule(self):
@@ -279,9 +287,108 @@ class TestSlurmRunner:
 
     def test_wait_polls_until_job_absent(self):
         r = _hpc.SlurmRemoteRunner(".")
-        seq = iter(["...111 running...", "...111 running...", "no jobs in queue"])
-        r._run = lambda *a: types.SimpleNamespace(stdout=next(seq), stderr="")
-        r.wait("111", poll_seconds=0)        # returns once "111" no longer present
+        seq = iter(["111 running\n", "111 running\n", "no jobs in queue"])
+        r._run = lambda *a, **kw: types.SimpleNamespace(
+            stdout=next(seq), stderr="", returncode=0,
+        )
+        r.wait("111", poll_seconds=0.001)
+
+    def test_wait_rejects_status_failure_and_substring_job_ids(self):
+        r = _hpc.SlurmRemoteRunner(".")
+        r._run = lambda *a, **kw: types.SimpleNamespace(
+            stdout="1110 RUNNING\n", stderr="", returncode=0,
+        )
+        r.wait("111", poll_seconds=0.001, timeout_seconds=1)
+
+        r._run = lambda *a, **kw: types.SimpleNamespace(
+            stdout="", stderr="ssh failed", returncode=255,
+        )
+        with pytest.raises(RuntimeError, match=r"status.*exit 255"):
+            r.wait("111", poll_seconds=0.001, timeout_seconds=1)
+
+    @pytest.mark.parametrize(
+        ("poll_seconds", "timeout_seconds", "message"),
+        [
+            (0, 1, "poll_seconds"),
+            (True, 1, "poll_seconds"),
+            (1, 0, "timeout_seconds"),
+            (1, -1, "timeout_seconds"),
+            (1, np.inf, "timeout_seconds"),
+        ],
+    )
+    def test_wait_rejects_invalid_controls_before_status(
+        self, poll_seconds, timeout_seconds, message,
+    ):
+        r = _hpc.SlurmRemoteRunner(".")
+        r._run = lambda *a: pytest.fail(f"status invoked: {a}")
+        with pytest.raises((TypeError, ValueError), match=message):
+            r.wait(
+                "111", poll_seconds=poll_seconds,
+                timeout_seconds=timeout_seconds,
+            )
+
+    def test_wait_uses_wall_clock_and_bounds_status_call(self, monkeypatch):
+        r = _hpc.SlurmRemoteRunner(".")
+        clock = [100.0]
+        observed = {}
+
+        monkeypatch.setattr(_hpc.time, "monotonic", lambda: clock[0])
+        monkeypatch.setattr(
+            _hpc.time, "sleep", lambda value: pytest.fail(f"slept {value}"),
+        )
+
+        def slow_status(*args, **kwargs):
+            observed["timeout"] = kwargs.get("timeout")
+            clock[0] += 2.0
+            return types.SimpleNamespace(
+                stdout="111 RUNNING\n", stderr="", returncode=0,
+            )
+
+        r._run = slow_status
+        with pytest.raises(TimeoutError, match="1s timeout"):
+            r.wait("111", poll_seconds=0.1, timeout_seconds=1)
+        assert observed["timeout"] == pytest.approx(1.0)
+
+        def hung_status(*args, **kwargs):
+            raise subprocess.TimeoutExpired(args[0], kwargs["timeout"])
+
+        r._run = hung_status
+        clock[0] = 200.0
+        with pytest.raises(TimeoutError, match="status check.*1s timeout"):
+            r.wait("111", poll_seconds=0.1, timeout_seconds=1)
+
+    def test_download_requires_success_and_exact_job_path(self, tmp_path):
+        exact = tmp_path / "results/slurm/safe_123/safe_labels.csv"
+        stale = tmp_path / "results/slurm/safe_999/safe_labels.csv"
+        exact.parent.mkdir(parents=True)
+        stale.parent.mkdir(parents=True)
+        exact.write_text("exact", encoding="utf-8")
+        stale.write_text("stale", encoding="utf-8")
+        runner = _hpc.SlurmRemoteRunner(tmp_path)
+        calls = []
+
+        def successful_download(*args):
+            calls.append(args)
+            return types.SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        runner._run = successful_download
+        assert runner.download_labels("safe", "123") == str(exact)
+        assert calls == [("download-cluster", "safe", "123")]
+
+        runner._run = lambda *a: types.SimpleNamespace(
+            stdout="", stderr="transfer failed", returncode=23,
+        )
+        with pytest.raises(RuntimeError, match=r"download.*exit 23"):
+            runner.download_labels("safe", "123")
+
+        def successful_but_missing(*args):
+            exact.unlink()
+            return types.SimpleNamespace(stdout="", stderr="", returncode=0)
+
+        runner._run = successful_but_missing
+        with pytest.raises(FileNotFoundError, match=r"exact labels.*123"):
+            runner.download_labels("safe", "123")
+        assert stale.read_text(encoding="utf-8") == "stale"
 
     @pytest.mark.parametrize(
         ("kwargs", "message"),
@@ -368,7 +475,7 @@ class TestDTWClusteringHpcDispatch:
             def wait(self, *args, **kwargs):
                 pass
 
-            def download_labels(self, name):
+            def download_labels(self, name, job_id):
                 return labels_path
 
         runner = FakeRunner()
@@ -393,6 +500,40 @@ class TestDTWClusteringHpcDispatch:
         assert runner.submit_kwargs["missing_strategy"] == "error"
         assert runner.submit_kwargs["metric"] == "l1"
         np.testing.assert_array_equal(labels, [0, 1])
+
+    def test_same_name_in_memory_submissions_use_distinct_inputs(self, tmp_path):
+        labels_path = tmp_path / "labels.csv"
+        labels_path.write_text("name,cluster\n1,0\n2,1\n", encoding="utf-8")
+
+        class FakeRunner:
+            def __init__(self):
+                self.inputs = []
+
+            def preflight(self):
+                pass
+
+            def submit_cluster(self, input_tsv, *args, **kwargs):
+                path = tmp_path / input_tsv
+                self.inputs.append((path, path.read_text(encoding="utf-8")))
+                return str(100 + len(self.inputs))
+
+            def wait(self, *args, **kwargs):
+                pass
+
+            def download_labels(self, *args):
+                return labels_path
+
+        runner = FakeRunner()
+        _hpc.cluster_on_hpc(
+            [[0.0], [1.0]], 2, repo_root=tmp_path, runner=runner,
+            name="same",
+        )
+        _hpc.cluster_on_hpc(
+            [[10.0], [11.0]], 2, repo_root=tmp_path, runner=runner,
+            name="same",
+        )
+        assert runner.inputs[0][0] != runner.inputs[1][0]
+        assert runner.inputs[0][1] != runner.inputs[1][1]
 
     @pytest.mark.parametrize(
         ("kwargs", "error", "message"),
@@ -423,6 +564,9 @@ class TestDTWClusteringHpcDispatch:
             ({"wdtw_g": np.inf}, ValueError, "wdtw_g"),
             ({"twe_lambda": np.nan}, ValueError, "twe_lambda"),
             ({"msm_c": True}, TypeError, "msm_c"),
+            ({"poll_seconds": 0}, ValueError, "poll_seconds"),
+            ({"timeout_seconds": 0}, ValueError, "timeout_seconds"),
+            ({"timeout_seconds": True}, TypeError, "timeout_seconds"),
         ],
     )
     def test_incompatible_remote_configuration_fails_before_side_effects(
@@ -587,6 +731,58 @@ class TestSlurmLastMile:
         assert not ssh_called.exists()
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_allocator_traversal_output_is_rejected_before_submit(self, tmp_path):
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        remote = _bash_path(tmp_path / "remote")
+        fake_mktemp = fake_bin / "mktemp"
+        fake_mktemp.write_text(
+            "#!/usr/bin/env bash\n"
+            f"echo {shlex.quote(remote + '/data/userjobs/safe.ABCDEFGH/../../src')}\n",
+            encoding="utf-8", newline="\n",
+        )
+        fake_mktemp.chmod(0o755)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
+            "/remote/input.tsv 2 pam cpu -1 safe 0 0"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "allocator returned an unsafe path" in completed.stderr
+        assert not capture.exists()
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_configured_cluster_status_failure_is_not_unscoped(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        env_file = wrapper.parents[2] / ".env"
+        with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+            stream.write("SLURM_CLUSTER=arc\n")
+        fake_squeue = fake_bin / "squeue"
+        fake_squeue.write_text(
+            "#!/usr/bin/env bash\n"
+            "case \" $* \" in\n"
+            "  *' --clusters=arc '*) exit 7 ;;\n"
+            "  *) echo 'unscoped empty queue'; exit 0 ;;\n"
+            "esac\n",
+            encoding="utf-8", newline="\n",
+        )
+        fake_squeue.chmod(0o755)
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} status"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command], check=False, capture_output=True,
+            text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 7
+        assert "unscoped empty queue" not in completed.stdout
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     def test_remote_argv_quoting_blocks_optional_config_injection(self, tmp_path):
         wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
         injected = tmp_path / "config-injected.txt"
@@ -621,29 +817,89 @@ class TestSlurmLastMile:
             "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$CAPTURE_TRANSFER\"\n",
             encoding="utf-8", newline="\n",
         )
+        script_capture = tmp_path / "script-transfer-args.txt"
+        fake_scp = fake_bin / "scp"
+        fake_scp.write_text(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" > \"$CAPTURE_SCRIPT\"\n",
+            encoding="utf-8", newline="\n",
+        )
         command = (
             f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
             f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
             f"export CAPTURE_TRANSFER={shlex.quote(_bash_path(transfer_capture))}; "
+            f"export CAPTURE_SCRIPT={shlex.quote(_bash_path(script_capture))}; "
             f"exec bash {shlex.quote(_bash_path(wrapper))} submit-cluster "
             "input+tag%=a.tsv 2 pam cpu -1 safe_upload 0 1"
+        )
+        destinations = []
+        exported_inputs = []
+        submitted_scripts = []
+        sbatch_scripts = []
+        for _ in range(2):
+            completed = subprocess.run(
+                ["bash", "-c", command], cwd=project, check=False,
+                capture_output=True, text=True, encoding="utf-8",
+                errors="replace",
+            )
+            assert completed.returncode == 0, completed.stdout + completed.stderr
+            transfer_args = transfer_capture.read_text(
+                encoding="utf-8",
+            ).splitlines()
+            assert transfer_args[:3] == ["-az", "--", "input+tag%=a.tsv"]
+            destinations.append(transfer_args[3])
+            script_args = script_capture.read_text(
+                encoding="utf-8",
+            ).splitlines()
+            assert script_args[-2].endswith("/cluster_generic.slurm")
+            submitted_scripts.append(script_args[-1])
+            sbatch_args = capture.read_text(encoding="utf-8").splitlines()
+            exports = next(
+                arg for arg in sbatch_args if arg.startswith("--export=")
+            )
+            sbatch_scripts.append(sbatch_args[-1])
+            exported_inputs.append(
+                exports.split("DTWC_INPUT=", 1)[1].split(",", 1)[0]
+            )
+
+        assert destinations[0] != destinations[1]
+        assert exported_inputs == [
+            target.split(":", 1)[1] for target in destinations
+        ]
+        assert submitted_scripts[0] != submitted_scripts[1]
+        assert sbatch_scripts == [
+            target.split(":", 1)[1] for target in submitted_scripts
+        ]
+        assert sbatch_scripts[0] != sbatch_scripts[1]
+        assert [target.rsplit("/", 1)[0] for target in destinations] == [
+            target.rsplit("/", 1)[0] for target in submitted_scripts
+        ]
+        assert all(
+            target.endswith("/input+tag%=a.tsv") for target in destinations
+        )
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    def test_exact_download_cannot_fall_back_to_stale_labels(self, tmp_path):
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        project = wrapper.parents[2]
+        stale = project / "results/slurm/safe_123/safe_labels.csv"
+        stale.parent.mkdir(parents=True)
+        stale.write_text("stale", encoding="utf-8")
+        fake_rsync = fake_bin / "rsync"
+        fake_rsync.write_text(
+            "#!/usr/bin/env bash\nexit 23\n",
+            encoding="utf-8", newline="\n",
+        )
+        command = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} "
+            "download-cluster safe 123"
         )
         completed = subprocess.run(
             ["bash", "-c", command], cwd=project, check=False,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
-        assert completed.returncode == 0, completed.stdout + completed.stderr
-        transfer_args = transfer_capture.read_text(encoding="utf-8").splitlines()
-        assert transfer_args[:3] == ["-az", "--", "input+tag%=a.tsv"]
-        assert transfer_args[3].endswith("/data/userjobs/input+tag%=a.tsv")
-        exports = next(
-            arg for arg in capture.read_text(encoding="utf-8").splitlines()
-            if arg.startswith("--export=")
-        )
-        assert "DTWC_INPUT=" in exports
-        assert exports.split("DTWC_INPUT=", 1)[1].split(",", 1)[0].endswith(
-            "/data/userjobs/input+tag%=a.tsv"
-        )
+        assert completed.returncode == 23
+        assert not stale.exists()
 
     @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
     @pytest.mark.parametrize(
