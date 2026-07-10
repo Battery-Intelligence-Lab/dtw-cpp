@@ -320,6 +320,22 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
         (void)ddtwBanded<float>(
           xf.data(), xf.size(), yf.data(), yf.size(), 0, invalid);
       });
+      check_invalid_input("DDTW full span f64", metric_error, [&] {
+        (void)ddtwFull_L<double>(
+          std::span<const double>{x}, std::span<const double>{y}, invalid);
+      });
+      check_invalid_input("DDTW full span f32", metric_error, [&] {
+        (void)ddtwFull_L<float>(
+          std::span<const float>{xf}, std::span<const float>{yf}, invalid);
+      });
+      check_invalid_input("DDTW banded span f64", metric_error, [&] {
+        (void)ddtwBanded<double>(
+          std::span<const double>{x}, std::span<const double>{y}, 0, invalid);
+      });
+      check_invalid_input("DDTW banded span f32", metric_error, [&] {
+        (void)ddtwBanded<float>(
+          std::span<const float>{xf}, std::span<const float>{yf}, 0, invalid);
+      });
 
       check_invalid_input("core::dtw_distance vector f64", metric_error, [&] {
         (void)core::dtw_distance<double>(x, y, -1, invalid);
@@ -400,6 +416,43 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
         (void)distance::ddtw<float>(xf, yf, -1, invalid);
       });
 
+      core::DTWVariantParams interpolate_params;
+      check_invalid_input("Interpolate facade f64", metric_error, [&] {
+        (void)distance::dtw<double>(
+          x, y, interpolate_params, -1, invalid,
+          core::MissingStrategy::Interpolate);
+      });
+      check_invalid_input("Interpolate facade f32", metric_error, [&] {
+        (void)distance::dtw<float>(
+          xf, yf, interpolate_params, -1, invalid,
+          core::MissingStrategy::Interpolate);
+      });
+
+      for (const auto ignored_metric_variant : {
+             core::DTWVariant::WDTW,
+             core::DTWVariant::ADTW,
+             core::DTWVariant::SoftDTW,
+             core::DTWVariant::MSM,
+             core::DTWVariant::TWE}) {
+        CAPTURE(static_cast<int>(ignored_metric_variant));
+        core::DTWVariantParams ignored_params;
+        ignored_params.variant = ignored_metric_variant;
+        check_invalid_input("ignored-metric facade f64", metric_error, [&] {
+          (void)distance::dtw<double>(x, y, ignored_params, -1, invalid);
+        });
+        check_invalid_input("ignored-metric facade f32", metric_error, [&] {
+          (void)distance::dtw<float>(xf, yf, ignored_params, -1, invalid);
+        });
+
+        core::DTWOptions ignored_options;
+        ignored_options.metric = invalid;
+        ignored_options.variant_params = ignored_params;
+        check_invalid_input("ignored-metric dtw_runtime", metric_error, [&] {
+          (void)core::dtw_runtime(
+            x.data(), x.size(), y.data(), y.size(), ignored_options);
+        });
+      }
+
       std::array<double, 4> pruned_output{11.0, 12.0, 13.0, 14.0};
       const std::vector<std::vector<double>> pruned_series{x, y};
       check_invalid_input("compute_distance_matrix_pruned", metric_error, [&] {
@@ -414,6 +467,15 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
       check_invalid_input("dtw_runtime", metric_error, [&] {
         (void)core::dtw_runtime(
           x.data(), x.size(), y.data(), y.size(), options);
+      });
+
+      core::DTWOptions interpolate_options;
+      interpolate_options.metric = invalid;
+      interpolate_options.missing_strategy =
+        core::MissingStrategy::Interpolate;
+      check_invalid_input("Interpolate dtw_runtime", metric_error, [&] {
+        (void)core::dtw_runtime(
+          x.data(), x.size(), y.data(), y.size(), interpolate_options);
       });
 
       ScratchDirectory scratch{"m47_metric_cache"};
@@ -809,6 +871,18 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
       CHECK(setter.cuda_settings.precision == 0);
       check_dense_sentinel(setter);
 
+      Problem capability_order{"m47_cuda_precision_capability_order"};
+      capability_order.set_data(basic_f64_data());
+      capability_order.distance_strategy = DistanceMatrixStrategy::CUDA;
+      capability_order.cuda_settings.precision = invalid;
+      check_invalid_input("CUDA precision before backend capability",
+                          cuda_settings_precision_error, [&] {
+        capability_order.fill_distance_matrix();
+      });
+      capability_order.distance_strategy = DistanceMatrixStrategy::Auto;
+      capability_order.cuda_settings.precision = 0;
+      check_dense_unallocated(capability_order);
+
       ScratchDirectory scratch{"m47_cuda_precision_cache"};
       const fs::path cache = scratch.root / "invalid.dtwcache";
       Problem cache_problem{"m47_cuda_precision_cache"};
@@ -853,6 +927,35 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
         CHECK(setter.data.precision == core::Precision::Float64);
         CHECK(setter.series(1).size() == 3);
         check_dense_sentinel(setter);
+
+        std::vector<double> view_x{0.0, 0.0};
+        std::vector<double> view_y{0.0, 1.0, 2.0};
+        std::vector<std::string> view_names{"x", "y"};
+        Data view_candidate(
+          std::vector<std::span<const double>>{
+            std::span<const double>{view_x},
+            std::span<const double>{view_y}},
+          std::vector<std::string_view>{view_names[0], view_names[1]}, 1);
+        view_candidate.precision = invalid;
+        Problem view_setter{"m47_precision_set_view_data"};
+        seed_dense_sentinel(view_setter);
+        check_invalid_input("Problem::set_view_data", precision_error, [&] {
+          view_setter.set_view_data(std::move(view_candidate));
+        });
+        CHECK(view_setter.data.precision == core::Precision::Float64);
+        CHECK_FALSE(view_setter.data.is_view());
+        CHECK(view_setter.series(1).size() == 3);
+        check_dense_sentinel(view_setter);
+
+        Problem refresh{"m47_precision_refresh"};
+        seed_dense_sentinel(refresh);
+        refresh.data.precision = invalid;
+        check_invalid_input("Problem::refresh_distance_matrix",
+                            precision_error, [&] {
+          refresh.refresh_distance_matrix();
+        });
+        refresh.data.precision = core::Precision::Float64;
+        check_dense_sentinel(refresh);
 
         Problem getter{"m47_precision_getter"};
         getter.set_data(basic_f64_data());
@@ -965,6 +1068,13 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
                         core::MetricType::L1)
         == dtwFull<double>(x.data(), x.size(), y.data(), y.size(),
                            core::MetricType::L2));
+  for (const auto metric : {
+         core::MetricType::L1,
+         core::MetricType::L2,
+         core::MetricType::SquaredL2}) {
+    CHECK_NOTHROW((void)dtwFull<double>(
+      x.data(), x.size(), y.data(), y.size(), metric));
+  }
 
   core::DTWOptions options;
   options.band = 0;
@@ -972,6 +1082,32 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
   CHECK(core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), options) == 0.0);
   options.constraint = core::ConstraintType::SakoeChibaBand;
   CHECK(core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), options) == 10.0);
+
+  for (const auto variant : {
+         core::DTWVariant::Standard,
+         core::DTWVariant::DDTW,
+         core::DTWVariant::WDTW,
+         core::DTWVariant::ADTW,
+         core::DTWVariant::SoftDTW,
+         core::DTWVariant::MSM,
+         core::DTWVariant::TWE}) {
+    core::DTWVariantParams params;
+    params.variant = variant;
+    Problem problem{"m47_valid_variant"};
+    problem.set_data(basic_f64_data());
+    CHECK_NOTHROW(problem.set_variant(params));
+    CHECK_NOTHROW((void)core::resolve_dtw_fn<double>(problem));
+  }
+
+  for (const auto missing : {
+         core::MissingStrategy::Error,
+         core::MissingStrategy::ZeroCost,
+         core::MissingStrategy::AROW,
+         core::MissingStrategy::Interpolate}) {
+    Problem problem{"m47_valid_missing"};
+    problem.set_data(basic_f64_data());
+    CHECK_NOTHROW(problem.set_missing_strategy(missing));
+  }
 
   Problem dependent{"m47_valid_dependent"};
   dependent.set_data(basic_f64_data(2));
@@ -997,6 +1133,65 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     DataLoader loader;
     CHECK_NOTHROW((void)loader.storage_policy(policy));
   }
-  CHECK(basic_f32_data().precision == core::Precision::Float32);
-  CHECK(basic_f64_data().precision == core::Precision::Float64);
+
+  for (const auto lower_bound : {
+         LowerBoundStrategy::Auto,
+         LowerBoundStrategy::None,
+         LowerBoundStrategy::Kim,
+         LowerBoundStrategy::Keogh,
+         LowerBoundStrategy::KimKeogh,
+         LowerBoundStrategy::Enhanced,
+         LowerBoundStrategy::Webb}) {
+    Problem problem{"m47_valid_lower_bound"};
+    problem.set_data(Data(
+      std::vector<std::vector<double>>{
+        {0.0, 0.0, 0.0}, {0.0, 1.0, 2.0}},
+      std::vector<std::string>{"x", "y"}));
+    CHECK_NOTHROW((void)core::fill_distance_matrix_pruned(
+      problem, 1, lower_bound));
+  }
+
+  Problem f32_problem{"m47_valid_f32_precision"};
+  CHECK_NOTHROW(f32_problem.set_data(basic_f32_data()));
+  CHECK(f32_problem.data.precision == core::Precision::Float32);
+  Problem f64_problem{"m47_valid_f64_precision"};
+  CHECK_NOTHROW(f64_problem.set_data(basic_f64_data()));
+  CHECK(f64_problem.data.precision == core::Precision::Float64);
+
+  for (const int precision : {0, 1, 2}) {
+    Problem problem{"m47_valid_cuda_settings_precision"};
+    CUDASettings settings;
+    settings.precision = precision;
+    CHECK_NOTHROW(problem.set_cuda_settings(settings));
+  }
+
+  constexpr std::array<KernelOverride, 5> kernel_overrides{
+    KernelOverride::Auto,
+    KernelOverride::Wavefront,
+    KernelOverride::WavefrontGlobal,
+    KernelOverride::BandedRow,
+    KernelOverride::RegTile
+  };
+  for (std::size_t i = 0; i < kernel_overrides.size(); ++i)
+    CHECK(static_cast<int>(kernel_overrides[i]) == static_cast<int>(i));
+
+#if defined(DTWC_HAS_CUDA)
+  constexpr std::array<cuda::CUDAPrecision, 3> cuda_precisions{
+    cuda::CUDAPrecision::Auto,
+    cuda::CUDAPrecision::FP32,
+    cuda::CUDAPrecision::FP64
+  };
+  for (std::size_t i = 0; i < cuda_precisions.size(); ++i)
+    CHECK(static_cast<int>(cuda_precisions[i]) == static_cast<int>(i));
+#endif
+
+#if defined(DTWC_HAS_METAL)
+  constexpr std::array<metal::MetalPrecision, 3> metal_precisions{
+    metal::MetalPrecision::Auto,
+    metal::MetalPrecision::FP32,
+    metal::MetalPrecision::FP64
+  };
+  for (std::size_t i = 0; i < metal_precisions.size(); ++i)
+    CHECK(static_cast<int>(metal_precisions[i]) == static_cast<int>(i));
+#endif
 }
