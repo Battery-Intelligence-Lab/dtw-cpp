@@ -31,6 +31,9 @@ metric: l1
 # DTW variant: standard, ddtw, wdtw, adtw, softdtw
 variant: standard
 
+# Missing-data strategy: error, zero_cost, arow, interpolate
+missing-strategy: error
+
 # Maximum iterations for iterative algorithms.
 max-iter: 100
 

@@ -151,6 +151,42 @@ static std::string validate_metric_for_device(const std::string &metric, bool is
   return "";
 }
 
+/// Validate normalized distance semantics before Env, data, or cache side
+/// effects. This also covers YAML values that bypass CLI11 transformers.
+static std::string validate_cli_distance_configuration(
+  const std::string &variant, const std::string &metric,
+  const std::string &mv_mode, const std::string &missing_strategy, bool is_cuda)
+{
+  const bool known_variant = variant == "standard" || variant == "ddtw"
+    || variant == "wdtw" || variant == "adtw" || variant == "softdtw"
+    || variant == "msm" || variant == "twe";
+  if (!known_variant) return "unsupported --variant '" + variant + "'";
+  if (metric != "l1" && metric != "squared_euclidean")
+    return "unsupported --metric '" + metric + "'";
+  if (mv_mode != "dependent" && mv_mode != "independent")
+    return "unsupported --mv-mode '" + mv_mode + "'";
+  if (missing_strategy != "error" && missing_strategy != "zero_cost"
+      && missing_strategy != "arow" && missing_strategy != "interpolate")
+    return "unsupported --missing-strategy '" + missing_strategy + "'";
+  if (mv_mode == "independent"
+      && (variant != "standard" || missing_strategy != "error"))
+    return "--mv-mode independent requires --variant standard and "
+           "--missing-strategy error";
+  if (variant != "standard" && missing_strategy != "error")
+    return "non-standard --variant cannot be combined with a non-error "
+           "--missing-strategy";
+  if (const auto metric_error = validate_metric_for_device(metric, is_cuda);
+      !metric_error.empty())
+    return metric_error;
+  if (is_cuda && variant != "standard")
+    return "--device cuda supports --variant standard only";
+  if (is_cuda && missing_strategy != "error")
+    return "--device cuda does not support --missing-strategy";
+  if (is_cuda && mv_mode != "dependent")
+    return "--device cuda does not support --mv-mode independent";
+  return "";
+}
+
 /// Run the CLI PAM route with invocation-local `--seed + restart` engines and
 /// retain the strict best objective. Keeping this seam outside main() lets the
 /// CLI regression exercise the production dispatch without depending on CLI11
@@ -460,6 +496,15 @@ int main(int argc, char *argv[])
   std::string mv_mode = "dependent";
   app.add_option("--mv-mode", mv_mode, "Multivariate mode (ndim>1): dependent, independent")
     ->check(CLI::IsMember({ "dependent", "independent" }));
+  std::string missing_strategy = "error";
+  app.add_option("--missing-strategy", missing_strategy,
+                 "Missing-data strategy: error, zero_cost, arow, interpolate")
+    ->transform(CLI::CheckedTransformer(
+        std::map<std::string, std::string>{
+            {"error", "error"}, {"zero_cost", "zero_cost"},
+            {"zero-cost", "zero_cost"}, {"zerocost", "zero_cost"},
+            {"arow", "arow"}, {"interpolate", "interpolate"}},
+        CLI::ignore_case));
 
   // One invocation-local seed spelling covers PAM, OneBatchPAM, CLARA, Lloyd,
   // and MIP warm starts.
@@ -636,6 +681,7 @@ int main(int argc, char *argv[])
       set_if_unset("twe-nu", twe_nu);
       set_if_unset("twe-lambda", twe_lambda);
       set_if_unset("mv-mode", mv_mode);
+      set_if_unset("missing-strategy", missing_strategy);
 
       // CLARA parameters
       set_if_unset("sample-size", sample_size);
@@ -690,12 +736,16 @@ int main(int argc, char *argv[])
   to_lower(method);
   to_lower(metric);
   to_lower(variant);
+  to_lower(mv_mode);
+  to_lower(missing_strategy);
   to_lower(linkage_str);
 
   // Alias mappings (mirror the CheckedTransformer maps above)
   if (method == "hclust") method = "hierarchical";
   if (metric == "sqeuclidean" || metric == "l2sq") metric = "squared_euclidean";
   if (variant == "soft-dtw") variant = "softdtw";
+  if (missing_strategy == "zero-cost" || missing_strategy == "zerocost")
+    missing_strategy = "zero_cost";
 
   // Normalize dtype/gpu-precision aliases from YAML (bypass CheckedTransformer)
   to_lower(dtype_str);
@@ -714,9 +764,10 @@ int main(int argc, char *argv[])
     std::cerr << "Error: " << dev.error << "\n";
     return EXIT_FAILURE;
   }
-  if (const std::string merr = validate_metric_for_device(metric, dev.is_cuda);
-      !merr.empty()) {
-    std::cerr << "Error: " << merr << "\n";
+  if (const std::string config_error = validate_cli_distance_configuration(
+        variant, metric, mv_mode, missing_strategy, dev.is_cuda);
+      !config_error.empty()) {
+    std::cerr << "Error: " << config_error << "\n";
     return EXIT_FAILURE;
   }
 
@@ -745,6 +796,7 @@ int main(int argc, char *argv[])
               << "  Band:     " << (band < 0 ? "full" : std::to_string(band)) << "\n"
               << "  Metric:   " << metric << "\n"
               << "  Variant:  " << variant << "\n"
+              << "  Missing:  " << missing_strategy << "\n"
               << "  MaxIter:  " << max_iter << "\n"
               << "  N-init:   " << n_init << "\n"
               << "  Device:   " << device << "\n"
@@ -971,6 +1023,15 @@ int main(int argc, char *argv[])
     else if (gpu_precision == "fp64") prob.cuda_settings.precision = 2;
   }
 
+  if (missing_strategy == "zero_cost")
+    prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
+  else if (missing_strategy == "arow")
+    prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
+  else if (missing_strategy == "interpolate")
+    prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
+  else
+    prob.missing_strategy = dtwc::core::MissingStrategy::Error;
+
   // Set DTW variant
   dtwc::core::DTWVariantParams vparams;
   if (variant == "standard")
@@ -994,7 +1055,6 @@ int main(int argc, char *argv[])
     vparams.twe_nu = twe_nu;
     vparams.twe_lambda = twe_lambda;
   }
-  to_lower(mv_mode);
   vparams.mv_mode = (mv_mode == "independent") ? dtwc::core::MVMode::Independent
                                                : dtwc::core::MVMode::Dependent;
   prob.set_variant(vparams);
@@ -1016,7 +1076,6 @@ int main(int argc, char *argv[])
     std::cerr << "Error: " << e.what() << "\n";
     return EXIT_FAILURE;
   }
-
   // Set MIP solver (relevant for method=mip)
   if (solver == "highs")
     prob.set_solver(dtwc::Solver::HiGHS);
@@ -1061,12 +1120,6 @@ int main(int argc, char *argv[])
 
     // Device id already parsed & validated by parse_device (Task 0.9).
     const int cuda_device_id = dev.cuda_id;
-
-    if (variant != "standard") {
-      std::cerr << "Error: --device cuda only supports --variant standard "
-                << "(got '" << variant << "'). Use CPU for other variants.\n";
-      return EXIT_FAILURE;
-    }
 
     dtwc::cuda::CUDADistMatOptions cuda_opts;
     cuda_opts.band = band;

@@ -179,7 +179,14 @@ prob.missing_strategy = dtwcpp.MissingStrategy.ZeroCost  # or AROW, Interpolate
 
 ## CLI
 
-```note
-Missing data strategy is currently configured through the Python and C++ APIs only. The CLI does not yet expose a `--missing-strategy` flag. Use the Python `DTWClustering` class or the C++ `Problem` API to set the missing data strategy.
+```bash
+dtwc_cl --input data.tsv --n-clusters 3 \
+  --missing-strategy zero_cost --variant standard
 ```
+
+Accepted values are `error` (default), `zero_cost`, `arow`, and `interpolate`.
+The same `missing-strategy` key is available in TOML and YAML configuration.
+Non-error missing handling cannot be combined with a non-standard DTW variant,
+because that combination would otherwise substitute the missing-data recurrence
+for the requested variant.
 

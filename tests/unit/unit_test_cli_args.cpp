@@ -120,6 +120,44 @@ TEST_CASE("validate_metric_for_device rejects a non-L1 metric on the CPU path", 
   REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/true).empty());
 }
 
+TEST_CASE("CLI distance config rejects YAML transformer bypasses before work",
+          "[cli][config][distance]")
+{
+  CHECK(validate_cli_distance_configuration(
+          "standard", "l1", "dependent", "error", false).empty());
+  CHECK(validate_cli_distance_configuration(
+          "standard", "squared_euclidean", "dependent", "error", true).empty());
+
+  CHECK(validate_cli_distance_configuration(
+          "unknown", "l1", "dependent", "error", false)
+        == "unsupported --variant 'unknown'");
+  CHECK(validate_cli_distance_configuration(
+          "standard", "unknown", "dependent", "error", true)
+        == "unsupported --metric 'unknown'");
+  CHECK(validate_cli_distance_configuration(
+          "standard", "l1", "unknown", "error", false)
+        == "unsupported --mv-mode 'unknown'");
+  CHECK(validate_cli_distance_configuration(
+          "standard", "l1", "dependent", "unknown", false)
+        == "unsupported --missing-strategy 'unknown'");
+  CHECK(validate_cli_distance_configuration(
+          "twe", "l1", "dependent", "zero_cost", false)
+        == "non-standard --variant cannot be combined with a non-error "
+           "--missing-strategy");
+  CHECK(validate_cli_distance_configuration(
+          "twe", "l1", "independent", "error", false)
+        == "--mv-mode independent requires --variant standard and "
+           "--missing-strategy error");
+  CHECK(validate_cli_distance_configuration(
+          "standard", "squared_euclidean", "dependent", "error", false)
+        == "metric 'squared_euclidean' is unsupported on the cpu path "
+           "(only 'l1' is implemented on CPU; use --device cuda for "
+           "'squared_euclidean').");
+  CHECK(validate_cli_distance_configuration(
+          "twe", "l1", "dependent", "error", true)
+        == "--device cuda supports --variant standard only");
+}
+
 // ---------------------------------------------------------------------------
 // CLI distance-matrix storage routing (Task 8.1 M11)
 // ---------------------------------------------------------------------------

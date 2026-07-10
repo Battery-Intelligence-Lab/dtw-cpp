@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Preserved the complete `DTWClustering(device="hpc")` distance configuration
+  through SLURM submission to the final CLI command. Unsupported CPU/CUDA,
+  variant, missing-data, metric, multivariate, ordinal, and numeric combinations
+  now fail before remote side effects; the CLI also exposes
+  `--missing-strategy` in command-line, TOML, and YAML configuration.
 - Stopped Benders warm starts from writing nested Lloyd medoid and
   best-repetition artifacts. The private no-persistence route retains identical
   initialization, incumbent, progress output, and exact-solver trajectory;

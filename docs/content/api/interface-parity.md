@@ -98,7 +98,7 @@ The CLI is already config-first. The library APIs are currently Problem-first.
 | Pairwise distance namespace | flags only | `dtwc::distance::*` | `dtwcpp.distance.*` | `dtwc.distance.*` |
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
-| Missing-data strategy | CLI support is still incomplete | `Problem.missing_strategy` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
+| Missing-data strategy | `--missing-strategy` | `Problem.missing_strategy` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
 
 ## Recommended usage split
 

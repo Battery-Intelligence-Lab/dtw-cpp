@@ -241,7 +241,12 @@ class DTWClustering(BaseEstimator, ClusterMixin):
             self.labels_ = _hpc.cluster_on_hpc(
                 series, self.n_clusters, method="pam", band=self.band,
                 name=f"dtwc_k{self.n_clusters}", n_init=restart_count,
-                seed=DEFAULT_RANDOM_SEED,
+                seed=DEFAULT_RANDOM_SEED, max_iter=self.max_iter,
+                variant=self.variant, wdtw_g=self.wdtw_g,
+                adtw_penalty=self.adtw_penalty, msm_c=self.msm_c,
+                twe_nu=self.twe_nu, twe_lambda=self.twe_lambda,
+                mv_mode=self.mv_mode, missing_strategy=self.missing_strategy,
+                metric=self.metric,
             )
             self.medoid_indices_ = None
             self.inertia_ = None

@@ -1448,3 +1448,88 @@ no optional dependency.
 Verdict: **PASS.** Benders exposes only its exact in-memory result, no longer
 leaks or depends on intermediate Lloyd files, and preserves the incumbent and
 solver trajectory exercised before the fix.
+
+## M19 — lossless Python-HPC distance configuration
+
+The M16 restart audit showed that the estimator's HPC branch still forwarded
+only k, method, band, restart count, and seed. Non-default `max_iter`, all six
+exposed variants and their five parameters, `mv_mode`, `missing_strategy`, and
+`metric` disappeared before `_hpc.cluster_on_hpc`, so the remote executable ran
+defaults without warning. The pre-edit trace ended at each missing boundary:
+
+```text
+DTWClustering.fit
+  -> cluster_on_hpc
+  -> SlurmRemoteRunner.submit_cluster
+  -> slurm_remote.sh positionals
+  -> sbatch --export
+  -> cluster_generic.slurm
+  -> dtwc_cl final argv
+```
+
+Fifteen red tests pinned the estimator call, runner tuple, wrapper exports, job
+flags, final executable argv, pre-side-effect incompatibility checks, and a real
+CLI missing-strategy option. Before implementation the focused run was exactly:
+
+```text
+15 failed, 24 deselected
+```
+
+`_validate_remote_configuration` is now the one Python normalization boundary
+used by the pure command builder, runner, and orchestration function. It rejects
+booleans and out-of-range `max_iter`, non-finite variant parameters, non-ASCII or
+overflowing CUDA ordinals, unknown strings, CPU squared metric, every CUDA
+variant except Standard, CUDA missing/multivariate modes, and the core's
+unsupported non-Standard+missing or independent-mode combinations. Validation
+runs before the result directory, serialization, runner preflight, or process
+execution. The shell wrapper repeats the externally reachable grammar before
+upload/submission; its numeric check rejects syntactically numeric overflow such
+as `1e9999`, not only `nan`/`inf` spellings.
+
+The normalized values occupy ten append-only wrapper positionals, become ten
+`DTWC_*` SBATCH exports, and are passed as the corresponding ten CLI flags by
+the job. Appending preserves M16's established positional schedule. Five
+executable fake-job cases cover the unchanged defaults, CPU TWE with every
+non-default parameter, CUDA squared distance, CPU ZeroCost missing handling,
+and CPU independent multivariate mode. No impossible combined configuration is
+used as a last-mile oracle.
+
+The CLI now accepts `--missing-strategy` and the same TOML/YAML key, normalizes
+aliases, maps the value onto `Problem` before variant binding, and prints it in
+verbose diagnostics. One production helper validates unknown YAML values and
+all backend/variant/missing/multivariate combinations before `Env`, output,
+input, or cache work. A real rebuilt CLI run with `zero_cost` printed
+`Missing:  zero_cost` and produced labels.
+
+Green evidence:
+
+```text
+build/highs-1151 (HiGHS 1.15.1 ON, LLFIO ON)
+  focused [config]:                 10 assertions / 1 case passed
+  full unit_test_cli_args:         100 assertions / 17 cases passed
+
+tests/python/test_hpc.py:           55 passed
+  pre-side-effect rejection table: 20 passed / 35 deselected
+  five executable final-job configurations included
+
+targeted py_compile:                passed
+bash -n tracked *.sh/*.slurm:      11/11 passed
+git ls-files --eol shell scripts:  11/11 index/worktree LF
+documentation contract/drift gate: passed
+git diff --check:                  passed
+```
+
+SSH, rsync, and sbatch were intentionally not contacted. The executable job
+test substitutes only the final binary while running the real job script.
+
+An attempted NaN semantic contrast exposed a separate loader defect rather
+than a missing-strategy defect: on this Windows build, formatted stream
+extraction rejects textual `nan`, silently truncates the row, and discards its
+remaining values. The CLI reported average length 2 for three intended length-3
+rows under both PAM and hierarchical execution. M26 registers delimiter-aware
+full-token parsing and requires the real Error-versus-ZeroCost PAM contrast
+after NaN preservation; that loader fix is not hidden inside M19.
+
+Verdict: **PASS.** Every estimator-exposed distance setting reaches the final
+remote command or is rejected before side effects, defaults remain unchanged,
+and unsupported execution is loud at Python, shell, and CLI boundaries.

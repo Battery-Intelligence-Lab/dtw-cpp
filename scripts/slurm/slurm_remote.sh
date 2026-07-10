@@ -14,7 +14,7 @@
 #   bash scripts/slurm/slurm_remote.sh submit-parquet
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-cpu
 #   bash scripts/slurm/slurm_remote.sh submit-benchmark-gpu [a100|l40s|h100]
-#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed]
+#   bash scripts/slurm/slurm_remote.sh submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]
 #   bash scripts/slurm/slurm_remote.sh status
 #   bash scripts/slurm/slurm_remote.sh download
 #   bash scripts/slurm/slurm_remote.sh ssh "command"
@@ -94,6 +94,14 @@ decimal_leq() {
         (( ${#VALUE} == ${#LIMIT} )) \
             && [[ "${VALUE}" == "${LIMIT}" || "${VALUE}" < "${LIMIT}" ]]
     }
+}
+
+is_finite_number() {
+    [[ "$1" =~ ^[+-]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] \
+        && awk -v value="$1" 'BEGIN {
+            numeric = value + 0
+            exit !((numeric - numeric) == 0)
+        }'
 }
 
 # ── Commands ─────────────────────────────────────────────────────────────
@@ -280,7 +288,11 @@ cmd_submit_benchmark_gpu() {
 }
 
 # Generic clustering: submit cluster_generic.slurm on an arbitrary input.
-# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job] [skip_cols=0] [upload=1] [n_init=1] [seed]
+# Args: <input> <k> [method=pam] [device=cpu] [band=-1] [name=dtwc_job]
+#       [skip_cols=0] [upload=1] [n_init=1] [seed] [max_iter=100]
+#       [variant=standard] [wdtw_g=.05] [adtw_penalty=1] [msm_c=1]
+#       [twe_nu=.001] [twe_lambda=1] [mv_mode=dependent]
+#       [missing_strategy=error] [metric=l1]
 #   upload=1 : <input> is a local file -> rsync it to the cluster.
 #   upload=0 : <input> is a path ON the cluster (pre-staged) -> used as-is, no read/upload.
 # Used by the Python device='hpc' offload path (dtwcpp._hpc.cluster_on_hpc).
@@ -295,6 +307,16 @@ cmd_submit_cluster() {
     local UPLOAD="${8:-1}"
     local N_INIT="${9:-1}"
     local SEED="${10:-}"
+    local MAX_ITER="${11:-100}"
+    local VARIANT="${12:-standard}"
+    local WDTW_G="${13:-0.05}"
+    local ADTW_PENALTY="${14:-1.0}"
+    local MSM_C="${15:-1.0}"
+    local TWE_NU="${16:-0.001}"
+    local TWE_LAMBDA="${17:-1.0}"
+    local MV_MODE="${18:-dependent}"
+    local MISSING_STRATEGY="${19:-error}"
+    local METRIC="${20:-l1}"
 
     [[ "${N_INIT}" =~ ^[1-9][0-9]*$ ]] || {
         echo "ERROR: n_init must be a positive integer: ${N_INIT}" >&2
@@ -310,6 +332,60 @@ cmd_submit_cluster() {
     }
     if [[ -n "${SEED}" ]] && ! decimal_leq "${SEED}" "4294967295"; then
         echo "ERROR: seed exceeds the dtwc_cl unsigned range: ${SEED}" >&2
+        exit 1
+    fi
+    [[ "${MAX_ITER}" =~ ^[1-9][0-9]*$ ]] \
+        && decimal_leq "${MAX_ITER}" "2147483647" || {
+        echo "ERROR: max_iter must fit the dtwc_cl positive int range: ${MAX_ITER}" >&2
+        exit 1
+    }
+    [[ "${DEVICE}" =~ ^(cpu|cuda(:[0-9]+)?)$ ]] || {
+        echo "ERROR: unsupported remote device: ${DEVICE}" >&2
+        exit 1
+    }
+    if [[ "${DEVICE}" == cuda:* ]] \
+        && ! decimal_leq "${DEVICE#cuda:}" "2147483647"; then
+        echo "ERROR: remote CUDA ordinal exceeds the dtwc_cl int range: ${DEVICE}" >&2
+        exit 1
+    fi
+    [[ "${VARIANT}" =~ ^(standard|ddtw|wdtw|adtw|msm|twe)$ ]] || {
+        echo "ERROR: unsupported variant: ${VARIANT}" >&2
+        exit 1
+    }
+    [[ "${MV_MODE}" =~ ^(dependent|independent)$ ]] || {
+        echo "ERROR: unsupported mv_mode: ${MV_MODE}" >&2
+        exit 1
+    }
+    [[ "${MISSING_STRATEGY}" =~ ^(error|zero_cost|arow|interpolate)$ ]] || {
+        echo "ERROR: unsupported missing_strategy: ${MISSING_STRATEGY}" >&2
+        exit 1
+    }
+    [[ "${METRIC}" =~ ^(l1|squared_euclidean)$ ]] || {
+        echo "ERROR: unsupported metric: ${METRIC}" >&2
+        exit 1
+    }
+    for VALUE in "${WDTW_G}" "${ADTW_PENALTY}" "${MSM_C}" \
+                 "${TWE_NU}" "${TWE_LAMBDA}"; do
+        is_finite_number "${VALUE}" || {
+            echo "ERROR: variant parameters must be finite numbers: ${VALUE}" >&2
+            exit 1
+        }
+    done
+    if [[ "${MV_MODE}" == "independent" \
+          && ( "${VARIANT}" != "standard" || "${MISSING_STRATEGY}" != "error" ) ]]; then
+        echo "ERROR: mv_mode=independent requires variant=standard and missing_strategy=error" >&2
+        exit 1
+    fi
+    if [[ "${VARIANT}" != "standard" && "${MISSING_STRATEGY}" != "error" ]]; then
+        echo "ERROR: unsupported variant/missing_strategy combination" >&2
+        exit 1
+    fi
+    if [[ "${DEVICE}" == cuda* ]]; then
+        [[ "${VARIANT}" == "standard" ]] || { echo "ERROR: remote CUDA supports variant=standard only" >&2; exit 1; }
+        [[ "${MISSING_STRATEGY}" == "error" ]] || { echo "ERROR: remote CUDA does not support missing_strategy" >&2; exit 1; }
+        [[ "${MV_MODE}" == "dependent" ]] || { echo "ERROR: remote CUDA does not support mv_mode=independent" >&2; exit 1; }
+    elif [[ "${METRIC}" != "l1" ]]; then
+        echo "ERROR: metric=${METRIC} is unsupported by the remote CPU CLI" >&2
         exit 1
     fi
 
@@ -351,6 +427,9 @@ cmd_submit_cluster() {
 
     local EXPORTS="ALL,DTWC_INPUT=${REMOTE_INPUT},DTWC_K=${K},DTWC_SKIP_COLS=${SKIP_COLS}"
     EXPORTS+=",DTWC_METHOD=${METHOD},DTWC_DEVICE=${DEVICE},DTWC_BAND=${BAND},DTWC_NAME=${NAME},DTWC_N_INIT=${N_INIT}"
+    EXPORTS+=",DTWC_MAX_ITER=${MAX_ITER},DTWC_VARIANT=${VARIANT},DTWC_WDTW_G=${WDTW_G},DTWC_ADTW_PENALTY=${ADTW_PENALTY}"
+    EXPORTS+=",DTWC_MSM_C=${MSM_C},DTWC_TWE_NU=${TWE_NU},DTWC_TWE_LAMBDA=${TWE_LAMBDA},DTWC_MV_MODE=${MV_MODE}"
+    EXPORTS+=",DTWC_MISSING_STRATEGY=${MISSING_STRATEGY},DTWC_METRIC=${METRIC}"
     if [[ -n "${SEED}" ]]; then
         EXPORTS+=",DTWC_SEED=${SEED}"
     fi
@@ -447,7 +526,7 @@ case "${CMD}" in
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  Submit full UCR benchmark (GPU, e.g. a100, l40s)"
-        echo "  submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed]"
+        echo "  submit-cluster <input> <k> [method] [device] [band] [name] [skip_cols] [upload] [n_init] [seed] [max_iter] [variant] [variant params...] [mv_mode] [missing_strategy] [metric]"
         echo "                    Upload an arbitrary input file + cluster it (device='hpc' path)"
         echo "  status            Show SLURM queue"
         echo "  download          Download results + logs"
