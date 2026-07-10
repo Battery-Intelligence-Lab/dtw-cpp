@@ -2401,3 +2401,84 @@ real CLI invalid/valid domain matrix:              8 rejected / 6 accepted
 Verdict: **PASS.** Invalid recurrence parameters cannot enter arithmetic or
 side-effecting boundaries, both legitimate zero limits and minimum-positive
 controls execute, and ordinary registered variant outputs remain unchanged.
+
+## M26 — lossless strict delimited parsing
+
+The Windows release parser originally used formatted stream extraction. Its
+implementation stopped at the first token rejected by the runtime, so textual
+`nan` shortened the row and silently discarded every following value. Metadata
+counting repeated the same lossy algorithm independently. The registered red
+observed three intended length-3 rows load with average length 2 and then enter
+clustering as apparently ordinary data.
+
+One parser now splits the configured delimiter exactly (with the historical
+whitespace-collapse rule only for the space delimiter), trims each selected
+field, and requires `from_chars` to consume the entire token. Exact
+case-insensitive `nan` becomes the documented missing marker. Empty selected
+fields, malformed tails, range errors, infinities, signed/payload NaNs, and all
+other non-finite spellings raise one error containing path, one-based row, and
+one-based column before `Data` exists. Arbitrary skipped fields remain textual.
+Batch materialization and metadata sizing call the same row parser. Directory
+series retain only their actual legacy empty selected-cell header; a malformed
+first sample is no longer guessed to be a header.
+
+Green evidence:
+
+```text
+batch/parser focused:                    34 assertions / 4 cases
+complete unit_test_fileOperations:     9654 assertions / 12 cases
+unit_test_DataLoader:                    37 assertions / 1 case
+LLFIO-off storage policy:                13 assertions (2 capability skips)
+real CLI missing-data integration:       Error OMP=1/4 exit 1
+                                         ZeroCost exit 0, cost 0
+                                         3 series, average length 3
+real CLI malformed integration:          row 2, column 2, exit 1
+```
+
+Verdict: **PASS.** Loading can neither truncate at a rejected token nor disagree
+with metadata sizing, and the real downstream missing-data policy now observes
+the preserved NaN.
+
+## M40 — caller-thread exception publication
+
+The first diagnosis attributed the CLI's Windows `0xC0000409` termination to
+an exception crossing OpenMP. Source history and an isolated Problem test
+falsified that explanation for the registered Error case: `fill_distance_matrix`
+already performed a serial NaN pre-scan before strategy selection. Its ordinary
+`runtime_error` simply reached a CLI whose operational body had no outer catch.
+Both one and many OpenMP threads therefore terminated identically.
+
+A separate preregistered Interpolate/all-NaN matrix did confirm the adjacent
+worker hazard: its interpolation exception left the BruteForce structured
+block and the Catch process exited before reporting a case. The generic
+`run_openmp` boundary now keeps one exception pointer and atomic lowest failed
+index in O(1) space, stops new work above that index while allowing lower rows
+to complete, and rethrows the lowest-row original exception after the implicit
+join. A named OpenMP critical section makes exception-pointer replacement race
+free. BruteForce delegates its rows through that boundary; because distance
+evaluation precedes `set`, a failed pair retains its uncomputed sentinel and
+`all_computed()` remains false. A forced-order test makes row 7 fail before row
+2 in time yet requires row 2's `invalid_argument`, mutation-pinning canonical
+rather than temporal selection.
+
+The CLI body is now an internal function behind a complete `std::exception`
+boundary. It emits one `Error: <message>` line and returns `EXIT_FAILURE`; an
+unknown non-standard exception has a separate fail-closed message. A tracked
+subprocess gate invokes the real binary with a fresh fixture and bounded time.
+
+Green evidence:
+
+```text
+unit_test_parallelisation:               607 assertions / 7 cases
+unit_test_problem_missing:                33 assertions / 6 cases
+real CLI Error, OMP_NUM_THREADS=1:         exit 1 + exact remediation
+real CLI Error, OMP_NUM_THREADS=4:         exit 1 + exact remediation
+real CLI ZeroCost:                         exit 0 + cost 0
+real CLI malformed token:                  exit 1 + row/column diagnostic
+M34 executable domain matrix:              8 invalid + 6 valid cases
+independent read-only adversarial review:   PASS
+```
+
+Verdict: **PASS.** Caller-visible failures are normal typed errors, no exception
+leaves the repaired OpenMP row boundary, scheduling cannot change the selected
+failure, and partial distance work cannot masquerade as a complete cache.

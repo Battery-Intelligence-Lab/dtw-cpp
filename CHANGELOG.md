@@ -8,6 +8,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Replaced formatted-stream batch parsing with exact-delimiter, full-token
+  numeric parsing. Textual NaNs and later fields are preserved; malformed,
+  empty, out-of-range, or unapproved non-finite values fail with file/row/column
+  context, and metadata-only sizing follows the identical rules.
+- Made OpenMP row execution capture and deterministically rethrow the lowest-
+  index worker failure after the join, so a failed distance pair cannot publish
+  a complete cache. The CLI now catches operational exceptions at its outer
+  boundary and reports an actionable error with a normal nonzero exit.
 - Enforced one finite mathematical domain for every DTW-variant parameter at
   C++ free-function/runtime/`Problem`, CLI/YAML, Python, HPC, and MATLAB
   boundaries. WDTW `g` and ADTW penalty retain their valid zero limits;
