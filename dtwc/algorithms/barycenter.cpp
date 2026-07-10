@@ -226,13 +226,12 @@ double softmin3(double a, double b, double c, double gamma)
                                    + std::exp((minimum - c) / gamma));
 }
 
-struct SoftValueGradient {
-  double value = 0.0;
-  Series gradient;
-};
+} // namespace
 
-SoftValueGradient soft_squared_value_gradient(const Series& x, const Series& y,
-                                               double gamma)
+namespace detail {
+
+SoftDtwValueGradient soft_dtw_squared_value_gradient(
+  const std::vector<data_t>& x, const std::vector<data_t>& y, double gamma)
 {
   const std::size_t nx = x.size();
   const std::size_t ny = y.size();
@@ -289,7 +288,7 @@ SoftValueGradient soft_squared_value_gradient(const Series& x, const Series& y,
     }
   }
 
-  SoftValueGradient result;
+  SoftDtwValueGradient result;
   result.value = cell(nx - 1, ny - 1);
   result.gradient.assign(nx, 0.0);
   for (std::size_t i = 0; i < nx; ++i)
@@ -298,14 +297,18 @@ SoftValueGradient soft_squared_value_gradient(const Series& x, const Series& y,
   return result;
 }
 
-SoftValueGradient soft_objective(const Series& center,
-                                 const std::vector<Series>& series,
-                                 double gamma)
+} // namespace detail
+
+namespace {
+
+detail::SoftDtwValueGradient soft_objective(const Series& center,
+                                            const std::vector<Series>& series,
+                                            double gamma)
 {
-  SoftValueGradient total;
+  detail::SoftDtwValueGradient total;
   total.gradient.assign(center.size(), 0.0);
   for (const auto& values : series) {
-    const auto current = soft_squared_value_gradient(center, values, gamma);
+    const auto current = detail::soft_dtw_squared_value_gradient(center, values, gamma);
     total.value += current.value;
     for (std::size_t i = 0; i < center.size(); ++i)
       total.gradient[i] += current.gradient[i];
@@ -328,7 +331,7 @@ Series soft_barycenter(const std::vector<Series>& series, Series center,
 
     bool accepted = false;
     Series candidate(center.size());
-    SoftValueGradient trial;
+    detail::SoftDtwValueGradient trial;
     double step = learning_rate;
     for (int backtrack = 0; backtrack < 16; ++backtrack) {
       for (std::size_t i = 0; i < center.size(); ++i)
@@ -514,4 +517,3 @@ BarycenterClusteringResult barycenter_kmeans(
 }
 
 } // namespace dtwc::algorithms
-

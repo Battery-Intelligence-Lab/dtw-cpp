@@ -15,6 +15,7 @@
 #include <vector>
 
 using Catch::Matchers::WithinAbs;
+using Catch::Matchers::WithinRel;
 using namespace dtwc;
 
 namespace {
@@ -83,6 +84,36 @@ TEST_CASE("soft-DTW barycenter descends to the scalar optimum",
   REQUIRE_THAT(center[0], WithinAbs(1.0, 1e-6));
 }
 
+TEST_CASE("soft-DTW production adjoint matches finite differences",
+          "[barycenter][soft_dtw][gradient]")
+{
+  constexpr double gradient_relative_tolerance = 1e-5;
+  constexpr double finite_difference_step = 1e-6;
+  const std::vector<data_t> x{0.2, -0.4, 1.3, 0.7, -0.8};
+  const std::vector<data_t> y{-0.1, 0.5, -0.7, 1.0, 1.6, 0.3, -1.2};
+
+  for (const double gamma : {0.1, 1.0}) {
+    const auto analytic = algorithms::detail::soft_dtw_squared_value_gradient(x, y, gamma);
+    REQUIRE(analytic.gradient.size() == x.size());
+
+    for (std::size_t i = 0; i < x.size(); ++i) {
+      const double step = finite_difference_step * std::max(1.0, std::abs(x[i]));
+      auto plus = x;
+      auto minus = x;
+      plus[i] += step;
+      minus[i] -= step;
+      const double finite_difference =
+        (algorithms::detail::soft_dtw_squared_value_gradient(plus, y, gamma).value
+         - algorithms::detail::soft_dtw_squared_value_gradient(minus, y, gamma).value)
+        / (2.0 * step);
+
+      CAPTURE(gamma, i, analytic.gradient[i], finite_difference);
+      REQUIRE_THAT(analytic.gradient[i],
+                   WithinRel(finite_difference, gradient_relative_tolerance));
+    }
+  }
+}
+
 TEST_CASE("barycenter reduces hard squared-DTW objective from its initializer",
           "[barycenter][objective]")
 {
@@ -142,4 +173,3 @@ TEST_CASE("barycenter rejects unsupported multivariate and invalid inputs",
   REQUIRE_THROWS_AS(algorithms::dtw_barycenter(problem, {9}, 1), InvalidInput);
   REQUIRE_THROWS_AS(algorithms::dtw_barycenter(problem, {0}, 0), InvalidInput);
 }
-

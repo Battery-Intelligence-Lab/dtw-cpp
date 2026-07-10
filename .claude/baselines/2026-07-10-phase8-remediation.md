@@ -131,3 +131,58 @@ uv run --no-sync pytest tests/python/test_api.py tests/python/test_problem.py -q
 Verdict: **PASS.** The production fix sets the band before `set_data()` performs
 the normal refresh/rebind; no matrix is materialized and no unsupported
 capability is silently substituted.
+
+## H3 — non-trivial soft-DTW adjoint validation
+
+Registered band: central finite differences on a non-degenerate 5×7 pair must
+agree with the production squared-cost soft-DTW adjoint at every center
+coordinate within `1e-5` relative error for gamma 0.1 and 1.0. The perturbation
+is `1e-6 * max(1, |x_i|)`.
+
+Initial result: **coverage gap confirmed, arithmetic bug falsified.** The new
+test passed on its first execution without modifying the forward or adjoint
+recurrences. This item therefore has no artificial red result; the old 1×1
+test was insufficient, but the production math was correct.
+
+Focused command:
+
+```powershell
+build/highs-1151/bin/unit_test_barycenter.exe \
+  "soft-DTW production adjoint matches finite differences" \
+  --success --reporter compact
+```
+
+Decisive output (verbatim):
+
+```text
+All tests passed (12 assertions in 1 test case)
+```
+
+The smallest-magnitude checked component was
+`0.00071988044417052` versus finite difference
+`0.00071988043731225`; both gamma regimes and all ten gradient components
+passed.
+
+## First remediation-wave full gates (H1/H2/H3/H4 cumulative)
+
+The initial combined build-and-test shell reached its 180-second wrapper limit
+and was **not counted**. The build and test were rerun as separate commands.
+
+Native decisive output:
+
+```text
+100% tests passed, 0 tests failed out of 99
+Total Test time (real) =  28.29 sec
+```
+
+Six unchanged capability skips: CUDA ×2, Arrow/Parquet reader ×1, Metal ×3.
+
+Python decisive output after the five new H1/H2 tests:
+
+```text
+412 passed, 11 skipped in 18.57s
+```
+
+Verdict: **PASS.** This editable Python wave gate uses the already-verified
+HiGHS-enabled release core plus live pure-Python H1/H2 sources; the Phase 8 exit
+gate will rebuild a fresh wheel after all native changes.

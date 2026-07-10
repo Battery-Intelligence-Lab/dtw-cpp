@@ -55,6 +55,19 @@ struct BarycenterClusteringResult {
   bool converged = false;
 };
 
+namespace detail {
+
+/** Internal soft-DTW primitive shared by the optimizer and numerical tests. */
+struct SoftDtwValueGradient {
+  double value = 0.0;
+  std::vector<data_t> gradient;
+};
+
+[[nodiscard]] SoftDtwValueGradient soft_dtw_squared_value_gradient(
+  const std::vector<data_t>& x, const std::vector<data_t>& y, double gamma);
+
+} // namespace detail
+
 /** Compute one barycenter from the selected series in a Problem. */
 std::vector<data_t> dtw_barycenter(const Problem& prob,
                                    const std::vector<int>& series_indices,
@@ -67,4 +80,3 @@ BarycenterClusteringResult barycenter_kmeans(
 
 } // namespace algorithms
 } // namespace dtwc
-
