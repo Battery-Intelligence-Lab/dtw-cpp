@@ -1533,3 +1533,75 @@ after NaN preservation; that loader fix is not hidden inside M19.
 Verdict: **PASS.** Every estimator-exposed distance setting reaches the final
 remote command or is rejected before side effects, defaults remain unchanged,
 and unsupported execution is loud at Python, shell, and CLI boundaries.
+
+## M24 — barycenter first-update convergence and finite-state checks
+
+`barycenter_kmeans` initialized `previous_cost` to positive infinity and tested
+relative cost convergence before its first center update. For every positive
+tolerance, the finite first cost satisfied `inf <= tolerance * inf` under IEEE
+arithmetic. The function therefore returned the random k-means++ initializer,
+marked it converged with zero iterations, and never computed a barycenter.
+
+The preregistered scalar discriminator uses `{0},{2}`, k=1, DBA. The correct
+first update is the arithmetic mean 1 with hard squared-DTW cost 2 and one
+completed update. It runs once at the unchanged default tolerance `1e-6` and
+once at tolerance zero. The same test wave pins existing NaN/Inf input errors
+and uses finite `DBL_MAX` values to exercise six previously silent computed
+overflow routes: DBA/SSG hard cost, DBA accumulation/update, soft-DTW
+value/gradient, k-means assignment, and k-means++ initialization weights.
+
+Red evidence from the unfixed release build:
+
+```text
+build/highs-1151/bin/unit_test_barycenter.exe "[m24]" --reporter compact
+positive tolerance:
+  iterations 0 != 1
+  center 2 != 1
+  total_cost 4 != 2
+computed overflow:
+  expected exception, got none (DBA cost)
+  expected exception, got none (SSG cost)
+  expected exception, got none (DBA update)
+  expected exception, got none (SoftDTW value/gradient)
+  expected exception, got none (k-means assignment)
+  expected exception, got none (k-means++ initialization)
+test cases: 2 | 0 passed | 2 failed
+assertions: 27 | 18 passed | 9 failed
+```
+
+The zero-tolerance center/cost/iteration assertions and all four explicit
+NaN/Inf input-message assertions already passed red. No band was rescue-tuned.
+
+Convergence is now eligible only after a completed prior assignment with a
+finite stored cost. Hard barycenter paths validate each alignment, accumulated
+objective, update, and convergence measure on serial or per-cluster caught
+paths. Soft-DTW validates its initial value/gradient and gradient norm;
+transient non-finite line-search trials still backtrack, but an unrecoverable
+all-non-finite search is loud. K-means++ rejects a non-finite weight total
+before constructing its random distribution. Assignment workers never throw:
+their local costs are scanned and accumulated only after the OpenMP join.
+Every new error instructs callers to rescale values to a smaller magnitude.
+
+The Euclidean relative-change norm now uses chained `hypot` instead of
+overflow-prone sums of squares. This changes no registered ordinary arithmetic:
+the tolerance-zero mixed-length labels, all center bits, cost, iteration, and
+convergence flag remain exactly equal to the pre-edit fingerprint.
+
+Green evidence from fresh post-edit artifacts:
+
+```text
+build/highs-1151 (HiGHS 1.15.1 ON, LLFIO ON)
+  [m24]:                              27 assertions / 2 cases passed
+  [fingerprint]:                       5 assertions / 1 case passed
+  full unit_test_barycenter:         113 assertions / 14 cases passed
+  unit_test_barycenter_allocations:    2 assertions / 1 case passed
+  ctest -R barycenter:                 2 tests / 0 failed
+
+build/phase8-m13 (HiGHS/Gurobi/LLFIO OFF)
+  unit_test_barycenter target rebuilt and linked
+  [m24]:                              27 assertions / 2 cases passed
+```
+
+Verdict: **PASS.** Default-tolerance clustering performs real barycenter work,
+zero-tolerance and ordinary digit-level behavior remain stable, and finite
+inputs can no longer turn non-finite computation into a silent result.

@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <vector>
@@ -273,6 +274,94 @@ TEST_CASE("barycenter k-means separates two waveform groups",
                       [&](int label) { return label == result.labels[8]; }));
   REQUIRE(result.labels[0] != result.labels[8]);
   REQUIRE(result.total_cost >= 0.0);
+}
+
+TEST_CASE("barycenter k-means updates its center before testing convergence",
+          "[barycenter][kmeans][convergence][m24]")
+{
+  auto problem = make_problem({{0.0}, {2.0}});
+  const algorithms::BarycenterClusteringOptions defaults;
+  REQUIRE(defaults.tolerance > 0.0);
+
+  for (const double tolerance : {defaults.tolerance, 0.0}) {
+    CAPTURE(tolerance);
+    algorithms::BarycenterClusteringOptions options;
+    options.n_clusters = 1;
+    options.method = algorithms::BarycenterMethod::DBA;
+    options.tolerance = tolerance;
+
+    const auto result = algorithms::barycenter_kmeans(problem, options);
+
+    CHECK(result.converged);
+    CHECK(result.iterations == 1);
+    REQUIRE(result.labels.size() == 2);
+    CHECK(result.labels == std::vector<int>{0, 0});
+    REQUIRE(result.barycenters.size() == 1);
+    REQUIRE(result.barycenters[0].size() == 1);
+    CHECK_THAT(result.barycenters[0][0], WithinAbs(1.0, 1e-12));
+    CHECK_THAT(result.total_cost, WithinAbs(2.0, 1e-12));
+  }
+}
+
+TEST_CASE("barycenters reject non-finite input and finite-input overflow loudly",
+          "[barycenter][errors][nonfinite][m24]")
+{
+  const char* const input_error =
+    "dtw_barycenter: all values must be finite.";
+  for (const double bad_value : {
+         std::numeric_limits<double>::infinity(),
+         std::numeric_limits<double>::quiet_NaN()}) {
+    auto problem = make_problem({{0.0}, {bad_value}});
+    algorithms::BarycenterClusteringOptions clustering_options;
+    clustering_options.n_clusters = 1;
+
+    CHECK_THROWS_WITH(
+      algorithms::dtw_barycenter(problem, {0, 1}, 1), input_error);
+    CHECK_THROWS_WITH(
+      algorithms::barycenter_kmeans(problem, clustering_options), input_error);
+  }
+
+  const double largest = std::numeric_limits<double>::max();
+  auto overflow_problem = make_problem({{largest}, {-largest}});
+  algorithms::BarycenterOptions barycenter_options;
+  for (const auto method : {
+         algorithms::BarycenterMethod::DBA,
+         algorithms::BarycenterMethod::SSG}) {
+    CAPTURE(static_cast<int>(method));
+    barycenter_options.method = method;
+    CHECK_THROWS_WITH(
+      algorithms::dtw_barycenter(overflow_problem, {0, 1}, 1, barycenter_options),
+      "dtw_barycenter: computed squared-DTW cost is non-finite; "
+      "rescale input values to a smaller magnitude.");
+  }
+
+  auto update_overflow = make_problem({{largest}, {largest}});
+  barycenter_options.method = algorithms::BarycenterMethod::DBA;
+  CHECK_THROWS_WITH(
+    algorithms::dtw_barycenter(update_overflow, {0, 1}, 1, barycenter_options),
+    "dtw_barycenter: computed barycenter update is non-finite; "
+    "rescale input values to a smaller magnitude.");
+
+  barycenter_options.method = algorithms::BarycenterMethod::SoftDTW;
+  CHECK_THROWS_WITH(
+    algorithms::dtw_barycenter(overflow_problem, {0, 1}, 1, barycenter_options),
+    "dtw_barycenter: computed soft-DTW value or gradient is non-finite; "
+    "rescale input values to a smaller magnitude.");
+
+  algorithms::BarycenterClusteringOptions clustering_options;
+  clustering_options.n_clusters = 1;
+  clustering_options.method = algorithms::BarycenterMethod::DBA;
+  CHECK_THROWS_WITH(
+    algorithms::barycenter_kmeans(overflow_problem, clustering_options),
+    "barycenter_kmeans: computed assignment cost is non-finite; "
+    "rescale input values to a smaller magnitude.");
+
+  auto initialization_overflow = make_problem({{largest}, {-largest}, {0.0}});
+  clustering_options.n_clusters = 2;
+  CHECK_THROWS_WITH(
+    algorithms::barycenter_kmeans(initialization_overflow, clustering_options),
+    "barycenter_kmeans: computed initialization distance total is non-finite; "
+    "rescale input values to a smaller magnitude.");
 }
 
 TEST_CASE("barycenter k-means mixed-length no-op fingerprint",

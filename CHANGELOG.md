@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed barycenter k-means falsely converging before its first center update
+  under the default positive tolerance. Computed non-finite squared/soft-DTW
+  costs, gradients, updates, initialization weights, and assignment costs now
+  fail with rescaling guidance instead of returning invalid results.
 - Preserved the complete `DTWClustering(device="hpc")` distance configuration
   through SLURM submission to the final CLI command. Unsupported CPU/CUDA,
   variant, missing-data, metric, multivariate, ordinal, and numeric combinations

@@ -107,6 +107,26 @@ void validate_options(const BarycenterOptions& options)
     throw InvalidInput("dtw_barycenter: tolerance must be finite and non-negative.");
 }
 
+[[noreturn]] void throw_nonfinite(const char* entry_point, const char* quantity)
+{
+  throw InvalidInput(
+    std::string(entry_point) + ": computed " + quantity
+    + " is non-finite; rescale input values to a smaller magnitude.");
+}
+
+void require_finite(double value, const char* entry_point, const char* quantity)
+{
+  if (!std::isfinite(value)) throw_nonfinite(entry_point, quantity);
+}
+
+void require_finite_series(
+  const Series& values, const char* entry_point, const char* quantity)
+{
+  if (!std::all_of(values.begin(), values.end(),
+                   [](double value) { return std::isfinite(value); }))
+    throw_nonfinite(entry_point, quantity);
+}
+
 void validate_problem_configuration(const Problem& prob, const char* entry_point)
 {
   if (prob.variant_params.variant != core::DTWVariant::Standard)
@@ -205,11 +225,15 @@ double align_squared(const Series& x, const Series& y, bool need_path,
 }
 
 double hard_objective(const Series& center, const std::vector<Series>& series,
-                      AlignmentWorkspace& workspace)
+                      AlignmentWorkspace& workspace, const char* entry_point)
 {
   double objective = 0.0;
-  for (const auto& values : series)
-    objective += align_squared(center, values, false, workspace);
+  for (const auto& values : series) {
+    const double cost = align_squared(center, values, false, workspace);
+    require_finite(cost, entry_point, "squared-DTW cost");
+    objective += cost;
+    require_finite(objective, entry_point, "squared-DTW cost");
+  }
   return objective;
 }
 
@@ -219,21 +243,23 @@ double relative_change(const Series& before, const Series& after)
   double denominator = 0.0;
   for (std::size_t i = 0; i < before.size(); ++i) {
     const double delta = before[i] - after[i];
-    numerator += delta * delta;
-    denominator += before[i] * before[i];
+    numerator = std::hypot(numerator, delta);
+    denominator = std::hypot(denominator, before[i]);
   }
-  return std::sqrt(numerator) / std::max(1.0, std::sqrt(denominator));
+  return numerator / std::max(1.0, denominator);
 }
 
 Series dba(const std::vector<Series>& series, Series center,
-           const BarycenterOptions& options, AlignmentWorkspace& workspace)
+           const BarycenterOptions& options, AlignmentWorkspace& workspace,
+           const char* entry_point)
 {
-  double previous = hard_objective(center, series, workspace);
+  double previous = hard_objective(center, series, workspace, entry_point);
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     std::vector<double> sums(center.size(), 0.0);
     std::vector<std::size_t> counts(center.size(), 0);
     for (const auto& values : series) {
-      align_squared(center, values, true, workspace);
+      const double cost = align_squared(center, values, true, workspace);
+      require_finite(cost, entry_point, "squared-DTW cost");
       for (const auto [i, j] : workspace.path) {
         sums[i] += values[j];
         ++counts[i];
@@ -242,8 +268,10 @@ Series dba(const std::vector<Series>& series, Series center,
     Series next = center;
     for (std::size_t i = 0; i < next.size(); ++i)
       if (counts[i] > 0) next[i] = sums[i] / static_cast<double>(counts[i]);
-    const double objective = hard_objective(next, series, workspace);
+    require_finite_series(next, entry_point, "barycenter update");
+    const double objective = hard_objective(next, series, workspace, entry_point);
     const double change = relative_change(center, next);
+    require_finite(change, entry_point, "convergence measure");
     center = std::move(next);
     if (change <= options.tolerance
         || std::abs(previous - objective) <= options.tolerance * std::max(1.0, previous))
@@ -254,18 +282,20 @@ Series dba(const std::vector<Series>& series, Series center,
 }
 
 Series ssg(const std::vector<Series>& series, Series center,
-           const BarycenterOptions& options, AlignmentWorkspace& workspace)
+           const BarycenterOptions& options, AlignmentWorkspace& workspace,
+           const char* entry_point)
 {
   std::mt19937_64 rng(options.random_seed);
   std::vector<std::size_t> order(series.size());
   std::iota(order.begin(), order.end(), 0);
   std::uint64_t step = 0;
-  double previous = hard_objective(center, series, workspace);
+  double previous = hard_objective(center, series, workspace, entry_point);
   for (int epoch = 0; epoch < options.max_iter; ++epoch) {
     const Series before = center;
     std::shuffle(order.begin(), order.end(), rng);
     for (std::size_t index : order) {
-      align_squared(center, series[index], true, workspace);
+      const double cost = align_squared(center, series[index], true, workspace);
+      require_finite(cost, entry_point, "squared-DTW cost");
       std::vector<double> sums(center.size(), 0.0);
       std::vector<std::size_t> counts(center.size(), 0);
       for (const auto [i, j] : workspace.path) {
@@ -291,9 +321,12 @@ Series ssg(const std::vector<Series>& series, Series center,
         const double multiplicity = static_cast<double>(counts[i]);
         center[i] += 2.0 * effective_eta * (sums[i] - multiplicity * center[i]);
       }
+      require_finite_series(center, entry_point, "barycenter update");
     }
-    const double objective = hard_objective(center, series, workspace);
-    if (relative_change(before, center) <= options.tolerance
+    const double objective = hard_objective(center, series, workspace, entry_point);
+    const double change = relative_change(before, center);
+    require_finite(change, entry_point, "convergence measure");
+    if (change <= options.tolerance
         || std::abs(previous - objective) <= options.tolerance * std::max(1.0, previous))
       break;
     previous = objective;
@@ -402,32 +435,58 @@ detail::SoftDtwValueGradient soft_objective(const Series& center,
   return total;
 }
 
+bool soft_state_is_finite(const detail::SoftDtwValueGradient& state)
+{
+  return std::isfinite(state.value)
+    && std::all_of(state.gradient.begin(), state.gradient.end(),
+                   [](double value) { return std::isfinite(value); });
+}
+
 Series soft_barycenter(const std::vector<Series>& series, Series center,
-                       const BarycenterOptions& options)
+                       const BarycenterOptions& options, const char* entry_point)
 {
   double learning_rate = options.learning_rate;
   auto current = soft_objective(center, series, options.gamma);
+  if (!soft_state_is_finite(current))
+    throw_nonfinite(entry_point, "soft-DTW value or gradient");
   for (int iteration = 0; iteration < options.max_iter; ++iteration) {
     double norm_squared = 0.0;
     for (double value : current.gradient) norm_squared += value * value;
+    require_finite(norm_squared, entry_point, "soft-DTW value or gradient");
     if (std::sqrt(norm_squared) <= options.tolerance) break;
 
     bool accepted = false;
+    bool saw_finite_trial = false;
     Series candidate(center.size());
     detail::SoftDtwValueGradient trial;
     double step = learning_rate;
     for (int backtrack = 0; backtrack < 16; ++backtrack) {
       for (std::size_t i = 0; i < center.size(); ++i)
         candidate[i] = center[i] - step * current.gradient[i];
+      if (!std::all_of(candidate.begin(), candidate.end(),
+                       [](double value) { return std::isfinite(value); })) {
+        step *= 0.5;
+        continue;
+      }
       trial = soft_objective(candidate, series, options.gamma);
-      if (std::isfinite(trial.value) && trial.value < current.value) {
+      if (!soft_state_is_finite(trial)) {
+        step *= 0.5;
+        continue;
+      }
+      saw_finite_trial = true;
+      if (trial.value < current.value) {
         accepted = true;
         break;
       }
       step *= 0.5;
     }
-    if (!accepted) break;
+    if (!accepted) {
+      if (!saw_finite_trial)
+        throw_nonfinite(entry_point, "soft-DTW value or gradient");
+      break;
+    }
     const double change = relative_change(center, candidate);
+    require_finite(change, entry_point, "convergence measure");
     center = std::move(candidate);
     current = std::move(trial);
     learning_rate = step / (1.0 + options.learning_rate_decay);
@@ -438,18 +497,19 @@ Series soft_barycenter(const std::vector<Series>& series, Series center,
 
 Series compute_barycenter(const std::vector<Series>& series, std::size_t target_length,
                           const BarycenterOptions& options, const Series& initial,
-                          AlignmentWorkspace& workspace)
+                          AlignmentWorkspace& workspace, const char* entry_point)
 {
   validate_series(series);
   validate_options(options);
   Series center = resample_linear(initial, target_length);
+  require_finite_series(center, entry_point, "barycenter initialization");
   switch (options.method) {
     case BarycenterMethod::SSG:
-      return ssg(series, std::move(center), options, workspace);
+      return ssg(series, std::move(center), options, workspace, entry_point);
     case BarycenterMethod::DBA:
-      return dba(series, std::move(center), options, workspace);
+      return dba(series, std::move(center), options, workspace, entry_point);
     case BarycenterMethod::SoftDTW:
-      return soft_barycenter(series, std::move(center), options);
+      return soft_barycenter(series, std::move(center), options, entry_point);
   }
   throw InvalidInput("dtw_barycenter: unknown method.");
 }
@@ -466,6 +526,8 @@ std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
         align_squared(data[i], data[static_cast<std::size_t>(centers.back())],
                       false, workspace));
     double total = std::accumulate(closest.begin(), closest.end(), 0.0);
+    require_finite(
+      total, "barycenter_kmeans", "initialization distance total");
     std::size_t chosen = 0;
     if (total <= 0.0) {
       while (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end())
@@ -515,8 +577,12 @@ double assign(const std::vector<Series>& data, const std::vector<Series>& center
     labels[i] = label;
     local_costs[i] = best;
   }
+  for (double cost : local_costs)
+    require_finite(cost, "barycenter_kmeans", "assignment cost");
+  const double total = std::accumulate(local_costs.begin(), local_costs.end(), 0.0);
+  require_finite(total, "barycenter_kmeans", "assignment cost");
   if (costs) *costs = local_costs;
-  return std::accumulate(local_costs.begin(), local_costs.end(), 0.0);
+  return total;
 }
 
 } // namespace
@@ -539,7 +605,8 @@ std::vector<data_t> dtw_barycenter(const Problem& prob,
   }
   AlignmentWorkspace workspace;
   return compute_barycenter(
-    selected, target_length, options, selected.front(), workspace);
+    selected, target_length, options, selected.front(), workspace,
+    "dtw_barycenter");
 }
 
 BarycenterClusteringResult barycenter_kmeans(
@@ -616,8 +683,14 @@ BarycenterClusteringResult barycenter_kmeans(
     std::vector<double> point_costs;
     const double cost = assign(
       data, centers, result.labels, workspaces, assignment_workers, &point_costs);
-    if (result.labels == previous_labels
-        || std::abs(previous_cost - cost) <= options.tolerance * std::max(1.0, previous_cost)) {
+    const bool has_previous_assignment = iteration > 0
+      && std::isfinite(previous_cost);
+    const bool labels_stable = has_previous_assignment
+      && result.labels == previous_labels;
+    const bool cost_stable = has_previous_assignment
+      && std::abs(previous_cost - cost)
+           <= options.tolerance * std::max(1.0, previous_cost);
+    if (labels_stable || cost_stable) {
       result.converged = true;
       result.iterations = iteration;
       result.total_cost = cost;
@@ -672,7 +745,7 @@ BarycenterClusteringResult barycenter_kmeans(
           + static_cast<std::uint64_t>(cluster);
         next_centers[cluster_index] = compute_barycenter(
           members[cluster_index], centers[cluster_index].size(), cluster_options,
-          centers[cluster_index], workspaces[worker]);
+          centers[cluster_index], workspaces[worker], "barycenter_kmeans");
       } catch (...) {
         failures[cluster_index] = std::current_exception();
       }
