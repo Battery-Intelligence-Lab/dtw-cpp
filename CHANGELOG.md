@@ -22,6 +22,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Documented that matrix-free OneBatchPAM, CLARA, and TADPole results set
   `Result.distance_matrix` to `None`; callers needing N×N distances must compute
   them explicitly or use a matrix-based method.
+- Completed the rc1 migration notes for hard GPU/solver errors and separated
+  the absorbed development history from the release-candidate summary.
 
 # 2.0.0rc1 - 2026-07-10
 
@@ -41,10 +43,20 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   exclude local build and generated-site trees.
 - Added Hugo contract/guides/math/benchmark documentation with generated-SSOT,
   live CLI/error-string drift checks, and internal-link validation.
+- Explicit CUDA/Metal requests now raise `DeviceError` when the requested
+  backend is unavailable instead of warning and silently running on CPU.
+- Requesting an uncompiled Gurobi, HiGHS, or Benders backend now raises
+  `SolverError` instead of printing a message and returning without a result.
+- Primed the lazy distance dispatch before parallel k-means++ initialization,
+  closing the `dist_by_ind` rebind race that produced Windows `0xc0000409`
+  crashes.
 - See the [2.0.0rc1 release notes](docs/content/releases/2.0.0rc1.md) for
   platform status and the deliberately gated production-release steps.
 
-- API contract 2.0 frozen: docs/api-contract-2.0.md
+# Development history absorbed into 2.0.0rc1
+
+The task-level entries below are retained as the development ledger that fed
+the release candidate; they are not additional rc1 summary bullets.
 
 ### Added (Phase 5 · Task 5.7 — Arrow C Data interface ingest, zero-copy, no pyarrow)
 

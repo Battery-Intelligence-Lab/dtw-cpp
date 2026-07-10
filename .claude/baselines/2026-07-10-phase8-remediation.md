@@ -225,3 +225,41 @@ documentation contract checks passed
 Verdict: **PASS.** The tracked migration page is generated from the same source
 that the drift check validates, so a future regeneration cannot silently erase
 the behavior note.
+
+## M8 — rc1 behavior and migration ledger
+
+Registered band: the docs drift gate must name both missing migration promises
+before the fix. Afterward the generated guide must explicitly contrast the 1.x
+GPU fallback and solver print/return paths with typed 2.0 errors; CHANGELOG must
+also contain the `dist_by_ind` rebind-race fix and a separate development-history
+heading.
+
+Red decisive output:
+
+```text
+AssertionError: migration guide omits behaviors: ['Explicit GPU requests no longer warn and run on CPU', 'Requesting an unavailable MIP solver no longer prints and returns']
+```
+
+An independent assertion against the pre-fix `HEAD:CHANGELOG.md` also rejected
+all four required summary/structure markers:
+
+```text
+AssertionError: HEAD rc1 changelog omits behaviors/structure: ['raises `DeviceError`', 'raises\n  `SolverError`', '`dist_by_ind` rebind race', '# Development history absorbed into 2.0.0rc1']
+```
+
+Green decisive commands:
+
+```text
+uv run --no-sync python scripts/generate_docs.py
+  generated documentation updated
+uv run --no-sync python scripts/check_docs_contract.py --cli build/highs-1151/bin/dtwc_cl.exe
+  generated documentation is current
+  documentation contract checks passed
+git diff --check
+  exit 0
+```
+
+Verdict: **PASS.** The generated migration SSOT and its drift gate now enforce
+both breaking behaviors. The same gate also scopes the three rc1 behavior notes
+to the release summary, requires the separate absorbed-history heading, and
+rejects the old stray contract bullet.

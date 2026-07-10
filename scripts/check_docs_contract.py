@@ -63,10 +63,38 @@ def assert_migration_behaviors() -> None:
     migration = (ROOT / "docs/content/guides/migration.md").read_text(
         encoding="utf-8"
     )
-    if "`Result.distance_matrix` is `None` for matrix-free methods" not in migration:
-        raise AssertionError(
-            "migration guide omits matrix-free Result.distance_matrix behavior"
-        )
+    required = (
+        "`Result.distance_matrix` is `None` for matrix-free methods",
+        "Explicit GPU requests no longer warn and run on CPU",
+        "Requesting an unavailable MIP solver no longer prints and returns",
+    )
+    missing = [item for item in required if item not in migration]
+    if missing:
+        raise AssertionError(f"migration guide omits behaviors: {missing}")
+
+
+def assert_rc1_changelog() -> None:
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    release_heading = "# 2.0.0rc1 - 2026-07-10"
+    history_heading = "# Development history absorbed into 2.0.0rc1"
+    if release_heading not in changelog or history_heading not in changelog:
+        raise AssertionError("rc1 changelog release/history headings are missing")
+    release_start = changelog.index(release_heading)
+    history_start = changelog.index(history_heading)
+    if history_start <= release_start:
+        raise AssertionError("absorbed development history must follow the rc1 summary")
+    summary = changelog[release_start:history_start]
+    required = (
+        "raise `DeviceError`",
+        "raises\n  `SolverError`",
+        "`dist_by_ind` rebind race",
+        "Windows `0xc0000409`",
+    )
+    missing = [item for item in required if item not in summary]
+    if missing:
+        raise AssertionError(f"rc1 summary omits behaviors: {missing}")
+    if "- API contract 2.0 frozen" in changelog:
+        raise AssertionError("stray API-contract bullet remains in CHANGELOG")
 
 
 def assert_tier1_signatures() -> None:
@@ -151,6 +179,7 @@ def main() -> int:
                    check=True)
     assert_freeze_governance()
     assert_migration_behaviors()
+    assert_rc1_changelog()
     assert_env_messages()
     assert_tier1_signatures()
     if args.cli is not None:

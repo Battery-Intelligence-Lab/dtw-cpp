@@ -144,6 +144,10 @@ def generated_outputs() -> dict[Path, str]:
 - `Result.distance_matrix` is `None` for matrix-free methods (`onebatch`,
   `clara`, and `tadpole`); code that needs an N×N matrix must request a
   matrix-based method or compute it explicitly.
+- Explicit GPU requests no longer warn and run on CPU. An unavailable CUDA or
+  Metal backend raises `DeviceError`; select `cpu` explicitly to run locally.
+- Requesting an unavailable MIP solver no longer prints and returns. It raises
+  `SolverError` before returning an empty or stale clustering result.
 - OpenMP is required unless `-DDTWC_ALLOW_SEQUENTIAL=ON` is explicitly set;
   that build and a runtime one-thread cap both emit a process-once warning.
 - MATLAB indices remain 1-based at its public boundary; C++ and Python are 0-based.
