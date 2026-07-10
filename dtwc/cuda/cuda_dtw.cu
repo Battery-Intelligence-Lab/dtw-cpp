@@ -22,6 +22,7 @@
 #include "cuda_dtw.cuh"
 #include "cuda_memory.cuh"
 #include "gpu_config.cuh"
+#include "kernel_selection.hpp"
 #include "../detail/decode_pair.hpp"
 
 #ifdef DTWC_HAS_CUDA
@@ -62,6 +63,23 @@ namespace dtwc::cuda {
 // seed + int64 correction, fixing the int32 overflow of the retired local copy
 // (Task 0.7) and matching the audited-correct MPI enumeration.
 using dtwc::detail::decode_pair;
+
+namespace {
+
+bool resolve_fp32(CUDAPrecision precision, int device_id)
+{
+  switch (precision) {
+  case CUDAPrecision::FP32:
+    return true;
+  case CUDAPrecision::FP64:
+    return false;
+  case CUDAPrecision::Auto:
+    return query_gpu_config(device_id).fp64_rate == FP64Rate::Slow;
+  }
+  throw std::logic_error("resolve_fp32: unreachable CUDAPrecision");
+}
+
+} // namespace
 
 // =========================================================================
 // Device kernel: anti-diagonal wavefront — multiple threads per block
@@ -1188,6 +1206,7 @@ std::vector<double> launch_dtw_kernel(
     const std::vector<int> &lengths,
     size_t N, size_t max_L, size_t num_pairs,
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
+    detail::KernelPath kernel_path,
     const int *pair_indices = nullptr)
 {
   // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
@@ -1236,7 +1255,7 @@ std::vector<double> launch_dtw_kernel(
   // ---------------------------------------------------------------------------
   // Kernel launch (on the same stream -- automatically waits for H2D)
   // ---------------------------------------------------------------------------
-  if (max_L <= 32) {
+  if (kernel_path == detail::KernelPath::Warp) {
     // Warp-level kernel: 8 pairs per block, 256 threads (8 warps)
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;  // 8
     const int grid_size = static_cast<int>(
@@ -1248,7 +1267,7 @@ std::vector<double> launch_dtw_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
-  } else if (max_L <= 128) {
+  } else if (kernel_path == detail::KernelPath::RegTileW4) {
     // Register-tiled kernel with TILE_W=4: 32 threads * 4 = 128 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 4;
@@ -1264,7 +1283,7 @@ std::vector<double> launch_dtw_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
-  } else if (max_L <= 256) {
+  } else if (kernel_path == detail::KernelPath::RegTileW8) {
     // Register-tiled kernel with TILE_W=8: 32 threads * 8 = 256 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 8;
@@ -1279,7 +1298,7 @@ std::vector<double> launch_dtw_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
         static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
-  } else {
+  } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: shared memory and block size configuration
     const bool preload = (max_L <= 512);
     // L<=512: preload mode (2 series + 3 anti-diag buffers = 5)
@@ -1344,6 +1363,8 @@ std::vector<double> launch_dtw_kernel(
           static_cast<int>(num_pairs), use_squared_l2, band,
           nullptr, pair_indices);
     }
+  } else {
+    throw std::logic_error("launch_dtw_kernel: unknown KernelPath");
   }
 
   CUDA_CHECK(cudaGetLastError());
@@ -1500,7 +1521,10 @@ CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts)
 {
+  validate_cuda_precision(opts.precision);
+  validate_kernel_override(opts.kernel_override);
   CUDADistMatResult result;
+  result.kernel_used = "none";
   const size_t N = series.size();
   result.n = N;
   result.matrix.resize(N * N, 0.0);
@@ -1519,27 +1543,19 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   if (max_L == 0) return result;
 
+  const auto kernel_selection = detail::select_kernel(
+      max_L, opts.kernel_override);
+  result.kernel_used = std::string(
+      detail::kernel_path_name(kernel_selection.path));
+  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+
   // Fix 1: No pair index arrays — pairs are decoded on-device via decode_pair().
   // This eliminates 2 * num_pairs * sizeof(int) host allocation + H2D transfer.
   const size_t num_pairs = N * (N - 1) / 2;
   result.pairs_computed = num_pairs;
 
   // Determine compute precision
-  bool use_fp32 = false;
-  switch (opts.precision) {
-    case CUDAPrecision::FP32:
-      use_fp32 = true;
-      break;
-    case CUDAPrecision::FP64:
-      use_fp32 = false;
-      break;
-    case CUDAPrecision::Auto:
-    default: {
-      auto gpu_cfg = query_gpu_config(opts.device_id);
-      use_fp32 = (gpu_cfg.fp64_rate == FP64Rate::Slow);
-      break;
-    }
-  }
+  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
 
   // ---------------------------------------------------------------------------
   // Phase 1 (optional): LB_Keogh pruning
@@ -1564,25 +1580,30 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
         if (active_pairs == 0) {
           result.gpu_time_sec = 0.0;
+          result.kernel_used = "none";
+          result.kernel_override_fell_back = false;
           result.matrix = download_result_matrix(workspace, N);
         } else {
           result.matrix = launch_dtw_kernel<float>(
               series, lengths,
               N, max_L, active_pairs,
               opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+              kernel_selection.path,
               workspace.d_active_pairs.get());
         }
       } else {
         result.matrix = launch_dtw_kernel<float>(
             series, lengths,
             N, max_L, num_pairs,
-            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
+            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+            kernel_selection.path);
       }
     } else {
       result.matrix = launch_dtw_kernel<float>(
           series, lengths,
           N, max_L, num_pairs,
-          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
+          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+          kernel_selection.path);
     }
   } else {
     if (do_lb_pruning) {
@@ -1598,25 +1619,30 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
         if (active_pairs == 0) {
           result.gpu_time_sec = 0.0;
+          result.kernel_used = "none";
+          result.kernel_override_fell_back = false;
           result.matrix = download_result_matrix(workspace, N);
         } else {
           result.matrix = launch_dtw_kernel<double>(
               series, lengths,
               N, max_L, active_pairs,
               opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+              kernel_selection.path,
               workspace.d_active_pairs.get());
         }
       } else {
         result.matrix = launch_dtw_kernel<double>(
             series, lengths,
             N, max_L, num_pairs,
-            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
+            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+            kernel_selection.path);
       }
     } else {
       result.matrix = launch_dtw_kernel<double>(
           series, lengths,
           N, max_L, num_pairs,
-          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec);
+          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
+          kernel_selection.path);
     }
   }
 
@@ -2241,7 +2267,8 @@ std::vector<double> launch_one_vs_all_kernel(
     const std::vector<std::vector<double>> &series,
     const std::vector<int> &lengths,
     size_t K, size_t N, size_t max_L,
-    bool use_squared_l2, int band, int device_id, double &gpu_time_sec)
+    bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
+    detail::KernelPath kernel_path)
 {
   const size_t series_bytes = N * max_L * sizeof(T);
   const size_t query_bytes  = K * max_L * sizeof(T);
@@ -2280,7 +2307,7 @@ std::vector<double> launch_one_vs_all_kernel(
   const int max_L_int = static_cast<int>(max_L);
 
   // Kernel dispatch based on max_L (same thresholds as pairwise kernels)
-  if (max_L <= 32) {
+  if (kernel_path == detail::KernelPath::Warp) {
     constexpr int ppb = PAIRS_PER_BLOCK;
     const int grid_x = static_cast<int>((N + ppb - 1) / ppb);
     dim3 grid(grid_x, K_int);
@@ -2292,7 +2319,7 @@ std::vector<double> launch_one_vs_all_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(),
         workspace.d_output.get(), max_L_int, N_int, K_int, use_squared_l2, band);
 
-  } else if (max_L <= 128) {
+  } else if (kernel_path == detail::KernelPath::RegTileW4) {
     constexpr int ppb = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 4;
     const int grid_x = static_cast<int>((N + ppb - 1) / ppb);
@@ -2307,7 +2334,7 @@ std::vector<double> launch_one_vs_all_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(),
         workspace.d_output.get(), max_L_int, N_int, K_int, use_squared_l2, band);
 
-  } else if (max_L <= 256) {
+  } else if (kernel_path == detail::KernelPath::RegTileW8) {
     constexpr int ppb = PAIRS_PER_BLOCK;
     constexpr int TILE_W = 8;
     const int grid_x = static_cast<int>((N + ppb - 1) / ppb);
@@ -2322,7 +2349,7 @@ std::vector<double> launch_one_vs_all_kernel(
         workspace.d_series.get(), workspace.d_lengths.get(),
         workspace.d_output.get(), max_L_int, N_int, K_int, use_squared_l2, band);
 
-  } else {
+  } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: one block per target, grid.y = K queries
     const bool preload = (max_L <= 512);
     // Task 0.1: L>2048 uses the 3-buffer path (the double-buffer register
@@ -2357,6 +2384,8 @@ std::vector<double> launch_one_vs_all_kernel(
         workspace.d_queries.get(), workspace.d_query_lengths.get(),
         workspace.d_series.get(), workspace.d_lengths.get(),
         workspace.d_output.get(), max_L_int, N_int, K_int, use_squared_l2, band);
+  } else {
+    throw std::logic_error("launch_one_vs_all_kernel: unknown KernelPath");
   }
 
   CUDA_CHECK(cudaGetLastError());
@@ -2397,6 +2426,8 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
     size_t query_index,
     const CUDADistMatOptions &opts)
 {
+  validate_cuda_precision(opts.precision);
+  validate_kernel_override(opts.kernel_override);
   CUDAOneVsNResult result;
   const size_t N = series.size();
   result.n = N;
@@ -2418,31 +2449,27 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
   }
   if (max_L == 0) return result;
 
+  const auto kernel_selection = detail::select_kernel(
+      max_L, opts.kernel_override);
+  result.kernel_used = std::string(
+      detail::kernel_path_name(kernel_selection.path));
+  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+
   std::vector<std::vector<double>> queries_vec = { series[query_index] };
   std::vector<int> query_lengths_vec = { static_cast<int>(series[query_index].size()) };
 
-  bool use_fp32 = false;
-  switch (opts.precision) {
-    case CUDAPrecision::FP32: use_fp32 = true; break;
-    case CUDAPrecision::FP64: use_fp32 = false; break;
-    case CUDAPrecision::Auto:
-    default: {
-      auto gpu_cfg = query_gpu_config(opts.device_id);
-      use_fp32 = (gpu_cfg.fp64_rate == FP64Rate::Slow);
-      break;
-    }
-  }
+  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
 
   if (use_fp32) {
     result.distances = launch_one_vs_all_kernel<float>(
         queries_vec, query_lengths_vec, series, lengths,
         1, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   } else {
     result.distances = launch_one_vs_all_kernel<double>(
         queries_vec, query_lengths_vec, series, lengths,
         1, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   }
 
   if (opts.verbose) {
@@ -2464,6 +2491,8 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
     const std::vector<std::vector<double>> &series,
     const CUDADistMatOptions &opts)
 {
+  validate_cuda_precision(opts.precision);
+  validate_kernel_override(opts.kernel_override);
   CUDAOneVsNResult result;
   const size_t N = series.size();
   result.n = N;
@@ -2481,31 +2510,27 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
   }
   if (max_L == 0) return result;
 
+  const auto kernel_selection = detail::select_kernel(
+      max_L, opts.kernel_override);
+  result.kernel_used = std::string(
+      detail::kernel_path_name(kernel_selection.path));
+  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+
   std::vector<std::vector<double>> queries_vec = { query };
   std::vector<int> query_lengths_vec = { static_cast<int>(query.size()) };
 
-  bool use_fp32 = false;
-  switch (opts.precision) {
-    case CUDAPrecision::FP32: use_fp32 = true; break;
-    case CUDAPrecision::FP64: use_fp32 = false; break;
-    case CUDAPrecision::Auto:
-    default: {
-      auto gpu_cfg = query_gpu_config(opts.device_id);
-      use_fp32 = (gpu_cfg.fp64_rate == FP64Rate::Slow);
-      break;
-    }
-  }
+  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
 
   if (use_fp32) {
     result.distances = launch_one_vs_all_kernel<float>(
         queries_vec, query_lengths_vec, series, lengths,
         1, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   } else {
     result.distances = launch_one_vs_all_kernel<double>(
         queries_vec, query_lengths_vec, series, lengths,
         1, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   }
 
   if (opts.verbose) {
@@ -2527,6 +2552,8 @@ CUDAKVsNResult compute_dtw_k_vs_all(
     const std::vector<size_t> &query_indices,
     const CUDADistMatOptions &opts)
 {
+  validate_cuda_precision(opts.precision);
+  validate_kernel_override(opts.kernel_override);
   CUDAKVsNResult result;
   const size_t N = series.size();
   const size_t K = query_indices.size();
@@ -2554,6 +2581,12 @@ CUDAKVsNResult compute_dtw_k_vs_all(
   }
   if (max_L == 0) return result;
 
+  const auto kernel_selection = detail::select_kernel(
+      max_L, opts.kernel_override);
+  result.kernel_used = std::string(
+      detail::kernel_path_name(kernel_selection.path));
+  result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
+
   std::vector<std::vector<double>> queries_vec(K);
   std::vector<int> query_lengths_vec(K);
   for (size_t qi = 0; qi < K; ++qi) {
@@ -2561,28 +2594,18 @@ CUDAKVsNResult compute_dtw_k_vs_all(
     query_lengths_vec[qi] = static_cast<int>(series[query_indices[qi]].size());
   }
 
-  bool use_fp32 = false;
-  switch (opts.precision) {
-    case CUDAPrecision::FP32: use_fp32 = true; break;
-    case CUDAPrecision::FP64: use_fp32 = false; break;
-    case CUDAPrecision::Auto:
-    default: {
-      auto gpu_cfg = query_gpu_config(opts.device_id);
-      use_fp32 = (gpu_cfg.fp64_rate == FP64Rate::Slow);
-      break;
-    }
-  }
+  const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
 
   if (use_fp32) {
     result.distances = launch_one_vs_all_kernel<float>(
         queries_vec, query_lengths_vec, series, lengths,
         K, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   } else {
     result.distances = launch_one_vs_all_kernel<double>(
         queries_vec, query_lengths_vec, series, lengths,
         K, N, max_L, opts.use_squared_l2, opts.band, opts.device_id,
-        result.gpu_time_sec);
+        result.gpu_time_sec, kernel_selection.path);
   }
 
   if (opts.verbose) {

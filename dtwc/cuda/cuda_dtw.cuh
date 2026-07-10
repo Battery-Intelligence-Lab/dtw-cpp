@@ -59,8 +59,8 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
 };
 
 struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {
-  // All fields come from DistMatResultBase. kernel_used is populated by the
-  // CUDA backend when known; consumers can match on it for benchmarking.
+  /// True only when a valid but unsupported CUDA override used Auto instead.
+  bool kernel_override_fell_back = false;
 };
 
 /// Check if CUDA is available (device count > 0).
@@ -99,6 +99,8 @@ struct CUDAOneVsNResult {
   std::vector<double> distances; ///< N distances from query to each series
   double gpu_time_sec = 0;       ///< GPU kernel execution time
   size_t n = 0;                  ///< Number of target series
+  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
+  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
 };
 
 /// Compute DTW distances from one query series (by index) to all N series.
@@ -120,6 +122,8 @@ struct CUDAKVsNResult {
   double gpu_time_sec = 0;       ///< GPU kernel execution time
   size_t k = 0;                  ///< Number of query series
   size_t n = 0;                  ///< Number of target series
+  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
+  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
 };
 
 /// Compute multiple rows of the distance matrix at once.
