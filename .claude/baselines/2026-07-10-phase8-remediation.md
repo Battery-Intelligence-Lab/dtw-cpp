@@ -2181,3 +2181,60 @@ unavailable-HiGHS error and now explicitly proves the caller vectors unchanged.
 Verdict: **PASS.** Direct exact solvers expose no heuristic or partially decoded
 clustering state: failure restores the caller, and success publishes exactly k
 unique medoids plus N valid labels only after complete validation.
+
+## M38 — Python Problem-backed iteration limits
+
+The M35 closeout followed `max_iter` through Python's functional Tier-1 route.
+PAM, OneBatchPAM, and CLARA passed it directly to their algorithm bindings, but
+the common `Problem.cluster()` path accepted the argument and discarded it for
+`kmedoids`, `mip`, `lrcore`, and `tadpole`; each new Problem silently retained
+its default 100.
+
+A fake-Problem event table registered all four omissions independently while a
+no-setter fake proved the three explicit-parameter methods already forwarded
+the requested value exactly once:
+
+```text
+Problem.cluster methods: 4 failed
+explicit-parameter methods: 1 passed
+kmedoids actual: [('clusters',2),('seed',42),('cluster',Kmedoids)]
+kmedoids expected included: ('max_iter',7) before dispatch
+mip/lrcore/tadpole likewise jumped from clusters directly to cluster
+```
+
+The real discriminator uses M35's translated eight-waveform seed fixture and a
+fresh core containing M29's coherent capped-state repair. Before the Python
+fix, `dtwcpp.cluster(..., method="kmedoids", max_iter=1)` ignored the cap and
+returned the default converged medoids:
+
+```text
+actual capped medoids:   [6,1,3]
+expected capped medoids: [6,1,4]
+```
+
+Direct advanced-Problem runs established the preregistered oracles before the
+edit. At seed 42, one iteration returns medoids `[6,1,4]`, labels
+`[1,1,1,2,2,0,0,0]`, and cost 20; the default 100 converges to `[6,1,3]` with
+the same labels and cost. Thus the test distinguishes real work without relying
+on a cost difference, and its capped labels/cost also pin M29's final assignment.
+
+The repair sets `Problem.max_iter` once, immediately after `n_clusters` and
+before method selection/dispatch. Only code that reaches `Problem.cluster()`
+executes that line. PAM, OneBatchPAM, and CLARA return earlier with their direct
+argument; hierarchical also returns before the Problem-backed path.
+
+Green evidence used the freshly rebuilt solver-free Python target
+`build/cfg-gate-normal/python/_dtwcpp_core.cp313-win_amd64.pyd` (SHA-256
+`b6d11d0f0cef2c33a0ee58e1b15557f7c418cacc16e8af1d046bdb2dc4868576`):
+
+```text
+four-branch + explicit-method dispatch gates:                 7 passed
+tests/python/test_api.py:                                    55 passed
+contract + clustering semantics + CV + sklearn estimator:  221 passed
+test_tier1_cpp_api.exe "[lloyd]": 16 assertions / 4 cases passed
+py_compile _api.py + test_api.py:                            passed
+```
+
+Verdict: **PASS.** Every Problem-backed Tier-1 method receives the caller's
+limit before dispatch, the capped Lloyd route exposes M29's coherent state,
+default behavior is unchanged, and direct-parameter methods are not double-set.

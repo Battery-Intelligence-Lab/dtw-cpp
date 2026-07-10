@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made Python Tier-1 `kmedoids`, `mip`, `lrcore`, and `tadpole` honor the
+  public `max_iter` argument before `Problem.cluster()` dispatch. The M29
+  one-iteration Lloyd result is now reachable without changing the default-100
+  result or methods that already receive their limit directly.
 - Made direct HiGHS and Gurobi clustering transactional: FastPAM incumbents no
   longer overwrite caller state, exact assignments are decoded and validated
   privately, and only a complete k-medoid/N-label result is published. Solver

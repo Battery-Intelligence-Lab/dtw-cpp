@@ -125,6 +125,24 @@ class TestClusterLocal:
         np.testing.assert_array_equal(before.labels, after.labels)
         assert before.cost == after.cost == 20.0
 
+    def test_lloyd_honors_nondefault_iteration_cap_and_keeps_default(self):
+        series = _seed_sensitive_series()
+
+        capped = dtwcpp.cluster(
+            series, k=3, method="kmedoids", max_iter=1,
+        )
+        default = dtwcpp.cluster(series, k=3, method="kmedoids")
+
+        # M29 guarantees the capped result is internally coherent after its
+        # final medoid update. The two strict oracles distinguish forwarding
+        # max_iter=1 from silently retaining Problem's default 100.
+        np.testing.assert_array_equal(capped.medoids, [6, 1, 4])
+        np.testing.assert_array_equal(capped.labels, [1, 1, 1, 2, 2, 0, 0, 0])
+        assert capped.cost == 20.0
+        np.testing.assert_array_equal(default.medoids, [6, 1, 3])
+        np.testing.assert_array_equal(default.labels, capped.labels)
+        assert default.cost == 20.0
+
     def test_result_fields_populated(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
         assert res.device == "cpu"
@@ -448,6 +466,87 @@ class TestClusterMethodDispatch:
 # (was the deprecated set_number_of_clusters); the fakes below pin that name.
 # ---------------------------------------------------------------------------
 class TestLocalDispatchBindingNames:
+    @pytest.mark.parametrize(
+        ("method", "expected_method", "expects_seed"),
+        [
+            ("kmedoids", dtwcpp.Method.Kmedoids, True),
+            ("mip", dtwcpp.Method.MIP, False),
+            ("lrcore", dtwcpp.Method.LRCore, False),
+            ("tadpole", dtwcpp.Method.TADPole, False),
+        ],
+    )
+    def test_problem_cluster_methods_set_limit_before_dispatch(
+        self, method, expected_method, expects_seed,
+    ):
+        """Every Problem.cluster route must apply the public iteration cap."""
+        from dtwcpp import _api
+
+        class FakeProblem:
+            def __init__(self):
+                self.method = None
+                self.events = []
+                self.clusters_ind = [0, 1]
+                self.centroids_ind = [0]
+
+            def set_n_clusters(self, k):
+                self.events.append(("clusters", k))
+
+            def set_max_iter(self, limit):
+                self.events.append(("max_iter", limit))
+
+            def set_random_seed(self, seed):
+                self.events.append(("seed", seed))
+
+            def cluster(self):
+                self.events.append(("cluster", self.method))
+
+            def find_total_cost(self):
+                return 0.0
+
+        fake = FakeProblem()
+        _api._run_local_method(fake, method, k=2, max_iter=7)
+
+        expected = [("clusters", 2), ("max_iter", 7)]
+        if expects_seed:
+            expected.append(("seed", dtwcpp.DEFAULT_RANDOM_SEED))
+        expected.append(("cluster", expected_method))
+        assert fake.events == expected
+
+    def test_explicit_limit_methods_do_not_use_problem_setter(self, monkeypatch):
+        """PAM/OneBatch/CLARA receive max_iter directly, exactly once."""
+        from dtwcpp import _api
+
+        class FakeResult:
+            labels = [0, 1]
+            medoid_indices = [0]
+            total_cost = 0.0
+
+        class NoProblemLimitSetter:
+            pass
+
+        calls = []
+
+        def fake_pam(prob, k, seed, max_iter):
+            calls.append(("pam", max_iter))
+            return FakeResult()
+
+        def fake_onebatch(prob, k, **kwargs):
+            calls.append(("onebatch", kwargs["max_iter"]))
+            return FakeResult()
+
+        def fake_clara(prob, k, **kwargs):
+            calls.append(("clara", kwargs["max_iter"]))
+            return FakeResult()
+
+        monkeypatch.setattr(dtwcpp, "fast_pam_seeded", fake_pam)
+        monkeypatch.setattr(dtwcpp, "one_batch_pam", fake_onebatch)
+        monkeypatch.setattr(dtwcpp, "fast_clara", fake_clara)
+
+        problem = NoProblemLimitSetter()
+        for method in ("pam", "onebatch", "clara"):
+            _api._run_local_method(problem, method, k=2, max_iter=7)
+        assert calls == [("pam", 7), ("onebatch", 7), ("clara", 7)]
+
     def test_local_mip_sets_method_mip_and_calls_cluster(self):
         """method='mip' -> Problem.method = Method.MIP, Problem.cluster(), then
         read back clusters_ind / centroids_ind / find_total_cost().
@@ -467,6 +566,9 @@ class TestLocalDispatchBindingNames:
             def set_n_clusters(self, k):
                 self.nc = k
 
+            def set_max_iter(self, limit):
+                self.max_iter = limit
+
             def cluster(self):
                 self.cluster_calls += 1
 
@@ -478,6 +580,7 @@ class TestLocalDispatchBindingNames:
             fake, "mip", k=2, max_iter=100)
         assert fake.method == dtwcpp.Method.MIP        # NOT Kmedoids
         assert fake.nc == 2
+        assert fake.max_iter == 100
         assert fake.cluster_calls == 1
         assert labels == [0, 1, 0, 1]
         assert medoids == [0, 1]
@@ -498,6 +601,9 @@ class TestLocalDispatchBindingNames:
             def set_n_clusters(self, k):
                 self.nc = k
 
+            def set_max_iter(self, limit):
+                self.events.append(("max_iter", limit))
+
             def set_random_seed(self, seed):
                 self.events.append(("seed", seed))
 
@@ -513,6 +619,7 @@ class TestLocalDispatchBindingNames:
         assert fake.method == dtwcpp.Method.Kmedoids   # NOT MIP
         assert fake.nc == 2
         assert fake.events == [
+            ("max_iter", 100),
             ("seed", dtwcpp.DEFAULT_RANDOM_SEED),
             ("cluster", None),
         ]

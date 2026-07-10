@@ -320,6 +320,9 @@ def _run_local_method(prob, method, k, max_iter):
 
     # kmedoids (Lloyd) and mip run through Problem.cluster() and read back state.
     prob.set_n_clusters(k)
+    # These branches do not receive max_iter as a direct function argument;
+    # configure the shared Problem before dispatch instead.
+    prob.set_max_iter(max_iter)
     if method == "mip":
         prob.method = dtwcpp.Method.MIP
     elif method == "lrcore":
