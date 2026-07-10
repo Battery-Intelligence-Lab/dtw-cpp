@@ -1159,3 +1159,38 @@ M20 rather than folded into this deterministic direct-solver change.
 Verdict: **PASS.** Lloyd and direct MIP warm starts are reproducible per
 invocation, exact solver optima are unchanged, best-restart output is truthful,
 and the explicit legacy/custom-initializer compatibility boundary is preserved.
+
+## M21 — LF-safe shell entrypoints on Windows
+
+The M16 SLURM last-mile syntax gate exposed a checkout-level failure before any
+remote work could begin. The repository had no `.gitattributes`, the local Git
+configuration used `core.autocrlf=true`, and tracked LF blobs were materialized
+as CRLF or mixed worktree files. Git Bash rejected the documented entrypoints:
+
+```text
+scripts/slurm/slurm_remote.sh: line 49: syntax error near unexpected token `done'
+scripts/slurm/jobs/cluster_generic.slurm: line 43: syntax error near unexpected token `$'{\r''
+```
+
+This was not a shell-logic defect: `git ls-files --eol` showed LF index blobs.
+The fix is a repository checkout contract, not an environment workaround:
+
+```gitattributes
+*.sh text eol=lf
+*.slurm text eol=lf
+```
+
+All tracked matching files were normalized before validation. The preregistered
+gate enumerated the repository rather than sampling only the two M16 files:
+
+```text
+tracked *.sh + *.slurm: 11
+git ls-files --eol:      11/11 i/lf, w/lf, attr/text eol=lf
+bash -n:                 11/11 passed
+```
+
+No script content or runtime behavior belongs to M21; M16's separate wrapper and
+job arguments remain unstaged for its own semantic commit.
+
+Verdict: **PASS.** Fresh Windows checkouts now preserve parseable LF entrypoints,
+and every current shell/SLURM script passes the same syntax gate.

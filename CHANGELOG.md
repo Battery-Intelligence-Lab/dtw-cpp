@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Enforced LF checkouts for every shell and SLURM entrypoint so documented Git
+  Bash workflows remain parseable on Windows with `core.autocrlf=true`; all 11
+  tracked scripts pass a repository-wide `bash -n` gate.
 - Made Lloyd k-medoids and direct HiGHS/Gurobi MIP warm starts invocation-local
   at the shared seed-42 default. Lloyd repetitions now use checked `seed+i` and
   return the actual lowest-cost state instead of the final run; custom
