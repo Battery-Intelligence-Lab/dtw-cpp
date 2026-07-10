@@ -63,6 +63,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - FastPAM's seeded BUILD now documents and tests objective-matched D sampling
   for its sum-of-DTW-distances PAM objective, and no longer uses deprecated
   `Problem::distByInd` access internally.
+- Strengthened the OneBatchPAM 50k release validation with warped length-64–128
+  signals, an exact exhaustive profile oracle, a discriminating mutation check,
+  and tight work/memory bands instead of the former scalar length-1 fixture.
 
 # 2.0.0rc1 - 2026-07-10
 

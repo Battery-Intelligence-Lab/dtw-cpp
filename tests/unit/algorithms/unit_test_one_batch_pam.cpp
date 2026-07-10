@@ -7,8 +7,9 @@
  *              distance matrix remains unfilled.
  *   HARD-QUALITY: on separated synthetic data, objective <= 1.05 * FasterPAM.
  *   HARD-STATE: deterministic for a fixed seed; result is written to Problem.
- *   ADVISORY-50K [.] bench: N=50,000, calls <=10% of N^2 and objective within
- *              5% of the exact separated-line/FasterPAM oracle.
+ *   ADVISORY-50K [.] bench: N=50,000 genuinely warped series of lengths
+ *              64..128, calls <=0.52198956% of N^2 and objective within 5%
+ *              of an exhaustive exact 100-profile medoid oracle.
  */
 
 #include <dtwc.hpp>
@@ -17,9 +18,12 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <numeric>
 #include <random>
 #include <set>
@@ -30,6 +34,153 @@
 using namespace dtwc;
 
 namespace {
+
+void require_valid(const core::ClusteringResult &result, int n, int k);
+
+constexpr int warped_groups = 5;
+constexpr int warped_variants = 100;
+constexpr int warped_min_length = 64;
+constexpr int warped_max_length = 128;
+constexpr int warped_band = 8;
+constexpr int warped_batch = 256;
+constexpr double warped_group_separation = 1000.0;
+constexpr double warped_profile_abs_bound = 3.1;
+
+std::vector<data_t> warped_profile(int variant, int group = 0)
+{
+  constexpr double pi = 3.141592653589793238462643383279502884;
+  const int length = warped_min_length + (variant * 37) % (warped_max_length - warped_min_length + 1);
+  const double warp = -0.36 + 0.72 * static_cast<double>(variant % 20) / 19.0;
+  const double phase = -0.05 + 0.10 * static_cast<double>(variant / 20) / 4.0;
+  const double amplitude =
+    0.92 + 0.16 * static_cast<double>((variant * 7) % 19) / 18.0;
+  const double level =
+    -0.08 + 0.16 * static_cast<double>((variant * 11) % 23) / 22.0;
+
+  std::vector<data_t> series(static_cast<std::size_t>(length));
+  for (int t = 0; t < length; ++t) {
+    const double u = static_cast<double>(t) / static_cast<double>(length - 1);
+    // A monotone nonlinear clock: its derivative is bounded below by
+    // 1-|warp|-|phase| >= 0.59, so this is a time warp rather than a fold.
+    const double tau = u + warp * u * (1.0 - u)
+                       + phase * std::sin(2.0 * pi * u) / (2.0 * pi);
+    const double shape = amplitude
+                           * (1.8 * std::sin(2.0 * pi * tau)
+                              + 0.65 * std::cos(4.0 * pi * tau)
+                              + 0.30 * std::sin(10.0 * pi * tau))
+                         + level;
+    series[static_cast<std::size_t>(t)] =
+      group * warped_group_separation + shape;
+  }
+  return series;
+}
+
+Problem make_warped_problem(int replicas)
+{
+  std::vector<std::vector<data_t>> series;
+  std::vector<std::string> names;
+  const int n = warped_groups * warped_variants * replicas;
+  series.reserve(static_cast<std::size_t>(n));
+  names.reserve(static_cast<std::size_t>(n));
+  for (int group = 0; group < warped_groups; ++group) {
+    for (int variant = 0; variant < warped_variants; ++variant) {
+      const auto profile = warped_profile(variant, group);
+      for (int replica = 0; replica < replicas; ++replica) {
+        series.push_back(profile);
+        names.push_back("g" + std::to_string(group) + "_v"
+                        + std::to_string(variant) + "_r"
+                        + std::to_string(replica));
+      }
+    }
+  }
+  Problem problem("one_batch_warped_scaling");
+  problem.set_band(warped_band);
+  problem.set_data(Data(std::move(series), std::move(names)));
+  return problem;
+}
+
+struct WarpedOracle
+{
+  int best_variant = -1;
+  int worst_variant = -1;
+  double best_cost_per_replica = std::numeric_limits<double>::infinity();
+  double worst_cost_per_replica = -1.0;
+};
+
+WarpedOracle warped_oracle()
+{
+  std::vector<std::vector<data_t>> profiles;
+  profiles.reserve(warped_variants);
+  for (int variant = 0; variant < warped_variants; ++variant)
+    profiles.push_back(warped_profile(variant));
+
+  WarpedOracle oracle;
+  for (int candidate = 0; candidate < warped_variants; ++candidate) {
+    double per_group = 0.0;
+    for (int variant = 0; variant < warped_variants; ++variant) {
+      per_group += dtwBanded<data_t>(profiles[static_cast<std::size_t>(candidate)],
+                                     profiles[static_cast<std::size_t>(variant)],
+                                     warped_band);
+    }
+    const double all_groups = warped_groups * per_group;
+    if (all_groups < oracle.best_cost_per_replica) {
+      oracle.best_cost_per_replica = all_groups;
+      oracle.best_variant = candidate;
+    }
+    if (all_groups > oracle.worst_cost_per_replica) {
+      oracle.worst_cost_per_replica = all_groups;
+      oracle.worst_variant = candidate;
+    }
+  }
+  return oracle;
+}
+
+constexpr std::uint64_t one_batch_max_evaluations(int n)
+{
+  // The N*m table omits its m self-pairs. If no selected medoid belongs to
+  // the batch, exact labeling adds k*(N-1); any in-batch medoid removes a
+  // complete labeling column. This is a tight implementation-independent
+  // upper bound for the registered m and k.
+  return static_cast<std::uint64_t>(n) * warped_batch - warped_batch
+         + static_cast<std::uint64_t>(warped_groups) * (n - 1);
+}
+
+void require_warped_fixture_contract()
+{
+  std::set<int> lengths;
+  for (int variant = 0; variant < warped_variants; ++variant) {
+    const auto profile = warped_profile(variant);
+    lengths.insert(static_cast<int>(profile.size()));
+    for (double value : profile)
+      REQUIRE(std::abs(value) <= warped_profile_abs_bound);
+  }
+  REQUIRE(*lengths.begin() == warped_min_length);
+  REQUIRE(*lengths.rbegin() == warped_max_length);
+  REQUIRE(lengths.size() == 65);
+}
+
+void require_warped_result(const core::ClusteringResult &result,
+                           const algorithms::OneBatchPAMStats &stats,
+                           int replicas, const WarpedOracle &oracle)
+{
+  const int group_size = warped_variants * replicas;
+  const int n = warped_groups * group_size;
+  require_valid(result, n, warped_groups);
+
+  std::set<int> represented_groups;
+  for (int medoid : result.medoid_indices)
+    represented_groups.insert(medoid / group_size);
+  REQUIRE(represented_groups.size() == warped_groups);
+
+  const double exact_oracle = oracle.best_cost_per_replica * replicas;
+  REQUIRE(result.total_cost <= exact_oracle * 1.05 + 1e-9);
+  REQUIRE(stats.batch_size == warped_batch);
+  REQUIRE(stats.distance_evaluations <= one_batch_max_evaluations(n));
+  REQUIRE(stats.full_matrix_fraction
+          <= static_cast<double>(one_batch_max_evaluations(n))
+               / (static_cast<double>(n) * n));
+  REQUIRE_FALSE(result.total_cost == 0.0);
+}
 
 Problem make_problem(int n, int groups, int length = 8)
 {
@@ -299,29 +450,133 @@ TEST_CASE("OneBatchPAM reports explicit batch sizes raised to the cluster count"
   }
 }
 
-TEST_CASE("OneBatchPAM 50k registered scaling and quality band",
-          "[.][one_batch_pam][bench][50k]")
+TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminating",
+          "[one_batch_pam][quality][warped_fixture]")
 {
-  constexpr int n = 50000;
-  constexpr int k = 5;
-  auto problem = make_problem(n, k, 1);
+  require_warped_fixture_contract();
+  const auto oracle = warped_oracle();
+
+  REQUIRE(oracle.best_variant >= 0);
+  REQUIRE(oracle.worst_variant >= 0);
+  REQUIRE(oracle.best_variant != oracle.worst_variant);
+  // Falsification check registered with the 5% quality band: deliberately
+  // choosing the exhaustive oracle's worst profile in every group must fail
+  // the very band used by the preflight and 50k simulations.
+  REQUIRE(oracle.worst_cost_per_replica > oracle.best_cost_per_replica * 1.05);
+
+  // The oracle is globally exact, not merely a feasible reference. Each
+  // profile is bounded by +/-3.1 and adjacent groups are shifted by 1000.
+  // Thus omitting a group costs at least 100*R*64*(1000-2*3.1), whereas an
+  // band-admissible scaled-diagonal path to any one-per-group representative
+  // costs at most
+  // 500*R*(2*128-1)*(2*3.1). The former is strictly larger, so every global
+  // k=5 optimum represents all five groups. Equal variant multiplicities and
+  // translation invariance then reduce it exactly to the exhaustive search
+  // over the 100 unique within-group candidates above.
+  const double missing_group_lower = warped_variants * warped_min_length
+                                     * (warped_group_separation - 2.0 * warped_profile_abs_bound);
+  const double one_per_group_upper = warped_groups * warped_variants
+                                     * (2 * warped_max_length - 1) * (2.0 * warped_profile_abs_bound);
+  REQUIRE(missing_group_lower > one_per_group_upper);
+
+  std::cout << std::setprecision(17)
+            << "M6_ORACLE best_variant=" << oracle.best_variant
+            << " worst_variant=" << oracle.worst_variant
+            << " best_cost_per_replica=" << oracle.best_cost_per_replica
+            << " worst_cost_per_replica=" << oracle.worst_cost_per_replica
+            << " mutation_ratio="
+            << oracle.worst_cost_per_replica / oracle.best_cost_per_replica
+            << " missing_group_lower=" << missing_group_lower
+            << " one_per_group_upper=" << one_per_group_upper
+            << '\n';
+}
+
+TEST_CASE("OneBatchPAM warped scaling preflight",
+          "[.][one_batch_pam][bench][preflight]")
+{
+  constexpr int replicas = 10;
+  constexpr int n = warped_groups * warped_variants * replicas;
+  const auto oracle = warped_oracle();
+  auto problem = make_warped_problem(replicas);
   algorithms::OneBatchPAMOptions options;
-  options.n_clusters = k;
-  options.batch_size = 256;
+  options.n_clusters = warped_groups;
+  options.batch_size = warped_batch;
   options.random_seed = 42;
   algorithms::OneBatchPAMStats stats;
-  const auto result = algorithms::one_batch_pam(problem, options, &stats);
 
-  // On this separated one-dimensional construction, the exact group medians
-  // are the FasterPAM fixed point. Compute that oracle directly without
-  // materialising the infeasible 50k-by-50k matrix.
-  const int group_size = n / k;
-  double oracle_cost = 0.0;
-  for (int group = 0; group < k; ++group) {
-    const int median_offset = (group_size - 1) / 2;
-    for (int offset = 0; offset < group_size; ++offset)
-      oracle_cost += std::abs(offset - median_offset) * 0.015;
-  }
-  REQUIRE(result.total_cost <= oracle_cost * 1.05 + 1e-9);
-  REQUIRE(stats.full_matrix_fraction <= 0.10);
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+  const double seconds = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  require_warped_result(result, stats, replicas, oracle);
+
+  std::cout << std::setprecision(17)
+            << "M6_PREFLIGHT n=" << n
+            << " variants=" << warped_variants
+            << " replicas=" << replicas
+            << " lengths=64..128 band=" << warped_band
+            << " batch=" << stats.batch_size
+            << " wall_s=" << seconds
+            << " evaluations=" << stats.distance_evaluations
+            << " max_evaluations=" << one_batch_max_evaluations(n)
+            << " fraction=" << stats.full_matrix_fraction
+            << " cost=" << result.total_cost
+            << " exact_oracle=" << oracle.best_cost_per_replica * replicas
+            << " ratio=" << result.total_cost / (oracle.best_cost_per_replica * replicas)
+            << " accepted_swaps=" << stats.accepted_swaps << " medoids=";
+  for (std::size_t i = 0; i < result.medoid_indices.size(); ++i)
+    std::cout << (i == 0 ? "" : ",") << result.medoid_indices[i];
+  std::cout << '\n';
+}
+
+TEST_CASE("OneBatchPAM 50k registered warped scaling and quality band",
+          "[.][one_batch_pam][bench][50k]")
+{
+  constexpr int replicas = 100;
+  constexpr int n = warped_groups * warped_variants * replicas;
+  static_assert(n == 50000);
+  static_assert(one_batch_max_evaluations(n) == 13049739);
+
+  // Registered before execution:
+  //   memory: N*m doubles = 102,400,000 B (97.65625 MiB) for the only table;
+  //           series payload = 4,815,000 doubles (36.7355 MiB).
+  //   work:   <=13,049,739 DTWs = 0.52198956% of N^2; with <=17 band
+  //           cells per short-side row and lengths <=128, <=28,396,242,944
+  //           scalar DP-cell updates (a conservative upper bound).
+  //   quality: all five groups represented and cost <=1.05* the exact oracle.
+  // Runtime is advisory on a shared host and is predicted from the separately
+  // run, structurally identical replicas=10 preflight before this test starts.
+  const auto oracle = warped_oracle();
+  auto problem = make_warped_problem(replicas);
+  algorithms::OneBatchPAMOptions options;
+  options.n_clusters = warped_groups;
+  options.batch_size = warped_batch;
+  options.random_seed = 42;
+  algorithms::OneBatchPAMStats stats;
+
+  const auto start = std::chrono::steady_clock::now();
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+  const double seconds = std::chrono::duration<double>(
+                           std::chrono::steady_clock::now() - start)
+                           .count();
+  require_warped_result(result, stats, replicas, oracle);
+
+  std::cout << std::setprecision(17)
+            << "M6_50K n=" << n
+            << " variants=" << warped_variants
+            << " replicas=" << replicas
+            << " lengths=64..128 band=" << warped_band
+            << " batch=" << stats.batch_size
+            << " wall_s=" << seconds
+            << " evaluations=" << stats.distance_evaluations
+            << " max_evaluations=" << one_batch_max_evaluations(n)
+            << " fraction=" << stats.full_matrix_fraction
+            << " cost=" << result.total_cost
+            << " exact_oracle=" << oracle.best_cost_per_replica * replicas
+            << " ratio=" << result.total_cost / (oracle.best_cost_per_replica * replicas)
+            << " accepted_swaps=" << stats.accepted_swaps << " medoids=";
+  for (std::size_t i = 0; i < result.medoid_indices.size(); ++i)
+    std::cout << (i == 0 ? "" : ",") << result.medoid_indices[i];
+  std::cout << '\n';
 }

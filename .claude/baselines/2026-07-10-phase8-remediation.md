@@ -846,3 +846,66 @@ unit_test_fast_pam --reporter compact
 Verdict: **PASS.** The two initializers share the higher-level rule “sample
 proportional to the current objective contribution”; squaring FastPAM's
 already-objective distances would optimize the wrong seeding surrogate.
+
+## M6 — nondegenerate OneBatchPAM 50k validation
+
+The replacement fixture has five groups, 100 unique warped profiles per group,
+and 100 exact replicas of each profile: 50,000 series total. Profile lengths
+cover every integer from 64 through 128 (mean 96.3); the nonlinear clock is
+monotone because its derivative is bounded below by 0.59. Groups are translated
+by 1,000 while every unshifted profile value is bounded by 3.1.
+
+The oracle is globally exact. Omitting any group costs at least 6,360,320 per
+replica, while a feasible one-medoid-per-group solution costs at most 790,500.
+Thus every optimum represents all five groups, and equal multiplicities plus
+translation invariance reduce the problem to an exhaustive search over the 100
+unique within-group profiles. Variant 9 is optimal at
+2,851.0245324230636 per replica. Deliberately choosing worst variant 19 costs
+13,912.043591653444, or 4.8796646375503849× the oracle, so the registered 1.05×
+quality band catches the mutation decisively.
+
+The 5,000-series structural preflight ran before the large simulation:
+
+```text
+M6_PREFLIGHT n=5000 variants=100 replicas=10 lengths=64..128 band=8 batch=256
+wall_s=1.0729183 evaluations=1304739 max_evaluations=1304739
+fraction=0.052189560000000003 cost=28510.245324230687
+exact_oracle=28510.245324230636 ratio=1.0000000000000018 accepted_swaps=30
+All tests passed (10019 assertions in 1 test case)
+```
+
+Registered before the 50k run: the N×m table is 97.65625 MiB; series payload
+is 36.7355 MiB; work is at most 13,049,739 DTWs (0.52198956% of N²) and
+28,396,242,944 conservative banded DP cells; peak RSS must remain below the
+advisory 300 MiB band; objective must be within 1.05× the exact oracle.
+
+First run:
+
+```text
+M6_50K n=50000 variants=100 replicas=100 lengths=64..128 band=8 batch=256
+wall_s=10.071664 evaluations=13049739 max_evaluations=13049739
+fraction=0.0052198955999999998 cost=285102.45324230636
+exact_oracle=285102.45324230636 ratio=1 accepted_swaps=35
+All tests passed (100019 assertions in 1 test case)
+```
+
+Monitored deterministic repeat:
+
+```text
+M6_MONITOR external_wall_s=39.594735 peak_rss_bytes=163254272
+peak_rss_MiB=155.691 exit_code=0
+M6_50K wall_s=14.102904100000002 evaluations=13049739
+fraction=0.0052198955999999998 cost=285102.45324230636
+exact_oracle=285102.45324230636 ratio=1 accepted_swaps=35
+medoids=10900,30900,900,20900,40900
+All tests passed (100019 assertions in 1 test case)
+```
+
+The repeat began under unrelated host load, so timing remains advisory; its
+internal time stayed inside the preregistered 5.4–21.5 second scaling interval.
+Work, objective, ratio, swap count, and one-variant-9 medoid per group repeated
+exactly. The non-hidden suite also passed 10,235 assertions in seven cases.
+
+Verdict: **PASS.** The release gate now exercises real unequal-length DTW work,
+has a proved exact global oracle, and measures a tight implementation-derived
+work fraction rather than relying on the old length-1 special case.
