@@ -76,6 +76,32 @@ class TestClusterLocal:
         assert res.n_series == 12
 
 
+class TestMatrixFreeBand:
+    @pytest.mark.parametrize("method", ["onebatch", "clara", "tadpole"])
+    def test_band_reaches_matrix_free_problem_distance(self, method):
+        """Matrix-free Tier-1 methods must use the requested Sakoe-Chiba band.
+
+        This runs each real algorithm end-to-end rather than spying on a
+        setter.  The irregular pair contains an eight-step warp, so its
+        registered L1 DTW distances differ materially between full and
+        width-five paths and therefore so do the one-cluster costs.
+        """
+        x = [0.2, -0.1, 1.4, 3.2, 7.1, 12.3, 9.2, 4.4,
+             1.1, -0.3, 0.5, -0.8, 0.2, 0.7, -0.4, 0.9,
+             -0.2, 0.3, -0.7, 0.4, -0.1, 0.6, -0.5, 0.8]
+        y = [-0.4, -0.2, 0.1, -0.3, 0.4, -0.1, 0.2, 0.0,
+             0.35, 0.05, 1.55, 3.35, 7.25, 12.45, 9.35, 4.55,
+             1.25, -0.15, 0.65, -0.65, 0.35, 0.85, -0.25, 1.05]
+
+        full = dtwcpp.cluster([x, y], k=1, method=method, band=-1)
+        banded = dtwcpp.cluster([x, y], k=1, method=method, band=5)
+
+        assert full.distance_matrix is None
+        assert banded.distance_matrix is None
+        assert full.cost == pytest.approx(8.6, abs=1e-12)
+        assert banded.cost == pytest.approx(63.85, abs=1e-12)
+
+
 # ---------------------------------------------------------------------------
 # result.plot()
 # ---------------------------------------------------------------------------

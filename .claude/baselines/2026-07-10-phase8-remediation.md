@@ -90,3 +90,44 @@ Decisive output (verbatim):
 
 Verdict: **PASS.** Native/get_tags coverage also proves raw mode remains
 non-pairwise.
+
+## H1 — Python matrix-free band propagation
+
+Registered band: on a non-degenerate pair with an eight-step warp, every real
+matrix-free Tier-1 method (`onebatch`, `clara`, `tadpole`) must retain
+`distance_matrix is None`, produce cost `8.6` for full DTW, and produce cost
+`63.85` for a Sakoe–Chiba band of 5. No setter spy is accepted as the oracle.
+
+Red command:
+
+```powershell
+.venv/Scripts/python.exe -m pytest -q tests/python/test_api.py::TestMatrixFreeBand --tb=short
+```
+
+Decisive output:
+
+```text
+banded.cost = 8.6
+expected     = 63.85
+3 failed
+```
+
+All three algorithms silently used the unbanded callable before the fix.
+
+Green commands and decisive output:
+
+```powershell
+uv run --no-sync pytest tests/python/test_api.py::TestMatrixFreeBand -q
+uv run --no-sync pytest tests/python/test_api.py tests/python/test_problem.py -q
+```
+
+```text
+...                                                                      [100%]
+3 passed in 2.73s
+..................................................                       [100%]
+50 passed in 4.07s
+```
+
+Verdict: **PASS.** The production fix sets the band before `set_data()` performs
+the normal refresh/rebind; no matrix is materialized and no unsupported
+capability is silently substituted.

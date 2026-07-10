@@ -347,6 +347,11 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     series = data.as_series()
     names = [str(i) for i in range(len(series))]
     prob = Problem(data.name)
+    # Configure the band before set_data() refreshes/rebinds the Problem's DTW
+    # callable.  Matrix-free methods query distances from Problem directly, so
+    # relying only on compute_distance_matrix(..., band=...) silently made them
+    # unbanded.
+    prob.set_band(band)
     prob.set_data(series, names)
     # CLARA is matrix-free too: it computes only sample and assignment
     # distances. Treating it as a matrix method here defeated its O(Ns)

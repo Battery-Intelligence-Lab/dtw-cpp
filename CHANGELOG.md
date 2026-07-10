@@ -14,6 +14,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Fixed scikit-learn 1.6+ pairwise tags for
   `DTWCKMedoids(metric="precomputed")`, so cross-validation and `GridSearchCV`
   slice both rows and columns of a precomputed distance matrix.
+- Fixed Python Tier-1 clustering silently ignoring Sakoe–Chiba bands in the
+  matrix-free OneBatchPAM, CLARA, and TADPole paths.
 
 # 2.0.0rc1 - 2026-07-10
 
