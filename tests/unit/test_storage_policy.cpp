@@ -21,6 +21,8 @@
  */
 
 #include <dtwc.hpp>
+#include <core/pruned_distance_matrix.hpp>
+#include <error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -237,6 +239,20 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
       }
     }
   };
+
+  {
+    auto direct = make_problem(64, core::DTWVariant::Standard,
+                               DistanceMatrixStrategy::Pruned);
+    direct.use_mmap_distance_matrix(scratch / "direct-pruned.dtwm");
+    try {
+      (void)dtwc::core::fill_distance_matrix_pruned(direct, 0);
+      FAIL("direct pruned fill accepted mapped storage");
+    } catch (const dtwc::InvalidInput &error) {
+      REQUIRE(std::string(error.what()) ==
+        "fill_distance_matrix_pruned: mapped distance storage is unsupported; "
+        "call Problem::fill_distance_matrix() to route an exact mapped BruteForce fill.");
+    }
+  }
 
   run(63, core::DTWVariant::Standard, DistanceMatrixStrategy::Auto,
       "standard-auto-63");
