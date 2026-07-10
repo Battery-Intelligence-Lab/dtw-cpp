@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Bound dense and injected precomputed distance matrices to the exact band,
+  variant parameters, multivariate mode, missing-data policy, backend, and CUDA
+  settings that produced them. Semantic setters now invalidate stale work;
+  legacy raw C++ and nested Python mutations are detected before reuse, while
+  identical assignments preserve the existing matrix and mmap remains loud.
 - Documented the live `--missing-strategy` values, aliases, default, and
   TOML/YAML key in the canonical CLI and configuration references; the exact
   live-binary flag drift gate now covers the option.

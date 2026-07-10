@@ -1835,3 +1835,75 @@ Green commands and exact output:
 Verdict: **PASS.** The canonical references describe the live missing-data
 option and configuration key, and the unchanged live-binary drift gate is exact
 and green.
+
+## M25 — dense distance-cache semantic identity
+
+The confirmed defect was that a populated dense matrix had no identity beyond
+its shape. After one distance had been computed—or after a full matrix had been
+injected—changing `band`, `variant_params`, `missing_strategy`,
+`distance_strategy`, or nested `cuda_settings` left the old computed bits in
+place. `dist_by_ind()` then returned those bits without invoking the newly
+requested recurrence.
+
+The production fixtures were written and run red before the source edit. The
+formal PLAN checkbox was inadvertently absent at that point; when this was
+noticed, further gates paused and commit `02a9db3` recorded the exact M25 band
+before work resumed. The retained pre-fix output was:
+
+```text
+unit_test_variant_distmat "[dense][semantic_mutation]"
+  1 test case failed; 11 assertions: 7 passed, 4 failed
+  band:     cached 0, expected 10
+  variant:  cached 2, expected 1
+  missing:  cached 0, expected 1
+  backend:  injected matrix still reported filled
+
+pytest tests/python/test_problem.py -k DenseSemanticMutation
+  4 failed, 14 deselected
+```
+
+`Problem` now records a fixed-size `DistanceCacheConfiguration` whenever its
+DTW function is rebound. The snapshot compares band, variant, all six numeric
+variant parameters, multivariate mode, missing strategy, backend strategy,
+CUDA device, and CUDA precision in constant time. A changed dense configuration
+makes the read-only filled query false. Non-const compute/access paths clear the
+matrix and rebind before use; const value accessors throw an actionable error
+instead of exposing stale work. Direct dense I/O paths perform the same guard.
+
+New C++ setters own missing strategy, distance strategy, and CUDA settings.
+Existing band and variant setters share the invalidation rule, including a
+follow-up audit correction that makes identical enum/whole-parameter assignments
+true no-ops. Python whole-property bindings and MATLAB commands route through
+these setters. Python deliberately retains nested mutation of `variant_params`
+and `cuda_settings`; the snapshot detects it on the next query. Legacy public
+C++ fields remain source-compatible under the same rule.
+
+Mmap behavior remains stronger and unchanged in intent: raw mutation is
+validated before any dense self-refresh and therefore fails its bound semantic
+fingerprint loudly. An explicit setter detaches without rewriting the old file,
+as before. Binding a mmap cache first normalizes any prior raw dense mutation so
+its DTW function and fingerprint describe the same configuration.
+
+Final green evidence against the committed implementation `d5a9659`:
+
+```text
+Clang + LLFIO ON focused semantic suite:   57/57 assertions, 2 cases
+Clang + LLFIO ON full variant/distmat:     97/97 assertions, 13 cases
+MSVC + LLFIO OFF full variant/distmat:     61/61 assertions, 10 mmap skips
+
+fresh isolated Python extension:
+  DenseSemanticMutation:                  4 passed / 14 deselected
+  tests/python/test_problem.py:           18 passed
+
+orthogonal C++ suites:
+  variants / missing / Problem-missing /
+  MV variants / MV missing / API 2.0:      183/183 assertions
+
+fresh R2025b MEX:
+  final setter + semantic subset:         2 passed
+  full test_contract_parity:              24 passed
+```
+
+Verdict: **PASS.** Dense/precomputed work survives an identical configuration
+and no semantic mutation can expose an old cached distance; legacy mutation is
+detected in O(1), and persistent mmap identity remains loud.
