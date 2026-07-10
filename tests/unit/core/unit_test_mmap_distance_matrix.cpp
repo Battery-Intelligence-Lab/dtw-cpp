@@ -434,6 +434,37 @@ TEST_CASE("Authenticated mmap payload requires a new format version",
   CHECK(MmapDistanceMatrix::version >= 3);
 }
 
+TEST_CASE("MmapDistanceMatrix rejects unauthenticated version-2 payloads",
+          "[MmapDistanceMatrix][mmap][integrity][version][m53]")
+{
+  TempFile tmp;
+  constexpr std::size_t n = 2;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x52u);
+  std::vector<std::uint8_t> legacy(
+    MmapDistanceMatrix::header_size + packed_size(n) * sizeof(double), 0);
+  std::memcpy(legacy.data(), MmapDistanceMatrix::magic, 4);
+  const std::uint16_t legacy_version = 2;
+  std::memcpy(legacy.data() + 4, &legacy_version, sizeof(legacy_version));
+  const std::uint32_t endian = MmapDistanceMatrix::endian_marker;
+  std::memcpy(legacy.data() + 6, &endian, sizeof(endian));
+  legacy[10] = MmapDistanceMatrix::elem_size;
+  legacy[11] = MmapDistanceMatrix::fingerprint_algorithm;
+  const std::uint64_t n64 = n;
+  std::memcpy(legacy.data() + 12, &n64, sizeof(n64));
+  std::memcpy(legacy.data() + 20, fingerprint.data(), fingerprint.size());
+  legacy[MmapDistanceMatrix::publication_state_offset] =
+    MmapDistanceMatrix::publication_state_ready;
+  const std::uint32_t crc = detail::crc32_naive(legacy.data(), 60);
+  std::memcpy(legacy.data() + 60, &crc, sizeof(crc));
+  write_file_bytes(tmp.path, legacy);
+
+  require_header_rejected_without_file_mutation(
+    tmp.path, fingerprint,
+    "v2 authenticates its header and data/config identity but not mutable packed distances",
+    legacy);
+}
+
 TEST_CASE("MmapDistanceMatrix rejects a finite payload bit flip before exposure",
           "[MmapDistanceMatrix][mmap][integrity][m53]")
 {
@@ -522,6 +553,32 @@ TEST_CASE("MmapDistanceMatrix authenticates NaN computed-state transitions",
     require_payload_rejected_without_file_mutation(
       tmp.path, fingerprint, 1, 0, corrupted);
   }
+}
+
+TEST_CASE("MmapDistanceMatrix rejects row-digest corruption before exposure",
+          "[MmapDistanceMatrix][mmap][integrity][digest][m53]")
+{
+  TempFile tmp;
+  constexpr std::size_t n = 3;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0xd1u);
+  {
+    MmapDistanceMatrix matrix(tmp.path, n, fingerprint);
+    matrix.set(0, 2, 81.5);
+    matrix.sync();
+  }
+
+  auto corrupted = read_file_bytes(tmp.path);
+  const std::size_t digest_offset = MmapDistanceMatrix::header_size
+                                  + packed_size(n) * sizeof(double);
+  const std::size_t digest_bytes = n
+                                 * MmapDistanceMatrix::payload_digest_lanes
+                                 * MmapDistanceMatrix::payload_digest_word_size;
+  REQUIRE(digest_offset + digest_bytes == corrupted.size());
+  corrupted[digest_offset] ^= 0x01u;
+  write_file_bytes(tmp.path, corrupted);
+  require_payload_rejected_without_file_mutation(
+    tmp.path, fingerprint, 0, 2, corrupted);
 }
 
 TEST_CASE("Problem lazy mmap warm-start validates payload before cache publication",
@@ -982,7 +1039,7 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
 
   const uint64_t bad_n = uint64_t{ 1 } << 62; // packed_size = 2^61; *8 wraps to 0 mod 2^64
 
-  // Build a v2 header that passes magic/version/endian/elem_size/fingerprint/CRC checks so
+  // Build a v3 header that passes magic/version/endian/element/integrity/CRC checks so
   // that the ONLY thing standing between the file and acceptance is the size check.
   std::array<uint8_t, MmapDistanceMatrix::header_size> hdr{};
   std::memcpy(hdr.data() + 0, MmapDistanceMatrix::magic, 4);
@@ -995,6 +1052,12 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
   std::memcpy(hdr.data() + 12, &bad_n, 8);
   hdr[MmapDistanceMatrix::publication_state_offset] =
     MmapDistanceMatrix::publication_state_ready;
+  hdr[MmapDistanceMatrix::payload_integrity_algorithm_offset] =
+    MmapDistanceMatrix::payload_integrity_algorithm;
+  hdr[MmapDistanceMatrix::payload_digest_lanes_offset] =
+    MmapDistanceMatrix::payload_digest_lanes;
+  hdr[MmapDistanceMatrix::payload_digest_word_size_offset] =
+    MmapDistanceMatrix::payload_digest_word_size;
   // Fingerprint and reserved bytes remain zero; only overflow is under test.
   const uint32_t crc = detail::crc32_naive(hdr.data(), 60);
   std::memcpy(hdr.data() + 60, &crc, 4);
@@ -1004,7 +1067,9 @@ TEST_CASE("MmapDistanceMatrix open rejects N that overflows packed size", "[Mmap
     f.write(reinterpret_cast<const char *>(hdr.data()), static_cast<std::streamsize>(hdr.size()));
   }
 
-  REQUIRE_THROWS_AS(MmapDistanceMatrix::open(tmp.path), std::runtime_error);
+  REQUIRE_THROWS_WITH(
+    MmapDistanceMatrix::open(tmp.path),
+    Catch::Matchers::ContainsSubstring("overflows size_t"));
 }
 
 TEST_CASE("MmapDistanceMatrix rejects corrupted fingerprint metadata before data access",
