@@ -6,6 +6,7 @@
  */
 
 #include <core/mmap_distance_matrix.hpp>
+#include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -14,13 +15,21 @@
 #include <array>
 #include <atomic>
 #include <barrier>
+#include <bit>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <optional>
+#include <sstream>
 #include <string>
+#include <string_view>
+#include <system_error>
 #include <thread>
+#include <utility>
+#include <variant>
 #include <vector>
 
 using Catch::Matchers::WithinAbs;
@@ -59,6 +68,168 @@ struct TempFile {
   TempFile(const TempFile &) = delete;
   TempFile &operator=(const TempFile &) = delete;
 };
+
+std::vector<std::uint8_t> read_file_bytes(const fs::path &path)
+{
+  std::ifstream input(path, std::ios::binary);
+  REQUIRE(input.is_open());
+  return {std::istreambuf_iterator<char>{input},
+          std::istreambuf_iterator<char>{}};
+}
+
+void write_file_bytes(const fs::path &path,
+                      const std::vector<std::uint8_t> &bytes)
+{
+  std::ofstream output(path, std::ios::binary | std::ios::trunc);
+  REQUIRE(output.is_open());
+  output.write(reinterpret_cast<const char *>(bytes.data()),
+               static_cast<std::streamsize>(bytes.size()));
+  REQUIRE(output.good());
+}
+
+std::uint64_t payload_bits(const fs::path &path, std::size_t packed_index)
+{
+  const auto bytes = read_file_bytes(path);
+  const std::size_t offset = MmapDistanceMatrix::header_size
+                           + packed_index * sizeof(double);
+  REQUIRE(offset + sizeof(std::uint64_t) <= bytes.size());
+  std::uint64_t bits{};
+  std::memcpy(&bits, bytes.data() + offset, sizeof(bits));
+  return bits;
+}
+
+void write_payload_bits(const fs::path &path, std::size_t packed_index,
+                        std::uint64_t bits)
+{
+  auto bytes = read_file_bytes(path);
+  const std::size_t offset = MmapDistanceMatrix::header_size
+                           + packed_index * sizeof(double);
+  REQUIRE(offset + sizeof(bits) <= bytes.size());
+  std::memcpy(bytes.data() + offset, &bits, sizeof(bits));
+  write_file_bytes(path, bytes);
+}
+
+struct OpenAttempt
+{
+  bool returned{false};
+  bool value_exposed{false};
+  std::string error;
+};
+
+OpenAttempt try_open_and_read(
+  const fs::path &path,
+  const MmapDistanceMatrix::fingerprint_type &fingerprint,
+  std::size_t i, std::size_t j)
+{
+  OpenAttempt result;
+  try {
+    auto matrix = MmapDistanceMatrix::open(path, fingerprint);
+    result.returned = true;
+    (void)matrix.get(i, j);
+    result.value_exposed = true;
+  } catch (const std::exception &error) {
+    result.error = error.what();
+  } catch (...) {
+    result.error = "non-standard exception";
+  }
+  return result;
+}
+
+void require_payload_rejected_without_file_mutation(
+  const fs::path &path,
+  const MmapDistanceMatrix::fingerprint_type &fingerprint,
+  std::size_t i, std::size_t j,
+  const std::vector<std::uint8_t> &corrupted_bytes)
+{
+  const OpenAttempt attempt = try_open_and_read(path, fingerprint, i, j);
+  INFO("open error: " << attempt.error);
+  CHECK_FALSE(attempt.returned);
+  CHECK_FALSE(attempt.value_exposed);
+  CHECK(attempt.error.find("payload integrity") != std::string::npos);
+  CHECK(read_file_bytes(path) == corrupted_bytes);
+}
+
+void require_header_rejected_without_file_mutation(
+  const fs::path &path,
+  const MmapDistanceMatrix::fingerprint_type &fingerprint,
+  std::string_view expected_error,
+  const std::vector<std::uint8_t> &corrupted_bytes)
+{
+  const OpenAttempt attempt = try_open_and_read(path, fingerprint, 0, 0);
+  INFO("open error: " << attempt.error);
+  CHECK_FALSE(attempt.returned);
+  CHECK_FALSE(attempt.value_exposed);
+  CHECK(attempt.error.find(expected_error) != std::string::npos);
+  CHECK(read_file_bytes(path) == corrupted_bytes);
+}
+
+dtwc::Data make_problem_data(std::size_t n)
+{
+  std::vector<std::vector<double>> series;
+  std::vector<std::string> names;
+  series.reserve(n);
+  names.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    const double value = static_cast<double>(i);
+    series.push_back({value, value + 1.0, value + 3.0, value + 6.0});
+    names.push_back("s" + std::to_string(i));
+  }
+  return dtwc::Data(std::move(series), std::move(names));
+}
+
+struct DenseSentinel
+{
+  const double *address{};
+  std::uint64_t bits{};
+};
+
+DenseSentinel install_dense_sentinel(dtwc::Problem &problem, double value)
+{
+  auto &matrix = problem.dense_distance_matrix();
+  matrix.resize(problem.size());
+  matrix.set(0, 1, value);
+  return {matrix.raw(), std::bit_cast<std::uint64_t>(value)};
+}
+
+void require_problem_bind_rejected_transactionally(
+  dtwc::Problem &problem, const fs::path &path,
+  const DenseSentinel &sentinel,
+  const std::vector<std::uint8_t> &corrupted_bytes)
+{
+  bool threw = false;
+  std::string error;
+  try {
+    problem.use_mmap_distance_matrix(path);
+  } catch (const std::exception &exception) {
+    threw = true;
+    error = exception.what();
+  } catch (...) {
+    threw = true;
+    error = "non-standard exception";
+  }
+  INFO("bind error: " << error);
+  CHECK(threw);
+  CHECK(error.find("payload integrity") != std::string::npos);
+  const bool remains_dense = std::holds_alternative<DenseDistanceMatrix>(
+    problem.distance_matrix());
+  CHECK(remains_dense);
+  if (remains_dense) {
+    const auto &matrix = problem.dense_distance_matrix();
+    CHECK(matrix.raw() == sentinel.address);
+    CHECK(std::bit_cast<std::uint64_t>(matrix.get(0, 1)) == sentinel.bits);
+  }
+  CHECK(read_file_bytes(path) == corrupted_bytes);
+}
+
+std::string mmap_source()
+{
+  const auto repo_root = fs::path{DTWC_TEST_DATA_DIR}.parent_path();
+  std::ifstream source(repo_root / "dtwc" / "core" / "mmap_distance_matrix.hpp",
+                       std::ios::binary);
+  REQUIRE(source.is_open());
+  return {std::istreambuf_iterator<char>{source},
+          std::istreambuf_iterator<char>{}};
+}
 
 } // namespace
 
@@ -250,6 +421,306 @@ TEST_CASE("MmapDistanceMatrix persistence: incremental warm-start", "[MmapDistan
     REQUIRE_THAT(dm.get(3, 4), WithinAbs(30.0, 1e-12));
     REQUIRE_THAT(dm.get(0, 0), WithinAbs(0.0, 1e-12));
     REQUIRE(dm.count_computed() == 4);
+  }
+}
+
+// ============================================================================
+// Mutable payload integrity (M53 preregistration)
+// ============================================================================
+
+TEST_CASE("Authenticated mmap payload requires a new format version",
+          "[MmapDistanceMatrix][mmap][integrity][version][m53]")
+{
+  CHECK(MmapDistanceMatrix::version >= 3);
+}
+
+TEST_CASE("MmapDistanceMatrix rejects a finite payload bit flip before exposure",
+          "[MmapDistanceMatrix][mmap][integrity][m53]")
+{
+  TempFile tmp;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x53u);
+  const std::size_t index = tri_index(3, 1);
+
+  {
+    MmapDistanceMatrix matrix(tmp.path, 4, fingerprint);
+    matrix.set(3, 1, 42.0);
+    matrix.sync();
+  }
+
+  const auto pristine = read_file_bytes(tmp.path);
+  const std::uint64_t original_bits = payload_bits(tmp.path, index);
+  const std::uint64_t corrupted_bits = original_bits ^ std::uint64_t{1};
+  REQUIRE(std::isfinite(std::bit_cast<double>(corrupted_bits)));
+  REQUIRE(corrupted_bits != original_bits);
+  write_payload_bits(tmp.path, index, corrupted_bits);
+  const auto corrupted = read_file_bytes(tmp.path);
+  REQUIRE(corrupted != pristine);
+
+  require_payload_rejected_without_file_mutation(
+    tmp.path, fingerprint, 3, 1, corrupted);
+}
+
+TEST_CASE("MmapDistanceMatrix authenticates NaN computed-state transitions",
+          "[MmapDistanceMatrix][mmap][integrity][status][m53]")
+{
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x35u);
+  const std::size_t index = tri_index(1, 0);
+
+  SECTION("one bit turns an uncomputed NaN into a finite trusted value")
+  {
+    TempFile tmp;
+    {
+      MmapDistanceMatrix matrix(tmp.path, 2, fingerprint);
+      matrix.sync();
+    }
+
+    const auto pristine = read_file_bytes(tmp.path);
+    const std::uint64_t original_bits = payload_bits(tmp.path, index);
+    REQUIRE(std::isnan(std::bit_cast<double>(original_bits)));
+
+    std::optional<std::uint64_t> finite_bits;
+    for (unsigned bit = 0; bit < 64; ++bit) {
+      const std::uint64_t candidate = original_bits ^ (std::uint64_t{1} << bit);
+      if (std::isfinite(std::bit_cast<double>(candidate))) {
+        finite_bits = candidate;
+        break;
+      }
+    }
+    REQUIRE(finite_bits.has_value());
+    REQUIRE(std::popcount(original_bits ^ *finite_bits) == 1);
+    write_payload_bits(tmp.path, index, *finite_bits);
+    const auto corrupted = read_file_bytes(tmp.path);
+    REQUIRE(corrupted != pristine);
+
+    require_payload_rejected_without_file_mutation(
+      tmp.path, fingerprint, 1, 0, corrupted);
+  }
+
+  SECTION("one bit turns a computed finite value into uncomputed NaN")
+  {
+    TempFile tmp;
+    constexpr std::uint64_t finite_bits = 0x7fe8000000000000ull;
+    constexpr std::uint64_t status_bit = std::uint64_t{1} << 52;
+    const double finite_value = std::bit_cast<double>(finite_bits);
+    REQUIRE(std::isfinite(finite_value));
+    REQUIRE(std::isnan(std::bit_cast<double>(finite_bits ^ status_bit)));
+
+    {
+      MmapDistanceMatrix matrix(tmp.path, 2, fingerprint);
+      matrix.set(1, 0, finite_value);
+      matrix.sync();
+    }
+
+    const auto pristine = read_file_bytes(tmp.path);
+    REQUIRE(payload_bits(tmp.path, index) == finite_bits);
+    write_payload_bits(tmp.path, index, finite_bits ^ status_bit);
+    const auto corrupted = read_file_bytes(tmp.path);
+    REQUIRE(corrupted != pristine);
+
+    require_payload_rejected_without_file_mutation(
+      tmp.path, fingerprint, 1, 0, corrupted);
+  }
+}
+
+TEST_CASE("Problem lazy mmap warm-start validates payload before cache publication",
+          "[MmapDistanceMatrix][mmap][integrity][problem][lazy][m53]")
+{
+  TempFile tmp;
+  double expected{};
+  {
+    dtwc::Problem source{"m53_lazy_source"};
+    source.set_data(make_problem_data(4));
+    source.use_mmap_distance_matrix(tmp.path);
+    expected = source.dist_by_ind(0, 1);
+    auto &mapped = std::get<MmapDistanceMatrix>(source.distance_matrix());
+    mapped.sync();
+    REQUIRE(mapped.count_computed() == 1);
+  }
+
+  // Valid explicit-sync warm reopen remains unchanged.
+  {
+    dtwc::Problem control{"m53_lazy_control"};
+    control.set_data(make_problem_data(4));
+    control.use_mmap_distance_matrix(tmp.path);
+    REQUIRE(std::bit_cast<std::uint64_t>(control.dist_by_ind(0, 1))
+            == std::bit_cast<std::uint64_t>(expected));
+    REQUIRE_FALSE(std::get<MmapDistanceMatrix>(control.distance_matrix())
+                    .is_computed(0, 2));
+  }
+
+  const auto pristine = read_file_bytes(tmp.path);
+  const std::size_t index = tri_index(1, 0);
+  const std::uint64_t original_bits = payload_bits(tmp.path, index);
+  write_payload_bits(tmp.path, index, original_bits ^ std::uint64_t{1});
+  const auto corrupted = read_file_bytes(tmp.path);
+  REQUIRE(corrupted != pristine);
+
+  dtwc::Problem target{"m53_lazy_target"};
+  target.set_data(make_problem_data(4));
+  const DenseSentinel sentinel = install_dense_sentinel(target, 753.0);
+  require_problem_bind_rejected_transactionally(
+    target, tmp.path, sentinel, corrupted);
+}
+
+TEST_CASE("Problem full parallel mmap fill authenticates every persisted value",
+          "[MmapDistanceMatrix][mmap][integrity][problem][parallel][m53]")
+{
+  TempFile tmp;
+  constexpr std::size_t n = 12;
+  double expected{};
+  {
+    dtwc::Problem source{"m53_full_source"};
+    source.set_data(make_problem_data(n));
+    source.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+    source.use_mmap_distance_matrix(tmp.path);
+    source.fill_distance_matrix();
+    auto &mapped = std::get<MmapDistanceMatrix>(source.distance_matrix());
+    REQUIRE(mapped.all_computed());
+    expected = mapped.get(0, n - 1);
+    mapped.sync();
+  }
+
+  // A complete parallel fill with a consistent digest is a valid warm start.
+  {
+    dtwc::Problem control{"m53_full_control"};
+    control.set_data(make_problem_data(n));
+    control.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+    control.use_mmap_distance_matrix(tmp.path);
+    REQUIRE(control.is_distance_matrix_filled());
+    REQUIRE(std::bit_cast<std::uint64_t>(control.dist_by_ind(0, n - 1))
+            == std::bit_cast<std::uint64_t>(expected));
+  }
+
+  const auto pristine = read_file_bytes(tmp.path);
+  const std::size_t index = tri_index(n - 1, 0);
+  const std::uint64_t original_bits = payload_bits(tmp.path, index);
+  write_payload_bits(tmp.path, index, original_bits ^ std::uint64_t{1});
+  const auto corrupted = read_file_bytes(tmp.path);
+  REQUIRE(corrupted != pristine);
+
+  dtwc::Problem target{"m53_full_target"};
+  target.set_data(make_problem_data(n));
+  target.set_distance_strategy(dtwc::DistanceMatrixStrategy::BruteForce);
+  const DenseSentinel sentinel = install_dense_sentinel(target, 953.0);
+  require_problem_bind_rejected_transactionally(
+    target, tmp.path, sentinel, corrupted);
+}
+
+TEST_CASE("Mmap payload authentication survives normal destructor persistence",
+          "[MmapDistanceMatrix][mmap][integrity][durability][m53]")
+{
+  TempFile tmp;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x19u);
+  {
+    MmapDistanceMatrix matrix(tmp.path, 4, fingerprint);
+    matrix.set(0, 3, 19.5);
+    matrix.set(1, 2, 29.5);
+    // Intentionally no explicit sync: ordinary RAII teardown is a supported
+    // warm-reopen path and must persist data and integrity consistently.
+  }
+
+  const auto reopened = MmapDistanceMatrix::open(tmp.path, fingerprint);
+  REQUIRE(std::bit_cast<std::uint64_t>(reopened.get(0, 3))
+          == std::bit_cast<std::uint64_t>(19.5));
+  REQUIRE(std::bit_cast<std::uint64_t>(reopened.get(1, 2))
+          == std::bit_cast<std::uint64_t>(29.5));
+  REQUIRE(reopened.count_computed() == 2);
+}
+
+TEST_CASE("Mmap disjoint parallel sets retain O(1) integrity updates",
+          "[MmapDistanceMatrix][mmap][integrity][parallel][m53]")
+{
+  TempFile tmp;
+  constexpr std::size_t n = 64;
+  constexpr std::size_t worker_count = 4;
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0xa5u);
+
+  {
+    MmapDistanceMatrix matrix(tmp.path, n, fingerprint);
+    std::array<std::thread, worker_count> workers;
+    for (std::size_t worker = 0; worker < worker_count; ++worker) {
+      workers[worker] = std::thread([&, worker] {
+        for (std::size_t i = worker; i < n; i += worker_count) {
+          for (std::size_t j = 0; j <= i; ++j) {
+            matrix.set(i, j, static_cast<double>(tri_index(i, j)) + 0.25);
+          }
+        }
+      });
+    }
+    for (auto &worker : workers) worker.join();
+    matrix.sync();
+  }
+
+  const auto reopened = MmapDistanceMatrix::open(tmp.path, fingerprint);
+  REQUIRE(reopened.all_computed());
+  REQUIRE(reopened.count_computed() == packed_size(n));
+  REQUIRE(std::bit_cast<std::uint64_t>(reopened.get(63, 0))
+          == std::bit_cast<std::uint64_t>(
+               static_cast<double>(tri_index(63, 0)) + 0.25));
+  REQUIRE(std::bit_cast<std::uint64_t>(reopened.get(42, 17))
+          == std::bit_cast<std::uint64_t>(
+               static_cast<double>(tri_index(42, 17)) + 0.25));
+}
+
+TEST_CASE("Mmap set path contains no full scan or blocking lock",
+          "[MmapDistanceMatrix][mmap][integrity][source_guard][m53]")
+{
+  const std::string source = mmap_source();
+  const std::size_t begin = source.find("void set(size_t i, size_t j, double v)");
+  const std::size_t end = source.find("bool is_computed", begin);
+  REQUIRE(begin != std::string::npos);
+  REQUIRE(end != std::string::npos);
+  const std::string set_body = source.substr(begin, end - begin);
+
+  CHECK(set_body.find("for (") == std::string::npos);
+  CHECK(set_body.find("while (") == std::string::npos);
+  CHECK(set_body.find("mutex") == std::string::npos);
+  CHECK(set_body.find("lock_guard") == std::string::npos);
+  CHECK(set_body.find("sync()") == std::string::npos);
+}
+
+TEST_CASE("Mmap immutable header checksum failures remain loud and non-mutating",
+          "[MmapDistanceMatrix][mmap][integrity][header][m53]")
+{
+  MmapDistanceMatrix::fingerprint_type fingerprint{};
+  fingerprint.fill(0x71u);
+
+  SECTION("stored header CRC bit")
+  {
+    TempFile tmp;
+    {
+      MmapDistanceMatrix matrix(tmp.path, 2, fingerprint);
+      matrix.set(0, 1, 7.0);
+      matrix.sync();
+    }
+    auto corrupted = read_file_bytes(tmp.path);
+    REQUIRE(corrupted.size() >= MmapDistanceMatrix::header_size);
+    corrupted[60] ^= 0x01u;
+    write_file_bytes(tmp.path, corrupted);
+    require_header_rejected_without_file_mutation(
+      tmp.path, fingerprint, "header CRC mismatch", corrupted);
+  }
+
+  SECTION("fingerprint field with repaired header CRC")
+  {
+    TempFile tmp;
+    {
+      MmapDistanceMatrix matrix(tmp.path, 2, fingerprint);
+      matrix.set(0, 1, 7.0);
+      matrix.sync();
+    }
+    auto corrupted = read_file_bytes(tmp.path);
+    REQUIRE(corrupted.size() >= MmapDistanceMatrix::header_size);
+    corrupted[20] ^= 0x01u;
+    const std::uint32_t repaired_crc = detail::crc32_naive(corrupted.data(), 60);
+    std::memcpy(corrupted.data() + 60, &repaired_crc, sizeof(repaired_crc));
+    write_file_bytes(tmp.path, corrupted);
+    require_header_rejected_without_file_mutation(
+      tmp.path, fingerprint, "fingerprint mismatch", corrupted);
   }
 }
 
