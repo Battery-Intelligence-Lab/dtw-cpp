@@ -15,6 +15,7 @@
 
 #include <vector>
 #include <atomic>
+#include <stdexcept>
 
 TEST_CASE("Parallel Execution", "[run_openmp]")
 {
@@ -93,4 +94,16 @@ TEST_CASE("Boundary Conditions", "[run_openmp]")
 
   dtwc::run_openmp(task, 0, true);
   REQUIRE(count == 0);
+}
+
+TEST_CASE("OpenMP task failures rethrow the lowest-index typed exception",
+          "[run_openmp][m40]")
+{
+  auto task = [](size_t i) {
+    if (i == 2) throw std::invalid_argument("failure at row 2");
+    if (i == 7) throw std::runtime_error("failure at row 7");
+  };
+
+  REQUIRE_THROWS_AS(dtwc::run_openmp(task, 64, true), std::invalid_argument);
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(task, 64, true), "failure at row 2");
 }
