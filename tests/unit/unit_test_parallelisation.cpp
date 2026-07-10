@@ -15,7 +15,13 @@
 
 #include <vector>
 #include <atomic>
+#include <chrono>
 #include <stdexcept>
+#include <thread>
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 TEST_CASE("Parallel Execution", "[run_openmp]")
 {
@@ -99,16 +105,61 @@ TEST_CASE("Boundary Conditions", "[run_openmp]")
 TEST_CASE("OpenMP task failures rethrow the lowest-index typed exception",
           "[run_openmp][m40]")
 {
-  auto task = [](size_t i) {
-    if (i == 2) throw std::invalid_argument("failure at row 2");
-    if (i == 7) throw std::runtime_error("failure at row 7");
+  auto run_failures = [] {
+    std::atomic<bool> row_seven_failed{false};
+    const auto deadline = std::chrono::steady_clock::now()
+                        + std::chrono::seconds(5);
+    auto task = [&](size_t i) {
+      if (i == 2) {
+#ifdef _OPENMP
+        // Force the higher row to fail first in wall-clock order. Correctness
+        // must still select row 2 by canonical loop index.
+        while (!row_seven_failed.load(std::memory_order_acquire))
+        {
+          if (std::chrono::steady_clock::now() >= deadline)
+            throw std::runtime_error("test coordination timeout");
+          std::this_thread::yield();
+        }
+#endif
+        throw std::invalid_argument("failure at row 2");
+      }
+      if (i == 7) {
+        row_seven_failed.store(true, std::memory_order_release);
+        throw std::runtime_error("failure at row 7");
+      }
+    };
+    // 64 chunks/thread makes chunk=1 for this 64-row fixture, so rows 2 and 7
+    // cannot be trapped sequentially inside one worker's chunk.
+    dtwc::run_openmp(task, 64, true, 64);
   };
 
-  REQUIRE_THROWS_AS(dtwc::run_openmp(task, 64, true), std::invalid_argument);
-  REQUIRE_THROWS_WITH(dtwc::run_openmp(task, 64, true), "failure at row 2");
+#ifdef _OPENMP
+  const int previous_threads = omp_get_max_threads();
+  const int previous_dynamic = omp_get_dynamic();
+  struct RestoreOpenMP {
+    int threads;
+    int dynamic;
+    ~RestoreOpenMP() { omp_set_dynamic(dynamic); omp_set_num_threads(threads); }
+  } restore{previous_threads, previous_dynamic};
+  omp_set_dynamic(0);
+  omp_set_num_threads(2);
+  int actual_threads = 1;
+#pragma omp parallel
+  {
+#pragma omp single
+    actual_threads = omp_get_num_threads();
+  }
+  if (actual_threads < 2) SKIP("two OpenMP workers unavailable");
+#endif
+
+  REQUIRE_THROWS_AS(run_failures(), std::invalid_argument);
+  REQUIRE_THROWS_WITH(run_failures(), "failure at row 2");
 
   REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, 0),
                       "omp_chunk_size: chunks_per_thread must be positive");
   REQUIRE_THROWS_WITH(dtwc::omp_chunk_size(64, -1),
                       "omp_chunk_size: chunks_per_thread must be positive");
+  auto no_op = [](size_t) {};
+  REQUIRE_THROWS_WITH(dtwc::run_openmp(no_op, 64, true, 0),
+                      "run_openmp: chunks_per_thread must be positive");
 }

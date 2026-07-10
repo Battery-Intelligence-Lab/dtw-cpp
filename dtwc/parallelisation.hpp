@@ -90,6 +90,8 @@ void run_openmp(Tfun &task_indv, size_t i_end,
                 [[maybe_unused]] bool isParallel = true,
                 [[maybe_unused]] int chunks_per_thread = 4)
 {
+  if (chunks_per_thread <= 0)
+    throw std::invalid_argument("run_openmp: chunks_per_thread must be positive");
   // OpenMP requires signed loop variables for compatibility with older compilers
   if (i_end > static_cast<size_t>(std::numeric_limits<int>::max())) {
     throw std::runtime_error("Loop bound exceeds maximum int value for OpenMP loop");

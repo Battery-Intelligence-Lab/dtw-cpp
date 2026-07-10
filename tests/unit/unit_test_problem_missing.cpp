@@ -73,30 +73,37 @@ TEST_CASE("Problem: OpenMP worker exceptions rethrow without publishing a full c
           "[problem][missing][m40]")
 {
   const double nan = std::numeric_limits<double>::quiet_NaN();
-  dtwc::Data data;
-  data.p_vec = {
-    {0.0, 1.0, 2.0},
-    {nan, nan, nan},
-    {2.0, 1.0, 0.0},
-    {4.0, 5.0, 6.0}
-  };
-  data.p_names = {"ordinary", "all-missing", "reverse", "offset"};
-
 #ifdef _OPENMP
   OmpThreadLimitGuard thread_guard;
-  omp_set_num_threads(4);
 #endif
-  dtwc::Problem prob;
-  prob.set_data(std::move(data));
-  prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
-  prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob.verbose = false;
+  for (const int threads : {1, 4}) {
+    DYNAMIC_SECTION("OMP threads=" << threads) {
+#ifdef _OPENMP
+      omp_set_num_threads(threads);
+#else
+      (void)threads;
+#endif
+      dtwc::Data data;
+      data.p_vec = {
+        {0.0, 1.0, 2.0},
+        {nan, nan, nan},
+        {2.0, 1.0, 0.0},
+        {4.0, 5.0, 6.0}
+      };
+      data.p_names = {"ordinary", "all-missing", "reverse", "offset"};
+      dtwc::Problem prob;
+      prob.set_data(std::move(data));
+      prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
+      prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+      prob.verbose = false;
 
-  REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
-    ContainsSubstring("interpolate_linear: all values are NaN"));
-  CHECK_FALSE(prob.is_distance_matrix_filled());
-  CHECK(prob.dense_distance_matrix().count_computed()
-        < prob.dense_distance_matrix().packed_count());
+      REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
+        ContainsSubstring("interpolate_linear: all values are NaN"));
+      CHECK_FALSE(prob.is_distance_matrix_filled());
+      CHECK(prob.dense_distance_matrix().count_computed()
+            < prob.dense_distance_matrix().packed_count());
+    }
+  }
 }
 
 TEST_CASE("Problem: ordinary and ZeroCost distance fingerprints survive exception hardening",
