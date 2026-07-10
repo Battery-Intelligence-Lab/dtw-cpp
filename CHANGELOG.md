@@ -51,6 +51,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   assertion preserves their intentional public semantic difference.
 - Restored separate MATLAB assertions for honest sequential MEX reporting while
   retaining the OpenMP engagement gate; both flavors are now tested explicitly.
+- Fixed CLI TADPole to honor `--mmap-threshold`: exact/fallback distances now
+  use the file-backed packed cache, while LLFIO-off builds fail before an O(N²)
+  heap allocation with actionable alternatives. OneBatchPAM remains O(Nm)-exempt.
 
 # 2.0.0rc1 - 2026-07-10
 

@@ -48,6 +48,7 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -142,6 +143,39 @@ static std::string validate_metric_for_device(const std::string &metric, bool is
     return "metric '" + metric + "' is unsupported on the cpu path "
            "(only 'l1' is implemented on CPU; use --device cuda for '" + metric + "').";
   return "";
+}
+
+/// Apply the CLI's distance-matrix storage policy after data and `auto` method
+/// resolution. Returns the selected mmap cache path, or nullopt when the method
+/// stays on its own storage / below the threshold.
+///
+/// OneBatchPAM is the sole exemption: it owns a fixed O(Nm) table and never
+/// calls Problem::dist_by_ind(). TADPole is deliberately NOT exempt. Although
+/// its pruning schedule is matrix-free, every exact/fallback distance goes
+/// through dist_by_ind(), whose dense cache lazily allocates packed O(N^2)
+/// doubles. MmapDistanceMatrix implements that same lazy get/set interface, so
+/// threshold routing is both compatible and necessary for large TADPole jobs.
+static std::optional<fs::path> configure_cli_distance_storage(
+  dtwc::Problem &prob,
+  std::string_view method,
+  size_t mmap_threshold,
+  const fs::path &cache_path)
+{
+  if (method == "onebatch") return std::nullopt;
+  if (mmap_threshold != 0 && prob.size() < mmap_threshold) return std::nullopt;
+
+#ifdef DTWC_HAS_MMAP
+  prob.use_mmap_distance_matrix(cache_path);
+  return cache_path;
+#else
+  throw std::runtime_error(
+    "method='" + std::string(method) + "' at N=" + std::to_string(prob.size())
+    + " requires memory-mapped distance storage because --mmap-threshold="
+    + std::to_string(mmap_threshold)
+    + " was reached, but this binary was built without mmap support. Rebuild "
+      "with -DDTWC_ENABLE_LLFIO=ON, raise --mmap-threshold only if the packed "
+      "heap matrix fits in RAM, or use --method onebatch.");
+#endif
 }
 
 /// Convert float64 Data to float32 in-place.
@@ -843,11 +877,15 @@ int main(int argc, char *argv[])
   }
 
   const bool matrix_free_method = (method == "onebatch" || method == "tadpole");
-  if (!matrix_free_method && (mmap_threshold == 0 || prob.size() >= mmap_threshold)) {
-    auto cache_path = fs::path(output_dir) / (prob_name + "_distmat.cache");
-    prob.use_mmap_distance_matrix(cache_path);
-    if (verbose)
-      std::cout << "Using memory-mapped distance matrix: " << cache_path << "\n";
+  try {
+    const auto mmap_cache = configure_cli_distance_storage(
+      prob, method, mmap_threshold,
+      fs::path(output_dir) / (prob_name + "_distmat.cache"));
+    if (mmap_cache && verbose)
+      std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
+  } catch (const std::exception &e) {
+    std::cerr << "Error: " << e.what() << "\n";
+    return EXIT_FAILURE;
   }
 
   if (resume) {

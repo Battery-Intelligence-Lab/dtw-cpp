@@ -32,10 +32,14 @@
 
 #define DTWC_CL_NO_MAIN
 #include "../../dtwc/dtwc_cl.cpp" // pulls in parse_device / validate_metric_for_device
+#include "../../dtwc/algorithms/tadpole.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <filesystem>
 #include <string>
+#include <variant>
 
 // ---------------------------------------------------------------------------
 // parse_device
@@ -114,6 +118,99 @@ TEST_CASE("validate_metric_for_device rejects a non-L1 metric on the CPU path", 
   // Any metric is fine on the CUDA path (that path consumes it).
   REQUIRE(validate_metric_for_device("squared_euclidean", /*is_cuda=*/true).empty());
   REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/true).empty());
+}
+
+// ---------------------------------------------------------------------------
+// CLI distance-matrix storage routing (Task 8.1 M11)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+struct ScratchDirectory
+{
+  std::filesystem::path path;
+
+  explicit ScratchDirectory(std::string_view name)
+    : path(std::filesystem::temp_directory_path() / std::string(name))
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+    std::filesystem::create_directories(path);
+  }
+
+  ~ScratchDirectory()
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(path, ec);
+  }
+};
+
+dtwc::Problem tiny_storage_problem()
+{
+  dtwc::Problem prob{"cli_storage"};
+  std::vector<std::vector<dtwc::data_t>> series{
+    { 0.0, 1.0, 2.0 },
+    { 0.0, 2.0, 3.0 },
+    { 1.0, 2.0, 4.0 },
+  };
+  std::vector<std::string> names{ "a", "b", "c" };
+  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+  return prob;
+}
+
+} // namespace
+
+TEST_CASE("CLI TADPole threshold uses mmap or fails before dense allocation",
+          "[cli][storage][mmap][tadpole]")
+{
+  ScratchDirectory scratch{"dtwc_cli_tadpole_storage"};
+  auto prob = tiny_storage_problem();
+  const auto cache = scratch.path / "tadpole_distmat.cache";
+
+#ifdef DTWC_HAS_MMAP
+  const auto selected = configure_cli_distance_storage(
+    prob, "tadpole", /*mmap_threshold=*/0, cache);
+
+  REQUIRE(selected == cache);
+  REQUIRE(std::holds_alternative<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix()));
+  REQUIRE(std::filesystem::exists(cache));
+
+  // Exercise the real TADPole exact/fallback schedule. Its lazy cache writes
+  // must populate the mapped matrix rather than replacing it with dense storage.
+  const auto result = dtwc::algorithms::tadpole(
+    prob, /*n_clusters=*/2, /*dc=*/3.0, /*prune=*/false);
+  REQUIRE(result.labels.size() == prob.size());
+  REQUIRE(std::holds_alternative<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix()));
+  REQUIRE(std::get<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix())
+            .is_computed(0, 1));
+#else
+  REQUIRE_THROWS_WITH(
+    configure_cli_distance_storage(prob, "tadpole", /*mmap_threshold=*/0, cache),
+    Catch::Matchers::ContainsSubstring("requires memory-mapped distance storage")
+      && Catch::Matchers::ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
+
+  // The capability error must happen before dist_by_ind can lazily allocate N^2
+  // packed doubles on the heap.
+  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(prob.distance_matrix()));
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE_FALSE(std::filesystem::exists(cache));
+#endif
+}
+
+TEST_CASE("CLI OneBatch keeps its own O(Nm) storage when mmap threshold fires",
+          "[cli][storage][onebatch]")
+{
+  ScratchDirectory scratch{"dtwc_cli_onebatch_storage"};
+  auto prob = tiny_storage_problem();
+  const auto cache = scratch.path / "onebatch_distmat.cache";
+
+  const auto selected = configure_cli_distance_storage(
+    prob, "onebatch", /*mmap_threshold=*/0, cache);
+
+  REQUIRE_FALSE(selected.has_value());
+  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(prob.distance_matrix()));
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE_FALSE(std::filesystem::exists(cache));
 }
 
 // ---------------------------------------------------------------------------

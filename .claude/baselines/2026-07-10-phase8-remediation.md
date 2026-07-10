@@ -680,3 +680,42 @@ OpenMP report: available=1 pass=1 max=24 engaged=24 reason empty
 Verdict: **PASS.** Flavor assumptions isolate capability-specific assertions
 without converting an unsupported capability into a false pass. Exact wrapper
 struct equality prevents the MATLAB facade from embellishing the MEX truth.
+
+## M11 — TADPole CLI distance-storage routing
+
+Registered band: at a fired threshold, TADPole must execute through an actual
+`MmapDistanceMatrix` on LLFIO builds; without LLFIO it must throw before the
+dense packed vector allocates. OneBatchPAM must remain unallocated and exempt.
+
+Red-first compilation failed because the test named the not-yet-existing policy
+seam `configure_cli_distance_storage`. After extraction, both configurations
+exercise the same CLI function that main calls after method resolution.
+
+Green evidence:
+
+```text
+LLFIO ON  unit_test_cli_args: 56 assertions / 11 cases passed
+LLFIO OFF unit_test_cli_args: 54 assertions / 11 cases passed
+both builds, ctest -R "unit_test_cli_args|unit_test_tadpole|unit_test_variant_distmat"
+  3/3 passed, 0 failed
+```
+
+End-to-end CLI evidence:
+
+```text
+LLFIO ON:  exit 0; TADPole completed; mmap cache file created
+LLFIO OFF: exit 1; error names mmap support, DTWC_ENABLE_LLFIO=ON,
+           threshold/RAM tradeoff, and onebatch alternative;
+           no cache or checkpoint created
+```
+
+Verdict: **PASS.** TADPole is matrix-free in scheduling/result-surface terms,
+not in worst-case cache capacity: its lazy exact/fallback calls can touch O(N²)
+pairs. The CLI now gives that cache the intended file backing at large N and
+never silently substitutes a dangerous heap allocation when the capability is
+unavailable.
+
+Adjacent audit finding retained as M14: the mmap header validates magic,
+version, CRC, and N but not dataset/configuration identity. Same-N stale cache
+reuse is a separate correctness defect and is not disguised as part of this OOM
+repair.

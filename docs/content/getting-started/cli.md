@@ -135,6 +135,14 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 | `--resume` | Resume from checkpoint (distance matrix cache + clustering state) | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
+TADPole's pruning schedule avoids eagerly filling all pairs, but every
+exact/fallback distance still uses the packed cache. It therefore follows
+`--mmap-threshold` just like matrix-based methods. OneBatchPAM is the exception:
+its fixed O(Nm) table never allocates the Problem distance matrix. If the
+threshold is reached in a binary built without LLFIO, the CLI exits before a
+heap allocation and tells you to enable LLFIO, raise the threshold only when the
+packed matrix fits in RAM, or select `onebatch`.
+
 ### GPU Options
 
 | Flag                       | Description                                  | Default |
