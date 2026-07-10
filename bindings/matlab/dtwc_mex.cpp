@@ -541,14 +541,14 @@ static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs
   if (nrhs < 3) throw std::invalid_argument("Problem_set_missing_strategy requires handle and string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   std::string s = get_string(prhs[2]);
-  prob.missing_strategy = parse_missing_strategy(s);
+  prob.set_missing_strategy(parse_missing_strategy(s));
 }
 
 static void cmd_Problem_set_distance_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_distance_strategy requires handle and string.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   std::string s = get_string(prhs[2]);
-  prob.distance_strategy = parse_distance_strategy(s);
+  prob.set_distance_strategy(parse_distance_strategy(s));
 }
 
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -839,8 +839,10 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
 static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.cuda_settings.device_id = static_cast<int>(get_scalar(prhs[2], "device_id"));
-  if (nrhs > 3) prob.cuda_settings.precision = static_cast<int>(get_scalar(prhs[3], "precision"));
+  auto settings = prob.cuda_settings;
+  settings.device_id = static_cast<int>(get_scalar(prhs[2], "device_id"));
+  if (nrhs > 3) settings.precision = static_cast<int>(get_scalar(prhs[3], "precision"));
+  prob.set_cuda_settings(settings);
 }
 
 static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {

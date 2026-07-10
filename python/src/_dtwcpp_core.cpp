@@ -728,18 +728,40 @@ NB_MODULE(_dtwcpp_core, m) {
             "Deprecated alias for n_repetitions (kept one cycle, §4).")
     .def_rw("random_seed", &dtwc::Problem::random_seed,
             "Invocation-local seed for Lloyd and MIP warm starts.")
-    .def_rw("band", &dtwc::Problem::band)
-    .def_rw("variant_params", &dtwc::Problem::variant_params)
-    .def_rw("missing_strategy", &dtwc::Problem::missing_strategy,
-            "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
-    .def_rw("distance_strategy", &dtwc::Problem::distance_strategy,
-            "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
+    .def_prop_rw("band",
+                 [](const dtwc::Problem &p) { return p.band; },
+                 [](dtwc::Problem &p, int value) { p.set_band(value); })
+    .def_prop_rw("variant_params",
+                 [](const dtwc::Problem &p) -> const dtwc::core::DTWVariantParams & {
+                   return p.variant_params;
+                 },
+                 [](dtwc::Problem &p, dtwc::core::DTWVariantParams value) {
+                   p.set_variant(value);
+                 })
+    .def_prop_rw("missing_strategy",
+                 [](const dtwc::Problem &p) { return p.missing_strategy; },
+                 [](dtwc::Problem &p, dtwc::core::MissingStrategy value) {
+                   p.set_missing_strategy(value);
+                 },
+                 "Strategy for handling NaN values (Error, ZeroCost, AROW, Interpolate).")
+    .def_prop_rw("distance_strategy",
+                 [](const dtwc::Problem &p) { return p.distance_strategy; },
+                 [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
+                   p.set_distance_strategy(value);
+                 },
+                 "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
     .def_rw("lb_strategy", &dtwc::Problem::lb_strategy,
             "Lower-bound selection for the Pruned CPU path (Auto/None/Kim/Keogh/KimKeogh).")
     .def_rw("storage_policy", &dtwc::Problem::storage_policy,
             "How series data is stored (Auto/Heap/Mmap).")
-    .def_rw("cuda_settings", &dtwc::Problem::cuda_settings,
-            "GPU compute options (used when distance_strategy == CUDA).")
+    .def_prop_rw("cuda_settings",
+                 [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
+                   return p.cuda_settings;
+                 },
+                 [](dtwc::Problem &p, dtwc::CUDASettings value) {
+                   p.set_cuda_settings(value);
+                 },
+                 "GPU compute options (used when distance_strategy == CUDA).")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
     .def_rw("verbose", &dtwc::Problem::verbose,

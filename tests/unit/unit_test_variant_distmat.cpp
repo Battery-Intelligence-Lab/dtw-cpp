@@ -85,6 +85,163 @@ TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][
   REQUIRE(d == prob.distByInd(1, 0)); // symmetry
 }
 
+TEST_CASE("Problem dense cache never survives a raw semantic configuration mutation",
+          "[variant][distmat][dense][semantic_mutation]")
+{
+  SECTION("band")
+  {
+    Problem prob{"dense_band_mutation"};
+    prob.set_data(make_data({{0.0, 0.0, 10.0}, {0.0, 10.0, 10.0}}));
+
+    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
+    prob.band = 0; // Legacy public-field mutation must not preserve the cached 0.
+
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == 10.0);
+  }
+
+  SECTION("variant and parameters")
+  {
+    Problem prob{"dense_variant_mutation"};
+    prob.set_data(make_data({{0.0}, {2.0}}));
+
+    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+    core::DTWVariantParams params;
+    params.variant = core::DTWVariant::WDTW;
+    params.wdtw_g = 0.5;
+    prob.variant_params = params; // Legacy whole-field mutation.
+
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
+  }
+
+  SECTION("missing-data strategy")
+  {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    Problem prob{"dense_missing_mutation"};
+    prob.missing_strategy = core::MissingStrategy::ZeroCost;
+    prob.set_data(make_data({{0.0, nan, 2.0}, {0.0, 2.0, 2.0}}));
+
+    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
+    prob.missing_strategy = core::MissingStrategy::Interpolate;
+
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == 1.0);
+  }
+
+  SECTION("distance backend and nested CUDA settings")
+  {
+    Problem prob{"dense_backend_mutation"};
+    prob.set_data(make_data({{0.0}, {2.0}}));
+    auto load_precomputed = [&] {
+      auto &matrix = prob.dense_distance_matrix();
+      matrix.resize(2);
+      matrix.set(0, 0, 0.0);
+      matrix.set(0, 1, 123.0);
+      matrix.set(1, 1, 0.0);
+      REQUIRE(prob.is_distance_matrix_filled());
+    };
+
+    load_precomputed();
+    prob.distance_strategy = DistanceMatrixStrategy::BruteForce;
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+
+    load_precomputed();
+    prob.cuda_settings.device_id = 7; // Nested public-struct mutation.
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+  }
+
+  SECTION("every variant parameter and multivariate mode")
+  {
+    using Mutator = std::function<void(core::DTWVariantParams &)>;
+    const std::vector<std::pair<std::string, Mutator>> mutations{
+      {"variant", [](auto &p) { p.variant = core::DTWVariant::DDTW; }},
+      {"wdtw_g", [](auto &p) { p.wdtw_g = 0.5; }},
+      {"adtw_penalty", [](auto &p) { p.adtw_penalty = 2.0; }},
+      {"sdtw_gamma", [](auto &p) { p.sdtw_gamma = 0.5; }},
+      {"msm_c", [](auto &p) { p.msm_c = 2.0; }},
+      {"twe_nu", [](auto &p) { p.twe_nu = 0.01; }},
+      {"twe_lambda", [](auto &p) { p.twe_lambda = 2.0; }},
+      {"mv_mode", [](auto &p) { p.mv_mode = core::MVMode::Independent; }},
+    };
+
+    for (const auto &[name, mutate] : mutations) {
+      CAPTURE(name);
+      Problem prob{"dense_variant_parameter_mutation"};
+      prob.set_data(make_data({{0.0}, {2.0}}));
+      auto &matrix = prob.dense_distance_matrix();
+      matrix.resize(2);
+      matrix.set(0, 0, 0.0);
+      matrix.set(0, 1, 123.0);
+      matrix.set(1, 1, 0.0);
+      REQUIRE(prob.is_distance_matrix_filled());
+
+      mutate(prob.variant_params);
+
+      REQUIRE_FALSE(prob.is_distance_matrix_filled());
+      REQUIRE(prob.dist_by_ind(0, 1) != 123.0);
+    }
+  }
+
+  SECTION("const readers reject a stale raw configuration")
+  {
+    Problem prob{"dense_const_reader_mutation"};
+    prob.set_data(make_data({{0.0, 0.0, 10.0}, {0.0, 10.0, 10.0}}));
+    REQUIRE(prob.dist_by_ind(0, 1) == 0.0);
+    prob.band = 0;
+
+    const Problem &view = prob;
+    REQUIRE_FALSE(view.is_distance_matrix_filled());
+    REQUIRE_THROWS_WITH(
+      view.dense_distance_matrix(),
+      Catch::Matchers::ContainsSubstring("cached distance configuration changed"));
+  }
+}
+
+TEST_CASE("Problem semantic setters preserve or invalidate precomputed distances exactly",
+          "[variant][distmat][dense][semantic_mutation][setters]")
+{
+  Problem prob{"dense_semantic_setters"};
+  prob.set_data(make_data({{0.0}, {2.0}}));
+  const auto load_precomputed = [&] {
+    auto &matrix = prob.dense_distance_matrix();
+    matrix.resize(2);
+    matrix.set(0, 0, 0.0);
+    matrix.set(0, 1, 123.0);
+    matrix.set(1, 1, 0.0);
+    REQUIRE(prob.is_distance_matrix_filled());
+  };
+
+  load_precomputed();
+  prob.set_missing_strategy(core::MissingStrategy::Error);
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
+  prob.set_variant(prob.variant_params);
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
+  prob.set_variant(core::DTWVariant::Standard);
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 123.0);
+  prob.set_missing_strategy(core::MissingStrategy::Interpolate);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+
+  load_precomputed();
+  prob.set_distance_strategy(DistanceMatrixStrategy::BruteForce);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+
+  load_precomputed();
+  CUDASettings settings;
+  settings.device_id = 7;
+  settings.precision = 2;
+  prob.set_cuda_settings(settings);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dist_by_ind(0, 1) == 2.0);
+}
+
 TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mmap]")
 {
 #ifndef DTWC_HAS_MMAP

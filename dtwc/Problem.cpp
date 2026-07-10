@@ -95,6 +95,19 @@ void hash_float(FingerprintHash &hash, float value)
   hash_u32(hash, bits);
 }
 
+bool variant_params_equal(
+  const core::DTWVariantParams &a, const core::DTWVariantParams &b) noexcept
+{
+  return a.variant == b.variant
+      && a.wdtw_g == b.wdtw_g
+      && a.adtw_penalty == b.adtw_penalty
+      && a.sdtw_gamma == b.sdtw_gamma
+      && a.msm_c == b.msm_c
+      && a.twe_nu == b.twe_nu
+      && a.twe_lambda == b.twe_lambda
+      && a.mv_mode == b.mv_mode;
+}
+
 } // namespace
 
 /**
@@ -165,6 +178,7 @@ bool Problem::set_solver(Solver solver_)
 void Problem::print_distance_matrix() const
 {
   validate_mmap_cache_identity();
+  validate_dense_cache_configuration();
   visit_distmat([](const auto &m) { std::cout << m << '\n'; });
 }
 
@@ -247,16 +261,20 @@ void Problem::rebind_dtw_fn()
   refresh_variant_caches();
   dtw_fn_     = core::resolve_dtw_fn<data_t>(*this);
   dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
+  dense_cache_configuration_ = distance_cache_configuration(core::MetricType::L1);
+  dense_cache_configuration_bound_ = true;
 }
 
 void Problem::set_variant(core::DTWVariant v)
 {
+  if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
 }
 
 void Problem::set_variant(core::DTWVariantParams params)
 {
+  if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
 }
@@ -311,21 +329,42 @@ Problem::distance_cache_configuration(core::MetricType metric) const
 bool Problem::distance_cache_configuration_matches(
   const DistanceCacheConfiguration &expected) const
 {
-  const auto &a = variant_params;
-  const auto &b = expected.variant_params;
   return expected.band == band
-      && b.variant == a.variant
-      && b.wdtw_g == a.wdtw_g
-      && b.adtw_penalty == a.adtw_penalty
-      && b.sdtw_gamma == a.sdtw_gamma
-      && b.msm_c == a.msm_c
-      && b.twe_nu == a.twe_nu
-      && b.twe_lambda == a.twe_lambda
-      && b.mv_mode == a.mv_mode
+      && variant_params_equal(expected.variant_params, variant_params)
       && expected.missing_strategy == missing_strategy
       && expected.distance_strategy == distance_strategy
       && expected.cuda_device_id == cuda_settings.device_id
       && expected.cuda_precision == cuda_settings.precision;
+}
+
+bool Problem::dense_cache_configuration_is_current() const
+{
+  return dense_cache_configuration_bound_
+      && distance_cache_configuration_matches(dense_cache_configuration_);
+}
+
+void Problem::ensure_dense_cache_configuration_current()
+{
+  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
+      || dense_cache_configuration_is_current())
+    return;
+
+  // Public fields remain source-compatible, and nested language-binding
+  // objects can be mutated without invoking a whole-property setter. Treat
+  // detected drift exactly like an explicit semantic setter.
+  refresh_distance_matrix();
+}
+
+void Problem::validate_dense_cache_configuration() const
+{
+  if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
+      || dense_cache_configuration_is_current())
+    return;
+
+  throw std::runtime_error(
+    "DenseDistanceMatrix: cached distance configuration changed through a raw "
+    "or nested mutation. Use a semantic setter or a non-const compute path to "
+    "refresh the matrix before reading cached values.");
 }
 
 Problem::DistanceCacheIdentity
@@ -427,6 +466,7 @@ void Problem::validate_mmap_cache_identity() const
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
+  ensure_dense_cache_configuration_current();
   const size_t N = data.size();
   DistanceCacheIdentity identity = distance_cache_identity(metric);
   if (std::filesystem::exists(cache_path)) {
@@ -461,6 +501,7 @@ void Problem::use_mmap_distance_matrix(
 double Problem::dist_by_ind(int i, int j)
 {
   validate_mmap_cache_identity();
+  ensure_dense_cache_configuration_current();
   if (i == j) return 0.0;
 
   const size_t N = data.size();
@@ -585,6 +626,8 @@ void Problem::fillDistanceMatrix_BruteForce()
  */
 void Problem::fill_distance_matrix()
 {
+  validate_mmap_cache_identity();
+  ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;
 
   if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)

@@ -122,6 +122,8 @@ private:
   DistanceCacheIdentity mmap_cache_identity_{};
   bool mmap_cache_identity_bound_{ false };
   mutable bool mmap_cache_data_validated_{ false };
+  DistanceCacheConfiguration dense_cache_configuration_{};
+  bool dense_cache_configuration_bound_{ false };
 
   /// Dispatch through variant via std::visit.
   template <typename F>
@@ -144,6 +146,9 @@ private:
     core::MetricType metric) const;
   bool distance_cache_configuration_matches(
     const DistanceCacheConfiguration &expected) const;
+  bool dense_cache_configuration_is_current() const;
+  void ensure_dense_cache_configuration_current();
+  void validate_dense_cache_configuration() const;
   DistanceCacheIdentity distance_cache_identity(core::MetricType metric) const;
   void validate_mmap_cache_identity() const;
   void clear_mmap_cache_identity();
@@ -171,10 +176,9 @@ public:
   int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   double tadpole_dc{ -1.0 };          /*!< TADPole density cutoff dc (Method::TADPole). <0 ⇒ auto-select from a DTW subsample. */
   /// DTW variant selection and parameters.
-  /// INVARIANT: a direct write to this field does NOT rebind `dtw_fn_` — always
-  /// use `set_variant(...)` (which rebinds) to change the variant safely. The
-  /// field stays public only because the Python bindings bind it by address
-  /// (`_dtwcpp_core.cpp:426`); it becomes private behind `set_variant` in Phase 2.
+  /// Prefer set_variant(), which invalidates and rebinds eagerly. Legacy direct
+  /// writes remain source-compatible and are detected by the fixed-size dense
+  /// configuration snapshot before cached values can be reused.
   core::DTWVariantParams variant_params;
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
@@ -268,6 +272,26 @@ public:
   void set_n_repetitions(int n) { N_repetition = n; }
   int n_repetitions() const { return N_repetition; }
   void set_random_seed(std::uint64_t seed) { random_seed = seed; }
+  void set_missing_strategy(core::MissingStrategy strategy)
+  {
+    if (missing_strategy == strategy) return;
+    missing_strategy = strategy;
+    refresh_distance_matrix();
+  }
+  void set_distance_strategy(DistanceMatrixStrategy strategy)
+  {
+    if (distance_strategy == strategy) return;
+    distance_strategy = strategy;
+    refresh_distance_matrix();
+  }
+  void set_cuda_settings(CUDASettings settings)
+  {
+    if (cuda_settings.device_id == settings.device_id
+        && cuda_settings.precision == settings.precision)
+      return;
+    cuda_settings = settings;
+    refresh_distance_matrix();
+  }
 
   void set_data(dtwc::Data data_)
   {
@@ -292,6 +316,7 @@ public:
   data_t max_distance() const
   {
     validate_mmap_cache_identity();
+    validate_dense_cache_configuration();
     return visit_distmat([](const auto &m) { return m.max(); });
   }
   [[deprecated("use max_distance")]] data_t maxDistance() const { return max_distance(); }
@@ -315,6 +340,9 @@ public:
   bool is_distance_matrix_filled() const
   {
     validate_mmap_cache_identity();
+    if (std::holds_alternative<core::DenseDistanceMatrix>(distMat)
+        && !dense_cache_configuration_is_current())
+      return false;
     return visit_distmat([](const auto &m) { return m.size() > 0 && m.all_computed(); });
   }
   [[deprecated("use is_distance_matrix_filled")]] bool isDistanceMatrixFilled() const { return is_distance_matrix_filled(); }
@@ -323,22 +351,26 @@ public:
   const distMat_t &distance_matrix() const
   {
     validate_mmap_cache_identity();
+    validate_dense_cache_configuration();
     return distMat;
   }
   /// Access the underlying distance matrix (mutable).
   distMat_t &distance_matrix()
   {
     validate_mmap_cache_identity();
+    ensure_dense_cache_configuration_current();
     return distMat;
   }
 
   /// Access the Dense distance matrix. Throws std::bad_variant_access if mmap is active.
   const core::DenseDistanceMatrix &dense_distance_matrix() const
   {
+    validate_dense_cache_configuration();
     return std::get<core::DenseDistanceMatrix>(distMat);
   }
   core::DenseDistanceMatrix &dense_distance_matrix()
   {
+    ensure_dense_cache_configuration_current();
     return std::get<core::DenseDistanceMatrix>(distMat);
   }
   /// Bind persistent storage to this Problem's exact data/configuration.

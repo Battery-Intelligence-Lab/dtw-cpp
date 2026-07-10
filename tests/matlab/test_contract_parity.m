@@ -276,6 +276,27 @@ function test_problem_methods_all_callable(testCase)
     prob.read_distance_matrix(csvpath);         % CSV reader (swallows on format mismatch)
 end
 
+function test_problem_semantic_setters_invalidate_dense_cache(testCase)
+%   Semantic setters must discard distances computed under the prior contract.
+    prob = dtwc.Problem('semantic_mutation');
+    prob.set_missing_strategy('zero_cost');
+    prob.set_data([0 NaN 2; 0 2 2]);
+    verifyEqual(testCase, prob.dist_by_ind(1, 2), 0, 'AbsTol', 0);
+
+    prob.set_missing_strategy('interpolate');
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+    verifyEqual(testCase, prob.dist_by_ind(1, 2), 1, 'AbsTol', 1e-12);
+
+    D = [0 123; 123 0];
+    prob.set_distance_matrix(D);
+    prob.set_distance_strategy('brute_force');
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+
+    prob.set_distance_matrix(D);
+    prob.set_cuda_settings(3, 2);
+    verifyFalse(testCase, prob.is_distance_matrix_filled());
+end
+
 function test_problem_read_accessors(testCase)
 %   §2.2 read accessors: size / n_clusters / name / labels / medoids.
     prob = make_filled_problem(testCase);

@@ -95,6 +95,78 @@ class TestDistanceMatrix:
         assert p.dist_by_ind(0, 1) == pytest.approx(expected)
 
 
+class TestDenseSemanticMutation:
+    """A populated dense/precomputed matrix is bound to one exact configuration."""
+
+    @staticmethod
+    def _problem(data):
+        p = dtwcpp.Problem("semantic_mutation")
+        p.set_data(data, [f"s{i}" for i in range(len(data))])
+        return p
+
+    def test_band_property_invalidates_cached_distance(self):
+        p = self._problem([[0.0, 0.0, 10.0], [0.0, 10.0, 10.0]])
+        assert p.dist_by_ind(0, 1) == 0.0
+
+        p.band = 0
+
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 10.0
+
+    def test_variant_whole_and_nested_mutations_rebind(self):
+        p = self._problem([[0.0], [2.0]])
+        precomputed = np.array([[0.0, 123.0], [123.0, 0.0]])
+        p.set_distance_matrix(precomputed)
+
+        p.variant_params = dtwcpp.DTWVariantParams()
+        assert p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 123.0
+
+        params = dtwcpp.DTWVariantParams()
+        params.variant = dtwcpp.DTWVariant.WDTW
+        params.wdtw_g = 0.5
+        p.variant_params = params
+        assert p.dist_by_ind(0, 1) == 1.0
+
+        p.set_variant(dtwcpp.DTWVariant.Standard)
+        assert p.dist_by_ind(0, 1) == 2.0
+        p.variant_params.variant = dtwcpp.DTWVariant.WDTW
+
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 1.0
+
+    def test_missing_strategy_property_invalidates_cached_distance(self):
+        p = self._problem([[0.0, np.nan, 2.0], [0.0, 2.0, 2.0]])
+        p.missing_strategy = dtwcpp.MissingStrategy.ZeroCost
+        assert p.dist_by_ind(0, 1) == 0.0
+
+        p.missing_strategy = dtwcpp.MissingStrategy.Interpolate
+
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 1.0
+
+    def test_backend_and_cuda_whole_and_nested_mutations_drop_precomputed(self):
+        p = self._problem([[0.0], [2.0]])
+        precomputed = np.array([[0.0, 123.0], [123.0, 0.0]])
+        p.set_distance_matrix(precomputed)
+
+        p.distance_strategy = dtwcpp.DistanceMatrixStrategy.BruteForce
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 2.0
+
+        p.set_distance_matrix(precomputed)
+        settings = dtwcpp.CUDASettings()
+        settings.device_id = 3
+        settings.precision = 2
+        p.cuda_settings = settings
+        assert not p.is_distance_matrix_filled()
+
+        p.set_distance_matrix(precomputed)
+        p.cuda_settings.device_id = 4
+        assert not p.is_distance_matrix_filled()
+        assert p.dist_by_ind(0, 1) == 2.0
+
+
 class TestBandProperty:
     """Tests for the band property."""
 
