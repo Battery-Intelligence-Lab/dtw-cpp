@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made HiGHS-dependent MIP, Benders, and Lagrangian comparison tests skip
+  explicitly when the optional solver is absent. No-solver builds still test
+  the typed unavailable-backend contract, while their full CTest gate no
+  longer reports capability absence as a product failure.
 - Made every public non-distance enum selector fail closed. Invalid clustering
   method, exact solver, hierarchical linkage, PAM variant, OneBatch weighting,
   barycenter method, environment device, and assignment-matrix layout values

@@ -177,6 +177,12 @@ bool has_solution(const Problem &prob)
   return true;
 }
 
+void require_highs_solver()
+{
+  if (!highs_solver_available())
+    SKIP("HiGHS is not compiled into this build.");
+}
+
 } // namespace
 
 // ===========================================================================
@@ -270,6 +276,7 @@ TEST_CASE("Lagrangian root certifies optimum on clustered data (P1)", "[lagrangi
 // ===========================================================================
 TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][compare]")
 {
+  require_highs_solver();
   int compared = 0;
 
   for (unsigned seed = 1; seed <= 6; ++seed) {

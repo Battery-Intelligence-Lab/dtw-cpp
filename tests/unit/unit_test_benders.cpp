@@ -11,6 +11,7 @@
  */
 
 #include <dtwc.hpp>
+#include <mip/mip.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -98,11 +99,18 @@ bool has_solution(const Problem &prob)
   return true;
 }
 
+void require_highs_solver()
+{
+  if (!highs_solver_available())
+    SKIP("HiGHS is not compiled into this build.");
+}
+
 } // anonymous namespace
 
 
 TEST_CASE("Benders trivial N=1 k=1", "[benders]")
 {
+  require_highs_solver();
   auto prob = make_problem({ 42.0 }, 1);
   prob.cluster();
 
@@ -120,6 +128,7 @@ TEST_CASE("Benders trivial N=1 k=1", "[benders]")
 
 TEST_CASE("Benders N=k means every point is a medoid", "[benders]")
 {
+  require_highs_solver();
   auto prob = make_problem({ 1.0, 5.0, 10.0 }, 3);
   prob.cluster();
 
@@ -138,6 +147,7 @@ TEST_CASE("Benders N=k means every point is a medoid", "[benders]")
 
 TEST_CASE("Benders small instance N=6 k=2", "[benders]")
 {
+  require_highs_solver();
   // Two clear clusters: {0,1,2} near 0 and {10,11,12} near 11
   // Optimal medoids: 1 (for cluster {0,1,2}) and 11 (for cluster {10,11,12})
   // Optimal cost: |0-1|+|1-1|+|2-1| + |10-11|+|11-11|+|12-11| = 1+0+1+1+0+1 = 4
@@ -166,6 +176,7 @@ TEST_CASE("Benders small instance N=6 k=2", "[benders]")
 
 TEST_CASE("Benders matches compact MIP on small instance", "[benders]")
 {
+  require_highs_solver();
   // Run both compact MIP and Benders on the same instance;
   // they should produce the same optimal cost.
   std::vector<double> values = { 0.0, 3.0, 7.0, 8.0, 15.0 };
@@ -194,6 +205,7 @@ TEST_CASE("Benders matches compact MIP on small instance", "[benders]")
 
 TEST_CASE("Benders convergence within iteration limit", "[benders]")
 {
+  require_highs_solver();
   // N=10 instance with 3 clusters; verify that Benders terminates
   // and produces a valid solution.
   std::vector<double> values = { 0, 1, 2, 10, 11, 12, 20, 21, 22, 23 };
@@ -226,6 +238,7 @@ TEST_CASE("Benders convergence within iteration limit", "[benders]")
 
 TEST_CASE("Benders warm start produces valid initial bound", "[benders]")
 {
+  require_highs_solver();
   // Verify that enabling warm_start does not break correctness.
   std::vector<double> values = { 1, 2, 5, 6, 9, 10 };
   const int k = 3;
@@ -255,6 +268,7 @@ TEST_CASE("Benders warm start produces valid initial bound", "[benders]")
 
 TEST_CASE("Benders auto mode selects correctly by size", "[benders]")
 {
+  require_highs_solver();
   // With "auto" and N <= 200, should use compact MIP.
   // We just verify the solution is valid for a small instance.
   std::vector<double> values = { 0, 5, 10 };

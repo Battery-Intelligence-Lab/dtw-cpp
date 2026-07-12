@@ -48,6 +48,12 @@ static dtwc::Problem make_small_problem(int N, int L)
   return prob;
 }
 
+static void require_highs_solver()
+{
+  if (!dtwc::highs_solver_available())
+    SKIP("HiGHS is not compiled into this build.");
+}
+
 static dtwc::Problem make_seed_sensitive_problem()
 {
   const std::vector<double> base{0.0, 0.01, -0.02, 0.03};
@@ -433,6 +439,7 @@ TEST_CASE("Unavailable direct HiGHS leaves caller clustering state unchanged",
 
 TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
 {
+  require_highs_solver();
   const auto legacy_rng_original = dtwc::randGenerator;
   dtwc::randGenerator.seed(314159);
   const auto legacy_rng_before = dtwc::randGenerator;
@@ -457,6 +464,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
 
 TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
 {
+  require_highs_solver();
   auto prob1 = make_small_problem(8, 20);
   prob1.set_numberOfClusters(2);
   prob1.mip_settings.warm_start = false;
@@ -485,6 +493,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
 
 TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
 {
+  require_highs_solver();
   auto prob = make_small_problem(6, 15);
   prob.set_numberOfClusters(2);
   prob.mip_settings.mip_gap = 0.01;
@@ -498,6 +507,7 @@ TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
 
 TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 {
+  require_highs_solver();
   auto prob = make_small_problem(5, 10);
   prob.set_numberOfClusters(1);
   prob.mip_settings.warm_start = true;
@@ -524,6 +534,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 
 TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][benders]")
 {
+  require_highs_solver();
   auto prob = make_small_problem(10, 20);
   // Benders warm-starts via k-medoids Lloyd which writes medoids CSVs. Route
   // output to a temp dir so the test doesn't depend on CWD ./results/.
@@ -547,6 +558,7 @@ TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][bend
 
 TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][highs][benders]")
 {
+  require_highs_solver();
   // On a small instance both Benders and direct HiGHS must find the global
   // optimum of the p-median MIP — costs should agree to numerical precision.
   const auto tmp = std::filesystem::temp_directory_path() / "dtwc_mip_benders_cost_test";
@@ -581,6 +593,7 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
 TEST_CASE("MIP Benders warm start preserves caller configuration on success",
           "[mip][highs][benders][state]")
 {
+  require_highs_solver();
   const auto nonce = std::to_string(
     std::chrono::steady_clock::now().time_since_epoch().count())
     + "_" + std::to_string(std::random_device{}());
@@ -631,6 +644,7 @@ TEST_CASE("MIP Benders warm start preserves caller configuration on success",
 TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
           "[mip][highs][benders][state]")
 {
+  require_highs_solver();
   auto prob = make_small_problem(8, 12);
   prob.set_n_clusters(2);
   prob.method = dtwc::Method::MIP;
@@ -672,6 +686,7 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
 TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
           "[mip][highs][benders][io]")
 {
+  require_highs_solver();
   const auto nonce = std::to_string(
     std::chrono::steady_clock::now().time_since_epoch().count())
     + "_" + std::to_string(std::random_device{}());
@@ -757,6 +772,7 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
 // ---------------------------------------------------------------------------
 TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty result", "[mip][highs]")
 {
+  require_highs_solver();
   // DTWC_ENABLE_HIGHS is defined PUBLIC on the mip-solvers object library, which
   // links PRIVATE into dtwc++, so the macro is NOT visible in this test TU.
   // Detect HiGHS availability at runtime: a feasible instance produces a
@@ -790,6 +806,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
 
 TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][benders]")
 {
+  require_highs_solver();
   // Sanity check the dispatch logic: benders = "auto" + N <= 200 uses direct;
   // benders = "auto" + N > 200 would use Benders (not tested here to keep
   // runtime reasonable). We verify "auto" + small N completes successfully.

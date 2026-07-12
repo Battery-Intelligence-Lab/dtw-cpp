@@ -723,6 +723,16 @@ Confirmed during F1's mandatory full-gate closeout:
 
 - [x] **F2 — contended wall-clock parity gate.** The first four-way CTest run let `test_multivariate_adversarial` compare scalar and ndim=1 MV timings while three heavy targets competed for CPU; correctness passed 12,645/12,646 assertions, but MV missed the derived timing ceiling by 0.685 ms. Five isolated runs passed 63,230/63,230 with ratios 0.69–1.00, falsifying a kernel regression. `b61001e` marks the timing target `RUN_SERIAL`; the same four-way 112-test command then passes and schedules the measurement alone. Evidence: `.claude/baselines/2026-07-10-invalid-public-selectors.md`.
 
+- [x] **F3 — optional HiGHS tests failed the no-solver full gate.** The valid
+  MSVC ASan run found three solver suites executing HiGHS-required cases in an
+  explicitly HiGHS-off build, contradicting their own no-solver contract.
+  Solver-required cases now query `highs_solver_available()` before setup; the
+  typed unavailable-backend state test remains active. The focused no-solver
+  gate passes with one explicit all-Benders skip, the HiGHS-on positive control
+  executes all three targets, and both 112-target ASan and canonical gates pass
+  with zero failures. Evidence:
+  `.claude/baselines/2026-07-12-phase8-sanitizers.md`.
+
 - [ ] **Sanitizer gates.** (a) AddressSanitizer: MSVC `/fsanitize=address` (supported on this Windows host) or clang ASan, full ctest; UBSan: clang `-fsanitize=undefined` (disable `-ffast-math` for the UBSan run if it false-positives; record the config). (b) ThreadSanitizer (or Archer for OpenMP) on the parallel suites: matrix fill, fast_pam swap, pruned build, kmeans++ init, CLARA — the `rebind_dtw_fn` race class has already produced two real bugs (0xc0000409); assume more exist. **Platform fallback (pre-authorized, no stall):** TSan/Archer do NOT run on native Windows — use WSL if `wsl.exe --status` shows a distro; otherwise wire a TSan job into `ubuntu-unit.yml` (Claude-branch trigger, `TODO(release): remove`), push, and consume the CI log as the run-log; if neither path is available, record `[BLOCKED-ENV]` with the probe output and continue. All reports triaged: real → fix; benign → documented suppression with reason.
 - [ ] **Property/metamorphic fuzz harness** (new `tests/fuzz/` or Catch2 generators, seeds committed): invariants checked on random + adversarial inputs (NaN/Inf payloads, empty, length-1, constant series, mixed lengths, huge magnitudes, denormals) across all variant×metric×mode combinations: symmetry `d(x,y)=d(y,x)`; `d(x,x)=0`; `DTW_band ≥ DTW_full` and monotone in band; `LB_* ≤ DTW` (all LBs); `LB_Webb ≥ LB_Keogh`; `DTW_I ≤ DTW_D`; `dtwFull_eap == dtwFull_L`; prune==no-prune digit-identical (TADPole, pruned matrix); MSM/TWE triangle inequality; checkpoint save→load→identical state. Every violation is a bug or a documented, justified exclusion.
 - [ ] **Cross-oracle differential test** vs aeon 1.5.0 (uv env): randomized non-degenerate pairs, all shared distances (DTW/banded/MSM/TWE/DTW_I/soft-DTW value), committed seeds, band 1e-9 rel. Disagreement = numbers-ledger entry, arbitrate with a third computation before touching code.
