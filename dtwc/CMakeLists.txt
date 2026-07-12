@@ -25,6 +25,7 @@ target_sources(dtwc++
   algorithms/hierarchical.cpp
   algorithms/clarans.cpp
   algorithms/tadpole.cpp
+  algorithms/detail/fast_clara_plan.hpp
   core/pruned_distance_matrix.cpp
   io/arrow_c_data.cpp
   extern/nanoarrow/nanoarrow.c

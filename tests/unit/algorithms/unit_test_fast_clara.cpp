@@ -10,9 +10,12 @@
  */
 
 #include <dtwc.hpp>
+#include <algorithms/detail/fast_clara_plan.hpp>
 #include <algorithms/fast_clara.hpp>
+#include <error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
@@ -29,8 +32,10 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-static struct TestDataInitCLARA {
-  TestDataInitCLARA() {
+static struct TestDataInitCLARA
+{
+  TestDataInitCLARA()
+  {
     dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
     // Route CSV output to a per-run temp dir so the test doesn't pollute the
     // repo root or build tree (CWD-dependent otherwise).
@@ -224,7 +229,9 @@ TEST_CASE("FastCLARA falls back to FastPAM when sample_size >= N", "[fast_clara]
   algorithms::CLARAOptions opts;
   opts.n_clusters = k;
   opts.sample_size = N + 10; // Larger than N.
-  opts.n_samples = 1;
+  // A full-data request is one seeded PAM invocation, regardless of the CLARA
+  // repetition count: there is no subsampling left to repeat.
+  opts.n_samples = 3;
   opts.random_seed = 42;
 
   const auto legacy_rng_original = dtwc::randGenerator;
@@ -331,8 +338,77 @@ TEST_CASE("FastCLARA throws on invalid inputs", "[fast_clara][errors]")
     algorithms::CLARAOptions opts;
     opts.n_clusters = 2;
     opts.n_samples = 0;
-    REQUIRE_THROWS_AS(algorithms::fast_clara(prob, opts), std::runtime_error);
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(prob, opts),
+      "fast_clara: n_samples must be positive.");
   }
+
+  SECTION("negative n_samples throws")
+  {
+    Problem prob = make_clara_problem(10);
+    algorithms::CLARAOptions opts;
+    opts.n_clusters = 2;
+    opts.n_samples = -1;
+    REQUIRE_THROWS_AS(algorithms::fast_clara(prob, opts), InvalidInput);
+  }
+
+  SECTION("sample_size accepts only -1 or a positive value")
+  {
+    Problem prob = make_clara_problem(10);
+    algorithms::CLARAOptions opts;
+    opts.n_clusters = 2;
+    opts.sample_size = GENERATE(0, -2, std::numeric_limits<int>::min());
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(prob, opts),
+      "fast_clara: sample_size must be -1 or a positive integer.");
+  }
+
+  SECTION("max_iter must be positive")
+  {
+    Problem prob = make_clara_problem(10);
+    algorithms::CLARAOptions opts;
+    opts.n_clusters = 2;
+    opts.max_iter = 0;
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(prob, opts),
+      "fast_clara: max_iter must be positive.");
+  }
+}
+
+TEST_CASE("FastCLARA dimension planning is overflow-safe before allocation",
+          "[fast_clara][errors][overflow]")
+{
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = 300'000'000;
+  opts.sample_size = -1;
+  opts.n_samples = 1;
+  opts.max_iter = 1;
+
+  // 10*k+100 overflows a 32-bit int. The mathematical auto size is capped by
+  // N and must remain exactly INT_MAX, not wrap to the smaller 40+2*k arm.
+  const auto plan = algorithms::detail::resolve_clara_plan(
+    std::numeric_limits<int>::max(), opts, "fast_clara");
+  REQUIRE(plan.n_points == std::numeric_limits<int>::max());
+  REQUIRE(plan.sample_size == std::numeric_limits<int>::max());
+
+  opts.n_clusters = std::numeric_limits<int>::max();
+  const auto maximal_k_plan = algorithms::detail::resolve_clara_plan(
+    std::numeric_limits<int>::max(), opts, "fast_clara");
+  REQUIRE(maximal_k_plan.sample_size == std::numeric_limits<int>::max());
+
+  REQUIRE_THROWS_WITH(
+    algorithms::detail::validate_streaming_clara_plan(
+      maximal_k_plan, "fast_clara"),
+    "fast_clara: sample_size resolves to N, but the Parquet dataset exceeds "
+    "ram_limit_bytes; use sample_size < N or raise the RAM limit for the "
+    "single full-data PAM fallback.");
+
+  REQUIRE_THROWS_WITH(
+    algorithms::detail::resolve_clara_plan(
+      static_cast<std::int64_t>(std::numeric_limits<int>::max()) + 1,
+      opts,
+      "fast_clara"),
+    "fast_clara: N exceeds the int-indexed clustering result limit.");
 }
 
 // ===========================================================================
@@ -425,7 +501,7 @@ TEST_CASE("FastCLARA: propagates ndim to sub-problem", "[clara][mv]")
   data.ndim = 2;
   // 10 series, 3 timesteps x 2 features each
   for (int i = 0; i < 10; ++i) {
-    data.p_vec.push_back({double(i), double(i + 1), double(i + 2), double(i + 3), double(i + 4), double(i + 5)});
+    data.p_vec.push_back({ double(i), double(i + 1), double(i + 2), double(i + 3), double(i + 4), double(i + 5) });
     data.p_names.push_back("s" + std::to_string(i));
   }
 
@@ -452,8 +528,8 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
   const double nan = std::numeric_limits<double>::quiet_NaN();
   dtwc::Data data;
   for (int i = 0; i < 10; ++i) {
-    std::vector<double> series = {double(i), double(i + 1), double(i + 2)};
-    if (i % 3 == 0) series[1] = nan;  // Some series have NaN
+    std::vector<double> series = { double(i), double(i + 1), double(i + 2) };
+    if (i % 3 == 0) series[1] = nan; // Some series have NaN
     data.p_vec.push_back(std::move(series));
     data.p_names.push_back("s" + std::to_string(i));
   }
@@ -481,7 +557,7 @@ TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
   // With N=1000: sample_size should be 800, not 180.
   dtwc::Data data;
   for (int i = 0; i < 1000; ++i) {
-    data.p_vec.push_back({double(i), double(i + 1)});
+    data.p_vec.push_back({ double(i), double(i + 1) });
     data.p_names.push_back("s" + std::to_string(i));
   }
 
@@ -492,7 +568,7 @@ TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
   dtwc::algorithms::CLARAOptions opts;
   opts.n_clusters = 70;
   opts.n_samples = 1;
-  opts.sample_size = -1;  // auto
+  opts.sample_size = -1; // auto
 
   // Should complete (the larger sample gives better results).
   auto result = dtwc::algorithms::fast_clara(prob, opts);
@@ -596,8 +672,7 @@ TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
   }
 
   constexpr std::array expected_medians{
-    std::pair{1u, 103}, std::pair{7u, 86}, std::pair{42u, 121},
-    std::pair{123u, 108}, std::pair{999u, 106}, std::pair{2024u, 105}
+    std::pair{ 1u, 103 }, std::pair{ 7u, 86 }, std::pair{ 42u, 121 }, std::pair{ 123u, 108 }, std::pair{ 999u, 106 }, std::pair{ 2024u, 105 }
   };
   for (const auto [seed, expected_medoid] : expected_medians) {
     // Fresh problem per seed (no cached-matrix carry-over between seeds).

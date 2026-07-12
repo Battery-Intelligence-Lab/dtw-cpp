@@ -83,7 +83,7 @@ adtw-penalty = 1.0
 sdtw-gamma = 1.0
 
 # --- Sampling-method options ---
-# Subsample size. -1 = auto (40 + 2*k).
+# Subsample size. -1 = auto: max(40+2*k, min(N, 10*k+100)).
 sample-size = -1
 
 # Number of subsamples to try.

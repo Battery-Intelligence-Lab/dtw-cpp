@@ -1040,7 +1040,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Parameters:\n"
      "  prob: Problem with data loaded.\n"
      "  n_clusters: Number of clusters (k).\n"
-     "  sample_size: Subsample size (-1 = auto: 40 + 2*k).\n"
+     "  sample_size: Subsample size (-1 = auto: max(40+2*k, min(N, 10*k+100))).\n"
      "  n_samples: Number of subsamples to try (default 5).\n"
      "  max_iter: Max PAM iterations per subsample (default 100).\n"
      "  seed: Random seed for reproducibility (default 42).");

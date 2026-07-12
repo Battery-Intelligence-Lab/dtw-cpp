@@ -32,32 +32,36 @@ class Problem; // Forward declaration
 
 namespace algorithms {
 
-/// Options for the FastCLARA algorithm.
-struct CLARAOptions {
-  int n_clusters = 3;       ///< Number of clusters (k).
-  int sample_size = -1;     ///< Subsample size. -1 = auto (40 + 2*k).
-  int n_samples = 5;        ///< Number of subsamples to try.
-  int max_iter = 100;       ///< Max PAM iterations per subsample.
-  unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
+  /// Options for the FastCLARA algorithm.
+  struct CLARAOptions
+  {
+    int n_clusters = 3;                                   ///< Number of clusters (k).
+    int sample_size = -1;                                 ///< Subsample size. -1 = overflow-safe auto policy.
+    int n_samples = 5;                                    ///< Number of subsamples to try.
+    int max_iter = 100;                                   ///< Max PAM iterations per subsample.
+    unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Reproducible RNG seed.
 
-  // RAM-aware chunked processing
-  size_t ram_limit_bytes = 0;                ///< 0 = no limit (all data in RAM).
-  std::filesystem::path parquet_path;        ///< Parquet file for streaming (empty = data in RAM).
-  std::string parquet_column;                ///< Column name for Parquet reader.
-  bool use_float32 = false;                  ///< Load chunks as float32 (2x memory saving).
-};
+    // RAM-aware chunked processing
+    size_t ram_limit_bytes = 0;         ///< 0 = no limit (all data in RAM).
+    std::filesystem::path parquet_path; ///< Parquet file for streaming (empty = data in RAM).
+    std::string parquet_column;         ///< Column name for Parquet reader.
+    bool use_float32 = false;           ///< Load chunks as float32 (2x memory saving).
+  };
 
-/**
- * @brief Run FastCLARA: scalable k-medoids via subsampling + FastPAM.
- *
- * @param prob      Problem instance with data loaded. The full distance matrix
- *                  is NOT computed (that's the whole point of CLARA).
- * @param opts      CLARAOptions controlling subsample size, repetitions, etc.
- * @return core::ClusteringResult with labels, medoid_indices, total_cost.
- *
- * @note When sample_size >= N, falls back to a single FastPAM run on all data.
+  /**
+   * @brief Run FastCLARA: scalable k-medoids via subsampling + FastPAM.
+   *
+   * @param prob      Problem instance with data loaded. The full distance matrix
+   *                  is NOT computed (that's the whole point of CLARA).
+   * @param opts      CLARAOptions controlling subsample size, repetitions, etc.
+   * @return core::ClusteringResult with labels, medoid_indices, total_cost.
+   *
+   * @note When sample_size resolves to N, in-memory data falls back to one
+ * FastPAM run. A streaming Parquet dataset that exceeds the RAM limit rejects
+ * that request rather than loading all rows or repeating identical full runs.
+ * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX.
  */
-core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts);
+  core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
 
 } // namespace algorithms
 } // namespace dtwc

@@ -44,7 +44,6 @@
 #endif
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -1222,11 +1221,6 @@ static int run_cli_main(int argc, char *argv[])
     // FastCLARA
     if (verbose)
       std::cout << "Running FastCLARA (k=" << n_clusters << ") ...\n";
-
-    // Auto-scale sample size for large N
-    if (sample_size < 0 && prob.size() > 50000)
-      sample_size = std::max(40 + 2 * n_clusters,
-        static_cast<int>(std::sqrt(static_cast<double>(prob.size())) * n_clusters));
 
     dtwc::algorithms::CLARAOptions clara_opts;
     clara_opts.n_clusters = n_clusters;

@@ -744,6 +744,30 @@ Confirmed during F1's mandatory full-gate closeout:
   8*N-byte index pool; legacy unseeded Tier-2 `mt19937` behavior is unchanged.
   Evidence: `.claude/baselines/2026-07-12-phase8-sanitizers.md`.
 
+- [x] **F5 — FastCLARA boundaries diverged and overflowed.** The Parquet path
+  bypassed `n_samples` validation, repeated full-data PAM for each nominal
+  sample, and narrowed medoid indices beyond `INT_MAX`; both paths computed
+  `2*k`/`10*k` in signed `int`, while the CLI silently replaced the documented
+  auto formula above N=50,000. One allocation-free execution planner now
+  validates controls before I/O, rejects the current result ABI boundary,
+  evaluates the formula in int64, and owns both paths. Resident full samples
+  run one seeded PAM; RAM-limited streaming full samples fail loudly instead
+  of violating the budget. The red linker proves tests call the production
+  seam; canonical, MSVC ASan, Clang UBSan, and Parquet syntax gates pass.
+  Evidence: `.claude/baselines/2026-07-12-fast-clara-boundaries.md`.
+
+- [ ] **F6 — in-memory FastCLARA allocates a packed O(N²) parent cache.**
+  `assign_all_points` computes only N*k entries but its first `dist_by_ind`
+  call resizes `DenseDistanceMatrix` to N*(N+1)/2 doubles, contradicting the
+  public O(s²) memory contract. Replace parent-cache assignment with direct
+  bound-DTW calls and assert the parent matrix retains zero size/capacity.
+
+- [ ] **F7 — CLI `--ram-limit` is applied after fully loading Parquet.** The
+  CLI currently retains the entire resident dataset before FastCLARA opens its
+  streaming reader, so chunks add memory rather than bound it. Select the
+  streaming route from Parquet metadata before materialization and preserve
+  labels/medoid-name output without a resident data copy.
+
 - [x] **Sanitizer gates.** (a) AddressSanitizer: MSVC `/fsanitize=address` (supported on this Windows host) or clang ASan, full ctest; UBSan: clang `-fsanitize=undefined` (disable `-ffast-math` for the UBSan run if it false-positives; record the config). (b) ThreadSanitizer (or Archer for OpenMP) on the parallel suites: matrix fill, fast_pam swap, pruned build, kmeans++ init, CLARA — the `rebind_dtw_fn` race class has already produced two real bugs (0xc0000409); assume more exist. **Platform fallback (pre-authorized, no stall):** TSan/Archer do NOT run on native Windows — use WSL if `wsl.exe --status` shows a distro; otherwise wire a TSan job into `ubuntu-unit.yml` (Claude-branch trigger, `TODO(release): remove`), push, and consume the CI log as the run-log; if neither path is available, record `[BLOCKED-ENV]` with the probe output and continue. All reports triaged: real → fix; benign → documented suppression with reason. **CLEAN 2026-07-12:** 113/113 MSVC ASan and Clang UBSan, plus eleven four-thread Clang/libomp TSan targets covering every named class and the added CLARANS seeded route; zero reports/suppressions. Evidence: `.claude/baselines/2026-07-12-phase8-sanitizers.md`.
 - [ ] **Property/metamorphic fuzz harness** (new `tests/fuzz/` or Catch2 generators, seeds committed): invariants checked on random + adversarial inputs (NaN/Inf payloads, empty, length-1, constant series, mixed lengths, huge magnitudes, denormals) across all variant×metric×mode combinations: symmetry `d(x,y)=d(y,x)`; `d(x,x)=0`; `DTW_band ≥ DTW_full` and monotone in band; `LB_* ≤ DTW` (all LBs); `LB_Webb ≥ LB_Keogh`; `DTW_I ≤ DTW_D`; `dtwFull_eap == dtwFull_L`; prune==no-prune digit-identical (TADPole, pruned matrix); MSM/TWE triangle inequality; checkpoint save→load→identical state. Every violation is a bug or a documented, justified exclusion.
 - [ ] **Cross-oracle differential test** vs aeon 1.5.0 (uv env): randomized non-degenerate pairs, all shared distances (DTW/banded/MSM/TWE/DTW_I/soft-DTW value), committed seeds, band 1e-9 rel. Disagreement = numbers-ledger entry, arbitrate with a third computation before touching code.
@@ -927,6 +951,8 @@ The 8.3 no-op oracle stays binding for every commit here — "fast" never buys a
 - 2026-07-12 (no-blocker policy): **`[BLOCKED-ENV]` record-and-continue promoted into the execution contract.** Any environment-impossible sub-item (TSan on native Windows, network-gated downloads, Playwright browser fetch) executes its named fallback or is recorded with verbatim probe evidence and skipped — no operator waits anywhere in Phases 8–9; tag/publication remain user actions that block nothing.
 
 ## Progress log
+
+- 2026-07-12 (Task 8.2/F5): **FastCLARA planning made single-source and checked.** One pre-allocation planner now governs resident and Parquet paths, rejects invalid controls and the int-index result boundary, computes auto sampling without signed overflow, and makes the full-sample/RAM-limit conflict explicit. The CLI's undocumented large-N formula was removed. Evidence: `.claude/baselines/2026-07-12-fast-clara-boundaries.md`.
 
 - 2026-07-06: Plan v0.1 drafted. Phase 0 FINAL. Research agents dispatched: api-surface, build-state, solver-math (Fable max), literature.
 - 2026-07-06: All 4 research reports landed (`.claude/reports/*-2026-07-06.md`). Phases 1–6 filled to FINAL (1.1 contract review + baseline numbers pending). Plan v0.9.

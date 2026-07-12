@@ -28,7 +28,7 @@ DTW-C++ uses the FastPAM1 optimization, which evaluates all swap candidates simu
 
 ## FastCLARA (Scalable k-Medoids)
 
-CLARA (Clustering Large Applications) scales k-medoids to large datasets by running FastPAM on random subsamples of size $$s \ll N$$, then assigning all $$N$$ points to the best medoids found. This avoids computing the full $$O(N^2)$$ distance matrix.
+CLARA (Clustering Large Applications) scales k-medoids to large datasets by running FastPAM on random subsamples of size $$s \ll N$$, then assigning all $$N$$ points to the best medoids found. This avoids computing the full $$O(N^2)$$ distance matrix. The current result ABI uses signed 32-bit medoid indices, so FastCLARA rejects datasets with more than `INT_MAX` series before allocation.
 
 ### How It Works
 
@@ -148,7 +148,7 @@ For large datasets ($$N > 200$$), Benders decomposition splits the problem into 
 | Algorithm | Optimality | Memory | Scalability | Best For |
 |-----------|-----------|--------|-------------|----------|
 | FastPAM | Local optimum | $$O(N^2)$$ | Medium (N < 10k) | Default choice |
-| FastCLARA | Approximate | $$O(s^2)$$ | Large (any N) | Large datasets |
+| FastCLARA | Approximate | $$O(s^2)$$ | Large ($$N \leq \mathtt{INT\_MAX}$$) | Large datasets |
 | Hierarchical | N/A (dendrogram) | $$O(N^2)$$ | Small (N < 2000) | Exploratory analysis |
 | MIP | Global optimum | $$O(N^2)$$ | Small (N < 500) | When optimality matters |
 | Lloyd's | Local optimum | $$O(N^2)$$ | Medium | Legacy, simple |

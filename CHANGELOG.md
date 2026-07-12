@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Hardened FastCLARA's execution plan before any allocation or Parquet I/O.
+  Invalid repetition, iteration, and sample-size controls now raise typed
+  errors; datasets beyond the signed-32-bit medoid-index ABI fail loudly; and
+  the Schubert--Rousseeuw auto sample formula uses checked 64-bit arithmetic.
+  Resident full samples still run one seeded PAM, while a full sample that
+  contradicts a streaming RAM limit is rejected with remediation. The CLI no
+  longer substitutes a divergent `sqrt(N)*k` policy for the documented formula.
 - Made every maintained invocation-local seeded clustering path independent of
   the host C++ standard library's unspecified random-distribution mappings.
   Barycenter SSG/k-means++, seeded FastPAM and Lloyd initializers, OneBatchPAM,
