@@ -30,6 +30,10 @@ DTW-C++ uses the FastPAM1 optimization, which evaluates all swap candidates simu
 
 CLARA (Clustering Large Applications) scales k-medoids to large datasets by running FastPAM on random subsamples of size $$s \ll N$$, then assigning all $$N$$ points to the best medoids found. This avoids computing the full $$O(N^2)$$ distance matrix. The current result ABI uses signed 32-bit medoid indices, so FastCLARA rejects datasets with more than `INT_MAX` series before allocation.
 
+Assignment uses the `Problem`'s configured DTW function directly. A pre-existing
+dense or memory-mapped parent distance cache is neither consulted nor modified;
+FastCLARA results therefore cannot depend on injected cache contents.
+
 ### How It Works
 
 1. Draw a random subsample of size $$s$$ from the dataset.

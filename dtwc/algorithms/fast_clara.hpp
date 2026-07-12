@@ -59,6 +59,8 @@ namespace algorithms {
    * @note When sample_size resolves to N, in-memory data falls back to one
  * FastPAM run. A streaming Parquet dataset that exceeds the RAM limit rejects
  * that request rather than loading all rows or repeating identical full runs.
+ * Non-full assignment evaluates the configured bound DTW function directly;
+ * an existing parent distance cache is ignored and left unchanged.
  * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX.
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);

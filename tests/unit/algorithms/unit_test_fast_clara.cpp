@@ -610,6 +610,7 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
   algorithms::CLARAOptions opts;
   opts.n_clusters = k;
   opts.n_samples = 3;
+  opts.sample_size = 30;
   opts.random_seed = 42;
 
   auto result = algorithms::fast_clara(prob, opts);
@@ -617,6 +618,8 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
   REQUIRE(result.total_cost > 0.0);
+  REQUIRE(prob.dense_distance_matrix().size() == 0);
+  REQUIRE(prob.dense_distance_matrix().packed_count() == 0);
 
   // All labels valid
   for (int label : result.labels) {
@@ -701,11 +704,10 @@ TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
 // ===========================================================================
 // Task 0.11 — Test B: parallel in-RAM assignment stays deterministic + correct.
 //
-// assign_all_points() is now OpenMP-parallel over the N points (its distByInd
-// cache is primed serially first so the lazy alloc/compute path never races —
-// see fast_clara.cpp). A data race would corrupt labels / total_cost
-// non-deterministically. N > 64 forces the parallel branch. This guards the
-// parallelisation: results must be reproducible run-to-run and self-consistent
+// assign_all_points() is OpenMP-parallel over N points and calls the serially
+// bound DTW dispatcher directly, so workers share no parent-cache writes. A
+// race would corrupt labels / total_cost non-deterministically. N > 64 forces
+// the parallel branch. Results must be reproducible and self-consistent
 // (total_cost == cost recomputed from the returned labels + medoids). total_cost
 // uses a serial index-ordered reduction, so it is deterministic despite threads.
 // ===========================================================================
@@ -737,11 +739,45 @@ TEST_CASE("FastCLARA parallel in-RAM assignment is deterministic and consistent"
   // Valid + self-consistent: total_cost equals cost recomputed from labels.
   REQUIRE(r1.labels.size() == static_cast<size_t>(N));
   double recomputed = 0.0;
+  const auto &distance = prob1.dtw_function();
   for (int p = 0; p < N; ++p) {
     REQUIRE(r1.labels[p] >= 0);
     REQUIRE(r1.labels[p] < k);
     const int medoid = r1.medoid_indices[r1.labels[p]];
-    recomputed += prob1.distByInd(p, medoid);
+    recomputed += p == medoid ? 0.0 : distance(prob1.series(p), prob1.series(medoid));
   }
   REQUIRE_THAT(r1.total_cost, WithinAbs(recomputed, 1e-9));
+  REQUIRE(prob1.dense_distance_matrix().size() == 0);
+  REQUIRE(prob1.dense_distance_matrix().packed_count() == 0);
+}
+
+TEST_CASE("FastCLARA leaves an existing parent cache byte-stable",
+          "[fast_clara][matrix_free][cache_state]")
+{
+  constexpr int N = 40;
+  Problem cached = make_clara_problem(N);
+  Problem fresh = make_clara_problem(N);
+
+  auto &matrix = cached.dense_distance_matrix();
+  matrix.resize(N);
+  matrix.set(0, 1, 12345.0);
+  matrix.set(2, 3, 67890.0);
+
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = 3;
+  opts.sample_size = 20;
+  opts.n_samples = 2;
+  opts.random_seed = 42;
+
+  const auto cached_result = algorithms::fast_clara(cached, opts);
+  const auto fresh_result = algorithms::fast_clara(fresh, opts);
+
+  REQUIRE(cached_result.labels == fresh_result.labels);
+  REQUIRE(cached_result.medoid_indices == fresh_result.medoid_indices);
+  REQUIRE(cached_result.total_cost == fresh_result.total_cost);
+  REQUIRE(matrix.size() == N);
+  REQUIRE(matrix.packed_count() == static_cast<std::size_t>(N) * (N + 1) / 2);
+  REQUIRE(matrix.count_computed() == 2);
+  REQUIRE(matrix.get(0, 1) == 12345.0);
+  REQUIRE(matrix.get(2, 3) == 67890.0);
 }

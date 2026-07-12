@@ -116,64 +116,24 @@ namespace {
            + static_cast<std::uint64_t>(sample_index);
   }
 
-  /**
-   * @brief Assign all N points to the nearest medoid, computing only N*k distances.
-   *
-   * @param prob          Original Problem with all N series.
-   * @param medoid_indices Indices (in full dataset) of the k medoids.
-   * @param[out] labels   Cluster assignment per point [0, k).
-   * @return Total cost (sum of distances to nearest medoid).
-   */
-  double assign_all_points(
-    Problem &prob,
-    const std::vector<int> &medoid_indices,
-    std::vector<int> &labels)
+  template <typename Distance, typename SeriesAt>
+  double assign_all_points_direct(
+    int n_points, const std::vector<int> &medoid_indices,
+    std::vector<int> &labels, const Distance &distance, SeriesAt series_at)
   {
-    if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-      throw InvalidInput(
-        "fast_clara: N exceeds the int-indexed clustering result limit.");
-    const int N = static_cast<int>(prob.size());
     const int k = static_cast<int>(medoid_indices.size());
-    labels.resize(N);
+    labels.resize(static_cast<std::size_t>(n_points));
+    std::vector<double> best_dists(static_cast<std::size_t>(n_points));
 
-    // ---------------------------------------------------------------------------
-    // Thread-safety pre-warm (Task 0.11: parallelise the in-RAM assignment).
-    //
-    // distByInd() caches into prob's dense distance matrix. Its lazy
-    // allocate-and-compute path is NOT thread-safe — Problem::distByInd documents
-    // "call fillDistanceMatrix() before any parallel region; afterwards all calls
-    // are read-only lookups". CLARA must never fill the full N*N matrix (that is
-    // the whole point), so instead we serially prime exactly the cells that could
-    // otherwise race:
-    //   (1) an anchor pair forces the one-time matrix allocation + dtw_fn rebind
-    //       (needed even when k == 1), and
-    //   (2) every medoid<->medoid distance.
-    // After this, the only cell two distinct loop points p != q could both target
-    // is {p, q} when BOTH are medoids — and those are now already computed, so the
-    // parallel loop only READS them. Every remaining write is to a distinct
-    // {non-medoid, medoid} cell owned by the single thread handling that point's
-    // row, matching DenseDistanceMatrix's "disjoint (i,j) pairs -> lock-free"
-    // contract. No net DTW work is added: the primed cells are ones the loop needs.
-    if (N > 1) {
-      const int anchor_j = (medoid_indices[0] == N - 1) ? 0 : static_cast<int>(N - 1);
-      prob.distByInd(medoid_indices[0], anchor_j);
-      for (int a = 0; a < k; ++a)
-        for (int b = a + 1; b < k; ++b)
-          prob.distByInd(medoid_indices[a], medoid_indices[b]);
-    }
-
-    // Per-point nearest-medoid scan. Lock-free: thread p writes only labels[p] and
-    // best_dists[p] (its own indices); shared distance-matrix writes are disjoint
-    // by the pre-warm above. Only touches N*k distance entries, not the full N^2.
-    std::vector<double> best_dists(static_cast<size_t>(N));
-
-#pragma omp parallel for schedule(static) if (N > 64)
-    for (int p = 0; p < N; ++p) {
+#pragma omp parallel for schedule(static) if (n_points > 64)
+    for (int p = 0; p < n_points; ++p) {
       double best_dist = std::numeric_limits<double>::max();
       int best_label = 0;
+      const auto point = series_at(p);
 
       for (int m = 0; m < k; ++m) {
-        double d = prob.distByInd(p, medoid_indices[m]);
+        const int medoid = medoid_indices[m];
+        const double d = p == medoid ? 0.0 : distance(point, series_at(medoid));
         if (d < best_dist) {
           best_dist = d;
           best_label = m;
@@ -181,12 +141,29 @@ namespace {
       }
 
       labels[p] = best_label;
-      best_dists[static_cast<size_t>(p)] = best_dist;
+      best_dists[static_cast<std::size_t>(p)] = best_dist;
     }
 
-    // Serial, index-ordered reduction keeps total_cost bit-identical to the
-    // original serial loop regardless of thread count (order-independent sum).
     return std::accumulate(best_dists.begin(), best_dists.end(), 0.0);
+  }
+
+  /** Assign through the bound DTW function without allocating the parent cache. */
+  double assign_all_points(
+    Problem &prob, const std::vector<int> &medoid_indices,
+    std::vector<int> &labels)
+  {
+    if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+      throw InvalidInput(
+        "fast_clara: N exceeds the int-indexed clustering result limit.");
+    const int n_points = static_cast<int>(prob.size());
+    if (prob.data.is_f32()) {
+      const auto &distance = prob.dtw_function_f32();
+      return assign_all_points_direct(
+        n_points, medoid_indices, labels, distance, [&prob](int index) { return prob.data.series_f32(index); });
+    }
+    const auto &distance = prob.dtw_function();
+    return assign_all_points_direct(
+      n_points, medoid_indices, labels, distance, [&prob](int index) { return prob.series(index); });
   }
 
 #ifdef DTWC_HAS_PARQUET

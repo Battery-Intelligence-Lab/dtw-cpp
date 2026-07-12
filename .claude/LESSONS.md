@@ -114,6 +114,11 @@ Critical knowledge to avoid repeating mistakes.
 
 ## Audit / Testing
 
+- **A low computed-entry count does not prove low memory use.** FastCLARA's old
+  test asserted that fewer than 20% of parent distances were computed, while
+  the first lazy lookup had already allocated every packed `N*(N+1)/2` slot.
+  Memory-contract tests must assert backing size/capacity (and allocation count
+  where available), not only populated elements or work counters.
 - **A regression test must execute the production arithmetic it claims to protect.** The Metal case in `tests/unit/test_decode_pair.cpp` repeated the intended `pair_offset` types and arithmetic in test-local `constexpr`s, which is tautological: the test stays green if `metal_dtw.mm` is reverted. Exercise the real host-side helper or public dispatch path (or extract a shared production helper) and prove the test fails when the production fix is removed.
 - **Always rerun ctest failures serially after the first parallel pass.** A clean handoff on another platform is not evidence of a green local tree. On Windows Release (2026-04-13), `ctest -j 4 -C Release` failed with `0xc0000409`; serial rerun showed `test_fast_pam_adversarial` was a deterministic crash while `unit_test_clustering_algorithms` was a parallel-only failure mode. Audit skills must distinguish "real blocker" from "flake".
 - **A test name must match the algorithm path it actually exercises.** `tests/unit/adversarial/test_fast_pam_adversarial.cpp` sounds like FastPAM coverage, but its helper sets `prob.method = Method::Kmedoids` and calls the legacy Lloyd path. That creates false confidence. For algorithm migrations, mislabeled tests are worse than missing tests because they silently certify the wrong implementation.

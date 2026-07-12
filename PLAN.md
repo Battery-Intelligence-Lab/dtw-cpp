@@ -756,11 +756,16 @@ Confirmed during F1's mandatory full-gate closeout:
   seam; canonical, MSVC ASan, Clang UBSan, and Parquet syntax gates pass.
   Evidence: `.claude/baselines/2026-07-12-fast-clara-boundaries.md`.
 
-- [ ] **F6 — in-memory FastCLARA allocates a packed O(N²) parent cache.**
-  `assign_all_points` computes only N*k entries but its first `dist_by_ind`
-  call resizes `DenseDistanceMatrix` to N*(N+1)/2 doubles, contradicting the
-  public O(s²) memory contract. Replace parent-cache assignment with direct
-  bound-DTW calls and assert the parent matrix retains zero size/capacity.
+- [x] **F6 — in-memory FastCLARA allocated a packed O(N²) parent cache.**
+  `assign_all_points` computed only N*k entries but its first `dist_by_ind`
+  call resized `DenseDistanceMatrix` to N*(N+1)/2 doubles. Assignment now calls
+  the serially bound float64/float32 dispatcher directly: parent storage stays
+  byte-stable, O(N) labels/costs plus O(s²) subsample storage is the peak, and
+  thread-local kernels keep the OpenMP loop race-free. The intentional contract
+  is cache-independent configured DTW, not manually injected cache values;
+  sentinel-cache, f32, MV, missing-data, deterministic, TSan, ASan, and UBSan
+  gates pin it. Evidence:
+  `.claude/baselines/2026-07-12-fast-clara-memory.md`.
 
 - [ ] **F7 — CLI `--ram-limit` is applied after fully loading Parquet.** The
   CLI currently retains the entire resident dataset before FastCLARA opens its
@@ -952,6 +957,7 @@ The 8.3 no-op oracle stays binding for every commit here — "fast" never buys a
 
 ## Progress log
 
+- 2026-07-12 (Task 8.2/F6): **FastCLARA's hidden quadratic parent allocation removed.** Non-full assignment now uses the bound f64/f32 dispatcher directly, leaves existing dense/mmap caches untouched, and requires only O(N+s²) memory. Zero-allocation, sentinel-cache, semantics, thread, and sanitizer gates pass. Evidence: `.claude/baselines/2026-07-12-fast-clara-memory.md`.
 - 2026-07-12 (Task 8.2/F5): **FastCLARA planning made single-source and checked.** One pre-allocation planner now governs resident and Parquet paths, rejects invalid controls and the int-index result boundary, computes auto sampling without signed overflow, and makes the full-sample/RAM-limit conflict explicit. The CLI's undocumented large-N formula was removed. Evidence: `.claude/baselines/2026-07-12-fast-clara-boundaries.md`.
 
 - 2026-07-06: Plan v0.1 drafted. Phase 0 FINAL. Research agents dispatched: api-surface, build-state, solver-math (Fable max), literature.

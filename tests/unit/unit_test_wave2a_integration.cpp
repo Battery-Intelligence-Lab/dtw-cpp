@@ -63,7 +63,7 @@ static fs::path g_tmp_dir()
 
 /// Build a univariate Problem from raw vectors.
 static Problem make_problem_uv(std::vector<std::vector<double>> vecs, int Nc,
-                                core::MissingStrategy ms = core::MissingStrategy::Error)
+                               core::MissingStrategy ms = core::MissingStrategy::Error)
 {
   std::vector<std::string> names;
   names.reserve(vecs.size());
@@ -82,9 +82,9 @@ static Problem make_problem_uv(std::vector<std::vector<double>> vecs, int Nc,
 
 /// Build a multivariate Problem: ndim channels, each series has n_steps * ndim flat values.
 static Problem make_problem_mv(int N, int n_steps, int ndim,
-                                double cluster_sep = 50.0, int Nc = 2,
-                                core::MissingStrategy ms = core::MissingStrategy::Error,
-                                unsigned seed = 42)
+                               double cluster_sep = 50.0, int Nc = 2,
+                               core::MissingStrategy ms = core::MissingStrategy::Error,
+                               unsigned seed = 42)
 {
   std::mt19937_64 rng(seed);
   std::normal_distribution<double> noise(0.0, 1.0);
@@ -214,8 +214,8 @@ TEST_CASE("Wave2A: FastCLARA with multivariate data ndim=2 produces valid result
   Problem prob = make_problem_mv(N, n_steps, ndim, 100.0, k);
 
   algorithms::CLARAOptions opts;
-  opts.n_clusters  = k;
-  opts.n_samples   = 3;
+  opts.n_clusters = k;
+  opts.n_samples = 3;
   opts.random_seed = 42;
 
   core::ClusteringResult result;
@@ -265,8 +265,8 @@ TEST_CASE("Wave2A: FastCLARA with ZeroCost strategy on NaN data does not crash",
   Problem prob = make_problem_uv(vecs, k, core::MissingStrategy::ZeroCost);
 
   algorithms::CLARAOptions opts;
-  opts.n_clusters  = k;
-  opts.n_samples   = 2;
+  opts.n_clusters = k;
+  opts.n_samples = 2;
   opts.random_seed = 99;
 
   core::ClusteringResult result;
@@ -298,10 +298,10 @@ TEST_CASE("Wave2A: hierarchical all 3 linkages on 20 points",
   prob.fillDistanceMatrix();
 
   for (auto linkage : { algorithms::Linkage::Single,
-                         algorithms::Linkage::Complete,
-                         algorithms::Linkage::Average }) {
+                        algorithms::Linkage::Complete,
+                        algorithms::Linkage::Average }) {
     algorithms::HierarchicalOptions opts;
-    opts.linkage    = linkage;
+    opts.linkage = linkage;
     opts.max_points = 200; // generous guard
 
     algorithms::Dendrogram dend;
@@ -419,7 +419,7 @@ TEST_CASE("Wave2A: CLARANS vs FastPAM quality on well-separated 30-point data",
   constexpr int n_per = 10;
   constexpr int k = 3;
 
-  auto prob_pam    = make_separated_problem(n_per, k, 77);
+  auto prob_pam = make_separated_problem(n_per, k, 77);
   auto prob_claran = make_separated_problem(n_per, k, 77);
 
   // FastPAM (optimal baseline).
@@ -427,11 +427,11 @@ TEST_CASE("Wave2A: CLARANS vs FastPAM quality on well-separated 30-point data",
 
   // CLARANS with multiple restarts.
   algorithms::CLARANSOptions opts;
-  opts.n_clusters   = k;
-  opts.num_local    = 5;
-  opts.max_neighbor = -1; // auto
+  opts.n_clusters = k;
+  opts.num_local = 5;
+  opts.max_neighbor = -1;  // auto
   opts.max_dtw_evals = -1; // no budget limit
-  opts.random_seed  = 42;
+  opts.random_seed = 42;
 
   auto clarans_result = algorithms::clarans(prob_claran, opts);
 
@@ -463,10 +463,10 @@ TEST_CASE("Wave2A: CLARANS budget enforcement — max_dtw_evals=100 gives valid 
   const int N = static_cast<int>(prob.size()); // 30
 
   algorithms::CLARANSOptions opts;
-  opts.n_clusters    = 3;
-  opts.num_local     = 5;
+  opts.n_clusters = 3;
+  opts.num_local = 5;
   opts.max_dtw_evals = 100; // very tight budget
-  opts.random_seed   = 7;
+  opts.random_seed = 7;
 
   core::ClusteringResult result;
   REQUIRE_NOTHROW(result = algorithms::clarans(prob, opts));
@@ -522,13 +522,13 @@ TEST_CASE("Wave2A: full pipeline hierarchical→cut(3)→score metrics all finit
 
   // Inject labels + medoids into Problem for score computation.
   prob.set_numberOfClusters(k);
-  prob.clusters_ind  = cr.labels;
+  prob.clusters_ind = cr.labels;
   prob.centroids_ind = cr.medoid_indices;
 
   // Compute scores.
   auto sil = scores::silhouette(prob);
   double dunn = scores::dunnIndex(prob);
-  double ch   = scores::calinskiHarabaszIndex(prob);
+  double ch = scores::calinskiHarabaszIndex(prob);
 
   // All scores must be finite.
   for (double s : sil)
@@ -551,8 +551,8 @@ TEST_CASE("Wave2A: full pipeline hierarchical→cut(3)→score metrics all finit
 
 // ===========================================================================
 // Test 10: Deferred allocation + FastCLARA
-//   Run FastCLARA on N=500; verify parent Problem's dense matrix was NOT
-//   fully filled (count_computed < N*(N-1)/2).
+//   Run FastCLARA on N=500; verify the parent Problem never allocates its
+//   packed N*(N+1)/2 cache. Subsample Problems own the only O(s^2) matrices.
 // ===========================================================================
 TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
           "[wave2a][deferred][fast_clara][lazy]")
@@ -579,8 +579,8 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   algorithms::CLARAOptions opts;
-  opts.n_clusters  = k;
-  opts.n_samples   = 3;
+  opts.n_clusters = k;
+  opts.n_samples = 3;
   opts.sample_size = 50; // sub-problem of 50 points, not full N
   opts.random_seed = 11;
 
@@ -593,18 +593,12 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   REQUIRE(result.total_cost >= 0.0);
   REQUIRE(std::isfinite(result.total_cost));
 
-  // Parent distance matrix must NOT have been fully filled.
-  // Full matrix would require N*(N-1)/2 = 124750 off-diagonal pairs.
-  // CLARA only touches N*k (2000) for assignment, plus sub-problem distances.
-  // We allow a generous 10x budget to tolerate any incidental caching.
-  const size_t full_pairs = static_cast<size_t>(N) * (N - 1) / 2;
-  const size_t computed   = prob.dense_distance_matrix().count_computed();
-
-  // Note: distance_matrix().size() == N only after distByInd triggers lazy resize.
-  // CLARA calls distByInd on the *parent* prob for the N*k assignment step.
-  // So some entries will be computed — but far fewer than N*(N-1)/2.
-  INFO("Computed entries: " << computed << " / " << full_pairs * 2 << " (full matrix)");
-  REQUIRE(computed < full_pairs / 5); // less than 20% of the full matrix
+  // Assignment computes N*k distances directly and leaves no packed parent
+  // cache behind; testing count_computed alone would miss the allocation.
+  const auto &parent_matrix = prob.dense_distance_matrix();
+  REQUIRE(parent_matrix.size() == 0);
+  REQUIRE(parent_matrix.packed_count() == 0);
+  REQUIRE(parent_matrix.count_computed() == 0);
 }
 
 // ===========================================================================
@@ -667,8 +661,8 @@ TEST_CASE("Wave2A: FastCLARA propagates missing_strategy to sub-problems",
   Problem prob = make_problem_uv(vecs, 2, core::MissingStrategy::ZeroCost);
 
   algorithms::CLARAOptions opts;
-  opts.n_clusters  = 2;
-  opts.n_samples   = 3;
+  opts.n_clusters = 2;
+  opts.n_samples = 3;
   opts.sample_size = 10;
   opts.random_seed = 77;
 
@@ -690,8 +684,8 @@ TEST_CASE("Wave2A: CLARANS medoids are self-assigned to their own cluster",
   auto prob = make_separated_problem(8, 3, 42);
 
   algorithms::CLARANSOptions opts;
-  opts.n_clusters  = 3;
-  opts.num_local   = 2;
+  opts.n_clusters = 3;
+  opts.num_local = 2;
   opts.random_seed = 42;
 
   auto result = algorithms::clarans(prob, opts);
@@ -717,10 +711,10 @@ TEST_CASE("Wave2A: hierarchical merge distances are non-decreasing",
   prob.fillDistanceMatrix();
 
   for (auto linkage : { algorithms::Linkage::Single,
-                         algorithms::Linkage::Complete,
-                         algorithms::Linkage::Average }) {
+                        algorithms::Linkage::Complete,
+                        algorithms::Linkage::Average }) {
     algorithms::HierarchicalOptions opts;
-    opts.linkage    = linkage;
+    opts.linkage = linkage;
     opts.max_points = 200;
 
     auto dend = algorithms::build_dendrogram(prob, opts);
@@ -748,8 +742,8 @@ TEST_CASE("Wave2A: FastCLARA ndim=2 sub-problem distances consistent with parent
   Problem prob = make_problem_mv(N, n_steps, ndim, 200.0, k, core::MissingStrategy::Error, 55);
 
   algorithms::CLARAOptions opts;
-  opts.n_clusters  = k;
-  opts.n_samples   = 2;
+  opts.n_clusters = k;
+  opts.n_samples = 2;
   opts.sample_size = 20;
   opts.random_seed = 33;
 
