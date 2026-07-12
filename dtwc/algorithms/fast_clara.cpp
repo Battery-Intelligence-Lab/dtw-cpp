@@ -23,7 +23,7 @@
 #include "fast_clara.hpp"
 #include "fast_pam.hpp"
 #include "../Problem.hpp"
-#include "../settings.hpp"
+#include "../core/portable_random.hpp"
 
 #ifdef DTWC_HAS_PARQUET
 #include "../io/parquet_chunk_reader.hpp"
@@ -32,7 +32,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
-#include <iterator>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -291,20 +290,15 @@ core::ClusteringResult fast_clara_chunked(
 
   std::mt19937_64 rng(opts.random_seed);
 
-  // Use int64_t indices for >2B row support
-  // Build index pool once; use std::sample to avoid copying N elements per subsample
-  std::vector<int64_t> all_indices(static_cast<size_t>(N));
-  std::iota(all_indices.begin(), all_indices.end(), int64_t{0});
-
   core::ClusteringResult best_result;
   best_result.total_cost = std::numeric_limits<double>::max();
 
   for (int s = 0; s < opts.n_samples; ++s) {
-    // 1. Draw random subsample indices (O(sample_size), not O(N))
-    std::vector<int64_t> sample_indices;
-    sample_indices.reserve(sample_size);
-    std::sample(all_indices.begin(), all_indices.end(),
-                std::back_inserter(sample_indices), sample_size, rng);
+    // 1. Stable O(N)-time selection with O(sample_size) sampling scratch.  The
+    // result still necessarily owns O(N) labels, but the old 8*N-byte index
+    // pool was avoidable in the streaming path.
+    auto sample_indices = core::portable_sample_indices<int64_t>(
+      N, static_cast<int64_t>(sample_size), rng);
 
     // 2. Load subsample from Parquet (small — always fits in RAM)
     std::vector<int64_t> sample_rows(sample_indices.begin(), sample_indices.end());
@@ -440,26 +434,17 @@ core::ClusteringResult fast_clara(Problem& prob, const CLARAOptions& opts)
       prob, opts.n_clusters, clara_pam_seed(opts, 0), opts.max_iter);
   }
 
-  // Task 0.11: use mt19937_64 + std::sample to match the chunked path exactly, so
-  // the in-RAM and Parquet-streaming code paths draw the SAME subsample for a
-  // given seed. Previously this path used mt19937 + std::shuffle while the chunked
-  // path (above) used mt19937_64 + std::sample, so the same seed silently diverged.
+  // One portable map and stable selection scan keep the in-RAM and streaming
+  // paths bit-identical across standard-library implementations.
   std::mt19937_64 rng(opts.random_seed);
-
-  // All indices [0, N).
-  std::vector<int> all_indices(N);
-  std::iota(all_indices.begin(), all_indices.end(), 0);
 
   core::ClusteringResult best_result;
   best_result.total_cost = std::numeric_limits<double>::max();
 
   for (int s = 0; s < opts.n_samples; ++s) {
-    // 1. Draw a random subsample of indices. std::sample keeps them sorted and
-    //    matches the chunked path's selection bit-for-bit for the same rng.
-    std::vector<int> sample_indices;
-    sample_indices.reserve(static_cast<size_t>(sample_size));
-    std::sample(all_indices.begin(), all_indices.end(),
-                std::back_inserter(sample_indices), sample_size, rng);
+    // 1. Draw a sorted sample using the same map as the chunked path.
+    auto sample_indices = core::portable_sample_indices<int>(
+      static_cast<int>(N), sample_size, rng);
 
     // 2. Create a sub-Problem with zero-copy span views into parent data.
     std::vector<std::string_view> sub_names;

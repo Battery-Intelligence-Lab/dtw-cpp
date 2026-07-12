@@ -8,6 +8,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made every maintained invocation-local seeded clustering path independent of
+  the host C++ standard library's unspecified random-distribution mappings.
+  Barycenter SSG/k-means++, seeded FastPAM and Lloyd initializers, OneBatchPAM,
+  CLARANS, and both FastCLARA paths now share one versioned portable
+  `mt19937_64` map: bounded draws are unbiased, while floating and weighted
+  draws have a fixed 53-bit mapping. Exact seeds therefore agree across MSVC
+  STL and libstdc++.
+  FastCLARA also drops its avoidable 8*N-byte sampling index pool. The mutable
+  unseeded Tier-2 `std::mt19937` contract remains unchanged.
 - Made HiGHS-dependent MIP, Benders, and Lagrangian comparison tests skip
   explicitly when the optional solver is absent. No-solver builds still test
   the typed unavailable-backend contract, while their full CTest gate no

@@ -6,6 +6,7 @@
 #include "barycenter.hpp"
 
 #include "../Problem.hpp"
+#include "../core/portable_random.hpp"
 #include "../error.hpp"
 #include "../parallelisation.hpp"
 
@@ -292,7 +293,7 @@ Series ssg(const std::vector<Series>& series, Series center,
   double previous = hard_objective(center, series, workspace, entry_point);
   for (int epoch = 0; epoch < options.max_iter; ++epoch) {
     const Series before = center;
-    std::shuffle(order.begin(), order.end(), rng);
+    core::portable_shuffle(order.begin(), order.end(), rng);
     for (std::size_t index : order) {
       const double cost = align_squared(center, series[index], true, workspace);
       require_finite(cost, entry_point, "squared-DTW cost");
@@ -518,8 +519,8 @@ Series compute_barycenter(const std::vector<Series>& series, std::size_t target_
 std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
                           std::mt19937_64& rng, AlignmentWorkspace& workspace)
 {
-  std::uniform_int_distribution<std::size_t> first_distribution(0, data.size() - 1);
-  std::vector<int> centers{static_cast<int>(first_distribution(rng))};
+  std::vector<int> centers{static_cast<int>(
+    core::portable_bounded(rng, static_cast<std::uint64_t>(data.size())))};
   std::vector<double> closest(data.size(), std::numeric_limits<double>::infinity());
   while (static_cast<int>(centers.size()) < k) {
     for (std::size_t i = 0; i < data.size(); ++i)
@@ -534,12 +535,8 @@ std::vector<int> kmeanspp(const std::vector<Series>& data, int k,
       while (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end())
         ++chosen;
     } else {
-      std::uniform_real_distribution<double> draw(0.0, total);
-      double threshold = draw(rng);
-      for (; chosen + 1 < data.size(); ++chosen) {
-        threshold -= closest[chosen];
-        if (threshold <= 0.0) break;
-      }
+      chosen = core::portable_weighted_index(
+        closest.begin(), closest.end(), total, rng);
       if (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end()) {
         chosen = 0;
         while (std::find(centers.begin(), centers.end(), static_cast<int>(chosen)) != centers.end())

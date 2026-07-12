@@ -145,7 +145,10 @@ checked `base_seed + i` schedule for its repetitions, restoring the actual
 lowest-cost repetition rather than leaving the final run in `Problem`. Direct
 HiGHS and Gurobi MIP warm starts use a shared seed-aware FastPAM incumbent;
 their exact model and optimum are unchanged. These calls do not consume
-`dtwc::randGenerator`.
+`dtwc::randGenerator`. Maintained invocation-local seeded paths translate
+`std::mt19937_64` output through DTWC++'s versioned `portable-v1` bounded,
+shuffle, weighted, and selection maps rather than vendor-defined standard
+distributions, so one seed has the same schedule under MSVC STL and libstdc++.
 
 The unseeded Tier-2 `fast_pam` overload intentionally retains its legacy mutable
 `std::mt19937` engine, initially seeded 29; use `fast_pam_seeded` or MATLAB's

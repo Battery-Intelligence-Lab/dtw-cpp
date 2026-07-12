@@ -25,6 +25,7 @@
  */
 
 #include "initialisation.hpp"
+#include "core/portable_random.hpp"
 #include "settings.hpp"        // for randGenerator
 #include "parallelisation.hpp" // for run
 #include "Problem.hpp"
@@ -42,8 +43,8 @@ namespace dtwc::init {
 
 namespace {
 
-template <typename URBG>
-void random_with_engine(Problem &prob, URBG &rng)
+template <typename Shuffle>
+void random_with(Problem &prob, Shuffle &shuffle)
 {
   const auto Nc = prob.n_clusters();
 
@@ -54,14 +55,15 @@ void random_with_engine(Problem &prob, URBG &rng)
 
   std::vector<int> candidate_centroids(prob.size());
   std::iota(candidate_centroids.begin(), candidate_centroids.end(), 0);
-  std::shuffle(candidate_centroids.begin(), candidate_centroids.end(), rng);
+  shuffle(candidate_centroids.begin(), candidate_centroids.end());
   candidate_centroids.resize(static_cast<std::size_t>(Nc));
 
   prob.set_clusters(candidate_centroids);
 }
 
-template <typename URBG>
-void kmeanspp_with_engine(Problem &prob, URBG &rng)
+template <typename FirstIndex, typename WeightedIndex>
+void kmeanspp_with(Problem &prob, FirstIndex &first_index,
+                   WeightedIndex &weighted_index)
 {
   // First cluster is selected at random, others are selected based on distance.
   const auto Nc = prob.n_clusters();
@@ -73,11 +75,10 @@ void kmeanspp_with_engine(Problem &prob, URBG &rng)
 
   prob.centroids_ind.clear();
 
-  std::uniform_int_distribution<int> d(0, static_cast<int>(prob.size() - 1));
   std::vector<int> candidate_centroids;
   candidate_centroids.reserve(Nc);
 
-  candidate_centroids.push_back(d(rng));
+  candidate_centroids.push_back(first_index(prob.size()));
 
   std::vector<data_t> distances(prob.size(), std::numeric_limits<data_t>::max());
 
@@ -98,8 +99,8 @@ void kmeanspp_with_engine(Problem &prob, URBG &rng)
 
   for (int i = 1; i < Nc; i++) {
     dtwc::run(distTask, prob.size());
-    std::discrete_distribution<> dd(distances.begin(), distances.end());
-    candidate_centroids.push_back(static_cast<int>(dd(rng)));
+    candidate_centroids.push_back(
+      weighted_index(distances, candidate_centroids));
   }
 
   prob.set_clusters(candidate_centroids);
@@ -122,13 +123,19 @@ void kmeanspp_with_engine(Problem &prob, URBG &rng)
  */
 void random(Problem &prob)
 {
-  random_with_engine(prob, randGenerator);
+  auto shuffle = [](auto first, auto last) {
+    std::shuffle(first, last, randGenerator);
+  };
+  random_with(prob, shuffle);
 }
 
 void random_seeded(Problem &prob, std::uint64_t random_seed)
 {
   std::mt19937_64 rng(random_seed);
-  random_with_engine(prob, rng);
+  auto shuffle = [&rng](auto first, auto last) {
+    core::portable_shuffle(first, last, rng);
+  };
+  random_with(prob, shuffle);
 }
 
 /**
@@ -146,13 +153,49 @@ void random_seeded(Problem &prob, std::uint64_t random_seed)
  */
 void Kmeanspp(Problem &prob)
 {
-  kmeanspp_with_engine(prob, randGenerator);
+  auto first_index = [](std::size_t size) {
+    std::uniform_int_distribution<int> distribution(
+      0, static_cast<int>(size - 1));
+    return distribution(randGenerator);
+  };
+  auto weighted_index = [](const auto &distances, const auto &) {
+    std::discrete_distribution<int> distribution(
+      distances.begin(), distances.end());
+    return distribution(randGenerator);
+  };
+  kmeanspp_with(prob, first_index, weighted_index);
 }
 
 void Kmeanspp_seeded(Problem &prob, std::uint64_t random_seed)
 {
   std::mt19937_64 rng(random_seed);
-  kmeanspp_with_engine(prob, rng);
+  auto first_index = [&rng](std::size_t size) {
+    return static_cast<int>(core::portable_bounded(
+      rng, static_cast<std::uint64_t>(size)));
+  };
+  auto weighted_index = [&rng](const auto &distances,
+                               const std::vector<int> &selected) {
+    const double total = std::accumulate(
+      distances.begin(), distances.end(), 0.0);
+    if (total <= 0.0) {
+      int candidate = 0;
+      while (std::find(selected.begin(), selected.end(), candidate)
+             != selected.end())
+        ++candidate;
+      return candidate;
+    }
+    int candidate = static_cast<int>(core::portable_weighted_index(
+      distances.begin(), distances.end(), total, rng));
+    if (std::find(selected.begin(), selected.end(), candidate)
+        != selected.end()) {
+      candidate = 0;
+      while (std::find(selected.begin(), selected.end(), candidate)
+             != selected.end())
+        ++candidate;
+    }
+    return candidate;
+  };
+  kmeanspp_with(prob, first_index, weighted_index);
 }
 
 

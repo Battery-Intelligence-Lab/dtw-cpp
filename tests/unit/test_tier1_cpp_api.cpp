@@ -231,9 +231,15 @@ TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers"
   problem.set_n_clusters(3);
   dtwc::init::random_seeded(problem, 42);
   const auto seed_42_medoids = problem.medoids();
+  CHECK(seed_42_medoids == std::vector<int>{6, 2, 1});
   dtwc::init::random_seeded(problem, 43);
   const auto seed_43_medoids = problem.medoids();
   CHECK(seed_42_medoids != seed_43_medoids);
+
+  auto kmeanspp_problem = seed_sensitive_problem();
+  kmeanspp_problem.set_n_clusters(3);
+  dtwc::init::Kmeanspp_seeded(kmeanspp_problem, 42);
+  CHECK(kmeanspp_problem.medoids() == std::vector<int>{6, 2, 5});
   CHECK(dtwc::randGenerator == legacy_rng_before);
   dtwc::randGenerator = legacy_rng_original;
 

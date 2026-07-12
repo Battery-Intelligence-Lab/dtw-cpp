@@ -16,14 +16,13 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <array>
 #include <filesystem>
-#include <iterator>
 #include <limits>
-#include <numeric>
-#include <random>
 #include <set>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
@@ -555,13 +554,13 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
 }
 
 // ===========================================================================
-// Task 0.11 — Test A: in-RAM path uses std::mt19937_64 + std::sample.
+// Task 0.11 / Phase 8: both paths use the portable seeded selection map.
 //
 // Bug (2026-06-01 audit): the in-RAM subsample used std::mt19937 + std::shuffle
 // while the chunked (Parquet) path uses std::mt19937_64 + std::sample, so for the
 // same seed the two paths drew DIFFERENT subsamples and returned DIFFERENT
-// medoids. The fix makes the in-RAM path use the chunked path's exact contract
-// (mt19937_64 + std::sample over the sorted index population [0, N)).
+// medoids. The Phase-8 map also removes the standard-library dependence from
+// both paths while retaining their shared sorted-sample contract.
 //
 // This test pins that contract WITHOUT needing Parquet, using a deterministic
 // oracle (no RNG-order guessing):
@@ -572,15 +571,16 @@ TEST_CASE("FastCLARA with float32 data", "[fast_clara][float32]")
 //     k=1 swap converges to it — verified against fast_pam.cpp: second_dist is
 //     +inf for k=1, so each swap delta is (total dist to candidate) − (to medoid),
 //     minimised by the median).
-//   * std::sample over the sorted population [0, N) returns a SORTED subset, so an
-//     odd-sized sample's median sits at position sample_size/2.
-// Expected medoid = std::sample(mt19937_64(seed), [0,N), S)[S/2].
+//   * stable selection over [0, N) returns a SORTED subset, so an odd-sized
+//     sample's median sits at position sample_size/2.
+// Expected medoids are literal portable-v1 fingerprints below; recomputing
+// them with the production sampler here would make the oracle tautological.
 //
-// PRE-FIX (mt19937 + shuffle) selects a different subsample -> different median
-// -> this assertion FAILS. POST-FIX it matches exactly. Six seeds make an
-// accidental median collision (a false pre-fix pass) negligible (~1e-10).
+// Both historical vendor schedules (mt19937+shuffle and mt19937_64+std::sample)
+// select different medians, so this literal portable-v1 oracle fails before the
+// Phase-8 repair. Six seeds make an accidental collision negligible (~1e-10).
 // ===========================================================================
-TEST_CASE("FastCLARA in-RAM uses mt19937_64 + std::sample (Task 0.11 seed fix)",
+TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
           "[fast_clara][task0_11][seed]")
 {
   constexpr int N = 200;
@@ -595,7 +595,11 @@ TEST_CASE("FastCLARA in-RAM uses mt19937_64 + std::sample (Task 0.11 seed fix)",
     names.push_back("s" + std::to_string(i));
   }
 
-  for (unsigned seed : { 1u, 7u, 42u, 123u, 999u, 2024u }) {
+  constexpr std::array expected_medians{
+    std::pair{1u, 103}, std::pair{7u, 86}, std::pair{42u, 121},
+    std::pair{123u, 108}, std::pair{999u, 106}, std::pair{2024u, 105}
+  };
+  for (const auto [seed, expected_medoid] : expected_medians) {
     // Fresh problem per seed (no cached-matrix carry-over between seeds).
     std::vector<std::vector<data_t>> v = vecs;
     std::vector<std::string> nm = names;
@@ -611,16 +615,6 @@ TEST_CASE("FastCLARA in-RAM uses mt19937_64 + std::sample (Task 0.11 seed fix)",
 
     dtwc::randGenerator.seed(42); // k=1 is init-independent; reseed for hygiene
     auto result = algorithms::fast_clara(prob, opts);
-
-    // Oracle: reproduce the (fixed) selection contract bit-for-bit.
-    std::vector<int> all_indices(N);
-    std::iota(all_indices.begin(), all_indices.end(), 0);
-    std::vector<int> expected_sample;
-    expected_sample.reserve(static_cast<size_t>(sample_size));
-    std::mt19937_64 rng(seed);
-    std::sample(all_indices.begin(), all_indices.end(),
-                std::back_inserter(expected_sample), sample_size, rng);
-    const int expected_medoid = expected_sample[sample_size / 2];
 
     REQUIRE(result.medoid_indices.size() == 1);
     INFO("seed=" << seed << " expected median index=" << expected_medoid

@@ -25,7 +25,6 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
-#include <random>
 #include <set>
 #include <sstream>
 #include <string>
@@ -320,20 +319,10 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
     problem.set_data(Data(std::vector<std::vector<data_t>>{{0.0}, {0.01}, {0.1}},
                           std::vector<std::string>{"zero", "near", "far"}));
 
-    // Find a deterministic seed for this standard-library implementation
-    // whose first shuffle selects the two near points.  Replaying the same
-    // engine in one_batch_pam selects the identical fixed batch, while keeping
-    // the regression portable across standard-library shuffle algorithms.
-    std::uint64_t counterexample_seed = 0;
-    for (; counterexample_seed < 1024; ++counterexample_seed) {
-      std::vector<int> permutation{0, 1, 2};
-      std::mt19937_64 rng(counterexample_seed);
-      std::shuffle(permutation.begin(), permutation.end(), rng);
-      if ((permutation[0] == 0 && permutation[1] == 1)
-          || (permutation[0] == 1 && permutation[1] == 0))
-        break;
-    }
-    REQUIRE(counterexample_seed < 1024);
+    // Portable-v1 seed 0 has literal first order {1,0,2}, so the fixed batch
+    // contains exactly the two near points. The primitive order is pinned in
+    // unit_test_portable_random rather than searched through a vendor shuffle.
+    constexpr std::uint64_t counterexample_seed = 0;
 
     algorithms::OneBatchPAMOptions options;
     options.n_clusters = 1;
@@ -382,20 +371,39 @@ TEST_CASE("OneBatchPAM relative tolerance scales below unit cost",
   options.n_clusters = 2;
   options.batch_size = 4;
   options.max_iter = 1;
-  options.relative_tolerance = 0.2;
-  options.random_seed = 0;
+  options.random_seed = 9;
   options.weighting = algorithms::OneBatchWeighting::Uniform;
-  algorithms::OneBatchPAMStats stats;
 
-  const auto result = algorithms::one_batch_pam(problem, options, &stats);
+  // First pin the portable seeded initial state by rejecting every improving
+  // swap.  Reusing this exact seed below isolates the tolerance comparison
+  // from the implementation-defined mappings formerly used by std::shuffle.
+  options.relative_tolerance = 1.0;
+  algorithms::OneBatchPAMStats initial_stats;
+  const auto initial = algorithms::one_batch_pam(
+    problem, options, &initial_stats);
+  REQUIRE(initial.medoid_indices == std::vector<int>{3, 2});
+  REQUIRE(std::abs(initial.total_cost - 0.03) <= 1e-12);
+  REQUIRE(initial_stats.accepted_swaps == 0);
+  REQUIRE(std::abs(initial_stats.estimated_objective - 0.03) <= 1e-12);
 
   // The initial {3,2} medoids cost 0.03. Replacing 2 by 1 lowers that to
   // 0.02: an absolute gain of 0.01 and a 33.3% relative improvement. A 20%
   // threshold must therefore accept the swap even though the objective is <1.
+  options.relative_tolerance = 0.2;
+  algorithms::OneBatchPAMStats stats;
+  const auto result = algorithms::one_batch_pam(problem, options, &stats);
   REQUIRE(result.medoid_indices == std::vector<int>{3, 1});
   REQUIRE(std::abs(result.total_cost - 0.02) <= 1e-12);
   REQUIRE(stats.accepted_swaps == 1);
   REQUIRE(std::abs(stats.estimated_objective - 0.02) <= 1e-12);
+
+  options.relative_tolerance = 0.34;
+  algorithms::OneBatchPAMStats rejected_stats;
+  const auto rejected = algorithms::one_batch_pam(
+    problem, options, &rejected_stats);
+  REQUIRE(rejected.medoid_indices == initial.medoid_indices);
+  REQUIRE(std::abs(rejected.total_cost - initial.total_cost) <= 1e-12);
+  REQUIRE(rejected_stats.accepted_swaps == 0);
 }
 
 TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",

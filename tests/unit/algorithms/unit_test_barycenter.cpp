@@ -70,8 +70,13 @@ TEST_CASE("DBA and SSG recover the scalar arithmetic mean",
   options.learning_rate = 0.125;
   options.learning_rate_decay = 0.002;
   options.random_seed = 17;
+  // A short stochastic run retains a material last-epoch order bias.  Drive
+  // this scalar Robbins-Monro case far enough that it tests recovery of the
+  // mean, while the mixed-length fingerprint below separately pins RNG order.
+  options.max_iter = 1600;
+  options.tolerance = 0.0;
   const auto ssg = algorithms::dtw_barycenter(problem, indices, 1, options);
-  REQUIRE_THAT(ssg[0], WithinAbs(2.0, 0.08));
+  REQUIRE_THAT(ssg[0], WithinAbs(2.0, 0.01));
 }
 
 TEST_CASE("SSG retains warping-path multiplicity in its stochastic gradient",
@@ -391,22 +396,23 @@ TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
   options.random_seed = 123456789ULL;
 
   const auto result = algorithms::barycenter_kmeans(problem, options);
-  // Captured from the serial implementation before the workspace/parallel
-  // refactor. Exact equality makes this a digit-level no-op oracle for the
-  // assignment order, cluster-local RNG streams, centres, and final inertia.
+  // Re-recorded under the portable-v1 seeded schedule after the original
+  // serial/workspace oracle exposed vendor RNG drift. Exact equality now pins
+  // assignment order, cluster-local streams, centres, and final inertia on
+  // every standard library.
   const std::vector<int> expected_labels{0, 2, 1, 0, 2, 1, 0, 2, 1};
   const std::vector<std::vector<data_t>> expected_barycenters{
-    {-7.02096084493618378, -6.10134060087127494, -5.73211686478551918,
-     -6.01330273714508312, -6.67857914060372337},
-    {10.2386537222805849, 11.24943387256276139, 12.00272931380938246,
-     10.76665803972018409, 10.05450073955344159},
-    {0.25649102866830242, 1.04711847424375692, 1.86006534621057096,
-     1.16050374524605604, 0.5282954699735013}
+    {-7.0173908226487498, -6.10105517828847255, -5.73290735028454357,
+     -6.01109573627146609, -6.67454216978708459},
+    {10.23402574201830717, 11.2577535371416424, 12.00215999834467695,
+     10.76294845388155785, 10.07312117090305037},
+    {0.25560480948132586, 1.04430561746080963, 1.86198585437672093,
+     1.1628100586225909, 0.53901004613194803}
   };
 
   REQUIRE(result.labels == expected_labels);
   REQUIRE(result.barycenters == expected_barycenters);
-  REQUIRE(result.total_cost == 3.92461431099334757);
+  REQUIRE(result.total_cost == 3.9239742509803337);
   REQUIRE(result.iterations == 1);
   REQUIRE(result.converged);
 }

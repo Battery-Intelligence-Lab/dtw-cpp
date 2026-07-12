@@ -33,6 +33,7 @@
 #include "fast_pam.hpp"
 #include "detail/medoid_utils.hpp"
 #include "../Problem.hpp"
+#include "../core/portable_random.hpp"
 #include "../initialisation.hpp"
 #include "../parallelisation.hpp"
 
@@ -472,8 +473,8 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
   prob.fillDistanceMatrix();
 
   std::mt19937_64 rng(random_seed);
-  std::uniform_int_distribution<int> first(0, N - 1);
-  std::vector<int> medoids{first(rng)};
+  std::vector<int> medoids{static_cast<int>(core::portable_bounded(
+    rng, static_cast<std::uint64_t>(N)))};
   medoids.reserve(static_cast<std::size_t>(n_clusters));
   std::vector<double> distances(static_cast<std::size_t>(N),
                                 std::numeric_limits<double>::infinity());
@@ -492,8 +493,8 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
     if (total <= 0.0) {
       while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
     } else {
-      std::discrete_distribution<int> distribution(distances.begin(), distances.end());
-      chosen = distribution(rng);
+      chosen = static_cast<int>(core::portable_weighted_index(
+        distances.begin(), distances.end(), total, rng));
       if (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) {
         chosen = 0;
         while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;

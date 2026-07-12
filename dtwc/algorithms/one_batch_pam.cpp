@@ -6,6 +6,7 @@
 #include "one_batch_pam.hpp"
 
 #include "../Problem.hpp"
+#include "../core/portable_random.hpp"
 #include "../error.hpp"
 
 #include <algorithm>
@@ -263,11 +264,11 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   std::mt19937_64 rng(options.random_seed);
   std::vector<int> permutation(n);
   std::iota(permutation.begin(), permutation.end(), 0);
-  std::shuffle(permutation.begin(), permutation.end(), rng);
+  core::portable_shuffle(permutation.begin(), permutation.end(), rng);
   std::vector<int> sample(permutation.begin(), permutation.begin() + static_cast<std::ptrdiff_t>(m));
   // The paper draws the candidate initialization independently of the fixed
   // batch: sampled points remain eligible, just like every other point.
-  std::shuffle(permutation.begin(), permutation.end(), rng);
+  core::portable_shuffle(permutation.begin(), permutation.end(), rng);
   std::vector<int> medoids(permutation.begin(), permutation.begin() + k);
 
   FixedBatchDistances distances(prob, std::move(sample), options.weighting);
