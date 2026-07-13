@@ -26,8 +26,8 @@ dtwc_cl -i data.csv -k 5
 # Use TOML configuration file
 dtwc_cl --config config.toml
 
-# FastCLARA on a large dataset with GPU acceleration
-dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
+# Matrix-free FastCLARA on a large dataset
+dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
 ```
 
 ## Command Reference
@@ -43,9 +43,9 @@ dtwc_cl -i data.csv -k 10 --method clara --device cuda -v
 | `--name <string>` | Problem name (used in output filenames) | `dtwc` |
 | `-k, --n-clusters <int>` | Number of clusters | 3 |
 | `-v, --verbose` | Verbose output | off |
-| `--column <name>` | Parquet column to use as time series (required for Parquet single-file mode) | — |
+| `--column <name>` | Parquet scalar/list Float32 or Float64 column. If omitted, the first eligible top-level column is selected | — |
 | `--dtype <string>` | Data type for in-memory storage. Flag aliases: `--data-precision`, `--data-type`; value aliases include `f32`, `fp32`, `float`, `f64`, `fp64`, `double` | `float64` |
-| `--ram-limit <size>` | Memory budget, e.g. `2G`, `500M`, `128G` (parsed; used for chunked processing) | — |
+| `--ram-limit <size>` | Conservative Parquet series-materialization budget, e.g. `2GiB`, `500M`, `1.5G`; see below | unlimited |
 
 ### Clustering Method
 
@@ -96,6 +96,47 @@ Available variants: `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw` (alias
 The default seed is identical across the C++, Python, MATLAB, sklearn, and CLI
 seed-aware routes. Supplying `--seed` does not consume the legacy process-global
 FastPAM engine. Valid CLI seeds are integers from 0 through `UINT_MAX`.
+
+### RAM-limited Parquet FastCLARA
+
+For Parquet input, a nonzero `--ram-limit` is applied before the selected
+column payload is loaded. The CLI reads schema and row-group metadata, resolves
+`--method auto` from the logical series count, and estimates the peak needed to
+decode and materialise the selected column at the requested `--dtype`. If that
+estimate fits, the ordinary resident reader is used. If it does not fit, the
+only supported streaming route is non-full FastCLARA over one Parquet file
+whose selected column is `List<Float32/Float64>` or
+`LargeList<Float32/Float64>` with one list cell per series.
+
+The cap is fail-closed:
+
+- over-budget scalar-column, Parquet-directory, and non-CLARA requests stop
+  before payload materialisation and explain how to convert the input or raise
+  the limit;
+- Parquet row groups are indivisible. A sample or assignment row group that
+  cannot fit beside retained series fails with guidance to rewrite smaller row
+  groups or raise the limit;
+- a CLARA sample size that resolves to all N series is rejected while the file
+  is over budget, because its full-data PAM fallback cannot stream;
+- non-full FastCLARA is a CPU matrix-free schedule, so `--device cuda` is
+  rejected before the Parquet payload is read; and
+- `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
+  distances and the accumulated objective remain double precision.
+
+`--ram-limit` is a conservative cap for series decoding/materialisation, not a
+hard operating-system RSS limit: algorithm result arrays, the subsample PAM
+matrix, library metadata, and fixed process overhead are outside it. Units are
+binary and case-insensitive: `K`/`KB`/`KiB` through `T`/`TB`/`TiB`. A decimal is
+accepted only when it resolves exactly to a whole number of bytes. Zero means
+unlimited; malformed, negative, fractional-byte, or overflowing values are
+errors rather than silently disabling the limit.
+
+The cap governs Parquet series materialisation and nothing else. No other reader
+can honour it, so a nonzero `--ram-limit` on CSV/TSV, HDF5, Arrow IPC, `.dtws`,
+or a CSV directory is a hard error, not a warning: those formats materialise
+their series unconditionally, and accepting the flag would report a budget that
+is never applied. Drop the flag, or convert the series to a list-per-row Parquet
+file to stream them under the cap.
 
 ### OneBatchPAM and TADPole options
 
@@ -148,6 +189,15 @@ threshold is reached in a binary built without LLFIO, the CLI exits before a
 heap allocation and tells you to enable LLFIO, raise the threshold only when the
 packed matrix fits in RAM, or select `onebatch`.
 
+Non-full FastCLARA is also parent-matrix-free: only its current subsample PAM
+owns an O(s²) matrix, while full-data assignment evaluates N×k configured DTW
+distances directly. It therefore rejects `--checkpoint` and `--dist-matrix`,
+which would otherwise load or save unused O(N²) state. If `--sample-size`
+resolves to N, FastCLARA deliberately becomes one full-data PAM run and the
+ordinary distance-storage/checkpoint rules apply. RAM-limited streaming always
+uses a non-full sample and still writes the automatic binary clustering-result
+checkpoint.
+
 The mmap cache resumes automatically only when its version-2 fingerprint matches
 the exact data and distance configuration. A legacy version-1 or mismatched cache
 fails loudly and must be deleted/renamed and recomputed. When the threshold
@@ -180,8 +230,16 @@ The CLI writes the following files to the output directory:
 |------|---------|
 | `<name>_labels.csv` | Point name and cluster assignment |
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
-| `<name>_silhouettes.csv` | Point name, cluster, and silhouette score |
-| `<name>_distance_matrix.csv` | Full pairwise distance matrix (when materialised) |
+| `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
+| `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
+| `<name>_checkpoint.bin` | Automatic binary clustering-result checkpoint |
+
+RAM-limited Parquet streaming writes labels, medoids, and the binary result
+checkpoint, but deliberately does not materialise the dense matrix merely to
+produce distance or silhouette CSVs. List rows use the stable names
+`series_0`, `series_1`, and so on. For the same seed/configuration, streamed and
+resident list-column runs produce byte-identical label, medoid, and binary
+checkpoint files.
 
 ## Examples
 
@@ -207,6 +265,14 @@ dtwc_cl -i data.csv -k 5 --variant wdtw --wdtw-g 0.1
 
 ```bash
 dtwc_cl -i large_dataset.csv -k 20 --method clara --sample-size 500 --n-samples 10
+```
+
+### RAM-limited Parquet FastCLARA
+
+```bash
+# `series` is List<Float32/Float64> or LargeList<Float32/Float64>, one row per series
+dtwc_cl -i large_dataset.parquet --column series -k 20 --method clara \
+  --sample-size 500 --n-samples 10 --ram-limit 2GiB
 ```
 
 ### Hierarchical clustering with single linkage

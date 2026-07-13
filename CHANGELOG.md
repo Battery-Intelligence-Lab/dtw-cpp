@@ -8,6 +8,38 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed `--ram-limit` so Parquet is planned from schema and row-group metadata
+  before the selected payload is materialised. The fail-closed binary-size
+  parser is exact through the platform `size_t` boundary; conservative
+  Float64/Float32 decode peaks select eager loading only when it fits. An
+  over-budget request streams only non-full FastCLARA over one list-per-row
+  Float32/Float64 file; scalar columns, directories, other methods, CUDA, full
+  samples, indivisible row groups that do not fit, and incompatible legacy
+  matrix/checkpoint inputs now fail with remediation before a hidden full load.
+  **Breaking:** `--ram-limit` is now rejected outright for non-Parquet input
+  (CSV/TSV, HDF5, Arrow IPC, `.dtws`, and CSV directories). It previously warned
+  and continued, which loaded the whole file anyway while reporting a cap that
+  was never applied.
+  Streamed samples, medoids, and assignments preserve requested Float32 storage
+  and produce byte-identical labels, medoids, and binary result checkpoints to
+  resident execution without constructing dense matrix or silhouette output.
+  Eager and streaming Parquet readers now share exact scalar/List/LargeList
+  schema selection, checked list offsets, and Arrow-field-to-Parquet-leaf
+  mapping even when earlier nested fields own multiple physical leaves.
+- **Breaking:** the CLI now rejects `--device cuda` for every non-full-sample
+  FastCLARA run, including `--method auto` above 5,000 series where `auto`
+  resolves to CLARA. This fires on default flags and independently of
+  `--ram-limit`. Non-full FastCLARA became a matrix-free CPU schedule, so the
+  GPU distance matrix it previously built was computed and then discarded;
+  rejecting is truthful where silently paying for an unused matrix was not. Use
+  `--device cpu`, or `--method pam`/full-sample CLARA to keep the GPU route.
+- Fixed distance-proportional initialization for Soft-DTW, whose finite
+  raw dissimilarities may be negative. Sampling now translates all unselected
+  distances by one common offset while keeping selected medoids at zero;
+  nonnegative DTW/MSM/TWE schedules and their portable seeded fingerprints are
+  unchanged. Degenerate all-zero weights (for example, identical series) now
+  complete the medoid set with the first unselected index instead of constructing
+  an invalid standard-library discrete distribution.
 - Removed FastCLARA's hidden packed O(N²) parent-cache allocation. Non-full
   assignment now evaluates the configured float64/float32 DTW dispatcher
   directly with O(N) result scratch, while subsample PAM alone owns O(s²)

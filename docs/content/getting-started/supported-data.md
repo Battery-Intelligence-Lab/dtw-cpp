@@ -48,13 +48,17 @@ A _folder path_ can contain multiple individual files, each representing a _sing
 
 ## Parquet
 
-Parquet provides columnar, compressed storage. Requires `-DDTWC_ENABLE_ARROW=ON` at build time (pulls in Apache Arrow).
+Parquet provides columnar, compressed storage. It requires
+`-DDTWC_ENABLE_ARROW=ON` at build time (which pulls in Apache Arrow). The eager
+and row-group readers use one shared schema rule: the selected top-level column
+must be Float32, Float64, `List<Float32/Float64>`, or
+`LargeList<Float32/Float64>`. `--column` selects it explicitly; when omitted,
+the first eligible top-level column is used.
 
-Battery voltage data typically compresses **21×** with Zstd.
+### Single file — one scalar column as one series
 
-### Single file — one column per series
-
-Each column in the Parquet file is treated as one time series. Use `--column` to select a specific column.
+For a scalar Float32/Float64 column, all rows form one time series. The rows are
+not independent clustering points.
 
 CLI:
 
@@ -65,9 +69,7 @@ dtwc_cl -i data.parquet --column Voltage -k 5
 C++:
 
 ```cpp
-dtwc::DataLoader loader;
-loader.setFile("data.parquet").setColumn("Voltage");
-problem.set_data(loader.load());
+problem.set_data(dtwc::io::load_parquet_file("data.parquet", "Voltage"));
 ```
 
 Python:
@@ -76,9 +78,11 @@ Python:
 data, names = dtwcpp.io.load_parquet("data.parquet", column="Voltage")
 ```
 
-### Directory of Parquet files — one file per series
+### Directory of Parquet files
 
-Each `.parquet` file in the directory is read as a single time series. The series name is taken from the filename (without extension).
+Directory input eagerly concatenates the selected column from each sorted
+`.parquet`/`.pq` file. With scalar columns this is one series per file, named
+from the filename. List columns contribute one series per list row.
 
 CLI:
 
@@ -86,13 +90,41 @@ CLI:
 dtwc_cl -i /path/to/parquet_folder/ --column Voltage -k 5
 ```
 
-### LargeList columns (list-per-row encoding)
+### List columns (list-per-row encoding)
 
-A Parquet file may store all series in a single column of type `LargeList<Float64>` (one list cell = one variable-length series). This layout is produced by `dtwc-convert`.
+A Parquet file may store all series in one List/LargeList Float32/Float64
+column. Each list cell is one variable-length series and receives the stable
+name `series_0`, `series_1`, and so on. This layout is produced by
+`dtwc-convert`.
 
 ```bash
 dtwc_cl -i data.parquet --column series -k 5
 ```
+
+### Metadata-first RAM-limited streaming
+
+`--ram-limit` is checked from Parquet schema and row-group metadata before the
+selected payload is materialised. When the conservative decode/materialisation
+estimate exceeds the cap, the CLI can stream only a single list-per-row file
+through non-full FastCLARA:
+
+```bash
+dtwc_cl -i data.parquet --column series -k 5 --method clara \
+  --sample-size 500 --ram-limit 2GiB
+```
+
+Scalar-column input, directories, non-CLARA methods, a sample resolving to all
+N series, and non-full CLARA with CUDA fail loudly while over budget. Parquet
+row groups are indivisible; rewrite the file with smaller row groups if one
+cannot fit beside retained sample/medoid data. Float32 streaming remains
+Float32 through sample, medoid, and assignment payloads. The cap governs series
+decoding/materialisation rather than total process RSS.
+
+The streamed route keeps a settings-only `Problem` and does not build a parent
+distance matrix. It writes labels, medoids, and the binary clustering-result
+checkpoint; dense distance-matrix and silhouette CSVs are omitted. For the
+same seed and settings, those three emitted artifacts are byte-identical to the
+resident list-column route.
 
 ---
 

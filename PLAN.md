@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 >
-> **Status (2026-07-12): Phases 0–7 closed through 2.0.0rc1. Phase 8: Tasks 8.0 + 8.1 (H1–H4, M1–M53, L1–L7) CLOSED 2026-07-10 across 149 protocol-clean commits (`8debf1d..eda1b92`); Task 8.2 is OPEN at the lens list (F1/F2 closed); 8.3, 8.5 (performance fences — executes before 8.4), and 8.4 not started. Phase 8 still gates the final 2.0.0 tag. PHASE 9 (WASM + browser GUI "DTWC++ Playground") added 2026-07-12 — it does NOT gate 2.0.0; Codex continues into it nonstop after the 8.4 gate is CLEAN.**
+> **Status (2026-07-12): Phases 0–7 closed through 2.0.0rc1. Phase 8: Tasks 8.0 + 8.1 (H1–H4, M1–M53, L1–L7) CLOSED 2026-07-10 across 149 protocol-clean commits (`8debf1d..eda1b92`); Task 8.2 is OPEN at the lens list (F1–F7 and the sanitizer gate closed); 8.3, 8.5 (performance fences — executes before 8.4), and 8.4 not started. Phase 8 still gates the final 2.0.0 tag. PHASE 9 (WASM + browser GUI "DTWC++ Playground") added 2026-07-12 — it does NOT gate 2.0.0; Codex continues into it nonstop after the 8.4 gate is CLEAN.**
 > A 2026-07-10 adversarial multi-agent review of the omnibus commit `8debf1d`
 > independently reproduced the C++ gate (ctest 99/99, 0 failed) and the Python
 > gate (407 passed, 11 skipped — recorded claim of 409 was stale by 2), found
@@ -627,11 +627,11 @@ Prereq: Phase 6 version SSOT + the frozen contract. **Batching:** 7.1 alone (sca
 
 - [x] Automated adversarial drift checks compare generated signatures, live CLI flags, and code-derived error strings. Hugo 0.147.8 built 62 pages before release-note additions, all internal links resolved, and C++/Python/MATLAB quickstarts executed verbatim with labels 0×9/1×9/2×9, medoids 4/13/22, silhouette 0.968950.
 
-## Phase 8 — Post-rc1 hardening: review remediation, systematic bugfinding, code simplification [8.0+8.1 CLOSED 2026-07-10; 8.2 OPEN at the lens list — gates the final 2.0.0 tag]
+## Phase 8 — Post-rc1 hardening: review remediation, systematic bugfinding, code simplification [8.0+8.1 CLOSED 2026-07-10; 8.2 OPEN after F7 — gates the final 2.0.0 tag]
 
 Source: 2026-07-10 adversarial multi-agent review of omnibus commit `8debf1d` (three independent reviewers + one gate agent; C++ gate independently reproduced 99/99 0-fail in `build/highs-1151`; Python 407 passed/11 skipped; no test-weakening found; LR-core math and Metal int64 widening verified sound). Findings below are CONFIRMED with file:line evidence unless marked [inferred].
 
-**State 2026-07-12:** Tasks 8.0 and 8.1 fully closed (149 protocol-clean commits `8debf1d..eda1b92`, last 2026-07-10 21:44, tree clean); 8.2 first sweep round opened and closed F1/F2 only — every other lens below is untouched. Resume exactly at the 8.2 lens list.
+**State 2026-07-13:** Tasks 8.0 and 8.1 fully closed (149 protocol-clean commits `8debf1d..eda1b92`, last 2026-07-10 21:44); Task 8.2 has closed confirmed findings F1–F7 plus its sanitizer gate. **F7's closeout was re-reviewed independently on 2026-07-13 and two defects its own reviewer had passed were found — one fixed (D1), one documented as a breaking change (D2); the three coverage gaps it left are now tracked as F8–F10.** Resume at F8, then the first unchecked 8.2 lens; 8.3, 8.5, and 8.4 remain open.
 
 **Execution contract (Codex, single continuous run):** Work start-to-finish with NO pauses, NO operator check-ins, NO intermediate goals — run the remaining lenses of 8.2 → 8.3 → 8.5 (performance fences — it executes before 8.4 and is listed before it; 8.4 stays the exit gate) → 8.4, and when the 8.4 gate is CLEAN continue immediately into Phase 9 (9.0 → 9.8) in the same run; STOP only when Phase 9's exit gate (9.8) is green or a recorded environment blocker stops a specific task. Token/effort budget is NOT a constraint — be exhaustive; when in doubt, do the deeper check. Rules that still bind every step: one conventional commit per task or finding (never one omnibus commit; never a vague message like "Added more algorithms and tests."); CHANGELOG.md line per user-visible change; every pass/fail band written into the test/bench script BEFORE the run; every claimed number backed by a run-log committed to `.claude/baselines/` (NOT `benchmarks/baselines/`); a falsified band is recorded FALSIFIED and kept, never rescue-tuned; no silent fallbacks; core builds without optional deps; benchmarks ADVISORY on this shared machine. **No-blocker rule:** if a sub-item cannot run in THIS environment (tool absent, platform-unsupported, network-blocked), do NOT stall and do NOT wait for the operator — execute its named fallback if one is written into the task, otherwise record WHY with evidence in the Decision log, mark the checkbox `[BLOCKED-ENV]` with the fallback taken, and continue to the next item. The final 2.0.0 tag and all publication remain explicit USER actions — never wait on them; Phase 9 does not depend on the tag. If the session dies, the next session resumes from the checkboxes — keep them truthful in real time.
 
@@ -767,11 +767,73 @@ Confirmed during F1's mandatory full-gate closeout:
   gates pin it. Evidence:
   `.claude/baselines/2026-07-12-fast-clara-memory.md`.
 
-- [ ] **F7 — CLI `--ram-limit` is applied after fully loading Parquet.** The
-  CLI currently retains the entire resident dataset before FastCLARA opens its
-  streaming reader, so chunks add memory rather than bound it. Select the
-  streaming route from Parquet metadata before materialization and preserve
-  labels/medoid-name output without a resident data copy.
+- [x] **F7 — CLI `--ram-limit` was applied after fully loading Parquet.** One
+  metadata-first planner now resolves logical N, `auto`, dtype-aware conservative
+  materialisation peak, and the eager/stream decision before any selected-column
+  payload read. Only a single Float32/Float64 List/LargeList-per-row file may
+  stream through non-full FastCLARA; an over-budget scalar column, directory,
+  non-CLARA method, full sample, CUDA route, incompatible legacy matrix/checkpoint
+  input, or indivisible row group fails loudly with remediation. The streamed
+  route owns a settings-only `Problem`, budgets retained sample/medoid payloads
+  beside Arrow source/target buffers, preserves Float32 throughout the f32
+  payload path, and emits eager-identical `series_i` labels/medoids without a
+  resident parent copy. Dense distance/silhouette files remain absent; the
+  automatic binary result checkpoint remains present. Shared schema selection,
+  checked list offsets, and exact Arrow-field-to-Parquet-leaf mapping keep eager,
+  metadata, sparse, and row-group readers coherent. The exact `--ram-limit`
+  parser rejects malformed, fractional-byte, negative, and overflowing values.
+  Adversarial Soft-DTW parity exposed a second bug: finite raw Soft-DTW distances
+  can be negative, so D-sampling now applies one common translation to
+  unselected weights while leaving every nonnegative schedule unchanged. Its
+  all-zero case also selects the first unselected medoid rather than invoking an
+  invalid discrete distribution, covering identical series for both seeded and
+  unseeded initialization. The
+  8-series/4-row-group fixture proved f64, f32, and Soft-DTW resident/stream runs
+  byte-identical for labels, medoids, and checkpoints (costs 4.4/4.4/−10.344;
+  medoids 1 and 7); focused FastPAM/FastCLARA/CLI/Arrow gates, MSVC ASan,
+  Clang UBSan, and the 113-test canonical gate pass.
+  **The implementer's own reviewer returned “PASS — no remaining F7 blocker in the
+  current tree”; an independent re-review (2026-07-13) overturned that and found
+  two real defects it missed.** (D1, FIXED) `--ram-limit` was silently ignored for
+  every non-Parquet input — the deleted "only effective with Parquet" warning left
+  the cap advertised (verbose still printed it) but unapplied, reinstating F7's own
+  bug class for CSV/HDF5/Arrow/`.dtws`. The first repair was itself defective: it
+  sat inside `#ifdef DTWC_HAS_PARQUET`, which the `DTWC_ENABLE_ARROW=OFF` canonical
+  gate compiles out, so its unit test AND the 113-test gate went green while the
+  real CLI still ran `-i data.csv --ram-limit 1G` to completion, exit 0. Only
+  driving the binary caught it; the guard now lives outside the `#ifdef`, pinned by
+  `require_ram_limit_is_applicable`. (D2, DOCUMENTED) `--device cuda` is now
+  rejected for every non-full-sample FastCLARA, including `--method auto` above
+  5,000 series — correct (that schedule is matrix-free after F6) but a breaking
+  change on default flags that the CHANGELOG had scoped to over-budget runs only.
+  Gate re-verified independently: **113/113, 0 failed**; the `DTWC_HAS_PARQUET`
+  branch syntax-checked against PyArrow 23.0.1 (the Arrow-OFF gate cannot see it).
+  Evidence: `.claude/baselines/2026-07-12-fast-clara-streaming.md`, post-hoc
+  re-review section.
+
+- [ ] **F8 — the F7 resident≡stream parity claim is pinned by nothing.** The
+  byte-identity table (labels/medoids/checkpoint SHA-256 across f64, f32, and
+  Soft-DTW) was a one-off manual simulation, not a committed test. Commit the
+  8-series/4-row-group fixture and assert resident and forced-stream runs produce
+  identical labels, medoids, and checkpoint bytes. Until this exists, F7's headline
+  guarantee can regress silently.
+
+- [ ] **F9 — the Parquet reader suite does not run in the canonical gate.**
+  `test_io_readers` (348 assertions: corrupt list offsets, Arrow-field→Parquet-leaf
+  mapping, dictionary-size undercount, scalar-column stream rejection) is skipped
+  under `DTWC_ENABLE_ARROW=OFF`, and the CLI's whole Parquet planner lives behind
+  `#ifdef DTWC_HAS_PARQUET`. All F7 hardening is therefore defended only by a
+  hand-linked PyArrow executable. Add an Arrow-enabled gate configuration (CI job
+  or a second local build dir) so the guarded branch is compiled and tested, not
+  merely syntax-checked. This guard already hid one live bug (see F7/D1).
+
+- [ ] **F10 — the signed/degenerate D-sampling fix is half-pinned.**
+  `dtwc::core::distance_sampling_weights` has no direct unit test; its contract
+  clauses (nonnegative input byte-identical, selected points exactly zero, throws
+  on non-finite) are unasserted. The all-zero-weight → `first_unselected` case is
+  tested for unseeded `init::Kmeanspp` only — the seeded `Kmeanspp_seeded` and
+  `fast_pam_seeded` branches carry the same rule with no test. The k-means++
+  negative-distance path is untested (only FastPAM's is).
 
 - [x] **Sanitizer gates.** (a) AddressSanitizer: MSVC `/fsanitize=address` (supported on this Windows host) or clang ASan, full ctest; UBSan: clang `-fsanitize=undefined` (disable `-ffast-math` for the UBSan run if it false-positives; record the config). (b) ThreadSanitizer (or Archer for OpenMP) on the parallel suites: matrix fill, fast_pam swap, pruned build, kmeans++ init, CLARA — the `rebind_dtw_fn` race class has already produced two real bugs (0xc0000409); assume more exist. **Platform fallback (pre-authorized, no stall):** TSan/Archer do NOT run on native Windows — use WSL if `wsl.exe --status` shows a distro; otherwise wire a TSan job into `ubuntu-unit.yml` (Claude-branch trigger, `TODO(release): remove`), push, and consume the CI log as the run-log; if neither path is available, record `[BLOCKED-ENV]` with the probe output and continue. All reports triaged: real → fix; benign → documented suppression with reason. **CLEAN 2026-07-12:** 113/113 MSVC ASan and Clang UBSan, plus eleven four-thread Clang/libomp TSan targets covering every named class and the added CLARANS seeded route; zero reports/suppressions. Evidence: `.claude/baselines/2026-07-12-phase8-sanitizers.md`.
 - [ ] **Property/metamorphic fuzz harness** (new `tests/fuzz/` or Catch2 generators, seeds committed): invariants checked on random + adversarial inputs (NaN/Inf payloads, empty, length-1, constant series, mixed lengths, huge magnitudes, denormals) across all variant×metric×mode combinations: symmetry `d(x,y)=d(y,x)`; `d(x,x)=0`; `DTW_band ≥ DTW_full` and monotone in band; `LB_* ≤ DTW` (all LBs); `LB_Webb ≥ LB_Keogh`; `DTW_I ≤ DTW_D`; `dtwFull_eap == dtwFull_L`; prune==no-prune digit-identical (TADPole, pruned matrix); MSM/TWE triangle inequality; checkpoint save→load→identical state. Every violation is a bug or a documented, justified exclusion.
@@ -948,6 +1010,7 @@ The 8.3 no-op oracle stays binding for every commit here — "fast" never buys a
 - 2026-07-10 (review): Phase 8 added; the final 2.0.0 tag is gated on Phase 8 CLEAN, not on rc1 as previously implied. The `8debf1d` contract edits (MATLAB Tier-1 method narrowing, C++ HPC throwing-beta) were made PROVISIONAL pending Task 8.1-H4; the two authorization entries below resolve them.
 - 2026-07-10 (Task 8.1-H4): **AUTHORIZED — MATLAB Tier-1 post-freeze method exception.** Old rule: every Tier-1 language shared the original six-method set (`auto`, `pam`, `clara`, `kmedoids`, `mip`, `hierarchical`/`hclust`). Approved rule: C++/Python may expose the later OneBatchPAM/LR-core/TADPole additions in 2.0 while MATLAB retains that original set and rejects the new names loudly. Compatibility: no accepted MATLAB call was removed; capability parity for the three additions is deferred explicitly. Rationale: truthful surface over an unimplemented alias or silent substitution. Owner: 2.1 MATLAB parity milestone.
 - 2026-07-10 (Task 8.1-H4): **AUTHORIZED — C++ HPC throwing-beta boundary.** Old rule: accepting `device="hpc"` implied Tier-1 submission in each language. Approved rule: C++ validates the device name but `cluster()` raises the documented `DeviceError` until an authenticated remote transport exists; Python owns the tested SLURM route. Compatibility: C++ never had a working transport, and no local computation is substituted. Rationale: the no-silent-fallback contract forbids pretending CPU work is HPC work. Owner: Oxford ARC / 2.1 HPC gate.
+- 2026-07-12 (Task 8.2-F7): **AUTHORIZED — truthful CLI RAM policy and matrix-free output exception.** Old rules: §6.3 incorrectly said `--ram-limit` selected mmap distance storage, and the frozen output invariant required both `Result::save(dir)` and every CLI run to emit four human-readable files, including a dense distance matrix and silhouettes. Approved rules: library `set_storage_policy` remains the RAM-based storage control, CLI `--mmap-threshold` selects parent distance storage, and CLI `--ram-limit` is the conservative Parquet series decode/materialisation cap rather than a whole-process RSS ceiling. `Result::save(dir)` retains its explicit four-file operation, while a matrix-free CLI run always emits byte-stable labels and medoids but emits distance/silhouette CSVs only if a full matrix already exists; corresponding files remain byte-identical. RAM-limited Parquet FastCLARA also writes the automatic binary result checkpoint with eager-identical `series_i` names. Compatibility: the CLI flag now enforces its intended pre-load cap; no existing artifact changes bytes and matrix-based runs retain all four files, while matrix-free runs no longer acquire O(N²) state solely for output. Rationale: conflating series materialisation with distance storage hid the F7 full-load bug, and forcing a dense matrix contradicts the documented F6/F7 scaling contracts. Owner: Phase 8 storage/output-contract and conformance gates.
 - 2026-07-12 (user): **Phase 9 (WASM + browser GUI) AUTHORIZED.** Scope: client-side Playground modeled on the user's `../unibatt/glide-wasm` (architecture + verbatim colour palette); it targets the 2.1 milestone and does NOT gate the 2.0.0 tag. Codex executes it nonstop after 8.4 CLEAN in the same run.
 - 2026-07-12 (Phase 9): **Toolchain decided — Emscripten + embind** (unibatt's Rust/wasm-bindgen tooling does not transfer; its frontend architecture does). `-fwasm-exceptions` mandatory (typed errors must reach JS); NO `-ffast-math` in the wasm build (parity band); all optional deps OFF; solvers/mmap/checkpoint/GPU/HPC excluded from wasm v1 with loud typed rejection, never substitution. emsdk vendored gitignored at `tools/emsdk` (never outside repo root).
 - 2026-07-12 (Phase 9): **AUTHORIZED — additive public API `dtwc::warping_path`** (read-only optimal-alignment extraction for Standard/banded DTW). Satisfies the restored contract governance clause: additive only, documented in `docs/api-contract-2.0.md`, cost-consistency band registered (path cost == DTW value rel ≤ 1e-9). No existing signature changes.
@@ -957,6 +1020,7 @@ The 8.3 no-op oracle stays binding for every commit here — "fast" never buys a
 
 ## Progress log
 
+- 2026-07-12 (Task 8.2/F7): **Parquet RAM planning moved ahead of payload I/O.** A conservative metadata planner selects eager or settings-only list-row streaming without retaining the full dataset; unsupported layouts/routes and oversized row groups fail closed. Float64, Float32, and negative-cost Soft-DTW simulations produce byte-identical resident/stream labels, medoids, and binary checkpoints. The shared schema/leaf mapping, exact RAM parser, signed D-sampling repair, output contract, and reviewer PASS are recorded in `.claude/baselines/2026-07-12-fast-clara-streaming.md`.
 - 2026-07-12 (Task 8.2/F6): **FastCLARA's hidden quadratic parent allocation removed.** Non-full assignment now uses the bound f64/f32 dispatcher directly, leaves existing dense/mmap caches untouched, and requires only O(N+s²) memory. Zero-allocation, sentinel-cache, semantics, thread, and sanitizer gates pass. Evidence: `.claude/baselines/2026-07-12-fast-clara-memory.md`.
 - 2026-07-12 (Task 8.2/F5): **FastCLARA planning made single-source and checked.** One pre-allocation planner now governs resident and Parquet paths, rejects invalid controls and the int-index result boundary, computes auto sampling without signed overflow, and makes the full-sample/RAM-limit conflict explicit. The CLI's undocumented large-N formula was removed. Evidence: `.claude/baselines/2026-07-12-fast-clara-boundaries.md`.
 

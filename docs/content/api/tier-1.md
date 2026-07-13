@@ -111,8 +111,10 @@ functions in §2.4): `"silhouette"` (returns the **mean** silhouette),
 output contract, §7 item 2): writes `<name>_labels.csv` (`"name,cluster"`),
 `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`),
 `<name>_distance_matrix.csv`, and `<name>_silhouettes.csv`
-(`"name,cluster,silhouette"`) into `dir`. These are exactly the CLI outputs
-(`dtwc_cl.cpp:156-202`).
+(`"name,cluster,silhouette"`) into `dir`. These are exactly the corresponding
+CLI outputs when present. A matrix-free CLI run emits labels and medoids without
+forcing the matrix-only files; this approved exception is specified in §7 item
+2.
 
 *`plot()` is Python/MATLAB only.* It renders a classical-MDS 2D scatter of the
 distance matrix coloured by cluster (`_api.py:93-130`). **C++ has no `plot()`**:

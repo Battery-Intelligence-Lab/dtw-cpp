@@ -30,7 +30,7 @@ a dated decision in `PLAN.md` that states the old rule, the approved rule, the
 compatibility effect, rationale, and owner. Removing this requirement is itself
 a contract change and is not permitted without the same decision process.
 
-Two post-freeze scope decisions are approved for 2.0.0rc1 (2026-07-10):
+The following post-freeze scope decisions are approved:
 
 1. The original common Tier-1 MATLAB method set remains `auto`, `pam`, `clara`,
    `kmedoids`, `mip`, and `hierarchical`/`hclust`. OneBatchPAM, LR-core, and
@@ -43,6 +43,13 @@ Two post-freeze scope decisions are approved for 2.0.0rc1 (2026-07-10):
    authenticated remote-transport implementation. Python remains the tested
    SLURM transport. A local CPU fallback would violate the no-silent-fallback
    rule; enabling C++ submission is owned by the Oxford ARC / 2.1 HPC gate.
+3. The 2026-07-12 F7 decision corrects two CLI-specific invariants. First,
+   `--ram-limit` is the Parquet series decode/materialisation cap; it does not
+   select mmap distance storage or promise a whole-process RSS ceiling. Second,
+   matrix-free CLI runs always emit byte-stable labels and medoids, but do not
+   materialise an O(N²) matrix merely to emit distance and silhouette CSVs.
+   `Result::save(dir)` retains its four-file contract; its files and CLI files
+   are byte-identical whenever the corresponding CLI artifact exists.
 
 ---
 
@@ -182,8 +189,10 @@ functions in §2.4): `"silhouette"` (returns the **mean** silhouette),
 output contract, §7 item 2): writes `<name>_labels.csv` (`"name,cluster"`),
 `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`),
 `<name>_distance_matrix.csv`, and `<name>_silhouettes.csv`
-(`"name,cluster,silhouette"`) into `dir`. These are exactly the CLI outputs
-(`dtwc_cl.cpp:156-202`).
+(`"name,cluster,silhouette"`) into `dir`. These are exactly the corresponding
+CLI outputs when present. A matrix-free CLI run emits labels and medoids without
+forcing the matrix-only files; this approved exception is specified in §7 item
+2.
 
 *`plot()` is Python/MATLAB only.* It renders a classical-MDS 2D scatter of the
 distance matrix coloured by cluster (`_api.py:93-130`). **C++ has no `plot()`**:
@@ -680,10 +689,15 @@ block are constant text.
 - `device="hpc"`: **metadata-only** local load — shapes/counts/names read
   locally; bulk series streamed to the cluster at submit (`load()` never reads
   the payload; `cluster_on_hpc` forwards a path, `_hpc.py:185-193`).
-- Local devices (`cpu`/`gpu`): `core::StoragePolicy::Auto` — mmap-backed store
-  when estimated footprint exceeds a threshold (default 50% free RAM,
-  overridable via `--ram-limit`/`set_storage_policy`). View-mode spans (48×
-  CLARA subsample win, surface report §6 wart 6 / §8 item 6) preserved.
+- Local library devices (`cpu`/`gpu`): `core::StoragePolicy::Auto` — mmap-backed
+  store when estimated footprint exceeds a threshold (default 50% free RAM,
+  overridable via `set_storage_policy`). The CLI controls parent distance
+  storage separately with `--mmap-threshold`. Its `--ram-limit` is a conservative
+  cap on Parquet selected-series decoding/materialisation, applied before payload
+  I/O; it is not a whole-process RSS limit. Only a single list-per-row file can
+  exceed that cap and continue, through non-full CPU FastCLARA row-group
+  streaming. View-mode spans (48× CLARA subsample win, surface report §6 wart 6
+  / §8 item 6) are preserved.
 
 ---
 
@@ -693,21 +707,28 @@ The five load-bearing constraints from the API-surface report §8, plus the
 determinism/index rules, restated as a checklist for the adversarial reviewer:
 
 1. **File formats read.** CSV/TSV (start_row/start_col/delimiter/Ndata,
-   folder-of-files), Parquet file+dir with `--column`, Arrow IPC
+   folder-of-files), Parquet file+dir with optional `--column`, Arrow IPC
    (`.arrow/.ipc/.feather`), `.dtws` mmap + `.names` sidecar
    (`dtwc_cl.cpp:471-555`), Python Polars `large_list<float>` ragged ingest.
 2. **Output contract (bit-identical).** Two distinct sets, and the equal-bytes
    guarantee applies to the **first set only**:
-   - *Human-readable results (4 files) — the equal-bytes contract.* `<name>_labels.csv`
-     (`"name,cluster"`), `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`),
-     `<name>_distance_matrix.csv`, `<name>_silhouettes.csv`. **`Result::save(dir)`
-     (§1.4) and the CLI must emit these four byte-for-byte identical.** The SLURM
-     path machine-parses `<name>_labels.csv` and maps 1-based lexically-sorted rows
-     back to input order (`_hpc.py:45-65`).
-   - *Run-time persistence artifacts (2 files) — NOT part of the save() equal-bytes
-     set.* `<name>_checkpoint.bin` and `<name>_distmat.cache` are written by the
-     **CLI during the run** (`dtwc_cl.cpp:682/689`) for resume (invariant 4), **not**
-     by `Result::save(dir)`. Their format is preserved for `--resume` compatibility,
+   - *Human-readable results (2 unconditional + 2 matrix-dependent files) —
+     the equal-bytes contract.* `<name>_labels.csv` (`"name,cluster"`) and
+     `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`) are always
+     emitted. `<name>_distance_matrix.csv` and `<name>_silhouettes.csv` are CLI
+     outputs only when a full distance matrix is materialised. `Result::save(dir)`
+     (§1.4) still requests and emits all four; every corresponding CLI file must
+     be byte-for-byte identical. Matrix-free CLI routes, including RAM-limited
+     Parquet FastCLARA, do not create O(N²) state solely for the latter two.
+     Streamed list rows retain the eager names `series_0`, `series_1`, and so on.
+     The SLURM path machine-parses `<name>_labels.csv` and maps 1-based
+     lexically-sorted rows back to input order (`_hpc.py:45-65`).
+   - *Run-time persistence artifacts (up to 2 files) — NOT part of the save()
+     equal-bytes set.* `<name>_checkpoint.bin` is written by every successful CLI
+     run, including streamed FastCLARA; `<name>_distmat.cache` is written when
+     mapped distance storage is selected. They are produced **during the run**
+     for resume (invariant 4), **not** by `Result::save(dir)`. Their format is
+     preserved for `--resume` compatibility,
      but they are explicitly outside the `save()`↔CLI byte-identity claim. The
      mmap cache's safety-mandated v1→v2 invalidation is the authorized exception:
      v1 caches must be recomputed because they cannot identify their data/config.
@@ -717,7 +738,10 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    deprecation path (§4) with those two callers updated in the same commit.
 4. **Checkpoint/resume triple.** Directory checkpoint (distances.csv +
    metadata.txt), binary result checkpoint, mmap distance-matrix cache with
-   `--resume` — long SLURM runs depend on all three.
+   `--resume` — long SLURM runs depend on all three. A non-full FastCLARA run
+   has no parent distance matrix and therefore rejects the directory checkpoint
+   and imported dense matrix paths; its automatic binary result checkpoint is
+   still written. The full-sample PAM fallback retains the ordinary triple.
 5. **Precision contract.** Distance matrix and returned distances are always
    `double`, even with `float32` series storage (§8).
 6. **Zero-copy / perf paths.** nanobind ndarray zero-copy + GIL release on every
