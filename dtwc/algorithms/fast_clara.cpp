@@ -107,6 +107,46 @@ namespace detail {
 
 namespace {
 
+  /// A forced left fold makes total-cost comparisons independent of OpenMP
+  /// reduction trees and Parquet row-group boundaries. `volatile` is narrow
+  /// and intentional: the build enables reassociation, which would otherwise
+  /// be allowed to regroup this bookkeeping sum.
+  class OrderedDistanceSum
+  {
+  public:
+    void add(std::span<const double> values)
+    {
+      for (const double value : values) {
+        const double current = total_;
+        total_ = current + value;
+      }
+    }
+
+    [[nodiscard]] double value() const { return total_; }
+
+  private:
+    volatile double total_ = 0.0;
+  };
+
+#ifdef DTWC_HAS_PARQUET
+  size_t resident_data_bytes(const Data &data, size_t element_bytes)
+  {
+    const size_t object_bytes = data.is_f32()
+      ? sizeof(std::vector<float>) + sizeof(std::string)
+      : sizeof(std::vector<data_t>) + sizeof(std::string);
+    if (data.size() > std::numeric_limits<size_t>::max() / object_bytes)
+      return std::numeric_limits<size_t>::max();
+    size_t total = data.size() * object_bytes;
+    for (size_t i = 0; i < data.size(); ++i) {
+      const size_t count = data.series_flat_size(i);
+      if (count > (std::numeric_limits<size_t>::max() - total) / element_bytes)
+        return std::numeric_limits<size_t>::max();
+      total += count * element_bytes;
+    }
+    return total;
+  }
+#endif
+
   /// Invocation-local PAM seed for one CLARA subsample. CLARAOptions uses an
   /// unsigned base and n_samples is a positive int, so widening both operands to
   /// uint64_t makes the addition overflow-safe for every representable input.
@@ -144,7 +184,9 @@ namespace {
       best_dists[static_cast<std::size_t>(p)] = best_dist;
     }
 
-    return std::accumulate(best_dists.begin(), best_dists.end(), 0.0);
+    OrderedDistanceSum total;
+    total.add(best_dists);
+    return total.value();
   }
 
   /** Assign through the bound DTW function without allocating the parent cache. */
@@ -183,23 +225,27 @@ namespace {
   double assign_all_points_chunked(
     const Problem::dtw_fn_t &dtw_fn,
     const Data &medoid_data,
+    const std::vector<int> &medoid_indices,
     std::vector<int> &labels,
     const io::ParquetChunkReader &reader,
     size_t ram_budget)
   {
-    const auto N = reader.total_rows();
+    const auto N = reader.logical_series_count();
     const int k = static_cast<int>(medoid_data.size());
     labels.resize(static_cast<size_t>(N));
 
-    size_t medoid_bytes = 0;
-    for (int m = 0; m < k; ++m)
-      medoid_bytes += medoid_data.series_flat_size(m) * sizeof(data_t);
-    size_t chunk_budget = (ram_budget > medoid_bytes) ? ram_budget - medoid_bytes : ram_budget / 2;
+    const size_t medoid_bytes = resident_data_bytes(medoid_data, sizeof(data_t));
+    if (medoid_bytes >= ram_budget)
+      throw InvalidInput(
+        "fast_clara: ram_limit_bytes is too small to retain the selected "
+        "medoid series during chunked assignment.");
+    const size_t chunk_budget = ram_budget - medoid_bytes;
 
-    int rg_per_batch = reader.row_groups_per_batch(chunk_budget);
+    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, false);
     int total_rg = reader.num_row_groups();
 
-    double total_cost = 0.0;
+    OrderedDistanceSum total_cost;
+    std::vector<double> best_dists;
     int64_t global_offset = 0;
 
     for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
@@ -207,18 +253,20 @@ namespace {
       Data chunk = reader.read_row_groups(rg, batch_count);
 
       const int chunk_size = static_cast<int>(chunk.size());
-      double chunk_cost = 0.0;
+      best_dists.resize(static_cast<size_t>(chunk_size));
 
 // Inner loop is embarrassingly parallel: each point's DTW is independent.
 // Reader is NOT called here (chunk already loaded), so this is thread-safe.
-#pragma omp parallel for schedule(dynamic) reduction(+ : chunk_cost) if (chunk_size > 64)
+#pragma omp parallel for schedule(dynamic) if (chunk_size > 64)
       for (int p = 0; p < chunk_size; ++p) {
         double best_dist = std::numeric_limits<double>::max();
         int best_label = 0;
         auto series_p = chunk.series(p);
+        const auto global_index = global_offset + p;
 
         for (int m = 0; m < k; ++m) {
-          double d = dtw_fn(series_p, medoid_data.series(m));
+          const double d = global_index == medoid_indices[m]
+            ? 0.0 : dtw_fn(series_p, medoid_data.series(m));
           if (d < best_dist) {
             best_dist = d;
             best_label = m;
@@ -226,36 +274,40 @@ namespace {
         }
 
         labels[static_cast<size_t>(global_offset + p)] = best_label;
-        chunk_cost += best_dist;
+        best_dists[static_cast<size_t>(p)] = best_dist;
       }
-      total_cost += chunk_cost;
+      total_cost.add(best_dists);
       global_offset += chunk_size;
     }
 
-    return total_cost;
+    return total_cost.value();
   }
 
   /// Float32 variant: loads chunks as float32 (2x memory saving per chunk).
   double assign_all_points_chunked_f32(
     const Problem::dtw_fn_f32_t &dtw_fn_f32,
     const Data &medoid_data,
+    const std::vector<int> &medoid_indices,
     std::vector<int> &labels,
     const io::ParquetChunkReader &reader,
     size_t ram_budget)
   {
-    const auto N = reader.total_rows();
+    const auto N = reader.logical_series_count();
     const int k = static_cast<int>(medoid_data.size());
     labels.resize(static_cast<size_t>(N));
 
-    size_t medoid_bytes = 0;
-    for (int m = 0; m < k; ++m)
-      medoid_bytes += medoid_data.series_flat_size(m) * sizeof(float);
-    size_t chunk_budget = (ram_budget > medoid_bytes) ? ram_budget - medoid_bytes : ram_budget / 2;
+    const size_t medoid_bytes = resident_data_bytes(medoid_data, sizeof(float));
+    if (medoid_bytes >= ram_budget)
+      throw InvalidInput(
+        "fast_clara: ram_limit_bytes is too small to retain the selected "
+        "Float32 medoid series during chunked assignment.");
+    const size_t chunk_budget = ram_budget - medoid_bytes;
 
-    int rg_per_batch = reader.row_groups_per_batch(chunk_budget);
+    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, true);
     int total_rg = reader.num_row_groups();
 
-    double total_cost = 0.0;
+    OrderedDistanceSum total_cost;
+    std::vector<double> best_dists;
     int64_t global_offset = 0;
 
     for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
@@ -263,16 +315,18 @@ namespace {
       Data chunk = reader.read_row_groups_f32(rg, batch_count);
 
       const int chunk_size = static_cast<int>(chunk.size());
-      double chunk_cost = 0.0;
+      best_dists.resize(static_cast<size_t>(chunk_size));
 
-#pragma omp parallel for schedule(dynamic) reduction(+ : chunk_cost) if (chunk_size > 64)
+#pragma omp parallel for schedule(dynamic) if (chunk_size > 64)
       for (int p = 0; p < chunk_size; ++p) {
         double best_dist = std::numeric_limits<double>::max();
         int best_label = 0;
         auto series_p = chunk.series_f32(p);
+        const auto global_index = global_offset + p;
 
         for (int m = 0; m < k; ++m) {
-          double d = dtw_fn_f32(series_p, medoid_data.series_f32(m));
+          const double d = global_index == medoid_indices[m]
+            ? 0.0 : dtw_fn_f32(series_p, medoid_data.series_f32(m));
           if (d < best_dist) {
             best_dist = d;
             best_label = m;
@@ -280,13 +334,13 @@ namespace {
         }
 
         labels[static_cast<size_t>(global_offset + p)] = best_label;
-        chunk_cost += best_dist;
+        best_dists[static_cast<size_t>(p)] = best_dist;
       }
-      total_cost += chunk_cost;
+      total_cost.add(best_dists);
       global_offset += chunk_size;
     }
 
-    return total_cost;
+    return total_cost.value();
   }
 
   /**
@@ -318,21 +372,26 @@ namespace {
         N, sample_size, rng);
 
       // 2. Load subsample from Parquet (small — always fits in RAM)
-      std::vector<int64_t> sample_rows(sample_indices.begin(), sample_indices.end());
-      Data sample_data = reader.read_rows(std::move(sample_rows));
+      core::ClusteringResult sub_result;
+      {
+        // Release the sample series and O(s^2) PAM cache before medoid and
+        // assignment chunks are materialized; otherwise streaming peaks add.
+        std::vector<int64_t> sample_rows(
+          sample_indices.begin(), sample_indices.end());
+        Data sample_data = opts.use_float32
+          ? reader.read_rows_f32(std::move(sample_rows), opts.ram_limit_bytes)
+          : reader.read_rows(std::move(sample_rows), opts.ram_limit_bytes);
 
-      // 3. Create sub-Problem with loaded sample data
-      Problem sub_prob("clara_chunked_" + std::to_string(s));
-      sub_prob.band = prob_template.band;
-      sub_prob.variant_params = prob_template.variant_params;
-      sub_prob.missing_strategy = prob_template.missing_strategy;
-      sub_prob.distance_strategy = prob_template.distance_strategy;
-      sub_prob.verbose = false; // suppress subsample verbosity
-      sub_prob.set_data(std::move(sample_data));
-
-      // 4. Run FastPAM on subsample
-      auto sub_result = fast_pam_seeded(
-        sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
+        Problem sub_prob("clara_chunked_" + std::to_string(s));
+        sub_prob.band = prob_template.band;
+        sub_prob.variant_params = prob_template.variant_params;
+        sub_prob.missing_strategy = prob_template.missing_strategy;
+        sub_prob.distance_strategy = prob_template.distance_strategy;
+        sub_prob.verbose = false;
+        sub_prob.set_data(std::move(sample_data));
+        sub_result = fast_pam_seeded(
+          sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
+      }
 
       // 5. Map medoid indices back to global dataset indices
       std::vector<int> full_medoids(opts.n_clusters);
@@ -344,31 +403,21 @@ namespace {
       }
 
       // 6. Load medoid series from Parquet (k series — tiny)
-      Data medoid_data = reader.read_rows(std::move(medoid_rows));
+      Data medoid_data = opts.use_float32
+        ? reader.read_rows_f32(std::move(medoid_rows), opts.ram_limit_bytes)
+        : reader.read_rows(std::move(medoid_rows), opts.ram_limit_bytes);
 
       // 7. Chunked assignment: stream row groups, compute DTW to medoids
       std::vector<int> labels;
       double total_cost;
       if (opts.use_float32) {
-        // Convert medoid data to f32 (k series — tiny, negligible cost)
-        const size_t n_med = medoid_data.size();
-        std::vector<std::vector<float>> med_f32(n_med);
-        for (size_t i = 0; i < n_med; ++i) {
-          auto s = medoid_data.series(i);
-          med_f32[i].resize(s.size());
-          for (size_t j = 0; j < s.size(); ++j)
-            med_f32[i][j] = static_cast<float>(s[j]);
-        }
-        std::vector<std::string> med_names(n_med);
-        for (size_t i = 0; i < n_med; ++i)
-          med_names[i] = std::string(medoid_data.name(i));
-        Data medoid_f32(std::move(med_f32), std::move(med_names));
-
         total_cost = assign_all_points_chunked_f32(
-          prob_template.dtw_function_f32(), medoid_f32, labels, reader, opts.ram_limit_bytes);
+          prob_template.dtw_function_f32(), medoid_data, full_medoids, labels,
+          reader, opts.ram_limit_bytes);
       } else {
         total_cost = assign_all_points_chunked(
-          prob_template.dtw_function(), medoid_data, labels, reader, opts.ram_limit_bytes);
+          prob_template.dtw_function(), medoid_data, full_medoids, labels,
+          reader, opts.ram_limit_bytes);
       }
 
       // 8. Track best result
@@ -400,19 +449,48 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   // Validate caller-controlled fields before opening a Parquet reader or doing
   // any other I/O. Dataset-size validation follows against the selected source.
   detail::validate_clara_controls(opts, "fast_clara");
+  if (opts.force_parquet_streaming
+      && (opts.ram_limit_bytes == 0 || opts.parquet_path.empty()))
+    throw InvalidInput(
+      "fast_clara: force_parquet_streaming requires ram_limit_bytes and "
+      "parquet_path.");
+  if (opts.force_parquet_streaming && prob.size() != 0)
+    throw InvalidInput(
+      "fast_clara: force_parquet_streaming requires a settings-only Problem "
+      "without resident series.");
+#ifndef DTWC_HAS_PARQUET
+  if (opts.force_parquet_streaming)
+    throw InvalidInput(
+      "fast_clara: force_parquet_streaming requires a build with Parquet support.");
+#endif
 #ifdef DTWC_HAS_PARQUET
   // Chunked mode: stream from Parquet when ram_limit is set
   if (opts.ram_limit_bytes > 0 && !opts.parquet_path.empty()) {
     io::ParquetChunkReader reader(opts.parquet_path, opts.parquet_column);
-    const auto stream_plan = detail::resolve_clara_plan(
-      reader.total_rows(), opts, "fast_clara");
+    const auto resident_bytes =
+      reader.estimated_resident_bytes(opts.use_float32);
 
     // If data fits in RAM, skip chunked mode
-    if (reader.estimated_total_bytes() > opts.ram_limit_bytes) {
+    if (opts.force_parquet_streaming
+        || resident_bytes > opts.ram_limit_bytes) {
+      if (prob.size() != 0)
+        throw InvalidInput(
+          "fast_clara: Parquet streaming was selected, but Problem still "
+          "contains resident series; use a settings-only Problem to avoid "
+          "resident-plus-chunk memory.");
+      if (!reader.is_list_layout()) {
+        throw InvalidInput(
+          "fast_clara: RAM-limited Parquet streaming requires list-per-row "
+          "input; a scalar column is one time series and cannot be streamed "
+          "as independent clustering points.");
+      }
+      const auto stream_plan = detail::resolve_clara_plan(
+        reader.logical_series_count(), opts, "fast_clara");
       if (prob.verbose)
-        std::cout << "FastCLARA: streaming from Parquet (" << reader.total_rows()
+        std::cout << "FastCLARA: streaming from Parquet ("
+                  << reader.logical_series_count()
                   << " rows, " << reader.num_row_groups() << " row groups, ~"
-                  << reader.estimated_total_bytes() / (1ULL << 20) << " MB)\n";
+                  << resident_bytes / (1ULL << 20) << " MB resident estimate)\n";
       return fast_clara_chunked(prob, opts, reader, stream_plan);
     }
   }

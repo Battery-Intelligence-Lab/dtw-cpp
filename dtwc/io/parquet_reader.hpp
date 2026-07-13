@@ -16,6 +16,7 @@
 
 #include "../Data.hpp"
 #include "../settings.hpp"
+#include "parquet_schema.hpp"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>
@@ -37,25 +38,6 @@ inline void check_arrow(const arrow::Status &s, const char *ctx)
 {
   if (!s.ok())
     throw std::runtime_error(std::string(ctx) + ": " + s.ToString());
-}
-
-/// Find the first numeric (float/double) column, or a named column.
-inline int find_column(const std::shared_ptr<arrow::Schema> &schema,
-                       const std::string &col_name)
-{
-  if (!col_name.empty()) {
-    int idx = schema->GetFieldIndex(col_name);
-    if (idx < 0)
-      throw std::runtime_error("Column '" + col_name + "' not found in Parquet schema");
-    return idx;
-  }
-  // Auto-detect first float64 or float32 column
-  for (int i = 0; i < schema->num_fields(); ++i) {
-    auto tid = schema->field(i)->type()->id();
-    if (tid == arrow::Type::DOUBLE || tid == arrow::Type::FLOAT)
-      return i;
-  }
-  throw std::runtime_error("No numeric column found in Parquet schema. Use --column to specify.");
 }
 
 } // namespace detail
@@ -82,8 +64,10 @@ inline Data load_parquet_file(const std::filesystem::path &path,
   std::shared_ptr<arrow::Schema> arrow_schema;
   detail::check_arrow(reader->GetSchema(&arrow_schema), "GetSchema");
 
-  int col_idx = detail::find_column(arrow_schema, col_name);
-  auto col_type = arrow_schema->field(col_idx)->type();
+  const auto selected = detail::find_parquet_series_column(
+    arrow_schema, col_name);
+  const int col_idx = selected.parquet_leaf_index;
+  const auto col_type = selected.type;
 
   // Read just the selected column
   std::shared_ptr<arrow::Table> table;

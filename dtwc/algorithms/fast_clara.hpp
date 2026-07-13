@@ -46,6 +46,7 @@ namespace algorithms {
     std::filesystem::path parquet_path; ///< Parquet file for streaming (empty = data in RAM).
     std::string parquet_column;         ///< Column name for Parquet reader.
     bool use_float32 = false;           ///< Load chunks as float32 (2x memory saving).
+    bool force_parquet_streaming = false; ///< Metadata planner already rejected materialization.
   };
 
   /**
@@ -59,8 +60,10 @@ namespace algorithms {
    * @note When sample_size resolves to N, in-memory data falls back to one
  * FastPAM run. A streaming Parquet dataset that exceeds the RAM limit rejects
  * that request rather than loading all rows or repeating identical full runs.
- * Non-full assignment evaluates the configured bound DTW function directly;
- * an existing parent distance cache is ignored and left unchanged.
+   * Non-full assignment evaluates the configured bound DTW function directly;
+   * an existing parent distance cache is ignored and left unchanged.
+   * With force_parquet_streaming=true, `prob` must contain settings only (no
+   * resident series); this prevents a hidden resident-plus-chunk memory peak.
  * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX.
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);

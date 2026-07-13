@@ -38,6 +38,8 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <filesystem>
+#include <fstream>
+#include <limits>
 #include <string>
 #include <variant>
 
@@ -159,7 +161,7 @@ TEST_CASE("CLI distance config rejects YAML transformer bypasses before work",
 }
 
 // ---------------------------------------------------------------------------
-// CLI distance-matrix storage routing (Task 8.1 M11)
+// Parquet RAM-limit planning (Task 8.2 F7)
 // ---------------------------------------------------------------------------
 
 namespace {
@@ -182,6 +184,153 @@ struct ScratchDirectory
     std::filesystem::remove_all(path, ec);
   }
 };
+
+} // namespace
+
+TEST_CASE("parse_ram_limit is exact and fail-closed", "[cli][parquet][ram]")
+{
+  CHECK(parse_ram_limit("") == 0);
+  CHECK(parse_ram_limit("0") == 0);
+  CHECK(parse_ram_limit("1") == 1);
+  CHECK(parse_ram_limit("2K") == 2ULL * 1024ULL);
+  CHECK(parse_ram_limit("1.5MiB") == 1572864ULL);
+  CHECK(parse_ram_limit("3gb") == 3ULL * 1024ULL * 1024ULL * 1024ULL);
+  if constexpr (std::numeric_limits<size_t>::digits > 53)
+    CHECK(parse_ram_limit("9007199254740993") == 9007199254740993ULL);
+  CHECK(parse_ram_limit(std::to_string(std::numeric_limits<size_t>::max()))
+        == std::numeric_limits<size_t>::max());
+
+  for (const std::string malformed : {
+         "-1G", "nan", "inf", "1GBjunk", "G", "0.1B" }) {
+    CAPTURE(malformed);
+    CHECK_THROWS_AS(parse_ram_limit(malformed), dtwc::InvalidInput);
+  }
+
+  CHECK_THROWS_WITH(
+    parse_ram_limit("999999999999999999999999T"),
+    Catch::Matchers::ContainsSubstring("exceeds this platform's size limit"));
+}
+
+// Registered band: a non-zero cap on any non-Parquet input must throw
+// InvalidInput; a zero cap, or any Parquet input, must be a no-op. Before this
+// gate the CLI accepted `--ram-limit` for CSV/HDF5/Arrow/.dtws, printed the cap
+// when verbose, and then loaded the whole file anyway — the same "advertised but
+// unapplied cap" that F7 removed from the Parquet path.
+TEST_CASE("--ram-limit is rejected where no reader can honour it",
+          "[cli][parquet][ram]")
+{
+  // Cap set, input is not Parquet -> loud rejection, never a silent full load.
+  CHECK_THROWS_AS(
+    require_ram_limit_is_applicable(1ULL << 30, false, false),
+    dtwc::InvalidInput);
+  CHECK_THROWS_WITH(
+    require_ram_limit_is_applicable(1, false, false),
+    Catch::Matchers::ContainsSubstring("cannot be honoured for this input"));
+
+  // Cap set and Parquet: the metadata planner owns the decision, not this gate.
+  CHECK_NOTHROW(require_ram_limit_is_applicable(1ULL << 30, true, false));
+  CHECK_NOTHROW(require_ram_limit_is_applicable(1ULL << 30, false, true));
+
+  // No cap requested: every input stays legal.
+  CHECK_NOTHROW(require_ram_limit_is_applicable(0, false, false));
+  CHECK_NOTHROW(require_ram_limit_is_applicable(0, true, false));
+}
+
+TEST_CASE("Parquet CLI plan selects streaming before payload materialization",
+          "[cli][parquet][ram][streaming]")
+{
+  const auto plan = resolve_parquet_cli_plan(
+    "clara", /*series_count=*/6001, /*estimated_resident_bytes=*/4097,
+    /*ram_limit=*/4096, ParquetCliLayout::ListColumn);
+
+  CHECK(plan.method == "clara");
+  CHECK(plan.series_count == 6001);
+  CHECK(plan.stream_payload);
+  CHECK_FALSE(plan.materialize_payload());
+
+  const auto boundary = resolve_parquet_cli_plan(
+    "clara", 6001, /*estimated_resident_bytes=*/4096,
+    /*ram_limit=*/4096, ParquetCliLayout::ListColumn);
+  CHECK_FALSE(boundary.stream_payload);
+  CHECK(boundary.materialize_payload());
+}
+
+TEST_CASE("Parquet CLI plan resolves auto from metadata without loading data",
+          "[cli][parquet][ram][auto]")
+{
+  const auto pam = resolve_parquet_cli_plan(
+    "auto", 5000, 100, 1000, ParquetCliLayout::ListColumn);
+  CHECK(pam.method == "pam");
+  CHECK_FALSE(pam.stream_payload);
+
+  const auto clara = resolve_parquet_cli_plan(
+    "auto", 5001, 1001, 1000, ParquetCliLayout::ListColumn);
+  CHECK(clara.method == "clara");
+  CHECK(clara.stream_payload);
+}
+
+TEST_CASE("Parquet RAM limit rejects every route that cannot honor it",
+          "[cli][parquet][ram][loudness]")
+{
+  CHECK_THROWS_WITH(
+    resolve_parquet_cli_plan(
+      "pam", 20, 1001, 1000, ParquetCliLayout::ListColumn),
+    Catch::Matchers::ContainsSubstring("method 'pam' cannot stream"));
+
+  CHECK_THROWS_WITH(
+    resolve_parquet_cli_plan(
+      "clara", 1, 1001, 1000, ParquetCliLayout::ScalarColumn),
+    Catch::Matchers::ContainsSubstring("list-per-row"));
+
+  CHECK_THROWS_WITH(
+    resolve_parquet_cli_plan(
+      "clara", 100, 1001, 1000, ParquetCliLayout::Directory),
+    Catch::Matchers::ContainsSubstring("single Parquet file"));
+
+  CHECK_THROWS_AS(
+    resolve_parquet_cli_plan(
+      "clara", 0, 1001, 1000, ParquetCliLayout::ListColumn),
+    dtwc::InvalidInput);
+}
+
+TEST_CASE("streamed Parquet outputs retain deterministic synthetic names",
+          "[cli][parquet][output]")
+{
+  ScratchDirectory scratch{"dtwc_cli_streamed_names"};
+  dtwc::Problem settings_only{"streamed"};
+  dtwc::core::ClusteringResult result;
+  result.labels = {1, 0, 1};
+  result.medoid_indices = {1, 2};
+
+  const auto labels = scratch.path / "labels.csv";
+  const auto medoids = scratch.path / "medoids.csv";
+  write_labels_csv(labels, settings_only, result, /*streamed_series_count=*/3);
+  write_medoids_csv(medoids, settings_only, result, /*streamed_series_count=*/3);
+
+  std::ifstream labels_in(labels);
+  const std::string labels_text(
+    std::istreambuf_iterator<char>{labels_in}, std::istreambuf_iterator<char>{});
+  CHECK(labels_text ==
+        "name,cluster\nseries_0,1\nseries_1,0\nseries_2,1\n");
+
+  std::ifstream medoids_in(medoids);
+  const std::string medoids_text(
+    std::istreambuf_iterator<char>{medoids_in}, std::istreambuf_iterator<char>{});
+  CHECK(medoids_text ==
+        "cluster,medoid_index,medoid_name\n0,1,series_1\n1,2,series_2\n");
+
+  result.medoid_indices[1] = 3;
+  CHECK_THROWS_WITH(
+    write_medoids_csv(medoids, settings_only, result,
+                      /*streamed_series_count=*/3),
+    Catch::Matchers::ContainsSubstring("outside the 3-series input"));
+}
+
+// ---------------------------------------------------------------------------
+// CLI distance-matrix storage routing (Task 8.1 M11)
+// ---------------------------------------------------------------------------
+
+namespace {
 
 dtwc::Problem tiny_storage_problem()
 {
@@ -327,6 +476,42 @@ TEST_CASE("CLI OneBatch keeps its own O(Nm) storage when mmap threshold fires",
   REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(prob.distance_matrix()));
   REQUIRE(prob.dense_distance_matrix().size() == 0);
   REQUIRE_FALSE(std::filesystem::exists(cache));
+}
+
+TEST_CASE("CLI non-full FastCLARA does not open an unused parent matrix",
+          "[cli][storage][clara]")
+{
+  ScratchDirectory scratch{"dtwc_cli_clara_storage"};
+  auto prob = tiny_storage_problem();
+  const auto cache = scratch.path / "clara_distmat.cache";
+
+  const auto selected = configure_cli_distance_storage(
+    prob, "clara", /*mmap_threshold=*/0, cache,
+    dtwc::core::MetricType::L1,
+    /*legacy_checkpoint_requested=*/false,
+    /*legacy_distance_matrix_requested=*/false,
+    /*clara_uses_full_sample=*/false);
+
+  CHECK_FALSE(selected.has_value());
+  CHECK(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
+    prob.distance_matrix()));
+  CHECK(prob.dense_distance_matrix().size() == 0);
+  CHECK_FALSE(std::filesystem::exists(cache));
+
+  CHECK_THROWS_WITH(
+    configure_cli_distance_storage(
+      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
+      /*legacy_checkpoint_requested=*/true,
+      /*legacy_distance_matrix_requested=*/false,
+      /*clara_uses_full_sample=*/false),
+    Catch::Matchers::ContainsSubstring("unused O(N^2) state"));
+  CHECK_THROWS_WITH(
+    configure_cli_distance_storage(
+      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
+      /*legacy_checkpoint_requested=*/false,
+      /*legacy_distance_matrix_requested=*/true,
+      /*clara_uses_full_sample=*/false),
+    Catch::Matchers::ContainsSubstring("unused O(N^2) state"));
 }
 
 TEST_CASE("CLI mmap storage binds the selected pointwise metric",

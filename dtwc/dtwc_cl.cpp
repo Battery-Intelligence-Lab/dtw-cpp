@@ -29,8 +29,10 @@
 #include "io/arrow_ipc_reader.hpp"
 #endif
 #ifdef DTWC_HAS_PARQUET
+#include "io/parquet_chunk_reader.hpp"
 #include "io/parquet_reader.hpp"
 #endif
+#include "algorithms/detail/fast_clara_plan.hpp"
 
 // CLI11 is only used inside main(). Guard it (and main) behind DTWC_CL_NO_MAIN
 // so the pure argument-parsing helpers below can be #included and unit-tested
@@ -44,7 +46,9 @@
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -62,22 +66,207 @@
 
 namespace fs = std::filesystem;
 
-/// Parse a human-readable size string like "2G", "500M", "128G" to bytes.
-/// Returns 0 if parsing fails or string is empty.
+/// Parse a human-readable binary size such as 2G, 500M, or 1.5GiB.
+/// Empty/zero means no limit; every malformed, fractional-byte, negative, or
+/// unrepresentable value fails closed rather than silently disabling the cap.
 static size_t parse_ram_limit(const std::string &s)
 {
   if (s.empty()) return 0;
-  char *end = nullptr;
-  double val = std::strtod(s.c_str(), &end);
-  if (end == s.c_str()) return 0;
-  char suffix = (*end) ? static_cast<char>(std::toupper(static_cast<unsigned char>(*end))) : 'B';
-  switch (suffix) {
-  case 'T': return static_cast<size_t>(val * (1ULL << 40));
-  case 'G': return static_cast<size_t>(val * (1ULL << 30));
-  case 'M': return static_cast<size_t>(val * (1ULL << 20));
-  case 'K': return static_cast<size_t>(val * (1ULL << 10));
-  default:  return static_cast<size_t>(val);
+
+  size_t integer_end = 0;
+  while (integer_end < s.size()
+         && std::isdigit(static_cast<unsigned char>(s[integer_end])))
+    ++integer_end;
+  const bool has_integer_digits = integer_end != 0;
+  size_t fraction_begin = integer_end;
+  size_t fraction_end = integer_end;
+  if (fraction_begin < s.size() && s[fraction_begin] == '.') {
+    ++fraction_begin;
+    fraction_end = fraction_begin;
+    while (fraction_end < s.size()
+           && std::isdigit(static_cast<unsigned char>(s[fraction_end])))
+      ++fraction_end;
+    if (fraction_end == fraction_begin)
+      throw dtwc::InvalidInput(
+        "Invalid --ram-limit '" + s +
+        "': expected digits after the decimal point.");
   }
+  if (!has_integer_digits && fraction_end == fraction_begin)
+    throw dtwc::InvalidInput(
+      "Invalid --ram-limit '" + s +
+      "': expected a non-negative size such as 2G, 500M, or 1.5GiB.");
+
+  const size_t suffix_begin = fraction_end == integer_end
+    ? integer_end : fraction_end;
+  std::string suffix = s.substr(suffix_begin);
+  for (auto &c : suffix)
+    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+
+  std::uint64_t multiplier = 1;
+  if (suffix.empty() || suffix == "B") multiplier = 1;
+  else if (suffix == "K" || suffix == "KB" || suffix == "KIB") multiplier = 1ULL << 10;
+  else if (suffix == "M" || suffix == "MB" || suffix == "MIB") multiplier = 1ULL << 20;
+  else if (suffix == "G" || suffix == "GB" || suffix == "GIB") multiplier = 1ULL << 30;
+  else if (suffix == "T" || suffix == "TB" || suffix == "TIB") multiplier = 1ULL << 40;
+  else {
+    throw dtwc::InvalidInput(
+      "Invalid --ram-limit '" + s +
+      "': unit must be B, K/KiB, M/MiB, G/GiB, or T/TiB.");
+  }
+
+  const auto platform_max = std::numeric_limits<size_t>::max();
+  const auto integer_limit = static_cast<std::uint64_t>(platform_max) / multiplier;
+  std::uint64_t integer_part = 0;
+  for (size_t i = 0; i < integer_end; ++i) {
+    const auto digit = static_cast<unsigned>(s[i] - '0');
+    if (integer_part > integer_limit / 10
+        || (integer_part == integer_limit / 10
+            && digit > integer_limit % 10))
+      throw dtwc::InvalidInput(
+        "Invalid --ram-limit '" + s +
+        "': value exceeds this platform's size limit.");
+    integer_part = integer_part * 10 + digit;
+  }
+  size_t result = static_cast<size_t>(integer_part * multiplier);
+
+  if (fraction_end != fraction_begin) {
+    while (fraction_end > fraction_begin && s[fraction_end - 1] == '0')
+      --fraction_end;
+    if (fraction_end > fraction_begin) {
+      std::uint64_t numerator = 0;
+      std::uint64_t denominator = 1;
+      for (size_t i = fraction_begin; i < fraction_end; ++i) {
+        const auto digit = static_cast<unsigned>(s[i] - '0');
+        if (numerator > (std::numeric_limits<std::uint64_t>::max() - digit) / 10
+            || denominator > std::numeric_limits<std::uint64_t>::max() / 10)
+          throw dtwc::InvalidInput(
+            "Invalid --ram-limit '" + s +
+            "': decimal precision is too large to resolve exactly.");
+        numerator = numerator * 10 + digit;
+        denominator *= 10;
+      }
+
+      std::uint64_t reduced_multiplier = multiplier;
+      auto divisor = std::gcd(reduced_multiplier, denominator);
+      reduced_multiplier /= divisor;
+      denominator /= divisor;
+      divisor = std::gcd(numerator, denominator);
+      numerator /= divisor;
+      denominator /= divisor;
+      if (denominator != 1)
+        throw dtwc::InvalidInput(
+          "Invalid --ram-limit '" + s +
+          "': value must resolve to a whole positive byte count.");
+      if (numerator != 0
+          && reduced_multiplier >
+               (static_cast<std::uint64_t>(platform_max) - result) / numerator)
+        throw dtwc::InvalidInput(
+          "Invalid --ram-limit '" + s +
+          "': value exceeds this platform's size limit.");
+      result += static_cast<size_t>(numerator * reduced_multiplier);
+    }
+  }
+  return result;
+}
+
+constexpr size_t CLI_AUTO_PAM_MAX_SERIES = 5000;
+
+enum class ParquetCliLayout
+{
+  ListColumn,
+  ScalarColumn,
+  Directory
+};
+
+struct ParquetCliLoadPlan
+{
+  std::string method;
+  size_t series_count = 0;
+  size_t estimated_resident_bytes = 0;
+  bool stream_payload = false;
+
+  [[nodiscard]] bool materialize_payload() const noexcept
+  {
+    return !stream_payload;
+  }
+};
+
+static std::string resolve_cli_auto_method(std::string method, size_t series_count)
+{
+  if (method == "auto")
+    method = series_count <= CLI_AUTO_PAM_MAX_SERIES ? "pam" : "clara";
+  return method;
+}
+
+[[maybe_unused]] static size_t checked_parquet_series_count(std::int64_t count)
+{
+  if (count < 0
+      || static_cast<std::uint64_t>(count)
+           > std::numeric_limits<size_t>::max())
+    throw dtwc::InvalidInput(
+      "Parquet logical series count exceeds this platform's size limit.");
+  return static_cast<size_t>(count);
+}
+
+/// Reject a cap no reader can honour. `--ram-limit` governs Parquet series
+/// decoding/materialisation; every other input format materialises its series
+/// unconditionally, so accepting the flag there would report a limit that is
+/// never applied — the very deceit this cap exists to remove.
+[[maybe_unused]] static void require_ram_limit_is_applicable(
+  size_t ram_limit, bool parquet_file_input, bool parquet_directory_input)
+{
+  if (ram_limit == 0 || parquet_file_input || parquet_directory_input)
+    return;
+
+  throw dtwc::InvalidInput(
+    "--ram-limit caps Parquet series materialisation and cannot be honoured "
+    "for this input; drop --ram-limit, or convert the series to a "
+    "list-per-row Parquet file to stream them under the cap.");
+}
+
+/// Decide from Parquet metadata alone whether reading the payload is legal.
+/// The cap applies to resident series storage. Only list-per-row data in one
+/// file has a valid row-group streaming implementation.
+[[maybe_unused]] static ParquetCliLoadPlan resolve_parquet_cli_plan(
+  std::string method,
+  size_t series_count,
+  size_t estimated_resident_bytes,
+  size_t ram_limit,
+  ParquetCliLayout layout)
+{
+  if (series_count == 0)
+    throw dtwc::InvalidInput("Parquet input contains no time series.");
+
+  method = resolve_cli_auto_method(std::move(method), series_count);
+  ParquetCliLoadPlan plan{
+    std::move(method), series_count, estimated_resident_bytes, false };
+  if (ram_limit == 0 || estimated_resident_bytes <= ram_limit)
+    return plan;
+
+  if (plan.method != "clara") {
+    throw dtwc::InvalidInput(
+      "Parquet input needs approximately " +
+      std::to_string(estimated_resident_bytes) +
+      " bytes of resident series storage, exceeding --ram-limit=" +
+      std::to_string(ram_limit) + "; method '" + plan.method +
+      "' cannot stream it. Use --method clara with a single list-per-row "
+      "Parquet file, or raise --ram-limit.");
+  }
+  if (layout == ParquetCliLayout::ScalarColumn) {
+    throw dtwc::InvalidInput(
+      "RAM-limited FastCLARA streaming requires list-per-row Parquet "
+      "(one list cell per time series); a scalar column is one time series "
+      "whose rows cannot be clustered as independent series.");
+  }
+  if (layout == ParquetCliLayout::Directory) {
+    throw dtwc::InvalidInput(
+      "RAM-limited FastCLARA streaming currently requires a single Parquet file; "
+      "a Parquet directory exceeds --ram-limit. Convert it to one list-per-row "
+      "Parquet file or raise --ram-limit.");
+  }
+
+  plan.stream_payload = true;
+  return plan;
 }
 
 /// Parsed and validated `--device` specification.
@@ -232,9 +421,21 @@ static std::optional<fs::path> configure_cli_distance_storage(
   const fs::path &cache_path,
   dtwc::core::MetricType cache_metric = dtwc::core::MetricType::L1,
   bool legacy_checkpoint_requested = false,
-  bool legacy_distance_matrix_requested = false)
+  bool legacy_distance_matrix_requested = false,
+  bool clara_uses_full_sample = false)
 {
-  if (method == "onebatch") return std::nullopt;
+  (void)cache_path;
+  (void)cache_metric;
+  if (method == "clara" && !clara_uses_full_sample) {
+    if (legacy_checkpoint_requested || legacy_distance_matrix_requested)
+      throw std::runtime_error(
+        "Non-full FastCLARA does not consume a parent distance matrix; "
+        "--checkpoint and --dist-matrix would load or save unused O(N^2) "
+        "state. Omit those options, or request a full sample deliberately.");
+    return std::nullopt;
+  }
+  if (method == "onebatch")
+    return std::nullopt;
   if (mmap_threshold != 0 && prob.size() < mmap_threshold) return std::nullopt;
   if (legacy_checkpoint_requested) {
     throw std::runtime_error(
@@ -280,25 +481,63 @@ static dtwc::Data convert_to_f32(dtwc::Data &&data_f64)
 }
 
 /// Write cluster labels to CSV: one line per point with "name,cluster_id".
+static std::string output_series_name(
+  const dtwc::Problem &prob,
+  size_t index,
+  std::optional<size_t> streamed_series_count)
+{
+  if (streamed_series_count) {
+    if (index >= *streamed_series_count) {
+      throw std::runtime_error(
+        "Result index " + std::to_string(index) + " is outside the " +
+        std::to_string(*streamed_series_count) + "-series input.");
+    }
+    // Matches parquet_reader.hpp and ParquetChunkReader exactly for list rows.
+    return "series_" + std::to_string(index);
+  }
+  if (index >= prob.size()) {
+    throw std::runtime_error(
+      "Result index " + std::to_string(index) + " is outside the " +
+      std::to_string(prob.size()) + "-series input.");
+  }
+  return std::string(prob.get_name(index));
+}
+
 static void write_labels_csv(const fs::path &path,
                              const dtwc::Problem &prob,
-                             const dtwc::core::ClusteringResult &result)
+                             const dtwc::core::ClusteringResult &result,
+                             std::optional<size_t> streamed_series_count = std::nullopt)
 {
+  const size_t expected = streamed_series_count.value_or(prob.size());
+  if (result.labels.size() != expected) {
+    throw std::runtime_error(
+      "Clustering result has " + std::to_string(result.labels.size()) +
+      " labels for a " + std::to_string(expected) + "-series input.");
+  }
   std::ofstream out(path);
   if (!out.is_open())
     throw std::runtime_error("Cannot open output file: " + path.string());
 
   out << "name,cluster\n";
   for (size_t i = 0; i < result.labels.size(); ++i) {
-    out << prob.get_name(i) << "," << result.labels[i] << "\n";
+    out << output_series_name(prob, i, streamed_series_count)
+        << "," << result.labels[i] << "\n";
   }
 }
 
 /// Write medoid information to CSV.
 static void write_medoids_csv(const fs::path &path,
                               const dtwc::Problem &prob,
-                              const dtwc::core::ClusteringResult &result)
+                              const dtwc::core::ClusteringResult &result,
+                              std::optional<size_t> streamed_series_count = std::nullopt)
 {
+  for (const int idx : result.medoid_indices) {
+    if (idx < 0)
+      throw std::runtime_error(
+        "Result medoid index " + std::to_string(idx) + " is negative.");
+    (void)output_series_name(
+      prob, static_cast<size_t>(idx), streamed_series_count);
+  }
   std::ofstream out(path);
   if (!out.is_open())
     throw std::runtime_error("Cannot open output file: " + path.string());
@@ -306,7 +545,10 @@ static void write_medoids_csv(const fs::path &path,
   out << "cluster,medoid_index,medoid_name\n";
   for (int c = 0; c < result.n_clusters(); ++c) {
     int idx = result.medoid_indices[c];
-    out << c << "," << idx << "," << prob.get_name(idx) << "\n";
+    out << c << "," << idx << ","
+        << output_series_name(
+             prob, static_cast<size_t>(idx), streamed_series_count)
+        << "\n";
   }
 }
 
@@ -661,6 +903,7 @@ static int run_cli_main(int argc, char *argv[])
       set_if_unset("solver", solver);
       set_if_unset("device", device);
       set_if_unset("dtype", dtype_str);
+      set_if_unset("ram-limit", ram_limit_str);
       set_if_unset("gpu-precision", gpu_precision);
       set_if_unset("resume", resume);
       set_if_unset("verbose", verbose);
@@ -810,6 +1053,28 @@ static int run_cli_main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
+  // Parse before Env, output-directory creation, or payload I/O. An invalid
+  // cap must never degrade to the old unlimited behaviour.
+  size_t ram_limit = 0;
+  try {
+    ram_limit = parse_ram_limit(ram_limit_str);
+  } catch (const dtwc::InvalidInput &error) {
+    std::cerr << "Error: " << error.what() << "\n";
+    return EXIT_FAILURE;
+  }
+  const bool auto_method_requested = method == "auto";
+
+  dtwc::algorithms::CLARAOptions clara_opts;
+  clara_opts.n_clusters = n_clusters;
+  clara_opts.sample_size = sample_size;
+  clara_opts.n_samples = n_samples;
+  clara_opts.max_iter = max_iter;
+  clara_opts.random_seed = clara_seed;
+  if (method == "clara")
+    dtwc::algorithms::detail::validate_clara_controls(clara_opts, "dtwc_cl");
+  bool clara_plan_resolved = false;
+  bool clara_uses_full_sample = false;
+
   // Forward --device to the process-wide dtwc::Env (Task 1.3) so device selection
   // has ONE source of truth and the no-silent-fallback rules apply — e.g. a GPU
   // request on a build with no GPU backend becomes a hard DeviceError here rather
@@ -900,26 +1165,127 @@ static int run_cli_main(int argc, char *argv[])
   dtwc::Problem prob{prob_name};
 
   const bool is_dir = fs::is_directory(input_file);
-  const auto input_ext = is_dir ? "" : fs::path(input_file).extension().string();
+  auto input_ext = is_dir ? "" : fs::path(input_file).extension().string();
+  std::transform(input_ext.begin(), input_ext.end(), input_ext.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  bool stream_parquet_payload = false;
+  size_t input_series_count = 0;
+  [[maybe_unused]] size_t parquet_resident_estimate = 0;
+  auto resolve_clara_plan_for_input = [&]() {
+    if (method != "clara" || clara_plan_resolved) return;
+    if (input_series_count > static_cast<size_t>(
+          std::numeric_limits<std::int64_t>::max()))
+      throw dtwc::InvalidInput(
+        "FastCLARA input count exceeds the int64 metadata limit.");
+    const auto plan = dtwc::algorithms::detail::resolve_clara_plan(
+      static_cast<std::int64_t>(input_series_count), clara_opts, "dtwc_cl");
+    clara_uses_full_sample = plan.sample_size == plan.n_points;
+    if (stream_parquet_payload)
+      dtwc::algorithms::detail::validate_streaming_clara_plan(plan, "dtwc_cl");
+    clara_plan_resolved = true;
+  };
 
-#ifdef DTWC_HAS_PARQUET
-  // Check if directory contains .parquet files
+  // Classify the input by filesystem inspection alone. This must stay outside
+  // DTWC_HAS_PARQUET: the cap has to be rejected on a build without Parquet too,
+  // where nothing could ever apply it.
+  [[maybe_unused]] std::vector<fs::path> parquet_directory_files;
   if (is_dir) {
-    bool has_parquet = false;
     for (const auto &e : fs::directory_iterator(input_file)) {
       auto ext = e.path().extension().string();
-      std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
-      if (ext == ".parquet" || ext == ".pq") { has_parquet = true; break; }
+      std::transform(ext.begin(), ext.end(), ext.begin(),
+                     [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+      if (ext == ".parquet" || ext == ".pq")
+        parquet_directory_files.push_back(e.path());
     }
-    if (has_parquet) {
-      prob.set_data(dtwc::io::load_parquet_directory(input_file, parquet_column));
-      if (verbose)
-        std::cout << "Data loaded from Parquet directory: " << prob.size() << " series [" << clk << "]\n";
-      goto data_loaded;
+    std::sort(parquet_directory_files.begin(), parquet_directory_files.end());
+  }
+
+  [[maybe_unused]] const bool parquet_file_input = !is_dir
+    && (input_ext == ".parquet" || input_ext == ".pq");
+  [[maybe_unused]] const bool parquet_directory_input =
+    !parquet_directory_files.empty();
+
+  require_ram_limit_is_applicable(
+    ram_limit, parquet_file_input, parquet_directory_input);
+
+#ifdef DTWC_HAS_PARQUET
+  // A non-zero cap changes the load decision, so inspect only Parquet metadata
+  // before touching the selected column payload. MemoryMappedFile maps the
+  // file and FileReader metadata; no ReadTable/ReadRowGroups call occurs here.
+  const bool inspect_parquet_metadata = parquet_file_input || parquet_directory_input;
+  if (inspect_parquet_metadata
+      && (ram_limit > 0 || method == "auto" || method == "clara")) {
+    auto saturating_add = [](size_t lhs, size_t rhs) {
+      return rhs > std::numeric_limits<size_t>::max() - lhs
+        ? std::numeric_limits<size_t>::max() : lhs + rhs;
+    };
+
+    ParquetCliLayout layout = ParquetCliLayout::Directory;
+    if (parquet_file_input) {
+      dtwc::io::ParquetChunkReader metadata(input_file, parquet_column);
+      layout = metadata.is_list_layout()
+        ? ParquetCliLayout::ListColumn : ParquetCliLayout::ScalarColumn;
+      input_series_count = checked_parquet_series_count(
+        metadata.logical_series_count());
+      parquet_resident_estimate =
+        metadata.estimated_materialization_peak_bytes(dtype_str == "float32");
+    } else {
+      for (const auto &path : parquet_directory_files) {
+        dtwc::io::ParquetChunkReader metadata(path, parquet_column);
+        input_series_count = saturating_add(
+          input_series_count,
+          checked_parquet_series_count(metadata.logical_series_count()));
+        parquet_resident_estimate = saturating_add(
+          parquet_resident_estimate,
+          metadata.estimated_materialization_peak_bytes(dtype_str == "float32"));
+      }
+    }
+
+    const auto plan = resolve_parquet_cli_plan(
+      method, input_series_count, parquet_resident_estimate,
+      ram_limit, layout);
+    method = plan.method;
+    stream_parquet_payload = plan.stream_payload;
+    if (stream_parquet_payload) {
+      clara_opts.ram_limit_bytes = ram_limit;
+      clara_opts.parquet_path = input_file;
+      clara_opts.parquet_column = parquet_column;
+      clara_opts.use_float32 = (dtype_str == "float32");
+      clara_opts.force_parquet_streaming = true;
+    }
+    resolve_clara_plan_for_input();
+
+    if (method == "clara" && dev.is_cuda && !clara_uses_full_sample)
+      throw dtwc::InvalidInput(
+        "Non-full FastCLARA uses a matrix-free CPU distance schedule; "
+        "--device cuda is supported only by its full-sample PAM fallback.");
+
+    if (stream_parquet_payload && !checkpoint_dir.empty())
+      throw dtwc::InvalidInput(
+        "--checkpoint requires resident series data and cannot be combined "
+        "with RAM-limited Parquet streaming; the binary clustering-result "
+        "checkpoint is still written automatically.");
+    if (stream_parquet_payload && !dist_mat_path.empty())
+      throw dtwc::InvalidInput(
+        "--dist-matrix requires resident series data and cannot be combined "
+        "with RAM-limited Parquet streaming.");
+
+    if (verbose && stream_parquet_payload) {
+      std::cout << "Parquet metadata selected streaming: "
+                << input_series_count << " series, ~"
+                << (parquet_resident_estimate / (1ULL << 20))
+                << " MB resident estimate exceeds the series-data cap ["
+                << clk << "]\n";
     }
   }
-#endif
 
+  if (parquet_directory_input) {
+    prob.set_data(dtwc::io::load_parquet_directory(input_file, parquet_column));
+    if (verbose)
+      std::cout << "Data loaded from Parquet directory: " << prob.size() << " series [" << clk << "]\n";
+  }
+  else
+#endif
   if (input_ext == ".dtws") {
 #ifndef DTWC_HAS_MMAP
     throw std::runtime_error(
@@ -975,14 +1341,11 @@ static int run_cli_main(int argc, char *argv[])
 #endif
 #ifdef DTWC_HAS_PARQUET
   else if (input_ext == ".parquet" || input_ext == ".pq") {
-    // Parquet: direct reading via Arrow Parquet reader
-    if (fs::is_directory(input_file)) {
-      prob.set_data(dtwc::io::load_parquet_directory(input_file, parquet_column));
-    } else {
+    if (!stream_parquet_payload) {
       prob.set_data(dtwc::io::load_parquet_file(input_file, parquet_column));
+      if (verbose)
+        std::cout << "Data loaded from Parquet: " << prob.size() << " series [" << clk << "]\n";
     }
-    if (verbose)
-      std::cout << "Data loaded from Parquet: " << prob.size() << " series [" << clk << "]\n";
   }
 #endif
   else {
@@ -994,7 +1357,9 @@ static int run_cli_main(int argc, char *argv[])
       std::cout << "Data loaded: " << prob.size() << " series [" << clk << "]\n";
   }
 
-  data_loaded:
+  if (!stream_parquet_payload)
+    input_series_count = prob.size();
+
   if (verbose && prob.size() > 0) {
     size_t total_elements = 0;
     for (const auto &v : prob.data.p_vec) total_elements += v.size();
@@ -1006,26 +1371,29 @@ static int run_cli_main(int argc, char *argv[])
   }
 
   // ---- Apply precision conversion ----
-  if (dtype_str == "float32" && !prob.data.is_f32() && !prob.data.is_view()) {
+  if (!stream_parquet_payload && dtype_str == "float32"
+      && !prob.data.is_f32() && !prob.data.is_view()) {
     prob.set_data(convert_to_f32(std::move(prob.data)));
     if (verbose)
       std::cout << "Converted to float32 (2x memory saving)\n";
   }
 
-  // Parse and store ram limit for chunked CLARA processing
-  const size_t ram_limit = parse_ram_limit(ram_limit_str);
   if (ram_limit > 0 && verbose)
-    std::cout << "RAM limit: " << (ram_limit / (1ULL << 30)) << " GB\n";
+    std::cout << "Series-data RAM limit: " << ram_limit << " bytes\n";
 
   // ---- Auto method selection ----
   if (method == "auto") {
-    const size_t N = prob.size();
-    method = (N <= 5000) ? "pam" : "clara";
-    if (verbose)
-      std::cout << "Auto-selected method: " << method << " (N=" << N << ")\n";
+    const size_t N = input_series_count;
+    method = resolve_cli_auto_method(std::move(method), N);
   }
+  if (auto_method_requested && verbose)
+    std::cout << "Auto-selected method: " << method
+              << " (N=" << input_series_count << ")\n";
 
-  const bool matrix_free_method = (method == "onebatch" || method == "tadpole");
+  resolve_clara_plan_for_input();
+
+  const bool matrix_free_method = method == "onebatch" || method == "tadpole"
+    || (method == "clara" && !clara_uses_full_sample);
 
   if (resume) {
     auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
@@ -1084,7 +1452,7 @@ static int run_cli_main(int argc, char *argv[])
     const auto mmap_cache = configure_cli_distance_storage(
       prob, method, mmap_threshold,
       fs::path(output_dir) / (prob_name + "_distmat.cache"), cache_metric,
-      !checkpoint_dir.empty(), !dist_mat_path.empty());
+      !checkpoint_dir.empty(), !dist_mat_path.empty(), clara_uses_full_sample);
     if (mmap_cache && verbose)
       std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
   } catch (const std::exception &e) {
@@ -1222,26 +1590,6 @@ static int run_cli_main(int argc, char *argv[])
     if (verbose)
       std::cout << "Running FastCLARA (k=" << n_clusters << ") ...\n";
 
-    dtwc::algorithms::CLARAOptions clara_opts;
-    clara_opts.n_clusters = n_clusters;
-    clara_opts.sample_size = sample_size;
-    clara_opts.n_samples = n_samples;
-    clara_opts.max_iter = max_iter;
-    clara_opts.random_seed = clara_seed;
-
-    // Wire RAM-limit chunked processing for Parquet input
-    if (ram_limit > 0) {
-      bool is_parquet_input = (input_ext == ".parquet" || input_ext == ".pq");
-      if (is_parquet_input) {
-        clara_opts.ram_limit_bytes = ram_limit;
-        clara_opts.parquet_path = input_file;
-        clara_opts.parquet_column = parquet_column;
-        clara_opts.use_float32 = (dtype_str == "float32");
-      } else if (verbose) {
-        std::cerr << "Warning: --ram-limit only effective with Parquet input for streaming CLARA\n";
-      }
-    }
-
     result = dtwc::algorithms::fast_clara(prob, clara_opts);
 
     if (verbose) {
@@ -1362,13 +1710,15 @@ static int run_cli_main(int argc, char *argv[])
 
   // Cluster labels
   const auto labels_path = out_dir / (prob_name + "_labels.csv");
-  write_labels_csv(labels_path, prob, result);
+  const std::optional<size_t> streamed_series_count = stream_parquet_payload
+    ? std::optional<size_t>{input_series_count} : std::nullopt;
+  write_labels_csv(labels_path, prob, result, streamed_series_count);
   if (verbose)
     std::cout << "Labels written to " << labels_path << "\n";
 
   // Medoids
   const auto medoids_path = out_dir / (prob_name + "_medoids.csv");
-  write_medoids_csv(medoids_path, prob, result);
+  write_medoids_csv(medoids_path, prob, result, streamed_series_count);
   if (verbose)
     std::cout << "Medoids written to " << medoids_path << "\n";
 
