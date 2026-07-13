@@ -264,6 +264,24 @@ TEST_CASE("init::Kmeanspp does not throw for valid Nc", "[Phase1][clustering][in
   REQUIRE(prob.centroids_ind.size() == static_cast<size_t>(Nc));
 }
 
+TEST_CASE("init::Kmeanspp selects distinct medoids when all weights are zero",
+          "[Phase1][clustering][init][degenerate]")
+{
+  Problem prob("identical_kmeanspp");
+  prob.set_data(Data(
+    std::vector<std::vector<data_t>>{
+      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0},
+      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
+    std::vector<std::string>{"a", "b", "c", "d"}));
+  prob.set_n_clusters(3);
+
+  REQUIRE_NOTHROW(init::Kmeanspp(prob));
+  REQUIRE(prob.centroids_ind.size() == 3);
+  const std::set<int> unique(prob.centroids_ind.begin(),
+                             prob.centroids_ind.end());
+  CHECK(unique.size() == 3);
+}
+
 // ---------------------------------------------------------------------------
 // assignClusters puts each medoid into its own cluster
 // ---------------------------------------------------------------------------

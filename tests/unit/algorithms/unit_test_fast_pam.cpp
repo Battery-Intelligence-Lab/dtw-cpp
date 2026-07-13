@@ -15,6 +15,7 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <set>
@@ -204,6 +205,29 @@ TEST_CASE("seeded FastPAM BUILD samples proportional to k-median distance",
   CAPTURE(conditioned, selected_far, far_fraction);
   REQUIRE(far_fraction > 0.70);
   REQUIRE(far_fraction < 0.80);
+}
+
+TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
+          "[fast_pam][seeded][softdtw]")
+{
+  Problem prob("fast_pam_softdtw_sampling");
+  prob.set_data(Data(
+    std::vector<std::vector<data_t>>{
+      {0.0, 0.1, 0.0, 0.2}, {0.2, 0.1, 0.3, 0.2},
+      {10.0, 10.2, 9.9, 10.1}, {9.8, 10.0, 10.1, 9.9}},
+    std::vector<std::string>{"a", "b", "c", "d"}));
+  core::DTWVariantParams params;
+  params.variant = core::DTWVariant::SoftDTW;
+  params.sdtw_gamma = 0.7;
+  prob.set_variant(params);
+
+  // Raw Soft-DTW may be negative off diagonal. That is valid objective input,
+  // but cannot be passed directly to a weighted random sampler.
+  REQUIRE(prob.dist_by_ind(0, 1) < 0.0);
+  const auto result = fast_pam_seeded(prob, 2, 42, 20);
+  CHECK(result.labels.size() == 4);
+  CHECK(result.medoid_indices.size() == 2);
+  CHECK(std::isfinite(result.total_cost));
 }
 
 // ===========================================================================

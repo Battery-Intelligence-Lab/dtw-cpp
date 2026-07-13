@@ -34,6 +34,7 @@
 #include "detail/medoid_utils.hpp"
 #include "../Problem.hpp"
 #include "../core/portable_random.hpp"
+#include "../core/distance_sampling_weights.hpp"
 #include "../initialisation.hpp"
 #include "../parallelisation.hpp"
 
@@ -488,13 +489,14 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
     // Barycenter k-means uses D^2-sampling because its `align_squared` values
     // are already squared-local-cost objective contributions. Squaring this
     // vector would instead bias a different (sum-of-squares) PAM objective.
-    const double total = std::accumulate(distances.begin(), distances.end(), 0.0);
+    const auto weights = core::distance_sampling_weights(
+      distances, medoids, "fast_pam_seeded");
     int chosen = 0;
-    if (total <= 0.0) {
+    if (weights.total <= 0.0) {
       while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;
     } else {
       chosen = static_cast<int>(core::portable_weighted_index(
-        distances.begin(), distances.end(), total, rng));
+        weights.values.begin(), weights.values.end(), weights.total, rng));
       if (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) {
         chosen = 0;
         while (std::find(medoids.begin(), medoids.end(), chosen) != medoids.end()) ++chosen;

@@ -26,6 +26,7 @@
 
 #include "initialisation.hpp"
 #include "core/portable_random.hpp"
+#include "core/distance_sampling_weights.hpp"
 #include "settings.hpp"        // for randGenerator
 #include "parallelisation.hpp" // for run
 #include "Problem.hpp"
@@ -42,6 +43,16 @@
 namespace dtwc::init {
 
 namespace {
+
+int first_unselected(std::size_t size, const std::vector<int> &selected)
+{
+  for (std::size_t candidate = 0; candidate < size; ++candidate) {
+    if (std::find(selected.begin(), selected.end(),
+                  static_cast<int>(candidate)) == selected.end())
+      return static_cast<int>(candidate);
+  }
+  throw std::logic_error("initialization exhausted all candidate indices");
+}
 
 template <typename Shuffle>
 void random_with(Problem &prob, Shuffle &shuffle)
@@ -99,8 +110,10 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
 
   for (int i = 1; i < Nc; i++) {
     dtwc::run(distTask, prob.size());
+    const auto weights = core::distance_sampling_weights(
+      distances, candidate_centroids, "init::Kmeanspp");
     candidate_centroids.push_back(
-      weighted_index(distances, candidate_centroids));
+      weighted_index(weights.values, weights.total, candidate_centroids));
   }
 
   prob.set_clusters(candidate_centroids);
@@ -158,10 +171,21 @@ void Kmeanspp(Problem &prob)
       0, static_cast<int>(size - 1));
     return distribution(randGenerator);
   };
-  auto weighted_index = [](const auto &distances, const auto &) {
+  auto weighted_index = [](const auto &distances, double total,
+                           const std::vector<int> &selected) {
+    // std::discrete_distribution requires a positive total weight. Identical
+    // series (and equal signed dissimilarities after translation) legitimately
+    // leave every unselected weight at zero, so complete the distinct medoid
+    // set deterministically instead of constructing an invalid distribution.
+    if (total <= 0.0)
+      return first_unselected(distances.size(), selected);
     std::discrete_distribution<int> distribution(
       distances.begin(), distances.end());
-    return distribution(randGenerator);
+    const int candidate = distribution(randGenerator);
+    return std::find(selected.begin(), selected.end(), candidate)
+             == selected.end()
+         ? candidate
+         : first_unselected(distances.size(), selected);
   };
   kmeanspp_with(prob, first_index, weighted_index);
 }
@@ -173,25 +197,16 @@ void Kmeanspp_seeded(Problem &prob, std::uint64_t random_seed)
     return static_cast<int>(core::portable_bounded(
       rng, static_cast<std::uint64_t>(size)));
   };
-  auto weighted_index = [&rng](const auto &distances,
+  auto weighted_index = [&rng](const auto &distances, double total,
                                const std::vector<int> &selected) {
-    const double total = std::accumulate(
-      distances.begin(), distances.end(), 0.0);
     if (total <= 0.0) {
-      int candidate = 0;
-      while (std::find(selected.begin(), selected.end(), candidate)
-             != selected.end())
-        ++candidate;
-      return candidate;
+      return first_unselected(distances.size(), selected);
     }
     int candidate = static_cast<int>(core::portable_weighted_index(
       distances.begin(), distances.end(), total, rng));
     if (std::find(selected.begin(), selected.end(), candidate)
         != selected.end()) {
-      candidate = 0;
-      while (std::find(selected.begin(), selected.end(), candidate)
-             != selected.end())
-        ++candidate;
+      candidate = first_unselected(distances.size(), selected);
     }
     return candidate;
   };
