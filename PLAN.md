@@ -503,6 +503,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       the pair. A real-Metal result and a third mathematical arbiter are
       required before claiming unequal-length support there. Until proved,
       pruning must reject or bypass unequal-length pairs loudly.
+- [ ] **F30 — explicit GPU option requests silently degrade.** Metal disables
+      requested LB on regtile/banded-row and after LB-buffer allocation failure
+      (`dtwc/metal/metal_dtw.mm:1480-1490,1523-1537`); CUDA ignores LB when
+      `band<0` (`dtwc/cuda/cuda_dtw.cu:1563-1567`); unsupported kernel
+      overrides silently select Auto (`dtwc/enums/KernelOverride.hpp:8-10`);
+      Metal FP64 quietly becomes FP32 unless verbose
+      (`dtwc/metal/metal_dtw.mm:1262-1264`). The existing Metal LB test
+      explicitly expects the banded-row no-op. First gate: table-drive every
+      explicit option across supported/unsupported paths and the injected
+      allocation seam. Each request must execute, raise a typed error, or return
+      universally inspectable fallback metadata—never an unobservable no-op.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
