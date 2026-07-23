@@ -425,6 +425,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       First gate: a public-header compile fixture calling all four canonical
       spellings must fail on the inherited tree, then pass while the four legacy
       calls still compile and produce identical loader configuration/path state.
+- [ ] **F22 — compatibility aliases do not obey the frozen deprecation
+      policy.** C++ `maxIter`/`N_repetition` remain unannotated public fields;
+      most Python aliases forward without `DeprecationWarning`; MATLAB legacy
+      properties/functions forward without the promised loud notice
+      (`dtwc/Problem.hpp:208-209`, `python/src/_dtwcpp_core.cpp:770-771,
+      888-893,1143-1193`, `bindings/matlab/+dtwc/Problem.m:24-36,93-119,
+      327-345`). First gate: table-drive every retained alias—C++ compile probes
+      require a deprecation diagnostic, Python uses
+      `pytest.warns(DeprecationWarning)` exactly once per call, and MATLAB
+      captures one stable warning identifier/message—while asserting canonical
+      names stay silent and results remain identical.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):

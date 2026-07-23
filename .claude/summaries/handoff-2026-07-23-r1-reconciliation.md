@@ -52,6 +52,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   has no executable path.
 - F21: C++ never acquired the frozen `DataLoader::start_column/start_row` and
   `settings::paths::set_data_path/set_results_path` canonical names.
+- F22: retained C++/Python/MATLAB compatibility aliases do not consistently
+  emit the deprecation diagnostics promised by the frozen policy.
 
 ## Exact resume point (updated)
 
