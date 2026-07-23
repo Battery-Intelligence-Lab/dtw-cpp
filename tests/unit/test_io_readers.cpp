@@ -129,14 +129,16 @@ TEST_CASE("ArrowIPC: valid Float64 file reads with ndim>1", "[io][arrow]")
   auto tmp = tmpdir() / "valid_ndim2.arrow";
   write_ipc(tmp, schema, arr);
 
-  auto src = dtwc::io::ArrowIPCDataSource::open(tmp);
-  REQUIRE(src.size() == 1);
-  REQUIRE(src.ndim() == 2);
-  REQUIRE(src.series_length(0) == 2); // 4 flat values / ndim 2
-  auto sp = src.series(0);
-  REQUIRE(sp.size() == 4);
-  CHECK_THAT(sp[0], WithinAbs(1.0, 1e-12));
-  CHECK_THAT(sp[3], WithinAbs(4.0, 1e-12));
+  {
+    auto src = dtwc::io::ArrowIPCDataSource::open(tmp);
+    REQUIRE(src.size() == 1);
+    REQUIRE(src.ndim() == 2);
+    REQUIRE(src.series_length(0) == 2); // 4 flat values / ndim 2
+    auto sp = src.series(0);
+    REQUIRE(sp.size() == 4);
+    CHECK_THAT(sp[0], WithinAbs(1.0, 1e-12));
+    CHECK_THAT(sp[3], WithinAbs(4.0, 1e-12));
+  } // Windows cannot unlink an Arrow file while the reader still owns its mmap.
   std::filesystem::remove(tmp);
 }
 
