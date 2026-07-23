@@ -103,6 +103,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   STL and libstdc++.
   FastCLARA also drops its avoidable 8*N-byte sampling index pool. The mutable
   unseeded Tier-2 `std::mt19937` contract remains unchanged.
+  **Breaking compatibility (portable-v1):** rc1 seeded calls used
+  vendor-defined mappings around `mt19937_64`; after this supersession, the
+  same explicit seed can therefore produce different literal medoids, labels,
+  and barycenters than rc1. This boundary does not promise historical
+  fingerprint reproduction. The mutable unseeded Tier-2 contract is unchanged.
 - Made HiGHS-dependent MIP, Benders, and Lagrangian comparison tests skip
   explicitly when the optional solver is absent. No-solver builds still test
   the typed unavailable-backend contract, while their full CTest gate no
@@ -289,6 +294,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   seed 42 across C++, Python, MATLAB, sklearn, and CLI. Estimator restarts now
   use distinct deterministic seeds and FastCLARA no longer consumes the legacy
   global seed-29 engine; the unseeded Tier-2 FastPAM overload remains compatible.
+  **Breaking compatibility (seed-42 default):** ambiguous default outputs can
+  change from rc1 when a caller omitted a seed. Lloyd local optima and
+  time-limited solver trajectories can consequently change. The exact optimum
+  value of a fully certified exact solve does not depend on the initialization
+  seed, although tied representative solutions may differ.
 - Reused preallocated hard-DTW barycenter workspaces and parallelized independent
   assignment and cluster-update work while preserving digit-identical results,
   deterministic RNG streams, serial reductions, and empty-cluster repair.
