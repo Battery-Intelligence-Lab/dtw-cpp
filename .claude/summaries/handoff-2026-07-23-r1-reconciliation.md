@@ -41,6 +41,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   `ckpt_result` at `dtwc/dtwc_cl.cpp:1398-1405`, but no later code consumes it.
   User documentation and CHANGELOG disclose the limitation; R3 owns a
   real-binary failing regression and behavioral repair.
+- F18: MATLAB `DTWClustering` stores `Metric` without consuming it and changes
+  global `Env` for `Device` without routing its newly created `Problem`.
+  Non-degenerate metric and real CUDA-enabled MEX regressions are registered.
 
 ## Exact resume point (updated)
 

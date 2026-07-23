@@ -385,6 +385,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       the result rather than merely producing the verbose “Loaded checkpoint”
       line. Define the supported continuation semantics before repair—never
       silently relabel a read-and-discard operation as resume.
+- [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
+      `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
+      `Device` updates global `Env`, but each repetition creates a default
+      `Problem` whose `distance_strategy` remains `Auto`, and `fast_pam` does not
+      consult `Env` (`bindings/matlab/+dtwc/DTWClustering.m:53-155`,
+      `dtwc/Problem.cpp:778-787`). First gates: a non-degenerate fixture whose
+      L1 and squared-L2 medoids/cost differ must make the estimator match the
+      corresponding explicit `Problem` route, and a fresh CUDA-enabled MEX must
+      prove `Device='gpu'` reaches CUDA dispatch rather than merely validating
+      the global device. The current constructor-only parity test is not a gate.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
