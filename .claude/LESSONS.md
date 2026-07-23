@@ -293,6 +293,14 @@ Critical knowledge to avoid repeating mistakes.
   full-matrix oracle with independently stated `|i-j| <= band` bounds, and
   include a non-degenerate threshold case whose cost differs from a slanted
   corridor.
+- **A documentation marker gate can pass text that the renderer breaks and can
+  preserve the wrong backend scope.** D1's first documentation gate was green
+  while its standalone derivation used GitHub-unsupported `\(...\)`/`\[...\]`
+  math delimiters, raw absolute-value pipes split two table rows, and the site
+  presented CPU-only window/sentinel behavior as backend-wide. Check
+  renderer-supported delimiters and table structure, require backend
+  qualifiers and finding ownership as explicit drift markers, and separately
+  review source attribution at equation granularity.
 
 ## LR-core Solver (Phase 4)
 

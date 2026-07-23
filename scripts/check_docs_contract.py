@@ -237,6 +237,7 @@ def assert_dtw_derivation_sync() -> None:
         "index": ROOT / "docs/derivations/README.md",
         "site": ROOT / "docs/content/method/dtw.md",
         "citations": ROOT / ".claude/CITATIONS.md",
+        "plan": ROOT / "PLAN.md",
         "kernel": ROOT / "dtwc/core/dtw_kernel.hpp",
         "wrapper": ROOT / "dtwc/warping.hpp",
     }
@@ -282,6 +283,12 @@ def assert_dtw_derivation_sync() -> None:
             "Sakoe-Chiba-DTW.pdf",
             "**[confirmed]**",
             "equations (6)--(8)",
+        ),
+        "plan": (
+            "- [x] **D1. DTW recurrence + Sakoe–Chiba band.**",
+            "**F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**",
+            "Metal source uses fixed geometry",
+            "**F33 — CPU banded DTW used an endpoint-scaled corridor",
         ),
         "kernel": (
             "The adjustment window is |row-column| <= band.",

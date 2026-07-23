@@ -91,8 +91,9 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor: `ctest` → **113/113, 0 failed**, 6 capability
-  skips (cuda×2, metal×3, io_readers×1 — the io_readers skip is finding F9).
+  llfio ON, Arrow OFF). Floor: `ctest` → **114/114, 0 failed**, 6 capability
+  skips (cuda×2, metal×3, io_readers×1 — the io_readers skip is expected in
+  this Arrow-OFF build; F9 is closed by its separate Arrow-ON executable gate).
   Rebuild first: `cmake --build build/highs-1151` (expect "no work to do" on a
   clean tree).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass with

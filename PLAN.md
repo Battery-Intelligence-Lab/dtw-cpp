@@ -16,7 +16,8 @@
 **Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
-the sanitizer gate CLOSED; **F8 OPEN**. Phases R0–R1 CLOSED; R2 and R3 active.
+the sanitizer gate CLOSED; **F8 OPEN**. Phases R0–R1 CLOSED; R2 active with
+D1 CLOSED; R3 active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -218,11 +219,13 @@ docs-site math page exists, keep it in sync (drift gate).
 
 Derivation targets — each is one checkbox, one file, one conformance pass:
 
-- [ ] **D1. DTW recurrence + Sakoe–Chiba band.** Optimal substructure; boundary
+- [x] **D1. DTW recurrence + Sakoe–Chiba band.** Optimal substructure; boundary
       conditions; band feasibility (`band ≥ |n−m|` for a nonempty path);
       monotonicity `DTW_band ≥ DTW_full` and monotone-in-band; L1 vs squared-L2
       local costs and what "distance" each yields (squared form is not a metric
-      — say so). Conformance: `dtw_kernel.hpp`, `dtwBanded`.
+      — say so). Conformance: `dtw_kernel.hpp`, `dtwBanded`. CPU conformance is
+      **CONFIRMED** by `9f78212` and derivation commit `cf5b9d8`; CUDA geometry
+      and exact Metal no-path parity remain **DISCREPANCY** F12.
 - [ ] **D2. Envelopes + LB_Keogh.** Keogh & Ratanamahatana admissibility proof;
       formalize the recorded gotcha that `compute_envelopes(series, band<0)`
       yields a band-0 envelope (LB invalid for full DTW) — state the correct
@@ -356,11 +359,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       archive without `URL_HASH`, and `check_supply_chain_pins.py` does not scan
       it. First gate: a repo-wide checker fails on that exact fixture while all
       currently pinned main dependencies continue to pass.
-- [ ] **F12 — cross-backend band semantics have divergent formulations.**
-      CPU/CUDA use slope-adjusted unequal-length bounds; Metal uses a direct
-      anti-diagonal clip. First gate: a non-degenerate unequal-length fixture
-      compared across CPU, CUDA, and a real Metal device. Source inspection on
-      this Windows host cannot adjudicate equivalence.
+- [ ] **F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**
+      CPU routes now use the canonical `|i-j| <= band` window. CUDA retains
+      endpoint-scaled `slope`/`window` corridors and signed `band+1`
+      expressions. Metal source uses fixed geometry, but its double-returning
+      no-path route widens `FLT_MAX` instead of returning the CPU `DBL_MAX`
+      sentinel. First CUDA gate: on the local RTX, drive a non-degenerate
+      unequal-length fixture below, at, and above `|n-m|`, plus `INT_MAX`,
+      against the independent full-matrix oracle and require exact geometry,
+      cost, and sentinel parity. First Metal gate: the same fixture on a real
+      device, including exact double sentinel identity. Source inspection
+      cannot close either executable backend.
 - [ ] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
       First gate: digit-identical assignments/objectives on adversarial ties and
@@ -540,6 +549,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       distance allocation or state mutation. A later channel-aware
       implementation may replace that rejection only after an independent
       per-channel oracle defines the recurrence and the same gate pins it.
+- [x] **F33 — CPU banded DTW used an endpoint-scaled corridor instead of the
+      fixed Sakoe–Chiba window.** On base `be0069b`, the preregistered public
+      unequal-length fixture returned 8 at band 0 instead of the finite no-path
+      sentinel and 3 at band 2 instead of 5; both matched the registered
+      slanted-window fingerprint. Commit `9f78212` fixes the shared CPU kernel
+      and public singleton/MV/AROW bypasses. Independent full-matrix DP and
+      exhaustive path enumeration agree, the focused gates report 70/70 and
+      11/11 assertions, and the canonical gate is 114/114 with exactly the six
+      capability skips. Evidence:
+      `.claude/baselines/2026-07-23-r2-d1-dtw.md`.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -904,3 +923,11 @@ colour system transfer verbatim**.
   campaign-agent compliance still passes and no rollback was attempted.
   Evidence:
   `.claude/baselines/2026-07-23-r1-repo-hygiene.md`. Proceed to R2-D1 and R3-F8.
+- 2026-07-23 (R2-D1/F33): Sakoe and Chiba equations (6)–(8) were checked from
+  the primary scan with the paper's weighted recurrence kept distinct from
+  DTWC++'s objective. The inherited CPU endpoint-scaled corridor was
+  FALSIFIED, then repaired in `9f78212`; the derivation and permanent drift
+  guard are `cf5b9d8`. D1 closes CPU **CONFIRMED** while F12 remains open for
+  CUDA geometry and exact Metal no-path parity. The actual canonical inventory
+  is 114/114, zero failed, with the same six capability skips. Evidence:
+  `.claude/baselines/2026-07-23-r2-d1-dtw.md`. Resume at R3-F8.
