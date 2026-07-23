@@ -545,3 +545,10 @@ colour system transfer verbatim**.
   Registered gate PASS: 114/114 CTest targets, zero failed, exactly six
   capability skips. Evidence:
   `.claude/baselines/2026-07-23-f10-sampling.md`.
+- 2026-07-23 (R0/integer width): Repaired the interrupted FastPAM edit in
+  `f8ff7d3`. All three public entries now reject point counts above the
+  int-indexed result ABI before effects, and supported kernels use one checked
+  narrowing instead of repeated casts from widened loop counters. Deliberate
+  red: 2/18 assertions failed; repaired focused suites: 258/258 and 76/76;
+  canonical gate: 114/114, zero failed, exactly six capability skips. Evidence:
+  `.claude/baselines/2026-07-23-fast-pam-index-width.md`.

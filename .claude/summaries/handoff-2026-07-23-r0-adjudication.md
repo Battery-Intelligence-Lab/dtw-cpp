@@ -23,6 +23,12 @@ verdict is gated and committed separately.
   changed caller suites pass; the canonical gate passes 114/114 with exactly
   six capability skips. Evidence:
   `.claude/baselines/2026-07-23-f10-sampling.md`.
+- Reproduced the FastPAM point-count narrowing failure at `INT_MAX + 1`
+  (2/18 assertions failed), replaced the partial widened-loop repair with one
+  checked public-entry conversion, and committed it as `f8ff7d3`. The complete
+  FasterPAM suite passes 258/258, FastPAM passes 76/76, live conformance passes
+  7/7, and the canonical gate passes 114/114 with exactly six capability skips.
+  Evidence: `.claude/baselines/2026-07-23-fast-pam-index-width.md`.
 
 ## Decisions and findings
 
@@ -33,16 +39,14 @@ verdict is gated and committed separately.
 - The F10 implementation ignores a non-finite value at a selected index,
   contradicting PLAN's fail-closed “throws on non-finite” contract. R0 will
   repair the test first, reproduce red, then repair the seam.
-- The FastPAM width edit is not F10. It is a partial R3 integer-width repair:
-  `fast_pam_seeded` still narrows `Problem::size()` to `int` unchecked, and
-  `fast_pam` reaches matrix materialisation before the downstream width guard.
+- The FastPAM width edit was not F10. It was a partial R3 integer-width repair
+  and is now closed by `f8ff7d3`; the extracted production boundary checker is
+  executable without allocating more than `INT_MAX` series.
 - The Vinod bibliographic record is verified, but the full text was not read.
   Any “same 0/1 program” statement remains inferred and must be labelled as
   such rather than used as load-bearing mathematical evidence.
 
 ## Exact resume point
 
-Repair and gate the separate FastPAM width change, including the still-unchecked
-`fast_pam_seeded` narrowing and pre-materialisation guard ordering. Then
-adjudicate F8, F9, and scholarly records in that order before checking R0
-complete.
+Adjudicate the F8/F7-adjacent CLI test change next, then F9 and the scholarly
+records, before checking R0 complete.
