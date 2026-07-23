@@ -168,6 +168,15 @@ References used during development. Verify each citation independently before pu
   https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html
   — Standard `__arrow_c_array__` / `__arrow_c_stream__` export protocol.
 - Apache Arrow. *Install Apache Arrow*. https://arrow.apache.org/install/ — official Ubuntu apt-repository bootstrap and the `libarrow-dev` / `libparquet-dev` package names used by the F9 execution gate; re-verified 2026-07-23.
+- Battery Intelligence Lab. DTWC++ commit
+  `eda1b92bc89ee51568b052a6af86f615d336de3c`,
+  https://github.com/Battery-Intelligence-Lab/dtw-cpp/commit/eda1b92bc89ee51568b052a6af86f615d336de3c
+  — **[confirmed]** Repository-native 2.0.0rc1 boundary selected for the F11
+  standalone C++ example. The official GitHub archive and direct codeload
+  route both returned 4,928,286 bytes with SHA-256
+  `d9e991dc05804f5eedebdf3981eb400da229e485f4693ac3225ca17ae4a10696`
+  on 2026-07-23; on base `658a9cd`, the example CMake/main Git blobs equal
+  that commit.
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
 - cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/
