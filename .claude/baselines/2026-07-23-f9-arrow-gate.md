@@ -255,5 +255,44 @@ verification and is not represented as executed here.
 
 ### Canonical regression gate
 
-Pending after the CI change is committed.  F9 is not closed until the canonical
-114-target gate has also met its registered six-skip band.
+PASS.  After commits `833f570`, `0c91c9b`, and `e323197`, the canonical build
+reconfigured and rebuilt successfully.  CTest met the registered band exactly:
+
+```text
+100% tests passed, 0 tests failed out of 114
+
+Total Test time (real) = 103.24 sec
+
+The following tests did not run:
+	 48 - test_cuda_correctness (Skipped)
+	 50 - test_cuda_lb_keogh (Skipped)
+	 54 - test_io_readers (Skipped)
+	 55 - test_metal_correctness (Skipped)
+	 56 - test_metal_lb_keogh (Skipped)
+	 57 - test_metal_mmap (Skipped)
+```
+
+A separate verbose run of those six targets printed their own capability
+messages.  In particular, the canonical reader binary said:
+
+```text
+54: C:/D/git/dtw-cpp/tests/unit/test_io_readers.cpp(37): SKIPPED:
+54: explicitly with message:
+54:   DTWC_HAS_ARROW not defined — Arrow/Parquet readers not built
+54:
+54: ================================================================================
+54: test cases: 1 | 1 skipped
+54: assertions: - none -
+```
+
+That is the intended optional-dependency-OFF half of the two-build gate; the
+fresh Arrow-ON build above is the execution half.
+
+## Verdict
+
+**PASS / KEEP.**  Primary local closure exceeded both preregistered floors:
+390 assertions (floor 348) in 11 cases (floor 11), with no skip.  The canonical
+regression gate passed 114/114 with exactly the six registered capability
+skips.  The secondary Ubuntu workflow is locally syntax- and
+mutation-validated, while its hosted execution remains explicitly
+operator-owned and unclaimed.

@@ -146,10 +146,10 @@ diff` 2026-07-23]:
 Tasks:
 
 - [x] Read every diff hunk. Classify each change: F8 / F9 / F10 / docs / other.
-- [ ] Build + run the full canonical gate (floor: **113/113, 0 failed**, 6
+- [x] Build + run the full canonical gate (floor: **114/114, 0 failed**, 6
       capability skips — `.claude/summaries/handoff-2026-07-13-f7-streaming.md`).
       Run the new/changed test suites explicitly and quote their output.
-- [ ] For the F9 workflow change: you cannot run GitHub CI locally — verify the
+- [x] For the F9 workflow change: you cannot run GitHub CI locally — verify the
       YAML by schema/actionlint if available, verify the job obeys the
       "assert-the-subject-RAN" lesson (greps the test binary's own output for
       executed assertions, not just ctest green), and mark the CI run itself as
@@ -160,7 +160,7 @@ Tasks:
       conventional commit crediting the finding it closes; REPAIR (close but
       defective) → fix, then commit; REVERT (wrong or unverifiable) → revert
       with a Decision-log line naming why. No change may stay uncommitted.
-- [ ] Update the F8/F9/F10 checkboxes in R3 to reflect what actually closed.
+- [x] Update the F8/F9/F10 checkboxes in R3 to reflect what actually closed.
 
 ## Phase R1 — Repository cleanse & record reconciliation [OPEN]
 
@@ -334,7 +334,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       8-series/4-row-group fixture; assert resident and forced-stream FastCLARA
       runs produce identical labels, medoids, and checkpoint bytes (f64, f32,
       Soft-DTW). Until then F7's headline guarantee can regress silently.
-- [ ] **F9 — Parquet reader suite absent from the canonical gate.**
+- [x] **F9 — Parquet reader suite absent from the canonical gate.**
       `test_io_readers` (348 assertions) is skipped under
       `DTWC_ENABLE_ARROW=OFF`; the CLI's Parquet planner lives behind
       `#ifdef DTWC_HAS_PARQUET`. Primary closure = a LOCAL Arrow-ON build dir
@@ -529,6 +529,12 @@ colour system transfer verbatim**.
 - 2026-07-12 (F7): truthful CLI RAM policy — `--ram-limit` is the Parquet series materialisation cap (hard-errors elsewhere); `--mmap-threshold` selects distance storage; matrix-free runs emit labels/medoids + binary checkpoint, dense CSVs only when a matrix exists.
 - 2026-07-12 (F4): seeded RNG schedule versioned `portable-v1` (identical across MSVC STL/libstdc++); unseeded Tier-2 mutable-engine contract unchanged.
 - 2026-07-12: Phase 9/R7 authorized (Emscripten+embind, worker pool no pthreads, unibatt palette verbatim, `dtwc::warping_path` additive API). `[BLOCKED-ENV]` record-and-continue promoted into the execution contract.
+- 2026-07-23 (F9): Primary evidence is the local PyArrow-23-backed CMake build:
+  390 assertions in all 11 Arrow/Parquet cases, skip absent. The complementary
+  canonical Arrow-OFF build intentionally skips that target. Ubuntu 24.04 CI
+  installs Arrow/Parquet and enforces ≥348 assertions plus ≥11 cases from
+  Catch2's own summary; its hosted run is operator-owned and is not claimed by
+  the local closure.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -559,3 +565,13 @@ colour system transfer verbatim**.
   exit 0; canonical gate passes 114/114 with the six expected capability skips.
   F8 remains open in full. Evidence:
   `.claude/baselines/2026-07-23-f7-routing-coverage.md`.
+- 2026-07-23 (R0/F9): Repaired the inherited Arrow job and closed F9. The first
+  fresh configure found a scope leak that announced Parquet but omitted
+  `DTWC_HAS_PARQUET`; `833f570` exports the package result. The newly reachable
+  Windows suite then exposed an mmap lifetime failure; `0c91c9b` releases the
+  reader before unlink. The full Arrow-ON binary passes 390 assertions in all
+  11 cases, imports both Arrow and Parquet, and its CTest target runs rather
+  than skips. `e323197` adds the Ubuntu 24.04 gate plus a mutation-tested
+  executed-assertion/case parser. Canonical CTest passes 114/114 with exactly
+  its six registered capability skips. Evidence:
+  `.claude/baselines/2026-07-23-f9-arrow-gate.md`.

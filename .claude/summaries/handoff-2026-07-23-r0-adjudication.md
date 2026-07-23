@@ -36,11 +36,35 @@ verdict is gated and committed separately.
   842/842; a fresh real CLI rejects capped CSV with exit 1 and accepts the same
   uncapped input with exit 0; canonical CTest remains 114/114 with six skips.
   Evidence: `.claude/baselines/2026-07-23-f7-routing-coverage.md`.
+- Reproduced the F9 system-package failure in a fresh CMake directory: configure
+  found Arrow and Parquet, but the generated test compile command omitted
+  `DTWC_HAS_PARQUET`. Exported `Parquet_FOUND` from the dependency function and
+  committed the repair as `833f570`; the newly reachable Parquet slice passes
+  348/348 assertions in seven cases.
+- Reproduced and repaired the independent Windows Arrow-test lifetime failure:
+  the test attempted to unlink its fixture while `ArrowIPCDataSource` still
+  owned the mmap. Commit `0c91c9b` scopes the reader before cleanup.
+- Closed F9 with a fresh PyArrow-23-backed Arrow-ON build: the direct binary and
+  CTest route run all 11 Arrow/Parquet cases and pass 390/390 assertions; the
+  executable imports `arrow.dll` and `parquet.dll`. Commit `e323197` adds a
+  pinned Ubuntu 24.04 job and a parser that requires ≥348 assertions and ≥11
+  cases from Catch2's own summary. Six mutation probes pass. PyYAML validation
+  passes; `actionlint` and `shellcheck` are `[BLOCKED-ENV]`; hosted CI remains
+  operator-owned and unclaimed. Final canonical CTest passes 114/114 with
+  exactly the expected six skips. Evidence:
+  `.claude/baselines/2026-07-23-f9-arrow-gate.md`.
 
 ## Decisions and findings
 
-- The proposed F9 workflow is not yet a gate: it asserts at least 12 Catch2
-  cases but omits the registered 348-assertion floor.
+- The inherited F9 workflow was not a gate: its 12-case floor exceeded the 11
+  cases in source, while it omitted the registered 348-assertion floor. It is
+  repaired in `e323197`; the same parser was exercised against the exact floor,
+  a skip, both one-below-floor mutations, a missing summary, and an ambiguous
+  summary.
+- CMake package results found inside `dtwc_setup_dependencies()` do not escape
+  that function automatically. Configure messages are not evidence of the
+  parent target's compile definitions; inspect the generated command and run
+  the guarded binary.
 - The interrupted CLI test did not close an “Arrow-OFF half” of F8: its planner
   is a static seam and its algorithm assertions were guard coverage. F8 still
   lacks every resident-versus-stream output/checkpoint comparison.
@@ -58,5 +82,6 @@ verdict is gated and committed separately.
 
 ## Exact resume point
 
-Repair and adjudicate F9 next, including a local Arrow-ON suite that proves the
-subject ran; then adjudicate the scholarly records before checking R0 complete.
+Adjudicate the remaining scholarly records (`CITATIONS.md`, `UNIMODULAR.md`,
+`TODO.md`, and the floating-point corrections in `LESSONS.md`) before checking
+R0 complete. F8 remains open and belongs to R3.
