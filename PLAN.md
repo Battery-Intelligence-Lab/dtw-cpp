@@ -552,3 +552,10 @@ colour system transfer verbatim**.
   red: 2/18 assertions failed; repaired focused suites: 258/258 and 76/76;
   canonical gate: 114/114, zero failed, exactly six capability skips. Evidence:
   `.claude/baselines/2026-07-23-fast-pam-index-width.md`.
+- 2026-07-23 (R0/F7 coverage): Reclassified the purported “Arrow-OFF half” of
+  F8 as F7 planner/guard coverage and repaired it in `7c71602`. Three production
+  mutants were killed; focused suites pass 149/149 and 842/842; the fresh real
+  CLI rejects capped CSV with exit 1 and accepts the same uncapped input with
+  exit 0; canonical gate passes 114/114 with the six expected capability skips.
+  F8 remains open in full. Evidence:
+  `.claude/baselines/2026-07-23-f7-routing-coverage.md`.

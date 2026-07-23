@@ -29,11 +29,21 @@ verdict is gated and committed separately.
   FasterPAM suite passes 258/258, FastPAM passes 76/76, live conformance passes
   7/7, and the canonical gate passes 114/114 with exactly six capability skips.
   Evidence: `.claude/baselines/2026-07-23-fast-pam-index-width.md`.
+- Reclassified the mixed CLI/FastCLARA test as F7 guard coverage, not F8;
+  separated its static CLI seam from the public algorithm tests; added both
+  missing forced-stream prerequisites; and committed it as `7c71602`. Three
+  production mutants went red. Final CLI/FastCLARA suites pass 149/149 and
+  842/842; a fresh real CLI rejects capped CSV with exit 1 and accepts the same
+  uncapped input with exit 0; canonical CTest remains 114/114 with six skips.
+  Evidence: `.claude/baselines/2026-07-23-f7-routing-coverage.md`.
 
 ## Decisions and findings
 
 - The proposed F9 workflow is not yet a gate: it asserts at least 12 Catch2
   cases but omits the registered 348-assertion floor.
+- The interrupted CLI test did not close an “Arrow-OFF half” of F8: its planner
+  is a static seam and its algorithm assertions were guard coverage. F8 still
+  lacks every resident-versus-stream output/checkpoint comparison.
 - The F10 direct test contains a false explanatory claim: adding a common
   shift preserves order and pairwise differences, not proportional sampling.
 - The F10 implementation ignores a non-finite value at a selected index,
@@ -48,5 +58,5 @@ verdict is gated and committed separately.
 
 ## Exact resume point
 
-Adjudicate the F8/F7-adjacent CLI test change next, then F9 and the scholarly
-records, before checking R0 complete.
+Repair and adjudicate F9 next, including a local Arrow-ON suite that proves the
+subject ran; then adjudicate the scholarly records before checking R0 complete.
