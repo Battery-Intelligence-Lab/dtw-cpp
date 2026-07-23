@@ -484,6 +484,15 @@ Open findings first (status after R0 adjudication — update these boxes there):
       series `{0}` and `{0.5}`, band 0, squared L2, LB enabled, threshold 0.3;
       the pair must survive and equal 0.25 rather than be pruned by the current
       L1 bound 0.5. Force Metal Wavefront so its LB stage actually runs.
+- [ ] **F28 — Metal permits a narrow LB envelope for full DTW.** When DTW is
+      unbanded and `lb_envelope_band` is unset, Metal chooses roughly
+      `max_L/10`; it also accepts an explicitly narrower window
+      (`dtwc/metal/metal_dtw.mm:1497-1502`). Such a bound is not admissible for
+      the larger/full warping window. First real-Metal gate (forced
+      Wavefront): `x={0,0,0,0,1,1,1,1,1,1}`,
+      `y={0,0,0,0,0,0,1,1,1,1}`, full DTW, envelope band 1, threshold 0.5.
+      True DTW is zero, so the pair must not be pruned. Reject or widen any LB
+      envelope that does not cover the actual DTW window before dispatch.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):

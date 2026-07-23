@@ -65,6 +65,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   it is not the frozen non-owning view surface its name promises.
 - F27: CUDA/Metal LB_Keogh always sums L1 excess, so squared-L2 threshold
   pruning can discard a pair whose true squared-DTW cost is below threshold.
+- F28: Metal defaults/accepts a narrow LB envelope under full DTW, making the
+  lower bound inadmissible for paths allowed by the actual warping window.
 
 ## Exact resume point (updated)
 
