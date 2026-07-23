@@ -58,6 +58,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   save/load pair; only directory distance checkpoints are exposed.
 - F24: Python HPC preflight/submission raises wrapper-specific `RuntimeError`
   instead of the frozen `DeviceError` and verbatim Env-message contract.
+- F25: public view-mode and bounds preconditions still use assertions, making
+  invalid behavior differ between Debug and Release instead of raising typed
+  errors.
 
 ## Exact resume point (updated)
 

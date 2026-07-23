@@ -456,6 +456,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       fixtures; each must raise `DeviceError`, match the registered message
       byte-for-byte, perform no local clustering fallback, and avoid a real
       network call. The inherited wrapper must fail type and text assertions.
+- [ ] **F25 — public invalid states still rely on build-dependent
+      assertions.** `Problem::get_name` and `Problem::p_vec` guard view mode
+      with `assert(!data.is_view())` (`dtwc/Problem.hpp:250-259`), contrary to
+      the frozen typed-error rule; public matrix/store accessors retain further
+      bounds assertions. First gate: inventory every assertion reachable from a
+      public entry, then run the same invalid view-mode/index fixtures in Debug
+      and Release. Each must raise the registered typed exception with stable
+      text—never abort in Debug or enter unchecked/undefined behavior in
+      Release. Internal algorithm invariants may remain assertions only when a
+      public validator makes them unreachable.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
