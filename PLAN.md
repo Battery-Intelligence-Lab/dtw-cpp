@@ -446,6 +446,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       count, assert field equality and malformed/missing-file typed errors, and
       compare the emitted bytes with the C++ reader. The current extension must
       fail at import before implementation.
+- [ ] **F24 — Python HPC failures bypass the frozen device-error contract.**
+      `python/dtwcpp/_hpc.py:395-405,445-456` raises wrapper-specific
+      `RuntimeError` messages, while Python intentionally defers HPC credential
+      validation in `python/dtwcpp/__init__.py:193-204`; §5/§6 requires
+      `dtwcpp.DeviceError` and the pinned Env messages. First gate: drive the
+      public Python `device('hpc')`→`cluster(...)` route through isolated
+      missing-file, first-missing-key, and mocked authentication-failure
+      fixtures; each must raise `DeviceError`, match the registered message
+      byte-for-byte, perform no local clustering fallback, and avoid a real
+      network call. The inherited wrapper must fail type and text assertions.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):

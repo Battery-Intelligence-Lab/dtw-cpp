@@ -56,6 +56,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   emit the deprecation diagnostics promised by the frozen policy.
 - F23: Python never bound the frozen binary `ClusteringResult` checkpoint
   save/load pair; only directory distance checkpoints are exposed.
+- F24: Python HPC preflight/submission raises wrapper-specific `RuntimeError`
+  instead of the frozen `DeviceError` and verbatim Env-message contract.
 
 ## Exact resume point (updated)
 
