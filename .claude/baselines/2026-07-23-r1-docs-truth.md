@@ -102,3 +102,61 @@ generated page changed.
 
 **D1 verdict: PASS.** The generated output is digit-identical and the full live
 CLI contract gate now reaches completion.
+
+## D2 — precision contract still narrates the pre-flip state
+
+Current source evidence:
+
+```text
+dtwc/settings.hpp:30:using default_data_t = double;
+dtwc/dtwc_cl.cpp:662:  std::string dtype_str = "float64";
+dtwc/dtwc_cl.cpp:664:      "Series data type: float64 (default, full precision) or float32 (2x memory saving) (aliases: f32, f64, float, double)")
+```
+
+[confirmed] All public distance-helper default templates use
+`dtwc::settings::default_data_t` (`dtwc/distance.hpp:35-233`). All Python
+single-pair distance bindings now accept contiguous NumPy views
+(`python/src/_dtwcpp_core.cpp:529-601`).
+
+A second stale claim is independently false: the contract says Float32 series
+are always accumulated in double. The unified kernels store recurrence buffers
+and combine cells in template scalar `T`
+(`dtwc/core/dtw_kernel.hpp:238-283`); the f32 dispatcher casts the final
+float result to the public double return
+(`dtwc/core/dtw_dispatch.cpp`, `make_*<float>`). Distance-matrix entries are
+double, but Float32 recurrence arithmetic is Float32.
+
+Registered repair band:
+
+- present tense describes the implemented Float64 default and ndarray bindings;
+- migration history remains explicit without saying the old state exists now;
+- precision language distinguishes recurrence precision from double result
+  storage and does not promise Float32 numerical identity;
+- regenerating the derived Tier-2 page changes only the corresponding source
+  projection;
+- `generate_docs.py --check` and the full live-CLI docs contract gate pass.
+
+Registered stale-output probe after editing the source contract:
+
+```text
+stale or missing generated documentation:
+  docs\content\api\tier-2.md
+run: python scripts/generate_docs.py
+```
+
+The generator named only the expected projection. Regeneration and final gates:
+
+```text
+generated documentation updated
+generated documentation is current
+generated documentation is current
+documentation contract checks passed
+```
+
+`git diff --check` emitted no errors; only the contract, its generated Tier-2
+projection, the Unreleased correction, and this run-log changed.
+
+**D2 verdict: PASS.** Present-tense defaults and binding types now match current
+source. The contract also states the previously omitted Float32 recurrence
+precision instead of mistaking a double result container for double
+accumulation.

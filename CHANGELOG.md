@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected the frozen API precision record: public templates and the CLI
+  default to Float64, while explicit Float32 storage also uses Float32 DTW
+  recurrence arithmetic before its result is stored as a double.
 - Fixed system-package Arrow builds silently omitting Parquet support even
   after `find_package(Parquet)` succeeded. The detected package now reaches the
   parent build scope, so `libparquet-dev` enables the production reader and its

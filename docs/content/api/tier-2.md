@@ -202,12 +202,12 @@ keyword-dispatch idiom cannot share one signature; unifying would force an
 un-idiomatic name on one side. Recorded as an open item (§10 item 8) for the
 reviewer to ratify before FROZEN.
 
-**Precision-default fix.** All `dtwc::distance::*` templates default
-`T = settings::default_data_t`, which is `float` today (`distance.hpp:31`,
-`settings.hpp:29`) and becomes `double` in Task 1.5. See §8. Python/MATLAB are
-always `double`. **Arg-type parity (Phase 2.1):** Python distance fns must all
-take zero-copy ndarray uniformly — today `dtw/missing/arow` take ndarray but
-`ddtw/wdtw/adtw/soft` take `std::vector` (copy) (`_dtwcpp_core.cpp:291-334`).
+**Precision default.** All `dtwc::distance::*` templates default to
+`T = settings::default_data_t`, which is `double`
+(`settings.hpp`, `distance.hpp`). Float32 remains an explicit template/storage
+opt-in; see §8. Python's single-pair distance functions uniformly accept
+contiguous NumPy array views (`_dtwcpp_core.cpp`, `dtw_distance` through
+`dtw_arow_distance`); MATLAB's public numeric boundary remains double.
 
 ### 2.7 Checkpoint / resume (Tier-2, implements invariant #4)
 

@@ -421,12 +421,12 @@ keyword-dispatch idiom cannot share one signature; unifying would force an
 un-idiomatic name on one side. Recorded as an open item (§10 item 8) for the
 reviewer to ratify before FROZEN.
 
-**Precision-default fix.** All `dtwc::distance::*` templates default
-`T = settings::default_data_t`, which is `float` today (`distance.hpp:31`,
-`settings.hpp:29`) and becomes `double` in Task 1.5. See §8. Python/MATLAB are
-always `double`. **Arg-type parity (Phase 2.1):** Python distance fns must all
-take zero-copy ndarray uniformly — today `dtw/missing/arow` take ndarray but
-`ddtw/wdtw/adtw/soft` take `std::vector` (copy) (`_dtwcpp_core.cpp:291-334`).
+**Precision default.** All `dtwc::distance::*` templates default to
+`T = settings::default_data_t`, which is `double`
+(`settings.hpp`, `distance.hpp`). Float32 remains an explicit template/storage
+opt-in; see §8. Python's single-pair distance functions uniformly accept
+contiguous NumPy array views (`_dtwcpp_core.cpp`, `dtw_distance` through
+`dtw_arow_distance`); MATLAB's public numeric boundary remains double.
 
 ### 2.7 Checkpoint / resume (Tier-2, implements invariant #4)
 
@@ -762,30 +762,29 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 
 ## 8. Precision story (existing contract, now documented)
 
-**`data_t = double` is THE default everywhere.** (`settings.hpp:35`,
-`using data_t = double`.)
+**`data_t = double` is the default.** `settings.hpp` defines both internal
+`data_t` and public-template `settings::default_data_t` as `double`.
 
-- **Template default flip (Task 1.5).** `settings::default_data_t` is `float`
-  today (`settings.hpp:29`) and is the default `T` on every
-  `dtwc::distance::*` helper (`distance.hpp:31`). 2.0 changes it to `double`, so
-  `dtwc::distance::dtw(x, y)` with no explicit `T` computes in `double`. This is
-  a *default* change, not a numeric one — a `double`-typed call is byte-identical
-  before and after (Task 1.5 registers a pre/post f64 digit-identity check).
-- **CLI default flip (Task 1.5).** `--dtype` defaults to `float32` today
-  (`dtwc_cl.cpp:226`); 2.0 defaults to `float64`. `float32`/`f32`/`fp32` remain
-  accepted opt-ins (the `CheckedTransformer` map at `dtwc_cl.cpp:229-234` stays).
+- **Template default (changed in Task 1.5).** Every `dtwc::distance::*` helper
+  defaults `T` to `settings::default_data_t`, so
+  `dtwc::distance::dtw(x, y)` with no explicit scalar computes in double.
+  The migration changed the old Float32 default; the registered pre/post
+  fingerprint established that explicitly double-typed calls were
+  digit-identical.
+- **CLI default (changed in Task 1.5).** `--dtype` now defaults to `float64`
+  (`dtwc_cl.cpp`, `dtype_str`). `float32`/`f32`/`fp32` remain accepted opt-ins.
 - **`float32` is an explicit opt-in only.** C++: build `Data` from
-  `vector<vector<float>>` (`Data.hpp:113`) or set `Precision::Float32`; CLI:
-  `--dtype f32`. Storage halves; nothing else changes semantically.
-- **Accumulation is ALWAYS `double`.** Regardless of series storage precision,
-  every DTW cost is accumulated and every distance-matrix entry stored in
-  `double` — the f32 path reads `float` inputs but returns `double`
-  (`Problem::dtw_fn_f32_t = std::function<double(...)>`, Problem.hpp:94;
-  storage.hpp:19, surface report §8 item 5). Python/MATLAB are always `double`
-  end to end.
-- **Doc-bug fix (Task 1.5).** `storage.hpp:21` comment calls `Float32` the
-  "Default"; it is not (`Data::precision = Float64`, `Data.hpp:38`). The comment
-  is corrected in the same task.
+  `vector<vector<float>>` or set `Precision::Float32`; CLI: `--dtype f32`.
+  Series storage halves, but inputs are rounded to Float32 and results may
+  differ numerically from the Float64 route.
+- **Recurrence precision follows series precision; result storage is double.**
+  Float64 inputs use double recurrence buffers. The f32 dispatcher instantiates
+  the unified kernels with `T=float`, then converts the final distance to the
+  public `double` return (`Problem::dtw_fn_f32_t`); dense/mmap distance-matrix
+  entries are double. A double result container does not restore precision
+  discarded by Float32 inputs or recurrence arithmetic.
+- **Storage default.** `Data::precision` and the `Precision::Float64` enum
+  comment identify Float64 as the default; Float32 is opt-in.
 
 ---
 
