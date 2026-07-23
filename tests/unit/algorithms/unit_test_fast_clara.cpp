@@ -411,6 +411,56 @@ TEST_CASE("FastCLARA dimension planning is overflow-safe before allocation",
     "fast_clara: N exceeds the int-indexed clustering result limit.");
 }
 
+TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
+          "[fast_clara][errors][streaming]")
+{
+  algorithms::CLARAOptions opts;
+  opts.n_clusters = 2;
+  opts.force_parquet_streaming = true;
+  opts.ram_limit_bytes = 4096;
+  opts.parquet_path = "never_opened.parquet";
+
+  SECTION("a limit is required")
+  {
+    opts.ram_limit_bytes = 0;
+    Problem settings_only{"clara_missing_stream_limit"};
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(settings_only, opts),
+      "fast_clara: force_parquet_streaming requires ram_limit_bytes and "
+      "parquet_path.");
+  }
+
+  SECTION("a Parquet path is required")
+  {
+    opts.parquet_path.clear();
+    Problem settings_only{"clara_missing_stream_path"};
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(settings_only, opts),
+      "fast_clara: force_parquet_streaming requires ram_limit_bytes and "
+      "parquet_path.");
+  }
+
+  SECTION("resident series are rejected")
+  {
+    Problem resident = make_clara_problem(3);
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(resident, opts),
+      "fast_clara: force_parquet_streaming requires a settings-only Problem "
+      "without resident series.");
+  }
+
+#ifndef DTWC_HAS_PARQUET
+  SECTION("the missing capability is loud")
+  {
+    Problem settings_only{"clara_missing_parquet"};
+    REQUIRE_THROWS_WITH(
+      algorithms::fast_clara(settings_only, opts),
+      "fast_clara: force_parquet_streaming requires a build with Parquet "
+      "support.");
+  }
+#endif
+}
+
 // ===========================================================================
 // Test 10: Auto sample_size default (Schubert & Rousseeuw 2021 formula).
 // ===========================================================================

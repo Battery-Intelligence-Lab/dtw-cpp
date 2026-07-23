@@ -637,3 +637,43 @@ TEST_CASE("cli_renames table is complete and internally consistent", "[cli][depr
     REQUIRE(canonical_flag_for(r.old_flag) == r.new_flag);
   }
 }
+
+// ---------------------------------------------------------------------------
+// F7 planner and FastCLARA guard coverage (Arrow-OFF)
+//
+// `resolve_parquet_cli_plan` (dtwc_cl.cpp) is a file-local CLI metadata planner
+// included into this test translation unit. It sits outside
+// `#ifdef DTWC_HAS_PARQUET`, so its arithmetic compiles and runs in the
+// canonical Arrow-OFF gate. This is direct production-seam coverage, not proof
+// that the real CLI reaches its Arrow-ON invocation site.
+//
+// The `<=` side of the planner's `ram_limit == 0 || bytes <= ram_limit` test is
+// already pinned above ("Parquet CLI plan selects streaming before payload
+// materialization", at 4096/4097). What no test covered until now is the
+// `ram_limit == 0` disjunct.
+//
+// The byte-identity half of F8 (resident vs forced-stream labels/medoids/
+// checkpoint SHA-256) needs a Parquet reader and is NOT in this case.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Parquet CLI plan treats a zero RAM limit as uncapped",
+          "[cli][parquet][ram][streaming]")
+{
+  // `ram_limit == 0` means "no cap", never "a cap of zero bytes": no resident
+  // estimate, however large, may select streaming.
+  constexpr auto huge = std::numeric_limits<size_t>::max();
+
+  const auto uncapped = resolve_parquet_cli_plan(
+    "clara", /*series_count=*/6001, /*estimated_resident_bytes=*/huge,
+    /*ram_limit=*/0, ParquetCliLayout::ListColumn);
+  CHECK_FALSE(uncapped.stream_payload);
+  CHECK(uncapped.materialize_payload());
+  CHECK(uncapped.estimated_resident_bytes == huge);
+
+  // A zero cap returns before the method and layout rejections, so the routes
+  // that a cap forbids stay legal when nothing is capped.
+  CHECK_NOTHROW(resolve_parquet_cli_plan(
+    "pam", 20, huge, 0, ParquetCliLayout::ScalarColumn));
+  CHECK_NOTHROW(resolve_parquet_cli_plan(
+    "clara", 20, huge, 0, ParquetCliLayout::Directory));
+}
