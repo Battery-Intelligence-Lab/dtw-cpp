@@ -48,7 +48,7 @@ skip-cols = 0
 column = "Voltage"
 
 # Data type for in-memory storage.
-# "float64" (full precision) or "float32" (default, 2x memory saving, ~1e-7 rel error).
+# "float64" (default, full precision) or "float32" (2x series-storage saving).
 # Aliases: f32, fp32, float -> float32; f64, fp64, double -> float64.
 dtype = "float64"
 

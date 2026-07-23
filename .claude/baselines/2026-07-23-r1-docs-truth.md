@@ -160,3 +160,58 @@ projection, the Unreleased correction, and this run-log changed.
 source. The contract also states the previously omitted Float32 recurrence
 precision instead of mistaking a double result container for double
 accumulation.
+
+## D3 — README feature, benchmark, architecture, and option drift
+
+[confirmed] The real CLI exposes seven canonical variants and eight canonical
+non-`auto` methods. Current source defines the CUDA default architecture list
+as `60;70;75;80;86;89;90` (`CMakeLists.txt:145`) and 18 Boolean project options
+across the root, dependency, and standard-settings files.
+
+The inherited README instead says five variants, three algorithms, omits
+sm_60/sm_75, and omits seven options. Its 9–11× exact lower-bound matrix claim
+is contradicted by the registered LB-cascade experiment
+(`.claude/baselines/2026-07-08-lb-cascade.md`): abandoned pairs are recomputed,
+so the exact matrix path did more work. The 12×/1.7×/42× headline and 0.003%
+Float32 maximum have no tracked originating result artifact; they are
+unconfirmed, not asserted false.
+
+Registered repair band:
+
+- feature/method/variant counts and CUDA defaults match the live CLI/source;
+- every live Boolean project option plus the two documented cache selectors
+  appears once in the option table with its actual default;
+- untracked numeric claims and the falsified exact-matrix pruning speedup are
+  removed, not replaced by new estimates;
+- Float32 and `--ram-limit` scope match the precision/F7 contracts;
+- example TOML/YAML no longer call Float32 the default;
+- `check_docs_contract.py --cli` and `git diff --check` pass.
+
+Source/table and real-binary audits:
+
+```text
+source_options=18 table_entries=20 table_unique=20
+missing=
+unexpected=
+duplicates=
+method_phrase=True
+variant_phrase=True
+cuda_default=True
+stale_float_default=False
+```
+
+The 20 table rows are all 18 Boolean options plus the two documented cache
+selectors `DTWC_ARCH_LEVEL` and `DTWC_CUDA_ARCH_LIST`.
+
+Final gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+`git diff --check` emitted no errors.
+
+**D3 verdict: PASS.** README counts/defaults are live-source-backed, the option
+inventory is complete and duplicate-free, and untracked/falsified performance
+headlines are absent.

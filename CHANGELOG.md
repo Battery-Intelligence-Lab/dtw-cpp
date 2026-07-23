@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected the README's live variant/method counts, CUDA architecture defaults,
+  complete CMake option inventory, Float32/streaming scope, and removed
+  performance numbers that lacked a tracked originating result artifact.
 - Corrected the frozen API precision record: public templates and the CLI
   default to Float64, while explicit Float32 storage also uses Float32 DTW
   recurrence arithmetic before its result is stored as a double.

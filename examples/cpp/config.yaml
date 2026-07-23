@@ -69,7 +69,7 @@ verbose-solver: false
 # Hierarchical linkage (only used when method = "hierarchical").
 linkage: average
 
-# Data type for in-memory storage: float32 (default) or float64.
+# Data type for in-memory storage: float64 (default) or float32.
 dtype: float64
 
 # Compute device.

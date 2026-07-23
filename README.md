@@ -29,19 +29,20 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 
 **Key features:**
 
-- **5 DTW variants**: Standard, Derivative (DDTW), Weighted (WDTW), Amerced (ADTW), Soft-DTW
+- **7 elastic distances**: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW, MSM, TWE
 - **Missing data support**: NaN-aware DTW (DTW-AROW)
-- **3 clustering algorithms**: FastPAM k-medoids, FastCLARA (scalable), MIP (globally optimal)
-- **LB pruning**: LB_Kim + LB_Keogh early-abandon for 9-11x faster distance matrices
+- **8 CLI-selectable clustering methods**: PAM/FastPAM, OneBatchPAM, FastCLARA, k-medoids, MIP, LR-core, hierarchical, TADPole
+- **Lower bounds**: Keogh/Webb bounds and admissible TADPole pair pruning
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
-- **Parallelism**: OpenMP threads, MPI distributed, CUDA GPU (optional)
-- **Runtime float32 precision**: 2x memory saving with 0.003% max DTW error
-- **RAM-aware streaming**: `--ram-limit` enables chunked CLARA for datasets exceeding memory
+- **Parallelism**: OpenMP threads, MPI distributed, CUDA and Metal GPUs (optional)
+- **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
+- **RAM-aware streaming**: `--ram-limit` bounds Parquet series materialisation and streams supported one-list-row-per-series non-full FastCLARA workloads
 - **Checkpointing**: Save/resume long-running distance matrix computations
-- **I/O**: CSV, HDF5, Parquet, Arrow IPC (zero-copy mmap) — auto-detected from extension
+- **I/O**: CSV, HDF5, Parquet, Arrow IPC, and native `.dtws`, gated by compiled capabilities and auto-detected from extension
 
-**Performance**: Beats aeon by 12x and dtaidistance by 1.7x on pairwise distance matrix construction. Full end-to-end clustering is 42x faster than aeon/tslearn.
-<p align="center"><img src="./media/Merged_document.png" alt="DTW" width="60%"/></center></p>
+Recorded, workload-specific measurements are published in the
+[UCR benchmark ledger](benchmarks/ucr_benchmark_results.md); do not extrapolate
+one machine or dataset into a universal speedup.
 
 Installation
 ===========================
@@ -168,14 +169,14 @@ cmake --build build --config Release -j
 **CUDA multi-arch build** — covers the full common HPC GPU fleet (V100→H100) by default. To target specific GPUs:
 
 ```bash
-# Default: compiles for V100, A100, RTX Ampere, L40s, H100 (sm 70/80/86/89/90)
+# Default: P100, V100, Turing, A100, RTX Ampere, Ada/L40s, H100 (sm 60/70/75/80/86/89/90)
 cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
 
 # Single-arch build for A100-only cluster (faster compile):
 cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=80
 
-# Add P100 (sm_60) if needed:
-cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DDTWC_CUDA_ARCH_LIST="60;70;80;86;89;90"
+# Override the default list if a narrower fleet is required:
+cmake -S . -B build -DDTWC_ENABLE_CUDA=ON -DDTWC_CUDA_ARCH_LIST="80;90"
 ```
 
 **OpenMP on many-core NUMA nodes** (e.g. 288-core AMD Turin): bind threads to cores to avoid cross-NUMA memory traffic:
@@ -191,19 +192,26 @@ export OMP_PLACES=cores
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| `DTWC_BUILD_EXAMPLES` | OFF | Build example programs |
 | `DTWC_BUILD_TESTING` | OFF | Build unit tests (Catch2) |
 | `DTWC_BUILD_BENCHMARK` | OFF | Build benchmarks (Google Benchmark) |
 | `DTWC_BUILD_PYTHON` | OFF | Build Python bindings (nanobind) |
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
 | `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
+| `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
 | `DTWC_ENABLE_MPI` | OFF | Enable MPI distributed computing |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
-| `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (via `find_package` or CPM) |
+| `DTWC_ENABLE_METAL` | ON | Enable the Metal backend on Apple platforms |
+| `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
+| `DTWC_ENABLE_YAML` | OFF | Enable YAML configuration files via yaml-cpp |
+| `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
+| `DTWC_HIGHS_GPU` | OFF | Build the optional HiGHS PDLP CUDA backend |
 | `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
+| `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
 | `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |
-| `DTWC_CUDA_ARCH_LIST` | `70;80;86;89;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set |
+| `DTWC_CUDA_ARCH_LIST` | `60;70;75;80;86;89;90` | CUDA architectures when `CMAKE_CUDA_ARCHITECTURES` is not set |
 
 AI-assisted workflow (Claude Code)
 ===========================
