@@ -83,3 +83,20 @@ Append one row per inventory record before rewriting `.claude/TODO.md`.
 Exploratory checks do not count as closure evidence until their command/output
 or named source artifact is recorded here.
 
+## Focused current-tree closure gate
+
+Registered before execution:
+
+- Directly run `test_decode_pair`, `unit_test_mmap_data_store`,
+  `unit_test_mmap_distance_matrix`, `unit_test_dtw_api`,
+  `unit_test_time_series`, `unit_test_fast_clara`, `unit_test_cli_args`,
+  `unit_test_mip`, and `test_supply_chain_pinning` from the rebuilt canonical
+  directory.
+- Every binary must exit zero, report at least one executed assertion and one
+  executed case, and contain no skip marker. CTest green alone is insufficient.
+- The Arrow reader closure reuses the fresher F9 enabled-build evidence:
+  390/390 assertions in all 11 cases with no skip. The MATLAB input-validation
+  closure reuses the latest fresh-MEX 61/61 artifact because R1 changes no
+  program files.
+- Any current focused failure downgrades the corresponding historical item to
+  STILL-OPEN regardless of its closing commit.
