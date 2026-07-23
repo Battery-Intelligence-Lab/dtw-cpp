@@ -7,9 +7,8 @@
  * different versions of the algorithm for full, light (L), and banded computations.
  *
  * Each public function accepts an optional core::MetricType parameter (default L1).
- * Metric dispatch happens ONCE outside the inner loop via a template lambda
- * passed to an _impl helper, so inlining is preserved and there is zero overhead
- * in the hot path.
+ * Metric dispatch happens once outside the inner loop via a template lambda
+ * passed to an _impl helper, preserving the existing inlining structure.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
@@ -245,9 +244,7 @@ struct MVSquaredL2Dist {
 
 /// Multivariate L2 (Euclidean): sqrt(sum_d (a[d] - b[d])^2) across ndim dims.
 /// Distinct from MVL1Dist (Manhattan) whenever ndim > 1; for ndim == 1 it
-/// reduces to |a - b|. Migrated here from the deleted, dead core::MVL2Dist
-/// (task R1) so the single live dispatcher can select a real Euclidean cost
-/// for MetricType::L2 instead of silently aliasing MVL1Dist.
+/// reduces to |a - b|.
 struct MVL2Dist {
   template <typename T>
   T operator()(const T* a, const T* b, size_t ndim) const noexcept {
@@ -269,8 +266,7 @@ auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
   case core::MetricType::SquaredL2: return fn(SquaredL2Dist{});
   // Univariate L2 IS L1: the pointwise Euclidean cost sqrt((a-b)^2) == |a-b|,
   // so a per-element L2 metric reduces exactly to L1 for scalar (ndim==1)
-  // series. This is a genuine mathematical identity, NOT the multivariate
-  // L2 -> L1 aliasing bug fixed in dispatch_mv_metric below (task R1).
+  // series.
   case core::MetricType::L2:
   case core::MetricType::L1: return fn(L1Dist{});
   }
@@ -278,16 +274,14 @@ auto dispatch_metric(core::MetricType m, Fn&& fn) -> decltype(fn(L1Dist{}))
 }
 
 /// Dispatch MetricType to multivariate distance functor, invoke fn(functor).
-/// This is the SINGLE live multivariate metric dispatcher — dtwFull_L_mv and
-/// dtwBanded_mv both route here (the former dead duplicate that lived in
-/// core/dtw_cost.hpp was removed in task R1 to prevent the two from diverging).
+/// This is the live wrapper dispatcher used by dtwFull_L_mv and dtwBanded_mv.
 template <typename Fn>
 auto dispatch_mv_metric(core::MetricType m, Fn&& fn) -> decltype(fn(MVL1Dist{}))
 {
   core::validate_metric_type(m);
   switch (m) {
   case core::MetricType::SquaredL2: return fn(MVSquaredL2Dist{});
-  case core::MetricType::L2:        return fn(MVL2Dist{});  // true Euclidean (task R1)
+  case core::MetricType::L2:        return fn(MVL2Dist{});
   case core::MetricType::L1:        return fn(MVL1Dist{});
   }
   throw std::logic_error("dispatch_mv_metric: unreachable MetricType");
@@ -487,7 +481,7 @@ data_t dtwBanded(const std::vector<data_t> &x, const std::vector<data_t> &y,
 /**
  * @brief Linear-space multivariate DTW (pointer + timestep counts + ndim).
  *
- * @details For ndim==1 dispatches to the existing scalar dtwFull_L (zero overhead).
+ * @details For ndim==1 delegates to the existing scalar dtwFull_L implementation.
  *          For ndim>1 uses dtwFull_L_mv_impl with pointer-stride indexing.
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t.
  *
@@ -516,7 +510,7 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
 /**
  * @brief Banded multivariate DTW (pointer + timestep counts + ndim).
  *
- * @details For ndim==1 dispatches to existing scalar dtwBanded (zero overhead).
+ * @details For ndim==1 delegates to the existing scalar dtwBanded implementation.
  *          For ndim>1 uses dtwBanded_mv_impl with pointer-stride indexing.
  *          Falls back to dtwFull_L_mv when band<0 or band covers the full sequence.
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t.

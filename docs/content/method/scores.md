@@ -5,59 +5,66 @@ weight: 9
 
 # Cluster Quality Scores
 
-DTW-C++ provides both **internal** and **external** cluster quality evaluation metrics. Internal metrics assess clustering quality using only the data and assignments (no ground truth needed). External metrics compare predicted labels against known ground-truth labels.
+DTW-C++ exposes internal metrics for an already-clustered `Problem` and
+external metrics for two label vectors. The canonical C++ functions are in
+`dtwc::scores` in `scores.hpp`; Python exports the same snake_case names from
+`dtwcpp`.
 
-All scoring functions are in the `dtwc::scores` namespace (header: `scores.hpp`).
+## Internal metrics
 
----
+Internal metrics read the assignments, medoids, and distance matrix stored in
+the `Problem`.
 
-## Internal Metrics
-
-Internal metrics evaluate clustering quality based on the distance matrix and cluster assignments. They are useful for model selection (choosing the best $$k$$) and comparing different clustering algorithms.
-
-### Silhouette Score
+### Silhouette
 
 ```cpp
 std::vector<double> dtwc::scores::silhouette(Problem &prob);
 ```
 
-Computes the silhouette coefficient for each data point. For point $$i$$:
+For point $$i$$,
 
-$$s(i) = \frac{b(i) - a(i)}{\max(a(i),\; b(i))}$$
+$$s(i) = \frac{b(i)-a(i)}{\max(a(i),b(i))},$$
 
-where $$a(i)$$ is the mean distance from $$i$$ to other points in the same cluster, and $$b(i)$$ is the mean distance from $$i$$ to points in the nearest neighboring cluster.
+where $$a(i)$$ is the mean dissimilarity to the other members of its cluster
+and $$b(i)$$ is the smallest mean dissimilarity to another non-empty cluster.
+Ordinary finite results lie in $$[-1,1]$$.
 
-- **Range:** $$[-1, 1]$$
-- **Interpretation:** Values near 1 indicate well-clustered points; values near 0 indicate points on cluster boundaries; negative values indicate possible misassignment.
-- **Returns:** A vector of per-point silhouette scores. The overall silhouette score is the mean of all values.
+The function returns one value per series. An unclustered problem returns a
+vector filled with `-1` after printing a diagnostic. A singleton cluster
+member receives `0`. If a non-singleton point has both means equal to zero,
+the implemented `0/0` expression can return NaN; callers that aggregate the
+vector must decide how to handle non-finite values.
 
-### Davies-Bouldin Index
-
-```cpp
-double dtwc::scores::daviesBouldinIndex(Problem &prob);
-```
-
-Measures the average similarity between each cluster and its most similar cluster. For each cluster $$i$$, it computes the ratio of within-cluster scatter to between-cluster separation, then averages the worst-case ratios:
-
-$$\text{DBI} = \frac{1}{k} \sum_{i=1}^{k} \max_{j \ne i} \frac{\sigma_i + \sigma_j}{d(c_i, c_j)}$$
-
-where $$\sigma_i$$ is the average distance of points in cluster $$i$$ to its medoid $$c_i$$.
-
-- **Range:** $$[0, \infty)$$
-- **Interpretation:** **Lower is better.** A value of 0 would mean perfectly separated clusters.
-
-### Dunn Index
+### Davies-Bouldin
 
 ```cpp
-double dtwc::scores::dunnIndex(Problem &prob);
+double dtwc::scores::davies_bouldin(Problem &prob);
 ```
 
-Ratio of the minimum inter-cluster distance to the maximum intra-cluster diameter:
+For cluster medoids $$c_i$$ and mean within-cluster scatter $$S_i$$,
 
-$$\text{DI} = \frac{\min_{i \ne j}\; d_{\text{inter}}(i, j)}{\max_i\; d_{\text{intra}}(i)}$$
+$$\mathrm{DBI} = \frac{1}{k}\sum_i
+  \max_{j\ne i}\frac{S_i+S_j}{d(c_i,c_j)}.$$
 
-- **Range:** $$(0, \infty)$$
-- **Interpretation:** **Higher is better.** Large values indicate compact, well-separated clusters.
+This implementation requires at least two clusters. A pair with
+zero medoid separation is skipped rather than divided by zero. Lower finite
+values indicate smaller within-cluster scatter relative to medoid separation.
+
+### Dunn
+
+```cpp
+double dtwc::scores::dunn(Problem &prob);
+```
+
+The implementation uses all pairwise series dissimilarities:
+
+$$\mathrm{Dunn} =
+  \frac{\min\{d(x_i,x_j): \ell_i\ne\ell_j\}}
+       {\max\{d(x_i,x_j): \ell_i=\ell_j,\ i<j\}}.$$
+
+It requires at least two clusters. If the maximum intra-cluster diameter is
+zero, it returns positive infinity. Higher finite values indicate greater
+separation relative to cluster diameter.
 
 ### Inertia
 
@@ -65,83 +72,63 @@ $$\text{DI} = \frac{\min_{i \ne j}\; d_{\text{inter}}(i, j)}{\max_i\; d_{\text{i
 double dtwc::scores::inertia(Problem &prob);
 ```
 
-Total within-cluster distance: the sum of distances from each point to its assigned medoid.
+Inertia is the sum of the stored, unsquared dissimilarities from each series
+to its assigned medoid:
 
-$$\text{Inertia} = \sum_{i=1}^{n} d(x_i, c_{l(i)})$$
+$$\mathrm{Inertia} = \sum_i d(x_i,c_{\ell_i}).$$
 
-where $$c_{l(i)}$$ is the medoid of the cluster to which point $$x_i$$ is assigned.
+The result is nonnegative only when the selected dissimilarity itself is
+nonnegative. Lower values mean a smaller total medoid-assignment cost for the
+same dissimilarity contract.
 
-- **Range:** $$[0, \infty)$$
-- **Interpretation:** **Lower is better.** Useful for the elbow method when varying $$k$$.
-
-### Calinski-Harabasz Index
+### Calinski-Harabasz
 
 ```cpp
-double dtwc::scores::calinskiHarabaszIndex(Problem &prob);
+double dtwc::scores::calinski_harabasz(Problem &prob);
 ```
 
-A medoid-adapted version of the Calinski-Harabasz (Variance Ratio) criterion. It measures the ratio of between-cluster dispersion to within-cluster dispersion, adjusted for the number of clusters and data points:
+The medoid-adapted calculation uses squared stored distances. Its within term
+is the sum of squared distances to each cluster medoid; its between term is
+the cluster-size-weighted sum of squared distances from cluster medoids to an
+overall medoid:
 
-$$\text{CH} = \frac{\text{SS}_B / (k - 1)}{\text{SS}_W / (n - k)}$$
+$$\mathrm{CH} = \frac{B/(k-1)}{W/(N-k)}.$$
 
-- **Range:** $$(0, \infty)$$
-- **Interpretation:** **Higher is better.** Useful for selecting the optimal number of clusters.
+It requires $$k>1$$ and $$N>k$$. If the within term $$W$$ is zero, the function
+returns positive infinity.
 
----
+## External metrics
 
-## External Metrics
+Both external functions require label vectors of equal length.
 
-External metrics require ground-truth labels. They measure agreement between the predicted clustering and a known reference partition.
-
-### Adjusted Rand Index
+### Adjusted Rand
 
 ```cpp
-double dtwc::scores::adjustedRandIndex(
+double dtwc::scores::adjusted_rand(
     const std::vector<int> &labels_true,
     const std::vector<int> &labels_pred);
 ```
 
-The Adjusted Rand Index (ARI) is a chance-corrected measure of agreement between two partitions. It counts pairs of points that are in the same or different clusters in both partitions, adjusted for the expected value under random labeling.
+The Adjusted Rand score compares the pair-count contingency table after its
+chance correction. Identical non-degenerate partitions return `1`; a
+denominator-zero case also returns `1` in the current implementation.
 
-- **Range:** $$[-1, 1]$$ (in practice, $$[-0.5, 1]$$)
-- **Interpretation:** 1.0 = perfect agreement; 0.0 = random labeling; negative values indicate worse-than-random agreement.
-
-### Normalized Mutual Information
+### Normalized mutual information
 
 ```cpp
-double dtwc::scores::normalizedMutualInformation(
+double dtwc::scores::normalized_mutual_info(
     const std::vector<int> &labels_true,
     const std::vector<int> &labels_pred);
 ```
 
-Normalized Mutual Information (NMI) is an information-theoretic measure of the mutual dependence between two labelings, normalized to $$[0, 1]$$:
+The implemented arithmetic-mean normalization is
 
-$$\text{NMI}(U, V) = \frac{2 \cdot I(U; V)}{H(U) + H(V)}$$
+$$\mathrm{NMI}(U,V)=\frac{2I(U;V)}{H(U)+H(V)}.$$
 
-where $$I(U; V)$$ is the mutual information and $$H(\cdot)$$ is the entropy.
+An empty input returns `0`. For a non-empty input whose two marginal entropies
+sum to zero, the function returns `1`.
 
-- **Range:** $$[0, 1]$$
-- **Interpretation:** 1.0 = perfect agreement; 0.0 = independent labelings.
-
----
-
-## Choosing a Metric
-
-| Metric | Ground truth needed? | Best for |
-|--------|---------------------|----------|
-| **Silhouette** | No | General cluster quality assessment; works with any $$k$$ |
-| **Davies-Bouldin** | No | Comparing clusterings; penalizes overlapping clusters |
-| **Dunn Index** | No | Detecting compact, well-separated clusters |
-| **Inertia** | No | Elbow method for selecting $$k$$ |
-| **Calinski-Harabasz** | No | Selecting optimal $$k$$; fast to compute |
-| **Adjusted Rand Index** | Yes | Benchmark evaluation; robust to cluster count mismatch |
-| **NMI** | Yes | Benchmark evaluation; information-theoretic |
-
-For **model selection** (choosing $$k$$), silhouette and Calinski-Harabasz are the most widely used. For **benchmark evaluation** against ground truth, ARI is standard in the time series clustering literature.
-
----
-
-## C++ Example
+## C++ example
 
 ```cpp
 #include <dtwc/Problem.hpp>
@@ -149,58 +136,39 @@ For **model selection** (choosing $$k$$), silhouette and Calinski-Harabasz are t
 
 dtwc::Problem prob;
 prob.set_data(std::move(data));
-prob.set_numberOfClusters(3);
+prob.set_n_clusters(3);
 prob.cluster();
 
-// Internal metrics
 auto sil = dtwc::scores::silhouette(prob);
-double dbi = dtwc::scores::daviesBouldinIndex(prob);
-double di  = dtwc::scores::dunnIndex(prob);
+double dbi = dtwc::scores::davies_bouldin(prob);
+double di = dtwc::scores::dunn(prob);
 double ine = dtwc::scores::inertia(prob);
-double ch  = dtwc::scores::calinskiHarabaszIndex(prob);
+double ch = dtwc::scores::calinski_harabasz(prob);
 
-// Mean silhouette score
-double mean_sil = 0;
-for (double s : sil) mean_sil += s;
-mean_sil /= sil.size();
-
-// External metrics (if ground truth is available)
-std::vector<int> true_labels = {0, 0, 1, 1, 2, 2};
-std::vector<int> pred_labels = prob.cluster_labels;  // from clustering
-
-double ari = dtwc::scores::adjustedRandIndex(true_labels, pred_labels);
-double nmi = dtwc::scores::normalizedMutualInformation(true_labels, pred_labels);
+std::vector<int> true_labels{0, 0, 1, 1, 2, 2};
+const auto &pred_labels = prob.labels();
+double ari = dtwc::scores::adjusted_rand(true_labels, pred_labels);
+double nmi = dtwc::scores::normalized_mutual_info(true_labels, pred_labels);
 ```
 
-## Python Example
+## Python example
 
 ```python
 import dtwcpp
 
-prob = dtwcpp.Problem()
+prob = dtwcpp.Problem("scores")
 prob.set_data(series, names)
-prob.set_number_of_clusters(3)
+prob.set_n_clusters(3)
 result = dtwcpp.fast_pam(prob, n_clusters=3)
 
-# Internal metrics (results are stored back in prob)
-sil = dtwcpp.silhouette(prob)           # list of per-point scores
-dbi = dtwcpp.davies_bouldin_index(prob)  # lower is better
-di  = dtwcpp.dunn_index(prob)            # higher is better
-ine = dtwcpp.inertia(prob)               # lower is better
-ch  = dtwcpp.calinski_harabasz_index(prob)  # higher is better
+sil = dtwcpp.silhouette(prob)
+dbi = dtwcpp.davies_bouldin(prob)
+di = dtwcpp.dunn(prob)
+ine = dtwcpp.inertia(prob)
+ch = dtwcpp.calinski_harabasz(prob)
 
-mean_silhouette = sum(sil) / len(sil)
-print(f"Silhouette: {mean_silhouette:.3f}")
-print(f"Davies-Bouldin: {dbi:.3f}")
-print(f"Dunn: {di:.3f}")
-print(f"Inertia: {ine:.3f}")
-print(f"Calinski-Harabasz: {ch:.3f}")
-
-# External metrics (no Problem needed, just label vectors)
 true_labels = [0, 0, 1, 1, 2, 2]
 pred_labels = list(result.labels)
-
-ari = dtwcpp.adjusted_rand_index(true_labels, pred_labels)
-nmi = dtwcpp.normalized_mutual_information(true_labels, pred_labels)
-print(f"ARI: {ari:.3f}, NMI: {nmi:.3f}")
+ari = dtwcpp.adjusted_rand(true_labels, pred_labels)
+nmi = dtwcpp.normalized_mutual_info(true_labels, pred_labels)
 ```

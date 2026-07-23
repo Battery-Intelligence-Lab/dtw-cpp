@@ -59,144 +59,147 @@ size_t flat = view.flat_size();  // length * ndim
 
 ---
 
-## Multivariate DTW Functions
+## Modes and implemented routes
 
-All DTW variants have `_mv` counterparts that operate on interleaved multivariate data. These functions take raw pointers and explicit timestep counts:
+`DTWVariantParams::mv_mode` selects one of two meanings:
 
-### Standard DTW
+- `MVMode::Dependent` (the default) uses one warping path shared by all
+  channels. Each cell combines the channel costs.
+- `MVMode::Independent` computes a separate univariate DTW for each channel
+  and sums the results. The `Problem` route supports this mode only for
+  Standard DTW with `MissingStrategy::Error`.
+
+For the same band, $$\mathrm{DTW_I} \le \mathrm{DTW_D}$$ follows for additive
+L1 and squared-L2 channel costs because each independent channel can choose its
+own path. That ordering does not extend to Euclidean `MetricType::L2`, whose
+square root couples the channel costs.
+
+The current channel-aware routes are:
+
+| Configuration | Implemented route |
+|---------------|-------------------|
+| Standard, dependent | `dtwFull_L_mv` / `dtwBanded_mv` |
+| Standard, independent | `dtw_independent_mv` |
+| DDTW, dependent | per-channel derivative transform followed by Standard multivariate DTW |
+| WDTW, dependent | `wdtwFull_mv` / `wdtwBanded_mv` |
+| ADTW, dependent | `adtwFull_L_mv` / `adtwBanded_mv` |
+| ZeroCost missing data, dependent | `dtwMissing_L_mv` / `dtwMissing_banded_mv` |
+| AROW missing data, dependent | the multivariate AROW cost in the `Problem` resolver |
+
+MSM and TWE reject `ndim > 1`. Soft-DTW and the Interpolate missing strategy
+do not have channel-aware multivariate routes; do not use those combinations
+as multivariate distances.
+
+### Direct C++ calls
+
+The direct functions take interleaved pointers plus explicit timestep counts:
 
 ```cpp
 #include <dtwc/warping.hpp>
-
-double dist = dtwc::dtwFull_L_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim);
-double dist_b = dtwc::dtwBanded_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, band);
-```
-
-### WDTW
-
-```cpp
+#include <dtwc/warping_adtw.hpp>
+#include <dtwc/warping_missing.hpp>
 #include <dtwc/warping_wdtw.hpp>
 
-double dist = dtwc::wdtwFull_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, /*g=*/0.05);
-double dist_b = dtwc::wdtwBanded_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, band, /*g=*/0.05);
+double standard = dtwc::dtwBanded_mv(
+    x_ptr, nx_steps, y_ptr, ny_steps, ndim, band);
+double weighted = dtwc::wdtwBanded_mv(
+    x_ptr, nx_steps, y_ptr, ny_steps, ndim, band, /*g=*/0.05);
+double amerced = dtwc::adtwBanded_mv(
+    x_ptr, nx_steps, y_ptr, ny_steps, ndim, band, /*penalty=*/0.1);
+double zero_cost_missing = dtwc::dtwMissing_banded_mv(
+    x_ptr, nx_steps, y_ptr, ny_steps, ndim, band);
 ```
 
-### ADTW
+DDTW applies `derivative_transform_mv_inplace` to the interleaved series and
+then calls Standard multivariate DTW. When `ndim == 1`, the `_mv` wrappers
+delegate to their scalar implementations.
 
-```cpp
-#include <dtwc/warping_adtw.hpp>
+## Multivariate point costs
 
-double dist = dtwc::adtwFull_L_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, /*penalty=*/0.1);
-double dist_b = dtwc::adtwBanded_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, band, /*penalty=*/0.1);
-```
+The Standard wrappers select these live functors from `warping.hpp`:
 
-### Missing Data DTW
+| Functor | Pointwise formula |
+|---------|-------------------|
+| `detail::MVL1Dist` | $$\sum_d \lvert a_d-b_d\rvert$$ |
+| `detail::MVSquaredL2Dist` | $$\sum_d (a_d-b_d)^2$$ |
+| `detail::MVL2Dist` | $$\sqrt{\sum_d (a_d-b_d)^2}$$ |
 
-```cpp
-#include <dtwc/warping_missing.hpp>
+The Euclidean implementation is `MVL2Dist`.
+The missing-data wrappers use the index-based
+`SpanMVNanAwareL1Cost`, `SpanMVNanAwareSquaredL2Cost`, and
+`SpanMVNanAwareL2Cost` implementations. The similarly named legacy missing
+functors remain direct-call compatibility helpers, not the wrapper dispatch.
 
-double dist = dtwc::dtwMissing_L_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim);
-double dist_b = dtwc::dtwMissing_banded_mv(x_ptr, nx_steps, y_ptr, ny_steps, ndim, band);
-```
+## Per-channel LB_Keogh primitives
 
-### DDTW (Derivative Transform)
-
-```cpp
-#include <dtwc/warping_ddtw.hpp>
-
-// Transform multivariate series, preserving interleaved layout
-auto dx = dtwc::derivative_transform_mv(flat_data, ndim);
-// Then use standard multivariate DTW on the derivative series
-```
-
----
-
-## Zero Overhead for Univariate
-
-When `ndim == 1`, all `_mv` functions dispatch to the existing scalar code paths, avoiding any overhead from the multivariate inner loop. You can safely use the multivariate API for mixed workloads without performance penalty on univariate data.
-
----
-
-## Multivariate Distance Functors
-
-The inner loop of multivariate DTW uses specialized distance functors defined in `warping.hpp`:
-
-| Functor | Formula | Header |
-|---------|---------|--------|
-| `detail::MVL1Dist` | $$\sum_{d=0}^{D-1} \lvert a[d] - b[d] \rvert$$ | `warping.hpp` |
-| `detail::MVSquaredL2Dist` | $$\sum_{d=0}^{D-1} (a[d] - b[d])^2$$ | `warping.hpp` |
-| `detail::MissingMVL1Dist` | L1 with per-channel NaN skipping | `warping_missing.hpp` |
-| `detail::MissingMVSquaredL2Dist` | Squared-L2 with per-channel NaN skipping | `warping_missing.hpp` |
-
-These are invoked automatically based on the `MetricType` selection.
-
----
-
-## Per-Channel LB_Keogh
-
-DTW-C++ provides multivariate lower-bound pruning via per-channel envelopes, which are valid lower bounds for dependent multivariate DTW (where all channels share a single warping path).
+`compute_envelopes_mv`, `lb_keogh_mv`, and `lb_keogh_mv_squared` are
+low-level primitives. They are not wired into `Problem`'s automatic
+distance-matrix route.
 
 ```cpp
 #include <dtwc/core/lower_bound_impl.hpp>
 
-// Compute upper and lower envelopes for each channel independently
 std::vector<double> upper(n_steps * ndim), lower(n_steps * ndim);
-dtwc::core::compute_envelopes_mv(series_ptr, n_steps, ndim, band,
-                                  upper.data(), lower.data());
+dtwc::core::compute_envelopes_mv(
+    series_ptr, n_steps, ndim, band, upper.data(), lower.data());
 
-// Compute multivariate LB_Keogh (L1 variant)
-double lb = dtwc::core::lb_keogh_mv(query_ptr, n_steps, ndim,
-                                      upper.data(), lower.data());
-
-// Squared-L2 variant
-double lb_sq = dtwc::core::lb_keogh_mv_squared(query_ptr, n_steps, ndim,
-                                                 upper.data(), lower.data());
+double lb_l1 = dtwc::core::lb_keogh_mv(
+    query_ptr, n_steps, ndim, upper.data(), lower.data());
+double lb_squared = dtwc::core::lb_keogh_mv_squared(
+    query_ptr, n_steps, ndim, upper.data(), lower.data());
 ```
 
-The lower bound satisfies $$\text{LB\_Keogh}(q, s) \le \text{DTW}(q, s)$$ for any query $$q$$ and candidate $$s$$ under the given band constraint. This allows pruning candidate pairs without computing the full DTW, which is especially valuable for large multivariate datasets.
+The implemented bound is scoped to equal-length dependent DTW with additive
+L1 or squared-L2 costs. The envelope window must cover the DTW window; an
+unbanded DTW therefore needs a full-width admissible envelope. A thresholded
+search can reject a candidate when the bound exceeds its cutoff, but an exact
+distance matrix still has to compute and store every requested finite
+distance.
 
----
+## `Problem` dispatch
 
-## Auto-Dispatch in Problem
-
-When using the `Problem` class, setting `data.ndim > 1` causes `Problem::rebind_dtw_fn()` to automatically select the appropriate multivariate DTW function. No manual function selection is needed:
+`Problem` validates `Data::ndim` and routes supported combinations:
 
 ```cpp
-dtwc::Data data;
-data.ndim = 3;
-// ... populate data.p_vec with interleaved series ...
+dtwc::Data data(
+    {{1.0, 2.0, 3.0, 4.0, 5.0, 6.0},
+     {1.1, 2.1, 3.1, 4.1, 5.1, 6.1},
+     {8.0, 7.0, 6.0, 5.0, 4.0, 3.0},
+     {8.2, 7.1, 6.2, 5.1, 4.2, 3.1}},
+    {"a", "b", "c", "d"},
+    3);
 
-dtwc::Problem prob;
+dtwc::Problem prob("multivariate");
 prob.set_data(std::move(data));
-prob.set_numberOfClusters(5);
-prob.cluster();  // automatically uses multivariate DTW
+prob.set_n_clusters(2);
+prob.cluster();
 ```
 
----
+To request independent mode, copy `prob.variant_params`, set its `mv_mode` to
+`MVMode::Independent`, and pass it to `prob.set_variant(...)`.
 
 ## Python API
+
+The `Data` object must carry `ndim`; passing only two vectors to
+`Problem.set_data(series, names)` uses its default `ndim=1`.
+Pass the constructed object with `prob.set_data(data)`.
 
 ```python
 import dtwcpp
 
-# Create Data with ndim > 1
-data = dtwcpp.Data()
-data.ndim = 3
+series = [
+    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    [1.1, 2.1, 3.1, 4.1, 5.1, 6.1],
+    [8.0, 7.0, 6.0, 5.0, 4.0, 3.0],
+    [8.2, 7.1, 6.2, 5.1, 4.2, 3.1],
+]
+data = dtwcpp.Data(series, ["a", "b", "c", "d"], 3)
+data.validate_ndim()
 
-# Each series is a flat list: [t0_ch0, t0_ch1, t0_ch2, t1_ch0, ...]
-series_0 = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]  # 2 timesteps, 3 channels
-data.p_vec = [series_0, series_1, ...]
-data.p_names = ["s0", "s1", ...]
-data.validate_ndim()  # check all sizes are divisible by ndim
+prob = dtwcpp.Problem("multivariate")
+prob.set_data(data)
+prob.set_n_clusters(2)
+result = dtwcpp.fast_pam(prob, n_clusters=2)
 
-# Use with Problem for clustering
-prob = dtwcpp.Problem()
-prob.set_data(data.p_vec, data.p_names)
-# Problem auto-dispatches to multivariate DTW when ndim > 1
-```
-
-The `Data.series_length(i)` method returns the number of timesteps:
-
-```python
-n_steps = data.series_length(0)  # flat_size / ndim
+n_steps = data.series_length(0)  # 2, because each timestep has 3 channels
 ```

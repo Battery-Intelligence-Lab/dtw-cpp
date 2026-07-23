@@ -174,7 +174,7 @@ no core code changes — but if any item does touch code, it moves to R4's rules
       entries against the current tree: each becomes CLOSED-BY (commit/task),
       STILL-OPEN (→ becomes an R3 finding), or NOT-REPRODUCIBLE (evidence
       quoted). Rewrite the file to the reconciled state.
-- [ ] **Docs truth audit.** Every claim in README.md, docs site pages, and
+- [x] **Docs truth audit.** Every claim in README.md, docs site pages, and
       `docs/api-contract-2.0.md` traces to an artifact (test, baseline run-log,
       citation) or is corrected. Run the existing drift gates
       (`check_docs_contract.py --cli <fresh dtwc_cl>`, docs internal-link gate)
@@ -824,3 +824,11 @@ colour system transfer verbatim**.
   output, states CPU-only Auto/lower-bound routing, and retains only a
   raw-artifact-linked historical/advisory timing table. Evidence:
   `.claude/baselines/2026-07-23-r1-docs-truth.md` D7.
+- 2026-07-23 (R1 docs closure): Reconciled the remaining examples, interface
+  map, multivariate and score pages, plus floating-point/DTW source comments.
+  The inherited D8 guard failed on 24 stale marker classes; the post-rebuild
+  real-CLI contract gate passes and `git diff --check` is clean. A link check
+  over the ignored existing site passes only as advisory evidence; the fresh
+  Hugo render remains `[BLOCKED-ENV]` under the recorded `hugo=NOT_FOUND` and
+  `go=NOT_FOUND` probe. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D8.

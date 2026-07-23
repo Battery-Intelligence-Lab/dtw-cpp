@@ -220,7 +220,7 @@ import dtwcpp
 prob = dtwcpp.Problem("my_clustering")
 prob.set_data(series, names)
 prob.band = 10
-prob.set_number_of_clusters(3)
+prob.set_n_clusters(3)
 
 result = dtwcpp.fast_pam(prob, n_clusters=3, max_iter=100)
 print(result.labels, result.medoid_indices, result.total_cost)
@@ -266,23 +266,23 @@ All scoring functions operate on a `Problem` object that has been clustered (dis
 ```python
 from dtwcpp import (
     silhouette,
-    davies_bouldin_index,
-    dunn_index,
+    davies_bouldin,
+    dunn,
     inertia,
-    calinski_harabasz_index,
-    adjusted_rand_index,
-    normalized_mutual_information,
+    calinski_harabasz,
+    adjusted_rand,
+    normalized_mutual_info,
 )
 
-sil = silhouette(prob)                         # per-point silhouette values
-dbi = davies_bouldin_index(prob)               # lower is better
-di  = dunn_index(prob)                         # higher is better
-ine = inertia(prob)                            # total within-cluster cost
-chi = calinski_harabasz_index(prob)            # higher is better
+sil = silhouette(prob)                   # per-point silhouette values
+dbi = davies_bouldin(prob)               # lower is better
+di  = dunn(prob)                         # higher is better
+ine = inertia(prob)                      # total within-cluster cost
+chi = calinski_harabasz(prob)            # higher is better
 
 # External validation (requires ground-truth labels)
-ari = adjusted_rand_index(labels_true, labels_pred)
-nmi = normalized_mutual_information(labels_true, labels_pred)
+ari = adjusted_rand(labels_true, labels_pred)
+nmi = normalized_mutual_info(labels_true, labels_pred)
 ```
 
 ## GPU acceleration

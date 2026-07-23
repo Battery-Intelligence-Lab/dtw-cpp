@@ -22,8 +22,8 @@
  *          TWE is symmetric (a metric), so we orient n_short ≤ n_long and keep
  *          a rolling buffer of the (padded) shorter axis — O(min(n,m)) scratch.
  *          The `+∞` padding cells use the `numeric_limits::max()` sentinel with
- *          guarded addition (the build is -ffast-math; true infinities are not
- *          safe, same convention as the DTW kernels).
+ *          guarded addition. This avoids overflow from `MAX + cost` and matches
+ *          the no-neighbour sentinel convention used by the DTW kernels.
  *
  *          v1 scope: univariate, unbanded (window=None); MSM/TWE ignore
  *          `Problem::band` (documented in the dispatch + CHANGELOG).

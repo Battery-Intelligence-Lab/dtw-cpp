@@ -276,6 +276,72 @@ def assert_gpu_backend_page() -> None:
         raise AssertionError(f"GPU backend page omits current truth: {missing}")
 
 
+def assert_remaining_docs_truth() -> None:
+    paths = (
+        "docs/content/getting-started/examples.md",
+        "docs/content/getting-started/python.md",
+        "docs/content/api/interface-parity.md",
+        "docs/content/method/multivariate.md",
+        "docs/content/method/scores.md",
+        "dtwc/warping.hpp",
+        "cmake/StandardProjectSettings.cmake",
+        "dtwc/core/twe.hpp",
+    )
+    text = "\n".join(
+        (ROOT / relative).read_text(encoding="utf-8") for relative in paths
+    )
+    stale = (
+        "set_numberOfClusters",
+        "set_number_of_clusters",
+        "daviesBouldinIndex",
+        "dunnIndex",
+        "calinskiHarabaszIndex",
+        "adjustedRandIndex",
+        "normalizedMutualInformation",
+        "davies_bouldin_index",
+        "dunn_index",
+        "calinski_harabasz_index",
+        "adjusted_rand_index",
+        "normalized_mutual_information",
+        "cluster_labels",
+        "All DTW variants have `_mv` counterparts",
+        "Zero Overhead for Univariate",
+        "without performance penalty",
+        "loading added consistently later",
+        "task R1",
+        "zero overhead",
+        "all other fast-math optimizations",
+        "Full safe fast-math subset",
+        "DTWC_ENABLE_SIMD",
+        "Highway",
+        "the build is -ffast-math",
+    )
+    present = [marker for marker in stale if marker in text]
+    if present:
+        raise AssertionError(f"remaining docs retain stale claims: {present}")
+
+    required = (
+        "`MVMode::Dependent`",
+        "`MVMode::Independent`",
+        "MSM and TWE reject",
+        "`MVL2Dist`",
+        "low-level primitives",
+        "`prob.set_data(data)`",
+        "unclustered",
+        "singleton",
+        "zero medoid separation",
+        "unsquared dissimilarities",
+        "denominator-zero",
+        "empty input",
+        "selected relaxations",
+        "`-ffinite-math-only`",
+        "`MAX + cost`",
+    )
+    missing = [marker for marker in required if marker not in text]
+    if missing:
+        raise AssertionError(f"remaining docs omit current truth: {missing}")
+
+
 def cli_flags(text: str) -> set[str]:
     return set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", text))
 
@@ -338,6 +404,7 @@ def main() -> int:
     assert_tier1_signatures()
     assert_method_catalog()
     assert_gpu_backend_page()
+    assert_remaining_docs_truth()
     if args.cli is not None:
         assert_cli_reference(args.cli.resolve())
     print("documentation contract checks passed")

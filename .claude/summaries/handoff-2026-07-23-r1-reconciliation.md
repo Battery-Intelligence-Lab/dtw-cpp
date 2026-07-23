@@ -123,3 +123,26 @@ multivariate, scores, and source/build comments. Add one unconditional guard
 covering their known stale phrases, demonstrate the inherited red, then repair
 and rerun the real-CLI docs gate. After that, reconcile LESSONS/CITATIONS/
 UNIMODULAR and finish tracked-junk/CHANGELOG/branch-state hygiene.
+
+## Remaining-doc reconciliation result
+
+- The inherited D8 guard failed on all 24 registered deprecated-name and
+  overbroad-claim markers.
+- Examples now use `set_n_clusters` and canonical score names; the multivariate
+  page names the live dependent/independent routes and low-level-only lower
+  bounds; the score page records current degenerate behavior.
+- Source comments now describe the selected floating-point relaxations,
+  scalar delegation, and finite TWE sentinel without session history or dead
+  SIMD claims.
+- The canonical rebuild completed; its verification rerun reported
+  `ninja: no work to do.` The real-CLI docs gate passes after that rebuild.
+- The ignored existing-site link check passes as advisory evidence only. A
+  fresh Hugo render remains `[BLOCKED-ENV]` because both Hugo and Go are absent.
+
+## Exact resume point (current)
+
+Register the newly confirmed multivariate flat-buffer gap as its own R3
+finding: `Problem` has no channel-aware Soft-DTW or Interpolate route, but the
+resolver currently accepts `ndim > 1` and runs their scalar logic over the flat
+buffer. Then reconcile LESSONS/CITATIONS/UNIMODULAR and finish the tracked-junk,
+CHANGELOG-structure, and branch-state R1 tasks.

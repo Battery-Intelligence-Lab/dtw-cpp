@@ -14,6 +14,7 @@ closely as the C++ API allows today.
 ```cpp
 #include <dtwc.hpp>
 
+#include <cstdlib>
 #include <vector>
 
 int main()
@@ -39,8 +40,10 @@ int main()
 ```cpp
 #include <dtwc.hpp>
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
+#include <utility>
 #include <vector>
 
 int main()
@@ -56,7 +59,7 @@ int main()
   dtwc::Problem prob("demo");
   prob.set_data(dtwc::Data(std::move(series), std::move(names)));
   prob.band = 10;
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
 
   auto result = dtwc::fast_pam(prob, 2, 100);
 

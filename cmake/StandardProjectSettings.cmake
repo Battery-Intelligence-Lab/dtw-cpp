@@ -42,9 +42,9 @@ else()
 endif()
 
 
-# Fast floating-point for Release builds — enables FMA fusion, reordering.
-# Explicit sub-flags instead of -ffast-math: preserves std::isnan() by omitting
-# -ffinite-math-only, while retaining all other fast-math optimizations.
+# Selected floating-point relaxations for Release builds.
+# GCC/Clang use explicit flags rather than -ffast-math and deliberately omit
+# -ffinite-math-only so std::isnan() remains valid.
 # See missing_utils.hpp for NaN handling design notes.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   # /fp:precise preserves std::isnan() semantics (required by missing_utils.hpp).
@@ -57,8 +57,10 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/Gy>>)
   add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/Gy>>)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # Full safe fast-math subset: all components of -ffast-math except -ffinite-math-only.
-  # -ffinite-math-only is deliberately omitted — it breaks std::isnan() under GCC/Clang.
+  # The selected relaxations cover no errno/trapping, reciprocal and associative
+  # transformations, no signed-zero distinction, a fixed rounding mode, and no
+  # signalling NaNs.
+  # `-ffinite-math-only` is deliberately omitted — it breaks std::isnan() under GCC/Clang.
   # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
   # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
   foreach(_flag
@@ -81,8 +83,6 @@ endif()
 #           Cascade Lake, Sapphire/Emerald Rapids, Rome, Genoa, Turin).
 #   "v4" — AVX-512 baseline; Cascade Lake Xeon, Sapphire/Emerald Rapids, Genoa, Turin.
 #           NOT safe for Broadwell, Haswell, or Rome nodes.
-# When DTWC_ENABLE_SIMD=ON, Highway provides runtime dispatch across all ISAs regardless
-# of this flag — DTWC_ARCH_LEVEL only affects compiler auto-vectorization paths.
 option(DTWC_ENABLE_NATIVE_ARCH "Tune for the host CPU architecture (-march=native / /arch:AVX2)" ON)
 set(DTWC_ARCH_LEVEL "" CACHE STRING
     "Override native arch with x86-64 microarchitecture level for HPC: '' (native), 'v3' (AVX2+FMA), 'v4' (AVX-512)")

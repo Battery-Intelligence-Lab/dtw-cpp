@@ -140,7 +140,7 @@ std::vector<std::string> names = {"a", "b", "c"};
 dtwc::Problem prob("demo");
 prob.set_data(dtwc::Data(std::move(series), std::move(names)));
 prob.band = 10;
-prob.set_numberOfClusters(2);
+prob.set_n_clusters(2);
 
 auto result = dtwc::fast_pam(prob, 2);
 auto sil = dtwc::scores::silhouette(prob);
@@ -154,7 +154,7 @@ import dtwcpp
 prob = dtwcpp.Problem("demo")
 prob.set_data(series, names)
 prob.band = 10
-prob.set_number_of_clusters(2)
+prob.set_n_clusters(2)
 
 result = dtwcpp.fast_pam(prob, n_clusters=2, max_iter=100)
 sil = dtwcpp.silhouette(prob)
@@ -181,15 +181,9 @@ These are real API differences today, not just documentation differences:
 3. MATLAB still implements the `dtwc.distance.*` surface as package functions over `dtwc_mex`, while Python uses a pure-Python namespace module and C++ uses headers/templates.
 4. C++ examples in older docs historically used `DataLoader` + legacy Lloyd clustering more than the newer `Problem` + algorithm function flow.
 
-## Direction of travel
+## Present guidance
 
-The intended convergence is:
-
-```text
-config/settings -> Problem -> data -> cluster -> scores/results
-```
-
-with `distance.*` used for pairwise distances in all languages, and config-file
-loading added consistently later rather than invented differently in each
-binding.
+Use `distance.*` for pairwise calculations and `Problem` for stateful
+clustering in each language. Configuration-file input is currently a CLI-only
+surface; the library bindings take configuration through their typed APIs.
 

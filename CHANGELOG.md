@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Reconciled the remaining API examples and method documentation with the live
+  canonical names, multivariate route limits, cluster-score edge behavior, and
+  selected floating-point/sentinel contracts.
 - Corrected the GPU backend guide to the live option/dispatch surface, scoped
   lower-bound pruning to its currently defensible equal-length L1 regime,
   identified correctness/loudness gaps F27–F31, and removed untraceable

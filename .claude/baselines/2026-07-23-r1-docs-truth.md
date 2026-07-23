@@ -55,6 +55,14 @@ are absent. Continue with source-level audit, the live CLI contract gate, and
 an explicitly advisory check of the existing ignored site. Hosted CI remains
 operator-owned and is not claimed.
 
+Advisory only, against the pre-existing ignored `docs/public/` tree:
+
+```text
+all internal site links resolve
+```
+
+This does not supersede the `[BLOCKED-ENV]` fresh-render result.
+
 ## D1 — generated LR-core source moved without its gate
 
 Baseline decisive command:
@@ -232,6 +240,80 @@ regtile/LB timing tables and unsupported crossover advice are gone. The
 retained Apple M2 Max table is explicitly historical/advisory and names
 `benchmarks/mac_metal_benchmarks.md` plus the raw
 `benchmarks/results/mac_m2max/metal_vs_cpu.json`.
+
+## D8 — examples, multivariate/scores pages, and source comments drifted
+
+Registered repair band:
+
+- add one unconditional guard over the named pages/comments before edits and
+  demonstrate failure on the inherited deprecated names and overbroad claims;
+- all current examples use canonical `set_n_clusters` and canonical snake_case
+  score names; no nonexistent `cluster_labels` member remains;
+- multivariate docs enumerate the actually implemented variant routes,
+  `MVMode::Dependent`/`Independent` constraints, metric scope, MSM/TWE
+  rejection, Python `ndim` construction, and low-level-only LB primitives;
+- score docs state live formulas and edge behavior for silhouette, DBI, Dunn,
+  inertia, CH, ARI, and NMI without unsupported popularity/speed claims;
+- source comments state delegation rather than zero-overhead claims, remove
+  session/task narration, list the selected floating-point relaxations without
+  calling them all/full `-ffast-math`, remove dead SIMD/Highway prose, and
+  describe TWE's finite sentinel rather than claiming the build is
+  `-ffast-math`;
+- the real-CLI documentation contract gate exits zero with exact final line
+  `documentation contract checks passed`; `git diff --check` is clean.
+
+Deliberate red gate before the documentation corrections:
+
+```text
+generated documentation is current
+Traceback (most recent call last):
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 415, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 407, in main
+    assert_remaining_docs_truth()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 321, in assert_remaining_docs_truth
+    raise AssertionError(f"remaining docs retain stale claims: {present}")
+AssertionError: remaining docs retain stale claims: ['set_numberOfClusters', 'set_number_of_clusters', 'daviesBouldinIndex', 'dunnIndex', 'calinskiHarabaszIndex', 'adjustedRandIndex', 'normalizedMutualInformation', 'davies_bouldin_index', 'dunn_index', 'calinski_harabasz_index', 'adjusted_rand_index', 'normalized_mutual_information', 'cluster_labels', 'All DTW variants have `_mv` counterparts', 'Zero Overhead for Univariate', 'without performance penalty', 'loading added consistently later', 'task R1', 'zero overhead', 'all other fast-math optimizations', 'Full safe fast-math subset', 'DTWC_ENABLE_SIMD', 'Highway', 'the build is -ffast-math']
+```
+
+The first canonical rebuild wrapper yielded after two minutes with no build
+output:
+
+```text
+command timed out after 124116 milliseconds
+```
+
+The child Ninja build remained active and completed. The verification rerun
+then returned exit 0:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+Final decisive gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+Secondary gates:
+
+```text
+.venv/Scripts/python.exe -m py_compile scripts/check_docs_contract.py
+exit 0; no output
+
+git diff --check
+exit 0; no diagnostics
+```
+
+**D8 verdict: PASS.** The inherited red named all 24 stale marker classes.
+The final real-CLI contract gate rejected none and required the live
+multivariate route limits, score edge cases, and floating-point/sentinel
+comments.
 
 The generator named only the expected projection. Regeneration and final gates:
 
