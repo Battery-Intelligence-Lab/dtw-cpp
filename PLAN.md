@@ -375,6 +375,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
       while the root requires 3.26. First gate: portable clean configure probes
       plus a metadata check that rejects any future floor drift.
+- [ ] **F17 — CLI `--resume` reads and discards clustering state.**
+      `dtwc/dtwc_cl.cpp:1398-1405` loads a binary `ClusteringResult` into the
+      block-local `ckpt_result`, prints its metadata, and has no later consumer;
+      the ordinary clustering path then runs and overwrites the automatic
+      checkpoint. First gate: drive the real CLI from a valid binary checkpoint
+      with deliberately distinguishable labels, medoids, cost, and iteration
+      count; the inherited CLI must fail an assertion that resumed state affects
+      the result rather than merely producing the verbose “Loaded checkpoint”
+      line. Define the supported continuation semantics before repair—never
+      silently relabel a read-and-discard operation as resume.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -575,6 +585,11 @@ colour system transfer verbatim**.
   remains F8. Historical “8K executed”, scalar-L2, dead-preload,
   byte-identical-generator, and pyproject-floor subclaims are retired rather
   than propagated. Open operator/community work is not a local test failure.
+- 2026-07-23 (R1 docs/F17): The docs audit confirmed that CLI `--resume`
+  deserializes a binary clustering result but never applies it. Keep the
+  limitation explicit in user documentation and route the behavioral repair to
+  R3 F17; its first regression must drive the real CLI and distinguish loaded
+  state from the fresh clustering result.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -633,3 +648,7 @@ colour system transfer verbatim**.
   Direct focused closure gate: nine binaries, 5,809 assertions in 142 cases,
   zero skips/failures. Evidence:
   `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
+- 2026-07-23 (R1 docs/F17): Source audit confirmed the CLI `--resume` defect:
+  `ckpt_result` is created and loaded only at `dtwc/dtwc_cl.cpp:1398-1405`
+  and has no subsequent consumer. F17 records the real-binary failing gate;
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D5 records the evidence.
