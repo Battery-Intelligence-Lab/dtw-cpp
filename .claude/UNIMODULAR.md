@@ -4,7 +4,9 @@
 
 ## 1. The DTWC++ Formulation
 
-The k-medoids clustering problem in DTWC++ is formulated as a **Binary Integer Program** (the standard **Balinski formulation** of the p-median problem).
+The k-medoids clustering problem in DTWC++ is formulated as a **Binary Integer Program**: a diagonal specialization of the classical p-median MILP using **Balinski linking inequalities** (Balinski 1965, ref. 1; ReVelle and Swain 1970, ref. 26).
+
+> **Related histories, different formulations.** Vinod (1969, ref. 27) is an early statistics-side integer-programming treatment of partitional clustering, but it is not evidence for the exact constraint matrix analysed here. Section 2 depends on DTWC++'s p-median variables: the medoid indicator is the diagonal `A[i,i]`, and each linking row is `A[i,j] <= A[i,i]`. Cite Vinod for clustering history; cite Balinski and ReVelle-Swain for this p-median formulation.
 
 **Decision variables.** A p x p binary matrix A where:
 - `A[i,j] = 1` if point j is assigned to the cluster whose medoid is point i
@@ -689,7 +691,7 @@ All removed in `f7064b3` ("removed specialised solvers", 2023-12-07). They faile
 
 ## 9. References
 
-1. **Balinski, M.L.** (1965). "Integer programming: methods, uses, computation." Management Science 12(3), 253-313. *Original p-median formulation.*
+1. **Balinski, M.L.** (1965). "Integer Programming: Methods, Uses, Computations." *Management Science* 12(3), 253-313. https://doi.org/10.1287/mnsc.12.3.253. *Introduced the disaggregated linking inequalities `x[i,j] <= x[i,i]` used in the classical p-median MILP; not, by itself, the first complete discrete p-median MILP.*
 
 2. **Kariv, O. and Hakimi, S.L.** (1979). "An algorithmic approach to network location problems." SIAM J. Applied Mathematics 37(3), 539-560. *NP-hardness of p-median.*
 
@@ -739,4 +741,6 @@ All removed in `f7064b3` ("removed specialised solvers", 2023-12-07). They faile
 
 25. **Beasley, J.E.** (1993). "Lagrangean heuristics for location problems." European Journal of Operational Research 65(3), 383-399. *Reduced-cost / Lagrangian variable fixing for facility location — the §8.3.2 fixing test.*
 
-26. **ReVelle, C.S. and Swain, R.W.** (1970). "Central facilities location." Geographical Analysis 2(1), 30-42. *Original empirical observation that the p-median LP relaxation is "almost always integral" on real geographic data — a statement about data regime, not the polytope (§8.1).*
+26. **ReVelle, C.S. and Swain, R.W.** (1970). "Central Facilities Location." *Geographical Analysis* 2(1), 30-42. https://doi.org/10.1111/j.1538-4632.1970.tb00142.x. *Classical complete discrete p-median MILP and the empirical observation that its LP relaxation is "almost always integral" on real geographic data — a statement about data regime, not the polytope (§8.1).*
+
+27. **Vinod, H.D.** (1969). "Integer Programming and the Theory of Grouping." *Journal of the American Statistical Association* 64(326), 506-519. https://doi.org/10.1080/01621459.1969.10500990. *Early integer-programming treatment of partitional clustering. Its author-page abstract confirms the n-into-m mutually exclusive grouping formulation and the one-dimensional string-property result for minimizing within-group sums of squares. Historical context only: it is not the source for §1's diagonal p-median/Balinski constraint matrix.*

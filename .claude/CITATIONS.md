@@ -36,6 +36,13 @@ References used during development. Verify each citation independently before pu
 - Li, S. & Svensson, O. (2013). Approximating k-median via pseudo-approximation. *STOC 2013*.
 - Duran-Mateluna, C., Ales, Z., & Elloumi, S. (2023). An efficient Benders decomposition for the p-median problem. *European Journal of Operational Research*.
 
+## MIP Formulation of Clustering (`dtwc/mip/`, `Method::MIP` / `Method::LRCore`)
+
+- Balinski, M. L. (1965). “Integer Programming: Methods, Uses, Computations.” *Management Science*, 12(3), 253-313. https://doi.org/10.1287/mnsc.12.3.253 — **[confirmed]** Introduced the disaggregated linking inequalities now commonly written `x[i,j] <= y[i]` (or `A[i,j] <= A[i,i]` in DTWC++'s diagonal specialization). DTWC++ uses these inequalities together with assignment and cardinality rows; Balinski alone is not credited here with the first complete discrete p-median MILP.
+- ReVelle, C. S. & Swain, R. W. (1970). “Central Facilities Location.” *Geographical Analysis*, 2(1), 30-42. https://doi.org/10.1111/j.1538-4632.1970.tb00142.x — **[confirmed]** Source of the classical complete discrete p-median assignment/cardinality/linking MILP specialized by DTWC++; later p-median histories credit this as the first integer-linear formulation.
+- Vinod, H. D. (1969). “Integer Programming and the Theory of Grouping.” *Journal of the American Statistical Association*, 64(326), 506-519. https://doi.org/10.1080/01621459.1969.10500990 — **[confirmed]** Early statistics-side integer-programming treatment of partitional clustering. The author-page abstract confirms formulations for partitioning n elements into m mutually exclusive groups and the string-property result for the one-dimensional minimum-within-group-sum-of-squares case. Cite this for optimization-based clustering history, not for DTWC++'s exact diagonal p-median constraint matrix.
+- Marín, A. & Pelegrín, M. (2020). “p-Median Problems.” In *Location Science*, 25-50. https://doi.org/10.1007/978-3-030-32177-2_2 — Historical attribution source used to distinguish the Hakimi p-median origins, Balinski linking inequalities, ReVelle-Swain complete MILP, and Vinod clustering application.
+
 ## Cross-Language Binding Design
 
 - Andersson, J. A. E., Gillis, J., Horn, G., Rawlings, J. B., & Diehl, M. (2019). CasADi: a software framework for nonlinear optimization and optimal control. *Mathematical Programming Computation*, 11(1), 1-36. — Design philosophy for cross-language API consistency (same class/method names across C++/Python/MATLAB).
