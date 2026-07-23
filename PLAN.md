@@ -476,6 +476,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       observe that mutation while the Problem keeps the Python owner alive.
       Non-contiguous, readonly, dtype, and lifetime cases must be explicit and
       typed. The inherited binding must fail the aliasing assertion.
+- [ ] **F27 — GPU LB_Keogh uses L1 excess under squared-L2 DTW.** CUDA and
+      Metal always sum raw envelope excess (`dtwc/cuda/cuda_dtw.cu:872-892`,
+      `dtwc/metal/metal_dtw.mm:945-953`) even when the distance kernel uses
+      squared local costs, so threshold pruning can discard a pair whose true
+      squared-DTW cost is below threshold. First gate on each real backend:
+      series `{0}` and `{0.5}`, band 0, squared L2, LB enabled, threshold 0.3;
+      the pair must survive and equal 0.25 rather than be pruned by the current
+      L1 bound 0.5. Force Metal Wavefront so its LB stage actually runs.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
