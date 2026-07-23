@@ -74,6 +74,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 - F31: operational Metal allocation/launch failures escape
   `Problem::fill_distance_matrix()` as `std::runtime_error` instead of the
   frozen public `DeviceError`.
+- F32: dependent Soft-DTW and Interpolate accept `ndim > 1`, then run scalar
+  recurrence/interpolation over the flat interleaved buffer instead of a
+  channel-aware route or a typed rejection.
 
 ## Exact resume point (updated)
 
@@ -141,8 +144,6 @@ UNIMODULAR and finish tracked-junk/CHANGELOG/branch-state hygiene.
 
 ## Exact resume point (current)
 
-Register the newly confirmed multivariate flat-buffer gap as its own R3
-finding: `Problem` has no channel-aware Soft-DTW or Interpolate route, but the
-resolver currently accepts `ndim > 1` and runs their scalar logic over the flat
-buffer. Then reconcile LESSONS/CITATIONS/UNIMODULAR and finish the tracked-junk,
-CHANGELOG-structure, and branch-state R1 tasks.
+Reconcile LESSONS/CITATIONS/UNIMODULAR, then finish the tracked-junk,
+CHANGELOG-structure, and branch-state R1 tasks. F32 now owns the multivariate
+Soft-DTW/Interpolate flat-buffer defect; do not implement it during R1.

@@ -525,6 +525,20 @@ Open findings first (status after R0 adjudication — update these boxes there):
       with backend/action context and preserve prior Problem state. Direct
       backend helpers may retain lower-level exceptions only if the public
       boundary translates them deterministically.
+- [ ] **F32 — two accepted multivariate configurations run scalar logic over
+      the flat interleaved buffer.** `validate_problem_distance_semantics`
+      rejects multivariate MSM/TWE and unsupported independent-mode products,
+      but accepts dependent Soft-DTW and `MissingStrategy::Interpolate`
+      (`dtwc/core/distance_semantics.hpp:60-91`). Their resolvers ignore
+      `Data::ndim`: Soft-DTW builds `SpanL1Cost` over `x.size()`/`y.size()`, and
+      Interpolate transforms each flat scalar vector before calling scalar
+      `dtwBanded` (`dtwc/core/dtw_dispatch.cpp:57-65,237-259`). This silently
+      permits warping between adjacent channels as if they were timesteps.
+      First gate: bind a non-degenerate `ndim=2` fixture through the public
+      `Problem` path for each configuration and require `InvalidInput` before
+      distance allocation or state mutation. A later channel-aware
+      implementation may replace that rejection only after an independent
+      per-channel oracle defines the recurrence and the same gate pins it.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
