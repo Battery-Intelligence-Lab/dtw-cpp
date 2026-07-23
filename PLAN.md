@@ -754,3 +754,10 @@ colour system transfer verbatim**.
   `ckpt_result` is created and loaded only at `dtwc/dtwc_cl.cpp:1398-1405`
   and has no subsequent consumer. F17 records the real-binary failing gate;
   `.claude/baselines/2026-07-23-r1-docs-truth.md` D5 records the evidence.
+- 2026-07-23 (R1 frozen contract): Reconciled the freeze artifact against the
+  current tree. The inherited audit guard failed on eight stale marker classes;
+  final inventory is zero stale markers, exactly eight adjudicated reviewer
+  decisions, and all nine implementation gaps F18–F26 named as 2.0
+  obligations. Tier-1/Tier-2/migration projections are current and the real-CLI
+  docs gate passes. Fresh Hugo rendering remains `[BLOCKED-ENV]`. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D6.

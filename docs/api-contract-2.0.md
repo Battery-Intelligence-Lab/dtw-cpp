@@ -1,16 +1,17 @@
-STATUS: FROZEN 2026-07-07; implementation-audited for 2.0.0rc1 on 2026-07-10 — changes require a PLAN.md decision entry before editing
+STATUS: FROZEN 2026-07-07; implementation re-audited on 2026-07-23 — changes require a PLAN.md decision entry before editing
 
 # DTWC++ 2.0 — API Contract (freeze artifact)
 
-> **Task 1.1 deliverable.** This document is the frozen cross-language API surface
-> implemented by 2.0. The 2026-07-10 release audit replaced pre-implementation
-> status notes with live 2.0.0rc1 status and added post-freeze algorithms without
-> changing the original naming, indexing, error, or output contracts.
+> **Task 1.1 deliverable.** This document is the frozen cross-language API
+> surface required for 2.0. The 2026-07-23 source audit distinguishes shipped
+> behavior from unfulfilled frozen promises: a gap stays a 2.0 obligation unless
+> the approved addenda below explicitly defer it to 2.1.
 >
 > **Provenance tags.** `[live]` = the symbol exists now at the cited location;
-> `[new]` = introduced by 2.0; `[rename]` = a live symbol whose canonical name
-> changes (old name kept per the deprecation policy in §4). Sources read for this
-> contract: `dtwc/Problem.hpp`, `dtwc/scores.hpp`, `dtwc/settings.hpp`,
+> `[introduced-2.0]` = historical provenance, not future work; `[rename]` = the
+> frozen canonical spelling; `[gap Fxx]` = a confirmed unfulfilled 2.0 promise
+> owned by that R3 finding. Sources read for this contract:
+> `dtwc/Problem.hpp`, `dtwc/scores.hpp`, `dtwc/settings.hpp`,
 > `dtwc/Data.hpp`, `dtwc/distance.hpp`, `dtwc/dtwc_cl.cpp`,
 > `python/src/_dtwcpp_core.cpp`, `python/dtwcpp/_api.py`,
 > `python/dtwcpp/__init__.py`, `python/dtwcpp/_hpc.py`,
@@ -57,30 +58,33 @@ The following post-freeze scope decisions are approved:
 
 **Naming law (fixed decision).** *One name per concept.* Classes/structs are
 `PascalCase` in every language. Methods and free functions are `snake_case` in
-every language — including MATLAB, whose historical `PascalCase` settable
-properties (`Band`, `MaxIter`, `NRepetition`) become deprecated in favour of
-snake_case setter methods so the three columns stay textually alignable. This is
-a deliberate 2.0 break from MATLAB property idiom, taken for cross-language
-consistency (CasADi model, user preference in project memory).
+every language. MATLAB's historical `PascalCase` properties remain functional
+compatibility aliases while snake_case setters/getters are canonical. The
+aliases currently do not emit the frozen runtime warnings; F22 owns that
+deprecation-policy gap.
 
 **Indexing.** C++ and Python are 0-based. MATLAB is 1-based; the 0↔1 conversion
 happens *only* at the MEX boundary (`ivec_to_mx_1based`, `dtwc_mex.cpp:160-166`)
 and is a preserved invariant (§7 item 8). Every index-valued field below
 (`labels`, `medoids`, `dist_by_ind(i,j)`) obeys this.
 
-**Precision.** Distances and the distance matrix are **always** `double`,
-independent of series storage precision. `data_t = double` is the storage
-default; `float32` is an explicit opt-in. Full precision story in §8.
+**Precision.** The default scalar and all `Problem`/`Result`/CLI
+distance-matrix outputs are `double`. Explicit C++ `distance::*<float>` helpers
+return `float`; Float32 `Problem` storage and recurrence widen only the final
+distance to `double`. `data_t = double` is the storage default; Float32 is an
+explicit opt-in. Full precision story in §8.
 
 **Two tiers.** *Tier 1* is the high-level `device → load → cluster → Result`
 flow (§1). *Tier 2* is the advanced object surface — `Problem`, `DataLoader`,
-`scores::*`, and the algorithm free functions (§2). Both tiers exist in all
-three languages; Tier 1 is what most users touch.
+`scores::*`, and algorithm free functions (§2). Tier 1 is common to all three
+languages. Tier 2 is shared only where its tables list a binding; `DataLoader`
+and several extension hooks remain C++-only.
 
 **No silent fallback.** Any requested capability that cannot be delivered
 (device, GPU backend, method, metric) raises a typed error (§5) — it never
-quietly degrades. The Python, C++, MATLAB, and CLI routes enforce this before
-expensive work.
+quietly degrades. This is the frozen rule. F18 (MATLAB estimator routing) and
+F24 (Python HPC exception translation) name current violations rather than
+weakening it.
 
 ---
 
@@ -102,13 +106,15 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 | Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:123`) | `name = dtwc.device()` |
 | Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same (`_parse_device`, `__init__.py:78`) | same |
 | Returns | normalized name (lower-cased) | normalized name | normalized name |
-| Errors | `DeviceError` on unknown name (§6) | `InvalidInput`/`ValueError` today; `DeviceError` in 2.0 | `dtwc:deviceError` |
-| Delegates to | `dtwc::env().set_device(name)` (Task 1.3) | module global `_DEFAULT_DEVICE` → to be backed by `Env` | MEX `set_device` → `Env` |
+| Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
+| Delegates to | `dtwc::env().set_device(name)` | `_DEFAULT_DEVICE`; CPU/GPU mirrored into `Env`, HPC credentials deferred to the wrapper | MEX `set_device` → `Env` |
 
-All three front ends delegate device validation to `dtwc::Env`. The friendly
-name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++ Tier-1 HPC
-job submission remains beta and fails loudly with transport instructions; the
-Python route owns the tested SLURM orchestration until a real ARC run closes it.
+C++ and MATLAB delegate local-device validation directly to `dtwc::Env`; Python
+keeps its public default and mirrors validated CPU/GPU selections into Env. The
+friendly name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++
+Tier-1 HPC submission remains the approved 2.1 transport defer. Python owns the
+SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
+(F24).
 
 ### 1.2 `load(source, ...)` — lazy dataset handle  `[live in C++/Python/MATLAB]`
 
@@ -209,40 +215,38 @@ ClusterMixin`) and MATLAB `dtwc.DTWClustering` (`bindings/matlab/+dtwc/DTWCluste
 It has no C++ twin (sklearn estimator idiom is language-specific) and stays
 Python/MATLAB-only.
 
-**Known cross-language parameter divergence — resolved here (was surface report §5
-row 14).** The two constructors disagree on one parameter:
+The constructors now expose the shared parameter set, but exposure alone did
+not prove execution:
 
-| Parameter | Python (`_clustering.py:84-86`) | MATLAB (`DTWClustering.m:53/76`) | 2.0 resolution |
+| Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` (present) | **absent** | MATLAB **gains** `device` (`[new]`), delegating to `Env` (§6), for parity |
-| `metric` / `Metric` | **absent** | `Metric='l1'` (present) | Python **gains** `metric='l1'` (`[new]`), matching the distance-fn `metric` arg (§2.6) |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validates global Env but does not route the estimator `Problem` `[gap F18]` |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'`, stored but not consumed by fit `[gap F18]` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
-max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}` in 2.0.
-No `metric` on Python today and no `device` on MATLAB today are the only gaps; both
-are additive (`[new]`), so neither breaks an existing call. Fixed decision, not an
-open item.
+max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
+F18 preserves the frozen behavioral parity requirement for MATLAB; the
+constructor-only parity test does not close it.
 
 ---
 
 ## 2. Tier 2 — advanced object surface
 
-Retained for power users. `Problem` stays a first-class object but is *cleaned*:
-snake_case methods, invariant-preserving setters (no naked public field whose
-write silently de-syncs bound state), and algorithms that **write results back
-into `Problem`** in pure C++ (killing the C++-vs-bindings divergence #10 in the
-surface report — the bindings' explicit auto-wire at `_dtwcpp_core.cpp:573-576`
-and `dtwc_mex.cpp:222-227` then deletes in Phase 2).
+Retained for power users. `Problem` stays a first-class object. Canonical
+snake_case methods and core algorithm result writeback are live, but the frozen
+encapsulation/accessor cleanup is incomplete and MATLAB retains redundant
+binding-side writeback (F19). A live symbol in the tables below does not imply
+that every promised invariant or deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters (all `snake_case`, all invariant-preserving). Naked
-public fields present today become private with these setters in Task 1.6.
+Canonical config setters are snake_case. Public configuration/result fields and
+three missing C++ accessors remain the F19 implementation gap.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | C++ `set_numberOfClusters` (Problem.hpp:185); Py `set_number_of_clusters` (`_dtwcpp_core.cpp:445`); MEX already `set_n_clusters` (Problem.m:113) |
-| method (enum) | `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[new]` | field `method{Method::Kmedoids}` (Problem.hpp:129); Py rw prop `method` (`_dtwcpp_core.cpp:422`); written live by the Tier-1 path `prob.method = dtwcpp.Method.MIP` (`_api.py:186`) |
+| method (enum) | `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | field `band` (Problem.hpp:133); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | field `maxIter` (Problem.hpp:130) |
 | repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | field `N_repetition` (Problem.hpp:131) |
@@ -251,78 +255,72 @@ public fields present today become private with these setters in Task 1.6.
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | Problem.hpp:207 |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | field (Problem.hpp:135) |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | field (Problem.hpp:136) |
-| lower-bound strategy | `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[new bind]` | `set_lb_strategy(str)` `[new]` | field `lb_strategy` (Problem.hpp:137) — unbound today |
-| storage policy | `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[new bind]` | `set_storage_policy(str)` `[new]` | field (Problem.hpp:138) — unbound today |
-| solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[new bind]` | `set_solver(str)` `[new]` | Problem.hpp:187 — unbound in Py/MEX today |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[new]` | Problem.hpp:140 |
-| CUDA settings | `cuda_settings` field | `cuda_settings` prop `[new bind]` | — `[new]` | Problem.hpp:139 — unbound today |
-| output folder | `set_output_folder(path)` | `output_folder` prop `[new bind]` | `set_output_folder(dir)` `[new]` | field (Problem.hpp:145) — unbound today |
+| lower-bound strategy | `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
+| storage policy | `set_storage_policy(core::StoragePolicy)` `[gap F20: advisory only]` | `storage_policy` prop `[introduced-2.0; gap F20]` | `set_storage_policy(str)` `[introduced-2.0; gap F20]` | validation/storage are live; promised routing is not |
+| solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes |
+| CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
+| output folder | `set_output_folder(path)` `[gap F19: absent]` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | raw C++ field plus live Python/MATLAB setters |
 | verbose | `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | field (Problem.hpp:141) |
 | data (owning) | `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | Problem.hpp:189; `_dtwcpp_core.cpp:447`; MEX `set_data` |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[new bind]` | — | Problem.hpp:197 — unbound today |
+| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
+
+Python `Problem.set_view_data` currently constructs owning nested-vector
+storage before calling C++; it is not a non-owning ndarray view (F26).
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
 | C++ live (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
-| `refreshDistanceMatrix()` (:178) | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[new]` |
-| `readDistanceMatrix(path)` (:184) | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[new bind]` | `read_distance_matrix(path)` `[new]` |
-| `maxDistance()` (:209) | `max_distance()` | `max_distance()` (live) | `max_distance()` `[new]` |
+| `refreshDistanceMatrix()` (:178) | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` (:184) | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `maxDistance()` (:209) | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
 | `distByInd(i,j)` (:210) | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
 | `isDistanceMatrixFilled()` (:225) | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
 | `fillDistanceMatrix()` (:246) | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
-| `printDistanceMatrix()` (:247) | `print_distance_matrix()` | `print_distance_matrix()` `[new bind]` | — |
+| `printDistanceMatrix()` (:247) | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` (:249) | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` (:236) | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (was live `distance_matrix_numpy()`, `_dtwcpp_core.cpp:457`; one name; zero-copy where safe, Phase 2.1) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| `dense_distance_matrix()` (:236) | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()`, `_dtwcpp_core.cpp:492`, used by `_api.py:224`) | `set_distance_matrix(D)` (live, Problem.m:164) |
-| `use_mmap_distance_matrix(path)` (:244) | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[new bind]` | — |
+| `use_mmap_distance_matrix(path)` (:244) | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` (:269) | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` (:270) | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` (:272) | `calculate_medoids()` | `calculate_medoids()` (live) | — |
-| `cluster()` (:262) | `cluster()` | `cluster()` (live) | `cluster()` `[new]` |
+| `cluster()` (:262) | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` (:263) | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsLloyd()` (:264) | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` (:252) | `print_clusters()` | `print_clusters()` (live) | — |
 | `writeClusters()` (:253) | `write_clusters()` | `write_clusters()` (live) | — |
-| `writeMedoidMembers(iter,rep=0)` (:255) | `write_medoid_members(iter, rep=0)` | `[new bind]` | — |
+| `writeMedoidMembers(iter,rep=0)` (:255) | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
 | `writeSilhouettes()` (:256) | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
-**† Name collision (unresolved — flagged, not silently renamed).** C++ has a
-*second*, live `Problem::distance_matrix()` (Problem.hpp:231/233) that returns the
-internal `std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference — a
-different return type from the Python/MATLAB `distance_matrix()` NxN-array
-accessor above. The token `distance_matrix()` therefore denotes two different
-things across languages. 2.0 does **not** unify them here; the C++ variant
-accessor keeps its name (it is the storage-level handle, not a user array) and the
-divergence is recorded as an open item (§10 item 6). Task 1.6 confirms the final
-C++ spelling (candidate: `distance_matrix_storage()`).
+**† Name collision (adjudicated in §10 item 6).** C++
+`Problem::distance_matrix()` returns the internal
+`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
+Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
+independent copy. The language-specific semantics are retained.
 
-**‡ Python read/write rename.** The live Python read accessor is
-`distance_matrix_numpy()` (`_dtwcpp_core.cpp:457`) and the live writer is
-`set_distance_matrix_from_numpy()` (`_dtwcpp_core.cpp:492`, called by
-`_api.py:224`). 2.0 renames the pair to `distance_matrix()` / `set_distance_matrix()`
-so the read and write names match MATLAB's row 29/29a and the C++ dense accessor.
-Both old Python names survive one cycle as deprecated aliases (§4). See §3 rows 29a
-and 29b.
+**‡ Python read/write rename.** `distance_matrix()` and
+`set_distance_matrix()` are canonical and live. The old
+`distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
+compatibility aliases; F22 owns their missing deprecation diagnostics.
 
-Read accessors (canonical, all languages): `size()`, `n_clusters()` (was
-`cluster_size()`), `name()`, `series(i)`, `series_name(i)`, `labels()` (reads
-`clusters_ind`), `medoids()` (reads `centroids_ind`), `centroid_of(i)`.
-`clusters_ind`/`centroids_ind` stay as raw fields in C++ but the canonical
-read path is `labels()`/`medoids()` for cross-language parity with `Result`.
+Read accessors required by the frozen contract: `size()`, `n_clusters()` (was
+`cluster_size()`), `name()`, `series(i)`, `series_name(i)`, `labels()`,
+`medoids()`, and `centroid_of(i)`. C++ `name()` is still absent and raw
+configuration/result fields remain public (F19); `labels()`/`medoids()` are the
+live cross-language read path.
 
-**Remaining live C++ `Problem` members — explicit fate (so Phase 2 has a complete
-surface).** These live symbols are neither renamed above nor bound in Python/MATLAB
-today; 2.0 fixes their status as follows:
+**Remaining live C++ `Problem` members — frozen fate and current status.**
 
 | Live C++ member | Source | 2.0 fate |
 |---|---|---|
 | `set_clusters(std::vector<int>&)` | Problem.hpp:186 | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). |
 | `cluster_and_process()` | Problem.hpp:266 | **stays C++-only** convenience (cluster + write outputs). The Tier-1 `cluster()` free function (§1.3) is its cross-language successor; not bound. |
-| `resize()` | Problem.hpp:179 | **becomes private** in Task 1.6 (internal invariant maintenance; called by `set_view_data`). Not a public entry point. |
+| `resize()` | Problem.hpp | frozen as private invariant maintenance; still public `[gap F19]` |
 | `init()` | Problem.hpp:259 | **stays C++-only**, canonical `init` (runs `init_fun`); not bound. |
-| `last_iterations` (field) | Problem.hpp:132 | **becomes private with a read accessor** `last_iterations()` in Task 1.6 (diagnostic count written by clustering). Read-only; no setter. |
-| `init_fun` (`std::function`) | Problem.hpp:143 | **stays a public C++ field** (the initialisation-strategy hook `init::random` by default); C++-only, not bound (no cross-language callable-injection contract in 2.0). Task 1.6 may wrap it behind `set_init_strategy(...)` — recorded as §10 item 7. |
+| `last_iterations` (field) | Problem.hpp | frozen private with read accessor `last_iterations()`; field remains public and accessor absent `[gap F19]` |
+| `init_fun` (`std::function`) | Problem.hpp | public C++-only callable extension point; no `set_init_strategy` enum (§10 item 7) |
 
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
@@ -340,6 +338,10 @@ the CLI (`dtwc_cl.cpp:471-555`) is the other path. Chained setters return
 | `path(fs::path)` | `path(fs::path)` (unchanged) |
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
+
+The four snake_case path/builder names in this section and rename-table rows
+35–38 remain unimplemented frozen promises (F21); only the camelCase
+`startColumn`/`startRow` and `setDataPath`/`setResultsPath` spellings exist.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
 
@@ -360,11 +362,9 @@ uniformly). Same name in all three languages.
 Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
 `dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
 `normalized_mutual_information` (`_dtwcpp_core.cpp:671-709`); MATLAB the same
-(`dtwc_mex.cpp:792-874`). ‡ **OPEN for adversarial review:** the exact final
-spellings of Adjusted-Rand and Normalized-MI (`adjusted_rand` vs
-`adjusted_rand_index`; `normalized_mutual_info` vs `normalized_mutual_information`)
-are the two least-settled names — `davies_bouldin` is fixed by decision, the
-rest follow its pattern. Reviewer resolves before FROZEN.
+(`dtwc_mex.cpp:792-874`). The canonical Adjusted-Rand and Normalized-MI
+spellings are adjudicated in §10 item 1. F22 records that retained aliases do
+not all emit the promised warning.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -376,16 +376,14 @@ rest follow its pattern. Reviewer resolves before FROZEN.
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` (:715) | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` (:725) | `cut_dendrogram(dend, prob, k)` |
 
-**Result write-back (fixed decision).** In 2.0, `fast_pam`/`fast_clara`/`clarans`
-write `labels`/`medoids`/`k` back into `Problem` **in C++** (Task 1.6). The
-binding-side auto-wire that does this today (Python `_dtwcpp_core.cpp:573-576,
-615-619, 744-747`; MATLAB `store_result_in_problem`, `dtwc_mex.cpp:222-227`) is
-then deleted in Phase 2 — behaviour is unchanged, ownership moves to core.
-`cut_dendrogram` also writes back in 2.0 (today it does not — `_dtwcpp_core.cpp:732`).
+**Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
+`cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
+Python relies on core writeback. MATLAB still repeats the same assignment in
+`store_result_in_problem`; F19 owns removal after a digit-identical probe.
 
-**Reserved:** `Method::LRCore` (Phase 4 exact solver; name registered here so
-Phase 4 lands against it). Until Phase 4, the Tier-1 `method="mip"` maps to
-solver-backed exact (`Method::MIP`).
+**LR-core is live.** `Method::LRCore` dispatches the implemented exact
+Lagrangian-relaxation solver. `Method::MIP` remains the solver-backed exact
+route; neither name is reserved future work.
 
 ### 2.6 Distance free functions (Tier-2, all languages)
 
@@ -418,36 +416,37 @@ per concept":
 Net: `dtw` = "standard DTW" in C++ but "dispatcher" in Python/MATLAB. This is
 accepted rather than unified because C++ overloading and the Python/MATLAB
 keyword-dispatch idiom cannot share one signature; unifying would force an
-un-idiomatic name on one side. Recorded as an open item (§10 item 8) for the
-reviewer to ratify before FROZEN.
+un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
 
 **Precision default.** All `dtwc::distance::*` templates default to
-`T = settings::default_data_t`, which is `double`
-(`settings.hpp`, `distance.hpp`). Float32 remains an explicit template/storage
-opt-in; see §8. Python's single-pair distance functions uniformly accept
-contiguous NumPy array views (`_dtwcpp_core.cpp`, `dtw_distance` through
-`dtw_arow_distance`); MATLAB's public numeric boundary remains double.
+`T = settings::default_data_t`, which is `double`. An explicit `<float>`
+instantiation computes and returns `float`; `Problem`/`Result`/matrix routes
+return `double` as detailed in §8. Python's single-pair functions uniformly
+accept contiguous NumPy array views; MATLAB's public numeric boundary is double.
 
 ### 2.7 Checkpoint / resume (Tier-2, implements invariant #4)
 
-The checkpoint/resume surface backing preserved invariant #4 (§7 item 4). These
-symbols exist today and are frozen here so Phase 2.1 has them to implement against;
-names are already snake_case, so no rename — only binding-parity gaps are marked.
+The checkpoint/resume surface backs preserved invariant #4 (§7 item 4). Names
+are snake_case; current availability and gaps are explicit below.
 
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
-| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} (:31) | `CheckpointOptions` (live, `_dtwcpp_core.cpp:640`) | `CheckpointOptions` struct `[new]` |
-| save dir checkpoint | `save_checkpoint(const Problem&, const std::string& path)` (:46) | `save_checkpoint(prob, path)` (live, `_dtwcpp_core.cpp:651`) | `save_checkpoint(prob, path)` `[new]` |
-| load dir checkpoint | `load_checkpoint(Problem&, const std::string& path) -> bool` (:57) | `load_checkpoint(prob, path)` (live, `_dtwcpp_core.cpp:656`) | `load_checkpoint(prob, path)` `[new]` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` (:79) | — `[new bind]` | — `[new]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` (:90) | — `[new bind]` | — `[new]` |
+| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} | live | live `[introduced-2.0]` |
+| save dir checkpoint | `save_checkpoint(const Problem&, path)` | live | live `[introduced-2.0]` |
+| load dir checkpoint | `load_checkpoint(Problem&, path) -> bool` | live | live `[introduced-2.0]` |
+| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | absent `[gap F23]` | live `[introduced-2.0]` |
+| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | absent `[gap F23]` | live `[introduced-2.0]` |
 
-*Contract:* directory checkpoint = `distances.csv` + `metadata.txt`; binary result
-checkpoint = the `<name>_checkpoint.bin` of §7 item 2; the mmap distance-matrix
-cache (`<name>_distmat.cache`) is the third leg of the invariant-#4 triple and is
-driven via `use_mmap_distance_matrix(path)` (§2.2) + CLI `--resume`. MATLAB
-checkpointing (`TODO.md:105`, "MATLAB Phase 2: checkpointing") is `[new]` and
-lands in Phase 2.2 against this table.
+`CheckpointOptions` is presently a passive configuration carrier: no
+algorithm or save/load call consumes `enabled`, `save_interval`, or
+`directory`. Persistence is explicit through `save_checkpoint(prob, path)` and
+`load_checkpoint(prob, path)`.
+
+Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
+`generations/<id>/{distances.csv,metadata.txt}` payload. A binary result
+checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
+`<name>_distmat.cache`. CLI `--resume` reads but currently discards the binary
+result state (F17); Python lacks the two direct binary bindings (F23).
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
@@ -475,15 +474,15 @@ only because the CPU lazy path computes L1.
 
 ## 3. Full 1.x → 2.0 rename table
 
-Every current public camelCase / duplicate / divergent symbol found by reading
-the headers and both bindings. Column **Shim** = how the old name survives:
-`[[deprecated]]` C++ inline shim, or `alias` (Python/MATLAB deprecated alias),
-or `removed` (dropped from bindings — 2.0 is the break point, surface report §7).
+Frozen registry of public camelCase/duplicate/divergent names. Column
+**Compatibility requirement** states the promised transition, not a claim that
+every diagnostic is implemented. F21 covers four missing canonical C++ names;
+F22 covers retained aliases/fields that do not emit their required warning.
 
-| # | Concept | 1.x name(s) | 2.0 canonical | Shim |
+| # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (Problem.hpp:185) | `set_n_clusters` | C++ `[[deprecated]]` |
-| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp:445`) | `set_n_clusters` | removed (alias 1 cycle) |
+| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp:445`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:113) | `set_n_clusters` | already canonical |
 | 4 | max iterations (C++ field) | `Problem::maxIter` (Problem.hpp:130) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:27) | `set_max_iter` | alias (loud warn) |
@@ -541,11 +540,11 @@ combined with the mmap cache and fail before either storage path is opened. Omit
 the dense option to use automatic mmap resume, or raise the threshold only when
 the dense matrix and CSV checkpoint fit in memory.
 
-**Duplicate-elimination principle (surface report §7).** Where the same concept
-had three different names (surface report inconsistency table rows 1, 5, 12), 2.0
-collapses to one canonical and the bindings expose **only** that name. C++ keeps
-`[[deprecated]]` shims for source compatibility; Python/MATLAB keep a
-one-release deprecated alias, then removal.
+**Duplicate-elimination principle (surface report §7).** Documentation exposes
+one canonical name per concept. Compatibility aliases remain callable for the
+specified transition window; they do not become a second canonical spelling.
+F22 records incomplete diagnostics, and F21 records the four canonical C++
+spellings that are still absent.
 
 ---
 
@@ -571,26 +570,33 @@ bindings").
   untouched.
 - **CLI.** Old flag spellings are accepted with a deprecation warning; the SLURM
   callers (`cluster_generic.slurm`, `_hpc.build_dtwc_command`) are updated in the
-  same commit that renames a flag (Phase 2.3) — the CLI flag set is a de-facto
-  API (§7 item 3).
+  same change that renames a flag. The CLI flag set is a de-facto API (§7 item
+  3).
 - **Nothing silently disappears.** A removed binding name that a user calls must
   raise `AttributeError`/`Unknown command` — never resolve to a different
   behaviour.
+
+This section is normative. Current C++ `maxIter`/`N_repetition`, most Python
+aliases, and MATLAB compatibility properties/functions do not yet emit the
+required diagnostics (F22). Their absence is not approval to remove the
+warnings from the frozen policy.
 
 ---
 
 ## 5. Error taxonomy
 
 **Fixed decision.** Base `dtwc::Error` (subclass of `std::runtime_error`) plus
-four leaf types. No `assert`-as-validation, no `exit()` in library code
-(enforced in Task 1.2, `dtwc/error.hpp`). Bindings translate to native
-exceptions / `mexErrMsgIdAndTxt`.
+four leaf types. Maintained user-facing configuration/dispatch validators raise
+typed exceptions; internal assertions are permitted only for preconditions
+made unreachable by those validators. Public view/bounds accessors still rely
+on build-dependent assertions (F25). Library code does not call `exit()`.
+Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 
 | C++ type | Covers | Python class | MATLAB identifier |
 |---|---|---|---|
 | `dtwc::Error` (base) | anything DTWC-thrown not more specific | `dtwcpp.DtwcError(Exception)` | `dtwc:error` |
 | `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
-| `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status (Task 0.5 migrates onto this) | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
+| `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
 | `dtwc::DeviceError` | device/backend problem: unknown device name, `gpu` on non-GPU build, `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
 | `dtwc::IOError` | file/format failure: file not found, unreadable, bad Parquet/Arrow type, OOB offsets, checkpoint mismatch | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
 
@@ -599,14 +605,13 @@ exceptions / `mexErrMsgIdAndTxt`.
 - **Python (nanobind).** Register one exception translator per type. Each leaf
   subclasses both `DtwcError` and the closest built-in (`ValueError`/`OSError`/
   `RuntimeError`) so idiomatic `except ValueError:` and `except dtwcpp.InvalidInput:`
-  both work. `dtwc::Error` maps to `DtwcError`.
+  both work. `dtwc::Error` maps to `DtwcError`. The public I/O name is
+  `dtwcpp.IOError`; there is no `DtwcIOError` alias (§10 item 5).
 - **MATLAB (MEX).** `mexFunction`'s catch ladder maps types to identifiers.
   `dtwc::InvalidInput` **must** map to `dtwc:invalidArgument` — this identifier
-  is **already pinned verbatim** by `tests/matlab/test_mex_input_validation.m`
-  (16 assertions at lines 63–178) and must not change. The current ladder
-  (`dtwc_mex.cpp:1039-1049`) maps `std::invalid_argument → dtwc:invalidArgument`,
-  `std::out_of_range → dtwc:outOfRange`, `std::runtime_error → dtwc:runtime`; in
-  2.0 it maps the DTWC leaf types first (`InvalidInput → dtwc:invalidArgument`,
+  is pinned verbatim by `tests/matlab/test_mex_input_validation.m` and must not
+  change. The live ladder maps the DTWC leaf types first
+  (`InvalidInput → dtwc:invalidArgument`,
   `SolverError → dtwc:solverError`, `DeviceError → dtwc:deviceError`,
   `IOError → dtwc:ioError`), keeping the std fallbacks below them so
   `dtwc:invalidArgument` continues to fire for the pinned input-validation cases.
@@ -615,9 +620,11 @@ exceptions / `mexErrMsgIdAndTxt`.
 
 ## 6. Device / `Env` semantics
 
-**Fixed decision.** `dtwc::Env` (Task 1.3) owns device (`cpu`/`gpu`/`hpc`),
-precision, and thread policy; `device()` in every language delegates to it.
-Singleton accessor `dtwc::env()`. **No silent fallback anywhere.**
+**Fixed decision.** `dtwc::Env` owns device (`cpu`/`gpu`/`hpc`) and thread
+policy. Series/recurrence precision belongs to `Data`, `Problem`, and CLI
+configuration, not Env. Singleton accessor: `dtwc::env()`. C++ and MATLAB
+device calls delegate directly; Python mirrors CPU/GPU selections but defers
+HPC validation to its wrapper. **No silent fallback anywhere.**
 
 ### 6.1 Device names
 
@@ -643,14 +650,16 @@ front end. The user selects `cpu` explicitly if that is what they want.
 ### 6.2 `device="hpc"` — `.env` credential contract
 
 `hpc` reads SLURM credentials from a `.env` file at the repository root. Required
-keys (the names the live SLURM path already uses — `_hpc.py:122-126`,
+keys (the names the live SLURM path already uses,
 `scripts/slurm/env.example`): **`SLURM_HOST`**, **`SLURM_USER`**,
-**`SLURM_REMOTE_BASE`**. Each of the three failure modes produces a specific,
-actionable `DeviceError` (Python `DeviceError`, MATLAB `dtwc:deviceError`), never
-a stack trace and never a silent local fallback.
+**`SLURM_REMOTE_BASE`**. The frozen contract requires each failure mode to
+produce the specific actionable `DeviceError` below, never a local fallback.
+C++/MATLAB follow Env's messages; Python currently raises wrapper-specific
+`RuntimeError` text instead (F24).
 
-**Task 1.3 asserts these three messages VERBATIM.** They are authored here as the
-exact C++ `DeviceError::what()` strings; Python/MATLAB reproduce them byte-for-byte.
+The C++/MATLAB tests assert these three messages verbatim. They are authored
+here as the exact C++ `DeviceError::what()` strings; F24 requires Python to
+reproduce them byte-for-byte.
 The recommended test fixture uses `SLURM_HOST=arc-login.arc.ox.ac.uk`,
 `SLURM_USER=abcd1234`.
 
@@ -692,9 +701,9 @@ block are constant text.
 - `device="hpc"`: **metadata-only** local load — shapes/counts/names read
   locally; bulk series streamed to the cluster at submit (`load()` never reads
   the payload; `cluster_on_hpc` forwards a path, `_hpc.py:185-193`).
-- Local library devices (`cpu`/`gpu`): `core::StoragePolicy::Auto` — mmap-backed
-  store when estimated footprint exceeds a threshold (default 50% free RAM,
-  overridable via `set_storage_policy`). The CLI controls parent distance
+- Local library data routing is implemented by `DataLoader::storage_policy`.
+  The frozen `Problem::set_storage_policy` override is only an advisory stored
+  field today and has no effect on that routing (F20). The CLI controls distance
   storage separately with `--mmap-threshold`. Its `--ram-limit` is a conservative
   cap on Parquet selected-series decoding/materialisation, applied before payload
   I/O; it is not a whole-process RSS limit. Only a single list-per-row file can
@@ -740,18 +749,23 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:68-84`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
    deprecation path (§4) with those two callers updated in the same commit.
-4. **Checkpoint/resume triple.** Directory checkpoint (distances.csv +
-   metadata.txt), binary result checkpoint, mmap distance-matrix cache with
-   `--resume` — long SLURM runs depend on all three. A non-full FastCLARA run
+4. **Checkpoint/resume triple.** Directory checkpoint v2 (`CURRENT` plus
+   `generations/<id>/{distances.csv,metadata.txt}`), binary result checkpoint,
+   and mmap distance-matrix cache with `--resume` form the frozen triple. Python
+   binary bindings are missing (F23), and CLI `--resume` loads but does not
+   apply binary clustering state (F17). A non-full FastCLARA run
    has no parent distance matrix and therefore rejects the directory checkpoint
    and imported dense matrix paths; its automatic binary result checkpoint is
    still written. The full-sample PAM fallback retains the ordinary triple.
-5. **Precision contract.** Distance matrix and returned distances are always
-   `double`, even with `float32` series storage (§8).
-6. **Zero-copy / perf paths.** nanobind ndarray zero-copy + GIL release on every
-   long call; Data view-mode spans; interleaved multivariate layout
+5. **Precision contract.** `Problem`/`Result`/CLI distance results and matrices
+   are double, including Float32 storage; explicit C++ helper templates return
+   their requested scalar type (§8).
+6. **Zero-copy / perf paths.** Nanobind pairwise ndarray routes are zero-copy
+   and release the GIL on long calls; Data view-mode spans and interleaved
+   multivariate layout
    (`[t0f0,t0f1,t1f0,…]`); lock-free row-partitioned matrix fill
-   (`_dtwcpp_core.cpp:536-550`).
+   are preserved. Python `Problem.set_view_data` currently constructs owning
+   storage rather than a view (F26).
 7. **Determinism.** Seed-aware Tier-1 PAM/OneBatchPAM/CLARA entry points use the
    invocation-local cross-language default 42 (§1.3); estimator restart `i` uses
    `42+i`. The unseeded Tier-2 FastPAM overload retains the legacy mutable
@@ -787,59 +801,62 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
   public `double` return (`Problem::dtw_fn_f32_t`); dense/mmap distance-matrix
   entries are double. A double result container does not restore precision
   discarded by Float32 inputs or recurrence arithmetic.
+- **Explicit helper return type follows the template scalar.**
+  `dtwc::distance::*<float>` returns `float`; the default template scalar is
+  double. The “result storage is double” rule above is specific to
+  `Problem`/`Result`/matrix routes.
 - **Storage default.** `Data::precision` and the `Precision::Float64` enum
   comment identify Float64 as the default; Float32 is opt-in.
 
 ---
 
-## 9. Notes for Phase 2 / test authors (LESSONS compliance)
+## 9. Permanent verification anchors
 
-- **Tests must pin the LIVE code path.** Per `.claude/LESSONS.md`, a test name
-  must match the algorithm path it actually exercises, and every parity test
-  must drive a real public entry point — not a dead sibling. When Phase 2 /
-  Task 1.3 add tests against this contract, each test states in a comment which
-  public entry point it exercises (e.g. `// drives dtwc::cluster() Tier-1`,
-  `// drives Env::set_device("hpc") .env-missing path`). The `.env` verbatim
-  assertions (§6.2) and the `dtwc:invalidArgument` pin (§5) are the two
-  highest-value live-path anchors.
-- **Parity fixture (Phase 2.4).** One recorded dataset → banded DTW → `fast_pam`
-  k=3, fixed seed → labels + medoids + 3 scores, run from C++, Python, MATLAB,
-  and CLI, asserting digit-identical labels/medoids and scores equal to 1e-12
-  rel. That fixture is the permanent cross-language gate for this contract.
-
----
-
-## 10. Open items for the adversarial reviewer (before FROZEN)
-
-1. **Score names ‡** (§2.4): confirm `adjusted_rand` / `normalized_mutual_info`
-   vs keeping `_index`/`_information`. `davies_bouldin` is fixed.
-2. **MATLAB PascalCase→snake_case property break** (§0, §3 rows 5–10, 29,
-   29c–29g): confirm the deliberate idiom break is acceptable vs keeping
-   PascalCase properties as first-class (with snake_case setters/getters as the
-   alignable twin). This now also covers the read-only dependent props
-   `Size`/`ClusterSize`/`Name`/`CentroidsInd`/`ClustersInd` (§3 rows 29c–29g).
-3. **`Result.score("silhouette")` aggregation** (§1.4): confirm returning the
-   **mean** silhouette (scalar) is the right Tier-1 contract, with the per-point
-   vector available via Tier-2 `scores::silhouette(prob)`.
-4. **`.env` key names** (§6.2): confirm `SLURM_HOST`/`SLURM_USER`/
-   `SLURM_REMOTE_BASE` (matching the live wrapper) rather than a new
-   `DTWC_HPC_*` scheme — the verbatim messages depend on this choice.
-5. **Python `IOError` name clash** (§5): confirm exposing `dtwcpp.IOError`
-   (shadows the builtin alias of `OSError`) vs naming it `dtwcpp.DtwcIOError`.
-6. **`distance_matrix()` cross-language collision** (§2.2 †): confirm the C++
-   variant-storage accessor `Problem::distance_matrix()` (Problem.hpp:231/233,
-   returns `std::variant<Dense,Mmap>`) keeps its name while Python/MATLAB
-   `distance_matrix()` returns an NxN array — or rename the C++ accessor (candidate
-   `distance_matrix_storage()`, Task 1.6) to remove the overload.
-7. **`Problem::init_fun` hook** (§2.2, "Remaining live members"): confirm the
-   `std::function<void(Problem&)>` initialisation hook stays a public C++-only
-   field vs wrapping it behind `set_init_strategy(...)` with a bound enum of named
-   strategies (no callable injection across the binding boundary).
-8. **`dtw` overload carve-out** (§2.6): confirm the sanctioned exception where
-   `dtw` = standard DTW in C++ (overload) but = dispatcher in Python/MATLAB, vs
-   forcing a single spelling (`standard`/`dtw`) on all three languages.
+- **Tests pin the live path.** Test names must match the algorithm path they
+  exercise, and parity tests drive public entry points rather than helpers. The
+  Env message tests and MATLAB `dtwc:invalidArgument` tests pin §5/§6.
+- **Cross-language conformance fixture.** `tests/conformance/` runs one recorded
+  dataset through banded DTW, FastPAM k=3, and three scores from C++, Python,
+  MATLAB, and CLI. Labels/medoids are digit-identical; the permanent reference
+  values are enforced to relative tolerance 1e-12.
+- **Tier-1 native gate.** `tests/unit/test_tier1_cpp_api.cpp` exercises the C++
+  device→load→cluster→Result route. Binding parity gates live in
+  `tests/python/test_contract_parity.py` and
+  `tests/matlab/test_contract_parity.m`.
+- **Known coverage limits are named findings.** Symbol-existence tests do not
+  close F18–F26; each finding in PLAN.md registers its own behavioral or
+  compile-time first gate.
 
 ---
 
-*End of contract. On adversarial sign-off, the header line becomes
-`STATUS: FROZEN` and Phase 2 implements every signature above verbatim.*
+## 10. Adjudicated reviewer decisions
+
+1. **Resolved:** canonical score names are `adjusted_rand` and
+   `normalized_mutual_info`. The `_index`/`_information` spellings remain
+   compatibility aliases for one cycle; F22 owns missing diagnostics.
+2. **Resolved:** snake_case MATLAB methods are canonical. PascalCase settable
+   and dependent properties remain functional compatibility aliases; they do
+   not currently emit runtime warnings (F22).
+3. **Resolved:** `Result.score("silhouette")` returns the arithmetic mean of
+   the per-series silhouette vector. Tier-2 `scores::silhouette(prob)` returns
+   the vector.
+4. **Resolved:** HPC credential keys remain `SLURM_HOST`, `SLURM_USER`, and
+   `SLURM_REMOTE_BASE`. C++/MATLAB use Env's pinned messages; Python uses the
+   same keys but has the F24 exception/message gap.
+5. **Resolved:** the public Python I/O exception is `dtwcpp.IOError`,
+   subclassing both `DtwcError` and `OSError`. No `DtwcIOError` alias exists.
+6. **Resolved:** retain language-specific `distance_matrix()` semantics. C++
+   returns the storage variant; Python/MATLAB return an NxN numeric matrix, and
+   Python returns an independent copy.
+7. **Resolved:** retain `Problem::init_fun` as a public C++-only callable
+   extension point. No `set_init_strategy` enum is introduced; arbitrary
+   callbacks own their RNG policy.
+8. **Resolved:** retain the `dtw` naming carve-out. C++ overloads `dtw` for
+   standard DTW and variant dispatch; Python/MATLAB expose `standard` for the
+   direct call and `dtw` for dispatch.
+
+---
+
+*End of frozen contract. Confirmed implementation gaps remain 2.0 obligations
+under PLAN.md F17–F26 unless a later governed decision explicitly changes
+them.*

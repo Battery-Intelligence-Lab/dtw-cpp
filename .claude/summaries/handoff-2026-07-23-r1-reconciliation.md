@@ -74,3 +74,23 @@ The frozen-contract reconciliation band is now registered as D6 in
 `.claude/baselines/2026-07-23-r1-docs-truth.md`. Its PLAN decision preserves
 every 2.0 promise, routes the nine confirmed implementation gaps to R3, and
 limits the current task to documentation truth.
+
+## Frozen-contract reconciliation result
+
+- F18–F26 are each registered once in PLAN and named in the contract as
+  unfulfilled 2.0 obligations.
+- All eight former reviewer questions are adjudicated to current shipped
+  behavior.
+- Current precision, Env ownership, checkpoint-v2 directory layout,
+  `CheckpointOptions`, matrix-copy/view, LR-core, and result-writeback status
+  replace the pre-implementation narrative.
+- The derived Tier-1, Tier-2, and migration pages were regenerated.
+- The real-CLI documentation contract gate passes; fresh Hugo rendering remains
+  `[BLOCKED-ENV]` under the registered probe.
+
+## Exact resume point (updated again)
+
+Register the GPU lower-bound correctness findings exposed while auditing
+`docs/content/method/gpu-backends.md`, one finding per independently repairable
+bug, before correcting that page. Then finish the remaining R1 docs pages,
+source comments, and record hygiene.

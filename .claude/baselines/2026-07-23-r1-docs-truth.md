@@ -144,6 +144,29 @@ stale or missing generated documentation:
 run: python scripts/generate_docs.py
 ```
 
+Final frozen-contract inventory:
+
+```text
+stale_marker_hits=0
+reviewer_resolutions=8
+implementation_findings=9
+finding_ids=18,19,20,21,22,23,24,25,26
+```
+
+Final decisive gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+**D6 verdict: PASS.** The inherited guard failed on all eight registered stale
+marker classes. The corrected contract preserves and names all nine
+implementation gaps F18–F26, adjudicates exactly eight reviewer decisions, and
+has zero registered pre-implementation markers. Derived Tier-1, Tier-2, and
+migration pages are current. Fresh rendered-link evidence remains
+`[BLOCKED-ENV]`; no stale-site result is promoted as evidence.
+
 The generator named only the expected projection. Regeneration and final gates:
 
 ```text
@@ -352,3 +375,31 @@ Registered repair band:
 The frozen-contract governance decision is recorded in `PLAN.md` before any
 contract edit. Fresh Hugo rendering remains under the registered
 `[BLOCKED-ENV]` result above.
+
+Deliberate red after adding the reachable audit guard, before contract repair:
+
+```text
+generated documentation is current
+Traceback (most recent call last):
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 300, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 287, in main
+    assert_contract_audit_state()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 76, in assert_contract_audit_state
+    raise AssertionError(
+        f"frozen contract retains pre-implementation markers: {present}"
+    )
+AssertionError: frozen contract retains pre-implementation markers: ['[new bind]', 'unbound today', 'before FROZEN', 'On adversarial sign-off', 'to be backed by `Env`', '**Reserved:** `Method::LRCore`', 'today it does not', 'directory checkpoint = `distances.csv` + `metadata.txt`']
+```
+
+The source-contract repair then produced exactly the registered generated drift:
+
+```text
+stale or missing generated documentation:
+  docs\content\api\tier-1.md
+  docs\content\api\tier-2.md
+  docs\content\guides\migration.md
+run: python scripts/generate_docs.py
+```

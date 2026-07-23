@@ -59,6 +59,53 @@ def assert_freeze_governance() -> None:
         )
 
 
+def assert_contract_audit_state() -> None:
+    contract = (ROOT / "docs/api-contract-2.0.md").read_text(encoding="utf-8")
+    stale = (
+        "[new bind]",
+        "unbound today",
+        "before FROZEN",
+        "On adversarial sign-off",
+        "to be backed by `Env`",
+        "**Reserved:** `Method::LRCore`",
+        "today it does not",
+        "directory checkpoint = `distances.csv` + `metadata.txt`",
+    )
+    present = [marker for marker in stale if marker in contract]
+    if present:
+        raise AssertionError(
+            f"frozen contract retains pre-implementation markers: {present}"
+        )
+
+    required = (
+        "[introduced-2.0]",
+        "## 10. Adjudicated reviewer decisions",
+        "CURRENT",
+        "generations/<id>",
+        "passive configuration carrier",
+        "independent copy",
+        "Python `Problem.set_view_data` currently constructs owning",
+    )
+    missing = [marker for marker in required if marker not in contract]
+    if missing:
+        raise AssertionError(
+            f"frozen contract omits audited current-state markers: {missing}"
+        )
+
+    if contract.count("**Resolved:**") != 8:
+        raise AssertionError(
+            "frozen contract must record exactly eight reviewer resolutions"
+        )
+    missing_findings = [
+        f"F{number}" for number in range(18, 27)
+        if f"F{number}" not in contract
+    ]
+    if missing_findings:
+        raise AssertionError(
+            f"frozen contract hides 2.0 implementation gaps: {missing_findings}"
+        )
+
+
 def assert_migration_behaviors() -> None:
     migration = (ROOT / "docs/content/guides/migration.md").read_text(
         encoding="utf-8"
@@ -239,6 +286,7 @@ def main() -> int:
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_docs.py"), "--check"],
                    check=True)
     assert_freeze_governance()
+    assert_contract_audit_state()
     assert_migration_behaviors()
     assert_rc1_changelog()
     assert_env_messages()

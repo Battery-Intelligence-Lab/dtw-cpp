@@ -8,22 +8,21 @@ description: "Advanced Problem, algorithms, scores, distance, and checkpoint API
 
 ## 2. Tier 2 — advanced object surface
 
-Retained for power users. `Problem` stays a first-class object but is *cleaned*:
-snake_case methods, invariant-preserving setters (no naked public field whose
-write silently de-syncs bound state), and algorithms that **write results back
-into `Problem`** in pure C++ (killing the C++-vs-bindings divergence #10 in the
-surface report — the bindings' explicit auto-wire at `_dtwcpp_core.cpp:573-576`
-and `dtwc_mex.cpp:222-227` then deletes in Phase 2).
+Retained for power users. `Problem` stays a first-class object. Canonical
+snake_case methods and core algorithm result writeback are live, but the frozen
+encapsulation/accessor cleanup is incomplete and MATLAB retains redundant
+binding-side writeback (F19). A live symbol in the tables below does not imply
+that every promised invariant or deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters (all `snake_case`, all invariant-preserving). Naked
-public fields present today become private with these setters in Task 1.6.
+Canonical config setters are snake_case. Public configuration/result fields and
+three missing C++ accessors remain the F19 implementation gap.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | C++ `set_numberOfClusters` (Problem.hpp:185); Py `set_number_of_clusters` (`_dtwcpp_core.cpp:445`); MEX already `set_n_clusters` (Problem.m:113) |
-| method (enum) | `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[new]` | field `method{Method::Kmedoids}` (Problem.hpp:129); Py rw prop `method` (`_dtwcpp_core.cpp:422`); written live by the Tier-1 path `prob.method = dtwcpp.Method.MIP` (`_api.py:186`) |
+| method (enum) | `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | field `band` (Problem.hpp:133); MEX `set_band` |
 | max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | field `maxIter` (Problem.hpp:130) |
 | repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | field `N_repetition` (Problem.hpp:131) |
@@ -32,78 +31,72 @@ public fields present today become private with these setters in Task 1.6.
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | Problem.hpp:207 |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | field (Problem.hpp:135) |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | field (Problem.hpp:136) |
-| lower-bound strategy | `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[new bind]` | `set_lb_strategy(str)` `[new]` | field `lb_strategy` (Problem.hpp:137) — unbound today |
-| storage policy | `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[new bind]` | `set_storage_policy(str)` `[new]` | field (Problem.hpp:138) — unbound today |
-| solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[new bind]` | `set_solver(str)` `[new]` | Problem.hpp:187 — unbound in Py/MEX today |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[new]` | Problem.hpp:140 |
-| CUDA settings | `cuda_settings` field | `cuda_settings` prop `[new bind]` | — `[new]` | Problem.hpp:139 — unbound today |
-| output folder | `set_output_folder(path)` | `output_folder` prop `[new bind]` | `set_output_folder(dir)` `[new]` | field (Problem.hpp:145) — unbound today |
+| lower-bound strategy | `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
+| storage policy | `set_storage_policy(core::StoragePolicy)` `[gap F20: advisory only]` | `storage_policy` prop `[introduced-2.0; gap F20]` | `set_storage_policy(str)` `[introduced-2.0; gap F20]` | validation/storage are live; promised routing is not |
+| solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes |
+| CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
+| output folder | `set_output_folder(path)` `[gap F19: absent]` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | raw C++ field plus live Python/MATLAB setters |
 | verbose | `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | field (Problem.hpp:141) |
 | data (owning) | `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | Problem.hpp:189; `_dtwcpp_core.cpp:447`; MEX `set_data` |
-| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[new bind]` | — | Problem.hpp:197 — unbound today |
+| data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
+
+Python `Problem.set_view_data` currently constructs owning nested-vector
+storage before calling C++; it is not a non-owning ndarray view (F26).
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
 | C++ live (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
-| `refreshDistanceMatrix()` (:178) | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[new]` |
-| `readDistanceMatrix(path)` (:184) | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[new bind]` | `read_distance_matrix(path)` `[new]` |
-| `maxDistance()` (:209) | `max_distance()` | `max_distance()` (live) | `max_distance()` `[new]` |
+| `refreshDistanceMatrix()` (:178) | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` (:184) | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `maxDistance()` (:209) | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
 | `distByInd(i,j)` (:210) | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
 | `isDistanceMatrixFilled()` (:225) | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
 | `fillDistanceMatrix()` (:246) | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
-| `printDistanceMatrix()` (:247) | `print_distance_matrix()` | `print_distance_matrix()` `[new bind]` | — |
+| `printDistanceMatrix()` (:247) | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
 | `writeDistanceMatrix([name])` (:249) | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` (:236) | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (was live `distance_matrix_numpy()`, `_dtwcpp_core.cpp:457`; one name; zero-copy where safe, Phase 2.1) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| `dense_distance_matrix()` (:236) | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()`, `_dtwcpp_core.cpp:492`, used by `_api.py:224`) | `set_distance_matrix(D)` (live, Problem.m:164) |
-| `use_mmap_distance_matrix(path)` (:244) | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[new bind]` | — |
+| `use_mmap_distance_matrix(path)` (:244) | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` (:269) | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` (:270) | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` (:272) | `calculate_medoids()` | `calculate_medoids()` (live) | — |
-| `cluster()` (:262) | `cluster()` | `cluster()` (live) | `cluster()` `[new]` |
+| `cluster()` (:262) | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
 | `cluster_by_MIP()` (:263) | `cluster_by_mip()` | — | — |
 | `cluster_by_kMedoidsLloyd()` (:264) | `cluster_by_kmedoids_lloyd()` | — | — |
 | `printClusters()` (:252) | `print_clusters()` | `print_clusters()` (live) | — |
 | `writeClusters()` (:253) | `write_clusters()` | `write_clusters()` (live) | — |
-| `writeMedoidMembers(iter,rep=0)` (:255) | `write_medoid_members(iter, rep=0)` | `[new bind]` | — |
+| `writeMedoidMembers(iter,rep=0)` (:255) | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
 | `writeSilhouettes()` (:256) | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
-**† Name collision (unresolved — flagged, not silently renamed).** C++ has a
-*second*, live `Problem::distance_matrix()` (Problem.hpp:231/233) that returns the
-internal `std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference — a
-different return type from the Python/MATLAB `distance_matrix()` NxN-array
-accessor above. The token `distance_matrix()` therefore denotes two different
-things across languages. 2.0 does **not** unify them here; the C++ variant
-accessor keeps its name (it is the storage-level handle, not a user array) and the
-divergence is recorded as an open item (§10 item 6). Task 1.6 confirms the final
-C++ spelling (candidate: `distance_matrix_storage()`).
+**† Name collision (adjudicated in §10 item 6).** C++
+`Problem::distance_matrix()` returns the internal
+`std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` by reference. The
+Python/MATLAB spelling returns an NxN numeric matrix; Python returns an
+independent copy. The language-specific semantics are retained.
 
-**‡ Python read/write rename.** The live Python read accessor is
-`distance_matrix_numpy()` (`_dtwcpp_core.cpp:457`) and the live writer is
-`set_distance_matrix_from_numpy()` (`_dtwcpp_core.cpp:492`, called by
-`_api.py:224`). 2.0 renames the pair to `distance_matrix()` / `set_distance_matrix()`
-so the read and write names match MATLAB's row 29/29a and the C++ dense accessor.
-Both old Python names survive one cycle as deprecated aliases (§4). See §3 rows 29a
-and 29b.
+**‡ Python read/write rename.** `distance_matrix()` and
+`set_distance_matrix()` are canonical and live. The old
+`distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
+compatibility aliases; F22 owns their missing deprecation diagnostics.
 
-Read accessors (canonical, all languages): `size()`, `n_clusters()` (was
-`cluster_size()`), `name()`, `series(i)`, `series_name(i)`, `labels()` (reads
-`clusters_ind`), `medoids()` (reads `centroids_ind`), `centroid_of(i)`.
-`clusters_ind`/`centroids_ind` stay as raw fields in C++ but the canonical
-read path is `labels()`/`medoids()` for cross-language parity with `Result`.
+Read accessors required by the frozen contract: `size()`, `n_clusters()` (was
+`cluster_size()`), `name()`, `series(i)`, `series_name(i)`, `labels()`,
+`medoids()`, and `centroid_of(i)`. C++ `name()` is still absent and raw
+configuration/result fields remain public (F19); `labels()`/`medoids()` are the
+live cross-language read path.
 
-**Remaining live C++ `Problem` members — explicit fate (so Phase 2 has a complete
-surface).** These live symbols are neither renamed above nor bound in Python/MATLAB
-today; 2.0 fixes their status as follows:
+**Remaining live C++ `Problem` members — frozen fate and current status.**
 
 | Live C++ member | Source | 2.0 fate |
 |---|---|---|
 | `set_clusters(std::vector<int>&)` | Problem.hpp:186 | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). |
 | `cluster_and_process()` | Problem.hpp:266 | **stays C++-only** convenience (cluster + write outputs). The Tier-1 `cluster()` free function (§1.3) is its cross-language successor; not bound. |
-| `resize()` | Problem.hpp:179 | **becomes private** in Task 1.6 (internal invariant maintenance; called by `set_view_data`). Not a public entry point. |
+| `resize()` | Problem.hpp | frozen as private invariant maintenance; still public `[gap F19]` |
 | `init()` | Problem.hpp:259 | **stays C++-only**, canonical `init` (runs `init_fun`); not bound. |
-| `last_iterations` (field) | Problem.hpp:132 | **becomes private with a read accessor** `last_iterations()` in Task 1.6 (diagnostic count written by clustering). Read-only; no setter. |
-| `init_fun` (`std::function`) | Problem.hpp:143 | **stays a public C++ field** (the initialisation-strategy hook `init::random` by default); C++-only, not bound (no cross-language callable-injection contract in 2.0). Task 1.6 may wrap it behind `set_init_strategy(...)` — recorded as §10 item 7. |
+| `last_iterations` (field) | Problem.hpp | frozen private with read accessor `last_iterations()`; field remains public and accessor absent `[gap F19]` |
+| `init_fun` (`std::function`) | Problem.hpp | public C++-only callable extension point; no `set_init_strategy` enum (§10 item 7) |
 
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
@@ -121,6 +114,10 @@ the CLI (`dtwc_cl.cpp:471-555`) is the other path. Chained setters return
 | `path(fs::path)` | `path(fs::path)` (unchanged) |
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
+
+The four snake_case path/builder names in this section and rename-table rows
+35–38 remain unimplemented frozen promises (F21); only the camelCase
+`startColumn`/`startRow` and `setDataPath`/`setResultsPath` spellings exist.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
 
@@ -141,11 +138,9 @@ uniformly). Same name in all three languages.
 Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
 `dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
 `normalized_mutual_information` (`_dtwcpp_core.cpp:671-709`); MATLAB the same
-(`dtwc_mex.cpp:792-874`). ‡ **OPEN for adversarial review:** the exact final
-spellings of Adjusted-Rand and Normalized-MI (`adjusted_rand` vs
-`adjusted_rand_index`; `normalized_mutual_info` vs `normalized_mutual_information`)
-are the two least-settled names — `davies_bouldin` is fixed by decision, the
-rest follow its pattern. Reviewer resolves before FROZEN.
+(`dtwc_mex.cpp:792-874`). The canonical Adjusted-Rand and Normalized-MI
+spellings are adjudicated in §10 item 1. F22 records that retained aliases do
+not all emit the promised warning.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -157,16 +152,14 @@ rest follow its pattern. Reviewer resolves before FROZEN.
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` (:715) | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` (:725) | `cut_dendrogram(dend, prob, k)` |
 
-**Result write-back (fixed decision).** In 2.0, `fast_pam`/`fast_clara`/`clarans`
-write `labels`/`medoids`/`k` back into `Problem` **in C++** (Task 1.6). The
-binding-side auto-wire that does this today (Python `_dtwcpp_core.cpp:573-576,
-615-619, 744-747`; MATLAB `store_result_in_problem`, `dtwc_mex.cpp:222-227`) is
-then deleted in Phase 2 — behaviour is unchanged, ownership moves to core.
-`cut_dendrogram` also writes back in 2.0 (today it does not — `_dtwcpp_core.cpp:732`).
+**Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
+`cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
+Python relies on core writeback. MATLAB still repeats the same assignment in
+`store_result_in_problem`; F19 owns removal after a digit-identical probe.
 
-**Reserved:** `Method::LRCore` (Phase 4 exact solver; name registered here so
-Phase 4 lands against it). Until Phase 4, the Tier-1 `method="mip"` maps to
-solver-backed exact (`Method::MIP`).
+**LR-core is live.** `Method::LRCore` dispatches the implemented exact
+Lagrangian-relaxation solver. `Method::MIP` remains the solver-backed exact
+route; neither name is reserved future work.
 
 ### 2.6 Distance free functions (Tier-2, all languages)
 
@@ -199,36 +192,37 @@ per concept":
 Net: `dtw` = "standard DTW" in C++ but "dispatcher" in Python/MATLAB. This is
 accepted rather than unified because C++ overloading and the Python/MATLAB
 keyword-dispatch idiom cannot share one signature; unifying would force an
-un-idiomatic name on one side. Recorded as an open item (§10 item 8) for the
-reviewer to ratify before FROZEN.
+un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
 
 **Precision default.** All `dtwc::distance::*` templates default to
-`T = settings::default_data_t`, which is `double`
-(`settings.hpp`, `distance.hpp`). Float32 remains an explicit template/storage
-opt-in; see §8. Python's single-pair distance functions uniformly accept
-contiguous NumPy array views (`_dtwcpp_core.cpp`, `dtw_distance` through
-`dtw_arow_distance`); MATLAB's public numeric boundary remains double.
+`T = settings::default_data_t`, which is `double`. An explicit `<float>`
+instantiation computes and returns `float`; `Problem`/`Result`/matrix routes
+return `double` as detailed in §8. Python's single-pair functions uniformly
+accept contiguous NumPy array views; MATLAB's public numeric boundary is double.
 
 ### 2.7 Checkpoint / resume (Tier-2, implements invariant #4)
 
-The checkpoint/resume surface backing preserved invariant #4 (§7 item 4). These
-symbols exist today and are frozen here so Phase 2.1 has them to implement against;
-names are already snake_case, so no rename — only binding-parity gaps are marked.
+The checkpoint/resume surface backs preserved invariant #4 (§7 item 4). Names
+are snake_case; current availability and gaps are explicit below.
 
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
-| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} (:31) | `CheckpointOptions` (live, `_dtwcpp_core.cpp:640`) | `CheckpointOptions` struct `[new]` |
-| save dir checkpoint | `save_checkpoint(const Problem&, const std::string& path)` (:46) | `save_checkpoint(prob, path)` (live, `_dtwcpp_core.cpp:651`) | `save_checkpoint(prob, path)` `[new]` |
-| load dir checkpoint | `load_checkpoint(Problem&, const std::string& path) -> bool` (:57) | `load_checkpoint(prob, path)` (live, `_dtwcpp_core.cpp:656`) | `load_checkpoint(prob, path)` `[new]` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` (:79) | — `[new bind]` | — `[new]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` (:90) | — `[new bind]` | — `[new]` |
+| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} | live | live `[introduced-2.0]` |
+| save dir checkpoint | `save_checkpoint(const Problem&, path)` | live | live `[introduced-2.0]` |
+| load dir checkpoint | `load_checkpoint(Problem&, path) -> bool` | live | live `[introduced-2.0]` |
+| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | absent `[gap F23]` | live `[introduced-2.0]` |
+| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | absent `[gap F23]` | live `[introduced-2.0]` |
 
-*Contract:* directory checkpoint = `distances.csv` + `metadata.txt`; binary result
-checkpoint = the `<name>_checkpoint.bin` of §7 item 2; the mmap distance-matrix
-cache (`<name>_distmat.cache`) is the third leg of the invariant-#4 triple and is
-driven via `use_mmap_distance_matrix(path)` (§2.2) + CLI `--resume`. MATLAB
-checkpointing (`TODO.md:105`, "MATLAB Phase 2: checkpointing") is `[new]` and
-lands in Phase 2.2 against this table.
+`CheckpointOptions` is presently a passive configuration carrier: no
+algorithm or save/load call consumes `enabled`, `save_interval`, or
+`directory`. Persistence is explicit through `save_checkpoint(prob, path)` and
+`load_checkpoint(prob, path)`.
+
+Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
+`generations/<id>/{distances.csv,metadata.txt}` payload. A binary result
+checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
+`<name>_distmat.cache`. CLI `--resume` reads but currently discards the binary
+result state (F17); Python lacks the two direct binary bindings (F23).
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,

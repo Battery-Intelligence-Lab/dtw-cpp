@@ -8,15 +8,15 @@ description: "Complete rename table, deprecations, and behavioural changes."
 
 ## 3. Full 1.x → 2.0 rename table
 
-Every current public camelCase / duplicate / divergent symbol found by reading
-the headers and both bindings. Column **Shim** = how the old name survives:
-`[[deprecated]]` C++ inline shim, or `alias` (Python/MATLAB deprecated alias),
-or `removed` (dropped from bindings — 2.0 is the break point, surface report §7).
+Frozen registry of public camelCase/duplicate/divergent names. Column
+**Compatibility requirement** states the promised transition, not a claim that
+every diagnostic is implemented. F21 covers four missing canonical C++ names;
+F22 covers retained aliases/fields that do not emit their required warning.
 
-| # | Concept | 1.x name(s) | 2.0 canonical | Shim |
+| # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
 | 1 | set k (C++) | `Problem::set_numberOfClusters` (Problem.hpp:185) | `set_n_clusters` | C++ `[[deprecated]]` |
-| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp:445`) | `set_n_clusters` | removed (alias 1 cycle) |
+| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp:445`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:113) | `set_n_clusters` | already canonical |
 | 4 | max iterations (C++ field) | `Problem::maxIter` (Problem.hpp:130) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:27) | `set_max_iter` | alias (loud warn) |
@@ -74,11 +74,11 @@ combined with the mmap cache and fail before either storage path is opened. Omit
 the dense option to use automatic mmap resume, or raise the threshold only when
 the dense matrix and CSV checkpoint fit in memory.
 
-**Duplicate-elimination principle (surface report §7).** Where the same concept
-had three different names (surface report inconsistency table rows 1, 5, 12), 2.0
-collapses to one canonical and the bindings expose **only** that name. C++ keeps
-`[[deprecated]]` shims for source compatibility; Python/MATLAB keep a
-one-release deprecated alias, then removal.
+**Duplicate-elimination principle (surface report §7).** Documentation exposes
+one canonical name per concept. Compatibility aliases remain callable for the
+specified transition window; they do not become a second canonical spelling.
+F22 records incomplete diagnostics, and F21 records the four canonical C++
+spellings that are still absent.
 
 ---
 
@@ -104,11 +104,16 @@ bindings").
   untouched.
 - **CLI.** Old flag spellings are accepted with a deprecation warning; the SLURM
   callers (`cluster_generic.slurm`, `_hpc.build_dtwc_command`) are updated in the
-  same commit that renames a flag (Phase 2.3) — the CLI flag set is a de-facto
-  API (§7 item 3).
+  same change that renames a flag. The CLI flag set is a de-facto API (§7 item
+  3).
 - **Nothing silently disappears.** A removed binding name that a user calls must
   raise `AttributeError`/`Unknown command` — never resolve to a different
   behaviour.
+
+This section is normative. Current C++ `maxIter`/`N_repetition`, most Python
+aliases, and MATLAB compatibility properties/functions do not yet emit the
+required diagnostics (F22). Their absence is not approval to remove the
+warnings from the frozen policy.
 
 ---
 

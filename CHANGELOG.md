@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Re-audited the frozen cross-language API contract against the current tree,
+  resolved all eight stale reviewer questions, and named the nine unfulfilled
+  2.0 implementation promises as R3 findings F18–F26 instead of presenting
+  them as shipped behavior or silently deferring them to 2.1.
 - Documented the mmap distance-cache version-3 format delivered by M53:
   semantic SHA-256 identity, per-row payload digests, exclusive session lease,
   rejection of legacy v1/v2 caches, and accidental-corruption (not keyed

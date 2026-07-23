@@ -24,13 +24,15 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 | Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:123`) | `name = dtwc.device()` |
 | Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same (`_parse_device`, `__init__.py:78`) | same |
 | Returns | normalized name (lower-cased) | normalized name | normalized name |
-| Errors | `DeviceError` on unknown name (§6) | `InvalidInput`/`ValueError` today; `DeviceError` in 2.0 | `dtwc:deviceError` |
-| Delegates to | `dtwc::env().set_device(name)` (Task 1.3) | module global `_DEFAULT_DEVICE` → to be backed by `Env` | MEX `set_device` → `Env` |
+| Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
+| Delegates to | `dtwc::env().set_device(name)` | `_DEFAULT_DEVICE`; CPU/GPU mirrored into `Env`, HPC credentials deferred to the wrapper | MEX `set_device` → `Env` |
 
-All three front ends delegate device validation to `dtwc::Env`. The friendly
-name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++ Tier-1 HPC
-job submission remains beta and fails loudly with transport instructions; the
-Python route owns the tested SLURM orchestration until a real ARC run closes it.
+C++ and MATLAB delegate local-device validation directly to `dtwc::Env`; Python
+keeps its public default and mirrors validated CPU/GPU selections into Env. The
+friendly name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++
+Tier-1 HPC submission remains the approved 2.1 transport defer. Python owns the
+SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
+(F24).
 
 ### 1.2 `load(source, ...)` — lazy dataset handle  `[live in C++/Python/MATLAB]`
 
@@ -131,18 +133,17 @@ ClusterMixin`) and MATLAB `dtwc.DTWClustering` (`bindings/matlab/+dtwc/DTWCluste
 It has no C++ twin (sklearn estimator idiom is language-specific) and stays
 Python/MATLAB-only.
 
-**Known cross-language parameter divergence — resolved here (was surface report §5
-row 14).** The two constructors disagree on one parameter:
+The constructors now expose the shared parameter set, but exposure alone did
+not prove execution:
 
-| Parameter | Python (`_clustering.py:84-86`) | MATLAB (`DTWClustering.m:53/76`) | 2.0 resolution |
+| Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` (present) | **absent** | MATLAB **gains** `device` (`[new]`), delegating to `Env` (§6), for parity |
-| `metric` / `Metric` | **absent** | `Metric='l1'` (present) | Python **gains** `metric='l1'` (`[new]`), matching the distance-fn `metric` arg (§2.6) |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validates global Env but does not route the estimator `Problem` `[gap F18]` |
+| `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'`, stored but not consumed by fit `[gap F18]` |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,
-max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}` in 2.0.
-No `metric` on Python today and no `device` on MATLAB today are the only gaps; both
-are additive (`[new]`), so neither breaks an existing call. Fixed decision, not an
-open item.
+max_iter, n_init, wdtw_g, adtw_penalty, missing_strategy, metric, device}`.
+F18 preserves the frozen behavioral parity requirement for MATLAB; the
+constructor-only parity test does not close it.
 
 ---
