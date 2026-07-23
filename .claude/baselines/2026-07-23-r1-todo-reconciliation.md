@@ -100,3 +100,46 @@ Registered before execution:
   program files.
 - Any current focused failure downgrades the corresponding historical item to
   STILL-OPEN regardless of its closing commit.
+
+### Focused gate result
+
+Build:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+Direct Catch2 summaries (the binaries emitted no skip marker):
+
+```text
+[test_decode_pair]
+All tests passed (444 assertions in 7 test cases)
+
+[unit_test_mmap_data_store]
+All tests passed (2752 assertions in 6 test cases)
+
+[unit_test_mmap_distance_matrix]
+All tests passed (1343 assertions in 37 test cases)
+
+[unit_test_dtw_api]
+All tests passed (26 assertions in 14 test cases)
+
+[unit_test_time_series]
+All tests passed (39 assertions in 12 test cases)
+
+[unit_test_fast_clara]
+All tests passed (842 assertions in 21 test cases)
+
+[unit_test_cli_args]
+All tests passed (149 assertions in 25 test cases)
+
+[unit_test_mip]
+All tests passed (194 assertions in 17 test cases)
+
+[test_supply_chain_pinning]
+All tests passed (20 assertions in 3 test cases)
+```
+
+**Verdict: PASS.** All nine binaries executed assertions and cases, exited
+zero, and emitted no skip marker.
