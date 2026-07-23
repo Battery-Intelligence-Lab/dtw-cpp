@@ -54,6 +54,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   `settings::paths::set_data_path/set_results_path` canonical names.
 - F22: retained C++/Python/MATLAB compatibility aliases do not consistently
   emit the deprecation diagnostics promised by the frozen policy.
+- F23: Python never bound the frozen binary `ClusteringResult` checkpoint
+  save/load pair; only directory distance checkpoints are exposed.
 
 ## Exact resume point (updated)
 

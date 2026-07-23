@@ -436,6 +436,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `pytest.warns(DeprecationWarning)` exactly once per call, and MATLAB
       captures one stable warning identifier/message—while asserting canonical
       names stay silent and results remain identical.
+- [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
+      Its module exposes `CheckpointOptions` and directory save/load only
+      (`python/src/_dtwcpp_core.cpp:1105-1125`), while MATLAB delivered
+      `save_binary_checkpoint`/`load_binary_checkpoint`
+      (`bindings/matlab/dtwc_mex.cpp:956-969`). First gate: import both names
+      from the freshly rebuilt extension, round-trip a non-degenerate
+      `ClusteringResult` with distinct labels, medoids, cost, and iteration
+      count, assert field equality and malformed/missing-file typed errors, and
+      compare the emitted bytes with the C++ reader. The current extension must
+      fail at import before implementation.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
