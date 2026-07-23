@@ -147,3 +147,35 @@ UNIMODULAR and finish tracked-junk/CHANGELOG/branch-state hygiene.
 Reconcile LESSONS/CITATIONS/UNIMODULAR, then finish the tracked-junk,
 CHANGELOG-structure, and branch-state R1 tasks. F32 now owns the multivariate
 Soft-DTW/Interpolate flat-buffer defect; do not implement it during R1.
+
+## Record-hygiene result
+
+- Added `scripts/check_record_hygiene.py` before corrections and recorded its
+  deliberate inherited red.
+- Added the sole current UNIMODULAR freshness header and reconciled the live
+  Lagrangian root, tolerance-guarded fixing, capped y-only exact finish, and
+  separate N-theta legacy Benders route. Historical cut/runtime proposals stay
+  visibly historical.
+- Corrected LESSONS evidence scope for Python import provenance, SIMD,
+  FastPAM1, Float32, mmap/I/O, MATLAB, CMake, Arrow/F7/F9, and LR-core/PDLP.
+  The verbatim FasterPAM table is now read as advisory, non-monotone
+  2.95×–8.06×; memory-bandwidth causation remains inferred.
+- Deduplicated canonical citation entries and URLs, replaced mutable
+  "immutable" wording with versioned/tagged wording, and recorded every opened
+  primary source plus the Loog secondary-metadata caveat.
+- Preserved the deliberate `0449f7c` retirement of `.claude/MISSING.md` and
+  `.claude/READ.md`; they were not recreated.
+- Two independent read-only final reviews found no remaining content,
+  citation, anchor, fence, or checker blockers after the residual corrections.
+  Evidence: `.claude/baselines/2026-07-23-r1-record-hygiene.md`.
+
+## Exact resume point (current)
+
+Start the R1 tracked-file junk census from the preregistered read-only audit:
+add `scripts/check_repo_hygiene.py` before mutations, demonstrate its inherited
+red, then remove only the five verified non-data artifacts, expand
+`.gitignore`, remove the Codecov badge query token, add both compatibility
+disclosures to CHANGELOG, and record the branch-state/operator merge plan.
+Retain `data/test/AllGestureWiimoteX_dist_50.csv` because the absolute data
+read-only rule overrides its orphan evidence. Never touch the untracked build
+roots or their CMake caches.

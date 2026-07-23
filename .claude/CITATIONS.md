@@ -20,7 +20,9 @@ References used during development. Verify each citation independently before pu
 
 ## DTW Variants
 
-- Keogh, E. & Pazzani, M. (2001). Derivative Dynamic Time Warping. *SIAM SDM 2001*.
+- Keogh, E. J. & Pazzani, M. J. (2001). Derivative Dynamic Time
+  Warping. *Proceedings of the 2001 SIAM International Conference on Data
+  Mining*, 1–11. https://doi.org/10.1137/1.9781611972719.1
 - Jeong, Y.-S., Jeong, M. K., & Omitaomu, O. A. (2011). Weighted dynamic time warping for time series classification. *Pattern Recognition*, 44(9), 2231-2240.
 - Cuturi, M. & Blondel, M. (2017). Soft-DTW: a Differentiable Loss Function for Time-Series. In *Proceedings of the 34th International Conference on Machine Learning*, PMLR 70, 894–903. https://proceedings.mlr.press/v70/cuturi17a.html — Defines the differentiable soft-DTW value and gradient used for soft-DTW barycenters.
 - Itakura, F. (1975). Minimum Prediction Residual Principle Applied to Speech Recognition. *IEEE TASSP*, 23(1), 67-72.
@@ -30,11 +32,14 @@ References used during development. Verify each citation independently before pu
 - Kaufman, L. & Rousseeuw, P. J. (1987). Clustering by Means of Medoids. In *Statistical Data Analysis Based on the L1-Norm*, North-Holland, 405-416. — Original PAM paper.
 - Kaufman, L. & Rousseeuw, P. J. (1990). *Finding Groups in Data: An Introduction to Cluster Analysis*. Wiley. — PAM (Ch. 2), CLARA (Ch. 3).
 - Rousseeuw, P. J. (1987). Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. *J. Comput. Appl. Math.*, 20, 53-65.
-- Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *JMLR*, 22(1), 4653-4688. — FastPAM.
+- Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804; arXiv:2008.05171 (https://arxiv.org/abs/2008.05171). — Canonical FasterPAM/FasterCLARA paper; the 2019 SISAP paper (arXiv:1810.05691) is its conference precursor.
 - Ng, R. T. & Han, J. (2002). CLARANS: A Method for Clustering Objects for Spatial Data Mining. *IEEE TKDE*, 14(5), 1003-1016.
 - Charikar, M., Guha, S., Tardos, E., & Shmoys, D. B. (2002). A constant-factor approximation algorithm for the k-median problem. *Journal of Computer and System Sciences*, 65(1), 129-149.
 - Li, S. & Svensson, O. (2013). Approximating k-median via pseudo-approximation. *STOC 2013*.
-- Duran-Mateluna, C., Ales, Z., & Elloumi, S. (2023). An efficient Benders decomposition for the p-median problem. *European Journal of Operational Research*.
+- Cristian Duran-Mateluna, Zacharie Ales, & Sourour Elloumi. (2023).
+  An efficient Benders decomposition for the p-median problem. *European
+  Journal of Operational Research*, 308(1), 84–96.
+  https://doi.org/10.1016/j.ejor.2022.11.033
 
 ## MIP Formulation of Clustering (`dtwc/mip/`, `Method::MIP` / `Method::LRCore`)
 
@@ -47,16 +52,22 @@ References used during development. Verify each citation independently before pu
 
 - Andersson, J. A. E., Gillis, J., Horn, G., Rawlings, J. B., & Diehl, M. (2019). CasADi: a software framework for nonlinear optimization and optimal control. *Mathematical Programming Computation*, 11(1), 1-36. — Design philosophy for cross-language API consistency (same class/method names across C++/Python/MATLAB).
 
-## pybind11
+## pybind11 (historical)
 
-- Jakob, W., Rhinelander, J., & Moldovan, D. (2017). pybind11 — Seamless operability between C++11 and Python. https://github.com/pybind/pybind11
-- pybind11 documentation on GIL management: https://pybind11.readthedocs.io/en/stable/advanced/misc.html#global-interpreter-lock-gil
-- pybind11 documentation on return value policies: https://pybind11.readthedocs.io/en/stable/advanced/functions.html#return-value-policies
+- Jakob, W., Rhinelander, J., & Moldovan, D. (2017). pybind11 — Seamless
+  operability between C++11 and Python. https://github.com/pybind/pybind11
+  — Historical binding source; DTWC++ now uses nanobind.
 
 ## MATLAB MEX
 
-- MathWorks. "C MEX File Applications." MATLAB Documentation. https://www.mathworks.com/help/matlab/matlab_external/c-mex-file-applications.html
-- MathWorks. "mexErrMsgIdAndTxt." — Note: This function calls `longjmp`, which skips C++ stack unwinding / destructors.
+- MathWorks. "`mexErrMsgIdAndTxt`." MATLAB Documentation.
+  https://www.mathworks.com/help/matlab/apiref/mexerrmsgidandtxt.html — The
+  official page states that MATLAB terminates the MEX file and returns control
+  to the prompt; it does not claim that C++ stack unwinding is skipped.
+- MathWorks. "Create C++ MEX Functions with C Matrix API."
+  https://www.mathworks.com/help/matlab/matlab_external/creating-c-mex-files.html
+  — Its destructor guidance states that an error which makes an object leave
+  scope causes MATLAB to call the C++ destructor.
 - MathWorks. "Interleaved Complex API" (R2018a+). https://www.mathworks.com/help/matlab/matlab_external/matlab-support-for-interleaved-complex.html
 
 ## Armadillo
@@ -66,9 +77,12 @@ References used during development. Verify each citation independently before pu
 
 ## CUDA Architecture & Precision
 
-- NVIDIA. "CUDA C++ Programming Guide: Compute Capabilities." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities — FP64:FP32 throughput ratios per compute capability.
-- NVIDIA. "CUDA C++ Programming Guide: Shared Memory." https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#shared-memory — Opt-in extended shared memory via cudaFuncSetAttribute.
-- NVIDIA. "cudaDeviceProp Reference." https://docs.nvidia.com/cuda/cuda-runtime-api/structcudaDeviceProp.html — Runtime GPU property queries.
+- NVIDIA. "CUDA C++ Programming Guide" (CUDA 13.0 archive).
+  https://docs.nvidia.com/cuda/archive/13.0.0/cuda-c-programming-guide/index.html
+  — Compute capability, warp primitives, and shared-memory behavior.
+- NVIDIA. "`cudaDeviceProp` Reference" (CUDA 13.0 archive).
+  https://docs.nvidia.com/cuda/archive/13.0.0/cuda-runtime-api/structcudaDeviceProp.html
+  — Runtime GPU property queries.
 
 ## GPU DTW and GPU Dynamic Programming
 
@@ -76,14 +90,12 @@ References used during development. Verify each citation independently before pu
 - asbschmidt/cuDTW. GitHub repository. https://github.com/asbschmidt/cuDTW - Informed concrete CUDA implementation details for cuDTW++-style kernel structure and tiling.
 - Schmidt, B., Kallenborn, F., Chacon, A., et al. (2024). *CUDASW++4.0: ultra-fast GPU-based Smith-Waterman protein sequence database search*. *BMC Bioinformatics*, 25, 342. https://doi.org/10.1186/s12859-024-05965-6 - Informed length binning, batch partitioning, warp-shuffle communication, mixed-precision ideas, and Hopper follow-up concepts.
 - Latta-Lin, D., & Padilla Munoz, S. I. (2024). *Optimizing sDTW for AMD GPUs*. arXiv:2403.06931. https://doi.org/10.48550/arXiv.2403.06931 - Informed tuning of values-per-thread/reference-width ownership and architecture-aware wavefront design.
-- NVIDIA. *CUDA C++ Programming Guide*. https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html - Informed warp shuffle intrinsics, shared-memory carveout, and dynamic shared-memory opt-in behavior.
+- The versioned CUDA 13.0 programming guide is recorded once in the
+  architecture section above; it also informed warp-shuffle, shared-memory
+  carveout, and dynamic shared-memory opt-in work.
 - NVIDIA. *Hopper Tuning Guide*. https://docs.nvidia.com/cuda/archive/12.1.0/hopper-tuning-guide/index.html - Informed DPX, TMA, distributed shared memory, and Hopper-specific performance ceilings.
 
 ## Literature survey 2026-07-06 (see .claude/reports/literature-2026-07-06.md)
-
-### Correction
-
-- **CORRECTION** to the entry above listing Schubert & Rousseeuw (2021) as *JMLR 22(1), 4653-4688*: the FasterPAM paper is Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804 (arXiv:2008.05171). Conference precursor: Schubert & Rousseeuw, SISAP 2019 (arXiv:1810.05691). Verified against arXiv abstract 2026-07-06.
 
 ### k-medoids and scalable clustering
 
@@ -118,20 +130,31 @@ References used during development. Verify each citation independently before pu
 - Tan, C. W., Herrmann, M., & Webb, G. I. (2021). Ultra fast warping window optimization for Dynamic Time Warping (UltraFastWWSearch). *IEEE ICDM 2021*.
 - Mueen, A., Chavoshi, N., Abu-El-Rub, N., et al. (2016). AWarp: Fast Warping Distance for Sparse Time Series. *IEEE ICDM 2016* — exact on binary series, orders of magnitude faster on sparse data.
 - Froese, V., et al. (2022). Fast Exact Dynamic Time Warping on Run-Length Encoded Time Series. *Algorithmica*.
-- (2026). A New Lower Bounding Paradigm and Tighter Lower Bounds for Elastic Similarity Measures (BGLB/DBGLB). arXiv:2603.14899 — general LB for DTW/ERP/MSM/TWED/EDR/LCSS.
-- Shen, D., et al. (2021). TC-DTW: Accelerating Multivariate Dynamic Time Warping Through Triangle Inequality and Point Clustering. arXiv:2101.07731 — multivariate LB tightening, "speedups up to 25x (7.5x average)".
+- Zemin Chao, Boyu Xiao, Zitong Li, Zhixin Qi, Xianglong Liu, & Hongzhi
+  Wang. (2026). A New Lower Bounding Paradigm and Tighter Lower
+  Bounds for Elastic Similarity Measures. arXiv:2603.14899
+  (https://arxiv.org/abs/2603.14899). — BGLB for elastic measures.
+- Daniel Shen & Min Chi. (2021). TC-DTW: Accelerating Multivariate Dynamic Time Warping Through Triangle Inequality and Point Clustering.
+  arXiv:2101.07731 (https://arxiv.org/abs/2101.07731).
 - Tang, Y., et al. (2015). Cache-Oblivious Wavefront: Improving Parallelism of Recursive Dynamic Programming Algorithms without Losing Cache-Efficiency. *PPoPP 2015*.
 
 ### Distance variants (additions)
 
 - Stefan, A., Athitsos, V., & Das, G. (2013). The Move-Split-Merge Metric for Time Series (MSM). *IEEE TKDE*, 25(6), 1425-1438. Task 5.5 `dtwc::core::msm_distance` matches aeon 1.5.0 exactly (split/merge cost `C(new,a,b)=c` if a≤new≤b else c+min(|new−a|,|new−b|); default c=1.0, window=None).
 - Zhao, J. & Itti, L. (2018). shapeDTW: Shape Dynamic Time Warping. *Pattern Recognition*, 74, 171-184. arXiv:1606.01601.
-- Shokoohi-Yekta, M., et al. (2017). Generalizing DTW to the multi-dimensional case requires an adaptive approach (independent vs dependent multivariate DTW). *Data Mining and Knowledge Discovery*, 31, 1-31.
-- (2026). Memory-efficient differentiable soft-DTW on GPU. arXiv:2602.17206 — tiled anti-diagonal kernel, "up to 98% memory reduction" via fused distance computation.
+- Ron Shapira Weber & Oren Freifeld. (2026).
+  SoftDTW-CUDA-Torch: Memory-Efficient GPU-Accelerated Soft Dynamic Time
+  Warping for PyTorch. arXiv:2602.17206
+  (https://arxiv.org/abs/2602.17206).
 
 ### Ecosystem
 
-- Apache Arrow. The Arrow C Data Interface. https://arrow.apache.org/docs/format/CDataInterface.html — zero-copy interchange with no Arrow build dependency; nanoarrow helpers: https://arrow.apache.org/nanoarrow/
+- Apache Arrow. The Arrow C Data Interface.
+  https://arrow.apache.org/docs/format/CDataInterface.html — Stable C structs
+  and release semantics for zero-copy interchange.
+- Apache Arrow. The Arrow PyCapsule Interface.
+  https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html
+  — Standard `__arrow_c_array__` / `__arrow_c_stream__` export protocol.
 - Apache Arrow. *Install Apache Arrow*. https://arrow.apache.org/install/ — official Ubuntu apt-repository bootstrap and the `libarrow-dev` / `libparquet-dev` package names used by the F9 execution gate; re-verified 2026-07-23.
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
@@ -141,14 +164,32 @@ References used during development. Verify each citation independently before pu
 
 - Applegate, D., Díaz, M., Hinder, O., Lu, H., Lubin, M., O'Donoghue, B., & Schudy, W. (2021). *Practical Large-Scale Linear Programming using Primal-Dual Hybrid Gradient*. NeurIPS 2021. arXiv:2106.04756 — the PDLP method (PDHG on the LP saddle point; core op is matrix-vector, hence GPU-friendly).
 - Lu, H., et al. (2023). *cuPDLP-C: A Strengthened Implementation of cuPDLP for Linear Programming by C language*. arXiv:2312.14832 — the C/CUDA implementation HiGHS vendors as `solver="pdlp"`.
-- HiGHS. ERGO-Code/HiGHS v1.15.1, `highs/pdlp/` (cuPDLP-C port + `hipdlp/` PDHG); GPU behind CMake `CUPDLP_GPU`. https://github.com/ERGO-Code/HiGHS — the maintained library used as the LP arbiter of the LR-core Lagrangian bound (supersedes the killed 2023 custom OSLP).
+- HiGHS. ERGO-Code/HiGHS v1.15.1 release and versioned/tagged source:
+  https://github.com/ERGO-Code/HiGHS/releases/tag/v1.15.1,
+  https://github.com/ERGO-Code/HiGHS/tree/v1.15.1/highs/pdlp, and tagged
+  CMake configuration
+  https://github.com/ERGO-Code/HiGHS/blob/v1.15.1/CMakeLists.txt — Maintained
+  LP arbiter used to cross-check the LR-core bound; the GPU path is controlled
+  by the upstream `CUPDLP_GPU` build option.
 
 ## Multivariate DTW (Phase 5 · Task 5.6 — independent DTW)
 
-- Shokoohi-Yekta, M., Hu, B., Jin, H., Wang, J., & Keogh, E. (2017). *Generalizing DTW to the multi-dimensional case requires an adaptive approach*. Data Mining and Knowledge Discovery, 31(1), 1–31. — DTW_I (independent, per-channel sum) vs DTW_D (dependent, shared path); the finding that neither dominates and both are needed. Basis for `MVMode{Dependent,Independent}` + `dtw_independent_mv`.
-- Shen, Y., & Chen, Y. (2021). *TC-DTW: Accelerating Multivariate DTW Through Triangle Inequality and Point Clustering*. arXiv:2101.07731. — multivariate LB tightening (triangle inequality + point clustering). NOTED, DEFERRED (bound-tightening for the pruning/NN path, orthogonal to the DTW_I distance deliverable).
+- Shokoohi-Yekta, M., Hu, B., Jin, H., Wang, J., & Keogh, E. (2017).
+  *Generalizing DTW to the multi-dimensional case requires an adaptive approach*.
+  *Data Mining and Knowledge Discovery*, 31(1), 1–31.
+  https://doi.org/10.1007/s10618-016-0455-0 — DTW_I (independent,
+  per-channel sum) versus DTW_D (dependent, shared path); neither dominates.
+- TC-DTW is recorded once in the lower-bounds section above. Its
+  bound-tightening route remains deferred and is orthogonal to the DTW_I
+  distance deliverable.
 
 ## Arrow ingest (Phase 5 · Task 5.7)
 
-- Apache Arrow. *The Arrow C Data Interface* and *The Arrow PyCapsule Interface* (`__arrow_c_array__` / `__arrow_c_stream__`). https://arrow.apache.org/docs/format/CDataInterface.html + .../format/CDataInterface/PyCapsuleInterface.html — the stable C ABI (ArrowSchema/ArrowArray/ArrowArrayStream) and Python capsule protocol used to ingest zero-copy from polars/DuckDB/pyarrow/pandas without a pyarrow dependency.
-- Apache Arrow nanoarrow 0.8.0 (Apache-2.0). https://github.com/apache/arrow-nanoarrow — dependency-free C reader/builder for the Arrow C Data interface; vendored as the namespaced amalgamation `dtwc/extern/nanoarrow/nanoarrow.{h,c}` (`NANOARROW_NAMESPACE=DtwcNanoarrow`). Used by `dtwc::io::data_from_arrow`.
+- The canonical Arrow C Data and PyCapsule specifications are recorded in the
+  ecosystem section above; they define the ABI/protocol used by the zero-copy
+  ingest route.
+- Apache Arrow nanoarrow 0.8.0 (Apache-2.0), tagged release:
+  https://github.com/apache/arrow-nanoarrow/releases/tag/apache-arrow-nanoarrow-0.8.0
+  — Dependency-free C reader/builder vendored as the namespaced amalgamation
+  `dtwc/extern/nanoarrow/nanoarrow.{h,c}`
+  (`NANOARROW_NAMESPACE=DtwcNanoarrow`).

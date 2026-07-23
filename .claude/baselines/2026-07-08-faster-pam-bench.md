@@ -38,9 +38,11 @@ cross-checked against Schubert & Rousseeuw 2021 (arXiv:2008.05171) Alg. 3–4 an
 - **k=1 [HARD] → CONFIRMED (after fix).** All variants find the true argmin 1-medoid. The
   decomposition is special-cased at k=1: `second_dist = +inf` makes ρ=inf, corrections=−inf
   ⇒ NaN ⇒ (without the special case) it returned the BUILD medoid, not the optimum. Caught by
-  the CLARA exact-median oracle (unit_test_fast_clara:619), not the weak k=1 unit test.
+  the CLARA exact-median oracle (now `tests/unit/algorithms/unit_test_fast_clara.cpp:712`),
+  not the weak k=1 unit test.
 - **SPEED [ADVISORY] → PARTIALLY FALSIFIED (deliverable, see below).** The "≥10× faster" band
-  is NOT met vs the already-parallel naive at k≤50; explained by memory-bound DTW lookups.
+  is NOT met vs the already-parallel naive at k≤50. The retained N²-lookup structure suggests
+  a memory-traffic explanation, but no PMU artifact proved the bottleneck.
 
 ## Bench — three variants, k-group data (N=1000), verbatim
 
@@ -56,20 +58,25 @@ cross-checked against Schubert & Rousseeuw 2021 (arXiv:2008.05171) Alg. 3–4 an
     5000  50 | fp1 662.9 ms (50 it) | faster 1063.4 ms (1 sw) | obj fp1=2500.0 faster=2500.0
 ```
 
+**Record correction (2026-07-23):** the verbatim table is authoritative. Its
+naive/FastPAM1 ratios span **2.95×–8.06×** and are non-monotone (the k=50 ratio
+returns to 2.95×). The earlier 2.3× narrative minimum and monotone-growth claim
+were transcription/interpretation errors, not additional measurements.
+
 ## Findings
 
-1. **The decomposition (fp1) beats the naive at every k: 2.3×–8.1×, growing with k** — the
-   real O(N²·k)→O(N²) win, parallel, objective-identical, same iteration counts (same swaps).
+1. **The decomposition (fp1) beats the naive at every measured k:
+   2.95×–8.06× in this advisory table.** The ratios are non-monotone. This is
+   the measured O(N²·k)→O(N²) comparison, parallel, objective-identical, with
+   the same iteration counts (same swaps).
    This is the genuine "replace the O(N²·k) swap" deliverable and the new default.
 
-2. **Why NOT ≥10× (and why it grows with k): DTW is memory-bound.** BOTH the naive and fp1 do
-   N² distance-matrix LOOKUPS per iteration (0.125 FLOP/byte — the repo's known constraint).
-   The decomposition only removes the naive's cheap O(k) *arithmetic* per point, not the N²
-   memory traffic. So the speedup is the arithmetic-vs-memory ratio: small at k=10 (~3×, memory
-   dominates), rising as the k-arithmetic grows to rival the lookup cost (~8× at k=200). A
-   per-candidate scratch-buffer hoist (removing a heap alloc) moved the needle by <noise,
-   confirming memory — not allocation — is the bottleneck. **The ≥10× target assumed
-   arithmetic-bound naive PAM; it does not hold once the distance matrix is cached.**
+2. **Why NOT ≥10× remains inferred.** Both implementations retain N²
+   distance-matrix lookups per iteration, while the decomposition removes O(k)
+   arithmetic per point. That structure is consistent with memory traffic
+   limiting the gain, and a scratch-buffer hoist moved less than benchmark
+   noise, but no PMU run established bandwidth or cache behavior. **The ≥10×
+   target is falsified by the table regardless of mechanism.**
 
 3. **FasterPAM converges in ONE sweep at every k**, vs the best-swap variants' O(k) iterations.
    At k=200 both best-swap variants hit max_iter=100 WITHOUT converging (returning a worse
@@ -80,7 +87,8 @@ cross-checked against Schubert & Rousseeuw 2021 (arXiv:2008.05171) Alg. 3–4 an
    663 ms vs 1063 ms at N=5000), identical objective. FasterPAM's O(N²)/sweep is sequential
    (eager dependency) + refreshes state O(N·k) per accepted swap (the paper's O(N) incremental
    do_swap was NOT implemented — a documented simplification; it would help large-k FasterPAM
-   but not change that parallel fp1 wins at large N on this memory-bound problem). → **fp1 is
+   but not change that parallel fp1 won at the measured large N; the
+   memory-bound explanation remains inferred). → **fp1 is
    the right default** (never regresses small-k/large-N, k× fewer arithmetic ops than naive).
 
 ## Scope notes (evidence-based)

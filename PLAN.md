@@ -179,11 +179,11 @@ no core code changes — but if any item does touch code, it moves to R4's rules
       citation) or is corrected. Run the existing drift gates
       (`check_docs_contract.py --cli <fresh dtwc_cl>`, docs internal-link gate)
       and quote results.
-- [ ] **`.claude/` record hygiene.** LESSONS.md and CITATIONS.md: dedupe,
+- [x] **`.claude/` record hygiene.** LESSONS.md and CITATIONS.md: dedupe,
       verify file:line references still hold after Phase 8's churn (spot-check,
-      fix stale ones), keep every lesson. UNIMODULAR.md / MISSING.md / READ.md:
-      add a one-line freshness header (what date, what supersedes it, or mark
-      current).
+      fix stale ones), keep every lesson. Add one current/supersession freshness
+      header to UNIMODULAR.md. `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`;
+      do not recreate them to satisfy obsolete wording.
 - [ ] **Tracked-file junk census.** Find tracked files that should not be
       tracked (stale binaries, generated artifacts, orphaned fixtures) —
       grep-verify zero references before each removal; `.gitignore` audit
@@ -265,8 +265,9 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
 - [ ] **D10. FastPAM1/FasterPAM decomposition.** Schubert & Rousseeuw:
       derive `ΔTD(m, x_c) = acc + ploss[m]` and the removal loss identity;
       eager-swap termination at a local optimum; why the cached-matrix regime
-      caps the speedup at removed-arithmetic only (the recorded 2.3–8.1×
-      memory-bound result — connect to D17).
+      caps the speedup at removed-arithmetic only (the advisory table records
+      2.95–8.06×, non-monotone; the memory-bound explanation remains
+      **[inferred]** pending D17 counters).
 - [ ] **D11. OneBatchPAM.** The m=O(log n) single-batch estimator; the NNIW
       weighting; the finite-max diagonal debias as implemented (paper says +∞;
       code follows the authors' experiment code — M7 provenance) — state the
@@ -308,10 +309,10 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       for the DP kernels under `-fassociative-math`; derive the f32-vs-f64
       agreement band from conditioning (the R3 precision lens is told "derive
       the band, don't guess" — this is where it comes from). (b) Re-derive
-      arithmetic intensity per kernel: plain DTW ≈ 0.125 FLOP/byte
-      (memory-bound, recorded); MSM/TWE do strictly more arithmetic per cell —
-      compute their intensities and state the measurable prediction (are they
-      still memory-bound? feeds R5's profile pass and guards the SIMD kill).
+      arithmetic intensity per kernel: reconstruct the earlier plain-DTW
+      ≈0.125 FLOP/byte estimate rather than treating it as a PMU result;
+      MSM/TWE do strictly more arithmetic per cell—compute their intensities
+      and state measurable cache/bandwidth predictions for R5.
 - [ ] **D18. Cluster validity scores.** Silhouette, Davies–Bouldin,
       Calinski–Harabasz (state exactly how a centroid-free/medoid variant is
       computed here), Dunn, inertia: formula provenance, edge cases (Nc<2,
@@ -598,7 +599,11 @@ before arithmetic, always.
 - [ ] **Fresh advisory baselines:** the 5 canonical workloads (dense matrix N=1000 len=512; banded 10%; PAM N=2000; OneBatchPAM 50k; barycenter k-means k=3) re-timed and recorded in `.claude/baselines/` next to the Phase-5 numbers. Any regression >20% vs the 5.x baselines is investigated with a numbers ledger — never hard-FAILed locally, never ignored.
 - [ ] **Hot-path profile pass:** profile the 3 heaviest workloads (VTune or ETW/WPA if present, else instrumented counters — record which); top-5 hotspots per workload in the run-log; check measured behavior against the D17 intensity predictions (a mispredicted kernel is a science finding, record it). Act ONLY where the change is provably digit-identical; everything else recorded for 2.1.
 - [ ] **Link-time optimization:** build release artifacts with LTO; adopt if the conformance fixture is digit-identical and advisory timing shows no loss (record win or loss verbatim). Evaluate PGO the same way; record the decision either way.
-- [ ] **SIMD stays killed** unless the D17 memory-bound analysis is overturned with new evidence. Re-opening requires citing and overturning the recorded kill evidence — never by default. (If D17 finds MSM/TWE are NOT memory-bound, that is the one legitimate door — walk through it only with a registered band and a measure-first prototype, 5.11 protocol.)
+- [ ] **SIMD stays killed** unless D17 plus the R5 profile establishes a
+      correctness-complete route and a measured opportunity. Re-opening
+      requires citing the invalid old dispatch and the conflicting
+      route-specific timings, then overturning them with a registered
+      measure-first prototype.
 
 ## Phase R6 — Exit gate, scale rehearsal, release readiness [OPEN — gates the 2.0.0 tag]
 
@@ -702,9 +707,15 @@ colour system transfer verbatim**.
 - **Elkan/triangle pruning on DTW:** invalid — DTW is not a metric.
 - **ONNX export; R/Julia bindings:** no sensible story / deferred (native competitors saturate).
 - **The 2023 custom OSLP solver:** retired (`f7064b3`); the "third solver" is PDLP-as-arbiter, not a revival.
-- **SIMD before memory:** DTW ≈ 0.125 FLOP/byte, memory-bound; 5.11 measure-first verdict stands. (R2-D17 is the only door — see R5.)
+- **SIMD before correctness + measurement:** the old dispatched route ignored
+  bands/variants and was removed; 1.29× was an operation-count estimate, while
+  route-specific SIMD timings disagreed. No PMU artifact proves a universal
+  memory-bound ceiling. R2-D17 is the only door—see R5.
 - **"≥25% fewer full DTW calls on an exact matrix" via LBs:** UNACHIEVABLE — an exact matrix needs every DTW; LB early-abandon recomputes abandoned pairs (`Pruned` strategy is a PESSIMISATION for exact matrices). Exact-matrix DTW-work reduction = EAP cell-pruning / TADPole pair-skip only.
-- **≥10× swap speedup from FastPAM decomposition on a cached matrix:** falsified — both variants do N² lookups/iter; decomposition removes only cheap O(k) arithmetic (measured 2.3–8.1×).
+- **≥10× swap speedup from FastPAM decomposition on a cached matrix:**
+  falsified—the advisory N=1000 table reports 2.95×–8.06× and is non-monotone.
+  Both variants retain N² lookups/iteration; attributing the result to memory
+  bandwidth is **[inferred]** until a counter gate proves it.
 - **LB-pruning inside PAM/MIP/LRCore:** not admissible — those consumers read the whole matrix.
 - **PDLP as production p-median solver:** falsified — matrix-free Kelley dominates on either device (945× CPU / 126× GPU at N=400); PDLP remains a cross-validation arbiter only.
 - Full kill-context lives in the archive (`### Explicit rejections`, Phase 5) and `.claude/LESSONS.md`.
@@ -762,6 +773,10 @@ colour system transfer verbatim**.
   INF-stamped output, CPU-only `DistanceMatrixStrategy::Auto`/`lb_strategy`,
   and historical advisory timings only when a tracked raw artifact exists.
   Correctness/loudness repairs route to F27–F31; R1 changes no runtime behavior.
+- 2026-07-23 (R1 record-retirement truth): Git history confirms
+  `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`. Record hygiene
+  preserves that deletion and repairs the live UNIMODULAR/LESSONS/CITATIONS
+  records instead of recreating obsolete ledgers.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -846,3 +861,12 @@ colour system transfer verbatim**.
   Hugo render remains `[BLOCKED-ENV]` under the recorded `hugo=NOT_FOUND` and
   `go=NOT_FOUND` probe. Evidence:
   `.claude/baselines/2026-07-23-r1-docs-truth.md` D8.
+- 2026-07-23 (R1 record hygiene): Reconciled UNIMODULAR, LESSONS, and
+  CITATIONS against current code, tracked artifacts, and opened primary
+  sources. Two independent residual reviews rejected the first checker green
+  and forced corrections to SIMD/Float32/FastPAM/I/O evidence scope,
+  LR-core/Benders architecture, the Ghouila-Houri proof, and stale
+  bibliography attributions. The permanent checker now pins those classes,
+  the sole freshness header, canonical citation counts/URLs, the deliberate
+  retirement of MISSING/READ, and the corrected 2.95×–8.06× table reading.
+  Evidence: `.claude/baselines/2026-07-23-r1-record-hygiene.md`.
