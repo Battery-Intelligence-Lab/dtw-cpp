@@ -61,6 +61,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 - F25: public view-mode and bounds preconditions still use assertions, making
   invalid behavior differ between Debug and Release instead of raising typed
   errors.
+- F26: Python `Problem.set_view_data` first converts to owning nested vectors;
+  it is not the frozen non-owning view surface its name promises.
 
 ## Exact resume point (updated)
 

@@ -466,6 +466,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       text—never abort in Debug or enter unchecked/undefined behavior in
       Release. Internal algorithm invariants may remain assertions only when a
       public validator makes them unreachable.
+- [ ] **F26 — Python `Problem.set_view_data` is named as a view but copies into
+      owning storage.** Its binding converts Python input to
+      `std::vector<std::vector<double>>`, builds an owning `Data`, and only then
+      calls the C++ view setter (`python/src/_dtwcpp_core.cpp:872-879`); true
+      non-owning spans remain C++/CLARA-internal. First gate: bind a contiguous
+      ndarray through the public Python method, mutate a non-degenerate element
+      in the source, and require `Problem.series()`/a recomputed distance to
+      observe that mutation while the Problem keeps the Python owner alive.
+      Non-contiguous, readonly, dtype, and lifetime cases must be explicit and
+      typed. The inherited binding must fail the aliasing assertion.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
