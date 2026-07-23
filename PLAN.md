@@ -13,14 +13,14 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-23):** 2.0.0rc1 shipped. Refactor Phases 0–7 CLOSED. Phase 8:
-8.0 + 8.1 CLOSED (149 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings
-F1–F7 + the sanitizer gate CLOSED; **F8–F10 OPEN** — partially addressed by
-**uncommitted, unverified work dated 2026-07-20** sitting in the working tree
-(Phase R0 adjudicates it before anything else). The final **2.0.0 tag gates on
-R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the tag.
-Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions — never
-wait on them.
+**Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
+published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
+protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F10, and the
+sanitizer gate CLOSED; **F8–F9 OPEN**. Phase R0 is adjudicating the remaining
+2026-07-20 interrupted work before anything else. The final **2.0.0 tag gates
+on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
+tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
+never wait on them.
 
 ---
 
@@ -145,7 +145,7 @@ diff` 2026-07-23]:
 
 Tasks:
 
-- [ ] Read every diff hunk. Classify each change: F8 / F9 / F10 / docs / other.
+- [x] Read every diff hunk. Classify each change: F8 / F9 / F10 / docs / other.
 - [ ] Build + run the full canonical gate (floor: **113/113, 0 failed**, 6
       capability skips — `.claude/summaries/handoff-2026-07-13-f7-streaming.md`).
       Run the new/changed test suites explicitly and quote their output.
@@ -342,7 +342,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       message absent — a skip is a pass to ctest); the CI job (in R0's
       inventory) is the secondary, operator-verified layer. This guard already
       hid one live bug (F7/D1).
-- [ ] **F10 — signed/degenerate D-sampling half-pinned.**
+- [x] **F10 — signed/degenerate D-sampling half-pinned.**
       `core::distance_sampling_weights` direct unit tests (nonnegative input
       byte-identical; selected entries exactly zero; throws on non-finite);
       all-zero → `first_unselected` for seeded `Kmeanspp_seeded` and
@@ -539,3 +539,9 @@ colour system transfer verbatim**.
   goal — detailed but flexible, Codex runs non-stop"). Campaign R0–R7 defined;
   R0 = adjudicate the uncommitted 2026-07-20 work found in the tree (F9/F10 +
   scholarly edits, unverified). AGENTS.md created. Old plan → archive.
+- 2026-07-23 (R0/F10): Diff classification completed. F10 repaired and closed
+  in `20b894d`: selected as well as unselected non-finite sampling inputs now
+  fail closed; the direct seam and seeded/unseeded signed/degenerate routes run.
+  Registered gate PASS: 114/114 CTest targets, zero failed, exactly six
+  capability skips. Evidence:
+  `.claude/baselines/2026-07-23-f10-sampling.md`.
