@@ -406,6 +406,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       mutation of fields designated private by the frozen contract; separately,
       deleting each redundant MATLAB writeback in a probe must leave the
       returned and stored labels/medoids digit-identical.
+- [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
+      routing.** The setter only validates and stores an enum
+      (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently
+      by `DataLoader` (`dtwc/DataLoader.hpp:200-203,276-323`). This does not
+      satisfy the frozen §2.1/§6.3 promise that the `Problem` setting overrides
+      local series storage. First gate: derive and register which subsequent
+      load/set-data operation the setter governs, then force Heap and Mmap on a
+      payload above a deterministic threshold; backing mode must differ while
+      series bytes and downstream distances remain identical. The inherited
+      setter must fail by leaving both routes unchanged.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):

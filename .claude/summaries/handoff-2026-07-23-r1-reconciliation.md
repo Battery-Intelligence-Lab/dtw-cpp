@@ -47,6 +47,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 - F19: frozen `Problem` cleanup is incomplete: promised canonical accessors are
   missing, configuration/result fields remain public, and MATLAB retains
   redundant binding-side result writeback.
+- F20: `Problem::set_storage_policy` stores an advisory enum while actual
+  heap/mmap data routing belongs to `DataLoader`; the frozen override promise
+  has no executable path.
 
 ## Exact resume point (updated)
 
