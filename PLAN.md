@@ -540,6 +540,11 @@ colour system transfer verbatim**.
   p-median matrix. The record attributes its linking rows to Balinski and the
   classical complete model to ReVelle-Swain; the interrupted “same program”
   and independent-lineage claims were removed.
+- 2026-07-23 (R1 TODO scope): Reconcile all 53 live TODO records, not only the
+  approximate count in the phase text. The 21 known-bug/cleanup records retain
+  the three-way verdict and map STILL-OPEN defects to R3; the 32 backlog,
+  question, deferred, and operator records use the same evidence standard but
+  route open work to its owning campaign phase or external owner.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -586,3 +591,8 @@ colour system transfer verbatim**.
   `git status --porcelain=v1` was empty; canonical behavioral closure remains
   114/114, zero failed, exactly six capability skips. Final matrix:
   `.claude/baselines/2026-07-23-r0-adjudication.md`. Proceed to R1.
+- 2026-07-23 (R1 start): Registered the TODO reconciliation at base `83a2048`.
+  Inventory: 53 records (49 unchecked, one checked, three open questions);
+  acceptance requires 53/53 verdicts, no unclassified records, and unique R3
+  IDs for every still-open defect. Evidence:
+  `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
