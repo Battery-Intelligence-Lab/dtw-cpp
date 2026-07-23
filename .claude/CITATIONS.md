@@ -125,6 +125,7 @@ References used during development. Verify each citation independently before pu
 ### Ecosystem
 
 - Apache Arrow. The Arrow C Data Interface. https://arrow.apache.org/docs/format/CDataInterface.html — zero-copy interchange with no Arrow build dependency; nanoarrow helpers: https://arrow.apache.org/nanoarrow/
+- Apache Arrow. *Install Apache Arrow*. https://arrow.apache.org/install/ — official Ubuntu apt-repository bootstrap and the `libarrow-dev` / `libparquet-dev` package names used by the F9 execution gate; re-verified 2026-07-23.
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
 - cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/

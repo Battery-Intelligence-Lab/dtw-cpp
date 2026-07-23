@@ -74,3 +74,89 @@ jobs:
       - name: cmake test
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
+
+  # Phase-8 finding F9: with DTWC_ENABLE_ARROW defaulting to OFF (CMakeLists.txt:49)
+  # and no workflow ever turning it on, tests/unit/test_io_readers.cpp self-SKIPped in
+  # every gate — the Arrow IPC + Parquet readers had zero CI coverage. This is a
+  # separate job, not a matrix entry, so the Arrow apt install runs once rather than
+  # seven times. The default stays OFF: optional deps remain optional.
+  arrow-and-test:
+    name: Ubuntu unit Arrow+Parquet
+    # Apache publishes packages for Ubuntu 24.04; pin the runner so an
+    # `ubuntu-latest` image rollover cannot outrun that repository.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: update
+        run: sudo apt update
+
+      # Official Apache apt repository (https://arrow.apache.org/install/).
+      #
+      # VERSION SKEW — deliberate, not an oversight. cmake/Dependencies.cmake:363-367
+      # pins the CPM *source* build to Arrow 19.0.1; this apt path takes whatever the
+      # repository currently serves (a much newer release). We do NOT pin the apt
+      # version, for three reasons:
+      #   1. Apache prunes old versions from the apt repo, so a pin is a guaranteed
+      #      future hard failure ("Version '...' for 'libarrow-dev' was not found")
+      #      with no upstream remedy other than un-pinning.
+      #   2. The surface the F7 chunked-Parquet hardening depends on —
+      #      parquet::arrow::FileReaderBuilder, parquet::arrow::FileReader and
+      #      FileReader::ReadRowGroups (dtwc/io/parquet_chunk_reader.hpp:230,369,394,539)
+      #      — is long-stable public Parquet C++ API.
+      #   3. An upstream API break that reddens this job is information we want: it is
+      #      precisely the skew signal that the frozen 19.0.1 CPM pin hides.
+      # The honest cost: this job can break from an upstream release we did not choose,
+      # and that break will land on an unrelated PR. If that becomes noisy, pin here to
+      # the then-current libarrow-dev/libparquet-dev version and accept owning the bump.
+      #
+      # The repository bootstrap establishes package-signing trust, so its current bytes
+      # are SHA-256 pinned even though packages from that signed repository intentionally
+      # float. Update the hash only after reviewing a replacement bootstrap package.
+      - name: install Arrow + Parquet
+        run: |
+          set -euo pipefail
+          sudo apt install -y -V ca-certificates lsb-release wget
+          bootstrap=apache-arrow-apt-source-latest-noble.deb
+          wget "https://packages.apache.org/artifactory/arrow/ubuntu/${bootstrap}"
+          echo "5b6bee96ebbda57bc4dbb2dd262b1ecd7aebb63dbc47733e3f1a32ad8148ed81  ${bootstrap}" \
+            | sha256sum --check -
+          sudo apt install -y -V "./${bootstrap}"
+          sudo apt update
+          sudo apt install -y -V libarrow-dev libparquet-dev
+
+      - name: make build directory
+        run: mkdir build_dir
+
+      - name: cmake configure
+        run: |
+          cmake .. -DCMAKE_BUILD_TYPE=Debug -DDTWC_BUILD_TESTING=ON \
+            -DDTWC_ENABLE_ARROW=ON -DDTWC_ENABLE_GUROBI=OFF \
+            -DDTWC_ENABLE_HIGHS=OFF -DDTWC_ENABLE_LLFIO=OFF
+        working-directory: build_dir
+
+      - name: cmake build
+        run: cmake --build . --parallel 2
+        working-directory: build_dir
+
+      - name: cmake test
+        run: ctest -j2 -C Debug --output-on-failure
+        working-directory: build_dir
+
+      # THE F9 GATE. `cmake test` above cannot close F9 on its own: a CTest skip is not
+      # a failure (SKIP_RETURN_CODE 4, cmake/Coverage.cmake:10), so a build where Arrow
+      # failed to link goes green with test_io_readers never executing — the F9 failure
+      # mode reproducing itself inside its own fix.
+      #
+      # The configure log is NOT admissible evidence here: dtwc/CMakeLists.txt:211 emits
+      # "Arrow + Parquet linked" from the OUTER `if(DTWC_ENABLE_ARROW AND Arrow_FOUND)`,
+      # so it prints even when the inner `elseif(TARGET Arrow::arrow_shared)` branch
+      # (line 202) never matched and DTWC_HAS_ARROW was consequently never defined.
+      # Only the test binary's own output proves the subject ran. Every check below
+      # fails closed: a missing/unparsed summary line is a failure, not a pass.
+      - name: assert Arrow suite ran (F9)
+        run: |
+          set -euo pipefail
+          ctest --test-dir build_dir -C Debug -V --no-tests=error \
+            -R '^test_io_readers$' 2>&1 | tee build_dir/io_readers.log
+          bash .github/scripts/assert-arrow-suite.sh build_dir/io_readers.log
