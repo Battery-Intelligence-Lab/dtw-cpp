@@ -342,3 +342,8 @@ markers, 18-file inventory, 9/9 byte pairs, exact payloads/cost bytes, distinct
 configurations, Arrow reader execution, 115-target Arrow gate, and unchanged
 114-target canonical gate all meet their pre-run bands. No implementation
 repair attempt was used.
+
+The exact implementation rollback is `git revert 1df77fc`. The preregistered
+fresh-runtime risk was confirmed by the rebuilt CLI; the remaining claim most
+likely to fail is cross-platform last-bit Soft-DTW identity in the hosted
+Ubuntu job, whose execution remains operator-owned and is not claimed here.

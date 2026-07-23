@@ -16,8 +16,8 @@
 **Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
-the sanitizer gate CLOSED; **F8 OPEN**. Phases R0–R1 CLOSED; R2 active with
-D1 CLOSED; R3 active.
+the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
+D1 CLOSED; R3 active with F11 the earliest open finding.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -334,10 +334,13 @@ recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
 Open findings first (status after R0 adjudication — update these boxes there):
 
-- [ ] **F8 — resident≡stream parity pinned by nothing.** Commit the
-      8-series/4-row-group fixture; assert resident and forced-stream FastCLARA
-      runs produce identical labels, medoids, and checkpoint bytes (f64, f32,
-      Soft-DTW). Until then F7's headline guarantee can regress silently.
+- [x] **F8 — resident≡stream parity pinned by nothing.** Commit `1df77fc`
+      tracks the SHA-pinned 8-series/4-row-group fixture and a non-skippable
+      real-CLI gate. Six resident/forced-stream FastCLARA runs cover f64, f32,
+      and Soft-DTW: route markers pass 12/12 and all nine labels, medoids, and
+      checkpoint pairs are byte-identical. The fresh Arrow-ON suite passes
+      115/115; canonical Arrow-OFF remains 114/114 with its six capability
+      skips. Hosted Ubuntu execution remains operator-owned and is not claimed.
 - [x] **F9 — Parquet reader suite absent from the canonical gate.**
       `test_io_readers` (348 assertions) is skipped under
       `DTWC_ENABLE_ARROW=OFF`; the CLI's Parquet planner lives behind
@@ -754,6 +757,12 @@ colour system transfer verbatim**.
   installs Arrow/Parquet and enforces ≥348 assertions plus ≥11 cases from
   Catch2's own summary; its hosted run is operator-owned and is not claimed by
   the local closure.
+- 2026-07-23 (F8): Primary evidence is the local PyArrow-23-backed real CLI:
+  six successful processes prove both mutually exclusive Parquet routes,
+  nine resident/stream artifact pairs are byte-identical, and exact
+  configuration payloads are pinned. The permanent target exists only with
+  Parquet support; the Ubuntu Arrow job selects it fail-closed, but hosted
+  execution remains operator-owned and is not claimed by the local closure.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -931,3 +940,12 @@ colour system transfer verbatim**.
   CUDA geometry and exact Metal no-path parity. The actual canonical inventory
   is 114/114, zero failed, with the same six capability skips. Evidence:
   `.claude/baselines/2026-07-23-r2-d1-dtw.md`. Resume at R3-F8.
+- 2026-07-23 (R3-F8): `1df77fc` tracks the registered Parquet fixture and a
+  permanent non-skippable real-CLI parity test. The first decisive run passed:
+  six exits, 12/12 live route checks, 18 exact artifacts, 9/9 byte-identical
+  resident/stream pairs, and 3/3 distinct configuration checkpoints. The fresh
+  Arrow-ON suite passes 115/115 with `test_io_readers` and F8 executing; the
+  canonical Arrow-OFF suite remains 114/114 with exactly six capability
+  skips. Independent review found all 11 registered acceptance items verified.
+  Hosted CI was not run locally and is not claimed. Evidence:
+  `.claude/baselines/2026-07-23-f8-fast-clara-parity.md`. Resume at R3-F11.
