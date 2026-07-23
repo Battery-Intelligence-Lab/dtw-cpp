@@ -328,6 +328,10 @@ function(dtwc_setup_dependencies)
       set(Arrow_FOUND TRUE PARENT_SCOPE)
       if(Parquet_FOUND)
         message(STATUS "  Parquet:  YES (v${Parquet_VERSION}) — system install")
+        # find_package() runs inside this function.  Export the package result
+        # alongside the existing capability flag so the parent directory can
+        # link Parquet::parquet_shared and publish DTWC_HAS_PARQUET.
+        set(Parquet_FOUND TRUE PARENT_SCOPE)
         set(DTWC_HAS_PARQUET_LIB TRUE PARENT_SCOPE)
       endif()
     else()

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed system-package Arrow builds silently omitting Parquet support even
+  after `find_package(Parquet)` succeeded. The detected package now reaches the
+  parent build scope, so `libparquet-dev` enables the production reader and its
+  tests as configured.
 - Fixed `--ram-limit` so Parquet is planned from schema and row-group metadata
   before the selected payload is materialised. The fail-closed binary-size
   parser is exact through the platform `size_t` boundary; conservative
