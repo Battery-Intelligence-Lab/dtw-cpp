@@ -1,22 +1,20 @@
 # DTWC++ Development TODO
 
-
 ## Volkan's instructions
 
-Now we are doing a huge-refactor and upgrade our DTWC++ library. 
+Now we are doing a huge-refactor and upgrade our DTWC++ library.
 
 I want a very detailed analysis and a plan for Opus 4.8 -effort=xhigh to implement. Please you do yourself do not implement the plan but call it as the subagent to implement. Your output tokens are very valuable. So you need to focus on high-level thinking and guiding other agents. Not implementing things yourself nor bloating your context. I want following things
 
+1) Top-to-down library and interface redesign.
 
-1) Top-to-down library and interface redesign. 
+2) Interface is consistent in all languages (C++, MATLAB and Python, like how Casadi is doing)
 
-2) Interface is consistent in all languages (C++, MATLAB and Python, like how Casadi is doing) 
+3) I want device selection like Pytorch so you create the DTWC environment then you set the device somehow. So it is like device=cpu, device=gpu, device=hpc. The cpu and gpu are local, and hpc is the SLURM interface we have. So it should use the credientials to connect HPC in the ".env" file. If they are not there then it should give an error that the connection is not established for the reason (no password -> then tell user how to put their things to .env, or wrong password etc. then tell user, so informative message then close). Maybe we could have some lazy loading so that if it is hpc then it doesn't load the data, or if the data is too big then it uses some mmap or something else. Meticulously decide these important design questions.
 
-3) I want device selection like Pytorch so you create the DTWC environment then you set the device somehow. So it is like  device=cpu, device=gpu, device=hpc. The cpu and gpu are local, and hpc is the SLURM interface we have. So it should use the credientials to connect HPC in the ".env" file. If they are not there then it should give an error that the connection is not established for the reason (no password -> then tell user how to put their things to .env,  or wrong password etc. then tell user, so informative message then close). Maybe we could have some lazy loading so that if it is hpc then it doesn't load the data, or if the data is too big then it uses some mmap or something else. Meticulously decide these important design questions. 
+4) Automated compilation for executables and mex files, python wheels for all platforms. I think we can consider uploading the pypi when we are hundred percent sure our software is working. So we will release as DTWC++ 2.0.
 
-4) Automated compilation for executables and mex files, python wheels for all platforms. I think we can consider uploading the pypi when we are hundred percent sure our software is working. So we will release as DTWC++ 2.0.  
-
-5) The code is cross-platform, works on all supported platforms (windows, macos (both intel and amd), Linux (ubuntu)). 
+5) The code is cross-platform, works on all supported platforms (windows, macos (both intel and amd), Linux (ubuntu)).
 
 6) All parallelisation etc. things work out of the box. I don't want it to cannot activate parallelisation due to missing oneTBB etc. then fall back to sequential. Otherwise I would be happier probably for using std algorithms but this was the issue. Maybe we could make user-facing test interface like. dtwc.test.parallelisation() so this tries how many cores and how we can use it. Same for GPU testing. Once these functions are called it can just report back how many gpu what it is using etc.
 
@@ -30,156 +28,99 @@ I want a very detailed analysis and a plan for Opus 4.8 -effort=xhigh to impleme
 
 11) Please think deeply and also remind me if I forgot anything. Like maybe you could write huge CUDA kernels other things or improve some algorithms to make this library EVEN FASTER. You could use some profiler some other thing see cache hit etc. You are free to change data types, how to hold data, how to do things. As long as this library is very fast, accurate, and portable.
 
-## Other updates
+## Reconciled campaign record
 
-**Last Updated:** 2026-07-06
+**Last reconciled:** 2026-07-23. Evidence ledger commit: `512bbc4`.
 
-> Refreshed from stale 2026-04-13 state. Reconciled against CHANGELOG (Unreleased),
-> the 2026-06-30 device/HPC handoff, and the 2026-06-01 full-repo adversarial audit.
-> Known-bug file:line references below were **re-verified against source on 2026-07-06**
-> (line numbers ±a few; the Critical items and the L2/fast_pam/L2-metric findings were
-> read directly, the rest spot-checked).
+This file is the live index, not an evidence store. Exact source anchors,
+commands, verbatim outputs, stale-subclaim corrections, and the registered
+verdict rules are in
+`.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
+`PLAN.md` owns ordering and exit gates.
 
-## Known bugs — confirmed & unfixed
+- **CLOSED-BY** names the delivering commit/task and current proof.
+- **STILL-OPEN** names its PLAN finding/phase or operator/community owner.
+- **NOT-REPRODUCIBLE** retires a historical claim contradicted by a direct
+  current-tree probe.
+- **MIXED** is used only when every subclaim has an explicit sub-verdict.
 
-Surfaced by the 2026-06-01 60-agent adversarial audit (95 CONFIRMED findings,
-citation-checked). The two fixes actually applied that session were the dependabot
-`pip` ecosystem and the `scripts/slurm/env.example` cleanup; **everything below is
-still open**. See `.claude/summaries/handoff-2026-06-01-adversarial-audit.md` for the
-full list and proposed patches.
+### Known bugs and cleanup — 21/21 adjudicated
 
-> **STALE SNAPSHOT — full reconciliation pending.**
-> **[confirmed]** This file was last committed on 2026-07-06 (`874edd5`);
-> no later commit reconciled it against Phases 4–8. `PLAN.md` Phase R1 owns
-> that full reconciliation. Until it runs, unchecked boxes below are historical
-> audit entries, not verified current-open findings.
->
-> **[confirmed] CLOSED-BY Task 5.1 (`8ca7354`).** The High entry claiming
-> production `fast_pam` still uses an O(N²·k) SWAP no longer describes the
-> tree. In `dtwc/algorithms/fast_pam.cpp`, `fast_pam` and `fast_pam_seeded`
-> select `PAMVariant::FastPAM1`; its `update_removal_loss` plus
-> `find_best_swap` decomposition evaluates each candidate in O(N+k)=O(N),
-> because k≤N, giving O(N²) per iteration. The old x×p×m loop remains
-> reachable only through explicitly selected `pam1_naive_swap_impl`, retained
-> as a direct-sum benchmark/reference path. The registered equivalence is
-> objective agreement within 1e-9; exact medoid identity is not required
-> (`.claude/baselines/2026-07-08-faster-pam-bench.md`).
->
-> All other entries remain UNVERIFIED pending R1; this note does not adjudicate
-> them.
+| ID | State | Reconciled record |
+|---|---|---|
+| K01 | DONE | **CLOSED-BY `a992183`:** CUDA >2048 wavefronts select the correct three-buffer route; the old direct-8K wording was unsupported. |
+| K02 | DONE | **CLOSED-BY `a992183`, `6a53be7`:** Metal pair decode uses shared 64-bit arithmetic and exact correction loops. |
+| K03 | DONE | **CLOSED-BY `a992183`, `6a53be7`:** Metal pair counts/work indices were widened; compact active-pair widths remain in R3's general width lens. |
+| K04 | DONE | **CLOSED-BY `0c173be`:** untrusted mmap distance-matrix layout arithmetic is overflow-checked. |
+| K05 | DONE | **CLOSED-BY `0c173be`:** mmap data-store interior offsets are bounded, monotone, and aligned. |
+| K06 | DONE | **CLOSED-BY `bb72bb0`:** MATLAB inputs are validated before `mxGetDoubles`; fresh-MEX gate 61/61. |
+| K07 | DONE | **CLOSED-BY `f156474`, `1f4d985`:** HiGHS/Gurobi non-optimal/error states produce typed failures, not assertion-dependent extraction. |
+| H01 | DONE | **CLOSED-BY `ae0796b`:** live CPU Soft-DTW dispatch validates gamma and reaches Soft-DTW. |
+| H02 | DONE | **CLOSED-BY `ffb7a8d`:** live multivariate L2 dispatch uses `MVL2Dist`; the earlier scalar overclaim is retired. |
+| H03 | DONE | **CLOSED-BY `442676a`:** public default data type and CLI default are Float64; stale docs are owned by R1 docs truth. |
+| H04 | DONE | **CLOSED-BY `a992183`:** CUDA pair/result indexing is 64-bit at the overflow boundary. |
+| H05 | DONE | **CLOSED-BY `a07b63f`:** Arrow IPC/Parquet readers validate type, dimensions, and list bounds; fresh Arrow gate 390/390. |
+| H06 | DONE | **CLOSED-BY `8ca7354`:** production FastPAM uses the O(N²)-per-iteration FastPAM1 decomposition. |
+| H07 | DONE | **CLOSED-BY `eeca641`, `24ef4e5`, `30411a7`:** resident/chunked FastCLARA share seeded sampling and parallel assignment. |
+| H08 | DONE | **CLOSED-BY `abb0fb1`, `f621016`, `5fd3770`:** the real CLI rejects malformed device/metric selections without silent fallback. |
+| H09 | DONE | **CLOSED-BY `2b70f34`:** `TimeSeries::view()` preserves `ndim`. |
+| H10 | OPEN | **MIXED:** main dependency pins/optionality and Codecov integrity closed by `fbab32a`, `b77a75c`, `3f827c2`; mutable example-project archive → **R3/F11**; quickcpplib upstreaming → **UP01/community**. |
+| C01 | DONE | **CLOSED-BY `998c4c7`:** dead/misclassifying integer/zero/one helpers removed. |
+| C02 | DONE | **CLOSED-BY `ae0796b`, `ffb7a8d`:** duplicate dead metric dispatch removed; stale prose is R1 docs truth work. |
+| C03 | DONE | **CLOSED-BY `998c4c7`:** dead SIMD surface removed; killed idea remains killed and stale prose is R1 docs truth work. |
+| C04 | OPEN | **MIXED:** decode SSOT closed by `a992183`; band semantics → **R3/F12**; medoid scans → **R3/F13**; CSV emitters → **R3/F14**; generator/oracle variants → **R3/F15**. |
 
-### Critical (silent-wrong results or memory-safety)
+### Backlog, deferred, operator, and questions — 32/32 adjudicated
 
-- [ ] **CUDA wavefront drops anti-diagonal cells when `max_L > 2048`** → silent wrong DTW on the 8K-sample target. `cuda/cuda_dtw.cu:280` (`MAX_SI=8` × block 256 = 2048 cap); 3-buffer path is correct.
-- [ ] **Metal `decode_pair` uses FP32 `sqrt`** → wrong/OOB pair decode for `N > ~4096` (CUDA/MPI use FP64). `metal/metal_dtw.mm:57`.
-- [ ] **Metal `num_pairs = N*(N-1)/2` int32 overflow** for `N ≥ ~46341`. `metal/metal_dtw.mm:102,220,341,761`.
-- [ ] **`mmap_distance_matrix.hpp:120` — no overflow guard on `packed_size(n)`** (`n*(n+1)/2`) before the truncation check → attacker-chosen `n` wraps `expected` small, check passes, OOB read.
-- [ ] **`mmap_data_store.hpp:229` — interior offsets never validated** (only the sentinel is) → OOB / underflow.
-- [ ] **`bindings/matlab/dtwc_mex.cpp` — no `mxIsDouble` guard** → non-double input NULL-derefs and crashes MATLAB (verified absent 2026-07-06).
-- [ ] **`mip/mip_Highs.cpp:199` — status check is `assert()`** (NDEBUG no-op) → a non-optimal solve extracts garbage / empty `centroids_ind` → UB. Same Gurobi catch path `mip_Gurobi.cpp:120`.
+| ID | State | Reconciled record |
+|---|---|---|
+| P01 | DONE | **CLOSED-BY Task 5.11 `8debf1d`:** OpenMP schedule sweep retained the measured adaptive policy. |
+| S01 | DONE | **CLOSED-BY `3550bb9`, `84693d4`:** Parquet row requests are grouped so each row group is read once. |
+| S02 | DONE | **CLOSED-BY-REJECTED `f74e346`:** the registered boundary study retained the canonical sample-size rule; undocumented sqrt(N) scaling stays killed. |
+| S03 | OPEN | Streaming CLARA assignment-state resume → **R5/2.1**. |
+| S04 | OPEN | Permanent synthetic Parquet resident-versus-stream parity fixture → **R3/F8**. |
+| G01 | OPEN | **MIXED:** capability dispatch/sm_90 build/local Ada run closed by `08f1d6e`, `ecc522c`; real H100 validation → **R5/operator**. |
+| G02 | OPEN | Wire the existing CUDA K-vs-all kernel into production streaming CLARA → **R5**. |
+| G03 | OPEN | **MIXED:** Float32 device path closed by `08f1d6e`, `54615fb`; 80-GB H100-scale validation → **R5/operator**. |
+| G04 | DONE | **NOT-REPRODUCIBLE:** wavefront preload is live for lengths 257–512 or when forced. |
+| G05 | OPEN | Multi-stream CUDA pipeline; current production path is one serialized stream → **R5**. |
+| B01 | OPEN | First PyPI release/trusted publisher → **R6/operator**; workflow/dry-run preparation is complete. |
+| B02 | DONE | **CLOSED-BY `c4ba175`, Task 6.2 `8debf1d`:** MATLAB Phase 2 is delivered; fresh-MEX gate 61/61. |
+| B03 | OPEN | **MIXED:** tracked MEX removed by `8debf1d`; explicit `*.mexw64` ignore protection → **R1 tracked-junk audit**. |
+| M01 | DONE | **CLOSED-BY-REJECTED `af67486`:** odd-cycle band falsified; the recorded LR/B&B chain remains binding. |
+| A01 | OPEN | Two-phase within-/cross-group clustering → **R5/2.1**, only after a quality/complexity band is registered. |
+| A02 | OPEN | **MIXED:** device-aware selection closed by `4e59d05`; measured resource/cost model → **R4 then R5**. |
+| PL01 | DONE | **CLOSED-BY `0d56fb9`, `5363ac1`, `7f79c55`:** CPU/wheel path executed on Apple M2 Max. |
+| PL02 | OPEN | Arrow CPM on Windows+Clang → **2.1/community, BLOCKED-UPSTREAM**; F9's system-Arrow route is distinct. |
+| PL03 | OPEN | Arrow CPM on Windows+MSVC → **2.1/community**; currently untested, with no “should work” claim. |
+| PL04 | OPEN | Portable/truthful CMake presets (no developer-absolute LLVM path; floor 3.26) → **R3/F16**. |
+| D01 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** conversion guide delivered at `docs/content/guides/data-formats.md`. |
+| D02 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** Mermaid website architecture diagram delivered. |
+| D03 | OPEN | Byte-identical, separately referenced docs logos → **R1 tracked-junk audit**; preserve both consumers if deduplicated. |
+| DEF01 | OPEN | DDTW recurrence fusion remains an explicit **2.1/R5 non-goal** unless profiling reopens it. |
+| DEF02 | DONE | **CLOSED-BY-SUPERSEDED `9511efd`, `9becd53`, `ef978e2`:** full semantic/content cache identity supersedes filename-plus-size. |
+| DEF03 | OPEN | **MIXED:** nanoarrow C Data ingestion closed by `3f827c2`; replacing Arrow C++ file readers remains an explicit **2.1 non-goal**. |
+| DEF04 | OPEN | HIP backend → **post-2.0/community-owned**. |
+| BLK01 | OPEN | Real Oxford ARC submit/poll/download validation → **R6/operator-owned**; local chain is covered, and agents must not submit. |
+| Q01 | DONE | **CLOSED-BY `442676a`:** Float64 is the default; explicit Parquet Float32 remains. |
+| Q02 | DONE | **CLOSED-BY `ffb7a8d`, `d4a9c6e`:** multivariate L2 is a real norm, not an L1 alias. |
+| Q03 | DONE | **CLOSED-BY `fbab32a`, `b77a75c`:** llfio pinned to `b17613fb2149a93b0cc7022c8e649dbf5a015b90`. |
+| UP01 | OPEN | quickcpplib generator-forwarding issue → **post-2.0/community-owned**; no upstream issue is claimed yet. |
 
-### High
+## Historical delivery summary
 
-- [ ] **CPU dispatch: SoftDTW `[[fallthrough]]` → Standard L1 silently.** `core/dtw.cpp:56` returns a Standard distance for `DTWVariant::SoftDTW` instead of erroring; `gamma>0` guard also skipped on this path (NaN poison).
-- [ ] **`MetricType::L2` silently computes L1.** `case MetricType::L2:` has no body and falls through to the `default` in both dispatchers — `L1Dist` (scalar, `core/dtw_cost.hpp:83`) and `MVL1Dist` (multivariate, `:92`). Requesting an L2 metric gives a per-element `|diff|` sum, not an L2 norm. Verified 2026-07-06.
-- [ ] **`default_data_t = float` on public helpers** halves precision. `settings.hpp:29` — see open question below.
-- [ ] **CUDA int32 index `result_matrix[si*N+sj]` overflow** for `N > 46341` (`cuda/cuda_dtw.cu:202`); `decode_pair` `row_start` int32 (`:73`). Adjacent-series math already uses `long long`; the index was left `int`.
-- [ ] **I/O readers cast to `DoubleArray` with no Float64 check** and no bounds on list offsets; `ndim=0` div-by-zero. `io/arrow_ipc_reader.hpp`, `io/parquet_reader.hpp`. (crc32 is integrity-only, not tamper-proof.)
-- [x] **CLOSED-BY Task 5.1 (`8ca7354`): production `fast_pam` swap phase was O(N²k).** `fast_pam` and `fast_pam_seeded` now select FastPAM1's O(N²)-per-iteration decomposition; the direct-sum O(N²k) implementation remains an explicit benchmark/reference variant. Objective agreement is registered within 1e-9; exact medoid identity is not required.
-- [ ] **`fast_clara` RAM/chunked seed divergence** — `mt19937` (RAM) vs `mt19937_64` (chunked) diverge on the same seed; in-RAM assign is serial (no OpenMP).
-- [ ] **`--metric` silently ignored on the CPU path** (only CUDA consumes it); `std::stoi(device.substr(5))` uncaught → `terminate` on a bad `cuda:N`; `--device` match is case-sensitive with silent CPU fallback.
-- [ ] **`TimeSeries::view()` drops `ndim`** → multivariate round-trip corruption. `core/time_series.hpp:66` (view built from `{data.data(), data.size()}` only).
-- [ ] Build supply chain: `llfio` `GIT_TAG develop` (moving branch) + `REQUIRED` (violates optional-deps rule); quickcpplib clone of HEAD `--depth1` patched+executed at configure; CPM URL tarballs have no `URL_HASH`; codecov bash uploader `curl <()` on a PR with a token.
+These lines describe delivery events, not current-open state. PLAN and the
+reconciled tables above are authoritative.
 
-### Dead code / cleanup (safe removals for a refactor pass)
-
-- [ ] `types/types_util.hpp` `is_integer`/`is_zero`/`is_one` — dead (no callers) **and** misclassify negatives.
-- [ ] `core::dispatch_metric` (`core/dtw_cost.hpp`) — zero call sites; duplicates the live `dtwc::detail` cost functors in `warping.hpp`.
-- [ ] `DTWC_ENABLE_SIMD` — referenced in README/benchmarks but never `option()`'d and no Highway CPM dep → dead, unbuildable branch. Either wire it up or delete the references.
-- [ ] SSOT candidates flagged by the audit: `decode_pair` (3 divergent copies; MPI is the correct one), DTW band-bounds formula (4 incompatible forms), nearest-medoid scan (hand-copied 4×; `detail/medoid_utils.hpp` helpers exist), CSV `setprecision(15)` write loop (4×), bench `random_series` + CPU oracle (byte-identical across 8 files → `test_util.hpp`).
-
-## Active Work
-
-### Performance
-
-- [ ] OpenMP scheduling sweep: `schedule(dynamic,1)` vs `dynamic,16` vs `guided` on the DTW outer loop
-
-### Streaming CLARA
-
-- [ ] Smart row-group ordering: sort access by Parquet row group to minimise decompression
-- [ ] Sample size scaling: `sqrt(N)` for large N (current `max(40+2k, 10k+100)` too small at 100M)
-- [ ] CLARA checkpointing: save/resume assignment state for long runs
-- [ ] Integration test for chunked CLARA with a small synthetic Parquet file
-
-### CUDA
-
-- [ ] Architecture-aware dispatch by compute capability (target H100)
-- [ ] Wire `compute_dtw_k_vs_all` kernel into streaming CLARA assignment
-- [ ] Float32 GPU path: series data in 80GB HBM3, DTW on-device
-- [ ] Wavefront kernel cleanup: remove dead preload branch
-- [ ] Multi-stream pipelining for N > 5000
-
-### Bindings
-
-- [ ] Python: PyPI first release — CI ready, needs GitHub trusted publisher
-- [ ] MATLAB Phase 2: MIPSettings, CUDA dispatch, checkpointing
-- [ ] MEX binary hygiene: `bindings/matlab/dtwc_mex.mexw64` (4.6 MB) is tracked in git — decide whether to keep or `git rm --cached` + gitignore (deferred by user 2026-07-06)
-
-### MIP Solver
-
-- [ ] Odd-cycle cutting planes — instrument Benders gap first (see `.claude/UNIMODULAR.md` for the TU analysis motivating this)
-
-### Algorithms & Scale
-
-- [ ] Two-phase clustering (within-group + cross-group)
-- [ ] Algorithm auto-selection: improve cost model
-
-### Platform
-
-- [ ] ARM Mac Studio: test CPU path on Apple Silicon
-- [ ] Arrow CPM build on Windows+Clang: blocked by ExternalProject flag quoting (Arrow upstream)
-- [ ] Arrow CPM build on Windows+MSVC: untested, should work
-- [ ] `CMakePresets.json:20` hardcodes `C:/Program Files/LLVM/bin/clang++.exe`; cmake floor mismatch 3.26 (listfiles) vs 3.21 (preset/pyproject)
-
-### Documentation
-
-- [ ] Add `data-conversion.md` Hugo page for the `dtwc-convert` tool
-- [ ] Add a Mermaid architecture diagram to the website
-- [ ] `docs/docs_logo.png` and `docs/static/docs_logo.png` are byte-identical — dedup once the referencing pages are checked
-
-## Deferred (explicit non-goals for now)
-
-- [ ] DDTW kernel fusion — derivative on-the-fly in the DTW recurrence
-- [ ] Stale cache detection — hash input filenames + sizes in the mmap header
-- [ ] nanoarrow C Data Interface — eliminate the Arrow C++ dependency entirely
-- [ ] HIPify for AMD GPU — accept community PRs only
-
-## Blocked
-
-- [ ] `device="hpc"` end-to-end on a real SLURM cluster (Oxford ARC) — the submit → poll → download → `NAME_labels.csv` chain is unverified end-to-end; needs one real ARC run (cannot test from a laptop). See handoff 2026-06-30.
-
-## Open questions
-
-- OPEN: is `default_data_t = float` (`settings.hpp:29`) deliberate for the Parquet f32 path, or an accident? Determines whether the precision fix is a change or a no-op.
-- OPEN: is the `L2`-falls-through-to-`L1` behavior (`dtw_cost.hpp:83,92`, confirmed above) intentional — i.e. is DTW meant to only ever use L1/SquaredL2 and `L2` is a deliberate alias — or should `MetricType::L2` get its own norm?
-- OPEN: pin `llfio` to which SHA? Needs a maintainer decision + network.
-
-## Needs a PR / upstream nudge (nice to have)
-
-- [ ] File an upstream issue against [quickcpplib](https://github.com/ned14/quickcpplib) for the `QuickCppLibUtils.cmake:download_build_install` + `find_quickcpplib_library:cmakeargs` lack of `-DCMAKE_MAKE_PROGRAM` forwarding. We carry a local patch (see `cmake/Dependencies.cmake`); once upstream fixes it, our sentinel-guarded patch self-retires.
-
-## Completed (reverse-chron, one line each)
-
-- **2026-06-30** — **PyTorch-style device API + HPC auto-dispatch**: `dtwcpp.device()` global setter with `cpu`/`gpu`/`hpc` names; unified `device()` → `load()` → `cluster()` → `result.plot()` flow (`python/dtwcpp/_api.py`); `device="hpc"` serialises + submits to SLURM and maps labels back to input order (`_hpc.py`); generic env-parametrised `cluster_generic.slurm` job. +23 tests (201 passed / 10 skipped via overlay). **Not yet run end-to-end on a real cluster** (see Blocked).
-- **~2026-05** — **UCR benchmark suite**: 128-dataset cross-architecture benchmark; results in `benchmarks/ucr_benchmark_results.pdf` and `benchmarks/plots/`.
-- **2026-06-01** — **Full-repo adversarial audit** (60 agents, ~3M tokens): 95 CONFIRMED findings, citation-checked. Applied: dependabot `pip` ecosystem + `scripts/slurm/env.example` dead-var labelling. All other findings logged above under Known bugs.
-- **2026-04-13** — **Python wheel build unblocked**: patched `QuickCppLibUtils.cmake` via pre-clone in `cmake/Dependencies.cmake` to forward `-G` + `-DCMAKE_MAKE_PROGRAM` at both CMake spawn sites. Verified end-to-end on macOS arm64 with no system ninja.
-- **2026-04-13** — **Phase 4 (standalone API fold)**: `warping_missing_arow.hpp` + `soft_dtw.hpp` forward pass delegate to `core::dtw_kernel_{full,linear,banded}`. ~305 LOC net removed. `soft_dtw_gradient()` stays separate (owns its forward matrix).
-- **2026-04-13** — Audit hardening: `DTWC_REPRODUCIBLE_BUILD` option, AROW `std::isnan` cleanup, `Problem::{write,read}DistanceMatrix` roundtrip test, mmap `c_str()` lint fix.
-- **2026-04-13** — Audit follow-ups: MIP Benders test coverage, `LoadOptions` struct for `load_folder`/`load_batch_file`, `.clang-tidy` config.
-- **2026-04-13** — **Phase 3 (kernel unification)**: templated `resolve_dtw_fn<T>` replaces the 130-line switch; AROW / Soft-DTW folded via `AROWCell` + `SoftCell`; MV AROW first-class. Shipped with the f32 dispatch bug fix.
-- **2026-04-12** — Phase 2: fold `warping_missing` into the unified DTW kernel; 1.54–2.83× speedup on banded paths.
-- **Earlier** — Phase 4 (data access + I/O + f32): `Data::series(i)` span accessor, CLARA zero-copy views (48× subsample), `StoragePolicy` enum, Arrow IPC + Parquet readers, `dtwc-convert` CLI, runtime `Precision::Float32`/`Float64`.
-- **Earlier** — Phase 2 (CPU perf): `adtwBanded` rolling column + early abandon + pruned.
-- **Earlier** — Phase 0 (CPU throughput): `-march=native`, `std::isnan`-safe fast-math subset, O(n) Lemire envelope. +45–103% DTW throughput.
-- **Earlier** — RAM-aware chunked CLARA: `--ram-limit`, `ParquetChunkReader` row-group streaming, medoid pinning, float32 chunked Parquet path with OpenMP.
+- **2026-06-30** — **PyTorch-style device API + HPC auto-dispatch** (`f933003`, `cceae71`): unified `device()` → `load()` → `cluster()` flow and local SLURM envelope. A real ARC run remains BLK01.
+- **2026-06-01** — **Full-repo adversarial audit:** recorded 95 confirmed findings in `.claude/summaries/handoff-2026-06-01-adversarial-audit.md`; subsequent closure state is tracked above, not by that historical snapshot.
+- **2026-04-13** — **Python wheel build unblocked** (`7f79c55`): verified macOS arm64 without a system Ninja. This does not close the Windows llfio-ON wheel item.
+- **2026-04-13** — **Standalone API fold** (`ed826c3`, `f440bfc`): missing-data and Soft-DTW forward paths delegate to unified kernels; Soft-DTW gradient remains separate.
+- **2026-04-13** — Audit hardening (`7f994ee`, `375a23e`, `5a0987c`, `90d4488`): reproducible-build option, NaN cleanup, matrix roundtrip, and mmap lint repair.
+- **2026-04-13** — Audit follow-ups (`4c54089`, `d4c066c`, `85f79d5`): MIP Benders tests, `LoadOptions`, and a non-gating `.clang-tidy` configuration.
+- **2026-04-13** — **Kernel unification** (`4d92881`, `d595035`, `ee0f798`, `08a2b8d`): templated resolver, AROW/Soft-DTW cell policies, and f32 dispatch repair.
+- **2026-04-12** — **Warping-kernel unification** (`eb7b572`, `38fa694`): selected Standard/WDTW banded benchmarks measured 1.54–2.83×; the missing-data fold itself was within measurement noise.
+- **2026-04-09 onward** — **RAM-aware chunked CLARA** (`3550bb9`; corrected by `f74e346`, `30411a7`, `84693d4`): row-group streaming, medoid pinning, Float32, and OpenMP assignment; permanent parity remains R3/F8.
+- **2026-04-09** — **UCR benchmark suite** (`c370236`): all 128 datasets ran across four recorded architectures; artifacts are in `benchmarks/ucr_benchmark_results.*` and `docs/content/benchmarks/ucr.md`.
+- **Earlier** — **Data access/I/O/f32** (`420f764`): spans, zero-copy CLARA sampling, storage policy, Arrow/Parquet readers, conversion CLI, and explicit Float32/Float64; `442676a` later made Float64 the default.
+- **Earlier** — **Pruned/banded DTW** (`7551018`): rolling band column, early abandon, ADTW pruned strategy, native tuning, safe math flags, and O(n) envelope. Committed JSON reports `BM_dtwFull_L` +45.5–103.5%; banded cases were −2.2% to +2.3%.
