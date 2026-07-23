@@ -230,6 +230,36 @@ TEST_CASE("seeded FastPAM translates negative Soft-DTW sampling weights",
   CHECK(std::isfinite(result.total_cost));
 }
 
+TEST_CASE("seeded FastPAM completes the medoid set when all weights are zero",
+          "[fast_pam][seeded][degenerate]")
+{
+  // Exercises dtwc::fast_pam_seeded. Identical series drive every BUILD sampling
+  // weight to exactly zero, so core::distance_sampling_weights returns
+  // total == 0 and fast_pam.cpp:495 must complete the distinct medoid set
+  // deterministically instead of constructing an invalid weighted distribution.
+  // The k-means++ siblings of this case are in unit_test_clustering_algorithms.cpp.
+  Problem prob("fast_pam_identical_series");
+  prob.set_data(Data(
+    std::vector<std::vector<data_t>>{
+      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0},
+      {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
+    std::vector<std::string>{"a", "b", "c", "d"}));
+
+  // max_iter=0 observes the deterministic seeded BUILD result before SWAP.
+  const auto result = fast_pam_seeded(prob, 3, 7, 0);
+
+  REQUIRE(result.medoid_indices.size() == 3);
+  const std::set<int> unique(result.medoid_indices.begin(),
+                             result.medoid_indices.end());
+  CHECK(unique.size() == 3);
+  // The fallback fills upward from index 0, so whichever index the seed drew
+  // first, both 0 and 1 must be completed into the set. This holds for all four
+  // possible first draws and is therefore independent of the seed.
+  CHECK(unique.count(0) == 1);
+  CHECK(unique.count(1) == 1);
+  CHECK(result.total_cost == 0.0);
+}
+
 // ===========================================================================
 // Test 4: Labels are in [0, k).
 // ===========================================================================

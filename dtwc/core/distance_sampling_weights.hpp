@@ -43,11 +43,11 @@ DistanceSamplingWeights distance_sampling_weights(
 
   double minimum = std::numeric_limits<double>::infinity();
   for (size_t i = 0; i < distances.size(); ++i) {
-    if (is_selected[i]) continue;
     const double distance = static_cast<double>(distances[i]);
     if (!std::isfinite(distance))
       throw std::runtime_error(
         caller + ": initialization distance must be finite");
+    if (is_selected[i]) continue;
     minimum = std::min(minimum, distance);
   }
 

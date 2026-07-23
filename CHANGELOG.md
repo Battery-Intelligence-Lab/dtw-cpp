@@ -40,6 +40,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   unchanged. Degenerate all-zero weights (for example, identical series) now
   complete the medoid set with the first unselected index instead of constructing
   an invalid standard-library discrete distribution.
+  That fix is now pinned directly: a new unit suite asserts the sampling-weight
+  contract (nonnegative input unchanged, selected entries exactly zero and
+  excluded from the total, a common shift computed from unselected entries only,
+  exactly zero totals for degenerate input, and typed rejection of non-finite
+  distances and out-of-range selected indices), and the previously untested
+  degenerate and signed branches of `init::Kmeanspp_seeded` and
+  `fast_pam_seeded` now have behavioural cases.
 - Removed FastCLARA's hidden packed O(N²) parent-cache allocation. Non-full
   assignment now evaluates the configured float64/float32 DTW dispatcher
   directly with O(N) result scratch, while subsample PAM alone owns O(s²)
