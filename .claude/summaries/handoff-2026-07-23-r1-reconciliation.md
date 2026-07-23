@@ -30,3 +30,7 @@ Complete the R1 docs truth audit: correct source-of-truth drift in README,
 website pages, API contract, CHANGELOG, and comments; run the CLI contract and
 internal-link gates against the fresh canonical binary. Keep changes
 non-behavioral and commit each green record task separately.
+
+The audit band and local Hugo `[BLOCKED-ENV]` probe are registered in
+`.claude/baselines/2026-07-23-r1-docs-truth.md`. The CLI contract gate remains
+decisive; any check over the existing ignored `docs/public/` is advisory only.
