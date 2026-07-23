@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected the GPU backend guide to the live option/dispatch surface, scoped
+  lower-bound pruning to its currently defensible equal-length L1 regime,
+  identified correctness/loudness gaps F27–F31, and removed untraceable
+  pruning/regtile speed claims and exact-matrix pruning advice.
 - Re-audited the frozen cross-language API contract against the current tree,
   resolved all eight stale reviewer questions, and named the nine unfulfilled
   2.0 implementation promises as R3 findings F18–F26 instead of presenting

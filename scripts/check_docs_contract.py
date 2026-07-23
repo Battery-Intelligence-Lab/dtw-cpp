@@ -231,6 +231,51 @@ def assert_method_catalog() -> None:
         raise AssertionError("algorithms.md has stale FasterPAM provenance")
 
 
+def assert_gpu_backend_page() -> None:
+    page = (ROOT / "docs/content/method/gpu-backends.md").read_text(
+        encoding="utf-8"
+    )
+    stale = (
+        "MetalKernelOverride",
+        "`max_length_hint > 0` skips the runtime length scan",
+        "`Problem::lower_bound_strategy` (coming in a later commit)",
+        "Selecting `DistanceMatrixStrategy::Auto` on a build with both backends enabled picks CUDA",
+        "CPU with DistanceMatrixStrategy::Pruned",
+        "always satisfies $$\\mathrm{LB}_{\\mathrm{Keogh}} \\le \\mathrm{DTW}$$",
+        "The CUDA reference implementation in DTWC++ is a direct port",
+        "**103×**",
+        "**7.6×**",
+        "`N < 20`, `L < 100`",
+        "Unified memory removes H2D/D2H",
+        "per-pair envelope + LB cost is O(L)",
+    )
+    present = [marker for marker in stale if marker in page]
+    if present:
+        raise AssertionError(f"GPU backend page retains stale claims: {present}")
+
+    required = (
+        "equal-length L1",
+        "thresholded",
+        "`+inf`",
+        "`dtwc::KernelOverride`",
+        "`Problem::lb_strategy` is CPU-only",
+        "`DistanceMatrixStrategy::Auto` is CPU-only",
+        "O(N·L·r)",
+        "O(N²·L)",
+        "benchmarks/results/mac_m2max/metal_vs_cpu.json",
+        "historical, advisory",
+        "inspired by cuDTW++",
+        "F27",
+        "F28",
+        "F29",
+        "F30",
+        "F31",
+    )
+    missing = [marker for marker in required if marker not in page]
+    if missing:
+        raise AssertionError(f"GPU backend page omits current truth: {missing}")
+
+
 def cli_flags(text: str) -> set[str]:
     return set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", text))
 
@@ -292,6 +337,7 @@ def main() -> int:
     assert_env_messages()
     assert_tier1_signatures()
     assert_method_catalog()
+    assert_gpu_backend_page()
     if args.cli is not None:
         assert_cli_reference(args.cli.resolve())
     print("documentation contract checks passed")

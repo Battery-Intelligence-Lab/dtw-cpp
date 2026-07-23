@@ -10,12 +10,17 @@ DTW is embarrassingly parallel across pairs but **sequential within** each pair 
 - **CUDA** (NVIDIA) — targets consumer and HPC discrete GPUs.
 - **Metal** (Apple Silicon) — targets M-series integrated GPUs.
 
-Both expose the same C++ option surface. An explicitly requested backend raises
-`DeviceError` if it is not compiled, no device is present, or dispatch fails;
-DTWC++ never changes that request to CPU. This page explains the kernels, how to
-pick between them, and how lower-bound pruning (LB_Keogh) accelerates large workloads.
+Both inherit a shared option/result base, then add backend-specific fields and
+defaults. Through `Problem`, an unavailable or uncompiled requested backend
+raises `DeviceError` rather than changing to CPU. Some lower-level operational
+Metal failures still escape as `std::runtime_error` (F31), and several explicit
+GPU options currently degrade without a universally visible signal (F30).
 
-> **Compile-time flags.** Backends are opt-in: `-DDTWC_ENABLE_CUDA=ON` and/or `-DDTWC_ENABLE_METAL=ON`. If neither is enabled, `Problem::fillDistanceMatrix` runs on CPU (`BruteForce` or `Pruned`).
+> **Compile-time flags.** CUDA defaults OFF and is enabled with
+> `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on
+> Apple platforms; non-Apple configuration disables it. With neither backend,
+> explicit GPU requests error, while an ordinary CPU `Problem` uses its selected
+> CPU distance strategy.
 
 ## The DTW recurrence on a GPU
 
@@ -36,7 +41,9 @@ DTWC++ uses both, plus a third row-major scheme for tight Sakoe-Chiba bands.
 
 ## Kernel dispatch tables
 
-The dispatcher inspects `band`, `max_L`, and the user hints in `MetalDistMatOptions` / `CUDADistMatOptions`, then picks one kernel. Auto-dispatch is a function of `(max_L, band)`:
+The two dispatchers use different inputs. CUDA auto-selection uses the scanned
+actual maximum length. Metal uses the scanned length, band, a larger
+`max_length_hint` when provided, and the runtime device threadgroup-memory cap.
 
 ### Metal — five kernels
 
@@ -45,7 +52,7 @@ The dispatcher inspects `band`, `max_L`, and the user hints in `MetalDistMatOpti
 | `band > 0` and `band·20 < max_L` and `band ≤ 512` | `dtw_banded_row` | Row-major, one thread / pair, no barriers |
 | `band == -1` and `max_L ≤ 128` | `dtw_regtile_w4` | Register-tile, `TILE_W=4`, `simd_shuffle_up` |
 | `band == -1` and `128 < max_L ≤ 256` | `dtw_regtile_w8` | Register-tile, `TILE_W=8` |
-| `3·max_L·4 > 32 KB` (≈ `max_L > 2730`) | `dtw_wavefront_global` | Anti-diagonals in device memory |
+| `3·heuristic_L·sizeof(float)` exceeds the device cap | `dtw_wavefront_global` | Anti-diagonals in device memory |
 | otherwise | `dtw_wavefront` | Anti-diagonals in threadgroup memory |
 
 ### CUDA — three kernels (plus 1-vs-N / K-vs-N variants)
@@ -58,18 +65,24 @@ The dispatcher inspects `band`, `max_L`, and the user hints in `MetalDistMatOpti
 
 ### User hints
 
-Both option structs accept two escape hatches for power users:
+Both option structs inherit shared fields, including the common
+`dtwc::KernelOverride` enum:
 
 ```cpp
-struct MetalDistMatOptions {
-  // ...
-  int max_length_hint = 0;              // 0 = auto-detect
-  MetalKernelOverride kernel_override = MetalKernelOverride::Auto;
-};
+dtwc::metal::MetalDistMatOptions metal_opts;
+dtwc::cuda::CUDADistMatOptions cuda_opts;
+metal_opts.kernel_override = dtwc::KernelOverride::Wavefront;
+cuda_opts.kernel_override = dtwc::KernelOverride::RegTile;
 ```
 
-- `max_length_hint > 0` skips the runtime length scan (tiny win) and lets the dispatcher commit to a kernel upfront.
-- `kernel_override` forces a specific kernel. If the request is impossible for the actual data (e.g. regtile with `max_L = 500`), the dispatcher falls back to `Auto` with a verbose warning — **correctness is always preserved**.
+- Actual series lengths are always scanned. Metal lets a positive hint larger
+  than the scan influence its heuristic; CUDA currently ignores the hint.
+- `kernel_override` requests a path. Unsupported requests silently use Auto:
+  CUDA exposes `kernel_override_fell_back`, while Metal exposes no matching
+  flag. That violates the explicit-option rule and is tracked as F30.
+- CUDA adds `device_id`, `CUDAPrecision`, and a `-1.0` threshold-off default.
+  Metal adds `MetalPrecision`, `lb_envelope_band`, and a `0.0` threshold
+  default. Metal FP64 currently becomes FP32, another F30 path.
 
 ## Lower-bound pruning (LB_Keogh)
 
@@ -100,20 +113,31 @@ Intuitively, $$[L_i^x, U_i^x]$$ is the set of values any $$y_j$$ could be warped
 
 ### LB_Keogh
 
-Given a query $$q$$ and an envelope $$(U, L)$$ computed from a reference series, the one-directional LB_Keogh lower bound is
+For equal-length series under L1 cost, the current GPU kernels compute
 
 $$
 \mathrm{LB}_{\mathrm{Keogh}}(q;\, U, L) = \sum_{i=0}^{n-1}
 \begin{cases}
- (q_i - U_i)^2 & \text{if}\ q_i > U_i,\\
- (L_i - q_i)^2 & \text{if}\ q_i < L_i,\\
+ q_i - U_i & \text{if}\ q_i > U_i,\\
+ L_i - q_i & \text{if}\ q_i < L_i,\\
  0 & \text{otherwise.}
 \end{cases}
 $$
 
-(For L1 metrics DTWC++ drops the square.) Intuitively: sum up the amount by which the query falls outside the envelope. If the query is entirely inside, the bound is zero. The bound is **exact** (`=` DTW) when the two series are identical, and always satisfies $$\mathrm{LB}_{\mathrm{Keogh}} \le \mathrm{DTW}$$.
+The envelope window must cover the actual DTW warping window. Under those
+conditions, the bound is no greater than L1 DTW; identical series give zero.
+The current GPU implementation is not universally admissible:
 
-DTWC++ uses the **symmetric** form — the tighter of the two single-direction bounds:
+- squared-L2 DTW still receives the L1 expression above (F27);
+- Metal can use a narrow envelope while DTW is unbanded (F28);
+- CUDA and Metal truncate unequal lengths to `min(Li,Lj)` without a validity
+  proof (F29).
+
+Until those findings close, GPU threshold pruning is supported only for
+equal-length L1 series with a matching admissible envelope. Do not infer
+`LB <= DTW` outside that regime.
+
+The kernels use the symmetric form—the tighter of the two directions:
 
 $$
 \mathrm{LB}^{\mathrm{sym}}_{\mathrm{Keogh}}(x, y) = \max\bigl(\mathrm{LB}_{\mathrm{Keogh}}(x; U^y, L^y),\ \mathrm{LB}_{\mathrm{Keogh}}(y; U^x, L^x)\bigr)
@@ -143,37 +167,45 @@ $$
     └────────┬────────────────┘
              │
              ▼
-    ┌─────────────────────────┐   DTW kernel (wavefront / regtile)
-    │ result matrix (N×N)     │   runs only on survivors via pair_indices
+    ┌─────────────────────────┐   supported survivor DTW kernel
+    │ thresholded matrix      │   supported kernels run survivors;
+    │                         │   pruned pairs remain +inf
     └─────────────────────────┘
 ```
 
+This is a threshold-query result, not an exact all-pairs distance matrix.
+Pairs with `LB > threshold` are represented by `+inf`; only survivors contain
+DTW values. Metal currently executes this compaction only on its wavefront and
+wavefront-global paths. A requested LB stage on regtile/banded-row, an LB-buffer
+allocation failure, or several other explicit-option conflicts can silently
+degrade (F30).
+
 ### Enabling it
 
-The user-facing controls are unified across CUDA and Metal:
+The direct backend controls differ. This safe Metal example assumes all series
+have equal length and uses the same band for DTW and its L1 envelope:
 
 ```cpp
 dtwc::metal::MetalDistMatOptions opts;
-opts.use_lb_keogh = true;        // master gate
-opts.lb_threshold = 0.5;          // prune pair if LB > 0.5
-opts.lb_envelope_band = 50;       // width of Sakoe-Chiba envelope window
+opts.band = 50;
+opts.use_squared_l2 = false;
+opts.use_lb_keogh = true;
+opts.lb_threshold = 0.5;       // +inf when LB > 0.5
+opts.lb_envelope_band = 50;    // must cover opts.band
+opts.kernel_override = dtwc::KernelOverride::Wavefront;
 ```
 
-Or via `Problem::lower_bound_strategy` (coming in a later commit), which auto-picks per-backend: CPU does the `LB_Kim + LB_Keogh + early-abandon` cascade; GPUs do `LB_Keogh` only.
+`Problem::lb_strategy` is CPU-only today. It controls the CPU pruned path and
+includes Kim, Keogh, Enhanced, Webb, and cascade selections; `Problem` does not
+copy it into CUDA/Metal options or automatically enable GPU LB pruning.
 
-| Strategy | CPU | CUDA | Metal |
-|---|---|---|---|
-| `Auto` | Kim + Keogh + early-abandon | Keogh only | Keogh only |
-| `None` | no LB | no LB | no LB |
-| `Kim` | LB_Kim only | falls back to Keogh | falls back to Keogh |
-| `Keogh` | LB_Keogh only | LB_Keogh | LB_Keogh |
-| `KimKeogh` | Kim → Keogh cascade | falls back to Keogh | falls back to Keogh |
+## Historical measurements (Apple M2 Max, 38-core GPU)
 
-Kim is O(1) per pair but much looser than Keogh; it's worth running only on CPU where the launch overhead is negligible. On GPU the Keogh kernel launch amortises across all pairs, so Kim is redundant.
-
-## Measured speedups (Apple M2 Max, 38-core GPU)
-
-12-thread CPU baseline vs Metal, unbanded DTW over random series:
+These 2026-04-12 results are historical, advisory measurements from a different
+machine; they are not a current release gate. The originating record is
+`benchmarks/mac_metal_benchmarks.md`, with raw Google Benchmark output in
+`benchmarks/results/mac_m2max/metal_vs_cpu.json`. The CPU baseline used 12
+threads; the workload is unbanded DTW over random series.
 
 | Workload | CPU (ms) | Metal (ms) | Speedup |
 |---|---|---|---|
@@ -183,66 +215,43 @@ Kim is O(1) per pair but much looser than Keogh; it's worth running only on CPU 
 | 30 × 10 000 | 16 061 | 929 | **17.3×** |
 | 75 × 10 000 | 92 500 | 5 800 | **15.9×** |
 
-Register-tile vs baseline wavefront (per-cell throughput at the sizes where regtile fires, `N=100`):
-
-| Length `L` | Wall time | Cells/ms | vs baseline wavefront @ L=500 |
-|---|---|---|---|
-| 64 | 0.38 ms | 54 M | 1.4× |
-| 128 | 0.53 ms | 152 M | **3.9×** |
-| 192 | 0.88 ms | 208 M | 5.3× |
-| 256 | 1.09 ms | 298 M | **7.6×** |
-
-LB_Keogh pruning (`N=100, L=1000`, random uniform series, `lb_envelope_band = L/10`):
-
-| Mode | Wall time | Pairs pruned | vs baseline |
-|---|---|---|---|
-| Baseline wavefront (no LB) | 158 ms | 0 / 4 950 | 1× |
-| LB enabled, `threshold = +∞` | 159 ms | 0 / 4 950 | +0.6% overhead |
-| LB enabled, `threshold = 0.0` | **1.53 ms** | 4 950 / 4 950 | **103×** |
-
-Strict-threshold wall time is essentially the `envelope + LB + compaction` cost; DTW never runs. Realistic workloads land between the two rows depending on data shape and threshold.
-
 ## When to pick which backend
 
-```
-┌─────────────────────────────────────────────────────────┐
-│ Have NVIDIA GPU?                                        │
-│  └─ Yes  ──► use CUDA.                                  │
-│      └─ HPC GPU (A100/H100)? Also enable FP64.          │
-│                                                         │
-│ Apple Silicon (M1/M2/M3/M4)?                            │
-│  └─ Yes  ──► use Metal. Unified memory removes H2D/D2H. │
-│                                                         │
-│ Neither?                                                │
-│  └─ CPU with DistanceMatrixStrategy::Pruned + a         │
-│     Sakoe-Chiba band usually wins on moderate workloads.│
-└─────────────────────────────────────────────────────────┘
-```
+Select a GPU explicitly through Tier 1 (`device="gpu"`) or set
+`Problem::distance_strategy` to CUDA/Metal. Apple unified memory reduces
+transfer overhead, but the implementation still converts input into padded
+Metal buffers and copies the result back to host storage.
 
-Selecting `DistanceMatrixStrategy::Auto` on a build with both backends enabled picks CUDA if a device is present; otherwise Metal; otherwise CPU.
+`DistanceMatrixStrategy::Auto` is CPU-only: it resolves to CPU BruteForce or
+Pruned from the CPU policy. Tier-1 `device="gpu"` chooses a compiled GPU backend
+explicitly and raises if that request cannot be delivered; it does not use Auto
+as a CUDA→Metal→CPU fallback chain. For an exact CPU matrix, the LB
+early-abandon/recompute `Pruned` route is a known pessimisation; use the ordinary
+CPU path unless a thresholded consumer such as TADPole can actually skip pairs.
 
 ### When LB_Keogh helps
 
-LB_Keogh pays off when:
+For `N` equal-length series of length `L` and envelope radius `r`, the current
+GPU envelope kernels scan `O(r)` values at each position:
 
-- **Lots of pairs** are far apart — clustering with well-separated clusters, nearest-neighbour queries where most candidates are irrelevant.
-- **Long series** — per-pair envelope + LB cost is O(L), DTW is O(L²). Ratio grows linearly with `L`.
-- **Tight band matters** — a narrow envelope gives a tighter lower bound, so more pairs are pruned at a given threshold.
+- envelope preprocessing: `O(N·L·r)`;
+- all pairwise lower bounds: `O(N²·L)`;
+- full DTW: paid only for the threshold survivors.
 
-It is a small loss when:
-
-- **Few pairs can be pruned** (highly similar data, e.g. a single cluster). You pay the O(L) envelope + LB cost for no skip.
-- **Tiny workloads** (`N < 20`, `L < 100`) — kernel-launch overhead dominates.
+This helps only when the caller wants threshold semantics and enough pairs can
+be discarded to repay preprocessing/launch work. A narrower envelope may be
+tighter, but it is valid only when it still covers the actual DTW window. No
+machine-independent crossover in `N` or `L` is currently registered.
 
 ## Citations
 
 The algorithms and kernel shapes in this backend draw on:
 
-- **Register-tile + warp-shuffle cost propagation:** Schmidt, B., & Hundt, C. (2020). *"cuDTW++: Ultra-Fast Dynamic Time Warping on CUDA-Enabled GPUs."* Euro-Par 2020, LNCS 12247, 597–612. Springer. https://doi.org/10.1007/978-3-030-57675-2_37. The CUDA reference implementation in DTWC++ is a direct port; the Metal kernels translate `__shfl_sync` to `simd_shuffle_up`.
+- **Register-tile + warp-shuffle cost propagation:** Schmidt, B., & Hundt, C. (2020). *"cuDTW++: Ultra-Fast Dynamic Time Warping on CUDA-Enabled GPUs."* Euro-Par 2020, LNCS 12247, 597–612. Springer. https://doi.org/10.1007/978-3-030-57675-2_37. DTWC++'s CUDA kernels are inspired by cuDTW++; the Metal kernels adapt the shuffle idea with `simd_shuffle_up`.
 - **LB_Keogh:** Keogh, E., & Ratanamahatana, C. A. (2005). *"Exact Indexing of Dynamic Time Warping."* Knowledge and Information Systems, 7(3), 358–386.
 - **Symmetric LB_Keogh:** Rakthanmanon, T. et al. (2012). *"Searching and Mining Trillions of Time Series Subsequences under Dynamic Time Warping."* KDD '12.
 - **Sakoe-Chiba band constraint:** Sakoe, H., & Chiba, S. (1978). *"Dynamic programming algorithm optimization for spoken word recognition."* IEEE Transactions on Acoustics, Speech, and Signal Processing, 26(1), 43–49.
-- **Tighter lower bounds (future work, not yet implemented):** Lemire, D. (2009). *"Faster retrieval with a two-pass dynamic-time-warping lower bound."* Pattern Recognition, 42(9), 2169–2180.
+- **LB_Improved provenance:** Lemire, D. (2009). *"Faster retrieval with a two-pass dynamic-time-warping lower bound."* Pattern Recognition, 42(9), 2169–2180. This GPU path implements LB_Keogh only; other live lower-bound strategies are CPU-side.
 
 See [`.claude/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/.claude/CITATIONS.md) for the full bibliography.
 
@@ -254,6 +263,6 @@ See [`.claude/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp
 | CUDA API | [dtwc/cuda/cuda_dtw.cuh](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cuh) | `CUDADistMatOptions`, `CUDADistMatResult` |
 | Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2, K-vs-N × 2, envelope/LB/compact |
 | Metal API | [dtwc/metal/metal_dtw.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.hpp) | `MetalDistMatOptions`, `MetalDistMatResult` |
-| CPU pruned path | [dtwc/core/pruned_distance_matrix.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/pruned_distance_matrix.cpp) | LB_Kim + LB_Keogh + early-abandon cascade |
+| CPU pruned path | [dtwc/core/pruned_distance_matrix.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/pruned_distance_matrix.cpp) | CPU lower-bound/EAP implementation; exact-matrix abandoned pairs are recomputed |
 | CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric` |
 | Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fillDistanceMatrix` routes through the strategy enum |

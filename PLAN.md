@@ -817,3 +817,10 @@ colour system transfer verbatim**.
   obligations. Tier-1/Tier-2/migration projections are current and the real-CLI
   docs gate passes. Fresh Hugo rendering remains `[BLOCKED-ENV]`. Evidence:
   `.claude/baselines/2026-07-23-r1-docs-truth.md` D6.
+- 2026-07-23 (R1 GPU docs): Registered F27–F31, then repaired the GPU page
+  without changing runtime behavior. The inherited guard failed on all 12 stale
+  claim classes; final live-CLI docs gate passes. Current text scopes GPU LB to
+  equal-length L1 with a matching admissible window and thresholded `+inf`
+  output, states CPU-only Auto/lower-bound routing, and retains only a
+  raw-artifact-linked historical/advisory timing table. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D7.

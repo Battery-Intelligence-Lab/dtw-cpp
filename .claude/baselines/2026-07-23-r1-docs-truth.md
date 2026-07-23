@@ -201,6 +201,38 @@ Registered documentation repair band:
 
 Fresh Hugo rendering remains under the D0 `[BLOCKED-ENV]` result.
 
+Deliberate red after adding the reachable GPU-page guard, before page repair:
+
+```text
+generated documentation is current
+Traceback (most recent call last):
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 348, in <module>
+    raise SystemExit(main())
+                     ~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 340, in main
+    assert_gpu_backend_page()
+    ~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\D\git\dtw-cpp\scripts\check_docs_contract.py", line 254, in assert_gpu_backend_page
+    raise AssertionError(f"GPU backend page retains stale claims: {present}")
+AssertionError: GPU backend page retains stale claims: ['MetalKernelOverride', '`max_length_hint > 0` skips the runtime length scan', '`Problem::lower_bound_strategy` (coming in a later commit)', 'Selecting `DistanceMatrixStrategy::Auto` on a build with both backends enabled picks CUDA', 'CPU with DistanceMatrixStrategy::Pruned', 'always satisfies $$\\mathrm{LB}_{\\mathrm{Keogh}} \\le \\mathrm{DTW}$$', 'The CUDA reference implementation in DTWC++ is a direct port', '**103×**', '**7.6×**', '`N < 20`, `L < 100`', 'Unified memory removes H2D/D2H', 'per-pair envelope + LB cost is O(L)']
+```
+
+Final decisive gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+**D7 verdict: PASS.** All 12 registered stale phrase/classes are rejected by
+the permanent guard. The page names F27–F31, limits current GPU LB claims to
+equal-length L1 plus an admissible matching window, identifies thresholded
+`+inf` output, and states CPU-only Auto/lower-bound routing. Untraceable
+regtile/LB timing tables and unsupported crossover advice are gone. The
+retained Apple M2 Max table is explicitly historical/advisory and names
+`benchmarks/mac_metal_benchmarks.md` plus the raw
+`benchmarks/results/mac_m2max/metal_vs_cpu.json`.
+
 The generator named only the expected projection. Regeneration and final gates:
 
 ```text

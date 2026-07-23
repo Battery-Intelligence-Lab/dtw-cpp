@@ -105,3 +105,21 @@ Repair `docs/content/method/gpu-backends.md` against the registered D7 band and
 add a reachable docs-contract guard first. F27–F31 are already registered; do
 not implement them during this non-behavioral R1 task. Then finish the remaining
 R1 docs pages, source comments, and record hygiene.
+
+## GPU-page reconciliation result
+
+- The inherited guard failed on all 12 registered stale claim classes.
+- The corrected page names F27–F31, thresholded `+inf` semantics,
+  equal-length-L1/admissible-window scope, actual option/default differences,
+  and CPU-only Auto/lower-bound routing.
+- Unsupported regtile/LB timing tables and crossover advice were removed; the
+  one retained historical/advisory table names its tracked raw artifact.
+- The real-CLI documentation contract gate passes.
+
+## Exact resume point (current)
+
+Correct the remaining R1 docs truth items in examples, interface parity,
+multivariate, scores, and source/build comments. Add one unconditional guard
+covering their known stale phrases, demonstrate the inherited red, then repair
+and rerun the real-CLI docs gate. After that, reconcile LESSONS/CITATIONS/
+UNIMODULAR and finish tracked-junk/CHANGELOG/branch-state hygiene.
