@@ -16,7 +16,7 @@
 **Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
-the sanitizer gate CLOSED; **F8 OPEN**. Phase R0 CLOSED; Phase R1 is active.
+the sanitizer gate CLOSED; **F8 OPEN**. Phases R0–R1 CLOSED; R2 and R3 active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -162,7 +162,7 @@ Tasks:
       with a Decision-log line naming why. No change may stay uncommitted.
 - [x] Update the F8/F9/F10 checkboxes in R3 to reflect what actually closed.
 
-## Phase R1 — Repository cleanse & record reconciliation [OPEN]
+## Phase R1 — Repository cleanse & record reconciliation [CLOSED — 2026-07-23]
 
 Non-behavioral hygiene: make the repository's *record* as trustworthy as its
 code. Nothing here may change program behavior (no-op oracle not required since
@@ -184,17 +184,17 @@ no core code changes — but if any item does touch code, it moves to R4's rules
       fix stale ones), keep every lesson. Add one current/supersession freshness
       header to UNIMODULAR.md. `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`;
       do not recreate them to satisfy obsolete wording.
-- [ ] **Tracked-file junk census.** Find tracked files that should not be
+- [x] **Tracked-file junk census.** Find tracked files that should not be
       tracked (stale binaries, generated artifacts, orphaned fixtures) —
       grep-verify zero references before each removal; `.gitignore` audit
       (build dirs, `tools/emsdk`, `web/pkg` when R7 arrives). Do NOT delete
       untracked local build directories — inventory them in the handoff with
       which recipe each serves; disposal is an operator decision.
-- [ ] **CHANGELOG structure check.** Unreleased vs rc1 sections coherent; every
+- [x] **CHANGELOG structure check.** Unreleased vs rc1 sections coherent; every
       Phase-8 breaking change present (the F7 pair is: `--ram-limit` hard-errors
       on non-Parquet input; `--device cuda` rejected for matrix-free FastCLARA
       incl. `--method auto` above 5,000 series).
-- [ ] **Branch state note.** Branch `Claude` is far ahead of `main`; merging is
+- [x] **Branch state note.** Branch `Claude` is far ahead of `main`; merging is
       an operator decision — record the current ahead-count and a proposed merge
       plan in the handoff, do not merge.
 
@@ -777,6 +777,28 @@ colour system transfer verbatim**.
   `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`. Record hygiene
   preserves that deletion and repairs the live UNIMODULAR/LESSONS/CITATIONS
   records instead of recreating obsolete ledgers.
+- 2026-07-23 (R1 repository hygiene): Remove only the five registered non-data
+  artifacts after routing consumers to byte-identical static assets. Retain
+  the orphaned `data/test/AllGestureWiimoteX_dist_50.csv` byte-identically
+  because the absolute data-read-only rule overrides orphan cleanup. The
+  public Codecov badge uses its confirmed-equivalent tokenless endpoint; the
+  old query remains in reachable history, so revocation/rotation is an
+  operator remedy if Codecov treats it as scoped. Fresh Doxygen/Hugo rendering
+  remains `[BLOCKED-ENV]` under the recorded `doxygen=NOT_FOUND`,
+  `hugo=NOT_FOUND`, and `go=NOT_FOUND` probe.
+- 2026-07-23 (R1 branch disposition): The first `4797c97` snapshot was 548
+  commits ahead of both local and stale `origin/main`, and 51 ahead of stale
+  `origin/Claude`. During final review, `origin/Claude` advanced to `4797c97`;
+  its local reflog says `2026-07-23 18:14:56 +0100: update by push`. This agent
+  issued no remote mutation. Non-sample hooks were absent, but four running
+  GitHub Desktop processes predated the event, so actor/cause remains
+  `[inferred: unknown]`. The global no-remote-operation sub-band is FALSIFIED;
+  agent authorization compliance passes. Do not “repair” it locally. After
+  R0–R6 close, the operator sequence is re-read server state, fetch/prune,
+  fresh ancestry and divergence checks, release-gate rerun, decide
+  retain/restore, review PR/hosted gates, then fast-forward only where ancestry
+  permits. Rebase, merge, force update, tag, and publication remain
+  unauthorized here.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -870,3 +892,15 @@ colour system transfer verbatim**.
   the sole freshness header, canonical citation counts/URLs, the deliberate
   retirement of MISSING/READ, and the corrected 2.95×–8.06× table reading.
   Evidence: `.claude/baselines/2026-07-23-r1-record-hygiene.md`.
+- 2026-07-23 (R1 closure): `4797c97` removes five verified non-data artifacts,
+  preserves all three ignored build roots and the orphaned data fixture,
+  expands future generated-file ignores, removes the Codecov badge query, and
+  records both RNG compatibility boundaries. The preregistered checker moves
+  from 5/2/3 inherited banned/zero/duplicate failures to exact PASS; an
+  adversarial reviewer rejected four earlier false-green designs before the
+  index/blob/ordered-ignore gate was accepted. CHANGELOG structure and the
+  real-CLI documentation contract pass. The later unexpected
+  `origin/Claude` update FALSIFIED the global no-remote-operation sub-band;
+  campaign-agent compliance still passes and no rollback was attempted.
+  Evidence:
+  `.claude/baselines/2026-07-23-r1-repo-hygiene.md`. Proceed to R2-D1 and R3-F8.

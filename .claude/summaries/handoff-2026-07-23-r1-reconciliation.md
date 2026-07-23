@@ -179,3 +179,87 @@ disclosures to CHANGELOG, and record the branch-state/operator merge plan.
 Retain `data/test/AllGestureWiimoteX_dist_50.csv` because the absolute data
 read-only rule overrides its orphan evidence. Never touch the untracked build
 roots or their CMake caches.
+
+## Repository-hygiene result
+
+- Registered `scripts/check_repo_hygiene.py` before mutation. Its inherited
+  run failed with 5 banned paths, 2 unintended zero-byte files, 3 duplicate
+  groups, 3/4 asset routes, 0/23 future ignore targets, one Codecov badge query,
+  and 0/2 RNG compatibility disclosures.
+- Commit `4797c97` removes exactly the two empty generated artifacts and three
+  byte-identical duplicate assets, repoints Doxygen to the retained static
+  logo, expands future generated-file ignores, removes the README badge query,
+  and adds both breaking-compatibility disclosures. No data, core code, or
+  build path changed.
+- The orphaned data fixture remains byte-identical at SHA-256
+  `FC8173362CD03DD4D13DBF32E4FD773DE1013DD1AF28E7C6E99B95A58019D283`.
+  This is a deliberate safety-rule decision, not evidence that it has a live
+  consumer.
+- The permanent checker reads staged index blobs rather than trusting
+  worktree existence, scans its own staged content, handles malformed headings
+  as FAIL, and probes ordered Git ignore semantics. Four adversarial review
+  rounds rejected earlier false greens before the final `GREEN`.
+- The tokenless and former query-bearing Codecov badge endpoints both returned
+  status 200 and identical 2,274-character SVG content. The query value remains
+  reachable in history; operator revocation/rotation is the remedy if Codecov
+  classifies it as scoped.
+- Installed Doxygen, Hugo, Go, gitleaks, trufflehog, and detect-secrets probes
+  all returned `NOT_FOUND`. Fresh rendering remains `[BLOCKED-ENV]`; asset and
+  real-CLI documentation gates are the fallback. The independent batched
+  history scan covered 4,559 reachable blobs and found zero registered
+  high-confidence secret shapes.
+
+## Preserved local builds
+
+All three ignored roots remain untouched:
+
+- `build/`: 29 repo-source configure caches, including `highs-1151`,
+  `nollfio`, Arrow/PyArrow-23, CUDA, MEX, sanitizer, configuration, YAML, and
+  historical verification recipes.
+- `build_arrow_test/`: one standalone Debug Arrow+HiGHS configure.
+- `build_python/`: two CPython 3.13/final-wheel MSVC configures.
+
+The 32-cache inventory is
+`.claude/baselines/2026-07-23-r1-repo-hygiene.md`; deletion remains an operator
+decision.
+
+## Branch state and operator merge plan
+
+At committed hygiene snapshot `4797c97`, before this documentation-only
+closeout:
+
+```text
+main_vs_Claude=0	548
+origin_main_vs_Claude=0	548
+origin_Claude_vs_Claude=0	51
+main_vs_origin_main=0	0
+origin_Claude_vs_origin_main=497	0
+ 640 files changed, 153326 insertions(+), 2144 deletions(-)
+```
+
+That first snapshot was invalidated during final review: at 18:14:56 +01:00,
+the local `origin/Claude` reflog advanced from `c36ba27` to `4797c97` with the
+exact message `update by push`. A read-only probe at 18:15:38 then reported
+`origin_Claude_vs_Claude=0 0`; `origin/main` remained at `b0cb297` and 548
+behind. This agent issued no remote mutation. Only inactive sample hooks were
+present, but four GitHub Desktop processes (PIDs 5684, 40592, 50008, and
+88212) had been running since 17:26. A follow-up found zero `git.exe`
+processes; that does not exclude GitHub Desktop as an alternate client. The
+actor/cause is **[inferred: unknown]**. The original global “no remote
+operation occurs” sub-band is **FALSIFIED**; the narrower verified compliance
+claim is that this campaign agent issued no remote command.
+
+After R0–R6 are clean, an operator should re-read the server state, fetch/prune,
+recompute ancestry/divergence, rerun gates against the fetched base, decide
+whether the unexpected `4797c97` remote update should be retained or restored,
+then use a review PR and hosted gates. Fast-forward, rebase, merge, force
+update, tag, and publication remain operator actions; this campaign will not
+attempt the rollback.
+
+## Exact resume point (R1 closed)
+
+Start R2-D1 by preregistering the DTW-recurrence/Sakoe–Chiba derivation and its
+non-degenerate oracle band. In parallel, resume R3 at F8's resident/streaming
+fixture; F9 and F10 are already closed. Search the killed-ideas record before
+either branch, keep every discrepancy as a named finding, and commit each
+green task separately.

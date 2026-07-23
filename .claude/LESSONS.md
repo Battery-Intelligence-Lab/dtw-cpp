@@ -246,6 +246,32 @@ Critical knowledge to avoid repeating mistakes.
 
 ## Audit / Testing
 
+- **Repository-hygiene gates must inspect the Git index, not worktree
+  existence.** A staged deletion disappears from `git ls-files -s`, while an
+  index-tracked path can be absent only in the worktree; filtering tracked
+  paths through `Path.exists()` silently certifies the latter. Read staged blob
+  IDs/content with `git cat-file`, make malformed records print FAIL instead of
+  throwing before the verdict, and mutation-review the checker itself. Ignore
+  files add a second trap: rules are ordered, so line-set membership cannot
+  prove that a later rule did not re-ignore an exception. Require a
+  filter-aware worktree/index match and pin representative behavior with
+  `git check-ignore --no-index`. Secret-shape scans should operate on bytes
+  rather than skipping NUL-free non-UTF-8 blobs, and their registered formats
+  must include current credential families (for example encrypted PKCS#8 and
+  fine-grained GitHub PATs). The R1 checker's first four apparent greens each
+  missed one of these classes before adversarial review.
+- **Remote-tracking refs are mutable evidence; re-read them at closeout.** R1
+  recorded `origin/Claude` 51 commits behind `Claude`, then the ref advanced to
+  the local hygiene commit during final review and its reflog said
+  `update by push`. Non-sample hooks were absent, but GitHub Desktop had four
+  running processes predating the update; a later zero-`git.exe` probe cannot
+  exclude an alternate client. The actor therefore remains unknown. Timestamp
+  every branch snapshot, preserve the before/after reflog and process evidence,
+  and never convert a remote-tracking ref into a server-state claim without an
+  authorized fresh read. An unexpected remote update falsifies a global
+  no-operation band but is not permission to push, force-reset, or “repair”
+  the branch; separate agent compliance from external state, name the operator
+  rollback, and continue local work.
 - **A low computed-entry count does not prove low memory use.** FastCLARA's old
   test asserted that fewer than 20% of parent distances were computed, while
   the first lazy lookup had already allocated every packed `N*(N+1)/2` slot.
