@@ -26,19 +26,29 @@ The DTW distance is the sum of the pointwise distance between each point and its
     $$y_1$$ (this ensures monotonicity). 
 3. Each point is mapped to at least one other point, i.e., there are no jumps in time (this ensures continuity).
 
-Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves each of them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in DTW-C++, it is useful to first examine the full-cost matrix solution, as follows. For each pairwise comparison, an $$n$$ by $$m$$ matrix $$C^{n\times m}$$ is calculated, where each element represents the cumulative cost between series up to the points $$x_i$$ and $$y_j$$:
+Finding the optimal warping arrangement is an optimisation problem that can be solved using dynamic programming, which splits the problem into easier sub-problems and solves each of them recursively, storing intermediate solutions until the final solution is reached. To understand the memory-efficient method used in DTW-C++, it is useful to first examine the full-cost matrix solution. Using one-based series indices and a padded boundary, define
 
 $$
-c_{i,j} = |x_i-y_j|+\min \begin{cases}
-    c_{i-1,j-1}\\
-    c_{i-1,j}\\
-    c_{i,j-1}
+C_{0,0}=0,\qquad
+C_{i,0}=+\infty\ (i>0),\qquad
+C_{0,j}=+\infty\ (j>0).
+$$
+
+For $$1\le i\le n$$ and $$1\le j\le m$$, each element is the minimum cumulative cost of a path ending at the pair $$x_i,y_j$$:
+
+$$
+C_{i,j} = |x_i-y_j|+\min \begin{cases}
+    C_{i-1,j-1}\\
+    C_{i-1,j}\\
+    C_{i,j-1}.
     \end{cases}
 $$
 
-> **Note:** The formula above uses the absolute difference (L1 metric), which is the default in DTW-C++. Some literature uses the squared difference $$(x_i - y_j)^2$$ (squared L2 metric) instead. The choice of pointwise metric affects the resulting DTW distance values but not the algorithm structure.
+The three predecessors correspond to a diagonal match, advancing only in $$x$$, or advancing only in $$y$$. Every admissible path reaches $$(i,j)$$ through exactly one of them, so an optimal path must contain an optimal predecessor path; otherwise replacing its prefix would lower the total cost.
 
-The final element $$c_{n,m}$$ is then the total cost, $$C_{x,y}$$, which provides the comparison metric between the two series $$x$$ and $$y$$. Below is an example of this cost matrix $$C$$ and the warping path through it.
+> **Cost convention:** The formula above uses the absolute difference (L1 local cost), which is the default in DTW-C++. The alternative squared-L2 local cost is $$(x_i-y_j)^2$$. If amplitudes have unit $$U$$, the accumulated results have units $$U$$ and $$U^2$$ respectively; DTWC++ does not take a final square root. Warping means that both accumulated forms are dissimilarities, not a metric: distinct repeated-value sequences can have zero cost, and the triangle inequality can fail.
+
+The final element $$C_{n,m}$$ is the DTW dissimilarity between the two series. Below is an example of the cost matrix $$C$$ and the warping path through it.
 
 As an example, below are two time series with DTW pairwise alignment between elements. On the right is the cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at element $$C_{14,13}$$.
 
@@ -83,4 +93,18 @@ Both functions handle the edge case of constant series ($$\sigma_x = 0$$) by ret
 
 ## Warping Window
 
-For longer time series it is possible to speed up the calculation by using a 'warping window'. This works by restricting which data elements on one series can be mapped to another based on their proximity. For example, if one has two data series of length 100, and a warping window of 10, only elements with a maximum time shift of 10 between the series can be mapped to each other. So, $$x_{1}$$ can only be mapped to $$y_{1}-y_{11}$$. A warping window (band) of $$w$$ allows a time shift of up to $$w$$ positions; setting $$w = 0$$ forces strictly diagonal alignment (equivalent to pointwise distance for equal-length series), while $$w = 1$$ still permits a shift of one position. The stricter the warping window, the greater the increase in speed. However, the data being used must be carefully considered to ascertain if this will negatively impact the results. Readers are referred to [Sakoe et al., 1978](https://ieeexplore.ieee.org/abstract/document/1163055) for detailed information on the warping window.
+For longer time series it is possible to reduce the calculation domain by using a fixed Sakoe–Chiba warping window. On DTWC++'s CPU routes, a cell is admissible exactly when
+
+$$|i-j| \le w$$
+
+for a non-negative integer half-width $$w$$. For example, with two length-100 series and $$w=10$$, $$x_1$$ may be matched only to $$y_1,\ldots,y_{11}$$. Setting $$w=0$$ forces strictly diagonal alignment for equal-length series, while $$w=1$$ permits a shift of one position.
+
+For non-empty series, because the terminal cell is $$(n,m)$$, an endpoint-preserving path exists if and only if
+
+$$w \ge |n-m|.$$
+
+Below this threshold the CPU routes return the finite no-path sentinel `numeric_limits<T>::max()`. Empty input and an exceeded early-abandon cutoff use the same value, so a mere `isfinite(result)` check does not prove that a path was evaluated. A negative CPU API band requests unconstrained DTW.
+
+Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
+
+Cross-backend parity remains open under finding F12. CUDA source currently uses an endpoint-scaled corridor rather than the fixed window above. Metal source uses fixed geometry, but its double-returning no-path route widens `FLT_MAX` rather than returning the CPU `DBL_MAX` sentinel. Until executable backend gates close F12, the exact geometry and sentinel in this section describe the CPU routes.

@@ -231,6 +231,97 @@ def assert_method_catalog() -> None:
         raise AssertionError("algorithms.md has stale FasterPAM provenance")
 
 
+def assert_dtw_derivation_sync() -> None:
+    paths = {
+        "derivation": ROOT / "docs/derivations/01-dtw-recurrence-sakoe-chiba.md",
+        "index": ROOT / "docs/derivations/README.md",
+        "site": ROOT / "docs/content/method/dtw.md",
+        "citations": ROOT / ".claude/CITATIONS.md",
+        "kernel": ROOT / "dtwc/core/dtw_kernel.hpp",
+        "wrapper": ROOT / "dtwc/warping.hpp",
+    }
+    missing_paths = [
+        str(path.relative_to(ROOT))
+        for path in paths.values()
+        if not path.is_file()
+    ]
+    if missing_paths:
+        raise AssertionError(f"D1 derivation drift: missing files {missing_paths}")
+
+    text = {
+        name: path.read_text(encoding="utf-8")
+        for name, path in paths.items()
+    }
+    required = {
+        "derivation": (
+            "`band >= |n-m|`",
+            "`DTW_w(x,y) >= DTW_full(x,y)`",
+            "`numeric_limits<T>::max()`",
+            "No approximation is used",
+            "not a metric",
+            "## Code-conformance table",
+            "**DISCREPANCY**",
+        ),
+        "index": (
+            "01-dtw-recurrence-sakoe-chiba.md",
+            "CPU **CONFIRMED**",
+            "**DISCREPANCY** F12",
+        ),
+        "site": (
+            "$$|i-j| \\le w$$",
+            "w \\ge |n-m|",
+            "`numeric_limits<T>::max()`",
+            "not a metric",
+            "non-increasing",
+            "CPU routes",
+            "finding F12",
+            "CUDA source currently uses an endpoint-scaled corridor",
+        ),
+        "citations": (
+            "10.1109/TASSP.1978.1163055",
+            "Sakoe-Chiba-DTW.pdf",
+            "**[confirmed]**",
+            "equations (6)--(8)",
+        ),
+        "kernel": (
+            "The adjustment window is |row-column| <= band.",
+            "if (n_long - n_short > band_width) return maxValue;",
+        ),
+        "wrapper": (
+            "canonical fixed Sakoe-Chiba window `|i-j| <= band`",
+            "if (max_sz - min_sz > band_width)",
+        ),
+    }
+    drift = {
+        name: [marker for marker in markers if marker not in text[name]]
+        for name, markers in required.items()
+    }
+    drift = {name: markers for name, markers in drift.items() if markers}
+    if drift:
+        raise AssertionError(f"D1 derivation drift: missing markers {drift}")
+
+    unsupported_math = [
+        marker
+        for marker in ("\\(", "\\)", "\\[", "\\]")
+        if marker in text["derivation"]
+    ]
+    if unsupported_math:
+        raise AssertionError(
+            "D1 derivation drift: unsupported GitHub math delimiters "
+            f"{unsupported_math}"
+        )
+
+    broken_table_math = [
+        line
+        for line in text["derivation"].splitlines()
+        if line.startswith("|") and ("$|" in line or "|$" in line)
+    ]
+    if broken_table_math:
+        raise AssertionError(
+            f"D1 derivation drift: raw table math pipes {broken_table_math}"
+        )
+
+
 def assert_gpu_backend_page() -> None:
     page = (ROOT / "docs/content/method/gpu-backends.md").read_text(
         encoding="utf-8"
@@ -403,6 +494,7 @@ def main() -> int:
     assert_env_messages()
     assert_tier1_signatures()
     assert_method_catalog()
+    assert_dtw_derivation_sync()
     assert_gpu_backend_page()
     assert_remaining_docs_truth()
     if args.cli is not None:

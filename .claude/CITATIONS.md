@@ -6,7 +6,19 @@ References used during development. Verify each citation independently before pu
 
 ## DTW and Time Series
 
-- Sakoe, H. & Chiba, S. (1978). Dynamic programming algorithm optimization for spoken word recognition. *IEEE Transactions on Acoustics, Speech, and Signal Processing*, 26(1), 43-49.
+- Sakoe, H. & Chiba, S. (1978). “Dynamic Programming Algorithm
+  Optimization for Spoken Word Recognition.” *IEEE Transactions on Acoustics,
+  Speech, and Signal Processing*, 26(1), 43–49.
+  https://doi.org/10.1109/TASSP.1978.1163055; full IEEE scan accessed
+  2026-07-23:
+  https://jeffe.cs.illinois.edu/teaching/compgeom/2022/refs/Sakoe-Chiba-DTW.pdf
+  — **[confirmed]** Verified equations (6)--(8): the separate monotonicity and
+  continuity conditions imply the three-predecessor relation in equation (6),
+  equation (7) fixes the endpoints, and equation (8) defines the adjustment
+  window `|i(k)-j(k)| <= r`; the practical domain restates it as
+  `j-r <= i <= j+r`. The paper's symmetric practical recurrence uses
+  step-dependent weights and normalization, so it is not cited as a verbatim
+  source for DTWC++'s unweighted `local + min3` recurrence.
 - Marteau, P.-F. (2009). Time warp edit distances with stiffness adjustment for time series matching. *IEEE Transactions on Pattern Analysis and Machine Intelligence*, 31(2), 306-318. Task 5.5 `dtwc::core::twe_distance` matches aeon 1.5.0 exactly (front zero-pad both series; d = |a−b| for univariate; defaults ν=0.001, λ=1.0, window=None).
 - Jain, B. J. (2018). Semi-Metrification of the Dynamic Time Warping Distance. arXiv:1808.09964.
 - Yurtman, A., Soenen, J., Meert, W., & Blockeel, H. (2023). Estimating DTW Distance Between Time Series with Missing Data. *ECML-PKDD 2023*, LNCS 14173.
