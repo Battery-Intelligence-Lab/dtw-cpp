@@ -449,25 +449,27 @@ driven via `use_mmap_distance_matrix(path)` (§2.2) + CLI `--resume`. MATLAB
 checkpointing (`TODO.md:105`, "MATLAB Phase 2: checkpointing") is `[new]` and
 lands in Phase 2.2 against this table.
 
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses the
-64-byte version-2 header. Its SHA-256 identity covers the raw IEEE series values,
+**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
+64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
 series order and lengths, storage precision, `ndim`, band, every DTW-variant
 parameter, multivariate mode, missing-data strategy, pointwise metric, compute
 backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are checked,
-and the file length must match the packed matrix exactly. A mismatch is a hard
-error before any cached value is exposed; callers must use the original semantics
-or delete/rename the cache and recompute it.
+affect distance semantics. Header metadata has a CRC, reserved bytes are
+checked, and an aligned footer stores two digest words per logical row. Reopen
+takes a nonblocking exclusive session lease and recomputes every row digest
+before exposing the mapping. A mismatch is a hard error; callers must use the
+original semantics or delete/rename the cache and recompute it. The digests
+detect accidental corruption and are not keyed tamper-proof authentication.
 
-Version-1 mmap caches are deliberately rejected because their N-only identity
-cannot prove safe reuse. Semantic setters detach a bound cache without deleting
-it. The complete data identity is checked at bind and once at first use; later
-lookups compare a fixed-size configuration snapshot so warm access remains O(1).
-Consequently raw in-place `Data` mutation after first use is unsupported: call
-`refresh_distance_matrix()` before the edit, or replace the data through
-`set_data()`. CUDA mmap caches require explicit FP32 or FP64 (not hardware-
-dependent `Auto`), and non-L1 identities are external/GPU-fill-only because the
-CPU lazy path computes L1.
+Version 1 had only an N-sized identity; version 2 did not protect mutable packed
+values. Both are deliberately rejected. Semantic setters detach a bound cache
+without deleting it. The complete data identity is checked at bind and once at
+first use; later lookups compare a fixed-size configuration snapshot so warm
+access remains O(1). Consequently raw in-place `Data` mutation after first use
+is unsupported: call `refresh_distance_matrix()` before the edit, or replace
+the data through `set_data()`. CUDA mmap caches require explicit FP32 or FP64
+(not hardware-dependent `Auto`), and non-L1 identities are external/GPU-fill-
+only because the CPU lazy path computes L1.
 
 ---
 
@@ -530,9 +532,10 @@ or `removed` (dropped from bindings — 2.0 is the break point, surface report �
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:29) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:226) | `--dtype float64` | old accepted, default flips (§8) |
 
-**Mmap-cache migration.** The unsafe version-1 `<name>_distmat.cache` format is
-not resumed by 2.0. Delete or rename that cache and rerun to create a fingerprinted
-version-2 cache; source data and result checkpoints are unaffected. At the CLI
+**Mmap-cache migration.** Version-1 and version-2 `<name>_distmat.cache` files
+are not resumed by the current format. Delete or rename either legacy cache and
+rerun to create an identity- and payload-checked version-3 cache; source data
+and result checkpoints are unaffected. At the CLI
 mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
 combined with the mmap cache and fail before either storage path is opened. Omit
 the dense option to use automatic mmap resume, or raise the threshold only when
@@ -730,8 +733,9 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      for resume (invariant 4), **not** by `Result::save(dir)`. Their format is
      preserved for `--resume` compatibility,
      but they are explicitly outside the `save()`↔CLI byte-identity claim. The
-     mmap cache's safety-mandated v1→v2 invalidation is the authorized exception:
-     v1 caches must be recomputed because they cannot identify their data/config.
+     mmap cache's safety-mandated v1/v2→v3 invalidation is the authorized
+     exception: v1 cannot identify its data/configuration, while v2 does not
+     protect mutable packed values.
 3. **CLI flag set + TOML/YAML keys** (kebab-case) are a de-facto API:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:68-84`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name

@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Documented the mmap distance-cache version-3 format delivered by M53:
+  semantic SHA-256 identity, per-row payload digests, exclusive session lease,
+  rejection of legacy v1/v2 caches, and accidental-corruption (not keyed
+  tamper-proof) scope.
+- Reconciled the configuration reference with all 52 live CLI flags, separated
+  TOML from the smaller YAML key map/precedence bug, and disclosed that
+  `--resume` currently reads but does not apply its binary result checkpoint.
 - Corrected the website method catalog: removed unsupported Huber, documented
   MSM/TWE and all CLI clustering methods, fixed FasterPAM provenance/complexity,
   and stopped presenting the exact-matrix recomputation route as an accelerator.

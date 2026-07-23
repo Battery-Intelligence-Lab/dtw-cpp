@@ -121,7 +121,8 @@ The cap is fail-closed:
 - non-full FastCLARA is a CPU matrix-free schedule, so `--device cuda` is
   rejected before the Parquet payload is read; and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
-  distances and the accumulated objective remain double precision.
+  DTW recurrence arithmetic is Float32, while returned distances and the
+  accumulated objective are stored in double.
 
 `--ram-limit` is a conservative cap for series decoding/materialisation, not a
 hard operating-system RSS limit: algorithm result arrays, the subsample PAM
@@ -178,7 +179,7 @@ file to stream them under the cap.
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
-| `--resume` | Resume from checkpoint (distance matrix cache + clustering state) | off |
+| `--resume` | Read the automatic binary result checkpoint (known limitation below) | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
@@ -198,13 +199,25 @@ ordinary distance-storage/checkpoint rules apply. RAM-limited streaming always
 uses a non-full sample and still writes the automatic binary clustering-result
 checkpoint.
 
-The mmap cache resumes automatically only when its version-2 fingerprint matches
-the exact data and distance configuration. A legacy version-1 or mismatched cache
-fails loudly and must be deleted/renamed and recomputed. When the threshold
-selects mmap, `--checkpoint` and `--dist-matrix` are incompatible because they
-require a dense CSV matrix; the CLI rejects the combination before opening
-either path. CUDA mmap runs must select explicit `--gpu-precision fp32` or
-`fp64`; the hardware-dependent `auto` setting is not a stable cache identity.
+The mmap cache resumes automatically only when its version-3 semantic
+fingerprint, payload row digests, and exact file layout validate under an
+exclusive session lease. Version 1 had only an N-sized identity; version 2 did
+not authenticate mutable payload values. Both legacy formats and any
+identity/payload mismatch fail before exposing a cached distance and must be
+recomputed. The row digests detect accidental corruption; they are not a keyed
+tamper-proof authenticator.
+
+When the threshold selects mmap, `--checkpoint` and `--dist-matrix` are
+incompatible because they require a dense CSV matrix; the CLI rejects the
+combination before opening either path. CUDA mmap runs must select explicit
+`--gpu-precision fp32` or `fp64`; the hardware-dependent `auto` setting is not a
+stable cache identity.
+
+`--resume` is a separate binary clustering-result path. The current CLI reads
+and reports that object but does not apply it to the subsequent computation.
+This is an open defect, not working algorithm-state resume. Use the dense
+`--checkpoint` path for its supported distance-matrix save/load behavior; mmap
+storage resumes automatically after version-3 validation.
 
 ### GPU Options
 

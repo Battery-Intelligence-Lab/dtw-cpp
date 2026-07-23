@@ -206,6 +206,29 @@ def assert_cli_reference(binary: Path) -> None:
     if "`float64`" not in docs_text:
         raise AssertionError("CLI dtype default is not documented as float64")
 
+    config_text = (
+        ROOT / "docs/content/getting-started/configuration.md"
+    ).read_text(encoding="utf-8")
+    config_flags = cli_flags(config_text)
+    config_missing = live - config_flags
+    config_dead = config_flags - live
+    if config_missing or config_dead:
+        raise AssertionError(
+            "configuration reference drift:\n"
+            f"  live but undocumented: {sorted(config_missing)}\n"
+            f"  documented but not live: {sorted(config_dead)}"
+        )
+
+    source = (ROOT / "dtwc/dtwc_cl.cpp").read_text(encoding="utf-8")
+    yaml_keys = set(re.findall(r'set_if_unset\("([a-z0-9-]+)"', source))
+    missing_yaml = sorted(
+        key for key in yaml_keys if f"`{key}`" not in config_text
+    )
+    if missing_yaml:
+        raise AssertionError(
+            f"configuration page omits canonical YAML keys: {missing_yaml}"
+        )
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()

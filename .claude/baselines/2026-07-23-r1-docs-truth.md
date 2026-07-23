@@ -259,3 +259,63 @@ row and the inherited exact-matrix speed phrase, and pins FasterPAM to
 **D4 verdict: PASS.** The inherited unsupported catalog fails; the corrected
 catalog passes. Fresh rendered-link evidence remains under the registered Hugo
 `[BLOCKED-ENV]` rather than being inferred from this source gate.
+
+## D5 — configuration reference covers only part of the live CLI
+
+[confirmed] The real CLI help contains 52 unique long flags. The inherited
+configuration page contains only 34 and uses stale method/variant vocabularies.
+TOML is parsed by CLI11; the optional YAML loader is a manual subset whose
+canonical keys are the `set_if_unset(...)` calls in `dtwc/dtwc_cl.cpp`.
+
+Registered repair band:
+
+- add a gate comparing every live long flag to the configuration page; it must
+  fail on the inherited page before edits (deliberate red);
+- the corrected page distinguishes TOML's ordinary CLI-option mapping from
+  command-line action/config selectors and from YAML's smaller manual subset;
+- every canonical YAML `set_if_unset` key appears in the page;
+- current method/variant vocabularies and the known YAML-overrides-CLI bug are
+  explicit;
+- adjacent CLI precision prose distinguishes Float32 recurrence from double
+  result storage, and mmap checkpoint prose says version 3 rather than 2;
+- the full live-CLI docs gate passes with 52/52 flags.
+
+Deliberate red after the coverage guard, before page repair:
+
+```text
+AssertionError: configuration reference drift:
+  live but undocumented: ['--batch-size', '--batch-weighting', '--benders', '--column', '--data-precision', '--data-type', '--dc', '--dtype', '--gpu-dtype', '--help', '--mmap-threshold', '--msm-c', '--mv-mode', '--n-clusters', '--ram-limit', '--resume', '--twe-lambda', '--twe-nu', '--version']
+  documented but not live: ['--clusters']
+```
+
+Contract-source edits then produced exactly the expected generated drift:
+
+```text
+stale or missing generated documentation:
+  docs\content\api\tier-2.md
+  docs\content\guides\migration.md
+run: python scripts/generate_docs.py
+```
+
+Final exact inventory:
+
+```text
+live_flags=52 documented_flags=52
+missing_flags=
+dead_flags=
+yaml_keys=35 missing_yaml=
+v2_doc_hits=0
+```
+
+Final gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+**D5 verdict: PASS.** Live CLI flags are covered 52/52, all 35 canonical manual
+YAML keys are named, and mmap documentation consistently describes v3. The
+audit also exposed a separate product defect: `--resume` loads
+`ckpt_result` at `dtwc/dtwc_cl.cpp:1398-1405`, but that object has no later
+consumer. Documentation now says so; R3 must pin and repair the behavior.

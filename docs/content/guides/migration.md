@@ -65,9 +65,10 @@ or `removed` (dropped from bindings — 2.0 is the break point, surface report �
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:29) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:226) | `--dtype float64` | old accepted, default flips (§8) |
 
-**Mmap-cache migration.** The unsafe version-1 `<name>_distmat.cache` format is
-not resumed by 2.0. Delete or rename that cache and rerun to create a fingerprinted
-version-2 cache; source data and result checkpoints are unaffected. At the CLI
+**Mmap-cache migration.** Version-1 and version-2 `<name>_distmat.cache` files
+are not resumed by the current format. Delete or rename either legacy cache and
+rerun to create an identity- and payload-checked version-3 cache; source data
+and result checkpoints are unaffected. At the CLI
 mmap threshold, legacy dense `--checkpoint` and `--dist-matrix` inputs cannot be
 combined with the mmap cache and fail before either storage path is opened. Omit
 the dense option to use automatic mmap resume, or raise the threshold only when

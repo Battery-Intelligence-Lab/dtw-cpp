@@ -230,24 +230,26 @@ driven via `use_mmap_distance_matrix(path)` (§2.2) + CLI `--resume`. MATLAB
 checkpointing (`TODO.md:105`, "MATLAB Phase 2: checkpointing") is `[new]` and
 lands in Phase 2.2 against this table.
 
-**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses the
-64-byte version-2 header. Its SHA-256 identity covers the raw IEEE series values,
+**Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
+64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
 series order and lengths, storage precision, `ndim`, band, every DTW-variant
 parameter, multivariate mode, missing-data strategy, pointwise metric, compute
 backend, and backend precision. Series names are excluded because they do not
-affect distance semantics. Header metadata has a CRC, reserved bytes are checked,
-and the file length must match the packed matrix exactly. A mismatch is a hard
-error before any cached value is exposed; callers must use the original semantics
-or delete/rename the cache and recompute it.
+affect distance semantics. Header metadata has a CRC, reserved bytes are
+checked, and an aligned footer stores two digest words per logical row. Reopen
+takes a nonblocking exclusive session lease and recomputes every row digest
+before exposing the mapping. A mismatch is a hard error; callers must use the
+original semantics or delete/rename the cache and recompute it. The digests
+detect accidental corruption and are not keyed tamper-proof authentication.
 
-Version-1 mmap caches are deliberately rejected because their N-only identity
-cannot prove safe reuse. Semantic setters detach a bound cache without deleting
-it. The complete data identity is checked at bind and once at first use; later
-lookups compare a fixed-size configuration snapshot so warm access remains O(1).
-Consequently raw in-place `Data` mutation after first use is unsupported: call
-`refresh_distance_matrix()` before the edit, or replace the data through
-`set_data()`. CUDA mmap caches require explicit FP32 or FP64 (not hardware-
-dependent `Auto`), and non-L1 identities are external/GPU-fill-only because the
-CPU lazy path computes L1.
+Version 1 had only an N-sized identity; version 2 did not protect mutable packed
+values. Both are deliberately rejected. Semantic setters detach a bound cache
+without deleting it. The complete data identity is checked at bind and once at
+first use; later lookups compare a fixed-size configuration snapshot so warm
+access remains O(1). Consequently raw in-place `Data` mutation after first use
+is unsupported: call `refresh_distance_matrix()` before the edit, or replace
+the data through `set_data()`. CUDA mmap caches require explicit FP32 or FP64
+(not hardware-dependent `Auto`), and non-L1 identities are external/GPU-fill-
+only because the CPU lazy path computes L1.
 
 ---
