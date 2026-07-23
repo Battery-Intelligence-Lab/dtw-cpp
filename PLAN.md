@@ -514,6 +514,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       explicit option across supported/unsupported paths and the injected
       allocation seam. Each request must execute, raise a typed error, or return
       universally inspectable fallback metadata—never an unobservable no-op.
+- [ ] **F31 — operational GPU failures escape the public device-error
+      taxonomy.** `Problem` raises `DeviceError` for unavailable/uncompiled and
+      empty-result cases, but Metal allocation/launch failures throw
+      `std::runtime_error` and pass through `Problem::fill_distance_matrix`
+      (`dtwc/Problem.cpp:817-820,861-911`,
+      `dtwc/metal/metal_dtw.mm:1274-1294,1564-1599,1623-1628,1725-1737`).
+      First gate: inject one allocation failure and one command/kernel failure
+      through the real public `Problem` route; both must raise `DeviceError`
+      with backend/action context and preserve prior Problem state. Direct
+      backend helpers may retain lower-level exceptions only if the public
+      boundary translates them deterministically.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):

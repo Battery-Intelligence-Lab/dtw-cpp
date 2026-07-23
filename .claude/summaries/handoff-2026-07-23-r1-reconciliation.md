@@ -71,6 +71,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   a CUDA counterexample has LB 0.25 but admissible banded-DTW cost 0.
 - F30: explicit GPU options silently degrade: Metal LB path/resource no-ops,
   CUDA full-DTW LB no-op, unsupported kernel overrides, and Metal FP64→FP32.
+- F31: operational Metal allocation/launch failures escape
+  `Problem::fill_distance_matrix()` as `std::runtime_error` instead of the
+  frozen public `DeviceError`.
 
 ## Exact resume point (updated)
 
