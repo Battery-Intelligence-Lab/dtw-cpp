@@ -301,6 +301,14 @@ Critical knowledge to avoid repeating mistakes.
   renderer-supported delimiters and table structure, require backend
   qualifiers and finding ownership as explicit drift markers, and separately
   review source attribution at equation granularity.
+- **Decode binary floating-point evidence; do not copy a rounded summary into
+  an exact ledger.** F8's first preregistration copied decimal spellings from a
+  handoff even though the SHA-pinned checkpoint was authoritative. Before the
+  decisive run, decoding its documented `total_cost` bytes at offset 24 showed
+  `4.3999999999999986` and `4.4000012278556824` at 17 digits. The CLI prints
+  only six significant digits, while a language's shortest-roundtrip `repr`
+  may choose another correct spelling. Register the raw IEEE-754 bytes plus a
+  max-digits decimal rendering whenever last-bit identity is load-bearing.
 
 ## LR-core Solver (Phase 4)
 

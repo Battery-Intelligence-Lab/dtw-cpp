@@ -160,3 +160,20 @@ jobs:
           ctest --test-dir build_dir -C Debug -V --no-tests=error \
             -R '^test_io_readers$' 2>&1 | tee build_dir/io_readers.log
           bash .github/scripts/assert-arrow-suite.sh build_dir/io_readers.log
+
+      # THE F8 GATE. The CMake script drives six real CLI processes and derives
+      # its counters only after route markers and nine byte comparisons pass.
+      # --no-tests=error makes an omitted conditional registration fail closed.
+      - name: assert FastCLARA resident-stream parity ran (F8)
+        run: |
+          set -euo pipefail
+          ctest --test-dir build_dir -C Debug -V --no-tests=error \
+            -R '^test_fast_clara_parquet_parity$' 2>&1 \
+            | tee build_dir/fast_clara_parquet_parity.log
+          grep -F -- \
+            'F8_PARITY subject=real_dtwc_cl runs=6 route_markers=12/12 parity=9/9 configs=3/3_distinct' \
+            build_dir/fast_clara_parquet_parity.log
+          if grep -Fq '***Skipped' build_dir/fast_clara_parquet_parity.log; then
+            echo '::error::F8 parity target skipped instead of executing.'
+            exit 1
+          fi
