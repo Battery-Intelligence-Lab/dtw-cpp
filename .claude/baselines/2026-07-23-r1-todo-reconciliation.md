@@ -233,3 +233,25 @@ known-bug/cleanup and 32/32 backlog/deferred/operator/question records. No
 historical parent record is unclassified. The six new open defect/cleanup
 routes use unique finding IDs F11–F16; the pre-existing permanent Parquet
 fixture remains F8.
+
+## Final rewritten-index audit
+
+The decisive parser ran after `.claude/TODO.md` was rewritten:
+
+```text
+expected=53 actual=53 unique=53
+missing=
+unexpected=
+duplicate=
+known=21
+remaining=32
+unverified_mentions=0
+new_r3_refs=6 unique_new_r3=6 values=F11,F12,F13,F14,F15,F16
+```
+
+`git diff --check` emitted no errors. Ledger commit: `512bbc4`; rewritten-index
+commit: `81cae08`.
+
+**Final verdict: PASS against the preregistered band.** The source inventory is
+53/53 adjudicated, no parent is unclassified, and each newly routed R3 finding
+has a unique ID.

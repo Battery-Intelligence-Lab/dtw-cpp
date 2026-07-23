@@ -168,7 +168,7 @@ Non-behavioral hygiene: make the repository's *record* as trustworthy as its
 code. Nothing here may change program behavior (no-op oracle not required since
 no core code changes — but if any item does touch code, it moves to R4's rules).
 
-- [ ] **TODO.md full reconciliation.** `.claude/TODO.md`'s audit list is a
+- [x] **TODO.md full reconciliation.** `.claude/TODO.md`'s audit list is a
       2026-07-06 snapshot; Phases 4–8 closed an unknown subset without editing
       it (the 2026-07-20 note reconciled exactly one entry). Verify all ~30
       entries against the current tree: each becomes CLOSED-BY (commit/task),
@@ -350,6 +350,31 @@ Open findings first (status after R0 adjudication — update these boxes there):
       suggests most of this exists uncommitted — verify, don't assume.
       Note: R2-D13 may CHANGE the sampling rule; if so, these tests pin the
       new rule, and the old one's tests are updated in the same commit.
+- [ ] **F11 — example-project dependency integrity is outside the pin gate.**
+      `examples/cpp/example_project/CMakeLists.txt` downloads a mutable branch
+      archive without `URL_HASH`, and `check_supply_chain_pins.py` does not scan
+      it. First gate: a repo-wide checker fails on that exact fixture while all
+      currently pinned main dependencies continue to pass.
+- [ ] **F12 — cross-backend band semantics have divergent formulations.**
+      CPU/CUDA use slope-adjusted unequal-length bounds; Metal uses a direct
+      anti-diagonal clip. First gate: a non-degenerate unequal-length fixture
+      compared across CPU, CUDA, and a real Metal device. Source inspection on
+      this Windows host cannot adjudicate equivalence.
+- [ ] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
+      FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
+      First gate: digit-identical assignments/objectives on adversarial ties and
+      non-finite rejection before R4 may consolidate anything.
+- [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
+      precision, signed zero, and non-finite behavior across dense stream,
+      mmap stream, and visitor paths; only then may R4 remove duplication.
+- [ ] **F15 — benchmark/test generators and CPU oracles are fragmented.**
+      The historical claim that eight copies were byte-identical is falsified:
+      ranges and shapes differ. Inventory intentional variants and pin seeded
+      bytes/oracle values before extracting any shared test utility.
+- [ ] **F16 — CMake presets encode one developer machine and a stale floor.**
+      `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
+      while the root requires 3.26. First gate: portable clean configure probes
+      plus a metadata check that rejects any future floor drift.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -545,6 +570,11 @@ colour system transfer verbatim**.
   the three-way verdict and map STILL-OPEN defects to R3; the 32 backlog,
   question, deferred, and operator records use the same evidence standard but
   route open work to its owning campaign phase or external owner.
+- 2026-07-23 (R1 TODO verdict): The 53-record ledger is binding. New residual
+  defect/cleanup routes are F11–F16; the permanent resident/stream fixture
+  remains F8. Historical “8K executed”, scalar-L2, dead-preload,
+  byte-identical-generator, and pyproject-floor subclaims are retired rather
+  than propagated. Open operator/community work is not a local test failure.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -595,4 +625,11 @@ colour system transfer verbatim**.
   Inventory: 53 records (49 unchecked, one checked, three open questions);
   acceptance requires 53/53 verdicts, no unclassified records, and unique R3
   IDs for every still-open defect. Evidence:
+  `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
+- 2026-07-23 (R1 TODO reconciliation): Committed the 53-row evidence ledger in
+  `512bbc4` and rewrote the stale live index in `81cae08`. Final parser:
+  53 expected/actual/unique, 21 known-bug/cleanup, 32 remaining, zero missing,
+  unexpected, duplicate, or `UNVERIFIED` records; F11–F16 each appear once.
+  Direct focused closure gate: nine binaries, 5,809 assertions in 142 cases,
+  zero skips/failures. Evidence:
   `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.

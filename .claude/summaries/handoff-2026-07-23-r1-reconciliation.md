@@ -3,7 +3,7 @@
 ## Current objective
 
 Make the repository record trustworthy without changing program behavior.
-Task R1.1 is the full `.claude/TODO.md` reconciliation.
+The TODO reconciliation is closed. The active R1 task is the docs truth audit.
 
 ## Registered work
 
@@ -15,10 +15,18 @@ Task R1.1 is the full `.claude/TODO.md` reconciliation.
 - All 53 records are in scope. Known defects/cleanup map to R3 when still open;
   open product/performance work maps to its campaign, operator, or community
   owner.
+- The evidence ledger is committed in `512bbc4`; the rewritten live index is
+  committed in `81cae08`.
+- Final parser: 53 expected/actual/unique; 21 known-bug/cleanup plus 32
+  remaining; zero missing, unexpected, duplicate, or `UNVERIFIED` records.
+- New unique R3 routes are F11–F16. Existing F8 still owns the permanent
+  resident-versus-stream Parquet fixture.
+- Focused current-tree closure gate: nine direct test binaries, 5,809
+  assertions in 142 cases, zero skip markers or failures.
 
 ## Exact resume point
 
-Build the 53-row evidence ledger from current source, focused executable probes,
-and git history. Rewrite TODO only after every parent record has a verdict.
-Do not implement the defects during this non-behavioral phase.
-
+Complete the R1 docs truth audit: correct source-of-truth drift in README,
+website pages, API contract, CHANGELOG, and comments; run the CLI contract and
+internal-link gates against the fresh canonical binary. Keep changes
+non-behavioral and commit each green record task separately.
