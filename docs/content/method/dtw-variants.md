@@ -5,7 +5,9 @@ weight: 6
 
 # DTW Variants
 
-DTW-C++ supports multiple Dynamic Time Warping variants beyond standard DTW. Each variant modifies the distance computation in a different way, targeting different aspects of time series comparison: shape sensitivity, warping regularization, or differentiability.
+DTWC++ exposes six alternatives to standard DTW. DDTW, WDTW, ADTW, and
+Soft-DTW alter DTW preprocessing or recurrence; MSM and TWE are standalone
+elastic metrics with their own dynamic programs.
 
 ## DDTW (Derivative DTW)
 
@@ -198,6 +200,50 @@ dtwc_cl -i data.csv -k 3 --variant softdtw --sdtw-gamma 1.0
 
 ---
 
+## MSM (Move-Split-Merge)
+
+**Reference:** Stefan, Athitsos & Das, "The Move-Split-Merge Metric for Time
+Series," IEEE TKDE, 2013.
+
+MSM is a metric edit distance whose move, split, and merge operations are
+controlled by a positive cost $$c$$. DTWC++ implements the exact univariate,
+unbanded recurrence with $$O(\min(m,n))$$ rolling scratch. In this release MSM
+rejects multivariate input and ignores the `Problem` band by contract.
+
+```cpp
+#include <dtwc/distance.hpp>
+
+double dist = dtwc::distance::msm(x, y, /*c=*/1.0);
+```
+
+```bash
+dtwc_cl -i data.csv -k 3 --variant msm --msm-c 1.0
+```
+
+---
+
+## TWE (Time Warp Edit)
+
+**Reference:** Marteau, "Time Warp Edit Distance with Stiffness Adjustment for
+Time Series Matching," IEEE TPAMI, 2009.
+
+TWE combines edit operations with a positive stiffness $$\nu$$ and positive
+edit penalty $$\lambda$$. DTWC++ implements the exact univariate, unbanded
+recurrence with $$O(\min(m,n))$$ rolling scratch. Multivariate input is rejected
+and the Sakoe–Chiba band is not applied in this release.
+
+```cpp
+#include <dtwc/distance.hpp>
+
+double dist = dtwc::distance::twe(x, y, /*nu=*/0.001, /*lambda=*/1.0);
+```
+
+```bash
+dtwc_cl -i data.csv -k 3 --variant twe --twe-nu 0.001 --twe-lambda 1.0
+```
+
+---
+
 ## Comparison Table
 
 | Variant | What it modifies | Key parameter | Best for | Memory |
@@ -207,6 +253,8 @@ dtwc_cl -i data.csv -k 3 --variant softdtw --sdtw-gamma 1.0
 | **WDTW** | Recurrence (weighted cost) | $$g$$ (steepness) | Penalizing large phase shifts | $$O(\min(m,n))$$ |
 | **ADTW** | Recurrence (penalty) | $$\omega$$ (penalty) | Discouraging stretching/compression | $$O(\min(m,n))$$ |
 | **Soft-DTW** | Recurrence (softmin) | $$\gamma$$ (smoothness) | Differentiable loss, gradient-based learning | $$O(m \times n)$$ |
+| **MSM** | Move/split/merge edit recurrence | $$c$$ | Metric elastic comparison | $$O(\min(m,n))$$ |
+| **TWE** | Stiff edit-distance recurrence | $$\nu,\lambda$$ | Metric elastic comparison with edit penalties | $$O(\min(m,n))$$ |
 
 ## Selecting a Variant via Problem
 

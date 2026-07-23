@@ -5,7 +5,8 @@ weight: 4
 
 # Clustering Algorithms
 
-DTW-C++ implements several clustering algorithms for partitioning time series into groups based on DTW distance similarity.
+DTWC++ implements eight CLI-selectable clustering methods (besides `auto`) for
+partitioning time series from elastic distances.
 
 ## FastPAM (k-Medoids)
 
@@ -20,11 +21,25 @@ PAM consists of two phases:
 
 ### FastPAM1 Optimization
 
-DTW-C++ uses the FastPAM1 optimization, which evaluates all swap candidates simultaneously using nearest/second-nearest medoid tracking. This reduces complexity from $$O(N^2 k^2)$$ to $$O(N^2 k)$$ per iteration — an $$O(k)$$ speedup.
+DTWC++ uses the FastPAM1 decomposition, which evaluates swap candidates with
+nearest/second-nearest medoid tracking. Production SWAP work is
+$$O(N^2)$$ per iteration rather than the direct-sum $$O(N^2k)$$ reference path.
 
 **CLI:** `dtwc_cl -k 5 --method pam`
 
-> **Reference:** Schubert, E. and Rousseeuw, P. J. (2021). "Fast and Eager k-Medoids Clustering: O(k) Runtime Improvement of the PAM, CLARA, and CLARANS Algorithms." *Journal of Machine Learning Research (JMLR)*, 22(1), 4653-4688.
+> **Reference:** Schubert, E. and Rousseeuw, P. J. (2021). "Fast and eager
+> k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS
+> algorithms." *Information Systems* 101, 101804.
+> <https://doi.org/10.1016/j.is.2021.101804>
+
+## OneBatchPAM
+
+OneBatchPAM forms a fixed objective batch and keeps all $$N$$ points eligible
+as medoids, reducing the distance table to $$O(Nm)$$ for batch size $$m$$. The
+CLI exposes explicit or logarithmic-auto batch sizes and uniform, debiased, and
+nearest-neighbour importance weighting.
+
+**CLI:** `dtwc_cl -k 5 --method onebatch --batch-size 200 --batch-weighting nniw`
 
 ## FastCLARA (Scalable k-Medoids)
 
@@ -147,12 +162,36 @@ For large datasets ($$N > 200$$), Benders decomposition splits the problem into 
 
 **CLI:** `dtwc_cl -k 5 --method mip --solver gurobi --mip-gap 1e-4`
 
+## LR-core
+
+LR-core is the in-tree exact p-median route. It combines a Lagrangian root
+bound, reduced-cost fixing, and medoid-variable branch-and-bound. It does not
+require a commercial MIP solver, but the current clustering entry point
+materialises a dense distance matrix and therefore has an $$O(N^2)$$ memory
+budget. It either returns a certified solution or fails loudly at its
+configured limits.
+
+**CLI:** `dtwc_cl -k 5 --method lrcore`
+
+## TADPole
+
+TADPole implements density-peaks clustering with admissible lower/upper bounds.
+For equal-length Standard DTW it can classify some cutoff comparisons without
+an exact DTW; unsupported variants fall back to exact comparisons without
+changing the result. Its deterministic tie order pins the result to the
+brute-force density-peaks oracle for the same cutoff.
+
+**CLI:** `dtwc_cl -k 5 --method tadpole --dc 2.0`
+
 ## Algorithm Comparison
 
 | Algorithm | Optimality | Memory | Scalability | Best For |
 |-----------|-----------|--------|-------------|----------|
-| FastPAM | Local optimum | $$O(N^2)$$ | Medium (N < 10k) | Default choice |
-| FastCLARA | Approximate | $$O(s^2)$$ | Large ($$N \leq \mathtt{INT\_MAX}$$) | Large datasets |
-| Hierarchical | N/A (dendrogram) | $$O(N^2)$$ | Small (N < 2000) | Exploratory analysis |
-| MIP | Global optimum | $$O(N^2)$$ | Small (N < 500) | When optimality matters |
-| Lloyd's | Local optimum | $$O(N^2)$$ | Medium | Legacy, simple |
+| FastPAM | Local optimum | $$O(N^2)$$ distance storage | Dense | General k-medoids |
+| OneBatchPAM | Approximate | $$O(Nm)$$ table | Matrix-free | Bounded distance budget |
+| FastCLARA | Approximate | $$O(s^2)$$ sample storage plus assignment scratch | Matrix-free for non-full samples | Large datasets |
+| Hierarchical | N/A (dendrogram) | $$O(N^2)$$ | Guarded at 2,000 points | Exploratory hierarchy |
+| Lloyd's (`kmedoids`) | Local optimum | Uses configured distance storage | Dense | Simple assignment/update |
+| MIP | Certified when solved to optimality | $$O(N^2)$$ distance storage plus solver model | Dense | Solver-backed exact result |
+| LR-core | Certified or loud failure | $$O(N^2)$$ distance storage | Dense | In-tree exact result |
+| TADPole | Exact relative to its brute-force density-peaks oracle | Threshold routing may use mmap | Density/cutoff search | Admissible pair pruning |

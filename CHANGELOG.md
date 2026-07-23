@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected the website method catalog: removed unsupported Huber, documented
+  MSM/TWE and all CLI clustering methods, fixed FasterPAM provenance/complexity,
+  and stopped presenting the exact-matrix recomputation route as an accelerator.
 - Corrected the README's live variant/method counts, CUDA architecture defaults,
   complete CMake option inventory, Float32/streaming scope, and removed
   performance numbers that lacked a tracked originating result artifact.

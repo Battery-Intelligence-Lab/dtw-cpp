@@ -5,54 +5,61 @@ weight: 5
 
 # Distance Metrics
 
-DTW-C++ supports multiple pointwise distance metrics for use within the DTW computation. The pointwise metric determines how the cost of aligning two individual time series points is calculated.
+DTWC++ has three runtime pointwise metric selectors in C++:
+`MetricType::L1`, `MetricType::L2`, and `MetricType::SquaredL2`. Huber is not
+implemented.
 
-## Available Metrics
+## Available metrics
 
-| Metric | Formula | Description |
-|--------|---------|-------------|
-| L1 (default) | $$\|x_i - y_j\|$$ | Absolute difference. Robust to outliers. |
-| L2 | $$\sqrt{(x_i - y_j)^2}$$ | Euclidean distance between points. |
-| Squared L2 | $$(x_i - y_j)^2$$ | Squared Euclidean. Emphasizes large differences. |
-| Huber | See below | Quadratic for small errors, linear for large. |
+| Metric | Scalar cost | Multivariate cost | Notes |
+|---|---:|---:|---|
+| L1 (default) | $$|x_i-y_j|$$ | $$\sum_c |x_{i,c}-y_{j,c}|$$ | Absolute-difference sum. |
+| L2 | $$\sqrt{(x_i-y_j)^2}$$ | $$\sqrt{\sum_c (x_{i,c}-y_{j,c})^2}$$ | For one channel this equals L1; it differs for multivariate input. |
+| Squared L2 | $$(x_i-y_j)^2$$ | $$\sum_c (x_{i,c}-y_{j,c})^2$$ | Emphasizes large pointwise deviations; the accumulated result is not itself a metric distance. |
 
-### Huber Metric
+The C++ runtime API selects among all three. The 2.0 CLI surface is narrower:
+CPU accepts `--metric l1`; CUDA accepts `l1` or `squared_euclidean`. Unsupported
+device/metric combinations fail before computation rather than silently using
+another metric.
 
-The Huber metric provides a compromise between L1 and L2:
+## Lower bounds and pruning
 
-$$
-d_\delta(x_i, y_j) = \begin{cases}
-\frac{1}{2}(x_i - y_j)^2 & \text{if } |x_i - y_j| \le \delta \\
-\delta \left(|x_i - y_j| - \frac{1}{2}\delta\right) & \text{otherwise}
-\end{cases}
-$$
+Lower bounds can avoid exact distance work only when the consumer needs a
+threshold or nearest-neighbour decision rather than every exact pair value.
+TADPole uses this property: a bound relative to its cutoff can classify some
+pairs without computing DTW.
 
-where $$\delta$$ is the Huber threshold parameter.
-
-## Lower Bound Pruning
-
-Lower bounds allow skipping full DTW computations when the lower bound already exceeds a known upper bound, significantly accelerating distance matrix construction.
+The legacy `DistanceMatrixStrategy::Pruned` route still produces an exact full
+matrix. Its early-abandon kernel returns a sentinel, so an abandoned pair is
+then recomputed to recover the exact value. That route is correct but is not
+documented as an acceleration; the registered LB-cascade experiment found the
+extra partial-plus-full work to be a pessimization on its fixture.
 
 ### LB_Keogh
 
-LB_Keogh computes a lower bound on the DTW distance by constructing an envelope around one series and measuring how much the other series falls outside that envelope. It requires a Sakoe-Chiba band constraint.
-
-#### LB_Keogh Compatibility by Metric
-
-| Metric | LB_Keogh Supported | Notes |
-|--------|-------------------|-------|
-| L1 | Yes | Envelope-based bound holds for L1. |
-| L2 | Yes | Envelope-based bound holds for L2. |
-| Squared L2 | Yes | Envelope-based bound holds for squared L2. |
-| Huber | No | The Huber metric does not satisfy the envelope-based lower bound property in general. Because the Huber function transitions between quadratic and linear regimes depending on the magnitude of each pointwise difference, the envelope-based bound can overestimate the true DTW cost in the linear regime, violating the lower bound guarantee. |
+LB_Keogh constructs an envelope around one series and measures how far the
+other lies outside it. The implementation requires a Sakoe–Chiba band and has
+valid L1, L2, and Squared L2 specializations.
 
 ### LB_Kim
 
-LB_Kim is a simpler O(1) lower bound based on comparing the first, last, minimum, and maximum values of the two series. It requires a monotone pointwise metric (valid for L1, L2, Squared L2) and typically provides a looser bound than LB_Keogh.
+LB_Kim is an O(1) bound derived from endpoint and range summaries. It is valid
+for the same three pointwise metrics and is generally looser than LB_Keogh.
 
-## Choosing a Metric
+### LB_Enhanced and LB_Webb
 
-- **L1 (default):** Good general-purpose choice. More robust to outliers than L2 or squared L2.
-- **L2:** Standard Euclidean pointwise distance. Common in the literature.
-- **Squared L2:** Penalizes large misalignments more heavily. Useful when large deviations are especially undesirable.
-- **Huber:** Best when data contains occasional outliers but you still want sensitivity to moderate differences. Note that LB_Keogh pruning is not available with the Huber metric.
+The C++ lower-bound library also implements LB_Enhanced and LB_Webb for
+supported metrics. Their validity and the registered relationship
+`LB_Webb >= LB_Keogh` are exercised by the adversarial lower-bound suite.
+
+## Choosing a metric
+
+- Use **L1** for the default CPU/CLI path and absolute-deviation costs.
+- Use **L2** when multivariate Euclidean point costs are required through the
+  C++ runtime API.
+- Use **Squared L2** when large pointwise deviations should receive a quadratic
+  penalty, or for the supported CUDA CLI path.
+
+Metric choice and elastic-distance choice are separate. MSM and TWE are
+standalone elastic metrics with their own recurrences and parameters; they are
+documented under [DTW variants](../dtw-variants/).

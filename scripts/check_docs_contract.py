@@ -146,6 +146,44 @@ def assert_tier1_signatures() -> None:
             raise AssertionError(f"method {method!r} is not aligned across code/contract")
 
 
+def assert_method_catalog() -> None:
+    metrics = (ROOT / "docs/content/method/metrics.md").read_text(encoding="utf-8")
+    variants = (ROOT / "docs/content/method/dtw-variants.md").read_text(
+        encoding="utf-8"
+    )
+    algorithms = (ROOT / "docs/content/method/algorithms.md").read_text(
+        encoding="utf-8"
+    )
+
+    if re.search(r"(?mi)^(?:#+\s+Huber\b|\|\s*Huber\s*\|)", metrics):
+        raise AssertionError("metrics.md advertises unsupported Huber metric")
+    if "significantly accelerating distance matrix construction" in metrics:
+        raise AssertionError("metrics.md repeats the falsified exact-matrix speed claim")
+    for name in ("L1", "L2", "Squared L2"):
+        if name not in metrics:
+            raise AssertionError(f"metrics.md omits live metric {name}")
+
+    for name in ("DDTW", "WDTW", "ADTW", "Soft-DTW", "MSM", "TWE"):
+        if re.search(rf"(?m)^## {re.escape(name)}\b", variants) is None:
+            raise AssertionError(f"dtw-variants.md omits live variant {name}")
+
+    method_headings = {
+        "FastPAM": r"^## FastPAM\b",
+        "OneBatchPAM": r"^## OneBatchPAM\b",
+        "FastCLARA": r"^## FastCLARA\b",
+        "Lloyd": r"^## Lloyd",
+        "MIP": r"^## Mixed-Integer Programming",
+        "LR-core": r"^## LR-core\b",
+        "Hierarchical": r"^## Hierarchical\b",
+        "TADPole": r"^## TADPole\b",
+    }
+    for name, pattern in method_headings.items():
+        if re.search(pattern, algorithms, re.MULTILINE) is None:
+            raise AssertionError(f"algorithms.md omits live method {name}")
+    if "Information Systems" not in algorithms or "10.1016/j.is.2021.101804" not in algorithms:
+        raise AssertionError("algorithms.md has stale FasterPAM provenance")
+
+
 def cli_flags(text: str) -> set[str]:
     return set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", text))
 
@@ -182,6 +220,7 @@ def main() -> int:
     assert_rc1_changelog()
     assert_env_messages()
     assert_tier1_signatures()
+    assert_method_catalog()
     if args.cli is not None:
         assert_cli_reference(args.cli.resolve())
     print("documentation contract checks passed")

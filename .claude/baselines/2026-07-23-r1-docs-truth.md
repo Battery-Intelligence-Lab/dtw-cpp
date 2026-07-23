@@ -215,3 +215,47 @@ documentation contract checks passed
 **D3 verdict: PASS.** README counts/defaults are live-source-backed, the option
 inventory is complete and duplicate-free, and untracked/falsified performance
 headlines are absent.
+
+## D4 — method catalog advertises unsupported and incomplete capabilities
+
+[confirmed] `MetricType` contains only L1, L2, and SquaredL2
+(`dtwc/core/dtw_options.hpp`), but `metrics.md` documents Huber. The variants
+page omits live MSM/TWE. The algorithms page omits OneBatchPAM, LR-core, and
+TADPole, gives FasterPAM the wrong venue, and states the old complexity factors.
+
+Registered repair band:
+
+- first add a source-doc drift check that rejects Huber and requires all live
+  metric, variant, and CLI algorithm names plus the corrected FasterPAM
+  venue/DOI;
+- before the page edit, that new guard must fail on the inherited catalog
+  (deliberate red);
+- after the edit, `check_docs_contract.py --cli` passes;
+- lower-bound prose distinguishes admissible threshold/NN pruning from the
+  known-pessimizing exact-matrix early-abandon-plus-recompute route;
+- MSM/TWE scope is explicitly univariate and unbanded; no unimplemented Python
+  direct function is advertised;
+- no unsupported performance or scale threshold is introduced.
+
+Deliberate red after adding the reachable guard, before page repair:
+
+```text
+generated documentation is current
+AssertionError: metrics.md advertises unsupported Huber metric
+```
+
+Final gate:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+The guard now requires exact section headings for DDTW/WDTW/ADTW/Soft-DTW/MSM/
+TWE and all eight non-auto CLI clustering methods, rejects a Huber section/table
+row and the inherited exact-matrix speed phrase, and pins FasterPAM to
+*Information Systems* plus DOI `10.1016/j.is.2021.101804`.
+
+**D4 verdict: PASS.** The inherited unsupported catalog fails; the corrected
+catalog passes. Fresh rendered-link evidence remains under the registered Hugo
+`[BLOCKED-ENV]` rather than being inferred from this source gate.
