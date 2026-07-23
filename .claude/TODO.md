@@ -48,6 +48,26 @@ citation-checked). The two fixes actually applied that session were the dependab
 still open**. See `.claude/summaries/handoff-2026-06-01-adversarial-audit.md` for the
 full list and proposed patches.
 
+> **STALE SNAPSHOT — full reconciliation pending.**
+> **[confirmed]** This file was last committed on 2026-07-06 (`874edd5`);
+> no later commit reconciled it against Phases 4–8. `PLAN.md` Phase R1 owns
+> that full reconciliation. Until it runs, unchecked boxes below are historical
+> audit entries, not verified current-open findings.
+>
+> **[confirmed] CLOSED-BY Task 5.1 (`8ca7354`).** The High entry claiming
+> production `fast_pam` still uses an O(N²·k) SWAP no longer describes the
+> tree. In `dtwc/algorithms/fast_pam.cpp`, `fast_pam` and `fast_pam_seeded`
+> select `PAMVariant::FastPAM1`; its `update_removal_loss` plus
+> `find_best_swap` decomposition evaluates each candidate in O(N+k)=O(N),
+> because k≤N, giving O(N²) per iteration. The old x×p×m loop remains
+> reachable only through explicitly selected `pam1_naive_swap_impl`, retained
+> as a direct-sum benchmark/reference path. The registered equivalence is
+> objective agreement within 1e-9; exact medoid identity is not required
+> (`.claude/baselines/2026-07-08-faster-pam-bench.md`).
+>
+> All other entries remain UNVERIFIED pending R1; this note does not adjudicate
+> them.
+
 ### Critical (silent-wrong results or memory-safety)
 
 - [ ] **CUDA wavefront drops anti-diagonal cells when `max_L > 2048`** → silent wrong DTW on the 8K-sample target. `cuda/cuda_dtw.cu:280` (`MAX_SI=8` × block 256 = 2048 cap); 3-buffer path is correct.
@@ -65,7 +85,7 @@ full list and proposed patches.
 - [ ] **`default_data_t = float` on public helpers** halves precision. `settings.hpp:29` — see open question below.
 - [ ] **CUDA int32 index `result_matrix[si*N+sj]` overflow** for `N > 46341` (`cuda/cuda_dtw.cu:202`); `decode_pair` `row_start` int32 (`:73`). Adjacent-series math already uses `long long`; the index was left `int`.
 - [ ] **I/O readers cast to `DoubleArray` with no Float64 check** and no bounds on list offsets; `ndim=0` div-by-zero. `io/arrow_ipc_reader.hpp`, `io/parquet_reader.hpp`. (crc32 is integrity-only, not tamper-proof.)
-- [ ] **`fast_pam` swap phase is O(N²k)** — a genuine triple loop (`for x(N) → for p(N) → for m(k)`, `algorithms/fast_pam.cpp:182`) contradicts the header's "O(N) per swap candidate"; the FastPAM1 O(1)-per-medoid-update trick is not implemented. Verified 2026-07-06.
+- [x] **CLOSED-BY Task 5.1 (`8ca7354`): production `fast_pam` swap phase was O(N²k).** `fast_pam` and `fast_pam_seeded` now select FastPAM1's O(N²)-per-iteration decomposition; the direct-sum O(N²k) implementation remains an explicit benchmark/reference variant. Objective agreement is registered within 1e-9; exact medoid identity is not required.
 - [ ] **`fast_clara` RAM/chunked seed divergence** — `mt19937` (RAM) vs `mt19937_64` (chunked) diverge on the same seed; in-RAM assign is serial (no OpenMP).
 - [ ] **`--metric` silently ignored on the CPU path** (only CUDA consumes it); `std::stoi(device.substr(5))` uncaught → `terminate` on a bad `cuda:N`; `--device` match is case-sensitive with silent CPU fallback.
 - [ ] **`TimeSeries::view()` drops `ndim`** → multivariate round-trip corruption. `core/time_series.hpp:66` (view built from `{data.data(), data.size()}` only).
