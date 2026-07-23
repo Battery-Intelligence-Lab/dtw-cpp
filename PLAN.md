@@ -2,7 +2,7 @@
 
 > **For Codex (autonomous, single continuous run):** this file is the mission. Read
 > `AGENTS.md` first (the working rules), then this file top to bottom, then start at
-> Phase R0 and do not stop. Never wait for an operator. Improvise where the evidence
+> the earliest OPEN phase and do not stop. Never wait for an operator. Improvise where the evidence
 > justifies it — this plan states goals, invariants, and suggested routes, not a
 > script — but record every departure as a Decision-log entry the moment you make it.
 >
@@ -15,9 +15,9 @@
 
 **Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
-protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F10, and the
-sanitizer gate CLOSED; **F8–F9 OPEN**. Phase R0 is adjudicating the remaining
-2026-07-20 interrupted work before anything else. The final **2.0.0 tag gates
+protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
+the sanitizer gate CLOSED; **F8 OPEN**. Phase R0 CLOSED; Phase R1 is active.
+The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
 never wait on them.
@@ -122,7 +122,7 @@ behavior-frozen against an oracle that bug fixes would invalidate.
 
 ---
 
-## Phase R0 — Adjudicate the 2026-07-20 in-flight work [OPEN — do this first]
+## Phase R0 — Adjudicate the 2026-07-20 in-flight work [CLOSED — 2026-07-23]
 
 The working tree contains uncommitted changes dated 2026-07-20 ~23:00 (a prior
 Codex run that died before committing). Inventory [confirmed: `git status`/`git
@@ -156,7 +156,7 @@ Tasks:
       an operator-triggered verification in the Decision log. If the local
       equivalent (an Arrow-ON build dir running `test_io_readers` for real) is
       constructible, BUILD IT — that, not CI, is the primary F9 closure (see R3).
-- [ ] Verdict per change: KEEP (gate green, contract met) → commit as its own
+- [x] Verdict per change: KEEP (gate green, contract met) → commit as its own
       conventional commit crediting the finding it closes; REPAIR (close but
       defective) → fix, then commit; REVERT (wrong or unverifiable) → revert
       with a Decision-log line naming why. No change may stay uncommitted.
@@ -535,6 +535,11 @@ colour system transfer verbatim**.
   installs Arrow/Parquet and enforces ≥348 assertions plus ≥11 cases from
   Catch2's own summary; its hosted run is operator-owned and is not claimed by
   the local closure.
+- 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
+  optimization-based clustering history, not evidence for DTWC++'s diagonal
+  p-median matrix. The record attributes its linking rows to Balinski and the
+  classical complete model to ReVelle-Swain; the interrupted “same program”
+  and independent-lineage claims were removed.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
@@ -575,3 +580,9 @@ colour system transfer verbatim**.
   executed-assertion/case parser. Canonical CTest passes 114/114 with exactly
   its six registered capability skips. Evidence:
   `.claude/baselines/2026-07-23-f9-arrow-gate.md`.
+- 2026-07-23 (R0 closure): Every inherited hunk has a committed verdict.
+  Scholarly repairs are `c627826` (floating-point record), `8775156` (TODO
+  staleness plus one verified closure), and `85eabcd` (MIP provenance).
+  `git status --porcelain=v1` was empty; canonical behavioral closure remains
+  114/114, zero failed, exactly six capability skips. Final matrix:
+  `.claude/baselines/2026-07-23-r0-adjudication.md`. Proceed to R1.

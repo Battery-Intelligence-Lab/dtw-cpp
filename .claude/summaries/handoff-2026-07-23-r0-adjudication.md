@@ -53,6 +53,15 @@ verdict is gated and committed separately.
   operator-owned and unclaimed. Final canonical CTest passes 114/114 with
   exactly the expected six skips. Evidence:
   `.claude/baselines/2026-07-23-f9-arrow-gate.md`.
+- Adjudicated every remaining scholarly record. `c627826` corrects the
+  floating-point build description and keeps the historical EAP cause
+  explicitly inferred; `8775156` marks TODO as a stale snapshot and closes
+  only its verified FastPAM entry; `85eabcd` replaces the unsupported
+  Balinski/Vinod same-program claim with a source-bounded p-median provenance
+  record.
+- Closed R0 with every inherited path committed and an empty
+  `git status --porcelain=v1`. Final per-change verdicts are in
+  `.claude/baselines/2026-07-23-r0-adjudication.md`.
 
 ## Decisions and findings
 
@@ -76,12 +85,23 @@ verdict is gated and committed separately.
 - The FastPAM width edit was not F10. It was a partial R3 integer-width repair
   and is now closed by `f8ff7d3`; the extracted production boundary checker is
   executable without allocating more than `INT_MAX` series.
-- The Vinod bibliographic record is verified, but the full text was not read.
-  Any “same 0/1 program” statement remains inferred and must be labelled as
-  such rather than used as load-bearing mathematical evidence.
+- The Vinod author-page abstract supports an early integer-programming
+  treatment of partitional clustering, not DTWC++'s exact diagonal p-median
+  constraint matrix. The inherited “same 0/1 program” and independent-lineage
+  claims were removed rather than retained as load-bearing inference.
+- The canonical build is not `-ffast-math`. It supplies an explicit
+  Clang/GCC Release flag set that permits reassociation while preserving
+  non-finite semantics; the surviving artifact does not isolate the historical
+  EAP failure to one flag, and factor 16 remains an empirical regression
+  constant pending R2-D4.
+- The historical attribution split between Balinski linking inequalities and
+  the ReVelle-Swain complete p-median model is the R0 claim most likely to need
+  later scholarly refinement. It does not affect the constraint matrix read
+  directly from the DTWC++ implementation.
 
 ## Exact resume point
 
-Adjudicate the remaining scholarly records (`CITATIONS.md`, `UNIMODULAR.md`,
-`TODO.md`, and the floating-point corrections in `LESSONS.md`) before checking
-R0 complete. F8 remains open and belongs to R3.
+R0 is complete. Begin Phase R1 with `.claude/TODO.md`'s full reconciliation:
+preregister the CLOSED-BY / STILL-OPEN / NOT-REPRODUCIBLE evidence rules, then
+adjudicate every remaining historical entry against the current tree. F8
+remains open and belongs to R3.

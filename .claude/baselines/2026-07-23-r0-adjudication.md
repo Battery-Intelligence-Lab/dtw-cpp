@@ -72,3 +72,69 @@ run. Exploration is labelled explicitly and is not used as closure evidence.
 51-assertion direct seam suite, behavioral callers, and 114-target canonical
 gate are recorded verbatim in
 `.claude/baselines/2026-07-23-f10-sampling.md`.
+
+## Remaining adjudications
+
+The preliminary F9 band above required 12 cases. Source inventory falsified
+that number before the decisive run: the enabled suite contains 11 cases. The
+dedicated preregistration in
+`.claude/baselines/2026-07-23-f9-arrow-gate.md` replaced it with the reachable
+floor of 11 cases while retaining the 348-assertion floor. That artifact records
+the deliberate reds, fresh Arrow-ON build, final 390/390 assertions in 11
+cases, CTest execution, imported DLLs, parser mutants, and final canonical gate.
+
+- **FastPAM width edit — KEEP after REPAIR.** Commit `f8ff7d3` moves the
+  `size_t`-to-`int` check to every public entry before effects and removes
+  repeated narrowing in the supported kernels. Evidence:
+  `.claude/baselines/2026-07-23-fast-pam-index-width.md`.
+- **Interrupted CLI/FastCLARA tests — RECLASSIFY, then KEEP after REPAIR.**
+  They are F7 planner/guard coverage, not F8 resident/streaming equivalence.
+  Commit `7c71602` kills three routing mutants and drives the real CLI.
+  Evidence: `.claude/baselines/2026-07-23-f7-routing-coverage.md`.
+- **F9 Arrow workflow — KEEP after REPAIR.** Commits `833f570` and `0c91c9b`
+  repair the two failures exposed by the fresh enabled build; `e323197` adds
+  the execution-count gate; `b79e271` records closure. Evidence:
+  `.claude/baselines/2026-07-23-f9-arrow-gate.md`.
+- **Floating-point LESSONS hunk — KEEP after REPAIR.** Commit `c627826`
+  replaces the false `-ffast-math`/single-flag causal claim with the emitted
+  Clang/GCC Release flag set, labels the historical cause inferred, and leaves
+  the factor-16 derivation open in R2-D4. Focused retained gate:
+
+  ```text
+  Filters: [eap] [exact]
+  Randomness seeded to: 725833122
+  ===============================================================================
+  All tests passed (1011 assertions in 3 test cases)
+  ```
+
+- **TODO staleness hunk — KEEP after REPAIR.** Commit `8775156` removes stale
+  source-line anchors and the false digit-identical-medoid claim, marks the one
+  adjudicated FastPAM entry CLOSED-BY `8ca7354`, and leaves every other entry
+  explicitly unverified for R1. `git log -- .claude/TODO.md` confirms
+  `874edd5` (2026-07-06) was the last prior file commit.
+- **MIP provenance hunks — KEEP after REPAIR.** Commit `85eabcd` removes the
+  contradicted “same 0/1 program” and unsupported independent-lineage/audience
+  claims. Publisher/Crossref metadata and the Vinod author-page abstract are
+  recorded in `.claude/CITATIONS.md`; current solver rows are confirmed in
+  `dtwc/mip/mip_Highs.cpp`, `mip_Gurobi.cpp`, and `pdlp_lp.cpp`.
+
+## Final verdict
+
+**PASS — R0 CLOSED.** Every inherited path has a KEEP-after-gate,
+KEEP-after-REPAIR, RECLASSIFY-after-REPAIR, or campaign-governance verdict and
+is committed. The final command
+
+```text
+git status --porcelain=v1
+```
+
+printed no output at `85eabcd`; no inherited change remains uncommitted. The
+canonical behavioral closure remains the post-F9 114/114 CTest run with zero
+failed and exactly six registered capability skips, recorded verbatim in the
+F9 artifact.
+
+The claim most likely to need later correction is the fine-grained historical
+attribution of the classical p-median rows between Balinski and
+ReVelle-Swain; the current wording follows the named primary records plus the
+Marín-Pelegrín history and is not used as mathematical evidence for the TU
+analysis.
