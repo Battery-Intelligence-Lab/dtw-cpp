@@ -67,6 +67,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
   pruning can discard a pair whose true squared-DTW cost is below threshold.
 - F28: Metal defaults/accepts a narrow LB envelope under full DTW, making the
   lower bound inadmissible for paths allowed by the actual warping window.
+- F29: CUDA/Metal LB kernels truncate unequal series to equal-index prefixes;
+  a CUDA counterexample has LB 0.25 but admissible banded-DTW cost 0.
 
 ## Exact resume point (updated)
 

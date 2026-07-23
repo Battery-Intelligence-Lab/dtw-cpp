@@ -493,6 +493,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `y={0,0,0,0,0,0,1,1,1,1}`, full DTW, envelope band 1, threshold 0.5.
       True DTW is zero, so the pair must not be pruned. Reject or widen any LB
       envelope that does not cover the actual DTW window before dispatch.
+- [ ] **F29 — GPU LB_Keogh truncates unequal lengths without a validity
+      proof.** Both kernels compare equal-index prefixes only through
+      `min(Li,Lj)` (`dtwc/cuda/cuda_dtw.cu:861-892`,
+      `dtwc/metal/metal_dtw.mm:934-953`), while backend DTW band geometry is
+      length-aware and already differs under F12. First CUDA gate:
+      `a={0,0.25}`, `b={0,0,0.25}`, band 0; the current prefix L1 bound is
+      0.25 while slope-adjusted banded DTW is 0, so threshold 0.1 must not prune
+      the pair. A real-Metal result and a third mathematical arbiter are
+      required before claiming unequal-length support there. Until proved,
+      pruning must reject or bypass unequal-length pairs loudly.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
