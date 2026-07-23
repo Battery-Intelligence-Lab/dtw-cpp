@@ -44,6 +44,9 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 - F18: MATLAB `DTWClustering` stores `Metric` without consuming it and changes
   global `Env` for `Device` without routing its newly created `Problem`.
   Non-degenerate metric and real CUDA-enabled MEX regressions are registered.
+- F19: frozen `Problem` cleanup is incomplete: promised canonical accessors are
+  missing, configuration/result fields remain public, and MATLAB retains
+  redundant binding-side result writeback.
 
 ## Exact resume point (updated)
 

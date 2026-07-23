@@ -395,6 +395,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       corresponding explicit `Problem` route, and a fresh CUDA-enabled MEX must
       prove `Device='gpu'` reaches CUDA dispatch rather than merely validating
       the global device. The current constructor-only parity test is not a gate.
+- [ ] **F19 — the frozen `Problem` encapsulation/accessor cleanup is
+      incomplete.** Configuration and result fields remain publicly mutable;
+      promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
+      accessors are absent; MATLAB still performs binding-side result writeback
+      after core algorithms already write the same state
+      (`dtwc/Problem.hpp:206-234`, `bindings/matlab/dtwc_mex.cpp:326-330,
+      1142-1203`). First gate: a compile-time contract fixture must fail on the
+      three missing canonical accessors and a source/API guard must reject raw
+      mutation of fields designated private by the frozen contract; separately,
+      deleting each redundant MATLAB writeback in a probe must leave the
+      returned and stored labels/medoids digit-identical.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
