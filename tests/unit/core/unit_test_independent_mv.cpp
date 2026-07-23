@@ -124,6 +124,31 @@ static std::vector<double> rnd_mv(std::mt19937& g, std::size_t steps, std::size_
   return s;
 }
 
+TEST_CASE("DTW_I canonical band uses the finite no-path sentinel", "[indep][mv][band]")
+{
+  constexpr std::size_t ndim = 2;
+  constexpr auto max_value = std::numeric_limits<double>::max();
+  const std::vector<double> x{0.0, 10.0};
+  const std::vector<double> y{
+      1.0, 11.0,
+      2.0, 12.0,
+      3.0, 13.0
+  };
+
+  REQUIRE(dtw_independent_mv<double>(
+              x.data(), 1, y.data(), 3, ndim, 1, MT::L1)
+          == max_value);
+  REQUIRE(dtw_independent_mv<double>(
+              y.data(), 3, x.data(), 1, ndim, 1, MT::SquaredL2)
+          == max_value);
+  REQUIRE(dtw_independent_mv<double>(
+              x.data(), 1, y.data(), 3, ndim, 2, MT::L1)
+          == 12.0);
+  REQUIRE(dtw_independent_mv<double>(
+              x.data(), 1, y.data(), 3, ndim, 2, MT::SquaredL2)
+          == 28.0);
+}
+
 TEST_CASE("DTW_I <= DTW_D (independent has per-channel freedom)", "[indep][mv][ineq]")
 {
   std::mt19937 g(20260708u);
@@ -136,8 +161,9 @@ TEST_CASE("DTW_I <= DTW_D (independent has per-channel freedom)", "[indep][mv][i
       const double di = dtw_independent_mv<double>(x.data(), nx, y.data(), ny, ndim, -1, m);
       const double dd = dtwFull_L_mv<double>(x.data(), nx, y.data(), ny, ndim, -1, m);
       REQUIRE(di <= dd + 1e-9);
-      // Banded (window = 2): same band for both, inequality still holds.
-      const int band = 2;
+      // Use the same feasible canonical band for both routes.
+      const auto gap = (nx > ny) ? (nx - ny) : (ny - nx);
+      const int band = static_cast<int>(std::max<std::size_t>(2, gap));
       const double dib = dtw_independent_mv<double>(x.data(), nx, y.data(), ny, ndim, band, m);
       const double ddb = dtwBanded_mv<double>(x.data(), nx, y.data(), ny, ndim, band, -1, m);
       REQUIRE(dib <= ddb + 1e-9);

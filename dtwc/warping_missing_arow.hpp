@@ -135,16 +135,19 @@ data_t dtwAROW(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
 /**
  * @brief Computes DTW-AROW distance with Sakoe-Chiba band constraint.
  *
- * @details Restricts the warping path to a band of width @p band around the
- * diagonal, in addition to the AROW missing-value constraint. When band < 0,
- * falls back to dtwAROW_L (unbanded linear-space).
+ * @details Restricts the warping path to the fixed window
+ * `|i-j| <= band`, in addition to the AROW missing-value constraint. A
+ * non-negative band narrower than `|nx-ny|` has no endpoint-preserving path.
+ * When band < 0, falls back to dtwAROW_L (unbanded linear-space).
  *
  * @tparam data_t Data type of the elements in the sequences.
  * @param x First sequence (may contain NaN for missing values).
  * @param y Second sequence (may contain NaN for missing values).
- * @param band Sakoe-Chiba bandwidth. Negative means unconstrained.
+ * @param band Fixed Sakoe-Chiba diagonal half-width in samples. Negative
+ *             means unconstrained.
  * @param metric Pointwise distance metric (default: L1).
- * @return The banded DTW-AROW distance.
+ * @return The banded DTW-AROW distance, or
+ *         `numeric_limits<data_t>::max()` for an infeasible window.
  */
 template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::size_t ny,
@@ -155,7 +158,9 @@ data_t dtwAROW_banded(const data_t* x, std::size_t nx, const data_t* y, std::siz
   if (band < 0) return dtwAROW_L<data_t>(x, nx, y, ny, metric);
   const auto m_short = std::min(nx, ny);
   const auto m_long  = std::max(nx, ny);
-  if (m_short <= 1 || m_long <= static_cast<std::size_t>(band) + 1)
+  const auto band_width = static_cast<std::size_t>(band);
+  if (m_long - m_short > band_width) return std::numeric_limits<data_t>::max();
+  if (m_short <= 1 || band_width >= m_long - 1)
     return dtwAROW_L<data_t>(x, nx, y, ny, metric);
 
   const auto o = detail::arow_orient(x, nx, y, ny);

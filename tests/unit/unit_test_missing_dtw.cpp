@@ -326,16 +326,17 @@ TEST_CASE("dtwMissing_banded: empty vectors", "[missing_dtw]")
   REQUIRE(dtwMissing_banded<double>(empty, x, 2) > 1e10);
 }
 
-TEST_CASE("dtwMissing_banded: single element", "[missing_dtw]")
+TEST_CASE("dtwMissing_banded: singleton path requires endpoint offset", "[missing_dtw]")
 {
   std::vector<double> x{ 5.0 };
   std::vector<double> y{ 1, 2, 3, 4, 5, 6, 7, 8 };
+  constexpr auto max_value = std::numeric_limits<double>::max();
 
-  // Single-element short side falls back to dtwMissing_L
-  const auto banded = dtwMissing_banded<double>(x, y, 2);
   const auto full = dtwMissing_L<double>(x, y);
 
-  REQUIRE_THAT(banded, WithinAbs(full, 1e-12));
+  REQUIRE(dtwMissing_banded<double>(x, y, 2) == max_value);
+  REQUIRE(dtwMissing_banded<double>(y, x, 2) == max_value);
+  REQUIRE_THAT(dtwMissing_banded<double>(x, y, 7), WithinAbs(full, 1e-12));
 }
 
 // ===========================================================================

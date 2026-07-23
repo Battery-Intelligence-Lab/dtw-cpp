@@ -18,7 +18,9 @@
 #include <vector>
 #include <random>
 #include <cmath>
+#include <limits>
 #include <numeric>
+#include <utility>
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
@@ -34,6 +36,80 @@ std::vector<data_t> random_series(std::mt19937 &rng, int len, double lo = -10.0,
   for (auto &val : v)
     val = dist(rng);
   return v;
+}
+
+// Independent full-matrix oracle for the canonical Sakoe-Chiba adjustment
+// window |i-j| <= band. This intentionally shares no production row-bound or
+// rolling-buffer helper with dtwBanded.
+data_t canonical_banded_oracle(const std::vector<data_t> &x,
+                               const std::vector<data_t> &y,
+                               int band,
+                               bool squared)
+{
+  const auto n = x.size();
+  const auto m = y.size();
+  const auto stride = m + 1;
+  const auto inf = std::numeric_limits<data_t>::infinity();
+  std::vector<data_t> dp((n + 1) * (m + 1), inf);
+  dp[0] = 0.0;
+
+  for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t j = 0; j < m; ++j) {
+      const auto diagonal_offset = (i > j) ? (i - j) : (j - i);
+      if (diagonal_offset > static_cast<std::size_t>(band)) continue;
+
+      auto local = std::abs(x[i] - y[j]);
+      if (squared) local *= local;
+      const auto diagonal = dp[i * stride + j];
+      const auto up = dp[i * stride + (j + 1)];
+      const auto left = dp[(i + 1) * stride + j];
+      dp[(i + 1) * stride + (j + 1)] =
+          local + std::min(diagonal, std::min(up, left));
+    }
+  }
+
+  return dp[n * stride + m];
+}
+
+struct ExhaustivePathResult {
+  std::size_t path_count{0};
+  data_t min_l1{std::numeric_limits<data_t>::infinity()};
+  data_t min_squared_l2{std::numeric_limits<data_t>::infinity()};
+};
+
+// Third arbiter: enumerate monotone paths explicitly. This uses neither
+// dynamic programming nor a production bound/buffer helper.
+ExhaustivePathResult exhaustive_path_oracle(const std::vector<data_t> &x,
+                                            const std::vector<data_t> &y,
+                                            int band)
+{
+  ExhaustivePathResult result;
+  if (x.empty() || y.empty() || band < 0) return result;
+
+  const auto visit = [&](auto &&self, std::size_t i, std::size_t j,
+                         data_t l1, data_t squared_l2) -> void {
+    const auto offset = (i > j) ? (i - j) : (j - i);
+    if (offset > static_cast<std::size_t>(band)) return;
+
+    const auto delta = std::abs(x[i] - y[j]);
+    l1 += delta;
+    squared_l2 += delta * delta;
+
+    if (i + 1 == x.size() && j + 1 == y.size()) {
+      ++result.path_count;
+      result.min_l1 = std::min(result.min_l1, l1);
+      result.min_squared_l2 = std::min(result.min_squared_l2, squared_l2);
+      return;
+    }
+
+    if (i + 1 < x.size()) self(self, i + 1, j, l1, squared_l2);
+    if (j + 1 < y.size()) self(self, i, j + 1, l1, squared_l2);
+    if (i + 1 < x.size() && j + 1 < y.size())
+      self(self, i + 1, j + 1, l1, squared_l2);
+  };
+
+  visit(visit, 0, 0, 0.0, 0.0);
+  return result;
 }
 
 } // anonymous namespace
@@ -71,16 +147,206 @@ TEST_CASE("Banded DTW: band < 0 falls back to full DTW", "[dtwBanded][boundary]"
   }
 }
 
+TEST_CASE("Banded DTW: canonical Sakoe-Chiba unequal-length oracle",
+          "[dtwBanded][boundary][D1][oracle]")
+{
+  // Non-degenerate fixture registered before execution in
+  // .claude/baselines/2026-07-23-r2-d1-dtw.md.
+  const std::vector<data_t> x{0.0, 1.0, 0.0, 2.0, 0.0};
+  const std::vector<data_t> y{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0};
+  constexpr auto max_value = std::numeric_limits<data_t>::max();
+
+  SECTION("Independent exact ledger") {
+    REQUIRE(std::isinf(canonical_banded_oracle(x, y, 0, false)));
+    REQUIRE(std::isinf(canonical_banded_oracle(x, y, 1, false)));
+    REQUIRE(canonical_banded_oracle(x, y, 2, false) == 5.0);
+    REQUIRE(canonical_banded_oracle(x, y, 3, false) == 3.0);
+    REQUIRE(canonical_banded_oracle(x, y, 7, false) == 3.0);
+
+    REQUIRE(std::isinf(canonical_banded_oracle(x, y, 0, true)));
+    REQUIRE(std::isinf(canonical_banded_oracle(x, y, 1, true)));
+    REQUIRE(canonical_banded_oracle(x, y, 2, true) == 9.0);
+    REQUIRE(canonical_banded_oracle(x, y, 3, true) == 5.0);
+    REQUIRE(canonical_banded_oracle(x, y, 7, true) == 5.0);
+  }
+
+  SECTION("Exhaustive monotone-path enumeration is an independent arbiter") {
+    struct Expected {
+      int band;
+      std::size_t paths;
+      data_t l1;
+      data_t squared_l2;
+    };
+    constexpr Expected ledger[] = {
+        {2, 696, 5.0, 9.0},
+        {3, 1143, 3.0, 5.0},
+        {7, 1289, 3.0, 5.0}
+    };
+
+    for (const auto &expected : ledger) {
+      INFO("band=" << expected.band);
+      const auto actual = exhaustive_path_oracle(x, y, expected.band);
+      REQUIRE(actual.path_count == expected.paths);
+      REQUIRE(actual.min_l1 == expected.l1);
+      REQUIRE(actual.min_squared_l2 == expected.squared_l2);
+    }
+  }
+
+  SECTION("A band narrower than the endpoint offset has no path") {
+    for (const int band : {0, 1}) {
+      INFO("band=" << band);
+      REQUIRE(dtwc::dtwBanded<data_t>(x, y, band) == max_value);
+      REQUIRE(dtwc::dtwBanded<data_t>(y, x, band) == max_value);
+      REQUIRE(dtwc::dtwBanded<data_t>(
+                  x, y, band, -1.0, dtwc::core::MetricType::SquaredL2)
+              == max_value);
+      REQUIRE(dtwc::dtwBanded<data_t>(
+                  y, x, band, -1.0, dtwc::core::MetricType::SquaredL2)
+              == max_value);
+    }
+  }
+
+  SECTION("Public banded routes equal the independent oracle") {
+    for (const int band : {2, 3, 7}) {
+      INFO("band=" << band);
+      const auto expected_l1 = canonical_banded_oracle(x, y, band, false);
+      const auto expected_sq = canonical_banded_oracle(x, y, band, true);
+
+      REQUIRE(dtwc::dtwBanded<data_t>(x, y, band) == expected_l1);
+      REQUIRE(dtwc::dtwBanded<data_t>(y, x, band) == expected_l1);
+      REQUIRE(dtwc::dtwBanded<data_t>(
+                  x, y, band, -1.0, dtwc::core::MetricType::SquaredL2)
+              == expected_sq);
+      REQUIRE(dtwc::dtwBanded<data_t>(
+                  y, x, band, -1.0, dtwc::core::MetricType::SquaredL2)
+              == expected_sq);
+    }
+  }
+
+  SECTION("Unbanded public routes match the registered full-DTW values") {
+    REQUIRE(dtwc::dtwFull<data_t>(x, y) == 3.0);
+    REQUIRE(dtwc::dtwFull_L<data_t>(x, y) == 3.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, -1) == 3.0);
+    REQUIRE(dtwc::dtwFull<data_t>(
+                x, y, dtwc::core::MetricType::SquaredL2)
+            == 5.0);
+    REQUIRE(dtwc::dtwFull_L<data_t>(
+                x, y, -1.0, dtwc::core::MetricType::SquaredL2)
+            == 5.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(
+                x, y, -1, -1.0, dtwc::core::MetricType::SquaredL2)
+            == 5.0);
+  }
+
+  SECTION("Singleton unequal lengths obey endpoint feasibility") {
+    const std::vector<data_t> singleton{0.0};
+    const std::vector<data_t> longer{1.0, 2.0, 3.0};
+
+    REQUIRE(dtwc::dtwBanded<data_t>(singleton, longer, 1) == max_value);
+    REQUIRE(dtwc::dtwBanded<data_t>(longer, singleton, 1) == max_value);
+    REQUIRE(dtwc::dtwBanded<data_t>(
+                singleton, longer, 1, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == max_value);
+    REQUIRE(dtwc::dtwBanded<data_t>(singleton, longer, 2) == 6.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(longer, singleton, 2) == 6.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(
+                singleton, longer, 2, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == 14.0);
+  }
+
+  SECTION("Dependent multivariate wrapper cannot bypass feasibility") {
+    constexpr std::size_t ndim = 2;
+    constexpr auto widest_band = std::numeric_limits<int>::max();
+    const std::vector<data_t> singleton{0.0, 10.0};
+    const std::vector<data_t> longer{
+        1.0, 11.0,
+        2.0, 12.0,
+        3.0, 13.0
+    };
+
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, 1)
+            == max_value);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                longer.data(), 3, singleton.data(), 1, ndim, 1)
+            == max_value);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, 1, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == max_value);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, 2)
+            == 12.0);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                longer.data(), 3, singleton.data(), 1, ndim, 2)
+            == 12.0);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, 2, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == 28.0);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, widest_band)
+            == 12.0);
+    REQUIRE(dtwc::dtwBanded_mv<data_t>(
+                singleton.data(), 1, longer.data(), 3, ndim, widest_band, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == 28.0);
+  }
+
+  SECTION("Maximum int band covers the matrix without signed overflow") {
+    constexpr auto widest_band = std::numeric_limits<int>::max();
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, widest_band) == 3.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(
+                x, y, widest_band, -1.0,
+                dtwc::core::MetricType::SquaredL2)
+            == 5.0);
+  }
+
+  SECTION("Band bounds retain size_t indices beyond INT_MAX") {
+    constexpr auto widest_band = std::numeric_limits<int>::max();
+    constexpr auto int_max = static_cast<std::size_t>(widest_band);
+    constexpr auto row = int_max + 3;
+    constexpr auto columns = int_max + 10;
+
+    REQUIRE((dtwc::core::dtw_band_bounds(widest_band, row, columns)
+             == std::pair<std::size_t, std::size_t>{3, columns}));
+    REQUIRE((dtwc::core::dtw_band_bounds(0, row, columns)
+             == std::pair<std::size_t, std::size_t>{row, row + 1}));
+  }
+
+  SECTION("DTW-AROW public wrapper shares canonical path feasibility") {
+    constexpr auto widest_band = std::numeric_limits<int>::max();
+    const std::vector<data_t> singleton{0.0};
+    const std::vector<data_t> longer{1.0, 2.0, 3.0};
+
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(singleton, longer, 1) == max_value);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(longer, singleton, 1) == max_value);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(
+                singleton, longer, 1, dtwc::core::MetricType::SquaredL2)
+            == max_value);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(singleton, longer, 2) == 6.0);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(
+                singleton, longer, 2, dtwc::core::MetricType::SquaredL2)
+            == 14.0);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(
+                singleton, longer, widest_band)
+            == 6.0);
+    REQUIRE(dtwc::dtwAROW_banded<data_t>(
+                singleton, longer, widest_band,
+                dtwc::core::MetricType::SquaredL2)
+            == 14.0);
+  }
+}
+
 TEST_CASE("Banded DTW: band = 0 forces diagonal alignment for equal-length series", "[dtwBanded][boundary]")
 {
   // With band=0 and equal lengths, the only valid path is the diagonal.
   // Cost should equal sum of |x[i] - y[i]|.
-  // NOTE: The implementation falls back to dtwFull_L when m_long <= (band+1),
-  // i.e., when length <= 1. For length >= 2, band=0 is used.
 
   SECTION("Equal-length series, length 2") {
-    // For length=2, m_long=2, band=0 => m_long <= band+1 => 2 <= 1 is FALSE.
-    // So banding IS applied. Diagonal path cost = |x[0]-y[0]| + |x[1]-y[1]|.
+    // Diagonal path cost = |x[0]-y[0]| + |x[1]-y[1]|.
     std::vector<data_t> x{1.0, 5.0};
     std::vector<data_t> y{3.0, 2.0};
     const auto result = dtwc::dtwBanded<data_t>(x, y, 0);
@@ -166,16 +432,16 @@ TEST_CASE("Banded DTW: band=1 allows +/-1 diagonal deviation", "[dtwBanded][boun
   REQUIRE_THAT(cost_band1, WithinAbs(cost_full, 1e-12));
 }
 
-TEST_CASE("Banded DTW: unequal lengths", "[dtwBanded][boundary]")
+TEST_CASE("Banded DTW: unequal lengths respect endpoint feasibility", "[dtwBanded][boundary]")
 {
+  constexpr auto max_value = std::numeric_limits<data_t>::max();
+
   SECTION("Short vs long") {
     std::vector<data_t> x{1.0, 2.0, 3.0};
     std::vector<data_t> y{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0};
 
-    // Should not crash, should return finite value
-    const auto result = dtwc::dtwBanded<data_t>(x, y, 2);
-    REQUIRE(std::isfinite(result));
-    REQUIRE(result >= 0.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, 2) == max_value);
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, 4) < max_value);
   }
 
   SECTION("Length ratio 1:10") {
@@ -183,9 +449,8 @@ TEST_CASE("Banded DTW: unequal lengths", "[dtwBanded][boundary]")
     auto x = random_series(rng, 10);
     auto y = random_series(rng, 100);
 
-    const auto result = dtwc::dtwBanded<data_t>(x, y, 5);
-    REQUIRE(std::isfinite(result));
-    REQUIRE(result >= 0.0);
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, 5) == max_value);
+    REQUIRE(dtwc::dtwBanded<data_t>(x, y, 90) < max_value);
   }
 }
 

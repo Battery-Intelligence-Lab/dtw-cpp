@@ -283,6 +283,16 @@ Critical knowledge to avoid repeating mistakes.
 - **A test name must match the algorithm path it actually exercises.** `tests/unit/adversarial/test_fast_pam_adversarial.cpp` sounds like FastPAM coverage, but its helper sets `prob.method = Method::Kmedoids` and calls the legacy Lloyd path. That creates false confidence. For algorithm migrations, mislabeled tests are worse than missing tests because they silently certify the wrong implementation.
 - **A "structure" test (label ranges, sizes, converged-flag) does NOT test OPTIMALITY — a wrong answer can satisfy it.** The FastPAM k=1 unit test only asserted `labels all == 0` and `converged`, so it passed even when the new decomposition returned the BUILD medoid (the `second_dist = +inf` NaN bug recorded above) instead of the optimum. What caught it was a downstream exact-value oracle. The current named regression starts at `tests/unit/algorithms/unit_test_fast_clara.cpp:712` and pins literal k=1 sample medians. Lesson: for every algorithm, at least one test must pin the OPTIMAL output against an independent oracle (brute force / closed form), not just its shape. The brute-force local-optimality arbiter (no improving swap by full reassignment) added in `unit_test_faster_pam.cpp` is the general form—it is tie-independent and would have caught the NaN at any k.
 - **Tests must pin the LIVE code path — name the public entry point in a comment.** Phase 0 task 0.6 "fixed" multivariate L2 in `core::dispatch_mv_metric`, a dead duplicate with zero call sites; the live `detail::dispatch_mv_metric` (warping.hpp) kept aliasing L2→L1, the new test validated the dead function, and the CHANGELOG claim was false. Caught only by adversarial review tracing the real dispatch chain (`dtwBanded_mv` → warping.hpp). Rules: (1) before fixing a dispatcher, grep call sites and delete dead duplicates — two dispatchers for one concept is itself the bug; (2) every regression test states in a comment which public entry point it exercises. (Fixed in Phase 0 remediation R1, commit ffb7a8d.)
+- **A finite no-path sentinel makes `isfinite()` a false-green band test.**
+  DTWC++ deliberately uses `numeric_limits<T>::max()`, not infinity, inside its
+  DTW kernels. Unequal-length tests that asked only for a finite,
+  non-negative result therefore passed when the canonical Sakoe–Chiba window
+  had no path. The adjacent ADTW “reference” was worse: it copied the
+  production endpoint-scaled formula, so both sides agreed against Sakoe and
+  Chiba equation (8). Pin the sentinel exactly below `|n-m|`, use a
+  full-matrix oracle with independently stated `|i-j| <= band` bounds, and
+  include a non-degenerate threshold case whose cost differs from a slanted
+  corridor.
 
 ## LR-core Solver (Phase 4)
 

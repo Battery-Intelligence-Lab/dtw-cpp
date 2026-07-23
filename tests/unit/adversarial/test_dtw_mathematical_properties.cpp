@@ -131,6 +131,51 @@ TEST_CASE("dtwFull known value: DTW({0,0,0}, {1,1,1}) == 3.0", "[adversarial][dt
   REQUIRE_THAT(dtwFull<data_t>(zeros, ones), WithinAbs(3.0, 1e-12));
 }
 
+TEST_CASE("DTW local-cost accumulations are not metrics",
+          "[adversarial][dtwFull][D1][oracle]")
+{
+  // Exact witnesses registered before execution in
+  // .claude/baselines/2026-07-23-r2-d1-dtw.md. They drive the public route.
+  SECTION("L1 triangle inequality") {
+    const std::vector<data_t> x{0.0, 0.0};
+    const std::vector<data_t> y{0.0, 1.0};
+    const std::vector<data_t> z{0.0, 1.0, 2.0};
+    const auto d_xz = dtwFull<data_t>(x, z);
+    const auto d_xy = dtwFull<data_t>(x, y);
+    const auto d_yz = dtwFull<data_t>(y, z);
+
+    REQUIRE(d_xz == 3.0);
+    REQUIRE(d_xy == 1.0);
+    REQUIRE(d_yz == 1.0);
+    REQUIRE(d_xz > d_xy + d_yz);
+  }
+
+  SECTION("Squared-L2 triangle inequality") {
+    const std::vector<data_t> x{0.0};
+    const std::vector<data_t> y{1.0};
+    const std::vector<data_t> z{2.0};
+    const auto metric = dtwc::core::MetricType::SquaredL2;
+    const auto d_xz = dtwFull<data_t>(x, z, metric);
+    const auto d_xy = dtwFull<data_t>(x, y, metric);
+    const auto d_yz = dtwFull<data_t>(y, z, metric);
+
+    REQUIRE(d_xz == 4.0);
+    REQUIRE(d_xy == 1.0);
+    REQUIRE(d_yz == 1.0);
+    REQUIRE(d_xz > d_xy + d_yz);
+  }
+
+  SECTION("Identity of indiscernibles") {
+    const std::vector<data_t> x{0.0, 1.0};
+    const std::vector<data_t> y{0.0, 0.0, 1.0};
+    REQUIRE(x != y);
+    REQUIRE(dtwFull<data_t>(x, y) == 0.0);
+    REQUIRE(dtwFull<data_t>(
+                x, y, dtwc::core::MetricType::SquaredL2)
+            == 0.0);
+  }
+}
+
 TEST_CASE("dtwFull triangle inequality violations are bounded", "[adversarial][dtwFull]")
 {
   // DTW is NOT a true metric; triangle inequality can fail.
@@ -421,19 +466,23 @@ TEST_CASE("Very different lengths: length=1 vs length=1000 does not crash", "[ad
   std::mt19937 rng(9999);
   std::vector<data_t> single = {3.14};
   auto big = make_random_series(rng, 1000);
+  constexpr auto max_value = std::numeric_limits<data_t>::max();
 
   auto d1 = dtwFull<data_t>(single, big);
   auto d2 = dtwFull_L<data_t>(single, big);
   auto d3 = dtwBanded<data_t>(single, big, 5);
+  auto d4 = dtwBanded<data_t>(single, big, 999);
 
   REQUIRE(std::isfinite(d1));
   REQUIRE(std::isfinite(d2));
-  REQUIRE(std::isfinite(d3));
+  REQUIRE(d3 == max_value);
+  REQUIRE_THAT(d4, WithinAbs(d2, 1e-10));
   REQUIRE(d1 >= 0.0);
   REQUIRE(d2 >= 0.0);
-  REQUIRE(d3 >= 0.0);
 
   // Also verify symmetry for this extreme case
   REQUIRE_THAT(dtwFull<data_t>(big, single), WithinAbs(d1, 1e-10));
   REQUIRE_THAT(dtwFull_L<data_t>(big, single), WithinAbs(d2, 1e-10));
+  REQUIRE(dtwBanded<data_t>(big, single, 5) == max_value);
+  REQUIRE_THAT(dtwBanded<data_t>(big, single, 999), WithinAbs(d4, 1e-10));
 }

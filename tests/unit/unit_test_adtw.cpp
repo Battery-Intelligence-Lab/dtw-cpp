@@ -332,18 +332,13 @@ data_t adtwBanded_reference(const std::vector<data_t> &x, const std::vector<data
   // For band < 0 treat as full matrix.
   const int effective_band = (band < 0) ? std::max(nx, ny) : band;
 
-  // Sakoe-Chiba window using the same slope/window formula as adtwBanded.
-  // short = min-length side, long = max-length side.
-  // We map short index 'si' -> long index 'li' with center = slope * si.
+  // Canonical Sakoe-Chiba window |short_index-long_index| <= band.
+  // Orient the shorter series as rows, as the production kernel does.
   const bool x_is_short = (nx <= ny);
   const int m_short = x_is_short ? nx : ny;
   const int m_long  = x_is_short ? ny : nx;
   auto short_val = [&](int i) -> data_t { return x_is_short ? x[i] : y[i]; };
   auto long_val  = [&](int i) -> data_t { return x_is_short ? y[i] : x[i]; };
-
-  const double slope  = (m_short == 1) ? 0.0
-                                       : static_cast<double>(m_long - 1) / (m_short - 1);
-  const double window = std::max(static_cast<double>(effective_band), slope / 2.0);
 
   constexpr data_t maxVal = std::numeric_limits<data_t>::max();
 
@@ -351,9 +346,8 @@ data_t adtwBanded_reference(const std::vector<data_t> &x, const std::vector<data
   std::vector<std::vector<data_t>> C(m_short, std::vector<data_t>(m_long, maxVal));
 
   for (int si = 0; si < m_short; ++si) {
-    const double center = slope * si;
-    const int lo = static_cast<int>(std::ceil(std::round(100.0 * (center - window)) / 100.0));
-    const int hi_excl = static_cast<int>(std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+    const int lo = std::max(0, si - effective_band);
+    const int hi_excl = std::min(m_long, si + effective_band + 1);
     for (int li = std::max(lo, 0); li < std::min(hi_excl, m_long); ++li) {
       const data_t d = std::abs(short_val(si) - long_val(li));
       data_t prev_diag = (si > 0 && li > 0) ? C[si - 1][li - 1] : maxVal;
@@ -455,11 +449,11 @@ TEST_CASE("adtwBanded: asymmetric (nx=3,ny=7) equals (nx=7,ny=3) — symmetry", 
 TEST_CASE("adtwBanded: reference cross-check — asymmetric nx=2 ny=6", "[adtw][adversarial]")
 {
   using data_t = double;
-  // Extreme ratio: short=2, long=6. slope=1.0, window=max(band, 0.5).
+  // Extreme ratio: short=2, long=6. A path first becomes feasible at band=4.
   std::vector<data_t> x{ 1.0, 5.0 };
   std::vector<data_t> y{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
 
-  for (int band : { 0, 1, 2, 3, 10 }) {
+  for (int band : { 0, 3, 4, 5, 10 }) {
     for (double penalty : { 0.0, 1.0, 3.0 }) {
       const auto ref    = adtwBanded_reference(x, y, band, penalty);
       const auto actual = adtwBanded<data_t>(x, y, band, penalty);
@@ -472,9 +466,8 @@ TEST_CASE("adtwBanded: reference cross-check — asymmetric nx=2 ny=6", "[adtw][
 TEST_CASE("adtwBanded: band=0 equal-length — only diagonal path", "[adtw][adversarial]")
 {
   using data_t = double;
-  // With band=0 on equal-length sequences, slope=1, window=max(0,0.5)=0.5.
-  // Bounds for row i: lo=ceil(i-0.5)=i, hi=floor(i+0.5)+1=i+1.
-  // So only cell (i,i) is reachable => cost = sum |x[i]-y[i]|.
+  // With band=0 on equal-length sequences, only |i-j|=0 is reachable.
+  // Thus the cost is sum |x[i]-y[i]|.
   std::vector<data_t> x{ 1.0, 3.0, 5.0, 2.0 };
   std::vector<data_t> y{ 2.0, 1.0, 4.0, 3.0 };
 
@@ -655,7 +648,7 @@ TEST_CASE("adtwBanded: early_abandon just above true cost gives exact result", "
 
 TEST_CASE("adtwBanded: m_short==m_long equal-length reference cross-check", "[adtw][adversarial]")
 {
-  // slope=1, window=max(band, 0.5). Verify for several band values.
+  // Verify the canonical |i-j| <= band window for several band values.
   using data_t = double;
   std::vector<data_t> x{ 1.0, 4.0, 2.0, 7.0, 3.0, 6.0 };
   std::vector<data_t> y{ 2.0, 3.0, 5.0, 6.0, 2.0, 4.0 };
@@ -670,18 +663,23 @@ TEST_CASE("adtwBanded: m_short==m_long equal-length reference cross-check", "[ad
   }
 }
 
-TEST_CASE("adtwBanded: nx=1 or ny=1 falls back to adtwFull_L", "[adtw][adversarial]")
+TEST_CASE("adtwBanded: singleton path requires the endpoint offset", "[adtw][adversarial]")
 {
   using data_t = double;
   std::vector<data_t> single{ 5.0 };
   std::vector<data_t> many{ 1.0, 2.0, 3.0, 4.0, 5.0 };
+  constexpr auto max_value = std::numeric_limits<data_t>::max();
 
   for (double p : { 0.0, 1.0, 3.0 }) {
     const auto full_ab  = adtwFull_L<data_t>(single, many, p);
-    const auto banded_ab = adtwBanded<data_t>(single, many, 2, p);
+    const auto narrow_ab = adtwBanded<data_t>(single, many, 2, p);
+    const auto banded_ab = adtwBanded<data_t>(single, many, 4, p);
     const auto full_ba  = adtwFull_L<data_t>(many, single, p);
-    const auto banded_ba = adtwBanded<data_t>(many, single, 2, p);
+    const auto narrow_ba = adtwBanded<data_t>(many, single, 2, p);
+    const auto banded_ba = adtwBanded<data_t>(many, single, 4, p);
     INFO("penalty=" << p);
+    REQUIRE(narrow_ab == max_value);
+    REQUIRE(narrow_ba == max_value);
     REQUIRE_THAT(banded_ab, WithinAbs(full_ab, 1e-12));
     REQUIRE_THAT(banded_ba, WithinAbs(full_ba, 1e-12));
   }

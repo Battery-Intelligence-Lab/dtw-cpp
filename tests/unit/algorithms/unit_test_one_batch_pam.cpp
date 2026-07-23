@@ -40,7 +40,7 @@ constexpr int warped_groups = 5;
 constexpr int warped_variants = 100;
 constexpr int warped_min_length = 64;
 constexpr int warped_max_length = 128;
-constexpr int warped_band = 8;
+constexpr int warped_band = warped_max_length - warped_min_length;
 constexpr int warped_batch = 256;
 constexpr double warped_group_separation = 1000.0;
 constexpr double warped_profile_abs_bound = 3.1;
@@ -509,7 +509,7 @@ TEST_CASE("OneBatchPAM warped scaling oracle is non-degenerate and discriminatin
   // The oracle is globally exact, not merely a feasible reference. Each
   // profile is bounded by +/-3.1 and adjacent groups are shifted by 1000.
   // Thus omitting a group costs at least 100*R*64*(1000-2*3.1), whereas an
-  // band-admissible scaled-diagonal path to any one-per-group representative
+  // canonical-band-admissible L-path to any one-per-group representative
   // costs at most
   // 500*R*(2*128-1)*(2*3.1). The former is strictly larger, so every global
   // k=5 optimum represents all five groups. Equal variant multiplicities and
@@ -583,8 +583,8 @@ TEST_CASE("OneBatchPAM 50k registered warped scaling and quality band",
   // Registered before execution:
   //   memory: N*m doubles = 102,400,000 B (97.65625 MiB) for the only table;
   //           series payload = 4,815,000 doubles (36.7355 MiB).
-  //   work:   <=13,049,739 DTWs = 0.52198956% of N^2; with <=17 band
-  //           cells per short-side row and lengths <=128, <=28,396,242,944
+  //   work:   <=13,049,739 DTWs = 0.52198956% of N^2; with <=128 band
+  //           cells per short-side row and lengths <=128, <=213,806,923,776
   //           scalar DP-cell updates (a conservative upper bound).
   //   quality: all five groups represented and cost <=1.05* the exact oracle.
   // Runtime is advisory on a shared host and is predicted from the separately

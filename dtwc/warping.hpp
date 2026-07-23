@@ -44,12 +44,13 @@ namespace dtwc {
 
 namespace detail {
 
-/// Compute inclusive [lo, hi) column range for a banded DTW at the given row.
+/// Compute the canonical Sakoe-Chiba [lo, hi) range at the given row.
 /// Kept as a thin alias over the core::dtw_band_bounds helper â€” several older
 /// variant files depend on this name.
-inline std::pair<int, int> band_bounds(double slope, double window, int row)
+inline std::pair<std::size_t, std::size_t>
+band_bounds(int band, std::size_t row, std::size_t column_count)
 {
-  return core::dtw_band_bounds(slope, window, row);
+  return core::dtw_band_bounds(band, row, column_count);
 }
 
 /// Full-matrix DTW shim â€” forwards to core::dtw_kernel_full with StandardCell.
@@ -367,17 +368,22 @@ data_t dtwFull_eap(const data_t* x, size_t nx, const data_t* y, size_t ny,
 /**
  * @brief Computes the banded DTW distance (pointer + length).
  *
- * @details Uses Sakoe-Chiba band. Falls back to dtwFull_L when band < 0.
+ * @details Uses the canonical fixed Sakoe-Chiba window `|i-j| <= band`.
+ *          A non-negative band narrower than `|nx-ny|` contains no endpoint-
+ *          preserving path. A negative band requests unconstrained DTW.
  *
  * @tparam data_t Data type of the elements in the sequences.
  * @param x Pointer to first sequence.
  * @param nx Length of first sequence.
  * @param y Pointer to second sequence.
  * @param ny Length of second sequence.
- * @param band The bandwidth parameter; negative means unconstrained.
+ * @param band Fixed diagonal half-width in samples; negative means
+ *             unconstrained.
  * @param early_abandon Threshold for early abandon; negative disables.
  * @param metric Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
+ * @return The dynamic time warping distance, or
+ *         `numeric_limits<data_t>::max()` for empty input, an infeasible
+ *         window, or early abandonment. These cases share the finite sentinel.
  */
 template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
@@ -390,12 +396,13 @@ data_t dtwBanded(const data_t* x, size_t nx, const data_t* y, size_t ny,
 
   const size_t min_sz = std::min(nx, ny);
   const size_t max_sz = std::max(nx, ny);
-  const int m_short = static_cast<int>(min_sz);
-  const int m_long  = static_cast<int>(max_sz);
 
-  if ((m_short == 0) || (m_long == 0)) return std::numeric_limits<data_t>::max();
-  if ((m_short == 1) || (m_long == 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
-  if (m_long <= (band + 1)) return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
+  if ((min_sz == 0) || (max_sz == 0)) return std::numeric_limits<data_t>::max();
+
+  const auto band_width = static_cast<size_t>(band);
+  if (max_sz - min_sz > band_width) return std::numeric_limits<data_t>::max();
+  if ((min_sz == 1) || (max_sz == 1) || band_width >= max_sz - 1)
+    return dtwFull_L<data_t>(x, nx, y, ny, early_abandon, metric);
 
   return detail::dispatch_metric(metric, [&](auto dist) {
     return detail::dtwBanded_impl(x, nx, y, ny, band, early_abandon, dist);
@@ -512,6 +519,8 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  *
  * @details For ndim==1 delegates to the existing scalar dtwBanded implementation.
  *          For ndim>1 uses dtwBanded_mv_impl with pointer-stride indexing.
+ *          The fixed window is `|i-j| <= band`; a non-negative band narrower
+ *          than `|nx_steps-ny_steps|` admits no endpoint-preserving path.
  *          Falls back to dtwFull_L_mv when band<0 or band covers the full sequence.
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t.
  *
@@ -521,10 +530,13 @@ data_t dtwFull_L_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  * @param y       Pointer to second series (interleaved).
  * @param ny_steps Number of timesteps in y.
  * @param ndim    Number of features per timestep.
- * @param band    Sakoe-Chiba band width; negative means unconstrained.
+ * @param band    Fixed Sakoe-Chiba diagonal half-width in timesteps; negative
+ *                means unconstrained.
  * @param early_abandon Threshold for early abandon; negative disables.
  * @param metric  Pointwise distance metric (default: L1).
- * @return The dynamic time warping distance.
+ * @return The dynamic time warping distance, or
+ *         `numeric_limits<data_t>::max()` for empty input, an infeasible
+ *         window, or early abandonment. These cases share the finite sentinel.
  */
 template <typename data_t = dtwc::settings::default_data_t>
 data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
@@ -539,7 +551,10 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
   const size_t min_sz = std::min(nx_steps, ny_steps);
   const size_t max_sz = std::max(nx_steps, ny_steps);
   if (min_sz == 0 || max_sz == 0) return std::numeric_limits<data_t>::max();
-  if (min_sz == 1 || max_sz == 1 || static_cast<int>(max_sz) <= band + 1)
+
+  const auto band_width = static_cast<size_t>(band);
+  if (max_sz - min_sz > band_width) return std::numeric_limits<data_t>::max();
+  if (min_sz == 1 || max_sz == 1 || band_width >= max_sz - 1)
     return dtwFull_L_mv(x, nx_steps, y, ny_steps, ndim, early_abandon, metric);
 
   return detail::dispatch_mv_metric(metric, [&](auto dist) {
@@ -561,7 +576,10 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t
  *          (same as dtwFull_L_mv). Unbanded (band < 0) uses the exact EAPruned
  *          kernel per channel (matches the scalar Standard default); banded uses
- *          dtwBanded per channel. L1 / SquaredL2 metrics only (per-channel scalar).
+ *          dtwBanded per channel. A non-negative band narrower than
+ *          `|nx_steps-ny_steps|` returns the single finite no-path sentinel
+ *          before channel summation. L1 / SquaredL2 metrics only (per-channel
+ *          scalar).
  *
  * @tparam data_t Data type of the elements.
  * @param x       Pointer to first series (interleaved, nx_steps * ndim elements).
@@ -569,9 +587,12 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  * @param y       Pointer to second series (interleaved, ny_steps * ndim elements).
  * @param ny_steps Number of timesteps in y.
  * @param ndim    Number of features per timestep.
- * @param band    Sakoe-Chiba band width; negative means unconstrained.
+ * @param band    Fixed Sakoe-Chiba diagonal half-width in timesteps; negative
+ *                means unconstrained.
  * @param metric  Pointwise distance metric (default: L1).
- * @return The summed independent multivariate DTW distance.
+ * @return The summed independent multivariate DTW distance, or
+ *         `numeric_limits<data_t>::max()` for empty input or an infeasible
+ *         window.
  */
 template <typename data_t = dtwc::settings::default_data_t>
 data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny_steps,
@@ -584,6 +605,12 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
                     : dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
   }
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
+  if (band >= 0) {
+    const auto min_steps = std::min(nx_steps, ny_steps);
+    const auto max_steps = std::max(nx_steps, ny_steps);
+    if (max_steps - min_steps > static_cast<size_t>(band))
+      return std::numeric_limits<data_t>::max();
+  }
 
   // De-interleave one channel at a time into contiguous scratch, then run the
   // univariate kernel. thread_local buffers keep the parallel matrix fill

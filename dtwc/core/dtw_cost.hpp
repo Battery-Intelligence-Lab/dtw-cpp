@@ -5,11 +5,14 @@
  * @details A Cost functor models the pointwise cost at cell (row, col):
  *            T operator()(size_t row, size_t col) const noexcept;
  *
- *          `row` indexes the outer-loop series (passed as the first series
- *          to the kernel), `col` indexes the inner-loop series (second).
+ *          Both indices address the post-orientation short and long series:
+ *          `row` (the first argument) indexes the short side and `col` (the
+ *          second) indexes the long side.
  *          Wrappers that want the "roll over the shorter side" optimisation
  *          should swap (x, y) before constructing the Cost functor — the
- *          kernel always rolls over the second (`col`) dimension.
+ *          linear kernel iterates the long side outside while rolling a
+ *          short-side buffer; the banded kernel iterates the short side
+ *          outside while rolling a long-side buffer.
  *
  *          Position-agnostic costs (L1, SquaredL2) capture the two span
  *          pointers and return `metric(a[row], b[col])`. Position-aware

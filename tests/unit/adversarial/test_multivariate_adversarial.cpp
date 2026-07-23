@@ -324,13 +324,15 @@ TEST_CASE("MV adversarial: large ndim D=10 no crash, finite results", "[mv][adve
 
     auto x = random_mv_series(rng, nx, NDIM);
     auto y = random_mv_series(rng, ny, NDIM);
+    const auto gap = (nx > ny) ? (nx - ny) : (ny - nx);
+    const int band = static_cast<int>(std::max<std::size_t>(10, gap));
 
     const data_t d_full   = dtwc::dtwFull_L_mv(x.data(), nx, y.data(), ny, NDIM);
-    const data_t d_banded = dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, NDIM, 10);
+    const data_t d_banded = dtwc::dtwBanded_mv(x.data(), nx, y.data(), ny, NDIM, band);
 
     REQUIRE(std::isfinite(d_full));
     REQUIRE(d_full >= 0.0);
-    REQUIRE(std::isfinite(d_banded));
+    REQUIRE(d_banded < std::numeric_limits<data_t>::max());
     REQUIRE(d_banded >= 0.0);
   }
 }

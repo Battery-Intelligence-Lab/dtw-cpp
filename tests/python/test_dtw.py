@@ -29,7 +29,7 @@ class TestDTWDistance:
         assert dtwcpp.distance.dtw([1, 2, 3], [1, 2, 3]) == 0.0
 
     def test_known_value_l1(self):
-        """DTW([1,2,3],[4,5,6]) == 9 with default (L1-squared) metric."""
+        """DTW([1,2,3],[4,5,6]) == 9 with the default L1 local cost."""
         assert dtwcpp.distance.dtw([1, 2, 3], [4, 5, 6]) == pytest.approx(9.0)
 
     def test_symmetry(self):

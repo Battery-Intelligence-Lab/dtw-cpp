@@ -8,6 +8,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Breaking:** corrected CPU banded-DTW routes to the canonical Sakoe–Chiba
+  window `|i-j| <= band`. Unequal-length inputs now return the documented
+  no-path sentinel when `band < |n-m|`; the previous endpoint-scaled slanted
+  corridor could return a finite distance, and could bypass feasibility for
+  singleton scalar, dependent-multivariate, and DTW-AROW calls. The shared
+  Standard/ADTW/WDTW/AROW/missing-data kernel now uses one fixed-width window;
+  independent multivariate no-path calls preserve the finite sentinel instead
+  of summing it to infinity; and maximum-width integer bands no longer evaluate
+  an overflowing `band+1`.
 - Reconciled the remaining API examples and method documentation with the live
   canonical names, multivariate route limits, cluster-score edge behavior, and
   selected floating-point/sentinel contracts.

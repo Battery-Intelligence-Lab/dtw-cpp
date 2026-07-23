@@ -187,13 +187,23 @@ struct AROWCell {
 // Shared band-bounds helper
 // ===========================================================================
 
-/// Column [lo, hi) range at banded-DTW row `row`, for a band walk with `slope`
-/// (= (n_long-1)/(n_short-1)) and `window = max(band, slope/2)`.
-inline std::pair<int, int> dtw_band_bounds(double slope, double window, int row) noexcept
+/// Canonical Sakoe-Chiba column range [lo, hi) at zero-based row `row`.
+/// The adjustment window is |row-column| <= band. Bounds are clamped here so
+/// callers never narrow sequence indices to `int` or overflow `row+band+1`.
+inline std::pair<std::size_t, std::size_t>
+dtw_band_bounds(int band, std::size_t row, std::size_t column_count) noexcept
 {
-  const double center = slope * row;
-  const int lo = static_cast<int>(std::ceil(std::round(100.0 * (center - window)) / 100.0));
-  const int hi = static_cast<int>(std::floor(std::round(100.0 * (center + window)) / 100.0)) + 1;
+  if (column_count == 0 || row >= column_count)
+    return {column_count, column_count};
+  if (band < 0) return {0, column_count};
+
+  const auto width = static_cast<std::size_t>(band);
+  const auto lo = (row > width) ? row - width : 0;
+  // The subtraction is safe because row < column_count. Taking this branch
+  // before forming row+width+1 makes the upper clamp overflow-proof.
+  const auto hi = (width >= column_count - row - 1)
+                    ? column_count
+                    : row + width + 1;
   return {lo, hi};
 }
 
@@ -413,24 +423,25 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
 {
   constexpr T maxValue = std::numeric_limits<T>::max();
   if (n_short == 0 || n_long == 0) return maxValue;
-
-  const int m_short = static_cast<int>(n_short);
-  const int m_long  = static_cast<int>(n_long);
-
-  // Degenerate: series of length 1 — fall back to linear (trivial path).
-  if (m_short == 1 || m_long == 1 || m_long <= (band + 1))
+  if (band < 0)
     return dtw_kernel_linear<T>(n_short, n_long, cost, cell, early_abandon);
 
-  const double slope  = static_cast<double>(m_long - 1) / (m_short - 1);
-  const auto   window = std::max(static_cast<double>(band), slope / 2);
+  const auto band_width = static_cast<std::size_t>(band);
+
+  // The fixed terminal cell must lie inside |short_idx-long_idx| <= band.
+  if (n_long - n_short > band_width) return maxValue;
+
+  // Degenerate length-one path, or a band covering the complete matrix.
+  if (n_short == 1 || n_long == 1 || band_width >= n_long - 1)
+    return dtw_kernel_linear<T>(n_short, n_long, cost, cell, early_abandon);
 
   thread_local std::vector<T> col;
-  col.assign(m_long, maxValue);
-  thread_local std::vector<int> low_bounds, high_bounds;
-  low_bounds.resize(m_short);
-  high_bounds.resize(m_short);
-  for (int row = 0; row < m_short; ++row) {
-    auto [lo, hi] = dtw_band_bounds(slope, window, row);
+  col.assign(n_long, maxValue);
+  thread_local std::vector<std::size_t> low_bounds, high_bounds;
+  low_bounds.resize(n_short);
+  high_bounds.resize(n_short);
+  for (std::size_t row = 0; row < n_short; ++row) {
+    auto [lo, hi] = dtw_band_bounds(band, row, n_long);
     low_bounds[row]  = lo;
     high_bounds[row] = hi;
   }
@@ -440,29 +451,25 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   // (col[i-1]) is available — diag and up are out-of-bounds (maxValue).
   col[0] = cell.seed(cost(0, 0), 0, 0);
   {
-    const int hi = high_bounds[0];
-    for (int i = 1; i < std::min(hi, m_long); ++i) {
+    const auto hi = high_bounds[0];
+    for (std::size_t i = 1; i < hi; ++i) {
       col[i] = cell.combine(maxValue, maxValue, col[i - 1],
-                            cost(0, static_cast<std::size_t>(i)),
-                            0, static_cast<std::size_t>(i));
+                            cost(0, i), 0, i);
     }
   }
   if (do_early_abandon && col[0] > early_abandon) return maxValue;
 
-  for (int j = 1; j < m_short; ++j) {
-    const int lo      = low_bounds[j];
-    const int hi      = high_bounds[j];
-    const int prev_lo = low_bounds[j - 1];
-    const int prev_hi = high_bounds[j - 1];
-    const int high    = std::min(hi, m_long);
-    const int low     = std::max(lo, 0);
+  for (std::size_t j = 1; j < n_short; ++j) {
+    const auto low     = low_bounds[j];
+    const auto high    = high_bounds[j];
+    const auto prev_lo = low_bounds[j - 1];
+    const auto prev_hi = high_bounds[j - 1];
 
     T diag    = maxValue;
     T row_min = do_early_abandon ? maxValue : T(0);
 
-    const int first_row = std::max(low, 1);
-    if (first_row - 1 >= std::max(prev_lo, 0)
-        && first_row - 1 < std::min(prev_hi, m_long)) {
+    const auto first_row = std::max(low, std::size_t{1});
+    if (first_row - 1 >= prev_lo && first_row - 1 < prev_hi) {
       diag = col[first_row - 1];
     }
 
@@ -470,39 +477,32 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
       // Row 0 of new column: only `left` (col[0] from previous j-step).
       // Also update `diag` to col[0] so the next iteration has a valid diag.
       diag   = col[0];
-      col[0] = cell.combine(maxValue, maxValue, col[0],
-                            cost(static_cast<std::size_t>(j), 0),
-                            static_cast<std::size_t>(j), 0);
+      col[0] = cell.combine(maxValue, maxValue, col[0], cost(j, 0), j, 0);
       if (do_early_abandon) row_min = col[0];
     }
 
     // Zero out cells that left the band on the low side (cells in the previous
     // column that don't have corresponding entries in the current band).
-    for (int i = std::max(prev_lo, 0); i < std::min(low, std::min(prev_hi, m_long)); ++i)
+    for (std::size_t i = prev_lo; i < std::min(low, prev_hi); ++i)
       col[i] = maxValue;
 
-    for (int i = first_row; i < high; ++i) {
+    for (std::size_t i = first_row; i < high; ++i) {
       const T old_up = col[i];                      // dp[j-1, i]
       const T left   = col[i - 1];                  // dp[j, i-1] — already updated
-      col[i] = cell.combine(diag, old_up, left,
-                            cost(static_cast<std::size_t>(j),
-                                 static_cast<std::size_t>(i)),
-                            static_cast<std::size_t>(j),
-                            static_cast<std::size_t>(i));
+      col[i] = cell.combine(diag, old_up, left, cost(j, i), j, i);
       diag = old_up;
       if (do_early_abandon) row_min = std::min(row_min, col[i]);
     }
 
     // Zero out cells that leave the band on the high side.
-    for (int i = std::max(high, std::max(prev_lo, 0));
-         i < std::min(prev_hi, m_long); ++i) {
+    for (std::size_t i = std::max(high, prev_lo); i < prev_hi; ++i) {
       col[i] = maxValue;
     }
 
     if (do_early_abandon && row_min > early_abandon) return maxValue;
   }
 
-  return col[m_long - 1];
+  return col[n_long - 1];
 }
 
 } // namespace dtwc::core
