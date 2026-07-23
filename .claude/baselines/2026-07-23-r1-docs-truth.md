@@ -167,6 +167,40 @@ has zero registered pre-implementation markers. Derived Tier-1, Tier-2, and
 migration pages are current. Fresh rendered-link evidence remains
 `[BLOCKED-ENV]`; no stale-site result is promoted as evidence.
 
+## D7 — GPU backend page overstates correctness, routing, and performance
+
+[confirmed] Source audit registered five runtime findings before page repair:
+F27 squared-L2 LB uses L1 excess; F28 Metal full-DTW envelopes can be too
+narrow; F29 unequal-length GPU LB truncation is unsafe; F30 explicit GPU options
+silently degrade; F31 operational Metal failures escape the public
+`DeviceError` taxonomy.
+
+Registered documentation repair band:
+
+- add an unconditional drift guard before editing and show it fails on the
+  inherited stale phrases;
+- scope current GPU LB pruning to equal-length L1 series with an LB envelope
+  that covers the actual DTW window; name F27–F29 rather than asserting
+  universal `LB <= DTW`;
+- say the direct pruning API returns a thresholded matrix with `+inf` for
+  pruned pairs, not an exact distance matrix;
+- describe the actual shared `dtwc::KernelOverride`, backend-specific option
+  fields/defaults, hint semantics, runtime Metal memory threshold, and
+  F30/F31 loudness gaps;
+- state that `Problem::lb_strategy` and `DistanceMatrixStrategy::Auto` are
+  CPU-only today; neither silently selects GPU pruning;
+- distinguish envelope preprocessing `O(N·L·r)`, pairwise LB
+  `O(N²·L)`, and survivor DTW work;
+- remove numeric tables/cutoffs with no tracked originating result artifact.
+  The traceable Apple M2 Max table may remain only as historical/advisory and
+  must name its raw JSON/benchmark record;
+- describe the CUDA work as inspired by/adapted from cuDTW++, not a verified
+  direct port;
+- the real-CLI documentation contract gate exits zero with exact final line
+  `documentation contract checks passed`; `git diff --check` is clean.
+
+Fresh Hugo rendering remains under the D0 `[BLOCKED-ENV]` result.
+
 The generator named only the expected projection. Regeneration and final gates:
 
 ```text

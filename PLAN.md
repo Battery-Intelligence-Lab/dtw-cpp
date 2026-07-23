@@ -741,6 +741,13 @@ colour system transfer verbatim**.
   changes. The two existing 2.1 deferrals (MATLAB post-freeze Tier-1 methods and
   C++ HPC transport) remain unchanged. R1 owns the record repair; R3 owns every
   named implementation gap.
+- 2026-07-23 (R1 GPU-doc truth): The inherited GPU page's universal
+  LB-admissibility, option-fallback, routing, and exact-matrix speed claims are
+  not retained. Current documentation is limited to verified support:
+  equal-length L1 GPU LB with an envelope covering the DTW window, thresholded
+  INF-stamped output, CPU-only `DistanceMatrixStrategy::Auto`/`lb_strategy`,
+  and historical advisory timings only when a tracked raw artifact exists.
+  Correctness/loudness repairs route to F27–F31; R1 changes no runtime behavior.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 

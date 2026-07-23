@@ -101,7 +101,7 @@ limits the current task to documentation truth.
 
 ## Exact resume point (updated again)
 
-Register the GPU lower-bound correctness findings exposed while auditing
-`docs/content/method/gpu-backends.md`, one finding per independently repairable
-bug, before correcting that page. Then finish the remaining R1 docs pages,
-source comments, and record hygiene.
+Repair `docs/content/method/gpu-backends.md` against the registered D7 band and
+add a reachable docs-contract guard first. F27–F31 are already registered; do
+not implement them during this non-behavioral R1 task. Then finish the remaining
+R1 docs pages, source comments, and record hygiene.
