@@ -47,6 +47,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   distances and out-of-range selected indices), and the previously untested
   degenerate and signed branches of `init::Kmeanspp_seeded` and
   `fast_pam_seeded` now have behavioural cases.
+- Made every FastPAM entry enforce the library's signed-32-bit point-index
+  boundary before distance-matrix materialisation or result mutation. Oversized
+  datasets now raise a typed error instead of narrowing `Problem::size()`;
+  supported inputs use one checked conversion and retain int-indexed kernels.
 - Removed FastCLARA's hidden packed O(N²) parent-cache allocation. Non-full
   assignment now evaluates the configured float64/float32 DTW dispatcher
   directly with O(N) result scratch, while subsample PAM alone owns O(s²)

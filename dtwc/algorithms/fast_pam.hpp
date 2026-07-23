@@ -77,6 +77,8 @@ inline void validate_pam_variant(PAMVariant value)
  *       with no manual wiring. In 1.x it left prob untouched and the bindings
  *       wired the result in; that binding auto-wire moves into core here.
  * @note Requires prob to have data loaded (prob.size() > 0).
+ * @throws InvalidInput if the problem is empty, has more than `INT_MAX`
+ *         points, or `n_clusters` is outside `[1, N]`.
  */
 FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
 
@@ -86,6 +88,8 @@ FastPAMResult fast_pam(Problem& prob, int n_clusters, int max_iter = 100);
  * BUILD uses k-median++ D-sampling because PAM minimizes the sum of DTW
  * distances. This intentionally differs from squared-objective barycenter
  * k-means initialization, whose weights are already squared local costs.
+ * @throws InvalidInput if the problem is empty, has more than `INT_MAX`
+ *         points, or `n_clusters` is outside `[1, N]`.
  */
 FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
                               std::uint64_t random_seed, int max_iter = 100);
@@ -102,6 +106,8 @@ FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
  * @param max_iter        Maximum SWAP iterations.
  * @param variant         FastPAM1 or FasterPAM.
  * @return ClusteringResult; also written back into prob (see fast_pam note).
+ * @throws InvalidInput if the problem is empty, has more than `INT_MAX`
+ *         points, or `variant` is invalid.
  * @throws std::runtime_error on invalid initial_medoids (empty/dup/out-of-range).
  */
 FastPAMResult fast_pam_swap(Problem& prob, const std::vector<int>& initial_medoids,

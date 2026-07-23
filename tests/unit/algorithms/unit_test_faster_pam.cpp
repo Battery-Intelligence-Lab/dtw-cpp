@@ -27,6 +27,7 @@
  */
 
 #include <dtwc.hpp>
+#include <algorithms/detail/fast_pam_plan.hpp>
 #include <algorithms/fast_pam.hpp>
 #include <timing.hpp> // dtwc::Clock
 
@@ -72,6 +73,15 @@ Problem make_synthetic_problem(int N, const std::string& name = "faster_pam")
   Problem prob(name);
   prob.set_data(std::move(data));
   prob.fillDistanceMatrix();
+  return prob;
+}
+
+Problem make_unfilled_problem()
+{
+  std::vector<std::vector<data_t>> vecs{{0.0, 1.0}, {2.0, 3.0}};
+  std::vector<std::string> names{"left", "right"};
+  Problem prob("unfilled_fast_pam");
+  prob.set_data(Data(std::move(vecs), std::move(names)));
   return prob;
 }
 
@@ -146,6 +156,68 @@ double brute_force_best_delta(Problem& prob, const std::vector<int>& medoids, in
 }
 
 } // namespace
+
+TEST_CASE("FastPAM point counts are checked at the int-indexed boundary",
+          "[faster_pam][dimensions]")
+{
+  using algorithms::detail::checked_fast_pam_point_count;
+  const auto int_max = std::numeric_limits<int>::max();
+  const auto size_int_max = static_cast<std::size_t>(int_max);
+
+  CHECK(checked_fast_pam_point_count(1, "fast_pam") == 1);
+  CHECK(checked_fast_pam_point_count(size_int_max, "fast_pam") == int_max);
+  CHECK_THROWS_AS(
+    (void)checked_fast_pam_point_count(0, "fast_pam"), InvalidInput);
+  CHECK_THROWS_WITH(
+    (void)checked_fast_pam_point_count(0, "fast_pam"),
+    "fast_pam: Problem has no data points.");
+  CHECK_THROWS_AS(
+    (void)checked_fast_pam_point_count(size_int_max + 1, "fast_pam"),
+    InvalidInput);
+  CHECK_THROWS_WITH(
+    (void)checked_fast_pam_point_count(size_int_max + 1, "fast_pam"),
+    "fast_pam: N exceeds the int-indexed clustering result limit.");
+}
+
+TEST_CASE("Every public FastPAM entry resolves dimensions before effects",
+          "[faster_pam][dimensions][effects]")
+{
+  SECTION("empty problems reach the shared checked boundary")
+  {
+    Problem empty("empty_fast_pam");
+    CHECK_THROWS_WITH(
+      (void)fast_pam(empty, 1),
+      "fast_pam: Problem has no data points.");
+    CHECK_THROWS_WITH(
+      (void)fast_pam_seeded(empty, 1, 29),
+      "fast_pam_seeded: Problem has no data points.");
+    CHECK_THROWS_WITH(
+      (void)fast_pam_swap(empty, {0}),
+      "fast_pam_swap: Problem has no data points.");
+  }
+
+  SECTION("invalid cluster counts do not materialise the distance matrix")
+  {
+    auto unseeded = make_unfilled_problem();
+    REQUIRE_FALSE(unseeded.is_distance_matrix_filled());
+    CHECK_THROWS_AS((void)fast_pam(unseeded, 0), InvalidInput);
+    CHECK_FALSE(unseeded.is_distance_matrix_filled());
+
+    auto seeded = make_unfilled_problem();
+    REQUIRE_FALSE(seeded.is_distance_matrix_filled());
+    CHECK_THROWS_AS((void)fast_pam_seeded(seeded, 3, 29), InvalidInput);
+    CHECK_FALSE(seeded.is_distance_matrix_filled());
+  }
+
+  SECTION("invalid medoids do not materialise the distance matrix")
+  {
+    auto problem = make_unfilled_problem();
+    REQUIRE_FALSE(problem.is_distance_matrix_filled());
+    CHECK_THROWS(
+      (void)fast_pam_swap(problem, {0, 0}, 100, PAMVariant::FasterPAM));
+    CHECK_FALSE(problem.is_distance_matrix_filled());
+  }
+}
 
 // ===========================================================================
 // BAND-LOCALOPT — every SWAP variant converges to a genuine local optimum (its

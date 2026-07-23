@@ -31,6 +31,7 @@
  */
 
 #include "fast_pam.hpp"
+#include "detail/fast_pam_plan.hpp"
 #include "detail/medoid_utils.hpp"
 #include "../Problem.hpp"
 #include "../core/portable_random.hpp"
@@ -44,7 +45,37 @@
 #include <numeric>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <vector>
+
+namespace dtwc::algorithms::detail {
+
+int checked_fast_pam_point_count(
+  std::size_t n_points, std::string_view caller)
+{
+  const std::string prefix(caller);
+  if (n_points == 0)
+    throw InvalidInput(prefix + ": Problem has no data points.");
+  if (n_points > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw InvalidInput(
+      prefix + ": N exceeds the int-indexed clustering result limit.");
+  return static_cast<int>(n_points);
+}
+
+FastPamPlan resolve_fast_pam_plan(
+  std::size_t n_points, int n_clusters, std::string_view caller)
+{
+  const int n = checked_fast_pam_point_count(n_points, caller);
+  if (n_clusters <= 0 || n_clusters > n) {
+    const std::string prefix(caller);
+    throw InvalidInput(
+      prefix + ": n_clusters must be in [1, N]. Got n_clusters="
+      + std::to_string(n_clusters) + ", N=" + std::to_string(n) + ".");
+  }
+  return { n, n_clusters };
+}
+
+} // namespace dtwc::algorithms::detail
 
 namespace dtwc {
 
@@ -63,7 +94,7 @@ namespace {
 void compute_nearest_and_second(
   Problem& prob,
   const std::vector<int>& medoids,
-  std::int64_t N,   // 64-bit so a caller's static_cast<int>(size()) never truncates it here
+  int N,
   std::vector<int>& nearest,
   std::vector<double>& nearest_dist,
   std::vector<double>& second_dist)
@@ -123,7 +154,7 @@ inline bool better_swap(double cand_delta, int cand_x, double best_delta, int be
 // ⇒ O(N²·k) per iteration. Kept as the bench baseline and the digit-identity
 // oracle for the O(N)-decomposition FastPAM1 below.
 // ---------------------------------------------------------------------------
-void pam1_naive_swap_impl(Problem& prob, std::int64_t N, int k,
+void pam1_naive_swap_impl(Problem& prob, int N, int k,
                           std::vector<int>& medoids, std::vector<bool>& is_medoid,
                           std::vector<int>& nearest, std::vector<double>& nearest_dist,
                           std::vector<double>& second_dist, int max_iter,
@@ -134,7 +165,7 @@ void pam1_naive_swap_impl(Problem& prob, std::int64_t N, int k,
     double best_delta = 0.0;
     int best_m_idx = -1, best_x_new = -1;
 
-    const int swap_chunk = dtwc::omp_chunk_size(static_cast<int>(N)); // loop over x is int-bound
+    const int swap_chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
     {
       std::vector<double> local_delta_m(k);
@@ -184,7 +215,7 @@ void pam1_naive_swap_impl(Problem& prob, std::int64_t N, int k,
 // Removal loss ρ[m] = Σ_{o: nearest[o]=m} (second_dist[o] − nearest_dist[o]) ≥ 0:
 // the extra total cost if medoid slot m were removed and each of its points
 // reassigned to its current second-nearest medoid. O(N).
-void update_removal_loss(std::int64_t N, const std::vector<int>& nearest,
+void update_removal_loss(int N, const std::vector<int>& nearest,
                          const std::vector<double>& nearest_dist,
                          const std::vector<double>& second_dist, std::vector<double>& rho)
 {
@@ -207,7 +238,7 @@ struct SwapEval { double change; int best_m; };
 // sequential loop at N=1000). FasterPAM wins by doing ~1/k the work, not by using
 // cores; the parallelism lives in the post-swap refresh (compute_nearest_and_second,
 // run only on accepted swaps). Very-large-N is the CLARA subsample path, not this.
-SwapEval find_best_swap(Problem& prob, std::int64_t N, int k, int xj,
+SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
                         const std::vector<double>& rho, const std::vector<int>& nearest,
                         const std::vector<double>& nearest_dist,
                         const std::vector<double>& second_dist,
@@ -240,7 +271,7 @@ SwapEval find_best_swap(Problem& prob, std::int64_t N, int k, int xj,
 // O(N) find_best_swap pass, so an iteration is O(N²) — parallel over candidates —
 // instead of O(N²·k). Best swap per iteration, then refresh nearest/second/ρ.
 // ---------------------------------------------------------------------------
-void fastpam1_swap_impl(Problem& prob, std::int64_t N, int k,
+void fastpam1_swap_impl(Problem& prob, int N, int k,
                         std::vector<int>& medoids, std::vector<bool>& is_medoid,
                         std::vector<int>& nearest, std::vector<double>& nearest_dist,
                         std::vector<double>& second_dist, int max_iter,
@@ -254,7 +285,7 @@ void fastpam1_swap_impl(Problem& prob, std::int64_t N, int k,
     double best_delta = 0.0;
     int best_m_idx = -1, best_x_new = -1;
 
-    const int swap_chunk = dtwc::omp_chunk_size(static_cast<int>(N)); // loop over x is int-bound
+    const int swap_chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
     {
       std::vector<double> ploss(k);   // per-thread scratch, reused across candidates
@@ -303,7 +334,7 @@ void fastpam1_swap_impl(Problem& prob, std::int64_t N, int k,
 // paper's O(N) incremental do_swap: identical result, and since accepted swaps
 // total O(k) over the run the extra work is negligible next to O(N²) per sweep.
 // ---------------------------------------------------------------------------
-void fasterpam_swap_impl(Problem& prob, std::int64_t N, int k,
+void fasterpam_swap_impl(Problem& prob, int N, int k,
                          std::vector<int>& medoids, std::vector<bool>& is_medoid,
                          std::vector<int>& nearest, std::vector<double>& nearest_dist,
                          std::vector<double>& second_dist, int max_iter,
@@ -342,15 +373,9 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
                                      int max_iter, PAMVariant variant)
 {
   validate_pam_variant(variant);
-  // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
-  // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). Loop counters
-  // stay `int` (signed-vs-signed against N), narrowing N explicitly where needed.
-  const std::int64_t N = static_cast<std::int64_t>(prob.size());
-  static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
-
-  if (N <= 0)
-    throw std::runtime_error("fast_pam_swap: Problem has no data points.");
-  algorithms::detail::validate_medoids(initial_medoids, static_cast<int>(N));
+  const int N = algorithms::detail::checked_fast_pam_point_count(
+    prob.size(), "fast_pam_swap");
+  algorithms::detail::validate_medoids(initial_medoids, N);
 
   prob.fillDistanceMatrix();
 
@@ -374,7 +399,7 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
     // directly in O(N²), smallest index winning ties. Handles all three variants.
     double best_cost = std::numeric_limits<double>::max();
     int best_x = medoids[0];
-    const int chunk = dtwc::omp_chunk_size(static_cast<int>(N)); // loop over x is int-bound
+    const int chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
     {
       double loc_cost = std::numeric_limits<double>::max();
@@ -429,14 +454,8 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
 
 core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 {
-  const std::int64_t N = static_cast<std::int64_t>(prob.size());
-  if (N <= 0)
-    throw std::runtime_error("fast_pam: Problem has no data points.");
-  if (n_clusters <= 0 || n_clusters > N) {
-    throw std::runtime_error(
-      "fast_pam: n_clusters must be in [1, N]. Got n_clusters="
-      + std::to_string(n_clusters) + ", N=" + std::to_string(N) + ".");
-  }
+  const auto plan = algorithms::detail::resolve_fast_pam_plan(
+    prob.size(), n_clusters, "fast_pam");
 
   prob.fillDistanceMatrix();
 
@@ -448,7 +467,7 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   const auto orig_centroids = prob.centroids_ind;
   const auto orig_clusters = prob.clusters_ind;
 
-  prob.set_numberOfClusters(n_clusters);
+  prob.set_numberOfClusters(plan.n_clusters);
   init::Kmeanspp(prob);
   std::vector<int> medoids = prob.centroids_ind;
 
@@ -466,20 +485,18 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
 core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
                                        std::uint64_t random_seed, int max_iter)
 {
-  const auto N = static_cast<int>(prob.size());
-  if (N <= 0)
-    throw std::runtime_error("fast_pam_seeded: Problem has no data points.");
-  if (n_clusters <= 0 || n_clusters > N)
-    throw std::runtime_error("fast_pam_seeded: n_clusters must be in [1, N].");
+  const auto plan = algorithms::detail::resolve_fast_pam_plan(
+    prob.size(), n_clusters, "fast_pam_seeded");
+  const int N = plan.n_points;
   prob.fillDistanceMatrix();
 
   std::mt19937_64 rng(random_seed);
   std::vector<int> medoids{static_cast<int>(core::portable_bounded(
     rng, static_cast<std::uint64_t>(N)))};
-  medoids.reserve(static_cast<std::size_t>(n_clusters));
+  medoids.reserve(static_cast<std::size_t>(plan.n_clusters));
   std::vector<double> distances(static_cast<std::size_t>(N),
                                 std::numeric_limits<double>::infinity());
-  while (static_cast<int>(medoids.size()) < n_clusters) {
+  while (static_cast<int>(medoids.size()) < plan.n_clusters) {
     for (int i = 0; i < N; ++i)
       distances[static_cast<std::size_t>(i)] = std::min(
         distances[static_cast<std::size_t>(i)], prob.dist_by_ind(medoids.back(), i));
