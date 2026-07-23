@@ -562,6 +562,23 @@ Open findings first (status after R0 adjudication — update these boxes there):
       11/11 assertions, and the canonical gate is 114/114 with exactly the six
       capability skips. Evidence:
       `.claude/baselines/2026-07-23-r2-d1-dtw.md`.
+- [ ] **F34 — the supply-chain gate omits non-action workflow acquisitions and
+      weaker CMake repository pins.** The current script does not classify the
+      executed `llvm.sh`, two installed MS-MPI packages, the tag-only CUDA
+      container, flow-style/composite/docker action references, the two CPM
+      bootstraps, or four `GITHUB_REPOSITORY + VERSION` dependencies. First
+      gate: inventory every tracked CMake/workflow remote acquisition, require
+      zero unclassified entries, mutation-test each syntax class, and either
+      cryptographically anchor each executable input or record a narrow,
+      fail-closed policy exception. Package-manager resolution and operator
+      transport are separate policy classes, not silently accepted inputs.
+- [ ] **F35 — the CUDA workflow's CMake requirement is shell redirection.**
+      `.github/workflows/cuda-mpi-detect.yml` runs
+      `pip3 install cmake>=3.26` unquoted, so POSIX shell grammar passes `cmake`
+      to pip and redirects stdout into `=3.26`. First gate: an executing
+      fake-pip shell fixture must reproduce that inherited argv/file side
+      effect; after repair it must receive the single literal `cmake>=3.26`
+      argument and create no redirection file.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -763,6 +780,12 @@ colour system transfer verbatim**.
   configuration payloads are pinned. The permanent target exists only with
   Parquet support; the Ubuntu Arrow job selects it fail-closed, but hosted
   execution remains operator-owned and is not claimed by the local closure.
+- 2026-07-23 (F11 preflight): “Repo-wide” in F11 means every tracked
+  `CPMAddPackage(URL ...)` archive declaration, not every internet-bearing
+  workflow command or package-manager resolution. The latter audit found
+  distinct workflow-integrity and shell-grammar subjects, now F34 and F35.
+  Keeping them separate prevents an example-archive fix from falsely closing
+  the wider supply chain and preserves one finding per implementation commit.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
