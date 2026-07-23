@@ -47,3 +47,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 Finish the frozen API-contract source audit. Register every confirmed
 implementation gap as its own R3 finding before correcting contract prose, then
 regenerate derived pages and run the registered docs drift gate.
+
+The frozen-contract reconciliation band is now registered as D6 in
+`.claude/baselines/2026-07-23-r1-docs-truth.md`. Its PLAN decision preserves
+every 2.0 promise, routes the nine confirmed implementation gaps to R3, and
+limits the current task to documentation truth.

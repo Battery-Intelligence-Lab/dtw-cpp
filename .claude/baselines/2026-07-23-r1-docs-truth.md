@@ -319,3 +319,36 @@ YAML keys are named, and mmap documentation consistently describes v3. The
 audit also exposed a separate product defect: `--resume` loads
 `ckpt_result` at `dtwc/dtwc_cl.cpp:1398-1405`, but that object has no later
 consumer. Documentation now says so; R3 must pin and repair the behavior.
+
+## D6 — frozen API contract mixes shipped behavior with pre-implementation text
+
+[confirmed] A source-by-source audit found nine unfulfilled frozen-2.0 promises
+in addition to F17. The only approved 2.1 deferrals remain the three post-freeze
+MATLAB Tier-1 methods and C++ HPC transport. The contract also retains eight
+“before FROZEN” reviewer questions despite its FROZEN header, stale `[new bind]`
+and “unbound today” annotations for delivered bindings, and future tense for
+implemented LR-core/result-writeback behavior.
+
+Registered repair band:
+
+- add one unique R3 finding for each of the nine independently repairable
+  implementation gaps, with current source anchors and a first regression gate;
+- preserve the frozen promise for every gap—no wording may reclassify an
+  unfulfilled 2.0 requirement as intended or as an approved 2.1 defer;
+- resolve all eight reviewer questions to the current shipped behavior and
+  rename the section from open questions to adjudicated decisions;
+- distinguish historical `[introduced-2.0]` provenance from current live/gap
+  status; remove stale `[new bind]`, “unbound today”, “before FROZEN”, and
+  “on adversarial sign-off” text;
+- correct precision, Env ownership, checkpoint-v2 directory layout,
+  passive `CheckpointOptions`, Python-copy/view behavior, and delivered
+  LR-core/result-writeback descriptions against current code;
+- add reachable drift assertions before the contract edit and show a deliberate
+  red on the inherited document;
+- regenerate the derived Tier-1/Tier-2/migration pages;
+- the full real-CLI documentation contract gate exits zero with exact final
+  line `documentation contract checks passed`; `git diff --check` is clean.
+
+The frozen-contract governance decision is recorded in `PLAN.md` before any
+contract edit. Fresh Hugo rendering remains under the registered
+`[BLOCKED-ENV]` result above.

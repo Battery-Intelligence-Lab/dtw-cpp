@@ -590,6 +590,17 @@ colour system transfer verbatim**.
   limitation explicit in user documentation and route the behavioral repair to
   R3 F17; its first regression must drive the real CLI and distinguish loaded
   state from the fresh clustering result.
+- 2026-07-23 (R1 frozen-contract reconciliation): The old rule presented
+  `docs/api-contract-2.0.md` as fully implementation-audited while retaining
+  pre-implementation status text and eight unresolved reviewer choices. The
+  approved documentation rule preserves every frozen 2.0 promise, labels each
+  confirmed unfulfilled promise as an R3 finding (never as intended behavior),
+  records `[introduced-2.0]` as historical provenance, and resolves the eight
+  reviewer choices to the already shipped behavior. Compatibility effect:
+  documentation only—no symbol, default, file format, or runtime behavior
+  changes. The two existing 2.1 deferrals (MATLAB post-freeze Tier-1 methods and
+  C++ HPC transport) remain unchanged. R1 owns the record repair; R3 owns every
+  named implementation gap.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
 
