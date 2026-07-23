@@ -50,6 +50,8 @@ decisive; any check over the existing ignored `docs/public/` is advisory only.
 - F20: `Problem::set_storage_policy` stores an advisory enum while actual
   heap/mmap data routing belongs to `DataLoader`; the frozen override promise
   has no executable path.
+- F21: C++ never acquired the frozen `DataLoader::start_column/start_row` and
+  `settings::paths::set_data_path/set_results_path` canonical names.
 
 ## Exact resume point (updated)
 

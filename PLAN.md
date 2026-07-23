@@ -416,6 +416,15 @@ Open findings first (status after R0 adjudication — update these boxes there):
       payload above a deterministic threshold; backing mode must differ while
       series bytes and downstream distances remain identical. The inherited
       setter must fail by leaving both routes unchanged.
+- [ ] **F21 — four frozen C++ snake_case entry points are absent.**
+      `DataLoader` exposes only `startColumn`/`startRow`
+      (`dtwc/DataLoader.hpp:124-157`), and `settings::paths` exposes only
+      `setDataPath`/`setResultsPath` (`dtwc/settings.hpp:74-86`), despite the
+      frozen rename table promising `start_column`, `start_row`,
+      `set_data_path`, and `set_results_path` with deprecated old-name shims.
+      First gate: a public-header compile fixture calling all four canonical
+      spellings must fail on the inherited tree, then pass while the four legacy
+      calls still compile and produce identical loader configuration/path state.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
