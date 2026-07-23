@@ -69,14 +69,17 @@ The three explicit configurations are:
 
 | ID | Additional arguments | Registered total cost |
 |---|---|---:|
-| `f64-standard` | `--dtype float64 --variant standard` | `4.399999999999999` |
-| `f32-standard` | `--dtype float32 --variant standard` | `4.400001227855682` |
+| `f64-standard` | `--dtype float64 --variant standard` | `4.3999999999999986` |
+| `f32-standard` | `--dtype float32 --variant standard` | `4.4000012278556824` |
 | `f64-softdtw` | `--dtype float64 --variant softdtw --sdtw-gamma 0.7` | `-10.343994478252078` |
 
 For each configuration, the resident run has no `--ram-limit`; the streaming
-run adds exactly `--ram-limit 900`. The historical metadata estimate is
-1,568 bytes resident and less than 815 bytes for the sparse path, so 900 bytes
-is the registered route discriminator. It may not be relaxed after a failure.
+run adds exactly `--ram-limit 900`. The current ABI's conservative resident
+estimates are 1,568 bytes for the Float64 runs and 2,016 bytes for the Float32
+conversion-overlap path. The largest exhaustive four-of-eight sparse peaks are
+687 and 591 bytes, respectively. Thus 900 bytes is the registered route
+discriminator for all three configurations. It may not be relaxed after a
+failure.
 
 ## Registered artifacts
 
@@ -122,6 +125,24 @@ The portable permanent contract is resident/stream byte identity within each
 configuration, exact normalized CSV content, exact 72-byte checkpoint size,
 and three distinct configuration checkpoint payloads. The Windows decisive
 run additionally requires the exact hash ledger above.
+
+### Pre-run decimal correction
+
+Commit `1c96b3a` initially copied two rounded decimal renderings from the
+handoff summary. Before any decisive F8 execution, direct decoding of the
+already SHA-pinned historical checkpoints at the binary format's
+`total_cost` offset 24 produced:
+
+```text
+build/phase8-f7-arrow/f64-v3-resident/parity_checkpoint.bin offset24_R=4.3999999999999986 G17=4.3999999999999986
+build/phase8-f7-arrow/f32-v3-resident/parity_checkpoint.bin offset24_R=4.4000012278556824 G17=4.4000012278556824
+build/phase8-f7-arrow/softdtw-v4-resident/parity_checkpoint.bin offset24_R=-10.343994478252078 G17=-10.343994478252078
+```
+
+The table above is corrected to those exact binary values. The fixture,
+commands, 900-byte route discriminator, output bytes, and registered hashes
+did not change. This is an evidence transcription correction, not post-run
+tuning.
 
 ## Acceptance band
 
