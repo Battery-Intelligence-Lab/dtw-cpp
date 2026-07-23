@@ -193,14 +193,23 @@ def generated_outputs() -> dict[Path, str]:
             f"{derivation_source.relative_to(ROOT)}"
         )
     derivation = derivation_source.read_text(encoding="utf-8")
-    plan_text = (ROOT / "PLAN.md").read_text(encoding="utf-8")
+    plan_archive = ROOT / ".claude/PLAN-archive-2026-07-20-phases0-9.md"
+    if not plan_archive.is_file():
+        raise RuntimeError(
+            "missing archived Phase 4 implementation record: "
+            f"{plan_archive.relative_to(ROOT)}"
+        )
+    plan_text = plan_archive.read_text(encoding="utf-8")
     outcome = re.search(
         r"^## Phase 4 .*?(?=^## Phase 5 )",
         plan_text,
         flags=re.MULTILINE | re.DOTALL,
     )
     if outcome is None:
-        raise RuntimeError("missing Phase 4 implementation outcome in PLAN.md")
+        raise RuntimeError(
+            "missing Phase 4 implementation outcome in "
+            f"{plan_archive.relative_to(ROOT)}"
+        )
     outputs[CONTENT / "math/lr-core.md"] = page(
         "LR-core exact solver derivation", 10,
         """This is the complete, re-derivable solver investigation promoted

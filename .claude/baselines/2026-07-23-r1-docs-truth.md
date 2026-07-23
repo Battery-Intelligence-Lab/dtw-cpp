@@ -54,3 +54,51 @@ gate cannot be produced on this host: both `hugo` and its `go` build fallback
 are absent. Continue with source-level audit, the live CLI contract gate, and
 an explicitly advisory check of the existing ignored site. Hosted CI remains
 operator-owned and is not claimed.
+
+## D1 — generated LR-core source moved without its gate
+
+Baseline decisive command:
+
+```text
+.venv/Scripts/python.exe scripts/check_docs_contract.py --cli build/highs-1151/bin/dtwc_cl.exe
+```
+
+Baseline failure:
+
+```text
+RuntimeError: missing Phase 4 implementation outcome in PLAN.md
+subprocess.CalledProcessError: Command '['C:\\D\\git\\dtw-cpp\\.venv\\Scripts\\python.exe', 'C:\\D\\git\\dtw-cpp\\scripts\\generate_docs.py', '--check']' returned non-zero exit status 1.
+```
+
+[confirmed] PLAN v2 names
+`.claude/PLAN-archive-2026-07-20-phases0-9.md` as the verbatim home of the old
+Phase 4 implementation outcome; the generator still searches only live
+`PLAN.md`.
+
+Registered repair band:
+
+- move only that generator input to the named archive;
+- `generate_docs.py --check` exits zero and prints
+  `generated documentation is current`;
+- no generated page changes (the archive is verbatim, so this is a
+  digit-identical source-location repair);
+- the full docs-contract gate then reaches the next independent check or passes.
+
+Repair results:
+
+```text
+generated documentation is current
+```
+
+Full gate after the repair:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+`git status --short` named only this run-log and `scripts/generate_docs.py`; no
+generated page changed.
+
+**D1 verdict: PASS.** The generated output is digit-identical and the full live
+CLI contract gate now reaches completion.
