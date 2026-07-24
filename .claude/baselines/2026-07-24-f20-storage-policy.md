@@ -168,9 +168,10 @@ constructor integration separately reads the fixture at its native `ndim=1`.
 | series and names compared | 6/6 |
 | direct Problem ndim | exactly 2 on both routes |
 | payload equality | all 36 doubles byte-identical |
+| payload little-endian-double SHA-256 | `1c1e8815b6e7a4a8b4ccd3d9892132a65e110ee0ecddcb9828fa817faa78f840` |
 | independent DP oracle | 15 upper-triangle values, little-endian-double SHA-256 `d8331a04d296db5bf2c791359df8d87e6d841e9564636e245b36a90979ce7db9` |
 | downstream pairwise distances | all 36 ordered pairs exact; 15 nontrivial pairs equal the independent DP |
-| mapped file | exactly one `.dtws`, 408 bytes, `DTWS` v1, elem-size 8, N=6, ndim=2 |
+| mapped file | exactly one `.dtws`, 408 bytes, `DTWS` v1, elem-size 8, N=6, ndim=2, header CRC `0xab81a0e4`, offsets `0,48,96,144,192,240,288` |
 | policy transitions | Heap remains heap; Mmap becomes view-backed only on the subsequent `set_data` |
 | loader constructor | Heap is owning; Auto above 1 byte is mapped with llfio |
 | moved-Problem lifetime | mapped destination remains readable after source/candidate/loader destruction |
@@ -195,25 +196,31 @@ fixture prints its exact footprint and both observed backing modes.
 CTest clears `SKIP_RETURN_CODE`, rejects skip text, runs the target serially,
 and sets `TMP`, `TEMP`, and `TMPDIR` to a unique directory under the configured
 build root. Thus the decisive run writes nowhere outside the project and can
-inspect the exact generated mapping. Require at least 90 assertions / 4 cases
-with llfio and at least 45 assertions / 4 cases without it.
+inspect the exact generated mapping. Require at least 180 assertions / 4 cases
+with llfio and at least 90 assertions / 4 cases without it.
 
 The repaired llfio-ON marker must report:
 
 ```text
-F20_PROBLEM_STORAGE_POLICY footprint=288 direct=explicit heap=owning mmap=view values=36 names=6 ndim=2 ordered_pairs=36 oracle_pairs=15 store_bytes=408 move_lifetime=pass view_override=pass subject_skips=0 verdict=PASS
+F20_PROBLEM_STORAGE_POLICY build=llfio-on footprint=288 heap=owning mmap=view values=72/72 names=12/12 ndim_routes=2/2 ordered_pairs=72/72 artifact=pass lifetime=pass loader_auto=mmap view_override=pass subject_skips=0 verdict=PASS
 ```
 
 The repaired llfio-OFF branch must execute Heap plus the explicit-Mmap error
 path, preserve the prior series bytes, print `subject_skips=0`, and never call
 Catch2 `SKIP` for the F20 case.
 
+```text
+F20_PROBLEM_STORAGE_POLICY build=llfio-off footprint=288 heap=owning mmap=rejected values=36/36 names=6/6 ndim_routes=1/1 ordered_pairs=36/36 transaction=pass loader_auto=heap-warning view_override=pass subject_skips=0 verdict=PASS
+```
+
 ### S2 - transaction and unsupported-precision checks
 
 - invalid selector behavior already owned by M47 remains unchanged;
 - invalid candidate preflight precedes any mapped-file creation;
-- explicit Float32+Mmap is rejected before replacing prior data;
-- explicit Mmap without llfio is rejected before replacing prior data;
+- explicit Float32+Mmap raises `InvalidInput` before replacing prior data:
+  `Problem::set_data: StoragePolicy::Mmap supports Float64 series only; Float32 mmap requires a new .dtws format version.`;
+- explicit Mmap without llfio raises `IOError` before replacing prior data:
+  `Problem::set_data: StoragePolicy::Mmap requested but mmap support (llfio) is not compiled in. Rebuild with -DDTWC_ENABLE_LLFIO=ON.`;
 - Heap Float32 remains resident and exact.
 
 ### S3 - compatibility and real bindings
@@ -267,6 +274,8 @@ The retained implementation must reject at least these eleven changes:
 | fixture bytes | `36 * sizeof(double)` | 288 |
 | direct fixture ndim | six scalars / two features | 2 |
 | mapped file bytes | `64 + 7*8 + 288` | 408 |
+| mapped header CRC | independent header parser | `0xab81a0e4` |
+| payload hash | independent byte reader | `1c1e8815b6e7a4a8b4ccd3d9892132a65e110ee0ecddcb9828fa817faa78f840` |
 | independent DP pairs | `6*5/2` | 15 |
 | independent DP hash | inline full-matrix recurrence | `d8331a04d296db5bf2c791359df8d87e6d841e9564636e245b36a90979ce7db9` |
 | inherited canonical assertions/cases | Catch2 focused run | 8320 / 4 |

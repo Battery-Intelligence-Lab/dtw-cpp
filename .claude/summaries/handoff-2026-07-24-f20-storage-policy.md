@@ -44,7 +44,7 @@
 
 Commit the registration correction alone. Then add the permanent non-skipping
 F20 Problem route as
-`tests/unit/core/unit_test_problem_storage_policy.cpp`, configure its build-root
+`tests/unit/unit_test_problem_storage_policy.cpp`, configure its build-root
 temporary environment in `tests/CMakeLists.txt`, run it against the inherited
 product to capture the required both-heap failure, and only then implement
 shared series routing plus Problem-owned lifetime. Do not touch F21, F26, F39,
