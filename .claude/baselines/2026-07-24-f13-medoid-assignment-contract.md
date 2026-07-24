@@ -523,3 +523,52 @@ There are at most two repair attempts. Rollback is a local revert of the
 dedicated test commit. The claim most likely to be wrong is that the six-point
 fixture remains discriminatory after the test enters through the full Python
 dispatch; the focused real-binding run, not the hand calculation, judges it.
+
+### Registered F13 manifest-inventory increment
+
+The first full Python run after the portable-Lloyd test repair produced:
+
+```text
+________________ test_live_tracked_cmake_inventory_is_complete ________________
+
+    def test_live_tracked_cmake_inventory_is_complete():
+        archive_pins, manifest_total = pins.tracked_cmake_archive_pins(ROOT)
+>       assert manifest_total == 25
+E       assert 26 == 25
+
+tests\python\test_supply_chain_pins.py:493: AssertionError
+1 failed, 1009 passed, 12 skipped in 69.19s (0:01:09)
+```
+
+This registration precedes the inventory edit. A main-index comparison against
+pre-assignment commit `e37b71a` produced:
+
+```text
+CURRENT=26
+PRE_F13_CODE=25
+
+InputObject                                                 SideIndicator
+-----------                                                 -------------
+tests/integration/test_fast_clara_assignment_contract.cmake =>
+```
+
+The retained exact-base worktree is not involved: `tracked_cmake_files` calls
+`git ls-files`, and the one new tracked F13 gate is the entire delta.
+
+Repair band:
+
+1. Change only `REGISTERED_CMAKE_MANIFEST_TOTAL` and its direct unit-test
+   literal from 25 to 26. Do not alter the F11/F36 parser or its seven archive
+   identities.
+2. The live checker reports 39/39 workflow actions, 7/7 immutable hashed
+   archives, one Arrow pin, `TRACKED_CMAKE_MANIFESTS total=26`, and
+   `supply-chain pins verified`.
+3. Restoring either inventory constant to 25 makes the focused live-inventory
+   test fail with exact `26 == 25`.
+4. The complete fresh-extension Python gate then meets the registered
+   1010-passed / 12-skipped / zero-failed floor.
+
+There are at most two repair attempts. Rollback is a local revert of the
+dedicated inventory commit. The claim most likely to be wrong is that no other
+tracked manifest entered with F13; the exact index set comparison above, not a
+filesystem walk, judges it.

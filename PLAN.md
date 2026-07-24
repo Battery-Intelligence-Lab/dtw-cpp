@@ -873,6 +873,12 @@ colour system transfer verbatim**.
   eight-series portable result and preserve the iteration-cap discriminator
   with registered singleton values `[0,1,2,3,5,4]`. The binding and production
   implementation remain unchanged.
+- 2026-07-24 (F13 tracked-manifest count): The permanent F13 Arrow gate is one
+  new tracked `.cmake` manifest. Exact main-index comparison against
+  `e37b71a` gives 26 versus 25 and names only that file. Increment the
+  supply-chain inventory floor to 26 without changing the F11/F36 parser or
+  archive identities; filesystem/worktree contents are not evidence for this
+  index-owned count.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
