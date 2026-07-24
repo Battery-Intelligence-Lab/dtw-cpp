@@ -602,6 +602,21 @@ Open findings first (status after R0 adjudication — update these boxes there):
       payload above a deterministic threshold; backing mode must differ while
       series bytes and downstream distances remain identical. The inherited
       setter must fail by leaving both routes unchanged.
+      **REGISTERED 2026-07-24:** the existing owning `Problem::set_data(Data)`
+      call is the governed operation because it is the only post-policy data
+      boundary shared by C++, Python, and MATLAB; a loader-only overload would
+      leave both bindings advisory. Policy changes are non-retroactive,
+      `set_view_data` remains an explicit non-owning bypass, and series storage
+      remains separate from distance-matrix mmap and both CLI RAM controls.
+      The six-by-six fixture is exactly 288 bytes above a registered one-byte
+      threshold. Heap/Mmap must differ while all 36 doubles, six names, and 36
+      ordered downstream distances are exact; mapped ownership must survive a
+      Problem copy. The subject may not skip in either llfio-ON or llfio-OFF:
+      unsupported explicit Mmap and Float32 Mmap fail before publication.
+      Loader construction honors its stored result, mapped GPU consumers fail
+      before empty-vector dispatch, eleven mutations and at most two product
+      attempts are binding. Evidence:
+      `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - [ ] **F21 — four frozen C++ snake_case entry points are absent.**
       `DataLoader` exposes only `startColumn`/`startRow`
       (`dtwc/DataLoader.hpp:124-157`), and `settings::paths` exposes only
@@ -1626,3 +1641,13 @@ colour system transfer verbatim**.
   1,023-outcome ledger over 1,022 collected. Documentation gates pass. Resume
   at F20. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F20 registration): The existing owning
+  `Problem::set_data(Data)` call is the policy-governed cross-language
+  boundary; changes are non-retroactive and `set_view_data` remains an
+  explicit non-owning bypass. Problem must retain shareable mmap-series and
+  name ownership, keep series policy separate from distance/CLI controls, and
+  reject unsupported explicit Mmap before publication. Exact bands cover the
+  288-byte non-uniform fixture, 36 values, six names, 36 ordered distances,
+  copy lifetime, loader construction, GPU loudness, zero subject skips in
+  llfio-ON/OFF, eleven mutations, and two product attempts. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.
