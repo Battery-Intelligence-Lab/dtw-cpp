@@ -72,6 +72,40 @@ if(TARGET unit_test_problem_encapsulation)
                 "F19_PROBLEM_API getters=10/10 setters=9/9 lloyd=ran skips=0(.|[\r\n])*All tests passed \\(([3-9][0-9]|[1-9][0-9][0-9]+) assertions in ([3-9]|[1-9][0-9]+) test cases\\)")
 endif()
 
+# F20 is a live Problem series-storage gate, not a DataLoader-only capability
+# probe. Keep its direct temporary mmap artifact under the build tree, require
+# the exact LLFIO-specific execution marker, and reject Catch2 skip semantics.
+if(TARGET unit_test_problem_storage_policy)
+    set(_f20_test_root
+        "${CMAKE_CURRENT_BINARY_DIR}/f20-problem-storage")
+    target_compile_definitions(
+        unit_test_problem_storage_policy
+        PRIVATE
+            DTWC_F20_TEST_ROOT="${_f20_test_root}")
+    set_property(
+        TEST unit_test_problem_storage_policy
+        PROPERTY SKIP_RETURN_CODE)
+    get_target_property(
+        _dtwc_f20_compile_defs
+        dtwc++
+        INTERFACE_COMPILE_DEFINITIONS)
+    if("DTWC_HAS_MMAP" IN_LIST _dtwc_f20_compile_defs)
+        set(_f20_focused_regex
+            "F20_PROBLEM_STORAGE_POLICY build=llfio-on footprint=288 heap=owning mmap=view values=72/72 names=12/12 ndim_routes=2/2 ordered_pairs=72/72 artifact=pass lifetime=pass loader_auto=mmap view_override=pass subject_skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((1[89][0-9]|[2-9][0-9][0-9]|[1-9][0-9][0-9][0-9]+) assertions in ([4-9]|[1-9][0-9]+) test cases\\)")
+    else()
+        set(_f20_focused_regex
+            "F20_PROBLEM_STORAGE_POLICY build=llfio-off footprint=288 heap=owning mmap=rejected values=36/36 names=6/6 ndim_routes=1/1 ordered_pairs=36/36 transaction=pass loader_auto=heap-warning view_override=pass subject_skips=0 verdict=PASS(.|[\r\n])*All tests passed \\(([9][0-9]|[1-9][0-9][0-9]+) assertions in ([4-9]|[1-9][0-9]+) test cases\\)")
+    endif()
+    set_tests_properties(
+        unit_test_problem_storage_policy
+        PROPERTIES
+            ENVIRONMENT
+                "TMP=${_f20_test_root};TEMP=${_f20_test_root};TMPDIR=${_f20_test_root}"
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION "${_f20_focused_regex}"
+            RUN_SERIAL TRUE)
+endif()
+
 # F15 freezes the two shared deterministic generator schedules and the dense
 # symmetric CPU-reference traversal. This target is mandatory in every build.
 if(TARGET unit_test_deterministic_series)
