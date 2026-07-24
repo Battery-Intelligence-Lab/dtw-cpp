@@ -30,6 +30,13 @@ def _seed_sensitive_series():
     return base[None, :] + np.arange(8.0)[:, None]
 
 
+def _assert_portable_lloyd_result(result):
+    """Pin the portable-v1 seed-42 Lloyd result on the shared seed fixture."""
+    np.testing.assert_array_equal(result.medoids, [5, 2, 0])
+    np.testing.assert_array_equal(result.labels, [2, 1, 1, 1, 0, 0, 0, 0])
+    assert result.cost == 24.0
+
+
 # ---------------------------------------------------------------------------
 # load() — lazy handle
 # ---------------------------------------------------------------------------
@@ -294,9 +301,8 @@ class TestClusterLocal:
 
         first = dtwcpp.cluster(series, k=3, method="kmedoids")
         second = dtwcpp.cluster(series, k=3, method="kmedoids")
-        np.testing.assert_array_equal(first.medoids, second.medoids)
-        np.testing.assert_array_equal(first.labels, second.labels)
-        assert first.cost == second.cost == 20.0
+        _assert_portable_lloyd_result(first)
+        _assert_portable_lloyd_result(second)
         assert dtwcpp.Problem().random_seed == dtwcpp.DEFAULT_RANDOM_SEED
 
     def test_default_lloyd_seed_isolated_from_legacy_tier2_rng(self):
@@ -313,27 +319,27 @@ class TestClusterLocal:
         dtwcpp.fast_pam(legacy_problem, 3)
 
         after = dtwcpp.cluster(series, k=3, method="kmedoids")
-        np.testing.assert_array_equal(before.medoids, after.medoids)
-        np.testing.assert_array_equal(before.labels, after.labels)
-        assert before.cost == after.cost == 20.0
+        _assert_portable_lloyd_result(before)
+        _assert_portable_lloyd_result(after)
 
     def test_lloyd_honors_nondefault_iteration_cap_and_keeps_default(self):
-        series = _seed_sensitive_series()
+        # Seed 42 starts at medoids [4,2]. One Lloyd update publishes [4,1];
+        # convergence needs a second update to the unique median at index 5.
+        series = np.array([0.0, 1.0, 2.0, 3.0, 5.0, 4.0])[:, None]
 
         capped = dtwcpp.cluster(
-            series, k=3, method="kmedoids", max_iter=1,
+            series, k=2, method="kmedoids", max_iter=1,
         )
-        default = dtwcpp.cluster(series, k=3, method="kmedoids")
+        default = dtwcpp.cluster(series, k=2, method="kmedoids")
 
-        # M29 guarantees the capped result is internally coherent after its
-        # final medoid update. The two strict oracles distinguish forwarding
-        # max_iter=1 from silently retaining Problem's default 100.
-        np.testing.assert_array_equal(capped.medoids, [6, 1, 4])
-        np.testing.assert_array_equal(capped.labels, [1, 1, 1, 2, 2, 0, 0, 0])
-        assert capped.cost == 20.0
-        np.testing.assert_array_equal(default.medoids, [6, 1, 3])
+        # Exact L1 oracles distinguish forwarding max_iter=1 from silently
+        # retaining Problem's default 100.
+        np.testing.assert_array_equal(capped.medoids, [4, 1])
+        np.testing.assert_array_equal(capped.labels, [1, 1, 1, 0, 0, 0])
+        assert capped.cost == 5.0
+        np.testing.assert_array_equal(default.medoids, [5, 1])
         np.testing.assert_array_equal(default.labels, capped.labels)
-        assert default.cost == 20.0
+        assert default.cost == 4.0
 
     def test_result_fields_populated(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
