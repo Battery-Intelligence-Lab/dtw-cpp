@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Breaking:** distance-matrix CSV output now uses locale-independent
+  round-trippable binary64 tokens, preserves signed zero, writes LF-only bytes
+  on every host, and rejects computed infinity before writing matrix bytes.
 - Corrected nearest-medoid assignment in FastPAM, CLARANS, resident/streamed
   FastCLARA, and Lloyd: first-slot ties and finite `DBL_MAX` objectives now
   publish consistently, objectives fold in point order, and non-finite

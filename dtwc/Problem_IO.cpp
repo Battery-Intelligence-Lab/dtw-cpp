@@ -17,9 +17,9 @@
 #include "settings.hpp"    // for data_t, randGenerator, band
 #include "types/Range.hpp" // for Range
 
-#include <iostream> // for cout
+#include <array>
 #include <fstream>
-#include <iomanip>  // for setprecision
+#include <iostream> // for cout
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
@@ -162,19 +162,28 @@ void Problem::writeDistanceMatrix(const std::string &name_) const
       io::write_csv(m, output_folder / name_);
     } else {
       // MmapDistanceMatrix: data is already on disk. Write a CSV copy for inspection.
+      core::detail::preflight_distance_matrix_csv(m);
       const size_t n = m.size();
-      std::ofstream file(output_folder / name_);
+      const auto path = output_folder / name_;
+      std::ofstream file(
+        path, std::ios::out | std::ios::binary | std::ios::trunc);
       if (!file.good())
-        throw std::runtime_error("Cannot open file for writing: " + (output_folder / name_).string());
-      file << std::setprecision(15);
+        throw std::runtime_error("Cannot open file for writing: " + path.string());
+      std::array<char, 64> number{};
       for (size_t i = 0; i < n; ++i) {
         for (size_t j = 0; j < n; ++j) {
-          if (j > 0) file << ',';
-          if (m.is_computed(i, j))
-            file << m.get(i, j);
+          if (j > 0) file.put(',');
+          const auto token =
+            core::detail::distance_matrix_csv_token(m.get(i, j), number);
+          if (!token.empty())
+            file.write(
+              token.data(), static_cast<std::streamsize>(token.size()));
         }
-        file << '\n';
+        file.put('\n');
       }
+      file.close();
+      if (!file.good())
+        throw std::runtime_error("Write error on file: " + path.string());
     }
   });
 }

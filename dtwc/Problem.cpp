@@ -184,7 +184,7 @@ void Problem::print_distance_matrix() const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
-  visit_distmat([](const auto &m) { std::cout << m << '\n'; });
+  visit_distmat([](const auto &m) { std::cout << m; });
 }
 
 /**

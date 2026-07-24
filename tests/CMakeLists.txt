@@ -22,6 +22,37 @@ if(TEST unit_test_nearest_medoid_assignment)
             PROCESSORS 4)
 endif()
 
+# F14 freezes native distance-matrix CSV bytes before R4 may consolidate the
+# formatter loops. The focused target always executes dense coverage; mmap is
+# an additional required subject only in a build that publishes that
+# capability. One regex pins both the route marker and Catch2's own floor,
+# while allowing Catch2 to randomize which passing case prints the marker.
+if(TARGET unit_test_distance_matrix_csv)
+    target_compile_definitions(
+        unit_test_distance_matrix_csv
+        PRIVATE
+            DTWC_F14_TEST_ROOT="${CMAKE_CURRENT_BINARY_DIR}/f14-distance-matrix-csv-unit")
+    set_property(
+        TEST unit_test_distance_matrix_csv
+        PROPERTY SKIP_RETURN_CODE)
+    get_target_property(
+        _dtwc_f14_compile_defs
+        dtwc++
+        INTERFACE_COMPILE_DEFINITIONS)
+    if("DTWC_HAS_MMAP" IN_LIST _dtwc_f14_compile_defs)
+        set(_f14_focused_regex
+            "F14_CSV_CONTRACT dense=ran mmap=ran skips=0(.|[\r\n])*All tests passed \\(([8-9][0-9]|[1-9][0-9][0-9]+) assertions in (1[2-9]|[2-9][0-9]|[1-9][0-9][0-9]+) test cases\\)")
+    else()
+        set(_f14_focused_regex
+            "F14_CSV_CONTRACT dense=ran mmap=unavailable skips=0(.|[\r\n])*All tests passed \\(([5-9][0-9]|[1-9][0-9][0-9]+) assertions in ([89]|[1-9][0-9]+) test cases\\)")
+    endif()
+    set_tests_properties(
+        unit_test_distance_matrix_csv
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION "${_f14_focused_regex}")
+endif()
+
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
 # vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
 # a PRIVATE include of dtwc++, so grant this one test target the include path.
@@ -35,6 +66,57 @@ endif()
 # performance regression, so keep its measurement uncontended under CTest.
 if(TEST test_multivariate_adversarial)
     set_tests_properties(test_multivariate_adversarial PROPERTIES RUN_SERIAL TRUE)
+endif()
+
+# Public F14 reachability: compare a real native Result::save with resident CLI
+# output in every build, and with forced-mmap CLI output when llfio is linked.
+# The .cc suffix deliberately keeps the helper out of the automatic *.cpp CTest
+# glob above.
+if(TARGET dtwc_cl)
+    add_executable(
+        f14_result_save_writer
+        integration/f14_result_save_writer.cc)
+    target_link_libraries(
+        f14_result_save_writer
+        PRIVATE
+            dtwc++
+            project_options)
+
+    get_target_property(
+        _dtwc_f14_public_compile_defs
+        dtwc++
+        INTERFACE_COMPILE_DEFINITIONS)
+    if("DTWC_HAS_MMAP" IN_LIST _dtwc_f14_public_compile_defs)
+        set(_f14_has_mmap ON)
+        set(_f14_public_regex
+            "F14_CSV_PUBLIC subject=real_dtwc_cl[+]native_result runs=3/3 route_markers=2/2 matrix_pairs=3/3 rows=27/27/27 lf=27/27/27 cr=0/0/0 final_lf=3/3 blank_tail=0 mmap=ran skips=0")
+    else()
+        set(_f14_has_mmap OFF)
+        set(_f14_public_regex
+            "F14_CSV_PUBLIC subject=real_dtwc_cl[+]native_result runs=2/2 route_markers=1/1 matrix_pairs=1/1 rows=27/27 lf=27/27 cr=0/0 final_lf=2/2 blank_tail=0 mmap=unavailable skips=0")
+    endif()
+
+    add_test(
+        NAME test_distance_matrix_csv_contract
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DCLI=$<TARGET_FILE:dtwc_cl>"
+            "-DRESULT_WRITER=$<TARGET_FILE:f14_result_save_writer>"
+            "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+            "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/conformance/conformance.toml"
+            "-DBINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/f14-distance-matrix-csv-public"
+            "-DHAS_MMAP=${_f14_has_mmap}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_distance_matrix_csv_contract.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(
+        test_distance_matrix_csv_contract
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            LABELS "integration;f14"
+            PASS_REGULAR_EXPRESSION "${_f14_public_regex}"
+            RUN_SERIAL TRUE
+            TIMEOUT 120)
 endif()
 
 # F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability

@@ -254,9 +254,14 @@ void Result::save(const std::filesystem::path &directory) const
   // retain their scaling until this explicitly requested operation.
   problem_->fill_distance_matrix();
   std::visit([&](const auto &matrix) {
-    std::ofstream out(matrix_path);
+    core::detail::preflight_distance_matrix_csv(matrix);
+    std::ofstream out(
+      matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
     ensure_output(out, matrix_path);
     out << matrix;
+    out.close();
+    if (!out)
+      throw IOError("Result::save: cannot write " + matrix_path.string());
   }, problem_->distance_matrix());
 
   const auto silhouette_values = scores::silhouette(*problem_);
