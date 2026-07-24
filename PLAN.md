@@ -488,6 +488,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       all differ from the registered fresh control; twelve mutations and a
       two-attempt cap are frozen in
       `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+      The pre-run review strengthens the second positive route to request
+      `kmedoids` and import the fresh distance matrix: identical replay state
+      plus exact silhouette values must prove method-generic `Problem`
+      rehydration, not only direct result-to-CSV plumbing.
 - [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
       `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
       `Device` updates global `Env`, but each repetition creates a default
