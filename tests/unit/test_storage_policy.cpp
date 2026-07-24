@@ -173,7 +173,8 @@ TEST_CASE("mmap vs heap load yields digit-identical DTW distances", "[storage][m
   for (std::size_t i = 0; i < n; ++i) {
     for (std::size_t j = 0; j < n; ++j) {
       const double d_heap = dtwc::distance::dtw<double>(heap.series(i), heap.series(j));
-      const double d_mmap = dtwc::distance::dtw<double>(mm.data.series(i), mm.data.series(j));
+      const double d_mmap = dtwc::distance::dtw<double>(
+        mm.data.series(i), mm.data.series(j));
       CAPTURE(i, j, d_heap, d_mmap);
       REQUIRE(d_heap == d_mmap); // digit-identical
     }
@@ -231,7 +232,7 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
     const auto cache = scratch / (tag + ".dtwm");
     prob.use_mmap_distance_matrix(cache);
     if (strategy == DistanceMatrixStrategy::Pruned) {
-      prob.verbose = true;
+      prob.set_verbose(true);
       std::ostringstream route_output;
       {
         auto *previous_buffer = std::cout.rdbuf(route_output.rdbuf());

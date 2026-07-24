@@ -385,7 +385,7 @@ static dtwc::core::ClusteringResult run_cli_pam(
   dtwc::Problem &prob, int n_clusters, int max_iter)
 {
   const int n_init = prob.n_repetitions();
-  const std::uint64_t random_seed = prob.random_seed;
+  const std::uint64_t random_seed = prob.random_seed();
   if (n_init < 1)
     throw dtwc::InvalidInput("run_cli_pam: n_init must be at least 1.");
   const auto restart_offset = static_cast<std::uint64_t>(n_init - 1);
@@ -520,8 +520,8 @@ static std::string validate_cli_resume_result(
   return {};
 }
 
-/// Convert float64 Data to float32 in-place.
-static dtwc::Data convert_to_f32(dtwc::Data &&data_f64)
+/// Convert float64 Data to an owning float32 copy.
+static dtwc::Data convert_to_f32(const dtwc::Data &data_f64)
 {
   const size_t n = data_f64.size();
   std::vector<std::vector<float>> vecs_f32(n);
@@ -531,7 +531,8 @@ static dtwc::Data convert_to_f32(dtwc::Data &&data_f64)
     for (size_t j = 0; j < src.size(); ++j)
       vecs_f32[i][j] = static_cast<float>(src[j]);
   }
-  return dtwc::Data(std::move(vecs_f32), std::move(data_f64.p_names), data_f64.ndim);
+  auto names = data_f64.p_names;
+  return dtwc::Data(std::move(vecs_f32), std::move(names), data_f64.ndim);
 }
 
 /// Write cluster labels to CSV: one line per point with "name,cluster_id".
@@ -1418,7 +1419,7 @@ static int run_cli_main(int argc, char *argv[])
 
   if (verbose && prob.size() > 0) {
     size_t total_elements = 0;
-    for (const auto &v : prob.data.p_vec) total_elements += v.size();
+    for (const auto &v : prob.data().p_vec) total_elements += v.size();
     size_t data_bytes = total_elements * sizeof(dtwc::data_t);
     std::cout << "  Data memory: ~" << (data_bytes / (1ULL << 20)) << " MB ("
               << prob.size() << " series, "
@@ -1428,8 +1429,8 @@ static int run_cli_main(int argc, char *argv[])
 
   // ---- Apply precision conversion ----
   if (!stream_parquet_payload && dtype_str == "float32"
-      && !prob.data.is_f32() && !prob.data.is_view()) {
-    prob.set_data(convert_to_f32(std::move(prob.data)));
+      && !prob.data().is_f32() && !prob.data().is_view()) {
+    prob.set_data(convert_to_f32(prob.data()));
     if (verbose)
       std::cout << "Converted to float32 (2x memory saving)\n";
   }
@@ -1475,9 +1476,9 @@ static int run_cli_main(int argc, char *argv[])
   prob.set_band(band);
   prob.maxIter = max_iter;
   prob.N_repetition = n_init;
-  prob.random_seed = static_cast<std::uint64_t>(clara_seed);
-  prob.output_folder = output_dir;
-  prob.verbose = verbose;
+  prob.set_random_seed(static_cast<std::uint64_t>(clara_seed));
+  prob.set_output_folder(output_dir);
+  prob.set_verbose(verbose);
 
   // Wire MIP solver settings
   prob.mip_settings.mip_gap = mip_gap;
@@ -1597,7 +1598,8 @@ static int run_cli_main(int argc, char *argv[])
       std::cout << "Computing distance matrix on GPU ("
                 << dtwc::cuda::cuda_device_info(cuda_device_id) << ") ...\n";
 
-    auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(prob.data.p_vec, cuda_opts);
+    auto cuda_result =
+      dtwc::cuda::compute_distance_matrix_cuda(prob.data().p_vec, cuda_opts);
 
     // Inject GPU results into whichever storage policy was selected. The mmap
     // path is essential when the CLI threshold was crossed; its fingerprint
@@ -1686,15 +1688,15 @@ static int run_cli_main(int argc, char *argv[])
   } else if (method == "kmedoids") {
     // Legacy kMedoids Lloyd
     prob.set_numberOfClusters(n_clusters);
-    prob.method = dtwc::Method::Kmedoids;
+    prob.set_method(dtwc::Method::Kmedoids);
     prob.cluster();
 
     // Build result from prob state
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
     result.total_cost = prob.findTotalCost();
-    result.converged = (prob.last_iterations < max_iter);
-    result.iterations = prob.last_iterations;
+    result.converged = (prob.last_iterations() < max_iter);
+    result.iterations = prob.last_iterations();
 
     if (verbose)
       std::cout << "kMedoids Lloyd finished, cost=" << result.total_cost
@@ -1702,7 +1704,7 @@ static int run_cli_main(int argc, char *argv[])
   } else if (method == "mip") {
     // MIP method
     prob.set_numberOfClusters(n_clusters);
-    prob.method = dtwc::Method::MIP;
+    prob.set_method(dtwc::Method::MIP);
     prob.cluster();
 
     result.labels = prob.clusters_ind;
@@ -1716,7 +1718,7 @@ static int run_cli_main(int argc, char *argv[])
   } else if (method == "lrcore" || method == "lr") {
     // LR-core exact (Lagrangian bound + reduced-cost fixing + y-branching).
     prob.set_numberOfClusters(n_clusters);
-    prob.method = dtwc::Method::LRCore;
+    prob.set_method(dtwc::Method::LRCore);
     prob.cluster();
 
     result.labels = prob.clusters_ind;
@@ -1730,8 +1732,8 @@ static int run_cli_main(int argc, char *argv[])
   } else if (method == "tadpole") {
     // TADPole density-peaks with admissible LB/UB DTW pruning.
     prob.set_numberOfClusters(n_clusters);
-    prob.tadpole_dc = tadpole_dc; // <0 ⇒ auto-select from a DTW subsample
-    prob.method = dtwc::Method::TADPole;
+    prob.set_tadpole_dc(tadpole_dc); // <0 ⇒ auto-select from a DTW subsample
+    prob.set_method(dtwc::Method::TADPole);
     prob.cluster();
 
     result.labels = prob.clusters_ind;

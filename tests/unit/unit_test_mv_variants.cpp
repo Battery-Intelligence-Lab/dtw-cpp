@@ -205,7 +205,7 @@ TEST_CASE("Problem: WDTW MV via set_variant", "[mv][wdtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
   REQUIRE(prob.distByInd(0, 1) > 0.0);
 }
@@ -223,7 +223,7 @@ TEST_CASE("Problem: WDTW MV identical series = 0", "[mv][wdtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
   REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
 }
@@ -245,7 +245,7 @@ TEST_CASE("Problem: ADTW MV via set_variant", "[mv][adtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::ADTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
   REQUIRE(prob.distByInd(0, 1) > 0.0);
 }
@@ -263,7 +263,7 @@ TEST_CASE("Problem: ADTW MV identical series = 0", "[mv][adtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::ADTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
   REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
 }
@@ -286,7 +286,7 @@ TEST_CASE("Problem: DDTW MV via set_variant", "[mv][ddtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::DDTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   // Identical series must yield 0
@@ -308,7 +308,7 @@ TEST_CASE("Problem: DDTW MV different shape > 0", "[mv][ddtw][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::DDTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   REQUIRE(prob.distByInd(0, 1) > 0.0);

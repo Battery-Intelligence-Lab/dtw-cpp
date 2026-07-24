@@ -110,7 +110,7 @@ Data scalar_data(std::size_t n = 4, bool nonfinite = false)
 Problem make_problem(std::size_t n = 4, bool nonfinite = false)
 {
   Problem problem("f1_selector_fixture");
-  problem.verbose = false;
+  problem.set_verbose(false);
   problem.set_data(scalar_data(n, nonfinite));
   const int k = n == 1 ? 1 : 2;
   problem.set_n_clusters(k);
@@ -138,8 +138,8 @@ struct ProblemSnapshot
 std::vector<std::vector<std::uint64_t>> exact_series_bits(const Problem &problem)
 {
   std::vector<std::vector<std::uint64_t>> result;
-  result.reserve(problem.data.p_vec.size());
-  for (const auto &series : problem.data.p_vec) {
+  result.reserve(problem.data().p_vec.size());
+  for (const auto &series : problem.data().p_vec) {
     std::vector<std::uint64_t> bits;
     bits.reserve(series.size());
     for (const double value : series)
@@ -157,12 +157,12 @@ ProblemSnapshot snapshot(const Problem &problem)
   for (std::size_t i = 0; i < matrix.packed_count(); ++i)
     bits.push_back(std::bit_cast<std::uint64_t>(matrix.raw()[i]));
   return {
-    problem.method,
+    problem.method(),
     problem.n_clusters(),
     problem.centroids_ind,
     problem.clusters_ind,
     exact_series_bits(problem),
-    problem.data.p_names,
+    problem.data().p_names,
     problem.distance_matrix().index(),
     matrix.size(),
     std::move(bits)
@@ -171,12 +171,12 @@ ProblemSnapshot snapshot(const Problem &problem)
 
 void check_snapshot(const Problem &problem, const ProblemSnapshot &before)
 {
-  CHECK(problem.method == before.method);
+  CHECK(problem.method() == before.method);
   CHECK(problem.n_clusters() == before.n_clusters);
   CHECK(problem.centroids_ind == before.medoids);
   CHECK(problem.clusters_ind == before.labels);
   CHECK(exact_series_bits(problem) == before.series_bits);
-  CHECK(problem.data.p_names == before.names);
+  CHECK(problem.data().p_names == before.names);
   CHECK(problem.distance_matrix().index() == before.matrix_alternative);
   const auto &matrix = problem.dense_distance_matrix();
   CHECK(matrix.size() == before.matrix_size);
@@ -239,13 +239,6 @@ TEST_CASE("F1 invalid Method rejects before clustering or publication",
       check_snapshot(problem, before);
     }
 
-    {
-      auto problem = make_problem();
-      problem.method = invalid;
-      const auto before = snapshot(problem);
-      expect_invalid_input(method_error, [&] { problem.cluster(); });
-      check_snapshot(problem, before);
-    }
   });
 }
 
@@ -415,7 +408,7 @@ TEST_CASE("F1 all declared Method values remain accepted",
   for (const Method value : values) {
     auto problem = make_problem();
     CHECK_NOTHROW(problem.set_method(value));
-    CHECK(problem.method == value);
+    CHECK(problem.method() == value);
   }
 }
 

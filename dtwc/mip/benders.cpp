@@ -44,45 +44,29 @@
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <utility>
 
 namespace dtwc {
 
 namespace {
 
-/// Restore every caller-visible field temporarily changed by the Lloyd warm
-/// start. Copies are taken before any mutation; the destructor uses only scalar
-/// assignments and vector swaps, so restoration is safe during stack unwinding.
-class BendersWarmStartStateGuard {
-public:
-  explicit BendersWarmStartStateGuard(Problem &prob)
-    : prob_(prob),
-      method_(prob.method),
-      n_repetitions_(prob.N_repetition),
-      last_iterations_(prob.last_iterations),
-      centroids_(prob.centroids_ind),
-      clusters_(prob.clusters_ind)
-  {}
-
-  BendersWarmStartStateGuard(const BendersWarmStartStateGuard &) = delete;
-  BendersWarmStartStateGuard &operator=(const BendersWarmStartStateGuard &) = delete;
-
-  ~BendersWarmStartStateGuard() noexcept
+  template <typename Callback>
+  class ScopeExit
   {
-    prob_.method = method_;
-    prob_.N_repetition = n_repetitions_;
-    prob_.last_iterations = last_iterations_;
-    prob_.centroids_ind.swap(centroids_);
-    prob_.clusters_ind.swap(clusters_);
-  }
+  public:
+    explicit ScopeExit(Callback callback) : callback_(std::move(callback)) {}
 
-private:
-  Problem &prob_;
-  Method method_;
-  int n_repetitions_;
-  int last_iterations_;
-  std::vector<int> centroids_;
-  std::vector<int> clusters_;
-};
+    ScopeExit(const ScopeExit &) = delete;
+    ScopeExit &operator=(const ScopeExit &) = delete;
+
+    ~ScopeExit() noexcept { callback_(); }
+
+  private:
+    Callback callback_;
+  };
+
+  template <typename Callback>
+  ScopeExit(Callback) -> ScopeExit<Callback>;
 
 } // namespace
 
@@ -135,8 +119,25 @@ void MIP_clustering_byBenders(Problem &prob)
 
   if (prob.mip_settings.warm_start) {
     {
-      BendersWarmStartStateGuard restore_caller_state(prob);
-      prob.method = Method::Kmedoids;
+      const Method caller_method = prob.method_;
+      const int caller_n_repetitions = prob.N_repetition;
+      const int caller_last_iterations = prob.last_iterations_;
+      auto caller_centroids = prob.centroids_ind;
+      auto caller_clusters = prob.clusters_ind;
+      ScopeExit restore_caller_state(
+        [&prob,
+         method = caller_method,
+         n_repetitions = caller_n_repetitions,
+         last_iterations = caller_last_iterations,
+         centroids = std::move(caller_centroids),
+         clusters = std::move(caller_clusters)]() mutable noexcept {
+          prob.method_ = method;
+          prob.N_repetition = n_repetitions;
+          prob.last_iterations_ = last_iterations;
+          prob.centroids_ind.swap(centroids);
+          prob.clusters_ind.swap(clusters);
+        });
+      prob.method_ = Method::Kmedoids;
       prob.N_repetition = 1;
       prob.cluster_by_kmedoids_lloyd_impl(false);
 

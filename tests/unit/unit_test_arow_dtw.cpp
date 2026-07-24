@@ -594,7 +594,7 @@ TEST_CASE("Problem: MissingStrategy::AROW wires correctly", "[arow_dtw][problem]
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   // d(x, y_nan) should be finite and non-negative
@@ -619,7 +619,7 @@ TEST_CASE("Problem: AROW gives finite distance with leading NaN", "[arow_dtw][pr
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   const double d = prob.distByInd(0, 1);

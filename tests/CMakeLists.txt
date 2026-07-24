@@ -53,6 +53,25 @@ if(TARGET unit_test_distance_matrix_csv)
             PASS_REGULAR_EXPRESSION "${_f14_focused_regex}")
 endif()
 
+# F19 is an executed public-API gate, not a capability probe. The configured
+# output root keeps Lloyd's required artifacts inside the build tree. Require
+# both its exact subject marker and Catch2's independent assertion/case floor.
+if(TARGET unit_test_problem_encapsulation)
+    target_compile_definitions(
+        unit_test_problem_encapsulation
+        PRIVATE
+            DTWC_F19_TEST_ROOT="${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api")
+    set_property(
+        TEST unit_test_problem_encapsulation
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        unit_test_problem_encapsulation
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION
+                "F19_PROBLEM_API getters=10/10 setters=9/9 lloyd=ran skips=0(.|[\r\n])*All tests passed \\(([3-9][0-9]|[1-9][0-9][0-9]+) assertions in ([3-9]|[1-9][0-9]+) test cases\\)")
+endif()
+
 # F15 freezes the two shared deterministic generator schedules and the dense
 # symmetric CPU-reference traversal. This target is mandatory in every build.
 if(TARGET unit_test_deterministic_series)

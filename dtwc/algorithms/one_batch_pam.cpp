@@ -104,9 +104,11 @@ struct FixedBatchDistances {
         for (std::size_t j = 0; j < m; ++j) {
           double d = 0.0;
           if (i != sample[j]) {
-            if (prob.data.is_f32())
-              d = dtw_f32(prob.data.series_f32(static_cast<std::size_t>(i)),
-                          prob.data.series_f32(static_cast<std::size_t>(sample[j])));
+            if (prob.data().is_f32())
+              d = dtw_f32(
+                prob.data().series_f32(static_cast<std::size_t>(i)),
+                prob.data().series_f32(
+                  static_cast<std::size_t>(sample[j])));
             else
               d = dtw_f64(prob.series(static_cast<std::size_t>(i)),
                           prob.series(static_cast<std::size_t>(sample[j])));
@@ -187,9 +189,10 @@ struct FixedBatchDistances {
       return raw[point * m + static_cast<std::size_t>(column)];
     if (point == static_cast<std::size_t>(medoid)) return 0.0;
     ++evaluations;
-    if (prob.data.is_f32())
-      return prob.dtw_function_f32()(prob.data.series_f32(point),
-                                     prob.data.series_f32(static_cast<std::size_t>(medoid)));
+    if (prob.data().is_f32())
+      return prob.dtw_function_f32()(
+        prob.data().series_f32(point),
+        prob.data().series_f32(static_cast<std::size_t>(medoid)));
     return prob.dtw_function()(prob.series(point),
                                prob.series(static_cast<std::size_t>(medoid)));
   }

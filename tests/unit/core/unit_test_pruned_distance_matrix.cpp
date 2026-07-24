@@ -826,7 +826,7 @@ TEST_CASE("Pruned routing preserves configured missing-data semantics at N=63/64
     std::move(verbose_series), std::move(verbose_names), 0);
   verbose_prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate);
   verbose_prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::Pruned);
-  verbose_prob.verbose = true;
+  verbose_prob.set_verbose(true);
   std::ostringstream verbose_output;
   auto *previous_buffer = std::cout.rdbuf(verbose_output.rdbuf());
   struct RestoreCout {
@@ -998,7 +998,7 @@ TEST_CASE("Pruned Enhanced/Webb lower-bound strategies match BruteForce exactly"
                         dtwc::LowerBoundStrategy::Keogh }) {
       auto prob = make_problem_with_data(vecs, names, band);
       prob.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
-      prob.lb_strategy = strat;
+      prob.set_lb_strategy(strat);
       prob.fillDistanceMatrix();
 
       for (int i = 0; i < N; ++i)

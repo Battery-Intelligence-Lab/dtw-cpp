@@ -225,7 +225,7 @@ void Result::save(const std::filesystem::path &directory) const
     throw IOError("Result::save: cannot create '" + directory.string() + "': "
                   + ec.message());
 
-  const auto base = directory / problem_->name;
+  const auto base = directory / problem_->name();
   const auto labels_path = std::filesystem::path(base.string() + "_labels.csv");
   const auto medoids_path = std::filesystem::path(base.string() + "_medoids.csv");
   const auto matrix_path = std::filesystem::path(base.string() + "_distance_matrix.csv");

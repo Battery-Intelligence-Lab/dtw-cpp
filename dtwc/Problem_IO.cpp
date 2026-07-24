@@ -33,7 +33,8 @@ namespace dtwc {
  */
 void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost)
 {
-  const auto outPath = output_folder / (this->name + "medoids_rep_" + std::to_string(rep) + ".csv");
+  const auto outPath = output_folder_
+                       / (name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
   std::ofstream medoidsFile(outPath, std::ios_base::out);
 
   if (!medoidsFile.good()) {
@@ -83,9 +84,9 @@ void Problem::printClusters() const
  */
 void Problem::writeClusters()
 {
-  const auto file_name = name + "_Nc_" + std::to_string(Nc) + ".csv";
+  const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
 
-  std::ofstream myFile(output_folder / file_name, std::ios_base::out);
+  std::ofstream myFile(output_folder_ / file_name, std::ios_base::out);
 
   myFile << "Cluster centroids:\n";
 
@@ -114,11 +115,11 @@ void Problem::writeSilhouettes()
 {
   const auto silhouettes = scores::silhouette(*this);
 
-  std::string silhouette_name{ name + "_silhouettes_Nc_" };
+  std::string silhouette_name{ name_ + "_silhouettes_Nc_" };
 
   silhouette_name += std::to_string(cluster_size()) + ".csv";
 
-  std::ofstream myFile(output_folder / silhouette_name, std::ios_base::out);
+  std::ofstream myFile(output_folder_ / silhouette_name, std::ios_base::out);
 
   myFile << "Silhouettes:\n";
   for (auto i : Range(size()))
@@ -137,7 +138,8 @@ void Problem::writeMedoidMembers(int iter, int rep) const
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  std::ofstream medoidMembers(output_folder / medoid_name, std::ios_base::out);
+  std::ofstream medoidMembers(
+    output_folder_ / medoid_name, std::ios_base::out);
   for (const auto i_c : Range(cluster_size())) {
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
@@ -159,12 +161,12 @@ void Problem::writeDistanceMatrix(const std::string &name_) const
   validate_dense_cache_configuration();
   visit_distmat([&](const auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      io::write_csv(m, output_folder / name_);
+      io::write_csv(m, output_folder_ / name_);
     } else {
       // MmapDistanceMatrix: data is already on disk. Write a CSV copy for inspection.
       core::detail::preflight_distance_matrix_csv(m);
       const size_t n = m.size();
-      const auto path = output_folder / name_;
+      const auto path = output_folder_ / name_;
       std::ofstream file(
         path, std::ios::out | std::ios::binary | std::ios::trunc);
       if (!file.good())
@@ -194,7 +196,10 @@ void Problem::writeDistanceMatrix(const std::string &name_) const
  */
 void Problem::writeBestRep(int best_rep)
 {
-  std::ofstream bestRepFile(output_folder / (name + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv"), std::ios_base::out);
+  std::ofstream bestRepFile(
+    output_folder_
+      / (name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv"),
+    std::ios_base::out);
   bestRepFile << best_rep << '\n';
   bestRepFile.close();
 

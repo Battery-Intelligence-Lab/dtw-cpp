@@ -176,8 +176,8 @@ TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtri
 
   dtwc::Problem prob1("rt");
   prob1.set_data(std::move(data1));
-  prob1.output_folder = tmp;
-  prob1.verbose = false;
+  prob1.set_output_folder(tmp);
+  prob1.set_verbose(false);
   prob1.fillDistanceMatrix();
 
   // Snapshot every (i, j) via distByInd — pulls from the filled dense matrix.
@@ -193,8 +193,8 @@ TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtri
   // Fresh Problem with identical data; its matrix is empty until loaded.
   dtwc::Problem prob2("rt2");
   prob2.set_data(std::move(data2));
-  prob2.output_folder = tmp;
-  prob2.verbose = false;
+  prob2.set_output_folder(tmp);
+  prob2.set_verbose(false);
   prob2.readDistanceMatrix(csv_path);
 
   // Every pair must now return the loaded value; no DTW recomputation

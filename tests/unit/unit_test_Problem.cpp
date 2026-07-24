@@ -49,7 +49,7 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
 
   REQUIRE(prob.cluster_size() == Nc);
-  REQUIRE(prob.name == probName);
+  REQUIRE(prob.name() == probName);
 
   // prob.cluster_by_kMedoidsLloyd_repetetive(N_repetition, maxIter);
 }

@@ -142,13 +142,13 @@ void validate_problem_configuration(const Problem& prob, const char* entry_point
 
 std::vector<Series> copy_problem_series(const Problem& prob)
 {
-  if (prob.data.ndim != 1)
+  if (prob.data().ndim != 1)
     throw InvalidInput(
       "dtw_barycenter: multivariate barycenters are not implemented; ndim must be 1.");
   std::vector<Series> result(prob.size());
   for (std::size_t i = 0; i < prob.size(); ++i) {
-    if (prob.data.is_f32()) {
-      const auto values = prob.data.series_f32(i);
+    if (prob.data().is_f32()) {
+      const auto values = prob.data().series_f32(i);
       result[i].assign(values.begin(), values.end());
     } else {
       const auto values = prob.series(i);

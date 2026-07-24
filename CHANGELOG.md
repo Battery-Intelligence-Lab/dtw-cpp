@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Breaking:** encapsulated `Problem`'s `method`, `random_seed`,
+  `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`, `verbose`,
+  `output_folder`, `name`, and `data` fields behind canonical accessors and
+  nine validated setters; `last_iterations()` and `data()` are read-only.
+  Python and MATLAB properties remain writable through those setters, and the
+  redundant MATLAB-side clustering-result writeback was removed.
 - Corrected the frozen MATLAB Tier-1 documentation to flag that functional
   `dtwc.cluster(...,'device',...)` currently reports Env selection without
   routing its local `Problem` computation (F40); real Metal reachability for the

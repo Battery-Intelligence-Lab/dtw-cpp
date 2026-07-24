@@ -297,7 +297,7 @@ TEST_CASE("Problem: multivariate DTW distance matrix", "[mv][problem]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   REQUIRE(prob.distByInd(0, 1) == 0.0);  // identical
@@ -313,7 +313,7 @@ TEST_CASE("Problem: ndim=1 backward compat", "[mv][problem]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   double d = prob.distByInd(0, 1);

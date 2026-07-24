@@ -492,8 +492,8 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 WDTW: fill + cluster + metrics all fin
   prob.set_numberOfClusters(2);
   prob.maxIter = 20;
   prob.N_repetition = 1;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
 
   // Fill distance matrix
   REQUIRE_NOTHROW(prob.fillDistanceMatrix());
@@ -568,8 +568,8 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 ADTW: fill + cluster + metrics all fin
   prob.set_numberOfClusters(2);
   prob.maxIter = 20;
   prob.N_repetition = 1;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
 
   REQUIRE_NOTHROW(prob.fillDistanceMatrix());
   REQUIRE(prob.isDistanceMatrixFilled());
@@ -626,8 +626,8 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 DDTW: fill + cluster + metrics all fin
   prob.set_numberOfClusters(2);
   prob.maxIter = 20;
   prob.N_repetition = 1;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
 
   REQUIRE_NOTHROW(prob.fillDistanceMatrix());
   REQUIRE(prob.isDistanceMatrixFilled());

@@ -197,7 +197,7 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
   const fs::path out = fs::temp_directory_path()
                      / ("dtwc_lloyd_best_" + std::to_string(nonce));
   fs::create_directories(out);
-  problem.output_folder = out;
+  problem.set_output_folder(out);
   problem.set_n_clusters(3);
   problem.set_n_repetitions(2);
 
@@ -222,7 +222,7 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
 TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers",
           "[api][tier1][seed][lloyd]")
 {
-  REQUIRE(dtwc::Problem{}.random_seed == dtwc::settings::DEFAULT_RANDOM_SEED);
+  REQUIRE(dtwc::Problem{}.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
 
   const auto legacy_rng_original = dtwc::randGenerator;
   dtwc::randGenerator.seed(271828);

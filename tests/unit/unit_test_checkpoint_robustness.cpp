@@ -172,9 +172,10 @@ std::vector<std::uint64_t> data_bits(const Problem &problem)
 {
   std::vector<std::uint64_t> result;
   for (std::size_t i = 0; i < problem.size(); ++i) {
-    result.push_back(static_cast<std::uint64_t>(problem.data.series_flat_size(i)));
-    if (problem.data.is_f32()) {
-      for (float value : problem.data.series_f32(i))
+    result.push_back(static_cast<std::uint64_t>(
+      problem.data().series_flat_size(i)));
+    if (problem.data().is_f32()) {
+      for (float value : problem.data().series_f32(i))
         result.push_back(std::bit_cast<std::uint32_t>(value));
     } else {
       for (double value : problem.series(i))
@@ -217,8 +218,8 @@ ProblemSnapshot snapshot(const Problem &problem)
   result.distance_strategy = problem.distance_strategy;
   result.cuda_device = problem.cuda_settings.device_id;
   result.cuda_precision = problem.cuda_settings.precision;
-  result.precision = problem.data.precision;
-  result.ndim = problem.data.ndim;
+  result.precision = problem.data().precision;
+  result.ndim = problem.data().ndim;
   result.series_bits = data_bits(problem);
   result.labels = problem.labels();
   result.medoids = problem.medoids();
@@ -237,16 +238,16 @@ bool state_matches(const Problem &problem, const ProblemSnapshot &before)
       return false;
   }
   return problem.band == before.band
-      && params_equal(problem.variant_params, before.params)
-      && problem.missing_strategy == before.missing
-      && problem.distance_strategy == before.distance_strategy
-      && problem.cuda_settings.device_id == before.cuda_device
-      && problem.cuda_settings.precision == before.cuda_precision
-      && problem.data.precision == before.precision
-      && problem.data.ndim == before.ndim
-      && data_bits(problem) == before.series_bits
-      && problem.labels() == before.labels
-      && problem.medoids() == before.medoids;
+         && params_equal(problem.variant_params, before.params)
+         && problem.missing_strategy == before.missing
+         && problem.distance_strategy == before.distance_strategy
+         && problem.cuda_settings.device_id == before.cuda_device
+         && problem.cuda_settings.precision == before.cuda_precision
+         && problem.data().precision == before.precision
+         && problem.data().ndim == before.ndim
+         && data_bits(problem) == before.series_bits
+         && problem.labels() == before.labels
+         && problem.medoids() == before.medoids;
 }
 
 void install_target_cache(Problem &problem, double base = 900.0)

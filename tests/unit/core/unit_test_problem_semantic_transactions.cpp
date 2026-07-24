@@ -40,7 +40,7 @@ template <typename T>
 void set_two_series(dtwc::Problem &problem)
 {
   problem.set_data(two_series<T>());
-  REQUIRE(problem.data.is_f32() == std::is_same_v<T, float>);
+  REQUIRE(problem.data().is_f32() == std::is_same_v<T, float>);
 }
 
 void set_two_series_mv(dtwc::Problem &problem)
@@ -48,7 +48,7 @@ void set_two_series_mv(dtwc::Problem &problem)
   problem.set_data(dtwc::Data(
     std::vector<std::vector<dtwc::data_t>>{{0.0, 0.0}, {1.0, 1.0}},
     std::vector<std::string>{"x", "y"}, 2));
-  REQUIRE(problem.data.ndim == 2);
+  REQUIRE(problem.data().ndim == 2);
 }
 
 dtwc::Data owning_mv_data(double offset = 10.0)
@@ -61,10 +61,10 @@ dtwc::Data owning_mv_data(double offset = 10.0)
 
 void check_original_univariate_data(const dtwc::Problem &problem)
 {
-  CHECK_FALSE(problem.data.is_view());
-  CHECK_FALSE(problem.data.is_f32());
-  CHECK(problem.data.ndim == 1);
-  CHECK(problem.data.size() == 2);
+  CHECK_FALSE(problem.data().is_view());
+  CHECK_FALSE(problem.data().is_f32());
+  CHECK(problem.data().ndim == 1);
+  CHECK(problem.data().size() == 2);
   CHECK(problem.series(0)[0] == 0.0);
   CHECK(problem.series(1)[0] == 1.0);
 }
@@ -392,8 +392,8 @@ TEST_CASE("M48 valid multivariate data replacements retain existing behavior",
     set_two_series<double>(problem);
     inject_complete_dense_cache(problem, 666.0);
     CHECK_NOTHROW(problem.set_data(owning_mv_data(20.0)));
-    CHECK(problem.data.ndim == 2);
-    CHECK_FALSE(problem.data.is_view());
+    CHECK(problem.data().ndim == 2);
+    CHECK_FALSE(problem.data().is_view());
     CHECK(problem.series(0)[0] == 20.0);
     CHECK_FALSE(problem.is_distance_matrix_filled());
   }
@@ -410,8 +410,8 @@ TEST_CASE("M48 valid multivariate data replacements retain existing behavior",
     std::vector<std::string_view> names{"vx", "vy"};
     dtwc::Data candidate(std::move(spans), std::move(names), 2);
     CHECK_NOTHROW(problem.set_view_data(std::move(candidate)));
-    CHECK(problem.data.ndim == 2);
-    CHECK(problem.data.is_view());
+    CHECK(problem.data().ndim == 2);
+    CHECK(problem.data().is_view());
     CHECK(problem.series(1)[0] == 32.0);
     CHECK_FALSE(problem.is_distance_matrix_filled());
   }

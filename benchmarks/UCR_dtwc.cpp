@@ -104,14 +104,14 @@ inline void UCR_2018()
     dl.path(file_path);
     auto stem_str = file_path.stem().string();
     dtwc::Problem prob{ "sqr_" + stem_str, dl }; // Create a problem.
-    prob.output_folder = out_folder;
+    prob.set_output_folder(out_folder);
 
     int Nc = Nc_list[stem_str.substr(0, stem_str.length() - 5)];
 
     std::cout << "Now, number " << solved << " " << file_path << " is being solved.\n";
     solved++;
 
-    if (prob.data.size() > 1000) // Don't calculate large data it is not good. For example Crop.
+    if (prob.data().size() > 1000) // Don't calculate large data it is not good. For example Crop.
       continue;
 
     prob.set_numberOfClusters(Nc); // Nc = number of clusters.

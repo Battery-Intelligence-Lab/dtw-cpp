@@ -322,14 +322,6 @@ static mxArray *clustering_result_to_mx(const dtwc::core::ClusteringResult &resu
   return s;
 }
 
-/// Store clustering result back into Problem (CRITICAL for scoring functions)
-static void store_result_in_problem(dtwc::Problem &prob, const dtwc::core::ClusteringResult &result) {
-  int k = result.n_clusters();
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind = result.labels;
-}
-
 /// Build a Dendrogram MATLAB struct
 static mxArray *dendrogram_to_mx(const dtwc::algorithms::Dendrogram &dend) {
   const char *field_names[] = { "merges", "n_points" };
@@ -460,7 +452,7 @@ static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
     name = get_string(prhs[1]);
   }
   auto prob = std::make_shared<dtwc::Problem>(name);
-  prob->verbose = false;
+  prob->set_verbose(false);
   uint64_t h = HandleManager<dtwc::Problem>::create(prob);
 
   plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
@@ -480,10 +472,10 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   const char *field_names[] = { "name", "size", "band", "verbose", "dist_filled" };
   mxArray *s = mxCreateStructMatrix(1, 1, 5, field_names);
 
-  mxSetField(s, 0, "name", mxCreateString(prob.name.c_str()));
+  mxSetField(s, 0, "name", mxCreateString(prob.name().c_str()));
   mxSetField(s, 0, "size", mxCreateDoubleScalar(static_cast<double>(prob.size())));
   mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.band)));
-  mxSetField(s, 0, "verbose", mxCreateLogicalScalar(prob.verbose));
+  mxSetField(s, 0, "verbose", mxCreateLogicalScalar(prob.verbose()));
   mxSetField(s, 0, "dist_filled", mxCreateLogicalScalar(prob.isDistanceMatrixFilled()));
 
   plhs[0] = s;
@@ -543,7 +535,7 @@ static void cmd_Problem_get_band(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.verbose = mxIsLogicalScalarTrue(prhs[2]);
+  prob.set_verbose(mxIsLogicalScalarTrue(prhs[2]));
 }
 
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -622,7 +614,7 @@ static void cmd_Problem_get_cluster_size(int nlhs, mxArray *plhs[], int nrhs, co
 static void cmd_Problem_get_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_name requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateString(prob.name.c_str());
+  plhs[0] = mxCreateString(prob.name().c_str());
 }
 
 static void cmd_Problem_get_centroids(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -817,7 +809,7 @@ static void cmd_Problem_set_output_folder(int nlhs, mxArray *plhs[], int nrhs, c
   if (nrhs < 3) throw std::invalid_argument("Problem_set_output_folder requires handle and folder string.");
   require_char(prhs[2], "output_folder");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.output_folder = std::filesystem::path(get_string(prhs[2]));
+  prob.set_output_folder(std::filesystem::path(get_string(prhs[2])));
 }
 
 /// set_mip_settings(struct): reads any subset of the MIPSettings fields present.
@@ -1085,7 +1077,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
 
   dtwc::Problem prob("matlab_distmat");
   prob.band = band;
-  prob.verbose = false;
+  prob.set_verbose(false);
   dtwc::Data data(std::move(series), std::move(names));
   prob.set_data(std::move(data));
   prob.fillDistanceMatrix();
@@ -1138,9 +1130,6 @@ static void cmd_fast_pam(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prh
         prob, k, get_random_seed(prhs[4]), max_iter)
     : dtwc::fast_pam(prob, k, max_iter);
 
-  // Store results back into Problem (CRITICAL for scoring)
-  store_result_in_problem(prob, result);
-
   plhs[0] = clustering_result_to_mx(result);
 }
 
@@ -1158,7 +1147,6 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
       get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
 
   auto result = dtwc::algorithms::fast_clara(prob, opts);
-  store_result_in_problem(prob, result);
   plhs[0] = clustering_result_to_mx(result);
 }
 
@@ -1176,7 +1164,6 @@ static void cmd_clarans(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs
       get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
 
   auto result = dtwc::algorithms::clarans(prob, opts);
-  store_result_in_problem(prob, result);
   plhs[0] = clustering_result_to_mx(result);
 }
 
@@ -1200,7 +1187,6 @@ static void cmd_cut_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   int k = static_cast<int>(get_scalar(prhs[3]));
 
   auto result = dtwc::algorithms::cut_dendrogram(dend, prob, k);
-  store_result_in_problem(prob, result);
   plhs[0] = clustering_result_to_mx(result);
 }
 
@@ -1328,7 +1314,7 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   dtwc::Problem prob("matlab_clustering");
   prob.band = band;
   prob.maxIter = maxIter;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   dtwc::Data data(std::move(series), std::move(names));
   prob.set_data(std::move(data));

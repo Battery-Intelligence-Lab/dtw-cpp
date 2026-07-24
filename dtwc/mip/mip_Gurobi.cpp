@@ -91,7 +91,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Warm start: run FastPAM and feed solution as MIP start
     if (prob.mip_settings.warm_start) {
-      auto pam_result = mip::make_warm_start(prob, prob.random_seed);
+      auto pam_result = mip::make_warm_start(prob, prob.random_seed());
 
       for (size_t idx = 0; idx < Nb * Nb; ++idx)
         w[idx].set(GRB_DoubleAttr_Start, 0.0);
@@ -106,7 +106,7 @@ void MIP_clustering_byGurobi(Problem &prob)
       }
     }
 
-    if (prob.mip_settings.verbose_solver || prob.verbose)
+    if (prob.mip_settings.verbose_solver || prob.verbose())
       std::cout << "Finished setting up the MILP problem." << '\n';
 
     model.optimize();

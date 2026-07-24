@@ -42,8 +42,8 @@ static Problem make_synthetic_problem(
     names.push_back("s" + std::to_string(i));
 
   Problem prob(name);
-  prob.data = Data(std::move(vecs), std::move(names));
-  prob.output_folder = std::filesystem::temp_directory_path();
+  prob.set_data(Data(std::move(vecs), std::move(names)));
+  prob.set_output_folder(std::filesystem::temp_directory_path());
   prob.refreshDistanceMatrix();
   return prob;
 }
@@ -54,7 +54,7 @@ static void run_clustering(Problem &prob, int k, int max_iter = 100, int n_rep =
   prob.set_numberOfClusters(k);
   prob.maxIter = max_iter;
   prob.N_repetition = n_rep;
-  prob.method = Method::Kmedoids;
+  prob.set_method(Method::Kmedoids);
   prob.cluster();
 }
 

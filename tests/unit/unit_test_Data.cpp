@@ -256,7 +256,7 @@ TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
   Problem prob("f32_test");
   prob.set_data(Data(std::move(vecs), std::move(names)));
 
-  REQUIRE(prob.data.is_f32());
+  REQUIRE(prob.data().is_f32());
   REQUIRE(prob.size() == 3);
 
   // DTW distances should reflect grouping

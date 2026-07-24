@@ -205,8 +205,8 @@ TEST_CASE("float32 set_variant rejects narrowing transactionally",
       [&] { problem.set_variant(candidate); }, test.message);
     CHECK(caught);
     CHECK(params_equal(problem.variant_params, original_params));
-    CHECK(problem.data.is_f32());
-    CHECK(problem.data.series_f32(1)[1] == 2.0f);
+    CHECK(problem.data().is_f32());
+    CHECK(problem.data().series_f32(1)[1] == 2.0f);
     CHECK(problem.labels() == std::vector<int>{1, 0});
     CHECK(problem.medoids() == std::vector<int>{1});
     if (caught) require_dense_unchanged(problem, original_cache);
@@ -254,7 +254,7 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
       [&] { problem.set_data(make_f32_data(10.0f)); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    const bool preserved_f64 = !problem.data.is_f32();
+    const bool preserved_f64 = !problem.data().is_f32();
     CHECK(preserved_f64);
     if (preserved_f64) CHECK(problem.series(0)[0] == 0.0);
     CHECK(problem.labels() == std::vector<int>{0, 1});
@@ -277,10 +277,10 @@ TEST_CASE("float32 heap and view data replacement validate before mutation",
       [&] { problem.set_view_data(std::move(view)); },
       "Soft-DTW gamma cannot be represented in float32 without becoming zero or non-finite.");
     CHECK(caught);
-    const bool preserved_f64 = !problem.data.is_f32();
+    const bool preserved_f64 = !problem.data().is_f32();
     CHECK(preserved_f64);
     if (preserved_f64) {
-      CHECK_FALSE(problem.data.is_view());
+      CHECK_FALSE(problem.data().is_view());
       CHECK(problem.series(0)[0] == 0.0);
     }
     CHECK(problem.labels() == std::vector<int>{0, 1});
@@ -393,7 +393,7 @@ TEST_CASE("f64 accepts its full domain and explicit f32 access stays transaction
     CHECK(catches_exact(
       [&] { (void)core::resolve_dtw_fn<float>(problem); }, test.message));
     CHECK(params_equal(problem.variant_params, params));
-    CHECK_FALSE(problem.data.is_f32());
+    CHECK_FALSE(problem.data().is_f32());
     if (caught) require_dense_unchanged(problem, original_cache);
   }
 }
@@ -434,8 +434,8 @@ TEST_CASE("float32 representable boundaries and inactive parameters remain valid
       else params.adtw_penalty = 0.0;
       REQUIRE_NOTHROW(problem.set_variant(params));
       const auto &function = problem.dtw_function_f32();
-      REQUIRE(std::isfinite(function(problem.data.series_f32(0),
-                                     problem.data.series_f32(1))));
+      REQUIRE(std::isfinite(function(problem.data().series_f32(0),
+                                     problem.data().series_f32(1))));
     }
   }
 
@@ -456,8 +456,8 @@ TEST_CASE("float32 representable boundaries and inactive parameters remain valid
       }
       REQUIRE_NOTHROW(problem.set_variant(params));
       const auto &function = problem.dtw_function_f32();
-      REQUIRE(std::isfinite(function(problem.data.series_f32(0),
-                                     problem.data.series_f32(1))));
+      REQUIRE(std::isfinite(function(problem.data().series_f32(0),
+                                     problem.data().series_f32(1))));
     }
   }
 }

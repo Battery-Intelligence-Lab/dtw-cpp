@@ -41,12 +41,12 @@ bool highs_solver_available() noexcept
 
 void MIP_clustering_byHiGHS(Problem &prob)
 {
-  if (prob.mip_settings.verbose_solver || prob.verbose)
+  if (prob.mip_settings.verbose_solver || prob.verbose())
     std::cout << "HiGHS MIP solver starting." << '\n';
   dtwc::Clock clk; // Create a clock object
 
 #ifdef DTWC_ENABLE_HIGHS
-  const auto Nb = prob.data.size();
+  const auto Nb = prob.data().size();
   const auto Nc = prob.cluster_size();
   mip::ExactClusteringTransaction result_transaction(prob);
 
@@ -164,7 +164,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Warm start: run FastPAM and feed solution as MIP start
   if (prob.mip_settings.warm_start) {
-    auto pam_result = mip::make_warm_start(prob, prob.random_seed);
+    auto pam_result = mip::make_warm_start(prob, prob.random_seed());
 
     HighsSolution sol;
     sol.col_value.resize(Nvar, 0.0);
@@ -197,7 +197,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
     throw SolverError("HiGHS MIP did not solve to optimality. Model status: "
                       + highs.modelStatusToString(model_status));
 
-  if (prob.mip_settings.verbose_solver || prob.verbose) {
+  if (prob.mip_settings.verbose_solver || prob.verbose()) {
     std::cout << "Model status: " << highs.modelStatusToString(model_status) << '\n';
 
     const HighsInfo &info = highs.getInfo();

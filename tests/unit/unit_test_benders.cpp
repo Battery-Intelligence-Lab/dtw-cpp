@@ -55,7 +55,7 @@ Problem make_problem(const std::vector<double> &values, int k,
   Problem prob("benders_test");
   prob.set_data(Data(std::move(p_vec), std::move(p_names)));
   prob.set_numberOfClusters(k);
-  prob.method = Method::MIP;
+  prob.set_method(Method::MIP);
   prob.mip_settings.benders = benders;
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;

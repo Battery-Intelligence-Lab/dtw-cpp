@@ -75,8 +75,8 @@ static Problem make_problem_uv(std::vector<std::vector<double>> vecs, int Nc,
   prob.set_data(std::move(d));
   prob.set_numberOfClusters(Nc);
   prob.missing_strategy = ms;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
   return prob;
 }
 
@@ -110,8 +110,8 @@ static Problem make_problem_mv(int N, int n_steps, int ndim,
   prob.set_data(std::move(data));
   prob.set_numberOfClusters(Nc);
   prob.missing_strategy = ms;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
   return prob;
 }
 
@@ -138,8 +138,8 @@ static Problem make_separated_problem(int n_per_cluster, int n_clusters, unsigne
   Data data(std::move(vecs), std::move(names));
   Problem prob("separated");
   prob.set_data(std::move(data));
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
   return prob;
 }
 
@@ -159,8 +159,8 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
 
   Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
 
   // Dense matrix must NOT be allocated yet (deferred).
   REQUIRE(prob.dense_distance_matrix().size() == 0);
@@ -192,7 +192,7 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   }
   Problem small_prob;
   small_prob.set_data(std::move(small_data));
-  small_prob.verbose = false;
+  small_prob.set_verbose(false);
   REQUIRE(small_prob.dense_distance_matrix().size() == 0);
 
   small_prob.fillDistanceMatrix();
@@ -399,7 +399,7 @@ TEST_CASE("Wave2A: hierarchical max_points guard throws when N > max_points",
 
   Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   algorithms::HierarchicalOptions opts;
@@ -572,8 +572,8 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
   Data data(std::move(vecs), std::move(names));
   Problem prob("wave2a_deferred_clara");
   prob.set_data(std::move(data));
-  prob.verbose = false;
-  prob.output_folder = g_tmp_dir();
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_dir());
 
   // The matrix must start empty.
   REQUIRE(prob.dense_distance_matrix().size() == 0);

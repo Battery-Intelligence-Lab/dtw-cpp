@@ -132,7 +132,7 @@ void configure_dense_problem(dtwc::Problem &problem)
   auto &matrix = problem.dense_distance_matrix();
   matrix.resize(3);
   populate_contract_matrix(matrix);
-  problem.output_folder = test_root();
+  problem.set_output_folder(test_root());
 }
 
 #ifdef DTWC_HAS_MMAP
@@ -146,7 +146,7 @@ void configure_mmap_problem(
   auto &matrix =
     std::get<dtwc::core::MmapDistanceMatrix>(problem.distance_matrix());
   populate_contract_matrix(matrix);
-  problem.output_folder = test_root();
+  problem.set_output_folder(test_root());
 }
 #endif
 
@@ -493,7 +493,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
     dtwc::Problem empty_problem("f14_mmap_empty");
     empty_problem.use_mmap_distance_matrix(
       fresh_path("empty_problem.dtwcache"));
-    empty_problem.output_folder = test_root();
+    empty_problem.set_output_folder(test_root());
     const auto empty_path = fresh_path("mmap_empty.csv");
     empty_problem.writeDistanceMatrix(empty_path.filename().string());
     CHECK(read_binary(empty_path).empty());

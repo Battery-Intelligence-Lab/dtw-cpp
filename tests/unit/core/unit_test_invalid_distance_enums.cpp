@@ -848,11 +848,11 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
       [&](LowerBoundStrategy invalid) {
         Problem setter{"m47_lower_bound_setter"};
         seed_dense_sentinel(setter);
-        setter.lb_strategy = LowerBoundStrategy::Webb;
+        setter.set_lb_strategy(LowerBoundStrategy::Webb);
         check_invalid_input("Problem::set_lb_strategy", lower_bound_error, [&] {
           setter.set_lb_strategy(invalid);
         });
-        CHECK(setter.lb_strategy == LowerBoundStrategy::Webb);
+        CHECK(setter.lb_strategy() == LowerBoundStrategy::Webb);
         check_dense_sentinel(setter);
 
         Problem direct{"m47_lower_bound_direct"};
@@ -862,15 +862,6 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
         });
         check_dense_unallocated(direct);
 
-        Problem fill{"m47_lower_bound_fill"};
-        fill.set_data(basic_f64_data());
-        fill.set_distance_strategy(DistanceMatrixStrategy::Pruned);
-        fill.lb_strategy = invalid;
-        check_invalid_input("Problem::fill_distance_matrix", lower_bound_error, [&] {
-          fill.fill_distance_matrix();
-        });
-        fill.lb_strategy = LowerBoundStrategy::Auto;
-        check_dense_unallocated(fill);
       });
   }
 
@@ -931,12 +922,12 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
 
         Problem setter{"m47_storage_policy_setter"};
         seed_dense_sentinel(setter);
-        setter.storage_policy = core::StoragePolicy::Heap;
+        setter.set_storage_policy(core::StoragePolicy::Heap);
         check_invalid_input("Problem::set_storage_policy",
                             storage_policy_error, [&] {
           setter.set_storage_policy(invalid);
         });
-        CHECK(setter.storage_policy == core::StoragePolicy::Heap);
+        CHECK(setter.storage_policy() == core::StoragePolicy::Heap);
         check_dense_sentinel(setter);
       });
   }
@@ -952,7 +943,7 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
         check_invalid_input("Problem::set_data", precision_error, [&] {
           setter.set_data(std::move(candidate));
         });
-        CHECK(setter.data.precision == core::Precision::Float64);
+        CHECK(setter.data().precision == core::Precision::Float64);
         CHECK(setter.series(1).size() == 3);
         check_dense_sentinel(setter);
 
@@ -970,59 +961,10 @@ TEST_CASE("M47 rejects every invalid storage policy and active precision",
         check_invalid_input("Problem::set_view_data", precision_error, [&] {
           view_setter.set_view_data(std::move(view_candidate));
         });
-        CHECK(view_setter.data.precision == core::Precision::Float64);
-        CHECK_FALSE(view_setter.data.is_view());
+        CHECK(view_setter.data().precision == core::Precision::Float64);
+        CHECK_FALSE(view_setter.data().is_view());
         CHECK(view_setter.series(1).size() == 3);
         check_dense_sentinel(view_setter);
-
-        Problem refresh{"m47_precision_refresh"};
-        seed_dense_sentinel(refresh);
-        refresh.data.precision = invalid;
-        check_invalid_input("Problem::refresh_distance_matrix",
-                            precision_error, [&] {
-          refresh.refresh_distance_matrix();
-        });
-        refresh.data.precision = core::Precision::Float64;
-        check_dense_sentinel(refresh);
-
-        Problem getter{"m47_precision_getter"};
-        getter.set_data(basic_f64_data());
-        getter.data.precision = invalid;
-        check_invalid_input("Problem::dtw_function", precision_error, [&] {
-          (void)getter.dtw_function();
-        });
-        getter.data.precision = core::Precision::Float64;
-        check_dense_unallocated(getter);
-
-        Problem lazy{"m47_precision_lazy"};
-        lazy.set_data(basic_f64_data());
-        lazy.data.precision = invalid;
-        check_invalid_input("Problem::dist_by_ind", precision_error, [&] {
-          (void)lazy.dist_by_ind(0, 1);
-        });
-        lazy.data.precision = core::Precision::Float64;
-        check_dense_unallocated(lazy);
-
-        Problem fill{"m47_precision_fill"};
-        fill.set_data(basic_f64_data());
-        fill.data.precision = invalid;
-        check_invalid_input("Problem::fill_distance_matrix", precision_error, [&] {
-          fill.fill_distance_matrix();
-        });
-        fill.data.precision = core::Precision::Float64;
-        check_dense_unallocated(fill);
-
-        ScratchDirectory scratch{"m47_precision_cache"};
-        const fs::path cache = scratch.root / "invalid.dtwcache";
-        Problem cache_problem{"m47_precision_cache"};
-        cache_problem.set_data(basic_f64_data());
-        cache_problem.data.precision = invalid;
-        check_invalid_input("mmap cache identity", precision_error, [&] {
-          cache_problem.use_mmap_distance_matrix(cache);
-        });
-        CHECK_FALSE(fs::exists(cache));
-        cache_problem.data.precision = core::Precision::Float64;
-        check_dense_unallocated(cache_problem);
       });
   }
 }
@@ -1162,7 +1104,7 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     CHECK_NOTHROW((void)loader.storage_policy(policy));
     Problem problem{"m47_valid_problem_storage_policy"};
     CHECK_NOTHROW(problem.set_storage_policy(policy));
-    CHECK(problem.storage_policy == policy);
+    CHECK(problem.storage_policy() == policy);
   }
 
   for (const auto lower_bound : {
@@ -1181,15 +1123,15 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     CHECK_NOTHROW((void)core::fill_distance_matrix_pruned(
       problem, 1, lower_bound));
     CHECK_NOTHROW(problem.set_lb_strategy(lower_bound));
-    CHECK(problem.lb_strategy == lower_bound);
+    CHECK(problem.lb_strategy() == lower_bound);
   }
 
   Problem f32_problem{"m47_valid_f32_precision"};
   CHECK_NOTHROW(f32_problem.set_data(basic_f32_data()));
-  CHECK(f32_problem.data.precision == core::Precision::Float32);
+  CHECK(f32_problem.data().precision == core::Precision::Float32);
   Problem f64_problem{"m47_valid_f64_precision"};
   CHECK_NOTHROW(f64_problem.set_data(basic_f64_data()));
-  CHECK(f64_problem.data.precision == core::Precision::Float64);
+  CHECK(f64_problem.data().precision == core::Precision::Float64);
 
   for (const int precision : {0, 1, 2}) {
     Problem problem{"m47_valid_cuda_settings_precision"};

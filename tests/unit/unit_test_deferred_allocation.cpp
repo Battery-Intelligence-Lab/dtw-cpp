@@ -29,7 +29,7 @@ TEST_CASE("Deferred allocation: set_data does not allocate dense matrix", "[prob
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   // Dense matrix should NOT be allocated yet
   REQUIRE(prob.dense_distance_matrix().size() == 0);
@@ -43,7 +43,7 @@ TEST_CASE("Deferred allocation: fillDistanceMatrix allocates and fills", "[probl
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
@@ -62,7 +62,7 @@ TEST_CASE("Deferred allocation: distByInd works without fill", "[problem][deferr
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   // No fillDistanceMatrix() called — distByInd should still work
   double d = prob.distByInd(0, 1);
@@ -81,7 +81,7 @@ TEST_CASE("Deferred allocation: FastPAM still works", "[problem][deferred]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   // FastPAM calls fillDistanceMatrix internally — should work
   auto result = dtwc::fast_pam(prob, 2);
@@ -99,7 +99,7 @@ TEST_CASE("Deferred allocation: set_variant works after set_data", "[problem][de
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   // Should work — rebind_dtw_fn was called by set_variant
   double d = prob.distByInd(0, 1);
@@ -115,7 +115,7 @@ TEST_CASE("Deferred allocation: existing tests backward compat", "[problem][defe
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   // Should work exactly as before
@@ -132,7 +132,7 @@ TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem
 
   dtwc::Problem prob;
   prob.set_data(std::move(data1));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
   REQUIRE(prob.dense_distance_matrix().size() == 2);
 

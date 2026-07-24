@@ -43,9 +43,9 @@ template <typename T>
 auto make_zero_cost(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       return normalize_public_distance(dtwMissing_banded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
     };
@@ -79,9 +79,9 @@ auto make_arow(const Problem &p)
   // MV extension (SpanMVAROWL1Cost): per-channel skip for cost; AROW is
   // triggered only when a pair has no comparable channels. Reduces to
   // scalar AROW when ndim = 1.
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       const auto x_steps = x.size() / ndim;
       const auto y_steps = y.size() / ndim;
       const bool swap = x_steps > y_steps;
@@ -114,9 +114,9 @@ template <typename T>
 auto make_standard(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       return normalize_public_distance(dtwBanded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
     };
@@ -138,9 +138,9 @@ template <typename T>
 auto make_ddtw(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       thread_local std::vector<T> dx, dy;
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
@@ -158,9 +158,9 @@ auto make_ddtw(const Problem &p)
 inline auto make_wdtw_f64(const Problem &p)
   -> std::function<double(std::span<const data_t>, std::span<const data_t>)>
 {
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const data_t> x, std::span<const data_t> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       const auto x_steps = x.size() / ndim;
       const auto y_steps = y.size() / ndim;
       if (x_steps == 0 || y_steps == 0) return std::numeric_limits<double>::max();
@@ -205,9 +205,9 @@ inline auto make_wdtw_f32(const Problem &p)
   -> std::function<double(std::span<const float>, std::span<const float>)>
 {
   const auto g = static_cast<float>(p.variant_params.wdtw_g);
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p, g](std::span<const float> x, std::span<const float> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       return normalize_public_distance(wdtwBanded_mv<float>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band, g));
     };
@@ -222,9 +222,9 @@ template <typename T>
 auto make_adtw(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1) {
+  if (p.data().ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
-      const auto ndim = p.data.ndim;
+      const auto ndim = p.data().ndim;
       return normalize_public_distance(adtwBanded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band,
         static_cast<T>(p.variant_params.adtw_penalty)));
@@ -278,7 +278,7 @@ template <typename T>
 auto make_msm(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1)
+  if (p.data().ndim > 1)
     throw InvalidInput("MSM distance is univariate in this release (ndim must be 1)");
   const T c = static_cast<T>(p.variant_params.msm_c);
   return [c](std::span<const T> x, std::span<const T> y) -> double {
@@ -290,7 +290,7 @@ template <typename T>
 auto make_twe(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data.ndim > 1)
+  if (p.data().ndim > 1)
     throw InvalidInput("TWE distance is univariate in this release (ndim must be 1)");
   const T nu  = static_cast<T>(p.variant_params.twe_nu);
   const T lam = static_cast<T>(p.variant_params.twe_lambda);
@@ -316,7 +316,7 @@ auto make_independent(const Problem &p)
     throw InvalidInput("Independent multivariate mode does not support a missing-data "
                        "strategy in this release (set missing_strategy = Error)");
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    const auto ndim = p.data.ndim;
+    const auto ndim = p.data().ndim;
     return normalize_public_distance(dtw_independent_mv<T>(
       x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
   };
@@ -333,12 +333,11 @@ std::function<double(std::span<const T>, std::span<const T>)>
 resolve_dtw_fn(const Problem &p)
 {
   validate_problem_distance_semantics(
-    p.variant_params, p.missing_strategy, p.data.ndim,
-    std::is_same_v<T, float>);
+    p.variant_params, p.missing_strategy, p.data().ndim, std::is_same_v<T, float>);
 
   // Independent multivariate mode intercepts before every other axis: it is a
   // per-channel decomposition, not a cell-cost or missing-data choice.
-  if (p.variant_params.mv_mode == MVMode::Independent && p.data.ndim > 1)
+  if (p.variant_params.mv_mode == MVMode::Independent && p.data().ndim > 1)
     return make_independent<T>(p);
 
   // Missing-data strategies override variant dispatch — pre-refactor behaviour.

@@ -102,8 +102,8 @@ static Problem make_problem(
   prob.set_data(std::move(d));
   prob.set_numberOfClusters(Nc);
   prob.missing_strategy = strategy;
-  prob.verbose = false;
-  prob.output_folder = g_tmp_output_dir(); // avoid failure writing result CSVs
+  prob.set_verbose(false);
+  prob.set_output_folder(g_tmp_output_dir()); // avoid failure writing result CSVs
   return prob;
 }
 
@@ -193,8 +193,8 @@ TEST_CASE("Integration: AROW pipeline — finite metrics; AROW >= ZeroCost dista
   auto prob_zero = make_problem(all_vecs, 2, core::MissingStrategy::ZeroCost);
   auto prob_arow = make_problem(all_vecs, 2, core::MissingStrategy::AROW);
 
-  prob_zero.verbose = false;
-  prob_arow.verbose = false;
+  prob_zero.set_verbose(false);
+  prob_arow.set_verbose(false);
 
   REQUIRE_NOTHROW(prob_zero.fillDistanceMatrix());
   REQUIRE_NOTHROW(prob_arow.fillDistanceMatrix());
@@ -248,7 +248,7 @@ TEST_CASE("Integration: Interpolate pipeline — finite distances and metrics",
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Interpolate);
   prob.maxIter = 20;
   prob.N_repetition = 1;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   REQUIRE_NOTHROW(prob.fillDistanceMatrix());
 
@@ -293,7 +293,7 @@ TEST_CASE("Integration: metrics agree on well-separated 2-cluster data",
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Error);
   prob.maxIter = 50;
   prob.N_repetition = 3;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   prob.fillDistanceMatrix();
   prob.cluster();
@@ -346,7 +346,7 @@ TEST_CASE("Integration: ARI and NMI > 0 for reasonable clustering of separated d
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Error);
   prob.maxIter = 50;
   prob.N_repetition = 3;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   prob.fillDistanceMatrix();
   prob.cluster();
@@ -383,14 +383,14 @@ TEST_CASE("Integration: MissingStrategy::Error — clean data OK, NaN data throw
   // Clean data: should work fine
   auto vecs_clean = make_gaussian_series(10, 15, 0.0, 1.0, 0.0, 50);
   auto prob_clean = make_problem(vecs_clean, 2, core::MissingStrategy::Error);
-  prob_clean.verbose = false;
+  prob_clean.set_verbose(false);
   REQUIRE_NOTHROW(prob_clean.fillDistanceMatrix());
   REQUIRE(prob_clean.isDistanceMatrixFilled());
 
   // Data with NaN: Error strategy should throw
   auto vecs_nan = make_gaussian_series(10, 15, 0.0, 1.0, 0.10, 51);
   auto prob_nan = make_problem(vecs_nan, 2, core::MissingStrategy::Error);
-  prob_nan.verbose = false;
+  prob_nan.set_verbose(false);
   REQUIRE_THROWS(prob_nan.fillDistanceMatrix());
 }
 
@@ -414,7 +414,7 @@ TEST_CASE("Integration: ZeroCost clustering — ARI and NMI > 0",
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::ZeroCost);
   prob.maxIter = 30;
   prob.N_repetition = 2;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   prob.fillDistanceMatrix();
   prob.cluster();

@@ -58,7 +58,7 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
       prob.set_data(data);
       prob.missing_strategy = dtwc::core::MissingStrategy::Error;
       prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-      prob.verbose = false;
+      prob.set_verbose(false);
 
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
         ContainsSubstring("NaN detected in series 'b' (index 1)"));
@@ -95,7 +95,7 @@ TEST_CASE("Problem: OpenMP worker exceptions rethrow without publishing a full c
       prob.set_data(std::move(data));
       prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
       prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-      prob.verbose = false;
+      prob.set_verbose(false);
 
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
         ContainsSubstring("interpolate_linear: all values are NaN"));
@@ -128,7 +128,7 @@ TEST_CASE("Problem: ordinary and ZeroCost distance fingerprints survive exceptio
       standard.set_data(dtwc::Data(
         std::move(ordinary), std::vector<std::string>{"a", "b", "c"}));
       standard.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-      standard.verbose = false;
+      standard.set_verbose(false);
       standard.fill_distance_matrix();
       CHECK(standard.dist_by_ind(0, 1) == 1.0);
       CHECK(standard.dist_by_ind(0, 2) == 4.0);
@@ -141,7 +141,7 @@ TEST_CASE("Problem: ordinary and ZeroCost distance fingerprints survive exceptio
         std::move(missing), std::vector<std::string>{"a", "b", "c"}));
       zero_cost.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
       zero_cost.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-      zero_cost.verbose = false;
+      zero_cost.set_verbose(false);
       zero_cost.fill_distance_matrix();
       CHECK(zero_cost.dist_by_ind(0, 1) == 0.0);
       CHECK(zero_cost.dist_by_ind(0, 2) == 4.0);
@@ -161,7 +161,7 @@ TEST_CASE("Problem: MissingStrategy::ZeroCost computes finite distances", "[prob
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   const double d01 = prob.distByInd(0, 1);
@@ -183,7 +183,7 @@ TEST_CASE("Problem: MissingStrategy::Interpolate fills NaN and computes", "[prob
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   // After interpolation, b becomes {1.0, 2.0, 3.0} — identical to a
@@ -200,7 +200,7 @@ TEST_CASE("Problem: No NaN with Error strategy works normally", "[problem][missi
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::Error;
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   const double d = prob.distByInd(0, 1);

@@ -38,7 +38,7 @@ int main()
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << prob.band << "\n\n\n";
 
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
 
   prob.set_numberOfClusters(Nc); // Nc = number of clusters.
   prob.cluster_and_process();

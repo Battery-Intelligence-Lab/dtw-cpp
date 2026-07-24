@@ -542,7 +542,7 @@ TEST_CASE("Problem invalidates or rejects post-bind distance-semantic mutations"
     // Mutate after binding but before the first use-session validation. Raw
     // edits after that first validation are unsupported; semantic setters are
     // the cache-invalidating API.
-    prob.data.p_vec[1][2] = 30.0;
+    prob.p_vec(1)[2] = 30.0;
     REQUIRE_THROWS_WITH(
       prob.dist_by_ind(0, 1),
       Catch::Matchers::ContainsSubstring("changed before first use"));

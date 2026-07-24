@@ -200,14 +200,14 @@ TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][dista
   const int actual_N = static_cast<int>(prob_ref.size());
   prob_ref.band = 3;
   prob_ref.distance_strategy = DistanceMatrixStrategy::Pruned;
-  prob_ref.lb_strategy = LowerBoundStrategy::Auto;
+  prob_ref.set_lb_strategy(LowerBoundStrategy::Auto);
   prob_ref.fillDistanceMatrix();
 
   for (auto strat : strategies) {
     auto prob = make_problem(N);
     prob.band = 3;
     prob.distance_strategy = DistanceMatrixStrategy::Pruned;
-    prob.lb_strategy = strat;
+    prob.set_lb_strategy(strat);
     prob.fillDistanceMatrix();
 
     for (int i = 0; i < actual_N; ++i) {

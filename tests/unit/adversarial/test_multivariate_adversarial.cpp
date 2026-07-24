@@ -563,7 +563,7 @@ TEST_CASE("MV adversarial: Problem ndim=3 distance matrix symmetric and finite",
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   for (int i = 0; i < N_SERIES; ++i) {
@@ -602,7 +602,7 @@ TEST_CASE("MV adversarial: Problem ndim=3, series with different timestep counts
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
   prob.fillDistanceMatrix();
 
   // All off-diagonal distances should be positive (series are different)

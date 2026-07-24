@@ -71,6 +71,23 @@ static dtwc::Problem make_seed_sensitive_problem()
   return prob;
 }
 
+static void establish_last_iterations_through_lloyd(
+  dtwc::Problem &prob, const std::filesystem::path &output)
+{
+  prob.set_output_folder(output);
+  prob.set_n_clusters(2);
+  prob.set_max_iter(1);
+  prob.set_n_repetitions(1);
+  prob.init_fun = [](dtwc::Problem &candidate) {
+    std::vector<int> initial_medoids{
+      0, static_cast<int>(candidate.size() - 1)
+    };
+    candidate.set_clusters(initial_medoids);
+  };
+  prob.cluster_by_kmedoids_lloyd();
+  REQUIRE(prob.last_iterations() == 1);
+}
+
 class ScopedCoutCapture {
 public:
   ScopedCoutCapture() : previous_(std::cout.rdbuf(output_.rdbuf())) {}
@@ -132,35 +149,35 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
       distances.push_back(prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)));
 
   return {
-    prob.method,
+    prob.method(),
     prob.maxIter,
     prob.N_repetition,
-    prob.random_seed,
-    prob.last_iterations,
+    prob.random_seed(),
+    prob.last_iterations(),
     prob.band,
-    prob.tadpole_dc,
+    prob.tadpole_dc(),
     prob.variant_params,
     prob.missing_strategy,
     prob.distance_strategy,
-    prob.lb_strategy,
-    prob.storage_policy,
+    prob.lb_strategy(),
+    prob.storage_policy(),
     prob.cuda_settings,
     prob.mip_settings,
-    prob.verbose,
+    prob.verbose(),
     std::type_index(prob.init_fun.target_type()),
     initializer != nullptr,
     initializer == nullptr ? nullptr : *initializer,
-    prob.output_folder,
-    prob.name,
+    prob.output_folder(),
+    prob.name(),
     prob.n_clusters(),
     prob.size(),
-    prob.data.ndim,
-    prob.data.precision,
-    prob.data.is_view(),
-    prob.data.is_metadata_only(),
-    prob.data.p_vec,
-    prob.data.p_vec_f32,
-    prob.data.p_names,
+    prob.data().ndim,
+    prob.data().precision,
+    prob.data().is_view(),
+    prob.data().is_metadata_only(),
+    prob.data().p_vec,
+    prob.data().p_vec_f32,
+    prob.data().p_names,
     prob.distance_matrix().index(),
     prob.is_distance_matrix_filled(),
     std::move(distances)
@@ -170,13 +187,13 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
 static void check_configuration_unchanged(
   dtwc::Problem &prob, const ProblemConfigurationSnapshot &before)
 {
-  CHECK(prob.method == before.method);
+  CHECK(prob.method() == before.method);
   CHECK(prob.maxIter == before.max_iter);
   CHECK(prob.N_repetition == before.n_repetitions);
-  CHECK(prob.random_seed == before.random_seed);
-  CHECK(prob.last_iterations == before.last_iterations);
+  CHECK(prob.random_seed() == before.random_seed);
+  CHECK(prob.last_iterations() == before.last_iterations);
   CHECK(prob.band == before.band);
-  CHECK(prob.tadpole_dc == before.tadpole_dc);
+  CHECK(prob.tadpole_dc() == before.tadpole_dc);
   CHECK(prob.variant_params.variant == before.variant_params.variant);
   CHECK(prob.variant_params.wdtw_g == before.variant_params.wdtw_g);
   CHECK(prob.variant_params.adtw_penalty == before.variant_params.adtw_penalty);
@@ -187,8 +204,8 @@ static void check_configuration_unchanged(
   CHECK(prob.variant_params.mv_mode == before.variant_params.mv_mode);
   CHECK(prob.missing_strategy == before.missing_strategy);
   CHECK(prob.distance_strategy == before.distance_strategy);
-  CHECK(prob.lb_strategy == before.lb_strategy);
-  CHECK(prob.storage_policy == before.storage_policy);
+  CHECK(prob.lb_strategy() == before.lb_strategy);
+  CHECK(prob.storage_policy() == before.storage_policy);
   CHECK(prob.cuda_settings.device_id == before.cuda_settings.device_id);
   CHECK(prob.cuda_settings.precision == before.cuda_settings.precision);
   CHECK(prob.mip_settings.mip_gap == before.mip_settings.mip_gap);
@@ -199,21 +216,22 @@ static void check_configuration_unchanged(
   CHECK(prob.mip_settings.verbose_solver == before.mip_settings.verbose_solver);
   CHECK(prob.mip_settings.max_benders_iter == before.mip_settings.max_benders_iter);
   CHECK(prob.mip_settings.benders == before.mip_settings.benders);
-  CHECK(prob.verbose == before.verbose);
+  CHECK(prob.verbose() == before.verbose);
   const auto *initializer = prob.init_fun.target<ProblemInitializerFunction>();
   CHECK((std::type_index(prob.init_fun.target_type()) == before.initializer_type
          && (initializer != nullptr) == before.initializer_is_function_pointer
          && (initializer == nullptr || *initializer == before.initializer_function)));
-  CHECK(prob.output_folder == before.output_folder);
-  CHECK(prob.name == before.name);
+  CHECK(prob.output_folder() == before.output_folder);
+  CHECK(prob.name() == before.name);
   CHECK(prob.n_clusters() == before.n_clusters);
   CHECK((prob.size() == before.data_size
-         && prob.data.is_view() == before.data_is_view
-         && prob.data.is_metadata_only() == before.data_is_metadata_only));
-  CHECK(prob.data.ndim == before.data_ndim);
-  CHECK(prob.data.precision == before.data_precision);
-  CHECK((prob.data.p_vec == before.series && prob.data.p_vec_f32 == before.series_f32));
-  CHECK(prob.data.p_names == before.series_names);
+         && prob.data().is_view() == before.data_is_view
+         && prob.data().is_metadata_only() == before.data_is_metadata_only));
+  CHECK(prob.data().ndim == before.data_ndim);
+  CHECK(prob.data().precision == before.data_precision);
+  CHECK((prob.data().p_vec == before.series
+         && prob.data().p_vec_f32 == before.series_f32));
+  CHECK(prob.data().p_names == before.series_names);
 
   std::vector<double> distances;
   distances.reserve(prob.size() * prob.size());
@@ -428,7 +446,7 @@ TEST_CASE("Unavailable direct HiGHS leaves caller clustering state unchanged",
   problem.clusters_ind = {0, 0, 1, 1};
   problem.mip_settings.benders = "off";
   problem.set_solver(dtwc::Solver::HiGHS);
-  problem.method = dtwc::Method::MIP;
+  problem.set_method(dtwc::Method::MIP);
   const auto medoids_before = problem.centroids_ind;
   const auto labels_before = problem.clusters_ind;
 
@@ -448,7 +466,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
   prob.centroids_ind = {0, 7};
   prob.clusters_ind = {0, 0, 0, 0, 1, 1, 1, 1};
   prob.cluster();
@@ -470,7 +488,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   prob1.mip_settings.warm_start = false;
   prob1.mip_settings.verbose_solver = false;
   prob1.set_solver(dtwc::Solver::HiGHS);
-  prob1.method = dtwc::Method::MIP;
+  prob1.set_method(dtwc::Method::MIP);
   prob1.cluster();
 
   // Skip if HiGHS not available
@@ -483,7 +501,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   prob2.mip_settings.warm_start = true;
   prob2.mip_settings.verbose_solver = false;
   prob2.set_solver(dtwc::Solver::HiGHS);
-  prob2.method = dtwc::Method::MIP;
+  prob2.set_method(dtwc::Method::MIP);
   prob2.cluster();
   double warm_cost = prob2.findTotalCost();
 
@@ -500,7 +518,7 @@ TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
   prob.mip_settings.time_limit_sec = 30;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_NOTHROW(prob.cluster());
 }
@@ -513,7 +531,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
   prob.cluster();
 
   if (!prob.centroids_ind.empty()) {
@@ -538,14 +556,15 @@ TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][bend
   auto prob = make_small_problem(10, 20);
   // Benders warm-starts via k-medoids Lloyd which writes medoids CSVs. Route
   // output to a temp dir so the test doesn't depend on CWD ./results/.
-  prob.output_folder = std::filesystem::temp_directory_path() / "dtwc_mip_benders_test";
-  std::filesystem::create_directories(prob.output_folder);
+  prob.set_output_folder(
+    std::filesystem::temp_directory_path() / "dtwc_mip_benders_test");
+  std::filesystem::create_directories(prob.output_folder());
   prob.set_numberOfClusters(2);
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS); // Benders uses HiGHS as the master/subproblem solver
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
   prob.cluster();
 
   if (!prob.centroids_ind.empty()) {
@@ -565,24 +584,24 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   std::filesystem::create_directories(tmp);
 
   auto prob_direct = make_small_problem(12, 15);
-  prob_direct.output_folder = tmp;
+  prob_direct.set_output_folder(tmp);
   prob_direct.set_numberOfClusters(3);
   prob_direct.mip_settings.benders = "off";
   prob_direct.mip_settings.verbose_solver = false;
   prob_direct.set_solver(dtwc::Solver::HiGHS);
-  prob_direct.method = dtwc::Method::MIP;
+  prob_direct.set_method(dtwc::Method::MIP);
   prob_direct.cluster();
 
   if (prob_direct.centroids_ind.empty()) return; // HiGHS not available in build
   const double cost_direct = prob_direct.findTotalCost();
 
   auto prob_benders = make_small_problem(12, 15);
-  prob_benders.output_folder = tmp;
+  prob_benders.set_output_folder(tmp);
   prob_benders.set_numberOfClusters(3);
   prob_benders.mip_settings.benders = "on";
   prob_benders.mip_settings.verbose_solver = false;
   prob_benders.set_solver(dtwc::Solver::HiGHS);
-  prob_benders.method = dtwc::Method::MIP;
+  prob_benders.set_method(dtwc::Method::MIP);
   prob_benders.cluster();
 
   REQUIRE(prob_benders.centroids_ind.size() == 3);
@@ -602,14 +621,14 @@ TEST_CASE("MIP Benders warm start preserves caller configuration on success",
   std::filesystem::create_directories(tmp);
 
   auto prob = make_small_problem(10, 16);
-  prob.output_folder = tmp;
+  establish_last_iterations_through_lloyd(prob, tmp);
+  prob.init_fun = dtwc::init::random;
   prob.set_n_clusters(2);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
   prob.maxIter = 7;
   prob.N_repetition = 4;
-  prob.random_seed = 1234;
-  prob.last_iterations = 77;
-  prob.tadpole_dc = 0.125;
+  prob.set_random_seed(1234);
+  prob.set_tadpole_dc(0.125);
   prob.cuda_settings.device_id = 3;
   prob.cuda_settings.precision = 2;
   prob.mip_settings.benders = "on";
@@ -645,24 +664,46 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
           "[mip][highs][benders][state]")
 {
   require_highs_solver();
+  const auto nonce = std::to_string(
+                       std::chrono::steady_clock::now().time_since_epoch().count())
+                     + "_" + std::to_string(std::random_device{}());
+  const auto tmp = std::filesystem::temp_directory_path()
+                   / ("dtwc_mip_benders_state_failure_" + nonce);
+  std::filesystem::create_directories(tmp);
   auto prob = make_small_problem(8, 12);
+  prob.set_output_folder(tmp);
   prob.set_n_clusters(2);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
+  prob.set_max_iter(1);
   prob.N_repetition = 5;
-  prob.random_seed = 4321;
-  prob.last_iterations = 88;
+  prob.set_random_seed(4321);
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
   prob.centroids_ind = {6, 7};
   prob.clusters_ind.assign(prob.size(), 1);
-  prob.init_fun = [](dtwc::Problem &nested) {
-    nested.method = dtwc::Method::TADPole;
+  bool nested_lloyd = false;
+  prob.init_fun = [&nested_lloyd](dtwc::Problem &nested) {
+    if (!nested_lloyd) {
+      nested_lloyd = true;
+      nested.cluster_by_kmedoids_lloyd();
+      nested_lloyd = false;
+      if (nested.last_iterations() != 1)
+        throw std::runtime_error(
+          "nested Lloyd did not establish the exception-path mutation");
+    } else {
+      std::vector<int> initial_medoids{
+        0, static_cast<int>(nested.size() - 1)
+      };
+      nested.set_clusters(initial_medoids);
+      return;
+    }
+    nested.set_method(dtwc::Method::TADPole);
     nested.N_repetition = 17;
-    nested.last_iterations = 999;
     nested.centroids_ind = {0, 1};
     nested.clusters_ind.assign(nested.size(), 0);
     throw std::runtime_error("forced nested Lloyd failure after state mutation");
   };
+  REQUIRE(prob.last_iterations() == 0);
   prob.fill_distance_matrix();
   const auto before = snapshot_configuration(prob);
   const auto labels_before = prob.clusters_ind;
@@ -681,6 +722,9 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
   check_configuration_unchanged(prob, before);
   CHECK(prob.clusters_ind == labels_before);
   CHECK(prob.centroids_ind == medoids_before);
+
+  std::error_code ec;
+  std::filesystem::remove_all(tmp, ec);
 }
 
 TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
@@ -698,11 +742,11 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
   std::filesystem::create_directories(lloyd_output);
 
   auto benders = make_small_problem(10, 16);
-  benders.output_folder = benders_output;
-  benders.name = "nested_";
+  benders.set_output_folder(benders_output);
+  benders.set_name("nested_");
   benders.set_n_clusters(2);
-  benders.method = dtwc::Method::MIP;
-  benders.random_seed = 1234;
+  benders.set_method(dtwc::Method::MIP);
+  benders.set_random_seed(1234);
   benders.mip_settings.benders = "on";
   benders.mip_settings.warm_start = true;
   benders.mip_settings.max_benders_iter = 50;
@@ -725,11 +769,11 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
   const double benders_cost = benders.find_total_cost();
 
   auto lloyd = make_small_problem(10, 16);
-  lloyd.output_folder = lloyd_output;
-  lloyd.name = "direct_";
+  lloyd.set_output_folder(lloyd_output);
+  lloyd.set_name("direct_");
   lloyd.set_n_clusters(2);
   lloyd.N_repetition = 1;
-  lloyd.random_seed = 1234;
+  lloyd.set_random_seed(1234);
   std::string lloyd_stdout;
   {
     ScopedCoutCapture capture;
@@ -784,7 +828,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
     probe.mip_settings.warm_start = false;
     probe.mip_settings.verbose_solver = false;
     probe.set_solver(dtwc::Solver::HiGHS);
-    probe.method = dtwc::Method::MIP;
+    probe.set_method(dtwc::Method::MIP);
     probe.cluster();
     if (probe.centroids_ind.empty())
       return; // HiGHS not compiled into this build — nothing to exercise.
@@ -799,7 +843,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
   prob.mip_settings.warm_start = false;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_THROWS_AS(prob.cluster(), std::runtime_error);
 }
@@ -811,13 +855,14 @@ TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][ben
   // benders = "auto" + N > 200 would use Benders (not tested here to keep
   // runtime reasonable). We verify "auto" + small N completes successfully.
   auto prob = make_small_problem(6, 15);
-  prob.output_folder = std::filesystem::temp_directory_path() / "dtwc_mip_benders_auto_test";
-  std::filesystem::create_directories(prob.output_folder);
+  prob.set_output_folder(
+    std::filesystem::temp_directory_path() / "dtwc_mip_benders_auto_test");
+  std::filesystem::create_directories(prob.output_folder());
   prob.set_numberOfClusters(2);
   prob.mip_settings.benders = "auto";
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
-  prob.method = dtwc::Method::MIP;
+  prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_NOTHROW(prob.cluster());
   if (!prob.centroids_ind.empty()) {

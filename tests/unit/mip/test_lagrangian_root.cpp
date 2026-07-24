@@ -158,7 +158,7 @@ Problem make_problem_1d(const std::vector<double> &values, int k)
   Problem prob("lr_compare");
   prob.set_data(Data(std::move(p_vec), std::move(names)));
   prob.set_n_clusters(k);
-  prob.method = Method::MIP;
+  prob.set_method(Method::MIP);
   prob.mip_settings.benders = "off"; // compact HiGHS/Gurobi
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
@@ -514,7 +514,7 @@ TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangia
     const auto orc = brute_force_pmedian(D, N, k);
 
     Problem prob = make_problem_1d(pos, k);
-    prob.method = Method::LRCore;
+    prob.set_method(Method::LRCore);
     prob.cluster();
 
     REQUIRE(static_cast<int>(prob.centroids_ind.size()) == k);

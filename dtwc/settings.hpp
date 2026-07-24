@@ -109,7 +109,7 @@ constexpr int DEFAULT_BAND = -1;
 constexpr dtwc::Solver DEFAULT_MIP_SOLVER = dtwc::Solver::HiGHS;
 
 /// @brief Default method for clustering.
-/// @note Please do not modify here, you can modify the relevant Problem class member to use a different clustering method.
+/// @note Please do not modify here; use Problem::set_method() to select a different clustering method.
 constexpr dtwc::Method DEFAULT_CLUSTERING_METHOD = dtwc::Method::Kmedoids;
 
 /// @brief Default maximum number of iterations.

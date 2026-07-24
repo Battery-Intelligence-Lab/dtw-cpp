@@ -762,15 +762,16 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("__init__", [](dtwc::Problem *p, const std::string &name) {
       new (p) dtwc::Problem(name);
     }, "name"_a)
-    // ---- config fields (canonical names) ----
-    .def_rw("method", &dtwc::Problem::method)
+    // ---- config properties (canonical names) ----
+    .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
     .def_rw("max_iter", &dtwc::Problem::maxIter)
     .def_rw("n_repetitions", &dtwc::Problem::N_repetition,
             "Repetitions for iterative methods.")
     .def_rw("n_repetition", &dtwc::Problem::N_repetition,
             "Deprecated alias for n_repetitions (kept one cycle, §4).")
-    .def_rw("random_seed", &dtwc::Problem::random_seed,
-            "Invocation-local seed for Lloyd and MIP warm starts.")
+    .def_prop_rw("random_seed", &dtwc::Problem::random_seed,
+                 &dtwc::Problem::set_random_seed,
+                 "Invocation-local seed for Lloyd and MIP warm starts.")
     .def_prop_rw("band",
                  [](const dtwc::Problem &p) { return p.band; },
                  [](dtwc::Problem &p, int value) { p.set_band(value); })
@@ -793,18 +794,12 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_distance_strategy(value);
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
-    .def_prop_rw("lb_strategy",
-                 [](const dtwc::Problem &p) { return p.lb_strategy; },
-                 [](dtwc::Problem &p, dtwc::LowerBoundStrategy value) {
-                   p.set_lb_strategy(value);
-                 },
+    .def_prop_rw("lb_strategy", &dtwc::Problem::lb_strategy,
+                 &dtwc::Problem::set_lb_strategy,
                  "Lower-bound selection for the Pruned CPU path "
                  "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
-    .def_prop_rw("storage_policy",
-                 [](const dtwc::Problem &p) { return p.storage_policy; },
-                 [](dtwc::Problem &p, dtwc::core::StoragePolicy value) {
-                   p.set_storage_policy(value);
-                 },
+    .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
+                 &dtwc::Problem::set_storage_policy,
                  "How series data is stored (Auto/Heap/Mmap).")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
@@ -816,12 +811,12 @@ NB_MODULE(_dtwcpp_core, m) {
                  "GPU compute options (used when distance_strategy == CUDA).")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
-    .def_rw("verbose", &dtwc::Problem::verbose,
-            "Print progress messages for long-running operations.")
-    .def_rw("name", &dtwc::Problem::name)
-    .def_prop_rw("output_folder",
-                 [](const dtwc::Problem &p) { return p.output_folder; },
-                 [](dtwc::Problem &p, std::filesystem::path dir) { p.output_folder = std::move(dir); },
+    .def_prop_rw("verbose", &dtwc::Problem::verbose,
+                 &dtwc::Problem::set_verbose,
+                 "Print progress messages for long-running operations.")
+    .def_prop_rw("name", &dtwc::Problem::name, &dtwc::Problem::set_name)
+    .def_prop_rw("output_folder", &dtwc::Problem::output_folder,
+                 &dtwc::Problem::set_output_folder,
                  "Output folder for results written by the write_* methods.")
     .def_rw("clusters_ind", &dtwc::Problem::clusters_ind)
     .def_rw("centroids_ind", &dtwc::Problem::centroids_ind)
@@ -921,7 +916,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("write_distance_matrix", nb::overload_cast<>(&dtwc::Problem::write_distance_matrix, nb::const_))
     .def("write_silhouettes", &dtwc::Problem::write_silhouettes)
     .def("__repr__", [](const dtwc::Problem &p) {
-      return "Problem(name='" + p.name + "', n=" + std::to_string(p.size())
+      return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.n_clusters()) + ")";
     });
 

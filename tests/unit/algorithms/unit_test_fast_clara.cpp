@@ -557,7 +557,7 @@ TEST_CASE("FastCLARA: propagates ndim to sub-problem", "[clara][mv]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;
   opts.n_clusters = 2;
@@ -587,7 +587,7 @@ TEST_CASE("FastCLARA: propagates missing_strategy", "[clara][missing]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;
   opts.n_clusters = 2;
@@ -613,7 +613,7 @@ TEST_CASE("FastCLARA: improved sample size formula", "[clara]")
 
   dtwc::Problem prob;
   prob.set_data(std::move(data));
-  prob.verbose = false;
+  prob.set_verbose(false);
 
   dtwc::algorithms::CLARAOptions opts;
   opts.n_clusters = 70;
@@ -733,7 +733,7 @@ TEST_CASE("FastCLARA in-RAM uses the portable seeded sample contract",
     std::vector<std::string> nm = names;
     Problem prob("clara_seed_" + std::to_string(seed));
     prob.set_data(Data(std::move(v), std::move(nm)));
-    prob.verbose = false;
+    prob.set_verbose(false);
 
     algorithms::CLARAOptions opts;
     opts.n_clusters = 1;

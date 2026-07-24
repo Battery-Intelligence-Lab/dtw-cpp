@@ -50,8 +50,8 @@ namespace {
 bool bounds_valid(const Problem &prob)
 {
   return prob.variant_params.variant == core::DTWVariant::Standard
-      && prob.data.ndim == 1
-      && prob.missing_strategy == core::MissingStrategy::Error;
+         && prob.data().ndim == 1
+         && prob.missing_strategy == core::MissingStrategy::Error;
 }
 
 /// No-warp diagonal cost Σ_t |x_t − y_t| — a valid DTW upper bound for

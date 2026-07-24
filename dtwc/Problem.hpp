@@ -148,6 +148,17 @@ private:
   DistanceCacheConfiguration dense_cache_configuration_{};
   bool dense_cache_configuration_bound_{ false };
 
+  Method method_{ Method::Kmedoids };
+  std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
+  int last_iterations_{ 0 };
+  double tadpole_dc_{ -1.0 };
+  LowerBoundStrategy lb_strategy_{ LowerBoundStrategy::Auto };
+  core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto };
+  bool verbose_{ false };
+  path_t output_folder_{ settings::paths::results };
+  std::string name_{};
+  Data data_;
+
   /// Dispatch through variant via std::visit.
   template <typename F>
   decltype(auto) visit_distmat(F &&f)
@@ -188,7 +199,7 @@ private:
   void validate_mmap_cache_identity() const;
   void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
-  void resize(); ///< Resize cluster/centroid buffers to size()/Nc. Internal invariant maintenance (Task 1.6: private).
+  void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
 
   // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path);
@@ -204,13 +215,9 @@ private:
   void distanceInClusters();
 
 public:
-  Method method{ Method::Kmedoids };         /*!< Clustering method. */
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
-  std::uint64_t random_seed{ settings::DEFAULT_RANDOM_SEED }; /*!< Invocation-local seed for Tier-1 stochastic work. */
-  int last_iterations{ 0 };                  /*!< Actual iteration count from last clustering run. */
-  int band{ settings::DEFAULT_BAND }; /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
-  double tadpole_dc{ -1.0 };          /*!< TADPole density cutoff dc (Method::TADPole). <0 ⇒ auto-select from a DTW subsample. */
+  int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   /// DTW variant selection and parameters.
   /// Prefer set_variant(), which invalidates and rebinds eagerly. Legacy direct
   /// writes remain source-compatible and are detected by the fixed-size dense
@@ -218,51 +225,63 @@ public:
   core::DTWVariantParams variant_params;
   core::MissingStrategy missing_strategy = core::MissingStrategy::Error; /*!< Strategy for handling NaN values in series. */
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
-  LowerBoundStrategy lb_strategy{ LowerBoundStrategy::Auto }; /*!< Lower-bound selection for the Pruned CPU path. */
-  core::StoragePolicy storage_policy{ core::StoragePolicy::Auto }; /*!< How series data is stored. */
   CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
-  bool verbose{ false };                     /*!< Print progress messages for long-running operations. */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
-
-  path_t output_folder{ settings::paths::results }; /*!< Output folder for results. */
-  std::string name{};                            /*!< Problem name. */
-  Data data;                                     /*!< Data associated with the problem. */
 
   std::vector<int> clusters_ind;  //!< Indices of which point belongs to which cluster. [0,Nc)
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
   Problem() { rebind_dtw_fn(); }
-  Problem(std::string_view name_) : name{ name_ } { rebind_dtw_fn(); }
-  Problem(std::string_view name_, DataLoader &loader_)
-    : name{ name_ }, data{ loader_.load() }
+  Problem(std::string_view problem_name) : name_{ problem_name }
+  {
+    rebind_dtw_fn();
+  }
+  Problem(std::string_view problem_name, DataLoader &loader)
+    : name_{ problem_name }, data_{ loader.load() }
   {
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
 
-  auto size() const { return data.size(); }
+  auto size() const { return data_.size(); }
   /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
   auto n_clusters() const { return Nc; }
   [[deprecated("use n_clusters")]] auto cluster_size() const { return n_clusters(); }
 
   /// Mutable name access (heap-mode only — asserts if view-mode).
-  auto &get_name(size_t i) { assert(!data.is_view()); return data.p_names[i]; }
-  auto const &get_name(size_t i) const { assert(!data.is_view()); return data.p_names[i]; }
+  auto &get_name(size_t i)
+  {
+    assert(!data_.is_view());
+    return data_.p_names[i];
+  }
+  auto const &get_name(size_t i) const
+  {
+    assert(!data_.is_view());
+    return data_.p_names[i];
+  }
 
   /// Mutable vector access (heap-mode only — asserts if view-mode).
   /// Call refresh_distance_matrix() before mutating values when any distance
   /// cache has been used; raw in-place edits during a bound-cache session are
   /// unsupported because warm lookups intentionally remain O(1).
-  auto &p_vec(size_t i) { assert(!data.is_view()); return data.p_vec[i]; }
-  auto const &p_vec(size_t i) const { assert(!data.is_view()); return data.p_vec[i]; }
+  auto &p_vec(size_t i)
+  {
+    assert(!data_.is_view());
+    return data_.p_vec[i];
+  }
+  auto const &p_vec(size_t i) const
+  {
+    assert(!data_.is_view());
+    return data_.p_vec[i];
+  }
 
   /// Zero-copy span view of series i (works for heap, mmap, and view modes).
-  std::span<const data_t> series(size_t i) const { return data.series(i); }
+  std::span<const data_t> series(size_t i) const { return data_.series(i); }
 
   /// Name of series i as a string_view.
-  std::string_view series_name(size_t i) const { return data.name(i); }
+  std::string_view series_name(size_t i) const { return data_.name(i); }
 
   /// Canonical read accessors (API contract §2.2): the raw fields
   /// `clusters_ind`/`centroids_ind` stay public, but `labels()`/`medoids()` are
@@ -288,18 +307,24 @@ public:
   void set_clusters(std::vector<int> &candidate_centroids);
   bool set_solver(dtwc::Solver solver_);
 
-  // Canonical 2.0 config setters/accessors. The underlying fields (`method`,
-  // `band`, `maxIter`, `N_repetition`) stay public this phase for binding
-  // compatibility — the Python bindings take `&Problem::maxIter` /
-  // `&Problem::N_repetition` by address (`_dtwcpp_core.cpp:423-424`); full field
-  // privatisation lands with the Phase 2 binding rewrite. Prefer these setters:
-  // `set_band` also invalidates any populated dense/mmap matrix. Legacy naked
-  // writes remain source-compatible; a bound mmap cache detects them before
-  // returning a computed distance.
+  // Canonical configuration reads for the ten encapsulated fields.
+  // last_iterations() and data() are read-only; mutable configuration uses
+  // the corresponding setters below.
+  Method method() const { return method_; }
+  std::uint64_t random_seed() const { return random_seed_; }
+  int last_iterations() const { return last_iterations_; }
+  double tadpole_dc() const { return tadpole_dc_; }
+  LowerBoundStrategy lb_strategy() const { return lb_strategy_; }
+  core::StoragePolicy storage_policy() const { return storage_policy_; }
+  bool verbose() const { return verbose_; }
+  const path_t &output_folder() const { return output_folder_; }
+  const std::string &name() const { return name_; }
+  const Data &data() const { return data_; }
+
   void set_method(Method m)
   {
     validate_method(m);
-    method = m;
+    method_ = m;
   }
   void set_band(int b)
   {
@@ -312,11 +337,12 @@ public:
   int max_iter() const { return maxIter; }
   void set_n_repetitions(int n) { N_repetition = n; }
   int n_repetitions() const { return N_repetition; }
-  void set_random_seed(std::uint64_t seed) { random_seed = seed; }
+  void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
+  void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   void set_missing_strategy(core::MissingStrategy strategy)
   {
     preflight_distance_semantics(
-      variant_params, strategy, data, distance_strategy, cuda_settings);
+      variant_params, strategy, data_, distance_strategy, cuda_settings);
     if (missing_strategy == strategy) return;
     missing_strategy = strategy;
     refresh_distance_matrix();
@@ -324,7 +350,7 @@ public:
   void set_distance_strategy(DistanceMatrixStrategy strategy)
   {
     preflight_distance_semantics(
-      variant_params, missing_strategy, data, strategy, cuda_settings);
+      variant_params, missing_strategy, data_, strategy, cuda_settings);
     if (distance_strategy == strategy) return;
     distance_strategy = strategy;
     refresh_distance_matrix();
@@ -332,21 +358,21 @@ public:
   void set_lb_strategy(LowerBoundStrategy strategy)
   {
     validate_lower_bound_strategy(strategy);
-    if (lb_strategy == strategy) return;
+    if (lb_strategy_ == strategy) return;
     // Lower bounds are exact optimization hints and do not change distances.
-    lb_strategy = strategy;
+    lb_strategy_ = strategy;
   }
   void set_storage_policy(core::StoragePolicy policy)
   {
     core::validate_storage_policy(policy);
-    if (storage_policy == policy) return;
+    if (storage_policy_ == policy) return;
     // Advisory compatibility field only. DataLoader owns actual data routing.
-    storage_policy = policy;
+    storage_policy_ = policy;
   }
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(
-      variant_params, missing_strategy, data, distance_strategy, settings);
+      variant_params, missing_strategy, data_, distance_strategy, settings);
     if (cuda_settings.device_id == settings.device_id
         && cuda_settings.precision == settings.precision)
       return;
@@ -354,26 +380,34 @@ public:
     refresh_distance_matrix();
   }
 
-  void set_data(dtwc::Data data_)
+  void set_verbose(bool value) { verbose_ = value; }
+  void set_output_folder(path_t folder)
   {
-    core::validate_precision(data_.precision);
-    data_.validate_ndim();
+    output_folder_ = std::move(folder);
+  }
+  void set_name(std::string problem_name)
+  {
+    name_ = std::move(problem_name);
+  }
+
+  void set_data(dtwc::Data candidate)
+  {
+    core::validate_precision(candidate.precision);
+    candidate.validate_ndim();
     preflight_distance_semantics(
-      variant_params, missing_strategy, data_,
-      distance_strategy, cuda_settings);
-    data = std::move(data_);
+      variant_params, missing_strategy, candidate, distance_strategy, cuda_settings);
+    data_ = std::move(candidate);
     refresh_distance_matrix();
   }
 
   /// Set view-mode data (non-owning spans). Sizes distance matrix but skips mmap cache.
-  void set_view_data(dtwc::Data data_)
+  void set_view_data(dtwc::Data candidate)
   {
-    core::validate_precision(data_.precision);
-    data_.validate_ndim();
+    core::validate_precision(candidate.precision);
+    candidate.validate_ndim();
     preflight_distance_semantics(
-      variant_params, missing_strategy, data_,
-      distance_strategy, cuda_settings);
-    data = std::move(data_);
+      variant_params, missing_strategy, candidate, distance_strategy, cuda_settings);
+    data_ = std::move(candidate);
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }
@@ -490,7 +524,10 @@ public:
   // I/O writers (definitions in Problem_IO.cpp). snake_case names are additive
   // canonical forwarders; camelCase originals retire in the Phase 2 IO pass.
   void writeDistanceMatrix(const std::string &name_) const;
-  void writeDistanceMatrix() const { writeDistanceMatrix(name + "_distanceMatrix.csv"); }
+  void writeDistanceMatrix() const
+  {
+    writeDistanceMatrix(name_ + "_distanceMatrix.csv");
+  }
   void write_distance_matrix(const std::string &name_) const { writeDistanceMatrix(name_); }
   void write_distance_matrix() const { writeDistanceMatrix(); }
 

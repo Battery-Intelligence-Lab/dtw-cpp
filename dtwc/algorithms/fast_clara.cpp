@@ -202,10 +202,10 @@ namespace {
       throw InvalidInput(
         "fast_clara: N exceeds the int-indexed clustering result limit.");
     const int n_points = static_cast<int>(prob.size());
-    if (prob.data.is_f32()) {
+    if (prob.data().is_f32()) {
       const auto &distance = prob.dtw_function_f32();
       return assign_all_points_direct(
-        n_points, medoid_indices, labels, distance, [&prob](int index) { return prob.data.series_f32(index); });
+        n_points, medoid_indices, labels, distance, [&prob](int index) { return prob.data().series_f32(index); });
     }
     const auto &distance = prob.dtw_function();
     return assign_all_points_direct(
@@ -418,7 +418,7 @@ namespace {
         sub_prob.variant_params = prob_template.variant_params;
         sub_prob.missing_strategy = prob_template.missing_strategy;
         sub_prob.distance_strategy = prob_template.distance_strategy;
-        sub_prob.verbose = false;
+        sub_prob.set_verbose(false);
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam_seeded(
           sub_prob, opts.n_clusters, clara_pam_seed(opts, s), opts.max_iter);
@@ -518,7 +518,7 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       }
       const auto stream_plan = detail::resolve_clara_plan(
         reader.logical_series_count(), opts, "fast_clara");
-      if (prob.verbose)
+      if (prob.verbose())
         std::cout << "FastCLARA: streaming from Parquet ("
                   << reader.logical_series_count()
                   << " rows, " << reader.num_row_groups() << " row groups, ~"
@@ -567,20 +567,22 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     sub_prob.variant_params = prob.variant_params;
     sub_prob.missing_strategy = prob.missing_strategy;
     sub_prob.distance_strategy = prob.distance_strategy;
-    sub_prob.verbose = prob.verbose;
+    sub_prob.set_verbose(prob.verbose());
 
-    if (prob.data.is_f32()) {
+    if (prob.data().is_f32()) {
       std::vector<std::span<const float>> sub_spans;
       sub_spans.reserve(sample_size);
       for (int idx : sample_indices)
-        sub_spans.push_back(prob.data.series_f32(idx));
-      sub_prob.set_view_data(Data(std::move(sub_spans), std::move(sub_names), prob.data.ndim));
+        sub_spans.push_back(prob.data().series_f32(idx));
+      sub_prob.set_view_data(
+        Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
     } else {
       std::vector<std::span<const data_t>> sub_spans;
       sub_spans.reserve(sample_size);
       for (int idx : sample_indices)
         sub_spans.push_back(prob.series(idx)); // O(1), no data copy
-      sub_prob.set_view_data(Data(std::move(sub_spans), std::move(sub_names), prob.data.ndim));
+      sub_prob.set_view_data(
+        Data(std::move(sub_spans), std::move(sub_names), prob.data().ndim));
     }
 
     // 3. Run FastPAM on the sub-Problem.

@@ -63,7 +63,7 @@ TEST_CASE("[Phase0] writeMedoids throws std::runtime_error on bad path",
 
   // Point output to a non-existent directory that cannot be created.
   // On both Windows and Unix this should fail to open a file.
-  prob.output_folder = "/nonexistent_dir_phase0_test/deep/nested/path";
+  prob.set_output_folder("/nonexistent_dir_phase0_test/deep/nested/path");
 
   // cluster_by_kMedoidsLloyd() eventually calls writeMedoids() which
   // currently does `throw 1` (an int).
