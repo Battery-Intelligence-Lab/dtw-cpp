@@ -99,8 +99,31 @@ static_assert(
 #endif
 
 template <typename T>
+using method_getter_pointer = dtwc::Method (T::*)() const;
+template <typename T>
+using random_seed_getter_pointer = std::uint64_t (T::*)() const;
+template <typename T>
+using last_iterations_getter_pointer = int (T::*)() const;
+template <typename T>
+using tadpole_dc_getter_pointer = double (T::*)() const;
+template <typename T>
+using lb_strategy_getter_pointer = dtwc::LowerBoundStrategy (T::*)() const;
+template <typename T>
+using storage_policy_getter_pointer = dtwc::core::StoragePolicy (T::*)() const;
+template <typename T>
+using verbose_getter_pointer = bool (T::*)() const;
+template <typename T>
+using output_folder_getter_pointer =
+  typename T::path_t const &(T::*)() const;
+template <typename T>
+using name_getter_pointer = const std::string &(T::*)() const;
+template <typename T>
+using data_getter_pointer = const dtwc::Data &(T::*)() const;
+
+template <typename T>
 concept has_const_method_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::method } -> std::same_as<method_getter_pointer<T>>;
     { problem.method() } -> std::same_as<dtwc::Method>;
     { const_problem.method() } -> std::same_as<dtwc::Method>;
   };
@@ -108,6 +131,7 @@ concept has_const_method_getter =
 template <typename T>
 concept has_const_random_seed_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::random_seed } -> std::same_as<random_seed_getter_pointer<T>>;
     { problem.random_seed() } -> std::same_as<std::uint64_t>;
     { const_problem.random_seed() } -> std::same_as<std::uint64_t>;
   };
@@ -115,13 +139,18 @@ concept has_const_random_seed_getter =
 template <typename T>
 concept has_const_last_iterations_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::last_iterations }
+      -> std::same_as<last_iterations_getter_pointer<T>>;
     { problem.last_iterations() } -> std::same_as<int>;
     { const_problem.last_iterations() } -> std::same_as<int>;
-  };
+  }
+  && (!requires(T &problem) { problem.set_last_iterations(7); })
+  && (!requires(T &problem) { problem.last_iterations(7); });
 
 template <typename T>
 concept has_const_tadpole_dc_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::tadpole_dc } -> std::same_as<tadpole_dc_getter_pointer<T>>;
     { problem.tadpole_dc() } -> std::same_as<double>;
     { const_problem.tadpole_dc() } -> std::same_as<double>;
   };
@@ -129,6 +158,7 @@ concept has_const_tadpole_dc_getter =
 template <typename T>
 concept has_const_lb_strategy_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::lb_strategy } -> std::same_as<lb_strategy_getter_pointer<T>>;
     { problem.lb_strategy() } -> std::same_as<dtwc::LowerBoundStrategy>;
     { const_problem.lb_strategy() } -> std::same_as<dtwc::LowerBoundStrategy>;
   };
@@ -136,6 +166,8 @@ concept has_const_lb_strategy_getter =
 template <typename T>
 concept has_const_storage_policy_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::storage_policy }
+      -> std::same_as<storage_policy_getter_pointer<T>>;
     { problem.storage_policy() } -> std::same_as<dtwc::core::StoragePolicy>;
     { const_problem.storage_policy() } -> std::same_as<dtwc::core::StoragePolicy>;
   };
@@ -143,6 +175,7 @@ concept has_const_storage_policy_getter =
 template <typename T>
 concept has_const_verbose_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::verbose } -> std::same_as<verbose_getter_pointer<T>>;
     { problem.verbose() } -> std::same_as<bool>;
     { const_problem.verbose() } -> std::same_as<bool>;
   };
@@ -150,6 +183,8 @@ concept has_const_verbose_getter =
 template <typename T>
 concept has_const_output_folder_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::output_folder }
+      -> std::same_as<output_folder_getter_pointer<T>>;
     { problem.output_folder() } -> std::same_as<const typename T::path_t &>;
     { const_problem.output_folder() }
       -> std::same_as<const typename T::path_t &>;
@@ -158,6 +193,7 @@ concept has_const_output_folder_getter =
 template <typename T>
 concept has_const_name_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::name } -> std::same_as<name_getter_pointer<T>>;
     { problem.name() } -> std::same_as<const std::string &>;
     { const_problem.name() } -> std::same_as<const std::string &>;
   };
@@ -165,6 +201,7 @@ concept has_const_name_getter =
 template <typename T>
 concept has_const_data_getter =
   requires(T &problem, const T &const_problem) {
+    { &T::data } -> std::same_as<data_getter_pointer<T>>;
     { problem.data() } -> std::same_as<const dtwc::Data &>;
     { const_problem.data() } -> std::same_as<const dtwc::Data &>;
   };
@@ -203,59 +240,100 @@ static_assert(
 #endif
 
 template <typename T>
-concept raw_retained_max_iter_assignable = requires(T &problem) {
-  problem.maxIter = 7;
-};
+concept raw_retained_max_iter_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.maxIter } -> std::same_as<int &>;
+    { const_problem.maxIter } -> std::same_as<const int &>;
+    problem.maxIter = 7;
+  };
 
 template <typename T>
-concept raw_retained_n_repetition_assignable = requires(T &problem) {
-  problem.N_repetition = 7;
-};
+concept raw_retained_n_repetition_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.N_repetition } -> std::same_as<int &>;
+    { const_problem.N_repetition } -> std::same_as<const int &>;
+    problem.N_repetition = 7;
+  };
 
 template <typename T>
-concept raw_retained_band_assignable = requires(T &problem) {
-  problem.band = 7;
-};
+concept raw_retained_band_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.band } -> std::same_as<int &>;
+    { const_problem.band } -> std::same_as<const int &>;
+    problem.band = 7;
+  };
 
 template <typename T>
-concept raw_retained_variant_params_assignable = requires(T &problem) {
-  problem.variant_params = dtwc::core::DTWVariantParams{};
-};
+concept raw_retained_variant_params_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.variant_params } -> std::same_as<dtwc::core::DTWVariantParams &>;
+    { const_problem.variant_params }
+      -> std::same_as<const dtwc::core::DTWVariantParams &>;
+    problem.variant_params = dtwc::core::DTWVariantParams{};
+  };
 
 template <typename T>
-concept raw_retained_missing_strategy_assignable = requires(T &problem) {
-  problem.missing_strategy = dtwc::core::MissingStrategy::Error;
-};
+concept raw_retained_missing_strategy_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.missing_strategy } -> std::same_as<dtwc::core::MissingStrategy &>;
+    { const_problem.missing_strategy }
+      -> std::same_as<const dtwc::core::MissingStrategy &>;
+    problem.missing_strategy = dtwc::core::MissingStrategy::Error;
+  };
 
 template <typename T>
-concept raw_retained_distance_strategy_assignable = requires(T &problem) {
-  problem.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
-};
+concept raw_retained_distance_strategy_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.distance_strategy }
+      -> std::same_as<dtwc::DistanceMatrixStrategy &>;
+    { const_problem.distance_strategy }
+      -> std::same_as<const dtwc::DistanceMatrixStrategy &>;
+    problem.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+  };
 
 template <typename T>
-concept raw_retained_cuda_settings_assignable = requires(T &problem) {
-  problem.cuda_settings = dtwc::CUDASettings{};
-};
+concept raw_retained_cuda_settings_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.cuda_settings } -> std::same_as<dtwc::CUDASettings &>;
+    { const_problem.cuda_settings } -> std::same_as<const dtwc::CUDASettings &>;
+    problem.cuda_settings = dtwc::CUDASettings{};
+  };
 
 template <typename T>
-concept raw_retained_mip_settings_assignable = requires(T &problem) {
-  problem.mip_settings = dtwc::MIPSettings{};
-};
+concept raw_retained_mip_settings_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.mip_settings } -> std::same_as<dtwc::MIPSettings &>;
+    { const_problem.mip_settings } -> std::same_as<const dtwc::MIPSettings &>;
+    problem.mip_settings = dtwc::MIPSettings{};
+  };
 
 template <typename T>
-concept raw_retained_init_fun_assignable = requires(T &problem) {
-  problem.init_fun = std::function<void(dtwc::Problem &)>{};
-};
+concept raw_retained_init_fun_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.init_fun }
+      -> std::same_as<std::function<void(dtwc::Problem &)> &>;
+    { const_problem.init_fun }
+      -> std::same_as<const std::function<void(dtwc::Problem &)> &>;
+    problem.init_fun = std::function<void(dtwc::Problem &)>{};
+  };
 
 template <typename T>
-concept raw_retained_clusters_assignable = requires(T &problem) {
-  problem.clusters_ind = std::vector<int>{};
-};
+concept raw_retained_clusters_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.clusters_ind } -> std::same_as<std::vector<int> &>;
+    { const_problem.clusters_ind }
+      -> std::same_as<const std::vector<int> &>;
+    problem.clusters_ind = std::vector<int>{};
+  };
 
 template <typename T>
-concept raw_retained_centroids_assignable = requires(T &problem) {
-  problem.centroids_ind = std::vector<int>{};
-};
+concept raw_retained_centroids_assignable =
+  requires(T &problem, const T &const_problem) {
+    { problem.centroids_ind } -> std::same_as<std::vector<int> &>;
+    { const_problem.centroids_ind }
+      -> std::same_as<const std::vector<int> &>;
+    problem.centroids_ind = std::vector<int>{};
+  };
 
 #if !defined(DTWC_F19_SKIP_RETAINED_ASSERTS)
 static_assert(

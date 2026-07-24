@@ -241,6 +241,11 @@ def parse_args() -> argparse.Namespace:
             "under build/)."
         ),
     )
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="Run non-mutating adversarial probes against the gate itself.",
+    )
     return parser.parse_args()
 
 
@@ -249,6 +254,213 @@ def read_text(path: Path) -> str:
         return path.read_text(encoding="utf-8")
     except OSError as error:
         raise GateFailure(f"cannot read {path}: {error}") from error
+
+
+def scrub_cpp_lexically(text: str, *, strip_literals: bool) -> str:
+    """Replace comments and optionally literals with spaces, preserving lines."""
+    chars = list(text)
+    size = len(chars)
+
+    def blank(start: int, end: int) -> None:
+        for index in range(start, min(end, size)):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+
+    index = 0
+    while index < size:
+        if text.startswith("//", index):
+            end = text.find("\n", index + 2)
+            end = size if end < 0 else end
+            blank(index, end)
+            index = end
+            continue
+        if text.startswith("/*", index):
+            close = text.find("*/", index + 2)
+            end = size if close < 0 else close + 2
+            blank(index, end)
+            index = end
+            continue
+        if text.startswith('R"', index):
+            delimiter_end = text.find("(", index + 2)
+            if delimiter_end >= 0:
+                delimiter = text[index + 2:delimiter_end]
+                terminator = ")" + delimiter + '"'
+                close = text.find(terminator, delimiter_end + 1)
+                if close >= 0:
+                    end = close + len(terminator)
+                    if strip_literals:
+                        blank(index, end)
+                    index = end
+                    continue
+        if chars[index] in {'"', "'"}:
+            quote = chars[index]
+            end = index + 1
+            while end < size:
+                if chars[end] == "\\":
+                    end += 2
+                    continue
+                end += 1
+                if text[end - 1] == quote:
+                    break
+            if strip_literals:
+                blank(index, end)
+            index = end
+            continue
+        index += 1
+    return "".join(chars)
+
+
+def remove_literal_if_zero_blocks(text: str) -> str:
+    """Remove literal #if 0 branches while retaining active #else branches."""
+    output = []
+    stack: list[tuple[bool, bool]] = []
+    active = True
+    for line in text.splitlines(keepends=True):
+        directive = re.match(r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b(.*)",
+                             line)
+        if directive:
+            keyword = directive.group(1)
+            argument = directive.group(2).strip()
+            if keyword in {"if", "ifdef", "ifndef"}:
+                literal_zero = keyword == "if" and argument == "0"
+                stack.append((literal_zero, active))
+                if literal_zero:
+                    active = False
+                    output.append("\n" if line.endswith("\n") else "")
+                    continue
+            elif keyword in {"else", "elif"} and stack:
+                literal_zero, parent_active = stack[-1]
+                if literal_zero:
+                    active = parent_active
+                    output.append("\n" if line.endswith("\n") else "")
+                    continue
+            elif keyword == "endif" and stack:
+                literal_zero, parent_active = stack.pop()
+                if literal_zero:
+                    active = parent_active
+                    output.append("\n" if line.endswith("\n") else "")
+                    continue
+            if active:
+                output.append(line)
+            else:
+                output.append("\n" if line.endswith("\n") else "")
+            continue
+        if active:
+            output.append(line)
+        else:
+            output.append("\n" if line.endswith("\n") else "")
+    return "".join(output)
+
+
+def active_cpp_source(text: str) -> str:
+    commentless = scrub_cpp_lexically(text, strip_literals=False)
+    return remove_literal_if_zero_blocks(commentless)
+
+
+def preprocessor_depth_zero_source(text: str) -> str:
+    """Keep only code outside every conditional-preprocessor region."""
+    commentless = scrub_cpp_lexically(text, strip_literals=False)
+    output = []
+    depth = 0
+    for line in commentless.splitlines(keepends=True):
+        directive = re.match(
+            r"^\s*#\s*(if|ifdef|ifndef|elif|else|endif)\b",
+            line,
+        )
+        if directive:
+            keyword = directive.group(1)
+            if keyword in {"if", "ifdef", "ifndef"}:
+                depth += 1
+            elif keyword == "endif":
+                if depth == 0:
+                    raise GateFailure("unmatched #endif in C++ source audit")
+                depth -= 1
+            output.append("\n" if line.endswith("\n") else "")
+            continue
+        if depth == 0:
+            output.append(line)
+        else:
+            output.append("\n" if line.endswith("\n") else "")
+    if depth != 0:
+        raise GateFailure(
+            f"unterminated conditional-preprocessor depth in source audit: {depth}"
+        )
+    return "".join(output)
+
+
+def unconditional_cpp_code(text: str) -> str:
+    return scrub_cpp_lexically(
+        preprocessor_depth_zero_source(text),
+        strip_literals=True,
+    )
+
+
+def cpp_code_only(text: str) -> str:
+    return scrub_cpp_lexically(active_cpp_source(text), strip_literals=True)
+
+
+def cpp_function_span(code: str, name: str) -> tuple[int, int]:
+    signature = re.search(
+        rf"(?m)^\s*static\s+void\s+{re.escape(name)}\s*\(",
+        code,
+    )
+    if signature is None:
+        raise GateFailure(f"cannot locate C++ function {name}")
+    opening = code.find("{", signature.end())
+    if opening < 0:
+        raise GateFailure(f"cannot locate opening brace for {name}")
+    depth = 0
+    for index in range(opening, len(code)):
+        if code[index] == "{":
+            depth += 1
+        elif code[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return (signature.start(), index + 1)
+    raise GateFailure(f"cannot locate closing brace for {name}")
+
+
+def cpp_function_body(active_source: str, code: str, name: str) -> str:
+    start, end = cpp_function_span(code, name)
+    return active_source[start:end]
+
+
+def blank_cpp_functions(
+    active_source: str,
+    code: str,
+    names: tuple[str, ...],
+) -> str:
+    chars = list(active_source)
+    for name in names:
+        start, end = cpp_function_span(code, name)
+        for index in range(start, end):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+    return "".join(chars)
+
+
+def cpp_statement(active_source: str, code: str, start_token: str) -> str:
+    start = code.find(start_token)
+    if start < 0:
+        raise GateFailure(f"cannot locate C++ statement starting {start_token}")
+    parens = braces = brackets = 0
+    for index in range(start, len(code)):
+        char = code[index]
+        if char == "(":
+            parens += 1
+        elif char == ")":
+            parens -= 1
+        elif char == "{":
+            braces += 1
+        elif char == "}":
+            braces -= 1
+        elif char == "[":
+            brackets += 1
+        elif char == "]":
+            brackets -= 1
+        elif char == ";" and parens == braces == brackets == 0:
+            return active_source[start:index + 1]
+    raise GateFailure(f"cannot locate statement terminator for {start_token}")
 
 
 def find_compiler(requested: str | None) -> str:
@@ -526,26 +738,27 @@ def run_attribution_probes(
 
 
 def audit_fixture(fixture_text: str) -> None:
+    fixture_code = cpp_code_only(fixture_text)
     assertion_partitions = {
         "private": len(
             re.findall(
                 r"static_assert\s*\(\s*!raw_private_[a-z_]+"
                 r"<dtwc::Problem>",
-                fixture_text,
+                fixture_code,
             )
         ),
         "getters": len(
             re.findall(
                 r"static_assert\s*\(\s*has_const_[a-z_]+"
                 r"<dtwc::Problem>",
-                fixture_text,
+                fixture_code,
             )
         ),
         "retained": len(
             re.findall(
                 r"static_assert\s*\(\s*raw_retained_[a-z_]+"
                 r"<dtwc::Problem>",
-                fixture_text,
+                fixture_code,
             )
         ),
     }
@@ -557,7 +770,7 @@ def audit_fixture(fixture_text: str) -> None:
         )
 
     total_assertions = len(
-        re.findall(r"\bstatic_assert\s*\(", fixture_text)
+        re.findall(r"\bstatic_assert\s*\(", fixture_code)
     )
     if total_assertions != 31:
         raise GateFailure(
@@ -594,11 +807,11 @@ def audit_fixture(fixture_text: str) -> None:
         field: (
             len(re.findall(
                 rf"\{{\s*problem\.{field}\s*\(\s*\)\s*\}}\s*->",
-                fixture_text,
+                fixture_code,
             )),
             len(re.findall(
                 rf"\{{\s*const_problem\.{field}\s*\(\s*\)\s*\}}\s*->",
-                fixture_text,
+                fixture_code,
             )),
         )
         for field in PRIVATE_FIELDS
@@ -614,9 +827,76 @@ def audit_fixture(fixture_text: str) -> None:
             f"reads exactly once: {wrong_getter_accesses}"
         )
 
+    member_pointer_checks = {
+        field: len(re.findall(
+            rf"\{{\s*&T::{field}\s*\}}\s*->\s*std::same_as<"
+            rf"{field}_getter_pointer<T>>",
+            fixture_code,
+        ))
+        for field in PRIVATE_FIELDS
+    }
+    wrong_member_pointer_checks = {
+        field: count
+        for field, count in member_pointer_checks.items()
+        if count != 1
+    }
+    if wrong_member_pointer_checks:
+        raise GateFailure(
+            "each getter must prove one exact unambiguous const member pointer: "
+            f"{wrong_member_pointer_checks}"
+        )
+
+    readonly_last_iteration_checks = {
+        "setter": len(re.findall(
+            r"problem\.set_last_iterations\s*\(\s*7\s*\)",
+            fixture_code,
+        )),
+        "overload": len(re.findall(
+            r"problem\.last_iterations\s*\(\s*7\s*\)",
+            fixture_code,
+        )),
+    }
+    if readonly_last_iteration_checks != {"setter": 1, "overload": 1}:
+        raise GateFailure(
+            "last_iterations getter concept must reject both setter and "
+            f"one-argument overload: {readonly_last_iteration_checks}"
+        )
+
+    retained_accesses = {
+        field: (
+            len(re.findall(rf"\{{\s*problem\.{field}\s*\}}\s*->",
+                           fixture_code)),
+            len(re.findall(rf"\{{\s*const_problem\.{field}\s*\}}\s*->",
+                           fixture_code)),
+        )
+        for field in (
+            "maxIter",
+            "N_repetition",
+            "band",
+            "variant_params",
+            "missing_strategy",
+            "distance_strategy",
+            "cuda_settings",
+            "mip_settings",
+            "init_fun",
+            "clusters_ind",
+            "centroids_ind",
+        )
+    }
+    wrong_retained_accesses = {
+        field: counts
+        for field, counts in retained_accesses.items()
+        if counts != (1, 1)
+    }
+    if wrong_retained_accesses:
+        raise GateFailure(
+            "each retained concept must constrain exact mutable and const "
+            f"reads: {wrong_retained_accesses}"
+        )
+
     resize_checks = len(re.findall(
         r"!public_resize_callable<dtwc::Problem>",
-        fixture_text,
+        fixture_code,
     ))
     if resize_checks != 1:
         raise GateFailure(
@@ -625,7 +905,7 @@ def audit_fixture(fixture_text: str) -> None:
         )
 
     setter_counts = {
-        setter: len(re.findall(rf"\bproblem\.{setter}\s*\(", fixture_text))
+        setter: len(re.findall(rf"\bproblem\.{setter}\s*\(", fixture_code))
         for setter in SETTER_EXERCISE
     }
     wrong_setters = {
@@ -735,6 +1015,570 @@ def require_expected_direct_accesses(
     return sum(actual.values())
 
 
+PYTHON_PRIVATE_PROPERTIES = {
+    "method": "set_method",
+    "random_seed": "set_random_seed",
+    "lb_strategy": "set_lb_strategy",
+    "storage_policy": "set_storage_policy",
+    "verbose": "set_verbose",
+    "output_folder": "set_output_folder",
+    "name": "set_name",
+}
+
+
+def erase_regex_matches(text: str, pattern: str, *, expected: int) -> str:
+    matches = list(re.finditer(pattern, text))
+    if len(matches) != expected:
+        raise GateFailure(
+            f"exact API spelling count is {len(matches)}, expected {expected}: "
+            f"{pattern}"
+        )
+    chars = list(text)
+    for match in matches:
+        for index in range(match.start(), match.end()):
+            if chars[index] not in "\r\n":
+                chars[index] = " "
+    return "".join(chars)
+
+
+def audit_final_python_api(python_active: str, python_code: str) -> None:
+    chain_count = len(re.findall(
+        r"\bnb::class_<\s*dtwc::Problem\s*>",
+        python_code,
+    ))
+    if chain_count != 1:
+        raise GateFailure(
+            "final Python binding must contain exactly one canonical Problem "
+            f"class chain, found {chain_count}"
+        )
+    chain = cpp_statement(
+        python_active,
+        python_code,
+        "nb::class_<dtwc::Problem>",
+    )
+    chain_residual = chain
+    global_residual = python_active
+    for field, setter in PYTHON_PRIVATE_PROPERTIES.items():
+        pattern = (
+            rf"\.def_prop_rw\s*\(\s*\"{field}\"\s*,\s*"
+            rf"&\s*dtwc::Problem::{field}\s*,\s*"
+            rf"&\s*dtwc::Problem::{setter}\b"
+        )
+        chain_residual = erase_regex_matches(
+            chain_residual,
+            pattern,
+            expected=1,
+        )
+        global_residual = erase_regex_matches(
+            global_residual,
+            pattern,
+            expected=1,
+        )
+
+    for name, member in (
+        ("set_method", "set_method"),
+        ("set_random_seed", "set_random_seed"),
+    ):
+        pattern = (
+            rf"\.def\s*\(\s*\"{name}\"\s*,\s*"
+            rf"&\s*dtwc::Problem::{member}\b"
+        )
+        chain_residual = erase_regex_matches(
+            chain_residual,
+            pattern,
+            expected=1,
+        )
+        global_residual = erase_regex_matches(
+            global_residual,
+            pattern,
+            expected=1,
+        )
+
+    chain_residual = cpp_code_only(chain_residual)
+    global_residual = cpp_code_only(global_residual)
+    forbidden_tokens = [
+        token
+        for field in PRIVATE_FIELDS
+        for token in (field + "_",)
+        if re.search(rf"\b{re.escape(token)}\b", global_residual)
+    ]
+    if forbidden_tokens:
+        raise GateFailure(
+            "final Python Problem binding mentions private backing tokens: "
+            f"{sorted(set(forbidden_tokens))}"
+        )
+
+    generic_spellings = re.findall(
+        r"\b(?:const_cast|reinterpret_cast|decltype|std::invoke|std::mem_fn)\b",
+        global_residual,
+    )
+    if generic_spellings:
+        raise GateFailure(
+            "final Python Problem binding uses forbidden generic state access: "
+            f"{generic_spellings}"
+        )
+
+    private_member_spellings = re.findall(
+        r"(?:\.|->|::)\s*("
+        + "|".join(re.escape(field) for field in PRIVATE_FIELDS)
+        + r")\b(?!\s*\()",
+        chain_residual,
+    )
+    if private_member_spellings:
+        raise GateFailure(
+            "final Python Problem binding contains non-API private state "
+            f"spellings: {private_member_spellings}"
+        )
+
+    private_member_pointers = re.findall(
+        r"&\s*dtwc::Problem::([A-Za-z_]\w*)",
+        global_residual,
+    )
+    forbidden_pointers = [
+        token
+        for token in private_member_pointers
+        if token in PRIVATE_FIELDS
+        or token.rstrip("_") in PRIVATE_FIELDS
+        or token in SETTER_EXERCISE
+    ]
+    if forbidden_pointers:
+        raise GateFailure(
+            "final Python Problem binding contains unpinned private member "
+            f"pointers: {forbidden_pointers}"
+        )
+
+
+MATLAB_FINAL_COMMAND_APIS = {
+    "cmd_Problem_new": (
+        r"\bprob\s*->\s*set_verbose\s*\(\s*false\s*\)\s*;",
+    ),
+    "cmd_Problem_get_info": (
+        r"\bprob\.name\s*\(\s*\)",
+        r"\bprob\.verbose\s*\(\s*\)",
+    ),
+    "cmd_Problem_set_data": (
+        r"\bprob\.set_data\s*\(",
+    ),
+    "cmd_Problem_set_verbose": (
+        r"\bprob\.set_verbose\s*\(\s*mxIsLogicalScalarTrue\s*\(",
+    ),
+    "cmd_Problem_get_name": (
+        r"\bprob\.name\s*\(\s*\)\s*\.c_str\s*\(\s*\)",
+    ),
+    "cmd_Problem_set_method": (
+        r"\bprob\.set_method\s*\(\s*parse_method\s*\(",
+    ),
+    "cmd_Problem_set_lb_strategy": (
+        r"\bprob\.set_lb_strategy\s*\(\s*candidate\s*\)",
+    ),
+    "cmd_Problem_set_storage_policy": (
+        r"\bprob\.set_storage_policy\s*\(\s*candidate\s*\)",
+    ),
+    "cmd_Problem_set_output_folder": (
+        r"\bprob\.set_output_folder\s*\(\s*"
+        r"std::filesystem::path\s*\(\s*get_string\s*\(",
+    ),
+    "cmd_compute_distance_matrix": (
+        r"\bprob\.set_verbose\s*\(\s*false\s*\)\s*;",
+        r"\bprob\.set_data\s*\(",
+    ),
+    "cmd_cluster_legacy": (
+        r"\bprob\.set_verbose\s*\(\s*false\s*\)\s*;",
+        r"\bprob\.set_data\s*\(",
+    ),
+}
+
+
+def audit_final_matlab_api(matlab_active: str, matlab_code: str) -> None:
+    for command, patterns in MATLAB_FINAL_COMMAND_APIS.items():
+        body = cpp_function_body(matlab_active, matlab_code, command)
+        for pattern in patterns:
+            count = len(re.findall(pattern, body))
+            if count != 1:
+                raise GateFailure(
+                    f"final MATLAB {command} exact API pattern count is "
+                    f"{count}, expected 1: {pattern}"
+                )
+
+    code = matlab_code
+    backing_tokens = [
+        field + "_"
+        for field in PRIVATE_FIELDS
+        if re.search(rf"\b{re.escape(field)}_\b", code)
+    ]
+    if backing_tokens:
+        raise GateFailure(
+            "final MATLAB MEX mentions private backing tokens: "
+            f"{backing_tokens}"
+        )
+
+    generic_spellings = re.findall(
+        r"\b(?:const_cast|reinterpret_cast|decltype|std::invoke|std::mem_fn)\b",
+        code,
+    )
+    if generic_spellings:
+        raise GateFailure(
+            "final MATLAB MEX uses forbidden generic state access: "
+            f"{generic_spellings}"
+        )
+
+    code = erase_regex_matches(
+        code,
+        r"\bopts\.random_seed\b",
+        expected=2,
+    )
+    private_member_spellings = re.findall(
+        r"(?:\.|->|::)\s*("
+        + "|".join(re.escape(field) for field in PRIVATE_FIELDS)
+        + r")\b(?!\s*\()",
+        code,
+    )
+    if private_member_spellings:
+        raise GateFailure(
+            "final MATLAB MEX contains non-API private state spellings: "
+            f"{private_member_spellings}"
+        )
+
+
+def semantic_mex_write_counts(
+    matlab_active: str,
+    matlab_code: str,
+) -> dict[str, int]:
+    without_legitimate_commands = blank_cpp_functions(
+        matlab_active,
+        matlab_code,
+        (
+            "cmd_Problem_set_n_clusters",
+            "cmd_Problem_get_centroids",
+            "cmd_Problem_get_clusters",
+        ),
+    )
+    code = cpp_code_only(without_legitimate_commands)
+    return {
+        "cluster_count": len(re.findall(
+            r"(?:\.|->|::)\s*(?:set_n_clusters|set_numberOfClusters)"
+            r"\s*\(",
+            code,
+        )),
+        "medoids": len(re.findall(
+            r"(?:\.|->|::)\s*centroids_ind\b",
+            code,
+        )),
+        "labels": len(re.findall(
+            r"(?:\.|->|::)\s*clusters_ind\b",
+            code,
+        )),
+    }
+
+
+def expect_gate_rejection(label: str, action) -> int:
+    try:
+        action()
+    except GateFailure:
+        return 1
+    raise GateFailure(f"adversarial self-probe was not rejected: {label}")
+
+
+def run_fixture_concept_self_probe(
+    compiler: str,
+    rapidcsv_include: Path,
+) -> int:
+    source = r'''
+#define DTWC_F19_SKIP_PRIVATE_ASSERTS
+#define DTWC_F19_SKIP_GETTER_ASSERTS
+#define DTWC_F19_SKIP_RETAINED_ASSERTS
+#define DTWC_F19_SKIP_SETTER_EXERCISE
+#include "scripts/fixtures/f19_problem_encapsulation.cpp"
+
+struct StaticLast {
+  static int last_iterations();
+};
+static_assert(!has_const_last_iterations_getter<StaticLast>);
+
+struct OverloadedLast {
+  int last_iterations() const;
+  void last_iterations(int);
+};
+static_assert(!has_const_last_iterations_getter<OverloadedLast>);
+
+struct SetterLast {
+  int last_iterations() const;
+  void set_last_iterations(int);
+};
+static_assert(!has_const_last_iterations_getter<SetterLast>);
+
+struct CallableMethod {
+  struct Callable {
+    dtwc::Method operator()();
+    dtwc::Method operator()() const;
+  };
+  Callable method;
+};
+static_assert(!raw_private_method_assignable<CallableMethod>);
+static_assert(!has_const_method_getter<CallableMethod>);
+
+struct WriteOnlyInt {
+  void operator=(int);
+};
+struct RetainedProxy {
+  WriteOnlyInt maxIter;
+};
+static_assert(!raw_retained_max_iter_assignable<RetainedProxy>);
+
+struct RetainedExact {
+  int maxIter;
+};
+static_assert(raw_retained_max_iter_assignable<RetainedExact>);
+'''
+    result = run_compiler(
+        compiler,
+        rapidcsv_include,
+        "-",
+        stdin=source,
+    )
+    require_compile_state(
+        probe="adversarial fixture concepts",
+        result=result,
+        expected_success=True,
+    )
+    return 6
+
+
+def synthetic_final_python_binding() -> str:
+    properties = "\n".join(
+        f'.def_prop_rw("{field}", &dtwc::Problem::{field}, '
+        f'&dtwc::Problem::{setter})'
+        for field, setter in PYTHON_PRIVATE_PROPERTIES.items()
+    )
+    return (
+        'nb::class_<dtwc::Problem>(m, "Problem")\n'
+        + properties
+        + '\n.def("set_method", &dtwc::Problem::set_method)\n'
+        + '.def("set_random_seed", &dtwc::Problem::set_random_seed);\n'
+    )
+
+
+def synthetic_final_matlab_binding() -> str:
+    return r'''
+static void cmd_Problem_new() { prob->set_verbose(false); }
+static void cmd_Problem_get_info() { use(prob.name()); use(prob.verbose()); }
+static void cmd_Problem_set_data() { prob.set_data(data); }
+static void cmd_Problem_set_verbose() {
+  prob.set_verbose(mxIsLogicalScalarTrue(prhs[2]));
+}
+static void cmd_Problem_get_name() { use(prob.name().c_str()); }
+static void cmd_Problem_set_method() {
+  prob.set_method(parse_method(get_string(prhs[2])));
+}
+static void cmd_Problem_set_lb_strategy() {
+  prob.set_lb_strategy(candidate);
+}
+static void cmd_Problem_set_storage_policy() {
+  prob.set_storage_policy(candidate);
+}
+static void cmd_Problem_set_output_folder() {
+  prob.set_output_folder(std::filesystem::path(get_string(prhs[2])));
+}
+static void cmd_compute_distance_matrix() {
+  prob.set_verbose(false);
+  prob.set_data(data);
+}
+static void cmd_cluster_legacy() {
+  prob.set_verbose(false);
+  prob.set_data(data);
+}
+static void cmd_Problem_set_n_clusters() {
+  prob.set_n_clusters(k);
+}
+static void cmd_Problem_get_centroids() { use(prob.centroids_ind); }
+static void cmd_Problem_get_clusters() { use(prob.clusters_ind); }
+static void option_writes() {
+  opts.random_seed = 1;
+  opts.random_seed = 2;
+}
+'''
+
+
+def run_source_adversarial_self_probes(
+    authoritative_texts: dict[str, str],
+) -> int:
+    probes = 0
+
+    commented_setter = cpp_code_only(
+        "void set_last_iterations /* comment */ (int);\n"
+    )
+    if len(re.findall(r"\bset_last_iterations\s*\(", commented_setter)) != 1:
+        raise GateFailure(
+            "comment stripping did not expose set_last_iterations mutator"
+        )
+    probes += 1
+
+    backing_declarations = "\n".join((
+        "Method method_{};",
+        "std::uint64_t random_seed_{};",
+        "int last_iterations_{};",
+        "double tadpole_dc_{};",
+        "LowerBoundStrategy lb_strategy_{};",
+        "core::StoragePolicy storage_policy_{};",
+        "bool verbose_{};",
+        "path_t output_folder_{};",
+        "std::string name_{};",
+        "Data data_;",
+    ))
+    for condition in ("0", "(0)", "0u", "false"):
+        inactive_backings = (
+            f"#if {condition}\n{backing_declarations}\n#endif\n"
+        )
+        inactive_code = unconditional_cpp_code(inactive_backings)
+        counts = {
+            field: len(re.findall(pattern, inactive_code))
+            for field, pattern in PRIVATE_BACKING_DECLARATIONS.items()
+        }
+        if any(count != 0 for count in counts.values()):
+            raise GateFailure(
+                f"conditional backing evidence counted for #if {condition}: "
+                f"{counts}"
+            )
+        probes += 1
+
+    for condition in ("0", "(0)", "0u", "false"):
+        counts = {
+            f"{implementation}.{token}": len(re.findall(
+                pattern,
+                unconditional_cpp_code(
+                    f"#if {condition}\n"
+                    + authoritative_texts[implementation]
+                    + "\n#endif\n"
+                ),
+            ))
+            for implementation, patterns in AUTHORITATIVE_WRITEBACKS.items()
+            for token, pattern in patterns.items()
+        }
+        if any(count != 0 for count in counts.values()):
+            raise GateFailure(
+                f"conditional core evidence counted for #if {condition}: "
+                f"{counts}"
+            )
+        probes += 1
+
+    python_valid = synthetic_final_python_binding()
+    audit_final_python_api(
+        active_cpp_source(python_valid),
+        cpp_code_only(python_valid),
+    )
+    python_mutants = {
+        "backing": ".def(\"hack\", [](auto &problem) { problem.method_ = x; })",
+        "generic": (
+            ".def(\"hack\", [](auto &problem) { "
+            "auto member = &dtwc::Problem::method; use(member); })"
+        ),
+        "const_cast": (
+            ".def(\"hack\", [](auto &problem) { "
+            "const_cast<std::string &>(problem.name()) = x; })"
+        ),
+        "direct": (
+            ".def(\"hack\", [](auto &problem) { "
+            "problem.output_folder = x; })"
+        ),
+    }
+    for label, mutation in python_mutants.items():
+        mutant = python_valid.replace(
+            ".def(\"set_random_seed\", &dtwc::Problem::set_random_seed);",
+            ".def(\"set_random_seed\", &dtwc::Problem::set_random_seed)\n"
+            + mutation
+            + ";",
+        )
+        probes += expect_gate_rejection(
+            f"Python {label}",
+            lambda mutant=mutant: audit_final_python_api(
+                active_cpp_source(mutant),
+                cpp_code_only(mutant),
+            ),
+        )
+
+    second_chain = (
+        python_valid
+        + '\nnb::class_<dtwc::Problem>(m, "ProblemShadow")'
+        + '.def("hack", [](auto &problem) { problem.method_ = x; });\n'
+    )
+    probes += expect_gate_rejection(
+        "Python second Problem chain",
+        lambda: audit_final_python_api(
+            active_cpp_source(second_chain),
+            cpp_code_only(second_chain),
+        ),
+    )
+
+    matlab_valid = synthetic_final_matlab_binding()
+    matlab_active = active_cpp_source(matlab_valid)
+    matlab_code = cpp_code_only(matlab_valid)
+    audit_final_matlab_api(matlab_active, matlab_code)
+    matlab_mutants = {
+        "backing": "static void hack() { prob.verbose_ = false; }\n",
+        "generic": (
+            "static void hack() { decltype(auto) alias = prob; "
+            "alias.verbose_ = false; }\n"
+        ),
+        "const_cast": (
+            "static void hack() { "
+            "const_cast<bool &>(prob.verbose()) = false; }\n"
+        ),
+        "member_pointer": (
+            "static void hack() { auto member = &dtwc::Problem::verbose; }\n"
+        ),
+        "direct": "static void hack() { prob.verbose = false; }\n",
+    }
+    for label, mutation in matlab_mutants.items():
+        mutant = matlab_valid + mutation
+        probes += expect_gate_rejection(
+            f"MATLAB {label}",
+            lambda mutant=mutant: audit_final_matlab_api(
+                active_cpp_source(mutant),
+                cpp_code_only(mutant),
+            ),
+        )
+
+    semantic_mutant = matlab_valid + r'''
+static void renamed_writeback() {
+  prob.set_n_clusters(k);
+  prob.centroids_ind.assign(result.medoid_indices.begin(),
+                            result.medoid_indices.end());
+  prob.clusters_ind.swap(result.labels);
+}
+'''
+    semantic_counts = semantic_mex_write_counts(
+        active_cpp_source(semantic_mutant),
+        cpp_code_only(semantic_mutant),
+    )
+    if semantic_counts != {
+        "cluster_count": 1,
+        "medoids": 1,
+        "labels": 1,
+    }:
+        raise GateFailure(
+            "semantic MATLAB writeback mutant was not detected: "
+            f"{semantic_counts}"
+        )
+    probes += 1
+
+    inactive_semantic = matlab_valid + "#if 0\n" + semantic_mutant + "\n#endif\n"
+    inactive_counts = semantic_mex_write_counts(
+        active_cpp_source(inactive_semantic),
+        cpp_code_only(inactive_semantic),
+    )
+    if inactive_counts != {
+        "cluster_count": 0,
+        "medoids": 0,
+        "labels": 0,
+    }:
+        raise GateFailure(
+            "inactive semantic MATLAB writeback was counted: "
+            f"{inactive_counts}"
+        )
+    probes += 1
+    return probes
+
+
 def audit_sources(
     profile: str,
     problem_text: str,
@@ -743,14 +1587,25 @@ def audit_sources(
     authoritative_texts: dict[str, str],
 ) -> tuple[int, int, int, int, int, int, int, int]:
     expectation = EXPECTED[profile]
+    problem_code = cpp_code_only(problem_text)
+    problem_evidence_code = unconditional_cpp_code(problem_text)
+    python_active = active_cpp_source(python_text)
+    python_code = cpp_code_only(python_text)
+    matlab_active = active_cpp_source(matlab_text)
+    matlab_code = cpp_code_only(matlab_text)
+    authoritative_code = {
+        name: unconditional_cpp_code(text)
+        for name, text in authoritative_texts.items()
+    }
+
     require_private_member(
-        problem_text,
+        problem_code,
         member="Problem::resize()",
         declaration_pattern=r"(?m)^\s*void\s+resize\s*\(\s*\)\s*;",
     )
     last_iteration_setters = len(re.findall(
         r"\bset_last_iterations\s*\(",
-        problem_text,
+        problem_code,
     ))
     if last_iteration_setters != 0:
         raise GateFailure(
@@ -759,7 +1614,7 @@ def audit_sources(
         )
 
     declaration_counts = {
-        field: len(re.findall(pattern, problem_text))
+        field: len(re.findall(pattern, problem_evidence_code))
         for field, pattern in RAW_PRIVATE_DECLARATIONS.items()
     }
     expected_declaration_count = expectation["declaration_count"]
@@ -776,7 +1631,7 @@ def audit_sources(
     violations = sum(declaration_counts.values())
 
     backing_matches = {
-        field: list(re.finditer(pattern, problem_text))
+        field: list(re.finditer(pattern, problem_evidence_code))
         for field, pattern in PRIVATE_BACKING_DECLARATIONS.items()
     }
     backing_counts = {
@@ -800,7 +1655,7 @@ def audit_sources(
             RAW_PRIVATE_DECLARATIONS["method"].replace(
                 r"Method\s+method\s*\{", r"int\s+maxIter\s*\{"
             ),
-            problem_text,
+            problem_evidence_code,
         )
         if retained_max_iter is None:
             raise GateFailure(
@@ -809,7 +1664,10 @@ def audit_sources(
             )
         public_blocks = [
             match
-            for match in re.finditer(r"(?m)^\s*public:\s*$", problem_text)
+            for match in re.finditer(
+                r"(?m)^\s*public:\s*$",
+                problem_evidence_code,
+            )
             if match.start() < retained_max_iter.start()
         ]
         if not public_blocks:
@@ -819,7 +1677,10 @@ def audit_sources(
         relevant_public = public_blocks[-1]
         private_blocks = [
             match
-            for match in re.finditer(r"(?m)^\s*private:\s*$", problem_text)
+            for match in re.finditer(
+                r"(?m)^\s*private:\s*$",
+                problem_evidence_code,
+            )
             if match.start() < relevant_public.start()
         ]
         if not private_blocks:
@@ -846,8 +1707,8 @@ def audit_sources(
         r"(?m)^\s*static\s+void\s+store_result_in_problem\s*\("
     )
     invocation_pattern = r"\bstore_result_in_problem\s*\("
-    helpers = len(re.findall(helper_pattern, matlab_text))
-    invocations = len(re.findall(invocation_pattern, matlab_text))
+    helpers = len(re.findall(helper_pattern, matlab_code))
+    invocations = len(re.findall(invocation_pattern, matlab_code))
     calls = invocations - helpers
     if calls < 0:
         raise GateFailure(
@@ -869,10 +1730,7 @@ def audit_sources(
             f"expected {expected}"
         )
 
-    mex_write_counts = {
-        name: len(re.findall(pattern, matlab_text))
-        for name, pattern in MEX_REDUNDANT_WRITEBACKS.items()
-    }
+    mex_write_counts = semantic_mex_write_counts(matlab_active, matlab_code)
     expected_mex_write_count = expectation["mex_write_count"]
     wrong_mex_writes = {
         name: count
@@ -893,7 +1751,7 @@ def audit_sources(
 
     core_write_counts = {
         f"{implementation}.{token}": len(
-            re.findall(pattern, authoritative_texts[implementation])
+            re.findall(pattern, authoritative_code[implementation])
         )
         for implementation, patterns in AUTHORITATIVE_WRITEBACKS.items()
         for token, pattern in patterns.items()
@@ -917,7 +1775,7 @@ def audit_sources(
         )
 
     python_access_inventory = direct_problem_field_accesses(
-        python_text,
+        python_active,
         include_nanobind_field_pointers=True,
     )
     python_directs = require_expected_direct_accesses(
@@ -928,7 +1786,7 @@ def audit_sources(
     )
 
     matlab_access_inventory = direct_problem_field_accesses(
-        matlab_text,
+        matlab_active,
         include_nanobind_field_pointers=False,
     )
     matlab_directs = require_expected_direct_accesses(
@@ -937,6 +1795,10 @@ def audit_sources(
         actual=matlab_access_inventory,
         expected=expectation["matlab_direct_accesses"],
     )
+
+    if profile == "final":
+        audit_final_python_api(python_active, python_code)
+        audit_final_matlab_api(matlab_active, matlab_code)
 
     return (
         violations,
@@ -981,6 +1843,19 @@ def main() -> int:
 
         compiler = find_compiler(args.compiler)
         rapidcsv_include = find_rapidcsv_include(args.rapidcsv_include)
+        self_probes = 0
+        if args.self_test:
+            self_probes += run_fixture_concept_self_probe(
+                compiler,
+                rapidcsv_include,
+            )
+            self_probes += run_source_adversarial_self_probes(
+                authoritative_texts,
+            )
+            print(
+                "F19_PROBLEM_ENCAPSULATION_SELF_TEST "
+                f"probes={self_probes} verdict=PASS"
+            )
         smoke = run_compiler(
             compiler,
             rapidcsv_include,
@@ -1033,6 +1908,7 @@ def main() -> int:
             f"getter_diagnostics={getter_diagnostics} "
             f"setter_diagnostics={setter_diagnostics} "
             "compatibility_compile=passed "
+            f"self_probes={self_probes} "
             "assertions=31 verdict=PASS"
         )
         return 0
