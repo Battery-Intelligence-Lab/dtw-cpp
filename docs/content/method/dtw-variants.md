@@ -287,5 +287,5 @@ prob.variant_params.adtw_penalty = 0.1
 prob.set_variant(dtwcpp.DTWVariant.ADTW)
 ```
 
-The `Problem::rebind_dtw_fn()` method automatically selects the correct function (including multivariate variants when `data.ndim > 1`).
+The `Problem::rebind_dtw_fn()` method automatically selects the correct function (including multivariate variants when `Problem::data().ndim > 1`).
 

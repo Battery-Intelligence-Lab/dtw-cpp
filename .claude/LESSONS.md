@@ -261,6 +261,15 @@ Critical knowledge to avoid repeating mistakes.
 
 ## Audit / Testing
 
+- **A registered test-summary band must reconcile to the collected total before
+  the decisive run.** F19 registered at least 1010 passed and 12 skipped over
+  1,022 collected while also allowing one known F39 failure:
+  `1010 + 12 + 1 = 1023`. The fresh run correctly reported
+  `1009 passed + 12 skipped + 1 failed = 1022`. Write the outcome ledger
+  explicitly before registering category floors (including failures, errors,
+  xfail/xpass, and deselections where applicable); an impossible aggregate is
+  FALSIFIED evidence, not permission to relabel a valid outcome or tune the
+  floor after the run.
 - **Repository-hygiene gates must inspect the Git index, not worktree
   existence.** A staged deletion disappears from `git ls-files -s`, while an
   index-tracked path can be absent only in the worktree; filtering tracked
@@ -295,7 +304,7 @@ Critical knowledge to avoid repeating mistakes.
 - **A regression test must execute the production arithmetic it claims to protect.** The Metal case in `tests/unit/test_decode_pair.cpp` repeated the intended `pair_offset` types and arithmetic in test-local `constexpr`s, which is tautological: the test stays green if `metal_dtw.mm` is reverted. Exercise the real host-side helper or public dispatch path (or extract a shared production helper) and prove the test fails when the production fix is removed.
 - **Wider loop counters cannot extend an `int`-indexed API.** FastPAM's point indices end at `Problem::dist_by_ind(int, int)` and `vector<int>` results, so changing internal induction variables to `int64_t` only added casts and hid the real ceiling. Compare the original `size_t` to `INT_MAX`, narrow once, and keep the kernel internally consistent. Apply that check at every public entry before allocation or mutation; a guard only in a downstream delegate is too late for callers that materialise data first.
 - **Always rerun ctest failures serially after the first parallel pass.** A clean handoff on another platform is not evidence of a green local tree. On Windows Release (2026-04-13), `ctest -j 4 -C Release` failed with `0xc0000409`; serial rerun showed `test_fast_pam_adversarial` was a deterministic crash while `unit_test_clustering_algorithms` was a parallel-only failure mode. Audit skills must distinguish "real blocker" from "flake".
-- **A test name must match the algorithm path it actually exercises.** `tests/unit/adversarial/test_fast_pam_adversarial.cpp` sounds like FastPAM coverage, but its helper sets `prob.method = Method::Kmedoids` and calls the legacy Lloyd path. That creates false confidence. For algorithm migrations, mislabeled tests are worse than missing tests because they silently certify the wrong implementation.
+- **A test name must match the algorithm path it actually exercises.** `tests/unit/adversarial/test_fast_pam_adversarial.cpp` sounds like FastPAM coverage, but its helper sets `prob.set_method(Method::Kmedoids)` and calls the legacy Lloyd path. That creates false confidence. For algorithm migrations, mislabeled tests are worse than missing tests because they silently certify the wrong implementation.
 - **A "structure" test (label ranges, sizes, converged-flag) does NOT test OPTIMALITY — a wrong answer can satisfy it.** The FastPAM k=1 unit test only asserted `labels all == 0` and `converged`, so it passed even when the new decomposition returned the BUILD medoid (the `second_dist = +inf` NaN bug recorded above) instead of the optimum. What caught it was a downstream exact-value oracle. The current named regression starts at `tests/unit/algorithms/unit_test_fast_clara.cpp:712` and pins literal k=1 sample medians. Lesson: for every algorithm, at least one test must pin the OPTIMAL output against an independent oracle (brute force / closed form), not just its shape. The brute-force local-optimality arbiter (no improving swap by full reassignment) added in `unit_test_faster_pam.cpp` is the general form—it is tie-independent and would have caught the NaN at any k.
 - **Tests must pin the LIVE code path — name the public entry point in a comment.** Phase 0 task 0.6 "fixed" multivariate L2 in `core::dispatch_mv_metric`, a dead duplicate with zero call sites; the live `detail::dispatch_mv_metric` (warping.hpp) kept aliasing L2→L1, the new test validated the dead function, and the CHANGELOG claim was false. Caught only by adversarial review tracing the real dispatch chain (`dtwBanded_mv` → warping.hpp). Rules: (1) before fixing a dispatcher, grep call sites and delete dead duplicates — two dispatchers for one concept is itself the bug; (2) every regression test states in a comment which public entry point it exercises. (Fixed in Phase 0 remediation R1, commit ffb7a8d.)
 - **A finite no-path sentinel makes `isfinite()` a false-green band test.**

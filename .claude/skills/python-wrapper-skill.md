@@ -607,7 +607,7 @@ loader.path("data/ECG200").startColumn(1).delimiter(',');
 Data data = loader.load();
 
 Problem prob("ECG200", loader);
-prob.method = Method::Kmedoids;
+prob.set_method(Method::Kmedoids);
 prob.maxIter = 100;
 prob.band = 10;
 prob.fillDistanceMatrix();

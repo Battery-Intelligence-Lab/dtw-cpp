@@ -25,8 +25,10 @@ its formal acceptance box remains open as falsification evidence only, while
 F38 uniquely owns the residual implementation. F17's completed-result replay
 repair is retained in `fb853eb`; its formal acceptance remains open as
 falsification evidence because the frozen supply-chain manifest count observed
-28 rather than 27. F39 uniquely owns that inventory reconciliation. F18 is
-active.
+28 rather than 27. F39 uniquely owns that inventory reconciliation. F18
+remains open after its capped falsification; **F19 CLOSED** in product attempt
+1, with its impossible Python aggregate band retained as FALSIFIED evidence.
+F20 is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -547,11 +549,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       files were rolled back; commit `625b5b7` retains the red-first cases and
       permanent runner. F42 owns the Auto-selector crash, F18 stays unchecked,
       and the campaign pointer moves to F19.
-- [ ] **F19 — the frozen `Problem` encapsulation/accessor cleanup is
-      incomplete.** Configuration and result fields remain publicly mutable;
+- [x] **F19 — the frozen `Problem` encapsulation/accessor cleanup was
+      incomplete.** Configuration and result fields remained publicly mutable;
       promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
-      accessors are absent; MATLAB still performs binding-side result writeback
-      after core algorithms already write the same state
+      accessors were absent; MATLAB still performed binding-side result
+      writeback after core algorithms already wrote the same state
       (`dtwc/Problem.hpp:206-234`, `bindings/matlab/dtwc_mex.cpp:326-330,
       1142-1203`). First gate: a compile-time contract fixture must fail on the
       three missing canonical accessors and a source/API guard must reject raw
@@ -579,6 +581,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       11 skipped, and the sole failure equal to F39's already-open tracked
       CMake inventory mismatch (observed 28, stale expected 27). Fresh-extension
       verification remains a final F19 gate.
+      **CLOSED 2026-07-24:** product attempt 1 is retained in `3612b68`.
+      The final source gate has 10 private backings, zero violations, 27/27
+      self-probes, and 31/31 public-header assertions; the focused runtime
+      passes 42 assertions / 3 cases with its non-skip marker. Canonical and
+      llfio-OFF pass 121/121 with exact capability skips. The fresh Python
+      property probe passes, while full pytest is 1009 passed / 12 skipped /
+      one known F39 failure over 1022; the registered 1010/12-plus-one ledger
+      is therefore arithmetically FALSIFIED, not rescue-tuned. The final MEX
+      passes 8/8 routes, 64/64 vector and 40/40 scalar assertions across
+      R2024b/R2025b with zero skips. Frozen/generated docs and their live-CLI
+      drift gate pass. Resume at F20.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
       (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently
@@ -1241,6 +1254,14 @@ colour system transfer verbatim**.
   rejected by four legacy mutants; it consumed no product attempt. Resume at
   product attempt 1. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (F19 closure): Retain attempt-1 commit `3612b68`; exact source,
+  focused C++, canonical, llfio-OFF, fresh Python-property, and two-release
+  MATLAB subjects pass. Full Python is 1009 pass / 12 skip / one exact F39 red
+  over 1022, proving the registered 1010/12-plus-one aggregate impossible; keep
+  that band FALSIFIED without weakening the green F19 behavioral subjects.
+  Generated/frozen documentation is current. Close F19 and continue at F20.
+  Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1595,4 +1616,13 @@ colour system transfer verbatim**.
   24 MEX hash checks, 42 post-run evidence rehashes, and zero skips. The
   intermediate PowerShell route-selector failure was a gate defect fixed in
   `f4613d6`, not a product attempt. Product attempts consumed: zero. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F19 CLOSED): `3612b68` implements the governed 10-private /
+  11-retained split in attempt 1 and removes redundant MATLAB writeback.
+  Source/compile and the 42-assertion runtime pass; canonical and llfio-OFF pass
+  121/121; final R2024b/R2025b MEX routes pass 8/8 with 64/40 exact assertions.
+  Fresh Python properties pass; its only full-suite red is F39, and the
+  preregistered category floor is separately FALSIFIED as an impossible
+  1,023-outcome ledger over 1,022 collected. Documentation gates pass. Resume
+  at F20. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.

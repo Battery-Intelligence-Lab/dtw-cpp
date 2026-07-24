@@ -72,6 +72,14 @@ def assert_contract_audit_state() -> None:
         "directory checkpoint = `distances.csv` + `metadata.txt`",
         "CLI `--resume` reads but currently discards",
         "current CLI only reads and reports its binary result checkpoint",
+        "encapsulation/accessor cleanup is incomplete",
+        "MATLAB retains redundant",
+        "three missing C++ accessors remain",
+        "[gap F19",
+        "F19 owns removal",
+        "raw configuration/result fields remain public (F19)",
+        "store_result_in_problem",
+        "`tadpole_dc` prop",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -90,6 +98,11 @@ def assert_contract_audit_state() -> None:
         "completed-result replay",
         "additional continuation budget",
         "same `<output>/<name>`",
+        "Ten C++ `Problem` fields are private",
+        "`last_iterations()` is intentionally read-only",
+        "`data()` returns `const Data&`",
+        "neither binding\nrepeats the assignment",
+        "private C++ state; CLI exposes `--dc`",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
@@ -102,7 +115,7 @@ def assert_contract_audit_state() -> None:
             "frozen contract must record exactly eight reviewer resolutions"
         )
     missing_findings = [
-        f"F{number}" for number in range(18, 27)
+        f"F{number}" for number in (18, *range(20, 27))
         if f"F{number}" not in contract
     ]
     if missing_findings:
@@ -119,6 +132,7 @@ def assert_migration_behaviors() -> None:
         "`Result.distance_matrix` is `None` for matrix-free methods",
         "Explicit GPU requests no longer warn and run on CPU",
         "Requesting an unavailable MIP solver no longer prints and returns",
+        "Ten C++ `Problem` fields are now private",
     )
     missing = [item for item in required if item not in migration]
     if missing:
@@ -361,7 +375,8 @@ def assert_gpu_backend_page() -> None:
         "thresholded",
         "`+inf`",
         "`dtwc::KernelOverride`",
-        "`Problem::lb_strategy` is CPU-only",
+        "`Problem::lb_strategy()` is CPU-only",
+        "`Problem::set_lb_strategy(LowerBoundStrategy)`",
         "`DistanceMatrixStrategy::Auto` is CPU-only",
         "O(N·L·r)",
         "O(N²·L)",

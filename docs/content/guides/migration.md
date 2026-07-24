@@ -15,37 +15,37 @@ F22 covers retained aliases/fields that do not emit their required warning.
 
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
-| 1 | set k (C++) | `Problem::set_numberOfClusters` (Problem.hpp:185) | `set_n_clusters` | C++ `[[deprecated]]` |
-| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp:445`) | `set_n_clusters` | alias 1 cycle |
+| 1 | set k (C++) | `Problem::set_numberOfClusters` (`Problem.hpp`) | `set_n_clusters` | C++ `[[deprecated]]` |
+| 2 | set k (Python) | `Problem.set_number_of_clusters` (`_dtwcpp_core.cpp`) | `set_n_clusters` | alias 1 cycle |
 | 3 | set k (MATLAB) | `Problem.set_n_clusters` (Problem.m:113) | `set_n_clusters` | already canonical |
-| 4 | max iterations (C++ field) | `Problem::maxIter` (Problem.hpp:130) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
+| 4 | max iterations (C++ field) | `Problem::maxIter` (`Problem.hpp`) | `set_max_iter` / `max_iter` accessor | C++ `[[deprecated]]` field-name kept |
 | 5 | max iterations (MATLAB prop) | `Problem.MaxIter` (Problem.m:27) | `set_max_iter` | alias (loud warn) |
-| 6 | repetitions (C++ field) | `Problem::N_repetition` (Problem.hpp:131) | `set_n_repetitions` / `n_repetitions` | C++ `[[deprecated]]` |
-| 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp:424`) | `n_repetitions` | alias 1 cycle |
+| 6 | repetitions (C++ field) | `Problem::N_repetition` (`Problem.hpp`) | `set_n_repetitions` / `n_repetitions` | C++ `[[deprecated]]` |
+| 7 | repetitions (Python prop) | `Problem.n_repetition` (`_dtwcpp_core.cpp`) | `n_repetitions` | alias 1 cycle |
 | 8 | repetitions (MATLAB prop) | `Problem.NRepetition` (Problem.m:28) | `set_n_repetitions` | alias (loud warn) |
 | 9 | band (MATLAB prop) | `Problem.Band` (Problem.m:25) | `set_band` | alias (loud warn) |
 | 10 | verbose (MATLAB prop) | `Problem.Verbose` (Problem.m:26) | `set_verbose` | alias (loud warn) |
-| 11 | refresh dist mat | `refreshDistanceMatrix` (Problem.hpp:178) | `refresh_distance_matrix` | C++ `[[deprecated]]` |
-| 12 | read dist mat | `readDistanceMatrix` (Problem.hpp:184) | `read_distance_matrix` | C++ `[[deprecated]]` |
-| 13 | max distance | `maxDistance` (Problem.hpp:209) | `max_distance` | C++ `[[deprecated]]` |
-| 14 | dist by index | `distByInd` (Problem.hpp:210) | `dist_by_ind` | C++ `[[deprecated]]` |
-| 15 | is filled | `isDistanceMatrixFilled` (Problem.hpp:225) | `is_distance_matrix_filled` | C++ `[[deprecated]]` |
-| 16 | fill dist mat | `fillDistanceMatrix` (Problem.hpp:246) | `fill_distance_matrix` | C++ `[[deprecated]]` |
-| 17 | print dist mat | `printDistanceMatrix` (Problem.hpp:247) | `print_distance_matrix` | C++ `[[deprecated]]` |
-| 18 | write dist mat | `writeDistanceMatrix` (Problem.hpp:249) | `write_distance_matrix` | C++ `[[deprecated]]` |
-| 19 | print clusters | `printClusters` (Problem.hpp:252) | `print_clusters` | C++ `[[deprecated]]` |
-| 20 | write clusters | `writeClusters` (Problem.hpp:253) | `write_clusters` | C++ `[[deprecated]]` |
-| 21 | write medoid members | `writeMedoidMembers` (Problem.hpp:255) | `write_medoid_members` | C++ `[[deprecated]]` |
-| 22 | write silhouettes | `writeSilhouettes` (Problem.hpp:256) | `write_silhouettes` | C++ `[[deprecated]]` |
-| 23 | total cost | `findTotalCost` (Problem.hpp:269) | `find_total_cost` | C++ `[[deprecated]]` |
-| 24 | assign clusters | `assignClusters` (Problem.hpp:270) | `assign_clusters` | C++ `[[deprecated]]` |
-| 25 | calc medoids | `calculateMedoids` (Problem.hpp:272) | `calculate_medoids` | C++ `[[deprecated]]` |
-| 26 | cluster via MIP | `cluster_by_MIP` (Problem.hpp:263) | `cluster_by_mip` | C++ `[[deprecated]]` |
-| 27 | cluster via Lloyd | `cluster_by_kMedoidsLloyd` (Problem.hpp:264) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
-| 28 | n clusters read | `cluster_size` (Problem.hpp:162) | `n_clusters` | C++ `[[deprecated]]` alias |
+| 11 | refresh dist mat | `refreshDistanceMatrix` (`Problem.hpp`) | `refresh_distance_matrix` | C++ `[[deprecated]]` |
+| 12 | read dist mat | `readDistanceMatrix` (`Problem.hpp`) | `read_distance_matrix` | C++ `[[deprecated]]` |
+| 13 | max distance | `maxDistance` (`Problem.hpp`) | `max_distance` | C++ `[[deprecated]]` |
+| 14 | dist by index | `distByInd` (`Problem.hpp`) | `dist_by_ind` | C++ `[[deprecated]]` |
+| 15 | is filled | `isDistanceMatrixFilled` (`Problem.hpp`) | `is_distance_matrix_filled` | C++ `[[deprecated]]` |
+| 16 | fill dist mat | `fillDistanceMatrix` (`Problem.hpp`) | `fill_distance_matrix` | C++ `[[deprecated]]` |
+| 17 | print dist mat | `printDistanceMatrix` (`Problem.hpp`) | `print_distance_matrix` | C++ `[[deprecated]]` |
+| 18 | write dist mat | `writeDistanceMatrix` (`Problem.hpp`) | `write_distance_matrix` | C++ `[[deprecated]]` |
+| 19 | print clusters | `printClusters` (`Problem.hpp`) | `print_clusters` | C++ `[[deprecated]]` |
+| 20 | write clusters | `writeClusters` (`Problem.hpp`) | `write_clusters` | C++ `[[deprecated]]` |
+| 21 | write medoid members | `writeMedoidMembers` (`Problem.hpp`) | `write_medoid_members` | C++ `[[deprecated]]` |
+| 22 | write silhouettes | `writeSilhouettes` (`Problem.hpp`) | `write_silhouettes` | C++ `[[deprecated]]` |
+| 23 | total cost | `findTotalCost` (`Problem.hpp`) | `find_total_cost` | C++ `[[deprecated]]` |
+| 24 | assign clusters | `assignClusters` (`Problem.hpp`) | `assign_clusters` | C++ `[[deprecated]]` |
+| 25 | calc medoids | `calculateMedoids` (`Problem.hpp`) | `calculate_medoids` | C++ `[[deprecated]]` |
+| 26 | cluster via MIP | `cluster_by_MIP` (`Problem.hpp`) | `cluster_by_mip` | C++ `[[deprecated]]` |
+| 27 | cluster via Lloyd | `cluster_by_kMedoidsLloyd` (`Problem.hpp`) | `cluster_by_kmedoids_lloyd` | C++ `[[deprecated]]` |
+| 28 | n clusters read | `cluster_size` (`Problem.hpp`) | `n_clusters` | C++ `[[deprecated]]` alias |
 | 29 | dist mat access (MATLAB) | `get_distance_matrix`/`set_distance_matrix` (Problem.m:158,164) | `distance_matrix`/`set_distance_matrix` | alias (loud warn) |
-| 29a | dist mat read (Python) | `Problem.distance_matrix_numpy` (`_dtwcpp_core.cpp:457`) | `distance_matrix` | alias 1 cycle |
-| 29b | dist mat write (Python) | `Problem.set_distance_matrix_from_numpy` (`_dtwcpp_core.cpp:492`, used `_api.py:224`) | `set_distance_matrix` | alias 1 cycle |
+| 29a | dist mat read (Python) | `Problem.distance_matrix_numpy` (`_dtwcpp_core.cpp`) | `distance_matrix` | alias 1 cycle |
+| 29b | dist mat write (Python) | `Problem.set_distance_matrix_from_numpy` (`_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix` | alias 1 cycle |
 | 29c | size read (MATLAB) | `Problem.Size` (dependent prop, Problem.m:32; getter :177) | `size()` | alias (loud warn) |
 | 29d | n clusters read (MATLAB) | `Problem.ClusterSize` (dependent prop, Problem.m:33; getter :181) | `n_clusters()` | alias (loud warn) |
 | 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:34; getter :185) | `name()` | alias (loud warn) |
@@ -122,6 +122,11 @@ warnings from the frozen policy.
 
 - Series storage and CLI `--dtype` default to float64; float32 is explicit.
 - C++ algorithms write labels, medoids, and `k` back into `Problem`.
+- Ten C++ `Problem` fields are now private. Read `method`, `random_seed`,
+  `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`, `verbose`,
+  `output_folder`, `name`, and `data` through same-name accessors; mutate them
+  through `set_*` methods (`last_iterations` is read-only and data replacement
+  uses `set_data`/`set_view_data`).
 - Unsupported devices, methods, metrics, and solver backends fail loudly.
 - `Result.distance_matrix` is `None` for matrix-free methods (`onebatch`,
   `clara`, and `tadpole`); code that needs an N×N matrix must request a

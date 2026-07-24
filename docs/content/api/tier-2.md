@@ -9,36 +9,41 @@ description: "Advanced Problem, algorithms, scores, distance, and checkpoint API
 ## 2. Tier 2 — advanced object surface
 
 Retained for power users. `Problem` stays a first-class object. Canonical
-snake_case methods and core algorithm result writeback are live, but the frozen
-encapsulation/accessor cleanup is incomplete and MATLAB retains redundant
-binding-side writeback (F19). A live symbol in the tables below does not imply
-that every promised invariant or deprecation diagnostic is complete.
+snake_case methods, core-owned algorithm result writeback, and the frozen
+encapsulation/accessor split are live. Ten C++ `Problem` fields are private;
+eleven deliberately retained expert/result fields remain public. A live symbol
+in the tables below does not imply that every other promised invariant or
+deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters are snake_case. Public configuration/result fields and
-three missing C++ accessors remain the F19 implementation gap.
+Canonical config setters are snake_case. The eleven retained public fields are
+`maxIter`, `N_repetition`, `band`, `variant_params`, `missing_strategy`,
+`distance_strategy`, `cuda_settings`, `mip_settings`, `init_fun`,
+`clusters_ind`, and `centroids_ind`.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
-| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | C++ `set_numberOfClusters` (Problem.hpp:185); Py `set_number_of_clusters` (`_dtwcpp_core.cpp:445`); MEX already `set_n_clusters` (Problem.m:113) |
-| method (enum) | `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
-| band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | field `band` (Problem.hpp:133); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | field `maxIter` (Problem.hpp:130) |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | field `N_repetition` (Problem.hpp:131) |
-| random seed | `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | field `random_seed` (Problem.hpp), default `DEFAULT_RANDOM_SEED` |
-| variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | Problem.hpp:206; `_dtwcpp_core.cpp:446` |
-| variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | Problem.hpp:207 |
-| missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | field (Problem.hpp:135) |
-| distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | field (Problem.hpp:136) |
-| lower-bound strategy | `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
-| storage policy | `set_storage_policy(core::StoragePolicy)` `[gap F20: advisory only]` | `storage_policy` prop `[introduced-2.0; gap F20]` | `set_storage_policy(str)` `[introduced-2.0; gap F20]` | validation/storage are live; promised routing is not |
+| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | C++ `set_numberOfClusters` (`Problem.hpp`); Py `set_number_of_clusters` (`_dtwcpp_core.cpp`); MEX already `set_n_clusters` (`Problem.m`) |
+| method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
+| band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | retained field `maxIter` (`Problem.hpp`) |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | retained field `N_repetition` (`Problem.hpp`) |
+| random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
+| variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
+| variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
+| missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
+| distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
+| TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
+| lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
+| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` `[gap F20: advisory only]` | `storage_policy` prop `[introduced-2.0; gap F20]` | `set_storage_policy(str)` `[introduced-2.0; gap F20]` | validation/storage are live; promised routing is not |
 | solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
-| output folder | `set_output_folder(path)` `[gap F19: absent]` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | raw C++ field plus live Python/MATLAB setters |
-| verbose | `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | field (Problem.hpp:141) |
-| data (owning) | `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | Problem.hpp:189; `_dtwcpp_core.cpp:447`; MEX `set_data` |
+| output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes |
+| verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
+| problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
+| data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
 | data (view) | `set_view_data(Data)` | `set_view_data(...)` `[introduced-2.0; gap F26: owning copy]` | — | C++ view path is live; Python name is live but not non-owning |
 
 Python `Problem.set_view_data` currently constructs owning nested-vector
@@ -48,27 +53,27 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 
 | C++ live (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
-| `refreshDistanceMatrix()` (:178) | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
-| `readDistanceMatrix(path)` (:184) | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
-| `maxDistance()` (:209) | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
-| `distByInd(i,j)` (:210) | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
-| `isDistanceMatrixFilled()` (:225) | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
-| `fillDistanceMatrix()` (:246) | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
-| `printDistanceMatrix()` (:247) | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
-| `writeDistanceMatrix([name])` (:249) | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
-| `dense_distance_matrix()` (:236) | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
-| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()`, `_dtwcpp_core.cpp:492`, used by `_api.py:224`) | `set_distance_matrix(D)` (live, Problem.m:164) |
-| `use_mmap_distance_matrix(path)` (:244) | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
-| `findTotalCost()` (:269) | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
-| `assignClusters()` (:270) | `assign_clusters()` | `assign_clusters()` (live) | — |
-| `calculateMedoids()` (:272) | `calculate_medoids()` | `calculate_medoids()` (live) | — |
-| `cluster()` (:262) | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
-| `cluster_by_MIP()` (:263) | `cluster_by_mip()` | — | — |
-| `cluster_by_kMedoidsLloyd()` (:264) | `cluster_by_kmedoids_lloyd()` | — | — |
-| `printClusters()` (:252) | `print_clusters()` | `print_clusters()` (live) | — |
-| `writeClusters()` (:253) | `write_clusters()` | `write_clusters()` (live) | — |
-| `writeMedoidMembers(iter,rep=0)` (:255) | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
-| `writeSilhouettes()` (:256) | `write_silhouettes()` | `write_silhouettes()` (live) | — |
+| `refreshDistanceMatrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
+| `readDistanceMatrix(path)` | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
+| `maxDistance()` | `max_distance()` | `max_distance()` (live) | `max_distance()` `[introduced-2.0]` |
+| `distByInd(i,j)` | `dist_by_ind(i,j)` | `dist_by_ind(i,j)` (live) | `dist_by_ind(i,j)` (1-based, live) |
+| `isDistanceMatrixFilled()` | `is_distance_matrix_filled()` | `is_distance_matrix_filled()` (live) | `is_distance_matrix_filled()` (live) |
+| `fillDistanceMatrix()` | `fill_distance_matrix()` | `fill_distance_matrix()` (live) | `fill_distance_matrix()` (live) |
+| `printDistanceMatrix()` | `print_distance_matrix()` | `print_distance_matrix()` `[introduced-2.0]` | — |
+| `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
+| `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
+| — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
+| `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
+| `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
+| `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
+| `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
+| `cluster()` | `cluster()` | `cluster()` (live) | `cluster()` `[introduced-2.0]` |
+| `cluster_by_MIP()` | `cluster_by_mip()` | — | — |
+| `cluster_by_kMedoidsLloyd()` | `cluster_by_kmedoids_lloyd()` | — | — |
+| `printClusters()` | `print_clusters()` | `print_clusters()` (live) | — |
+| `writeClusters()` | `write_clusters()` | `write_clusters()` (live) | — |
+| `writeMedoidMembers(iter,rep=0)` | `write_medoid_members(iter, rep=0)` | `write_medoid_members(...)` `[introduced-2.0]` | — |
+| `writeSilhouettes()` | `write_silhouettes()` | `write_silhouettes()` (live) | — |
 
 **† Name collision (adjudicated in §10 item 6).** C++
 `Problem::distance_matrix()` returns the internal
@@ -81,22 +86,27 @@ independent copy. The language-specific semantics are retained.
 `distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
 compatibility aliases; F22 owns their missing deprecation diagnostics.
 
-Read accessors required by the frozen contract: `size()`, `n_clusters()` (was
-`cluster_size()`), `name()`, `series(i)`, `series_name(i)`, `labels()`,
-`medoids()`, and `centroid_of(i)`. C++ `name()` is still absent and raw
-configuration/result fields remain public (F19); `labels()`/`medoids()` are the
-live cross-language read path.
+Read accessors required by the frozen contract are live: `size()`,
+`n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
+`series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
+The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `storage_policy()`,
+`verbose()`, `output_folder()`, `name()`, and `data()`.
+`last_iterations()` is intentionally read-only, and
+`data()` returns `const Data&`; the other eight configuration values have
+`set_*` mutators, while data replacement uses
+`set_data()` or `set_view_data()`.
 
 **Remaining live C++ `Problem` members — frozen fate and current status.**
 
 | Live C++ member | Source | 2.0 fate |
 |---|---|---|
-| `set_clusters(std::vector<int>&)` | Problem.hpp:186 | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). |
-| `cluster_and_process()` | Problem.hpp:266 | **stays C++-only** convenience (cluster + write outputs). The Tier-1 `cluster()` free function (§1.3) is its cross-language successor; not bound. |
-| `resize()` | Problem.hpp | frozen as private invariant maintenance; still public `[gap F19]` |
-| `init()` | Problem.hpp:259 | **stays C++-only**, canonical `init` (runs `init_fun`); not bound. |
-| `last_iterations` (field) | Problem.hpp | frozen private with read accessor `last_iterations()`; field remains public and accessor absent `[gap F19]` |
-| `init_fun` (`std::function`) | Problem.hpp | public C++-only callable extension point; no `set_init_strategy` enum (§10 item 7) |
+| `set_clusters(std::vector<int>&)` | `Problem.hpp` | **stays C++-only**, canonical `set_clusters` (already snake_case); seeds candidate medoids. Not bound (internal seeding hook). |
+| `cluster_and_process()` | `Problem.hpp` | **stays C++-only** convenience (cluster + write outputs). The Tier-1 `cluster()` free function (§1.3) is its cross-language successor; not bound. |
+| `resize()` | `Problem.hpp` | private invariant maintenance, as frozen |
+| `init()` | `Problem.hpp` | **stays C++-only**, canonical `init` (runs `init_fun`); not bound. |
+| `last_iterations()` | `Problem.hpp` | read-only accessor over private algorithm-owned state; no public setter |
+| `init_fun` (`std::function`) | `Problem.hpp` | public C++-only callable extension point; no `set_init_strategy` enum (§10 item 7) |
 
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
@@ -127,17 +137,17 @@ uniformly). Same name in all three languages.
 
 | Concept | C++ live (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|---|
-| silhouette | `silhouette(prob)` (:22) | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
-| Davies–Bouldin | `daviesBouldinIndex(prob)` (:23) | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
-| Dunn | `dunnIndex(prob)` (:25) | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
-| inertia | `inertia(prob)` (:26) | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
-| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` (:27) | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
-| Adjusted Rand | `adjustedRandIndex(l1,l2)` (:29) | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
-| Normalized MI | `normalizedMutualInformation(l1,l2)` (:31) | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
+| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
+| Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
+| Dunn | `dunnIndex(prob)` | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
+| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
+| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
+| Adjusted Rand | `adjustedRandIndex(l1,l2)` | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
+| Normalized MI | `normalizedMutualInformation(l1,l2)` | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
 
 Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
 `dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp:671-709`); MATLAB the same
+`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same
 (`dtwc_mex.cpp:792-874`). The canonical Adjusted-Rand and Normalized-MI
 spellings are adjudicated in §10 item 1. F22 records that retained aliases do
 not all emit the promised warning.
@@ -146,16 +156,16 @@ not all emit the promised warning.
 
 | Function | C++ | Python (`_dtwcpp_core.cpp`) | MATLAB (`+dtwc/`) |
 |---|---|---|---|
-| FastPAM | `fast_pam(Problem&, int k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` (:567) | `fast_pam(prob, k, 'max_iter',100)` |
-| FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` (:602) | `fast_clara(prob, k, ...)` |
-| CLARANS | `algorithms::clarans(Problem&, CLARANSOptions)` | `clarans(prob, opts)` (:738) | `clarans(prob, k, ...)` |
-| dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` (:715) | `build_dendrogram(prob, ...)` |
-| dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` (:725) | `cut_dendrogram(dend, prob, k)` |
+| FastPAM | `fast_pam(Problem&, int k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
+| FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
+| CLARANS | `algorithms::clarans(Problem&, CLARANSOptions)` | `clarans(prob, opts)` | `clarans(prob, k, ...)` |
+| dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
+| dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
 
 **Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
-Python relies on core writeback. MATLAB still repeats the same assignment in
-`store_result_in_problem`; F19 owns removal after a digit-identical probe.
+Python and MATLAB both rely on that core-owned writeback; neither binding
+repeats the assignment.
 
 **LR-core is live.** `Method::LRCore` dispatches the implemented exact
 Lagrangian-relaxation solver. `Method::MIP` remains the solver-backed exact
@@ -249,10 +259,12 @@ Version 1 had only an N-sized identity; version 2 did not protect mutable packed
 values. Both are deliberately rejected. Semantic setters detach a bound cache
 without deleting it. The complete data identity is checked at bind and once at
 first use; later lookups compare a fixed-size configuration snapshot so warm
-access remains O(1). Consequently raw in-place `Data` mutation after first use
-is unsupported: call `refresh_distance_matrix()` before the edit, or replace
-the data through `set_data()`. CUDA mmap caches require explicit FP32 or FP64
-(not hardware-dependent `Auto`), and non-L1 identities are external/GPU-fill-
-only because the CPU lazy path computes L1.
+access remains O(1). `Problem::data()` is read-only, but heap values exposed by
+`p_vec()` and caller-owned backing storage supplied through `set_view_data()`
+can still change in place. Before such an edit, call
+`refresh_distance_matrix()`, or replace the data through `set_data()`. CUDA
+mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`), and
+non-L1 identities are external/GPU-fill-only because the CPU lazy path computes
+L1.
 
 ---

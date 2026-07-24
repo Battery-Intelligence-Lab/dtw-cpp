@@ -195,9 +195,10 @@ opts.lb_envelope_band = 50;    // must cover opts.band
 opts.kernel_override = dtwc::KernelOverride::Wavefront;
 ```
 
-`Problem::lb_strategy` is CPU-only today. It controls the CPU pruned path and
-includes Kim, Keogh, Enhanced, Webb, and cascade selections; `Problem` does not
-copy it into CUDA/Metal options or automatically enable GPU LB pruning.
+`Problem::lb_strategy()` is CPU-only today. Configure it through
+`Problem::set_lb_strategy(LowerBoundStrategy)`. It controls the CPU pruned path
+and includes Kim, Keogh, Enhanced, Webb, and cascade selections; `Problem` does
+not copy it into CUDA/Metal options or automatically enable GPU LB pruning.
 
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 

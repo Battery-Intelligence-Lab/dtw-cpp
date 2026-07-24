@@ -286,8 +286,7 @@ The following tests did not run:
 
 Verdict: **PASS [confirmed]** — 120 tests were discovered, zero failed, and the
 six skips are exactly the registered CUDA x2, Arrow-OFF reader x1, and Metal x3
-capability skips. Native per-test output is in
-`build/highs-1151/Testing/Temporary/LastTest.log`.
+capability skips.
 
 ### Executed inherited Python baseline
 
@@ -436,3 +435,247 @@ all result/configuration fields. The original frozen contract and the still-
 binding M25/M37/F22 decisions support only the registered 10/11 split; an
 all-field interpretation would require a separate explicit compatibility
 break.
+
+## Product attempt 1
+
+Attempt 1 implemented the registered boundary and was retained as
+`3612b681101696cdd7714c3a067188b83eb8605f`
+(`refactor: encapsulate Problem state`).
+
+The implementation:
+
+- moved exactly the registered ten fields behind private backing state and
+  canonical const reads;
+- retained all eleven registered compatibility/result fields as public;
+- added the nine registered mutators, with `last_iterations()` read-only and
+  `data()` returning `const Data&`;
+- migrated core, CLI, benchmark, examples, Python, MATLAB, and native tests;
+- retained exception-safe Benders state restoration without exposing an
+  iteration setter;
+- removed `store_result_in_problem` and all four redundant MATLAB calls; and
+- added the focused, non-skipping C++ runtime test.
+
+Product attempts consumed: **1/2 [confirmed]**. Attempt 2 was not used.
+
+## Final source and focused runtime gates
+
+The post-commit source/API command was:
+
+```text
+.\.venv\Scripts\python.exe scripts\test_f19_problem_encapsulation.py --expect final --self-test
+```
+
+Its exact output was:
+
+```text
+F19_PROBLEM_ENCAPSULATION_SELF_TEST probes=27 verdict=PASS
+F19_PROBLEM_ENCAPSULATION profile=final compile=passed violations=0 backings=10 helpers=0 calls=0 mex_writes=0 core_writes=12 python_directs=0 matlab_directs=0 privacy_diagnostics=0 getter_diagnostics=0 setter_diagnostics=0 compatibility_compile=passed self_probes=27 assertions=31 verdict=PASS
+```
+
+The focused executable printed:
+
+```text
+F19_PROBLEM_API getters=10/10 setters=9/9 lloyd=ran skips=0
+===============================================================================
+All tests passed (42 assertions in 3 test cases)
+```
+
+Its registered non-degenerate Lloyd values were:
+
+```text
+initial_medoids={0,8}
+final_medoids={1,5}
+labels={0,0,0,1,1,1,1,1,1}
+cost=96
+last_iterations=2
+```
+
+Verdict: **PASS [confirmed]** — all 27 mutation/self-probes, all 31 public
+header assertions, all 42 focused runtime assertions, and the required
+execution marker passed. There were zero F19 skips.
+
+## Final native build matrix
+
+The exact post-commit canonical command was:
+
+```text
+ctest --test-dir build\highs-1151 --output-on-failure
+```
+
+Its final summary was:
+
+```text
+100% tests passed, 0 tests failed out of 121
+
+Total Test time (real) =  76.25 sec
+
+The following tests did not run:
+	 51 - test_cuda_correctness (Skipped)
+	 53 - test_cuda_lb_keogh (Skipped)
+	 57 - test_io_readers (Skipped)
+	 58 - test_metal_correctness (Skipped)
+	 59 - test_metal_lb_keogh (Skipped)
+	 60 - test_metal_mmap (Skipped)
+```
+
+The focused F19 executable is recorded separately above. The real-binary
+integration was rerun directly:
+
+```text
+ctest --test-dir build\highs-1151 -R '^test_cli_resume_state$' --output-on-failure
+```
+
+Its decisive lines were:
+
+```text
+1/1 Test #121: test_cli_resume_state ............   Passed    0.99 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   1.03 sec
+```
+
+CTest's mutable `LastTest.log` is not cited as durable evidence.
+
+The llfio-OFF tree was reconfigured with:
+
+```text
+cmake -S . -B build/nollfio -DDTWC_ENABLE_LLFIO=OFF
+```
+
+Its rebuild completed and its full CTest summary was:
+
+```text
+100% tests passed, 0 tests failed out of 121
+
+Total Test time (real) =  62.06 sec
+```
+
+The nine CTest-level capability skips were exactly mmap data store, mmap
+distance matrix, CUDA x2, Arrow I/O readers, Metal x3, and Benders/HiGHS.
+CTest's mutable `LastTest.log` is not cited as durable evidence.
+
+Verdict: **PASS [confirmed]** — both registered 121-test native inventories
+failed zero, and their capability skips match the registered optional-feature
+profiles.
+
+## Final fresh-extension Python gate
+
+The extension was rebuilt from the product tree through
+`build/cfg-gate-normal`, copied with its LLVM OpenMP runtime into the venv, and
+loaded from:
+
+```text
+C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+```
+
+The final artifact was 1,495,552 bytes with SHA-256:
+
+```text
+2074319069500AB5D43F2106F1887651FF8C7C9722CB9E31368794F5560F2B68
+```
+
+The post-copy accessor/property discriminator printed:
+
+```text
+F19_PYTHON_ACCESSORS name=after random_seed=987654321 verbose=True output_folder=build\f19-python-output method=Kmedoids lb_strategy=Webb storage_policy=Heap verdict=PASS
+```
+
+The full final collection produced:
+
+```text
+collected 1022 items
+
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+E assert 28 == 27
+============ 1 failed, 1009 passed, 12 skipped in 84.94s (0:01:24) ============
+```
+
+The twelve skips were CUDA x9, no local GPU x1, the SciPy-installed inverse
+capability case x1, and the wheel smoke case x1 because this fresh developer
+extension was built without HiGHS. The sole failure is exactly the already-open
+F39 inventory mismatch; no F19 behavior failed.
+
+The registered B1 aggregate band was “at least 1010 passed / 12 skipped over
+1022 collected” while also explicitly allowing the one known F39 failure.
+That ledger is arithmetically impossible:
+
+```text
+1010 + 12 + 1 = 1023 > 1022
+1009 + 12 + 1 = 1022
+```
+
+Verdict: **B1 AGGREGATE BAND FALSIFIED [confirmed]** — the band is retained
+unchanged and is not rescue-tuned. The F19-specific fresh-extension
+discriminator is PASS; the only pytest red remains owned by F39.
+
+## Final MATLAB gate
+
+The post-format/post-commit MEX had SHA-256:
+
+```text
+C31DADB5976A09C5F58A1A65CF1568E57E18544B02D9DEB4155FAC554B9A67BA
+```
+
+The source snapshot had SHA-256:
+
+```text
+09767547047D72FAAD6A3DB9E8D83A42AEF26B856DC196EE71C9B5398088ED9A
+```
+
+The exact machine-readable result is
+`build/f19-matlab-writeback/commit-3612b68-runtime/summary.json`. It records:
+
+```text
+profile=commit_3612b68
+observed_releases=R2024b,R2025b
+versions=2
+release_identity_checks=2
+routes_per_version=4
+executions=8
+vector_assertions=64
+minimum_vector_assertions_per_execution=8
+scalar_assertions=40
+mex_hash_checks=4
+skips=0
+profile_verdict=FINAL
+```
+
+Each release log rehashes to the digest recorded in that summary, and each
+release observed the same MEX hash before and after execution.
+
+Verdict: **PASS [confirmed]** — both installed releases ran all four target
+routes against the exact final artifact; 64/64 vector and 40/40 scalar
+assertions passed with zero skips.
+
+## Documentation and closure verdict
+
+The authored frozen contract now documents the exact 10-private/11-retained
+split, all ten reads, nine mutators, read-only `last_iterations()`, const
+`data()`, private `resize()`, and core-owned MATLAB writeback. Generated Tier-2
+and migration pages were regenerated. The permanent checker now rejects stale
+F19 gap/writeback prose and no longer counts F19 among the open F18/F20-F26
+set.
+
+The exact documentation gate output was:
+
+```text
+generated documentation is current
+generated documentation is current
+documentation contract checks passed
+record hygiene checks passed
+F19_DOC_ACCURACY stale_markers=0 verdict=PASS
+```
+
+Final F19 verdict: **CLOSED [confirmed]**. Every F19-specific source,
+compile/runtime, native, Python-property, and two-release MATLAB subject is
+green. The B1 aggregate pass-count band is separately and explicitly
+FALSIFIED by its own arithmetic; its sole runtime red is the unchanged F39
+test and is not misreported as an F19 failure or silently relaxed.
+
+The rollback for the breaking refactor is local revert of
+`3612b681101696cdd7714c3a067188b83eb8605f`; no remote state was changed.
+The claim most likely to be wrong remains that the generic F19 shorthand
+intended this exact 10/11 boundary rather than all-field privacy. The original
+freeze plus M25/M37/F22 still support the retained split; broader privacy
+requires a new governed compatibility decision.
