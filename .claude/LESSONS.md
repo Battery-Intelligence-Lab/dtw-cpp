@@ -293,6 +293,13 @@ Critical knowledge to avoid repeating mistakes.
   full-matrix oracle with independently stated `|i-j| <= band` bounds, and
   include a non-degenerate threshold case whose cost differs from a slanted
   corridor.
+- **A compute-type sentinel must be translated at the public type boundary.**
+  CUDA and Metal FP32 kernels stamp `numeric_limits<float>::max()` for no path,
+  but their public result containers hold doubles. A blind cast therefore
+  exposes widened `FLT_MAX`, not the backend-independent public `DBL_MAX`
+  contract. Centralize exact sentinel translation in the result-copy boundary
+  and test exact equality; `isfinite`, positivity, and approximate comparison
+  all accept the wrong value.
 - **A documentation marker gate can pass text that the renderer breaks and can
   preserve the wrong backend scope.** D1's first documentation gate was green
   while its standalone derivation used GitHub-unsupported `\(...\)`/`\[...\]`

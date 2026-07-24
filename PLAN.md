@@ -18,8 +18,9 @@ published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
 the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
-parser closure is FALSIFIED and routed to F36; F12 is active under its
-registered exact cross-backend parity gate.
+parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
+committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`; F13
+is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -227,7 +228,8 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       local costs and what "distance" each yields (squared form is not a metric
       — say so). Conformance: `dtw_kernel.hpp`, `dtwBanded`. CPU conformance is
       **CONFIRMED** by `9f78212` and derivation commit `cf5b9d8`; CUDA geometry
-      and exact Metal no-path parity remain **DISCREPANCY** F12.
+      is **CONFIRMED** by `4583443`, while exact real-Metal parity remains
+      **DISCREPANCY** F12.
 - [ ] **D2. Envelopes + LB_Keogh.** Keogh & Ratanamahatana admissibility proof;
       formalize the recorded gotcha that `compute_envelopes(series, band<0)`
       yields a band-0 envelope (LB invalid for full DTW) — state the correct
@@ -371,22 +373,23 @@ Open findings first (status after R0 adjudication — update these boxes there):
       The final fail-closed parser band is FALSIFIED by the two named probes in
       F36, so this checkbox remains open.
 - [ ] **F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**
-      CPU routes now use the canonical `|i-j| <= band` window. CUDA retains
-      endpoint-scaled `slope`/`window` corridors and signed `band+1`
-      expressions. Metal source uses fixed geometry, but its double-returning
-      no-path route widens `FLT_MAX` instead of returning the CPU `DBL_MAX`
-      sentinel. First CUDA gate: on the local RTX, drive a non-degenerate
-      unequal-length fixture below, at, and above `|n-m|`, plus `INT_MAX`,
+      The inherited CUDA used endpoint-scaled `slope`/`window` corridors and
+      signed `band+1`; both FP32 GPU APIs widened `FLT_MAX` instead of returning
+      the public `DBL_MAX` sentinel. First CUDA gate: on the local RTX, drive a
+      non-degenerate unequal-length fixture below, at, and above `|n-m|`, plus
+      `INT_MAX`,
       against the independent full-matrix oracle and require exact geometry,
       cost, and sentinel parity. First Metal gate: the same fixture on a real
       device, including exact double sentinel identity. Source inspection
       cannot close either executable backend.
-      **Active 2026-07-24:** the immutable bands and all six CUDA kernel routes
-      are registered in
-      `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. The local
-      RTX gate is executable. Real-Metal execution is `[BLOCKED-ENV]` on this
-      Windows host and remains required for closure; source/tests proceed
-      without claiming that runtime result.
+      **Partial 2026-07-24:** `4583443` repairs all six CUDA kernels and both
+      GPU public-copy paths. The immutable local RTX gate passes 515 assertions
+      / 6 F12 cases and the unfiltered CUDA binary passes 7,827 / 61 with no
+      skip; canonical and llfio-OFF gates pass 115/115. Metal's no-LB source
+      repair and permanent pairwise/K-vs-N gate passed independent inspection,
+      but real-Metal execution is `[BLOCKED-ENV]` on this Windows host. Leave
+      F12 open and continue at F13; evidence:
+      `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`.
 - [ ] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
       First gate: digit-identical assignments/objectives on adversarial ties and
@@ -832,6 +835,13 @@ colour system transfer verbatim**.
   `xcrun` nor a Metal compiler, so real-Metal execution is `[BLOCKED-ENV]`;
   implement and retain its permanent gate, leave F12 open, and continue after
   all locally executable bands pass.
+- 2026-07-24 (F12 local verdict): Retain repair attempt 1 in `4583443`.
+  Canonical CUDA geometry and exact public sentinel translation pass every
+  registered real-RTX route, including both singleton orientations. Metal's
+  matching no-LB source/tests survive two independent reviews, but the local
+  binary necessarily skips with zero assertions. This is partial closure:
+  keep F12 and D1's Metal discrepancy open, route LB integer arithmetic to
+  F28-F30 as registered, and resume the campaign at F13.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1027,3 +1037,12 @@ colour system transfer verbatim**.
   quoted CMake line continuation. F11 remains open; F36 replaces the killed
   lexical design. Evidence:
   `.claude/baselines/2026-07-23-f11-supply-chain-coverage.md`. Resume at F12.
+- 2026-07-24 (R3-F12 partial): `4583443` replaces six CUDA slanted corridors
+  with one canonical overflow-safe predicate and normalizes FP32 GPU no-path
+  values at the public double boundary. The final real-RTX gate passes 515
+  assertions / 6 focused cases and 7,827 / 61 unfiltered; CUDA CTest passes
+  2/2, the host normalizer passes 8/8, and canonical plus llfio-OFF gates pass
+  115/115. Two independent audits found no remaining local blocker. The fresh
+  Metal-OFF executable skips with zero assertions, so F12 remains open pending
+  real Apple build/device evidence. Evidence:
+  `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. Resume at F13.
