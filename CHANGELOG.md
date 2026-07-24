@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected CPU Float32 DTW no-path results to the public double `DBL_MAX`
+  sentinel instead of exposing widened `FLT_MAX`; CPU and GPU result
+  boundaries now share the same exact normalization policy.
 - **Breaking:** corrected CUDA banded DTW to the public canonical
   `|i-j| <= band` contract for unequal lengths. All CUDA pairwise and
   one/K-vs-N kernel families now use fixed geometry without signed

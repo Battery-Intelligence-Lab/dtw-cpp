@@ -19,6 +19,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <cmath>
 #include <limits>
 #include <span>
 #include <string>
@@ -149,4 +150,35 @@ TEST_CASE("M36 accepted semantic fingerprints remain exact",
       finite_x, finite_y, adtw, -1, dtwc::core::MetricType::L1,
       dtwc::core::MissingStrategy::Error),
     WithinAbs(dtwc::adtwFull_L<double>(finite_x, finite_y, 0.75), 0.0));
+}
+
+TEST_CASE("CPU float32 DTW normalizes its finite no-path sentinel",
+          "[F13][distance-semantics][float32][sentinel]")
+{
+  dtwc::Problem problem("f13_f32_public_distance");
+  problem.band = 0;
+
+  const auto f32_distance = dtwc::core::resolve_dtw_fn<float>(problem);
+  const auto f64_distance = dtwc::core::resolve_dtw_fn<double>(problem);
+  const std::vector<float> short_f32{0.0f};
+  const std::vector<float> long_f32{0.0f, 0.0f, 0.0f};
+  const std::vector<double> short_f64{0.0};
+  const std::vector<double> long_f64{0.0, 0.0, 0.0};
+
+  REQUIRE(f32_distance(short_f32, long_f32)
+          == std::numeric_limits<double>::max());
+  REQUIRE(f64_distance(short_f64, long_f64)
+          == std::numeric_limits<double>::max());
+
+  const float adjacent =
+    std::nextafter(std::numeric_limits<float>::max(), 0.0f);
+  REQUIRE(f32_distance(std::vector<float>{0.0f},
+                       std::vector<float>{adjacent})
+          == static_cast<double>(adjacent));
+  REQUIRE(std::isinf(f32_distance(
+    std::vector<float>{0.0f},
+    std::vector<float>{std::numeric_limits<float>::infinity()})));
+  REQUIRE(std::isnan(f32_distance(
+    std::vector<float>{0.0f},
+    std::vector<float>{std::numeric_limits<float>::quiet_NaN()})));
 }

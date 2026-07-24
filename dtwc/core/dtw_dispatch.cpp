@@ -17,6 +17,7 @@
 #include "dtw_options.hpp"           // DTWVariant, MissingStrategy
 #include "distance_semantics.hpp"    // validate_problem_distance_semantics
 #include "msm.hpp"                   // msm_distance
+#include "public_distance.hpp"       // normalize_public_distance
 #include "twe.hpp"                   // twe_distance
 #include "../error.hpp"              // InvalidInput
 
@@ -45,12 +46,12 @@ auto make_zero_cost(const Problem &p)
   if (p.data.ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
       const auto ndim = p.data.ndim;
-      return static_cast<double>(dtwMissing_banded_mv<T>(
+      return normalize_public_distance(dtwMissing_banded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(dtwMissing_banded<T>(x, y, p.band));
+    return normalize_public_distance(dtwMissing_banded<T>(x, y, p.band));
   };
 }
 
@@ -61,7 +62,7 @@ auto make_interpolate(const Problem &p)
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
     auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
-    return static_cast<double>(dtwBanded<T>(xi, yi, p.band));
+    return normalize_public_distance(dtwBanded<T>(xi, yi, p.band));
   };
 }
 
@@ -89,7 +90,7 @@ auto make_arow(const Problem &p)
       const auto a_steps = swap ? y_steps : x_steps;
       const auto b_steps = swap ? x_steps : y_steps;
       SpanMVAROWL1Cost<T> cost{a_data, b_data, ndim};
-      return static_cast<double>(
+      return normalize_public_distance(
         dtw_kernel_banded<T, SpanMVAROWL1Cost<T>, AROWCell>(
           a_steps, b_steps, p.band, cost, AROWCell{}));
     };
@@ -99,7 +100,7 @@ auto make_arow(const Problem &p)
     const auto a = swap ? y : x;
     const auto b = swap ? x : y;
     SpanAROWL1Cost<T> cost{a.data(), b.data()};
-    return static_cast<double>(
+    return normalize_public_distance(
       dtw_kernel_banded<T, SpanAROWL1Cost<T>, AROWCell>(
         a.size(), b.size(), p.band, cost, AROWCell{}));
   };
@@ -116,7 +117,7 @@ auto make_standard(const Problem &p)
   if (p.data.ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
       const auto ndim = p.data.ndim;
-      return static_cast<double>(dtwBanded_mv<T>(
+      return normalize_public_distance(dtwBanded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
     };
   }
@@ -128,8 +129,8 @@ auto make_standard(const Problem &p)
     // for the k-medoids / MIP consumers. Banded builds keep dtwBanded — the
     // band already excises the region EAP would prune.
     if (p.band < 0)
-      return static_cast<double>(dtwFull_eap<T>(x, y));
-    return static_cast<double>(dtwBanded<T>(x, y, p.band));
+      return normalize_public_distance(dtwFull_eap<T>(x, y));
+    return normalize_public_distance(dtwBanded<T>(x, y, p.band));
   };
 }
 
@@ -143,12 +144,12 @@ auto make_ddtw(const Problem &p)
       thread_local std::vector<T> dx, dy;
       derivative_transform_mv_inplace(x, ndim, dx);
       derivative_transform_mv_inplace(y, ndim, dy);
-      return static_cast<double>(dtwBanded_mv<T>(
+      return normalize_public_distance(dtwBanded_mv<T>(
         dx.data(), dx.size() / ndim, dy.data(), dy.size() / ndim, ndim, p.band));
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(ddtwBanded<T>(x, y, p.band));
+    return normalize_public_distance(ddtwBanded<T>(x, y, p.band));
   };
 }
 
@@ -169,10 +170,10 @@ inline auto make_wdtw_f64(const Problem &p)
         // Cache miss (e.g. DBA centroid with novel length). Serial-only fallback.
         const auto g = static_cast<data_t>(p.variant_params.wdtw_g);
         auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-        return static_cast<double>(
+        return normalize_public_distance(
           wdtwBanded_mv<data_t>(x.data(), x_steps, y.data(), y_steps, ndim, w, p.band));
       }
-      return static_cast<double>(
+      return normalize_public_distance(
         wdtwBanded_mv<data_t>(x.data(), x_steps, y.data(), y_steps, ndim, it->second, p.band));
     };
   }
@@ -188,9 +189,9 @@ inline auto make_wdtw_f64(const Problem &p)
     if (it == p.wdtw_weights_cache().end()) {
       const auto g = static_cast<data_t>(p.variant_params.wdtw_g);
       auto w = wdtw_weights<data_t>(static_cast<int>(max_dev), g);
-      return static_cast<double>(wdtwBanded<data_t>(x, y, w, p.band));
+      return normalize_public_distance(wdtwBanded<data_t>(x, y, w, p.band));
     }
-    return static_cast<double>(wdtwBanded<data_t>(x, y, it->second, p.band));
+    return normalize_public_distance(wdtwBanded<data_t>(x, y, it->second, p.band));
   };
 }
 
@@ -207,12 +208,13 @@ inline auto make_wdtw_f32(const Problem &p)
   if (p.data.ndim > 1) {
     return [&p, g](std::span<const float> x, std::span<const float> y) -> double {
       const auto ndim = p.data.ndim;
-      return static_cast<double>(wdtwBanded_mv<float>(
+      return normalize_public_distance(wdtwBanded_mv<float>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band, g));
     };
   }
   return [&p, g](std::span<const float> x, std::span<const float> y) -> double {
-    return static_cast<double>(wdtwBanded<float>(x.data(), x.size(), y.data(), y.size(), p.band, g));
+    return normalize_public_distance(
+      wdtwBanded<float>(x.data(), x.size(), y.data(), y.size(), p.band, g));
   };
 }
 
@@ -223,13 +225,13 @@ auto make_adtw(const Problem &p)
   if (p.data.ndim > 1) {
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
       const auto ndim = p.data.ndim;
-      return static_cast<double>(adtwBanded_mv<T>(
+      return normalize_public_distance(adtwBanded_mv<T>(
         x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band,
         static_cast<T>(p.variant_params.adtw_penalty)));
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(adtwBanded<T>(
+    return normalize_public_distance(adtwBanded<T>(
       x, y, p.band, static_cast<T>(p.variant_params.adtw_penalty)));
   };
 }
@@ -254,7 +256,7 @@ auto make_soft_dtw(const Problem &p)
     const auto b = swap ? x : y;
     SpanL1Cost<T> cost{a.data(), b.data()};
     SoftCell<T> cell{static_cast<T>(p.variant_params.sdtw_gamma)};
-    return static_cast<double>(
+    return normalize_public_distance(
       dtw_kernel_full<T, SpanL1Cost<T>, SoftCell<T>>(
         a.size(), b.size(), cost, cell));
   };
@@ -280,7 +282,7 @@ auto make_msm(const Problem &p)
     throw InvalidInput("MSM distance is univariate in this release (ndim must be 1)");
   const T c = static_cast<T>(p.variant_params.msm_c);
   return [c](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(msm_distance<T>(x, y, c));
+    return normalize_public_distance(msm_distance<T>(x, y, c));
   };
 }
 
@@ -293,7 +295,7 @@ auto make_twe(const Problem &p)
   const T nu  = static_cast<T>(p.variant_params.twe_nu);
   const T lam = static_cast<T>(p.variant_params.twe_lambda);
   return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {
-    return static_cast<double>(twe_distance<T>(x, y, nu, lam));
+    return normalize_public_distance(twe_distance<T>(x, y, nu, lam));
   };
 }
 
@@ -315,7 +317,7 @@ auto make_independent(const Problem &p)
                        "strategy in this release (set missing_strategy = Error)");
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     const auto ndim = p.data.ndim;
-    return static_cast<double>(dtw_independent_mv<T>(
+    return normalize_public_distance(dtw_independent_mv<T>(
       x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
   };
 }
