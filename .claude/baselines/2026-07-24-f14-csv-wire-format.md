@@ -304,6 +304,148 @@ captures every native distance-matrix CSV emitter. The post-repair call-site
 audit, public `Result::save`/Problem/CLI routes, and later R4 duplication census
 are the checks that can overturn it.
 
+## Inherited decisive baseline — FALSIFIED
+
+The decisive inherited run was made at
+`509510cd401defa1da7db07e59b0a23e5384ab49`
+(`docs: register F14 CSV wire contract`). A path-scoped diff over
+`dtwc/core/matrix_io.hpp`, `dtwc/Problem_IO.cpp`, `dtwc/Problem.cpp`, and
+`dtwc/api.cpp` produced no output before the run: production remained
+digit-identical to the registered base while only the new gate was present.
+
+Before judging production, an independent PowerShell ASCII calculation and
+the Catch2 oracle-only case produced, verbatim:
+
+```text
+F14_ORACLE bytes=83 lf=3 cr=0 commas=6 line_bytes=22,32,26 sha256=7754CFF0231360D60A69B034CA5136E88EEFE8B53A6509706D99071C436F3813
+hex=2C2D302C312E303030303030303030303030303030320A2D302C312E37393736393331333438363233313537652B3330382C2D312E32350A312E303030303030303030303030303030322C2D312E32352C300A
+Filters: [oracle]
+Randomness seeded to: 781207429
+===============================================================================
+All tests passed (10 assertions in 1 test case)
+```
+
+The `line_bytes` values above exclude each LF; including the registered
+terminator they are 23, 33, and 27 bytes. The first attempted hash probe used
+two unavailable .NET static helpers and emitted empty hash/hex fields; it is
+invalid evidence. The quoted rerun used `SHA256.Create().ComputeHash()` and
+explicit byte formatting.
+
+The inherited focused command was:
+
+```text
+build/highs-1151/bin/unit_test_distance_matrix_csv.exe [f14] --reporter console --rng-seed 424242
+```
+
+Its final verdict was, verbatim:
+
+```text
+F14_CSV_CONTRACT dense=ran mmap=ran skips=0
+===============================================================================
+test cases:  13 |  2 passed | 11 failed
+assertions: 137 | 76 passed | 61 failed
+```
+
+The eleven failing case names were:
+
+```text
+F14 dense stream emits the exact independent literal
+F14 mmap Problem visitor and print route are literal-identical
+F14 dense stream ignores and preserves hostile caller state
+F14 mmap empty and nonfinite routes execute without partial output
+F14 dense file is binary locale-free and bit-roundtrippable
+F14 native Result save matches the registered dense stream bytes
+F14 negative infinity rejects before dense Problem output
+F14 zero-size dense routes emit zero bytes
+F14 positive infinity rejects before any dense output
+F14 dense Problem visitor and print route are literal-identical
+F14 mmap stream is literal and hostile-state independent
+```
+
+Load-bearing failure expansions from that run were:
+
+```text
+CHECK( bytes.size() == 83 )
+with expansion:
+  47 == 83
+
+CHECK( bytes.size() == 83 )
+with expansion:
+  50 == 83
+
+CHECK( std::count(bytes.begin(), bytes.end(), '\r') == 0 )
+with expansion:
+  3 == 0
+
+CHECK( std::count(bytes.begin(), bytes.end(), ',') == 6 )
+with expansion:
+  14 == 6
+
+CHECK( output.width() == width )
+with expansion:
+  0 == 9
+
+CHECK( stream_rejection.typed )
+with expansion:
+  false
+
+CHECK( stream_rejection.message == kPositiveInfinityMessage )
+with expansion:
+  "<no exception>"
+  ==
+  "distance-matrix CSV: computed non-finite value at row 0, column 1."
+
+CHECK( read_binary(existing) == "seed" )
+with expansion:
+  ",inf,1
+  inf,1.79769313486232e+308,-1.25
+  1,-1.25,0
+  "
+  ==
+  "seed"
+
+CHECK_FALSE( fs::exists(missing) )
+with expansion:
+  !true
+
+CHECK( capture.str().empty() )
+with expansion:
+  false
+```
+
+Thus precision, locale/flags/fill/width, binary newlines, non-finite
+preflight/side effects, and the extra print newline are independently red.
+The fixture-bit/oracle case and focused route marker passed, so this is not a
+skip or a degenerate-oracle failure.
+
+The corrected native-public inherited CTest then reached the real resident
+CLI artifact and failed, verbatim:
+
+```text
+CMake Error at tests/integration/test_distance_matrix_csv_contract.cmake:264 (message):
+  F14 resident raw terminators lf=27 cr=27; expected lf=27 cr=0
+Call Stack (most recent call first):
+  tests/integration/test_distance_matrix_csv_contract.cmake:332 (inspect_matrix)
+
+0% tests passed, 1 tests failed out of 1
+
+The following tests FAILED:
+    118 - test_distance_matrix_csv_contract (Failed)        f14 integration
+```
+
+The first public probe stopped earlier because its test-owned marker parser
+expected a one-line path while the real CLI prints a multiline marker with its
+inherited doubled separator. Two independent gate audits also found that the
+original broad skip regex self-matched the required `skips=0` success marker,
+the focused PASS regex assumed a randomized Catch2 case would run last, and
+the cleanup REAL_PATH comparison resolved both sides through the same possible
+reparse point. Those are harness falsifications, not production evidence.
+They were corrected without changing the registered wire band or production,
+and only the quoted reruns are decisive.
+
+Verdict: **FALSIFIED [confirmed]**. The inherited native implementation misses
+every registered behavioral category; implementation attempt 1 may begin.
+
 ## Separate confirmed finding: cross-language save bytes
 
 The frozen contract says corresponding `Result::save` and CLI files are

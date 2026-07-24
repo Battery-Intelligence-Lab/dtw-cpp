@@ -388,6 +388,16 @@ Critical knowledge to avoid repeating mistakes.
   `ctest`/test child PIDs and terminate those confirmed descendants before a
   rebuild. Never delete the build tree or kill by a broad process-name guess;
   record the timeout output and verify the named processes are gone.
+- **A gate can reject its own success marker, and randomized test order makes
+  adjacency regexes flaky.** F14 initially used a broad `[Ss][Kk][Ii][Pp]`
+  failure regex while requiring `skips=0`, so an otherwise-green gate was
+  guaranteed to fail. It also required a marker case to appear immediately
+  before Catch2's summary even though case order is randomized. Bound the
+  failure token so it cannot match the success vocabulary, and permit
+  intervening output while requiring both the execution marker and the
+  framework's assertion/case floor. For recursive-cleanup gates, resolve the
+  trusted parent and append the exact child; resolving both equal input
+  strings through the same junction is a tautology, not an escape check.
 
 ## LR-core Solver (Phase 4)
 
