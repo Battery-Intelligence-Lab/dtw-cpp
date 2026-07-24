@@ -1564,5 +1564,9 @@ colour system transfer verbatim**.
   inventory, a non-degenerate Lloyd runtime oracle, twelve mutation classes,
   and exactly 24 MATLAB target-route executions spanning inherited, four
   single-call deletions, composite deletion, and both installed releases.
-  Product work is capped at two attempts. Evidence:
+  Product work is capped at two attempts. The initially transcribed Python
+  floor was obsolete; the live repository contract is 1010 passed / 12 skipped
+  over 1022 collected. An adversarial review rejected the first uncommitted
+  executable-gate draft because it did not yet bind six freshly compiled MEX
+  profiles or exclude unrelated compile failures. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.

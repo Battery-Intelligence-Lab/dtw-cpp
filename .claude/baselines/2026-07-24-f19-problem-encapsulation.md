@@ -245,8 +245,8 @@ between deliberate mutants; the final product source is the composite deletion.
 - Fresh ordinary R2024b MEX builds; the isolated F19 oracle passes on R2024b
   and R2025b. Known retained F18 red cases are not counted as F19 failures.
 - Fresh Python extension exposes the same property values through the new C++
-  accessors/setters; full current pytest floor remains at least 407 passed /
-  11 skipped over 418 collected.
+  accessors/setters; full current pytest floor remains at least 1010 passed /
+  12 skipped over 1022 collected.
 - Canonical and llfio-OFF C++ suites: zero failures, exactly their registered
   capability skips, and at least the inherited 120 tests discovered.
 - Documentation generation/contract and record-hygiene checks pass.
