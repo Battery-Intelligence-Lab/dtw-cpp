@@ -522,6 +522,35 @@ Critical knowledge to avoid repeating mistakes.
   three distinct routes in the owning DLL/MEX process; an explicit-precision
   oracle cannot certify the Auto selector.
 
+- **PowerShell array syntax inside an `if` branch does not preserve singleton
+  identity at the outer assignment. [confirmed]** F19's all-route MATLAB
+  profile returned four strings and worked, but `@($Route)` in a single-route
+  branch flowed through the `if` output pipeline as scalar `System.String`;
+  StrictMode then rejected `$routeNames.Count`. Coerce the destination to
+  `[string[]]`, return it through a non-enumerating boundary, and
+  mutation-test both type and count for every singleton. A parser-only check
+  cannot catch this. Evidence:
+  `scripts/test_f19_matlab_route_selector.ps1`.
+- **A semantic patch is not a byte-preserving mutation operator for mixed-EOL
+  evidence. [confirmed]** F19's MATLAB gateway is `i/lf w/mixed`. Removing the
+  intended line through a text hunk normalized surrounding newline bytes, so
+  the registered profile hash rejected it. Decode the captured snapshot as
+  strict UTF-8 without BOM, mutate while retaining its CR/LF characters, write
+  exact bytes, and rehash every materialization and restore. When the decoder
+  returns structured `{ Bytes, Text }` evidence, pass `.Text` to the mutation
+  helper rather than string-coercing the record.
+- **A source token is evidence only when it is active code. [confirmed]**
+  F19's first privacy/source audit could be satisfied by declarations and
+  writebacks under `#if 0`, `#if (0)`, `#if 0u`, or `#if false`. Scrub comments
+  and literals, track preprocessor nesting, and count only active depth-zero
+  tokens. The 27-probe F19 gate includes all four inactive-code mutants.
+- **A runtime artifact label is not artifact identity. [confirmed]** For
+  F19's six MEX profiles, requested release/profile names could still select a
+  stale binary. Bind observed `version('-release')`, exact
+  `which(...,'-all')` path, source SHA-256, MEX SHA-256, and before/after
+  invocation hashes, then rehash the complete evidence set after the schedule.
+  The decisive F19 run records 42/42 post-run rehashes.
+
 ## LR-core Solver (Phase 4)
 
 - **Killed 2023 ideas — keep them killed.** Every 2023 attempt (removed in `f7064b3`) solved the p-median LP in x-space explicitly: dense/sparse tableau simplex, Gomory cuts, OSQP/ADMM on the N²-variable relaxation. All failed on scale. The right structure is to DUALIZE the assignment equalities and bound matrix-free: the Cardinality+Linking substructure is TU for all N (Ghouila-Houri), so the Lagrangian dual equals the LP bound (Geoffrion) WITHOUT forming the N²-column LP. Do not re-open x-space LP solving; if tempted, re-read UNIMODULAR.md §8.

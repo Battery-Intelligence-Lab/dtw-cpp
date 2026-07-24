@@ -1232,6 +1232,15 @@ colour system transfer verbatim**.
   six source profiles and two releases, twelve mutations, and two attempts are
   binding. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (F19 expected-red/mutation baseline): Commits `27a2561` and
+  `40f2efd` retain the hardened 31-assertion/27-probe encapsulation gate and
+  six clean-first MATLAB mutation profiles. The final registered schedule
+  executed 24/24 target routes across R2024b/R2025b with 192/192 vector and
+  120/120 scalar assertions, 42/42 post-run evidence rehashes, and zero skips.
+  A PowerShell singleton-array harness defect was repaired in `f4613d6` and
+  rejected by four legacy mutants; it consumed no product attempt. Resume at
+  product attempt 1. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1577,4 +1586,13 @@ colour system transfer verbatim**.
   over 1022 collected. An adversarial review rejected the first uncommitted
   executable-gate draft because it did not yet bind six freshly compiled MEX
   profiles or exclude unrelated compile failures. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F19 expected-red/mutation baseline): `27a2561` passes all 27
+  adversarial self-probes and keeps the inherited 31-assertion profile green
+  while the final profile rejects exactly ten raw fields. Six source-distinct,
+  MEX-distinct, clean-first profiles then passed the fixed R2024b/R2025b
+  schedule: 24 route markers, 192 vector assertions, 120 scalar assertions,
+  24 MEX hash checks, 42 post-run evidence rehashes, and zero skips. The
+  intermediate PowerShell route-selector failure was a gate defect fixed in
+  `f4613d6`, not a product attempt. Product attempts consumed: zero. Evidence:
   `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.

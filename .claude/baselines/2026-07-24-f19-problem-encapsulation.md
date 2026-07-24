@@ -331,6 +331,88 @@ that constant. The 1,022-test collection and 1,010 passes meet the behavioral
 pass-count floor, but this is not a green full-suite verdict. The eleven skips
 were CUDA x9, no-GPU x1, and the SciPy-installed inverse-capability case x1.
 
+### Executed expected-red encapsulation gate
+
+The hardened gate was committed in `27a2561` and rerun from clean HEAD
+`f4613d6` before product attempt 1:
+
+```text
+.\.venv\Scripts\python.exe scripts/test_f19_problem_encapsulation.py --expect inherited --self-test
+.\.venv\Scripts\python.exe scripts/test_f19_problem_encapsulation.py --expect final
+```
+
+Its exact inherited markers were:
+
+```text
+F19_PROBLEM_ENCAPSULATION_SELF_TEST probes=27 verdict=PASS
+F19_PROBLEM_ENCAPSULATION profile=inherited compile=failed violations=10 backings=0 helpers=1 calls=4 mex_writes=3 core_writes=12 python_directs=9 matlab_directs=8 privacy_diagnostics=10 getter_diagnostics=10 setter_diagnostics=4 compatibility_compile=passed self_probes=27 assertions=31 verdict=PASS
+F19_CHECK_EXITS inherited=0 final_expected_red=1
+```
+
+The final profile rejected the inherited source with:
+
+```text
+F19_PROBLEM_ENCAPSULATION_ERROR final raw-field inventory mismatch: {'method': 1, 'random_seed': 1, 'last_iterations': 1, 'tadpole_dc': 1, 'lb_strategy': 1, 'storage_policy': 1, 'verbose': 1, 'output_folder': 1, 'name': 1, 'data': 1}; full inventory={'method': 1, 'random_seed': 1, 'last_iterations': 1, 'tadpole_dc': 1, 'lb_strategy': 1, 'storage_policy': 1, 'verbose': 1, 'output_folder': 1, 'name': 1, 'data': 1}
+```
+
+Verdict: **EXPECTED RED [confirmed]** — all 27 adversarial self-probes pass,
+the 31 assertions retain the registered 10-private / 10-accessor /
+11-compatibility partition, and the final profile is red on exactly the ten
+inherited public raw fields. No product attempt was consumed.
+
+### Executed MATLAB writeback mutation schedule
+
+Six clean-first MEX profiles were captured under
+`build/f19-matlab-writeback/profiles/`. Each profile contains its exact source,
+MEX, build log, and manifest. The source SHA-256 values are:
+
+```text
+inherited=DDF29F995A2CC6FAF1CCD8DF2ABB3FCFE5E34643C49E6CD08A9AE0236A1378F3
+single_fast_pam=B07848FE03CA83F8B52422D92AFEFD85E9C15C0D90B14F67A8F78B874204BBFF
+single_fast_clara=7E2508DFDA3242E3AD382A799A9AF04793762EC3CBDEC01923B833F317D9EB72
+single_clarans=B9400C2162C4A54D2A420F529EDC12650597FF5861DB186D0D3ECF64B9932501
+single_cut_dendrogram=3C45C5C426CDA00B00CF7E31BEF505703EFD2536F6AF7AE54E7A02E9F63856E1
+composite=8AF4E938526CA0D491EBA9985B8D390E2235307FDFFCCA1E27BB2D63230A4F2A
+```
+
+The first aggregate execution,
+`schedule-20260724T114751972Z-53cec66f`, completed the inherited profile on
+R2024b and R2025b (8 executions, 64 vector assertions, 40 scalar assertions,
+four MEX hash checks, zero skips), then the single-route selector stopped with
+this exact PowerShell StrictMode error:
+
+```text
+The property 'Count' cannot be found on this object. Verify that the property exists.
+```
+
+That partial session has no `schedule-summary.json` and is not decisive
+evidence. PowerShell had unrolled branch-local `@($Route)` through the `if`
+pipeline into a scalar string. Commit `f4613d6` moved selection into a typed
+array helper and added a five-case regression with four legacy-mutant
+rejections. This was an evidence-harness repair, not a product attempt.
+
+The final unchanged registered schedule ran in
+`build/f19-matlab-writeback/runs/schedule-20260724T115627977Z-c3516137/`.
+Its exact selector and aggregate markers were:
+
+```text
+F19_MATLAB_ROUTE_SELECTOR cases=5/5 singleton_arrays=4/4 legacy_mutant_rejections=4/4 verdict=PASS
+F19_MATLAB_SCHEDULE profiles=6/6 versions=2/2 release_identity_checks=12/12 observed_releases=R2024b,R2025b profile_version_runs=12/12 executions=24/24 route_markers=24/24 vector_assertions=192/192 minimum_vector_assertions_per_execution=8 scalar_assertions=120/120 mex_hash_checks=24/24 unique_source_sha256=6/6 unique_mex_sha256=6/6 compile_logs=6/6 semantic_profiles=6/6 post_run_evidence_rehashes=42/42 live_composite_rehashes=1/1 skips=0 summary=C:\D\git\dtw-cpp\build\f19-matlab-writeback\runs\schedule-20260724T115627977Z-c3516137\schedule-summary.json verdict=PASS
+```
+
+After the schedule, the tracked MATLAB source was restored byte-for-byte:
+
+```text
+F19_SOURCE_RESTORE hash=DDF29F995A2CC6FAF1CCD8DF2ABB3FCFE5E34643C49E6CD08A9AE0236A1378F3 expected=DDF29F995A2CC6FAF1CCD8DF2ABB3FCFE5E34643C49E6CD08A9AE0236A1378F3 verdict=PASS
+F19_SOURCE_GIT_DIFF_EXIT=0
+```
+
+Verdict: **PASS [confirmed]** — both installed MATLAB releases executed the
+fixed 24-route schedule, every invocation bound the expected `which` path,
+source hash, and MEX hash, all 312 registered semantic assertions ran, all 42
+post-run evidence rehashes passed, and there were zero skips. Product attempts
+consumed: zero.
+
 ### Mutations and attempts
 
 Besides the five MATLAB deletion profiles, the permanent source/compile gate
