@@ -19,7 +19,7 @@ USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
 BRACKET_OPEN = re.compile(r"\[(?P<equals>=*)\[")
 VERSION_REF = re.compile(r"v?\d+(?:[._-][0-9A-Za-z]+)*\Z", re.IGNORECASE)
-REGISTERED_CMAKE_MANIFEST_TOTAL = 25
+REGISTERED_CMAKE_MANIFEST_TOTAL = 26
 CPM_PARSE_KEYWORDS = {
     "BITBUCKET_REPOSITORY",
     "CUSTOM_CACHE_KEY",

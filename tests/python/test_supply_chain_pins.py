@@ -490,7 +490,7 @@ def test_mutable_workflow_action_remains_rejected():
 
 def test_live_tracked_cmake_inventory_is_complete():
     archive_pins, manifest_total = pins.tracked_cmake_archive_pins(ROOT)
-    assert manifest_total == 25
+    assert manifest_total == 26
     assert len(archive_pins) == 7
 
 
