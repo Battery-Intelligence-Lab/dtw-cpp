@@ -243,19 +243,23 @@ mutation is run, extend the Arrow-only gate with an Arrow-linked helper that
 generates two **build-local** Parquet files under the test-owned work root;
 no tracked data file is added or modified.
 
-Each file contains 65 singleton rows in one row group. Row 0 is the negative
-maximum finite value and rows 1..64 are the positive maximum finite value,
-using binary64 values for the f64 file and binary32 values for the f32 file.
-With `k=1`, `sample_size=2`, `n_samples=1`, and portable-v1 seed `0`, sample
-points 25 and 59 are equal finite positives, while streamed full assignment
-computes a non-finite distance for point 0. The one 65-row group also enters
-the `chunk_size > 64` OpenMP branch.
+The first registered topology (65 rows in one row group, 900-byte cap) is
+FALSIFIED below: sample loading must materialize that whole group and fails
+before assignment. The second and final topology contains 129 singleton rows
+split into row groups of 65 and 64. Row 0 is the negative maximum finite value
+and rows 1..128 are the positive maximum finite value, using binary64 values
+for the f64 file and binary32 values for the f32 file. With `k=1`,
+`sample_size=2`, `n_samples=1`, portable-v1 seed `0`, and a 5000-byte cap, the
+selected medoid at global index 65 is a finite positive, full resident loading
+is rejected by the cap, and the first streamed assignment chunk has 65
+points. It therefore enters the `chunk_size > 64` OpenMP branch and computes
+a non-finite distance for point 0.
 
 The real CLI must run both files in forced streaming mode and fail with the
 exact diagnostic:
 
 ```text
-fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 25).
+fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 65).
 ```
 
 Both processes must prove the streaming route and FastCLARA execution before
@@ -369,3 +373,21 @@ Exact compute `FLT_MAX` maps to exact public `DBL_MAX`; the adjacent finite
 float is preserved, and infinities/NaNs remain visible for the registered
 algorithm-level rejection. The assignment/best-result half of F13 remains
 open.
+
+### Streamed rejection discriminator attempt 1
+
+The registered 65-row, one-row-group fixture with a 900-byte cap did not
+reach assignment:
+
+```text
+Parquet metadata selected streaming: 65 series, ~0 MB resident estimate exceeds the series-data cap [0:0.0055627 min:sec]
+Series-data RAM limit: 900 bytes
+Running FastCLARA (k=1) ...
+FastCLARA: streaming from Parquet (65 rows, 1 row groups, ~0 MB resident estimate)
+Error: ParquetChunkReader::read_rows: selected row group needs 4680 bytes in addition to 112 retained sample bytes, exceeding --ram-limit=900; rewrite with smaller row groups or raise the limit
+```
+
+Verdict: **FALSIFIED [confirmed]**. The assignment subject did not run.
+The second and final registered topology above separates total resident size
+from one materialized row group while retaining a 65-point first assignment
+chunk.
