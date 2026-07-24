@@ -866,6 +866,13 @@ colour system transfer verbatim**.
   rejection of every non-finite assignment distance. Keep the production
   rejection and update that stale test in repair attempt 2 to require
   `InvalidInput` while preserving the pre-call labels.
+- 2026-07-24 (F13 Python gate): The fresh 1,022-test Python collection exposed
+  three Lloyd literals left stale by the earlier portable-v1 RNG repair. An
+  isolated extension built at exact F13 base `1af0aa8` reproduced all three,
+  so they are not assignment regressions. Repair tests only: pin the current
+  eight-series portable result and preserve the iteration-cap discriminator
+  with registered singleton values `[0,1,2,3,5,4]`. The binding and production
+  implementation remain unchanged.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the

@@ -420,3 +420,106 @@ preregistered rejection of every non-finite assignment distance. Repair
 attempt 2 changes only that stale expectation: require `InvalidInput` and
 digit-identical preservation of the pre-call labels. The production policy is
 not relaxed.
+
+### Fresh-Python gate falsification and exact-base arbiter
+
+The fresh current extension was built from the F13 tree and installed only
+after its output timestamp advanced. The built and loaded extension hashes
+were identical:
+
+```text
+5139A6745C325C8614A1191605E85227564910E49D70DBF41CE2FDDDFC58BF50
+```
+
+Its live FastCLARA smoke returned medoids `[0,2]`, labels `[0,0,1]`, and cost
+`1.0`. With the Windows Arrow runtime directories prepended, the full Python
+suite then produced:
+
+```text
+FAILED tests/python/test_api.py::TestClusterLocal::test_default_lloyd_seed_is_reproducible_across_calls
+FAILED tests/python/test_api.py::TestClusterLocal::test_default_lloyd_seed_isolated_from_legacy_tier2_rng
+FAILED tests/python/test_api.py::TestClusterLocal::test_lloyd_honors_nondefault_iteration_cap_and_keeps_default
+3 failed, 1007 passed, 12 skipped in 70.10s (0:01:10)
+```
+
+The first two failures were exact `24.0 == 20.0` mismatches. The third
+reported:
+
+```text
+ACTUAL: array([5, 2, 0])
+DESIRED: array([6, 1, 4])
+```
+
+An isolated detached worktree at the exact registered F13 base
+`1af0aa85acb1add898a3556e6ad93dcfd92f9f42` built a distinct extension with
+SHA-256
+`25F8D6C51B9229EC3CAFD670F52B8F13320BDD32C7FB5F84CBFDFF656E31BEF5`.
+The accepted process removed the editable-install finder and current source
+path, then asserted that both package and extension came from the retained
+base stage. Its exact three-node run produced:
+
+```text
+collected 3 items
+3 failed in 0.33s
+```
+
+The base process reproduced cost `24.0`, capped medoids `[5,2,0]`, labels
+`[2,1,1,1,0,0,0,0]`, and portable-v1 initial medoids `[6,2,1]`.
+
+Verdict: **FALSIFIED [confirmed]** for the inherited Python suite, and
+**pre-existing [confirmed]** against exact base rather than inferred from
+source inspection. Commit `24ef4e5` changed seeded initialization to
+portable-v1 and added the current C++ initializer oracle, but these three
+Python literals retained the earlier standard-library RNG trajectory.
+
+### Registered Python-oracle repair
+
+This registration precedes any edit to `tests/python/test_api.py`.
+Production code is out of scope.
+
+The two invocation-local default-seed cases keep their existing eight-series
+fixture and must additionally pin the portable-v1 result:
+
+```text
+medoids = [5,2,0]
+labels  = [2,1,1,1,0,0,0,0]
+cost    = 24.0
+```
+
+Simply changing the old iteration-cap literals to those values would erase
+the test's subject because `max_iter=1` and convergence now agree on that
+fixture. Replace only that case's data with singleton series whose values in
+point order are:
+
+```text
+[0,1,2,3,5,4]
+```
+
+Portable-v1 seed 42 selects initial medoids `[4,2]`. Independent literal L1
+arithmetic gives this progression:
+
+| state | medoids | labels after publication | objective |
+|---|---|---|---:|
+| `max_iter=1` | `[4,1]` | `[1,1,1,0,0,0]` | `5.0` |
+| converged | `[5,1]` | `[1,1,1,0,0,0]` | `4.0` |
+
+For the capped result, distances to values 5 and 1 are
+`[1,0,1,2,0,1]`; for the converged result, distances to values 4 and 1
+are `[1,0,1,1,1,0]`. Both sums and the unique second update are therefore
+independent of the production objective accumulator.
+
+Acceptance band:
+
+1. The three focused nodes pass with the exact medoids, labels, and objectives
+   above.
+2. A live mutation that replaces the forwarded `max_iter` with the default
+   `100` makes the cap case fail on its exact capped medoids and objective.
+3. The same fresh extension provenance remains loaded. The complete current
+   collection is exactly 1,022 tests and passes **1010 passed / 12 skipped /
+   0 failed** with the Arrow runtime path supplied.
+4. No production or binding source changes; `git diff --check` is clean.
+
+There are at most two repair attempts. Rollback is a local revert of the
+dedicated test commit. The claim most likely to be wrong is that the six-point
+fixture remains discriminatory after the test enters through the full Python
+dispatch; the focused real-binding run, not the hand calculation, judges it.
