@@ -264,3 +264,244 @@ The claim most likely to be wrong is portability beyond the two executable
 hosts. Windows alternate-PATH and WSL probes validate discovery semantics;
 host conditions plus the preserved macOS system path are source-confirmed,
 but only a real macOS run would confirm that platform again.
+
+## Attempt 2 - portable repair retained, full band FALSIFIED
+
+Attempt 2 changed only the root-floor observation permitted by attempt 1:
+the configure-time check now reads the root's exact first command rather than
+the mutable late `CMAKE_MINIMUM_REQUIRED_VERSION`. The focused direct and real
+CTest subjects then printed:
+
+```text
+F16_CMAKE_PRESETS floor=3.26.0 compiler=clang++ host_conditions=ran metadata_guard=ran skips=0
+All tests passed (81 assertions in 4 test cases)
+F16_POST_MUTATION_CTEST exit=0
+```
+
+This exceeds the registered 35-assertion / 4-case floor with zero skips.
+`git diff --check` was clean. The implementation was committed independently
+as `7aef30da81aadbdfaeb9962b186f6d70aca4f7be`
+(`fix: make CMake presets portable`).
+
+The first post-mutation CTest selector incorrectly used
+`^supply_chain_pinning$`, exited 0, and printed:
+
+```text
+No tests were found!!!
+```
+
+That wrapper is **INVALID [confirmed]** and supplies no evidence. `ctest -N`
+identified the real subject as test 66, `test_supply_chain_pinning`; the
+corrected exact selector produced the marker and 81/4 summary quoted above.
+
+### Host-aware preset inventory
+
+Windows exposed only the three Windows configure presets (`clang-win`,
+`clang-win-debug`, `msvc`), the two Windows build presets (`clang-win`,
+`clang-win-debug`), and the `clang-win` test preset:
+
+```text
+F16_PRESET_LIST host=windows configure=3 build=2 test=1 exit=0
+```
+
+The wrong-host Linux preset failed on Windows:
+
+```text
+CMake Error: Could not use disabled preset "gcc-linux"
+```
+
+WSL exposed only the `gcc-linux` configure preset and no build or test preset.
+Its wrong-host Windows preset failed:
+
+```text
+F16_PRESET_LIST_host_linux_configure_1_build_0_test_0_exit_0
+F16_WRONG_HOST_host_linux_preset_clang-win_exit_1
+CMake Error: Could not use disabled preset "clang-win"
+```
+
+Verdict: **PASS [confirmed]** for the exact host inventories and both
+wrong-host discriminators.
+
+### Clean compiler-discovery probes
+
+Fresh Release and Debug Windows configures removed installed LLVM roots from
+`PATH` and exposed only the alternate in-repository LLVM junction. Both
+subjects exited 0 and printed `Configuring done` and `Generating done`. Their
+cache evidence was:
+
+```text
+F16_CACHE build/f16-preset-preflight-07f186a/attempt2-clang-release
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/bin/clang++.exe
+CMAKE_C_COMPILER:FILEPATH=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/bin/clang.exe
+OpenMP_omp_LIBRARY:FILEPATH=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/lib/libomp.lib
+CMAKE_GENERATOR:INTERNAL=Ninja
+F16_CACHE build/f16-preset-preflight-07f186a/attempt2-clang-debug
+CMAKE_BUILD_TYPE:STRING=Debug
+CMAKE_CXX_COMPILER:STRING=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/bin/clang++.exe
+CMAKE_C_COMPILER:FILEPATH=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/bin/clang.exe
+OpenMP_omp_LIBRARY:FILEPATH=C:/D/git/dtw-cpp/build/f16-preset-preflight-07f186a/toolchain/llvm-alt/lib/libomp.lib
+CMAKE_GENERATOR:INTERNAL=Ninja
+```
+
+Verdict: **PASS [confirmed]** for the registered compiler/libomp fields. Both
+caches selected C, C++, and `OpenMP_omp_LIBRARY` below the alternate junction,
+not `Program Files`. CMake still discovered auxiliary LLVM tools such as
+`llvm-ar`, `llvm-ranlib`, and `clang-scan-deps` under the installed
+`Program Files` tree; F16 did not register or claim relocation of those tools.
+
+With every LLVM location removed, the two real fresh configure subjects both
+exited 1 and printed:
+
+```text
+The CMAKE_CXX_COMPILER:
+  clang++
+is not a full path and was not found in the PATH.
+```
+
+They also printed `No CMAKE_C_COMPILER could be found.`, while both partial
+caches retained `CMAKE_CXX_COMPILER:UNINITIALIZED=clang++`. The two PowerShell
+wrapper classifiers themselves printed `diagnostic=False` because redirected
+native stderr was represented as PowerShell error records rather than captured
+in the wrapper's `$output` string. Those wrapper predicates are
+**FALSIFIED [confirmed]**; the directly observed CMake subjects nevertheless
+meet the registered negative condition. No third wrapper was attempted.
+
+The first WSL wrapper was **INVALID [confirmed]** before the subject ran:
+
+```text
+bash: -c: line 1: syntax error near unexpected token '('
+```
+
+Its unquoted grep expression lost shell quoting through `wsl.exe`. The second
+and final wrapper ran the fresh subject, exited 0, and printed `Configuring
+done (31.0s)` and `Generating done (0.4s)`. Its cache is:
+
+```text
+CMAKE_BUILD_TYPE:STRING=Release
+CMAKE_CXX_COMPILER:STRING=/usr/bin/g++
+CMAKE_C_COMPILER:FILEPATH=/usr/bin/cc
+CMAKE_GENERATOR:INTERNAL=Ninja
+```
+
+Verdict: **PASS [confirmed]** for the real Windows and WSL compiler-discovery
+subjects; the failed wrapper predicates remain recorded and are not evidence.
+
+### Registered mutation verdicts
+
+Each M01-M09 mutation ran alone against the already-built real native subject,
+returned Catch2 exit 42, and was inverted immediately. Restoration checks
+after M02, corrected M09, and M10 reproduced the registered source diff hash
+`f1fd6d182e8059537af3eb363ff00af4a3bd2d30`; the final post-mutation focused
+subject also passed.
+
+M09's first inverse patch matched the earlier Windows `clang++` scalar instead
+of the mutated macOS scalar. The restoration hash exposed
+`7b40a8103c42cf674e2a7d68cff19615b7ce4df9`; a contextual inverse restored the
+registered hash before M10. No test or configure subject ran against that
+intermediate mismatch.
+
+| Mutation | Direct result |
+|---|---:|
+| M01 preset floor 26 -> 25 | 42 |
+| M02 root+preset+pyproject 26 -> 25 | 42 |
+| M03 pyproject floor 26 -> 25 | 42 |
+| M04 Windows compiler -> drive-absolute path | 42 |
+| M05 duplicate compiler scalar | 42 |
+| M06 inherited hidden-default compiler | 42 |
+| M07 remove Windows configure condition | 42 |
+| M08 remove Windows build condition | 42 |
+| M09 remove the macOS system-compiler pin | 42 |
+
+M10 appended a comma after the complete top-level JSON value while retaining
+all static sentinels. CMake's own preset parser correctly failed:
+
+```text
+CMake Error: Could not read presets from C:/D/git/dtw-cpp:
+CMakePresets.json:147: Extra non-whitespace after JSON value.
+},
+ ^
+F16_MUTATION_M10_LIST exit=1 expected=nonzero
+```
+
+Before the decisive separated commands, a combined list/configure wrapper
+timed out with `command timed out after 24022 milliseconds` without yielding
+subject output. The first separated configure wrapper also timed out with
+`command timed out after 23428 milliseconds`; no child CMake process remained.
+Both wrappers are **INVALID [confirmed]** and are not used as evidence. The
+same independent configure-time subject under the final 60-second wrapper
+completed and did not fail:
+
+```text
+-- Configuring done (19.4s)
+-- Generating done (3.0s)
+-- Build files have been written to: C:/D/git/dtw-cpp/build/highs-1151
+F16_MUTATION_M10_CONFIGURE exit=0 expected=nonzero
+```
+
+Verdict: **FALSIFIED [confirmed]**. CMake's `string(JSON)` accepted a valid
+leading JSON value plus trailing non-whitespace, so it is not a fail-closed
+whole-document syntax arbiter. M01-M09 are red and CMake's real preset parser
+is red, but the registered requirement that both M10 subjects fail is unmet.
+The two-attempt cap forbids a rescue patch; no registered band was relaxed.
+
+An independent source review also found that a future top-level preset
+`toolchainFile` containing a UNC path could evade the current cache-variable
+and drive-letter checks. That mutation was not part of the registered F16
+matrix and was not executed after the attempt cap. It is therefore
+**[inferred]**, not closure evidence; F38 owns both fail-closed preset-metadata
+residuals.
+
+### Supply-chain and full-suite regression gates
+
+The supply-chain subjects at implementation commit `7aef30d` printed:
+
+```text
+63 passed in 0.23s
+WORKFLOW_ACTION_PIN_GATE verified=39 total=39 verdict=PASS
+CMAKE_ARCHIVE_PIN_GATE verified=7 total=7 mutable=0 unhashed=0 verdict=PASS
+ARROW_ARCHIVE_PIN_GATE verified=1 total=1 verdict=PASS
+TRACKED_CMAKE_MANIFESTS total=27
+supply-chain pins verified
+F16_SUPPLY pytest_exit=0 checker_exit=0
+```
+
+The three configured build gates then passed:
+
+| Gate | Result | Capability skips |
+|---|---:|---:|
+| canonical `build/highs-1151` | 119/119, 0 failed | 6 |
+| llfio-OFF `build/nollfio` | 119/119, 0 failed | 9 |
+| Arrow-ON `build/arrow-pyarrow-23` | 121/121, 0 failed | 8 |
+
+The canonical six were CUDA x2, Arrow reader x1, and Metal x3. The llfio-OFF
+nine additionally skipped mmap x2 and HiGHS/Benders x1. The Arrow-ON eight
+ran the Arrow reader and all three integration entries, and skipped mmap x2,
+CUDA x2, Metal x3, and HiGHS/Benders x1. All builds and CTest invocations
+exited 0. The only reported llfio-OFF/Arrow build warning was:
+
+```text
+clang++: warning: optimization flag '-fno-signaling-nans' is not supported [-Wignored-optimization-argument]
+```
+
+### Final verdict
+
+The user-facing F16 repair is **retained [confirmed]** in `7aef30d`: the
+developer-absolute Windows compiler path is gone, all three active CMake floors
+are 3.26, host-specific preset visibility is enforced, alternate-PATH Windows
+and WSL clean configures pass, the missing-compiler probe fails loudly, and
+all regression inventories hold.
+
+Formal F16 closure is **FALSIFIED [confirmed]** because registered M10 did not
+make the configure-time `string(JSON)` subject fail. Per the binding
+two-attempt rule, leave F16 open, route replacement fail-closed metadata
+architecture uniquely to F38, and continue at F17. The unchecked F16 box
+preserves the falsified acceptance state but owns no further implementation.
+Rollback remains a local revert of `7aef30d` plus the separate F16
+documentation commits; no remote action was taken.
+
+The claim most likely to be wrong is unchanged: macOS portability is
+source-confirmed but not runtime-confirmed on this Windows/WSL host. The
+specific additional claim most likely to be wrong is that F38 needs a new
+architecture rather than a narrowly documented official-parser invocation;
+an executed F38 mutation gate would decide that.

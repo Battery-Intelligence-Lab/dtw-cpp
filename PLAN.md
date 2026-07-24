@@ -20,7 +20,9 @@ the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
 parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
 committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
-**F14–F15 CLOSED** and F16 is active.
+**F14–F15 CLOSED**. F16's portable-preset repair is retained in `7aef30d`;
+its formal acceptance box remains open as falsification evidence only, while
+F38 uniquely owns the residual implementation. F17 is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -460,6 +462,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
       while the root requires 3.26. First gate: portable clean configure probes
       plus a metadata check that rejects any future floor drift.
+      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `7aef30d` removes
+      the developer path, aligns all active floors at 3.26, and makes preset
+      visibility host-specific. Focused/configure/full gates pass, but
+      registered M10 proves configure-time `string(JSON)` accepts trailing
+      non-whitespace after a valid JSON value. The two-attempt cap leaves F16
+      open as an evidence-state checkbox only: no further implementation is
+      owned here. F38 uniquely owns fail-closed metadata architecture, and the
+      binding active resume pointer is F17.
 - [ ] **F17 — CLI `--resume` reads and discards clustering state.**
       `dtwc/dtwc_cl.cpp:1398-1405` loads a binary `ClusteringResult` into the
       block-local `ckpt_result`, prints its metadata, and has no later consumer;
@@ -680,6 +690,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       files byte-for-byte. Python is runtime-confirmed; MATLAB bytes remain
       `[inferred]` until the fresh MEX gate. F37 owns cross-language emitters;
       F14 remains the four-body native formatter contract.
+- [ ] **F38 — the CMake preset metadata guard is not fail-closed.** F16's
+      registered trailing-content mutation is rejected by
+      `cmake --list-presets=all` but accepted by every configure-time
+      `string(JSON)` query, so successful field lookup does not prove complete
+      document consumption. Independent review also found that a future
+      top-level `toolchainFile` containing a UNC path can evade the current
+      cache-variable and drive-letter guards. First gate: retain both exact
+      mutations, require the real preset parser and permanent metadata subject
+      to reject them, and use complete-input parsing plus schema-aware
+      top-level field checks. Do not add a third F16 lexical sentinel.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1010,6 +1030,15 @@ colour system transfer verbatim**.
   dependencies, not root's first-command 3.26, and stopped before compilation.
   Attempt 2 may only bind that already-registered first command; every
   quantitative and behavioral band remains unchanged.
+- 2026-07-24 (F16 attempt 2 verdict): Retain `7aef30d`. The product repair,
+  focused 81-assertion / 4-case gate, real host/configure probes,
+  supply-chain inventory, and final 119/119, 119/119, 121/121 suites pass.
+  M01-M09 fail, and CMake's real preset reader rejects M10, but the independent
+  configure-time `string(JSON)` subject exits 0 on the same trailing-content
+  document. Per the registered no-third-attempt band, leave F16 open, route
+  complete-input parsing and the reviewed top-level `toolchainFile`/UNC gap to
+  F38 as its sole implementation owner, and continue at F17. F16's unchecked
+  box preserves the falsified acceptance result and is not a resume pointer.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1299,4 +1328,15 @@ colour system transfer verbatim**.
   dependency configuration had changed the late CMake minimum variable. No
   native test ran; attempt 2 is limited to the registered root first-command
   observation. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F16 repair retained / closure FALSIFIED): `7aef30d` aligns
+  preset/root/pyproject at 3.26, discovers Windows Clang through `clang++`,
+  and hides presets on incompatible hosts. The permanent gate passes 81
+  assertions / 4 cases; alternate-PATH Windows Release/Debug and WSL GCC
+  configures pass; wrong-host and missing-compiler probes fail loudly.
+  M01-M09 fail, but M10 is FALSIFIED because CMake's real preset reader rejects
+  trailing content while configure-time `string(JSON)` accepts it. Supply
+  inventory remains 39/7/1/27, and canonical, llfio-OFF, and Arrow-ON pass
+  119/119, 119/119, and 121/121 with 6/9/8 capability skips. The capped
+  fail-closed residual moves to F38; resume at F17. Evidence:
   `.claude/baselines/2026-07-24-f16-cmake-presets.md`.

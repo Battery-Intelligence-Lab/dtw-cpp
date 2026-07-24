@@ -93,7 +93,7 @@ verdict rules are in
 | PL01 | DONE | **CLOSED-BY `0d56fb9`, `5363ac1`, `7f79c55`:** CPU/wheel path executed on Apple M2 Max. |
 | PL02 | OPEN | Arrow CPM on Windows+Clang → **2.1/community, BLOCKED-UPSTREAM**; F9's system-Arrow route is distinct. |
 | PL03 | OPEN | Arrow CPM on Windows+MSVC → **2.1/community**; currently untested, with no “should work” claim. |
-| PL04 | OPEN | Portable/truthful CMake presets (no developer-absolute LLVM path; floor 3.26) → **R3/F16**. |
+| PL04 | OPEN | **MIXED:** developer-absolute LLVM path, floor 3.26, and host visibility repaired by `7aef30d`; fail-closed preset metadata guard → **R3/F38**. |
 | D01 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** conversion guide delivered at `docs/content/guides/data-formats.md`. |
 | D02 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** Mermaid website architecture diagram delivered. |
 | D03 | OPEN | Byte-identical, separately referenced docs logos → **R1 tracked-junk audit**; preserve both consumers if deduplicated. |

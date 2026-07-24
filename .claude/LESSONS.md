@@ -429,6 +429,29 @@ Critical knowledge to avoid repeating mistakes.
   guard and fails to compile; force the complete predicate to `bool` with one
   more pair of parentheses: `CHECK(((a && b) || (c && d)))`. F15 attempt 1
   failed at compile time on this exact distinction.
+- **CMake `string(JSON)` is not a whole-document JSON syntax arbiter.** F16's
+  M10 appended trailing non-whitespace after a complete preset object.
+  `cmake --list-presets=all` rejected it with `Extra non-whitespace after JSON
+  value`, but the configure-time `string(JSON)` queries all succeeded and
+  configuration exited 0. Use CMake's preset reader or another parser that
+  proves complete-input consumption; successful field lookup proves only a
+  valid leading JSON value. Do not add another lexical sentinel after a capped
+  parser falsification.
+- **Cross-shell diagnostic classifiers are separate subjects from the command
+  they wrap.** F16's no-LLVM CMake subjects exited 1 and printed the required
+  missing-`clang++` diagnostic, while two PowerShell `$output` predicates
+  returned `diagnostic=False` because native stderr arrived as error records.
+  A WSL wrapper also failed before CMake because an unquoted grep expression
+  containing parentheses lost its intended quoting through `wsl.exe`. Capture
+  native stdout/stderr through a single known shell, split execution from
+  inspection, and report wrapper failure independently; never let a broken
+  classifier overwrite directly observed subject evidence.
+- **CTest exits 0 when `-R` matches no tests.** F16's first post-mutation
+  selector omitted the tracked subject's `test_` prefix and printed `No tests
+  were found!!!` with a successful process exit. Run `ctest -N` to resolve the
+  exact registered name, then require the test's own execution marker and
+  assertion/case floor; an exit code without a nonzero executed-subject count
+  is not a gate.
 
 ## LR-core Solver (Phase 4)
 
