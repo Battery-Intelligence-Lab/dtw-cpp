@@ -1662,3 +1662,11 @@ colour system transfer verbatim**.
   and a dedicated no-skip target whose temporary files stay under the build
   root. Product attempts consumed: zero. Evidence:
   `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+- 2026-07-24 (R3-F20 expected-red): `e4688a7` adds the dedicated mandatory
+  Problem route. Canonical and llfio-OFF each execute 404 assertions / 4 cases
+  with 401 passing and exactly three F20 failures; both observe
+  `heap=owning mmap=owning`, the loader constructor ignores configured Heap,
+  and Float32 Mmap succeeds. The llfio-OFF route also accepts explicit Mmap.
+  The passing marker is absent, subject skips are zero, and product attempts
+  consumed remain zero. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.

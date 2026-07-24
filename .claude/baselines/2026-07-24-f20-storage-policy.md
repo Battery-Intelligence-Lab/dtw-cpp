@@ -232,10 +232,19 @@ F20_PROBLEM_STORAGE_POLICY build=llfio-off footprint=288 heap=owning mmap=reject
 - loader construction exercises its real injected-threshold route;
 - mapped CUDA/Metal selection rejects loudly before an empty-vector backend
   call, while existing Heap backend behavior remains unchanged;
-- fresh Python and MEX artifacts drive their real
-  `set_storage_policy` -> `set_data` sequence. On an llfio-OFF artifact the
-  explicit Mmap sequence must raise; on llfio-ON it must complete and its
-  downstream distance/result oracle must remain exact.
+- six fresh zero-skip binding profiles drive their real
+  `set_storage_policy` -> `set_data` sequence: Python llfio-ON/OFF plus MATLAB
+  llfio-ON/OFF under both R2024b and R2025b. Their exact build routes are
+  `build/cfg-gate-normal`, `build/phase8-m13`, `build/mex-verify`, and
+  `build/f19-mex-profile-build`;
+- each profile sets `TMP`/`TEMP`/`TMPDIR` (and MATLAB `MATLAB_PREFDIR`) to a
+  fresh build-root directory. No new public capability/backing getter is
+  needed: ON observes zero Heap artifacts then exactly one independently
+  parsed Mmap artifact; OFF observes typed rejection, zero artifacts, and
+  unchanged sentinel Problem state;
+- ON profiles compare all 36 ordered distances and FastPAM Heap/Mmap outputs;
+  OFF profiles require Python `IOError` / MATLAB `dtwc:ioError` plus the exact
+  registered message.
 
 ### S4 - build matrix
 
@@ -282,9 +291,57 @@ The retained implementation must reject at least these eleven changes:
 | inherited llfio-OFF assertions/cases/skips | Catch2 focused run | 14 / 4 / 2 |
 | F20 product attempts consumed | none | 0 / 2 |
 
+## Inherited expected-red gate
+
+The dedicated gate was committed as `e4688a7` while product code remained
+unchanged. Its first execution exposed a gate-only trailing-separator path
+comparison; changing that assertion to `filesystem::equivalent` was not a
+product attempt. Both corrected inherited runs then executed 404 assertions in
+four cases with 401 passing and exactly the three registered product failures.
+
+Canonical llfio-ON evidence:
+
+```text
+F20_RED_OBSERVATION footprint=288 heap=owning mmap=owning
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(391): FAILED:
+  REQUIRE( source->data().is_view() )
+with expansion:
+  false
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(551): FAILED:
+  REQUIRE( heap.storage_policy() == dtwc::core::StoragePolicy::Heap )
+with expansion:
+  0 == 1
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(461): FAILED:
+explicitly with message:
+  explicit Float32 Mmap set_data succeeded
+test cases:   4 |   1 passed | 3 failed
+assertions: 404 | 401 passed | 3 failed
+```
+
+llfio-OFF evidence:
+
+```text
+F20_RED_OBSERVATION footprint=288 heap=owning mmap=owning
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(551): FAILED:
+  REQUIRE( heap.storage_policy() == dtwc::core::StoragePolicy::Heap )
+with expansion:
+  0 == 1
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(421): FAILED:
+explicitly with message:
+  explicit Problem Mmap set_data succeeded without llfio
+C:/D/git/dtw-cpp/tests/unit/unit_test_problem_storage_policy.cpp(461): FAILED:
+explicitly with message:
+  explicit Float32 Mmap set_data succeeded
+test cases:   4 |   1 passed | 3 failed
+assertions: 404 | 401 passed | 3 failed
+```
+
+The subject marker is absent in both runs, as required for a red inherited
+product. Product attempts consumed remain `0 / 2`.
+
 ## Current verdict
 
-`REGISTERED`; product code is untouched. The claim most likely to be wrong is
+`EXPECTED-RED CONFIRMED`; product code is untouched. The claim most likely to be wrong is
 that direct owning `set_data` is the intended boundary rather than a future
 loader-mediated Problem API. The frozen cross-language surface supports the
 former; an explicit superseding contract decision would be required to choose

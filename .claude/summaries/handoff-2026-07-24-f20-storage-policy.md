@@ -21,6 +21,14 @@
   Problem is move-only rather than copyable, direct policies are explicit
   rather than threshold-injected, and the direct oracle is `ndim=2` with an
   independent 15-pair DP. No product attempt was consumed.
+- Committed the dedicated red-first target as `e4688a7`. Canonical and
+  llfio-OFF each execute 404 assertions / 4 cases with 401 passing and exactly
+  three F20 failures. Both print
+  `F20_RED_OBSERVATION footprint=288 heap=owning mmap=owning`; neither prints a
+  passing subject marker.
+- Registered six real binding profiles without adding a public capability
+  getter: Python ON/OFF plus MATLAB ON/OFF under R2024b/R2025b, discriminated by
+  repo-local `.dtws` artifacts or typed transactional rejection.
 
 ## Decisions
 
@@ -42,12 +50,9 @@
 
 ## Exact resume point
 
-Commit the registration correction alone. Then add the permanent non-skipping
-F20 Problem route as
-`tests/unit/unit_test_problem_storage_policy.cpp`, configure its build-root
-temporary environment in `tests/CMakeLists.txt`, run it against the inherited
-product to capture the required both-heap failure, and only then implement
-shared series routing plus Problem-owned lifetime. Do not touch F21, F26, F39,
+Implement the shared series router and move-stable Problem ownership, then make
+the already-committed dedicated target green in canonical and llfio-OFF.
+Product attempts consumed: `0 / 2`. Do not touch F21, F26, F39,
 distance-matrix selection, or CLI RAM semantics.
 
 ## Open risks
