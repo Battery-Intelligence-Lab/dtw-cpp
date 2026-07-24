@@ -20,7 +20,7 @@ the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
 parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
 committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
-**F13 CLOSED** and F14 is next.
+**F13 CLOSED** and F14 is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -417,6 +417,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
 - [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
       precision, signed zero, and non-finite behavior across dense stream,
       mmap stream, and visitor paths; only then may R4 remove duplication.
+      **Registered 2026-07-24:** native ASCII output is general binary64 at
+      `max_digits10`, comma-delimited, LF-only, locale/state independent,
+      preserves raw signed zero, leaves uncomputed NaN empty, and rejects
+      computed infinities before output. The hand-written 3x3 oracle is 83
+      bytes with SHA-256
+      `7754CFF0231360D60A69B034CA5136E88EEFE8B53A6509706D99071C436F3813`.
+      Focused dense/mmap/visitor/print/Result gates, real resident/mmap CLI
+      parity, a native `Result::save` helper, source audit, 13 mutation classes
+      and 21 executions, manifest 27, and exact final build floors are binding.
+      R4 still owns consolidation. Evidence:
+      `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
 - [ ] **F15 — benchmark/test generators and CPU oracles are fragmented.**
       The historical claim that eight copies were byte-identical is falsified:
       ranges and shapes differ. Inventory intentional variants and pin seeded
@@ -630,6 +641,21 @@ Open findings first (status after R0 adjudication — update these boxes there):
       HiGHS option configurations, and an independent audit. F36 owns only
       URL-declaration grammar/override closure; F34 retains wider acquisition
       classes.
+- [ ] **F37 — the frozen cross-language `Result::save` byte contract is
+      violated by language-owned emitters.** The contract promises identical
+      corresponding C++/Python/MATLAB/CLI files
+      (`docs/api-contract-2.0.md:194-200,728-734`), but Python delegates the
+      matrix to NumPy's default `savetxt` and MATLAB delegates to
+      `writematrix`. The registered F14 3x3 values make real Python
+      `Result.save` write 212 Windows bytes, SHA-256
+      `E894009679F58362E6CCBBB821C5DCB8BF2EAAC4A21E576AD77350BBA261A23F`,
+      beginning `nan,-0.000000000000000000e+00,...`, versus the 83-byte native
+      oracle with an empty sentinel field. F37's first gate, after F14 has
+      frozen native bytes: drive fresh C++, Python, MATLAB, resident CLI, and
+      mmap CLI on one non-degenerate result and compare all four corresponding
+      files byte-for-byte. Python is runtime-confirmed; MATLAB bytes remain
+      `[inferred]` until the fresh MEX gate. F37 owns cross-language emitters;
+      F14 remains the four-body native formatter contract.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -902,6 +928,16 @@ colour system transfer verbatim**.
   fresh 1,022-test Python collection passes 1010 with 12 skips. This closes
   F13 behavior only: R4 still owns scan consolidation, and hosted CI is not
   claimed. Resume at F14.
+- 2026-07-24 (F14 registration/F37 split): Freeze the four native C++ matrix
+  formatter bodies before R4 consolidation: locale-free general
+  `max_digits10`, LF-only binary files, signed-zero preservation, empty NaN
+  sentinel, exact pre-output infinity rejection, and unchanged caller stream
+  state. A scalar-token and finite-preflight primitive may be shared, but all
+  four row/delimiter/output loops remain separate for R4. Native
+  Problem/Result/resident-CLI/mmap-CLI reachability is F14.
+  Python `np.savetxt` is runtime-confirmed byte-different and MATLAB
+  `writematrix` is a separately owned emitter, so the frozen all-language
+  four-file promise is F37 rather than an unregistered F14 expansion.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1129,3 +1165,12 @@ colour system transfer verbatim**.
   R4-owned, and hosted CI is not claimed. Evidence:
   `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`. Resume at
   F14.
+- 2026-07-24 (R3-F14 registration/F37): At clean base `95ffd63`, audited four
+  native matrix CSV bodies and registered an independent 83-byte LF-only
+  literal, hostile locale/stream state, exact infinity side effects/messages,
+  dense/mmap/visitor/print/Result routes, real resident/mmap CLI parity, native
+  Result parity, manifest 27, 13 mutation classes and 21 executions, and final
+  inventories 118/118 canonical, 118/118 llfio-OFF, and 120/120 Arrow. The
+  inherited Windows CLI artifact contains 27 CRLF rows. Python's real 212-byte
+  `Result.save` matrix confirms F37; MATLAB remains runtime-unconfirmed.
+  Evidence: `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
