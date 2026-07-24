@@ -11,12 +11,16 @@
 - Registered the existing owning `Problem::set_data(Data)` operation as the
   governed cross-language boundary.
 - Registered the ownership, transaction, Float32, llfio-OFF, view-preservation,
-  copy-lifetime, loader-constructor, GPU-loudness, exact-byte, exact-distance,
+  move-lifetime, loader-constructor, GPU-loudness, exact-byte, exact-distance,
   binding, mutation, and full-gate bands in
   `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - Captured clean inherited focused baselines at
   `253dfda8e5d150492261582673b47f7859c7d78e`: canonical 8320 assertions /
   4 cases; llfio-OFF 14 assertions / 4 cases / 2 capability skips.
+- Corrected the initial `0c6fe79` registration before product/test work:
+  Problem is move-only rather than copyable, direct policies are explicit
+  rather than threshold-injected, and the direct oracle is `ndim=2` with an
+  independent 15-pair DP. No product attempt was consumed.
 
 ## Decisions
 
@@ -25,8 +29,9 @@
 - `set_view_data` remains an explicit non-owning bypass.
 - Series backing remains separate from distance-matrix mmap and both CLI RAM
   controls.
-- Problem must retain a shareable owner for mapped series and names; storing
-  only the view Data is forbidden because it dangles.
+- Problem must retain a move-stable owner for mapped series and names; storing
+  only the view Data is forbidden because it dangles. Problem is already
+  non-copyable through `MmapDistanceMatrix`, so F20 adds no copy contract.
 - `Problem(name, loader)` honors and owns the loader's complete stored result.
 - Explicit unsupported Mmap requests fail before publication; no silent heap
   substitution. Auto retains the existing loud best-effort behavior.
@@ -37,16 +42,18 @@
 
 ## Exact resume point
 
-Commit the registration/bookkeeping alone. Then add the permanent non-skipping
-F20 Problem route to `tests/unit/test_storage_policy.cpp`, run it against the
-inherited product to capture the required both-heap failure, and only then
-implement shared series routing plus Problem-owned lifetime. Do not touch F21,
-F26, F39, distance-matrix selection, or CLI RAM semantics.
+Commit the registration correction alone. Then add the permanent non-skipping
+F20 Problem route as
+`tests/unit/core/unit_test_problem_storage_policy.cpp`, configure its build-root
+temporary environment in `tests/CMakeLists.txt`, run it against the inherited
+product to capture the required both-heap failure, and only then implement
+shared series routing plus Problem-owned lifetime. Do not touch F21, F26, F39,
+distance-matrix selection, or CLI RAM semantics.
 
 ## Open risks
 
-- `LoadedData` is move-only with llfio, while `Problem` is broadly returned and
-  copied. A shared backing owner must preserve those source semantics.
+- `LoadedData` is move-only with llfio, matching Problem's existing move-only
+  effective contract. Its backing and name views must remain valid after move.
 - MmapDataStore v1 stores Float64 only. F20 must reject explicit Float32 Mmap
   rather than reinterpret it.
 - The default Auto threshold is not observable on Windows because the free-RAM

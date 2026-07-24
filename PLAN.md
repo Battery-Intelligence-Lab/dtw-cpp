@@ -610,8 +610,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       remains separate from distance-matrix mmap and both CLI RAM controls.
       The six-by-six fixture is exactly 288 bytes above a registered one-byte
       threshold. Heap/Mmap must differ while all 36 doubles, six names, and 36
-      ordered downstream distances are exact; mapped ownership must survive a
-      Problem copy. The subject may not skip in either llfio-ON or llfio-OFF:
+      ordered downstream distances are exact; the direct fixture retains
+      `ndim=2`, its 15 nontrivial values match an independent full-matrix DP,
+      and mapped ownership must survive a Problem move. The subject may not
+      skip in either llfio-ON or llfio-OFF:
       unsupported explicit Mmap and Float32 Mmap fail before publication.
       Loader construction honors its stored result, mapped GPU consumers fail
       before empty-vector dispatch, eleven mutations and at most two product
@@ -1644,10 +1646,19 @@ colour system transfer verbatim**.
 - 2026-07-24 (R3-F20 registration): The existing owning
   `Problem::set_data(Data)` call is the policy-governed cross-language
   boundary; changes are non-retroactive and `set_view_data` remains an
-  explicit non-owning bypass. Problem must retain shareable mmap-series and
+  explicit non-owning bypass. Problem must retain move-stable mmap-series and
   name ownership, keep series policy separate from distance/CLI controls, and
   reject unsupported explicit Mmap before publication. Exact bands cover the
-  288-byte non-uniform fixture, 36 values, six names, 36 ordered distances,
-  copy lifetime, loader construction, GPU loudness, zero subject skips in
-  llfio-ON/OFF, eleven mutations, and two product attempts. Evidence:
+  288-byte non-uniform `ndim=2` fixture, 36 values, six names, 36 ordered
+  distances, 15-pair independent DP, move lifetime, loader construction, GPU
+  loudness, zero subject skips in llfio-ON/OFF, eleven mutations, and two
+  product attempts. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+- 2026-07-24 (R3-F20 registration audit): Before any product/test edit, the
+  independent gate audit falsified copyability, direct-threshold injection, and
+  native-`ndim=1` assumptions in `0c6fe79`. The corrected gate uses existing
+  Problem move semantics, explicit direct Heap/Mmap plus loader-only one-byte
+  Auto threshold, an `ndim=2` reconstruction with a 15-pair independent DP,
+  and a dedicated no-skip target whose temporary files stay under the build
+  root. Product attempts consumed: zero. Evidence:
   `.claude/baselines/2026-07-24-f20-storage-policy.md`.
