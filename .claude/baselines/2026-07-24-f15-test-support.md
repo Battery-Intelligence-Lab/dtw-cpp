@@ -118,7 +118,7 @@ types in row-major order, and computes L1 DTW through a full `(n+1)*(m+1)`
 matrix with explicit `|i-j|<=band`. It also calls production
 `dtwFull_L`/`dtwBanded` as a separate rolling-buffer computation.
 
-### Shared fingerprints
+### Windows-MSVC-STL shared fingerprints
 
 Both compiler profiles produced:
 
@@ -191,10 +191,59 @@ full_bits=0000000000000000,40345AE633486486,40362F13B6D21132,40345AE633486486,00
 band0_bits=0000000000000000,40345AE633486486,4043B21174E2226C,40345AE633486486,0000000000000000,40407337C4287B6D,4043B21174E2226C,40407337C4287B6D,0000000000000000
 ```
 
-The band-0 result differs from the full result in both profiles, so the
+### Linux libstdc++ Release profile
+
+A pre-run portability review identified that the C++ standard does not freeze
+`uniform_real_distribution`'s engine-to-real mapping. The literal preflight
+was therefore compiled inside WSL Ubuntu 24.04, still writing only beneath the
+repository's ignored `build/f15-generator-preflight-e79fab3/` directory:
+
+```text
+g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0
+Ubuntu clang version 18.1.3 (1ubuntu1)
+```
+
+Both compilers used libstdc++ and the repository's Release relaxations:
+
+```text
+-O3 -DNDEBUG -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math -fno-signed-zeros -fno-rounding-math -fno-signaling-nans
+```
+
+GCC 13.3 and Clang 18.1 produced the same complete profile:
+
+```text
+benchmark-seed42.bin bytes=40 sha256=194FB0E76C52FCD84F09960547EEDC6A43788FDCC89F739DF44E3C49AF7B16E0
+benchmark-rows-3x4-base100.bin bytes=96 sha256=1F9E6847BA0FFC7943EBCA024827CD6B5A890B8911BFF4F6C59211F3C28892AB
+accelerator-3x4-seed42.bin bytes=96 sha256=5D3594B036ED60CAA686D8472C630488B86290BAD1805806FBB38894B96F2C53
+full-oracle-3x3.bin bytes=72 sha256=7DE312EABCFFB71D857BF97B9CFCE9C08A6F855E7CE25B863342BE46CBC38B73
+band0-oracle-3x3.bin bytes=72 sha256=E81034CE0654315D254D07FA518DDCE7472A542A4EECBD740935E9DFF891022E
+production_full_equal=1
+production_band0_equal=1
+```
+
+Benchmark masks:
+
+```text
+3FE2FA8F6CD7F878,BFE4429ABC43277F,3FE1E67511EED8FE,3FC8CB2C149941B0,BFBBBBCF0DB01E50
+```
+
+Accelerator masks:
+
+```text
+4017B933480DF696,C01953416B53F15F,40166012566A8F3E,3FFEFDF719BF9220,BFF15561688E12F0,C0200041BE89C29E,BFEA14A986DAD3A0,C00A9B4B96F5696C,C01C92166F9FE92A,4008246451B14AA8,C021BE586FDF2D37,4011C288EB7D97C0
+```
+
+Full and band-0 matrices:
+
+```text
+full_bits=0000000000000000,40345AE633486488,40362F13B6D21132,40345AE633486488,0000000000000000,40380D70B39D2896,40362F13B6D21132,40380D70B39D2896,0000000000000000
+band0_bits=0000000000000000,40345AE633486488,4043B21174E2226B,40345AE633486488,0000000000000000,40407337C4287B6E,4043B21174E2226B,40407337C4287B6E,0000000000000000
+```
+
+The band-0 result differs from the full result in all three profiles, so the
 fixture is non-degenerate. A decisive test must accept one complete coherent
-profile only; mixing a generator from one profile with oracle values from the
-other fails.
+Windows-relaxed, Windows-precise, or Linux-libstdc++ profile only; mixing
+generator or oracle values between rows fails.
 
 ## Inherited executable baseline
 
@@ -275,7 +324,8 @@ local.
 The permanent non-skipping unit target must:
 
 - compare normalized raw IEEE bytes to the exact fingerprints above;
-- identify exactly `relaxed` or `precise` and reject any mixed profile;
+- identify exactly `relaxed`, `precise`, or `libstdcxx` and reject any mixed
+  profile;
 - prove scalar, per-row, and continuous schedules separately;
 - compare production full/banded dense references digit-for-digit with an
   independent full-matrix oracle on the non-degenerate fixture;

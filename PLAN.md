@@ -446,11 +446,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `mt19937` with `[-1,1]`, accelerator row-major continuous `mt19937` with
       `[-10,10]`, and zero-diagonal mirrored `N*N` assembly. Preserve packed
       LB, timing-only MPI, float/range variants, caller-owned/Gaussian/NaN draw
-      schedules, and independent mathematical arbiters. Exact coherent
-      Clang-relaxed and MSVC-precise raw-byte/oracle fingerprints, permanent
-      non-skipping source reachability, 13 mutation executions, benchmark
-      compilation, real CUDA baselines, and final 119/119, 119/119, 121/121
-      build floors are binding. Evidence:
+      schedules, and independent mathematical arbiters. Exact coherent Windows
+      Clang-relaxed, Windows MSVC-precise, and Linux-libstdc++ raw-byte/oracle
+      fingerprints, permanent non-skipping source reachability, 13 mutation
+      executions, benchmark compilation, real CUDA baselines, and final
+      119/119, 119/119, 121/121 build floors are binding. Evidence:
       `.claude/baselines/2026-07-24-f15-test-support.md`.
 - [ ] **F16 — CMake presets encode one developer machine and a stale floor.**
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
@@ -971,10 +971,17 @@ colour system transfer verbatim**.
   symmetric CPU-reference traversal; it must not merge packed LB values,
   MPI timing, compiler-sensitive float/range variants, structured/random-walk
   fixtures, or independent DP/path/formula arbiters. `uniform_real_distribution`
-  bytes are frozen as two coherent supported floating-point profiles rather
-  than mislabeled portable-v1 output. Real CUDA execution is required; real
-  Metal remains locally unavailable and is not claimed. Two implementation
-  attempts maximum.
+  bytes are frozen as coherent verified compiler-plus-standard-library
+  profiles rather than mislabeled portable-v1 output. Real CUDA execution is
+  required; real Metal remains locally unavailable and is not claimed. Two
+  implementation attempts maximum.
+- 2026-07-24 (F15 portability correction): Pre-run review falsified the
+  assumption that compiler floating-point flags alone identify the legacy STL
+  fixture bytes. WSL Ubuntu 24.04 GCC 13.3 and Clang 18.1 with libstdc++ agree
+  with each other but differ from both Windows profiles, including for
+  `[-1,1]`. Their exact third coherent profile is registered before the first
+  decisive F15 run; the target must accept no unmeasured profile and no mixed
+  generator/oracle row.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1228,4 +1235,10 @@ colour system transfer verbatim**.
   band-0 fixture differs from full DTW. Six benchmark executables compile;
   real CUDA passes 7,827 assertions / 61 cases and 688 / 8; CPU accuracy/SIMD
   pass 283 / 39 and 7,029 / 16. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 portability): Before implementation attempt 1 executed,
+  compiled the literal preflight in WSL Ubuntu 24.04 with GCC 13.3 and Clang
+  18.1 plus the repository Release relaxations. Both libstdc++ runs produced
+  the same third coherent generator/full/band-0 profile and retained
+  digit-identical independent/production matrices. Evidence:
   `.claude/baselines/2026-07-24-f15-test-support.md`.
