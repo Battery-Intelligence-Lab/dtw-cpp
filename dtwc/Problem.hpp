@@ -38,6 +38,7 @@
 #include <unordered_map> // std::unordered_map
 #include <span>        // std::span
 #include <iostream>
+#include <memory>
 
 #include "core/distance_matrix.hpp"
 
@@ -157,6 +158,7 @@ private:
   bool verbose_{ false };
   path_t output_folder_{ settings::paths::results };
   std::string name_{};
+  std::unique_ptr<LoadedData> series_storage_owner_;
   Data data_;
 
   /// Dispatch through variant via std::visit.
@@ -214,6 +216,26 @@ private:
   void writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost);
   void distanceInClusters();
 
+  void adopt_loaded_data(LoadedData loaded)
+  {
+    if (loaded.is_mmap()) {
+      auto owner =
+        std::make_unique<LoadedData>(std::move(loaded));
+      Data view = owner->data;
+      data_ = std::move(view);
+      series_storage_owner_ = std::move(owner);
+      return;
+    }
+    data_ = std::move(loaded.data);
+    series_storage_owner_.reset();
+  }
+
+  bool has_mmap_series_storage() const
+  {
+    return series_storage_owner_
+        && series_storage_owner_->is_mmap();
+  }
+
 public:
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
@@ -240,8 +262,9 @@ public:
     rebind_dtw_fn();
   }
   Problem(std::string_view problem_name, DataLoader &loader)
-    : name_{ problem_name }, data_{ loader.load() }
+    : storage_policy_{ loader.storage_policy() }, name_{ problem_name }
   {
+    adopt_loaded_data(loader.load_stored());
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
 
@@ -396,7 +419,13 @@ public:
     candidate.validate_ndim();
     preflight_distance_semantics(
       variant_params, missing_strategy, candidate, distance_strategy, cuda_settings);
-    data_ = std::move(candidate);
+    auto loaded = detail::route_series_storage(
+      std::move(candidate),
+      storage_policy_,
+      0,
+      {},
+      "Problem::set_data");
+    adopt_loaded_data(std::move(loaded));
     refresh_distance_matrix();
   }
 
@@ -408,6 +437,7 @@ public:
     preflight_distance_semantics(
       variant_params, missing_strategy, candidate, distance_strategy, cuda_settings);
     data_ = std::move(candidate);
+    series_storage_owner_.reset();
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }

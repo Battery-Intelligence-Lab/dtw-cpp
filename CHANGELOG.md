@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed `Problem::set_storage_policy` so the next owning `set_data` call now
+  selects Heap or mmap series backing across C++, Python, and MATLAB.
+  Mmap-backed Problems retain their store/name lifetime after moves; unsupported
+  Float32, llfio-OFF, CUDA, and Metal combinations now fail loudly instead of
+  silently using Heap or empty owning vectors.
 - **Breaking:** encapsulated `Problem`'s `method`, `random_seed`,
   `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`, `verbose`,
   `output_folder`, `name`, and `data` fields behind canonical accessors and

@@ -138,7 +138,8 @@ std::vector<std::byte> read_bytes(const fs::path &path)
   input.read(
     reinterpret_cast<char *>(bytes.data()),
     static_cast<std::streamsize>(bytes.size()));
-  REQUIRE(input.good());
+  REQUIRE(input.gcount() == static_cast<std::streamsize>(bytes.size()));
+  REQUIRE_FALSE(input.bad());
   return bytes;
 }
 
@@ -380,45 +381,57 @@ TEST_CASE(
   REQUIRE(source->storage_policy() == dtwc::core::StoragePolicy::Mmap);
   REQUIRE_FALSE(source->data().is_view()); // policy changes are non-retroactive
 
+#ifdef DTWC_HAS_MMAP
   source->set_data(load_fixture(kDirectNdim));
   const auto observed_mode =
     source->data().is_view() ? std::string_view("view")
                              : std::string_view("owning");
   std::cout << "F20_RED_OBSERVATION footprint=288 heap=owning mmap="
             << observed_mode << '\n';
-
-#ifdef DTWC_HAS_MMAP
   REQUIRE(source->data().is_view());
   REQUIRE(source->data().p_vec.empty());
   const auto files = store_files();
   REQUIRE(files.size() == 1);
-  verify_store_artifact(files.front(), expected);
 
-  dtwc::Problem mapped(std::move(*source));
+  std::optional<dtwc::Problem> mapped;
+  mapped.emplace(std::move(*source));
   source.reset();
   std::vector<std::string> churn(2048, std::string(256, 'x'));
   REQUIRE(churn.size() == 2048);
-  verify_data_exact(mapped, expected);
-  verify_independent_oracle(mapped, expected);
+  verify_data_exact(*mapped, expected);
+  verify_independent_oracle(*mapped, expected);
 
-  mapped.refresh_distance_matrix();
-  mapped.distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
+  mapped->refresh_distance_matrix();
+  mapped->distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
   REQUIRE_THROWS_WITH(
-    mapped.fill_distance_matrix(),
+    mapped->fill_distance_matrix(),
     "Problem::fill_distance_matrix: CUDA does not support mmap-backed series "
     "data; no backend call or CPU fallback was attempted. Select "
     "StoragePolicy::Heap before set_data.");
-  mapped.refresh_distance_matrix();
-  mapped.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  mapped->refresh_distance_matrix();
+  mapped->distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
   REQUIRE_THROWS_WITH(
-    mapped.fill_distance_matrix(),
+    mapped->fill_distance_matrix(),
     "Problem::fill_distance_matrix: Metal does not support mmap-backed series "
     "data; no backend call or CPU fallback was attempted. Select "
     "StoragePolicy::Heap before set_data.");
+  mapped.reset();
+  verify_store_artifact(files.front(), expected);
 #else
-  // The inherited advisory setter reaches this line without throwing, which is
-  // the registered red discriminator for an llfio-OFF build.
-  FAIL("explicit Problem Mmap set_data succeeded without llfio");
+  try {
+    source->set_data(load_fixture(kDirectNdim));
+    FAIL("explicit Problem Mmap set_data succeeded without llfio");
+  } catch (const dtwc::IOError &error) {
+    REQUIRE(std::string(error.what()) ==
+      "Problem::set_data: StoragePolicy::Mmap requested but mmap support "
+      "(llfio) is not compiled in. Rebuild with -DDTWC_ENABLE_LLFIO=ON.");
+  }
+  std::cout
+    << "F20_RED_OBSERVATION footprint=288 heap=owning mmap=rejected\n";
+  REQUIRE_FALSE(source->data().is_view());
+  REQUIRE(source->data().p_vec.size() == kSeries);
+  verify_data_exact(*source, expected);
+  REQUIRE(store_files().empty());
 #endif
 
   complete_case(CompletedCase::Direct);

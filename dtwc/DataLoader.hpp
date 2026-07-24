@@ -90,6 +90,149 @@ struct LoadedData
 #endif
 };
 
+namespace detail {
+
+/// Estimated resident payload footprint in bytes for series-storage routing.
+inline std::size_t series_footprint_bytes(const Data &data)
+{
+  const std::size_t element_bytes =
+    data.is_f32() ? sizeof(float) : sizeof(data_t);
+  std::size_t total = 0;
+  for (std::size_t i = 0; i < data.size(); ++i) {
+    const std::size_t values = data.series_flat_size(i);
+    if (values > (std::numeric_limits<std::size_t>::max() - total)
+                   / element_bytes) {
+      throw InvalidInput(
+        "series storage footprint overflows size_t");
+    }
+    total += values * element_bytes;
+  }
+  return total;
+}
+
+inline std::size_t series_storage_threshold(std::size_t override_bytes)
+{
+  if (override_bytes > 0)
+    return override_bytes;
+  const std::size_t available = available_ram_bytes();
+  return available > 0
+    ? available / 2
+    : std::numeric_limits<std::size_t>::max();
+}
+
+#ifdef DTWC_HAS_MMAP
+/// A unique temp-file path for a mapped series store when the caller sets none.
+inline std::filesystem::path default_series_cache_path()
+{
+  static std::size_t counter = 0;
+  const auto unique =
+    std::to_string(reinterpret_cast<std::uintptr_t>(&counter))
+    + "_" + std::to_string(counter++);
+  return std::filesystem::temp_directory_path()
+       / ("dtwc_store_" + unique + ".dtws");
+}
+#endif
+
+/**
+ * @brief Apply one series-storage policy to an already validated resident Data.
+ * @details This is the single routing primitive shared by DataLoader and
+ * Problem. The returned bundle owns every object referenced by an mmap Data
+ * view; callers must retain the complete bundle, never only `data`.
+ */
+inline LoadedData route_series_storage(
+  Data resident,
+  core::StoragePolicy policy,
+  std::size_t ram_limit_bytes,
+  const std::filesystem::path &mmap_cache_path,
+  std::string_view operation)
+{
+  core::validate_storage_policy(policy);
+  LoadedData out;
+
+  // HPC metadata has no local payload to route.
+  if (resident.is_metadata_only()) {
+    out.data = std::move(resident);
+    return out;
+  }
+
+  const std::size_t footprint = series_footprint_bytes(resident);
+  const std::size_t threshold =
+    series_storage_threshold(ram_limit_bytes);
+  const bool want_mmap =
+    policy == core::StoragePolicy::Mmap
+    || (policy == core::StoragePolicy::Auto && footprint > threshold);
+
+  if (!want_mmap) {
+    out.data = std::move(resident);
+    return out;
+  }
+
+  if (resident.is_f32()) {
+    if (policy == core::StoragePolicy::Mmap) {
+      throw InvalidInput(
+        std::string(operation)
+        + ": StoragePolicy::Mmap supports Float64 series only; Float32 mmap "
+          "requires a new .dtws format version.");
+    }
+    std::cerr
+      << "[dtwc] warning: Float32 dataset footprint (" << footprint
+      << " B) exceeds the storage threshold (" << threshold
+      << " B), but the mmap series-store format supports Float64 only; "
+         "keeping Float32 data in RAM.\n";
+    out.data = std::move(resident);
+    return out;
+  }
+
+#ifdef DTWC_HAS_MMAP
+  const std::filesystem::path cache =
+    mmap_cache_path.empty()
+      ? default_series_cache_path()
+      : mmap_cache_path;
+  std::unique_ptr<core::MmapDataStore> store;
+  try {
+    store = std::make_unique<core::MmapDataStore>(
+      core::MmapDataStore::create(cache, resident));
+  } catch (const std::exception &error) {
+    throw IOError(
+      std::string(operation) + ": failed to create mmap series store '"
+      + cache.string() + "': " + error.what());
+  }
+
+  const std::size_t n = store->size();
+  out.names.reserve(n);
+  for (std::size_t i = 0; i < n; ++i)
+    out.names.emplace_back(resident.name(i));
+
+  std::vector<std::span<const data_t>> spans;
+  std::vector<std::string_view> name_views;
+  spans.reserve(n);
+  name_views.reserve(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    spans.push_back(store->series(i));
+    name_views.emplace_back(out.names[i]);
+  }
+  out.data = Data(
+    std::move(spans), std::move(name_views), store->ndim());
+  out.store = std::move(store);
+  return out;
+#else
+  if (policy == core::StoragePolicy::Mmap) {
+    throw IOError(
+      std::string(operation)
+      + ": StoragePolicy::Mmap requested but mmap support (llfio) is not "
+        "compiled in. Rebuild with -DDTWC_ENABLE_LLFIO=ON.");
+  }
+  std::cerr << "[dtwc] warning: dataset footprint (" << footprint
+            << " B) exceeds the storage threshold (" << threshold
+            << " B) but mmap support is not compiled in; keeping data in RAM. "
+               "Rebuild with -DDTWC_ENABLE_LLFIO=ON to enable the mmap-backed store.\n";
+  out.data = std::move(resident);
+  return out;
+#endif
+}
+
+} // namespace detail
+
 /**
  * @brief Data loader class
  */
@@ -128,7 +271,7 @@ public:
   auto path() { return data_path; }        //!< Get the path of the data file or directory.
   auto verbosity() { return verbose; }     //!< Get the verbosity level for data loading.
 
-  auto storage_policy() { return storage_policy_; }   //!< Get the storage routing policy.
+  auto storage_policy() const { return storage_policy_; } //!< Get the storage routing policy.
   auto ram_limit() { return ram_limit_bytes_; }       //!< Get the footprint threshold override (bytes; 0 = default).
   auto mmap_cache_path() { return mmap_cache_path_; } //!< Get the mmap store file path (empty = temp file).
 
@@ -274,65 +417,17 @@ public:
   LoadedData load_stored()
   {
     core::validate_storage_policy(storage_policy_);
-    LoadedData out;
     if (dtwc::env().device() == dtwc::Device::HPC) {
+      LoadedData out;
       out.data = load_metadata();
       return out;
     }
-
-    Data heap = load_heap();
-    const std::size_t footprint = footprint_bytes(heap);
-
-    std::size_t threshold;
-    if (ram_limit_bytes_ > 0)
-      threshold = ram_limit_bytes_;
-    else {
-      const std::size_t avail = detail::available_ram_bytes();
-      threshold = (avail > 0) ? (avail / 2) : std::numeric_limits<std::size_t>::max();
-    }
-
-    const bool want_mmap =
-      (storage_policy_ == core::StoragePolicy::Mmap)
-      || (storage_policy_ == core::StoragePolicy::Auto && footprint > threshold);
-
-    if (!want_mmap) {
-      out.data = std::move(heap);
-      return out;
-    }
-
-#ifdef DTWC_HAS_MMAP
-    const std::filesystem::path cache =
-      mmap_cache_path_.empty() ? default_cache_path() : mmap_cache_path_;
-    // Spill the heap data to the mmap store, then hand back a non-owning view into it.
-    auto store = std::make_unique<core::MmapDataStore>(
-      core::MmapDataStore::create(cache, heap));
-    out.names = std::move(heap.p_names); // own the strings the view name-spans reference
-    const std::size_t n = store->size();
-    std::vector<std::span<const data_t>> spans;
-    std::vector<std::string_view> name_views;
-    spans.reserve(n);
-    name_views.reserve(n);
-    for (std::size_t i = 0; i < n; ++i) {
-      spans.push_back(store->series(i));
-      name_views.push_back(std::string_view(out.names[i]));
-    }
-    out.data = Data(std::move(spans), std::move(name_views), store->ndim());
-    out.store = std::move(store);
-    return out;
-#else
-    if (storage_policy_ == core::StoragePolicy::Mmap)
-      throw std::runtime_error(
-        "DataLoader::load_stored: StoragePolicy::Mmap requested but mmap support "
-        "(llfio) is not compiled in. Rebuild with -DDTWC_ENABLE_LLFIO=ON.");
-    // Auto wanted mmap but llfio is absent: warn loudly and keep heap. Auto is
-    // best-effort, so this is a LOUD degrade, never a silent one (global constraint).
-    std::cerr << "[dtwc] warning: dataset footprint (" << footprint
-              << " B) exceeds the storage threshold (" << threshold
-              << " B) but mmap support is not compiled in; keeping data in RAM. "
-                 "Rebuild with -DDTWC_ENABLE_LLFIO=ON to enable the mmap-backed store.\n";
-    out.data = std::move(heap);
-    return out;
-#endif
+    return detail::route_series_storage(
+      load_heap(),
+      storage_policy_,
+      ram_limit_bytes_,
+      mmap_cache_path_,
+      "DataLoader::load_stored");
   }
 
   /**
@@ -448,26 +543,6 @@ private:
     return count;
   }
 
-  /// Estimated in-RAM footprint of `d` in bytes (rows x lengths x sizeof(data_t)).
-  static std::size_t footprint_bytes(const Data &d)
-  {
-    std::size_t f = 0;
-    const std::size_t n = d.size();
-    for (std::size_t i = 0; i < n; ++i)
-      f += d.series_flat_size(i) * sizeof(data_t);
-    return f;
-  }
-
-#ifdef DTWC_HAS_MMAP
-  /// A unique temp-file path for the mmap store when the caller sets none.
-  static std::filesystem::path default_cache_path()
-  {
-    static std::size_t counter = 0;
-    const auto uniq = std::to_string(reinterpret_cast<std::uintptr_t>(&counter))
-                    + "_" + std::to_string(counter++);
-    return std::filesystem::temp_directory_path() / ("dtwc_store_" + uniq + ".dtws");
-  }
-#endif
 };
 
 } // namespace dtwc

@@ -1220,6 +1220,10 @@ static int run_cli_main(int argc, char *argv[])
 
   // ---- Load data ----
   dtwc::Problem prob{prob_name};
+  // The CLI has separate, already-frozen controls for distance-matrix mmap and
+  // Parquet materialisation. It exposes no series-storage policy, so preserve
+  // its historical resident-series behavior explicitly.
+  prob.set_storage_policy(dtwc::core::StoragePolicy::Heap);
 
   const bool is_dir = fs::is_directory(input_file);
   auto input_ext = is_dir ? "" : fs::path(input_file).extension().string();

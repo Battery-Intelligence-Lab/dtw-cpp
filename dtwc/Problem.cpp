@@ -788,6 +788,17 @@ void Problem::fill_distance_matrix()
       effective = DistanceMatrixStrategy::BruteForce;
   }
 
+  if (has_mmap_series_storage()
+      && (effective == DistanceMatrixStrategy::CUDA
+          || effective == DistanceMatrixStrategy::Metal)) {
+    const char *backend =
+      effective == DistanceMatrixStrategy::CUDA ? "CUDA" : "Metal";
+    throw DeviceError(
+      std::string("Problem::fill_distance_matrix: ") + backend
+      + " does not support mmap-backed series data; no backend call or CPU "
+        "fallback was attempted. Select StoragePolicy::Heap before set_data.");
+  }
+
   // The pruned builder calls raw Standard/ADTW kernels; it cannot implement a
   // configured missing-data dispatcher. DistanceMatrixStrategy::Pruned is an
   // exact optimization hint (like lb_strategy=None below), so preserve the
