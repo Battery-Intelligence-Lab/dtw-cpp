@@ -10,8 +10,8 @@ DTWC++ provides MATLAB bindings through a MEX interface, wrapped in a clean `+dt
 ## Requirements
 
 - MATLAB R2018a or later (C++ MEX API with `mex.hpp`)
-- A C++17 compiler supported by your MATLAB version
-- CMake 3.15+
+- A C++20 compiler supported by your MATLAB version
+- CMake 3.26+
 
 ## Building
 

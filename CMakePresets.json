@@ -1,6 +1,6 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "cmakeMinimumRequired": { "major": 3, "minor": 26, "patch": 0 },
   "configurePresets": [
     {
       "name": "default",
@@ -13,11 +13,16 @@
     {
       "name": "clang-win",
       "displayName": "Clang (Windows/MSVC target)",
-      "description": "Clang with LLVM libomp on Windows. OpenMP is auto-detected from the LLVM install.",
+      "description": "Clang from PATH with LLVM libomp on Windows. OpenMP is auto-detected from the selected LLVM install.",
       "inherits": "default",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "generator": "Ninja",
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "C:/Program Files/LLVM/bin/clang++.exe",
+        "CMAKE_CXX_COMPILER": "clang++",
         "CMAKE_BUILD_TYPE": "Release"
       }
     },
@@ -25,6 +30,11 @@
       "name": "clang-win-debug",
       "displayName": "Clang (Windows/MSVC target, Debug)",
       "inherits": "clang-win",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug"
       }
@@ -34,6 +44,11 @@
       "displayName": "MSVC (Visual Studio)",
       "description": "Visual Studio generator with MSVC compiler. OpenMP is auto-detected.",
       "inherits": "default",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "generator": "Visual Studio 17 2022",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
@@ -43,6 +58,11 @@
       "name": "gcc-linux",
       "displayName": "GCC (Linux)",
       "inherits": "default",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_CXX_COMPILER": "g++",
@@ -54,6 +74,11 @@
       "displayName": "Apple Clang (macOS)",
       "description": "Apple Clang with Homebrew libomp. If you have Homebrew LLVM installed (which shadows Apple Clang), this preset explicitly uses /usr/bin/clang++ to avoid libc++ mismatch with HiGHS.",
       "inherits": "default",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
       "generator": "Ninja",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "/usr/bin/clang",
@@ -66,16 +91,31 @@
     {
       "name": "clang-win",
       "configurePreset": "clang-win",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "configuration": "Release"
     },
     {
       "name": "clang-win-debug",
       "configurePreset": "clang-win-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "configuration": "Debug"
     },
     {
       "name": "clang-macos",
       "configurePreset": "clang-macos",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
       "configuration": "Release"
     }
   ],
@@ -84,6 +124,11 @@
       "name": "clang-win",
       "configurePreset": "clang-win",
       "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "output": { "outputOnFailure": true },
       "execution": { "jobs": 8 }
     },
@@ -91,6 +136,11 @@
       "name": "clang-macos",
       "configurePreset": "clang-macos",
       "configuration": "Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
       "output": { "outputOnFailure": true }
     }
   ]

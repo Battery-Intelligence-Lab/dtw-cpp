@@ -28,6 +28,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <iterator>
 #include <regex>
 #include <sstream>
@@ -178,4 +179,194 @@ TEST_CASE("mip-solvers links llfio only under the optional-deps guard",
   const std::string after = mip.substr(guard_pos);
   REQUIRE(contains(after, "target_link_libraries(mip-solvers PRIVATE llfio_hl)"));
   REQUIRE(contains(after, "DTWC_HAS_MMAP"));
+}
+
+TEST_CASE("CMake presets match the portable project floor and host",
+  "[build][cmake][presets][F16]")
+{
+  const std::string root = read_file(repo_root() / "CMakeLists.txt");
+  const std::string presets = read_file(repo_root() / "CMakePresets.json");
+  const std::string pyproject = read_file(repo_root() / "pyproject.toml");
+
+  // These are fixed scalar sentinels, not a replacement JSON/CMake parser.
+  // CMake's string(JSON) configure guard and live --list-presets/configure
+  // probes are the independent behavioral arbiters.
+  CHECK(root.starts_with("cmake_minimum_required(VERSION 3.26)"));
+  CHECK(regex_count(root,
+          std::regex{ R"(cmake_minimum_required\s*\(\s*VERSION\s+3\.26\s*\))" })
+    == 1);
+  CHECK(regex_count(
+          root, std::regex{ R"(cmake_minimum_required\s*\()" })
+    == 1);
+  CHECK(regex_count(presets, std::regex{ R"("version"\s*:\s*6\s*,)" }) == 1);
+  CHECK(regex_count(
+          presets, std::regex{ R"("cmakeMinimumRequired"\s*:)" })
+    == 1);
+  CHECK(regex_count(presets,
+          std::regex{
+            R"("cmakeMinimumRequired"\s*:\s*\{\s*"major"\s*:\s*3\s*,\s*"minor"\s*:\s*26\s*,\s*"patch"\s*:\s*0\s*\})" })
+    == 1);
+  CHECK(regex_count(pyproject,
+          std::regex{
+            R"((^|[\r\n])[ \t]*cmake\.version\s*=\s*">=3\.26")" })
+    == 1);
+  CHECK(regex_count(presets,
+          std::regex{ R"("binaryDir"\s*:\s*"\$\{sourceDir\}/build")" })
+    == 1);
+
+  // Exactly three configure presets own a C++ compiler: Windows Clang, Linux
+  // GCC, and the deliberate macOS system compiler. Hidden `default` must not
+  // smuggle a machine-specific compiler into inheriting presets.
+  CHECK(regex_count(
+          presets, std::regex{ R"("CMAKE_CXX_COMPILER"\s*:)" })
+    == 3);
+  CHECK(regex_count(presets, std::regex{ R"("CMAKE_C_COMPILER"\s*:)" }) == 1);
+  CHECK(regex_count(
+          presets, std::regex{ R"("[A-Za-z]:[/\\])" })
+    == 0);
+  CHECK_FALSE(contains(presets, "C:/Program Files/LLVM"));
+
+  const std::string default_name = R"("name": "default")";
+  const std::string win_name = R"("name": "clang-win")";
+  const std::string debug_name = R"("name": "clang-win-debug")";
+  const std::string msvc_name = R"("name": "msvc")";
+  const std::string gcc_name = R"("name": "gcc-linux")";
+  const std::string mac_name = R"("name": "clang-macos")";
+
+  const auto default_pos = presets.find(default_name);
+  const auto win_pos = presets.find(win_name, default_pos + default_name.size());
+  const auto debug_pos = presets.find(debug_name, win_pos + win_name.size());
+  const auto msvc_pos = presets.find(msvc_name, debug_pos + debug_name.size());
+  const auto gcc_pos = presets.find(gcc_name, msvc_pos + msvc_name.size());
+  const auto mac_pos = presets.find(mac_name, gcc_pos + gcc_name.size());
+  const auto build_pos = presets.find("\"buildPresets\"", mac_pos);
+  const auto test_pos = presets.find("\"testPresets\"", build_pos);
+
+  REQUIRE(default_pos != std::string::npos);
+  REQUIRE(win_pos != std::string::npos);
+  REQUIRE(debug_pos != std::string::npos);
+  REQUIRE(msvc_pos != std::string::npos);
+  REQUIRE(gcc_pos != std::string::npos);
+  REQUIRE(mac_pos != std::string::npos);
+  REQUIRE(build_pos != std::string::npos);
+  REQUIRE(test_pos != std::string::npos);
+
+  const std::string default_block =
+    presets.substr(default_pos, win_pos - default_pos);
+  const std::string win_block = presets.substr(win_pos, debug_pos - win_pos);
+  const std::string debug_block =
+    presets.substr(debug_pos, msvc_pos - debug_pos);
+  const std::string msvc_block = presets.substr(msvc_pos, gcc_pos - msvc_pos);
+  const std::string gcc_block = presets.substr(gcc_pos, mac_pos - gcc_pos);
+  const std::string mac_block = presets.substr(mac_pos, build_pos - mac_pos);
+  const std::string build_block =
+    presets.substr(build_pos, test_pos - build_pos);
+  const std::string test_block = presets.substr(test_pos);
+
+  const auto has_host_condition = [](const std::string &block,
+                                    const std::string &host) {
+    const std::string pattern =
+      R"("condition"\s*:\s*\{\s*"type"\s*:\s*"equals"\s*,\s*"lhs"\s*:\s*"\$\{hostSystemName\}"\s*,\s*"rhs"\s*:\s*")"
+      + host + R"("\s*\})";
+    return regex_count(block, std::regex{ pattern }) == 1;
+  };
+
+  CHECK(contains(default_block, R"("hidden": true)"));
+  CHECK_FALSE(contains(default_block, "CMAKE_CXX_COMPILER"));
+  CHECK_FALSE(contains(default_block, "CMAKE_C_COMPILER"));
+  CHECK_FALSE(contains(default_block, "CMAKE_TOOLCHAIN_FILE"));
+  CHECK(regex_count(win_block,
+          std::regex{
+            R"("CMAKE_CXX_COMPILER"\s*:\s*"clang\+\+"\s*[,}])" })
+    == 1);
+  CHECK(contains(win_block, R"("inherits": "default")"));
+  CHECK(has_host_condition(win_block, "Windows"));
+  CHECK(contains(debug_block, R"("inherits": "clang-win")"));
+  CHECK(has_host_condition(debug_block, "Windows"));
+  CHECK(contains(msvc_block, R"("inherits": "default")"));
+  CHECK(has_host_condition(msvc_block, "Windows"));
+  CHECK(regex_count(gcc_block,
+          std::regex{ R"("CMAKE_CXX_COMPILER"\s*:\s*"g\+\+"\s*[,}])" })
+    == 1);
+  CHECK(contains(gcc_block, R"("inherits": "default")"));
+  CHECK(has_host_condition(gcc_block, "Linux"));
+  CHECK(regex_count(mac_block,
+          std::regex{
+            R"("CMAKE_C_COMPILER"\s*:\s*"/usr/bin/clang"\s*[,}])" })
+    == 1);
+  CHECK(regex_count(mac_block,
+          std::regex{
+            R"("CMAKE_CXX_COMPILER"\s*:\s*"/usr/bin/clang\+\+"\s*[,}])" })
+    == 1);
+  CHECK(contains(mac_block, R"("inherits": "default")"));
+  CHECK(has_host_condition(mac_block, "Darwin"));
+
+  // Conditions must cover configure, build, and test entry points. Build/test
+  // presets do not automatically inherit their configure preset's condition.
+  CHECK(regex_count(presets,
+          std::regex{ R"("lhs"\s*:\s*"\$\{hostSystemName\}")" })
+    == 10);
+  CHECK(regex_count(
+          presets, std::regex{ R"("type"\s*:\s*"equals")" })
+    == 10);
+  CHECK(regex_count(
+          presets, std::regex{ R"("rhs"\s*:\s*"Windows")" })
+    == 6);
+  CHECK(regex_count(presets, std::regex{ R"("rhs"\s*:\s*"Linux")" }) == 1);
+  CHECK(regex_count(
+          presets, std::regex{ R"("rhs"\s*:\s*"Darwin")" })
+    == 3);
+
+  CHECK(regex_count(build_block,
+          std::regex{
+            R"("configurePreset"\s*:\s*"clang-win"\s*[,}])" })
+    == 1);
+  CHECK(regex_count(build_block,
+          std::regex{
+            R"("configurePreset"\s*:\s*"clang-win-debug"\s*[,}])" })
+    == 1);
+  CHECK(regex_count(build_block,
+          std::regex{
+            R"("configurePreset"\s*:\s*"clang-macos"\s*[,}])" })
+    == 1);
+  CHECK(regex_count(test_block,
+          std::regex{
+            R"("configurePreset"\s*:\s*"clang-win"\s*[,}])" })
+    == 1);
+  CHECK(regex_count(test_block,
+          std::regex{
+            R"("configurePreset"\s*:\s*"clang-macos"\s*[,}])" })
+    == 1);
+
+  const auto build_win_pos = build_block.find(win_name);
+  const auto build_debug_pos =
+    build_block.find(debug_name, build_win_pos + win_name.size());
+  const auto build_mac_pos =
+    build_block.find(mac_name, build_debug_pos + debug_name.size());
+  const auto test_win_pos = test_block.find(win_name);
+  const auto test_mac_pos =
+    test_block.find(mac_name, test_win_pos + win_name.size());
+  REQUIRE(build_win_pos != std::string::npos);
+  REQUIRE(build_debug_pos != std::string::npos);
+  REQUIRE(build_mac_pos != std::string::npos);
+  REQUIRE(test_win_pos != std::string::npos);
+  REQUIRE(test_mac_pos != std::string::npos);
+
+  const std::string build_win_block =
+    build_block.substr(build_win_pos, build_debug_pos - build_win_pos);
+  const std::string build_debug_block =
+    build_block.substr(build_debug_pos, build_mac_pos - build_debug_pos);
+  const std::string build_mac_block = build_block.substr(build_mac_pos);
+  const std::string test_win_block =
+    test_block.substr(test_win_pos, test_mac_pos - test_win_pos);
+  const std::string test_mac_block = test_block.substr(test_mac_pos);
+  CHECK(has_host_condition(build_win_block, "Windows"));
+  CHECK(has_host_condition(build_debug_block, "Windows"));
+  CHECK(has_host_condition(build_mac_block, "Darwin"));
+  CHECK(has_host_condition(test_win_block, "Windows"));
+  CHECK(has_host_condition(test_mac_block, "Darwin"));
+
+  std::cout
+    << "F16_CMAKE_PRESETS floor=3.26.0 compiler=clang++ "
+       "host_conditions=ran metadata_guard=ran skips=0\n";
 }

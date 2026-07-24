@@ -72,6 +72,239 @@ if(TARGET unit_test_deterministic_series)
             PASS_REGULAR_EXPRESSION "${_f15_focused_regex}")
 endif()
 
+# F16 keeps the tracked presets truthful and host-specific. CMake's JSON
+# implementation is the configure-time parser arbiter; the native test below
+# independently pins the same fixed scalar metadata and prints the runtime
+# execution marker required by CTest.
+set(_f16_presets_file "${CMAKE_SOURCE_DIR}/CMakePresets.json")
+file(READ "${_f16_presets_file}" _f16_presets_json)
+set_property(
+    DIRECTORY
+    APPEND
+    PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${_f16_presets_file}"
+        "${CMAKE_SOURCE_DIR}/pyproject.toml")
+
+string(JSON _f16_schema GET "${_f16_presets_json}" version)
+string(JSON _f16_floor_major GET
+    "${_f16_presets_json}" cmakeMinimumRequired major)
+string(JSON _f16_floor_minor GET
+    "${_f16_presets_json}" cmakeMinimumRequired minor)
+string(JSON _f16_floor_patch GET
+    "${_f16_presets_json}" cmakeMinimumRequired patch)
+set(_f16_preset_floor
+    "${_f16_floor_major}.${_f16_floor_minor}.${_f16_floor_patch}")
+file(STRINGS "${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+    _f16_root_first_line
+    LIMIT_COUNT 1)
+if(NOT _f16_root_first_line STREQUAL
+        "cmake_minimum_required(VERSION 3.26)")
+    message(FATAL_ERROR
+        "F16 root first-command drift: ${_f16_root_first_line}")
+endif()
+set(_f16_root_floor "3.26.0")
+
+if(NOT _f16_schema EQUAL 6)
+    message(FATAL_ERROR
+        "F16 preset schema drift: expected 6, found ${_f16_schema}")
+endif()
+if(NOT _f16_preset_floor VERSION_EQUAL "3.26.0"
+        OR NOT _f16_root_floor VERSION_EQUAL "3.26.0"
+        OR NOT _f16_preset_floor VERSION_EQUAL "${_f16_root_floor}")
+    message(FATAL_ERROR
+        "F16 CMake floor drift: preset=${_f16_preset_floor}, "
+        "root=${_f16_root_floor}, expected=3.26.0")
+endif()
+
+function(_f16_find_preset out_index collection expected_name)
+    string(JSON _count LENGTH "${_f16_presets_json}" "${collection}")
+    math(EXPR _last "${_count} - 1")
+    set(_found -1)
+    foreach(_index RANGE 0 ${_last})
+        string(JSON _name GET
+            "${_f16_presets_json}" "${collection}" ${_index} name)
+        if(_name STREQUAL expected_name)
+            if(NOT _found EQUAL -1)
+                message(FATAL_ERROR
+                    "F16 duplicate ${collection} preset: ${expected_name}")
+            endif()
+            set(_found ${_index})
+        endif()
+    endforeach()
+    if(_found EQUAL -1)
+        message(FATAL_ERROR
+            "F16 missing ${collection} preset: ${expected_name}")
+    endif()
+    set(${out_index} ${_found} PARENT_SCOPE)
+endfunction()
+
+function(_f16_require_condition collection index expected_host)
+    string(JSON _type GET
+        "${_f16_presets_json}" "${collection}" ${index} condition type)
+    string(JSON _lhs GET
+        "${_f16_presets_json}" "${collection}" ${index} condition lhs)
+    string(JSON _rhs GET
+        "${_f16_presets_json}" "${collection}" ${index} condition rhs)
+    if(NOT _type STREQUAL "equals"
+            OR NOT _lhs STREQUAL "\${hostSystemName}"
+            OR NOT _rhs STREQUAL "${expected_host}")
+        message(FATAL_ERROR
+            "F16 ${collection}[${index}] condition drift: "
+            "type=${_type}, lhs=${_lhs}, rhs=${_rhs}, "
+            "expected=${expected_host}")
+    endif()
+endfunction()
+
+string(JSON _f16_configure_count LENGTH
+    "${_f16_presets_json}" configurePresets)
+string(JSON _f16_build_count LENGTH
+    "${_f16_presets_json}" buildPresets)
+string(JSON _f16_test_count LENGTH
+    "${_f16_presets_json}" testPresets)
+if(NOT _f16_configure_count EQUAL 6
+        OR NOT _f16_build_count EQUAL 3
+        OR NOT _f16_test_count EQUAL 2)
+    message(FATAL_ERROR
+        "F16 preset inventory drift: "
+        "configure=${_f16_configure_count}/6, "
+        "build=${_f16_build_count}/3, test=${_f16_test_count}/2")
+endif()
+
+_f16_find_preset(_f16_default configurePresets default)
+_f16_find_preset(_f16_clang_win configurePresets clang-win)
+_f16_find_preset(_f16_clang_win_debug configurePresets clang-win-debug)
+_f16_find_preset(_f16_msvc configurePresets msvc)
+_f16_find_preset(_f16_gcc_linux configurePresets gcc-linux)
+_f16_find_preset(_f16_clang_macos configurePresets clang-macos)
+
+_f16_require_condition(configurePresets ${_f16_clang_win} Windows)
+_f16_require_condition(configurePresets ${_f16_clang_win_debug} Windows)
+_f16_require_condition(configurePresets ${_f16_msvc} Windows)
+_f16_require_condition(configurePresets ${_f16_gcc_linux} Linux)
+_f16_require_condition(configurePresets ${_f16_clang_macos} Darwin)
+
+string(JSON _f16_default_binary GET
+    "${_f16_presets_json}" configurePresets ${_f16_default} binaryDir)
+string(JSON _f16_default_hidden GET
+    "${_f16_presets_json}" configurePresets ${_f16_default} hidden)
+string(JSON _f16_default_compiler ERROR_VARIABLE _f16_default_compiler_error
+    GET "${_f16_presets_json}" configurePresets ${_f16_default}
+    cacheVariables CMAKE_CXX_COMPILER)
+string(JSON _f16_default_c_compiler
+    ERROR_VARIABLE _f16_default_c_compiler_error
+    GET "${_f16_presets_json}" configurePresets ${_f16_default}
+    cacheVariables CMAKE_C_COMPILER)
+string(JSON _f16_default_toolchain ERROR_VARIABLE _f16_default_toolchain_error
+    GET "${_f16_presets_json}" configurePresets ${_f16_default}
+    cacheVariables CMAKE_TOOLCHAIN_FILE)
+if(NOT _f16_default_hidden
+        OR NOT _f16_default_binary STREQUAL "\${sourceDir}/build"
+        OR _f16_default_compiler_error STREQUAL "NOTFOUND")
+    message(FATAL_ERROR
+        "F16 hidden default must keep the shared build directory and no compiler")
+endif()
+if(_f16_default_c_compiler_error STREQUAL "NOTFOUND"
+        OR _f16_default_toolchain_error STREQUAL "NOTFOUND")
+    message(FATAL_ERROR
+        "F16 hidden default must not encode a C compiler or toolchain")
+endif()
+string(REGEX MATCH "[A-Za-z]:/" _f16_windows_absolute_path
+    "${_f16_presets_json}")
+if(_f16_windows_absolute_path)
+    message(FATAL_ERROR
+        "F16 tracked presets must not encode a Windows drive path")
+endif()
+
+string(JSON _f16_win_compiler GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_win}
+    cacheVariables CMAKE_CXX_COMPILER)
+if(NOT _f16_win_compiler STREQUAL "clang++")
+    message(FATAL_ERROR
+        "F16 clang-win must use clang++ from PATH on Windows only")
+endif()
+
+string(JSON _f16_win_parent GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_win} inherits)
+string(JSON _f16_debug_parent GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_win_debug} inherits)
+string(JSON _f16_msvc_parent GET
+    "${_f16_presets_json}" configurePresets ${_f16_msvc} inherits)
+string(JSON _f16_gcc_parent GET
+    "${_f16_presets_json}" configurePresets ${_f16_gcc_linux} inherits)
+string(JSON _f16_gcc_compiler GET
+    "${_f16_presets_json}" configurePresets ${_f16_gcc_linux}
+    cacheVariables CMAKE_CXX_COMPILER)
+string(JSON _f16_mac_parent GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_macos} inherits)
+string(JSON _f16_mac_c GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_macos}
+    cacheVariables CMAKE_C_COMPILER)
+string(JSON _f16_mac_cxx GET
+    "${_f16_presets_json}" configurePresets ${_f16_clang_macos}
+    cacheVariables CMAKE_CXX_COMPILER)
+if(NOT _f16_win_parent STREQUAL "default"
+        OR NOT _f16_debug_parent STREQUAL "clang-win"
+        OR NOT _f16_msvc_parent STREQUAL "default"
+        OR NOT _f16_gcc_parent STREQUAL "default"
+        OR NOT _f16_gcc_compiler STREQUAL "g++"
+        OR NOT _f16_mac_parent STREQUAL "default"
+        OR NOT _f16_mac_c STREQUAL "/usr/bin/clang"
+        OR NOT _f16_mac_cxx STREQUAL "/usr/bin/clang++")
+    message(FATAL_ERROR
+        "F16 platform preset inheritance/compiler/condition drift")
+endif()
+
+foreach(_f16_collection IN ITEMS buildPresets testPresets)
+    _f16_find_preset(_f16_win_entry "${_f16_collection}" clang-win)
+    _f16_find_preset(_f16_mac_entry "${_f16_collection}" clang-macos)
+    string(JSON _f16_win_reference GET
+        "${_f16_presets_json}" "${_f16_collection}" ${_f16_win_entry}
+        configurePreset)
+    string(JSON _f16_mac_reference GET
+        "${_f16_presets_json}" "${_f16_collection}" ${_f16_mac_entry}
+        configurePreset)
+    _f16_require_condition(
+        "${_f16_collection}" ${_f16_win_entry} Windows)
+    _f16_require_condition(
+        "${_f16_collection}" ${_f16_mac_entry} Darwin)
+    if(NOT _f16_win_reference STREQUAL "clang-win"
+            OR NOT _f16_mac_reference STREQUAL "clang-macos")
+        message(FATAL_ERROR
+            "F16 ${_f16_collection} reference/condition drift")
+    endif()
+endforeach()
+_f16_find_preset(_f16_debug_build buildPresets clang-win-debug)
+string(JSON _f16_debug_build_reference GET
+    "${_f16_presets_json}" buildPresets ${_f16_debug_build} configurePreset)
+_f16_require_condition(buildPresets ${_f16_debug_build} Windows)
+if(NOT _f16_debug_build_reference STREQUAL "clang-win-debug")
+    message(FATAL_ERROR "F16 clang-win-debug build preset drift")
+endif()
+
+file(READ "${CMAKE_SOURCE_DIR}/pyproject.toml" _f16_pyproject)
+string(REGEX MATCHALL
+    "(^|[\r\n])[ \t]*cmake[.]version[ \t]*=[ \t]*\\\">=3[.]26\\\""
+    _f16_pyproject_floor_matches
+    "${_f16_pyproject}")
+list(LENGTH _f16_pyproject_floor_matches _f16_pyproject_floor_count)
+if(NOT _f16_pyproject_floor_count EQUAL 1)
+    message(FATAL_ERROR
+        "F16 pyproject CMake floor drift: expected one >=3.26 scalar")
+endif()
+
+if(TARGET test_supply_chain_pinning)
+    set_property(
+        TEST test_supply_chain_pinning
+        PROPERTY SKIP_RETURN_CODE)
+    set(_f16_focused_regex
+        "F16_CMAKE_PRESETS floor=3[.]26[.]0 compiler=clang[+][+] host_conditions=ran metadata_guard=ran skips=0(.|[\r\n])*All tests passed \\((3[5-9]|[4-9][0-9]|[1-9][0-9][0-9]+) assertions in ([4-9]|[1-9][0-9]+) test cases\\)")
+    set_tests_properties(
+        test_supply_chain_pinning
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION "${_f16_focused_regex}")
+endif()
+
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
 # vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
 # a PRIVATE include of dtwc++, so grant this one test target the include path.

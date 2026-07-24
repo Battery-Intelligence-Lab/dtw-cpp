@@ -44,7 +44,7 @@ DTW-C++ aims to be compatible with different compilers and platforms. You may ea
 
 ### Linux (Debian / Ubuntu 20.04+)
 
-Here we present the default compilation comments targetting new Ubuntu versions above 20.04. As long as there is `CMake 3.21` and a `C++17` capable compiler is installed DTW-C++ should work. However, the compilers installed with default commands in older Ubuntu versions may be older compilers that do not support some of the functionalities in this code directly. Therefore, please refer to [install a newer version of GCC](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) for Ubuntu versions 18.04 or below.
+DTWC++ requires CMake 3.26 or newer and a C++20-capable compiler. Distribution packages that do not meet those floors must be upgraded before configuring the project. Please refer to [install a newer version of GCC](https://linuxize.com/post/how-to-install-gcc-compiler-on-ubuntu-18-04/) when the distribution compiler is too old.
 
 1. Install the essential libraries for building the project
 

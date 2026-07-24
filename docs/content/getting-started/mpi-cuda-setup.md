@@ -246,7 +246,7 @@ Replace `-n 4` with the number of MPI processes you want to launch.
 | Problem | Cause | Fix |
 |---------|-------|-----|
 | `Could NOT find CUDAToolkit` in CMake | CUDA not on PATH or not installed | Ensure `/usr/local/cuda/bin` is on your PATH and `nvcc --version` works. |
-| `nvcc --version` works but CMake still fails | CMake too old to detect your CUDA version | Upgrade CMake to 3.21+ (required by DTWC++ anyway). |
+| `nvcc --version` works but CMake still fails | CMake too old to detect your CUDA version | Upgrade CMake to 3.26+ (required by DTWC++). |
 | `nvidia-smi` shows driver but `nvcc` is missing | Only the GPU driver is installed, not the toolkit | Install the full CUDA Toolkit (the driver alone is not enough for compilation). |
 | `no CUDA-capable device is detected` | No NVIDIA GPU, or driver not loaded | Check `lspci | grep -i nvidia`. Install or update the NVIDIA driver. |
 | Compilation error: `unsupported gpu architecture` | GPU compute capability too old for the CUDA version | Either use an older CUDA Toolkit or set `-DCMAKE_CUDA_ARCHITECTURES=60` (or your GPU's compute capability). |

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made the tracked CMake presets portable and truthful: they now declare the
+  actual CMake 3.26 floor, discover Windows Clang through `PATH`, and hide
+  host-specific configure/build/test choices on other operating systems. The
+  installation guides now state the active CMake 3.26 and C++20 requirements.
 - **Breaking:** distance-matrix CSV output now uses locale-independent
   round-trippable binary64 tokens, preserves signed zero, writes LF-only bytes
   on every host, and rejects computed infinity before writing matrix bytes.
