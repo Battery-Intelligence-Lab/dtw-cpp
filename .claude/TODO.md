@@ -68,7 +68,7 @@ verdict rules are in
 | C01 | DONE | **CLOSED-BY `998c4c7`:** dead/misclassifying integer/zero/one helpers removed. |
 | C02 | DONE | **CLOSED-BY `ae0796b`, `ffb7a8d`:** duplicate dead metric dispatch removed; stale prose is R1 docs truth work. |
 | C03 | DONE | **CLOSED-BY `998c4c7`:** dead SIMD surface removed; killed idea remains killed and stale prose is R1 docs truth work. |
-| C04 | OPEN | **MIXED:** decode SSOT closed by `a992183`; band semantics → **R3/F12**; medoid scans → **R3/F13**; CSV emitters → **R3/F14**; generator/oracle variants → **R3/F15**. |
+| C04 | OPEN | **MIXED:** decode SSOT closed by `a992183`; band semantics → **R3/F12**; medoid scans → **R3/F13**; CSV emitters → **CLOSED-BY `e5bfd20` (R3/F14)**; generator/oracle variants → **R3/F15**. |
 
 ### Backlog, deferred, operator, and questions — 32/32 adjudicated
 

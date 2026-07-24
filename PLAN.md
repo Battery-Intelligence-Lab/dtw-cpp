@@ -20,7 +20,7 @@ the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
 parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
 committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
-**F13 CLOSED** and F14 is active.
+**F14 CLOSED** and F15 is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -414,7 +414,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       classes fail. Final gates: canonical 116/116, llfio-OFF 116/116, Arrow
       118/118 with both real-CLI subjects, and fresh-extension Python
       1010 passed / 12 skipped. Full scan consolidation remains R4-owned.
-- [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
+- [x] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
       precision, signed zero, and non-finite behavior across dense stream,
       mmap stream, and visitor paths; only then may R4 remove duplication.
       **Registered 2026-07-24:** native ASCII output is general binary64 at
@@ -428,6 +428,15 @@ Open findings first (status after R0 adjudication — update these boxes there):
       and 21 executions, manifest 27, and exact final build floors are binding.
       R4 still owns consolidation. Evidence:
       `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
+      **Closed 2026-07-24:** `e5bfd20` freezes the native bytes while retaining
+      four independent output loops. Focused llfio-ON/OFF gates pass 144/13
+      and 88/10 assertions/cases; resident CLI, mmap CLI, and native
+      `Result::save` meet the public contract; all 21 registered mutation
+      executions fail. Supply-chain inventories remain 39 actions, 7
+      archives, 1 Arrow pin, and 27 CMake manifests. Final canonical,
+      llfio-OFF, and Arrow gates pass 118/118, 118/118, and 120/120 with
+      6/9/8 capability skips. R4 retains formatter consolidation and F37
+      retains cross-language parity.
 - [ ] **F15 — benchmark/test generators and CPU oracles are fragmented.**
       The historical claim that eight copies were byte-identical is falsified:
       ranges and shapes differ. Inventory intentional variants and pin seeded
@@ -938,6 +947,14 @@ colour system transfer verbatim**.
   Python `np.savetxt` is runtime-confirmed byte-different and MATLAB
   `writematrix` is a separately owned emitter, so the frozen all-language
   four-file promise is F37 rather than an unregistered F14 expansion.
+- 2026-07-24 (F14 local verdict): Retain `e5bfd20`. The four native formatter
+  bodies share only raw-binary64 preflight and scalar-token primitives; their
+  row/delimiter/output loops remain independent for R4. All 21 registered
+  mutation executions fail, the real resident/mmap CLI and native
+  `Result::save` routes satisfy the exact wire contract, and canonical,
+  llfio-OFF, and Arrow gates pass 118/118, 118/118, and 120/120. Close-time
+  file errors are checked explicitly. F37 remains the owner of the confirmed
+  Python and runtime-unconfirmed MATLAB contradiction. Resume at F15.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1174,3 +1191,12 @@ colour system transfer verbatim**.
   inherited Windows CLI artifact contains 27 CRLF rows. Python's real 212-byte
   `Result.save` matrix confirms F37; MATLAB remains runtime-unconfirmed.
   Evidence: `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
+- 2026-07-24 (R3-F14 CLOSED): `e5bfd20` implements the registered native CSV
+  contract in attempt 1 and retains all four formatter loops. Focused
+  llfio-ON/OFF gates pass 144 assertions / 13 cases and 88 / 10; resident CLI,
+  mmap CLI, and native `Result::save` pass exact public byte checks. All 13
+  mutation classes and 21 executions fail. The supply-chain inventory remains
+  39/7/1/27, and final canonical, llfio-OFF, and Arrow suites pass 118/118,
+  118/118, and 120/120 with 6/9/8 capability skips. F37 retains cross-language
+  parity; R4 retains consolidation. Evidence:
+  `.claude/baselines/2026-07-24-f14-csv-wire-format.md`. Resume at F15.

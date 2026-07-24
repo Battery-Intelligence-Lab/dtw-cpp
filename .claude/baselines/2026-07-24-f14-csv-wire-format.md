@@ -486,3 +486,179 @@ numeric notation, line endings, and byte count. MATLAB separately calls `writema
 Verdict: **F37 CONFIRMED** for the Python contradiction. F37, not F14, owns
 all four cross-language result files and the fresh Python/MATLAB/native/CLI
 parity matrix after F14 freezes the native format.
+
+## Implementation attempt 1 — PASS
+
+Verdict: **PASS [confirmed]** at implementation commit
+`e5bfd20ded3d1011fc8157ddf82cef7d59efaf39`.
+
+The implementation adds two shared primitives only: a raw-binary64,
+row-major finite preflight and a scalar token formatter. Dense file, dense
+stream, mmap stream, and the mmap `Problem` visitor retain independent
+row/delimiter/output loops. All three matrix-file openers use binary,
+truncate-on-open streams and explicitly close before testing final stream
+state. `Problem::print_distance_matrix` no longer appends an extra newline.
+The permanent tests add one tracked CMake manifest, moving the registered
+inventory from 26 to 27.
+
+No acceptance band was changed. Attempt 2 was not used.
+
+### Focused and public routes
+
+The final direct focused llfio-ON run reported:
+
+```text
+All tests passed (144 assertions in 13 test cases)
+F14_CSV_CONTRACT dense=ran mmap=ran skips=0
+```
+
+The final direct focused llfio-OFF run reported:
+
+```text
+All tests passed (88 assertions in 10 test cases)
+F14_CSV_CONTRACT dense=ran mmap=unavailable skips=0
+```
+
+The real native-public llfio-ON gate reported:
+
+```text
+F14_CSV_PUBLIC subject=real_dtwc_cl+native_result runs=3/3 route_markers=2/2 matrix_pairs=3/3 rows=27/27/27 lf=27/27/27 cr=0/0/0 final_lf=3/3 blank_tail=0 mmap=ran skips=0
+```
+
+The corresponding llfio-OFF gate reported:
+
+```text
+F14_CSV_PUBLIC subject=real_dtwc_cl+native_result runs=2/2 route_markers=1/1 matrix_pairs=1/1 rows=27/27 lf=27/27 cr=0/0 final_lf=2/2 blank_tail=0 mmap=unavailable skips=0
+```
+
+The 27-by-27 native `Result::save` matrix is 3,150 bytes with SHA-256
+`2E90CE455A7F3C77998D7C821224E3E90034F098E0E437D44B795A2998384E61`.
+The mmap cache was non-empty at 3,520 bytes. Its cache-file hash is not a wire
+contract and is not claimed stable.
+
+### Registered mutation verdicts
+
+All 13 registered mutation classes and all 21 executions were killed against
+`e5bfd20`; the source was restored before every next execution.
+
+| Execution | Decisive observed failure |
+|---|---|
+| M01 precision 15 | exit 42; 47 bytes instead of 83; 13 cases, 137 assertions, 6 failed cases and 19 failed assertions |
+| M02a dense text mode | public exit 8: `F14 resident raw terminators lf=27 cr=27; expected lf=27 cr=0` |
+| M02b mmap-visitor text mode | public exit 8: `F14 mmap raw terminators lf=27 cr=27; expected lf=27 cr=0` |
+| M02c `Result::save` text mode | public exit 8: `F14 result raw terminators lf=27 cr=27; expected lf=27 cr=0` |
+| M03a formatted dense stream | ordinary/hostile exit 42; 38/90 bytes instead of 83; hostile width `0 == 9` failed |
+| M03b formatted mmap stream | exit 42; 38/90 bytes instead of 83; hostile width `0 == 9` failed |
+| M04 canonicalize negative zero | oracle-only remained green at 10 assertions; live stream exit 42 emitted `,0,1.000...` and failed 2/7 assertions |
+| M05 spell NaN | exit 42; emitted `nan,-0,...`, 86 bytes instead of 83, and failed 2/7 assertions |
+| M06 bypass positive infinity | exit 42; 3 cases, 37 assertions, 1 failed case and 9 failed assertions; stream/file/missing-side-effect checks failed |
+| M07 bypass negative infinity | exit 42; 3 cases, 37 assertions, 2 failed cases and 15 failed assertions; dense/mmap typed checks failed |
+| M08 append diagnostic suffix | exit 42; all 8 whole-message checks failed across 3 cases and 37 assertions |
+| M09a omit final LF | exit 42; native/result sizes 82/17 instead of 83/18; 4/13 cases and 16/144 assertions failed |
+| M09b add final LF | exit 42; native/result sizes 84/19; 4/13 cases and 12/144 assertions failed |
+| M10a dense-file delimiter | exit 42; output began `;-0;...`, comma count 0 instead of 6, 3/8 assertions failed |
+| M10b dense-stream delimiter | exit 42; output began `;-0;...`, comma count 0 instead of 6, 2/7 assertions failed |
+| M10c mmap-stream delimiter | exit 42; ordinary/hostile outputs began `;-0;...`, comma count 0, 4/25 assertions failed |
+| M10d mmap-visitor delimiter | exit 42; output began `;-0;...`, comma count 0, 2/14 assertions failed |
+| M11 restore extra print newline | exit 42; native output 84 bytes and empty captures became non-empty; 4/13 cases and 8/144 assertions failed |
+| M12 ignore forced mmap threshold | public exit 8: `F14 mmap mmap route marker count=0, expected=1` |
+| M13a checker manifest constant 26 | exit 1: `tracked CMake manifest inventory changed: manifests=27 expected=26` |
+| M13b direct-test manifest constant 26 | pytest exit 1: `E assert 27 == 26`; `1 failed in 0.21s` |
+
+The M04 oracle-only green is expected and load-bearing: it proves the
+independent literal oracle did not reuse the mutated production token helper,
+while the live-route case killed the mutation.
+
+After restoring the final mutation, both `git status --short` and
+`git diff --check` produced no output. Rebuilding each final configuration
+reported:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+### Source and supply-chain audits
+
+The final source audit reported:
+
+```text
+dtwc/api.cpp:257: preflight
+dtwc/api.cpp:259: binary opener
+dtwc/Problem.cpp:187: std::cout << m;
+dtwc/Problem_IO.cpp:165 preflight
+:169 binary opener
+:175 file.put(',')
+:177 token
+matrix_io :50 preflight definition
+:68 token definition
+:100 dense file preflight
+:102 dense binary opener
+:109 dense file comma
+:111 dense file token
+:185 dense stream preflight
+:190 dense stream comma
+:192 token
+:205 mmap stream preflight
+:210 mmap stream comma
+:212 token
+```
+
+The same audit searched for the inherited precision-15 patterns and printed
+none. This confirms four retained output bodies, three binary openers, only
+the two registered shared primitives, and no extra print newline.
+
+The final supply-chain checker reported:
+
+```text
+WORKFLOW_ACTION_PIN_GATE verified=39 total=39 verdict=PASS
+CMAKE_ARCHIVE_PIN_GATE verified=7 total=7 mutable=0 unhashed=0 verdict=PASS
+ARROW_ARCHIVE_PIN_GATE verified=1 total=1 verdict=PASS
+TRACKED_CMAKE_MANIFESTS total=27
+supply-chain pins verified
+```
+
+Its direct Python suite reported:
+
+```text
+63 passed in 0.19s
+```
+
+### Full build matrix
+
+The decisive final suites were:
+
+| Configuration | Exact inventory | Capability skips | Subject execution |
+|---|---:|---:|---|
+| `build/highs-1151` | 118/118, 0 failed | 6 | focused F14 test 27 and public F14 test 118 ran |
+| `build/nollfio` | 118/118, 0 failed | 9 | focused F14 test 27 and public F14 test 118 ran |
+| `build/arrow-pyarrow-23` | 120/120, 0 failed | 8 | focused F14 test 27, public F14 test 118, and F8/F13 gates 119/120 ran; `test_io_readers` ran |
+
+The recorded total CTest times were respectively 72.68 s, 69.55 s, and
+69.61 s. The six canonical skips were CUDA correctness, CUDA lower bound,
+`io_readers`, Metal correctness, Metal lower bound, and Metal mmap. The nine
+llfio-OFF skips additionally included both mmap unit subjects and Benders.
+The eight Arrow skips included both mmap unit subjects, CUDA times two, Metal
+times three, and Benders; `io_readers` was not skipped.
+
+One post-mutation canonical build wrapper returned exit 124 after 64.077 s
+with no output. A process probe found no remaining Ninja, CMake, clang, or
+lld process. That wrapper result is **INVALID**, not build evidence. The
+decisive retry exited 0 with `ninja: no work to do`, after which the canonical
+118/118 CTest passed.
+
+## Final verdict and rollback
+
+**F14 PASS [confirmed].** Every registered acceptance condition is satisfied
+by the named focused, public-route, mutation, source, supply-chain, and
+three-configuration artifacts above. The inherited result remains
+FALSIFIED; it was not rewritten or rescue-tuned. R4 retains formatter
+consolidation, and F37 retains Python/MATLAB/native cross-language parity.
+
+Rollback is a local revert of `e5bfd20` and the dedicated docs closure commit;
+no remote, tag, or publication action occurred.
+
+The claim most likely to be wrong is that the native inventory contains
+exactly four independent output bodies. The source audit above and the
+dense/mmap/visitor/public-route mutations are the current confirmation; R4
+must repeat that call-site inventory before consolidating them.

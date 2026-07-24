@@ -398,6 +398,12 @@ Critical knowledge to avoid repeating mistakes.
   framework's assertion/case floor. For recursive-cleanup gates, resolve the
   trusted parent and append the exact child; resolving both equal input
   strings through the same junction is a tautology, not an escape check.
+- **A successful buffered insertion is not a successful file write.** Checking
+  `good()` before an `ofstream` destructor runs can miss flush/close failures,
+  and a destructor cannot report them through the calling API. For
+  user-visible output contracts, finish all writes, close explicitly, then
+  check stream state and return or throw the typed I/O failure. F14 applied
+  this at all three matrix-file openers after the production audit.
 
 ## LR-core Solver (Phase 4)
 
