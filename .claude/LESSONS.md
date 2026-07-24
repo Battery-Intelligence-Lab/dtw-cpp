@@ -452,6 +452,30 @@ Critical knowledge to avoid repeating mistakes.
   exact registered name, then require the test's own execution marker and
   assertion/case floor; an exit code without a nonzero executed-subject count
   is not a gate.
+- **A deserializer's success message proves no downstream state consumption.**
+  F17's inherited CLI printed `Loaded checkpoint: 41 iterations, cost=1650`,
+  then ran FastPAM and replaced every loaded result field with cost 976 /
+  iteration 1. A resume gate needs a deliberately distinguishable complete
+  state, must assert every field at the final public artifacts, and must prove
+  the algorithm path did not run.
+- **CTest skip regexes must not classify semantic success counters.** F17
+  attempt 1 satisfied every child assertion and printed
+  `algorithm_skipped=1/1`, then CTest's broad skip regex matched that marker and
+  failed the decisive test. Apply skip detection to each child output and make
+  any outer metadata expression line-oriented to actual diagnostics; a raw
+  substring is incompatible with words such as `skipped` in success evidence.
+- **A resume rehearsal must select the producer's actual state artifact.**
+  F17's inherited SLURM job changed output directories for run 2, so binary
+  `--resume` could not find run 1's automatic checkpoint; equal deterministic
+  labels merely proved a fresh rerun. Copy or name the exact source state,
+  require a replay marker plus absence of the algorithm marker, compare every
+  restored field, and prove source bytes and timestamp unchanged.
+- **A new tracked `.cmake` test changes the supply-chain manifest subject.**
+  F17 added a legitimate real-CLI CMake driver but preregistered the inherited
+  exact inventory of 27. The post-commit checker observed 28 and correctly
+  failed despite all URL identities remaining pinned. Register both behavioral
+  and inventory effects before implementation; never evade an index-owned scan
+  by hiding executable CMake behind another extension.
 
 ## LR-core Solver (Phase 4)
 

@@ -22,7 +22,11 @@ parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
 committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
 **F14–F15 CLOSED**. F16's portable-preset repair is retained in `7aef30d`;
 its formal acceptance box remains open as falsification evidence only, while
-F38 uniquely owns the residual implementation. F17 is active.
+F38 uniquely owns the residual implementation. F17's completed-result replay
+repair is retained in `fb853eb`; its formal acceptance remains open as
+falsification evidence because the frozen supply-chain manifest count observed
+28 rather than 27. F39 uniquely owns that inventory reconciliation. F18 is
+active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -492,6 +496,18 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `kmedoids` and import the fresh distance matrix: identical replay state
       plus exact silhouette values must prove method-generic `Problem`
       rehydration, not only direct result-to-CSV plumbing.
+      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `fb853eb` restores
+      and publishes all five fields, skips every clustering method, preserves
+      the binary, rejects unusable requested state, repairs the SLURM rehearsal,
+      and kills all twelve registered mutants. The focused gates and
+      canonical/llfio-OFF/Arrow suites pass 120/120, 120/120, and 122/122.
+      Attempt 1 remains FALSIFIED because CTest's broad skip regex rejected the
+      success marker's `algorithm_skipped` field. Attempt 2 repairs only that
+      metadata classifier, but the registered supply-chain sub-band is
+      FALSIFIED: the new legitimate CMake driver raises the tracked manifest
+      inventory from frozen 27 to observed 28 (62 focused tests pass, one
+      fails). The attempt cap leaves F17 unchecked as evidence only. F39 owns
+      reconciliation; the binding campaign pointer is F18.
 - [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
       `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
       `Device` updates global `Env`, but each repetition creates a default
@@ -712,6 +728,18 @@ Open findings first (status after R0 adjudication — update these boxes there):
       mutations, require the real preset parser and permanent metadata subject
       to reject them, and use complete-input parsing plus schema-aware
       top-level field checks. Do not add a third F16 lexical sentinel.
+- [ ] **F39 — F17's permanent real-CLI driver changed the tracked CMake
+      manifest inventory without preregistered reconciliation.** Product commit
+      `fb853eb` legitimately adds
+      `tests/integration/test_cli_resume_state.cmake`; the index-owned
+      supply-chain subject observes 28 manifests against F17's frozen 27 and
+      fails one of 63 focused tests. Do not hide executable CMake behind another
+      extension. First gate: register the exact 28-file tracked inventory,
+      prove the only delta from F17's base is the named driver, prove it contains
+      no remote acquisition, and explicitly authorize the checker/test update.
+      Preserve the exact 39 workflow-action, 7 archive, and 1 Arrow identities,
+      all F17 behavior/mutations, and the 120/120, 120/120, 122/122 full-suite
+      floors.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1062,6 +1090,19 @@ colour system transfer verbatim**.
   same-input-order/configuration precondition; authenticated provenance needs a
   separately authorized format migration. Evidence and frozen bands:
   `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+- 2026-07-24 (F17 retained / formal closure FALSIFIED): Retain `fb853eb`.
+  Attempt 1's CTest metadata regex rejected its own
+  `algorithm_skipped=1/1` success field; attempt 2 changed only that outer
+  classifier. The real CLI then passes the exact 12-run marker, all twelve
+  mutants fail, documentation/SLURM syntax pass, and canonical, llfio-OFF, and
+  Arrow-ON pass 120/120, 120/120, and 122/122 with 6/9/8 capability skips.
+  The frozen supply-chain sub-band nonetheless reports 28 tracked CMake
+  manifests against expected 27, so one of 63 focused tests fails. The
+  two-attempt cap forbids rescue-tuning: leave F17 unchecked, route the
+  intentional inventory reconciliation solely to F39, and continue at F18.
+  Parser/config/mmap adversarial residuals remain under the existing
+  checkpoint/config robustness lens. Evidence:
+  `.claude/baselines/2026-07-24-f17-cli-resume.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1363,3 +1404,13 @@ colour system transfer verbatim**.
   119/119, 119/119, and 121/121 with 6/9/8 capability skips. The capped
   fail-closed residual moves to F38; resume at F17. Evidence:
   `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F17 repair retained / closure FALSIFIED): `fb853eb`
+  implements exact completed-result replay through the real CLI, preserves
+  source state, rejects all nine invalid-state cases, repairs the operational
+  recipe, and kills all twelve mutations. Attempt 1's self-matching CTest skip
+  regex remains recorded; attempt 2 passes the focused behavioral gates and
+  all three full C++ suites at 120/120, 120/120, and 122/122. Formal acceptance
+  is FALSIFIED because the new tracked CMake driver makes the registered
+  supply-chain inventory 28 rather than 27 (62 passed, 1 failed). F39 owns that
+  reconciliation; resume at F18. Evidence:
+  `.claude/baselines/2026-07-24-f17-cli-resume.md`.
