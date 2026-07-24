@@ -180,6 +180,15 @@ References used during development. Verify each citation independently before pu
 - scikit-learn. Developing scikit-learn estimators (incl. `__sklearn_tags__`, sklearn >= 1.6). https://scikit-learn.org/stable/developers/develop.html
 - conda-forge. Contributing packages (staged-recipes). https://conda-forge.org/docs/maintainer/adding_pkgs/
 - cibuildwheel. Supported platforms (incl. Pyodide/WASM target). https://cibuildwheel.pypa.io/en/stable/platforms/
+- Microsoft STL. *VS 2022 Changelog*, VS 2022 17.10 mutex compatibility
+  note. https://github.com/microsoft/STL/wiki/VS-2022-Changelog#vs-2022-1710
+  - re-verified 2026-07-24. **[confirmed]** Microsoft warns that mixing
+  binaries built by different supported toolsets requires a Redistributable at
+  least as new as the newest toolset component, names null dereferences in
+  mutex machinery as the failure mode, and documents
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` as an escape hatch. F20 independently
+  localizes the R2024b crash to this representation mismatch; the macro itself
+  remains runtime-unconfirmed in DTWC++.
 
 ## First-Order LP / PDLP (Phase 4 · Task 4.5 — HiGHS PDLP arbiter)
 

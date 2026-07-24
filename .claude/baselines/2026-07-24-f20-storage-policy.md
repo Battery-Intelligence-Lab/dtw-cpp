@@ -339,10 +339,326 @@ assertions: 404 | 401 passed | 3 failed
 The subject marker is absent in both runs, as required for a red inherited
 product. Product attempts consumed remain `0 / 2`.
 
-## Current verdict
+## Retained product attempts
 
-`EXPECTED-RED CONFIRMED`; product code is untouched. The claim most likely to be wrong is
-that direct owning `set_data` is the intended boundary rather than a future
-loader-mediated Problem API. The frozen cross-language surface supports the
-former; an explicit superseding contract decision would be required to choose
-the latter.
+The inherited expected-red state above was followed by exactly two product
+attempts:
+
+1. `aa9781c` (`fix: honor Problem series storage policy`) made owning
+   `Problem::set_data(Data)` use the shared series-storage router, retained the
+   returned backing/name owner, routed `Problem(name, loader)` through the
+   loader's stored result, and added the registered unsupported-route errors.
+   Uncached work after moving a mapped Problem exposed that the derived
+   `std::function` closures still captured the source `this`.
+2. `f1ef5e0` (`fix: preserve Problem storage across moves`) added an explicit
+   move repair for the derived dispatch state and made the backing/name bundle
+   relocation-aware. Tests poison the moved-from object and force uncached
+   const and mutable distance work after both move construction and move
+   assignment.
+
+The frozen/generated public contract was published separately in `52b9786`.
+The real Python binding gate is `5e67207`; the deterministic owner/name
+identity seam and tests are `4834418`; the permanent mutation runner is
+`b1aae56`; and the permanent MATLAB oracle is `ec5f218`.
+
+Product attempts consumed: **2 / 2 [confirmed]**. No product rescue-tuning is
+permitted inside F20.
+
+## Final focused native subjects
+
+After the mutation campaign, the three source identities were:
+
+```text
+76103AABCC5B2492E629AF7C23E9061AA98E0F4C5E6C3B5EFB78DDEC3410848E dtwc/Problem.hpp
+BBCEB2B4B61D1A0EE0460718944C6468AC86DDFA99040A3C10A492CDB16E40E7 dtwc/DataLoader.hpp
+6B7AF0D832020191473E55984ADC336C2EA940A1A9C78EAB93EAB9EC81652CE4 dtwc/Problem.cpp
+```
+
+Both target rebuilds reported `ninja: no work to do.`. The canonical
+llfio-ON executable then printed:
+
+```text
+F20_PROBLEM_STORAGE_POLICY build=llfio-on footprint=288 heap=owning mmap=view values=72/72 names=12/12 ndim_routes=2/2 ordered_pairs=72/72 artifact=pass lifetime=pass loader_auto=mmap view_override=pass subject_skips=0 verdict=PASS
+===============================================================================
+All tests passed (963 assertions in 5 test cases)
+```
+
+The llfio-OFF executable printed:
+
+```text
+F20_PROBLEM_STORAGE_POLICY build=llfio-off footprint=288 heap=owning mmap=rejected values=36/36 names=6/6 ndim_routes=1/1 ordered_pairs=36/36 transaction=pass loader_auto=heap-warning view_override=pass subject_skips=0 verdict=PASS
+===============================================================================
+All tests passed (606 assertions in 5 test cases)
+```
+
+Verdict: **PASS [confirmed]**. Both real executables ran the subject with zero
+subject skips after mutation restoration.
+
+## Eleven-mutation execution
+
+The committed runner
+`tests/mutation/f20_problem_storage_policy_mutations.ps1` first required
+exactly one source match for every operator, recorded the control and mutant
+SHA-256 identities, then materialized each mutant, rebuilt and ran its named
+profile, and restored/rehashed the source before continuing. The durable
+summary is `build/highs-1151/tests/f20-mutation-execution.log`.
+
+```text
+F20_MUTATION_SUMMARY controls=4/4 mutations=11 killed=11 survived=0 source_restore=pass verdict=PASS
+```
+
+The materialized mutant hashes were:
+
+| ID | SHA-256 |
+|---|---|
+| M01 | `c0767ab755a928a98e1389f156e078ac6c5cb776d20889f470b45b30c73189ed` |
+| M02 | `2fabfd08b7675927654839aed9161433100e058b213978886bc257c3ac1b42fa` |
+| M03 | `4da317497c97514edd1e6c1052052f00131138e13f9291ed12ca3a0d498361f2` |
+| M04 | `4feb495d739e75f19dbfee02e4b195d06bb461e81382da18604d5167f4b25156` |
+| M05 | `63832a8f37f12cbaafa1618e680494fd79dcbc9ce265a0196025ed25c0555d62` |
+| M06 | `55776f7d4c9ae143adc11c8e519f4b3fd153a3cfcd25ad3f655193946f00bd36` |
+| M07 | `e961ea6439223fa48d7ba3d200ed65cc560367ad5af6e8f39245456fee5acc98` |
+| M08 | `b055b58476c9e0f11454b4cccc226decce50349d024d12433e919e12872461bc` |
+| M09 | `00ebf4887dac1fe7d1a89a45c7b39d998440d3ff7ddc9bb5b313b45b2bdbb56b` |
+| M10 | `8324ffad695084cd0d32f35c1115e453006aac33ff982e3d487a90d5014cbcc1` |
+| M11 | `9ff0d181bf926561f532809ba6f2ca69651acf7ac0c3c3b2968aab55aebf1ca7` |
+
+The log contains the runner's 36 machine-readable preflight,
+materialization, restoration, and summary lines. PowerShell's `Tee-Object`
+did not capture the nested build/test `Write-Host` stream in that file; those
+commands were observed in the completed exit-zero runner output and the final
+four controls were rerun. The log is therefore cited for the exact mutation
+summary, not falsely described as a complete compiler/test transcript.
+
+Verdict: **PASS [confirmed]** - 11/11 registered mutations were killed, all
+four controls passed, and every source was restored to its registered hash.
+
+## Final native build matrix
+
+The final canonical gate discovered 122 tests and reported:
+
+```text
+100% tests passed, 0 tests failed out of 122
+
+Total Test time (real) = 75.12 sec
+```
+
+Its exact six binary-confirmed capability skips were CUDA correctness, CUDA
+LB, Arrow I/O reader, Metal correctness, Metal LB, and Metal mmap.
+
+The final llfio-OFF gate discovered 122 tests and reported:
+
+```text
+100% tests passed, 0 tests failed out of 122
+
+Total Test time (real) = 67.15 sec
+```
+
+Its exact nine binary-confirmed capability skips were mmap data store, mmap
+distance matrix, CUDA x2, Arrow I/O reader, Metal x3, and Benders/HiGHS.
+
+The system-Arrow build `build/arrow-pyarrow-23` discovered 124 tests and
+reported:
+
+```text
+100% tests passed, 0 tests failed out of 124
+
+Total Test time (real) = 70.41 sec
+```
+
+Its exact eight binary-confirmed capability skips were mmap data store, mmap
+distance matrix, CUDA x2, Metal x3, and Benders/HiGHS. The Arrow reader subject
+ran 390 assertions / 11 cases.
+
+Verdict: **PASS [confirmed]** - all three native matrices rebuilt, ran every
+non-capability subject, and failed zero tests. Skip reasons were confirmed from
+the test binaries rather than inferred from CTest's skip count.
+
+## Final Python binding and suite
+
+The final fresh llfio-ON extension had SHA-256:
+
+```text
+94E720F4E6CCBB0ACAC1FDDA748A0F37000EA3F3480836E7A497562E17F34864
+```
+
+The focused fresh-extension subjects printed:
+
+```text
+F20_PYTHON_STORAGE build=llfio-on route=mmap artifact=pass distances=72/72 fastpam=exact subject_skips=0 verdict=PASS
+1 passed in 6.89s
+```
+
+and, from the independently rebuilt llfio-OFF extension:
+
+```text
+F20_PYTHON_STORAGE build=llfio-off route=rejected transaction=pass artifacts=0 distances=36/36 subject_skips=0 verdict=PASS
+1 passed in 0.10s
+```
+
+The first full run after rebuilding against system Arrow did not put all
+runtime directories on subprocess `PATH`. It produced five HPC CLI child
+failures with Windows exit `0xC0000135`, plus the known F39 failure:
+
+```text
+6 failed, 1005 passed, 12 skipped
+```
+
+That run is retained as a non-decisive environment failure. With all three
+required runtime directories present -
+`.venv/Lib/site-packages/dtwcpp`,
+`.venv/Lib/site-packages/pyarrow`, and
+`.venv/Lib/site-packages/pyarrow.libs` - the final inventory was:
+
+```text
+1 failed, 1010 passed, 12 skipped in 69.52s
+```
+
+The sole failure was exactly the already-open F39 subject:
+
+```text
+tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+assert 28 == 27
+```
+
+Verdict: **F20 PASS / full-suite known-red [confirmed]**. Both fresh binding
+profiles ran with zero F20 skips. The final 1,023-outcome Python inventory has
+no F20 failure; its only red remains owned by F39.
+
+## Final MATLAB binding matrix
+
+Artifact identities:
+
+| Artifact | Bytes | SHA-256 |
+|---|---:|---|
+| MEX source | - | `09767547047D72FAAD6A3DB9E8D83A42AEF26B856DC196EE71C9B5398088ED9A` |
+| permanent F20 oracle | 12,196 | `DFD3B796D895FE273FC74B015FA862642A0706B253BEF87DAA173EB8575A42F8` |
+| llfio-ON MEX | 1,846,784 | `F067ACEB064F795D50CFB0E1294AAD71BAA5522E43C55FD01D056746F590B98A` |
+| llfio-OFF MEX | 684,544 | `773517E3AD53881DAB931B9A265BEC63DC4C3229E1B06D319B3748F5027CD883` |
+
+The four registered MATLAB profiles produced:
+
+1. R2024b / llfio-ON: **FALSIFIED [confirmed]**. The last oracle marker was
+   `F20_MATLAB_STAGE build=llfio-on stage=mmap-set-data-enter`; MATLAB exited
+   `-1073741819` (`0xc0000005`), created zero stores, and wrote
+   `build/f20-matlab-storage/llfio-on/R2024b-isolate/temp/matlab_crash_dump.110828-1`.
+2. R2024b / llfio-OFF: **PASS [confirmed]**:
+
+   ```text
+   F20_MATLAB_STORAGE requested_release=R2024b observed_release=R2024b build=llfio-off route=rejected error_id=dtwc:ioError transaction=pass artifacts=0 distances=36/36 subject_skips=0 verdict=PASS
+   ```
+
+3. R2025b / llfio-ON: **PASS [confirmed]**:
+
+   ```text
+   F20_MATLAB_STORAGE requested_release=R2025b observed_release=R2025b build=llfio-on route=mmap artifact=408/408 distances=72/72 fastpam=exact transaction=pass subject_skips=0 verdict=PASS
+   ```
+
+   The independently parsed 408-byte store had header CRC `0xab81a0e4` and
+   SHA-256
+   `E284DAFFB9C91C0CA47E80CFC79229A3B855BDC3055DAA135D7D358B7BC5B49B`.
+4. R2025b / llfio-OFF: **PASS [confirmed]**:
+
+   ```text
+   F20_MATLAB_STORAGE requested_release=R2025b observed_release=R2025b build=llfio-off route=rejected error_id=dtwc:ioError transaction=pass artifacts=0 distances=36/36 subject_skips=0 verdict=PASS
+   ```
+
+The same clean RelWithDebInfo llfio-ON MEX passed R2025b and reproduced the
+R2024b crash. Its identity was:
+
+| Artifact | Bytes | SHA-256 |
+|---|---:|---|
+| clean RelWithDebInfo MEX | 1,393,664 | `4AE0FE630BE2F5F83A54B4BF34C81ABDE12A0C473BFE15E4325968C51F493846` |
+| matching PDB | 9,924,608 | `CB941B2C398981B728DD3DEF91BB0CC90B0B020E4DED3BD33FBAC46607D26830` |
+
+Its symbolized optimized stack was:
+
+```text
+[0] MSVCP140.dll Thrd_yield+184
+[1] llfio_v2::windows_nt_kernel::doinit+48
+[2] llfio_v2::file_handle::file+68
+[3] llfio_v2::mapped_file_handle::mapped_file+227
+[4] dtwc::core::MmapDataStore::create+3204
+[5] dtwc::detail::route_series_storage+680
+[6] dtwc::Problem::set_data+440
+[7] cmd_Problem_set_data+3688
+[8] mexFunction+681
+```
+
+PDB line data, imports, and disassembly refine the nearest-export label:
+LLFIO commit `b17613fb2149a93b0cc7022c8e649dbf5a015b90` enters its first
+Windows initialization `static std::mutex`; the VS 14.50 header emitted
+constexpr mutex bytes and no `_Mtx_init_in_situ` import. R2024b's private
+MSVCP140 14.36 runtime dereferences the missing legacy vptr at mutex offset
+`+8` inside `_Mtx_lock`. R2025b's private 14.40 runtime uses the compatible
+SRW representation. The runtime identities were:
+
+```text
+R2024b MSVCP140 SHA256=7B0D0D624AC04411646C75555A285D4B33CB5976D80A35B8249D11B33EB631D4
+R2025b MSVCP140 SHA256=0CD75546FC6DA6467729F0A60A6705A9391D27526325BD6BBB80E5ED427F6285
+```
+
+A matching Debug `-O0` MEX completed and created the 408-byte store. This
+optimization/build-representation differential does not overrule the optimized
+registered profile.
+
+The full current MATLAB inventory was identical under both releases:
+
+```text
+MATLAB_TOTAL=84 PASSED=81 FAILED=2 INCOMPLETE=3
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_test_api/test_parallelisation_serial_is_honest
+OMP_AVAILABLE=1 OMP_MAX=24 OMP_ENGAGED=24 OMP_PASS=1 OMP_REASON=
+```
+
+The first two incomplete entries are the two committed F18 expected-red
+failures:
+
+```text
+Unknown command: 'DTWClustering_compute_distance_matrix'.
+Actual: MATLAB:fit:expectedNonempty
+Expected: dtwc:invalidArgument
+```
+
+The third incomplete entry is the intentional opposite-flavor assumption
+filter. Neither release had a second MEX on its path before or after the suite.
+
+Verdict: **MATLAB MATRIX FALSIFIED [confirmed]** - three of four registered
+MATLAB profiles pass, but the R2024b llfio-ON profile crashes. Across Python
+and MATLAB, the six-profile binding band is therefore **5 / 6**, not 6 / 6.
+
+## Final F20 verdict
+
+**REPAIR RETAINED / CLOSURE FALSIFIED [confirmed].** The retained semantic
+repair passes both focused native routes, 11/11 mutations, all three full
+native matrices, both fresh Python routes, R2025b MATLAB ON/OFF, and R2024b
+MATLAB OFF. The preregistered decisive band nevertheless required all six
+binding profiles. R2024b MATLAB llfio-ON exits `0xc0000005`, so F20 remains
+unchecked after exhausting both product attempts. The failure occurs before
+file creation or publication into Problem and is isolated as F43; it does not
+falsify the native/Python/R2025b storage semantics.
+
+Microsoft's STL changelog independently warns that mixing a newer-toolset
+constexpr mutex with an older redistributable can null-dereference and names
+`_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` as an escape hatch. **[inferred]** That
+macro is the narrowest next differential, but it was not runtime-confirmed:
+the diagnostic configure omitted `DTWC_ALLOW_SEQUENTIAL=ON` and stopped before
+compilation. It is not an F20 rescue attempt.
+
+The final review also found a separate taxonomy gap: default series-cache path
+discovery calls `std::filesystem::temp_directory_path()` outside the router's
+`IOError` translation. That unexecuted environment-failure route is isolated
+as F44 rather than hidden in a green F20 subject.
+
+Rollback is local revert of `f1ef5e0` followed by `aa9781c` (and, for complete
+campaign removal, their associated documentation/tests in reverse commit
+order). No remote or operator state changed. The retained repair is not rolled
+back because every route unaffected by the host-runtime incompatibility is
+green.
+
+The claim most likely to be wrong is that
+`_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` alone repairs every R2024b MEX route.
+Microsoft documents it as the compatibility escape hatch and the disassembly
+matches that failure class, but only a registered optimized R2024b/R2025b
+differential can confirm the remedy.

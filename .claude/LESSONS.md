@@ -215,6 +215,10 @@ Critical knowledge to avoid repeating mistakes.
   CTests failing before `main` with `0xC0000135`. Compute the proven runtime
   directories once and attach them to every registered test in the affected
   Arrow-linked directory; verify generated CTest metadata, not source order.
+  F20 exposed the same rule in Python-spawned real-CLI children: the parent
+  extension imported successfully, but the children exited `0xC0000135` until
+  `dtwcpp`, `pyarrow`, and `pyarrow.libs` were all present on their inherited
+  `PATH`. An in-process import is not a subprocess runtime-dependency gate.
 
 ## ARC SLURM Hardware
 
@@ -559,6 +563,38 @@ Critical knowledge to avoid repeating mistakes.
   `which(...,'-all')` path, source SHA-256, MEX SHA-256, and before/after
   invocation hashes, then rehash the complete evidence set after the schedule.
   The decisive F19 run records 42/42 post-run rehashes.
+- **Default-moving a `std::function` does not rebind a lambda that captured
+  `this`. [confirmed]** F20's mapped data and cached distances survived a
+  Problem move, while the derived DTW closures still called the moved-from
+  object. Force uncached const and mutable work after move construction and
+  move assignment, poison/reuse the source storage, and verify the closure's
+  relocation state. A cached result can hide a live use-after-move path.
+- **Self-referential owner bundles need pointer-identity and closed-handle
+  lifetime gates. [confirmed]** Equal values did not prove that spans and
+  `string_view`s targeted the relocated mmap/name owner; short SSO names could
+  even keep stale bytes looking valid. Assert owner/view pointer, count, and
+  name-view identity before and after both moves. Parse a Windows mapped
+  artifact only after the handle-owning scope has ended, because an open
+  mapping can make the file unreadable without proving bad bytes.
+- **A MEX uses the host's already-loaded private MSVC runtime. [confirmed]**
+  The same optimized F20 MEX used VS 14.50 constexpr mutex bytes, crashed in
+  R2024b's private MSVCP140 14.36 `_Mtx_lock`, and passed with R2025b's private
+  14.40 SRW representation. Record compiler headers, loaded runtime version and
+  hash, optimization, and release for every compatibility claim.
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` is only an inferred remedy until an
+  optimized two-release differential runs.
+- **Nearest-export stack labels and a Debug pass do not localize an optimized
+  MEX fault. [confirmed]** MATLAB labeled the F20 frame
+  `Thrd_yield+184`, but RVA/import/disassembly showed a null dereference inside
+  `_Mtx_lock` called by LLFIO's first initialization mutex. Verify the
+  `mexFunction` export, reproduce the decisive optimization, and use PDB line
+  data plus the import address before naming the failing statement.
+- **Exception translation must include path discovery, not only the final I/O
+  call. [confirmed by review]** F20's default series-cache route calls
+  `std::filesystem::temp_directory_path()` before the `try` that translates
+  mmap creation failures. A bad temp environment can therefore escape as
+  `filesystem_error` instead of the public `IOError`; poison the discovery
+  step and require transaction preservation before claiming taxonomy closure.
 
 ## LR-core Solver (Phase 4)
 
