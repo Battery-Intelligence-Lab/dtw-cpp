@@ -394,6 +394,13 @@ Open findings first (status after R0 adjudication — update these boxes there):
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
       First gate: digit-identical assignments/objectives on adversarial ties and
       non-finite rejection before R4 may consolidate anything.
+      **Registered 2026-07-24:** source audit found six algorithm assignment
+      bodies plus the public Lloyd `Problem::assign_clusters` body. The gate
+      now pins first-slot ties, ordered IEEE-754 objectives, exact finite
+      `DBL_MAX`, non-finite rejection, CPU-f32 sentinel translation, both
+      CLARANS copies, resident f64/f32, and real-CLI streamed f64/f32. Full
+      consolidation remains R4-owned. Evidence:
+      `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
 - [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
       precision, signed zero, and non-finite behavior across dense stream,
       mmap stream, and visitor paths; only then may R4 remove duplication.
@@ -842,6 +849,13 @@ colour system transfer verbatim**.
   binary necessarily skips with zero assertions. This is partial closure:
   keep F12 and D1's Metal discrepancy open, route LB integer arithmetic to
   F28-F30 as registered, and resume the campaign at F13.
+- 2026-07-24 (F13 registration): Treat “nearest-medoid copies” as the six
+  FastPAM/CLARANS/FastCLARA bodies plus the additionally audited public Lloyd
+  body. Preserve first-slot ties, negative finite Soft-DTW distances, exact
+  finite `DBL_MAX`, and FastCLARA parent-cache independence. CPU-f32 sentinel
+  translation is a separate public-distance repair commit; R4 retains full
+  scan consolidation. Reuse the read-only F8 Parquet fixture for the real
+  streaming discriminator.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1046,3 +1060,10 @@ colour system transfer verbatim**.
   Metal-OFF executable skips with zero assertions, so F12 remains open pending
   real Apple build/device evidence. Evidence:
   `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. Resume at F13.
+- 2026-07-24 (R3-F13 registration): At base `1af0aa8`, audited six algorithm
+  assignment bodies plus Lloyd's public seventh body and registered literal
+  tie/order/non-finite/sentinel oracles before tests or production edits.
+  Separate CPU-f32 and assignment repair commits, exact diagnostics and bits,
+  a four-process real Arrow CLI gate, mutation probes, and final build floors
+  are binding. Evidence:
+  `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.

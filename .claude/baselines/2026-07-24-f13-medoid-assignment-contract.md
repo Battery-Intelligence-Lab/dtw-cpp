@@ -1,0 +1,283 @@
+# F13 nearest-medoid assignment contract - 2026-07-24
+
+## Scope and base
+
+- Branch: `Claude`
+- Base commit: `1af0aa85acb1add898a3556e6ad93dcfd92f9f42`
+  (`docs: record F12 local parity verdict`)
+- Canonical build: `build/highs-1151` (clang, Ninja, Release, HiGHS ON,
+  llfio ON, Arrow OFF).
+- Arrow build: `build/arrow-pyarrow-23` (clang, Ninja, Release, Arrow and
+  Parquet supplied by PyArrow 23).
+- Subject: first-medoid-slot tie behavior, index-ordered objective
+  accumulation, rejection of computed non-finite assignment state, exact
+  CPU-f32 no-path translation, and publication of a valid finite `DBL_MAX`
+  objective.
+
+This registration precedes every new F13 regression test, production edit,
+and decisive F13 execution. Scratch seed probes and the existing Parquet
+fixture runs used to select discriminators are exploratory only.
+
+The killed-ideas section, the archived plan, and `.claude/LESSONS.md` were
+searched before selecting the repair boundary. In particular, FastCLARA must
+continue to assign through its bound resident/chunk distance functions and
+must not allocate or populate the parent O(N^2) cache killed by F6. R4 retains
+ownership of full scan consolidation; F13 may introduce only the minimum
+shared validation and ordered-sum policy required to fix the registered
+behavior.
+
+## Confirmed inherited inventory
+
+Source inspection found six algorithm assignment bodies:
+
+1. FastPAM nearest and second-nearest scan
+   (`dtwc/algorithms/fast_pam.cpp:94-127`);
+2. CLARANS initial assignment (`clarans.cpp:98-112`);
+3. CLARANS accepted-swap refresh (`clarans.cpp:190-203`);
+4. resident FastCLARA, instantiated for f64 and f32
+   (`fast_clara.cpp:159-190`);
+5. streamed FastCLARA f64 (`fast_clara.cpp:225-284`);
+6. streamed FastCLARA f32 (`fast_clara.cpp:287-344`).
+
+The audit additionally found the public Lloyd medoid assignment body in
+`Problem::assign_clusters` (`dtwc/Problem.cpp:1003-1023`). It is included in
+F13 rather than left as an unrecorded seventh copy.
+
+All seven use a strict comparison, so an exact tie selects the first medoid
+**slot**, not the smallest global medoid index. None explicitly rejects a
+non-finite computed distance. FastPAM totals with `std::reduce`, CLARANS uses
+an inline left fold, and FastCLARA uses its own forced global-index left fold.
+The purported common scan helpers in
+`dtwc/algorithms/detail/medoid_utils.hpp` are not called by production.
+
+CLARANS and FastCLARA initialize the best result objective to `DBL_MAX` and
+update only for a strict decrease. A valid result whose finite objective is
+exactly `DBL_MAX` therefore leaves their published result empty.
+
+CPU float32 DTW returns its finite no-path marker as a double widened from
+`FLT_MAX`. Its exact binary64 bits are `0x47efffffe0000000`, while the public
+no-path contract is `DBL_MAX`, bits `0x7fefffffffffffff`. F12 repaired this
+same compute-type/public-type boundary for GPU results only; CPU-f32 remains
+an independent confirmed defect.
+
+## Independent assignment oracle
+
+The permanent test-local oracle accepts a literal point-by-medoid-slot table.
+It does not call `Problem`, DTW, or a production medoid helper.
+
+For each row it:
+
+1. validates candidates in ascending slot order and rejects every NaN or
+   infinity;
+2. ranks `(distance, slot)` lexicographically, so exact and signed-zero ties
+   select the first slot;
+3. tracks candidate presence with booleans rather than a floating sentinel;
+4. folds selected distances in increasing point order through a forced store;
+5. rejects the first non-finite accumulated objective; and
+6. canonicalizes an exact-zero public objective to positive zero.
+
+Negative finite values remain valid because Soft-DTW objectives may be
+negative. Exact `DBL_MAX` also remains a valid finite no-path value.
+
+The literal oracle discriminators are:
+
+| discriminator | medoid slots / selected distances | required result |
+|---|---|---|
+| midpoint tie | medoids `{0,2}` over singleton values `{0,1,2}` | labels `{0,0,1}`, objective `1`, bits `0x3ff0000000000000` |
+| slot-not-index tie | medoids `{2,0}` over `{0,1,2}` | labels `{1,0,0}`, objective `1` |
+| ordered cancellation | medoids `{0,4}` over `{0,2^53,1,1,0}` | labels `{0,0,0,0,0}`, objective `2^53`, bits `0x4340000000000000` |
+| signed zero | row `{-0.0,+0.0}` | slot `0`, positive-zero objective bits `0x0000000000000000` |
+| exact finite sentinel | row `{DBL_MAX,DBL_MAX}` | slot `0`, nearest/second/objective bits `0x7fefffffffffffff` |
+| finite objective overflow | selected distances `{0x1.8p+1023,0x1.8p+1023}` | reject after point `1` |
+
+The ordered-cancellation left fold is:
+
+```text
+((((0 + 0) + 2^53) + 1) + 1) + 0 = 2^53
+```
+
+Grouping both unit contributions before the large term instead produces the
+next binary64 value `0x4340000000000001`. The inherited MSVC-STL
+`std::reduce` happened to match the left fold in a scratch five-element probe;
+that exploratory pass is not a contractual ordering guarantee.
+
+For each of qNaN, `+inf`, and `-inf`, the oracle places the poison once in
+slot 0 and once in slot 1 beside finite `1.0`. All six cases must reject the
+poisoned coordinate even when it would not win the nearest comparison.
+
+## Registered live-route fixtures
+
+### A. Common exact tie and slot ordering
+
+The midpoint fixture uses singleton series `{0,1,2}`.
+
+- FastPAM: fixed medoids `{0,2}`, `max_iter=0`.
+- CLARANS: `k=2`, `num_local=1`, `max_neighbor=0`, portable-v1 seed `4`;
+  the initial sorted medoids are `{0,2}`.
+- resident FastCLARA f64 and f32: `k=2`, `sample_size=2`, `n_samples=1`,
+  seed `0`; the sample and mapped medoids are `{0,2}`.
+- Lloyd: `centroids_ind={0,2}` followed by the public
+  `Problem::assign_clusters`.
+
+Every route must publish medoids `{0,2}`, labels `{0,0,1}`, and objective
+exactly `1` where the route publishes an objective.
+
+FastPAM repeats with caller medoid order `{2,0}` and resident FastCLARA repeats
+with seed `10`, whose mapped medoid order is `{2,0}`. Both must publish labels
+`{1,0,0}`. This kills an incorrect “smallest global index wins” repair.
+
+The CLARANS accepted-swap copy uses singleton values
+`{4,0,0,10,0,5,0,10}`, `k=2`, `num_local=1`, `max_neighbor=1`,
+`max_dtw_evals=24`, and portable-v1 seed `317`. The registered schedule starts
+at `{0,3}`, proposes remove-slot-0/add-point-6, and stops at the budget after
+acceptance. The result is medoids `{6,3}`, labels
+`{0,0,0,1,0,0,0,1}`, and objective exactly `9`. Point 5 is equidistant from
+global medoids 6 and 3 and must select slot 0 even though its global index is
+larger.
+
+### B. Ordered objective
+
+Singleton values `{0,2^53,1,1,0}` use duplicate-valued but distinct medoid
+points `{0,4}`.
+
+- FastPAM: fixed medoids `{0,4}`, `max_iter=0`.
+- CLARANS: `k=2`, `num_local=1`, `max_neighbor=0`, seed `20`.
+- resident FastCLARA f64 and f32: `k=2`, `sample_size=2`, `n_samples=1`,
+  seed `11`.
+
+All labels are slot 0. Every objective must have exact bits
+`0x4340000000000000`. No relative or absolute tolerance is permitted.
+
+### C. Non-finite distance and objective
+
+FastPAM and CLARANS receive a complete symmetric three-point dense matrix
+whose point 1 distance to medoid slot 0 is `+inf` while its distance to slot 1
+is finite. They must reject the non-winning infinity rather than silently
+choose slot 1. A `-inf` variant must also reject. Lloyd drives the same cached
+matrix through `Problem::assign_clusters`.
+
+Resident FastCLARA uses 65 singleton series: point 0 is `-DBL_MAX` (or
+`-FLT_MAX`) and points 1..64 are the corresponding positive maximum. With
+`k=1`, `sample_size=2`, `n_samples=1`, seed `0`, portable sampling selects
+points 25 and 59, so the subproblem is finite and the full resident assignment
+computes the poison at point 0. `N=65` forces the OpenMP branch. Both f64 and
+f32 must throw `dtwc::InvalidInput` after the join, never terminate inside the
+structured block.
+
+The exact diagnostics are:
+
+```text
+<caller>: non-finite nearest-medoid distance at point P, medoid slot S (index I).
+<caller>: nearest-medoid objective became non-finite after point P.
+```
+
+Registered callers are `fast_pam`, `clarans`, `fast_clara`, and
+`kmedoids_lloyd`. Floating values are deliberately absent from messages
+because NaN spelling and payload rendering are not portable.
+
+Finite-distance objective overflow uses f64 singleton values
+`{0,H,H,0}`, `H=0x1.8p+1023`, and medoids `{0,3}`. Each selected distance is
+finite, but the point-ordered objective first becomes non-finite after point
+2. FastPAM uses fixed medoids, CLARANS uses seed `0`, and resident FastCLARA
+uses seed `8`; all must reject with the exact objective diagnostic.
+
+### D. CPU-f32 no-path and finite-`DBL_MAX` publication
+
+Two all-zero series of lengths 1 and 3 use `band=0`, `k=1`. The exact DTW
+result between them is the finite no-path sentinel.
+
+FastPAM, CLARANS, and resident FastCLARA must each publish:
+
+```text
+labels          = {0,0}
+medoid count    = 1
+objective bits  = 0x7fefffffffffffff
+```
+
+The result must be populated in both f64 and f32. A direct CPU-f32 DTW call
+must also translate exact compute `FLT_MAX` to public `DBL_MAX`, preserve
+`nextafter(FLT_MAX,0)` as an ordinary finite value, and leave infinities/NaNs
+available for the algorithm-level rejection policy.
+
+CPU-f32 public normalization is one implementation commit. Best-result
+presence and assignment validation are a separate F13 implementation commit.
+
+### E. Real Arrow CLI copies
+
+No tracked data file is modified. The existing read-only fixture
+`tests/fixtures/fast_clara_streaming_8x4.parquet` remains pinned to:
+
+```text
+size   = 1451
+SHA256 = 2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8
+```
+
+The real CLI runs four configurations with `k=2`, `sample_size=2`,
+`n_samples=1`, seed `40`: resident and forced-by-budget streaming for each of
+Float64 and Float32. Every process must prove its mutually exclusive route
+marker and execute FastCLARA. Required medoids and labels are:
+
+```text
+medoids = {0,3}
+labels  = {0,0,0,1,1,1,1,1}
+```
+
+Series 1 is an exact tie between both medoids and must select slot 0. Resident
+and stream artifacts must be byte-identical within each precision. Exact
+checkpoint objective bytes at offset 24 are:
+
+| precision | decimal | little endian | big endian |
+|---|---:|---|---|
+| f64 | `156.30000000000001` | `9A99999999896340` | `406389999999999A` |
+| f32 | `156.30000233650208` | `0000809E99896340` | `406389999E800000` |
+
+The f64 and f32 objectives are not required to equal one another; each
+resident/stream pair is required to be digit-identical, while medoids and
+labels are identical across all four routes.
+
+## Acceptance band
+
+F13 passes locally only if every item below holds:
+
+1. The independent oracle reproduces every literal label, floating bit
+   pattern, poison coordinate, and overflow point above before judging
+   production.
+2. The CPU-f32 sentinel test is run red on the registered base, then passes
+   after one dedicated implementation commit. Exact `FLT_MAX` maps to exact
+   `DBL_MAX`; the adjacent finite float is not mistaken for a sentinel.
+3. A new public-route C++ assignment target runs at least 50 assertions in at
+   least 8 Catch2 cases, with no skip. It covers FastPAM, both CLARANS
+   assignment copies, resident FastCLARA f64/f32 including its parallel
+   failure path, Lloyd, finite `DBL_MAX`, non-winning infinities, and
+   finite-distance objective overflow.
+4. The new Arrow-only real-CLI target exists only when Parquet is linked. It
+   runs four successful processes, proves 8/8 required/forbidden route
+   markers, compares 6/6 resident/stream artifact pairs, and validates all
+   four exact assignment payloads and objective bytes. Skip text or a missing
+   subject is failure.
+5. Mutation probes must make the focused gate fail when strict `<` becomes
+   `<=`, a production finite check is removed, ordered accumulation is
+   replaced by a grouping-permitted reduction, or either streamed scan
+   bypasses validation.
+6. Source audits find no assignment-distance read in the seven registered
+   bodies that can silently consume NaN or infinity, no grouping-permitted
+   published objective reduction, and no floating sentinel used as
+   best-result presence.
+7. Fresh canonical and llfio-OFF builds pass 116/116 with zero failures and
+   their existing capability skips. The reconfigured Arrow build passes
+   118/118, including both non-skippable real-CLI targets and the real reader.
+8. A fresh Python extension imports one current symbol before the full pytest
+   floor is judged; the inherited floor remains 407 passed / 11 skipped
+   (418 collected).
+
+There are at most two repair attempts. A missed band is recorded as
+**FALSIFIED** with its verbatim output and is not relaxed. Rollback for either
+implementation is a local `git revert` of its dedicated commit. The claim
+most likely to be wrong is that the five-element cancellation fixture will
+distinguish the inherited `std::reduce` on this specific standard-library
+implementation; its value is still a permanent ordering contract, while the
+registered non-finite and sentinel failures provide the inherited red.
+
+## Executions and verdicts
+
+No decisive F13 command has run at registration time.
