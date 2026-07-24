@@ -558,6 +558,19 @@ Open findings first (status after R0 adjudication — update these boxes there):
       mutation of fields designated private by the frozen contract; separately,
       deleting each redundant MATLAB writeback in a probe must leave the
       returned and stored labels/medoids digit-identical.
+      **REGISTERED 2026-07-24:** the inherited records conflict, so the binding
+      boundary is explicit. Privatize `method`, `random_seed`,
+      `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`,
+      `verbose`, `output_folder`, `name`, and `data`. Retain the eleven fields
+      protected by the original freeze, F22, or M25/M37:
+      `maxIter`, `N_repetition`, `band`, `variant_params`,
+      `missing_strategy`, `distance_strategy`, `cuda_settings`,
+      `mip_settings`, `init_fun`, `clusters_ind`, and `centroids_ind`.
+      `resize()` is already private. A 31-assertion public-header contract,
+      focused non-degenerate Lloyd oracle, twelve permanent mutations, exactly
+      24 MATLAB target-route executions across R2024b/R2025b, and two product
+      attempts are binding. Evidence:
+      `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
       (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently
@@ -1201,6 +1214,16 @@ colour system transfer verbatim**.
   Auto configuration-query crash to F42, leave F18 unchecked, and continue the
   binding campaign at F19. Evidence:
   `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (F19 scope adjudication): The generic F19 wording conflicts with
+  the original frozen raw-result promise, F22's retained legacy fields, and
+  still-binding M25/M37 raw-semantic reconciliation. F19 therefore privatizes
+  exactly ten fields and retains eleven named compatibility fields; a future
+  all-field change must explicitly overturn those decisions. `resize()` is
+  already private. The named accessors, 31-assertion header contract, source
+  guard, non-degenerate C++ fixture, exactly 24 MATLAB route executions across
+  six source profiles and two releases, twelve mutations, and two attempts are
+  binding. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1535,3 +1558,11 @@ colour system transfer verbatim**.
   patch is rolled back. Commit `625b5b7` retains the red tests/runner, F42 owns
   the Auto configuration-query crash, F18 remains open, and R3 resumes at F19.
   Evidence: `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (R3-F19 registration): Two independent audits reconciled the
+  frozen-contract conflict to ten private and eleven retained `Problem` fields.
+  The registered gates are a 31-assertion public-header contract, a source/API
+  inventory, a non-degenerate Lloyd runtime oracle, twelve mutation classes,
+  and exactly 24 MATLAB target-route executions spanning inherited, four
+  single-call deletions, composite deletion, and both installed releases.
+  Product work is capped at two attempts. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
