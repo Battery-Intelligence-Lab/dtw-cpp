@@ -18,8 +18,8 @@ published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
 the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
-parser closure is FALSIFIED and routed to F36; F12 is the next scheduled
-finding under the registered no-third-attempt decision.
+parser closure is FALSIFIED and routed to F36; F12 is active under its
+registered exact cross-backend parity gate.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -381,6 +381,12 @@ Open findings first (status after R0 adjudication — update these boxes there):
       cost, and sentinel parity. First Metal gate: the same fixture on a real
       device, including exact double sentinel identity. Source inspection
       cannot close either executable backend.
+      **Active 2026-07-24:** the immutable bands and all six CUDA kernel routes
+      are registered in
+      `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. The local
+      RTX gate is executable. Real-Metal execution is `[BLOCKED-ENV]` on this
+      Windows host and remains required for closure; source/tests proceed
+      without claiming that runtime result.
 - [ ] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
       First gate: digit-identical assignments/objectives on adversarial ties and
@@ -818,6 +824,14 @@ colour system transfer verbatim**.
   quoted-line-continuation false-greens with all production counters passing.
   Per the registered no-third-attempt band, freeze the lexical deny-list,
   leave F11 open, route replacement architecture to F36, and continue at F12.
+- 2026-07-24 (F12 registration): One fixed-band behavioral task owns all six
+  CUDA geometry copies and the backend-independent public double no-path
+  sentinel. The D1 non-degenerate fixture, explicit path counts, exact
+  pairwise/one-vs-N route matrix, `INT_MAX`, and two-attempt cap are binding.
+  Local CUDA executes on the RTX. The probe found Windows 11 with neither
+  `xcrun` nor a Metal compiler, so real-Metal execution is `[BLOCKED-ENV]`;
+  implement and retain its permanent gate, leave F12 open, and continue after
+  all locally executable bands pass.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
