@@ -393,30 +393,95 @@ TEST_CASE(
   const auto files = store_files();
   REQUIRE(files.size() == 1);
 
+  // Clear the matrix while the dispatcher is still bound to the source. A
+  // move must rebind that self-referential function before any uncached pair
+  // is evaluated by the destination.
+  source->refresh_distance_matrix();
+  const double primed_distance = source->dist_by_ind(0, 1);
+  REQUIRE(std::bit_cast<std::uint64_t>(primed_distance)
+          == kIndependentPairBits[0]);
   std::optional<dtwc::Problem> mapped;
   mapped.emplace(std::move(*source));
   source.reset();
-  std::vector<std::string> churn(2048, std::string(256, 'x'));
-  REQUIRE(churn.size() == 2048);
-  verify_data_exact(*mapped, expected);
-  verify_independent_oracle(*mapped, expected);
+  source.emplace("f20_move_poison");
+  source->band = 0;
+  const double move_oracle = independent_dependent_l1(
+    expected.series(0), expected.series(2), expected.ndim);
+  const dtwc::Problem &const_mapped = *mapped;
+  const double const_moved_distance = const_mapped.dtw_function()(
+    const_mapped.series(0), const_mapped.series(2));
+  REQUIRE(std::bit_cast<std::uint64_t>(const_moved_distance)
+          == std::bit_cast<std::uint64_t>(move_oracle));
+  const double moved_distance = mapped->dist_by_ind(0, 2);
+  REQUIRE(std::bit_cast<std::uint64_t>(moved_distance)
+          == std::bit_cast<std::uint64_t>(move_oracle));
+  source.reset();
 
   mapped->refresh_distance_matrix();
-  mapped->distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
+  const double assignment_primed = mapped->dist_by_ind(0, 1);
+  REQUIRE(std::bit_cast<std::uint64_t>(assignment_primed)
+          == kIndependentPairBits[0]);
+  std::optional<dtwc::Problem> assigned;
+  assigned.emplace("f20_move_assignment_target");
+  assigned->set_storage_policy(dtwc::core::StoragePolicy::Heap);
+  assigned->set_data(sentinel_data());
+  *assigned = std::move(*mapped);
+  mapped.reset();
+  mapped.emplace("f20_move_assignment_poison");
+  mapped->band = 0;
+  const double assigned_distance = assigned->dist_by_ind(0, 2);
+  REQUIRE(std::bit_cast<std::uint64_t>(assigned_distance)
+          == std::bit_cast<std::uint64_t>(move_oracle));
+  mapped.reset();
+
+  std::vector<std::string> churn(2048, std::string(256, 'x'));
+  REQUIRE(churn.size() == 2048);
+  verify_data_exact(*assigned, expected);
+  verify_independent_oracle(*assigned, expected);
+
+  assigned->refresh_distance_matrix();
+  assigned->distance_strategy = dtwc::DistanceMatrixStrategy::CUDA;
   REQUIRE_THROWS_WITH(
-    mapped->fill_distance_matrix(),
+    assigned->fill_distance_matrix(),
     "Problem::fill_distance_matrix: CUDA does not support mmap-backed series "
     "data; no backend call or CPU fallback was attempted. Select "
     "StoragePolicy::Heap before set_data.");
-  mapped->refresh_distance_matrix();
-  mapped->distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
+  assigned->refresh_distance_matrix();
+  assigned->distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
   REQUIRE_THROWS_WITH(
-    mapped->fill_distance_matrix(),
+    assigned->fill_distance_matrix(),
     "Problem::fill_distance_matrix: Metal does not support mmap-backed series "
     "data; no backend call or CPU fallback was attempted. Select "
     "StoragePolicy::Heap before set_data.");
-  mapped.reset();
+  assigned.reset();
   verify_store_artifact(files.front(), expected);
+
+  auto long_name_data = load_fixture(kDirectNdim);
+  std::vector<std::string> long_names;
+  long_names.reserve(kSeries);
+  for (std::size_t i = 0; i < kSeries; ++i) {
+    long_names.push_back(
+      "f20-mapped-name-" + std::to_string(i) + "-"
+      + std::string(96, static_cast<char>('a' + i)));
+    long_name_data.p_names[i] = long_names.back();
+  }
+  auto routed = dtwc::detail::route_series_storage(
+    std::move(long_name_data),
+    dtwc::core::StoragePolicy::Mmap,
+    0,
+    test_root() / "long_names.dtws",
+    "F20 long-name router");
+  REQUIRE(routed.is_mmap());
+  REQUIRE(routed.names.size() == kSeries);
+  auto moved_routed = std::move(routed);
+  REQUIRE(moved_routed.is_mmap());
+  for (std::size_t i = 0; i < kSeries; ++i) {
+    REQUIRE(moved_routed.data.name(i) == long_names[i]);
+    REQUIRE(moved_routed.data.name(i).data()
+            == moved_routed.names[i].data());
+    REQUIRE(moved_routed.data.name(i).size()
+            == moved_routed.names[i].size());
+  }
 #else
   try {
     source->set_data(load_fixture(kDirectNdim));
@@ -435,6 +500,37 @@ TEST_CASE(
 #endif
 
   complete_case(CompletedCase::Direct);
+}
+
+TEST_CASE(
+  "F20 Problem moves retain raw semantic-cache invalidation",
+  "[f20][problem][storage][move]")
+{
+  dtwc::Problem source("f20_move_stale_cache");
+  source.set_storage_policy(dtwc::core::StoragePolicy::Heap);
+  source.set_data(dtwc::Data(
+    std::vector<std::vector<double>>{
+      { 0.0, 0.0, 0.0, 10.0 },
+      { 0.0, 10.0, 10.0, 10.0 },
+    },
+    std::vector<std::string>{ "move-a", "move-b" }));
+  const double unbanded = source.dist_by_ind(0, 1);
+  REQUIRE(unbanded == 0.0);
+
+  source.band = 0; // legacy raw mutation: cached unbanded distance is stale
+  dtwc::Problem moved(std::move(source));
+  const dtwc::Problem &const_moved = moved;
+  REQUIRE_THROWS_WITH(
+    (void)const_moved.dtw_function(),
+    "Problem: bound DTW function configuration changed through a raw or nested "
+    "mutation. Use a semantic setter or a mutable dtw_function accessor to "
+    "refresh the dispatcher before const access.");
+
+  const double diagonal_only = moved.dist_by_ind(0, 1);
+  REQUIRE(diagonal_only == 20.0);
+  REQUIRE(moved.band == 0);
+  REQUIRE(moved.series_name(0) == "move-a");
+  REQUIRE(moved.series_name(1) == "move-b");
 }
 
 TEST_CASE(
@@ -559,11 +655,22 @@ TEST_CASE(
   const auto native_expected = load_fixture(1);
 
   dtwc::DataLoader heap_loader{ fixture_path() };
-  heap_loader.verbosity(0).storage_policy(dtwc::core::StoragePolicy::Heap);
-  dtwc::Problem heap("f20_loader_heap", heap_loader);
-  REQUIRE(heap.storage_policy() == dtwc::core::StoragePolicy::Heap);
-  REQUIRE_FALSE(heap.data().is_view());
-  verify_data_exact(heap, native_expected);
+  heap_loader.verbosity(0)
+    .storage_policy(dtwc::core::StoragePolicy::Heap)
+    .ram_limit(1)
+    .mmap_cache_path(test_root() / "loader_heap_forbidden.dtws");
+  std::optional<dtwc::Problem> heap;
+  std::string heap_warning;
+  {
+    CerrCapture capture;
+    heap.emplace("f20_loader_heap", heap_loader);
+    heap_warning = capture.str();
+  }
+  REQUIRE(heap->storage_policy() == dtwc::core::StoragePolicy::Heap);
+  REQUIRE_FALSE(heap->data().is_view());
+  REQUIRE_FALSE(fs::exists(test_root() / "loader_heap_forbidden.dtws"));
+  REQUIRE(heap_warning.empty());
+  verify_data_exact(*heap, native_expected);
 
   std::optional<dtwc::Problem> auto_problem;
   std::string warning;

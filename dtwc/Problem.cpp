@@ -219,7 +219,7 @@ void Problem::refresh_distance_matrix()
   rebind_dtw_fn();
 }
 
-void Problem::refresh_variant_caches()
+void Problem::refresh_variant_caches() const
 {
   wdtw_weights_cache_.clear();
 
@@ -255,13 +255,13 @@ void Problem::refresh_variant_caches()
 /**
  * @brief Rebind the DTW distance function based on current variant_params and band.
  */
-void Problem::rebind_dtw_fn()
+void Problem::rebind_dtw_fn() const
 {
   // Resolve dispatch once, here, at rebind time. The returned std::function
   // reads mutable members (band, variant_params, missing_strategy, ndim,
-  // wdtw_weights_cache_) at call time via a stable reference to `*this`, so
-  // changing e.g. `prob.band = 50` after construction takes effect without a
-  // second rebind.
+  // wdtw_weights_cache_) at call time via a reference to `*this`. Problem moves
+  // transfer the function object, so the public compute/access gateways repair
+  // that reference before invoking it.
   //
   // Historical note: previously this function was a ~130-line nested switch
   // that also silently bound dtw_fn_f32_ to Standard DTW regardless of the
@@ -276,6 +276,7 @@ void Problem::rebind_dtw_fn()
     dtw_fn_f32_ = {};
   dense_cache_configuration_ = distance_cache_configuration(core::MetricType::L1);
   dense_cache_configuration_bound_ = true;
+  dtw_binding_owner_ = this;
 }
 
 void Problem::set_variant(core::DTWVariant v)
@@ -403,9 +404,25 @@ const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
   return dtw_fn_f32_;
 }
 
+void Problem::repair_dtw_binding_after_relocation()
+{
+  if (dtw_binding_owner_ == this) return;
+
+  // A default move transfers every state field without a maintenance list, but
+  // resolve_dtw_fn's closures still name the source address. Preserve a valid
+  // moved distance matrix when its semantic snapshot is current. If raw public
+  // configuration already drifted before the move, retain the existing cache
+  // invalidation contract instead of blessing stale bits with a fresh snapshot.
+  if (dense_cache_configuration_is_current())
+    rebind_dtw_fn();
+  else
+    refresh_distance_matrix();
+}
+
 void Problem::ensure_dense_cache_configuration_current()
 {
   preflight_current_distance_semantics();
+  repair_dtw_binding_after_relocation();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
     return;
@@ -432,6 +449,7 @@ void Problem::validate_dense_cache_configuration() const
 void Problem::ensure_dtw_function_configuration_current()
 {
   preflight_current_distance_semantics();
+  repair_dtw_binding_after_relocation();
   if (dense_cache_configuration_is_current()) return;
 
   // The fixed-size M25 snapshot records every input used when the dispatcher
@@ -445,6 +463,15 @@ void Problem::ensure_dtw_function_configuration_current()
 void Problem::validate_dtw_function_configuration() const
 {
   preflight_current_distance_semantics();
+
+  // Relocation changes only the address captured by derived dispatch state.
+  // Repairing that state is logically const and preserves a semantically
+  // current distance cache. True raw-configuration drift remains a loud const
+  // error below.
+  if (dtw_binding_owner_ != this
+      && dense_cache_configuration_is_current()) {
+    rebind_dtw_fn();
+  }
   if (dense_cache_configuration_is_current()) return;
 
   throw std::runtime_error(

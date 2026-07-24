@@ -39,6 +39,7 @@
 #include <span>        // std::span
 #include <iostream>
 #include <memory>
+#include <stdexcept>
 
 #include "core/distance_matrix.hpp"
 
@@ -121,9 +122,10 @@ private:
   int Nc{ 1 };                                      /*!< Number of clusters. */
   distMat_t distMat;                                /*!< Distance matrix. */
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
-  dtw_fn_t dtw_fn_;                                 /*!< DTW distance function for float64. */
-  dtw_fn_f32_t dtw_fn_f32_;                         /*!< DTW distance function for float32. */
-  std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Precomputed WDTW weights keyed by max_dev. */
+  mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
+  mutable dtw_fn_f32_t dtw_fn_f32_;                 /*!< Derived DTW dispatcher for float32. */
+  mutable const Problem *dtw_binding_owner_{ nullptr }; /*!< Address captured by the dispatchers. */
+  mutable std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Derived WDTW weights keyed by max_dev. */
 
   using cache_fingerprint_t = core::MmapDistanceMatrix::fingerprint_type;
   struct DistanceCacheConfiguration {
@@ -146,8 +148,8 @@ private:
   DistanceCacheIdentity mmap_cache_identity_{};
   bool mmap_cache_identity_bound_{ false };
   mutable bool mmap_cache_data_validated_{ false };
-  DistanceCacheConfiguration dense_cache_configuration_{};
-  bool dense_cache_configuration_bound_{ false };
+  mutable DistanceCacheConfiguration dense_cache_configuration_{};
+  mutable bool dense_cache_configuration_bound_{ false };
 
   Method method_{ Method::Kmedoids };
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
@@ -174,8 +176,8 @@ private:
     return std::visit(std::forward<F>(f), distMat);
   }
 
-  void rebind_dtw_fn(); ///< Rebind dtw_fn_ based on current variant_params and band.
-  void refresh_variant_caches(); ///< Refresh precomputed variant-specific caches.
+  void rebind_dtw_fn() const; ///< Rebind derived dispatch state to this address/configuration.
+  void refresh_variant_caches() const; ///< Refresh precomputed variant-specific caches.
   cache_fingerprint_t distance_cache_configuration_fingerprint(
     core::MetricType metric) const;
   DistanceCacheConfiguration distance_cache_configuration(
@@ -193,6 +195,7 @@ private:
   void preflight_current_distance_semantics() const;
   void preflight_float32_distance_semantics() const;
   const dtw_fn_f32_t &validated_dtw_function_f32() const;
+  void repair_dtw_binding_after_relocation();
   void ensure_dense_cache_configuration_current();
   void validate_dense_cache_configuration() const;
   void ensure_dtw_function_configuration_current();
@@ -222,6 +225,20 @@ private:
       auto owner =
         std::make_unique<LoadedData>(std::move(loaded));
       Data view = owner->data;
+#ifdef DTWC_HAS_MMAP
+      if (!view.is_view()
+          || owner->names.size() != view.size()) {
+        throw std::logic_error(
+          "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
+      }
+      for (std::size_t i = 0; i < view.size(); ++i) {
+        if (view.name(i).data() != owner->names[i].data()
+            || view.name(i).size() != owner->names[i].size()) {
+          throw std::logic_error(
+            "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
+        }
+      }
+#endif
       data_ = std::move(view);
       series_storage_owner_ = std::move(owner);
       return;
@@ -267,6 +284,10 @@ public:
     adopt_loaded_data(loader.load_stored());
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
+  Problem(const Problem &) = delete;
+  Problem &operator=(const Problem &) = delete;
+  Problem(Problem &&) = default;
+  Problem &operator=(Problem &&) = default;
 
   auto size() const { return data_.size(); }
   /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
@@ -460,6 +481,8 @@ public:
   /// Access the bound DTW distance function (float64). Mutable access repairs
   /// legacy raw configuration mutations before returning the dispatcher;
   /// const access rejects stale semantics instead of silently using them.
+  /// The first accessor after a Problem move repairs logically-const derived
+  /// dispatch state and must run before parallel use.
   const dtw_fn_t &dtw_function()
   {
     ensure_dtw_function_configuration_current();
