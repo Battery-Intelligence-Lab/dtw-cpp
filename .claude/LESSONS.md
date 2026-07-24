@@ -415,6 +415,11 @@ Critical knowledge to avoid repeating mistakes.
   IEEE-754 bytes under each verified compiler-plus-standard-library profile,
   preserve the distribution type and draw schedule, and never relabel legacy
   STL-distribution fixtures as `portable-v1`.
+- **Catch2 decomposition rejects unparenthesized logical OR.** An expression
+  such as `CHECK((a && b) || (c && d))` reaches Catch2's deleted/decomposition
+  guard and fails to compile; force the complete predicate to `bool` with one
+  more pair of parentheses: `CHECK(((a && b) || (c && d)))`. F15 attempt 1
+  failed at compile time on this exact distinction.
 
 ## LR-core Solver (Phase 4)
 

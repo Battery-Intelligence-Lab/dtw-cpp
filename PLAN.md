@@ -1242,3 +1242,9 @@ colour system transfer verbatim**.
   the same third coherent generator/full/band-0 profile and retained
   digit-identical independent/production matrices. Evidence:
   `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 attempt 1 FALSIFIED): The canonical focused target was
+  discovered but did not compile: Catch2's decomposer rejected the row-profile
+  logical OR because the complete predicate lacked Catch2's required extra
+  parentheses. No test or quantitative band executed; attempt 2 is limited to
+  that syntactic correction. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.

@@ -362,6 +362,30 @@ M01-M09 run the permanent focused target. M10-M11 run the real CUDA
 correctness target and must fail its existing CPU/GPU comparison. M12-M13 run
 the focused source audit. All 13/13 must be killed.
 
+## Implementation attempt ledger
+
+### Attempt 1 — FALSIFIED
+
+Command:
+
+```text
+cmake --build build/highs-1151 --target unit_test_deterministic_series
+```
+
+The target was discovered and compiled, but no test executed. Clang 21.1.8
+rejected the row-profile predicate through Catch2's expression decomposer:
+
+```text
+C:/D/git/dtw-cpp/build/highs-1151/_deps/catch2-src/src/catch2/..\catch2/internal/catch_decomposer.hpp:431:27: error: static assertion failed due to requirement 'always_false<bool>::value': operator|| is not supported inside assertions, wrap the expression inside parentheses, or decompose it
+C:/D/git/dtw-cpp/tests/unit/unit_test_deterministic_series.cpp:257:5: note: in instantiation of function template specialization 'Catch::operator||<bool>' requested here
+ninja: build stopped: subcommand failed.
+```
+
+Verdict: **FALSIFIED [confirmed]**. No fingerprint, source count, mutation, or
+execution band was evaluated or changed. Attempt 2 may only force the complete
+already-registered logical predicate to `bool` using Catch2's required extra
+parentheses.
+
 ## Acceptance band
 
 F15 passes only if:
