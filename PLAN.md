@@ -441,6 +441,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       The historical claim that eight copies were byte-identical is falsified:
       ranges and shapes differ. Inventory intentional variants and pin seeded
       bytes/oracle values before extracting any shared test utility.
+      **Registered 2026-07-24:** share only the two exact generator families
+      and dense symmetric production-CPU traversal: benchmark scalar/per-row
+      `mt19937` with `[-1,1]`, accelerator row-major continuous `mt19937` with
+      `[-10,10]`, and zero-diagonal mirrored `N*N` assembly. Preserve packed
+      LB, timing-only MPI, float/range variants, caller-owned/Gaussian/NaN draw
+      schedules, and independent mathematical arbiters. Exact coherent
+      Clang-relaxed and MSVC-precise raw-byte/oracle fingerprints, permanent
+      non-skipping source reachability, 13 mutation executions, benchmark
+      compilation, real CUDA baselines, and final 119/119, 119/119, 121/121
+      build floors are binding. Evidence:
+      `.claude/baselines/2026-07-24-f15-test-support.md`.
 - [ ] **F16 — CMake presets encode one developer machine and a stale floor.**
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
       while the root requires 3.26. First gate: portable clean configure probes
@@ -955,6 +966,15 @@ colour system transfer verbatim**.
   llfio-OFF, and Arrow gates pass 118/118, 118/118, and 120/120. Close-time
   file errors are checked explicitly. F37 remains the owner of the confirmed
   Python and runtime-unconfirmed MATLAB contradiction. Resume at F15.
+- 2026-07-24 (F15 registration): The old eight-file byte-identity claim stays
+  falsified. F15 may extract only two named generator contracts plus dense
+  symmetric CPU-reference traversal; it must not merge packed LB values,
+  MPI timing, compiler-sensitive float/range variants, structured/random-walk
+  fixtures, or independent DP/path/formula arbiters. `uniform_real_distribution`
+  bytes are frozen as two coherent supported floating-point profiles rather
+  than mislabeled portable-v1 output. Real CUDA execution is required; real
+  Metal remains locally unavailable and is not claimed. Two implementation
+  attempts maximum.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1200,3 +1220,12 @@ colour system transfer verbatim**.
   118/118, and 120/120 with 6/9/8 capability skips. F37 retains cross-language
   parity; R4 retains consolidation. Evidence:
   `.claude/baselines/2026-07-24-f14-csv-wire-format.md`. Resume at F15.
+- 2026-07-24 (R3-F15 registration): At clean base `e79fab3`, retired the stale
+  eight-copy premise, inventoried two exact clone families plus adjacent
+  intentional variants, and froze raw generator/oracle fingerprints for the
+  repository's Clang-relaxed and MSVC-precise profiles. Independent full-matrix
+  DP equals the production rolling CPU reference in both profiles, while the
+  band-0 fixture differs from full DTW. Six benchmark executables compile;
+  real CUDA passes 7,827 assertions / 61 cases and 688 / 8; CPU accuracy/SIMD
+  pass 283 / 39 and 7,029 / 16. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.

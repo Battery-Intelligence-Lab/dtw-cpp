@@ -404,6 +404,16 @@ Critical knowledge to avoid repeating mistakes.
   user-visible output contracts, finish all writes, close explicitly, then
   check stream state and return or throw the typed I/O failure. F14 applied
   this at all three matrix-file openers after the production audit.
+- **An RNG engine and seed do not uniquely specify floating-point fixture
+  bytes.** F15's identical `mt19937` draws through
+  `uniform_real_distribution<double>(-10,10)` produced different last bits
+  under the repository's relaxed Clang Release flags and MSVC's
+  `/fp:precise`; Clang without those relaxations matched MSVC. The scalar
+  `[-1,1]` case happened to agree, which would have hidden the issue. A
+  behavior-neutral extraction must compare raw IEEE-754 bytes under each
+  supported floating-point profile, preserve the distribution type and draw
+  schedule, and never relabel legacy STL-distribution fixtures as
+  `portable-v1`.
 
 ## LR-core Solver (Phase 4)
 
