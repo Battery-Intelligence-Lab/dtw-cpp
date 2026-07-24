@@ -130,6 +130,133 @@ function test_dtwclustering_restarts_use_distinct_local_seeds(testCase)
     verifyLessThan(testCase, two.TotalCost, one.TotalCost);
 end
 
+function test_dtwclustering_metric_routes_match_exhaustive_oracle(testCase)
+%   F18: DTWClustering.fit/fit_predict must execute the requested metric.
+%   All three monotone paths for each length-two pair were enumerated before
+%   implementation; the diagonal is uniquely optimal because every added
+%   off-diagonal local cost is strictly positive.
+    X = [0 1; 3 8; 5 2; 6 4];
+    D_l1 = [0 10 6 9; 10 0 8 7; 6 8 0 3; 9 7 3 0];
+    D_squared = [0 58 26 45; 58 0 40 25; ...
+                 26 40 0 5; 45 25 5 0];
+
+    dtwc.device('cpu');
+    routed_l1 = dtwc_mex('DTWClustering_compute_distance_matrix', ...
+                         double(X), -1, 'l1');
+    routed_squared = dtwc_mex('DTWClustering_compute_distance_matrix', ...
+                              double(X), -1, 'squared_euclidean');
+    assertEqual(testCase, routed_l1, D_l1);
+    assertEqual(testCase, routed_squared, D_squared);
+
+    l1_problem = dtwc.Problem('F18_l1_oracle');
+    l1_problem.set_data(X);
+    l1_problem.set_distance_matrix(D_l1);
+    l1_result = dtwc.fast_pam(l1_problem, 2, 'MaxIter', 100, 'Seed', 42);
+    assertEqual(testCase, l1_result.labels, int32([1 2 1 1]));
+    assertEqual(testCase, l1_result.medoid_indices, int32([3 2]));
+    assertEqual(testCase, l1_result.total_cost, 9);
+    assertEqual(testCase, l1_result.iterations, int32(1));
+    assertTrue(testCase, l1_result.converged);
+
+    squared_problem = dtwc.Problem('F18_squared_oracle');
+    squared_problem.set_data(X);
+    squared_problem.set_distance_matrix(D_squared);
+    squared_result = dtwc.fast_pam(squared_problem, 2, ...
+                                   'MaxIter', 100, 'Seed', 42);
+    assertEqual(testCase, squared_result.labels, int32([2 1 1 1]));
+    assertEqual(testCase, squared_result.medoid_indices, int32([4 1]));
+    assertEqual(testCase, squared_result.total_cost, 30);
+    assertEqual(testCase, squared_result.iterations, int32(1));
+    assertTrue(testCase, squared_result.converged);
+
+    l1_estimator = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'l1', 'Device', 'cpu', 'NInit', 2);
+    l1_estimator = l1_estimator.fit(X);
+    assertEqual(testCase, l1_estimator.Labels, int32([1 2 1 1]));
+    assertEqual(testCase, l1_estimator.MedoidIndices, int32([3 2]));
+    assertEqual(testCase, l1_estimator.TotalCost, 9);
+
+    squared_estimator = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'squared_euclidean', ...
+        'Device', 'cpu', 'NInit', 2);
+    squared_estimator = squared_estimator.fit(X);
+    assertEqual(testCase, squared_estimator.Labels, int32([2 1 1 1]));
+    assertEqual(testCase, squared_estimator.MedoidIndices, int32([4 1]));
+    assertEqual(testCase, squared_estimator.TotalCost, 30);
+
+    uppercase_estimator = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'SQUARED_EUCLIDEAN', ...
+        'Device', 'cpu', 'NInit', 2);
+    uppercase_labels = uppercase_estimator.fit_predict(X);
+    assertEqual(testCase, uppercase_labels, int32([2 1 1 1]));
+
+    assertNotEqual(testCase, l1_estimator.Labels, squared_estimator.Labels);
+    assertNotEqual(testCase, l1_estimator.MedoidIndices, ...
+                   squared_estimator.MedoidIndices);
+    assertNotEqual(testCase, l1_estimator.TotalCost, ...
+                   squared_estimator.TotalCost);
+
+    fprintf(['F18_MATLAB_METRIC subject=DTWClustering.fit+fit_predict ' ...
+        'oracle=exhaustive_paths matrices=2/2 problem_routes=2/2 ' ...
+        'fit_routes=2/2 fit_predict=1/1 case_norm=1/1 distinct=3/3 ' ...
+        'ninit=2 skips=0\n']);
+end
+
+function test_dtwclustering_metric_validation_precedes_effects(testCase)
+%   F18: invalid metric/cross-product requests fail before data/device work.
+    X = [0 1; 3 8; 5 2; 6 4];
+    dtwc.device('cpu');
+
+    unknown_error = [];
+    unknown = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'not_a_metric', ...
+        'Device', 'not_a_device', 'NInit', 2);
+    try
+        unknown.fit(zeros(0, 2));
+    catch caught
+        unknown_error = caught;
+    end
+    assertFalse(testCase, isempty(unknown_error), ...
+                'Unknown Metric must fail before empty-data/device handling.');
+    assertEqual(testCase, unknown_error.identifier, 'dtwc:invalidArgument');
+    assertEqual(testCase, unknown_error.message, ...
+        ['Unknown Metric ''not_a_metric''. Expected one of: ' ...
+         'l1, squared_euclidean.']);
+    assertEqual(testCase, dtwc.device(), 'cpu');
+
+    variant_error = [];
+    bad_variant = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'squared_euclidean', ...
+        'Device', 'cpu', 'NInit', 2);
+    bad_variant.Variant = 'wdtw';
+    try
+        bad_variant.fit(X);
+    catch caught
+        variant_error = caught;
+    end
+    assertFalse(testCase, isempty(variant_error), ...
+                'SquaredL2 plus WDTW must fail loudly.');
+    assertEqual(testCase, variant_error.identifier, 'dtwc:invalidArgument');
+
+    missing_error = [];
+    bad_missing = dtwc.DTWClustering( ...
+        'NClusters', 2, 'Metric', 'squared_euclidean', ...
+        'Device', 'cpu', 'NInit', 2);
+    bad_missing.MissingStrategy = 'zero_cost';
+    try
+        bad_missing.fit(X);
+    catch caught
+        missing_error = caught;
+    end
+    assertFalse(testCase, isempty(missing_error), ...
+                'SquaredL2 plus zero_cost must fail loudly.');
+    assertEqual(testCase, missing_error.identifier, 'dtwc:invalidArgument');
+
+    fprintf(['F18_MATLAB_VALIDATION unknown_metric=1/1 ' ...
+        'unknown_precedence=1/1 squared_variant=1/1 ' ...
+        'squared_missing=1/1 skips=0\n']);
+end
+
 function test_fast_pam_mex_rejects_invalid_seed_before_cast(testCase)
 %   Direct gateway calls are defensive even when bypassing inputParser.
     prob = dtwc.Problem('invalid_seed');
