@@ -91,13 +91,17 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor: `ctest` → **115/115, 0 failed**, 6 capability
+  llfio ON, Arrow OFF). Floor: `ctest` → **116/116, 0 failed**, 6 capability
   skips (cuda×2, metal×3, io_readers×1 — the io_readers skip is expected in
   this Arrow-OFF build; F9 is closed by its separate Arrow-ON executable gate).
   Rebuild first: `cmake --build build/highs-1151` (expect "no work to do" on a
   clean tree).
-- **llfio-OFF build:** `build/nollfio` — must configure, build, and pass with
-  capability skips.
+- **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
+  **116/116, 0 failed**, with 9 capability skips.
+- **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
+  Arrow/Parquet. Floor: **118/118, 0 failed**, 8 capability skips; both
+  real-CLI gates and the reader run. CTest metadata supplies LLVM, `pyarrow`,
+  and `pyarrow.libs` runtime paths, so no caller PATH override is required.
 - **CUDA:** `build/cuda-verify` (MSVC host + nvcc 13.0, RTX 4000 Ada sm_89 is
   LOCAL — run the CUDA tests for real). GPU-HiGHS rebuild:
   `MSYS_NO_PATHCONV=1 cmd.exe /c build/highs-gpu/bench_build.bat` (MSYS mangles
@@ -106,7 +110,8 @@ WHAT you work on. Read both before touching anything. Supporting record:
 - **Python:** rebuild the extension via a configure dir with
   `-DDTWC_BUILD_PYTHON=ON`, copy the fresh `.pyd` + `libomp.dll` into the venv,
   verify import + one NEW symbol before pytest (stale-`.pyd` false-greens are
-  real). Floor: 407 passed / 11 skipped (418 collected) on the fresh wheel.
+  real). Floor: 1010 passed / 12 skipped (1022 collected) with the fresh
+  extension.
   Windows llfio-ON wheel is a known OPEN item (see PLAN R6).
 - **MATLAB:** R2024b + R2025b installed; run via `matlab -batch`. addpath ORDER
   matters — add the fresh `build/mex-verify/bin` LAST so it prepends ahead of

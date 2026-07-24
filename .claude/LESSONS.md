@@ -45,6 +45,12 @@ Critical knowledge to avoid repeating mistakes.
   through the configured wheel/CMake recipe, copy a fresh `.pyd` + `libomp.dll`,
   then verify import and one newly added symbol before pytest;
   an editable pure-Python layer can otherwise mask a stale native core.
+- **An exact-base Python arbiter must defeat editable-install import hooks.**
+  Merely prepending a detached worktree to `PYTHONPATH` still allowed the
+  current checkout's editable finder to supply the package. Remove that finder
+  from the isolated environment, remove the current source path, and assert
+  both the package and native-extension `__file__` paths plus the extension
+  digest before judging whether a failure is pre-existing.
 - **`dtwc_cl` names batch-row series `1..N` (1-based row index), ignoring any id column.** With a TSV of one series per row + `--skip-cols 0`, the `NAME_labels.csv` (`name,cluster`) uses names `1..N`. Its rows are **not guaranteed in input order** (the binary may lexically sort: `1,10,11,2,...`). ALWAYS map labels by name (`labels[i] = clusters[str(i+1)]`), never by row position. Verified against `build/bin/dtwc_cl.exe` 2026-06-30.
 - **`./bin/dtwc_cl.exe` can be stale.** A top-level `bin/` binary may predate current flags (it rejected `--skip-cols`/`-k`). Prefer `build-*/bin/dtwc_cl` (current builds) — `find_dtwc_binary` does this.
 
@@ -200,6 +206,13 @@ Critical knowledge to avoid repeating mistakes.
   decisive F9 build consumed PyArrow 23's headers, import libraries, and runtime
   DLLs successfully. Treat DLL placement as an explicit build/run recipe rather
   than prescribing a different package manager without evidence.
+- **A Windows shared dependency linked PUBLIC reaches every test executable.**
+  In the PyArrow-backed build, ordinary unit executables imported
+  `arrow.dll`/`parquet.dll`, and `arrow.dll` in turn needed a hash-named runtime
+  from `pyarrow.libs`. Adding PATH only to the two Arrow CLI tests left unit
+  CTests failing before `main` with `0xC0000135`. Compute the proven runtime
+  directories once and attach them to every registered test in the affected
+  Arrow-linked directory; verify generated CTest metadata, not source order.
 
 ## ARC SLURM Hardware
 
@@ -300,6 +313,28 @@ Critical knowledge to avoid repeating mistakes.
   contract. Centralize exact sentinel translation in the result-copy boundary
   and test exact equality; `isfinite`, positivity, and approximate comparison
   all accept the wrong value.
+- **A maximum finite value cannot double as “no best result yet.”** A valid
+  assignment distance or objective may be exact finite `DBL_MAX`; initializing
+  `best = DBL_MAX` and later testing `best == DBL_MAX` therefore collides with
+  real data. Keep a separate boolean presence flag, preserve strict `<` for
+  first-slot ties, and validate every distance before comparison.
+- **Exact diagnostics require whole-message mutation tests.** A gate that
+  searches for the expected text as a substring accepts an appended suffix and
+  does not freeze the public error contract. Compare the complete normalized
+  stderr line, then prove that changing only a suffix makes the real-binary
+  gate fail.
+- **Tracked-manifest inventory constants move with every new tracked
+  manifest.** F13 added one permanent `.cmake` integration gate, so the
+  index-owned count changed from 25 to 26 even though no supply-chain identity
+  changed. Compare `git ls-files` sets against the registered base and update
+  the production checker plus its direct test in the same dedicated finding;
+  a filesystem walk cannot judge a Git-index contract.
+- **A repaired oracle must retain a discriminator, not only new expected
+  numbers.** Portable RNG changed Lloyd's seeded trajectory, and replacing the
+  old literals on the original iteration-cap fixture made capped and converged
+  runs identical. Build a new independently calculated fixture whose two
+  states differ, then mutate the forwarded cap to the default and require the
+  public binding test to fail.
 - **A documentation marker gate can pass text that the renderer breaks and can
   preserve the wrong backend scope.** D1's first documentation gate was green
   while its standalone derivation used GitHub-unsupported `\(...\)`/`\[...\]`
@@ -348,6 +383,11 @@ Critical knowledge to avoid repeating mistakes.
   remains, and use the one allowed fresh retry with a wrapper longer than the
   registered workload; generated files and stamps can localise the result but
   cannot manufacture the missing exit code.
+- **A timed-out Windows loader probe can leave the executable locking build
+  outputs.** After CTest times out before `main`, inspect only the exact
+  `ctest`/test child PIDs and terminate those confirmed descendants before a
+  rebuild. Never delete the build tree or kill by a broad process-name guess;
+  record the timeout output and verify the named processes are gone.
 
 ## LR-core Solver (Phase 4)
 

@@ -13,14 +13,14 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-23):** 2.0.0rc1 release state committed (not tagged or
+**Status (2026-07-24):** 2.0.0rc1 release state committed (not tagged or
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
 the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
 parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
-committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`; F13
-is active.
+committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
+**F13 CLOSED** and F14 is next.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -369,7 +369,9 @@ Open findings first (status after R0 adjudication — update these boxes there):
       **Partial 2026-07-24:** `653b0e6` pins the exact 2.0.0rc1 commit archive
       and SHA-256; a fresh no-override configure downloaded the registered
       4,928,286-byte artifact, built the library and real example consumer, and
-      the current-tree gate passes 39 actions / 7 archives / 25 manifests.
+      the gate at that commit passes 39 actions / 7 archives / 25 manifests.
+      F13 later added one tracked CMake gate and registered the current total
+      of 26 without changing the seven archive identities.
       The final fail-closed parser band is FALSIFIED by the two named probes in
       F36, so this checkbox remains open.
 - [ ] **F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**
@@ -390,7 +392,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       but real-Metal execution is `[BLOCKED-ENV]` on this Windows host. Leave
       F12 open and continue at F13; evidence:
       `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`.
-- [ ] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
+- [x] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
       First gate: digit-identical assignments/objectives on adversarial ties and
       non-finite rejection before R4 may consolidate anything.
@@ -401,11 +403,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       CLARANS copies, resident f64/f32, and real-CLI streamed f64/f32. Full
       consolidation remains R4-owned. Evidence:
       `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
-      **Partial 2026-07-24:** `62c6f26` closes the separately registered
-      CPU-f32 public-boundary defect: the inherited resolver returned widened
-      `FLT_MAX`; the repaired focused gate passes 5/5 and the shared GPU host
-      contract passes 8/8. Assignment validation and best-result presence
-      remain open.
+      **Closed 2026-07-24:** `62c6f26` normalizes the CPU-f32 public sentinel;
+      `1eb8609` enforces explicit best-result presence, finite assignment and
+      candidate distances, strict first-slot ties, ordered finite objectives,
+      deterministic parallel failure handoff, and transactional Lloyd
+      publication. `cb11c90` repairs exact-base-confirmed stale portable-RNG
+      Python oracles without weakening the iteration-cap discriminator;
+      `3784251` registers the added CMake manifest; `3783b12` supplies every
+      Windows Arrow-linked CTest with its shared runtimes. Nine mutation
+      classes fail. Final gates: canonical 116/116, llfio-OFF 116/116, Arrow
+      118/118 with both real-CLI subjects, and fresh-extension Python
+      1010 passed / 12 skipped. Full scan consolidation remains R4-owned.
 - [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
       precision, signed zero, and non-finite behavior across dense stream,
       mmap stream, and visitor paths; only then may R4 remove duplication.
@@ -886,6 +894,14 @@ colour system transfer verbatim**.
   `0xC0000135`; the identical command passes with the three proven directories.
   Apply them to every test in that Windows Arrow-linked test directory.
   Arrow-OFF builds and production runtime/install behavior remain untouched.
+- 2026-07-24 (F13 local verdict): Retain `62c6f26`, `1eb8609`, `cb11c90`,
+  `3784251`, and `3783b12`. The registered tie, finite-state, exact-message,
+  ordered-objective, streamed f64/f32, Python-forwarding, manifest, and Windows
+  loader mutants all fail. Canonical and llfio-OFF pass 116/116; Arrow passes
+  118/118 without a caller PATH override and executes both real-CLI gates; the
+  fresh 1,022-test Python collection passes 1010 with 12 skips. This closes
+  F13 behavior only: R4 still owns scan consolidation, and hosted CI is not
+  claimed. Resume at F14.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1102,3 +1118,14 @@ colour system transfer verbatim**.
   translation to a shared CPU/GPU public-distance policy; repaired focused,
   GPU-host, and full distance-semantics gates pass 5/5, 8/8, and 53/53.
   Nearest-medoid assignment validation remains the active F13 half.
+- 2026-07-24 (R3-F13 CLOSED): `1eb8609` enforces the seven-body assignment
+  contract, `cb11c90` repairs exact-base-confirmed stale Python oracles,
+  `3784251` registers the added CMake manifest, and `3783b12` makes every
+  Windows Arrow-linked CTest self-contained. The focused gate passes 114
+  assertions / 8 cases; canonical and llfio-OFF pass 116/116; Arrow passes
+  118/118 without caller PATH and executes both real-CLI gates; fresh-extension
+  Python passes 1010 / 12 skipped over 1,022 collected. Nine mutation classes
+  fail. Earlier falsifications remain recorded, full scan consolidation remains
+  R4-owned, and hosted CI is not claimed. Evidence:
+  `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`. Resume at
+  F14.

@@ -633,3 +633,281 @@ dedicated CMake test-infrastructure commit. The claim most likely to be wrong
 is that every test is already registered when the directory TESTS property is
 read; generated metadata for all 118 names, not source order inspection,
 judges it.
+
+### Assignment repair attempt 2 retained
+
+Commit `1eb8609` is the retained assignment repair. It adds only the
+finite-state and point-ordered objective policy needed by F13; the seven scan
+bodies remain owned by FastPAM, CLARANS, resident/f64/f32 FastCLARA, and
+Lloyd pending R4.
+
+The final canonical focused execution captured before this bookkeeping close
+produced:
+
+```text
+Randomness seeded to: 1509029016
+===============================================================================
+All tests passed (114 assertions in 8 test cases)
+```
+
+The final llfio-OFF focused execution captured before this bookkeeping close
+produced:
+
+```text
+Randomness seeded to: 3667599774
+===============================================================================
+All tests passed (114 assertions in 8 test cases)
+```
+
+The Arrow real-CLI gate produced:
+
+```text
+-- F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=4/4 route_markers=8/8 artifact_pairs=6/6 payloads=4/4 objective_bytes=4/4 stream_rejections=2/2 skips=0 fixture_sha256=2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8
+```
+
+The final scoped source audit found seven explicit `has_best = false`
+presence flags, a finite nearest-medoid check in every assignment body, finite
+candidate checks in the FastPAM swap scans, and point-ordered publication in
+every objective path. The exact scoped search:
+
+```text
+dtwc/algorithms/fast_clara.cpp:168:        bool has_best = false;
+dtwc/algorithms/fast_clara.cpp:272:          bool has_best = false;
+dtwc/algorithms/fast_clara.cpp:345:          bool has_best = false;
+dtwc/Problem.cpp:1012:    bool has_best = false;
+dtwc/algorithms/clarans.cpp:103:      bool has_best = false;
+dtwc/algorithms/clarans.cpp:210:          bool has_best = false;
+dtwc/algorithms/fast_pam.cpp:115:      bool has_best = false;
+```
+
+`rg -n "std::(reduce|transform_reduce)"` returns no match in
+`fast_pam.cpp`, `clarans.cpp`, `fast_clara.cpp`, `Problem.cpp`, or
+`medoid_assignment_policy.hpp`. The repository-wide conformance score
+calculation remains an unrelated `std::reduce` consumer.
+
+### Mutation replay
+
+Each mutation below was applied to the retained production/test tree, its
+registered focused gate was run, and the exact committed source was restored
+before the next mutation.
+
+1. Replacing strict `<` by `<=` in the primary FastPAM assignment scan
+   changed all three registered tie discriminators:
+
+```text
+  { 1, 1, 1, 1, 1 } == { 0, 0, 0, 0, 0 }
+  { 1, 1, 0 } == { 1, 0, 0 }
+  { 0, 1, 1 } == { 0, 0, 1 }
+test cases: 8 | 5 passed | 3 failed
+assertions: 114 | 111 passed | 3 failed
+```
+
+2. Removing the FastPAM assignment finite wrapper preserved rejection through
+   the ordered objective, but lost the registered point/slot/index diagnostic:
+
+```text
+CHECK( caught )
+with expansion:
+  false
+actual:
+fast_pam: non-finite nearest-medoid distance at point 1.
+expected:
+fast_pam: non-finite nearest-medoid distance at point 1, medoid slot 0 (index 0).
+test cases: 8 | 7 passed | 1 failed
+assertions: 113 | 111 passed | 2 failed
+```
+
+3. Replacing the ordered helper with `std::reduce` made all three finite-input
+   overflow discriminators miss their registered exception:
+
+```text
+CHECK( caught )
+with expansion:
+  false
+test cases: 8 | 7 passed | 1 failed
+assertions: 111 | 108 passed | 3 failed
+```
+
+4. Bypassing validation in the streamed f64 scan made the real CLI gate fail
+   on the f64 poison artifact:
+
+```text
+expected:
+Error: fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 65).
+actual:
+Error: fast_clara: non-finite nearest-medoid distance at point 0.
+0% tests passed, 1 tests failed out of 1
+```
+
+5. Bypassing validation in the streamed f32 scan produced the same exact
+   mismatch for the separately named f32 poison artifact:
+
+```text
+expected:
+Error: fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 65).
+actual:
+Error: fast_clara: non-finite nearest-medoid distance at point 0.
+0% tests passed, 1 tests failed out of 1
+```
+
+6. Appending a diagnostic suffix proved that the integration gate compares the
+   complete stderr line rather than a substring:
+
+```text
+expected:
+Error: fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 65).
+actual:
+Error: fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 65).  suffix
+0% tests passed, 1 tests failed out of 1
+```
+
+7. Replacing the Python `max_iter` forwarding value with the default `100`
+   killed the repaired iteration-cap discriminator:
+
+```text
+ACTUAL: array([5, 1])
+DESIRED: array([4, 1])
+```
+
+8. Restoring either registered CMake-manifest count to 25 killed its
+   independent checker:
+
+```text
+tracked CMake manifest inventory changed: manifests=26 expected=25
+```
+
+and its direct Python gate:
+
+```text
+E       assert 26 == 25
+1 failed in 0.24s
+```
+
+9. Restoring the Windows runtime environment loop to the two real-CLI tests
+   made an ordinary Arrow-linked unit CTest fail before Catch2 output:
+
+```text
+1/1 Test #17: unit_test_fast_clara .............***Timeout  10.03 sec
+```
+
+The timeout cleanup left no `ctest`, `unit_test_fast_clara`, `dtwc_cl`, or
+`cmake` child process. After every mutation was restored, `git diff --check`
+was empty and both focused F13 targets reran green.
+
+### Portable Python-oracle and manifest repairs
+
+Commit `cb11c90` changes only the three stale Python Lloyd expectations. The
+eight-series cases now pin medoids `[5,2,0]`, labels
+`[2,1,1,1,0,0,0,0]`, and cost `24.0`. The independent cap fixture pins
+`[4,1]` and cost `5.0` for `max_iter=1`, versus `[5,1]` and cost `4.0`
+at convergence. The three focused binding tests pass.
+
+Commit `3784251` changes the two registered tracked-manifest constants from 25
+to 26. The production checker produced:
+
+```text
+WORKFLOW_ACTION_PIN_GATE verified=39 total=39 verdict=PASS
+CMAKE_ARCHIVE_PIN_GATE verified=7 total=7 mutable=0 unhashed=0 verdict=PASS
+ARROW_ARCHIVE_PIN_GATE verified=1 total=1 verdict=PASS
+TRACKED_CMAKE_MANIFESTS total=26
+supply-chain pins verified
+```
+
+The final fresh-extension Python gate loaded
+`C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd`
+with SHA-256
+`5139A6745C325C8614A1191605E85227564910E49D70DBF41CE2FDDDFC58BF50`
+and produced:
+
+```text
+1010 passed, 12 skipped in 67.85s (0:01:07)
+```
+
+This 1,022-test collection supersedes the stale 418-test recipe discovered
+during registration. Original acceptance item 8 is therefore
+**FALSIFIED [confirmed]** as a stale inventory, not relaxed or silently
+claimed; the separately preregistered replacement band is the one that passed.
+The retained exact-base arbiter remains at
+`build/f13-base-arbiter-1af0aa85-20260724a/src`; it is not deleted because it
+is the nameable independent proof that the three original failures predate
+F13.
+
+### Windows Arrow CTest runtime repair retained
+
+Commit `3783b12` applies the already registered compiler, `pyarrow`, and
+`pyarrow.libs` runtime directories to every test registered in the
+Windows/Arrow-linked tests directory. A fresh metadata query produced:
+
+```text
+build/highs-1151 tests=116 env_mod_tests=0
+build/nollfio tests=116 env_mod_tests=0
+build/arrow-pyarrow-23 tests=118 env_mod_tests=118
+PATH=path_list_prepend:C:/D/git/dtw-cpp/.venv/Lib/site-packages/pyarrow
+PATH=path_list_prepend:C:/D/git/dtw-cpp/.venv/Lib/site-packages/pyarrow.libs
+PATH=path_list_prepend:C:/Program Files/LLVM/bin
+```
+
+With no caller PATH modification, the focused Arrow unit target produced:
+
+```text
+All tests passed (841 assertions in 21 test cases)
+```
+
+The post-repair complete Arrow suite also ran without a caller PATH override:
+
+```text
+100% tests passed, 0 tests failed out of 118
+Total Test time (real) =  24.77 sec
+```
+
+### Final build matrix and verdict
+
+The final committed-source full gates produced:
+
+```text
+build/highs-1151
+100% tests passed, 0 tests failed out of 116
+Total Test time (real) =  23.32 sec
+```
+
+Canonical recorded the six expected capability skips: two CUDA, three Metal,
+and the Arrow reader.
+
+```text
+build/nollfio
+100% tests passed, 0 tests failed out of 116
+Total Test time (real) =  21.76 sec
+```
+
+The llfio-OFF build recorded nine capability skips: two mmap, two CUDA, three
+Metal, the Arrow reader, and the optional Benders case.
+
+```text
+build/arrow-pyarrow-23
+100% tests passed, 0 tests failed out of 118
+Total Test time (real) =  24.77 sec
+```
+
+The Arrow build recorded eight capability skips while running the reader and
+both non-skippable real-CLI integration gates.
+
+Verdict: **PASS [confirmed]** for every locally executable F13 acceptance
+item. Evidence is the focused and complete CTest/Python transcripts recorded
+here, the real-CLI artifact/hash summary,
+the retained exact-base Python arbiter, and the mutation transcript. F13 does
+not claim R4 scan consolidation, hosted CI, or real-Metal execution.
+
+Rollback is local and component-wise:
+
+```text
+git revert 3783b12
+git revert 3784251
+git revert cb11c90
+git revert 1eb8609
+git revert 62c6f26
+```
+
+The claim most likely to be wrong is that lowest-index failure publication
+remains deterministic under an OpenMP runtime with scheduling behavior unlike
+the local four-thread OpenMP run. The permanent parallel failure test and exact
+diagnostic are the check that would falsify it.
