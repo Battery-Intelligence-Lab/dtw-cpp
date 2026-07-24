@@ -26,9 +26,11 @@
 
 #include "clarans.hpp"
 #include "../Problem.hpp"
+#include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <numeric>
 #include <random>
@@ -65,6 +67,7 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
 
   core::ClusteringResult best;
   best.total_cost = std::numeric_limits<double>::max();
+  bool best_present = false;
 
   for (int restart = 0; restart < opts.num_local; ++restart) {
     if (has_budget && dtw_evals >= opts.max_dtw_evals) break;
@@ -93,23 +96,26 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
     // -----------------------------------------------------------------------
     std::vector<int> labels(N);
     std::vector<double> nearest_dist(N);
-    double total_cost = 0.0;
 
     for (int p = 0; p < N; ++p) {
       double best_d = std::numeric_limits<double>::max();
       int best_m = 0;
+      bool has_best = false;
       for (int m = 0; m < k; ++m) {
-        double d = prob.distByInd(p, medoids[m]);
+        const double d = core::detail::require_finite_medoid_distance(
+          prob.dist_by_ind(p, medoids[m]), "clarans", p, m, medoids[m]);
         ++dtw_evals;
-        if (d < best_d) {
+        if (!has_best || d < best_d) {
           best_d = d;
           best_m = m;
+          has_best = true;
         }
       }
       labels[p] = best_m;
       nearest_dist[p] = best_d;
-      total_cost += best_d;
     }
+    double total_cost = core::detail::ordered_medoid_objective(
+      nearest_dist, "clarans");
 
     // -----------------------------------------------------------------------
     // 3. CLARANS swap loop.
@@ -153,9 +159,19 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
       //       Only the dist(p, x_in) call is a new DTW eval.
       // ------------------------------------------------------------------
       double delta = 0.0;
+      const auto add_delta = [&delta](double contribution, int point) {
+        const double next = delta + contribution;
+        if (!std::isfinite(next)) {
+          throw InvalidInput(
+            "clarans: swap objective became non-finite after point "
+            + std::to_string(point) + ".");
+        }
+        delta = next;
+      };
 
       for (int p = 0; p < N; ++p) {
-        const double d_new = prob.distByInd(p, x_in);
+        const double d_new = core::detail::require_finite_medoid_distance(
+          prob.dist_by_ind(p, x_in), "clarans", p, m_idx, x_in);
         ++dtw_evals;
 
         if (labels[p] == m_idx) {
@@ -165,14 +181,16 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
           for (int mm = 0; mm < k; ++mm) {
             if (mm == m_idx) continue;
             // distByInd is lazy-cached; repeated lookups are O(1).
-            double d = prob.distByInd(p, medoids[mm]);
+            const double d = core::detail::require_finite_medoid_distance(
+              prob.dist_by_ind(p, medoids[mm]),
+              "clarans", p, mm, medoids[mm]);
             if (d < best_remaining) best_remaining = d;
           }
-          delta += best_remaining - nearest_dist[p];
+          add_delta(best_remaining - nearest_dist[p], p);
         } else {
           // p retains its current medoid unless x_in is strictly closer.
           if (d_new < nearest_dist[p]) {
-            delta += d_new - nearest_dist[p];
+            add_delta(d_new - nearest_dist[p], p);
           }
           // else no change for this point.
         }
@@ -186,21 +204,25 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
 
         // Recompute full assignment after the swap.
         // All distances hit the lazy cache; no new DTW evals counted.
-        total_cost = 0.0;
         for (int p = 0; p < N; ++p) {
           double best_d = std::numeric_limits<double>::max();
           int best_m = 0;
+          bool has_best = false;
           for (int m = 0; m < k; ++m) {
-            double d = prob.distByInd(p, medoids[m]);
-            if (d < best_d) {
+            const double d = core::detail::require_finite_medoid_distance(
+              prob.dist_by_ind(p, medoids[m]),
+              "clarans", p, m, medoids[m]);
+            if (!has_best || d < best_d) {
               best_d = d;
               best_m = m;
+              has_best = true;
             }
           }
           labels[p] = best_m;
           nearest_dist[p] = best_d;
-          total_cost += best_d;
         }
+        total_cost = core::detail::ordered_medoid_objective(
+          nearest_dist, "clarans");
 
         neighbor_count = 0; // Reset non-improving counter.
       } else {
@@ -211,12 +233,13 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
     // -----------------------------------------------------------------------
     // 4. Track best result across restarts.
     // -----------------------------------------------------------------------
-    if (total_cost < best.total_cost) {
+    if (!best_present || total_cost < best.total_cost) {
       best.labels = labels;
       best.medoid_indices = medoids;
       best.total_cost = total_cost;
       best.converged = all_medoids || (neighbor_count >= max_nb);
       best.iterations = restart + 1;
+      best_present = true;
     }
   } // end restarts
 

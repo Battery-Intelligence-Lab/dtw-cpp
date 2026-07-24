@@ -34,6 +34,7 @@
 #include "detail/fast_pam_plan.hpp"
 #include "detail/medoid_utils.hpp"
 #include "../Problem.hpp"
+#include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 #include "../core/distance_sampling_weights.hpp"
 #include "../initialisation.hpp"
@@ -41,8 +42,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <limits>
-#include <numeric>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -100,30 +101,52 @@ void compute_nearest_and_second(
   std::vector<double>& second_dist)
 {
   const int k = static_cast<int>(medoids.size());
+  std::exception_ptr failure;
+  int failure_point = N;
 
   // Lock-free by design: each iteration writes only to nearest[p], nearest_dist[p],
   // and second_dist[p] at its own index p — no two threads access the same element.
 #pragma omp parallel for schedule(static)
   for (int p = 0; p < N; ++p) {
-    double best = std::numeric_limits<double>::max();
-    double second_best = std::numeric_limits<double>::max();
-    int best_idx = 0;
+    try {
+      double best = std::numeric_limits<double>::max();
+      double second_best = std::numeric_limits<double>::max();
+      int best_idx = 0;
+      bool has_best = false;
+      bool has_second = false;
 
-    for (int m = 0; m < k; ++m) {
-      double d = prob.dist_by_ind(p, medoids[m]);
-      if (d < best) {
-        second_best = best;
-        best = d;
-        best_idx = m;
-      } else if (d < second_best) {
-        second_best = d;
+      for (int m = 0; m < k; ++m) {
+        const double d = core::detail::require_finite_medoid_distance(
+          prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
+        if (!has_best || d < best) {
+          if (has_best) {
+            second_best = best;
+            has_second = true;
+          }
+          best = d;
+          best_idx = m;
+          has_best = true;
+        } else if (!has_second || d < second_best) {
+          second_best = d;
+          has_second = true;
+        }
+      }
+
+      nearest[p] = best_idx;
+      nearest_dist[p] = best;
+      second_dist[p] = second_best;
+    } catch (...) {
+#pragma omp critical(dtwc_medoid_assignment_failure)
+      {
+        if (p < failure_point) {
+          failure_point = p;
+          failure = std::current_exception();
+        }
       }
     }
-
-    nearest[p] = best_idx;
-    nearest_dist[p] = best;
-    second_dist[p] = second_best;
   }
+
+  if (failure) std::rethrow_exception(failure);
 }
 
 /**
@@ -131,7 +154,8 @@ void compute_nearest_and_second(
  */
 double compute_total_cost(const std::vector<double>& nearest_dist)
 {
-  return std::reduce(nearest_dist.begin(), nearest_dist.end(), 0.0);
+  return core::detail::ordered_medoid_objective(
+    nearest_dist, "fast_pam");
 }
 
 // Deterministic best-swap selection order, shared by the naive and decomposition
@@ -164,6 +188,8 @@ void pam1_naive_swap_impl(Problem& prob, int N, int k,
   for (iter = 0; iter < max_iter; ++iter) {
     double best_delta = 0.0;
     int best_m_idx = -1, best_x_new = -1;
+    std::exception_ptr failure;
+    int failure_candidate = N;
 
     const int swap_chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
@@ -175,23 +201,34 @@ void pam1_naive_swap_impl(Problem& prob, int N, int k,
       #pragma omp for schedule(dynamic, swap_chunk)
       for (int x = 0; x < N; ++x) {
         if (is_medoid[x]) continue;
-        std::fill(local_delta_m.begin(), local_delta_m.end(), 0.0);
-        for (int p = 0; p < N; ++p) {
-          const double d_xp = prob.dist_by_ind(p, x);
-          const int nearest_m = nearest[p];
-          for (int m = 0; m < k; ++m) {
-            if (m == nearest_m)
-              local_delta_m[m] += std::min(second_dist[p], d_xp) - nearest_dist[p];
-            else if (d_xp - nearest_dist[p] < 0.0)
-              local_delta_m[m] += d_xp - nearest_dist[p];
+        try {
+          std::fill(local_delta_m.begin(), local_delta_m.end(), 0.0);
+          for (int p = 0; p < N; ++p) {
+            const double d_xp = core::detail::require_finite_candidate_distance(
+              prob.dist_by_ind(p, x), "fast_pam", p, x);
+            const int nearest_m = nearest[p];
+            for (int m = 0; m < k; ++m) {
+              if (m == nearest_m)
+                local_delta_m[m] += std::min(second_dist[p], d_xp) - nearest_dist[p];
+              else if (d_xp - nearest_dist[p] < 0.0)
+                local_delta_m[m] += d_xp - nearest_dist[p];
+            }
+          }
+          for (int m = 0; m < k; ++m)             // smallest m wins ties (strict <)
+            if (better_swap(local_delta_m[m], x, local_best_delta, local_best_x_new)) {
+              local_best_delta = local_delta_m[m];
+              local_best_m_idx = m;
+              local_best_x_new = x;
+            }
+        } catch (...) {
+#pragma omp critical(dtwc_medoid_candidate_failure)
+          {
+            if (x < failure_candidate) {
+              failure_candidate = x;
+              failure = std::current_exception();
+            }
           }
         }
-        for (int m = 0; m < k; ++m)               // smallest m wins ties (strict <)
-          if (better_swap(local_delta_m[m], x, local_best_delta, local_best_x_new)) {
-            local_best_delta = local_delta_m[m];
-            local_best_m_idx = m;
-            local_best_x_new = x;
-          }
       }
       #pragma omp critical
       {
@@ -203,6 +240,7 @@ void pam1_naive_swap_impl(Problem& prob, int N, int k,
       }
     } // end omp parallel
 
+    if (failure) std::rethrow_exception(failure);
     if (best_x_new < 0 || best_delta >= -eps) { converged = true; break; }
 
     is_medoid[medoids[best_m_idx]] = false;
@@ -247,7 +285,8 @@ SwapEval find_best_swap(Problem& prob, int N, int k, int xj,
   ploss.assign(rho.begin(), rho.end()); // reuse caller's buffer (no per-candidate alloc)
   double acc = 0.0;                     // shared benefit of adding x_c (Case A over all points)
   for (int o = 0; o < N; ++o) {
-    const double doj = prob.dist_by_ind(xj, o);
+    const double doj = core::detail::require_finite_candidate_distance(
+      prob.dist_by_ind(xj, o), "fast_pam", o, xj);
     const double d1 = nearest_dist[o];
     if (doj < d1) {
       acc += doj - d1;                             // x_c becomes o's nearest
@@ -284,6 +323,8 @@ void fastpam1_swap_impl(Problem& prob, int N, int k,
   for (iter = 0; iter < max_iter; ++iter) {
     double best_delta = 0.0;
     int best_m_idx = -1, best_x_new = -1;
+    std::exception_ptr failure;
+    int failure_candidate = N;
 
     const int swap_chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
@@ -295,11 +336,22 @@ void fastpam1_swap_impl(Problem& prob, int N, int k,
       #pragma omp for schedule(dynamic, swap_chunk)
       for (int x = 0; x < N; ++x) {
         if (is_medoid[x]) continue;
-        const SwapEval e = find_best_swap(prob, N, k, x, rho, nearest, nearest_dist, second_dist, ploss);
-        if (better_swap(e.change, x, local_best_delta, local_best_x_new)) {
-          local_best_delta = e.change;
-          local_best_m_idx = e.best_m;
-          local_best_x_new = x;
+        try {
+          const SwapEval e = find_best_swap(
+            prob, N, k, x, rho, nearest, nearest_dist, second_dist, ploss);
+          if (better_swap(e.change, x, local_best_delta, local_best_x_new)) {
+            local_best_delta = e.change;
+            local_best_m_idx = e.best_m;
+            local_best_x_new = x;
+          }
+        } catch (...) {
+#pragma omp critical(dtwc_medoid_candidate_failure)
+          {
+            if (x < failure_candidate) {
+              failure_candidate = x;
+              failure = std::current_exception();
+            }
+          }
         }
       }
       #pragma omp critical
@@ -312,6 +364,7 @@ void fastpam1_swap_impl(Problem& prob, int N, int k,
       }
     } // end omp parallel
 
+    if (failure) std::rethrow_exception(failure);
     if (best_x_new < 0 || best_delta >= -eps) { converged = true; break; }
 
     is_medoid[medoids[best_m_idx]] = false;
@@ -399,20 +452,51 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
     // directly in O(N²), smallest index winning ties. Handles all three variants.
     double best_cost = std::numeric_limits<double>::max();
     int best_x = medoids[0];
+    bool best_present = false;
+    std::exception_ptr failure;
+    int failure_candidate = N;
     const int chunk = dtwc::omp_chunk_size(N);
     #pragma omp parallel
     {
       double loc_cost = std::numeric_limits<double>::max();
       int loc_x = medoids[0];
+      bool loc_present = false;
       #pragma omp for schedule(dynamic, chunk) nowait
       for (int x = 0; x < N; ++x) {
-        double c = 0.0;
-        for (int o = 0; o < N; ++o) c += prob.dist_by_ind(x, o);
-        if (c < loc_cost || (c == loc_cost && x < loc_x)) { loc_cost = c; loc_x = x; }
+        try {
+          core::detail::OrderedMedoidObjective candidate_cost("fast_pam");
+          for (int o = 0; o < N; ++o) {
+            candidate_cost.add(core::detail::require_finite_candidate_distance(
+              prob.dist_by_ind(x, o), "fast_pam", o, x));
+          }
+          const double c = candidate_cost.value();
+          if (!loc_present || c < loc_cost || (c == loc_cost && x < loc_x)) {
+            loc_cost = c;
+            loc_x = x;
+            loc_present = true;
+          }
+        } catch (...) {
+#pragma omp critical(dtwc_medoid_candidate_failure)
+          {
+            if (x < failure_candidate) {
+              failure_candidate = x;
+              failure = std::current_exception();
+            }
+          }
+        }
       }
       #pragma omp critical
-      { if (loc_cost < best_cost || (loc_cost == best_cost && loc_x < best_x)) { best_cost = loc_cost; best_x = loc_x; } }
+      {
+        if (loc_present
+            && (!best_present || loc_cost < best_cost
+                || (loc_cost == best_cost && loc_x < best_x))) {
+          best_cost = loc_cost;
+          best_x = loc_x;
+          best_present = true;
+        }
+      }
     }
+    if (failure) std::rethrow_exception(failure);
     medoids[0] = best_x;
     compute_nearest_and_second(prob, medoids, N, nearest, nearest_dist, second_dist);
     converged = true;

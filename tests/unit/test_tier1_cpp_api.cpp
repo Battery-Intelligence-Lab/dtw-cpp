@@ -255,8 +255,8 @@ TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers"
   REQUIRE_THROWS_AS(overflow.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput);
 }
 
-TEST_CASE("Lloyd snapshots its first repetition even when the cost is infinite",
-          "[api][tier1][seed][lloyd]")
+TEST_CASE("Lloyd rejects a non-finite assignment before publishing labels",
+          "[api][tier1][lloyd][nonfinite]")
 {
   const double largest = std::numeric_limits<double>::max();
   dtwc::Problem problem("lloyd_infinite_cost");
@@ -264,19 +264,12 @@ TEST_CASE("Lloyd snapshots its first repetition even when the cost is infinite",
     std::vector<std::vector<double>>{{largest}, {-largest}},
     std::vector<std::string>{"positive", "negative"}));
   problem.set_n_clusters(1);
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-  const fs::path out = fs::temp_directory_path()
-                     / ("dtwc_lloyd_infinite_" + std::to_string(nonce));
-  fs::create_directories(out);
-  problem.output_folder = out;
+  problem.set_random_seed(0);
+  const auto labels_before = problem.labels();
 
-  problem.cluster_by_kmedoids_lloyd();
-  CHECK(problem.medoids().size() == 1);
-  CHECK(problem.labels().size() == 2);
-  CHECK(std::isinf(problem.find_total_cost()));
-
-  std::error_code ec;
-  fs::remove_all(out, ec);
+  REQUIRE_THROWS_AS(
+    problem.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput);
+  CHECK(problem.labels() == labels_before);
 }
 
 TEST_CASE("Tier-1 C++ rejects invalid method, k, and matrix-free GPU mismatch", "[api][tier1]")

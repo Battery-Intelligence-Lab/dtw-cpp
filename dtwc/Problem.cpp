@@ -17,6 +17,7 @@
 #include "scores.hpp"          // for silhouette
 #include "settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "core/matrix_io.hpp"  // for operator<<(ostream, DenseDistanceMatrix)
+#include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"   // GPU distance matrix computation
@@ -1002,16 +1003,26 @@ void Problem::cluster_by_mip()
  */
 void Problem::assign_clusters()
 {
-  auto assignClustersTask = [this](size_t i_p) //!< i_p  and i_c in [0, Np)
+  std::vector<int> labels(data.size());
+  auto assignClustersTask = [this, &labels](size_t i_p) //!< i_p and i_c in [0, Np)
   {
     const int ip = static_cast<int>(i_p);
-    auto minIt = std::min_element(centroids_ind.begin(), centroids_ind.end(), [this, ip](int ic_1, int ic_2) {
-      return dist_by_ind(ip, ic_1) < dist_by_ind(ip, ic_2);
-    });
-    clusters_ind[i_p] = static_cast<int>(std::distance(centroids_ind.begin(), minIt));
+    double best_distance = std::numeric_limits<double>::max();
+    int best_slot = 0;
+    bool has_best = false;
+    for (std::size_t slot = 0; slot < centroids_ind.size(); ++slot) {
+      const int medoid = centroids_ind[slot];
+      const double distance = core::detail::require_finite_medoid_distance(
+        dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
+        static_cast<int>(slot), medoid);
+      if (!has_best || distance < best_distance) {
+        best_distance = distance;
+        best_slot = static_cast<int>(slot);
+        has_best = true;
+      }
+    }
+    labels[i_p] = best_slot;
   };
-
-  clusters_ind.resize(data.size()); // Resize before assigning.
 
   // If the full matrix is not materialised yet, distByInd() may lazily compute
   // symmetric entries on demand. Different points can request the same packed
@@ -1020,6 +1031,7 @@ void Problem::assign_clusters()
   // read-only and the parallel path is safe again.
   const size_t workers = is_distance_matrix_filled() ? 32u : 1u;
   run(assignClustersTask, data.size(), workers);
+  clusters_ind = std::move(labels);
 }
 
 /**
@@ -1216,18 +1228,23 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
  */
 double Problem::find_total_cost()
 {
-  double sum = 0;
+  core::detail::OrderedMedoidObjective total("kmedoids_lloyd");
   for (const auto idx : Range(size())) {
     const int i = static_cast<int>(idx);
+    const int medoid_slot = clusters_ind[i];
+    const int medoid_index = centroids_ind[medoid_slot];
+    const double distance = core::detail::require_finite_medoid_distance(
+      dist_by_ind(i, medoid_index), "kmedoids_lloyd",
+      idx, medoid_slot, medoid_index);
     if constexpr (settings::isDebug)
       std::cout << "Distance between " << i << " and closest cluster " << clusters_ind[i]
-                << " which is: " << dist_by_ind(i, centroid_of(i)) << "\n";
+                << " which is: " << distance << "\n";
 
     // k-medoids objective: sum of raw DTW distances (not squared, unlike k-means).
-    sum += dist_by_ind(i, centroid_of(i));
+    total.add(distance);
   }
 
-  return sum;
+  return total.value();
 }
 
 } // namespace dtwc

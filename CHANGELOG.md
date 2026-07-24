@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Corrected nearest-medoid assignment in FastPAM, CLARANS, resident/streamed
+  FastCLARA, and Lloyd: first-slot ties and finite `DBL_MAX` objectives now
+  publish consistently, objectives fold in point order, and non-finite
+  distances or overflowing objectives raise typed diagnostics.
 - Corrected CPU Float32 DTW no-path results to the public double `DBL_MAX`
   sentinel instead of exposing widened `FLT_MAX`; CPU and GPU result
   boundaries now share the same exact normalization policy.
