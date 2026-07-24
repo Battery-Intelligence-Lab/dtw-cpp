@@ -371,6 +371,43 @@ if(TARGET dtwc_cl)
             TIMEOUT 120)
 endif()
 
+# F17 must drive the real CLI from a binary result written by the production
+# serializer. The .cc suffix keeps the fixture writer out of the recursive
+# Catch2 *.cpp test-target glob.
+if(TARGET dtwc_cl)
+    add_executable(
+        f17_checkpoint_writer
+        integration/f17_checkpoint_writer.cc)
+    target_link_libraries(
+        f17_checkpoint_writer
+        PRIVATE
+            dtwc++
+            project_options)
+
+    add_test(
+        NAME test_cli_resume_state
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DCLI=$<TARGET_FILE:dtwc_cl>"
+            "-DFIXTURE_WRITER=$<TARGET_FILE:f17_checkpoint_writer>"
+            "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+            "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/conformance/conformance.toml"
+            "-DBINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}"
+            "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/f17-cli-resume"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_resume_state.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(
+        test_cli_resume_state
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION
+                "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd])?([ :]|$)"
+            LABELS "integration;f17"
+            PASS_REGULAR_EXPRESSION
+                "F17_CLI_RESUME subject=real_dtwc_cl writer=production_serializer runs=12/12 replay_fields=10/10 markers=2/2 algorithm_skipped=1/1 fresh_discriminator=4/4 checkpoint_preserved=10/10 rejection_cases=9/9 sources_preserved=2/2 skips=0"
+            RUN_SERIAL TRUE
+            TIMEOUT 120)
+endif()
+
 # F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability
 # probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.

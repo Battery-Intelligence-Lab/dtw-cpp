@@ -221,8 +221,17 @@ algorithm or save/load call consumes `enabled`, `save_interval`, or
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A binary result
 checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
-`<name>_distmat.cache`. CLI `--resume` reads but currently discards the binary
-result state (F17); Python lacks the two direct binary bindings (F23).
+`<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
+fields of the completed binary result, restores them into `Problem`, skips
+clustering, and does not rewrite the source checkpoint. A `converged=false`
+snapshot is a completed iteration-capped result; `--max-iter` is not an
+additional continuation budget. Missing, unreadable-header/payload, wrong-N/k,
+out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
+fails loudly.
+Binary v1 has no data, input-order, configuration, or producing-method identity,
+so the caller must select the same `<output>/<name>`, input order, and
+configuration. It is result replay, not mid-algorithm continuation. Python
+lacks the two direct binary bindings (F23).
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,

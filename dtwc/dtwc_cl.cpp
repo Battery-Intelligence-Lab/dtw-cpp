@@ -47,6 +47,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -466,6 +467,59 @@ static std::optional<fs::path> configure_cli_distance_storage(
 #endif
 }
 
+/// Validate the structurally loadable binary result before the CLI applies it.
+/// Binary v1 has no input/configuration identity, so this pins only the shape
+/// and field invariants that can be proven without changing the frozen format.
+static std::string validate_cli_resume_result(
+  const dtwc::core::ClusteringResult &result,
+  size_t expected_series,
+  int expected_clusters)
+{
+  if (result.labels.size() != expected_series) {
+    return "Binary result checkpoint has "
+      + std::to_string(result.labels.size()) + " labels; current input has "
+      + std::to_string(expected_series) + " series.";
+  }
+  if (expected_clusters <= 0
+      || result.medoid_indices.size()
+           != static_cast<size_t>(expected_clusters)) {
+    return "Binary result checkpoint has "
+      + std::to_string(result.medoid_indices.size())
+      + " medoids; --n-clusters requests "
+      + std::to_string(expected_clusters) + ".";
+  }
+
+  for (size_t i = 0; i < result.labels.size(); ++i) {
+    const int label = result.labels[i];
+    if (label < 0 || label >= expected_clusters) {
+      return "Binary result checkpoint label[" + std::to_string(i) + "]="
+        + std::to_string(label) + " is outside [0,"
+        + std::to_string(expected_clusters) + ").";
+    }
+  }
+  for (size_t i = 0; i < result.medoid_indices.size(); ++i) {
+    const int medoid = result.medoid_indices[i];
+    if (medoid < 0 || static_cast<size_t>(medoid) >= expected_series) {
+      return "Binary result checkpoint medoid[" + std::to_string(i) + "]="
+        + std::to_string(medoid) + " is outside [0,"
+        + std::to_string(expected_series) + ").";
+    }
+    for (size_t previous = 0; previous < i; ++previous) {
+      if (result.medoid_indices[previous] == medoid) {
+        return "Binary result checkpoint medoid index "
+          + std::to_string(medoid) + " is duplicated.";
+      }
+    }
+  }
+  if (result.iterations < 0) {
+    return "Binary result checkpoint iteration count "
+      + std::to_string(result.iterations) + " is negative.";
+  }
+  if (!std::isfinite(result.total_cost))
+    return "Binary result checkpoint total cost is not finite.";
+  return {};
+}
+
 /// Convert float64 Data to float32 in-place.
 static dtwc::Data convert_to_f32(dtwc::Data &&data_f64)
 {
@@ -798,7 +852,9 @@ static int run_cli_main(int argc, char *argv[])
   // Binary checkpoint resume & mmap threshold
   bool resume = false;
   size_t mmap_threshold = 50000;
-  app.add_flag("--resume", resume, "Resume from checkpoint (distance matrix cache + clustering state)");
+  app.add_flag(
+    "--resume", resume,
+    "Replay the completed binary result at <output>/<name>_checkpoint.bin");
   // Deprecated spelling: --restart -> --resume (api-contract-2.0.md §2.7). Hidden
   // from --help; accepted with a one-line stderr warning (post-parse block below).
   bool restart_deprecated = false;
@@ -1395,15 +1451,25 @@ static int run_cli_main(int argc, char *argv[])
   const bool matrix_free_method = method == "onebatch" || method == "tadpole"
     || (method == "clara" && !clara_uses_full_sample);
 
+  const auto binary_checkpoint_path =
+    fs::path(output_dir) / (prob_name + "_checkpoint.bin");
+  std::optional<dtwc::core::ClusteringResult> resumed_result;
   if (resume) {
-    auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
-    dtwc::core::ClusteringResult ckpt_result;
-    if (dtwc::load_binary_checkpoint(ckpt_result, ckpt_path)) {
-      if (verbose)
-        std::cout << "Loaded checkpoint: " << ckpt_result.iterations
-                  << " iterations, cost=" << ckpt_result.total_cost << "\n";
+    dtwc::core::ClusteringResult candidate;
+    if (!dtwc::load_binary_checkpoint(candidate, binary_checkpoint_path)) {
+      throw dtwc::InvalidInput(
+        "--resume requires a readable binary result checkpoint at '"
+        + binary_checkpoint_path.string()
+        + "'. Omit --resume to start a new clustering run.");
     }
+    if (const auto error = validate_cli_resume_result(
+          candidate, input_series_count, n_clusters);
+        !error.empty()) {
+      throw dtwc::InvalidInput(error);
+    }
+    resumed_result.emplace(std::move(candidate));
   }
+  const bool replaying_result = resumed_result.has_value();
 
   // ---- Configure DTW ----
   prob.set_band(band);
@@ -1448,16 +1514,27 @@ static int run_cli_main(int argc, char *argv[])
   const auto cache_metric = metric == "squared_euclidean"
     ? dtwc::core::MetricType::SquaredL2
     : dtwc::core::MetricType::L1;
-  try {
-    const auto mmap_cache = configure_cli_distance_storage(
-      prob, method, mmap_threshold,
-      fs::path(output_dir) / (prob_name + "_distmat.cache"), cache_metric,
-      !checkpoint_dir.empty(), !dist_mat_path.empty(), clara_uses_full_sample);
-    if (mmap_cache && verbose)
-      std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
-  } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << "\n";
-    return EXIT_FAILURE;
+  const auto mmap_cache_path =
+    fs::path(output_dir) / (prob_name + "_distmat.cache");
+  // Result replay never creates unused O(N^2) state. An existing mmap cache
+  // can still reopen independently for scoring; explicit dense imports and
+  // directory checkpoints use the default dense destination below.
+  const bool reopen_replay_mmap =
+    replaying_result
+    && checkpoint_dir.empty()
+    && dist_mat_path.empty()
+    && fs::is_regular_file(mmap_cache_path);
+  if (!replaying_result || reopen_replay_mmap) {
+    try {
+      const auto mmap_cache = configure_cli_distance_storage(
+        prob, method, mmap_threshold, mmap_cache_path, cache_metric,
+        !checkpoint_dir.empty(), !dist_mat_path.empty(), clara_uses_full_sample);
+      if (mmap_cache && verbose)
+        std::cout << "Using memory-mapped distance matrix: " << *mmap_cache << "\n";
+    } catch (const std::exception &e) {
+      std::cerr << "Error: " << e.what() << "\n";
+      return EXIT_FAILURE;
+    }
   }
   // Set MIP solver (relevant for method=mip)
   if (solver == "highs")
@@ -1488,13 +1565,13 @@ static int run_cli_main(int argc, char *argv[])
   }
 
   // ---- GPU distance matrix (if --device cuda) ----
-  if (dev.is_cuda && matrix_free_method) {
+  if (!replaying_result && dev.is_cuda && matrix_free_method) {
     std::cerr << "Error: --method " << method
               << " uses a matrix-free CPU distance schedule; CUDA execution is not "
                  "implemented for that schedule. Use --device cpu.\n";
     return EXIT_FAILURE;
   }
-  if (dev.is_cuda && !prob.isDistanceMatrixFilled()) {
+  if (!replaying_result && dev.is_cuda && !prob.isDistanceMatrixFilled()) {
 #ifdef DTWC_HAS_CUDA
     if (!dtwc::cuda::cuda_available()) {
       std::cerr << "Error: --device cuda requested but no CUDA GPU detected.\n";
@@ -1550,7 +1627,16 @@ static int run_cli_main(int argc, char *argv[])
   // ---- Run clustering ----
   dtwc::core::ClusteringResult result;
 
-  if (method == "pam") {
+  if (replaying_result) {
+    result = std::move(*resumed_result);
+    std::cout
+      << "Replaying completed result checkpoint: N=" << result.labels.size()
+      << ", k=" << result.medoid_indices.size()
+      << ", iterations=" << result.iterations
+      << ", converged=" << (result.converged ? "yes" : "no")
+      << " (requested method=" << method
+      << "; binary v1 has no method provenance)\n";
+  } else if (method == "pam") {
     // FastPAM
     if (verbose)
       std::cout << "Running FastPAM (k=" << n_clusters << ") ...\n";
@@ -1682,13 +1768,15 @@ static int run_cli_main(int argc, char *argv[])
   }
 
   // ---- Save binary checkpoint of clustering result ----
-  {
-    auto ckpt_path = fs::path(output_dir) / (prob_name + "_checkpoint.bin");
-    dtwc::save_binary_checkpoint(result, ckpt_path);
-  }
+  if (!replaying_result)
+    dtwc::save_binary_checkpoint(result, binary_checkpoint_path);
 
   // ---- Apply result to prob for scoring ----
-  if (method == "pam" || method == "clara" || method == "hierarchical") {
+  if (replaying_result) {
+    prob.set_n_clusters(n_clusters);
+    prob.clusters_ind = result.labels;
+    prob.centroids_ind = result.medoid_indices;
+  } else if (method == "pam" || method == "clara" || method == "hierarchical") {
     prob.set_numberOfClusters(n_clusters);
     prob.clusters_ind = result.labels;
     prob.centroids_ind = result.medoid_indices;
@@ -1751,8 +1839,11 @@ static int run_cli_main(int argc, char *argv[])
 
   // Summary
   std::cout << "\n=== Results ===\n"
-            << "  Method:     " << method << "\n"
-            << "  Clusters:   " << n_clusters << "\n"
+            << "  Method:     "
+            << (replaying_result ? "checkpoint replay" : method) << "\n";
+  if (replaying_result)
+    std::cout << "  Requested:  " << method << "\n";
+  std::cout << "  Clusters:   " << n_clusters << "\n"
             << "  Total cost: " << std::setprecision(6) << result.total_cost << "\n"
             << "  Converged:  " << (result.converged ? "yes" : "no") << "\n"
             << "  Iterations: " << result.iterations << "\n"

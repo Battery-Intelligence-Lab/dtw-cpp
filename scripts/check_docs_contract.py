@@ -70,6 +70,8 @@ def assert_contract_audit_state() -> None:
         "**Reserved:** `Method::LRCore`",
         "today it does not",
         "directory checkpoint = `distances.csv` + `metadata.txt`",
+        "CLI `--resume` reads but currently discards",
+        "current CLI only reads and reports its binary result checkpoint",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -85,6 +87,9 @@ def assert_contract_audit_state() -> None:
         "passive configuration carrier",
         "independent copy",
         "Python `Problem.set_view_data` currently constructs owning",
+        "completed-result replay",
+        "additional continuation budget",
+        "same `<output>/<name>`",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
@@ -287,7 +292,7 @@ def assert_dtw_derivation_sync() -> None:
         "plan": (
             "- [x] **D1. DTW recurrence + Sakoe–Chiba band.**",
             "**F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**",
-            "Metal source uses fixed geometry",
+            "Metal's no-LB source",
             "**F33 — CPU banded DTW used an endpoint-scaled corridor",
         ),
         "kernel": (

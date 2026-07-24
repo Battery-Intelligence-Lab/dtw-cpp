@@ -5,7 +5,11 @@ weight: 8
 
 # Checkpointing
 
-Checkpointing allows you to save and resume distance matrix computations. For large datasets, computing the full pairwise DTW distance matrix can take hours. If the process is interrupted, checkpointing lets you resume from where you left off instead of restarting from scratch.
+Checkpointing allows you to save and resume distance-matrix computation. For
+large datasets, computing the full pairwise DTW matrix can take hours. If that
+work is interrupted, a directory checkpoint or validated mmap cache can avoid
+recomputing finished pairs. The separate binary mechanism replays a completed
+clustering result; it does not resume a method in mid-iteration.
 
 DTWC++ has three persistence mechanisms: the directory checkpoint documented
 below, a binary clustering-result checkpoint used by `--resume`, and the packed
@@ -13,31 +17,39 @@ memory-mapped distance cache selected by `--mmap-threshold`. The mmap cache
 resumes automatically when its identity matches; it is not the same format as
 the dense CSV directory checkpoint.
 
-## How it works
+## Directory checkpoint format
 
-A checkpoint is a directory containing two files:
+Directory checkpoint v2 publishes a small root `CURRENT` file whose lowercase
+64-hex generation ID selects immutable
+`generations/<id>/{distances.csv,metadata.txt}` files. A successful save writes
+and validates a new generation before atomically replacing `CURRENT`; it does
+not overwrite the active generation in place.
 
-- **`distances.csv`** -- the NxN distance matrix, with `NaN` for pairs that have not yet been computed
-- **`metadata.txt`** -- key=value pairs describing the computation state
+- **`distances.csv`** -- the exact N-by-N matrix; an empty field is the only
+  uncomputed representation.
+- **`metadata.txt`** -- the exact seven-key manifest described below.
 
 ### Metadata fields
 
 | Key | Description |
 |-----|-------------|
 | `n` | Number of time series (matrix dimension) |
-| `band` | Sakoe-Chiba band width used |
-| `variant` | DTW variant (Standard, DDTW, WDTW, ADTW, SoftDTW) |
 | `pairs_computed` | Number of distance pairs already computed |
 | `timestamp` | ISO 8601 UTC timestamp of when the checkpoint was saved |
+| `format` / `version` | `dtwc-dense-checkpoint` / `2` |
+| `identity_sha256` | Exact data and distance-configuration identity |
+| `payload_sha256` | Digest of the canonical CSV bytes |
 
 Example `metadata.txt`:
 
 ```
+format=dtwc-dense-checkpoint
+version=2
 n=500
-band=10
-variant=Standard
 pairs_computed=125000
-timestamp=2026-03-29T14:30:00
+timestamp=2026-03-29T14:30:00Z
+identity_sha256=<64 lowercase hex characters>
+payload_sha256=<64 lowercase hex characters>
 ```
 
 ## C++ API
@@ -70,14 +82,14 @@ if (dtwc::load_checkpoint(prob, "./checkpoints/run1")) {
 }
 ```
 
-Validation rules:
-- The matrix dimension in the checkpoint (`n`) must match `prob.size()`
-- If all pairs are computed, the distance matrix is marked as fully filled
-- If only some pairs are computed, the matrix is marked as partial so remaining pairs can be computed
+Load validates `CURRENT`, the exact manifest, full data/configuration identity,
+payload digest, CSV shape, finite full-token values, bit-identical symmetry, and
+computed-pair count before publishing any matrix state. Missing, incompatible,
+legacy, or malformed state returns `false` without changing `Problem`.
 
 ### CheckpointOptions
 
-The `CheckpointOptions` struct controls automatic checkpoint behavior:
+`CheckpointOptions` is currently a passive configuration carrier:
 
 ```cpp
 dtwc::CheckpointOptions opts;
@@ -85,6 +97,9 @@ opts.directory = "./checkpoints";  // Directory to save checkpoint files
 opts.save_interval = 100;          // Save every N pairs computed (reserved)
 opts.enabled = false;              // Whether checkpointing is enabled
 ```
+
+No algorithm or save/load function currently consumes these fields. Call
+`save_checkpoint` and `load_checkpoint` explicitly.
 
 ## Python API
 
@@ -157,6 +172,31 @@ When `--mmap-threshold` selects mmap storage, `--checkpoint` and
 `--dist-matrix` are rejected because both require a legacy dense CSV matrix.
 Omit those options to use the fingerprinted cache's automatic resume, or raise
 the threshold only if the dense matrix and CSV checkpoint fit in RAM.
+
+## Completed binary-result replay
+
+Every successful fresh CLI clustering run writes
+`<output>/<name>_checkpoint.bin`. `--resume` selects that exact path, validates
+the result against the current N and k, restores labels, medoids, total cost,
+iterations, and convergence, and skips clustering:
+
+```bash
+dtwc_cl --input data.csv -k 5 --output ./results --name run1
+dtwc_cl --input data.csv -k 5 --output ./results --name run1 --resume
+```
+
+The source binary remains unchanged. `converged=false` is replayed as a
+completed iteration-capped result; `--max-iter` is not an extra continuation
+budget. Missing or incompatible requested state fails instead of silently
+starting a fresh clustering run.
+
+Binary format v1 does not store data/configuration identity, input order, or
+the method that produced the result. Use the same input order and clustering
+configuration, and treat the unconditional `checkpoint replay` summary as the
+result source rather than method provenance. Result replay is independent of
+the directory checkpoint and mmap cache. An explicitly imported or already
+available distance matrix may still be used for scoring, but replay does not
+create or compute unused matrix state.
 
 ## Example workflow
 

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed CLI `--resume`: it now validates and exactly replays the completed
+  binary clustering result, skips every clustering method, preserves the source
+  checkpoint, and fails loudly when requested state is missing or incompatible.
+  Directory distance checkpoints and mmap caches remain independent.
 - Made the tracked CMake presets portable and truthful: they now declare the
   actual CMake 3.26 floor, discover Windows Clang through `PATH`, and hide
   host-specific configure/build/test choices on other operating systems. The
@@ -63,9 +67,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   semantic SHA-256 identity, per-row payload digests, exclusive session lease,
   rejection of legacy v1/v2 caches, and accidental-corruption (not keyed
   tamper-proof) scope.
-- Reconciled the configuration reference with all 52 live CLI flags, separated
-  TOML from the smaller YAML key map/precedence bug, and disclosed that
-  `--resume` currently reads but does not apply its binary result checkpoint.
+- Reconciled the configuration reference with all 52 live CLI flags and
+  separated TOML from the smaller YAML key map/precedence bug.
 - Corrected the website method catalog: removed unsupported Huber, documented
   MSM/TWE and all CLI clustering methods, fixed FasterPAM provenance/complexity,
   and stopped presenting the exact-matrix recomputation route as an accelerator.

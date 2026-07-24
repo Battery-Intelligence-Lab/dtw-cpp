@@ -78,5 +78,6 @@ device: cpu
 # GPU kernel precision: auto (default), fp32, fp64.
 gpu-precision: auto
 
-# Resume from checkpoint (requires --checkpoint).
+# Replay the completed binary result selected by this output/name.
+# This is independent of the dense `checkpoint` directory.
 # resume: true

@@ -179,7 +179,7 @@ file to stream them under the cap.
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
-| `--resume` | Read the automatic binary result checkpoint (known limitation below) | off |
+| `--resume` | Replay the completed automatic binary result at `<output>/<name>_checkpoint.bin` | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
@@ -213,11 +213,18 @@ combination before opening either path. CUDA mmap runs must select explicit
 `--gpu-precision fp32` or `fp64`; the hardware-dependent `auto` setting is not a
 stable cache identity.
 
-`--resume` is a separate binary clustering-result path. The current CLI reads
-and reports that object but does not apply it to the subsequent computation.
-This is an open defect, not working algorithm-state resume. Use the dense
-`--checkpoint` path for its supported distance-matrix save/load behavior; mmap
-storage resumes automatically after version-3 validation.
+`--resume` is a separate completed-result replay path. It loads
+`<output>/<name>_checkpoint.bin`, validates N, k, labels, medoids, iterations,
+and cost, restores all five result fields, and skips clustering. It preserves
+the binary source file; `converged=false` remains an iteration-capped completed
+result, and `--max-iter` is not an extra budget. Missing or incompatible
+requested state is an error rather than a fresh fallback.
+
+Binary result format v1 does not store the producing method or a data/config
+fingerprint. Replay therefore assumes the same input order and clustering
+configuration at the explicitly selected output/name. It is not
+mid-algorithm continuation. The dense `--checkpoint` path and the mmap cache
+remain independent distance-matrix mechanisms.
 
 ### GPU Options
 
@@ -312,14 +319,16 @@ dtwc_cl -i data.csv -k 5 --device cuda --gpu-precision fp32 -v
 dtwc_cl --config config.toml
 ```
 
-### Checkpoint and resume
+### Distance checkpoint and completed-result replay
 
 ```bash
-# Start with checkpointing
+# Save/load dense distance state; a restart uses the same command, without --resume
+dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 
-# If interrupted, resume from the same checkpoint
-dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints --resume
+# Replay a completed result from the same output/name without rerunning clustering
+dtwc_cl -i data.csv -k 5 --output ./results --name run1
+dtwc_cl -i data.csv -k 5 --output ./results --name run1 --resume
 ```
 
 All flags are case-insensitive for enum values (e.g., `--method PAM` works the same as `--method pam`).

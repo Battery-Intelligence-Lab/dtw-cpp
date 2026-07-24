@@ -677,3 +677,57 @@ TEST_CASE("Parquet CLI plan treats a zero RAM limit as uncapped",
   CHECK_NOTHROW(resolve_parquet_cli_plan(
     "clara", 20, huge, 0, ParquetCliLayout::Directory));
 }
+
+TEST_CASE("CLI validates a binary result before replay",
+          "[cli][resume][checkpoint]")
+{
+  dtwc::core::ClusteringResult valid;
+  valid.labels = {0, 0, 1, 1};
+  valid.medoid_indices = {0, 2};
+  valid.total_cost = 4.5;
+  valid.iterations = 7;
+  valid.converged = false;
+  CHECK(validate_cli_resume_result(valid, 4, 2).empty());
+
+  auto candidate = valid;
+  candidate.labels.pop_back();
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("current input has 4 series"));
+
+  candidate = valid;
+  candidate.medoid_indices.pop_back();
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("--n-clusters requests 2"));
+
+  candidate = valid;
+  candidate.labels[0] = 2;
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("label[0]=2 is outside [0,2)"));
+
+  candidate = valid;
+  candidate.medoid_indices[0] = 4;
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("medoid[0]=4 is outside [0,4)"));
+
+  candidate = valid;
+  candidate.medoid_indices[1] = candidate.medoid_indices[0];
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("medoid index 0 is duplicated"));
+
+  candidate = valid;
+  candidate.iterations = -1;
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("iteration count -1 is negative"));
+
+  candidate = valid;
+  candidate.total_cost = std::numeric_limits<double>::infinity();
+  CHECK_THAT(
+    validate_cli_resume_result(candidate, 4, 2),
+    Catch::Matchers::ContainsSubstring("total cost is not finite"));
+}

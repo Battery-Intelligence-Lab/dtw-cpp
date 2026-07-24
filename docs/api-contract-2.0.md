@@ -445,8 +445,17 @@ algorithm or save/load call consumes `enabled`, `save_interval`, or
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A binary result
 checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
-`<name>_distmat.cache`. CLI `--resume` reads but currently discards the binary
-result state (F17); Python lacks the two direct binary bindings (F23).
+`<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
+fields of the completed binary result, restores them into `Problem`, skips
+clustering, and does not rewrite the source checkpoint. A `converged=false`
+snapshot is a completed iteration-capped result; `--max-iter` is not an
+additional continuation budget. Missing, unreadable-header/payload, wrong-N/k,
+out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
+fails loudly.
+Binary v1 has no data, input-order, configuration, or producing-method identity,
+so the caller must select the same `<output>/<name>`, input order, and
+configuration. It is result replay, not mid-algorithm continuation. Python
+lacks the two direct binary bindings (F23).
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
@@ -736,11 +745,12 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      The SLURM path machine-parses `<name>_labels.csv` and maps 1-based
      lexically-sorted rows back to input order (`_hpc.py:45-65`).
    - *Run-time persistence artifacts (up to 2 files) — NOT part of the save()
-     equal-bytes set.* `<name>_checkpoint.bin` is written by every successful CLI
-     run, including streamed FastCLARA; `<name>_distmat.cache` is written when
-     mapped distance storage is selected. They are produced **during the run**
-     for resume (invariant 4), **not** by `Result::save(dir)`. Their format is
-     preserved for `--resume` compatibility,
+     equal-bytes set.* `<name>_checkpoint.bin` is written by every successful
+     fresh clustering run, including streamed FastCLARA, and is preserved
+     unchanged by a successful replay; `<name>_distmat.cache` is written when
+     mapped distance storage is selected. They are produced **during a fresh
+     run** for resume (invariant 4), **not** by `Result::save(dir)`. Their format
+     is preserved for `--resume` compatibility,
      but they are explicitly outside the `save()`↔CLI byte-identity claim. The
      mmap cache's safety-mandated v1/v2→v3 invalidation is the authorized
      exception: v1 cannot identify its data/configuration, while v2 does not
@@ -751,9 +761,11 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    deprecation path (§4) with those two callers updated in the same commit.
 4. **Checkpoint/resume triple.** Directory checkpoint v2 (`CURRENT` plus
    `generations/<id>/{distances.csv,metadata.txt}`), binary result checkpoint,
-   and mmap distance-matrix cache with `--resume` form the frozen triple. Python
-   binary bindings are missing (F23), and CLI `--resume` loads but does not
-   apply binary clustering state (F17). A non-full FastCLARA run
+   and mmap distance-matrix cache form the frozen triple. Directory checkpoints
+   load whenever `--checkpoint` is supplied, and mmap caches reopen
+   automatically; neither requires `--resume`. The latter flag is solely the
+   structurally validated completed-result replay described in §2.7. Python
+   binary bindings are missing (F23). A non-full FastCLARA run
    has no parent distance matrix and therefore rejects the directory checkpoint
    and imported dense matrix paths; its automatic binary result checkpoint is
    still written. The full-sample PAM fallback retains the ordinary triple.

@@ -45,9 +45,11 @@ files. The repository's complete example is
 
 `checkpoint` enables the dense CSV distance checkpoint, which loads on startup
 and saves on completion. The separate `resume` key maps the live `--resume`
-flag, but the current CLI only reads and reports its binary result checkpoint;
-it does not restore algorithm state from that object. Do not rely on `resume`
-until the open CLI defect is repaired.
+flag: it validates and replays the completed binary result selected by the same
+`output` and `name`, restores all result fields, skips clustering, and preserves
+the binary file. It is not algorithm-state continuation, does not add
+`max-iter`, and assumes the same input order/configuration because binary v1 has
+no semantic fingerprint. Missing or incompatible state is a hard error.
 
 These four flags control the command invocation rather than the clustering
 payload and are passed on the command line: `--help`, `--version`, `--config`,

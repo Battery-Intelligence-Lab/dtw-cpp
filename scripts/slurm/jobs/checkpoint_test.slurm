@@ -7,7 +7,7 @@
 #SBATCH --output=logs/checkpoint_test_%j.out
 #SBATCH --error=logs/checkpoint_test_%j.err
 #
-# DTWC++ checkpoint/resume test — verify deterministic restart
+# DTWC++ checkpoint/resume test — verify completed-result replay
 #
 # Usage: sbatch scripts/slurm/jobs/checkpoint_test.slurm
 #        Expects build-htc-cpu/ to exist (see scripts/slurm/build-arc.sh htc-cpu)
@@ -77,7 +77,13 @@ JSONEOF
     echo "Timing written: ${outfile}"
 }
 
-# ── Run 1: Fresh run with checkpoint ─────────────────────────────────────
+# ── Run 1: produce a completed result and dense distance checkpoint ──────
+RUN1_DIR="${RESULTS_DIR}/ckpt_run1"
+RUN2_DIR="${RESULTS_DIR}/ckpt_run2"
+RUN1_LOG="${RESULTS_DIR}/checkpoint_run1.log"
+RUN2_LOG="${RESULTS_DIR}/checkpoint_run2.log"
+mkdir -p "${RUN1_DIR}" "${RUN2_DIR}"
+
 echo ""
 echo "── Run 1: Fresh run with checkpoint ────────────────────────────"
 T_START=$(date +%s.%N)
@@ -91,16 +97,35 @@ DTWC_EXIT=0
     --verbose \
     --name coffee \
     --checkpoint "${CKPT_DIR}" \
-    --output "${RESULTS_DIR}/ckpt_run1" \
+    --output "${RUN1_DIR}" \
+    >"${RUN1_LOG}" 2>&1 \
     || DTWC_EXIT=$?
+cat "${RUN1_LOG}"
 T_END=$(date +%s.%N)
 ELAPSED=$(echo "${T_END} - ${T_START}" | bc)
 write_timing "checkpoint_run1" "${ELAPSED}" "${DTWC_EXIT}"
-echo "Run 1 completed in ${ELAPSED}s (exit ${DTWC_EXIT})"
+if [[ "${DTWC_EXIT}" -ne 0 ]]; then
+    echo "ERROR: Fresh checkpoint run failed with exit ${DTWC_EXIT}." >&2
+    exit 1
+fi
 
-# ── Run 2: Resume from checkpoint ────────────────────────────────────────
+for artifact in coffee_checkpoint.bin coffee_labels.csv coffee_medoids.csv; do
+    if [[ ! -f "${RUN1_DIR}/${artifact}" ]]; then
+        echo "ERROR: Fresh run did not create ${artifact}." >&2
+        exit 1
+    fi
+done
+cp "${RUN1_DIR}/coffee_labels.csv" "${RESULTS_DIR}/expected_labels.csv"
+cp "${RUN1_DIR}/coffee_medoids.csv" "${RESULTS_DIR}/expected_medoids.csv"
+cp "${RUN1_DIR}/coffee_checkpoint.bin" "${RUN2_DIR}/coffee_checkpoint.bin"
+# Make a byte-identical rewrite observable through whole-second `stat -c %Y`.
+touch -d "24 hours ago" "${RUN2_DIR}/coffee_checkpoint.bin"
+CHECKPOINT_SHA_BEFORE=$(sha256sum "${RUN2_DIR}/coffee_checkpoint.bin" | awk '{print $1}')
+CHECKPOINT_MTIME_BEFORE=$(stat -c %Y "${RUN2_DIR}/coffee_checkpoint.bin")
+
+# ── Run 2: replay only the copied binary result ──────────────────────────
 echo ""
-echo "── Run 2: Resume from checkpoint ───────────────────────────────"
+echo "── Run 2: Replay completed binary result ───────────────────────"
 T_START=$(date +%s.%N)
 DTWC_EXIT=0
 "${DTWC_BIN}" \
@@ -112,47 +137,62 @@ DTWC_EXIT=0
     --verbose \
     --name coffee \
     --resume \
-    --checkpoint "${CKPT_DIR}" \
-    --output "${RESULTS_DIR}/ckpt_run2" \
+    --output "${RUN2_DIR}" \
+    >"${RUN2_LOG}" 2>&1 \
     || DTWC_EXIT=$?
+cat "${RUN2_LOG}"
 T_END=$(date +%s.%N)
 ELAPSED=$(echo "${T_END} - ${T_START}" | bc)
 write_timing "checkpoint_run2" "${ELAPSED}" "${DTWC_EXIT}"
-echo "Run 2 completed in ${ELAPSED}s (exit ${DTWC_EXIT})"
-
-# ── Compare labels ───────────────────────────────────────────────────────
-echo ""
-echo "── Comparing labels from Run 1 and Run 2 ──────────────────────"
-
-# Find the labels CSV files (adapt glob to actual output naming)
-LABELS_1=$(find "${RESULTS_DIR}/ckpt_run1" -name "*labels*" -o -name "*assignment*" 2>/dev/null | head -1)
-LABELS_2=$(find "${RESULTS_DIR}/ckpt_run2" -name "*labels*" -o -name "*assignment*" 2>/dev/null | head -1)
-
-if [[ -z "${LABELS_1}" || -z "${LABELS_2}" ]]; then
-    echo "WARNING: Could not find labels files to compare."
-    echo "  Run 1 output: $(ls -la "${RESULTS_DIR}/ckpt_run1/" 2>/dev/null || echo 'missing')"
-    echo "  Run 2 output: $(ls -la "${RESULTS_DIR}/ckpt_run2/" 2>/dev/null || echo 'missing')"
-    CKPT_RESULT="SKIP"
-else
-    if diff -q "${LABELS_1}" "${LABELS_2}" > /dev/null 2>&1; then
-        echo "PASS: Labels from Run 1 and Run 2 are identical."
-        CKPT_RESULT="PASS"
-    else
-        echo "FAIL: Labels differ between Run 1 and Run 2."
-        echo "--- diff ---"
-        diff "${LABELS_1}" "${LABELS_2}" || true
-        CKPT_RESULT="FAIL"
-    fi
+if [[ "${DTWC_EXIT}" -ne 0 ]]; then
+    echo "ERROR: Binary-result replay failed with exit ${DTWC_EXIT}." >&2
+    exit 1
 fi
 
-# Write checkpoint comparison result
+if ! grep -Fq "Replaying completed result checkpoint:" "${RUN2_LOG}"; then
+    echo "ERROR: Replay marker is absent." >&2
+    exit 1
+fi
+if grep -Fq "Running FastPAM" "${RUN2_LOG}"; then
+    echo "ERROR: Replay unexpectedly executed FastPAM." >&2
+    exit 1
+fi
+
+for field in "Total cost:" "Converged:" "Iterations:"; do
+    RUN1_FIELD=$(grep -F "${field}" "${RUN1_LOG}" | tail -1)
+    RUN2_FIELD=$(grep -F "${field}" "${RUN2_LOG}" | tail -1)
+    if [[ -z "${RUN1_FIELD}" || "${RUN1_FIELD}" != "${RUN2_FIELD}" ]]; then
+        echo "ERROR: Replay summary differs for ${field}" >&2
+        echo "  fresh : ${RUN1_FIELD:-missing}" >&2
+        echo "  replay: ${RUN2_FIELD:-missing}" >&2
+        exit 1
+    fi
+done
+
+if ! cmp -s "${RESULTS_DIR}/expected_labels.csv" "${RUN2_DIR}/coffee_labels.csv"; then
+    echo "ERROR: Replay labels differ from the completed result." >&2
+    exit 1
+fi
+if ! cmp -s "${RESULTS_DIR}/expected_medoids.csv" "${RUN2_DIR}/coffee_medoids.csv"; then
+    echo "ERROR: Replay medoids differ from the completed result." >&2
+    exit 1
+fi
+
+CHECKPOINT_SHA_AFTER=$(sha256sum "${RUN2_DIR}/coffee_checkpoint.bin" | awk '{print $1}')
+CHECKPOINT_MTIME_AFTER=$(stat -c %Y "${RUN2_DIR}/coffee_checkpoint.bin")
+if [[ "${CHECKPOINT_SHA_BEFORE}" != "${CHECKPOINT_SHA_AFTER}" \
+      || "${CHECKPOINT_MTIME_BEFORE}" != "${CHECKPOINT_MTIME_AFTER}" ]]; then
+    echo "ERROR: Replay rewrote its source binary checkpoint." >&2
+    exit 1
+fi
+
+CKPT_RESULT="PASS"
 cat > "${RESULTS_DIR}/checkpoint_result.json" <<JSONEOF
 {
-    "test": "checkpoint_resume_comparison",
+    "test": "binary_result_replay",
     "job_id": "${SLURM_JOB_ID}",
     "result": "${CKPT_RESULT}",
-    "labels_run1": "${LABELS_1:-none}",
-    "labels_run2": "${LABELS_2:-none}",
+    "checkpoint_sha256": "${CHECKPOINT_SHA_AFTER}",
     "timestamp": "$(date -Iseconds)"
 }
 JSONEOF
