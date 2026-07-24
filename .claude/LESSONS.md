@@ -177,8 +177,10 @@ Critical knowledge to avoid repeating mistakes.
 - **A MATLAB batch gate requires both clean exit and executed assertions.**
   Nonzero exit or crash is a failure even if expected text appeared. Put the
   freshly built MEX directory last in `addpath` so it prepends, confirm
-  `which('dtwc_mex','-all')`, then run the full gate. The current local evidence
-  is 61/61 overall, with `test_parallelisation` engaging 24 OpenMP threads.
+  `which('dtwc_mex','-all')`, then run the full gate. The 2026-07-10 evidence
+  was 61/61 overall, with `test_parallelisation` engaging 24 OpenMP threads.
+  The current F18 recount is 82 collected / 81 passed / 0 failed / 1 expected
+  opposite-flavor capability skip on both MATLAB versions.
 - **nanobind is the current Python binding generator.** Keep GIL-release and
   array behavior tied to the explicit live bindings. No retained artifact
   establishes the former stable-ABI, binary-size multiplier, or native-CUDA
@@ -476,6 +478,39 @@ Critical knowledge to avoid repeating mistakes.
   failed despite all URL identities remaining pinned. Register both behavioral
   and inventory effects before implementation; never evade an index-owned scan
   by hiding executable CMake behind another extension.
+- **A global device setter is not evidence that a newly constructed compute
+  object uses that device.** F18's MATLAB estimator successfully changed Env to
+  `gpu`, then constructed a default Auto `Problem`; Auto resolved only to CPU
+  strategies, so the profiled fit published the L1 cost 9 and launched no CUDA
+  kernel. Pin the final object's backend configuration or independently profile
+  the public operation. Capability validation and execution reachability are
+  separate subjects.
+- **A profiler may exit 0 after observing no kernels.** Nsight Compute
+  `--set none` is usable without performance-counter permission and names real
+  DTWC CUDA launches, but its no-work control also exited 0 and printed
+  `No kernels were profiled.` A GPU reachability gate must require the expected
+  kernel/device/invocation row and reject the no-kernel diagnostic; the profiler
+  process status alone false-greens.
+- **Poison external-command seams before testing a rejection boundary.** F18
+  found a repository-root `.env` (contents deliberately unread), so an
+  inherited or mutated estimator call to `dtwc.device('hpc')` can reach the real
+  `ssh` probe before returning the same broad `dtwc:deviceError`. An ID-only
+  assertion is unsafe and can false-green. Use a fresh process whose
+  `DTWC_REPO_ROOT` names a repo-local fake `.env`, whose first `PATH` resolution
+  is a recording `ssh.cmd`, then pin the estimator-specific message, Env state,
+  and exact zero/one shim-call counts. Never execute the unsafe mutant without
+  the poison shim.
+- **A symmetric distance matrix cannot validate row-major/column-major copy
+  orientation.** Its transpose is identical, so even an exact public clustering
+  oracle cannot distinguish `matrix[i*N+j]` from the wrong transposed ownership
+  assumption. Pin the boundary expression by source/mutation review or use a
+  deliberately nonsymmetric synthetic copy seam; do not claim the symmetric
+  numeric fixture proves layout.
+- **Recount live MATLAB suites; historical pass totals are not a floor.** F18's
+  fresh five-suite runs on R2024b and R2025b collected 82 cases, not the
+  inherited working rule's 61. They produced 81 passes, zero failures, and one
+  intentional opposite-flavor assumption filter. Register collected, passed,
+  failed, and incomplete separately and name the sole allowed filter.
 
 ## LR-core Solver (Phase 4)
 

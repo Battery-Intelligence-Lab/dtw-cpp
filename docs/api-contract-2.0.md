@@ -84,7 +84,7 @@ and several extension hooks remain C++-only.
 (device, GPU backend, method, metric) raises a typed error (§5) — it never
 quietly degrades. This is the frozen rule. F18 (MATLAB estimator routing) and
 F24 (Python HPC exception translation) name current violations rather than
-weakening it.
+weakening it; F40 separately names the functional MATLAB `cluster` device route.
 
 ---
 
@@ -130,7 +130,7 @@ SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
 *Contract:* `load()` performs **no I/O** — on `device="hpc"` the path is forwarded
 to the cluster and never read locally (preserves the 100M-series scaling story).
 
-### 1.3 `cluster(data, k, ...) -> Result`  `[live in C++/Python/MATLAB]`
+### 1.3 `cluster(data, k, ...) -> Result`  `[live; MATLAB device gap F40]`
 
 | Parameter | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
@@ -140,9 +140,15 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (alias `"hclust"`) | same set | MATLAB Tier 1 supports `auto`, `pam`, `clara`, `kmedoids`, `mip`, and `hierarchical`; newer algorithms use Tier 2 where bound |
 | `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam`; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | CPU-only Tier-1 alias of `pam` |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
-| `device` | `""` = global default; else per-call override | `None` = global | `''` = global |
+| `device` | `""` = global default; else per-call override | `None` = global | `''` = global; explicit/global selection is reported but the local `Problem` does not yet consume GPU routing `[gap F40]` |
 | `max_iter` | `100` | `100` | `100` |
 | unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:151`) | `dtwc:invalidArgument` |
+
+MATLAB F40 source anchors:
+`bindings/matlab/+dtwc/cluster.m:36-39` selects or reads Env,
+`:41-64` unconditionally materialises and constructs a default local `Problem`,
+`:66-82` executes every exposed method through that object, and `:89` reports
+the selected device despite the missing compute route.
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as

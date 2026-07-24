@@ -115,9 +115,11 @@ WHAT you work on. Read both before touching anything. Supporting record:
   extension.
   Windows llfio-ON wheel is a known OPEN item (see PLAN R6).
 - **MATLAB:** R2024b + R2025b installed; run via `matlab -batch`. addpath ORDER
-  matters — add the fresh `build/mex-verify/bin` LAST so it prepends ahead of
-  any stale MEX (wrong order → 0xc0000005 from an old binary; check
-  `which('dtwc_mex','-all')` first). Floor: 61/61 on the expanded local gate.
+  matters — add the fresh binary directory LAST so it prepends ahead of any
+  stale MEX (wrong order → 0xc0000005 from an old binary; check
+  `which('dtwc_mex','-all')` first). Current five-suite OpenMP inventory:
+  **82 collected, 81 passed, 0 failed, 1 expected opposite-flavor capability
+  skip** (`test_parallelisation_serial_is_honest`) on both MATLAB versions.
 - **Conformance (permanent parity gate):** labels/medoids digit-identical across
   all 4 routes; silhouette 0.96894972764334841, DB 0.038333333333333337,
   dunn 11.5 vs `tests/conformance/conformance_reference.txt` (≤1e-12 rel).

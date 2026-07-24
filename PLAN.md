@@ -518,6 +518,24 @@ Open findings first (status after R0 adjudication — update these boxes there):
       corresponding explicit `Problem` route, and a fresh CUDA-enabled MEX must
       prove `Device='gpu'` reaches CUDA dispatch rather than merely validating
       the global device. The current constructor-only parity test is not a gate.
+      **REGISTERED 2026-07-24:** use the all-distinct four-by-two fixture in
+      `.claude/baselines/2026-07-24-f18-matlab-routing.md`. Exhaustive DTW paths
+      and all six medoid sets give unique disjoint optima: L1 labels/medoids/
+      cost `[1 2 1 1]` / `[3 2]` / 9; SquaredL2 `[2 1 1 1]` / `[4 1]` / 30,
+      with next-best gap 1 for both. Mirror Python's precompute/inject route
+      without adding `Problem.metric`; preserve lazy CPU-L1, produce one routed
+      matrix before two restarts, inject after all setters, and reject
+      incompatible metric/variant/missing/backend requests. Explicit estimator
+      HPC must be rejected before Env/SSH; an offline repo-local poison shim
+      proves explicit and active-global rejection without network access.
+      R2024b and R2025b must each profile active-global GPU-L1 plus explicit
+      `gpu:0` SquaredL2 as exactly two named DTWC kernel invocations in an
+      uncapped profile, with a separate explicit-CPU/cross-product no-kernel
+      profile. Two ordinary
+      MATLAB cases, the HPC marker, guarded-source marker, 14 mutation classes /
+      35 executions, unchanged C++ floors, the exact known F39 failure, and two
+      implementation attempts are binding. Real Metal estimator execution is
+      `[BLOCKED-ENV]` here and moves to F41.
 - [ ] **F19 — the frozen `Problem` encapsulation/accessor cleanup is
       incomplete.** Configuration and result fields remain publicly mutable;
       promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
@@ -740,6 +758,31 @@ Open findings first (status after R0 adjudication — update these boxes there):
       Preserve the exact 39 workflow-action, 7 archive, and 1 Arrow identities,
       all F17 behavior/mutations, and the 120/120, 120/120, 122/122 full-suite
       floors.
+- [ ] **F40 — functional MATLAB `dtwc.cluster(...,'device',...)` validates Env
+      but still computes through a default CPU `Problem`.** The F18 audit found
+      this separate Tier-1 function changes or reads the global device, records
+      that name in `Result`, then creates an Auto `Problem`; FastPAM, CLARA,
+      MIP, and hierarchical routes never consume the device. It exposes no
+      metric parameter (`bindings/matlab/+dtwc/cluster.m:36-89`: device set/read
+      36-39, unconditional local materialisation/default `Problem` 41-64, method
+      routes 66-82, misleading Result device 89). F18 owns only the estimator
+      named in its contract and must not claim this function fixed. First gate:
+      profile the public functional PAM route in an isolated CUDA-MEX process,
+      require a named DTWC kernel and exact result, then register which
+      matrix-free/method routes are unsupported and must fail rather than
+      silently execute CPU.
+- [ ] **F41 — real Metal reachability for the MATLAB `DTWClustering` estimator
+      is environment-blocked.** F18 can compile both optional branches only on
+      their owning platforms and locally mutation-pin the guarded Metal
+      producer, normalized metric, ordinal-zero rule, result validation, and
+      no-CPU-fallback structure. This Windows host reports
+      `Microsoft Windows NT 10.0.26200.0` and
+      `DTWC_ENABLE_METAL:BOOL=OFF`; F12's Apple gate covers core fixed-band
+      geometry, not the estimator/MEX route. **[BLOCKED-ENV 2026-07-24]** First
+      gate on an Apple host with MATLAB and a fresh Metal-ON MEX: profile public
+      active-global GPU-L1 and explicit GPU-SquaredL2 fits at `NInit=2`, require
+      exact F18 oracle results and one Metal DTW launch per fit, then profile
+      explicit CPU as a no-Metal control.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1103,6 +1146,22 @@ colour system transfer verbatim**.
   Parser/config/mmap adversarial residuals remain under the existing
   checkpoint/config robustness lens. Evidence:
   `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+- 2026-07-24 (F18 registration/F40 split): Mirror Python's narrow estimator
+  precompute/inject design rather than adding a metric field to `Problem`.
+  Preserve lazy CPU-L1; CPU-SquaredL2 and supported GPU requests compute one
+  matrix outside the restart loop and inject it into every restart. Reject
+  silent metric/variant/missing/backend substitution. Explicit estimator HPC
+  is rejected before Env/SSH and active HPC before local work, proven with a
+  repo-local fake-SSH poison process. Exact literal matrices, unique disjoint
+  medoid optima, two ordinary MATLAB markers, four Nsight profiles across both
+  MATLAB releases, an HPC marker, a guarded-source marker, 14 mutation classes /
+  35 executions, and two attempts are binding. The same Env-only defect in the
+  separate functional MATLAB `dtwc.cluster` entry point moves to F40. Real Metal
+  estimator runtime is `[BLOCKED-ENV]` on Windows and moves to F41 rather than
+  being misattributed to F12. Fresh R2024b/R2025b ordinary-MEX inventory is
+  82 collected / 81 passed / 0 failed / 1 expected OpenMP-opposite skip,
+  superseding the stale 61/61 working-rule count. Evidence:
+  `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1414,3 +1473,16 @@ colour system transfer verbatim**.
   supply-chain inventory 28 rather than 27 (62 passed, 1 failed). F39 owns that
   reconciliation; resume at F18. Evidence:
   `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+- 2026-07-24 (R3-F18 registration): At clean base `1e4131e`, fresh ordinary
+  and CUDA-enabled MEX artifacts reproduce the defect. L1 and SquaredL2
+  estimators both publish L1 labels/medoids/cost `[1 2 1 1]` / `[3 2]` / 9,
+  while the independent squared `Problem` oracle is `[2 1 1 1]` / `[4 1]` /
+  30. Nsight sees active Env `gpu` but no kernel. Adversarial review expanded
+  the corrected contract to `NInit=2`, both GPU metrics, both device-override
+  directions, offline explicit/active HPC proof, both installed MATLAB
+  releases, guarded Metal/ordinal/result checks, 14 mutation classes /
+  35 executions, and the F40/F41 ownership splits. The ordinary full-suite
+  matrix is only R2024b+R2025b with the OpenMP MEX; the CUDA flavor uses
+  isolated profiles because its honest GPU availability contradicts the
+  ordinary unavailable-capability cases. Evidence:
+  `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
