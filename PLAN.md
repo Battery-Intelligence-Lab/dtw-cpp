@@ -879,6 +879,13 @@ colour system transfer verbatim**.
   supply-chain inventory floor to 26 without changing the F11/F36 parser or
   archive identities; filesystem/worktree contents are not evidence for this
   index-owned count.
+- 2026-07-24 (Windows shared-Arrow CTest runtime): Arrow-linked unit
+  executables import `arrow.dll`/`parquet.dll`, but inherited CMake attached
+  PyArrow's runtime directories only to the real-CLI integration test. An
+  ordinary unit CTest therefore stalls before `main` with loader status
+  `0xC0000135`; the identical command passes with the three proven directories.
+  Apply them to every test in that Windows Arrow-linked test directory.
+  Arrow-OFF builds and production runtime/install behavior remain untouched.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the

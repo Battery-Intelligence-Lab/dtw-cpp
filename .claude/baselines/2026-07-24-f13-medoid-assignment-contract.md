@@ -572,3 +572,64 @@ There are at most two repair attempts. Rollback is a local revert of the
 dedicated inventory commit. The claim most likely to be wrong is that no other
 tracked manifest entered with F13; the exact index set comparison above, not a
 filesystem walk, judges it.
+
+### Registered Windows shared-Arrow CTest runtime repair
+
+This is a separate test-infrastructure finding discovered while closing the
+F13 Arrow gate. Registration precedes its CMake edit.
+
+On the Arrow build, ordinary CTest supplied no runtime-path modification to
+`unit_test_fast_clara`. Its exact run produced no Catch2 output and timed out:
+
+```text
+17: Test command: C:\D\git\dtw-cpp\build\arrow-pyarrow-23\bin\unit_test_fast_clara.exe
+17: Working Directory: C:/D/git/dtw-cpp
+17: Test timeout computed to be: 90
+1/1 Test #17: unit_test_fast_clara .............***Timeout  90.03 sec
+```
+
+Direct launch without the runtime directories exited in 35 ms with signed
+`-1073741515`, exact hex `0xC0000135`, and empty stdout/stderr. `llvm-objdump`
+confirmed imports of `arrow.dll` and `parquet.dll`; neither was in the caller
+PATH. PyArrow's `arrow.dll` additionally imports a hash-named MSVC runtime
+present only in `pyarrow.libs`.
+
+The causal A/B changed only PATH. Prepending the compiler runtime, `pyarrow`,
+and `pyarrow.libs` made the same CTest command produce:
+
+```text
+Randomness seeded to: 343105701
+===============================================================================
+All tests passed (841 assertions in 21 test cases)
+
+1/1 Test #17: unit_test_fast_clara .............   Passed    0.20 sec
+```
+
+Every one of the 21 exact Catch filters also passed independently. This is a
+pre-main loader defect, not a random-order, OpenMP, or F13 algorithm hang.
+The imported Arrow/Parquet targets were already PUBLIC-linked before F13; the
+inherited CMake applied the runtime directories only to the F8 real-CLI test,
+and F13 generalized that special case only to the two CLI tests.
+
+Repair band:
+
+1. In Windows builds with linked Parquet support, compute the existing
+   compiler/Arrow/Parquet/`pyarrow.libs` directory set once and append it to
+   every CTest registered in the tests directory. Do not special-case one unit
+   executable; all link the shared public dependency.
+2. Arrow CTest metadata contains all three runtime directories for all 118
+   tests. Canonical and llfio-OFF Arrow-disabled metadata contain none.
+3. With no caller PATH modification, `unit_test_fast_clara` runs 841
+   assertions / 21 cases and the complete Arrow suite passes 118/118,
+   including both non-skippable real-CLI gates.
+4. A mutation restoring the two-CLI-only loop makes the focused ordinary
+   CTest time out before Catch output. After the registered timeout, no CTest
+   or test child remains.
+5. No production link, install, or executable runtime behavior changes;
+   canonical and llfio-OFF suites retain 116/116.
+
+There are at most two repair attempts. Rollback is a local revert of the
+dedicated CMake test-infrastructure commit. The claim most likely to be wrong
+is that every test is already registered when the directory TESTS property is
+read; generated metadata for all 118 names, not source order inspection,
+judges it.
