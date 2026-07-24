@@ -401,6 +401,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       CLARANS copies, resident f64/f32, and real-CLI streamed f64/f32. Full
       consolidation remains R4-owned. Evidence:
       `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
+      **Partial 2026-07-24:** `62c6f26` closes the separately registered
+      CPU-f32 public-boundary defect: the inherited resolver returned widened
+      `FLT_MAX`; the repaired focused gate passes 5/5 and the shared GPU host
+      contract passes 8/8. Assignment validation and best-result presence
+      remain open.
 - [ ] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
       precision, signed zero, and non-finite behavior across dense stream,
       mmap stream, and visitor paths; only then may R4 remove duplication.
@@ -1067,3 +1072,8 @@ colour system transfer verbatim**.
   a four-process real Arrow CLI gate, mutation probes, and final build floors
   are binding. Evidence:
   `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
+- 2026-07-24 (R3-F13 CPU-f32 partial): The preregistered live resolver test
+  failed 1/1 with widened `FLT_MAX`. Commit `62c6f26` moves exact sentinel
+  translation to a shared CPU/GPU public-distance policy; repaired focused,
+  GPU-host, and full distance-semantics gates pass 5/5, 8/8, and 53/53.
+  Nearest-medoid assignment validation remains the active F13 half.

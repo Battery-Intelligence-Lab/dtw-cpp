@@ -280,4 +280,64 @@ registered non-finite and sentinel failures provide the inherited red.
 
 ## Executions and verdicts
 
-No decisive F13 command has run at registration time.
+### CPU-f32 inherited red
+
+The freshly rebuilt canonical target at registered base `f744d87` produced:
+
+```text
+Filters: [F13]
+Randomness seeded to: 326414885
+
+C:/D/git/dtw-cpp/tests/unit/core/unit_test_distance_semantics.cpp(169): FAILED:
+  REQUIRE( f32_distance(short_f32, long_f32) == std::numeric_limits<double>::max() )
+with expansion:
+  340282346638528859811704183484516925440.0
+  ==
+  1797693134862315708145274237317043567980705675258449965989174768031572607800-
+  2853876058955863276687817154045895351438246423432132688946418276846754670353-
+  7516986049910576551282076245490090389328944075868508455133942304583236903222-
+  9481658085593321233482747978262041447231687381771809192998812504040261841248-
+  58368.0
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 1 | 1 failed
+```
+
+Verdict: **FALSIFIED [confirmed]**. The live CPU-f32 resolver exposed widened
+`FLT_MAX` on the preregistered unequal-length no-path call.
+
+### CPU-f32 repair attempt 1
+
+Commit `62c6f26` introduces one shared compute/public distance normalizer and
+uses it at every CPU resolver return; the F12 GPU detail seam imports the same
+policy. The focused repaired gate produced:
+
+```text
+Filters: [F13]
+Randomness seeded to: 3588231790
+===============================================================================
+All tests passed (5 assertions in 1 test case)
+```
+
+The unchanged GPU host contract produced:
+
+```text
+Randomness seeded to: 2097743251
+===============================================================================
+All tests passed (8 assertions in 1 test case)
+```
+
+The complete distance-semantics target produced:
+
+```text
+Randomness seeded to: 4030018866
+===============================================================================
+All tests passed (53 assertions in 4 test cases)
+```
+
+Verdict: **PASS [confirmed]** for the dedicated CPU-f32 boundary subtask.
+Exact compute `FLT_MAX` maps to exact public `DBL_MAX`; the adjacent finite
+float is preserved, and infinities/NaNs remain visible for the registered
+algorithm-level rejection. The assignment/best-result half of F13 remains
+open.
