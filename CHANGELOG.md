@@ -12,6 +12,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `dtwc.cluster(...,'device',...)` currently reports Env selection without
   routing its local `Problem` computation (F40); real Metal reachability for the
   separate MATLAB estimator is explicitly environment-blocked under F41.
+- Added executable red-first gates for MATLAB estimator metric/device routing
+  and recorded the blocking Windows CUDA-MEX Auto-precision access violation
+  under F42; no failed F18 product change is retained.
 - Fixed CLI `--resume`: it now validates and exactly replays the completed
   binary clustering result, skips every clustering method, preserves the source
   checkpoint, and fails loudly when requested state is missing or incompatible.

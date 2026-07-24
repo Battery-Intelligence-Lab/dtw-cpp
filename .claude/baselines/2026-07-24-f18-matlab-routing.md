@@ -621,3 +621,146 @@ R2024b-built CUDA MEX can execute and unload after profiled estimator kernels
 under R2025b. Both releases resolve that exact MEX, but only the post-repair
 profile can confirm cross-version CUDA execution. Real Metal estimator
 reachability remains explicitly unconfirmed under F41.
+
+## Execution verdict — 2026-07-24
+
+**FALSIFIED.** The two implementation attempts are exhausted. No F18 product
+change is retained; the failed estimator/MEX patch was rolled back before the
+red-first gate commit `625b5b7`.
+
+### Attempt 1 — compile failure
+
+The ordinary MEX rebuild stopped before runtime. MSVC printed:
+
+```text
+C:\D\git\dtw-cpp\bindings\matlab\dtwc_mex.cpp(1203,54): error C2660: 'get_string': function does not take 2 arguments [C:\D\git\dtw-cpp\build\mex-verify-msvc\bindings\matlab\dtwc_mex.vcxproj]
+      C:\D\git\dtw-cpp\bindings\matlab\dtwc_mex.cpp(383,20):
+      see declaration of 'get_string'
+      C:\D\git\dtw-cpp\bindings\matlab\dtwc_mex.cpp(1203,54):
+      while trying to match the argument list '(const mxArray *, const char [7])'
+```
+
+The only product correction for attempt 2 was to call the existing
+single-argument helper after `require_char`.
+
+### Attempt 2 — partial green, decisive CUDA failure
+
+The ordinary and CUDA MEX builds completed. The guarded-source gate printed:
+
+```text
+F18_MATLAB_SOURCE subject=DTWClustering+dtwc_mex metric_before_effects=1/1 hpc_before_compute=2/2 cpu_l1_lazy=1/1 cpu_squared_outside=1/1 inject_after_setters=1/1 checked_bounds=1/1 cuda_guard=1/1 cuda_metric=1/1 cuda_ordinal=1/1 cuda_result=1/1 metal_guard=1/1 metal_metric=1/1 metal_ordinal=1/1 metal_result=1/1 no_cpu_fallback=2/2 matrix_copy=1/1 skips=0
+```
+
+The first focused ordinary run found a test-harness type mismatch before either
+estimator assertion:
+
+```text
+Actual Class:
+    int32
+Expected Class:
+    double
+```
+
+Changing only the two oracle iteration literals from `1` to `int32(1)` made the
+unchanged implementation pass:
+
+```text
+F18_MATLAB_METRIC subject=DTWClustering.fit+fit_predict oracle=exhaustive_paths matrices=2/2 problem_routes=2/2 fit_routes=2/2 fit_predict=1/1 case_norm=1/1 distinct=3/3 ninit=2 skips=0
+F18_MATLAB_VALIDATION unknown_metric=1/1 unknown_precedence=1/1 squared_variant=1/1 squared_missing=1/1 skips=0
+F18_ATTEMPT2_RERUN_TOTAL=27 PASSED=27 FAILED=0 INCOMPLETE=0
+```
+
+The permanent PowerShell runner also required two harness-only corrections:
+native stderr had to be captured without inheriting the script's terminating
+error preference, and `which('dtwc_mex')` had to normalize Windows path
+separators before comparison. Neither correction changed a registered marker,
+band, route, or product line. The offline poison process then printed:
+
+```text
+MEX_ALL_1=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+F18_MATLAB_HPC explicit_normalized=1/1 explicit_rejected=1/1 explicit_no_ssh=1/1 explicit_device_unchanged=1/1 active_selected=1/1 active_rejected=1/1 active_no_extra_ssh=1/1 no_result=2/2 skips=0
+```
+
+The first decisive CUDA profile, R2024b valid-route, failed before either fit
+returned. `build/f18-cuda-gate/R2024b/ncu-valid.log` contains:
+
+```text
+==WARNING== No metrics to collect found in sections.
+MEX_ALL_1=C:\D\git\dtw-cpp\build\mex-cuda-f18\bin\dtwc_mex.mexw64
+F18_MEX_PATH version=R2024b profile=valid path=C:\D\git\dtw-cpp\build\mex-cuda-f18\bin\dtwc_mex.mexw64
+==PROF== Connected to process 72144 (C:\Program Files\MATLAB\R2024b\bin\win64\MATLAB.exe)
+--------------------------------------------------------------------------------
+             Access violation detected at 2026-07-24 11:10:44 +0100
+--------------------------------------------------------------------------------
+Abnormal termination:
+Access violation
+ERROR: MATLAB error Exit Status: 0xc0000005, Access violation
+==ERROR== The application returned an error code (3221225477).
+```
+
+The runner reported child exit `-1073741819`. The log contains zero
+`F18_CUDA_VALID` markers, zero `dtw_*kernel` rows, and zero `Invocations`
+fields, against the registered R2024b valid-profile band of one marker and two
+production invocations. R2025b, the no-kernel profiles, the 35 mutation
+executions, and the full regression matrix were not run after this decisive
+failure.
+
+### Independent localization ledger
+
+All rows used the fresh R2024b-built CUDA MEX. The F18 fixture was
+`X=[0 1;3 8;5 2;6 4]`.
+
+| Route | Precision | Observed result |
+|---|---|---|
+| `dtwc.device('gpu')` only | none | `ARB1_DEVICE=gpu`, exit 0 |
+| existing `dtwc.test.gpu()` oracle | forced FP64 internally | `available=1`, `validated=1`, exit 0 |
+| failed hidden F18 command | Auto | `ARB3_BEFORE_HIDDEN`, then `0xc0000005` |
+| pre-existing CUDA `Problem` route | Auto | `ARB4_BEFORE_PROBLEM_GPU`, then `0xc0000005` |
+| pre-existing CUDA `Problem` route | forced FP64 | `ARB5_AFTER_FP64 d12=10`, exit 0 |
+| pre-existing CUDA `Problem` route | forced FP32 | `ARB6_AFTER_FP32 d12=10`, exit 0 |
+
+**[confirmed]** The crash is not caused by Nsight, estimator writeback, or the
+new hidden command: the unprofiled pre-existing `Problem` route reproduces it.
+It is not the FP32 distance kernel itself: both explicitly forced precision
+routes return the exact discriminator entry 10. **[inferred]** the remaining
+Auto-only discriminator is `resolve_fp32()` calling
+`query_gpu_config(device_id)` and its function-local static mutex/cache
+(`dtwc/cuda/cuda_dtw.cu:75-84`,
+`dtwc/cuda/gpu_config.cuh:42-92`). A debugger or an executing direct
+`query_gpu_config` seam would confirm the exact crashing statement. F42 owns
+that prerequisite; changing F18 to force a precision after the decisive run
+would be prohibited rescue-tuning.
+
+### Retained red gate and rollback
+
+After restoring both product files and rebuilding the ordinary MEX, the
+committed red-first cases report:
+
+```text
+F18_RETAINED_RED_TOTAL=27 PASSED=25 FAILED=2 INCOMPLETE=2
+F18_RETAINED_RED_FAILED_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+F18_RETAINED_RED_FAILED_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+```
+
+The first case receives
+`Unknown command: 'DTWClustering_compute_distance_matrix'.`; the second
+receives actual identifier `MATLAB:fit:expectedNonempty` instead of registered
+`dtwc:invalidArgument`. The product rollback is therefore confirmed and F18
+remains open. The permanent test/script delivery is commit `625b5b7`; generated
+runtime files remain under ignored `build/f18-*` directories.
+
+Closeout record gates printed:
+
+```text
+record hygiene checks passed
+generated documentation is current
+documentation contract checks passed
+```
+
+The known F39 invariant remains exact:
+
+```text
+E       assert 28 == 27
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+1 failed, 62 passed in 0.33s
+```

@@ -536,6 +536,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       35 executions, unchanged C++ floors, the exact known F39 failure, and two
       implementation attempts are binding. Real Metal estimator execution is
       `[BLOCKED-ENV]` here and moves to F41.
+      **ATTEMPTS EXHAUSTED / FALSIFIED 2026-07-24:** attempt 1 failed to compile
+      on the existing one-argument MEX string helper. Attempt 2 compiled and
+      passed the exact ordinary metric/validation marker, guarded-source marker,
+      and offline HPC poison marker, but the first R2024b valid CUDA profile
+      terminated with `0xc0000005` before any kernel row or route marker. The
+      same fixture crashes the pre-existing CUDA `Problem` route only under
+      `CUDAPrecision::Auto`; forced FP32 and FP64 both return exact distance 10.
+      The two-attempt cap forbids forcing a precision as rescue-tuning. Product
+      files were rolled back; commit `625b5b7` retains the red-first cases and
+      permanent runner. F42 owns the Auto-selector crash, F18 stays unchecked,
+      and the campaign pointer moves to F19.
 - [ ] **F19 — the frozen `Problem` encapsulation/accessor cleanup is
       incomplete.** Configuration and result fields remain publicly mutable;
       promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
@@ -783,6 +794,23 @@ Open findings first (status after R0 adjudication — update these boxes there):
       active-global GPU-L1 and explicit GPU-SquaredL2 fits at `NInit=2`, require
       exact F18 oracle results and one Metal DTW launch per fit, then profile
       explicit CPU as a no-Metal control.
+- [ ] **F42 — CUDA `CUDAPrecision::Auto` access-violates inside the Windows
+      MATLAB MEX while both explicit precisions succeed.** F18's fresh
+      R2024b-built CUDA MEX exits `0xc0000005` on the all-distinct four-by-two
+      fixture before any Nsight kernel row. The pre-existing public
+      `Problem`+CUDA route reproduces the crash without Nsight; forcing FP32 or
+      FP64 instead returns exact matrix entry `D(1,2)=10`, and
+      `dtwc.test.gpu()` remains green because it forces FP64. The only
+      Auto-specific source step is `resolve_fp32()` calling the header-inline
+      `query_gpu_config()` function-local mutex/cache
+      (`dtwc/cuda/cuda_dtw.cu:75-84`,
+      `dtwc/cuda/gpu_config.cuh:42-92`), but that precise cause remains
+      `[inferred]`. First gate: run Auto, forced FP32, and forced FP64 in three
+      isolated real-MEX children on the exact fixture, require all three exact
+      matrices and zero crashes, add a direct executing configuration-query
+      seam to localise the fault, then run the Auto child under
+      compute-sanitizer. F42 is a prerequisite for reopening F18; substituting
+      an explicit precision in F18 would not close the frozen Auto route.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1162,6 +1190,17 @@ colour system transfer verbatim**.
   82 collected / 81 passed / 0 failed / 1 expected OpenMP-opposite skip,
   superseding the stale 61/61 working-rule count. Evidence:
   `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (F18 FALSIFIED / F42 split): The two implementation attempts are
+  exhausted. Attempt 1 failed at compile time; attempt 2 passed the ordinary,
+  source, and offline-HPC subjects but crashed the first R2024b CUDA estimator
+  profile with `0xc0000005` before any kernel row. Independent real-MEX routes
+  show the same pre-existing CUDA `Problem` fixture crashes under Auto
+  precision while forced FP32 and FP64 both return exact distance 10. Do not
+  rescue F18 by forcing a precision after its decisive run. Roll back the
+  product patch, retain commit `625b5b7` as the executable red gate, route the
+  Auto configuration-query crash to F42, leave F18 unchecked, and continue the
+  binding campaign at F19. Evidence:
+  `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1486,3 +1525,13 @@ colour system transfer verbatim**.
   isolated profiles because its honest GPU availability contradicts the
   ordinary unavailable-capability cases. Evidence:
   `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (R3-F18 FALSIFIED): Attempt 1 failed to compile on the MEX
+  `get_string` signature. Attempt 2 compiled and passed the focused ordinary
+  oracle, source contract, and poisoned-HPC boundary, then the first R2024b
+  valid CUDA profile exited `0xc0000005` with zero route markers and zero
+  kernel rows. The unprofiled pre-existing CUDA `Problem` route reproduces the
+  crash under Auto precision; forced FP32 and FP64 both return exact distance
+  10, so Nsight and the estimator wrapper are exonerated. The capped product
+  patch is rolled back. Commit `625b5b7` retains the red tests/runner, F42 owns
+  the Auto configuration-query crash, F18 remains open, and R3 resumes at F19.
+  Evidence: `.claude/baselines/2026-07-24-f18-matlab-routing.md`.

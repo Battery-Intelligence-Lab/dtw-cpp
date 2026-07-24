@@ -511,6 +511,16 @@ Critical knowledge to avoid repeating mistakes.
   inherited working rule's 61. They produced 81 passes, zero failures, and one
   intentional opposite-flavor assumption filter. Register collected, passed,
   failed, and incomplete separately and name the sole allowed filter.
+- **CUDA `Auto` precision is a separate executable path, not shorthand for
+  explicit FP32/FP64.** F18's four-by-two MATLAB fixture crashed the CUDA MEX
+  with `0xc0000005` under `CUDAPrecision::Auto`, before a kernel row appeared,
+  while the same pre-existing `Problem` route forced to FP32 and FP64 returned
+  the exact distance 10. The existing `dtwc.test.gpu()` oracle also stayed
+  green because it forces FP64. Source comparison isolates Auto's additional
+  `query_gpu_config()` call and static mutex/cache, but a debugger seam is still
+  required before naming the precise statement. Test Auto, FP32, and FP64 as
+  three distinct routes in the owning DLL/MEX process; an explicit-precision
+  oracle cannot certify the Auto selector.
 
 ## LR-core Solver (Phase 4)
 
