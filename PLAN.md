@@ -571,6 +571,9 @@ Open findings first (status after R0 adjudication — update these boxes there):
       24 MATLAB target-route executions across R2024b/R2025b, and two product
       attempts are binding. Evidence:
       `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+      **INHERITED C++ BASELINE 2026-07-24:** at tracked base `03f0e61`, the
+      canonical rebuild reported no work; CTest discovered 120 tests, failed
+      zero, and skipped exactly the registered six capability tests.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
       (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently

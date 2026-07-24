@@ -253,6 +253,42 @@ between deliberate mutants; the final product source is the composite deletion.
 - Known F39 supply-chain gate remains recorded by its exact observed inventory;
   F19 must not falsely claim to close it.
 
+### Executed inherited C++ baseline
+
+Tracked base: `03f0e61`. The four untracked preregistered F19 gate artifacts do
+not participate in the canonical CMake glob. The completed baseline command was:
+
+```text
+cmake --build build/highs-1151
+ctest --test-dir build/highs-1151 --output-on-failure
+```
+
+Build output:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+CTest verdict:
+
+```text
+100% tests passed, 0 tests failed out of 120
+
+The following tests did not run:
+	 51 - test_cuda_correctness (Skipped)
+	 53 - test_cuda_lb_keogh (Skipped)
+	 57 - test_io_readers (Skipped)
+	 58 - test_metal_correctness (Skipped)
+	 59 - test_metal_lb_keogh (Skipped)
+	 60 - test_metal_mmap (Skipped)
+```
+
+Verdict: **PASS [confirmed]** — 120 tests were discovered, zero failed, and the
+six skips are exactly the registered CUDA x2, Arrow-OFF reader x1, and Metal x3
+capability skips. Native per-test output is in
+`build/highs-1151/Testing/Temporary/LastTest.log`.
+
 ### Mutations and attempts
 
 Besides the five MATLAB deletion profiles, the permanent source/compile gate
