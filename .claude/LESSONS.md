@@ -309,6 +309,38 @@ Critical knowledge to avoid repeating mistakes.
   only six significant digits, while a language's shortest-roundtrip `repr`
   may choose another correct spelling. Register the raw IEEE-754 bytes plus a
   max-digits decimal rendering whenever last-bit identity is load-bearing.
+- **A CMake supply-chain scan must follow active argument grammar, not search
+  for nearby words.** F11's first scanner revisions false-greened bracket
+  comments, inline/semicolon-expanded and variable-expanded arguments,
+  shorthand/API branch archives, `cmake_language(CALL|DEFER|EVAL ...)`, URL
+  mirrors, and `URL_HASH` text captured by CPM's `OPTIONS` multi-value
+  argument. The final audit found three more bypasses: an expansion beside a
+  safe literal URL, a DEFER `ID`/`ID_VAR` operand named `call`, and an exact URL
+  hidden in a differently named decoy package. Tokenize comments, quotes,
+  bracket arguments, command indirection, DEFER option operands, package
+  identity, and CPM's keyword boundaries; reject syntax that cannot be
+  classified. A lower-bound count and one expected package name still permit a
+  pinned decoy beside a drifted real call. Register the exact multiset of path,
+  package name, URL, and digest for every tracked archive, so additions,
+  removals, duplicates, renames, and substitutions all require an explicit
+  gate update. A hash is active only in the `URL` multi-value segment before
+  the next CPM keyword. Even an exact identity is decorative when
+  `DOWNLOAD_COMMAND`, `SOURCE_DIR`, another repository method, or an in-call
+  find-package route overrides acquisition; a URL declaration must reject
+  every alternate source selector before comparing its identity. After two
+  registered pivots, the hand-written parser was still bypassed by
+  `CUSTOM_CACHE_KEY` under `CPM_SOURCE_CACHE` and by CMake's quoted
+  backslash-newline normalization (`"DOWNLOAD_\<newline>COMMAND"`). Stop
+  extending lexical deny-lists at that point: record the falsification and
+  replace the design with an official-parser or canonical-manifest gate.
+- **A wrapper timeout is not a successful subprocess exit, even when CMake
+  printed `Generating done`.** F11's first fresh configure wrote a complete
+  Ninja tree at 61.0 s, but the 60 s command wrapper returned 124 before it
+  captured CMake's exit. The run remained FALSIFIED. Preserve the entire build
+  directory under a named attempt (never delete it), verify no child process
+  remains, and use the one allowed fresh retry with a wrapper longer than the
+  registered workload; generated files and stamps can localise the result but
+  cannot manufacture the missing exit code.
 
 ## LR-core Solver (Phase 4)
 

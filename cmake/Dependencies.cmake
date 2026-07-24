@@ -34,9 +34,10 @@ function(dtwc_setup_dependencies)
   # backend is behind HiGHS's own CUPDLP_GPU option (default OFF ⇒ CPU PDLP, same
   # bound). We forward it only when DTWC_HIGHS_GPU is set; on Windows HiGHS then
   # forces itself shared (highs.dll) and pulls cudart/cublas/cusparse.
-  set(_highs_options "CI OFF" "ZLIB OFF" "BUILD_CXX_EXE OFF" "BUILD_EXAMPLES OFF" "BUILD_TESTING OFF" "FAST_BUILD ON")
   if(DTWC_HIGHS_GPU)
-    list(APPEND _highs_options "CUPDLP_GPU ON")
+    set(CUPDLP_GPU ON CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
+  else()
+    set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   endif()
   CPMAddPackage(
     NAME highs
@@ -46,7 +47,13 @@ function(dtwc_setup_dependencies)
     URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
     SYSTEM
     EXCLUDE_FROM_ALL
-    OPTIONS ${_highs_options}
+    OPTIONS
+      "CI OFF"
+      "ZLIB OFF"
+      "BUILD_CXX_EXE OFF"
+      "BUILD_EXAMPLES OFF"
+      "BUILD_TESTING OFF"
+      "FAST_BUILD ON"
     )
     # Historically HiGHS <=1.14.0 had a debug assertion (ub_consistent) that
     # fired on valid warm-start MIP solves (primal-dual integral bookkeeping

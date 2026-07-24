@@ -8,6 +8,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Pinned the standalone C++ example's DTWC++ archive to the 2.0.0rc1 commit
+  and its SHA-256. The supply-chain gate now scans every tracked
+  `CPMAddPackage(URL ...)` declaration, including inline CMake syntax, and
+  requires the exact registered path/name/URL/SHA-256 inventory, rejecting
+  missing or comment-only hashes, dynamic or semicolon-expanded argument
+  injection, ten direct alternate-source selectors, decoy package identities,
+  and branch archives. HiGHS' conditional cuPDLP setting is now explicit while
+  its archive declaration remains fully literal. Quoted CMake line
+  continuations and CPM custom-cache-key overrides remain tracked parser
+  limitations rather than silently claimed coverage.
 - **Breaking:** corrected CPU banded-DTW routes to the canonical Sakoe–Chiba
   window `|i-j| <= band`. Unequal-length inputs now return the documented
   no-path sentinel when `band < |n-m|`; the previous endpoint-scaled slanted
