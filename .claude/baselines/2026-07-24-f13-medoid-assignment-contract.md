@@ -391,3 +391,32 @@ Verdict: **FALSIFIED [confirmed]**. The assignment subject did not run.
 The second and final registered topology above separates total resident size
 from one materialized row group while retaining a 65-point first assignment
 chunk.
+
+### Assignment repair attempt 1 full-gate falsification
+
+The repaired focused gate passed 113 assertions / 8 cases and the strengthened
+real Arrow CLI gate passed its registered successful and rejection routes.
+The first canonical full gate then exposed one stale contradictory test:
+
+```text
+C:/D/git/dtw-cpp/tests/unit/test_tier1_cpp_api.cpp(259): FAILED:
+due to unexpected exception with message:
+  kmedoids_lloyd: non-finite nearest-medoid distance at point 1, medoid slot 0
+  (index 0).
+
+===============================================================================
+test cases:  9 |  8 passed | 1 failed
+assertions: 50 | 49 passed | 1 failed
+
+99% tests passed, 1 tests failed out of 116
+
+The following tests FAILED:
+	 67 - test_tier1_cpp_api (Failed)
+```
+
+Verdict: **FALSIFIED [confirmed]** at 115/116. The failed case explicitly
+required Lloyd to publish an infinite objective, contradicting F13's
+preregistered rejection of every non-finite assignment distance. Repair
+attempt 2 changes only that stale expectation: require `InvalidInput` and
+digit-identical preservation of the pre-call labels. The production policy is
+not relaxed.

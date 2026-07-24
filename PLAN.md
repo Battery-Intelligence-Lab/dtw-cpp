@@ -861,6 +861,11 @@ colour system transfer verbatim**.
   translation is a separate public-distance repair commit; R4 retains full
   scan consolidation. Reuse the read-only F8 Parquet fixture for the real
   streaming discriminator.
+- 2026-07-24 (F13 Lloyd non-finite contract): The inherited Tier-1 case that
+  required Lloyd to publish an infinite objective contradicts F13's registered
+  rejection of every non-finite assignment distance. Keep the production
+  rejection and update that stale test in repair attempt 2 to require
+  `InvalidInput` while preserving the pre-call labels.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
