@@ -480,6 +480,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       the result rather than merely producing the verbose “Loaded checkpoint”
       line. Define the supported continuation semantics before repair—never
       silently relabel a read-and-discard operation as resume.
+      **REGISTERED 2026-07-24:** binary v1 is a completed generic result, not
+      method-specific iteration state. `--resume` will replay all five fields,
+      skip clustering, preserve the source binary, and fail loudly on
+      missing/malformed/incompatible state. The real-CLI gate uses a coherent
+      27-series checkpoint whose labels, medoids, cost 1650, and 41 iterations
+      all differ from the registered fresh control; twelve mutations and a
+      two-attempt cap are frozen in
+      `.claude/baselines/2026-07-24-f17-cli-resume.md`.
 - [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
       `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
       `Device` updates global `Env`, but each repetition creates a default
@@ -1039,6 +1047,17 @@ colour system transfer verbatim**.
   complete-input parsing and the reviewed top-level `toolchainFile`/UNC gap to
   F38 as its sole implementation owner, and continue at F17. F16's unchecked
   box preserves the falsified acceptance result and is not a resume pointer.
+- 2026-07-24 (F17 registration): Define CLI binary-result resume as exact replay
+  of a completed or iteration-capped `ClusteringResult`, not a method-specific
+  warm start. Binary v1 is written only after algorithms return and lacks
+  method, RNG, sample, solver, cursor, and data/configuration identity; PAM-only
+  continuation would invent unequal semantics for the generic artifact written
+  by every method. Replay must validate N/k/domains/unique medoids/iterations/
+  finite cost, skip clustering, preserve the source file, and fail loudly when
+  explicitly requested state is unusable. Preserve v1 bytes and document the
+  same-input-order/configuration precondition; authenticated provenance needs a
+  separately authorized format migration. Evidence and frozen bands:
+  `.claude/baselines/2026-07-24-f17-cli-resume.md`.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
