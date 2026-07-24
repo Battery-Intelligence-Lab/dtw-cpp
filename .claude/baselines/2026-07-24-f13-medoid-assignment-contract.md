@@ -235,6 +235,33 @@ The f64 and f32 objectives are not required to equal one another; each
 resident/stream pair is required to be digit-identical, while medoids and
 labels are identical across all four routes.
 
+### F. Streamed non-finite mutation discriminator
+
+Independent gate audit found that fixture E is entirely finite, so it cannot
+by itself kill removal of validation from either streamed scan. Before that
+mutation is run, extend the Arrow-only gate with an Arrow-linked helper that
+generates two **build-local** Parquet files under the test-owned work root;
+no tracked data file is added or modified.
+
+Each file contains 65 singleton rows in one row group. Row 0 is the negative
+maximum finite value and rows 1..64 are the positive maximum finite value,
+using binary64 values for the f64 file and binary32 values for the f32 file.
+With `k=1`, `sample_size=2`, `n_samples=1`, and portable-v1 seed `0`, sample
+points 25 and 59 are equal finite positives, while streamed full assignment
+computes a non-finite distance for point 0. The one 65-row group also enters
+the `chunk_size > 64` OpenMP branch.
+
+The real CLI must run both files in forced streaming mode and fail with the
+exact diagnostic:
+
+```text
+fast_clara: non-finite nearest-medoid distance at point 0, medoid slot 0 (index 25).
+```
+
+Both processes must prove the streaming route and FastCLARA execution before
+the expected failure. The gate reports `stream_rejections=2/2`; bypassing
+validation in either streamed precision must fail this sub-band.
+
 ## Acceptance band
 
 F13 passes locally only if every item below holds:
@@ -253,8 +280,9 @@ F13 passes locally only if every item below holds:
 4. The new Arrow-only real-CLI target exists only when Parquet is linked. It
    runs four successful processes, proves 8/8 required/forbidden route
    markers, compares 6/6 resident/stream artifact pairs, and validates all
-   four exact assignment payloads and objective bytes. Skip text or a missing
-   subject is failure.
+   four exact assignment payloads and objective bytes. It additionally runs
+   the two registered build-local poison files and proves 2/2 exact streamed
+   rejection paths. Skip text or a missing subject is failure.
 5. Mutation probes must make the focused gate fail when strict `<` becomes
    `<=`, a production finite check is removed, ordered accumulation is
    replaced by a grouping-permitted reduction, or either streamed scan
