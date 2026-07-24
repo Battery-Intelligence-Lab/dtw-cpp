@@ -383,6 +383,15 @@ Critical knowledge to avoid repeating mistakes.
   remains, and use the one allowed fresh retry with a wrapper longer than the
   registered workload; generated files and stamps can localise the result but
   cannot manufacture the missing exit code.
+- **`CMAKE_MINIMUM_REQUIRED_VERSION` is not a stable root-project floor after
+  dependencies configure.** F16 attempt 1 read it from `tests/CMakeLists.txt`
+  after CPM dependencies had run and observed `3.14`, even though the root's
+  first command is `cmake_minimum_required(VERSION 3.26)`. Dependency
+  listfiles with 3.14 minima were present in the configured tree. A late
+  metadata guard must bind the root's own first command (or a root-owned value
+  captured before dependencies), not CMake's mutable most-recent minimum
+  variable. The failed guard printed
+  `preset=3.26.0, root=3.14, expected=3.26.0`; no test compiled or ran.
 - **A timed-out Windows loader probe can leave the executable locking build
   outputs.** After CTest times out before `main`, inspect only the exact
   `ctest`/test child PIDs and terminate those confirmed descendants before a

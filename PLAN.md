@@ -1005,6 +1005,11 @@ colour system transfer verbatim**.
   floor. M10 must fail both CMake's preset parser and the configure-time
   `string(JSON)` guard. This strengthens the registered arbiters before the
   first implementation run; no acceptance threshold is relaxed.
+- 2026-07-24 (F16 attempt 1 FALSIFIED): The configure guard parsed the new
+  preset JSON but observed late `CMAKE_MINIMUM_REQUIRED_VERSION=3.14` after
+  dependencies, not root's first-command 3.26, and stopped before compilation.
+  Attempt 2 may only bind that already-registered first command; every
+  quantitative and behavioral band remains unchanged.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1287,4 +1292,11 @@ colour system transfer verbatim**.
   preset inventories, alternate/no-LLVM and wrong-host probes, ten mutations,
   unchanged supply-chain inventory, and final 119/119, 119/119, 121/121
   floors. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F16 attempt 1 FALSIFIED): The focused build reconfigured but
+  did not compile. Its guard printed
+  `F16 CMake floor drift: preset=3.26.0, root=3.14, expected=3.26.0` because
+  dependency configuration had changed the late CMake minimum variable. No
+  native test ran; attempt 2 is limited to the registered root first-command
+  observation. Evidence:
   `.claude/baselines/2026-07-24-f16-cmake-presets.md`.

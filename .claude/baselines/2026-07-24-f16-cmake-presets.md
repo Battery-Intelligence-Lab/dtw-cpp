@@ -195,6 +195,33 @@ M10 must make both CMake's own `--list-presets=all` parser and the existing
 canonical configure (which executes the `string(JSON)` guard) exit nonzero.
 Restore exact bytes before the next mutation. All 10/10 must be killed.
 
+## Implementation attempt ledger
+
+### Attempt 1 - FALSIFIED
+
+Command:
+
+```text
+cmake --build build/highs-1151 --target test_supply_chain_pinning
+```
+
+CMake's preset JSON and host inventory had already parsed successfully, but
+the configure-time root-floor comparison failed before compilation:
+
+```text
+CMake Error at tests/CMakeLists.txt:105 (message):
+  F16 CMake floor drift: preset=3.26.0, root=3.14, expected=3.26.0
+
+ninja: error: rebuilding 'build.ninja': subcommand failed
+```
+
+Verdict: **FALSIFIED [confirmed]**. No native test or assertion/case band ran.
+The guard incorrectly treated late `CMAKE_MINIMUM_REQUIRED_VERSION` as the
+root's immutable floor; after configured dependencies, its observed value was
+3.14. Attempt 2 may only replace that observation with the already-registered
+root first-command invariant. No preset value, host condition, marker,
+mutation, configure, or acceptance band changes.
+
 ## Acceptance band
 
 F16 passes only if:
