@@ -66,6 +66,12 @@ using dtwc::detail::decode_pair;
 
 namespace {
 
+__device__ __forceinline__ bool fixed_band_contains(int i, int j, int band)
+{
+  if (band < 0) return true;
+  return (i >= j) ? (i - j <= band) : (j - i <= band);
+}
+
 bool resolve_fp32(CUDAPrecision precision, int device_id)
 {
   switch (precision) {
@@ -220,11 +226,6 @@ __global__ void dtw_wavefront_kernel(
       continue;
     }
 
-    // Precompute slope-adjusted Sakoe-Chiba band parameters
-    const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
-    const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-    const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
     // Series data pointers (re-set each iteration for persistent mode)
     const T *s_row;
     const T *s_col;
@@ -242,33 +243,6 @@ __global__ void dtw_wavefront_kernel(
     } else {
       s_row = row_s;  // read from global via __ldg
       s_col = col_s;
-    }
-
-    // ── Fix 3: Precompute integer band boundaries into shared memory ──
-    // Eliminates 6 FP64 ops per cell in the inner loop. On consumer GPUs
-    // with 1:64 FP64 rate, this avoids ~192 FP32-equivalent cycles per cell.
-    // Band arrays are placed after the diag buffers in shared memory.
-    int *s_j_low = nullptr;
-    int *s_j_high = nullptr;
-    if (use_band) {
-      // Compute offset past all diag buffers (in bytes, then cast)
-      T *band_base;
-      if (preload) {
-        band_base = smem + 5 * max_L;  // after 2 series + 3 diag buffers
-      } else if (use_double_buf) {
-        band_base = smem + 2 * max_L;  // after 2 diag buffers
-      } else {
-        band_base = smem + 3 * max_L;  // after 3 diag buffers
-      }
-      s_j_low  = reinterpret_cast<int *>(band_base);
-      s_j_high = s_j_low + max_L;
-
-      for (int t = tid; t < M; t += nthreads) {
-        double center = slope * t;
-        s_j_low[t]  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-        s_j_high[t] = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-      }
-      __syncthreads();
     }
 
     const int total_diags = M + N_len - 1;
@@ -300,7 +274,7 @@ __global__ void dtw_wavefront_kernel(
         // Phase 2: compute anti-diag k
         for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
           int i = i_min + p, j = k - i;
-          if (use_band && (j < s_j_low[i] || j > s_j_high[i])) {
+          if (!fixed_band_contains(i, j, band)) {
             cur[p] = INF; continue;
           }
           T diff = __ldg(&s_row[i]) - __ldg(&s_col[j]);
@@ -330,7 +304,7 @@ __global__ void dtw_wavefront_kernel(
 
         for (int p = tid; p < len_k; p += nthreads) {
           int i = i_min + p, j = k - i;
-          if (use_band && (j < s_j_low[i] || j > s_j_high[i])) {
+          if (!fixed_band_contains(i, j, band)) {
             cur[p] = INF; continue;
           }
           T diff = preload ? (s_row[i] - s_col[j])
@@ -441,19 +415,6 @@ __global__ void dtw_warp_kernel(
     my_col[lane] = col_g[lane];
   __syncwarp();
 
-  // Banded DTW parameters (same formula as wavefront kernel)
-  const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
-  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
-  // Fix 3: Precompute band boundaries into registers (M <= 32, one row per lane)
-  int my_j_low = 0, my_j_high = N_len - 1;
-  if (use_band && lane < M) {
-    double center = slope * lane;
-    my_j_low  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-    my_j_high = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-  }
-
   const unsigned FULL_MASK = 0xFFFFFFFF;
 
   // Each thread (lane) represents row i = lane.
@@ -491,14 +452,7 @@ __global__ void dtw_warp_kernel(
     T my_current = INF;
 
     if (valid) {
-      // Banded check (boundaries precomputed in registers)
-      bool in_band = true;
-      if (use_band) {
-        if (j < my_j_low || j > my_j_high)
-          in_band = false;
-      }
-
-      if (in_band) {
+      if (fixed_band_contains(i, j, band)) {
         T diff = my_row[i] - my_col[j];
         T d = use_squared_l2 ? (diff * diff) : fabs(diff);
 
@@ -611,33 +565,6 @@ __global__ void dtw_regtile_kernel(
     my_col[t] = col_g[t];
   __syncwarp();
 
-  // Banded DTW parameters
-  const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
-  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
-  // Fix 3: Precompute band boundaries into shared memory (after series data).
-  // Each warp's band arrays are placed after its 2*max_L series data region.
-  // Band arrays use 2 * max_L ints = 2 * max_L * 4 bytes per warp.
-  int *my_j_low_arr = nullptr;
-  int *my_j_high_arr = nullptr;
-  if (use_band) {
-    // Place band arrays in the shared memory region after all warps' series data.
-    // All warps' series data: PAIRS_PER_BLOCK * 2 * max_L * sizeof(T)
-    // Band arrays for warp w: start at offset (all series data) + w * 2 * max_L ints
-    char *band_base = smem_raw + PAIRS_PER_BLOCK * 2 * max_L * sizeof(T)
-                    + warp_id * 2 * max_L * sizeof(int);
-    my_j_low_arr  = reinterpret_cast<int *>(band_base);
-    my_j_high_arr = my_j_low_arr + max_L;
-
-    for (int t = lane; t < M; t += WARP_SIZE) {
-      double center = slope * t;
-      my_j_low_arr[t]  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-      my_j_high_arr[t] = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-    }
-    __syncwarp();
-  }
-
   // This thread's column stripe: [col_start .. col_start + TILE_W - 1]
   const int col_start = lane * TILE_W;
 
@@ -715,14 +642,7 @@ __global__ void dtw_regtile_kernel(
 
         T above = prev_penalty[tw];  // cost[i-1][j]
 
-        // Banded check (boundaries precomputed in shared memory)
-        bool in_band = true;
-        if (use_band) {
-          if (j < my_j_low_arr[i] || j > my_j_high_arr[i])
-            in_band = false;
-        }
-
-        if (!in_band) {
+        if (!fixed_band_contains(i, j, band)) {
           diag = prev_penalty[tw];
           left = INF_VAL;
           penalty[tw] = INF_VAL;
@@ -1162,10 +1082,12 @@ std::vector<double> convert_result_matrix(
     for (size_t i = 0; i < N; ++i) {
       const size_t row_offset = i * N;
       for (size_t j = 0; j < i; ++j)
-        result[row_offset + j] = static_cast<double>(src[row_offset + j]);
+        result[row_offset + j] =
+            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
       result[row_offset + i] = 0.0;
       for (size_t j = i + 1; j < N; ++j)
-        result[row_offset + j] = static_cast<double>(src[row_offset + j]);
+        result[row_offset + j] =
+            dtwc::gpu::detail::normalize_public_distance(src[row_offset + j]);
     }
   }
   return result;
@@ -1274,10 +1196,7 @@ std::vector<double> launch_dtw_kernel(
     const int grid_size = static_cast<int>(
         (num_pairs + pairs_per_block - 1) / pairs_per_block);
     constexpr int block_size = pairs_per_block * 32;
-    // Series data + band arrays when banded (Fix 3)
-    const size_t series_smem = pairs_per_block * 2 * max_L * sizeof(T);
-    const size_t band_smem = (band >= 0) ? pairs_per_block * 2 * max_L * sizeof(int) : 0;
-    const size_t shared_mem = series_smem + band_smem;
+    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
 
     dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
@@ -1290,9 +1209,7 @@ std::vector<double> launch_dtw_kernel(
     const int grid_size = static_cast<int>(
         (num_pairs + pairs_per_block - 1) / pairs_per_block);
     constexpr int block_size = pairs_per_block * 32;
-    const size_t series_smem = pairs_per_block * 2 * max_L * sizeof(T);
-    const size_t band_smem = (band >= 0) ? pairs_per_block * 2 * max_L * sizeof(int) : 0;
-    const size_t shared_mem = series_smem + band_smem;
+    const size_t shared_mem = pairs_per_block * 2 * max_L * sizeof(T);
 
     dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
@@ -1317,12 +1234,7 @@ std::vector<double> launch_dtw_kernel(
                      "(the double-buffer register cache would drop cells).\n";
       }
     }
-    // Base shared memory for diag/series buffers
-    size_t shared_mem = n_bufs * max_L * sizeof(T);
-    // Fix 3: Add space for precomputed band boundary arrays (2 * max_L ints)
-    if (band >= 0) {
-      shared_mem += 2 * max_L * sizeof(int);
-    }
+    const size_t shared_mem = n_bufs * max_L * sizeof(T);
 
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     constexpr int block_size = 256;
@@ -1793,33 +1705,6 @@ __global__ void dtw_one_vs_all_wavefront_kernel(
     s_col = col_src;
   }
 
-  // Band boundaries
-  const bool use_band = (band >= 0) && (M > 1) && (N_len > band + 1);
-  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
-  int *s_j_low = nullptr;
-  int *s_j_high = nullptr;
-  if (use_band) {
-    T *band_base;
-    if (preload)
-      band_base = smem + 5 * max_L;
-    else if (use_double_buf)
-      band_base = smem + 2 * max_L;
-    else
-      band_base = smem + 3 * max_L;
-
-    s_j_low  = reinterpret_cast<int *>(band_base);
-    s_j_high = s_j_low + max_L;
-
-    for (int t = tid; t < M; t += nthreads) {
-      double center = slope * t;
-      s_j_low[t]  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-      s_j_high[t] = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-    }
-    __syncthreads();
-  }
-
   const int total_diags = M + N_len - 1;
 
   if (use_double_buf) {
@@ -1844,7 +1729,7 @@ __global__ void dtw_one_vs_all_wavefront_kernel(
 
       for (int p = tid, s = 0; p < len_k && s < MAX_SI; p += nthreads, ++s) {
         int i = i_min + p, j = k - i;
-        if (use_band && (j < s_j_low[i] || j > s_j_high[i])) {
+        if (!fixed_band_contains(i, j, band)) {
           cur[p] = INF; continue;
         }
         T diff = __ldg(&s_row[i]) - __ldg(&s_col[j]);
@@ -1872,7 +1757,7 @@ __global__ void dtw_one_vs_all_wavefront_kernel(
 
       for (int p = tid; p < len_k; p += nthreads) {
         int i = i_min + p, j = k - i;
-        if (use_band && (j < s_j_low[i] || j > s_j_high[i])) {
+        if (!fixed_band_contains(i, j, band)) {
           cur[p] = INF; continue;
         }
         T diff = preload ? (s_row[i] - s_col[j])
@@ -1946,17 +1831,6 @@ __global__ void dtw_one_vs_all_warp_kernel(
   if (lane < N_len) my_col[lane] = col_g[lane];
   __syncwarp();
 
-  const bool use_band_flag = (band >= 0) && (M > 1) && (N_len > band + 1);
-  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
-  int my_j_low = 0, my_j_high = N_len - 1;
-  if (use_band_flag && lane < M) {
-    double center = slope * lane;
-    my_j_low  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-    my_j_high = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-  }
-
   const unsigned FULL_MASK = 0xFFFFFFFF;
   T prev_val  = INF;
   T prev2_val = INF;
@@ -1974,11 +1848,7 @@ __global__ void dtw_one_vs_all_warp_kernel(
     T my_current = INF;
 
     if (valid) {
-      bool in_band = true;
-      if (use_band_flag && (j < my_j_low || j > my_j_high))
-        in_band = false;
-
-      if (in_band) {
+      if (fixed_band_contains(i, j, band)) {
         T diff = my_row[i] - my_col[j];
         T d = use_squared_l2 ? (diff * diff) : fabs(diff);
 
@@ -2054,26 +1924,6 @@ __global__ void dtw_one_vs_all_regtile_kernel(
     my_col[t] = col_g[t];
   __syncwarp();
 
-  const bool use_band_flag = (band >= 0) && (M > 1) && (N_len > band + 1);
-  const double slope  = (M > 1) ? (double)(N_len - 1) / (double)(M - 1) : 0.0;
-  const double window = (band >= 0) ? fmax((double)band, slope / 2.0) : 0.0;
-
-  int *my_j_low_arr = nullptr;
-  int *my_j_high_arr = nullptr;
-  if (use_band_flag) {
-    char *band_base = smem_raw + PPB * 2 * max_L * sizeof(T)
-                    + warp_id * 2 * max_L * sizeof(int);
-    my_j_low_arr  = reinterpret_cast<int *>(band_base);
-    my_j_high_arr = my_j_low_arr + max_L;
-
-    for (int t = lane; t < M; t += WARP_SIZE) {
-      double center = slope * t;
-      my_j_low_arr[t]  = max(0, (int)ceil(round(100.0 * (center - window)) / 100.0));
-      my_j_high_arr[t] = min(N_len - 1, (int)floor(round(100.0 * (center + window)) / 100.0));
-    }
-    __syncwarp();
-  }
-
   const int col_start = lane * TILE_W;
   T col_val[TILE_W];
   for (int tw = 0; tw < TILE_W; ++tw) {
@@ -2121,11 +1971,7 @@ __global__ void dtw_one_vs_all_regtile_kernel(
 
         T above = prev_penalty[tw];
 
-        bool in_band = true;
-        if (use_band_flag && (j < my_j_low_arr[i] || j > my_j_high_arr[i]))
-          in_band = false;
-
-        if (!in_band) {
+        if (!fixed_band_contains(i, j, band)) {
           diag = prev_penalty[tw];
           left = INF_VAL;
           penalty[tw] = INF_VAL;
@@ -2325,9 +2171,7 @@ std::vector<double> launch_one_vs_all_kernel(
     const int grid_x = static_cast<int>((N + ppb - 1) / ppb);
     dim3 grid(grid_x, K_int);
     constexpr int block_size = ppb * 32;
-    const size_t series_smem = ppb * 2 * max_L * sizeof(T);
-    const size_t band_smem = (band >= 0) ? ppb * 2 * max_L * sizeof(int) : 0;
-    const size_t shared_mem = series_smem + band_smem;
+    const size_t shared_mem = ppb * 2 * max_L * sizeof(T);
 
     dtw_one_vs_all_regtile_kernel<T, TILE_W><<<grid, block_size, shared_mem, stream>>>(
         workspace.d_queries.get(), workspace.d_query_lengths.get(),
@@ -2340,9 +2184,7 @@ std::vector<double> launch_one_vs_all_kernel(
     const int grid_x = static_cast<int>((N + ppb - 1) / ppb);
     dim3 grid(grid_x, K_int);
     constexpr int block_size = ppb * 32;
-    const size_t series_smem = ppb * 2 * max_L * sizeof(T);
-    const size_t band_smem = (band >= 0) ? ppb * 2 * max_L * sizeof(int) : 0;
-    const size_t shared_mem = series_smem + band_smem;
+    const size_t shared_mem = ppb * 2 * max_L * sizeof(T);
 
     dtw_one_vs_all_regtile_kernel<T, TILE_W><<<grid, block_size, shared_mem, stream>>>(
         workspace.d_queries.get(), workspace.d_query_lengths.get(),
@@ -2365,9 +2207,7 @@ std::vector<double> launch_one_vs_all_kernel(
                      "(the double-buffer register cache would drop cells).\n";
       }
     }
-    size_t shared_mem = n_bufs * max_L * sizeof(T);
-    if (band >= 0)
-      shared_mem += 2 * max_L * sizeof(int);
+    const size_t shared_mem = n_bufs * max_L * sizeof(T);
 
     int block_size;
     if (max_L <= 512)      block_size = 128;
@@ -2410,7 +2250,7 @@ std::vector<double> launch_one_vs_all_kernel(
     }
   } else {
     for (size_t i = 0; i < output_elems; ++i)
-      result[i] = static_cast<double>(h_output[i]);
+      result[i] = dtwc::gpu::detail::normalize_public_distance(h_output[i]);
   }
   return result;
 }

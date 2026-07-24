@@ -12,13 +12,17 @@
 
 #include <dtwc.hpp>
 
+#include "gpu_fixed_band_oracle.hpp"
+
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
 // gpu_config.cuh is an internal header — tested indirectly via compute_distance_matrix_cuda()
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
 #include <vector>
@@ -86,7 +90,286 @@ std::vector<double> cpu_banded_distance_matrix(
   return mat;
 }
 
+struct F12CUDARoute {
+  dtwc::KernelOverride requested;
+  const char *expected_kernel;
+  bool needs_filler_129;
+};
+
+constexpr std::array<F12CUDARoute, 4> f12_cuda_routes{{
+    {dtwc::KernelOverride::Auto, "warp", false},
+    {dtwc::KernelOverride::RegTile, "regtile_w4", false},
+    {dtwc::KernelOverride::RegTile, "regtile_w8", true},
+    {dtwc::KernelOverride::Wavefront, "wavefront", false}
+}};
+
+std::vector<std::vector<double>> f12_pairwise_inventory(
+    const F12CUDARoute &route)
+{
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  std::vector<std::vector<double>> series{
+      oracle::principal_x(), oracle::principal_y()
+  };
+  if (route.needs_filler_129) series.push_back(oracle::filler_129());
+  return series;
+}
+
+std::vector<std::vector<double>> f12_external_targets(
+    const F12CUDARoute &route)
+{
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  std::vector<std::vector<double>> targets{oracle::principal_y()};
+  if (route.needs_filler_129) targets.push_back(oracle::filler_129());
+  return targets;
+}
+
+double f12_expected_public_cost(
+    const dtwc::test::gpu_fixed_band::LedgerRow &row,
+    bool squared)
+{
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  if (!row.has_path) return oracle::public_no_path_sentinel;
+  return squared ? row.squared_l2 : row.l1;
+}
+
+dtwc::cuda::CUDADistMatOptions f12_cuda_options(
+    const F12CUDARoute &route,
+    const dtwc::test::gpu_fixed_band::LedgerRow &row,
+    bool squared,
+    dtwc::cuda::CUDAPrecision precision =
+        dtwc::cuda::CUDAPrecision::FP64)
+{
+  dtwc::cuda::CUDADistMatOptions opts;
+  opts.band = row.band;
+  opts.use_squared_l2 = squared;
+  opts.use_lb_keogh = false;
+  opts.precision = precision;
+  opts.kernel_override = route.requested;
+  return opts;
+}
+
 } // anonymous namespace
+
+TEST_CASE("F12 independent fixed-band arbiters reproduce the registered ledger",
+          "[cuda][F12][oracle]")
+{
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  const auto &x = oracle::principal_x();
+  const auto &y = oracle::principal_y();
+
+  REQUIRE(x.size() == 5);
+  REQUIRE(y.size() == 7);
+  REQUIRE(y.size() - x.size() == 2);
+
+  for (const auto &row : oracle::ledger) {
+    CAPTURE(row.band, row.path_count, row.has_path, row.l1, row.squared_l2);
+    const auto dp_l1 =
+        oracle::full_matrix_oracle(x, y, row.band, false);
+    const auto dp_squared =
+        oracle::full_matrix_oracle(x, y, row.band, true);
+    const auto enumerated = oracle::enumerate_paths(x, y, row.band);
+
+    REQUIRE(enumerated.path_count == row.path_count);
+    if (row.has_path) {
+      REQUIRE(dp_l1 == row.l1);
+      REQUIRE(dp_squared == row.squared_l2);
+      REQUIRE(enumerated.min_l1 == row.l1);
+      REQUIRE(enumerated.min_squared_l2 == row.squared_l2);
+    } else {
+      REQUIRE(std::isinf(dp_l1));
+      REQUIRE(std::isinf(dp_squared));
+      REQUIRE(std::isinf(enumerated.min_l1));
+      REQUIRE(std::isinf(enumerated.min_squared_l2));
+    }
+  }
+
+  const auto &singleton = oracle::singleton_x();
+  const auto &singleton_longer = oracle::singleton_y();
+  REQUIRE(singleton.size() == 1);
+  REQUIRE(singleton_longer.size() == 3);
+  for (const auto &row : oracle::singleton_ledger) {
+    for (const bool reversed : {false, true}) {
+      CAPTURE(
+          row.band, row.path_count, row.has_path, row.l1, row.squared_l2,
+          reversed);
+      const auto &lhs = reversed ? singleton_longer : singleton;
+      const auto &rhs = reversed ? singleton : singleton_longer;
+      const auto dp_l1 =
+          oracle::full_matrix_oracle(lhs, rhs, row.band, false);
+      const auto dp_squared =
+          oracle::full_matrix_oracle(lhs, rhs, row.band, true);
+      const auto enumerated = oracle::enumerate_paths(lhs, rhs, row.band);
+
+      REQUIRE(enumerated.path_count == row.path_count);
+      if (row.has_path) {
+        REQUIRE(dp_l1 == row.l1);
+        REQUIRE(dp_squared == row.squared_l2);
+        REQUIRE(enumerated.min_l1 == row.l1);
+        REQUIRE(enumerated.min_squared_l2 == row.squared_l2);
+      } else {
+        REQUIRE(std::isinf(dp_l1));
+        REQUIRE(std::isinf(dp_squared));
+        REQUIRE(std::isinf(enumerated.min_l1));
+        REQUIRE(std::isinf(enumerated.min_squared_l2));
+      }
+    }
+  }
+}
+
+TEST_CASE("F12 CUDA pairwise kernels use canonical fixed-band geometry",
+          "[cuda][F12][banded][pairwise]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  for (const auto &route : f12_cuda_routes) {
+    const auto series = f12_pairwise_inventory(route);
+    const auto n = series.size();
+
+    for (const bool squared : {false, true}) {
+      for (const auto &row : oracle::ledger) {
+        CAPTURE(route.expected_kernel, squared, row.band);
+        const auto opts = f12_cuda_options(route, row, squared);
+        const auto result =
+            dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+        const auto expected = f12_expected_public_cost(row, squared);
+
+        REQUIRE(result.n == n);
+        REQUIRE(result.matrix.size() == n * n);
+        REQUIRE(result.kernel_used == route.expected_kernel);
+        REQUIRE_FALSE(result.kernel_override_fell_back);
+        REQUIRE(result.matrix[1] == expected);
+        REQUIRE(result.matrix[n] == expected);
+      }
+    }
+  }
+}
+
+TEST_CASE("F12 CUDA external one-vs-N kernels use canonical fixed-band geometry",
+          "[cuda][F12][banded][one_vs_n]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  for (const auto &route : f12_cuda_routes) {
+    const auto targets = f12_external_targets(route);
+
+    for (const bool squared : {false, true}) {
+      for (const auto &row : oracle::ledger) {
+        CAPTURE(route.expected_kernel, squared, row.band);
+        const auto opts = f12_cuda_options(route, row, squared);
+        const auto result = dtwc::cuda::compute_dtw_one_vs_all(
+            oracle::principal_x(), targets, opts);
+        const auto expected = f12_expected_public_cost(row, squared);
+
+        REQUIRE(result.n == targets.size());
+        REQUIRE(result.distances.size() == targets.size());
+        REQUIRE(result.kernel_used == route.expected_kernel);
+        REQUIRE_FALSE(result.kernel_override_fell_back);
+        REQUIRE(result.distances[0] == expected);
+      }
+    }
+  }
+}
+
+TEST_CASE("F12 CUDA singleton route cannot bypass endpoint feasibility",
+          "[cuda][F12][banded][singleton]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  const auto &route = f12_cuda_routes.front();
+  const std::vector<std::vector<double>> pairwise_series{
+      oracle::singleton_x(), oracle::singleton_y()
+  };
+  const std::vector<std::vector<double>> external_targets{
+      oracle::singleton_y()
+  };
+  const std::vector<std::vector<double>> reverse_external_targets{
+      oracle::singleton_x()
+  };
+
+  for (const bool squared : {false, true}) {
+    for (const auto &row : oracle::singleton_ledger) {
+      CAPTURE(squared, row.band);
+      const auto opts = f12_cuda_options(route, row, squared);
+      const auto expected = f12_expected_public_cost(row, squared);
+
+      const auto pairwise =
+          dtwc::cuda::compute_distance_matrix_cuda(pairwise_series, opts);
+      REQUIRE(pairwise.n == 2);
+      REQUIRE(pairwise.matrix.size() == 4);
+      REQUIRE(pairwise.kernel_used == "warp");
+      REQUIRE_FALSE(pairwise.kernel_override_fell_back);
+      REQUIRE(pairwise.matrix[1] == expected);
+      REQUIRE(pairwise.matrix[2] == expected);
+
+      const auto external = dtwc::cuda::compute_dtw_one_vs_all(
+          oracle::singleton_x(), external_targets, opts);
+      REQUIRE(external.n == 1);
+      REQUIRE(external.distances.size() == 1);
+      REQUIRE(external.kernel_used == "warp");
+      REQUIRE_FALSE(external.kernel_override_fell_back);
+      REQUIRE(external.distances[0] == expected);
+
+      const auto reverse_external = dtwc::cuda::compute_dtw_one_vs_all(
+          oracle::singleton_y(), reverse_external_targets, opts);
+      REQUIRE(reverse_external.n == 1);
+      REQUIRE(reverse_external.distances.size() == 1);
+      REQUIRE(reverse_external.kernel_used == "warp");
+      REQUIRE_FALSE(reverse_external.kernel_override_fell_back);
+      REQUIRE(reverse_external.distances[0] == expected);
+    }
+  }
+}
+
+TEST_CASE("F12 CUDA FP32 results translate no-path to the public double sentinel",
+          "[cuda][F12][banded][fp32]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  const auto &below_gap = oracle::ledger.front();
+  const auto &route = f12_cuda_routes.front();
+  auto opts = f12_cuda_options(
+      route, below_gap, false, dtwc::cuda::CUDAPrecision::FP32);
+
+  const auto pairwise = dtwc::cuda::compute_distance_matrix_cuda(
+      f12_pairwise_inventory(route), opts);
+  REQUIRE(pairwise.kernel_used == "warp");
+  REQUIRE(pairwise.matrix[1] == oracle::public_no_path_sentinel);
+  REQUIRE(pairwise.matrix[2] == oracle::public_no_path_sentinel);
+
+  const auto external = dtwc::cuda::compute_dtw_one_vs_all(
+      oracle::principal_x(), f12_external_targets(route), opts);
+  REQUIRE(external.kernel_used == "warp");
+  REQUIRE(external.distances[0] == oracle::public_no_path_sentinel);
+}
+
+TEST_CASE("F12 CUDA K-vs-N public route reaches the canonical launcher",
+          "[cuda][F12][banded][k_vs_n]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  const auto &at_gap = oracle::ledger[1];
+  const auto &route = f12_cuda_routes.back();
+  const std::vector<std::vector<double>> series{
+      oracle::principal_x(), oracle::principal_y()
+  };
+  const std::vector<std::size_t> query_indices{0};
+  const auto opts = f12_cuda_options(route, at_gap, false);
+
+  const auto result =
+      dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts);
+  REQUIRE(result.k == 1);
+  REQUIRE(result.n == 2);
+  REQUIRE(result.distances.size() == 2);
+  REQUIRE(result.kernel_used == "wavefront");
+  REQUIRE_FALSE(result.kernel_override_fell_back);
+  REQUIRE(result.distances[0] == 0.0);
+  REQUIRE(result.distances[1] == at_gap.l1);
+}
 
 // ---------------------------------------------------------------------------
 // Element-wise GPU vs CPU comparison helpers
@@ -230,9 +513,9 @@ TEST_CASE("test_gpu_long_series_wavefront_banded", "[cuda][long][banded]")
 {
   if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
 
-  // L = 3072 > 2048 still exercises the 3-buffer routing; the size keeps the
-  // extended shared-memory request (diag + band arrays) at the same ~96 KB
-  // ceiling as the unbanded L=4096 case above.
+  // L = 3072 > 2048 still exercises the 3-buffer routing. Fixed-band
+  // membership is evaluated directly, so no boundary arrays inflate shared
+  // memory beyond the three diagonal buffers.
   constexpr size_t N = 5;
   constexpr size_t L = 3072;
   constexpr int band = 64;

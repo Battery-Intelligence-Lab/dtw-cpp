@@ -135,11 +135,12 @@ kernel void dtw_wavefront(
     int i_hi = min(La - 1, k);
 
     // Band clip: |i - j| = |2i - k| <= band  ->  i in [(k-band+1)/2, (k+band)/2].
+    // Widen before k +/- band so an INT_MAX full-coverage request cannot wrap.
     if (band >= 0) {
-      const int band_lo = (k - band + 1) / 2;  // ceil((k-band)/2) when k-band>=0
-      const int band_hi = (k + band) / 2;      // floor((k+band)/2)
-      i_lo = max(i_lo, band_lo);
-      i_hi = min(i_hi, band_hi);
+      const long band_lo = ((long)k - (long)band + 1L) / 2L;
+      const long band_hi = ((long)k + (long)band) / 2L;
+      if (band_lo > (long)i_lo) i_lo = (int)band_lo;
+      if (band_hi < (long)i_hi) i_hi = (int)band_hi;
     }
     const int diag_len = i_hi - i_lo + 1;
 
@@ -249,10 +250,10 @@ kernel void dtw_wavefront_global(
     int i_lo = max(0, k - Lb + 1);
     int i_hi = min(La - 1, k);
     if (band >= 0) {
-      const int band_lo = (k - band + 1) / 2;
-      const int band_hi = (k + band) / 2;
-      i_lo = max(i_lo, band_lo);
-      i_hi = min(i_hi, band_hi);
+      const long band_lo = ((long)k - (long)band + 1L) / 2L;
+      const long band_hi = ((long)k + (long)band) / 2L;
+      if (band_lo > (long)i_lo) i_lo = (int)band_lo;
+      if (band_hi < (long)i_hi) i_hi = (int)band_hi;
     }
     const int diag_len = i_hi - i_lo + 1;
 
@@ -500,10 +501,10 @@ kernel void dtw_kvn_wavefront(
     int i_lo = max(0, k - Lb + 1);
     int i_hi = min(La - 1, k);
     if (band >= 0) {
-      const int band_lo = (k - band + 1) / 2;
-      const int band_hi = (k + band) / 2;
-      i_lo = max(i_lo, band_lo);
-      i_hi = min(i_hi, band_hi);
+      const long band_lo = ((long)k - (long)band + 1L) / 2L;
+      const long band_hi = ((long)k + (long)band) / 2L;
+      if (band_lo > (long)i_lo) i_lo = (int)band_lo;
+      if (band_hi < (long)i_hi) i_hi = (int)band_hi;
     }
     const int diag_len = i_hi - i_lo + 1;
     if (diag_len > 0) {
@@ -596,10 +597,10 @@ kernel void dtw_kvn_wavefront_global(
     int i_lo = max(0, k - Lb + 1);
     int i_hi = min(La - 1, k);
     if (band >= 0) {
-      const int band_lo = (k - band + 1) / 2;
-      const int band_hi = (k + band) / 2;
-      i_lo = max(i_lo, band_lo);
-      i_hi = min(i_hi, band_hi);
+      const long band_lo = ((long)k - (long)band + 1L) / 2L;
+      const long band_hi = ((long)k + (long)band) / 2L;
+      if (band_lo > (long)i_lo) i_lo = (int)band_lo;
+      if (band_hi < (long)i_hi) i_hi = (int)band_hi;
     }
     const int diag_len = i_hi - i_lo + 1;
     if (diag_len > 0) {
@@ -1296,7 +1297,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     // Scalar args
     const int N_int = static_cast<int>(N);
-    const int band = opts.band;
+    const int requested_band = opts.band;
     const int use_sq_l2 = opts.use_squared_l2 ? 1 : 0;
 
     // Choose kernel variant based on workload:
@@ -1325,11 +1326,14 @@ MetalDistMatResult compute_distance_matrix_metal(
     // kernel beats the wavefront; wider bands put too much sequential work
     // on a single thread. Cap at 512 to avoid huge per-thread scratch.
     bool use_banded_row =
-        (band > 0) && (band * 20 < heuristic_L) && (band <= 512);
+        (requested_band > 0) && (requested_band <= 512)
+        && (static_cast<std::int64_t>(requested_band) * 20
+            < static_cast<std::int64_t>(heuristic_L));
     // Register-tile path: unbanded only for this pass. TILE_W=4 covers
     // max_L in [1, 128] (32 lanes * 4 cols = 128), TILE_W=8 covers (128, 256].
     bool use_regtile =
-        !use_banded_row && (band == -1) && (heuristic_L > 0) && (heuristic_L <= 256);
+        !use_banded_row && (requested_band == -1)
+        && (heuristic_L > 0) && (heuristic_L <= 256);
     const int regtile_tile_w = (max_L <= 128) ? 4 : 8;
     bool use_global =
         !use_banded_row && !use_regtile && (tg_mem_len > tg_mem_cap);
@@ -1345,12 +1349,12 @@ MetalDistMatResult compute_distance_matrix_metal(
         use_banded_row = false; use_regtile = false; use_global = true;
         break;
       case dtwc::KernelOverride::BandedRow:
-        if (band > 0 && band <= 512) {
+        if (requested_band > 0 && requested_band <= 512) {
           use_banded_row = true; use_regtile = false; use_global = false;
         }
         break;
       case dtwc::KernelOverride::RegTile:
-        if (band == -1 && max_L > 0 && max_L <= 256) {
+        if (requested_band == -1 && max_L > 0 && max_L <= 256) {
           use_banded_row = false; use_regtile = true; use_global = false;
         }
         break;
@@ -1358,6 +1362,15 @@ MetalDistMatResult compute_distance_matrix_metal(
       default:
         break;
     }
+
+    // A non-negative band covering the largest possible |i-j| in the batch is
+    // exactly unbounded. Normalize wavefront dispatches before device
+    // arithmetic (making INT_MAX safe), but preserve a forced BandedRow's
+    // positive strip width and the requested-band kernel/LB routing semantics.
+    const int band =
+        (!use_banded_row && requested_band >= 0
+         && requested_band >= max_L - 1)
+          ? -1 : requested_band;
 
     id<MTLComputePipelineState> pipeline;
     if (use_banded_row) {
@@ -1742,7 +1755,8 @@ MetalDistMatResult compute_distance_matrix_metal(
     const float *out_ptr = static_cast<const float *>([buf_out contents]);
     for (size_t i = 0; i < N; ++i) {
       for (size_t j = 0; j < N; ++j) {
-        result.matrix[i * N + j] = static_cast<double>(out_ptr[i * N + j]);
+        result.matrix[i * N + j] =
+            dtwc::gpu::detail::normalize_public_distance(out_ptr[i * N + j]);
       }
     }
 
@@ -2029,7 +2043,10 @@ MetalKVsNResult compute_kvn_impl(
     KVNParams params{};
     params.N_target    = static_cast<int>(N);
     params.max_L       = max_L;
-    params.band        = opts.band;
+    // Match the pairwise path: a band covering every possible cell is
+    // unbounded, avoiding signed k +/- INT_MAX arithmetic in the MSL kernels.
+    params.band        =
+        (opts.band >= 0 && opts.band >= max_L - 1) ? -1 : opts.band;
     params.use_sq_l2   = opts.use_squared_l2 ? 1 : 0;
     params.pair_offset = 0;
     params.num_pairs   = static_cast<std::int64_t>(num_pairs);
@@ -2118,7 +2135,8 @@ MetalKVsNResult compute_kvn_impl(
 
     const float *out_ptr = static_cast<const float *>([buf_out contents]);
     for (size_t i = 0; i < Kq * N; ++i) {
-      result.distances[i] = static_cast<double>(out_ptr[i]);
+      result.distances[i] =
+          dtwc::gpu::detail::normalize_public_distance(out_ptr[i]);
     }
 
     [buf_out release];

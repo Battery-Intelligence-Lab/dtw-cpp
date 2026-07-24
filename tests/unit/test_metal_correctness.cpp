@@ -13,10 +13,15 @@
 
 #include <dtwc.hpp>
 
+#include "gpu_fixed_band_oracle.hpp"
+
 #ifdef DTWC_HAS_METAL
 #include <metal/metal_dtw.hpp>
 #endif
 
+#include <array>
+#include <cmath>
+#include <limits>
 #include <random>
 #include <vector>
 
@@ -33,6 +38,8 @@ TEST_CASE("Metal not available", "[metal]")
 #else // DTWC_HAS_METAL
 
 namespace {
+
+namespace fixed_band = dtwc::test::gpu_fixed_band;
 
 std::vector<std::vector<double>> generate_random_series(
     size_t n, size_t length, unsigned seed)
@@ -89,6 +96,128 @@ TEST_CASE("Metal backend is available", "[metal]")
   }
   INFO("Metal device: " << dtwc::metal::metal_device_info());
   REQUIRE(dtwc::metal::metal_available());
+}
+
+TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
+          "[metal][banded][F12]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  // Registered before any real-Metal execution in
+  // .claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md. The literal
+  // costs and sentinel come from the test-only full-matrix oracle, never the
+  // CPU rolling-buffer implementation.
+  const std::vector<std::vector<double>> series{
+      fixed_band::principal_x(),
+      fixed_band::principal_y(),
+  };
+  struct Route {
+    dtwc::KernelOverride kernel_override;
+    const char *kernel_name;
+    bool supports_int_max;
+  };
+  constexpr std::array routes{
+      Route{dtwc::KernelOverride::Wavefront, "wavefront", true},
+      Route{dtwc::KernelOverride::WavefrontGlobal, "wavefront_global", true},
+      // The public override intentionally limits BandedRow to band <= 512.
+      Route{dtwc::KernelOverride::BandedRow, "banded_row", false},
+  };
+
+  for (const auto &route : routes) {
+    for (const bool squared : {false, true}) {
+      for (const auto &row : fixed_band::ledger) {
+        if (!route.supports_int_max
+            && row.band == std::numeric_limits<int>::max()) {
+          continue;
+        }
+
+        const double oracle = fixed_band::full_matrix_oracle(
+            series[0], series[1], row.band, squared);
+        const double registered = squared ? row.squared_l2 : row.l1;
+        INFO("kernel=" << route.kernel_name << " band=" << row.band
+             << " squared=" << squared);
+        if (row.has_path) {
+          REQUIRE_FALSE(std::isinf(oracle));
+          REQUIRE(oracle == registered);
+        } else {
+          REQUIRE(std::isinf(oracle));
+        }
+        const double expected =
+            row.has_path ? registered : fixed_band::public_no_path_sentinel;
+
+        dtwc::metal::MetalDistMatOptions opts;
+        opts.band = row.band;
+        opts.use_squared_l2 = squared;
+        opts.use_lb_keogh = false;
+        opts.kernel_override = route.kernel_override;
+        const auto gpu =
+            dtwc::metal::compute_distance_matrix_metal(series, opts);
+
+        REQUIRE(gpu.kernel_used == route.kernel_name);
+        REQUIRE(gpu.n == 2);
+        REQUIRE(gpu.pairs_computed == 1);
+        REQUIRE(gpu.matrix.size() == 4);
+        REQUIRE(gpu.matrix[0] == 0.0);
+        REQUIRE(gpu.matrix[3] == 0.0);
+        REQUIRE(gpu.matrix[1] == expected);
+        REQUIRE(gpu.matrix[2] == expected);
+      }
+    }
+  }
+}
+
+TEST_CASE("Metal K-vs-N fixed-band copy route preserves the F12 sentinel",
+          "[metal][banded][kvn][F12]")
+{
+  if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
+
+  const std::vector<std::vector<double>> queries{
+      fixed_band::principal_x(),
+  };
+  struct Route {
+    std::vector<std::vector<double>> targets;
+    const char *kernel_name;
+  };
+  const std::array routes{
+      Route{{fixed_band::principal_y()}, "kvn_wavefront"},
+      Route{{
+          fixed_band::principal_y(),
+          std::vector<double>(16385, 0.0),
+      }, "kvn_wavefront_global"},
+  };
+
+  for (const auto &route : routes) {
+    for (const bool squared : {false, true}) {
+      for (const auto &row : fixed_band::ledger) {
+        const double oracle = fixed_band::full_matrix_oracle(
+            queries[0], route.targets[0], row.band, squared);
+        const double registered = squared ? row.squared_l2 : row.l1;
+        INFO("kernel=" << route.kernel_name << " band=" << row.band
+             << " squared=" << squared);
+        if (row.has_path) {
+          REQUIRE_FALSE(std::isinf(oracle));
+          REQUIRE(oracle == registered);
+        } else {
+          REQUIRE(std::isinf(oracle));
+        }
+        const double expected =
+            row.has_path ? registered : fixed_band::public_no_path_sentinel;
+
+        dtwc::metal::MetalDistMatOptions opts;
+        opts.band = row.band;
+        opts.use_squared_l2 = squared;
+        opts.use_lb_keogh = false;
+        const auto gpu = dtwc::metal::compute_dtw_k_vs_all_metal(
+            queries, route.targets, opts);
+
+        REQUIRE(gpu.kernel_used == route.kernel_name);
+        REQUIRE(gpu.k == 1);
+        REQUIRE(gpu.n == route.targets.size());
+        REQUIRE(gpu.distances.size() == route.targets.size());
+        REQUIRE(gpu.distances[0] == expected);
+      }
+    }
+  }
 }
 
 TEST_CASE("Metal unbanded DTW matches CPU on small random series", "[metal]")

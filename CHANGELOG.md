@@ -8,6 +8,13 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Breaking:** corrected CUDA banded DTW to the public canonical
+  `|i-j| <= band` contract for unequal lengths. All CUDA pairwise and
+  one/K-vs-N kernel families now use fixed geometry without signed
+  `band+1` arithmetic, and FP32 GPU no-path results are translated to the exact
+  public double `DBL_MAX` sentinel instead of exposing widened `FLT_MAX`.
+  Metal now has the matching source-level sentinel and overflow-safe no-LB
+  DTW-kernel bound repair; real-device validation remains pending.
 - Pinned the standalone C++ example's DTWC++ archive to the 2.0.0rc1 commit
   and its SHA-256. The supply-chain gate now scans every tracked
   `CPMAddPackage(URL ...)` declaration, including inline CMake syntax, and

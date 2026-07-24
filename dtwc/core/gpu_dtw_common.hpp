@@ -22,10 +22,32 @@
 #include "../enums/KernelOverride.hpp"
 
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <vector>
 
 namespace dtwc::gpu {
+
+namespace detail {
+
+/// Convert a device-compute result to the public double-valued GPU API.
+///
+/// FP32 kernels use float::max() as their finite no-path sentinel. A blind
+/// cast would expose widened FLT_MAX even though every public result container
+/// stores doubles and the CPU/FP64 contract uses double::max().
+inline constexpr double normalize_public_distance(float value) noexcept
+{
+  return value == std::numeric_limits<float>::max()
+      ? std::numeric_limits<double>::max()
+      : static_cast<double>(value);
+}
+
+inline constexpr double normalize_public_distance(double value) noexcept
+{
+  return value;
+}
+
+} // namespace detail
 
 /// Common options fields shared by CUDA and Metal distance-matrix entry points.
 struct DistMatOptionsBase {

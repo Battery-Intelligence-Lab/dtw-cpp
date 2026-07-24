@@ -7,7 +7,8 @@
  *      the non-LB call; `pairs_pruned == 0`.
  *   2. Threshold = +∞ — all pairs active; surviving results match non-LB.
  *   3. Threshold = 0 on random series — most pairs pruned; surviving pairs
- *      match CPU banded-DTW reference; pruned pairs return +∞.
+ *      match CPU banded-DTW reference; pruned pairs return the public finite
+ *      `numeric_limits<double>::max()` sentinel.
  */
 
 #include <catch2/catch_test_macros.hpp>
@@ -19,7 +20,6 @@
 #include <metal/metal_dtw.hpp>
 #endif
 
-#include <cmath>
 #include <limits>
 #include <random>
 #include <vector>
@@ -123,7 +123,8 @@ TEST_CASE("Metal LB_Keogh permissive threshold keeps all pairs", "[metal][lb_keo
   }
 }
 
-TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_keogh]")
+TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps the double sentinel",
+          "[metal][lb_keogh]")
 {
   if (!dtwc::metal::metal_available()) SKIP("Metal unavailable");
   const size_t N = 10;
@@ -144,9 +145,10 @@ TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_k
   REQUIRE(gpu.pairs_pruned + gpu.pairs_computed == total_pairs);
   REQUIRE(gpu.pairs_pruned > 0); // random data very unlikely to survive lb=0
 
-  // Every off-diagonal is either +inf (pruned) or within tolerance of CPU
-  // DTW (survivor).
-  const float INF = std::numeric_limits<float>::max();
+  // Every off-diagonal is either the exact public finite sentinel (pruned) or
+  // within tolerance of CPU DTW (survivor).
+  constexpr double sentinel = std::numeric_limits<double>::max();
+  size_t sentinel_count = 0;
   for (size_t i = 0; i < N; ++i) {
     REQUIRE(gpu.matrix[i * N + i] == 0.0);
     for (size_t j = i + 1; j < N; ++j) {
@@ -155,11 +157,8 @@ TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_k
       CAPTURE(i, j, cpu[i * N + j], g);
       REQUIRE(g == gt); // symmetry preserved
 
-      if (std::abs(g - static_cast<double>(INF)) < 1e30) {
-        // Pruned pair: LB_Keogh must be a valid lower bound on the CPU DTW.
-        // We can't REQUIRE it strictly without recomputing LB; just assert
-        // the stamp is +∞-like and non-negative.
-        REQUIRE(g > 1e30);
+      if (g == sentinel) {
+        ++sentinel_count;
       } else {
         REQUIRE_THAT(g,
                      WithinRel(cpu[i * N + j], 1e-3) ||
@@ -167,6 +166,7 @@ TEST_CASE("Metal LB_Keogh strict threshold prunes and stamps INF", "[metal][lb_k
       }
     }
   }
+  REQUIRE(sentinel_count == gpu.pairs_pruned);
 }
 
 TEST_CASE("Metal compute_lb_keogh_metal matches CPU reference", "[metal][lb_keogh]")
