@@ -14,6 +14,28 @@ function Assert-F19Evidence {
     }
 }
 
+function Get-F19MatlabRouteNames {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet(
+            'all',
+            'fast_pam',
+            'fast_clara',
+            'clarans',
+            'cut_dendrogram'
+        )]
+        [string] $Route
+    )
+
+    [string[]] $routeNames = if ($Route -eq 'all') {
+        'fast_pam', 'fast_clara', 'clarans', 'cut_dendrogram'
+    }
+    else {
+        $Route
+    }
+    Write-Output -NoEnumerate $routeNames
+}
+
 function Resolve-F19RepositoryPath {
     param(
         [Parameter(Mandatory = $true)]

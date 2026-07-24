@@ -16,6 +16,9 @@ $repositoryRoot = [System.IO.Path]::GetFullPath(
 )
 $sourcePath = Join-Path $repositoryRoot 'bindings\matlab\dtwc_mex.cpp'
 $profileRunner = Join-Path $PSScriptRoot 'test_f19_matlab_writeback.ps1'
+$routeSelectorTest = Join-Path (
+    $PSScriptRoot
+) 'test_f19_matlab_route_selector.ps1'
 $EvidenceRoot = Resolve-F19RepositoryPath $EvidenceRoot $repositoryRoot
 $RuntimeRoot = Resolve-F19RepositoryPath $RuntimeRoot $repositoryRoot
 Assert-F19EvidencePathInside (
@@ -30,6 +33,22 @@ Assert-F19Evidence (
 Assert-F19Evidence (
     [System.IO.File]::Exists($profileRunner)
 ) "per-profile runner does not exist: $profileRunner"
+Assert-F19Evidence (
+    [System.IO.File]::Exists($routeSelectorTest)
+) "route-selector regression test does not exist: $routeSelectorTest"
+$routeSelectorMarker = (
+    'F19_MATLAB_ROUTE_SELECTOR cases=5/5 singleton_arrays=4/4 ' +
+    'legacy_mutant_rejections=4/4 verdict=PASS'
+)
+$routeSelectorOutput = @(& $routeSelectorTest 6>&1)
+$routeSelectorText = [string]::Join(
+    "`n",
+    @($routeSelectorOutput | ForEach-Object { $_.ToString() })
+)
+Assert-F19Evidence (
+    $routeSelectorText -eq $routeSelectorMarker
+) "route-selector regression marker was absent or non-exact."
+Write-Output $routeSelectorMarker
 
 if ([string]::IsNullOrWhiteSpace($MatlabR2024b)) {
     $MatlabR2024b = 'C:\Program Files\MATLAB\R2024b\bin\matlab.exe'

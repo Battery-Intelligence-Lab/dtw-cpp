@@ -375,12 +375,7 @@ foreach ($item in $selectedReleases) {
     )
 }
 
-$routeNames = if ($Route -eq 'all') {
-    @('fast_pam', 'fast_clara', 'clarans', 'cut_dendrogram')
-}
-else {
-    @($Route)
-}
+$routeNames = Get-F19MatlabRouteNames $Route
 $executionsPerVersion = $routeNames.Count
 $vectorAssertionsPerVersion = (
     $executionsPerVersion * $script:MinimumVectorAssertions
