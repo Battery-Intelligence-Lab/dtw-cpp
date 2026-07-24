@@ -14,6 +14,7 @@
 #include <dtwc.hpp>
 
 #include "gpu_fixed_band_oracle.hpp"
+#include "../support/deterministic_series.hpp"
 
 #ifdef DTWC_HAS_METAL
 #include <metal/metal_dtw.hpp>
@@ -41,49 +42,27 @@ namespace {
 
 namespace fixed_band = dtwc::test::gpu_fixed_band;
 
-std::vector<std::vector<double>> generate_random_series(
-    size_t n, size_t length, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-10.0, 10.0);
-
-  std::vector<std::vector<double>> series(n);
-  for (auto &s : series) {
-    s.resize(length);
-    for (auto &v : s)
-      v = dist(rng);
-  }
-  return series;
-}
+constexpr auto generate_random_series =
+  &dtwc::test_support::accelerator_series_set;
 
 std::vector<double> cpu_distance_matrix(
     const std::vector<std::vector<double>> &series)
 {
-  const size_t N = series.size();
-  std::vector<double> mat(N * N, 0.0);
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      double d = dtwc::dtwFull_L<double>(series[i], series[j]);
-      mat[i * N + j] = d;
-      mat[j * N + i] = d;
-    }
-  }
-  return mat;
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    series,
+    [](const auto &left, const auto &right) {
+      return dtwc::dtwFull_L<double>(left, right);
+    });
 }
 
 std::vector<double> cpu_banded_matrix(
     const std::vector<std::vector<double>> &series, int band)
 {
-  const size_t N = series.size();
-  std::vector<double> mat(N * N, 0.0);
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      double d = dtwc::dtwBanded<double>(series[i], series[j], band);
-      mat[i * N + j] = d;
-      mat[j * N + i] = d;
-    }
-  }
-  return mat;
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    series,
+    [band](const auto &left, const auto &right) {
+      return dtwc::dtwBanded<double>(left, right, band);
+    });
 }
 
 } // namespace

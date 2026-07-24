@@ -15,36 +15,26 @@
 #include <core/lower_bound_impl.hpp>
 #include <core/z_normalize.hpp>
 
+#include "../tests/support/deterministic_series.hpp"
+
 #include <vector>
-#include <random>
 #include <string>
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Generate a random time series of a given length using a fixed seed.
-static std::vector<double> random_series(size_t len, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-1.0, 1.0);
-  std::vector<double> s(len);
-  for (auto &v : s)
-    v = dist(rng);
-  return s;
-}
+constexpr auto random_series = &dtwc::test_support::benchmark_series;
 
 /// Build a dtwc::Data object with N random series of length L.
 static dtwc::Data make_random_data(int N, int L, unsigned base_seed = 100)
 {
-  std::vector<std::vector<dtwc::data_t>> vecs;
+  auto vecs = dtwc::test_support::benchmark_series_set(
+    static_cast<std::size_t>(N), static_cast<std::size_t>(L), base_seed);
   std::vector<std::string> names;
-  vecs.reserve(N);
   names.reserve(N);
-  for (int i = 0; i < N; ++i) {
-    vecs.push_back(random_series(static_cast<size_t>(L), base_seed + i));
+  for (int i = 0; i < N; ++i)
     names.push_back("s" + std::to_string(i));
-  }
   return dtwc::Data(std::move(vecs), std::move(names));
 }
 

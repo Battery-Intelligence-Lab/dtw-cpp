@@ -13,6 +13,8 @@
 #include <dtwc.hpp>
 #include <enums/KernelOverride.hpp>
 
+#include "../support/deterministic_series.hpp"
+
 #if __has_include(<cuda/kernel_selection.hpp>)
 #include <cuda/kernel_selection.hpp>
 #define DTWC_HAS_CUDA_KERNEL_SELECTION_SEAM 1
@@ -117,16 +119,11 @@ std::vector<std::vector<double>> m50_series(std::size_t length)
 
 std::vector<double> m50_cpu_matrix(const std::vector<std::vector<double>> &series)
 {
-  const std::size_t n = series.size();
-  std::vector<double> result(n * n, 0.0);
-  for (std::size_t i = 0; i < n; ++i) {
-    for (std::size_t j = i + 1; j < n; ++j) {
-      const double d = dtwc::dtwFull_L<double>(series[i], series[j]);
-      result[i * n + j] = d;
-      result[j * n + i] = d;
-    }
-  }
-  return result;
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    series,
+    [](const auto &left, const auto &right) {
+      return dtwc::dtwFull_L<double>(left, right);
+    });
 }
 
 std::vector<double> m50_cpu_row(const std::vector<double> &query,

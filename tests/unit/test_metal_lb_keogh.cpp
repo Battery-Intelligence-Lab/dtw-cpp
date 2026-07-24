@@ -16,6 +16,8 @@
 
 #include <dtwc.hpp>
 
+#include "../support/deterministic_series.hpp"
+
 #ifdef DTWC_HAS_METAL
 #include <metal/metal_dtw.hpp>
 #endif
@@ -54,16 +56,11 @@ std::vector<std::vector<double>> random_series(size_t n, size_t length,
 std::vector<double> cpu_distance_matrix(
     const std::vector<std::vector<double>> &series)
 {
-  const size_t N = series.size();
-  std::vector<double> mat(N * N, 0.0);
-  for (size_t i = 0; i < N; ++i) {
-    for (size_t j = i + 1; j < N; ++j) {
-      double d = dtwc::dtwFull_L<double>(series[i], series[j]);
-      mat[i * N + j] = d;
-      mat[j * N + i] = d;
-    }
-  }
-  return mat;
+  return dtwc::test_support::symmetric_zero_diagonal_matrix(
+    series,
+    [](const auto &left, const auto &right) {
+      return dtwc::dtwFull_L<double>(left, right);
+    });
 }
 
 } // namespace

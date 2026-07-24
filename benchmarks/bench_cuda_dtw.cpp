@@ -13,12 +13,13 @@
 #include <benchmark/benchmark.h>
 #include <dtwc.hpp>
 
+#include "../tests/support/deterministic_series.hpp"
+
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
 #endif
 
 #include <vector>
-#include <random>
 #include <string>
 #include <iostream>
 
@@ -26,24 +27,11 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::vector<double> random_series(size_t len, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-1.0, 1.0);
-  std::vector<double> s(len);
-  for (auto &v : s)
-    v = dist(rng);
-  return s;
-}
-
 static std::vector<std::vector<double>> make_series_set(int N, int L,
                                                          unsigned base_seed = 200)
 {
-  std::vector<std::vector<double>> vecs;
-  vecs.reserve(N);
-  for (int i = 0; i < N; ++i)
-    vecs.push_back(random_series(static_cast<size_t>(L), base_seed + i));
-  return vecs;
+  return dtwc::test_support::benchmark_series_set(
+    static_cast<std::size_t>(N), static_cast<std::size_t>(L), base_seed);
 }
 
 static std::vector<std::vector<double>> make_pruning_friendly_series_set(int N, int L)
@@ -63,14 +51,12 @@ static std::vector<std::vector<double>> make_pruning_friendly_series_set(int N, 
 
 static dtwc::Data make_random_data(int N, int L, unsigned base_seed = 200)
 {
-  std::vector<std::vector<dtwc::data_t>> vecs;
+  auto vecs = dtwc::test_support::benchmark_series_set(
+    static_cast<std::size_t>(N), static_cast<std::size_t>(L), base_seed);
   std::vector<std::string> names;
-  vecs.reserve(N);
   names.reserve(N);
-  for (int i = 0; i < N; ++i) {
-    vecs.push_back(random_series(static_cast<size_t>(L), base_seed + i));
+  for (int i = 0; i < N; ++i)
     names.push_back("s" + std::to_string(i));
-  }
   return dtwc::Data(std::move(vecs), std::move(names));
 }
 

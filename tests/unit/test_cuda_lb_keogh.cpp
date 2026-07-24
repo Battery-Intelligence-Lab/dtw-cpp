@@ -21,12 +21,13 @@
 #include <dtwc.hpp>
 #include <core/lower_bound_impl.hpp>
 
+#include "../support/deterministic_series.hpp"
+
 #ifdef DTWC_HAS_CUDA
 #include <cuda/cuda_dtw.cuh>
 #endif
 
 #include <cmath>
-#include <random>
 #include <vector>
 #include <limits>
 
@@ -43,21 +44,8 @@ TEST_CASE("CUDA LB_Keogh - not available", "[cuda][lb_keogh]")
 
 namespace {
 
-/// Generate N random series of the given length using a fixed seed.
-std::vector<std::vector<double>> generate_random_series(
-    size_t n, size_t length, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-10.0, 10.0);
-
-  std::vector<std::vector<double>> series(n);
-  for (auto &s : series) {
-    s.resize(length);
-    for (auto &v : s)
-      v = dist(rng);
-  }
-  return series;
-}
+constexpr auto generate_random_series =
+  &dtwc::test_support::accelerator_series_set;
 
 /// Compute CPU reference LB_Keogh for all pairs (symmetric).
 /// Returns flat array of N*(N-1)/2 values in the same pair ordering as GPU.

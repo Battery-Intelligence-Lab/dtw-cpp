@@ -53,6 +53,25 @@ if(TARGET unit_test_distance_matrix_csv)
             PASS_REGULAR_EXPRESSION "${_f14_focused_regex}")
 endif()
 
+# F15 freezes the two shared deterministic generator schedules and the dense
+# symmetric CPU-reference traversal. This target is mandatory in every build.
+if(TARGET unit_test_deterministic_series)
+    target_compile_definitions(
+        unit_test_deterministic_series
+        PRIVATE
+            DTWC_F15_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
+    set_property(
+        TEST unit_test_deterministic_series
+        PROPERTY SKIP_RETURN_CODE)
+    set(_f15_focused_regex
+        "F15_TEST_SUPPORT profile=(relaxed|precise|libstdcxx) scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0(.|[\r\n])*All tests passed \\((3[5-9]|[4-9][0-9]|[1-9][0-9][0-9]+) assertions in ([5-9]|[1-9][0-9]+) test cases\\)")
+    set_tests_properties(
+        unit_test_deterministic_series
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION "${_f15_focused_regex}")
+endif()
+
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
 # vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
 # a PRIVATE include of dtwc++, so grant this one test target the include path.

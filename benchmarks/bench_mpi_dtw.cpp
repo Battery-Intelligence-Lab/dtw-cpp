@@ -17,13 +17,14 @@
 
 #include <dtwc.hpp>
 
+#include "../tests/support/deterministic_series.hpp"
+
 #ifdef DTWC_HAS_MPI
 #include <mpi/mpi_distance_matrix.hpp>
 #include <mpi.h>
 #endif
 
 #include <vector>
-#include <random>
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -34,24 +35,11 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-static std::vector<double> random_series(size_t len, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-1.0, 1.0);
-  std::vector<double> s(len);
-  for (auto &v : s)
-    v = dist(rng);
-  return s;
-}
-
 static std::vector<std::vector<double>> make_series_set(int N, int L,
                                                          unsigned base_seed = 300)
 {
-  std::vector<std::vector<double>> vecs;
-  vecs.reserve(N);
-  for (int i = 0; i < N; ++i)
-    vecs.push_back(random_series(static_cast<size_t>(L), base_seed + i));
-  return vecs;
+  return dtwc::test_support::benchmark_series_set(
+    static_cast<std::size_t>(N), static_cast<std::size_t>(L), base_seed);
 }
 
 struct BenchConfig {
@@ -149,7 +137,7 @@ static void run_mpi_benchmark(const BenchConfig &cfg)
 
 // Suppress unused function warning when MPI is disabled
 namespace { struct dummy_ref { void operator()() {
-  (void)random_series; (void)make_series_set;
+  (void)make_series_set;
 }};
 }
 

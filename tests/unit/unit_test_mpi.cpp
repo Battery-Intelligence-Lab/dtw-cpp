@@ -10,12 +10,13 @@
  * bracketing, which is incompatible with Catch2's main.
  */
 
+#include "../support/deterministic_series.hpp"
+
 #ifdef DTWC_HAS_MPI
 
 #include <mpi.h>
 #include <iostream>
 #include <vector>
-#include <random>
 #include <cmath>
 #include <string>
 
@@ -40,18 +41,6 @@ static int g_fail_count = 0;
 
 static int g_rank = 0;
 
-// ---- Helpers ----
-
-static std::vector<double> make_series(size_t len, unsigned seed)
-{
-  std::mt19937 rng(seed);
-  std::uniform_real_distribution<double> dist(-1.0, 1.0);
-  std::vector<double> s(len);
-  for (auto &v : s)
-    v = dist(rng);
-  return s;
-}
-
 // ---- Tests ----
 
 void test_basic_properties()
@@ -59,9 +48,8 @@ void test_basic_properties()
   // Generate identical data on all ranks (same seeds)
   const size_t N = 10;
   const size_t L = 50;
-  std::vector<std::vector<double>> series;
-  for (size_t i = 0; i < N; ++i)
-    series.push_back(make_series(L, 100 + static_cast<unsigned>(i)));
+  const auto series =
+    dtwc::test_support::benchmark_series_set(N, L, 100);
 
   auto result = dtwc::mpi::compute_distance_matrix_mpi(series);
 
@@ -96,21 +84,19 @@ void test_matches_serial()
 {
   const size_t N = 8;
   const size_t L = 30;
-  std::vector<std::vector<double>> series;
-  for (size_t i = 0; i < N; ++i)
-    series.push_back(make_series(L, 200 + static_cast<unsigned>(i)));
+  const auto series =
+    dtwc::test_support::benchmark_series_set(N, L, 200);
 
   // MPI-distributed result
   auto mpi_result = dtwc::mpi::compute_distance_matrix_mpi(series);
 
   // Serial reference (every rank computes independently — same result)
-  std::vector<double> serial_matrix(N * N, 0.0);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = i + 1; j < N; ++j) {
-      const double d = dtwc::dtwFull_L<double>(series[i], series[j]);
-      serial_matrix[i * N + j] = d;
-      serial_matrix[j * N + i] = d;
-    }
+  const auto serial_matrix =
+    dtwc::test_support::symmetric_zero_diagonal_matrix(
+      series,
+      [](const auto &left, const auto &right) {
+        return dtwc::dtwFull_L<double>(left, right);
+      });
 
   // Compare element-wise
   for (size_t i = 0; i < N; ++i)
@@ -124,22 +110,20 @@ void test_banded_matches_serial()
   const size_t N = 6;
   const size_t L = 40;
   const int band = 5;
-  std::vector<std::vector<double>> series;
-  for (size_t i = 0; i < N; ++i)
-    series.push_back(make_series(L, 300 + static_cast<unsigned>(i)));
+  const auto series =
+    dtwc::test_support::benchmark_series_set(N, L, 300);
 
   dtwc::mpi::MPIDistMatOptions opts;
   opts.band = band;
   auto mpi_result = dtwc::mpi::compute_distance_matrix_mpi(series, opts);
 
   // Serial banded reference
-  std::vector<double> serial_matrix(N * N, 0.0);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = i + 1; j < N; ++j) {
-      const double d = dtwc::dtwBanded<double>(series[i], series[j], band);
-      serial_matrix[i * N + j] = d;
-      serial_matrix[j * N + i] = d;
-    }
+  const auto serial_matrix =
+    dtwc::test_support::symmetric_zero_diagonal_matrix(
+      series,
+      [band](const auto &left, const auto &right) {
+        return dtwc::dtwBanded<double>(left, right, band);
+      });
 
   for (size_t i = 0; i < N; ++i)
     for (size_t j = 0; j < N; ++j)
@@ -149,7 +133,9 @@ void test_banded_matches_serial()
 
 void test_single_series()
 {
-  std::vector<std::vector<double>> series = { make_series(20, 42) };
+  std::vector<std::vector<double>> series = {
+    dtwc::test_support::benchmark_series(20, 42)
+  };
   auto result = dtwc::mpi::compute_distance_matrix_mpi(series);
   MPI_CHECK(result.n == 1, "single series n==1");
   MPI_CHECK(result.matrix.size() == 1, "single series matrix size==1");
@@ -159,8 +145,8 @@ void test_single_series()
 void test_two_series()
 {
   std::vector<std::vector<double>> series = {
-    make_series(25, 1),
-    make_series(25, 2)
+    dtwc::test_support::benchmark_series(25, 1),
+    dtwc::test_support::benchmark_series(25, 2)
   };
   auto result = dtwc::mpi::compute_distance_matrix_mpi(series);
   MPI_CHECK(result.n == 2, "two series n==2");
@@ -178,9 +164,8 @@ void test_all_ranks_agree()
 {
   const size_t N = 7;
   const size_t L = 35;
-  std::vector<std::vector<double>> series;
-  for (size_t i = 0; i < N; ++i)
-    series.push_back(make_series(L, 500 + static_cast<unsigned>(i)));
+  const auto series =
+    dtwc::test_support::benchmark_series_set(N, L, 500);
 
   auto result = dtwc::mpi::compute_distance_matrix_mpi(series);
 
