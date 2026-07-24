@@ -91,15 +91,15 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor: `ctest` → **118/118, 0 failed**, 6 capability
+  llfio ON, Arrow OFF). Floor: `ctest` → **119/119, 0 failed**, 6 capability
   skips (cuda×2, metal×3, io_readers×1 — the io_readers skip is expected in
   this Arrow-OFF build; F9 is closed by its separate Arrow-ON executable gate).
   Rebuild first: `cmake --build build/highs-1151` (expect "no work to do" on a
   clean tree).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
-  **118/118, 0 failed**, with 9 capability skips.
+  **119/119, 0 failed**, with 9 capability skips.
 - **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
-  Arrow/Parquet. Floor: **120/120, 0 failed**, 8 capability skips; all three
+  Arrow/Parquet. Floor: **121/121, 0 failed**, 8 capability skips; all three
   real-CLI integration gates and the reader run. CTest metadata supplies LLVM,
   `pyarrow`, and `pyarrow.libs` runtime paths, so no caller PATH override is
   required.

@@ -334,7 +334,7 @@ The permanent non-skipping unit target must:
 - read the named source consumers and reject reintroduced local bodies or
   bypasses;
 - print
-  `F15_TEST_SUPPORT profile=<relaxed|precise> scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0`.
+  `F15_TEST_SUPPORT profile=<relaxed|precise|libstdcxx> scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0`.
 
 It must run without CUDA, Metal, MPI, llfio, Arrow, HiGHS, or Gurobi.
 
@@ -385,6 +385,137 @@ Verdict: **FALSIFIED [confirmed]**. No fingerprint, source count, mutation, or
 execution band was evaluated or changed. Attempt 2 may only force the complete
 already-registered logical predicate to `bool` using Catch2's required extra
 parentheses.
+
+### Attempt 2 - RETAINED
+
+The sole correction wrapped the already-registered complete row-profile
+predicate in Catch2's required extra parentheses. No fingerprint, source
+count, mutation, executable, or acceptance band changed. The canonical
+focused target then printed:
+
+```text
+F15_TEST_SUPPORT profile=relaxed scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0
+All tests passed (165 assertions in 6 test cases)
+```
+
+Verdict: **PASS [confirmed]** by the direct
+`unit_test_deterministic_series.exe` output. Commit `3061a31` retains attempt
+2. The same focused CTest passes in canonical, llfio-OFF, and the MSVC CUDA
+build.
+
+The complete MSVC target selected the coherent `relaxed` fingerprint row.
+The recorded compile command includes `/fp:precise /fp:contract /GL
+/arch:AVX2 /openmp:experimental`; the standalone MSVC preflight without that
+complete target option set selected `precise`. These two executions confirm
+the byte profiles, but do not isolate which additional option changes the
+arithmetic bits. Profile labels therefore name exact fingerprint rows, not
+compiler identities. Any causal attribution to one option remains
+**[inferred]** and was not used for acceptance.
+
+The extracted shared header itself was also compiled and executed inside WSL,
+not merely reimplemented by the preflight. GCC 13.3 and Clang 18.1 both
+selected `libstdcxx` and reproduced the registered hashes exactly:
+
+```text
+scalar=194fb0e76c52fcd84f09960547eedc6a43788fdcc89f739df44e3c49af7b16e0
+rows=1f9e6847ba0ffc7943ebca024827cd6b5a890b8911bff4f6c59211f3c28892ab
+accelerator=5d3594b036ed60caa686d8472c630488b86290bad1805806fbb38894b96f2c53
+full=7de312eabcffb71d857bf97b9cfce9c08a6f855e7ce25b863342be46cbc38b73
+band0=e81034ce0654315d254d07fa518ddce7472a542a4eecbd740935e9dff891022e
+```
+
+## Post-implementation subject execution
+
+All six benchmark targets rebuilt. Their live registration inventories
+remained:
+
+```text
+F15_BENCH_LIST target=bench_dtw_baseline exit=0 registrations=72
+F15_BENCH_LIST target=bench_cuda_dtw exit=0 registrations=1
+F15_BENCH_LIST target=bench_metal_dtw exit=0 registrations=14
+F15_BENCH_LIST target=bench_mmap_access exit=0 registrations=14
+F15_BENCH_LIST target=bench_f32_vs_f64 exit=0 registrations=10
+MPI not available in this build.
+F15_BENCH_LIST target=bench_mpi_dtw exit=1 capability_unavailable=1
+```
+
+The rebuilt CPU subjects and real RTX 4000 Ada CUDA subjects retained:
+
+```text
+All tests passed (283 assertions in 39 test cases)
+All tests passed (7029 assertions in 16 test cases)
+MPI not enabled (DTWC_ENABLE_MPI=OFF). Skipping MPI tests.
+All tests passed (7827 assertions in 61 test cases)
+All tests passed (688 assertions in 8 test cases)
+All tests passed (532 assertions in 5 test cases)
+```
+
+The CUDA override line is the host/override subject. The first two CUDA lines
+are real device executions; neither skipped.
+
+## Registered mutation executions
+
+Every mutation ran alone against a restored `3061a31` subject and exited 42.
+The recorded decisive summaries were:
+
+| ID | Mutation | Decisive failure output |
+|---|---|---|
+| M01 | scalar lower endpoint `-1` to `0` | expected profile `nullptr`; 147 assertions, 145 passed; 6 cases, 4 passed |
+| M02 | scalar seed `seed` to `seed+1` | expected profile `nullptr`; 147 assertions, 145 passed; 6 cases, 4 passed |
+| M03 | per-row `base+i` to constant `base` | rows equal; 165 assertions, 160 passed; 1 case failed |
+| M04 | accelerator upper endpoint `10` to `5` | profile `nullptr`; 100 assertions, 97 passed; 3 cases failed |
+| M05 | continuous engine to fresh engine per row | profile `nullptr`; 100 assertions, 97 passed; 3 cases failed |
+| M06 | row-major draws to column-major | profile `nullptr`; 100 assertions, 97 passed; 3 cases failed |
+| M07 | omit mirrored dense write | 141 assertions, 133 passed; 3 cases failed |
+| M08 | evaluate the diagonal | callback count 10 versus 6 and diagonal values 11/22/33; 165 assertions, 160 passed; 1 case failed |
+| M09 | packed upper-triangle return | size 6 versus 16 and full value 3 versus 9; 121 assertions, 118 passed; 1 case failed |
+| M10 | CUDA full reference uses band 0 | 2,524 assertions, 2,505 passed; 61 cases, 42 passed |
+| M11 | CUDA banded reference uses full DTW | 7,078 assertions, 7,070 passed; 61 cases, 53 passed |
+| M12 | benchmark restores local scalar body | source audit; 165 assertions, 164 passed; 1 case failed |
+| M13 | CUDA LB restores local accelerator body | three source-audit failures; 165 assertions, 162 passed; 1 case failed |
+
+Verdict: **PASS [confirmed]**, 13/13 registered mutations killed. After each
+execution the mutated file was restored. `git diff --exit-code` then produced
+no output, and the clean focused and CUDA subjects reran green.
+
+## Supply-chain and full-suite gates
+
+The unchanged live supply-chain checker printed:
+
+```text
+WORKFLOW_ACTION_PIN_GATE verified=39 total=39 verdict=PASS
+CMAKE_ARCHIVE_PIN_GATE verified=7 total=7 mutable=0 unhashed=0 verdict=PASS
+ARROW_ARCHIVE_PIN_GATE verified=1 total=1 verdict=PASS
+TRACKED_CMAKE_MANIFESTS total=27
+supply-chain pins verified
+```
+
+Its Python suite passed:
+
+```text
+63 passed
+```
+
+Fresh final CTest inventories were:
+
+```text
+canonical build/highs-1151: 119/119, 0 failed, 6 capability skips
+llfio-OFF build/nollfio: 119/119, 0 failed, 9 capability skips
+Arrow-ON build/arrow-pyarrow-23: 121/121, 0 failed, 8 capability skips
+```
+
+Canonical skips were CUDA correctness/LB, `io_readers`, and Metal
+correctness/LB/mmap. llfio-OFF additionally skipped mmap data store, mmap
+distance matrix, and Benders. Arrow-ON ran `io_readers`, Parquet, and both
+assignment/CLI integration subjects; its skips were mmap data store, mmap
+distance matrix, CUDA correctness/LB, Metal correctness/LB/mmap, and Benders.
+The permanent F15 target ran in all three as CTest entry 87 and passed.
+
+Final verdict: **PASS [confirmed]** against all 11 registered acceptance
+items. Commit `3061a31` changes only the registered test/benchmark support
+boundary; all purpose-specific variants and independent arbiters remain
+local. The source was clean after mutations and after the decisive gates.
+No real-Metal runtime claim is made.
 
 ## Acceptance band
 

@@ -20,7 +20,7 @@ the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
 D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
 parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
 committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
-**F14 CLOSED** and F15 is active.
+**F14–F15 CLOSED** and F16 is active.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -437,7 +437,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       llfio-OFF, and Arrow gates pass 118/118, 118/118, and 120/120 with
       6/9/8 capability skips. R4 retains formatter consolidation and F37
       retains cross-language parity.
-- [ ] **F15 — benchmark/test generators and CPU oracles are fragmented.**
+- [x] **F15 — benchmark/test generators and CPU oracles are fragmented.**
       The historical claim that eight copies were byte-identical is falsified:
       ranges and shapes differ. Inventory intentional variants and pin seeded
       bytes/oracle values before extracting any shared test utility.
@@ -452,6 +452,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       executions, benchmark compilation, real CUDA baselines, and final
       119/119, 119/119, 121/121 build floors are binding. Evidence:
       `.claude/baselines/2026-07-24-f15-test-support.md`.
+      **CLOSED 2026-07-24:** `3061a31` extracts only the registered exact
+      families/traversal. Attempt 1's Catch2 compile failure remains recorded;
+      attempt 2 passes 165 assertions / 6 cases, all 13 mutations, real CUDA,
+      benchmark/CPU subjects, supply-chain inventory, and the three full gates.
 - [ ] **F16 — CMake presets encode one developer machine and a stale floor.**
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
       while the root requires 3.26. First gate: portable clean configure probes
@@ -982,6 +986,12 @@ colour system transfer verbatim**.
   `[-1,1]`. Their exact third coherent profile is registered before the first
   decisive F15 run; the target must accept no unmeasured profile and no mixed
   generator/oracle row.
+- 2026-07-24 (F15 local verdict): Retain `3061a31`. Attempt 1 remains
+  FALSIFIED at compile time; the sole attempt-2 correction preserved every
+  registered band and passes the permanent 165-assertion / 6-case gate. All
+  13 mutations fail, real CUDA retains 7,827/61 and 688/8, benchmark and CPU
+  floors hold, and canonical/llfio-OFF/Arrow pass 119/119, 119/119, 121/121
+  with 6/9/8 capability skips. F16 is next.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1248,3 +1258,11 @@ colour system transfer verbatim**.
   parentheses. No test or quantitative band executed; attempt 2 is limited to
   that syntactic correction. Evidence:
   `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 CLOSED): `3061a31` extracts only the registered exact
+  deterministic generator families and symmetric dense traversal. Attempt 2
+  passes the permanent 165-assertion / 6-case gate after attempt 1's recorded
+  compile falsification; all 13 mutations fail. Six benchmark targets, CPU
+  subjects, real CUDA, CUDA override, and supply-chain inventory retain their
+  registered floors. Final canonical, llfio-OFF, and Arrow-ON gates pass
+  119/119, 119/119, and 121/121 with 6/9/8 capability skips. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`. Resume at F16.
