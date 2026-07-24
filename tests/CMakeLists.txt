@@ -117,12 +117,11 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_test_compile_defs)
             endif()
         endforeach()
         list(REMOVE_DUPLICATES _arrow_runtime_dirs)
-        foreach(_arrow_cli_test IN ITEMS
-            test_fast_clara_parquet_parity
-            test_fast_clara_assignment_contract)
+        get_property(_arrow_runtime_tests DIRECTORY PROPERTY TESTS)
+        foreach(_arrow_runtime_test IN LISTS _arrow_runtime_tests)
             foreach(_arrow_runtime_dir IN LISTS _arrow_runtime_dirs)
                 set_property(
-                    TEST "${_arrow_cli_test}"
+                    TEST "${_arrow_runtime_test}"
                     APPEND PROPERTY ENVIRONMENT_MODIFICATION
                     "PATH=path_list_prepend:${_arrow_runtime_dir}")
             endforeach()
