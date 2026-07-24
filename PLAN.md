@@ -17,7 +17,9 @@
 published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
 protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
 the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
-D1 CLOSED; R3 active with F11 the earliest open finding.
+D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
+parser closure is FALSIFIED and routed to F36; F12 is the next scheduled
+finding under the registered no-third-attempt decision.
 The final **2.0.0 tag gates
 on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -362,6 +364,12 @@ Open findings first (status after R0 adjudication — update these boxes there):
       archive without `URL_HASH`, and `check_supply_chain_pins.py` does not scan
       it. First gate: a repo-wide checker fails on that exact fixture while all
       currently pinned main dependencies continue to pass.
+      **Partial 2026-07-24:** `653b0e6` pins the exact 2.0.0rc1 commit archive
+      and SHA-256; a fresh no-override configure downloaded the registered
+      4,928,286-byte artifact, built the library and real example consumer, and
+      the current-tree gate passes 39 actions / 7 archives / 25 manifests.
+      The final fail-closed parser band is FALSIFIED by the two named probes in
+      F36, so this checkbox remains open.
 - [ ] **F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**
       CPU routes now use the canonical `|i-j| <= band` window. CUDA retains
       endpoint-scaled `slope`/`window` corridors and signed `band+1`
@@ -579,6 +587,20 @@ Open findings first (status after R0 adjudication — update these boxes there):
       fake-pip shell fixture must reproduce that inherited argv/file side
       effect; after repair it must receive the single literal `cmake>=3.26`
       argument and create no redirection file.
+- [ ] **F36 — the hand-written CMake URL-pin parser is not fail-closed.**
+      Two independent final audits after the capped F11 pivots left all live
+      counters green for (a) `CUSTOM_CACHE_KEY` selecting an existing
+      `CPM_SOURCE_CACHE` directory and skipping fetch/hash, and (b) quoted
+      `"DOWNLOAD_\<newline>COMMAND"`, which CMake normalizes to the overriding
+      `DOWNLOAD_COMMAND` while the scanner retains a newline. First gate:
+      commit both exact production-equivalent mutations and require them red.
+      Do not add a third lexical deny-list patch. Replace the design with
+      CMake-interpreter-normalized arguments or a declarative pinned-archive
+      helper whose closed signature constructs the CPM call. Then replay the
+      63-case focused suite, the fresh no-override example fetch/build, both
+      HiGHS option configurations, and an independent audit. F36 owns only
+      URL-declaration grammar/override closure; F34 retains wider acquisition
+      classes.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -757,6 +779,10 @@ colour system transfer verbatim**.
   bandwidth is **[inferred]** until a counter gate proves it.
 - **LB-pruning inside PAM/MIP/LRCore:** not admissible — those consumers read the whole matrix.
 - **PDLP as production p-median solver:** falsified — matrix-free Kelley dominates on either device (945× CPU / 126× GPU at N=400); PDLP remains a cross-validation arbiter only.
+- **Extending the hand-written CMake URL-pin lexical deny-list:** F11's two
+  registered pivots reached 63/63 yet final audits still bypassed it with
+  `CUSTOM_CACHE_KEY` and quoted backslash-newline normalization. F36 must
+  replace the design, not add a third token special case.
 - Full kill-context lives in the archive (`### Explicit rejections`, Phase 5) and `.claude/LESSONS.md`.
 
 ## Binding decisions (digest — full prose in the archive §Decision log; append NEW decisions here)
@@ -786,6 +812,12 @@ colour system transfer verbatim**.
   distinct workflow-integrity and shell-grammar subjects, now F34 and F35.
   Keeping them separate prevents an example-archive fix from falsely closing
   the wider supply chain and preserves one finding per implementation commit.
+- 2026-07-24 (F11/F36): The exact example pin and no-override runtime proof are
+  retained in `653b0e6`, but the generic parser closure is FALSIFIED. After two
+  capped inventory pivots, final audits reproduced `CUSTOM_CACHE_KEY` and
+  quoted-line-continuation false-greens with all production counters passing.
+  Per the registered no-third-attempt band, freeze the lexical deny-list,
+  leave F11 open, route replacement architecture to F36, and continue at F12.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -972,3 +1004,12 @@ colour system transfer verbatim**.
   skips. Independent review found all 11 registered acceptance items verified.
   Hosted CI was not run locally and is not claimed. Evidence:
   `.claude/baselines/2026-07-23-f8-fast-clara-parity.md`. Resume at R3-F11.
+- 2026-07-24 (R3-F11 partial/F36): `653b0e6` pins the standalone example to
+  commit `eda1b92bc89ee51568b052a6af86f615d336de3c` plus SHA-256 and hardens
+  the tracked archive gate through an exact seven-identity inventory and 63
+  mutation cases. Fresh example configure/build, CPU/GPU HiGHS builds, real
+  GPU/HiGHS test, and canonical 114/114 all pass. Final independent audits
+  nonetheless FALSIFIED fail-closed coverage with `CUSTOM_CACHE_KEY` and
+  quoted CMake line continuation. F11 remains open; F36 replaces the killed
+  lexical design. Evidence:
+  `.claude/baselines/2026-07-23-f11-supply-chain-coverage.md`. Resume at F12.

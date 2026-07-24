@@ -769,3 +769,12 @@ partial_commit_diff_exit=0
 
 This green block validates the committed hardening and current tracked tree; it
 does not overturn the named final-audit falsifications.
+
+Verified partial implementation commit:
+
+```text
+653b0e6 fix: pin example dependency archive
+```
+
+Rollback: `git revert 653b0e6`. F11 remains open; PLAN routes the killed
+lexical-parser replacement to F36.
