@@ -42,6 +42,18 @@
 
 namespace fs = std::filesystem;
 
+namespace dtwc {
+
+struct ProblemStoragePolicyTestAccess
+{
+  static const LoadedData *series_storage_owner(const Problem &problem) noexcept
+  {
+    return problem.series_storage_owner_.get();
+  }
+};
+
+} // namespace dtwc
+
 namespace {
 
 constexpr std::size_t kSeries = 6;
@@ -68,6 +80,24 @@ constexpr std::array<std::uint64_t, 15> kIndependentPairBits{
   0x406d6a353f7ced91ULL,
   0x406fdb3333333332ULL,
 };
+
+#ifdef DTWC_HAS_MMAP
+void require_mmap_name_owner(const dtwc::Problem &problem)
+{
+  const auto *owner =
+    dtwc::ProblemStoragePolicyTestAccess::series_storage_owner(problem);
+  REQUIRE(owner != nullptr);
+  REQUIRE(owner->is_mmap());
+  REQUIRE(owner->names.size() == problem.size());
+  REQUIRE(owner->data.size() == problem.size());
+  for (std::size_t i = 0; i < problem.size(); ++i) {
+    REQUIRE(owner->data.name(i).data() == owner->names[i].data());
+    REQUIRE(owner->data.name(i).size() == owner->names[i].size());
+    REQUIRE(problem.series_name(i).data() == owner->names[i].data());
+    REQUIRE(problem.series_name(i).size() == owner->names[i].size());
+  }
+}
+#endif
 
 fs::path fixture_path()
 {
@@ -392,6 +422,7 @@ TEST_CASE(
   REQUIRE(source->data().p_vec.empty());
   const auto files = store_files();
   REQUIRE(files.size() == 1);
+  require_mmap_name_owner(*source);
 
   // Clear the matrix while the dispatcher is still bound to the source. A
   // move must rebind that self-referential function before any uncached pair
@@ -402,6 +433,7 @@ TEST_CASE(
           == kIndependentPairBits[0]);
   std::optional<dtwc::Problem> mapped;
   mapped.emplace(std::move(*source));
+  require_mmap_name_owner(*mapped);
   source.reset();
   source.emplace("f20_move_poison");
   source->band = 0;
@@ -426,6 +458,7 @@ TEST_CASE(
   assigned->set_storage_policy(dtwc::core::StoragePolicy::Heap);
   assigned->set_data(sentinel_data());
   *assigned = std::move(*mapped);
+  require_mmap_name_owner(*assigned);
   mapped.reset();
   mapped.emplace("f20_move_assignment_poison");
   mapped->band = 0;

@@ -207,6 +207,7 @@ private:
   void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
 
   // Private functions:
+  friend struct ProblemStoragePolicyTestAccess;
   friend bool load_checkpoint(Problem &prob, const std::string &path);
   friend void MIP_clustering_byBenders(Problem &prob);
   // Benders disables only heuristic artifact files; public Lloyd always passes true.
