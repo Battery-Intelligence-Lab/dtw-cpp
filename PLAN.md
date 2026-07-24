@@ -992,6 +992,14 @@ colour system transfer verbatim**.
   13 mutations fail, real CUDA retains 7,827/61 and 688/8, benchmark and CPU
   floors hold, and canonical/llfio-OFF/Arrow pass 119/119, 119/119, 121/121
   with 6/9/8 capability skips. F16 is next.
+- 2026-07-24 (F16 registration): Preserve every preset name, shared build
+  directory, generator, reference, and the binding macOS `/usr/bin` compiler
+  pin. Align preset/root/pyproject at 3.26.0, discover Windows Clang through
+  the complete `clang++` PATH token, and add host conditions so the token
+  cannot silently select Linux Clang. The existing native build-metadata
+  target, two real-host clean configures, negative/wrong-host probes, ten
+  mutations, and unchanged full-suite inventories are binding. The unchanged
+  VS17 route is `[BLOCKED-ENV]` on this VS18-only host.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the
@@ -1266,3 +1274,12 @@ colour system transfer verbatim**.
   registered floors. Final canonical, llfio-OFF, and Arrow-ON gates pass
   119/119, 119/119, and 121/121 with 6/9/8 capability skips. Evidence:
   `.claude/baselines/2026-07-24-f15-test-support.md`. Resume at F16.
+- 2026-07-24 (R3-F16 registration): At clean base `07f186a`, the inherited
+  metadata is FALSIFIED: preset/root/pyproject report 3.21.0/3.26/3.26 and
+  Windows Clang is fixed to one `Program Files` location. A clean Windows
+  configure ignored an alternate PATH LLVM junction; WSL's GCC control
+  configured through `/usr/bin`. Registered exact fixed metadata, host-aware
+  preset inventories, alternate/no-LLVM and wrong-host probes, ten mutations,
+  unchanged supply-chain inventory, and final 119/119, 119/119, 121/121
+  floors. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
