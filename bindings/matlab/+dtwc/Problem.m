@@ -237,7 +237,8 @@ classdef Problem < handle
         end
 
         function set_storage_policy(obj, s)
-        %SET_STORAGE_POLICY Set the data storage policy ('auto'|'heap'|'mmap').
+        %SET_STORAGE_POLICY Set storage for the next owning set_data call.
+        %   Existing data is unchanged. Values: 'auto' | 'heap' | 'mmap'.
             dtwc_mex('Problem_set_storage_policy', obj.Handle, char(s));
         end
 

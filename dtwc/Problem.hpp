@@ -389,7 +389,7 @@ public:
   {
     core::validate_storage_policy(policy);
     if (storage_policy_ == policy) return;
-    // Advisory compatibility field only. DataLoader owns actual data routing.
+    // Governs future owning set_data calls; installed data is not moved.
     storage_policy_ = policy;
   }
   void set_cuda_settings(CUDASettings settings)

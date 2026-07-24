@@ -11,10 +11,10 @@ namespace dtwc::core {
 
 /// Controls how Problem stores time series data.
 enum class StoragePolicy {
-  Auto, ///< Choose at load time: heap when the estimated footprint (rows x lengths x
-        ///< sizeof(data_t)) fits, else the mmap-backed store. Threshold defaults to
-        ///< 50% of free RAM, overridable via DataLoader::ram_limit() / `--ram-limit`.
-        ///< Routing lives in DataLoader::load_stored() (Task 1.4).
+  Auto, ///< Choose at the next owning load/set-data boundary: heap when the
+        ///< estimated series footprint fits, else the mmap-backed store. A
+        ///< DataLoader::ram_limit() overrides its threshold; Problem::set_data()
+        ///< uses the platform default. This is unrelated to CLI `--ram-limit`.
   Heap, ///< In-memory vector-of-vectors (default for small datasets).
   Mmap  ///< Memory-mapped file via MmapDataStore.
 };

@@ -80,6 +80,9 @@ def assert_contract_audit_state() -> None:
         "raw configuration/result fields remain public (F19)",
         "store_result_in_problem",
         "`tadpole_dc` prop",
+        "[gap F20",
+        "advisory stored",
+        "advisory only",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -115,7 +118,7 @@ def assert_contract_audit_state() -> None:
             "frozen contract must record exactly eight reviewer resolutions"
         )
     missing_findings = [
-        f"F{number}" for number in (18, *range(20, 27))
+        f"F{number}" for number in (18, *range(21, 27))
         if f"F{number}" not in contract
     ]
     if missing_findings:

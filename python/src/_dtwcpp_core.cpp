@@ -800,7 +800,8 @@ NB_MODULE(_dtwcpp_core, m) {
                  "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
     .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
                  &dtwc::Problem::set_storage_policy,
-                 "How series data is stored (Auto/Heap/Mmap).")
+                 "How the next owning set_data call stores series "
+                 "(Auto/Heap/Mmap); existing data is unchanged.")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;

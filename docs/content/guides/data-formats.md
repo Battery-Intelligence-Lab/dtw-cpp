@@ -33,6 +33,14 @@ Published Python wheels intentionally omit LLFIO and native mmap support to stay
 small and portable. Requesting an unavailable explicit mmap policy fails loudly;
 an automatic spill that cannot use mmap warns before retaining data in RAM.
 
+For the library APIs, `Problem.set_storage_policy` governs the next owning
+`set_data` call; changing the policy does not move data already installed, and
+`set_view_data` remains an explicit non-owning bypass. `Heap` retains owning
+vectors. `Mmap` supports Float64 series and retains a mapped `.dtws` backing
+store for the lifetime of the `Problem`; explicit Float32 Mmap is rejected.
+Mapped series are not accepted by the CUDA or Metal upload paths. These series
+policies are separate from distance-matrix mmap and the CLI controls below.
+
 For data larger than an all-pairs matrix, choose a matrix-free method such as
 OneBatchPAM, CLARA, or TADPole rather than changing only the input container.
 

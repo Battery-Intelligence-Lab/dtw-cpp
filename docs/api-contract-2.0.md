@@ -266,7 +266,7 @@ Canonical config setters are snake_case. The eleven retained public fields are
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
-| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` `[gap F20: advisory only]` | `storage_policy` prop `[introduced-2.0; gap F20]` | `set_storage_policy(str)` `[introduced-2.0; gap F20]` | validation/storage are live; promised routing is not |
+| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
@@ -728,15 +728,23 @@ block are constant text.
 - `device="hpc"`: **metadata-only** local load — shapes/counts/names read
   locally; bulk series streamed to the cluster at submit (`load()` never reads
   the payload; `cluster_on_hpc` forwards a path, `_hpc.py:185-193`).
-- Local library data routing is implemented by `DataLoader::storage_policy`.
-  The frozen `Problem::set_storage_policy` override is only an advisory stored
-  field today and has no effect on that routing (F20). The CLI controls distance
-  storage separately with `--mmap-threshold`. Its `--ram-limit` is a conservative
-  cap on Parquet selected-series decoding/materialisation, applied before payload
-  I/O; it is not a whole-process RSS limit. Only a single list-per-row file can
-  exceed that cap and continue, through non-full CPU FastCLARA row-group
-  streaming. View-mode spans (48× CLARA subsample win, surface report §6 wart 6
-  / §8 item 6) are preserved.
+- Local library series routing is shared by `DataLoader::storage_policy` and
+  `Problem::set_storage_policy`. A `Problem` policy governs its next owning
+  `set_data` call and is deliberately non-retroactive; `set_view_data` remains
+  an explicit non-owning bypass. `Heap` retains owning vectors. `Mmap` writes a
+  Float64 `.dtws` store and retains its mapped view for the lifetime of the
+  `Problem`; explicit Mmap fails before publication for Float32 data or a build
+  without llfio. `Auto` keeps its best-effort threshold behavior, including a
+  loud in-memory fallback when the mapped route is unavailable.
+- Series storage is independent of distance-matrix storage and both CLI RAM
+  controls. The CLI controls distance storage separately with
+  `--mmap-threshold` and currently keeps its series Heap-backed. Its
+  `--ram-limit` is a conservative cap on Parquet selected-series
+  decoding/materialisation, applied before payload I/O; it is not a
+  whole-process RSS limit or a library series-storage threshold. Only a single
+  list-per-row file can exceed that cap and continue, through non-full CPU
+  FastCLARA row-group streaming. View-mode spans (48× CLARA subsample win,
+  surface report §6 wart 6 / §8 item 6) are preserved.
 
 ---
 
