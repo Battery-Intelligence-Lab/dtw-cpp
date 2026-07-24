@@ -1000,6 +1000,11 @@ colour system transfer verbatim**.
   target, two real-host clean configures, negative/wrong-host probes, ten
   mutations, and unchanged full-suite inventories are binding. The unchanged
   VS17 route is `[BLOCKED-ENV]` on this VS18-only host.
+- 2026-07-24 (F16 pre-attempt mutation clarification): M02 lowers root,
+  preset, and pyproject together so equality cannot satisfy a stale 3.25
+  floor. M10 must fail both CMake's preset parser and the configure-time
+  `string(JSON)` guard. This strengthens the registered arbiters before the
+  first implementation run; no acceptance threshold is relaxed.
 - 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
   optimization-based clustering history, not evidence for DTWC++'s diagonal
   p-median matrix. The record attributes its linking rows to Balinski and the

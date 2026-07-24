@@ -179,7 +179,8 @@ test cases. No Python runtime may be required by this native gate.
 Each mutation runs alone against restored attempt-1 source:
 
 1. preset minor 26 to 25;
-2. root and preset floors both 26 to 25;
+2. root, preset, and pyproject floors all 26 to 25, proving equality cannot
+   lower the hard 3.26 floor;
 3. pyproject floor 26 to 25;
 4. `clang++` to `D:/some-machine/LLVM/bin/clang++.exe`;
 5. add a duplicate `CMAKE_CXX_COMPILER` scalar beside the valid token;
@@ -190,8 +191,9 @@ Each mutation runs alone against restored attempt-1 source:
 10. make the preset JSON syntactically invalid while leaving sentinel text.
 
 M01-M09 must make the already-built direct native subject exit nonzero.
-M10 must make CMake's own `--list-presets=all` parser exit nonzero. Restore
-exact bytes before the next mutation. All 10/10 must be killed.
+M10 must make both CMake's own `--list-presets=all` parser and the existing
+canonical configure (which executes the `string(JSON)` guard) exit nonzero.
+Restore exact bytes before the next mutation. All 10/10 must be killed.
 
 ## Acceptance band
 
