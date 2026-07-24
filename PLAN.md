@@ -574,6 +574,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       **INHERITED C++ BASELINE 2026-07-24:** at tracked base `03f0e61`, the
       canonical rebuild reported no work; CTest discovered 120 tests, failed
       zero, and skipped exactly the registered six capability tests.
+      **INHERITED PYTHON BASELINE 2026-07-24:** the installed extension loaded
+      from the expected venv path; all 1,022 tests collected, with 1010 passed,
+      11 skipped, and the sole failure equal to F39's already-open tracked
+      CMake inventory mismatch (observed 28, stale expected 27). Fresh-extension
+      verification remains a final F19 gate.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
       (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently

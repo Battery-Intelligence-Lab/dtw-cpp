@@ -289,6 +289,48 @@ six skips are exactly the registered CUDA x2, Arrow-OFF reader x1, and Metal x3
 capability skips. Native per-test output is in
 `build/highs-1151/Testing/Temporary/LastTest.log`.
 
+### Executed inherited Python baseline
+
+Tracked base: `7e4c03e`. This baseline loaded the installed extension at:
+
+```text
+F19_PYTHON_BASELINE_IMPORT module=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd Problem=True fast_pam=True
+```
+
+Its SHA-256 was
+`11C8AB18D9C5FEDC1E67B01B3935C05EECB5BC2E77372D3EE39A89BB80DE61B5`.
+This inherited probe did not rebuild the extension, so freshness is not claimed;
+the final B1 run must still rebuild and verify a new F19-bound symbol before
+pytest.
+
+The completed command:
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/python -ra
+```
+
+produced:
+
+```text
+collected 1022 items
+
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+============ 1 failed, 1010 passed, 11 skipped in 79.21s (0:01:19) ============
+```
+
+The failing assertion was:
+
+```text
+>       assert manifest_total == 27
+E       assert 28 == 27
+```
+
+Verdict: **KNOWN F39 RED [confirmed]** — the only failing test is the
+already-recorded supply-chain inventory mismatch. F19 does not own or relax
+that constant. The 1,022-test collection and 1,010 passes meet the behavioral
+pass-count floor, but this is not a green full-suite verdict. The eleven skips
+were CUDA x9, no-GPU x1, and the SciPy-installed inverse-capability case x1.
+
 ### Mutations and attempts
 
 Besides the five MATLAB deletion profiles, the permanent source/compile gate
