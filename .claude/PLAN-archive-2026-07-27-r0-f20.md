@@ -129,20 +129,79 @@ behavior-frozen against an oracle that bug fixes would invalidate.
 
 ## Phase R0 — Adjudicate the 2026-07-20 in-flight work [CLOSED — 2026-07-23]
 
-All 2026-07-20 uncommitted work (F9/F10-shaped tests, CI job, scholarly edits)
-was classified per hunk, verified against the canonical gate, and committed,
-repaired, or reverted; the F8/F9/F10 checkboxes below reflect the verdicts.
-Full inventory and task list archived verbatim in
-`.claude/PLAN-archive-2026-07-27-r0-f20.md`.
+The working tree contains uncommitted changes dated 2026-07-20 ~23:00 (a prior
+Codex run that died before committing). Inventory [confirmed: `git status`/`git
+diff` 2026-07-23]:
+
+- `tests/unit/core/unit_test_distance_sampling_weights.cpp` (NEW) +
+  `dtwc/algorithms/fast_pam.cpp` (+91/−36) + additions in
+  `unit_test_fast_pam.cpp`, `unit_test_clustering_algorithms.cpp`, CHANGELOG
+  entry — shaped like **F10** (direct tests for
+  `core::distance_sampling_weights`, seeded degenerate/signed branches).
+- `.github/workflows/ubuntu-unit.yml` (+98) — shaped like **F9** (Arrow-enabled
+  CI job). A matching LESSONS entry ("assert the subject RAN") was added.
+- `tests/unit/unit_test_cli_args.cpp` (+95) — possibly F8/F7-adjacent.
+- Scholarly work: Vinod (1969) provenance in `.claude/UNIMODULAR.md` +
+  `.claude/CITATIONS.md` (Crossref-verified, full text NOT read — recorded
+  honestly as [inferred]); `.claude/TODO.md` staleness note; LESSONS fast-math
+  corrections (build uses an explicit flag subset incl. `-fassociative-math`,
+  NOT `-ffast-math` — cites `cmake/StandardProjectSettings.cmake:59-70`).
+- `PLAN.md` had two 8.3 lens refinements — already absorbed into Phase R4 below.
+
+Tasks:
+
+- [x] Read every diff hunk. Classify each change: F8 / F9 / F10 / docs / other.
+- [x] Build + run the full canonical gate (floor: **114/114, 0 failed**, 6
+      capability skips — `.claude/summaries/handoff-2026-07-13-f7-streaming.md`).
+      Run the new/changed test suites explicitly and quote their output.
+- [x] For the F9 workflow change: you cannot run GitHub CI locally — verify the
+      YAML by schema/actionlint if available, verify the job obeys the
+      "assert-the-subject-RAN" lesson (greps the test binary's own output for
+      executed assertions, not just ctest green), and mark the CI run itself as
+      an operator-triggered verification in the Decision log. If the local
+      equivalent (an Arrow-ON build dir running `test_io_readers` for real) is
+      constructible, BUILD IT — that, not CI, is the primary F9 closure (see R3).
+- [x] Verdict per change: KEEP (gate green, contract met) → commit as its own
+      conventional commit crediting the finding it closes; REPAIR (close but
+      defective) → fix, then commit; REVERT (wrong or unverifiable) → revert
+      with a Decision-log line naming why. No change may stay uncommitted.
+- [x] Update the F8/F9/F10 checkboxes in R3 to reflect what actually closed.
 
 ## Phase R1 — Repository cleanse & record reconciliation [CLOSED — 2026-07-23]
 
-Non-behavioral hygiene, all closed: TODO.md reconciled entry-by-entry, docs
-truth audit + drift gates green, `.claude/` record hygiene done, tracked-junk
-census executed (data-read-only rule preserved one orphan), CHANGELOG
-structure verified, branch state recorded (merge is an operator decision —
-see the R1 branch-disposition Binding decision). Full task list archived in
-`.claude/PLAN-archive-2026-07-27-r0-f20.md`.
+Non-behavioral hygiene: make the repository's *record* as trustworthy as its
+code. Nothing here may change program behavior (no-op oracle not required since
+no core code changes — but if any item does touch code, it moves to R4's rules).
+
+- [x] **TODO.md full reconciliation.** `.claude/TODO.md`'s audit list is a
+      2026-07-06 snapshot; Phases 4–8 closed an unknown subset without editing
+      it (the 2026-07-20 note reconciled exactly one entry). Verify all ~30
+      entries against the current tree: each becomes CLOSED-BY (commit/task),
+      STILL-OPEN (→ becomes an R3 finding), or NOT-REPRODUCIBLE (evidence
+      quoted). Rewrite the file to the reconciled state.
+- [x] **Docs truth audit.** Every claim in README.md, docs site pages, and
+      `docs/api-contract-2.0.md` traces to an artifact (test, baseline run-log,
+      citation) or is corrected. Run the existing drift gates
+      (`check_docs_contract.py --cli <fresh dtwc_cl>`, docs internal-link gate)
+      and quote results.
+- [x] **`.claude/` record hygiene.** LESSONS.md and CITATIONS.md: dedupe,
+      verify file:line references still hold after Phase 8's churn (spot-check,
+      fix stale ones), keep every lesson. Add one current/supersession freshness
+      header to UNIMODULAR.md. `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`;
+      do not recreate them to satisfy obsolete wording.
+- [x] **Tracked-file junk census.** Find tracked files that should not be
+      tracked (stale binaries, generated artifacts, orphaned fixtures) —
+      grep-verify zero references before each removal; `.gitignore` audit
+      (build dirs, `tools/emsdk`, `web/pkg` when R7 arrives). Do NOT delete
+      untracked local build directories — inventory them in the handoff with
+      which recipe each serves; disposal is an operator decision.
+- [x] **CHANGELOG structure check.** Unreleased vs rc1 sections coherent; every
+      Phase-8 breaking change present (the F7 pair is: `--ram-limit` hard-errors
+      on non-Parquet input; `--device cuda` rejected for matrix-free FastCLARA
+      incl. `--method auto` above 5,000 series).
+- [x] **Branch state note.** Branch `Claude` is far ahead of `main`; merging is
+      an operator decision — record the current ahead-count and a proposed merge
+      plan in the handoff, do not merge.
 
 ## Phase R2 — Mathematical re-derivation program [OPEN — the science core]
 
@@ -280,19 +339,29 @@ recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
 Open findings first (status after R0 adjudication — update these boxes there):
 
-- [x] **F8 — resident≡stream parity pinned by nothing.** CLOSED by `1df77fc`:
-      SHA-pinned 8-series/4-row-group fixture + non-skippable real-CLI gate;
-      nine resident/stream artifact pairs byte-identical across
-      f64/f32/Soft-DTW. Hosted Ubuntu execution remains operator-owned.
-- [x] **F9 — Parquet reader suite absent from the canonical gate.** CLOSED:
-      a local Arrow-ON build runs `test_io_readers` for real (390 assertions /
-      11 cases, skip message absent — a skip is a pass to ctest); the CI job
-      is the secondary, operator-verified layer.
-- [x] **F10 — signed/degenerate D-sampling half-pinned.** CLOSED in
-      `20b894d`: direct seam plus seeded/unseeded signed/degenerate routes;
-      selected and unselected non-finite inputs fail closed. NOTE: R2-D13 may
-      CHANGE the sampling rule; if so, these tests pin the new rule and the
-      old rule's tests are updated in the same commit.
+- [x] **F8 — resident≡stream parity pinned by nothing.** Commit `1df77fc`
+      tracks the SHA-pinned 8-series/4-row-group fixture and a non-skippable
+      real-CLI gate. Six resident/forced-stream FastCLARA runs cover f64, f32,
+      and Soft-DTW: route markers pass 12/12 and all nine labels, medoids, and
+      checkpoint pairs are byte-identical. The fresh Arrow-ON suite passes
+      115/115; canonical Arrow-OFF remains 114/114 with its six capability
+      skips. Hosted Ubuntu execution remains operator-owned and is not claimed.
+- [x] **F9 — Parquet reader suite absent from the canonical gate.**
+      `test_io_readers` (348 assertions) is skipped under
+      `DTWC_ENABLE_ARROW=OFF`; the CLI's Parquet planner lives behind
+      `#ifdef DTWC_HAS_PARQUET`. Primary closure = a LOCAL Arrow-ON build dir
+      running the suite for real (assert executed-assertion count ≥ floor, skip
+      message absent — a skip is a pass to ctest); the CI job (in R0's
+      inventory) is the secondary, operator-verified layer. This guard already
+      hid one live bug (F7/D1).
+- [x] **F10 — signed/degenerate D-sampling half-pinned.**
+      `core::distance_sampling_weights` direct unit tests (nonnegative input
+      byte-identical; selected entries exactly zero; throws on non-finite);
+      all-zero → `first_unselected` for seeded `Kmeanspp_seeded` and
+      `fast_pam_seeded`; the k-means++ negative-distance path. R0's inventory
+      suggests most of this exists uncommitted — verify, don't assume.
+      Note: R2-D13 may CHANGE the sampling rule; if so, these tests pin the
+      new rule, and the old one's tests are updated in the same commit.
 - [ ] **F11 — example-project dependency integrity is outside the pin gate.**
       `examples/cpp/example_project/CMakeLists.txt` downloads a mutable branch
       archive without `URL_HASH`, and `check_supply_chain_pins.py` does not scan
@@ -326,26 +395,68 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`.
 - [x] **F13 — nearest-medoid assignment has behaviorally unpinned copies.**
       FastPAM, CLARANS, and resident/f64/f32 FastCLARA retain separate scans.
-      **CLOSED 2026-07-24** (`62c6f26`, `1eb8609`, `cb11c90`, `3784251`,
-      `3783b12`): seven assignment bodies pinned — first-slot ties, ordered
-      IEEE-754 objectives, exact sentinel translation, non-finite rejection,
-      transactional Lloyd publication; nine mutation classes fail. Full scan
+      First gate: digit-identical assignments/objectives on adversarial ties and
+      non-finite rejection before R4 may consolidate anything.
+      **Registered 2026-07-24:** source audit found six algorithm assignment
+      bodies plus the public Lloyd `Problem::assign_clusters` body. The gate
+      now pins first-slot ties, ordered IEEE-754 objectives, exact finite
+      `DBL_MAX`, non-finite rejection, CPU-f32 sentinel translation, both
+      CLARANS copies, resident f64/f32, and real-CLI streamed f64/f32. Full
       consolidation remains R4-owned. Evidence:
       `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
-- [x] **F14 — four CSV emitters have no byte-parity contract.** **CLOSED
-      2026-07-24** (`e5bfd20`): native ASCII bytes frozen (binary64 at
-      `max_digits10`, comma/LF, locale independent, raw signed zero, NaN
-      empty, infinities rejected; 83-byte SHA-pinned 3x3 oracle); all 21
-      registered mutation executions fail. R4 retains formatter
-      consolidation; F37 retains cross-language parity. Evidence:
+      **Closed 2026-07-24:** `62c6f26` normalizes the CPU-f32 public sentinel;
+      `1eb8609` enforces explicit best-result presence, finite assignment and
+      candidate distances, strict first-slot ties, ordered finite objectives,
+      deterministic parallel failure handoff, and transactional Lloyd
+      publication. `cb11c90` repairs exact-base-confirmed stale portable-RNG
+      Python oracles without weakening the iteration-cap discriminator;
+      `3784251` registers the added CMake manifest; `3783b12` supplies every
+      Windows Arrow-linked CTest with its shared runtimes. Nine mutation
+      classes fail. Final gates: canonical 116/116, llfio-OFF 116/116, Arrow
+      118/118 with both real-CLI subjects, and fresh-extension Python
+      1010 passed / 12 skipped. Full scan consolidation remains R4-owned.
+- [x] **F14 — four CSV emitters have no byte-parity contract.** Pin locale,
+      precision, signed zero, and non-finite behavior across dense stream,
+      mmap stream, and visitor paths; only then may R4 remove duplication.
+      **Registered 2026-07-24:** native ASCII output is general binary64 at
+      `max_digits10`, comma-delimited, LF-only, locale/state independent,
+      preserves raw signed zero, leaves uncomputed NaN empty, and rejects
+      computed infinities before output. The hand-written 3x3 oracle is 83
+      bytes with SHA-256
+      `7754CFF0231360D60A69B034CA5136E88EEFE8B53A6509706D99071C436F3813`.
+      Focused dense/mmap/visitor/print/Result gates, real resident/mmap CLI
+      parity, a native `Result::save` helper, source audit, 13 mutation classes
+      and 21 executions, manifest 27, and exact final build floors are binding.
+      R4 still owns consolidation. Evidence:
       `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
+      **Closed 2026-07-24:** `e5bfd20` freezes the native bytes while retaining
+      four independent output loops. Focused llfio-ON/OFF gates pass 144/13
+      and 88/10 assertions/cases; resident CLI, mmap CLI, and native
+      `Result::save` meet the public contract; all 21 registered mutation
+      executions fail. Supply-chain inventories remain 39 actions, 7
+      archives, 1 Arrow pin, and 27 CMake manifests. Final canonical,
+      llfio-OFF, and Arrow gates pass 118/118, 118/118, and 120/120 with
+      6/9/8 capability skips. R4 retains formatter consolidation and F37
+      retains cross-language parity.
 - [x] **F15 — benchmark/test generators and CPU oracles are fragmented.**
-      The historical eight-copy byte-identity claim stays FALSIFIED. **CLOSED
-      2026-07-24** (`3061a31`): only the two exact generator families and the
-      dense symmetric production-CPU traversal extracted; intentional variants
-      preserved; attempt 1's Catch2 compile failure recorded; all 13
-      mutations killed. Evidence:
+      The historical claim that eight copies were byte-identical is falsified:
+      ranges and shapes differ. Inventory intentional variants and pin seeded
+      bytes/oracle values before extracting any shared test utility.
+      **Registered 2026-07-24:** share only the two exact generator families
+      and dense symmetric production-CPU traversal: benchmark scalar/per-row
+      `mt19937` with `[-1,1]`, accelerator row-major continuous `mt19937` with
+      `[-10,10]`, and zero-diagonal mirrored `N*N` assembly. Preserve packed
+      LB, timing-only MPI, float/range variants, caller-owned/Gaussian/NaN draw
+      schedules, and independent mathematical arbiters. Exact coherent Windows
+      Clang-relaxed, Windows MSVC-precise, and Linux-libstdc++ raw-byte/oracle
+      fingerprints, permanent non-skipping source reachability, 13 mutation
+      executions, benchmark compilation, real CUDA baselines, and final
+      119/119, 119/119, 121/121 build floors are binding. Evidence:
       `.claude/baselines/2026-07-24-f15-test-support.md`.
+      **CLOSED 2026-07-24:** `3061a31` extracts only the registered exact
+      families/traversal. Attempt 1's Catch2 compile failure remains recorded;
+      attempt 2 passes 165 assertions / 6 cases, all 13 mutations, real CUDA,
+      benchmark/CPU subjects, supply-chain inventory, and the three full gates.
 - [ ] **F16 — CMake presets encode one developer machine and a stale floor.**
       `CMakePresets.json` hardcodes a Windows LLVM path and declares CMake 3.21
       while the root requires 3.26. First gate: portable clean configure probes
@@ -368,16 +479,30 @@ Open findings first (status after R0 adjudication — update these boxes there):
       the result rather than merely producing the verbose “Loaded checkpoint”
       line. Define the supported continuation semantics before repair—never
       silently relabel a read-and-discard operation as resume.
-      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `fb853eb` replays
-      all five fields of a completed binary result (v1 = generic completed
-      result, not iteration state), skips every clustering method, preserves
-      the source binary, rejects unusable requested state, and kills all
-      twelve registered mutants; closure falsified only by the frozen
-      supply-chain manifest sub-band (observed 28 vs frozen 27, caused by the
-      new legitimate CMake driver). Attempts exhausted — evidence-only
-      checkbox; F39 uniquely owns inventory reconciliation. Registered bands
-      and both attempt records:
+      **REGISTERED 2026-07-24:** binary v1 is a completed generic result, not
+      method-specific iteration state. `--resume` will replay all five fields,
+      skip clustering, preserve the source binary, and fail loudly on
+      missing/malformed/incompatible state. The real-CLI gate uses a coherent
+      27-series checkpoint whose labels, medoids, cost 1650, and 41 iterations
+      all differ from the registered fresh control; twelve mutations and a
+      two-attempt cap are frozen in
       `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+      The pre-run review strengthens the second positive route to request
+      `kmedoids` and import the fresh distance matrix: identical replay state
+      plus exact silhouette values must prove method-generic `Problem`
+      rehydration, not only direct result-to-CSV plumbing.
+      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `fb853eb` restores
+      and publishes all five fields, skips every clustering method, preserves
+      the binary, rejects unusable requested state, repairs the SLURM rehearsal,
+      and kills all twelve registered mutants. The focused gates and
+      canonical/llfio-OFF/Arrow suites pass 120/120, 120/120, and 122/122.
+      Attempt 1 remains FALSIFIED because CTest's broad skip regex rejected the
+      success marker's `algorithm_skipped` field. Attempt 2 repairs only that
+      metadata classifier, but the registered supply-chain sub-band is
+      FALSIFIED: the new legitimate CMake driver raises the tracked manifest
+      inventory from frozen 27 to observed 28 (62 focused tests pass, one
+      fails). The attempt cap leaves F17 unchecked as evidence only. F39 owns
+      reconciliation; the binding campaign pointer is F18.
 - [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
       `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
       `Device` updates global `Env`, but each repetition creates a default
@@ -388,17 +513,35 @@ Open findings first (status after R0 adjudication — update these boxes there):
       corresponding explicit `Problem` route, and a fresh CUDA-enabled MEX must
       prove `Device='gpu'` reaches CUDA dispatch rather than merely validating
       the global device. The current constructor-only parity test is not a gate.
-      **ATTEMPTS EXHAUSTED / FALSIFIED 2026-07-24:** attempt 1 failed to
-      compile; attempt 2 passed the ordinary metric/validation, guarded-source,
-      and offline HPC poison markers, but the first R2024b valid CUDA profile
-      crashed `0xc0000005` under `CUDAPrecision::Auto` before any kernel row
-      (forced FP32/FP64 both return exact distance 10; forcing a precision
-      would be rescue-tuning). Product files rolled back; red-first cases and
-      the permanent runner retained in `625b5b7`. F40 owns the functional
-      `dtwc.cluster` route, F41 real-Metal reachability, F42 the
-      Auto-selector crash — F42 is a prerequisite for reopening F18.
-      Registered fixture, oracles, and bands:
-      `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+      **REGISTERED 2026-07-24:** use the all-distinct four-by-two fixture in
+      `.claude/baselines/2026-07-24-f18-matlab-routing.md`. Exhaustive DTW paths
+      and all six medoid sets give unique disjoint optima: L1 labels/medoids/
+      cost `[1 2 1 1]` / `[3 2]` / 9; SquaredL2 `[2 1 1 1]` / `[4 1]` / 30,
+      with next-best gap 1 for both. Mirror Python's precompute/inject route
+      without adding `Problem.metric`; preserve lazy CPU-L1, produce one routed
+      matrix before two restarts, inject after all setters, and reject
+      incompatible metric/variant/missing/backend requests. Explicit estimator
+      HPC must be rejected before Env/SSH; an offline repo-local poison shim
+      proves explicit and active-global rejection without network access.
+      R2024b and R2025b must each profile active-global GPU-L1 plus explicit
+      `gpu:0` SquaredL2 as exactly two named DTWC kernel invocations in an
+      uncapped profile, with a separate explicit-CPU/cross-product no-kernel
+      profile. Two ordinary
+      MATLAB cases, the HPC marker, guarded-source marker, 14 mutation classes /
+      35 executions, unchanged C++ floors, the exact known F39 failure, and two
+      implementation attempts are binding. Real Metal estimator execution is
+      `[BLOCKED-ENV]` here and moves to F41.
+      **ATTEMPTS EXHAUSTED / FALSIFIED 2026-07-24:** attempt 1 failed to compile
+      on the existing one-argument MEX string helper. Attempt 2 compiled and
+      passed the exact ordinary metric/validation marker, guarded-source marker,
+      and offline HPC poison marker, but the first R2024b valid CUDA profile
+      terminated with `0xc0000005` before any kernel row or route marker. The
+      same fixture crashes the pre-existing CUDA `Problem` route only under
+      `CUDAPrecision::Auto`; forced FP32 and FP64 both return exact distance 10.
+      The two-attempt cap forbids forcing a precision as rescue-tuning. Product
+      files were rolled back; commit `625b5b7` retains the red-first cases and
+      permanent runner. F42 owns the Auto-selector crash, F18 stays unchecked,
+      and the campaign pointer moves to F19.
 - [x] **F19 — the frozen `Problem` encapsulation/accessor cleanup was
       incomplete.** Configuration and result fields remained publicly mutable;
       promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
@@ -410,12 +553,38 @@ Open findings first (status after R0 adjudication — update these boxes there):
       mutation of fields designated private by the frozen contract; separately,
       deleting each redundant MATLAB writeback in a probe must leave the
       returned and stored labels/medoids digit-identical.
-      **CLOSED 2026-07-24** (`3612b68`): exactly ten fields privatized;
-      eleven retained by the original freeze/F22/M25/M37; 31/31 public-header
-      assertions, twelve permanent mutations, 24/24 MATLAB routes across
-      R2024b/R2025b; the impossible Python aggregate ledger retained as
-      arithmetically FALSIFIED evidence (not rescue-tuned). Evidence:
+      **REGISTERED 2026-07-24:** the inherited records conflict, so the binding
+      boundary is explicit. Privatize `method`, `random_seed`,
+      `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`,
+      `verbose`, `output_folder`, `name`, and `data`. Retain the eleven fields
+      protected by the original freeze, F22, or M25/M37:
+      `maxIter`, `N_repetition`, `band`, `variant_params`,
+      `missing_strategy`, `distance_strategy`, `cuda_settings`,
+      `mip_settings`, `init_fun`, `clusters_ind`, and `centroids_ind`.
+      `resize()` is already private. A 31-assertion public-header contract,
+      focused non-degenerate Lloyd oracle, twelve permanent mutations, exactly
+      24 MATLAB target-route executions across R2024b/R2025b, and two product
+      attempts are binding. Evidence:
       `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+      **INHERITED C++ BASELINE 2026-07-24:** at tracked base `03f0e61`, the
+      canonical rebuild reported no work; CTest discovered 120 tests, failed
+      zero, and skipped exactly the registered six capability tests.
+      **INHERITED PYTHON BASELINE 2026-07-24:** the installed extension loaded
+      from the expected venv path; all 1,022 tests collected, with 1010 passed,
+      11 skipped, and the sole failure equal to F39's already-open tracked
+      CMake inventory mismatch (observed 28, stale expected 27). Fresh-extension
+      verification remains a final F19 gate.
+      **CLOSED 2026-07-24:** product attempt 1 is retained in `3612b68`.
+      The final source gate has 10 private backings, zero violations, 27/27
+      self-probes, and 31/31 public-header assertions; the focused runtime
+      passes 42 assertions / 3 cases with its non-skip marker. Canonical and
+      llfio-OFF pass 121/121 with exact capability skips. The fresh Python
+      property probe passes, while full pytest is 1009 passed / 12 skipped /
+      one known F39 failure over 1022; the registered 1010/12-plus-one ledger
+      is therefore arithmetically FALSIFIED, not rescue-tuned. The final MEX
+      passes 8/8 routes, 64/64 vector and 40/40 scalar assertions across
+      R2024b/R2025b with zero skips. Frozen/generated docs and their live-CLI
+      drift gate pass. Resume at F20.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
       (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently
@@ -426,20 +595,39 @@ Open findings first (status after R0 adjudication — update these boxes there):
       payload above a deterministic threshold; backing mode must differ while
       series bytes and downstream distances remain identical. The inherited
       setter must fail by leaving both routes unchanged.
-      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `aa9781c` routes
-      owning `Problem::set_data(Data)` (the registered governed boundary,
-      shared by C++/Python/MATLAB; non-retroactive; `set_view_data` stays an
-      explicit non-owning bypass) and loader construction through the shared
-      series-storage router with loud unsupported-route rejection
-      (Float32/llfio-OFF/CUDA/Metal mapped); `f1ef5e0` makes derived DTW
-      closures move-stable. Focused llfio-ON 963/5 and llfio-OFF 606/5 pass,
-      mutations 11/11 killed, full gates 122/122, 122/122, 124/124 — but the
-      six-binding band is FALSIFIED at 5/6: the R2024b MATLAB llfio-ON MEX
-      crashes `0xc0000005` in LLFIO's first `std::mutex` lock (VS 14.50
-      constexpr-mutex vs R2024b's private MSVCP140 14.36; R2025b passes)
-      before any I/O. Both attempts consumed — evidence-only checkbox; F43
-      owns the toolset-runtime incompatibility, F44 the cache-path taxonomy
-      escape. Registered bands and full evidence:
+      **REGISTERED 2026-07-24:** the existing owning `Problem::set_data(Data)`
+      call is the governed operation because it is the only post-policy data
+      boundary shared by C++, Python, and MATLAB; a loader-only overload would
+      leave both bindings advisory. Policy changes are non-retroactive,
+      `set_view_data` remains an explicit non-owning bypass, and series storage
+      remains separate from distance-matrix mmap and both CLI RAM controls.
+      The six-by-six fixture is exactly 288 bytes above a registered one-byte
+      threshold. Heap/Mmap must differ while all 36 doubles, six names, and 36
+      ordered downstream distances are exact; the direct fixture retains
+      `ndim=2`, its 15 nontrivial values match an independent full-matrix DP,
+      and mapped ownership must survive a Problem move. The subject may not
+      skip in either llfio-ON or llfio-OFF:
+      unsupported explicit Mmap and Float32 Mmap fail before publication.
+      Loader construction honors its stored result, mapped GPU consumers fail
+      before empty-vector dispatch, eleven mutations and at most two product
+      attempts are binding. Evidence:
+      `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** attempt 1 `aa9781c`
+      routes owning `Problem::set_data(Data)` and loader construction through
+      the shared series-storage router, retains mmap data/name ownership, and
+      rejects unsupported Float32/llfio-OFF/CUDA/Metal mapped routes loudly;
+      attempt 2 `f1ef5e0` repairs derived DTW closures across Problem
+      move construction/assignment. Focused gates pass: llfio-ON 963
+      assertions / 5 cases, llfio-OFF 606 / 5, mutations 11/11 killed; full
+      gates canonical 122/122, llfio-OFF 122/122, system-Arrow 124/124.
+      The six-binding band is FALSIFIED at 5/6: the R2024b MATLAB llfio-ON
+      MEX crashes `0xc0000005` in LLFIO's first Windows-initialization
+      `std::mutex` lock (VS 14.50 constexpr-mutex representation vs R2024b's
+      private MSVCP140 14.36 runtime; R2025b's 14.40 passes) before any file
+      I/O or Problem state publication. Both permitted attempts are consumed;
+      F20 stays unchecked as evidence only. F43 owns the toolset-runtime
+      incompatibility; F44 owns the cache-path exception-taxonomy review
+      finding. Evidence:
       `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - [ ] **F21 — four frozen C++ snake_case entry points are absent.**
       `DataLoader` exposes only `startColumn`/`startRow`
@@ -565,9 +753,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       implementation may replace that rejection only after an independent
       per-channel oracle defines the recurrence and the same gate pins it.
 - [x] **F33 — CPU banded DTW used an endpoint-scaled corridor instead of the
-      fixed Sakoe–Chiba window.** CLOSED by `9f78212` (shared CPU kernel plus
-      public singleton/MV/AROW bypasses); independent full-matrix DP and
-      exhaustive path enumeration agree. Evidence:
+      fixed Sakoe–Chiba window.** On base `be0069b`, the preregistered public
+      unequal-length fixture returned 8 at band 0 instead of the finite no-path
+      sentinel and 3 at band 2 instead of 5; both matched the registered
+      slanted-window fingerprint. Commit `9f78212` fixes the shared CPU kernel
+      and public singleton/MV/AROW bypasses. Independent full-matrix DP and
+      exhaustive path enumeration agree, the focused gates report 70/70 and
+      11/11 assertions, and the canonical gate is 114/114 with exactly the six
+      capability skips. Evidence:
       `.claude/baselines/2026-07-23-r2-d1-dtw.md`.
 - [ ] **F34 — the supply-chain gate omits non-action workflow acquisitions and
       weaker CMake repository pins.** The current script does not classify the
@@ -1201,9 +1394,328 @@ colour system transfer verbatim**.
 
 ## Progress log (append-only; older entries in the archive)
 
-- Entries from 2026-07-23 (PLAN v2.0 adoption, R0/R1) through 2026-07-24
-  (F11-F20 registrations, attempts, and verdicts) are archived verbatim in
-  `.claude/PLAN-archive-2026-07-27-r0-f20.md`.
+- 2026-07-23 (Fable): PLAN v2.0 written on user directive ("clean the repo,
+  re-derive the maths, find logical and performance mistakes, reach the grand
+  goal — detailed but flexible, Codex runs non-stop"). Campaign R0–R7 defined;
+  R0 = adjudicate the uncommitted 2026-07-20 work found in the tree (F9/F10 +
+  scholarly edits, unverified). AGENTS.md created. Old plan → archive.
+- 2026-07-23 (R0/F10): Diff classification completed. F10 repaired and closed
+  in `20b894d`: selected as well as unselected non-finite sampling inputs now
+  fail closed; the direct seam and seeded/unseeded signed/degenerate routes run.
+  Registered gate PASS: 114/114 CTest targets, zero failed, exactly six
+  capability skips. Evidence:
+  `.claude/baselines/2026-07-23-f10-sampling.md`.
+- 2026-07-23 (R0/integer width): Repaired the interrupted FastPAM edit in
+  `f8ff7d3`. All three public entries now reject point counts above the
+  int-indexed result ABI before effects, and supported kernels use one checked
+  narrowing instead of repeated casts from widened loop counters. Deliberate
+  red: 2/18 assertions failed; repaired focused suites: 258/258 and 76/76;
+  canonical gate: 114/114, zero failed, exactly six capability skips. Evidence:
+  `.claude/baselines/2026-07-23-fast-pam-index-width.md`.
+- 2026-07-23 (R0/F7 coverage): Reclassified the purported “Arrow-OFF half” of
+  F8 as F7 planner/guard coverage and repaired it in `7c71602`. Three production
+  mutants were killed; focused suites pass 149/149 and 842/842; the fresh real
+  CLI rejects capped CSV with exit 1 and accepts the same uncapped input with
+  exit 0; canonical gate passes 114/114 with the six expected capability skips.
+  F8 remains open in full. Evidence:
+  `.claude/baselines/2026-07-23-f7-routing-coverage.md`.
+- 2026-07-23 (R0/F9): Repaired the inherited Arrow job and closed F9. The first
+  fresh configure found a scope leak that announced Parquet but omitted
+  `DTWC_HAS_PARQUET`; `833f570` exports the package result. The newly reachable
+  Windows suite then exposed an mmap lifetime failure; `0c91c9b` releases the
+  reader before unlink. The full Arrow-ON binary passes 390 assertions in all
+  11 cases, imports both Arrow and Parquet, and its CTest target runs rather
+  than skips. `e323197` adds the Ubuntu 24.04 gate plus a mutation-tested
+  executed-assertion/case parser. Canonical CTest passes 114/114 with exactly
+  its six registered capability skips. Evidence:
+  `.claude/baselines/2026-07-23-f9-arrow-gate.md`.
+- 2026-07-23 (R0 closure): Every inherited hunk has a committed verdict.
+  Scholarly repairs are `c627826` (floating-point record), `8775156` (TODO
+  staleness plus one verified closure), and `85eabcd` (MIP provenance).
+  `git status --porcelain=v1` was empty; canonical behavioral closure remains
+  114/114, zero failed, exactly six capability skips. Final matrix:
+  `.claude/baselines/2026-07-23-r0-adjudication.md`. Proceed to R1.
+- 2026-07-23 (R1 start): Registered the TODO reconciliation at base `83a2048`.
+  Inventory: 53 records (49 unchecked, one checked, three open questions);
+  acceptance requires 53/53 verdicts, no unclassified records, and unique R3
+  IDs for every still-open defect. Evidence:
+  `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
+- 2026-07-23 (R1 TODO reconciliation): Committed the 53-row evidence ledger in
+  `512bbc4` and rewrote the stale live index in `81cae08`. Final parser:
+  53 expected/actual/unique, 21 known-bug/cleanup, 32 remaining, zero missing,
+  unexpected, duplicate, or `UNVERIFIED` records; F11–F16 each appear once.
+  Direct focused closure gate: nine binaries, 5,809 assertions in 142 cases,
+  zero skips/failures. Evidence:
+  `.claude/baselines/2026-07-23-r1-todo-reconciliation.md`.
+- 2026-07-23 (R1 docs/F17): Source audit confirmed the CLI `--resume` defect:
+  `ckpt_result` is created and loaded only at `dtwc/dtwc_cl.cpp:1398-1405`
+  and has no subsequent consumer. F17 records the real-binary failing gate;
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D5 records the evidence.
+- 2026-07-23 (R1 frozen contract): Reconciled the freeze artifact against the
+  current tree. The inherited audit guard failed on eight stale marker classes;
+  final inventory is zero stale markers, exactly eight adjudicated reviewer
+  decisions, and all nine implementation gaps F18–F26 named as 2.0
+  obligations. Tier-1/Tier-2/migration projections are current and the real-CLI
+  docs gate passes. Fresh Hugo rendering remains `[BLOCKED-ENV]`. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D6.
+- 2026-07-23 (R1 GPU docs): Registered F27–F31, then repaired the GPU page
+  without changing runtime behavior. The inherited guard failed on all 12 stale
+  claim classes; final live-CLI docs gate passes. Current text scopes GPU LB to
+  equal-length L1 with a matching admissible window and thresholded `+inf`
+  output, states CPU-only Auto/lower-bound routing, and retains only a
+  raw-artifact-linked historical/advisory timing table. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D7.
+- 2026-07-23 (R1 docs closure): Reconciled the remaining examples, interface
+  map, multivariate and score pages, plus floating-point/DTW source comments.
+  The inherited D8 guard failed on 24 stale marker classes; the post-rebuild
+  real-CLI contract gate passes and `git diff --check` is clean. A link check
+  over the ignored existing site passes only as advisory evidence; the fresh
+  Hugo render remains `[BLOCKED-ENV]` under the recorded `hugo=NOT_FOUND` and
+  `go=NOT_FOUND` probe. Evidence:
+  `.claude/baselines/2026-07-23-r1-docs-truth.md` D8.
+- 2026-07-23 (R1 record hygiene): Reconciled UNIMODULAR, LESSONS, and
+  CITATIONS against current code, tracked artifacts, and opened primary
+  sources. Two independent residual reviews rejected the first checker green
+  and forced corrections to SIMD/Float32/FastPAM/I/O evidence scope,
+  LR-core/Benders architecture, the Ghouila-Houri proof, and stale
+  bibliography attributions. The permanent checker now pins those classes,
+  the sole freshness header, canonical citation counts/URLs, the deliberate
+  retirement of MISSING/READ, and the corrected 2.95×–8.06× table reading.
+  Evidence: `.claude/baselines/2026-07-23-r1-record-hygiene.md`.
+- 2026-07-23 (R1 closure): `4797c97` removes five verified non-data artifacts,
+  preserves all three ignored build roots and the orphaned data fixture,
+  expands future generated-file ignores, removes the Codecov badge query, and
+  records both RNG compatibility boundaries. The preregistered checker moves
+  from 5/2/3 inherited banned/zero/duplicate failures to exact PASS; an
+  adversarial reviewer rejected four earlier false-green designs before the
+  index/blob/ordered-ignore gate was accepted. CHANGELOG structure and the
+  real-CLI documentation contract pass. The later unexpected
+  `origin/Claude` update FALSIFIED the global no-remote-operation sub-band;
+  campaign-agent compliance still passes and no rollback was attempted.
+  Evidence:
+  `.claude/baselines/2026-07-23-r1-repo-hygiene.md`. Proceed to R2-D1 and R3-F8.
+- 2026-07-23 (R2-D1/F33): Sakoe and Chiba equations (6)–(8) were checked from
+  the primary scan with the paper's weighted recurrence kept distinct from
+  DTWC++'s objective. The inherited CPU endpoint-scaled corridor was
+  FALSIFIED, then repaired in `9f78212`; the derivation and permanent drift
+  guard are `cf5b9d8`. D1 closes CPU **CONFIRMED** while F12 remains open for
+  CUDA geometry and exact Metal no-path parity. The actual canonical inventory
+  is 114/114, zero failed, with the same six capability skips. Evidence:
+  `.claude/baselines/2026-07-23-r2-d1-dtw.md`. Resume at R3-F8.
+- 2026-07-23 (R3-F8): `1df77fc` tracks the registered Parquet fixture and a
+  permanent non-skippable real-CLI parity test. The first decisive run passed:
+  six exits, 12/12 live route checks, 18 exact artifacts, 9/9 byte-identical
+  resident/stream pairs, and 3/3 distinct configuration checkpoints. The fresh
+  Arrow-ON suite passes 115/115 with `test_io_readers` and F8 executing; the
+  canonical Arrow-OFF suite remains 114/114 with exactly six capability
+  skips. Independent review found all 11 registered acceptance items verified.
+  Hosted CI was not run locally and is not claimed. Evidence:
+  `.claude/baselines/2026-07-23-f8-fast-clara-parity.md`. Resume at R3-F11.
+- 2026-07-24 (R3-F11 partial/F36): `653b0e6` pins the standalone example to
+  commit `eda1b92bc89ee51568b052a6af86f615d336de3c` plus SHA-256 and hardens
+  the tracked archive gate through an exact seven-identity inventory and 63
+  mutation cases. Fresh example configure/build, CPU/GPU HiGHS builds, real
+  GPU/HiGHS test, and canonical 114/114 all pass. Final independent audits
+  nonetheless FALSIFIED fail-closed coverage with `CUSTOM_CACHE_KEY` and
+  quoted CMake line continuation. F11 remains open; F36 replaces the killed
+  lexical design. Evidence:
+  `.claude/baselines/2026-07-23-f11-supply-chain-coverage.md`. Resume at F12.
+- 2026-07-24 (R3-F12 partial): `4583443` replaces six CUDA slanted corridors
+  with one canonical overflow-safe predicate and normalizes FP32 GPU no-path
+  values at the public double boundary. The final real-RTX gate passes 515
+  assertions / 6 focused cases and 7,827 / 61 unfiltered; CUDA CTest passes
+  2/2, the host normalizer passes 8/8, and canonical plus llfio-OFF gates pass
+  115/115. Two independent audits found no remaining local blocker. The fresh
+  Metal-OFF executable skips with zero assertions, so F12 remains open pending
+  real Apple build/device evidence. Evidence:
+  `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. Resume at F13.
+- 2026-07-24 (R3-F13 registration): At base `1af0aa8`, audited six algorithm
+  assignment bodies plus Lloyd's public seventh body and registered literal
+  tie/order/non-finite/sentinel oracles before tests or production edits.
+  Separate CPU-f32 and assignment repair commits, exact diagnostics and bits,
+  a four-process real Arrow CLI gate, mutation probes, and final build floors
+  are binding. Evidence:
+  `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`.
+- 2026-07-24 (R3-F13 CPU-f32 partial): The preregistered live resolver test
+  failed 1/1 with widened `FLT_MAX`. Commit `62c6f26` moves exact sentinel
+  translation to a shared CPU/GPU public-distance policy; repaired focused,
+  GPU-host, and full distance-semantics gates pass 5/5, 8/8, and 53/53.
+  Nearest-medoid assignment validation remains the active F13 half.
+- 2026-07-24 (R3-F13 CLOSED): `1eb8609` enforces the seven-body assignment
+  contract, `cb11c90` repairs exact-base-confirmed stale Python oracles,
+  `3784251` registers the added CMake manifest, and `3783b12` makes every
+  Windows Arrow-linked CTest self-contained. The focused gate passes 114
+  assertions / 8 cases; canonical and llfio-OFF pass 116/116; Arrow passes
+  118/118 without caller PATH and executes both real-CLI gates; fresh-extension
+  Python passes 1010 / 12 skipped over 1,022 collected. Nine mutation classes
+  fail. Earlier falsifications remain recorded, full scan consolidation remains
+  R4-owned, and hosted CI is not claimed. Evidence:
+  `.claude/baselines/2026-07-24-f13-medoid-assignment-contract.md`. Resume at
+  F14.
+- 2026-07-24 (R3-F14 registration/F37): At clean base `95ffd63`, audited four
+  native matrix CSV bodies and registered an independent 83-byte LF-only
+  literal, hostile locale/stream state, exact infinity side effects/messages,
+  dense/mmap/visitor/print/Result routes, real resident/mmap CLI parity, native
+  Result parity, manifest 27, 13 mutation classes and 21 executions, and final
+  inventories 118/118 canonical, 118/118 llfio-OFF, and 120/120 Arrow. The
+  inherited Windows CLI artifact contains 27 CRLF rows. Python's real 212-byte
+  `Result.save` matrix confirms F37; MATLAB remains runtime-unconfirmed.
+  Evidence: `.claude/baselines/2026-07-24-f14-csv-wire-format.md`.
+- 2026-07-24 (R3-F14 CLOSED): `e5bfd20` implements the registered native CSV
+  contract in attempt 1 and retains all four formatter loops. Focused
+  llfio-ON/OFF gates pass 144 assertions / 13 cases and 88 / 10; resident CLI,
+  mmap CLI, and native `Result::save` pass exact public byte checks. All 13
+  mutation classes and 21 executions fail. The supply-chain inventory remains
+  39/7/1/27, and final canonical, llfio-OFF, and Arrow suites pass 118/118,
+  118/118, and 120/120 with 6/9/8 capability skips. F37 retains cross-language
+  parity; R4 retains consolidation. Evidence:
+  `.claude/baselines/2026-07-24-f14-csv-wire-format.md`. Resume at F15.
+- 2026-07-24 (R3-F15 registration): At clean base `e79fab3`, retired the stale
+  eight-copy premise, inventoried two exact clone families plus adjacent
+  intentional variants, and froze raw generator/oracle fingerprints for the
+  repository's Clang-relaxed and MSVC-precise profiles. Independent full-matrix
+  DP equals the production rolling CPU reference in both profiles, while the
+  band-0 fixture differs from full DTW. Six benchmark executables compile;
+  real CUDA passes 7,827 assertions / 61 cases and 688 / 8; CPU accuracy/SIMD
+  pass 283 / 39 and 7,029 / 16. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 portability): Before implementation attempt 1 executed,
+  compiled the literal preflight in WSL Ubuntu 24.04 with GCC 13.3 and Clang
+  18.1 plus the repository Release relaxations. Both libstdc++ runs produced
+  the same third coherent generator/full/band-0 profile and retained
+  digit-identical independent/production matrices. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 attempt 1 FALSIFIED): The canonical focused target was
+  discovered but did not compile: Catch2's decomposer rejected the row-profile
+  logical OR because the complete predicate lacked Catch2's required extra
+  parentheses. No test or quantitative band executed; attempt 2 is limited to
+  that syntactic correction. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`.
+- 2026-07-24 (R3-F15 CLOSED): `3061a31` extracts only the registered exact
+  deterministic generator families and symmetric dense traversal. Attempt 2
+  passes the permanent 165-assertion / 6-case gate after attempt 1's recorded
+  compile falsification; all 13 mutations fail. Six benchmark targets, CPU
+  subjects, real CUDA, CUDA override, and supply-chain inventory retain their
+  registered floors. Final canonical, llfio-OFF, and Arrow-ON gates pass
+  119/119, 119/119, and 121/121 with 6/9/8 capability skips. Evidence:
+  `.claude/baselines/2026-07-24-f15-test-support.md`. Resume at F16.
+- 2026-07-24 (R3-F16 registration): At clean base `07f186a`, the inherited
+  metadata is FALSIFIED: preset/root/pyproject report 3.21.0/3.26/3.26 and
+  Windows Clang is fixed to one `Program Files` location. A clean Windows
+  configure ignored an alternate PATH LLVM junction; WSL's GCC control
+  configured through `/usr/bin`. Registered exact fixed metadata, host-aware
+  preset inventories, alternate/no-LLVM and wrong-host probes, ten mutations,
+  unchanged supply-chain inventory, and final 119/119, 119/119, 121/121
+  floors. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F16 attempt 1 FALSIFIED): The focused build reconfigured but
+  did not compile. Its guard printed
+  `F16 CMake floor drift: preset=3.26.0, root=3.14, expected=3.26.0` because
+  dependency configuration had changed the late CMake minimum variable. No
+  native test ran; attempt 2 is limited to the registered root first-command
+  observation. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F16 repair retained / closure FALSIFIED): `7aef30d` aligns
+  preset/root/pyproject at 3.26, discovers Windows Clang through `clang++`,
+  and hides presets on incompatible hosts. The permanent gate passes 81
+  assertions / 4 cases; alternate-PATH Windows Release/Debug and WSL GCC
+  configures pass; wrong-host and missing-compiler probes fail loudly.
+  M01-M09 fail, but M10 is FALSIFIED because CMake's real preset reader rejects
+  trailing content while configure-time `string(JSON)` accepts it. Supply
+  inventory remains 39/7/1/27, and canonical, llfio-OFF, and Arrow-ON pass
+  119/119, 119/119, and 121/121 with 6/9/8 capability skips. The capped
+  fail-closed residual moves to F38; resume at F17. Evidence:
+  `.claude/baselines/2026-07-24-f16-cmake-presets.md`.
+- 2026-07-24 (R3-F17 repair retained / closure FALSIFIED): `fb853eb`
+  implements exact completed-result replay through the real CLI, preserves
+  source state, rejects all nine invalid-state cases, repairs the operational
+  recipe, and kills all twelve mutations. Attempt 1's self-matching CTest skip
+  regex remains recorded; attempt 2 passes the focused behavioral gates and
+  all three full C++ suites at 120/120, 120/120, and 122/122. Formal acceptance
+  is FALSIFIED because the new tracked CMake driver makes the registered
+  supply-chain inventory 28 rather than 27 (62 passed, 1 failed). F39 owns that
+  reconciliation; resume at F18. Evidence:
+  `.claude/baselines/2026-07-24-f17-cli-resume.md`.
+- 2026-07-24 (R3-F18 registration): At clean base `1e4131e`, fresh ordinary
+  and CUDA-enabled MEX artifacts reproduce the defect. L1 and SquaredL2
+  estimators both publish L1 labels/medoids/cost `[1 2 1 1]` / `[3 2]` / 9,
+  while the independent squared `Problem` oracle is `[2 1 1 1]` / `[4 1]` /
+  30. Nsight sees active Env `gpu` but no kernel. Adversarial review expanded
+  the corrected contract to `NInit=2`, both GPU metrics, both device-override
+  directions, offline explicit/active HPC proof, both installed MATLAB
+  releases, guarded Metal/ordinal/result checks, 14 mutation classes /
+  35 executions, and the F40/F41 ownership splits. The ordinary full-suite
+  matrix is only R2024b+R2025b with the OpenMP MEX; the CUDA flavor uses
+  isolated profiles because its honest GPU availability contradicts the
+  ordinary unavailable-capability cases. Evidence:
+  `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (R3-F18 FALSIFIED): Attempt 1 failed to compile on the MEX
+  `get_string` signature. Attempt 2 compiled and passed the focused ordinary
+  oracle, source contract, and poisoned-HPC boundary, then the first R2024b
+  valid CUDA profile exited `0xc0000005` with zero route markers and zero
+  kernel rows. The unprofiled pre-existing CUDA `Problem` route reproduces the
+  crash under Auto precision; forced FP32 and FP64 both return exact distance
+  10, so Nsight and the estimator wrapper are exonerated. The capped product
+  patch is rolled back. Commit `625b5b7` retains the red tests/runner, F42 owns
+  the Auto configuration-query crash, F18 remains open, and R3 resumes at F19.
+  Evidence: `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
+- 2026-07-24 (R3-F19 registration): Two independent audits reconciled the
+  frozen-contract conflict to ten private and eleven retained `Problem` fields.
+  The registered gates are a 31-assertion public-header contract, a source/API
+  inventory, a non-degenerate Lloyd runtime oracle, twelve mutation classes,
+  and exactly 24 MATLAB target-route executions spanning inherited, four
+  single-call deletions, composite deletion, and both installed releases.
+  Product work is capped at two attempts. The initially transcribed Python
+  floor was obsolete; the live repository contract is 1010 passed / 12 skipped
+  over 1022 collected. An adversarial review rejected the first uncommitted
+  executable-gate draft because it did not yet bind six freshly compiled MEX
+  profiles or exclude unrelated compile failures. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F19 expected-red/mutation baseline): `27a2561` passes all 27
+  adversarial self-probes and keeps the inherited 31-assertion profile green
+  while the final profile rejects exactly ten raw fields. Six source-distinct,
+  MEX-distinct, clean-first profiles then passed the fixed R2024b/R2025b
+  schedule: 24 route markers, 192 vector assertions, 120 scalar assertions,
+  24 MEX hash checks, 42 post-run evidence rehashes, and zero skips. The
+  intermediate PowerShell route-selector failure was a gate defect fixed in
+  `f4613d6`, not a product attempt. Product attempts consumed: zero. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F19 CLOSED): `3612b68` implements the governed 10-private /
+  11-retained split in attempt 1 and removes redundant MATLAB writeback.
+  Source/compile and the 42-assertion runtime pass; canonical and llfio-OFF pass
+  121/121; final R2024b/R2025b MEX routes pass 8/8 with 64/40 exact assertions.
+  Fresh Python properties pass; its only full-suite red is F39, and the
+  preregistered category floor is separately FALSIFIED as an impossible
+  1,023-outcome ledger over 1,022 collected. Documentation gates pass. Resume
+  at F20. Evidence:
+  `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
+- 2026-07-24 (R3-F20 registration): The existing owning
+  `Problem::set_data(Data)` call is the policy-governed cross-language
+  boundary; changes are non-retroactive and `set_view_data` remains an
+  explicit non-owning bypass. Problem must retain move-stable mmap-series and
+  name ownership, keep series policy separate from distance/CLI controls, and
+  reject unsupported explicit Mmap before publication. Exact bands cover the
+  288-byte non-uniform `ndim=2` fixture, 36 values, six names, 36 ordered
+  distances, 15-pair independent DP, move lifetime, loader construction, GPU
+  loudness, zero subject skips in llfio-ON/OFF, eleven mutations, and two
+  product attempts. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+- 2026-07-24 (R3-F20 registration audit): Before any product/test edit, the
+  independent gate audit falsified copyability, direct-threshold injection, and
+  native-`ndim=1` assumptions in `0c6fe79`. The corrected gate uses existing
+  Problem move semantics, explicit direct Heap/Mmap plus loader-only one-byte
+  Auto threshold, an `ndim=2` reconstruction with a 15-pair independent DP,
+  and a dedicated no-skip target whose temporary files stay under the build
+  root. Product attempts consumed: zero. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+- 2026-07-24 (R3-F20 expected-red): `e4688a7` adds the dedicated mandatory
+  Problem route. Canonical and llfio-OFF each execute 404 assertions / 4 cases
+  with 401 passing and exactly three F20 failures; both observe
+  `heap=owning mmap=owning`, the loader constructor ignores configured Heap,
+  and Float32 Mmap succeeds. The llfio-OFF route also accepts explicit Mmap.
+  The passing marker is absent, subject skips are zero, and product attempts
+  consumed remain zero. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - 2026-07-24 (R3-F20 verdict): Product attempts `aa9781c` (shared series
   router, loud unsupported-route rejection) and `f1ef5e0` (move-stable
   derived closures) retained; `4834418`/`b1aae56` pin owner lifetime and the
