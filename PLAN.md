@@ -13,24 +13,17 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-24):** 2.0.0rc1 release state committed (not tagged or
-published). Refactor Phases 0–7 CLOSED. Phase 8: 8.0 + 8.1 CLOSED (149
-protocol-clean commits `8debf1d..eda1b92`); 8.2 findings F1–F7, F9–F10, and
-the sanitizer gate CLOSED; **F8 CLOSED**. Phases R0–R1 CLOSED; R2 active with
-D1 CLOSED; R3 active. F11's archive pin is committed, but its hand-written
-parser closure is FALSIFIED and routed to F36. F12's local CUDA repair is
-committed and verified, but real-Metal execution remains `[BLOCKED-ENV]`;
-**F14–F15 CLOSED**. F16's portable-preset repair is retained in `7aef30d`;
-its formal acceptance box remains open as falsification evidence only, while
-F38 uniquely owns the residual implementation. F17's completed-result replay
-repair is retained in `fb853eb`; its formal acceptance remains open as
-falsification evidence because the frozen supply-chain manifest count observed
-28 rather than 27. F39 uniquely owns that inventory reconciliation. F18
-remains open after its capped falsification; **F19 CLOSED** in product attempt
-1, with its impossible Python aggregate band retained as FALSIFIED evidence.
-F20 is active.
-The final **2.0.0 tag gates
-on R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
+**Status (2026-07-27, reconciled after the F20 run):** 2.0.0rc1 release state
+committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
+(8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
+active with D1 CLOSED; R3 active with **F13, F14, F15, F19, F33 CLOSED**.
+Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
+checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
+(fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
+**F18** (residuals → F40/F41/F42), **F20** (residuals → F43/F44). **F12**
+partially closed (CUDA verified on the local RTX; real Metal
+`[BLOCKED-ENV]`). **Campaign cursor: F21.** The final **2.0.0 tag gates on
+R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
 never wait on them.
 
@@ -619,6 +612,23 @@ Open findings first (status after R0 adjudication — update these boxes there):
       before empty-vector dispatch, eleven mutations and at most two product
       attempts are binding. Evidence:
       `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** attempt 1 `aa9781c`
+      routes owning `Problem::set_data(Data)` and loader construction through
+      the shared series-storage router, retains mmap data/name ownership, and
+      rejects unsupported Float32/llfio-OFF/CUDA/Metal mapped routes loudly;
+      attempt 2 `f1ef5e0` repairs derived DTW closures across Problem
+      move construction/assignment. Focused gates pass: llfio-ON 963
+      assertions / 5 cases, llfio-OFF 606 / 5, mutations 11/11 killed; full
+      gates canonical 122/122, llfio-OFF 122/122, system-Arrow 124/124.
+      The six-binding band is FALSIFIED at 5/6: the R2024b MATLAB llfio-ON
+      MEX crashes `0xc0000005` in LLFIO's first Windows-initialization
+      `std::mutex` lock (VS 14.50 constexpr-mutex representation vs R2024b's
+      private MSVCP140 14.36 runtime; R2025b's 14.40 passes) before any file
+      I/O or Problem state publication. Both permitted attempts are consumed;
+      F20 stays unchecked as evidence only. F43 owns the toolset-runtime
+      incompatibility; F44 owns the cache-path exception-taxonomy review
+      finding. Evidence:
+      `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - [ ] **F21 — four frozen C++ snake_case entry points are absent.**
       `DataLoader` exposes only `startColumn`/`startRow`
       (`dtwc/DataLoader.hpp:124-157`), and `settings::paths` exposes only
@@ -862,6 +872,30 @@ Open findings first (status after R0 adjudication — update these boxes there):
       seam to localise the fault, then run the Auto child under
       compute-sanitizer. F42 is a prerequisite for reopening F18; substituting
       an explicit precision in F18 would not close the frozen Auto route.
+- [ ] **F43 — R2024b MATLAB + llfio MEX crashes in `std::mutex` before any
+      I/O.** The clean optimized llfio-ON MEX (SHA-256
+      `4AE0FE630BE2F5F83A54B4BF34C81ABDE12A0C473BFE15E4325968C51F493846`)
+      crashes under R2024b and passes under R2025b. PDB/import/disassembly
+      evidence localises the fault to LLFIO's first Windows initialization
+      `std::mutex` lock: VS 14.50 headers emit the new constexpr mutex
+      representation; R2024b's private MSVCP140 14.36 dereferences the absent
+      legacy vptr, while R2025b's private 14.40 runtime accepts the SRW
+      representation. The crash occurs before file I/O returns or `Problem`
+      publishes state [confirmed: F20 baseline].
+      `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` is the registered next
+      differential but remains [inferred] until an optimized R2024b/R2025b
+      pair confirms it. Do not conflate with F42 — common mutex-looking
+      symptoms do not prove a common source statement. First gate: reproduce
+      the R2024b crash on the frozen MEX, then a single-define rebuild must
+      pass both R2024b and R2025b focused F20 binding profiles 6/6 with a
+      digit-identical no-product-behavior-change oracle.
+- [ ] **F44 — mmap cache-path discovery can escape the typed-error
+      taxonomy.** F20's review found default cache-path discovery can throw a
+      raw `std::filesystem::filesystem_error` before the series router's
+      `IOError` translation. First gate: force the discovery failure
+      (invalid/unwritable base) in a real process and require a typed
+      `dtwc::` error with an actionable message, never a raw filesystem
+      exception; the inherited code must fail this gate.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1345,6 +1379,18 @@ colour system transfer verbatim**.
   unauthorized here.
 - 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
 - 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
+- 2026-07-24 (F20 verdict / F43-F44 split): Repair retained (`aa9781c` +
+  `f1ef5e0`); closure FALSIFIED at 5/6 real-binding profiles by the R2024b
+  llfio-ON MEX `0xc0000005` crash, isolated to the LLFIO constexpr-mutex vs
+  MSVCP140 14.36 runtime mismatch — a toolset-runtime incompatibility, not an
+  F20 routing defect. Both attempts consumed; F20 frozen as evidence. F43
+  owns the MEX runtime incompatibility; F44 owns the cache-path
+  `filesystem_error` taxonomy escape. Campaign cursor moves to F21.
+- 2026-07-27 (Fable reconciliation): PLAN brought current with the committed
+  F20 outcome (the run ended at `eb91401` without a final PLAN edit); F43/F44
+  registered from the F20 handoff/baseline. Closed-finding prose and the
+  pre-F21 progress log archived verbatim to
+  `.claude/PLAN-archive-2026-07-27-r0-f20.md`; PLAN slimmed to open work.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1670,3 +1716,17 @@ colour system transfer verbatim**.
   The passing marker is absent, subject skips are zero, and product attempts
   consumed remain zero. Evidence:
   `.claude/baselines/2026-07-24-f20-storage-policy.md`.
+- 2026-07-24 (R3-F20 verdict): Product attempts `aa9781c` (shared series
+  router, loud unsupported-route rejection) and `f1ef5e0` (move-stable
+  derived closures) retained; `4834418`/`b1aae56` pin owner lifetime and the
+  permanent 11-mutation runner; `5e67207`/`ec5f218` add fresh Python/MATLAB
+  real-binding subjects. Focused llfio-ON 963/5 and llfio-OFF 606/5 pass with
+  zero subject skips; mutations 11/11 killed; canonical 122/122, llfio-OFF
+  122/122, system-Arrow 124/124. Six-binding band FALSIFIED at 5/6: R2024b
+  llfio-ON MEX crashes `0xc0000005` in LLFIO's first `std::mutex` lock
+  (constexpr-mutex vs MSVCP140 14.36). REPAIR RETAINED / CLOSURE FALSIFIED;
+  F20 frozen unchecked; F43/F44 opened; resume at F21. Evidence:
+  `.claude/baselines/2026-07-24-f20-storage-policy.md` and
+  `.claude/summaries/handoff-2026-07-24-f20-storage-policy.md`.
+- 2026-07-27 (Fable): PLAN reconciled and slimmed; pre-F21 detail archived at
+  `.claude/PLAN-archive-2026-07-27-r0-f20.md`. Campaign cursor F21.
