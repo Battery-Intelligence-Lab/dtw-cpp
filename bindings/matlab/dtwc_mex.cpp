@@ -235,6 +235,8 @@ static double get_scalar(const mxArray *mx, const char *arg_name = "argument") {
     throw std::invalid_argument(std::string(arg_name) + " must be a numeric scalar.");
   if (mxIsEmpty(mx))
     throw std::invalid_argument(std::string(arg_name) + " must not be empty.");
+  if (mxGetNumberOfElements(mx) != 1)
+    throw std::invalid_argument(std::string(arg_name) + " must be a scalar.");
   return mxGetScalar(mx);
 }
 
@@ -469,14 +471,20 @@ static void cmd_Problem_get_info(int nlhs, mxArray *plhs[], int nrhs, const mxAr
   if (nrhs < 2) throw std::invalid_argument("Problem_get_info requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
 
-  const char *field_names[] = { "name", "size", "band", "verbose", "dist_filled" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 5, field_names);
+  const char *field_names[] = {
+    "name", "size", "band", "verbose", "max_iter", "n_repetitions",
+    "dist_filled"
+  };
+  mxArray *s = mxCreateStructMatrix(1, 1, 7, field_names);
 
   mxSetField(s, 0, "name", mxCreateString(prob.name().c_str()));
   mxSetField(s, 0, "size", mxCreateDoubleScalar(static_cast<double>(prob.size())));
   mxSetField(s, 0, "band", mxCreateDoubleScalar(static_cast<double>(prob.band)));
   mxSetField(s, 0, "verbose", mxCreateLogicalScalar(prob.verbose()));
-  mxSetField(s, 0, "dist_filled", mxCreateLogicalScalar(prob.isDistanceMatrixFilled()));
+  mxSetField(s, 0, "max_iter", mxCreateDoubleScalar(prob.max_iter()));
+  mxSetField(
+    s, 0, "n_repetitions", mxCreateDoubleScalar(prob.n_repetitions()));
+  mxSetField(s, 0, "dist_filled", mxCreateLogicalScalar(prob.is_distance_matrix_filled()));
 
   plhs[0] = s;
 }
@@ -534,6 +542,8 @@ static void cmd_Problem_get_band(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 
 static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_verbose requires handle and bool.");
+  if (!mxIsLogical(prhs[2]) || mxGetNumberOfElements(prhs[2]) != 1)
+    throw std::invalid_argument("verbose must be a logical scalar.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   prob.set_verbose(mxIsLogicalScalarTrue(prhs[2]));
 }
@@ -541,19 +551,19 @@ static void cmd_Problem_set_verbose(int nlhs, mxArray *plhs[], int nrhs, const m
 static void cmd_Problem_set_max_iter(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_max_iter requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.maxIter = static_cast<int>(get_scalar(prhs[2]));
+  prob.set_max_iter(static_cast<int>(get_scalar(prhs[2])));
 }
 
 static void cmd_Problem_set_n_repetition(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_repetition requires handle and value.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.N_repetition = static_cast<int>(get_scalar(prhs[2]));
+  prob.set_n_repetitions(static_cast<int>(get_scalar(prhs[2])));
 }
 
 static void cmd_Problem_set_n_clusters(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_n_clusters requires handle and k.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.set_numberOfClusters(static_cast<int>(get_scalar(prhs[2])));
+  prob.set_n_clusters(static_cast<int>(get_scalar(prhs[2])));
 }
 
 static void cmd_Problem_set_missing_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -608,7 +618,7 @@ static void cmd_Problem_get_size(int nlhs, mxArray *plhs[], int nrhs, const mxAr
 static void cmd_Problem_get_cluster_size(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_get_cluster_size requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.cluster_size()));
+  plhs[0] = mxCreateDoubleScalar(static_cast<double>(prob.n_clusters()));
 }
 
 static void cmd_Problem_get_name(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -632,7 +642,7 @@ static void cmd_Problem_get_clusters(int nlhs, mxArray *plhs[], int nrhs, const 
 static void cmd_Problem_is_distance_matrix_filled(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_is_distance_matrix_filled requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  plhs[0] = mxCreateLogicalScalar(prob.isDistanceMatrixFilled());
+  plhs[0] = mxCreateLogicalScalar(prob.is_distance_matrix_filled());
 }
 
 // =========================================================================
@@ -642,7 +652,7 @@ static void cmd_Problem_is_distance_matrix_filled(int nlhs, mxArray *plhs[], int
 static void cmd_Problem_fill_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_fill_distance_matrix requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 }
 
 static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -651,7 +661,7 @@ static void cmd_Problem_dist_by_ind(int nlhs, mxArray *plhs[], int nrhs, const m
   // Convert from MATLAB 1-based to C++ 0-based
   int i = static_cast<int>(get_scalar(prhs[2])) - 1;
   int j = static_cast<int>(get_scalar(prhs[3])) - 1;
-  double d = prob.distByInd(i, j);
+  double d = prob.dist_by_ind(i, j);
   plhs[0] = mxCreateDoubleScalar(d);
 }
 
@@ -664,7 +674,7 @@ static void cmd_Problem_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArr
 static void cmd_Problem_find_total_cost(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("Problem_find_total_cost requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  double cost = prob.findTotalCost();
+  double cost = prob.find_total_cost();
   plhs[0] = mxCreateDoubleScalar(cost);
 }
 
@@ -1071,7 +1081,7 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 2) band = static_cast<int>(get_scalar(prhs[2]));
 
-  // Use Problem + fillDistanceMatrix() for OpenMP parallelism and LB pruning
+  // Use Problem + fill_distance_matrix() for OpenMP parallelism and LB pruning
   std::vector<std::string> names(N);
   for (size_t i = 0; i < N; ++i) names[i] = std::to_string(i);
 
@@ -1080,14 +1090,14 @@ static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, con
   prob.set_verbose(false);
   dtwc::Data data(std::move(series), std::move(names));
   prob.set_data(std::move(data));
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Copy from Problem's distance matrix to MATLAB output (column-major)
   mxArray *result = mxCreateDoubleMatrix(N, N, mxREAL);
   double *out = mxGetDoubles(result);
   for (size_t i = 0; i < N; ++i)
     for (size_t j = 0; j < N; ++j)
-      out[i + j * N] = prob.distByInd(static_cast<int>(i), static_cast<int>(j));
+      out[i + j * N] = prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j));
 
   plhs[0] = result;
 }
@@ -1304,8 +1314,8 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
 
-  int maxIter = 100;
-  if (nrhs > 5) maxIter = static_cast<int>(get_scalar(prhs[5]));
+  int max_iter = 100;
+  if (nrhs > 5) max_iter = static_cast<int>(get_scalar(prhs[5]));
 
   const size_t N = series.size();
   std::vector<std::string> names(N);
@@ -1313,13 +1323,13 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 
   dtwc::Problem prob("matlab_clustering");
   prob.band = band;
-  prob.maxIter = maxIter;
+  prob.set_max_iter(max_iter);
   prob.set_verbose(false);
 
   dtwc::Data data(std::move(series), std::move(names));
   prob.set_data(std::move(data));
 
-  auto result = dtwc::fast_pam(prob, k, maxIter);
+  auto result = dtwc::fast_pam(prob, k, max_iter);
 
   plhs[0] = ivec_to_mx_1based(result.labels);
   if (nlhs > 1) plhs[1] = ivec_to_mx_1based(result.medoid_indices);

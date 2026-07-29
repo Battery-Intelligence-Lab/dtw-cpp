@@ -57,7 +57,7 @@ for c = 1:size(cluster_configs, 1)
 
     prob = dtwc.Problem('bench');
     prob.set_data(data);
-    prob.Band = -1;
+    prob.set_band(-1);
 
     tic;
     result = dtwc.fast_pam(prob, k);

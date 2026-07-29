@@ -19,7 +19,10 @@ function di = dunn_index(prob)
 %   di : double scalar
 %       The Dunn index.
 %
-%   See also dtwc.silhouette, dtwc.davies_bouldin_index
+%   See also dtwc.silhouette, dtwc.davies_bouldin
 
-    di = dtwc_mex('dunn_index', prob.get_handle());
+    warning('dtwc:deprecatedAlias', ...
+        ['''dtwc.dunn_index'' is deprecated; use ' ...
+         '''dtwc.dunn'' instead.']);
+    di = dtwc.dunn(prob);
 end

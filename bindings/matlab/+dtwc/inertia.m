@@ -19,7 +19,7 @@ function val = inertia(prob)
 %   val : double scalar
 %       The inertia value.
 %
-%   See also dtwc.silhouette, dtwc.calinski_harabasz_index
+%   See also dtwc.silhouette, dtwc.calinski_harabasz
 
     val = dtwc_mex('inertia', prob.get_handle());
 end

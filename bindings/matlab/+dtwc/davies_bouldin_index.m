@@ -18,8 +18,11 @@ function db = davies_bouldin_index(prob)
 %   db : double scalar
 %       The Davies-Bouldin index.
 %
-%   See also dtwc.silhouette, dtwc.dunn_index
+%   See also dtwc.silhouette, dtwc.dunn
 % @author Volkan Kumtepeli
 
-    db = dtwc_mex('davies_bouldin_index', prob.get_handle());
+    warning('dtwc:deprecatedAlias', ...
+        ['''dtwc.davies_bouldin_index'' is deprecated; use ' ...
+         '''dtwc.davies_bouldin'' instead.']);
+    db = dtwc.davies_bouldin(prob);
 end

@@ -20,8 +20,11 @@ function ch = calinski_harabasz_index(prob)
 %   ch : double scalar
 %       The Calinski-Harabasz index.
 %
-%   See also dtwc.silhouette, dtwc.davies_bouldin_index
+%   See also dtwc.silhouette, dtwc.davies_bouldin
 % @author Volkan Kumtepeli
 
-    ch = dtwc_mex('calinski_harabasz_index', prob.get_handle());
+    warning('dtwc:deprecatedAlias', ...
+        ['''dtwc.calinski_harabasz_index'' is deprecated; use ' ...
+         '''dtwc.calinski_harabasz'' instead.']);
+    ch = dtwc.calinski_harabasz(prob);
 end

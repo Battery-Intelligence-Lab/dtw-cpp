@@ -17,6 +17,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   operations. Each now emits one caller-attributed `DeprecationWarning` before
   effects while canonical operations stay silent; `ClusterResult` remains an
   uncached, identity-preserving alias of `Result`.
+- Enforced the frozen MATLAB deprecation policy for all 15 retained alias
+  operations. Each now emits one exact `dtwc:deprecatedAlias` warning while
+  canonical operations stay silent; rejected configuration values leave the
+  MATLAB cache and native `Problem` state unchanged.
 - Fixed LLFIO-enabled public headers so third-party pragmas no longer suppress
   downstream Clang deprecation diagnostics.
 - Added the frozen C++ `DataLoader::start_column`/`start_row` and

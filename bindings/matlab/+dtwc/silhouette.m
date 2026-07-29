@@ -19,7 +19,7 @@ function s = silhouette(prob)
 %   s : double row vector (1 x N)
 %       Silhouette score for each data point.
 %
-%   See also dtwc.davies_bouldin_index, dtwc.fast_pam
+%   See also dtwc.davies_bouldin, dtwc.fast_pam
 
     s = dtwc_mex('silhouette', prob.get_handle());
 end

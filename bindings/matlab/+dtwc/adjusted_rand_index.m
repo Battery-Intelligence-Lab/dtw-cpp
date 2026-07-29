@@ -21,11 +21,14 @@ function ari = adjusted_rand_index(labels1, labels2)
 %   ari : double scalar
 %       The Adjusted Rand Index.
 %
-%   See also dtwc.normalized_mutual_information
+%   See also dtwc.normalized_mutual_info
 
+    warning('dtwc:deprecatedAlias', ...
+        ['''dtwc.adjusted_rand_index'' is deprecated; use ' ...
+         '''dtwc.adjusted_rand'' instead.']);
     validateattributes(labels1, {'numeric', 'int32'}, {'vector', 'nonempty'}, 'adjusted_rand_index', 'labels1');
     validateattributes(labels2, {'numeric', 'int32'}, {'vector', 'nonempty'}, 'adjusted_rand_index', 'labels2');
     assert(numel(labels1) == numel(labels2), 'dtwc:sizeMismatch', 'Label vectors must have the same length.');
 
-    ari = dtwc_mex('adjusted_rand_index', int32(labels1(:)'), int32(labels2(:)'));
+    ari = dtwc.adjusted_rand(int32(labels1(:)'), int32(labels2(:)'));
 end

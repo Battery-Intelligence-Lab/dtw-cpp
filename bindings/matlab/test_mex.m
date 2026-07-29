@@ -160,21 +160,21 @@ end
 %% Test 11: Problem class lifecycle
 try
     prob = dtwc.Problem('test_problem');
-    assert(strcmp(prob.Name, 'test_problem'), 'Name should match');
-    assert(prob.Size == 0, 'Empty problem should have size 0');
+    assert(strcmp(prob.name(), 'test_problem'), 'Name should match');
+    assert(prob.size() == 0, 'Empty problem should have size 0');
 
     rng(42);
     data = randn(10, 50);
     prob.set_data(data);
-    assert(prob.Size == 10, 'Size should be 10 after set_data');
+    assert(prob.size() == 10, 'Size should be 10 after set_data');
 
-    prob.Band = 5;
+    prob.set_band(5);
     assert(prob.Band == 5, 'Band should be 5');
 
-    prob.Verbose = true;
+    prob.set_verbose(true);
     assert(prob.Verbose == true, 'Verbose should be true');
 
-    prob.MaxIter = 200;
+    prob.set_max_iter(200);
     assert(prob.MaxIter == 200, 'MaxIter should be 200');
 
     % Display should not error
@@ -199,7 +199,7 @@ try
     prob.fill_distance_matrix();
     assert(prob.is_distance_matrix_filled(), 'Dist matrix should be filled now');
 
-    D = prob.get_distance_matrix();
+    D = prob.distance_matrix();
     assert(size(D, 1) == 8 && size(D, 2) == 8, 'Should be 8x8');
     assert(issymmetric(D), 'Should be symmetric');
 
@@ -220,7 +220,7 @@ try
     rng(42);
     data = randn(15, 40);
     prob.set_data(data);
-    prob.Band = -1;
+    prob.set_band(-1);
 
     result = dtwc.fast_pam(prob, 3);
     assert(numel(result.labels) == 15, 'Should have 15 labels');
@@ -231,8 +231,8 @@ try
     assert(islogical(result.converged), 'converged should be logical');
 
     % Check results stored in problem
-    ci = prob.CentroidsInd;
-    cl = prob.ClustersInd;
+    ci = prob.medoids();
+    cl = prob.labels();
     assert(numel(ci) == 3, 'CentroidsInd should have 3 elements');
     assert(numel(cl) == 15, 'ClustersInd should have 15 elements');
 
@@ -323,16 +323,16 @@ try
     assert(numel(sil) == 12, 'Should have 12 silhouette values');
     assert(all(sil >= -1 & sil <= 1), 'Silhouette should be in [-1, 1]');
 
-    db = dtwc.davies_bouldin_index(prob);
+    db = dtwc.davies_bouldin(prob);
     assert(isscalar(db) && db >= 0, 'DB index should be non-negative scalar');
 
-    di = dtwc.dunn_index(prob);
+    di = dtwc.dunn(prob);
     assert(isscalar(di) && di >= 0, 'Dunn index should be non-negative scalar');
 
     ine = dtwc.inertia(prob);
     assert(isscalar(ine) && ine >= 0, 'Inertia should be non-negative scalar');
 
-    ch = dtwc.calinski_harabasz_index(prob);
+    ch = dtwc.calinski_harabasz(prob);
     assert(isscalar(ch) && ch >= 0, 'CH index should be non-negative scalar');
 
     fprintf('Test 17 - Scores: sil_mean=%.3f, DB=%.3f, Dunn=%.3f, inertia=%.2f, CH=%.2f  [PASS]\n', ...
@@ -349,17 +349,17 @@ try
     labels_true = int32([1 1 1 2 2 2 3 3 3 3]);
     labels_pred = int32([1 1 2 2 2 3 3 3 3 3]);
 
-    ari = dtwc.adjusted_rand_index(labels_true, labels_pred);
+    ari = dtwc.adjusted_rand(labels_true, labels_pred);
     assert(isscalar(ari), 'ARI should be scalar');
     assert(ari >= -1 && ari <= 1, 'ARI should be in [-1, 1]');
 
-    nmi = dtwc.normalized_mutual_information(labels_true, labels_pred);
+    nmi = dtwc.normalized_mutual_info(labels_true, labels_pred);
     assert(isscalar(nmi), 'NMI should be scalar');
     assert(nmi >= 0 && nmi <= 1, 'NMI should be in [0, 1]');
 
     % Perfect agreement should give ARI=1, NMI=1
-    ari_perfect = dtwc.adjusted_rand_index(labels_true, labels_true);
-    nmi_perfect = dtwc.normalized_mutual_information(labels_true, labels_true);
+    ari_perfect = dtwc.adjusted_rand(labels_true, labels_true);
+    nmi_perfect = dtwc.normalized_mutual_info(labels_true, labels_true);
     assert(abs(ari_perfect - 1.0) < 1e-10, 'Perfect ARI should be 1');
     assert(abs(nmi_perfect - 1.0) < 1e-10, 'Perfect NMI should be 1');
 
@@ -437,7 +437,7 @@ try
     % Test WDTW variant
     prob.set_variant('wdtw', 0.1);
     prob.fill_distance_matrix();
-    D_wdtw = prob.get_distance_matrix();
+    D_wdtw = prob.distance_matrix();
     assert(all(D_wdtw(:) >= 0), 'WDTW distances should be non-negative');
 
     fprintf('Test 22 - Problem set_variant (WDTW)  [PASS]\n');
@@ -461,7 +461,7 @@ try
     assert(prob.is_distance_matrix_filled(), 'Should be marked as filled');
 
     % Verify it matches
-    D2 = prob.get_distance_matrix();
+    D2 = prob.distance_matrix();
     assert(max(abs(D(:) - D2(:))) < 1e-10, 'Set and get distance matrix should match');
 
     fprintf('Test 23 - set_distance_matrix  [PASS]\n');

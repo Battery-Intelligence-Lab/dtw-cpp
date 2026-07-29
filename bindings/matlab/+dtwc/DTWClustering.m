@@ -129,9 +129,9 @@ classdef DTWClustering
                 % Create a Problem for each repetition
                 prob = dtwc.Problem('DTWClustering');
                 prob.set_data(double(X));
-                prob.Band = obj.Band;
-                prob.MaxIter = obj.MaxIter;
-                prob.Verbose = false;
+                prob.set_band(obj.Band);
+                prob.set_max_iter(obj.MaxIter);
+                prob.set_verbose(false);
 
                 % Set DTW variant
                 if ~strcmp(obj.Variant, 'standard')
