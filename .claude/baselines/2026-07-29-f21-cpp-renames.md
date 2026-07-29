@@ -231,4 +231,83 @@ Verdict: **R1 PASS [confirmed]**. All four canonical names are unreachable on
 the inherited public-header surface, the `start_row` collision is explicit,
 and the otherwise-identical legacy control compiles.
 
-R2–R6 pending.
+### R2/R3 — exact signatures and focused runtime contract
+
+The permanent fixture was committed red-first in `a48635b`. After product
+attempt 1 (`5e4a7b6`), both registered builds printed the exact marker and
+exceeded the registered Catch2 floor:
+
+```text
+F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 loader_state=22/22 path_state=16/16 cstring_copy=4/4 skips=0 verdict=PASS
+All tests passed (81 assertions in 2 test cases)
+```
+
+The canonical llfio-ON and llfio-OFF CTest invocations each reported 1/1
+passed. Their CTest metadata rejects skip text and requires both lines above.
+
+Verdict: **R2 PASS and R3 PASS [confirmed]** by the public function-pointer
+assertions and runtime ledger in `tests/unit/unit_test_DataLoader.cpp`.
+
+### R4 — deprecation diagnostics and generated documentation
+
+The canonical-only public-header probe compiled with
+`-Werror=deprecated-declarations` and exited 0. The legacy-only probe exited 1
+and emitted all four registered replacement diagnostics:
+
+```text
+startColumn is deprecated: use start_column
+startRow is deprecated: use start_row
+setDataPath is deprecated: use set_data_path
+setResultsPath is deprecated: use set_results_path
+legacy_messages=True,True,True,True
+```
+
+The documentation gates printed:
+
+```text
+generated documentation is current
+generated documentation is current
+documentation contract checks passed
+```
+
+The repository-use search and final immutable-commit documentation rerun remain
+part of R6.
+
+Verdict: **R4 diagnostic sub-band PASS [confirmed]**. Final call-site hygiene
+is pending the R6 immutable-product check.
+
+### R5 — permanent adversarial mutation gate
+
+The permanent harness is `scripts/test_f21_cpp_rename_mutations.ps1`, committed
+in `36b9c99`. Its decisive stdout was:
+
+```text
+F21_CONTROL label=initial build=pass test=pass
+F21_MUTATION name=remove-canonical-start-column class=compile result=killed
+F21_MUTATION name=remove-canonical-start-row class=compile result=killed
+F21_MUTATION name=remove-canonical-data-path class=compile result=killed
+F21_MUTATION name=remove-canonical-results-path class=compile result=killed
+F21_MUTATION name=remove-legacy-start-column class=compile result=killed
+F21_MUTATION name=remove-legacy-start-row class=compile result=killed
+F21_MUTATION name=remove-legacy-data-path class=compile result=killed
+F21_MUTATION name=remove-legacy-results-path class=compile result=killed
+F21_MUTATION name=swap-start-column-assignment class=runtime result=killed
+F21_MUTATION name=swap-start-row-assignment class=runtime result=killed
+F21_MUTATION name=redirect-data-path class=runtime result=killed
+F21_MUTATION name=redirect-results-path class=runtime result=killed
+F21_CONTROL label=final build=pass test=pass
+F21_MUTATIONS controls=2/2 mutations=12 killed=12 compile_killed=8 runtime_killed=4 survived=0 source_restore=pass verdict=PASS
+```
+
+Stderr was empty. `git status --short` was empty immediately afterward. The
+restored source hashes were:
+
+```text
+fb267cb9bcb8259a08961d574817e5a6657785ddb54aaab479f4aaba200a236f  dtwc/DataLoader.hpp
+8db709c7a67c0d3e2d4093b6e0780eb9f54a4e50a98ce45c74001c81a8c82063  dtwc/settings.hpp
+```
+
+Verdict: **R5 PASS [confirmed]**. All 12 registered mutants were killed, both
+controls passed, and the exact source bytes were restored.
+
+R6 full-matrix and immutable-product checks pending.

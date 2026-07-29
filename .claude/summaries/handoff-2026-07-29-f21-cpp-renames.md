@@ -18,6 +18,19 @@
   collision); the otherwise-identical legacy control exits 0. The first
   ad-hoc command's missing RapidCSV include is retained as invalid harness
   evidence, not misreported as an F21 result.
+- Added the permanent public-header fixture red-first in `a48635b`.
+- Implemented the four canonical-owned entry points and deprecated forwarding
+  aliases in product attempt 1 (`5e4a7b6`), migrated ordinary repository calls,
+  updated the changelog and generated contract pages, and hardened the
+  documentation drift checker.
+- Confirmed the exact 12/12 signature surface and runtime state ledger in both
+  canonical and llfio-OFF builds. Each printed the registered marker and
+  `All tests passed (81 assertions in 2 test cases)`.
+- Confirmed canonical-only compilation is warning-clean and the legacy-only
+  probe emits all four exact `use <canonical>` diagnostics.
+- Added the permanent 12-case mutation harness in `36b9c99`. Its decisive run
+  killed 8/8 compile mutants and 4/4 runtime mutants, passed both controls,
+  reported zero survivors, emitted no stderr, and restored exact source bytes.
 
 ## Decisions
 
@@ -35,10 +48,12 @@
 
 ## Exact resume point
 
-Add the focused public-header fixture without product changes, build the
-existing `unit_test_DataLoader` target to retain the compile-red evidence, then
-implement the canonical-owned/deprecated-forwarder repair. Product attempts
-consumed: 0/2.
+Commit the R5 evidence, then run R6 from the immutable product commit: full
+canonical, llfio-OFF, and Arrow-ON rebuild/CTest matrices; assert the Arrow
+reader executed; rerun documentation, deprecation/call-site hygiene, supply
+chain, and inventory checks. If all registered bands pass, close F21 in a
+separate bookkeeping commit and advance the campaign cursor to F22. Product
+attempts consumed: 1/2.
 
 ## Open risks
 
