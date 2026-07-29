@@ -6,6 +6,11 @@ optional public-header dependencies and feature definitions match the build
 under test. It deliberately expects the legacy fixture to fail compilation:
 each retained name is compiled under deprecations-as-errors, while a second
 suppressed pass proves there is no unrelated syntax/signature failure.
+
+With ``--launch``, the driver remains fail-closed: it runs the same diagnostic
+gate first and launches the remaining command only after the exact PASS
+conditions hold. The child inherits stdout/stderr so CTest can require both the
+compiler marker and the Catch2 behavior marker from one existing test.
 """
 
 from __future__ import annotations
@@ -270,7 +275,20 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--build-dir", type=Path, required=True)
     parser.add_argument("--source-dir", type=Path)
+    parser.add_argument("--cmake-command", type=Path)
+    parser.add_argument("--cmake-config", default="")
+    parser.add_argument("--probe-root", type=Path)
+    parser.add_argument(
+        "--force-cmake-probes",
+        action="store_true",
+        help="exercise configured object probes even with compile_commands.json",
+    )
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument(
+        "--launch",
+        nargs=argparse.REMAINDER,
+        help="after diagnostic PASS, run and relay this command",
+    )
     return parser.parse_args()
 
 
@@ -297,6 +315,64 @@ def load_compile_arguments(build_dir: Path, source_dir: Path) -> list[str]:
     # posix=False preserves the compiler's backslashes; those quoted -D values
     # are deliberately omitted below because neither fixture consumes them.
     return shlex.split(record["command"], posix=False)
+
+
+def invoke_cmake_probe(
+    *,
+    cmake_command: Path,
+    build_dir: Path,
+    config: str,
+    probe_root: Path,
+    source_name: str,
+    target: str,
+    marker: str,
+) -> subprocess.CompletedProcess[str]:
+    resolved_root = probe_root.resolve()
+    try:
+        common_root = os.path.commonpath((normal(resolved_root), normal(build_dir)))
+    except ValueError as error:
+        raise RuntimeError(f"invalid F22 probe root: {resolved_root}") from error
+    if (
+        common_root != normal(build_dir)
+        or resolved_root.name != "f22-cpp-probes"
+    ):
+        raise RuntimeError(
+            "F22 probe root must be the configured build-local "
+            f"f22-cpp-probes directory: {resolved_root}"
+        )
+
+    source = (resolved_root / source_name).resolve()
+    if source.parent != resolved_root or not source.is_file():
+        raise RuntimeError(f"F22 probe source is missing or escaped: {source}")
+
+    # Successful object probes may already exist from an earlier CTest run.
+    # Touch the wrapper and require its pragma marker below; a coarse filesystem
+    # that misses the rebuild therefore fails closed without clock skew.
+    source.touch()
+    command = [
+        os.fspath(cmake_command),
+        "--build",
+        os.fspath(build_dir),
+        "--target",
+        target,
+    ]
+    if config:
+        command.extend(("--config", config))
+    result = subprocess.run(
+        command,
+        cwd=build_dir,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if marker not in ANSI_ESCAPE.sub("", result.stdout):
+        raise RuntimeError(
+            f"F22 probe target did not compile {source.name}: {target}"
+        )
+    return result
 
 
 def compile_context(arguments: list[str]) -> tuple[str, list[str]]:
@@ -423,29 +499,63 @@ def main() -> int:
     )
 
     try:
-        arguments = load_compile_arguments(build_dir, source_dir)
-        compiler, context = compile_context(arguments)
-        legacy = invoke(
-            compiler,
-            context,
-            legacy_fixture,
-            diagnostics_as_errors=True,
-            suppress_diagnostics=False,
-        )
-        legacy_control = invoke(
-            compiler,
-            context,
-            legacy_fixture,
-            diagnostics_as_errors=False,
-            suppress_diagnostics=True,
-        )
-        canonical = invoke(
-            compiler,
-            context,
-            canonical_fixture,
-            diagnostics_as_errors=True,
-            suppress_diagnostics=False,
-        )
+        if (
+            (build_dir / "compile_commands.json").is_file()
+            and not args.force_cmake_probes
+        ):
+            arguments = load_compile_arguments(build_dir, source_dir)
+            compiler, context = compile_context(arguments)
+            legacy = invoke(
+                compiler,
+                context,
+                legacy_fixture,
+                diagnostics_as_errors=True,
+                suppress_diagnostics=False,
+            )
+            legacy_control = invoke(
+                compiler,
+                context,
+                legacy_fixture,
+                diagnostics_as_errors=False,
+                suppress_diagnostics=True,
+            )
+            canonical = invoke(
+                compiler,
+                context,
+                canonical_fixture,
+                diagnostics_as_errors=True,
+                suppress_diagnostics=False,
+            )
+        else:
+            if args.cmake_command is None or args.probe_root is None:
+                raise RuntimeError(
+                    "compile database is missing and configured CMake probes "
+                    "were not supplied"
+                )
+            probe_common = {
+                "cmake_command": args.cmake_command.resolve(),
+                "build_dir": build_dir,
+                "config": args.cmake_config,
+                "probe_root": args.probe_root,
+            }
+            legacy = invoke_cmake_probe(
+                **probe_common,
+                source_name="f22_cpp_legacy_werror.cpp",
+                target="f22_cpp_legacy_werror",
+                marker="F22_PROBE_LEGACY_WERROR_RAN",
+            )
+            legacy_control = invoke_cmake_probe(
+                **probe_common,
+                source_name="f22_cpp_legacy_suppressed.cpp",
+                target="f22_cpp_legacy_suppressed",
+                marker="F22_PROBE_LEGACY_SUPPRESSED_RAN",
+            )
+            canonical = invoke_cmake_probe(
+                **probe_common,
+                source_name="f22_cpp_canonical_werror.cpp",
+                target="f22_cpp_canonical_werror",
+                marker="F22_PROBE_CANONICAL_WERROR_RAN",
+            )
     except (OSError, RuntimeError, ValueError, json.JSONDecodeError) as error:
         print(f"F22_CPP_HARNESS_ERROR {error}")
         return 2
@@ -519,7 +629,23 @@ def main() -> int:
         print(ANSI_ESCAPE.sub("", canonical.stdout).rstrip())
         print("F22_CPP_CANONICAL_OUTPUT_END")
 
-    return 0 if final_ok else 1
+    if not final_ok:
+        return 1
+    if args.launch is None:
+        return 0
+    if not args.launch:
+        print("F22_CPP_HARNESS_ERROR --launch requires a command")
+        return 2
+
+    # Preserve diagnostic-before-behavior output ordering under CTest pipes.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    try:
+        launched = subprocess.run(args.launch, check=False)
+    except OSError as error:
+        print(f"F22_CPP_HARNESS_ERROR launch failed: {error}")
+        return 2
+    return launched.returncode
 
 
 if __name__ == "__main__":

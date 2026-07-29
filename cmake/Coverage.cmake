@@ -6,7 +6,30 @@ macro(add_executable_with_coverage_and_test TARGET_PATH)
     target_link_libraries(${TARGET_NAME} PRIVATE dtwc++ Catch2::Catch2WithMain project_options)
     # Pass the project source directory to tests for finding test data
     target_compile_definitions(${TARGET_NAME} PRIVATE DTWC_TEST_DATA_DIR="${CMAKE_SOURCE_DIR}/data")
-    add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    if(${ARGC} GREATER 1)
+        get_target_property(
+            _dtwc_test_emulator
+            ${TARGET_NAME}
+            CROSSCOMPILING_EMULATOR)
+        if(_dtwc_test_emulator)
+            add_test(
+                NAME ${TARGET_NAME}
+                COMMAND
+                    ${ARGN}
+                    ${_dtwc_test_emulator}
+                    $<TARGET_FILE:${TARGET_NAME}>
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        else()
+            add_test(
+                NAME ${TARGET_NAME}
+                COMMAND
+                    ${ARGN}
+                    $<TARGET_FILE:${TARGET_NAME}>
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        endif()
+    else()
+        add_test(NAME ${TARGET_NAME} COMMAND ${TARGET_NAME} WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
     set_tests_properties(${TARGET_NAME} PROPERTIES SKIP_RETURN_CODE 4)
     if (DTWC_ENABLE_COVERAGE)
         if (${CMAKE_CXX_COMPILER_ID} STREQUAL "GNU" OR ${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")

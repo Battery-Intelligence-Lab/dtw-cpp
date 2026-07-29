@@ -1,8 +1,128 @@
 file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "*.cpp") # Get list of all test source files recursively
 
+# F22's existing CTest entry also drives a real-compiler diagnostic gate.
+# This tests-only requirement does not add Python to core/test-off builds.
+if(NOT DEFINED Python3_EXECUTABLE)
+    if(WIN32)
+        set(_dtwc_repo_python
+            "${CMAKE_SOURCE_DIR}/.venv/Scripts/python.exe")
+    else()
+        set(_dtwc_repo_python
+            "${CMAKE_SOURCE_DIR}/.venv/bin/python")
+    endif()
+    if(EXISTS "${_dtwc_repo_python}")
+        # A normal variable is a FindPython3 hint, not a forced cache choice.
+        set(Python3_EXECUTABLE "${_dtwc_repo_python}")
+    endif()
+endif()
+find_package(Python3 3.9 COMPONENTS Interpreter REQUIRED)
+
+# Multi-config generators do not provide compile_commands.json. These
+# EXCLUDE_FROM_ALL object probes reuse the configured target usage requirements
+# without adding a CTest entry. Unique pragma markers prove each requested
+# compile actually ran; build-local wrappers keep the tracked fixtures single
+# source of truth.
+set(_f22_probe_root "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-probes")
+file(MAKE_DIRECTORY "${_f22_probe_root}")
+set(_f22_legacy_fixture
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/f22_cpp_legacy_diagnostics.inc")
+set(_f22_canonical_fixture
+    "${CMAKE_SOURCE_DIR}/tests/fixtures/f22_cpp_canonical_diagnostics.inc")
+set(_f22_legacy_werror_source
+    "${_f22_probe_root}/f22_cpp_legacy_werror.cpp")
+set(_f22_legacy_suppressed_source
+    "${_f22_probe_root}/f22_cpp_legacy_suppressed.cpp")
+set(_f22_canonical_werror_source
+    "${_f22_probe_root}/f22_cpp_canonical_werror.cpp")
+file(WRITE "${_f22_legacy_werror_source}"
+    "#pragma message(\"F22_PROBE_LEGACY_WERROR_RAN\")\n"
+    "#include \"${_f22_legacy_fixture}\"\n")
+file(WRITE "${_f22_legacy_suppressed_source}"
+    "#pragma message(\"F22_PROBE_LEGACY_SUPPRESSED_RAN\")\n"
+    "#include \"${_f22_legacy_fixture}\"\n")
+file(WRITE "${_f22_canonical_werror_source}"
+    "#pragma message(\"F22_PROBE_CANONICAL_WERROR_RAN\")\n"
+    "#include \"${_f22_canonical_fixture}\"\n")
+
+add_library(
+    f22_cpp_legacy_werror
+    OBJECT EXCLUDE_FROM_ALL
+    "${_f22_legacy_werror_source}")
+add_library(
+    f22_cpp_legacy_suppressed
+    OBJECT EXCLUDE_FROM_ALL
+    "${_f22_legacy_suppressed_source}")
+add_library(
+    f22_cpp_canonical_werror
+    OBJECT EXCLUDE_FROM_ALL
+    "${_f22_canonical_werror_source}")
+foreach(_f22_probe_target
+        f22_cpp_legacy_werror
+        f22_cpp_legacy_suppressed
+        f22_cpp_canonical_werror)
+    target_link_libraries(
+        ${_f22_probe_target}
+        PRIVATE dtwc++ project_options)
+    target_compile_features(${_f22_probe_target} PRIVATE cxx_std_20)
+endforeach()
+
+if(MSVC)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        set(_f22_deprecation_error
+            "/clang:-Werror=deprecated-declarations")
+        set(_f22_deprecation_suppression
+            "/clang:-Wno-deprecated-declarations")
+        set(_f22_pragma_nonerror
+            "/clang:-Wno-error=#pragma-messages")
+        set(_f22_diagnostic_limit
+            "/clang:-ferror-limit=0")
+    else()
+        set(_f22_deprecation_error "/we4996")
+        set(_f22_deprecation_suppression "/wd4996")
+        set(_f22_pragma_nonerror "")
+        set(_f22_diagnostic_limit "")
+    endif()
+else()
+    set(_f22_deprecation_error "-Werror=deprecated-declarations")
+    set(_f22_deprecation_suppression "-Wno-deprecated-declarations")
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+        set(_f22_pragma_nonerror "-Wno-error=#pragma-messages")
+        set(_f22_diagnostic_limit "-ferror-limit=0")
+    else()
+        set(_f22_pragma_nonerror "")
+        set(_f22_diagnostic_limit "-fmax-errors=0")
+    endif()
+endif()
+target_compile_options(
+    f22_cpp_legacy_werror
+    PRIVATE
+        ${_f22_deprecation_error}
+        ${_f22_pragma_nonerror}
+        ${_f22_diagnostic_limit})
+target_compile_options(
+    f22_cpp_legacy_suppressed
+    PRIVATE ${_f22_deprecation_suppression} ${_f22_pragma_nonerror})
+target_compile_options(
+    f22_cpp_canonical_werror
+    PRIVATE ${_f22_deprecation_error} ${_f22_pragma_nonerror})
+
 # Iterate over each test source file and add an executable for each
 foreach(TEST_SOURCE ${TEST_SOURCES})
-    add_executable_with_coverage_and_test(${TEST_SOURCE})    # Add executable with coverage
+    get_filename_component(_dtwc_test_name ${TEST_SOURCE} NAME_WE)
+    if(_dtwc_test_name STREQUAL "test_problem_api_2_0")
+        add_executable_with_coverage_and_test(
+            ${TEST_SOURCE}
+            "${Python3_EXECUTABLE}"
+            "${CMAKE_SOURCE_DIR}/scripts/test_f22_cpp_deprecations.py"
+            --build-dir "${CMAKE_BINARY_DIR}"
+            --source-dir "${CMAKE_SOURCE_DIR}"
+            --cmake-command "${CMAKE_COMMAND}"
+            --cmake-config "$<CONFIG>"
+            --probe-root "${_f22_probe_root}"
+            --launch)
+    else()
+        add_executable_with_coverage_and_test(${TEST_SOURCE})    # Add executable with coverage
+    endif()
 endforeach()
 
 # F21 is a public-header compile and state-equivalence gate, never a capability
@@ -19,6 +139,37 @@ if(TARGET unit_test_DataLoader)
             FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
             PASS_REGULAR_EXPRESSION
                 "F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 loader_state=22/22 path_state=16/16 cstring_copy=4/4 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((79|[89][0-9]|[1-9][0-9][0-9]+) assertions in ([2-9]|[1-9][0-9]+) test cases\\)")
+endif()
+
+# F22 executes every retained C++ compatibility surface in exact diagnostic
+# order. Its I/O fixture is confined to an absolute build-local RAII root, and
+# the target is never allowed to report a capability skip as success.
+if(TARGET test_problem_api_2_0)
+    set(_f22_test_root
+        "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat")
+    if(NOT IS_ABSOLUTE "${_f22_test_root}")
+        message(FATAL_ERROR
+            "F22 fixture root must be absolute: ${_f22_test_root}")
+    endif()
+    get_filename_component(_f22_test_root_leaf "${_f22_test_root}" NAME)
+    if(NOT _f22_test_root_leaf STREQUAL "f22-cpp-compat")
+        message(FATAL_ERROR
+            "F22 fixture root terminal leaf drift: ${_f22_test_root}")
+    endif()
+    target_compile_definitions(
+        test_problem_api_2_0
+        PRIVATE
+            DTWC_F22_TEST_ROOT="${_f22_test_root}")
+    set_property(
+        TEST test_problem_api_2_0
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        test_problem_api_2_0
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION
+                "F22_CPP_DIAGNOSTICS inventory=33/33 legacy=33/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=PASS(.|[\r\n])*F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((6[5-9]|[7-9][0-9]|[1-9][0-9][0-9]+) assertions in ([5-9]|[1-9][0-9]+) test cases\\)"
+            RUN_SERIAL TRUE)
 endif()
 
 # F13 is an executed-contract gate, not a capability probe. Require Catch2's
