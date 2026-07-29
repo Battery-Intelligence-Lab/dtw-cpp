@@ -37,8 +37,8 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
 
   auto Nc = 3; // Number of clusters
 
-  constexpr int N_repetition = 5;
-  constexpr int maxIter = 100;
+  constexpr int n_repetitions = 5;
+  constexpr int max_iter = 100;
   constexpr int Ndata_max = 10;
 
   dtwc::DataLoader dl{ settings::paths::data / "dummy", Ndata_max };
@@ -46,12 +46,12 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.set_n_clusters(Nc); // Nc = number of clusters.
 
-  REQUIRE(prob.cluster_size() == Nc);
+  REQUIRE(prob.n_clusters() == Nc);
   REQUIRE(prob.name() == probName);
 
-  // prob.cluster_by_kMedoidsLloyd_repetetive(N_repetition, maxIter);
+  // prob.cluster_by_kMedoidsLloyd_repetetive(n_repetitions, max_iter);
 }
 
 TEST_CASE("dtwFull_L_test", "[dtwFull_L]")

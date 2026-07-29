@@ -271,7 +271,7 @@ BENCHMARK(BM_metal_flops)
 #endif // DTWC_HAS_METAL
 
 // CPU reference at matching sizes so the JSON output has an apples-to-apples
-// comparison row. Uses the library's fillDistanceMatrix via Problem.
+// comparison row. Uses the library's fill_distance_matrix via Problem.
 static void BM_cpu_distanceMatrix(benchmark::State &state)
 {
   const int N = static_cast<int>(state.range(0));
@@ -290,7 +290,7 @@ static void BM_cpu_distanceMatrix(benchmark::State &state)
     prob.set_data(std::move(data));
     prob.band = -1;
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }
 
@@ -332,7 +332,7 @@ static void BM_cpu_distanceMatrix_b100(benchmark::State &state)
     prob.set_data(std::move(data));
     prob.band = band;
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }
   state.counters["N"] = N;
@@ -369,7 +369,7 @@ static void BM_cpu_distanceMatrix_banded(benchmark::State &state)
     prob.set_data(std::move(data));
     prob.band = band;
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
     benchmark::ClobberMemory();
   }
 

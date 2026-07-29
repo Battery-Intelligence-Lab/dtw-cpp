@@ -2,7 +2,7 @@
  * @file checkpoint.hpp
  * @brief Save/resume checkpointing for distance matrix computation.
  *
- * @details For large datasets, fillDistanceMatrix() can take hours.
+ * @details For large datasets, fill_distance_matrix() can take hours.
  * These functions allow saving a (possibly partial) distance matrix
  * to disk and resuming later, avoiding re-computation of already
  * computed pairs.

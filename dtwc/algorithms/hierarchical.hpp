@@ -65,12 +65,12 @@ struct HierarchicalOptions {
 /**
  * @brief Build a dendrogram from a Problem with a fully computed distance matrix.
  *
- * @param prob  Problem with distance matrix already filled (fillDistanceMatrix() called).
+ * @param prob  Problem with distance matrix already filled (fill_distance_matrix() called).
  * @param opts  Linkage criterion and max_points guard.
  * @return Dendrogram containing N-1 merge steps.
  *
  * @throws std::runtime_error if N > opts.max_points.
- * @throws std::runtime_error if prob.isDistanceMatrixFilled() is false.
+ * @throws std::runtime_error if prob.is_distance_matrix_filled() is false.
  */
 Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {});
 

@@ -47,7 +47,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
 #ifdef DTWC_ENABLE_HIGHS
   const auto Nb = prob.data().size();
-  const auto Nc = prob.cluster_size();
+  const auto Nc = prob.n_clusters();
   mip::ExactClusteringTransaction result_transaction(prob);
 
   const auto Neq = Nb + 1;
@@ -65,12 +65,12 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Initialise q vector for cost.
   model.lp_.col_cost_.resize(Nvar);
 
-  prob.fillDistanceMatrix();                                           // We need full distance matrix before MIP clustering.
-  const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0); // In case no distance is set.
+  prob.fill_distance_matrix();                                           // We need full distance matrix before MIP clustering.
+  const auto scaling_factor = std::max(prob.max_distance() / 2.0, 1.0); // In case no distance is set.
 
   for (size_t j{ 0 }; j < Nb; j++)
     for (size_t i{ 0 }; i < Nb; i++)
-      model.lp_.col_cost_[i + j * Nb] = prob.distByInd(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
+      model.lp_.col_cost_[i + j * Nb] = prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
 
 
   model.lp_.col_lower_.clear();

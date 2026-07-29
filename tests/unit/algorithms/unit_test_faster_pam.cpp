@@ -72,7 +72,7 @@ Problem make_synthetic_problem(int N, const std::string& name = "faster_pam")
   Data data(std::move(vecs), std::move(names));
   Problem prob(name);
   prob.set_data(std::move(data));
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   return prob;
 }
 
@@ -109,7 +109,7 @@ Problem make_kgroup_problem(int N, int n_groups, const std::string& name = "kgro
   Data data(std::move(vecs), std::move(names));
   Problem prob(name);
   prob.set_data(std::move(data));
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   return prob;
 }
 
@@ -127,7 +127,7 @@ double assign_cost(Problem& prob, const std::vector<int>& medoids, int N)
   double total = 0.0;
   for (int p = 0; p < N; ++p) {
     double best = kInf;
-    for (int m : medoids) best = std::min(best, prob.distByInd(p, m));
+    for (int m : medoids) best = std::min(best, prob.dist_by_ind(p, m));
     total += best;
   }
   return total;
@@ -237,7 +237,7 @@ TEST_CASE("Every PAM variant converges to a brute-force-verified local optimum",
         // Result self-consistency: reported cost == recomputed from labels/medoids.
         double recomputed = 0.0;
         for (int p = 0; p < N; ++p)
-          recomputed += prob.distByInd(p, res.medoid_indices[res.labels[p]]);
+          recomputed += prob.dist_by_ind(p, res.medoid_indices[res.labels[p]]);
         INFO("variant=" << static_cast<int>(variant) << " N=" << N << " k=" << k);
         REQUIRE_THAT(res.total_cost, WithinAbs(recomputed, 1e-9));
 
@@ -342,7 +342,7 @@ TEST_CASE("Every PAM variant finds the true 1-medoid at k=1", "[faster_pam][k1]"
   double best = kInf;
   for (int x = 0; x < N; ++x) {
     double c = 0.0;
-    for (int o = 0; o < N; ++o) c += prob.distByInd(x, o);
+    for (int o = 0; o < N; ++o) c += prob.dist_by_ind(x, o);
     if (c < best) { best = c; oracle = x; }
   }
 

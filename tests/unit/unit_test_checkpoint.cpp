@@ -91,8 +91,8 @@ TEST_CASE("Checkpoint round-trip preserves full distance matrix", "[checkpoint]"
 {
   constexpr int N = 8;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 
   auto ckpt_dir = make_temp_dir("roundtrip");
 
@@ -106,16 +106,16 @@ TEST_CASE("Checkpoint round-trip preserves full distance matrix", "[checkpoint]"
 
   // Load into a fresh problem with same data
   auto prob2 = make_problem(N);
-  REQUIRE_FALSE(prob2.isDistanceMatrixFilled());
+  REQUIRE_FALSE(prob2.is_distance_matrix_filled());
 
   bool loaded = load_checkpoint(prob2, ckpt_dir);
   REQUIRE(loaded);
-  REQUIRE(prob2.isDistanceMatrixFilled());
+  REQUIRE(prob2.is_distance_matrix_filled());
 
   // Compare all entries
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      REQUIRE_THAT(prob2.distByInd(i, j), WithinAbs(prob.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob2.dist_by_ind(i, j), WithinAbs(prob.dist_by_ind(i, j), 1e-10));
     }
   }
 
@@ -132,10 +132,10 @@ TEST_CASE("Checkpoint saves and loads partial distance matrix", "[checkpoint]")
   auto prob = make_problem(N);
 
   // Compute only a few pairs (not all)
-  prob.distByInd(0, 1);
-  prob.distByInd(0, 2);
-  prob.distByInd(2, 3);
-  REQUIRE_FALSE(prob.isDistanceMatrixFilled());
+  prob.dist_by_ind(0, 1);
+  prob.dist_by_ind(0, 2);
+  prob.dist_by_ind(2, 3);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
 
   auto ckpt_dir = make_temp_dir("partial");
 
@@ -145,14 +145,14 @@ TEST_CASE("Checkpoint saves and loads partial distance matrix", "[checkpoint]")
   auto prob2 = make_problem(N);
   bool loaded = load_checkpoint(prob2, ckpt_dir);
   REQUIRE(loaded);
-  REQUIRE_FALSE(prob2.isDistanceMatrixFilled()); // Not all pairs computed
+  REQUIRE_FALSE(prob2.is_distance_matrix_filled()); // Not all pairs computed
 
   // Verify the computed pairs match
-  REQUIRE_THAT(prob2.distByInd(0, 1), WithinAbs(prob.distByInd(0, 1), 1e-10));
-  REQUIRE_THAT(prob2.distByInd(0, 2), WithinAbs(prob.distByInd(0, 2), 1e-10));
-  REQUIRE_THAT(prob2.distByInd(2, 3), WithinAbs(prob.distByInd(2, 3), 1e-10));
+  REQUIRE_THAT(prob2.dist_by_ind(0, 1), WithinAbs(prob.dist_by_ind(0, 1), 1e-10));
+  REQUIRE_THAT(prob2.dist_by_ind(0, 2), WithinAbs(prob.dist_by_ind(0, 2), 1e-10));
+  REQUIRE_THAT(prob2.dist_by_ind(2, 3), WithinAbs(prob.dist_by_ind(2, 3), 1e-10));
   // Symmetry preserved
-  REQUIRE_THAT(prob2.distByInd(1, 0), WithinAbs(prob.distByInd(1, 0), 1e-10));
+  REQUIRE_THAT(prob2.dist_by_ind(1, 0), WithinAbs(prob.dist_by_ind(1, 0), 1e-10));
 
   // Uncomputed pair should still be NaN in the raw matrix
   REQUIRE_FALSE(prob2.dense_distance_matrix().is_computed(4, 5));
@@ -168,7 +168,7 @@ TEST_CASE("Checkpoint metadata file contains expected fields", "[checkpoint]")
 {
   constexpr int N = 5;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   auto ckpt_dir = make_temp_dir("metadata");
   save_checkpoint(prob, ckpt_dir);
@@ -205,7 +205,7 @@ TEST_CASE("save_checkpoint creates directory if it does not exist", "[checkpoint
 {
   constexpr int N = 3;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   auto ckpt_dir = make_temp_dir("create_dir");
   // Ensure it does not exist
@@ -230,7 +230,7 @@ TEST_CASE("load_checkpoint rejects dimension mismatch", "[checkpoint]")
 {
   constexpr int N = 5;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   auto ckpt_dir = make_temp_dir("mismatch");
   save_checkpoint(prob, ckpt_dir);
@@ -268,18 +268,18 @@ TEST_CASE("save_checkpoint overwrites existing checkpoint", "[checkpoint]")
   auto ckpt_dir = make_temp_dir("overwrite");
 
   // First save with partial data
-  prob.distByInd(0, 1);
+  prob.dist_by_ind(0, 1);
   save_checkpoint(prob, ckpt_dir);
 
   // Now fill fully and save again
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   save_checkpoint(prob, ckpt_dir);
 
   // Load and verify it's the full matrix
   auto prob2 = make_problem(N);
   bool loaded = load_checkpoint(prob2, ckpt_dir);
   REQUIRE(loaded);
-  REQUIRE(prob2.isDistanceMatrixFilled());
+  REQUIRE(prob2.is_distance_matrix_filled());
 
   cleanup_dir(ckpt_dir);
 }

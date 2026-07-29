@@ -34,7 +34,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 #ifdef DTWC_ENABLE_GUROBI
 
   const auto Nb = prob.size();
-  const auto Nc = prob.cluster_size();
+  const auto Nc = prob.n_clusters();
   mip::ExactClusteringTransaction result_transaction(prob);
 
   try {
@@ -70,13 +70,13 @@ void MIP_clustering_byGurobi(Problem &prob)
       model.addConstr(lhs == Nc); // There should be Nc clusters.
     }
 
-    prob.fillDistanceMatrix(); // We need full distance matrix before MIP clustering.
-    const auto scaling_factor = std::max(prob.maxDistance() / 2.0, 1.0);
+    prob.fill_distance_matrix(); // We need full distance matrix before MIP clustering.
+    const auto scaling_factor = std::max(prob.max_distance() / 2.0, 1.0);
     // Set objective
     GRBLinExpr obj = 0;
     for (auto j : Range(Nb))
       for (auto i : Range(Nb))
-        obj += w[i + j * Nb] * prob.distByInd(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
+        obj += w[i + j * Nb] * prob.dist_by_ind(static_cast<int>(i), static_cast<int>(j)) / scaling_factor;
 
     model.setObjective(obj, GRB_MINIMIZE);
 

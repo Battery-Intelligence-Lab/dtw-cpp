@@ -30,16 +30,16 @@ int main()
   dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
-  prob.maxIter = 100;
+  prob.set_max_iter(100);
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.N_repetition = 5;
+  prob.set_n_clusters(Nc); // Nc = number of clusters.
+  prob.set_n_repetitions(5);
 
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
-  prob.printClusters(); // Prints to screen.
-  prob.writeClusters(); // Prints to file.
-  prob.writeSilhouettes();
+  prob.print_clusters(); // Prints to screen.
+  prob.write_clusters(); // Prints to file.
+  prob.write_silhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 

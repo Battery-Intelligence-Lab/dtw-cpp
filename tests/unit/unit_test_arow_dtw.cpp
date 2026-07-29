@@ -595,15 +595,15 @@ TEST_CASE("Problem: MissingStrategy::AROW wires correctly", "[arow_dtw][problem]
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // d(x, y_nan) should be finite and non-negative
-  const double d01 = prob.distByInd(0, 1);
+  const double d01 = prob.dist_by_ind(0, 1);
   REQUIRE(d01 >= 0.0);
   REQUIRE(d01 < std::numeric_limits<double>::max() / 2.0);
 
   // d(x, z) should be larger than d(x, y_nan) since z is farther from x
-  const double d02 = prob.distByInd(0, 2);
+  const double d02 = prob.dist_by_ind(0, 2);
   REQUIRE(d02 > 0.0);
 }
 
@@ -620,9 +620,9 @@ TEST_CASE("Problem: AROW gives finite distance with leading NaN", "[arow_dtw][pr
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  const double d = prob.distByInd(0, 1);
+  const double d = prob.dist_by_ind(0, 1);
   REQUIRE(d >= 0.0);
   REQUIRE(d < std::numeric_limits<double>::max() / 2.0);
 }
@@ -742,8 +742,8 @@ TEST_CASE("MV AROW: identical MV series distance = 0", "[arow_dtw][mv][phase3]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
-  prob.fillDistanceMatrix();
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
+  prob.fill_distance_matrix();
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("MV AROW: per-channel skip when one channel is NaN", "[arow_dtw][mv][phase3]")
@@ -765,11 +765,11 @@ TEST_CASE("MV AROW: per-channel skip when one channel is NaN", "[arow_dtw][mv][p
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   // Sum of per-channel L1 = 0 at every step (channel 1 matches everywhere;
   // channel 0 matches except at step 2 where one side is NaN, per-channel
   // skip -> 0). Final distance = 0.
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("MV AROW: all channels NaN at a step triggers diagonal carry", "[arow_dtw][mv][phase3]")
@@ -790,8 +790,8 @@ TEST_CASE("MV AROW: all channels NaN at a step triggers diagonal carry", "[arow_
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::AROW;
-  prob.fillDistanceMatrix();
-  const double d_with_missing = prob.distByInd(0, 1);
+  prob.fill_distance_matrix();
+  const double d_with_missing = prob.dist_by_ind(0, 1);
   REQUIRE(d_with_missing >= 0.0);
   REQUIRE(d_with_missing < std::numeric_limits<double>::max() / 2.0);
   // Sanity: identical series yields 0; this series has a drastic mismatch at

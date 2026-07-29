@@ -2,8 +2,8 @@
  * @file unit_test_scores_single_cluster.cpp
  * @brief R4(a): Nc<2 guard for the Davies-Bouldin and Dunn indices.
  *
- * The adversarial audit (handoff-2026-06-01:25) found that daviesBouldinIndex
- * and dunnIndex lacked an Nc<2 guard. With a single cluster the results are
+ * The adversarial audit (handoff-2026-06-01:25) found that davies_bouldin
+ * and dunn lacked an Nc<2 guard. With a single cluster the results are
  * mathematically undefined and silently wrong rather than erroring:
  *   - DBI: the max_{j!=i} loop finds no second cluster, so the index collapses
  *          to 0 (looks like a "perfect" clustering).
@@ -12,8 +12,8 @@
  *          value (or +inf).
  * The fix rejects Nc < 2 with std::invalid_argument.
  *
- * These tests exercise the LIVE public entry points dtwc::scores::daviesBouldinIndex
- * and dtwc::scores::dunnIndex (declared in scores.hpp) on a clustered (non-empty
+ * These tests exercise the LIVE public entry points dtwc::scores::davies_bouldin
+ * and dtwc::scores::dunn (declared in scores.hpp) on a clustered (non-empty
  * centroids) but single-cluster problem, so the new Nc<2 guard fires — NOT the
  * pre-existing "cluster first" (empty centroids) runtime_error guard.
  *
@@ -49,7 +49,7 @@ Problem make_single_cluster_problem()
   Data data(std::move(vecs), std::move(names));
   Problem prob("single_cluster");
   prob.set_data(std::move(data));
-  prob.set_numberOfClusters(1);
+  prob.set_n_clusters(1);
   prob.clusters_ind = { 0, 0, 0 }; // all points in the one cluster
   prob.centroids_ind = { 0 };      // clustered (non-empty) but a single medoid
   return prob;
@@ -61,16 +61,16 @@ TEST_CASE("DBI: single cluster (Nc<2) throws invalid_argument, not silent 0",
           "[scores][dbi][r4]")
 {
   auto prob = make_single_cluster_problem();
-  REQUIRE(prob.cluster_size() == 1);
-  REQUIRE_THROWS_AS(scores::daviesBouldinIndex(prob), std::invalid_argument);
+  REQUIRE(prob.n_clusters() == 1);
+  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), std::invalid_argument);
 }
 
 TEST_CASE("Dunn: single cluster (Nc<2) throws invalid_argument, not silent inf",
           "[scores][dunn][r4]")
 {
   auto prob = make_single_cluster_problem();
-  REQUIRE(prob.cluster_size() == 1);
-  REQUIRE_THROWS_AS(scores::dunnIndex(prob), std::invalid_argument);
+  REQUIRE(prob.n_clusters() == 1);
+  REQUIRE_THROWS_AS(scores::dunn(prob), std::invalid_argument);
 }
 
 TEST_CASE("DBI/Dunn: empty-centroids problem still throws the 'cluster first' error",
@@ -83,6 +83,6 @@ TEST_CASE("DBI/Dunn: empty-centroids problem still throws the 'cluster first' er
   std::vector<std::string> names = { "a", "b" };
   prob.set_data(Data(std::move(vecs), std::move(names)));
 
-  REQUIRE_THROWS_AS(scores::daviesBouldinIndex(prob), std::runtime_error);
-  REQUIRE_THROWS_AS(scores::dunnIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::dunn(prob), std::runtime_error);
 }

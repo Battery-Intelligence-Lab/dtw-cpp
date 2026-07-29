@@ -76,7 +76,7 @@ void MIP_clustering_byBenders(Problem &prob)
 #ifdef DTWC_ENABLE_HIGHS
   dtwc::Clock clk;
   const int Nb = static_cast<int>(prob.size());
-  const int Nc = prob.cluster_size();
+  const int Nc = prob.n_clusters();
 
   if (Nb <= 0 || Nc <= 0 || Nc > Nb) {
     std::cout << "Benders: invalid problem size (N=" << Nb << ", k=" << Nc << ")\n";
@@ -94,13 +94,13 @@ void MIP_clustering_byBenders(Problem &prob)
 
   // Trivial case: k == 1, find the 1-medoid minimizing total cost
   if (Nc == 1) {
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
     double best_1med_cost = std::numeric_limits<double>::max();
     int best_1med = 0;
     for (int i = 0; i < Nb; ++i) {
       double cost_i = 0.0;
       for (int j = 0; j < Nb; ++j)
-        cost_i += prob.distByInd(i, j);
+        cost_i += prob.dist_by_ind(i, j);
       if (cost_i < best_1med_cost) {
         best_1med_cost = cost_i;
         best_1med = i;
@@ -111,7 +111,7 @@ void MIP_clustering_byBenders(Problem &prob)
     return;
   }
 
-  prob.fillDistanceMatrix(); // Subproblem needs the full distance matrix.
+  prob.fill_distance_matrix(); // Subproblem needs the full distance matrix.
 
   // --- Warm start from classic PAM ---
   std::vector<int> best_medoids;
@@ -120,7 +120,7 @@ void MIP_clustering_byBenders(Problem &prob)
   if (prob.mip_settings.warm_start) {
     {
       const Method caller_method = prob.method_;
-      const int caller_n_repetitions = prob.N_repetition;
+      const int caller_n_repetitions = prob.n_repetitions();
       const int caller_last_iterations = prob.last_iterations_;
       auto caller_centroids = prob.centroids_ind;
       auto caller_clusters = prob.clusters_ind;
@@ -132,17 +132,17 @@ void MIP_clustering_byBenders(Problem &prob)
          centroids = std::move(caller_centroids),
          clusters = std::move(caller_clusters)]() mutable noexcept {
           prob.method_ = method;
-          prob.N_repetition = n_repetitions;
+          prob.set_n_repetitions(n_repetitions);
           prob.last_iterations_ = last_iterations;
           prob.centroids_ind.swap(centroids);
           prob.clusters_ind.swap(clusters);
         });
       prob.method_ = Method::Kmedoids;
-      prob.N_repetition = 1;
+      prob.set_n_repetitions(1);
       prob.cluster_by_kmedoids_lloyd_impl(false);
 
       best_medoids = prob.centroids_ind;
-      best_cost = prob.findTotalCost();
+      best_cost = prob.find_total_cost();
     }
 
     std::cout << "Benders warm start: PAM cost = " << best_cost << "\n";
@@ -234,7 +234,7 @@ void MIP_clustering_byBenders(Problem &prob)
     for (int j = 0; j < Nb; ++j) {
       double min_d = std::numeric_limits<double>::max();
       for (int med : best_medoids) {
-        double d = prob.distByInd(j, med);
+        double d = prob.dist_by_ind(j, med);
         if (d < min_d) min_d = d;
       }
       sol.col_value[theta_base + j] = min_d;
@@ -286,7 +286,7 @@ void MIP_clustering_byBenders(Problem &prob)
     for (int p = 0; p < Nb; ++p) {
       double best_d = std::numeric_limits<double>::max();
       for (int m = 0; m < K; ++m) {
-        double d = prob.distByInd(p, current_medoids[m]);
+        double d = prob.dist_by_ind(p, current_medoids[m]);
         if (d < best_d)
           best_d = d;
       }
@@ -347,7 +347,7 @@ void MIP_clustering_byBenders(Problem &prob)
       cut_val.reserve(Nb + 1);
 
       for (int i = 0; i < Nb; ++i) {
-        double d_ji = prob.distByInd(j, i);
+        double d_ji = prob.dist_by_ind(j, i);
         double coeff = std::max(0.0, d_nearest - d_ji);
         if (coeff > abs_eps) {
           cut_idx.push_back(static_cast<HighsInt>(i));
@@ -385,7 +385,7 @@ void MIP_clustering_byBenders(Problem &prob)
     double best_d = std::numeric_limits<double>::max();
     int best_m = 0;
     for (int mi = 0; mi < static_cast<int>(best_medoids.size()); ++mi) {
-      double d = prob.distByInd(j, best_medoids[mi]);
+      double d = prob.dist_by_ind(j, best_medoids[mi]);
       if (d < best_d) {
         best_d = d;
         best_m = mi;

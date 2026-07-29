@@ -489,20 +489,20 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 WDTW: fill + cluster + metrics all fin
   dtwc::Problem prob("wave2b_ndim3_wdtw");
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::WDTW);
-  prob.set_numberOfClusters(2);
-  prob.maxIter = 20;
-  prob.N_repetition = 1;
+  prob.set_n_clusters(2);
+  prob.set_max_iter(20);
+  prob.set_n_repetitions(1);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
 
   // Fill distance matrix
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
 
   const int N = static_cast<int>(prob.size());
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE(std::isfinite(prob.distByInd(i, j)));
+      REQUIRE(std::isfinite(prob.dist_by_ind(i, j)));
 
   // Cluster
   prob.cluster();
@@ -515,11 +515,11 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 WDTW: fill + cluster + metrics all fin
   for (double s : sils)
     REQUIRE(std::isfinite(s));
 
-  double dbi = dtwc::scores::daviesBouldinIndex(prob);
+  double dbi = dtwc::scores::davies_bouldin(prob);
   REQUIRE(std::isfinite(dbi));
   REQUIRE(dbi >= 0.0);
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   REQUIRE(std::isfinite(dunn));
   REQUIRE(dunn >= 0.0);
 
@@ -527,7 +527,7 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 WDTW: fill + cluster + metrics all fin
   REQUIRE(std::isfinite(inert));
   REQUIRE(inert >= 0.0);
 
-  double ch = dtwc::scores::calinskiHarabaszIndex(prob);
+  double ch = dtwc::scores::calinski_harabasz(prob);
   REQUIRE(std::isfinite(ch));
   REQUIRE(ch >= 0.0);
 }
@@ -565,29 +565,29 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 ADTW: fill + cluster + metrics all fin
   dtwc::Problem prob("wave2b_ndim3_adtw");
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::ADTW);
-  prob.set_numberOfClusters(2);
-  prob.maxIter = 20;
-  prob.N_repetition = 1;
+  prob.set_n_clusters(2);
+  prob.set_max_iter(20);
+  prob.set_n_repetitions(1);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
 
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
 
   const int N = static_cast<int>(prob.size());
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE(std::isfinite(prob.distByInd(i, j)));
+      REQUIRE(std::isfinite(prob.dist_by_ind(i, j)));
 
   prob.cluster();
   REQUIRE(prob.clusters_ind.size() == static_cast<std::size_t>(N));
 
   for (double s : dtwc::scores::silhouette(prob))
     REQUIRE(std::isfinite(s));
-  REQUIRE(std::isfinite(dtwc::scores::daviesBouldinIndex(prob)));
-  REQUIRE(std::isfinite(dtwc::scores::dunnIndex(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::davies_bouldin(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::dunn(prob)));
   REQUIRE(std::isfinite(dtwc::scores::inertia(prob)));
-  REQUIRE(std::isfinite(dtwc::scores::calinskiHarabaszIndex(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::calinski_harabasz(prob)));
 }
 
 TEST_CASE("Wave2B Problem pipeline ndim=3 DDTW: fill + cluster + metrics all finite",
@@ -623,29 +623,29 @@ TEST_CASE("Wave2B Problem pipeline ndim=3 DDTW: fill + cluster + metrics all fin
   dtwc::Problem prob("wave2b_ndim3_ddtw");
   prob.set_data(std::move(data));
   prob.set_variant(dtwc::core::DTWVariant::DDTW);
-  prob.set_numberOfClusters(2);
-  prob.maxIter = 20;
-  prob.N_repetition = 1;
+  prob.set_n_clusters(2);
+  prob.set_max_iter(20);
+  prob.set_n_repetitions(1);
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
 
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
 
   const int N = static_cast<int>(prob.size());
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE(std::isfinite(prob.distByInd(i, j)));
+      REQUIRE(std::isfinite(prob.dist_by_ind(i, j)));
 
   prob.cluster();
   REQUIRE(prob.clusters_ind.size() == static_cast<std::size_t>(N));
 
   for (double s : dtwc::scores::silhouette(prob))
     REQUIRE(std::isfinite(s));
-  REQUIRE(std::isfinite(dtwc::scores::daviesBouldinIndex(prob)));
-  REQUIRE(std::isfinite(dtwc::scores::dunnIndex(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::davies_bouldin(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::dunn(prob)));
   REQUIRE(std::isfinite(dtwc::scores::inertia(prob)));
-  REQUIRE(std::isfinite(dtwc::scores::calinskiHarabaszIndex(prob)));
+  REQUIRE(std::isfinite(dtwc::scores::calinski_harabasz(prob)));
 }
 
 // ---------------------------------------------------------------------------

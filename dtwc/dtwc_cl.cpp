@@ -1478,8 +1478,8 @@ static int run_cli_main(int argc, char *argv[])
 
   // ---- Configure DTW ----
   prob.set_band(band);
-  prob.maxIter = max_iter;
-  prob.N_repetition = n_init;
+  prob.set_max_iter(max_iter);
+  prob.set_n_repetitions(n_init);
   prob.set_random_seed(static_cast<std::uint64_t>(clara_seed));
   prob.set_output_folder(output_dir);
   prob.set_verbose(verbose);
@@ -1550,7 +1550,7 @@ static int run_cli_main(int argc, char *argv[])
   // ---- Load precomputed distance matrix if provided ----
   if (!dist_mat_path.empty()) {
     try {
-      prob.readDistanceMatrix(dist_mat_path);
+      prob.read_distance_matrix(dist_mat_path);
       if (verbose)
         std::cout << "Loaded distance matrix from " << dist_mat_path << "\n";
     } catch (const std::exception &e) {
@@ -1576,7 +1576,7 @@ static int run_cli_main(int argc, char *argv[])
                  "implemented for that schedule. Use --device cpu.\n";
     return EXIT_FAILURE;
   }
-  if (!replaying_result && dev.is_cuda && !prob.isDistanceMatrixFilled()) {
+  if (!replaying_result && dev.is_cuda && !prob.is_distance_matrix_filled()) {
 #ifdef DTWC_HAS_CUDA
     if (!dtwc::cuda::cuda_available()) {
       std::cerr << "Error: --device cuda requested but no CUDA GPU detected.\n";
@@ -1691,14 +1691,14 @@ static int run_cli_main(int argc, char *argv[])
     }
   } else if (method == "kmedoids") {
     // Legacy kMedoids Lloyd
-    prob.set_numberOfClusters(n_clusters);
+    prob.set_n_clusters(n_clusters);
     prob.set_method(dtwc::Method::Kmedoids);
     prob.cluster();
 
     // Build result from prob state
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.findTotalCost();
+    result.total_cost = prob.find_total_cost();
     result.converged = (prob.last_iterations() < max_iter);
     result.iterations = prob.last_iterations();
 
@@ -1707,13 +1707,13 @@ static int run_cli_main(int argc, char *argv[])
                 << " [" << clk << "]\n";
   } else if (method == "mip") {
     // MIP method
-    prob.set_numberOfClusters(n_clusters);
+    prob.set_n_clusters(n_clusters);
     prob.set_method(dtwc::Method::MIP);
     prob.cluster();
 
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.findTotalCost();
+    result.total_cost = prob.find_total_cost();
     result.converged = true;
 
     if (verbose)
@@ -1721,13 +1721,13 @@ static int run_cli_main(int argc, char *argv[])
                 << " [" << clk << "]\n";
   } else if (method == "lrcore" || method == "lr") {
     // LR-core exact (Lagrangian bound + reduced-cost fixing + y-branching).
-    prob.set_numberOfClusters(n_clusters);
+    prob.set_n_clusters(n_clusters);
     prob.set_method(dtwc::Method::LRCore);
     prob.cluster();
 
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.findTotalCost();
+    result.total_cost = prob.find_total_cost();
     result.converged = true;
 
     if (verbose)
@@ -1735,14 +1735,14 @@ static int run_cli_main(int argc, char *argv[])
                 << " [" << clk << "]\n";
   } else if (method == "tadpole") {
     // TADPole density-peaks with admissible LB/UB DTW pruning.
-    prob.set_numberOfClusters(n_clusters);
+    prob.set_n_clusters(n_clusters);
     prob.set_tadpole_dc(tadpole_dc); // <0 ⇒ auto-select from a DTW subsample
     prob.set_method(dtwc::Method::TADPole);
     prob.cluster();
 
     result.labels = prob.clusters_ind;
     result.medoid_indices = prob.centroids_ind;
-    result.total_cost = prob.findTotalCost();
+    result.total_cost = prob.find_total_cost();
     result.converged = true;
 
     if (verbose)
@@ -1762,7 +1762,7 @@ static int run_cli_main(int argc, char *argv[])
     else
       hier_opts.linkage = dtwc::algorithms::Linkage::Average;
 
-    prob.fillDistanceMatrix(); // hierarchical requires full pairwise distances
+    prob.fill_distance_matrix(); // hierarchical requires full pairwise distances
     auto dend = dtwc::algorithms::build_dendrogram(prob, hier_opts);
     result = dtwc::algorithms::cut_dendrogram(dend, prob, n_clusters);
 
@@ -1783,7 +1783,7 @@ static int run_cli_main(int argc, char *argv[])
     prob.clusters_ind = result.labels;
     prob.centroids_ind = result.medoid_indices;
   } else if (method == "pam" || method == "clara" || method == "hierarchical") {
-    prob.set_numberOfClusters(n_clusters);
+    prob.set_n_clusters(n_clusters);
     prob.clusters_ind = result.labels;
     prob.centroids_ind = result.medoid_indices;
   }
@@ -1817,15 +1817,15 @@ static int run_cli_main(int argc, char *argv[])
     std::cout << "Medoids written to " << medoids_path << "\n";
 
   // Distance matrix (if computed)
-  if (prob.isDistanceMatrixFilled()) {
+  if (prob.is_distance_matrix_filled()) {
     const auto dm_path = out_dir / (prob_name + "_distance_matrix.csv");
-    prob.writeDistanceMatrix(prob_name + "_distance_matrix.csv");
+    prob.write_distance_matrix(prob_name + "_distance_matrix.csv");
     if (verbose)
       std::cout << "Distance matrix written to " << dm_path << "\n";
   }
 
   // Silhouette scores (requires filled distance matrix)
-  if (prob.isDistanceMatrixFilled() && n_clusters > 1) {
+  if (prob.is_distance_matrix_filled() && n_clusters > 1) {
     try {
       auto sil = dtwc::scores::silhouette(prob);
       const auto sil_path = out_dir / (prob_name + "_silhouettes.csv");

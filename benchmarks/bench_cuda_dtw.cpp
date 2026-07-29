@@ -119,7 +119,7 @@ static void BM_cpu_distanceMatrix(benchmark::State &state)
     prob.set_data(make_random_data(N, L));
     state.ResumeTiming();
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);

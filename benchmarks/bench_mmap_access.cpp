@@ -68,7 +68,7 @@ static void BM_fill_dense(benchmark::State &state)
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
     state.ResumeTiming();
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
                           * static_cast<int64_t>(N) * (N - 1) / 2);
@@ -95,7 +95,7 @@ static void BM_fill_mmap(benchmark::State &state)
     cleanup_paths.push_back(path);
     state.ResumeTiming();
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
                           * static_cast<int64_t>(N) * (N - 1) / 2);

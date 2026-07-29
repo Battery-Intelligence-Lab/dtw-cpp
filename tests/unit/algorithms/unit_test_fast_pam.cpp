@@ -102,18 +102,18 @@ static Problem make_small_problem(int N = 5)
 
 // ---------------------------------------------------------------------------
 // Helper: compute Lloyd-style cost for comparison.
-// Runs Problem's existing cluster_by_kMedoidsLloyd which is Lloyd iteration.
+// Runs Problem's existing cluster_by_kmedoids_lloyd which is Lloyd iteration.
 // ---------------------------------------------------------------------------
 static double lloyd_cost(int N, int k)
 {
   Problem prob = make_synthetic_problem(N);
-  prob.set_numberOfClusters(k);
-  prob.N_repetition = 5;
-  prob.maxIter = 100;
-  prob.fillDistanceMatrix();
+  prob.set_n_clusters(k);
+  prob.set_n_repetitions(5);
+  prob.set_max_iter(100);
+  prob.fill_distance_matrix();
   prob.init_fun = init::Kmeanspp;
-  prob.cluster_by_kMedoidsLloyd();
-  return prob.findTotalCost();
+  prob.cluster_by_kmedoids_lloyd();
+  return prob.find_total_cost();
 }
 
 

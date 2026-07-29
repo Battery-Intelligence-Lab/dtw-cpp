@@ -33,10 +33,10 @@ int main()
 
   std::cout << "Data loading finished at " << clk << "\n";
 
-  // prob.readDistanceMatrix("../matlab/DTWdist_band_all.csv"); // Comment out if recalculating the matrix.
-  prob.fillDistanceMatrix();
-  prob.writeDistanceMatrix();
-  // prob.printDistanceMatrix();
+  // prob.read_distance_matrix("../matlab/DTWdist_band_all.csv"); // Comment out if recalculating the matrix.
+  prob.fill_distance_matrix();
+  prob.write_distance_matrix();
+  // prob.print_distance_matrix();
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << prob.band << "\n\n\n";
 
@@ -46,10 +46,10 @@ int main()
   // Calculate for number of clusters Nc = 3,4,5;
   for (auto nc : Nc) {
     std::cout << "\n\nClustering by MIP for Number of clusters : " << nc << '\n';
-    prob.set_numberOfClusters(nc); // Nc = number of clusters.
-    prob.cluster_by_MIP();         // Uses MILP to do clustering.
-    prob.writeClusters();
-    prob.writeSilhouettes();
+    prob.set_n_clusters(nc); // Nc = number of clusters.
+    prob.cluster_by_mip();         // Uses MILP to do clustering.
+    prob.write_clusters();
+    prob.write_silhouettes();
   }
 
   std::cout << "Finished all tasks " << clk << "\n";

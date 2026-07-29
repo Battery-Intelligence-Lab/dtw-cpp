@@ -162,14 +162,14 @@ TEST_CASE("Problem: MissingStrategy::ZeroCost computes finite distances", "[prob
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  const double d01 = prob.distByInd(0, 1);
+  const double d01 = prob.dist_by_ind(0, 1);
   REQUIRE(d01 >= 0.0);
   REQUIRE_FALSE(is_nan_bits(d01));
 
   // ZeroCost: NaN position contributes 0, so d(a,b) should be less than d(a,c)
-  const double d02 = prob.distByInd(0, 2);
+  const double d02 = prob.dist_by_ind(0, 2);
   REQUIRE(d01 < d02);
 }
 
@@ -184,10 +184,10 @@ TEST_CASE("Problem: MissingStrategy::Interpolate fills NaN and computes", "[prob
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // After interpolation, b becomes {1.0, 2.0, 3.0} — identical to a
-  const double d01 = prob.distByInd(0, 1);
+  const double d01 = prob.dist_by_ind(0, 1);
   REQUIRE(d01 < 1e-10);
 }
 
@@ -201,8 +201,8 @@ TEST_CASE("Problem: No NaN with Error strategy works normally", "[problem][missi
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::Error;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  const double d = prob.distByInd(0, 1);
+  const double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
 }

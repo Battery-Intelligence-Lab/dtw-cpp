@@ -819,7 +819,7 @@ TEST_CASE("ADTW pruned strategy matches BruteForce — synthetic, banded",
   // BruteForce reference
   auto prob_brute = make_adtw_problem(vecs, names, penalty, band);
   prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_brute.fillDistanceMatrix();
+  prob_brute.fill_distance_matrix();
 
   // Pruned (direct call to fill_distance_matrix_pruned)
   auto prob_pruned = make_adtw_problem(vecs, names, penalty, band);
@@ -828,8 +828,8 @@ TEST_CASE("ADTW pruned strategy matches BruteForce — synthetic, banded",
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
       INFO("i=" << i << " j=" << j);
-      REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                   WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
     }
   }
 }
@@ -854,7 +854,7 @@ TEST_CASE("ADTW pruned strategy matches BruteForce — no band (full DTW)",
   // BruteForce (band=-1: full)
   auto prob_brute = make_adtw_problem(vecs, names, penalty, -1);
   prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_brute.fillDistanceMatrix();
+  prob_brute.fill_distance_matrix();
 
   // Pruned with band=-1 (no LB_Keogh, only LB_Kim)
   auto prob_pruned = make_adtw_problem(vecs, names, penalty, -1);
@@ -863,8 +863,8 @@ TEST_CASE("ADTW pruned strategy matches BruteForce — no band (full DTW)",
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
       INFO("i=" << i << " j=" << j);
-      REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                   WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
     }
   }
 }
@@ -929,7 +929,7 @@ TEST_CASE("ADTW fill_distance_matrix_pruned with various penalties matches Brute
   for (double penalty : { 0.0, 0.5, 1.0, 5.0, 100.0 }) {
     auto prob_brute = make_adtw_problem(vecs, names, penalty, band);
     prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob_brute.fillDistanceMatrix();
+    prob_brute.fill_distance_matrix();
 
     auto prob_pruned = make_adtw_problem(vecs, names, penalty, band);
     dtwc::core::fill_distance_matrix_pruned(prob_pruned, band);
@@ -937,8 +937,8 @@ TEST_CASE("ADTW fill_distance_matrix_pruned with various penalties matches Brute
     for (int i = 0; i < N; ++i) {
       for (int j = 0; j < N; ++j) {
         INFO("penalty=" << penalty << " i=" << i << " j=" << j);
-        REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                     WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+        REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                     WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
       }
     }
   }
@@ -970,7 +970,7 @@ TEST_CASE("ADTW pruned matrix has no maxValue sentinel entries",
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      const double d = prob.distByInd(i, j);
+      const double d = prob.dist_by_ind(i, j);
       INFO("i=" << i << " j=" << j << " d=" << d);
       // No entry should be the early-abandon sentinel
       REQUIRE(d < half_max);

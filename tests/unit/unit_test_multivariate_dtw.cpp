@@ -298,11 +298,11 @@ TEST_CASE("Problem: multivariate DTW distance matrix", "[mv][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  REQUIRE(prob.distByInd(0, 1) == 0.0);  // identical
-  REQUIRE(prob.distByInd(0, 2) > 0.0);   // different
-  REQUIRE(prob.distByInd(0, 2) == prob.distByInd(1, 2));  // symmetry
+  REQUIRE(prob.dist_by_ind(0, 1) == 0.0);  // identical
+  REQUIRE(prob.dist_by_ind(0, 2) > 0.0);   // different
+  REQUIRE(prob.dist_by_ind(0, 2) == prob.dist_by_ind(1, 2));  // symmetry
 }
 
 TEST_CASE("Problem: ndim=1 backward compat", "[mv][problem]")
@@ -314,9 +314,9 @@ TEST_CASE("Problem: ndim=1 backward compat", "[mv][problem]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  double d = prob.distByInd(0, 1);
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
   // Should match standard DTW
   double d_std = dtwc::dtwBanded(std::vector<double>{1,2,3}, std::vector<double>{4,5,6}, prob.band);

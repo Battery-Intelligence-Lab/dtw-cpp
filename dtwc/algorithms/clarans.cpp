@@ -13,7 +13,7 @@
  *   - Deterministic: each restart seeds from opts.random_seed + restart index.
  *   - Hard DTW budget: max_dtw_evals guards against unbounded runtime.
  *   - After accepting a swap the full assignment is recomputed. The extra
- *     O(N*k) lookups hit the lazy distance cache (distByInd), so repeated
+ *     O(N*k) lookups hit the lazy distance cache (dist_by_ind), so repeated
  *     lookups are free after the first evaluation.
  *   - Auto max_neighbor = max(250, (int)(0.0125 * k * (N - k))), matching
  *     the original CLARANS paper's recommended parameterization.
@@ -180,7 +180,7 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
           double best_remaining = d_new;
           for (int mm = 0; mm < k; ++mm) {
             if (mm == m_idx) continue;
-            // distByInd is lazy-cached; repeated lookups are O(1).
+            // dist_by_ind is lazy-cached; repeated lookups are O(1).
             const double d = core::detail::require_finite_medoid_distance(
               prob.dist_by_ind(p, medoids[mm]),
               "clarans", p, mm, medoids[mm]);

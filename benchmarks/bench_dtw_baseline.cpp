@@ -3,7 +3,7 @@
  * @brief Baseline microbenchmarks for DTW distance computations.
  *
  * @details Captures performance of dtwFull, dtwFull_L, dtwBanded, and
- *          fillDistanceMatrix before any optimisation work begins.
+ *          fill_distance_matrix before any optimisation work begins.
  *          Uses Google Benchmark with deterministic random data (fixed seeds).
  *
  * @author Volkan Kumtepeli
@@ -305,7 +305,7 @@ static void BM_fillDistanceMatrix(benchmark::State &state)
     prob.band = band;
     state.ResumeTiming();
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
   }
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations())
                           * static_cast<int64_t>(N) * (N - 1) / 2);
@@ -343,7 +343,7 @@ static void BM_fillDistanceMatrix_variant(benchmark::State &state)
     configure_problem_variant(prob, variant);
     state.ResumeTiming();
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
   }
 
   state.SetItemsProcessed(static_cast<int64_t>(state.iterations())

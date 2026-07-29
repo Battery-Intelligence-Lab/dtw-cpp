@@ -65,7 +65,7 @@ inline void validate_pam_variant(PAMVariant value)
 /**
  * @brief Run FastPAM/FasterPAM k-medoids clustering (BUILD via K-means++).
  *
- * @param prob      Problem instance with data loaded. fillDistanceMatrix() will
+ * @param prob      Problem instance with data loaded. fill_distance_matrix() will
  *                  be called if the distance matrix is not yet filled.
  * @param n_clusters Number of clusters (k).
  * @param max_iter  Maximum number of SWAP iterations (default: 100).
@@ -101,7 +101,7 @@ FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
  * BUILD result — comparing swap wall-time and final objective apples-to-apples
  * (the O(N²) distance-matrix fill and the K-means++ BUILD are shared, not timed).
  *
- * @param prob            Problem with data loaded; fillDistanceMatrix() ensured.
+ * @param prob            Problem with data loaded; fill_distance_matrix() ensured.
  * @param initial_medoids k distinct medoid indices in [0, N) (the BUILD result).
  * @param max_iter        Maximum SWAP iterations.
  * @param variant         FastPAM1 or FasterPAM.

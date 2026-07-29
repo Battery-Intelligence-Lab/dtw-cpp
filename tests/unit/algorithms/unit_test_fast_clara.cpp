@@ -175,7 +175,7 @@ TEST_CASE("FastCLARA total_cost matches recomputed cost", "[fast_clara][cost_con
   double recomputed_cost = 0.0;
   for (int p = 0; p < N; ++p) {
     int medoid = result.medoid_indices[result.labels[p]];
-    recomputed_cost += prob.distByInd(p, medoid);
+    recomputed_cost += prob.dist_by_ind(p, medoid);
   }
 
   REQUIRE_THAT(result.total_cost, WithinAbs(recomputed_cost, 1e-10));

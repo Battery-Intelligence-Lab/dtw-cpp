@@ -150,8 +150,8 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
 
   return {
     prob.method(),
-    prob.maxIter,
-    prob.N_repetition,
+    prob.max_iter(),
+    prob.n_repetitions(),
     prob.random_seed(),
     prob.last_iterations(),
     prob.band,
@@ -188,8 +188,8 @@ static void check_configuration_unchanged(
   dtwc::Problem &prob, const ProblemConfigurationSnapshot &before)
 {
   CHECK(prob.method() == before.method);
-  CHECK(prob.maxIter == before.max_iter);
-  CHECK(prob.N_repetition == before.n_repetitions);
+  CHECK(prob.max_iter() == before.max_iter);
+  CHECK(prob.n_repetitions() == before.n_repetitions);
   CHECK(prob.random_seed() == before.random_seed);
   CHECK(prob.last_iterations() == before.last_iterations);
   CHECK(prob.band == before.band);
@@ -462,7 +462,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   dtwc::randGenerator.seed(314159);
   const auto legacy_rng_before = dtwc::randGenerator;
   auto prob = make_small_problem(8, 20);
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
@@ -484,7 +484,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
 {
   require_highs_solver();
   auto prob1 = make_small_problem(8, 20);
-  prob1.set_numberOfClusters(2);
+  prob1.set_n_clusters(2);
   prob1.mip_settings.warm_start = false;
   prob1.mip_settings.verbose_solver = false;
   prob1.set_solver(dtwc::Solver::HiGHS);
@@ -494,16 +494,16 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   // Skip if HiGHS not available
   if (prob1.centroids_ind.empty()) return;
 
-  double cold_cost = prob1.findTotalCost();
+  double cold_cost = prob1.find_total_cost();
 
   auto prob2 = make_small_problem(8, 20);
-  prob2.set_numberOfClusters(2);
+  prob2.set_n_clusters(2);
   prob2.mip_settings.warm_start = true;
   prob2.mip_settings.verbose_solver = false;
   prob2.set_solver(dtwc::Solver::HiGHS);
   prob2.set_method(dtwc::Method::MIP);
   prob2.cluster();
-  double warm_cost = prob2.findTotalCost();
+  double warm_cost = prob2.find_total_cost();
 
   // Both should find the same global optimum (small instance)
   REQUIRE(warm_cost <= cold_cost + 1e-6);
@@ -513,7 +513,7 @@ TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
 {
   require_highs_solver();
   auto prob = make_small_problem(6, 15);
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
   prob.mip_settings.mip_gap = 0.01;
   prob.mip_settings.time_limit_sec = 30;
   prob.mip_settings.verbose_solver = false;
@@ -527,7 +527,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 {
   require_highs_solver();
   auto prob = make_small_problem(5, 10);
-  prob.set_numberOfClusters(1);
+  prob.set_n_clusters(1);
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
@@ -544,7 +544,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
 // ---------------------------------------------------------------------------
 // Benders decomposition coverage.
 //
-// Auto-dispatch to Benders only triggers for N > 200 in Problem::cluster_by_MIP
+// Auto-dispatch to Benders only triggers for N > 200 in Problem::cluster_by_mip
 // (so previous small-N tests never exercise it). These tests force Benders on
 // via mip_settings.benders = "on" so the decomposition loop runs on a tractable
 // instance, covering MIP_clustering_byBenders end-to-end.
@@ -559,7 +559,7 @@ TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][bend
   prob.set_output_folder(
     std::filesystem::temp_directory_path() / "dtwc_mip_benders_test");
   std::filesystem::create_directories(prob.output_folder());
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
@@ -585,7 +585,7 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
 
   auto prob_direct = make_small_problem(12, 15);
   prob_direct.set_output_folder(tmp);
-  prob_direct.set_numberOfClusters(3);
+  prob_direct.set_n_clusters(3);
   prob_direct.mip_settings.benders = "off";
   prob_direct.mip_settings.verbose_solver = false;
   prob_direct.set_solver(dtwc::Solver::HiGHS);
@@ -593,11 +593,11 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   prob_direct.cluster();
 
   if (prob_direct.centroids_ind.empty()) return; // HiGHS not available in build
-  const double cost_direct = prob_direct.findTotalCost();
+  const double cost_direct = prob_direct.find_total_cost();
 
   auto prob_benders = make_small_problem(12, 15);
   prob_benders.set_output_folder(tmp);
-  prob_benders.set_numberOfClusters(3);
+  prob_benders.set_n_clusters(3);
   prob_benders.mip_settings.benders = "on";
   prob_benders.mip_settings.verbose_solver = false;
   prob_benders.set_solver(dtwc::Solver::HiGHS);
@@ -605,7 +605,7 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   prob_benders.cluster();
 
   REQUIRE(prob_benders.centroids_ind.size() == 3);
-  const double cost_benders = prob_benders.findTotalCost();
+  const double cost_benders = prob_benders.find_total_cost();
   REQUIRE(std::abs(cost_direct - cost_benders) <= 1e-6 * std::max(1.0, std::abs(cost_direct)));
 }
 
@@ -625,8 +625,8 @@ TEST_CASE("MIP Benders warm start preserves caller configuration on success",
   prob.init_fun = dtwc::init::random;
   prob.set_n_clusters(2);
   prob.set_method(dtwc::Method::MIP);
-  prob.maxIter = 7;
-  prob.N_repetition = 4;
+  prob.set_max_iter(7);
+  prob.set_n_repetitions(4);
   prob.set_random_seed(1234);
   prob.set_tadpole_dc(0.125);
   prob.cuda_settings.device_id = 3;
@@ -675,7 +675,7 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
   prob.set_n_clusters(2);
   prob.set_method(dtwc::Method::MIP);
   prob.set_max_iter(1);
-  prob.N_repetition = 5;
+  prob.set_n_repetitions(5);
   prob.set_random_seed(4321);
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
@@ -698,7 +698,7 @@ TEST_CASE("MIP Benders warm start restores caller state when Lloyd throws",
       return;
     }
     nested.set_method(dtwc::Method::TADPole);
-    nested.N_repetition = 17;
+    nested.set_n_repetitions(17);
     nested.centroids_ind = {0, 1};
     nested.clusters_ind.assign(nested.size(), 0);
     throw std::runtime_error("forced nested Lloyd failure after state mutation");
@@ -772,7 +772,7 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
   lloyd.set_output_folder(lloyd_output);
   lloyd.set_name("direct_");
   lloyd.set_n_clusters(2);
-  lloyd.N_repetition = 1;
+  lloyd.set_n_repetitions(1);
   lloyd.set_random_seed(1234);
   std::string lloyd_stdout;
   {
@@ -824,7 +824,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
   // #else branch merely warns and returns empty).
   {
     auto probe = make_small_problem(6, 15);
-    probe.set_numberOfClusters(2);
+    probe.set_n_clusters(2);
     probe.mip_settings.warm_start = false;
     probe.mip_settings.verbose_solver = false;
     probe.set_solver(dtwc::Solver::HiGHS);
@@ -839,7 +839,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
   // we bypass fast_pam (which independently rejects k>N) and drive the solver
   // status path directly.
   auto prob = make_small_problem(4, 12);
-  prob.set_numberOfClusters(5);
+  prob.set_n_clusters(5);
   prob.mip_settings.warm_start = false;
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);
@@ -858,7 +858,7 @@ TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][ben
   prob.set_output_folder(
     std::filesystem::temp_directory_path() / "dtwc_mip_benders_auto_test");
   std::filesystem::create_directories(prob.output_folder());
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
   prob.mip_settings.benders = "auto";
   prob.mip_settings.verbose_solver = false;
   prob.set_solver(dtwc::Solver::HiGHS);

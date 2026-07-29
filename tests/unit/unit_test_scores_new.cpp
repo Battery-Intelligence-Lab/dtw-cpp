@@ -51,9 +51,9 @@ static Problem make_4point_problem()
 
   Problem prob("test_4pt");
   prob.set_data(std::move(data));
-  prob.set_numberOfClusters(2);
+  prob.set_n_clusters(2);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Cluster assignment: 0->0, 1->0, 2->1, 3->1
   prob.clusters_ind = { 0, 0, 1, 1 };
@@ -69,7 +69,7 @@ static Problem make_4point_problem()
 TEST_CASE("Dunn Index: known 4-point problem", "[scores][dunn]")
 {
   auto prob = make_4point_problem();
-  double dunn = scores::dunnIndex(prob);
+  double dunn = scores::dunn(prob);
 
   // min_inter = min(d(0,2), d(0,3), d(1,2), d(1,3)) = min(5,6,4,5) = 4
   // max_intra = max(d(0,1), d(2,3))                 = max(1,1) = 1
@@ -80,14 +80,14 @@ TEST_CASE("Dunn Index: known 4-point problem", "[scores][dunn]")
 TEST_CASE("Dunn Index: throws when not clustered", "[scores][dunn]")
 {
   Problem prob("empty");
-  REQUIRE_THROWS_AS(scores::dunnIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::dunn(prob), std::runtime_error);
 }
 
 TEST_CASE("Dunn Index: well-separated > poorly-separated", "[scores][dunn]")
 {
   // Good clustering
   auto prob_good = make_4point_problem();
-  double dunn_good = scores::dunnIndex(prob_good);
+  double dunn_good = scores::dunn(prob_good);
 
   // Bad clustering: assign all 4 points to a single cluster (well, 2-cluster but with
   // the inter-cluster being tiny)
@@ -98,7 +98,7 @@ TEST_CASE("Dunn Index: well-separated > poorly-separated", "[scores][dunn]")
   auto prob_bad = make_4point_problem();
   prob_bad.clusters_ind = { 0, 1, 0, 1 };
   prob_bad.centroids_ind = { 0, 1 };
-  double dunn_bad = scores::dunnIndex(prob_bad);
+  double dunn_bad = scores::dunn(prob_bad);
 
   REQUIRE(dunn_good > dunn_bad);
 }
@@ -146,7 +146,7 @@ TEST_CASE("Inertia: better clustering has lower inertia", "[scores][inertia]")
 TEST_CASE("Calinski-Harabasz Index: known 4-point problem", "[scores][ch]")
 {
   auto prob = make_4point_problem();
-  double ch = scores::calinskiHarabaszIndex(prob);
+  double ch = scores::calinski_harabasz(prob);
 
   // Row sums: 0+1+5+6=12, 1+0+4+5=10, 5+4+0+1=10, 6+5+1+0=12
   // Tie between index 1 and 2 (both sum=10), argmin picks first -> overall_medoid = 1
@@ -168,7 +168,7 @@ TEST_CASE("Calinski-Harabasz Index: known 4-point problem", "[scores][ch]")
 TEST_CASE("Calinski-Harabasz Index: throws when not clustered", "[scores][ch]")
 {
   Problem prob("empty");
-  REQUIRE_THROWS_AS(scores::calinskiHarabaszIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), std::runtime_error);
 }
 
 TEST_CASE("Calinski-Harabasz Index: throws with 1 cluster", "[scores][ch]")
@@ -178,24 +178,24 @@ TEST_CASE("Calinski-Harabasz Index: throws with 1 cluster", "[scores][ch]")
   Data data(std::move(vecs), std::move(names));
   Problem prob("one_cluster");
   prob.set_data(std::move(data));
-  prob.set_numberOfClusters(1);
+  prob.set_n_clusters(1);
   prob.clusters_ind = { 0, 0 };
   prob.centroids_ind = { 0 };
-  REQUIRE_THROWS_AS(scores::calinskiHarabaszIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), std::runtime_error);
 }
 
 TEST_CASE("Calinski-Harabasz Index: better clustering has higher CH", "[scores][ch]")
 {
   // Well-separated clusters
   auto prob_good = make_4point_problem();
-  double ch_good = scores::calinskiHarabaszIndex(prob_good);
+  double ch_good = scores::calinski_harabasz(prob_good);
 
   // Bad clustering: mix the points across clusters
   // cluster 0: {0,2}, cluster 1: {1,3} — inter-cluster distances are small
   auto prob_bad = make_4point_problem();
   prob_bad.clusters_ind = { 0, 1, 0, 1 };
   prob_bad.centroids_ind = { 0, 1 };
-  double ch_bad = scores::calinskiHarabaszIndex(prob_bad);
+  double ch_bad = scores::calinski_harabasz(prob_bad);
 
   // Better clustering should have higher CH
   REQUIRE(ch_good > ch_bad);
@@ -207,7 +207,7 @@ TEST_CASE("Calinski-Harabasz Index: better clustering has higher CH", "[scores][
 TEST_CASE("ARI: perfect agreement", "[scores][ari]")
 {
   std::vector<int> labels = { 0, 0, 1, 1 };
-  double ari = scores::adjustedRandIndex(labels, labels);
+  double ari = scores::adjusted_rand(labels, labels);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
 
@@ -216,7 +216,7 @@ TEST_CASE("ARI: permuted labels still gives 1.0", "[scores][ari]")
   // {0,0,1,1} and {1,1,0,0} are equivalent clusterings (permutation invariant)
   std::vector<int> true_labels = { 0, 0, 1, 1 };
   std::vector<int> pred_labels = { 1, 1, 0, 0 };
-  double ari = scores::adjustedRandIndex(true_labels, pred_labels);
+  double ari = scores::adjusted_rand(true_labels, pred_labels);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
 
@@ -225,7 +225,7 @@ TEST_CASE("ARI: low agreement gives near-zero ARI", "[scores][ari]")
   // true={0,0,0,1,1,1}, pred={0,1,0,1,0,1} — alternating, very poor agreement
   std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
   std::vector<int> pred_labels = { 0, 1, 0, 1, 0, 1 };
-  double ari = scores::adjustedRandIndex(true_labels, pred_labels);
+  double ari = scores::adjusted_rand(true_labels, pred_labels);
   // Should be close to 0 (or even negative)
   REQUIRE(ari < 0.1);
 }
@@ -234,7 +234,7 @@ TEST_CASE("ARI: throws on size mismatch", "[scores][ari]")
 {
   std::vector<int> a = { 0, 0, 1 };
   std::vector<int> b = { 0, 1 };
-  REQUIRE_THROWS_AS(scores::adjustedRandIndex(a, b), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::adjusted_rand(a, b), std::invalid_argument);
 }
 
 TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
@@ -242,7 +242,7 @@ TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
   // Perfect match
   std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
   std::vector<int> pred_labels = { 0, 0, 0, 1, 1, 1 };
-  REQUIRE_THAT(scores::adjustedRandIndex(true_labels, pred_labels), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(scores::adjusted_rand(true_labels, pred_labels), WithinAbs(1.0, 1e-12));
 }
 
 // ---------------------------------------------------------------------------
@@ -251,7 +251,7 @@ TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
 TEST_CASE("NMI: perfect agreement", "[scores][nmi]")
 {
   std::vector<int> labels = { 0, 0, 1, 1 };
-  double nmi = scores::normalizedMutualInformation(labels, labels);
+  double nmi = scores::normalized_mutual_info(labels, labels);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
@@ -259,7 +259,7 @@ TEST_CASE("NMI: permuted labels gives 1.0", "[scores][nmi]")
 {
   std::vector<int> true_labels = { 0, 0, 1, 1 };
   std::vector<int> pred_labels = { 1, 1, 0, 0 };
-  double nmi = scores::normalizedMutualInformation(true_labels, pred_labels);
+  double nmi = scores::normalized_mutual_info(true_labels, pred_labels);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
@@ -267,7 +267,7 @@ TEST_CASE("NMI: low agreement gives low NMI", "[scores][nmi]")
 {
   std::vector<int> true_labels = { 0, 0, 0, 1, 1, 1 };
   std::vector<int> pred_labels = { 0, 1, 0, 1, 0, 1 };
-  double nmi = scores::normalizedMutualInformation(true_labels, pred_labels);
+  double nmi = scores::normalized_mutual_info(true_labels, pred_labels);
   // Should be well below 1.0
   REQUIRE(nmi < 0.5);
   REQUIRE(nmi >= 0.0);
@@ -277,7 +277,7 @@ TEST_CASE("NMI: throws on size mismatch", "[scores][nmi]")
 {
   std::vector<int> a = { 0, 0, 1 };
   std::vector<int> b = { 0, 1 };
-  REQUIRE_THROWS_AS(scores::normalizedMutualInformation(a, b), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::normalized_mutual_info(a, b), std::invalid_argument);
 }
 
 TEST_CASE("NMI: value is in [0, 1] for all test cases", "[scores][nmi]")
@@ -290,7 +290,7 @@ TEST_CASE("NMI: value is in [0, 1] for all test cases", "[scores][nmi]")
     { { 0, 0, 0, 1, 1, 1 }, { 0, 1, 0, 1, 0, 1 } },
   };
   for (auto &[t, p] : cases) {
-    double nmi = scores::normalizedMutualInformation(t, p);
+    double nmi = scores::normalized_mutual_info(t, p);
     REQUIRE(nmi >= 0.0);
     REQUIRE(nmi <= 1.0 + 1e-10);
   }

@@ -255,7 +255,9 @@ private:
   }
 
 public:
+  [[deprecated("use set_max_iter/max_iter")]]
   int maxIter{ 100 };                        /*!< Maximum number of iteration for iterative-methods. */
+  [[deprecated("use set_n_repetitions/n_repetitions")]]
   int N_repetition{ 1 };                     /*!< Repetition for iterative-methods. */
   int band{ settings::DEFAULT_BAND };        /*!< Band length for Sakoe-Chiba band, -1 for full DTW. */
   /// DTW variant selection and parameters.
@@ -287,8 +289,8 @@ public:
   }
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
-  Problem(Problem &&) = default;
-  Problem &operator=(Problem &&) = default;
+  Problem(Problem &&);
+  Problem &operator=(Problem &&) noexcept;
 
   auto size() const { return data_.size(); }
   /// Number of clusters (canonical 2.0 read accessor; was `cluster_size()`).
@@ -340,11 +342,9 @@ public:
   // Getters and setters:
   int centroid_of(int i_p) const { return centroids_ind[clusters_ind[i_p]]; } // [0, Np) Get the centroid of the cluster of i_p
 
-  // read_distance_matrix / write_* are defined out-of-line in Problem_IO.cpp under
-  // their camelCase names; the snake_case canonical names are additive forwarders
-  // this phase (the camelCase originals retire in the Phase 2 IO pass).
-  void readDistanceMatrix(const fs::path &distMat_path);
-  void read_distance_matrix(const fs::path &p) { readDistanceMatrix(p); }
+  void read_distance_matrix(const fs::path &distMat_path);
+  [[deprecated("use read_distance_matrix")]]
+  void readDistanceMatrix(const fs::path &p) { read_distance_matrix(p); }
 
   void set_n_clusters(int Nc_);
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
@@ -378,10 +378,10 @@ public:
     band = b;
     refresh_distance_matrix();
   }
-  void set_max_iter(int n) { maxIter = n; }
-  int max_iter() const { return maxIter; }
-  void set_n_repetitions(int n) { N_repetition = n; }
-  int n_repetitions() const { return N_repetition; }
+  void set_max_iter(int n);
+  int max_iter() const;
+  void set_n_repetitions(int n);
+  int n_repetitions() const;
   void set_random_seed(std::uint64_t seed) { random_seed_ = seed; }
   void set_tadpole_dc(double dc) { tadpole_dc_ = dc; }
   void set_missing_strategy(core::MissingStrategy strategy)
@@ -575,25 +575,36 @@ public:
   void print_distance_matrix() const;
   [[deprecated("use print_distance_matrix")]] void printDistanceMatrix() const { print_distance_matrix(); }
 
-  // I/O writers (definitions in Problem_IO.cpp). snake_case names are additive
-  // canonical forwarders; camelCase originals retire in the Phase 2 IO pass.
-  void writeDistanceMatrix(const std::string &name_) const;
-  void writeDistanceMatrix() const
+  // Canonical I/O owns behavior; retained 1.x names are deprecated forwarders.
+  void write_distance_matrix(const std::string &name_) const;
+  void write_distance_matrix() const
   {
-    writeDistanceMatrix(name_ + "_distanceMatrix.csv");
+    write_distance_matrix(name_ + "_distanceMatrix.csv");
   }
-  void write_distance_matrix(const std::string &name_) const { writeDistanceMatrix(name_); }
-  void write_distance_matrix() const { writeDistanceMatrix(); }
+  [[deprecated("use write_distance_matrix")]]
+  void writeDistanceMatrix(const std::string &name_) const
+  {
+    write_distance_matrix(name_);
+  }
+  [[deprecated("use write_distance_matrix")]]
+  void writeDistanceMatrix() const { write_distance_matrix(); }
 
-  void printClusters() const;
-  void print_clusters() const { printClusters(); }
-  void writeClusters();
-  void write_clusters() { writeClusters(); }
+  void print_clusters() const;
+  [[deprecated("use print_clusters")]]
+  void printClusters() const { print_clusters(); }
+  void write_clusters();
+  [[deprecated("use write_clusters")]]
+  void writeClusters() { write_clusters(); }
 
-  void writeMedoidMembers(int iter, int rep = 0) const;
-  void write_medoid_members(int iter, int rep = 0) const { writeMedoidMembers(iter, rep); }
-  void writeSilhouettes();
-  void write_silhouettes() { writeSilhouettes(); }
+  void write_medoid_members(int iter, int rep = 0) const;
+  [[deprecated("use write_medoid_members")]]
+  void writeMedoidMembers(int iter, int rep = 0) const
+  {
+    write_medoid_members(iter, rep);
+  }
+  void write_silhouettes();
+  [[deprecated("use write_silhouettes")]]
+  void writeSilhouettes() { write_silhouettes(); }
 
   // Initialisation of clusters:
   void init() { init_fun(*this); }

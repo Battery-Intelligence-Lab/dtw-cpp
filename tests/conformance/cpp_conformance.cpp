@@ -7,7 +7,7 @@
  *
  *     DataLoader::load()            (load the recorded CSV, the exact CLI path)
  *   -> Problem::set_band(3)         (fixed Sakoe-Chiba band -> banded DTW kernel)
- *   -> Problem::fillDistanceMatrix()
+ *   -> Problem::fill_distance_matrix()
  *   -> dtwc::fast_pam(prob, 3, 100) (FastPAM k=3, writes labels/medoids back)
  *   -> scores::silhouette / davies_bouldin / dunn
  *
@@ -125,7 +125,7 @@ CanonicalResult run_pipeline()
   dtwc::Problem prob{ "conformance" };
   prob.set_data(dl.load());
   prob.set_band(kBand);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Literal fixed seed. The data is init-independent, but resetting the global
   // RNG makes "fast_pam with a fixed seed" (Task 2.4) exact in this route.
@@ -153,7 +153,7 @@ void write_reference(const CanonicalResult& r)
 
   out << "# DTWC++ 2.0 cross-language conformance reference (Phase 2 Task 2.4).\n"
       << "# Recorded by the C++ route (tests/conformance/cpp_conformance.cpp) which\n"
-      << "# runs the LIVE pipeline: DataLoader -> set_band(3) -> fillDistanceMatrix\n"
+      << "# runs the LIVE pipeline: DataLoader -> set_band(3) -> fill_distance_matrix\n"
       << "# -> fast_pam(k=3, seed=29) -> silhouette/davies_bouldin/dunn. The Python,\n"
       << "# MATLAB and CLI routes assert digit-identical labels/medoids and scores\n"
       << "# within 1e-12 rel against THIS file.\n"

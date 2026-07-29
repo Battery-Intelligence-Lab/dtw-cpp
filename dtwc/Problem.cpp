@@ -138,6 +138,49 @@ void Problem::set_n_clusters(int Nc_)
   resize();
 }
 
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
+
+Problem::Problem(Problem &&) = default;
+
+Problem &Problem::operator=(Problem &&) noexcept = default;
+
+void Problem::set_max_iter(int n)
+{
+  maxIter = n;
+}
+
+int Problem::max_iter() const
+{
+  return maxIter;
+}
+
+void Problem::set_n_repetitions(int n)
+{
+  N_repetition = n;
+}
+
+int Problem::n_repetitions() const
+{
+  return N_repetition;
+}
+
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
+
 /**
  * @brief Sets the initial centroids for clustering.
  *
@@ -190,11 +233,11 @@ void Problem::print_distance_matrix() const
 /**
  * @brief Refreshes the distance matrix.
  * @details Resets state and rebinds the DTW function. Does NOT allocate the
- * dense N×N matrix — that is deferred to fillDistanceMatrix() so that
+ * dense N×N matrix — that is deferred to fill_distance_matrix() so that
  * large-N algorithms (e.g. FastCLARA) can load data without forcing
  * quadratic memory usage.
  *
- * If the matrix was previously allocated (e.g. from a prior fillDistanceMatrix()
+ * If the matrix was previously allocated (e.g. from a prior fill_distance_matrix()
  * call), it is reset to size 0 so that stale entries are not reused after a
  * variant or data change.
  */
@@ -214,7 +257,7 @@ void Problem::refresh_distance_matrix()
   } else {
     auto &m = std::get<core::DenseDistanceMatrix>(distMat);
     if (m.size() != 0)
-      m.resize(0); // Release old data; re-allocation deferred to fillDistanceMatrix().
+      m.resize(0); // Release old data; re-allocation deferred to fill_distance_matrix().
   }
   rebind_dtw_fn();
 }
@@ -621,7 +664,7 @@ void Problem::use_mmap_distance_matrix(
  *@return The distance between the two points.
  *
  *@note Thread safety: the lazy-alloc + compute path is NOT thread-safe.
- *      Call fillDistanceMatrix() before entering any parallel region.
+ *      Call fill_distance_matrix() before entering any parallel region.
  *      After that, all calls are read-only lookups (no race by design).
  *      A bound mmap cache's first-use data validation also initializes its
  *      session flag; perform fill_distance_matrix() or
@@ -640,7 +683,7 @@ double Problem::dist_by_ind(int i, int j)
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
   // The critical section prevents duplicate allocation. Callers that enter a
   // parallel region must still prime one non-diagonal distance serially first
-  // (or call fillDistanceMatrix), because rebind_dtw_fn mutates shared state.
+  // (or call fill_distance_matrix), because rebind_dtw_fn mutates shared state.
   bool needs_init = visit_distmat([&](const auto &m) { return m.size() != N; });
   if (needs_init) {
 #ifdef _OPENMP
@@ -773,7 +816,7 @@ void Problem::fill_distance_matrix()
       "fill path computes L1. Fill it through the matching GPU/backend producer.");
   }
 
-  // Allocate the dense N×N matrix on first call (deferred from set_data / refreshDistanceMatrix).
+  // Allocate the dense N×N matrix on first call (deferred from set_data / refresh_distance_matrix).
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
   visit_distmat([&](auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
@@ -1002,10 +1045,10 @@ void Problem::cluster()
 void Problem::cluster_and_process()
 {
   cluster();
-  printClusters(); // Prints to screen.
-  writeDistanceMatrix();
-  writeClusters(); // Prints to file.
-  writeSilhouettes();
+  print_clusters(); // Prints to screen.
+  write_distance_matrix();
+  write_clusters(); // Prints to file.
+  write_silhouettes();
 }
 
 /**
@@ -1065,10 +1108,10 @@ void Problem::assign_clusters()
     labels[i_p] = best_slot;
   };
 
-  // If the full matrix is not materialised yet, distByInd() may lazily compute
+  // If the full matrix is not materialised yet, dist_by_ind() may lazily compute
   // symmetric entries on demand. Different points can request the same packed
   // (i,j)/(j,i) slot concurrently, so the lazy-compute path is not safe to run
-  // in parallel. Once fillDistanceMatrix() has completed, all lookups are
+  // in parallel. Once fill_distance_matrix() has completed, all lookups are
   // read-only and the parallel path is safe again.
   const size_t workers = is_distance_matrix_filled() ? 32u : 1u;
   run(assignClustersTask, data_.size(), workers);
@@ -1153,9 +1196,10 @@ void Problem::cluster_by_kmedoids_lloyd()
 
 void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 {
-  if (N_repetition <= 0)
+  const int repetitions = n_repetitions();
+  if (repetitions <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
-  const auto restart_offset = static_cast<std::uint64_t>(N_repetition - 1);
+  const auto restart_offset = static_cast<std::uint64_t>(repetitions - 1);
   if (restart_offset
       > std::numeric_limits<std::uint64_t>::max() - random_seed_)
     throw InvalidInput("Lloyd k-medoids random_seed + repetition index overflows uint64.");
@@ -1168,7 +1212,7 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
   std::vector<int> best_medoids;
   std::vector<int> best_labels;
 
-  for (int i_rand = 0; i_rand < N_repetition; i_rand++) {
+  for (int i_rand = 0; i_rand < repetitions; i_rand++) {
     std::cout << "Metoid initialisation is started.\n";
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
@@ -1223,7 +1267,8 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
   std::vector<std::vector<int>> centroids_all;
 
   int actual_iters = 0;
-  for (int i = 0; i < maxIter; i++) {
+  const int iteration_limit = max_iter();
+  for (int i = 0; i < iteration_limit; i++) {
     actual_iters = i + 1;
 
     std::cout << "Medoids: ";
@@ -1237,7 +1282,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
     std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
               << find_total_cost() << ".\n"; // Uses clusters_ind to find cost.
 
-    printClusters();
+    print_clusters();
     distanceInClusters(); // Just populates distance matrix ahead.
     calculate_medoids();   // Changes centroids_ind
 

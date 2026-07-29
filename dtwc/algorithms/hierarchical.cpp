@@ -36,10 +36,10 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
       "build_dendrogram: N=" + std::to_string(N) +
       " exceeds max_points=" + std::to_string(opts.max_points));
 
-  if (!prob.isDistanceMatrixFilled())
+  if (!prob.is_distance_matrix_filled())
     throw std::runtime_error(
       "build_dendrogram: distance matrix is not fully computed. "
-      "Call prob.fillDistanceMatrix() first.");
+      "Call prob.fill_distance_matrix() first.");
 
   // -------------------------------------------------------------------------
   // Copy pairwise distances into a flat working array (indexed i*N+j).
@@ -49,7 +49,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   std::vector<double> work(static_cast<size_t>(N) * N, 0.0);
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      work[static_cast<size_t>(i) * N + j] = prob.distByInd(i, j);
+      work[static_cast<size_t>(i) * N + j] = prob.dist_by_ind(i, j);
 
   // active[i] == true  →  cluster i is still alive.
   std::vector<bool> active(N, true);
@@ -217,7 +217,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
     for (int cand : mem) {
       double cost = 0.0;
       for (int other : mem)
-        cost += prob.distByInd(cand, other);
+        cost += prob.dist_by_ind(cand, other);
 
       if (cost < best_cost ||
           (cost == best_cost && cand < best_idx)) {
@@ -230,7 +230,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
 
     // Total cost = sum of distances of each point to its medoid.
     for (int pt : mem)
-      total_cost += prob.distByInd(pt, best_idx);
+      total_cost += prob.dist_by_ind(pt, best_idx);
   }
 
   core::ClusteringResult result;

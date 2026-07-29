@@ -309,7 +309,7 @@ TEST_CASE("F14 dense Problem visitor and print route are literal-identical",
   dtwc::Problem problem("f14_dense");
   configure_dense_problem(problem);
   const auto path = fresh_path("dense_problem.csv");
-  problem.writeDistanceMatrix(path.filename().string());
+  problem.write_distance_matrix(path.filename().string());
   check_literal_bytes(read_binary(path));
 
   cout_capture capture;
@@ -374,7 +374,7 @@ TEST_CASE("F14 negative infinity rejects before dense Problem output",
   const auto path = fresh_path("negative_existing.csv");
   seed_binary(path, "seed");
   const auto file_rejection = capture_rejection(
-    [&] { problem.writeDistanceMatrix(path.filename().string()); });
+    [&] { problem.write_distance_matrix(path.filename().string()); });
   CHECK(file_rejection.typed);
   CHECK(file_rejection.message == kNegativeInfinityMessage);
   CHECK(read_binary(path) == "seed");
@@ -471,7 +471,7 @@ TEST_CASE("F14 mmap Problem visitor and print route are literal-identical",
   const auto path = fresh_path("mmap_problem.csv");
   {
     global_locale_guard guard(hostile_locale());
-    problem.writeDistanceMatrix(path.filename().string());
+    problem.write_distance_matrix(path.filename().string());
   }
   check_literal_bytes(read_binary(path));
 
@@ -495,7 +495,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
       fresh_path("empty_problem.dtwcache"));
     empty_problem.set_output_folder(test_root());
     const auto empty_path = fresh_path("mmap_empty.csv");
-    empty_problem.writeDistanceMatrix(empty_path.filename().string());
+    empty_problem.write_distance_matrix(empty_path.filename().string());
     CHECK(read_binary(empty_path).empty());
     cout_capture capture;
     empty_problem.print_distance_matrix();
@@ -535,7 +535,7 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
   const auto path = fresh_path("mmap_nonfinite.csv");
   seed_binary(path, "seed");
   const auto file_rejection = capture_rejection(
-    [&] { problem.writeDistanceMatrix(path.filename().string()); });
+    [&] { problem.write_distance_matrix(path.filename().string()); });
   CHECK(file_rejection.typed);
   CHECK(file_rejection.message == kNegativeInfinityMessage);
   CHECK(read_binary(path) == "seed");

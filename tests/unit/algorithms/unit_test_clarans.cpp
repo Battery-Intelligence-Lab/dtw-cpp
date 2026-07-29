@@ -254,7 +254,7 @@ TEST_CASE("CLARANS: total_cost is consistent with labels", "[clarans][cost_consi
   double recomputed = 0.0;
   for (int p = 0; p < N; ++p) {
     int medoid = result.medoid_indices[result.labels[p]];
-    recomputed += prob.distByInd(p, medoid);
+    recomputed += prob.dist_by_ind(p, medoid);
   }
 
   REQUIRE_THAT(result.total_cost, Catch::Matchers::WithinAbs(recomputed, 1e-10));

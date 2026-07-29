@@ -104,7 +104,7 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
       matrix.set(i, j, dist(rng));
   }
 
-  // Write via Problem's writeDistanceMatrix mechanism (inline CSV).
+  // Write via Problem's write_distance_matrix mechanism (inline CSV).
   fs::path tempFilePath = "test_distmat.csv";
   {
     std::ofstream file(tempFilePath);
@@ -117,9 +117,9 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
     }
   }
 
-  // Read back via Problem's readDistanceMatrix mechanism.
+  // Read back via Problem's read_distance_matrix mechanism.
   Problem prob;
-  prob.readDistanceMatrix(tempFilePath);
+  prob.read_distance_matrix(tempFilePath);
 
   // Verify the file round-trip by reading the CSV manually and comparing.
   {
@@ -143,16 +143,16 @@ TEST_CASE("Write and Read Distance Matrices via Problem", "[fileOperations]")
   fs::remove(tempFilePath);
 }
 
-TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtrip",
+TEST_CASE("Problem::write_distance_matrix + read_distance_matrix end-to-end roundtrip",
           "[fileOperations][problem]")
 {
   // Full end-to-end roundtrip through Problem: fill a distance matrix from
-  // DTW calls, write to CSV via Problem::writeDistanceMatrix, load into a
-  // fresh Problem via Problem::readDistanceMatrix, and verify the loaded
-  // values are returned by distByInd without recomputation.
+  // DTW calls, write to CSV via Problem::write_distance_matrix, load into a
+  // fresh Problem via Problem::read_distance_matrix, and verify the loaded
+  // values are returned by dist_by_ind without recomputation.
   //
   // The existing "Write and Read Distance Matrices via Problem" test
-  // (above) wrote the CSV manually and only called readDistanceMatrix to
+  // (above) wrote the CSV manually and only called read_distance_matrix to
   // verify it doesn't throw. This complements it by exercising both I/O
   // methods on matching real DTW values.
 
@@ -178,15 +178,15 @@ TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtri
   prob1.set_data(std::move(data1));
   prob1.set_output_folder(tmp);
   prob1.set_verbose(false);
-  prob1.fillDistanceMatrix();
+  prob1.fill_distance_matrix();
 
-  // Snapshot every (i, j) via distByInd — pulls from the filled dense matrix.
+  // Snapshot every (i, j) via dist_by_ind — pulls from the filled dense matrix.
   std::vector<std::vector<double>> snapshot(N, std::vector<double>(N, 0.0));
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      snapshot[i][j] = prob1.distByInd(i, j);
+      snapshot[i][j] = prob1.dist_by_ind(i, j);
 
-  prob1.writeDistanceMatrix("rt_distmat.csv");
+  prob1.write_distance_matrix("rt_distmat.csv");
   const auto csv_path = tmp / "rt_distmat.csv";
   REQUIRE(std::filesystem::exists(csv_path));
 
@@ -195,7 +195,7 @@ TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtri
   prob2.set_data(std::move(data2));
   prob2.set_output_folder(tmp);
   prob2.set_verbose(false);
-  prob2.readDistanceMatrix(csv_path);
+  prob2.read_distance_matrix(csv_path);
 
   // Every pair must now return the loaded value; no DTW recomputation
   // (snapshot values came from different RNG/compute ordering — if reading
@@ -204,7 +204,7 @@ TEST_CASE("Problem::writeDistanceMatrix + readDistanceMatrix end-to-end roundtri
   // is_computed() for these indices via the final write-back roundtrip).
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      const double loaded = prob2.distByInd(i, j);
+      const double loaded = prob2.dist_by_ind(i, j);
       REQUIRE_THAT(loaded, WithinAbs(snapshot[i][j], 1e-9));
     }
   }

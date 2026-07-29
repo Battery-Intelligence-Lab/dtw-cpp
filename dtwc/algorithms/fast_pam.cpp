@@ -430,7 +430,7 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
     prob.size(), "fast_pam_swap");
   algorithms::detail::validate_medoids(initial_medoids, N);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   std::vector<int> medoids = initial_medoids;
   const int k = static_cast<int>(medoids.size());
@@ -541,21 +541,21 @@ core::ClusteringResult fast_pam(Problem& prob, int n_clusters, int max_iter)
   const auto plan = algorithms::detail::resolve_fast_pam_plan(
     prob.size(), n_clusters, "fast_pam");
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // -------------------------------------------------------------------------
   // BUILD phase: initialize medoids using K-means++. Temporarily set prob's
   // cluster count, run the existing initializer, copy medoids, restore state.
   // -------------------------------------------------------------------------
-  const int orig_Nc = prob.cluster_size();
+  const int orig_Nc = prob.n_clusters();
   const auto orig_centroids = prob.centroids_ind;
   const auto orig_clusters = prob.clusters_ind;
 
-  prob.set_numberOfClusters(plan.n_clusters);
+  prob.set_n_clusters(plan.n_clusters);
   init::Kmeanspp(prob);
   std::vector<int> medoids = prob.centroids_ind;
 
-  prob.set_numberOfClusters(orig_Nc);
+  prob.set_n_clusters(orig_Nc);
   prob.centroids_ind = orig_centroids;
   prob.clusters_ind = orig_clusters;
 
@@ -572,7 +572,7 @@ core::ClusteringResult fast_pam_seeded(Problem& prob, int n_clusters,
   const auto plan = algorithms::detail::resolve_fast_pam_plan(
     prob.size(), n_clusters, "fast_pam_seeded");
   const int N = plan.n_points;
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   std::mt19937_64 rng(random_seed);
   std::vector<int> medoids{static_cast<int>(core::portable_bounded(

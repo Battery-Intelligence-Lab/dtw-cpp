@@ -84,7 +84,7 @@ inline void UCR_2018()
 
   std::ofstream timing_file(out_folder / "timing_all.csv", std::ios_base::out);
 
-  timing_file << "Name,fillDistanceMatrix,MIPclustering,writeSilhouettes\n";
+  timing_file << "Name,fill_distance_matrix,MIPclustering,write_silhouettes\n";
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
@@ -114,30 +114,30 @@ inline void UCR_2018()
     if (prob.data().size() > 1000) // Don't calculate large data it is not good. For example Crop.
       continue;
 
-    prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+    prob.set_n_clusters(Nc); // Nc = number of clusters.
 
     dtwc::Clock clk; // Create a clock object
 
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
 
     const auto time_1 = clk.duration();
 
     std::cout << "Finished calculating distances " << clk << std::endl;
     std::cout << "Band used " << prob.band << "\n\n\n";
 
-    prob.N_repetition = 2;
+    prob.set_n_repetitions(2);
 
-    prob.cluster_by_kMedoidsLloyd();
-    // prob.cluster_by_MIP(); // Uses MILP to do clustering.
+    prob.cluster_by_kmedoids_lloyd();
+    // prob.cluster_by_mip(); // Uses MILP to do clustering.
 
     const auto time_2 = clk.duration();
     std::cout << "Finished MIP clustering " << clk << '\n';
     std::cout << "Band used " << prob.band << "\n\n\n";
 
-    prob.printClusters(); // Prints to screen.
-    prob.writeDistanceMatrix();
-    prob.writeClusters(); // Prints to file.
-    prob.writeSilhouettes();
+    prob.print_clusters(); // Prints to screen.
+    prob.write_distance_matrix();
+    prob.write_clusters(); // Prints to file.
+    prob.write_silhouettes();
 
     const auto time_3 = clk.duration();
     timing_file << stem_str << ',' << time_1 << ',' << time_2 << ',' << time_3 << '\n';

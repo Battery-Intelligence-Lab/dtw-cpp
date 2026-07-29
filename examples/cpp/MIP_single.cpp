@@ -33,14 +33,14 @@ int main()
 
   std::cout << "Data loading finished at " << clk << "\n";
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   std::cout << "Finished calculating distances " << clk << std::endl;
   std::cout << "Band used " << prob.band << "\n\n\n";
 
   prob.set_method(dtwc::Method::MIP);
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
+  prob.set_n_clusters(Nc); // Nc = number of clusters.
   prob.cluster_and_process();
 
   std::cout << "Finished all tasks " << clk << "\n";

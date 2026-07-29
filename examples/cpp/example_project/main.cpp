@@ -17,21 +17,21 @@ int main()
   dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
-  prob.maxIter = 100;
+  prob.set_max_iter(100);
 
-  prob.set_numberOfClusters(Nc); // Nc = number of clusters.
-  prob.N_repetition = 5;         // Repeat the iterative algorithm
+  prob.set_n_clusters(Nc); // Nc = number of clusters.
+  prob.set_n_repetitions(5);         // Repeat the iterative algorithm
 
   prob.set_solver(dtwc::Solver::HiGHS); // MIP solver type.
   prob.band = -1;                       // Sakoe chiba band length.
 
-  prob.cluster_by_MIP();
+  prob.cluster_by_mip();
 
-  prob.writeDistanceMatrix();
+  prob.write_distance_matrix();
 
-  prob.printClusters(); // Prints to screen.
-  prob.writeClusters(); // Prints to file.
-  prob.writeSilhouettes();
+  prob.print_clusters(); // Prints to screen.
+  prob.write_clusters(); // Prints to file.
+  prob.write_silhouettes();
 
   std::cout << "Finished all tasks " << clk << "\n";
 }

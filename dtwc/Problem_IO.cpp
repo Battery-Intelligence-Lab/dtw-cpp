@@ -59,7 +59,7 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
  *  @brief Prints cluster information to the standard output.
  *  @details Displays each centroid and its members.
  */
-void Problem::printClusters() const
+void Problem::print_clusters() const
 {
   std::cout << "Clusters centroids: ";
   for (auto ind : centroids_ind)
@@ -82,7 +82,7 @@ void Problem::printClusters() const
  *  @brief Writes cluster information to a CSV file.
  *  @details The file includes cluster centroids and members, and the total cost.
  */
-void Problem::writeClusters()
+void Problem::write_clusters()
 {
   const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
 
@@ -102,7 +102,7 @@ void Problem::writeClusters()
   for (const auto i : Range(size()))
     myFile << get_name(i) << ',' << get_name(centroid_of(static_cast<int>(i))) << '\n';
 
-  myFile << "Procedure is completed with cost: " << findTotalCost() << '\n';
+  myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
 
   myFile.close();
 }
@@ -111,13 +111,13 @@ void Problem::writeClusters()
  *  @brief Writes silhouette scores for each data point to a CSV file.
  *  @details Calculates silhouette scores using the 'scores::silhouette' function.
  */
-void Problem::writeSilhouettes()
+void Problem::write_silhouettes()
 {
   const auto silhouettes = scores::silhouette(*this);
 
   std::string silhouette_name{ name_ + "_silhouettes_Nc_" };
 
-  silhouette_name += std::to_string(cluster_size()) + ".csv";
+  silhouette_name += std::to_string(n_clusters()) + ".csv";
 
   std::ofstream myFile(output_folder_ / silhouette_name, std::ios_base::out);
 
@@ -133,14 +133,14 @@ void Problem::writeSilhouettes()
  *  @param iter The current iteration number.
  *  @param rep The current repetition number.
  */
-void Problem::writeMedoidMembers(int iter, int rep) const
+void Problem::write_medoid_members(int iter, int rep) const
 {
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
   std::ofstream medoidMembers(
     output_folder_ / medoid_name, std::ios_base::out);
-  for (const auto i_c : Range(cluster_size())) {
+  for (const auto i_c : Range(n_clusters())) {
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
         medoidMembers << get_name(i_p) << ',';
@@ -155,7 +155,7 @@ void Problem::writeMedoidMembers(int iter, int rep) const
  *  @brief Writes the distance matrix to a file.
  *  @param name_ The name of the output file.
  */
-void Problem::writeDistanceMatrix(const std::string &name_) const
+void Problem::write_distance_matrix(const std::string &name_) const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
@@ -211,7 +211,7 @@ void Problem::writeBestRep(int best_rep)
  *  @details If the matrix cannot be read, continues without it.
  *  @param distMat_path The file path of the distance matrix.
  */
-void Problem::readDistanceMatrix(const fs::path &distMat_path)
+void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
   try {
     ensure_dense_cache_configuration_current();
@@ -219,7 +219,7 @@ void Problem::readDistanceMatrix(const fs::path &distMat_path)
       if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
         io::read_csv(m, distMat_path);
       } else {
-        throw std::runtime_error("readDistanceMatrix: CSV read not supported for MmapDistanceMatrix "
+        throw std::runtime_error("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
                                  "(use warm-start via use_mmap_distance_matrix instead).");
       }
     });

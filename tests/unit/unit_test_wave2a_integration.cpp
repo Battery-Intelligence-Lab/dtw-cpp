@@ -73,7 +73,7 @@ static Problem make_problem_uv(std::vector<std::vector<double>> vecs, int Nc,
   Data d(std::move(vecs), std::move(names));
   Problem prob("wave2a_uv");
   prob.set_data(std::move(d));
-  prob.set_numberOfClusters(Nc);
+  prob.set_n_clusters(Nc);
   prob.missing_strategy = ms;
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
@@ -108,7 +108,7 @@ static Problem make_problem_mv(int N, int n_steps, int ndim,
   Data data(std::move(vecs), std::move(names), static_cast<size_t>(ndim));
   Problem prob("wave2a_mv");
   prob.set_data(std::move(data));
-  prob.set_numberOfClusters(Nc);
+  prob.set_n_clusters(Nc);
   prob.missing_strategy = ms;
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_dir());
@@ -165,16 +165,16 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   // Dense matrix must NOT be allocated yet (deferred).
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
-  // distByInd works on-demand (lazy compute).
-  double d01 = prob.distByInd(0, 1);
-  double d02 = prob.distByInd(0, 2);
+  // dist_by_ind works on-demand (lazy compute).
+  double d01 = prob.dist_by_ind(0, 1);
+  double d02 = prob.dist_by_ind(0, 2);
   REQUIRE(d01 >= 0.0);
   REQUIRE(d02 >= 0.0);
   REQUIRE(std::isfinite(d01));
   REQUIRE(std::isfinite(d02));
 
   // Verify symmetry of cached distances.
-  double d10 = prob.distByInd(1, 0);
+  double d10 = prob.dist_by_ind(1, 0);
   REQUIRE_THAT(d01, WithinAbs(d10, 1e-12));
 
   // We asked for 3 unique off-diagonal pairs: (0,1),(0,2),(1,0).
@@ -195,9 +195,9 @@ TEST_CASE("Wave2A: deferred allocation smoke — N=5000 matrix size==0 after set
   small_prob.set_verbose(false);
   REQUIRE(small_prob.dense_distance_matrix().size() == 0);
 
-  small_prob.fillDistanceMatrix();
+  small_prob.fill_distance_matrix();
   REQUIRE(small_prob.dense_distance_matrix().size() == 5);
-  REQUIRE(small_prob.isDistanceMatrixFilled());
+  REQUIRE(small_prob.is_distance_matrix_filled());
 }
 
 // ===========================================================================
@@ -295,7 +295,7 @@ TEST_CASE("Wave2A: hierarchical all 3 linkages on 20 points",
     vecs.push_back({ 100.0 + static_cast<double>(i) });
 
   Problem prob = make_problem_uv(vecs, 2);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (auto linkage : { algorithms::Linkage::Single,
                         algorithms::Linkage::Complete,
@@ -353,7 +353,7 @@ TEST_CASE("Wave2A: hierarchical cut consistency — labels cover all points, med
     vecs.push_back({ static_cast<double>(i * 5) });
 
   Problem prob = make_problem_uv(vecs, 3);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   algorithms::Dendrogram dend = algorithms::build_dendrogram(
     prob, { algorithms::Linkage::Average, 200 });
@@ -400,7 +400,7 @@ TEST_CASE("Wave2A: hierarchical max_points guard throws when N > max_points",
   Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   algorithms::HierarchicalOptions opts;
   opts.max_points = 50; // N=100 exceeds this
@@ -506,7 +506,7 @@ TEST_CASE("Wave2A: full pipeline hierarchical→cut(3)→score metrics all finit
       vecs.push_back({ c * 100.0 + i * 0.1, c * 100.0 + i * 0.2 });
 
   Problem prob = make_problem_uv(vecs, k);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Build dendrogram with average linkage.
   auto dend = algorithms::build_dendrogram(
@@ -521,14 +521,14 @@ TEST_CASE("Wave2A: full pipeline hierarchical→cut(3)→score metrics all finit
   REQUIRE(cr.medoid_indices.size() == static_cast<size_t>(k));
 
   // Inject labels + medoids into Problem for score computation.
-  prob.set_numberOfClusters(k);
+  prob.set_n_clusters(k);
   prob.clusters_ind = cr.labels;
   prob.centroids_ind = cr.medoid_indices;
 
   // Compute scores.
   auto sil = scores::silhouette(prob);
-  double dunn = scores::dunnIndex(prob);
-  double ch = scores::calinskiHarabaszIndex(prob);
+  double dunn = scores::dunn(prob);
+  double ch = scores::calinski_harabasz(prob);
 
   // All scores must be finite.
   for (double s : sil)
@@ -602,9 +602,9 @@ TEST_CASE("Wave2A: FastCLARA on N=500 does NOT fill parent dense matrix",
 }
 
 // ===========================================================================
-// Test 11: Deferred allocation — distByInd after set_data is correct and cached
+// Test 11: Deferred allocation — dist_by_ind after set_data is correct and cached
 // ===========================================================================
-TEST_CASE("Wave2A: deferred distByInd is cached after first call",
+TEST_CASE("Wave2A: deferred dist_by_ind is cached after first call",
           "[wave2a][deferred][cache]")
 {
   std::vector<std::vector<double>> vecs = {
@@ -618,21 +618,21 @@ TEST_CASE("Wave2A: deferred distByInd is cached after first call",
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   // First call triggers lazy computation.
-  double d01 = prob.distByInd(0, 1);
+  double d01 = prob.dist_by_ind(0, 1);
   REQUIRE(std::isfinite(d01));
   REQUIRE(d01 > 0.0);
 
   // Symmetry.
-  double d10 = prob.distByInd(1, 0);
+  double d10 = prob.dist_by_ind(1, 0);
   REQUIRE_THAT(d01, WithinAbs(d10, 1e-12));
 
   // Self-distance = 0.
-  double d00 = prob.distByInd(0, 0);
+  double d00 = prob.dist_by_ind(0, 0);
   REQUIRE_THAT(d00, WithinAbs(0.0, 1e-12));
 
   // Triangle inequality: d(0,1) <= d(0,2) + d(2,1)
-  double d02 = prob.distByInd(0, 2);
-  double d21 = prob.distByInd(2, 1);
+  double d02 = prob.dist_by_ind(0, 2);
+  double d21 = prob.dist_by_ind(2, 1);
   REQUIRE(d01 <= d02 + d21 + 1e-9);
 }
 
@@ -708,7 +708,7 @@ TEST_CASE("Wave2A: hierarchical merge distances are non-decreasing",
     vecs.push_back({ static_cast<double>(i) });
 
   Problem prob = make_problem_uv(vecs, 2);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (auto linkage : { algorithms::Linkage::Single,
                         algorithms::Linkage::Complete,
@@ -753,11 +753,11 @@ TEST_CASE("Wave2A: FastCLARA ndim=2 sub-problem distances consistent with parent
   REQUIRE(result.labels.size() == static_cast<size_t>(N));
   REQUIRE(result.medoid_indices.size() == static_cast<size_t>(k));
 
-  // Verify total_cost matches manual recomputation via parent prob.distByInd.
+  // Verify total_cost matches manual recomputation via parent prob.dist_by_ind.
   double recomputed = 0.0;
   for (int p = 0; p < N; ++p) {
     int med = result.medoid_indices[result.labels[p]];
-    recomputed += prob.distByInd(p, med);
+    recomputed += prob.dist_by_ind(p, med);
   }
   REQUIRE_THAT(result.total_cost, WithinAbs(recomputed, 1e-6));
 }

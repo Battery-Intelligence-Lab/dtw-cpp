@@ -3,7 +3,7 @@
  * @brief Property-based tests for DTW distance matrices.
  *
  * Verifies diagonal zeros, symmetry, non-negativity, and consistency
- * between fillDistanceMatrix and individual pair computations.
+ * between fill_distance_matrix and individual pair computations.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -53,10 +53,10 @@ TEST_CASE("Distance matrix diagonal is all zeros", "[Phase1][distance_matrix]")
 {
   constexpr int N = 10;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i) {
-    double d = prob.distByInd(i, i);
+    double d = prob.dist_by_ind(i, i);
     REQUIRE_THAT(d, WithinAbs(0.0, 1e-15));
   }
 }
@@ -68,12 +68,12 @@ TEST_CASE("Distance matrix is symmetric", "[Phase1][distance_matrix]")
 {
   constexpr int N = 10;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i) {
     for (int j = i + 1; j < N; ++j) {
-      double dij = prob.distByInd(i, j);
-      double dji = prob.distByInd(j, i);
+      double dij = prob.dist_by_ind(i, j);
+      double dji = prob.dist_by_ind(j, i);
       REQUIRE_THAT(dij, WithinAbs(dji, 1e-15));
     }
   }
@@ -86,11 +86,11 @@ TEST_CASE("Distance matrix entries are non-negative", "[Phase1][distance_matrix]
 {
   constexpr int N = 10;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      double d = prob.distByInd(i, j);
+      double d = prob.dist_by_ind(i, j);
       REQUIRE(d >= 0.0);
     }
   }
@@ -104,14 +104,14 @@ TEST_CASE("Distinct series have positive distance", "[Phase1][distance_matrix]")
 {
   constexpr int N = 10;
   auto prob = make_problem(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Check that at least some off-diagonal entry is > 0.
   // (Dummy data has 25 distinct series, so the first 10 should not all be identical.)
   bool found_positive = false;
   for (int i = 0; i < N && !found_positive; ++i) {
     for (int j = i + 1; j < N && !found_positive; ++j) {
-      if (prob.distByInd(i, j) > 0.0)
+      if (prob.dist_by_ind(i, j) > 0.0)
         found_positive = true;
     }
   }
@@ -119,41 +119,41 @@ TEST_CASE("Distinct series have positive distance", "[Phase1][distance_matrix]")
 }
 
 // ---------------------------------------------------------------------------
-// 5. fillDistanceMatrix gives same results as computing pairs individually
+// 5. fill_distance_matrix gives same results as computing pairs individually
 // ---------------------------------------------------------------------------
-TEST_CASE("fillDistanceMatrix matches individual pair computation", "[Phase1][distance_matrix]")
+TEST_CASE("fill_distance_matrix matches individual pair computation", "[Phase1][distance_matrix]")
 {
   constexpr int N = 8;
 
-  // Method A: compute individual pairs before fillDistanceMatrix.
+  // Method A: compute individual pairs before fill_distance_matrix.
   auto probA = make_problem(N);
   std::vector<std::vector<double>> pairwise(N, std::vector<double>(N, 0.0));
   for (int i = 0; i < N; ++i)
     for (int j = i; j < N; ++j)
-      pairwise[i][j] = pairwise[j][i] = probA.distByInd(i, j);
+      pairwise[i][j] = pairwise[j][i] = probA.dist_by_ind(i, j);
 
-  // Method B: use fillDistanceMatrix.
+  // Method B: use fill_distance_matrix.
   auto probB = make_problem(N);
-  probB.fillDistanceMatrix();
+  probB.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i) {
     for (int j = 0; j < N; ++j) {
-      REQUIRE_THAT(probB.distByInd(i, j), WithinAbs(pairwise[i][j], 1e-15));
+      REQUIRE_THAT(probB.dist_by_ind(i, j), WithinAbs(pairwise[i][j], 1e-15));
     }
   }
 }
 
 // ---------------------------------------------------------------------------
-// 6. Distance matrix is marked as filled after fillDistanceMatrix
+// 6. Distance matrix is marked as filled after fill_distance_matrix
 // ---------------------------------------------------------------------------
-TEST_CASE("isDistanceMatrixFilled flag is set correctly", "[Phase1][distance_matrix]")
+TEST_CASE("is_distance_matrix_filled flag is set correctly", "[Phase1][distance_matrix]")
 {
   constexpr int N = 5;
   auto prob = make_problem(N);
 
-  REQUIRE_FALSE(prob.isDistanceMatrixFilled());
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 }
 
 // ---------------------------------------------------------------------------
@@ -168,13 +168,13 @@ TEST_CASE("Default band produces same distances as dtwFull", "[Phase1][distance_
   REQUIRE(prob.band == settings::DEFAULT_BAND);
   REQUIRE(prob.band == -1);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Compare against dtwFull computed directly on the data vectors.
   for (int i = 0; i < N; ++i) {
     for (int j = i; j < N; ++j) {
       double expected = dtwFull<data_t>(prob.p_vec(i), prob.p_vec(j));
-      REQUIRE_THAT(prob.distByInd(i, j), WithinAbs(expected, 1e-12));
+      REQUIRE_THAT(prob.dist_by_ind(i, j), WithinAbs(expected, 1e-12));
     }
   }
 }
@@ -201,20 +201,20 @@ TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][dista
   prob_ref.band = 3;
   prob_ref.distance_strategy = DistanceMatrixStrategy::Pruned;
   prob_ref.set_lb_strategy(LowerBoundStrategy::Auto);
-  prob_ref.fillDistanceMatrix();
+  prob_ref.fill_distance_matrix();
 
   for (auto strat : strategies) {
     auto prob = make_problem(N);
     prob.band = 3;
     prob.distance_strategy = DistanceMatrixStrategy::Pruned;
     prob.set_lb_strategy(strat);
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
 
     for (int i = 0; i < actual_N; ++i) {
       for (int j = 0; j < actual_N; ++j) {
         CAPTURE(static_cast<int>(strat), i, j);
-        REQUIRE_THAT(prob.distByInd(i, j),
-                     WithinAbs(prob_ref.distByInd(i, j), 1e-12));
+        REQUIRE_THAT(prob.dist_by_ind(i, j),
+                     WithinAbs(prob_ref.dist_by_ind(i, j), 1e-12));
       }
     }
   }
@@ -223,22 +223,22 @@ TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][dista
 // ---------------------------------------------------------------------------
 // 9. Re-filling the distance matrix is a no-op when already filled
 // ---------------------------------------------------------------------------
-TEST_CASE("Repeated fillDistanceMatrix is idempotent", "[Phase1][distance_matrix]")
+TEST_CASE("Repeated fill_distance_matrix is idempotent", "[Phase1][distance_matrix]")
 {
   constexpr int N = 5;
   auto prob = make_problem(N);
 
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 
   // Save a few values.
-  double d01 = prob.distByInd(0, 1);
-  double d23 = prob.distByInd(2, 3);
+  double d01 = prob.dist_by_ind(0, 1);
+  double d23 = prob.dist_by_ind(2, 3);
 
   // Call again -- should be a no-op.
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
 
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(d01, 1e-15));
-  REQUIRE_THAT(prob.distByInd(2, 3), WithinAbs(d23, 1e-15));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(d01, 1e-15));
+  REQUIRE_THAT(prob.dist_by_ind(2, 3), WithinAbs(d23, 1e-15));
 }

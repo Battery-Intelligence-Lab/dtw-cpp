@@ -77,12 +77,12 @@ TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][
   Problem prob("test_variant", dl);
   REQUIRE(prob.size() == 25);
 
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 
-  double d = prob.distByInd(0, 1);
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d >= 0.0);
-  REQUIRE(d == prob.distByInd(1, 0)); // symmetry
+  REQUIRE(d == prob.dist_by_ind(1, 0)); // symmetry
 }
 
 TEST_CASE("Problem dense cache never survives a raw semantic configuration mutation",
@@ -257,12 +257,12 @@ TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mma
   // Force mmap mode
   prob.use_mmap_distance_matrix(cache_path);
 
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 
-  double d = prob.distByInd(0, 1);
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d >= 0.0);
-  REQUIRE(d == prob.distByInd(1, 0));
+  REQUIRE(d == prob.dist_by_ind(1, 0));
 
   REQUIRE(fs::exists(cache_path));
   REQUIRE(fs::file_size(cache_path) > 0);
@@ -288,8 +288,8 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
     DataLoader dl(dummy_data_path());
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
-    prob.fillDistanceMatrix();
-    d01_original = prob.distByInd(0, 1);
+    prob.fill_distance_matrix();
+    d01_original = prob.dist_by_ind(0, 1);
   }
 
   // Second run: reopen - distances should persist
@@ -297,8 +297,8 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
     DataLoader dl(dummy_data_path());
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
-    REQUIRE(prob.isDistanceMatrixFilled());
-    REQUIRE(prob.distByInd(0, 1) == d01_original);
+    REQUIRE(prob.is_distance_matrix_filled());
+    REQUIRE(prob.dist_by_ind(0, 1) == d01_original);
   }
 
   // Cleanup

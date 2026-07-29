@@ -46,7 +46,7 @@ dtwc::Problem make_4point_problem()
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   return prob;
 }
 
@@ -199,7 +199,7 @@ TEST_CASE("Hierarchical: throws when N > max_points", "[hierarchical]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   dtwc::algorithms::HierarchicalOptions opts;
   opts.max_points = 50;
@@ -215,7 +215,7 @@ TEST_CASE("Hierarchical: throws when matrix not computed", "[hierarchical]")
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  // Intentionally NOT calling fillDistanceMatrix().
+  // Intentionally NOT calling fill_distance_matrix().
 
   REQUIRE_THROWS(dtwc::algorithms::build_dendrogram(prob));
 }
@@ -234,7 +234,7 @@ TEST_CASE("Hierarchical: deterministic tie-breaking", "[hierarchical]")
     dtwc::Problem prob;
     prob.set_data(std::move(data));
     prob.set_verbose(false);
-    prob.fillDistanceMatrix();
+    prob.fill_distance_matrix();
     return prob;
   };
 

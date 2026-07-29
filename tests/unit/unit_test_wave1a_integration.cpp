@@ -100,7 +100,7 @@ static Problem make_problem(
 
   Problem prob("integration");
   prob.set_data(std::move(d));
-  prob.set_numberOfClusters(Nc);
+  prob.set_n_clusters(Nc);
   prob.missing_strategy = strategy;
   prob.set_verbose(false);
   prob.set_output_folder(g_tmp_output_dir()); // avoid failure writing result CSVs
@@ -130,18 +130,18 @@ TEST_CASE("Integration: ZeroCost pipeline — full metrics on 20 series with NaN
   all_vecs.insert(all_vecs.end(), vecs_b.begin(), vecs_b.end());
 
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::ZeroCost);
-  prob.maxIter = 20;
-  prob.N_repetition = 1;
+  prob.set_max_iter(20);
+  prob.set_n_repetitions(1);
 
   // Fill distance matrix (required before manual cluster ops)
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
-  REQUIRE(prob.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
 
   // Check distance matrix is finite everywhere
   const int N = static_cast<int>(prob.size());
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE(std::isfinite(prob.distByInd(i, j)));
+      REQUIRE(std::isfinite(prob.dist_by_ind(i, j)));
 
   // Cluster
   prob.cluster();
@@ -156,12 +156,12 @@ TEST_CASE("Integration: ZeroCost pipeline — full metrics on 20 series with NaN
     REQUIRE(s >= -1.0 - 1e-9);
 
   // --- Davies-Bouldin ---
-  double dbi = scores::daviesBouldinIndex(prob);
+  double dbi = scores::davies_bouldin(prob);
   REQUIRE(std::isfinite(dbi));
   REQUIRE(dbi >= 0.0);
 
   // --- Dunn ---
-  double dunn = scores::dunnIndex(prob);
+  double dunn = scores::dunn(prob);
   REQUIRE(std::isfinite(dunn));
   REQUIRE(dunn >= 0.0);
 
@@ -171,7 +171,7 @@ TEST_CASE("Integration: ZeroCost pipeline — full metrics on 20 series with NaN
   REQUIRE(inert >= 0.0);
 
   // --- Calinski-Harabasz ---
-  double ch = scores::calinskiHarabaszIndex(prob);
+  double ch = scores::calinski_harabasz(prob);
   REQUIRE(std::isfinite(ch));
   REQUIRE(ch >= 0.0);
 }
@@ -196,24 +196,24 @@ TEST_CASE("Integration: AROW pipeline — finite metrics; AROW >= ZeroCost dista
   prob_zero.set_verbose(false);
   prob_arow.set_verbose(false);
 
-  REQUIRE_NOTHROW(prob_zero.fillDistanceMatrix());
-  REQUIRE_NOTHROW(prob_arow.fillDistanceMatrix());
+  REQUIRE_NOTHROW(prob_zero.fill_distance_matrix());
+  REQUIRE_NOTHROW(prob_arow.fill_distance_matrix());
 
   const int N = static_cast<int>(prob_zero.size());
 
   // All AROW distances must be finite and >= ZeroCost distances (up to rounding).
   for (int i = 0; i < N; ++i) {
     for (int j = i + 1; j < N; ++j) {
-      double d_zero = prob_zero.distByInd(i, j);
-      double d_arow = prob_arow.distByInd(i, j);
+      double d_zero = prob_zero.dist_by_ind(i, j);
+      double d_arow = prob_arow.dist_by_ind(i, j);
       REQUIRE(std::isfinite(d_arow));
       REQUIRE(d_arow >= d_zero - 1e-9);
     }
   }
 
   // AROW pipeline: cluster, then compute all metrics
-  prob_arow.maxIter = 20;
-  prob_arow.N_repetition = 1;
+  prob_arow.set_max_iter(20);
+  prob_arow.set_n_repetitions(1);
   prob_arow.cluster();
 
   REQUIRE(prob_arow.clusters_ind.size() == static_cast<size_t>(N));
@@ -226,10 +226,10 @@ TEST_CASE("Integration: AROW pipeline — finite metrics; AROW >= ZeroCost dista
   }
   sil_mean /= static_cast<double>(N);
 
-  REQUIRE(std::isfinite(scores::daviesBouldinIndex(prob_arow)));
-  REQUIRE(std::isfinite(scores::dunnIndex(prob_arow)));
+  REQUIRE(std::isfinite(scores::davies_bouldin(prob_arow)));
+  REQUIRE(std::isfinite(scores::dunn(prob_arow)));
   REQUIRE(std::isfinite(scores::inertia(prob_arow)));
-  REQUIRE(std::isfinite(scores::calinskiHarabaszIndex(prob_arow)));
+  REQUIRE(std::isfinite(scores::calinski_harabasz(prob_arow)));
 }
 
 // ---------------------------------------------------------------------------
@@ -246,26 +246,26 @@ TEST_CASE("Integration: Interpolate pipeline — finite distances and metrics",
   all_vecs.insert(all_vecs.end(), vecs_b.begin(), vecs_b.end());
 
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Interpolate);
-  prob.maxIter = 20;
-  prob.N_repetition = 1;
+  prob.set_max_iter(20);
+  prob.set_n_repetitions(1);
   prob.set_verbose(false);
 
-  REQUIRE_NOTHROW(prob.fillDistanceMatrix());
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
 
   const int N = static_cast<int>(prob.size());
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE(std::isfinite(prob.distByInd(i, j)));
+      REQUIRE(std::isfinite(prob.dist_by_ind(i, j)));
 
   prob.cluster();
 
   auto sils = scores::silhouette(prob);
   REQUIRE(all_finite(sils));
 
-  REQUIRE(std::isfinite(scores::daviesBouldinIndex(prob)));
-  REQUIRE(std::isfinite(scores::dunnIndex(prob)));
+  REQUIRE(std::isfinite(scores::davies_bouldin(prob)));
+  REQUIRE(std::isfinite(scores::dunn(prob)));
   REQUIRE(std::isfinite(scores::inertia(prob)));
-  REQUIRE(std::isfinite(scores::calinskiHarabaszIndex(prob)));
+  REQUIRE(std::isfinite(scores::calinski_harabasz(prob)));
 }
 
 // ---------------------------------------------------------------------------
@@ -291,11 +291,11 @@ TEST_CASE("Integration: metrics agree on well-separated 2-cluster data",
   all_vecs.insert(all_vecs.end(), vecs_b.begin(), vecs_b.end());
 
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Error);
-  prob.maxIter = 50;
-  prob.N_repetition = 3;
+  prob.set_max_iter(50);
+  prob.set_n_repetitions(3);
   prob.set_verbose(false);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   prob.cluster();
 
   const int N = 2 * n_each;
@@ -306,15 +306,15 @@ TEST_CASE("Integration: metrics agree on well-separated 2-cluster data",
   REQUIRE(mean_sil > 0.9);
 
   // --- Dunn should be large (large inter-cluster / small intra-cluster) ---
-  double dunn = scores::dunnIndex(prob);
+  double dunn = scores::dunn(prob);
   REQUIRE(dunn > 10.0); // inter ~ 100, intra ~ 0.1*L at most
 
   // --- CH should be large ---
-  double ch = scores::calinskiHarabaszIndex(prob);
+  double ch = scores::calinski_harabasz(prob);
   REQUIRE(ch > 10.0);
 
   // --- DBI should be small (< 0.1) ---
-  double dbi = scores::daviesBouldinIndex(prob);
+  double dbi = scores::davies_bouldin(prob);
   REQUIRE(dbi < 0.1);
 
   // --- Inertia should be small relative to the total inter-cluster distance ---
@@ -344,11 +344,11 @@ TEST_CASE("Integration: ARI and NMI > 0 for reasonable clustering of separated d
   all_vecs.insert(all_vecs.end(), vecs_b.begin(), vecs_b.end());
 
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::Error);
-  prob.maxIter = 50;
-  prob.N_repetition = 3;
+  prob.set_max_iter(50);
+  prob.set_n_repetitions(3);
   prob.set_verbose(false);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   prob.cluster();
 
   // Ground truth: first 10 points are group 0, last 10 are group 1.
@@ -360,8 +360,8 @@ TEST_CASE("Integration: ARI and NMI > 0 for reasonable clustering of separated d
   // invariant to permutation).
   const std::vector<int> &pred = prob.clusters_ind;
 
-  double ari = scores::adjustedRandIndex(ground_truth, pred);
-  double nmi = scores::normalizedMutualInformation(ground_truth, pred);
+  double ari = scores::adjusted_rand(ground_truth, pred);
+  double nmi = scores::normalized_mutual_info(ground_truth, pred);
 
   // For well-separated data, ARI and NMI must be high.
   REQUIRE(ari > 0.5);
@@ -384,14 +384,14 @@ TEST_CASE("Integration: MissingStrategy::Error — clean data OK, NaN data throw
   auto vecs_clean = make_gaussian_series(10, 15, 0.0, 1.0, 0.0, 50);
   auto prob_clean = make_problem(vecs_clean, 2, core::MissingStrategy::Error);
   prob_clean.set_verbose(false);
-  REQUIRE_NOTHROW(prob_clean.fillDistanceMatrix());
-  REQUIRE(prob_clean.isDistanceMatrixFilled());
+  REQUIRE_NOTHROW(prob_clean.fill_distance_matrix());
+  REQUIRE(prob_clean.is_distance_matrix_filled());
 
   // Data with NaN: Error strategy should throw
   auto vecs_nan = make_gaussian_series(10, 15, 0.0, 1.0, 0.10, 51);
   auto prob_nan = make_problem(vecs_nan, 2, core::MissingStrategy::Error);
   prob_nan.set_verbose(false);
-  REQUIRE_THROWS(prob_nan.fillDistanceMatrix());
+  REQUIRE_THROWS(prob_nan.fill_distance_matrix());
 }
 
 // ---------------------------------------------------------------------------
@@ -412,19 +412,19 @@ TEST_CASE("Integration: ZeroCost clustering — ARI and NMI > 0",
   all_vecs.insert(all_vecs.end(), vecs_b.begin(), vecs_b.end());
 
   auto prob = make_problem(all_vecs, 2, core::MissingStrategy::ZeroCost);
-  prob.maxIter = 30;
-  prob.N_repetition = 2;
+  prob.set_max_iter(30);
+  prob.set_n_repetitions(2);
   prob.set_verbose(false);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   prob.cluster();
 
   std::vector<int> ground_truth(2 * n_each);
   for (int i = 0; i < n_each; ++i) ground_truth[i] = 0;
   for (int i = n_each; i < 2 * n_each; ++i) ground_truth[i] = 1;
 
-  double ari = scores::adjustedRandIndex(ground_truth, prob.clusters_ind);
-  double nmi = scores::normalizedMutualInformation(ground_truth, prob.clusters_ind);
+  double ari = scores::adjusted_rand(ground_truth, prob.clusters_ind);
+  double nmi = scores::normalized_mutual_info(ground_truth, prob.clusters_ind);
 
   REQUIRE(ari > 0.0);
   REQUIRE(nmi > 0.0);

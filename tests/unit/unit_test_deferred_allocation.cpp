@@ -4,7 +4,7 @@
  *
  * Verifies that Problem::set_data() does NOT immediately allocate the O(N^2)
  * distance matrix, and that the matrix is allocated lazily on the first call
- * to fillDistanceMatrix(). Also verifies that distByInd() works both before
+ * to fill_distance_matrix(). Also verifies that dist_by_ind() works both before
  * and after allocation.
  *
  * @author Volkan Kumtepeli
@@ -35,7 +35,7 @@ TEST_CASE("Deferred allocation: set_data does not allocate dense matrix", "[prob
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 }
 
-TEST_CASE("Deferred allocation: fillDistanceMatrix allocates and fills", "[problem][deferred]")
+TEST_CASE("Deferred allocation: fill_distance_matrix allocates and fills", "[problem][deferred]")
 {
   dtwc::Data data;
   data.p_vec = { { 1, 2, 3 }, { 4, 5, 6 }, { 7, 8, 9 } };
@@ -47,14 +47,14 @@ TEST_CASE("Deferred allocation: fillDistanceMatrix allocates and fills", "[probl
 
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   REQUIRE(prob.dense_distance_matrix().size() == 3);
-  REQUIRE(prob.distByInd(0, 1) > 0.0);
-  REQUIRE(prob.distByInd(0, 0) == 0.0);
+  REQUIRE(prob.dist_by_ind(0, 1) > 0.0);
+  REQUIRE(prob.dist_by_ind(0, 0) == 0.0);
 }
 
-TEST_CASE("Deferred allocation: distByInd works without fill", "[problem][deferred]")
+TEST_CASE("Deferred allocation: dist_by_ind works without fill", "[problem][deferred]")
 {
   dtwc::Data data;
   data.p_vec = { { 1, 2, 3 }, { 4, 5, 6 } };
@@ -64,10 +64,10 @@ TEST_CASE("Deferred allocation: distByInd works without fill", "[problem][deferr
   prob.set_data(std::move(data));
   prob.set_verbose(false);
 
-  // No fillDistanceMatrix() called — distByInd should still work
-  double d = prob.distByInd(0, 1);
+  // No fill_distance_matrix() called — dist_by_ind should still work
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
-  REQUIRE_THAT(d, WithinAbs(prob.distByInd(1, 0), 1e-12)); // symmetry
+  REQUIRE_THAT(d, WithinAbs(prob.dist_by_ind(1, 0), 1e-12)); // symmetry
 }
 
 TEST_CASE("Deferred allocation: FastPAM still works", "[problem][deferred]")
@@ -83,7 +83,7 @@ TEST_CASE("Deferred allocation: FastPAM still works", "[problem][deferred]")
   prob.set_data(std::move(data));
   prob.set_verbose(false);
 
-  // FastPAM calls fillDistanceMatrix internally — should work
+  // FastPAM calls fill_distance_matrix internally — should work
   auto result = dtwc::fast_pam(prob, 2);
   REQUIRE(result.labels.size() == 20);
   REQUIRE(result.medoid_indices.size() == 2);
@@ -102,7 +102,7 @@ TEST_CASE("Deferred allocation: set_variant works after set_data", "[problem][de
   prob.set_verbose(false);
 
   // Should work — rebind_dtw_fn was called by set_variant
-  double d = prob.distByInd(0, 1);
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d > 0.0);
 }
 
@@ -116,12 +116,12 @@ TEST_CASE("Deferred allocation: existing tests backward compat", "[problem][defe
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Should work exactly as before
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(1.0, 1e-12));
-  REQUIRE_THAT(prob.distByInd(0, 2), WithinAbs(5.0, 1e-12));
-  REQUIRE_THAT(prob.distByInd(2, 3), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(1.0, 1e-12));
+  REQUIRE_THAT(prob.dist_by_ind(0, 2), WithinAbs(5.0, 1e-12));
+  REQUIRE_THAT(prob.dist_by_ind(2, 3), WithinAbs(1.0, 1e-12));
 }
 
 TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem][deferred]")
@@ -133,7 +133,7 @@ TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem
   dtwc::Problem prob;
   prob.set_data(std::move(data1));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   REQUIRE(prob.dense_distance_matrix().size() == 2);
 
   // Now set new data — matrix should be reset
@@ -146,7 +146,7 @@ TEST_CASE("Deferred allocation: set_data then set_data resets matrix", "[problem
   REQUIRE(prob.dense_distance_matrix().size() == 0);
 
   // Fill again — should work with new data
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   REQUIRE(prob.dense_distance_matrix().size() == 3);
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(10.0, 1e-12));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(10.0, 1e-12));
 }

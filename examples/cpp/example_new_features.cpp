@@ -134,7 +134,7 @@ int main()
   dtwc::Problem prob2("ckpt_demo");
   dtwc::Data data2(std::move(small_series), std::move(small_names));
   prob2.set_data(std::move(data2));
-  prob2.fillDistanceMatrix();
+  prob2.fill_distance_matrix();
 
   std::string ckpt_path = "./example_checkpoint";
   dtwc::save_checkpoint(prob2, ckpt_path);
@@ -153,7 +153,7 @@ int main()
   bool loaded = dtwc::load_checkpoint(prob3, ckpt_path);
   std::cout << "  Checkpoint loaded: " << (loaded ? "yes" : "no") << "\n";
   std::cout << "  Distance matrix filled: "
-            << (prob3.isDistanceMatrixFilled() ? "yes" : "no") << "\n";
+            << (prob3.is_distance_matrix_filled() ? "yes" : "no") << "\n";
 
   // Clean up checkpoint directory
   std::filesystem::remove_all(ckpt_path);

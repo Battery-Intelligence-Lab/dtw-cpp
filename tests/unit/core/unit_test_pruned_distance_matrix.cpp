@@ -237,15 +237,15 @@ TEST_CASE("Pruned distance matrix matches unpruned exactly - synthetic data",
   SECTION("Full DTW (band = -1)")
   {
     auto prob_ref = make_problem_with_data(vecs, names, -1);
-    prob_ref.fillDistanceMatrix();
+    prob_ref.fill_distance_matrix();
 
     auto prob_pruned = make_problem_with_data(vecs, names, -1);
     auto stats = dtwc::core::fill_distance_matrix_pruned(prob_pruned, -1);
 
     for (int i = 0; i < N; ++i) {
       for (int j = 0; j < N; ++j) {
-        double ref_val = prob_ref.distByInd(i, j);
-        double pruned_val = prob_pruned.distByInd(i, j);
+        double ref_val = prob_ref.dist_by_ind(i, j);
+        double pruned_val = prob_pruned.dist_by_ind(i, j);
         REQUIRE_THAT(pruned_val, WithinAbs(ref_val, 1e-10));
       }
     }
@@ -254,15 +254,15 @@ TEST_CASE("Pruned distance matrix matches unpruned exactly - synthetic data",
   SECTION("Banded DTW (band = 1)")
   {
     auto prob_ref = make_problem_with_data(vecs, names, 1);
-    prob_ref.fillDistanceMatrix();
+    prob_ref.fill_distance_matrix();
 
     auto prob_pruned = make_problem_with_data(vecs, names, 1);
     auto stats = dtwc::core::fill_distance_matrix_pruned(prob_pruned, 1);
 
     for (int i = 0; i < N; ++i) {
       for (int j = 0; j < N; ++j) {
-        double ref_val = prob_ref.distByInd(i, j);
-        double pruned_val = prob_pruned.distByInd(i, j);
+        double ref_val = prob_ref.dist_by_ind(i, j);
+        double pruned_val = prob_pruned.dist_by_ind(i, j);
         REQUIRE_THAT(pruned_val, WithinAbs(ref_val, 1e-10));
       }
     }
@@ -277,15 +277,15 @@ TEST_CASE("Pruned distance matrix matches unpruned - dummy dataset",
   SECTION("Full DTW (band = -1)")
   {
     auto prob_ref = make_problem_from_dummy(Ndata, -1);
-    prob_ref.fillDistanceMatrix();
+    prob_ref.fill_distance_matrix();
 
     auto prob_pruned = make_problem_from_dummy(Ndata, -1);
     auto stats = dtwc::core::fill_distance_matrix_pruned(prob_pruned, -1);
 
     for (int i = 0; i < prob_ref.size(); ++i) {
       for (int j = 0; j < prob_ref.size(); ++j) {
-        double ref_val = prob_ref.distByInd(i, j);
-        double pruned_val = prob_pruned.distByInd(i, j);
+        double ref_val = prob_ref.dist_by_ind(i, j);
+        double pruned_val = prob_pruned.dist_by_ind(i, j);
         REQUIRE_THAT(pruned_val, WithinAbs(ref_val, 1e-10));
       }
     }
@@ -299,15 +299,15 @@ TEST_CASE("Pruned distance matrix matches unpruned - dummy dataset",
   SECTION("Banded DTW (band = 2)")
   {
     auto prob_ref = make_problem_from_dummy(Ndata, 2);
-    prob_ref.fillDistanceMatrix();
+    prob_ref.fill_distance_matrix();
 
     auto prob_pruned = make_problem_from_dummy(Ndata, 2);
     auto stats = dtwc::core::fill_distance_matrix_pruned(prob_pruned, 2);
 
     for (int i = 0; i < prob_ref.size(); ++i) {
       for (int j = 0; j < prob_ref.size(); ++j) {
-        double ref_val = prob_ref.distByInd(i, j);
-        double pruned_val = prob_pruned.distByInd(i, j);
+        double ref_val = prob_ref.dist_by_ind(i, j);
+        double pruned_val = prob_pruned.dist_by_ind(i, j);
         REQUIRE_THAT(pruned_val, WithinAbs(ref_val, 1e-10));
       }
     }
@@ -320,15 +320,15 @@ TEST_CASE("Pruned distance matrix with more dummy series",
   const int Ndata = 8;
 
   auto prob_ref = make_problem_from_dummy(Ndata, -1);
-  prob_ref.fillDistanceMatrix();
+  prob_ref.fill_distance_matrix();
 
   auto prob_pruned = make_problem_from_dummy(Ndata, -1);
   auto stats = dtwc::core::fill_distance_matrix_pruned(prob_pruned, -1);
 
   for (int i = 0; i < prob_ref.size(); ++i) {
     for (int j = 0; j < prob_ref.size(); ++j) {
-      double ref_val = prob_ref.distByInd(i, j);
-      double pruned_val = prob_pruned.distByInd(i, j);
+      double ref_val = prob_ref.dist_by_ind(i, j);
+      double pruned_val = prob_pruned.dist_by_ind(i, j);
       REQUIRE_THAT(pruned_val, WithinAbs(ref_val, 1e-10));
     }
   }
@@ -843,7 +843,7 @@ TEST_CASE("Pruned routing preserves configured missing-data semantics at N=63/64
 
 // ======== Parallel Pruned + Strategy Integration Tests ========
 
-TEST_CASE("fillDistanceMatrix with Pruned strategy matches BruteForce exactly",
+TEST_CASE("fill_distance_matrix with Pruned strategy matches BruteForce exactly",
           "[pruned_distance_matrix][parallel][strategy]")
 {
   std::vector<std::vector<double>> vecs = {
@@ -860,32 +860,32 @@ TEST_CASE("fillDistanceMatrix with Pruned strategy matches BruteForce exactly",
   {
     auto prob_brute = make_problem_with_data(vecs, names, -1);
     prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob_brute.fillDistanceMatrix();
+    prob_brute.fill_distance_matrix();
 
     auto prob_pruned = make_problem_with_data(vecs, names, -1);
     prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
-    prob_pruned.fillDistanceMatrix();
+    prob_pruned.fill_distance_matrix();
 
     for (int i = 0; i < N; ++i)
       for (int j = 0; j < N; ++j)
-        REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                     WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+        REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                     WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
   }
 
   SECTION("Banded DTW (band = 2)")
   {
     auto prob_brute = make_problem_with_data(vecs, names, 2);
     prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob_brute.fillDistanceMatrix();
+    prob_brute.fill_distance_matrix();
 
     auto prob_pruned = make_problem_with_data(vecs, names, 2);
     prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
-    prob_pruned.fillDistanceMatrix();
+    prob_pruned.fill_distance_matrix();
 
     for (int i = 0; i < N; ++i)
       for (int j = 0; j < N; ++j)
-        REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                     WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+        REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                     WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
   }
 }
 
@@ -903,17 +903,17 @@ TEST_CASE("Auto strategy selects Pruned for Standard DTW",
   // Auto with Standard DTW -> should use Pruned, results must be correct
   auto prob_auto = make_problem_with_data(vecs, names, -1);
   prob_auto.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
-  prob_auto.fillDistanceMatrix();
+  prob_auto.fill_distance_matrix();
 
   // Reference using BruteForce
   auto prob_brute = make_problem_with_data(vecs, names, -1);
   prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_brute.fillDistanceMatrix();
+  prob_brute.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE_THAT(prob_auto.distByInd(i, j),
-                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob_auto.dist_by_ind(i, j),
+                   WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
 }
 
 TEST_CASE("Auto strategy falls back to BruteForce for non-Standard DTW",
@@ -931,17 +931,17 @@ TEST_CASE("Auto strategy falls back to BruteForce for non-Standard DTW",
   auto prob_ddtw_auto = make_problem_with_data(vecs, names, 2);
   prob_ddtw_auto.set_variant(dtwc::core::DTWVariant::DDTW);
   prob_ddtw_auto.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
-  prob_ddtw_auto.fillDistanceMatrix();
+  prob_ddtw_auto.fill_distance_matrix();
 
   auto prob_ddtw_brute = make_problem_with_data(vecs, names, 2);
   prob_ddtw_brute.set_variant(dtwc::core::DTWVariant::DDTW);
   prob_ddtw_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_ddtw_brute.fillDistanceMatrix();
+  prob_ddtw_brute.fill_distance_matrix();
 
   for (int i = 0; i < N; ++i)
     for (int j = 0; j < N; ++j)
-      REQUIRE_THAT(prob_ddtw_auto.distByInd(i, j),
-                   WithinAbs(prob_ddtw_brute.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob_ddtw_auto.dist_by_ind(i, j),
+                   WithinAbs(prob_ddtw_brute.dist_by_ind(i, j), 1e-10));
 }
 
 TEST_CASE("Parallel pruned with larger dummy dataset matches brute-force",
@@ -951,16 +951,16 @@ TEST_CASE("Parallel pruned with larger dummy dataset matches brute-force",
 
   auto prob_brute = make_problem_from_dummy(Ndata, 3);
   prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_brute.fillDistanceMatrix();
+  prob_brute.fill_distance_matrix();
 
   auto prob_pruned = make_problem_from_dummy(Ndata, 3);
   prob_pruned.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
-  prob_pruned.fillDistanceMatrix();
+  prob_pruned.fill_distance_matrix();
 
   for (int i = 0; i < static_cast<int>(prob_brute.size()); ++i)
     for (int j = 0; j < static_cast<int>(prob_brute.size()); ++j)
-      REQUIRE_THAT(prob_pruned.distByInd(i, j),
-                   WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+      REQUIRE_THAT(prob_pruned.dist_by_ind(i, j),
+                   WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
 }
 
 TEST_CASE("DistanceMatrixStrategy enum values are distinct",
@@ -991,7 +991,7 @@ TEST_CASE("Pruned Enhanced/Webb lower-bound strategies match BruteForce exactly"
   for (int band : { 1, 2, 3 }) {
     auto prob_brute = make_problem_with_data(vecs, names, band);
     prob_brute.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-    prob_brute.fillDistanceMatrix();
+    prob_brute.fill_distance_matrix();
 
     for (auto strat : { dtwc::LowerBoundStrategy::Enhanced,
                         dtwc::LowerBoundStrategy::Webb,
@@ -999,14 +999,14 @@ TEST_CASE("Pruned Enhanced/Webb lower-bound strategies match BruteForce exactly"
       auto prob = make_problem_with_data(vecs, names, band);
       prob.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
       prob.set_lb_strategy(strat);
-      prob.fillDistanceMatrix();
+      prob.fill_distance_matrix();
 
       for (int i = 0; i < N; ++i)
         for (int j = 0; j < N; ++j) {
           INFO("band=" << band << " strat=" << static_cast<int>(strat)
                << " (" << i << "," << j << ")");
-          REQUIRE_THAT(prob.distByInd(i, j),
-                       WithinAbs(prob_brute.distByInd(i, j), 1e-10));
+          REQUIRE_THAT(prob.dist_by_ind(i, j),
+                       WithinAbs(prob_brute.dist_by_ind(i, j), 1e-10));
         }
     }
   }

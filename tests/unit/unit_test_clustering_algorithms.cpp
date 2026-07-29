@@ -36,7 +36,7 @@ namespace {
  * @brief Helper: create a Problem loaded with the first N dummy series.
  *
  * Sets sensible defaults for iterative clustering tests
- * (maxIter=100, N_repetition=1). The dummy data uses Pandas-style CSV
+ * (max_iter=100, n_repetitions=1). The dummy data uses Pandas-style CSV
  * (skip first row and first column).
  */
 Problem make_dummy_problem(int N_data, int Nc)
@@ -49,9 +49,9 @@ Problem make_dummy_problem(int N_data, int Nc)
   dl.start_column(1).start_row(1);
 
   dtwc::Problem prob{ "test_clustering", dl };
-  prob.set_numberOfClusters(Nc);
-  prob.maxIter = 100;
-  prob.N_repetition = 1;
+  prob.set_n_clusters(Nc);
+  prob.set_max_iter(100);
+  prob.set_n_repetitions(1);
   // Write test output CSVs to the system temp dir, not the project root/CWD.
   // Without this, tests pollute the working directory with test_clustering*.csv.
   prob.set_output_folder(std::filesystem::temp_directory_path().string());
@@ -112,8 +112,8 @@ TEST_CASE("PAM clustering converges for dummy data", "[Phase1][clustering]")
 
   auto prob = make_dummy_problem(N_data, Nc);
 
-  // Should not throw; should terminate within maxIter.
-  REQUIRE_NOTHROW(prob.cluster_by_kMedoidsLloyd());
+  // Should not throw; should terminate within max_iter.
+  REQUIRE_NOTHROW(prob.cluster_by_kmedoids_lloyd());
 
   // After clustering, labels must be assigned.
   REQUIRE(prob.clusters_ind.size() == static_cast<size_t>(N_data));
@@ -129,7 +129,7 @@ TEST_CASE("Cluster labels are in valid range [0, k)", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
   for (int label : prob.clusters_ind) {
     REQUIRE(label >= 0);
@@ -146,7 +146,7 @@ TEST_CASE("Medoid indices are valid data-point indices", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
   for (int medoid : prob.centroids_ind) {
     REQUIRE(medoid >= 0);
@@ -167,9 +167,9 @@ TEST_CASE("Total cost is non-negative after clustering", "[Phase1][clustering]")
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
-  double cost = prob.findTotalCost();
+  double cost = prob.find_total_cost();
   REQUIRE(cost >= 0.0);
 }
 
@@ -182,14 +182,14 @@ TEST_CASE("Multiple repetitions pick the best (lowest) cost", "[Phase1][clusteri
   constexpr int Nc = 3;
 
   auto prob1 = make_dummy_problem(N_data, Nc);
-  prob1.cluster_by_kMedoidsLloyd();
-  double cost1 = prob1.findTotalCost();
+  prob1.cluster_by_kmedoids_lloyd();
+  double cost1 = prob1.find_total_cost();
 
   // Run with multiple repetitions -- should find a cost <= worst single run.
   auto prob2 = make_dummy_problem(N_data, Nc);
-  prob2.N_repetition = 3;
-  prob2.cluster_by_kMedoidsLloyd();
-  double cost2 = prob2.findTotalCost();
+  prob2.set_n_repetitions(3);
+  prob2.cluster_by_kmedoids_lloyd();
+  double cost2 = prob2.find_total_cost();
 
   // The multi-rep run may or may not beat the single run (depends on seeds),
   // but the cost must be non-negative.
@@ -206,7 +206,7 @@ TEST_CASE("k=1 puts all points in one cluster", "[Phase1][clustering]")
   constexpr int Nc = 1;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
   // Every label should be 0.
   for (int label : prob.clusters_ind) {
@@ -227,14 +227,14 @@ TEST_CASE("k=N makes each point a medoid", "[Phase1][clustering]")
   constexpr int Nc = N_data;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.cluster_by_kMedoidsLloyd();
+  prob.cluster_by_kmedoids_lloyd();
 
   // Each label should be unique in [0, N).
   std::set<int> unique_labels(prob.clusters_ind.begin(), prob.clusters_ind.end());
   REQUIRE(unique_labels.size() == static_cast<size_t>(N_data));
 
   // Total cost should be zero when every point is its own medoid.
-  double cost = prob.findTotalCost();
+  double cost = prob.find_total_cost();
   REQUIRE_THAT(cost, WithinAbs(0.0, 1e-10));
 }
 
@@ -342,17 +342,17 @@ TEST_CASE("init::Kmeanspp translates negative Soft-DTW sampling weights",
 }
 
 // ---------------------------------------------------------------------------
-// assignClusters puts each medoid into its own cluster
+// assign_clusters puts each medoid into its own cluster
 // ---------------------------------------------------------------------------
-TEST_CASE("After assignClusters, each medoid belongs to its own cluster", "[Phase1][clustering]")
+TEST_CASE("After assign_clusters, each medoid belongs to its own cluster", "[Phase1][clustering]")
 {
   constexpr int N_data = 10;
   constexpr int Nc = 3;
 
   auto prob = make_dummy_problem(N_data, Nc);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   init::random(prob);
-  prob.assignClusters();
+  prob.assign_clusters();
 
   // Each medoid should map to a distinct cluster label.
   std::set<int> medoid_labels;

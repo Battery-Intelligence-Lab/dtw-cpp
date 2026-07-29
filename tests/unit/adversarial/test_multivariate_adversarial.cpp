@@ -564,12 +564,12 @@ TEST_CASE("MV adversarial: Problem ndim=3 distance matrix symmetric and finite",
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   for (int i = 0; i < N_SERIES; ++i) {
     for (int j = 0; j < N_SERIES; ++j) {
-      const data_t dij = prob.distByInd(i, j);
-      const data_t dji = prob.distByInd(j, i);
+      const data_t dij = prob.dist_by_ind(i, j);
+      const data_t dji = prob.dist_by_ind(j, i);
 
       // Finite
       REQUIRE(std::isfinite(dij));
@@ -603,22 +603,22 @@ TEST_CASE("MV adversarial: Problem ndim=3, series with different timestep counts
   dtwc::Problem prob;
   prob.set_data(std::move(data));
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // All off-diagonal distances should be positive (series are different)
-  REQUIRE(prob.distByInd(0, 1) >= 0.0);
-  REQUIRE(prob.distByInd(0, 2) >= 0.0);
-  REQUIRE(prob.distByInd(1, 2) >= 0.0);
+  REQUIRE(prob.dist_by_ind(0, 1) >= 0.0);
+  REQUIRE(prob.dist_by_ind(0, 2) >= 0.0);
+  REQUIRE(prob.dist_by_ind(1, 2) >= 0.0);
 
   // Diagonal must be zero
-  REQUIRE_THAT(prob.distByInd(0, 0), WithinAbs(0.0, 1e-10));
-  REQUIRE_THAT(prob.distByInd(1, 1), WithinAbs(0.0, 1e-10));
-  REQUIRE_THAT(prob.distByInd(2, 2), WithinAbs(0.0, 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(0, 0), WithinAbs(0.0, 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(1, 1), WithinAbs(0.0, 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(2, 2), WithinAbs(0.0, 1e-10));
 
   // Symmetry
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(prob.distByInd(1, 0), 1e-10));
-  REQUIRE_THAT(prob.distByInd(0, 2), WithinAbs(prob.distByInd(2, 0), 1e-10));
-  REQUIRE_THAT(prob.distByInd(1, 2), WithinAbs(prob.distByInd(2, 1), 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(prob.dist_by_ind(1, 0), 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(0, 2), WithinAbs(prob.dist_by_ind(2, 0), 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(1, 2), WithinAbs(prob.dist_by_ind(2, 1), 1e-10));
 }
 
 // =============================================================================

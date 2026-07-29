@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Enforced the frozen C++ deprecation policy for all 33 retained 1.x
+  compatibility entities. `Problem::maxIter`/`N_repetition` and the seven
+  legacy Problem I/O overloads now emit their registered replacement
+  diagnostics while remaining behavior-identical; canonical I/O names own the
+  implementations and canonical Problem moves remain warning-silent.
 - Fixed LLFIO-enabled public headers so third-party pragmas no longer suppress
   downstream Clang deprecation diagnostics.
 - Added the frozen C++ `DataLoader::start_column`/`start_row` and

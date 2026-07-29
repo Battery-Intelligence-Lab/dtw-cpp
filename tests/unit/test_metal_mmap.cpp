@@ -3,7 +3,7 @@
  * @brief Verify the Metal backend writes correctly into both
  *        DenseDistanceMatrix and the memory-mapped distance matrix.
  *
- *        The Problem::fillDistanceMatrix() dispatch uses visit_distmat to
+ *        The Problem::fill_distance_matrix() dispatch uses visit_distmat to
  *        route into either storage; this test exercises both paths via the
  *        Metal strategy and confirms the numbers match the CPU reference.
  *
@@ -55,31 +55,31 @@ dtwc::Problem make_problem(size_t N, size_t L, unsigned seed)
 }
 } // namespace
 
-TEST_CASE("Metal strategy via Problem::fillDistanceMatrix (dense)", "[metal][dispatch]")
+TEST_CASE("Metal strategy via Problem::fill_distance_matrix (dense)", "[metal][dispatch]")
 {
   const size_t N = 6;
   const size_t L = 64;
 
   auto prob_cpu = make_problem(N, L, 999);
   prob_cpu.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_cpu.fillDistanceMatrix();
+  prob_cpu.fill_distance_matrix();
 
   auto prob_gpu = make_problem(N, L, 999);
   prob_gpu.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
-  prob_gpu.fillDistanceMatrix();
+  prob_gpu.fill_distance_matrix();
 
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = 0; j < N; ++j) {
       CAPTURE(i, j);
-      double cpu_val = prob_cpu.distByInd(int(i), int(j));
-      double gpu_val = prob_gpu.distByInd(int(i), int(j));
+      double cpu_val = prob_cpu.dist_by_ind(int(i), int(j));
+      double gpu_val = prob_gpu.dist_by_ind(int(i), int(j));
       REQUIRE_THAT(gpu_val,
                    WithinRel(cpu_val, 1e-4) || WithinAbs(cpu_val, 1e-3));
     }
   }
 }
 
-TEST_CASE("Metal strategy via Problem::fillDistanceMatrix (mmap)", "[metal][mmap]")
+TEST_CASE("Metal strategy via Problem::fill_distance_matrix (mmap)", "[metal][mmap]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in");
@@ -92,19 +92,19 @@ TEST_CASE("Metal strategy via Problem::fillDistanceMatrix (mmap)", "[metal][mmap
 
   auto prob_cpu = make_problem(N, L, 777);
   prob_cpu.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
-  prob_cpu.fillDistanceMatrix();
+  prob_cpu.fill_distance_matrix();
 
   auto prob_gpu = make_problem(N, L, 777);
   prob_gpu.set_output_folder(tmpdir);
   prob_gpu.distance_strategy = dtwc::DistanceMatrixStrategy::Metal;
   prob_gpu.use_mmap_distance_matrix(tmpdir / "metal_mmap_distmat.bin");
-  prob_gpu.fillDistanceMatrix();
+  prob_gpu.fill_distance_matrix();
 
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = 0; j < N; ++j) {
       CAPTURE(i, j);
-      double cpu_val = prob_cpu.distByInd(int(i), int(j));
-      double gpu_val = prob_gpu.distByInd(int(i), int(j));
+      double cpu_val = prob_cpu.dist_by_ind(int(i), int(j));
+      double gpu_val = prob_gpu.dist_by_ind(int(i), int(j));
       REQUIRE_THAT(gpu_val,
                    WithinRel(cpu_val, 1e-4) || WithinAbs(cpu_val, 1e-3));
     }

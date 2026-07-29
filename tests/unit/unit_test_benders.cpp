@@ -54,7 +54,7 @@ Problem make_problem(const std::vector<double> &values, int k,
 
   Problem prob("benders_test");
   prob.set_data(Data(std::move(p_vec), std::move(p_names)));
-  prob.set_numberOfClusters(k);
+  prob.set_n_clusters(k);
   prob.set_method(Method::MIP);
   prob.mip_settings.benders = benders;
   prob.mip_settings.warm_start = true;
@@ -72,7 +72,7 @@ double compute_cost(Problem &prob)
   double cost = 0.0;
   for (int j = 0; j < prob.size(); ++j) {
     int med = prob.centroids_ind[prob.clusters_ind[j]];
-    cost += prob.distByInd(j, med);
+    cost += prob.dist_by_ind(j, med);
   }
   return cost;
 }
@@ -81,7 +81,7 @@ double compute_cost(Problem &prob)
  * @brief Check that HiGHS produced a valid solution.
  *
  * When HiGHS is not compiled in, Benders returns without modifying
- * centroids_ind. However, set_numberOfClusters() pre-sizes it with
+ * centroids_ind. However, set_n_clusters() pre-sizes it with
  * default (0) values via resize(). We detect a "no solver ran" state
  * by checking if all centroids are at index 0 AND clusters_ind is
  * all zeros — the solver would set meaningful values.

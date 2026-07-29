@@ -71,7 +71,7 @@ TEST_CASE("Binary checkpoint save and load", "[checkpoint][binary]")
 
   constexpr int N = 8;
   auto prob = make_problem_bin(N);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // Run clustering to get state
   auto result = dtwc::fast_pam(prob, 3, 100);

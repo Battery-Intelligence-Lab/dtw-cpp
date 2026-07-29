@@ -44,16 +44,16 @@ static Problem make_synthetic_problem(
   Problem prob(name);
   prob.set_data(Data(std::move(vecs), std::move(names)));
   prob.set_output_folder(std::filesystem::temp_directory_path());
-  prob.refreshDistanceMatrix();
+  prob.refresh_distance_matrix();
   return prob;
 }
 
 // Helper: run the k-medoids clustering and return the problem (mutated in-place).
 static void run_clustering(Problem &prob, int k, int max_iter = 100, int n_rep = 1)
 {
-  prob.set_numberOfClusters(k);
-  prob.maxIter = max_iter;
-  prob.N_repetition = n_rep;
+  prob.set_n_clusters(k);
+  prob.set_max_iter(max_iter);
+  prob.set_n_repetitions(n_rep);
   prob.set_method(Method::Kmedoids);
   prob.cluster();
 }
@@ -63,7 +63,7 @@ static double compute_total_cost(Problem &prob)
 {
   double cost = 0.0;
   for (int i = 0; i < prob.size(); ++i)
-    cost += prob.distByInd(i, prob.centroid_of(i));
+    cost += prob.dist_by_ind(i, prob.centroid_of(i));
   return cost;
 }
 
@@ -215,7 +215,7 @@ TEST_CASE("Adversarial: k=1 puts all points in cluster 0", "[adversarial][pam][k
   for (int candidate = 0; candidate < prob.size(); ++candidate) {
     double candidate_cost = 0.0;
     for (int j = 0; j < prob.size(); ++j)
-      candidate_cost += prob.distByInd(candidate, j);
+      candidate_cost += prob.dist_by_ind(candidate, j);
     // The chosen medoid should be at least as good as any other
     REQUIRE(best_cost <= candidate_cost + 1e-10);
   }
@@ -292,10 +292,10 @@ TEST_CASE("Adversarial: Better than random medoid selection", "[adversarial][pam
 
     // Create a fresh problem and assign clusters using these medoids
     auto rprob = make_synthetic_problem(series);
-    rprob.fillDistanceMatrix();
-    rprob.set_numberOfClusters(k);
+    rprob.fill_distance_matrix();
+    rprob.set_n_clusters(k);
     rprob.set_clusters(random_medoids);
-    rprob.assignClusters();
+    rprob.assign_clusters();
     double random_cost = compute_total_cost(rprob);
 
     worst_random_cost = std::max(worst_random_cost, random_cost);
@@ -420,7 +420,7 @@ TEST_CASE("Adversarial: Identical series get same cluster label", "[adversarial]
   // Use multiple random restarts — the algorithm keeps the min-cost solution,
   // and for trivially separable data, only the "one medoid per group" init yields
   // zero cost. A fixed seed is not platform-robust (RNG-driven init interacts with
-  // std::lib floating-point sampling), so we let N_repetition=10 find the optimum.
+  // std::lib floating-point sampling), so we let n_repetitions=10 find the optimum.
   dtwc::randGenerator.seed(12345);
   auto prob = make_synthetic_problem(series);
   run_clustering(prob, 2, /*max_iter=*/100, /*n_rep=*/10);

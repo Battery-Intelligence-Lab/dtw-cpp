@@ -43,7 +43,7 @@ namespace {
  * @brief Build a Problem from raw time-series vectors.
  *
  * Each inner vector is one time series. Names are auto-generated ("s0", "s1", ...).
- * After construction, fillDistanceMatrix() is called so all pairwise DTW distances
+ * After construction, fill_distance_matrix() is called so all pairwise DTW distances
  * are available.
  */
 dtwc::Problem make_problem(std::vector<std::vector<double>> series)
@@ -72,7 +72,7 @@ void assign_clusters(dtwc::Problem &prob, int k,
                      std::vector<int> cluster_ids,
                      std::vector<int> centroids)
 {
-  prob.set_numberOfClusters(k);
+  prob.set_n_clusters(k);
   prob.clusters_ind = std::move(cluster_ids);
   prob.centroids_ind = std::move(centroids);
 }
@@ -106,7 +106,7 @@ TEST_CASE("Silhouette: well-separated clusters approach 1.0",
     /*cluster_ids=*/ {0, 0, 0, 1, 1, 1},
     /*centroids=*/   {0, 3});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 6);
@@ -134,7 +134,7 @@ TEST_CASE("Silhouette: all scores in [-1, 1]",
     /*cluster_ids=*/ {0, 0, 1, 1, 0},  // point 4 misassigned to cluster 0
     /*centroids=*/   {0, 2});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 5);
@@ -161,7 +161,7 @@ TEST_CASE("Silhouette: single-point cluster gives silhouette = 0",
     /*cluster_ids=*/ {0, 1, 2},
     /*centroids=*/   {0, 1, 2});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 3);
@@ -186,7 +186,7 @@ TEST_CASE("Silhouette: mixed single-point and multi-point clusters",
     /*cluster_ids=*/ {0, 1, 1},
     /*centroids=*/   {0, 1});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 3);
@@ -212,7 +212,7 @@ TEST_CASE("Silhouette: two-point problem, each in own cluster",
     /*cluster_ids=*/ {0, 1},
     /*centroids=*/   {0, 1});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 2);
@@ -240,7 +240,7 @@ TEST_CASE("Silhouette: symmetric for identical clusters gives ~0",
     /*cluster_ids=*/ {0, 0, 1, 1},
     /*centroids=*/   {0, 2});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 4);
@@ -277,7 +277,7 @@ TEST_CASE("Silhouette: misassigned point has negative silhouette",
     /*cluster_ids=*/ {0, 0, 0, 1, 1},
     /*centroids=*/   {0, 3});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 5);
@@ -338,7 +338,7 @@ TEST_CASE("Silhouette: hand-computed values for 4-point, 2-cluster case",
     /*cluster_ids=*/ {0, 0, 1, 1},
     /*centroids=*/   {0, 2});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 4);
@@ -372,13 +372,13 @@ TEST_CASE("Silhouette: average silhouette is symmetric under cluster relabeling"
   // Labeling A: {0,0,1,1}
   auto probA = make_problem(series);
   assign_clusters(probA, 2, {0, 0, 1, 1}, {0, 2});
-  probA.fillDistanceMatrix();
+  probA.fill_distance_matrix();
   auto silA = dtwc::scores::silhouette(probA);
 
   // Labeling B: {1,1,0,0}  (swapped labels)
   auto probB = make_problem(series);
   assign_clusters(probB, 2, {1, 1, 0, 0}, {2, 0});
-  probB.fillDistanceMatrix();
+  probB.fill_distance_matrix();
   auto silB = dtwc::scores::silhouette(probB);
 
   REQUIRE(silA.size() == silB.size());
@@ -414,7 +414,7 @@ TEST_CASE("Silhouette: three clusters, hand-computed",
     {0, 0, 1, 1, 2, 2},
     {0, 2, 4});
 
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
   auto sil = dtwc::scores::silhouette(prob);
 
   REQUIRE(sil.size() == 6);
@@ -458,9 +458,9 @@ TEST_CASE("DBI: non-negative",
     {10, 10, 10}, {11, 11, 11},
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  double dbi = dtwc::scores::daviesBouldinIndex(prob);
+  double dbi = dtwc::scores::davies_bouldin(prob);
   REQUIRE(dbi >= 0.0);
 }
 
@@ -472,9 +472,9 @@ TEST_CASE("DBI: well-separated clusters have low DBI",
     {100, 100, 100}, {100, 100, 100}, {100, 100, 100},
   });
   assign_clusters(prob, 2, {0, 0, 0, 1, 1, 1}, {0, 3});
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  double dbi = dtwc::scores::daviesBouldinIndex(prob);
+  double dbi = dtwc::scores::davies_bouldin(prob);
   // Perfect separation: S_i = 0 for both clusters => DBI = 0
   REQUIRE_THAT(dbi, WithinAbs(0.0, 1e-10));
 }
@@ -486,10 +486,10 @@ TEST_CASE("DBI: single cluster returns 0 or handles gracefully",
     {1, 2, 3}, {4, 5, 6}, {7, 8, 9},
   });
   assign_clusters(prob, 1, {0, 0, 0}, {0});
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // With k=1, no other cluster to compare => DBI should be 0
-  double dbi = dtwc::scores::daviesBouldinIndex(prob);
+  double dbi = dtwc::scores::davies_bouldin(prob);
   REQUIRE(dbi >= 0.0);
 }
 
@@ -501,7 +501,7 @@ TEST_CASE("CH index: positive for well-separated clusters",
     {100, 100, 100}, {100, 100, 100},
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   double ch = dtwc::scores::CH_index(prob);
   REQUIRE(ch > 0.0);
@@ -514,7 +514,7 @@ TEST_CASE("CH index: k=1 handles gracefully (division by k-1)",
     {1, 2, 3}, {4, 5, 6},
   });
   assign_clusters(prob, 1, {0, 0}, {0});
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
   // k-1 = 0 => division by zero. Should handle gracefully.
   // Expect 0, NaN, or exception -- not a crash.
@@ -534,7 +534,7 @@ TEST_CASE("ARI: perfect agreement gives 1.0",
 {
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {0, 0, 1, 1};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
 
@@ -544,7 +544,7 @@ TEST_CASE("ARI: perfect agreement with different label names gives 1.0",
   // Cluster labels are permuted: 0->1, 1->0.  Same partition.
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {1, 1, 0, 0};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
 
@@ -555,7 +555,7 @@ TEST_CASE("ARI: anti-correlated labels give negative ARI",
   // Known ARI = -0.5 for this 4-element case.
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {0, 1, 0, 1};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   // Verify: ARI < 0
   REQUIRE(ari < 0.0);
   // Known analytical value for this configuration = -0.5
@@ -571,7 +571,7 @@ TEST_CASE("ARI: all-same labels in both partitions — degenerate case",
   // denominator == 0 => ARI = 1.0 (convention in implementation).
   std::vector<int> labels = {0, 0, 0, 0};
   std::vector<int> pred   = {0, 0, 0, 0};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   // Should not crash and return a finite value
   REQUIRE(std::isfinite(ari));
   // Implementation returns 1.0 for the degenerate denominator==0 case
@@ -583,7 +583,7 @@ TEST_CASE("ARI: mismatched label-vector sizes throw",
 {
   std::vector<int> labels = {0, 1, 0};
   std::vector<int> pred   = {0, 1};
-  REQUIRE_THROWS_AS(dtwc::scores::adjustedRandIndex(labels, pred),
+  REQUIRE_THROWS_AS(dtwc::scores::adjusted_rand(labels, pred),
                     std::invalid_argument);
 }
 
@@ -593,7 +593,7 @@ TEST_CASE("ARI: single element — degenerate, must not crash",
   std::vector<int> labels = {0};
   std::vector<int> pred   = {0};
   // n=1 => cn2 = C(1,2) = 0, sum_ai2=0, sum_bj2=0, expected=0, max_val=0 => denom=0 => ARI=1.0
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE(std::isfinite(ari));
 }
 
@@ -602,7 +602,7 @@ TEST_CASE("ARI: two elements, one pair, perfect agreement",
 {
   std::vector<int> labels = {0, 0};
   std::vector<int> pred   = {0, 0};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE(std::isfinite(ari));
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
@@ -612,8 +612,8 @@ TEST_CASE("ARI: symmetry — ARI(a,b) == ARI(b,a)",
 {
   std::vector<int> a = {0, 0, 1, 1, 2, 2};
   std::vector<int> b = {0, 1, 1, 2, 2, 0};
-  double ari_ab = dtwc::scores::adjustedRandIndex(a, b);
-  double ari_ba = dtwc::scores::adjustedRandIndex(b, a);
+  double ari_ab = dtwc::scores::adjusted_rand(a, b);
+  double ari_ba = dtwc::scores::adjusted_rand(b, a);
   REQUIRE_THAT(ari_ab, WithinAbs(ari_ba, 1e-12));
 }
 
@@ -631,7 +631,7 @@ TEST_CASE("ARI: large random labels stay in a finite range",
     labels[i] = dist(rng);
     pred[i]   = dist(rng);
   }
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   INFO("Large-scale random ARI = " << ari);
   REQUIRE(std::isfinite(ari));
   // For truly random labels, ARI should be near 0; allow generous tolerance
@@ -658,7 +658,7 @@ TEST_CASE("ARI: step-by-step contingency-table verification",
   // ARI = (2 - 2/3) / (2 - 2/3) = 1.0
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {0, 0, 1, 1};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(1.0, 1e-12));
 }
 
@@ -683,7 +683,7 @@ TEST_CASE("ARI: non-trivial 6-element case, hand-computed",
 
   std::vector<int> labels = {0, 0, 0, 1, 1, 1};
   std::vector<int> pred   = {0, 0, 1, 1, 1, 1};
-  double ari = dtwc::scores::adjustedRandIndex(labels, pred);
+  double ari = dtwc::scores::adjusted_rand(labels, pred);
   REQUIRE_THAT(ari, WithinAbs(expected_ari, 1e-10));
 }
 
@@ -696,7 +696,7 @@ TEST_CASE("NMI: perfect agreement gives 1.0",
 {
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {0, 0, 1, 1};
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
@@ -705,7 +705,7 @@ TEST_CASE("NMI: perfect agreement with permuted labels gives 1.0",
 {
   std::vector<int> labels = {0, 0, 1, 1};
   std::vector<int> pred   = {1, 1, 0, 0};
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
@@ -716,7 +716,7 @@ TEST_CASE("NMI: all-same labels — degenerate, H=0",
   // denom = 0 => implementation returns 1.0.
   std::vector<int> labels = {0, 0, 0, 0};
   std::vector<int> pred   = {0, 0, 0, 0};
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE(std::isfinite(nmi));
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
@@ -733,7 +733,7 @@ TEST_CASE("NMI: result is always in [0, 1]",
     {{0,1,2,3}, {0,1,2,3}},
   };
   for (auto &[a, b] : cases) {
-    double nmi = dtwc::scores::normalizedMutualInformation(a, b);
+    double nmi = dtwc::scores::normalized_mutual_info(a, b);
     INFO("NMI = " << nmi);
     REQUIRE(std::isfinite(nmi));
     REQUIRE(nmi >= -1e-12);  // Allow tiny floating-point slack below 0
@@ -746,8 +746,8 @@ TEST_CASE("NMI: symmetry — NMI(a,b) == NMI(b,a)",
 {
   std::vector<int> a = {0, 0, 1, 1, 2, 2};
   std::vector<int> b = {0, 1, 1, 2, 2, 0};
-  double nmi_ab = dtwc::scores::normalizedMutualInformation(a, b);
-  double nmi_ba = dtwc::scores::normalizedMutualInformation(b, a);
+  double nmi_ab = dtwc::scores::normalized_mutual_info(a, b);
+  double nmi_ba = dtwc::scores::normalized_mutual_info(b, a);
   REQUIRE_THAT(nmi_ab, WithinAbs(nmi_ba, 1e-12));
 }
 
@@ -756,7 +756,7 @@ TEST_CASE("NMI: mismatched sizes throw",
 {
   std::vector<int> a = {0, 1};
   std::vector<int> b = {0, 1, 0};
-  REQUIRE_THROWS_AS(dtwc::scores::normalizedMutualInformation(a, b),
+  REQUIRE_THROWS_AS(dtwc::scores::normalized_mutual_info(a, b),
                     std::invalid_argument);
 }
 
@@ -765,7 +765,7 @@ TEST_CASE("NMI: single element — degenerate, must not crash",
 {
   std::vector<int> labels = {0};
   std::vector<int> pred   = {0};
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE(std::isfinite(nmi));
 }
 
@@ -781,7 +781,7 @@ TEST_CASE("NMI: large random labels — stays finite and in range",
     labels[i] = dist(rng);
     pred[i]   = dist(rng);
   }
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   INFO("Large-scale random NMI = " << nmi);
   REQUIRE(std::isfinite(nmi));
   REQUIRE(nmi >= -1e-9);
@@ -794,7 +794,7 @@ TEST_CASE("NMI: hand-computed 3-class balanced case",
   // labels = pred = {0,0,1,1,2,2} => perfect, NMI = 1.0
   std::vector<int> labels = {0, 0, 1, 1, 2, 2};
   std::vector<int> pred   = {0, 0, 1, 1, 2, 2};
-  double nmi = dtwc::scores::normalizedMutualInformation(labels, pred);
+  double nmi = dtwc::scores::normalized_mutual_info(labels, pred);
   REQUIRE_THAT(nmi, WithinAbs(1.0, 1e-12));
 }
 
@@ -815,7 +815,7 @@ TEST_CASE("Dunn: well-separated clusters give high value",
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   // max_intra = 0 => implementation returns +infinity
   REQUIRE(std::isinf(dunn));
   REQUIRE(dunn > 0.0);
@@ -832,7 +832,7 @@ TEST_CASE("Dunn: non-negative for any valid clustering",
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   INFO("Dunn = " << dunn);
   REQUIRE(dunn > 0.0);
 }
@@ -842,7 +842,7 @@ TEST_CASE("Dunn: unclustered problem throws",
 {
   auto prob = make_problem({{1.0, 2.0}, {3.0, 4.0}});
   // Do NOT set centroids
-  REQUIRE_THROWS_AS(dtwc::scores::dunnIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::dunn(prob), std::runtime_error);
 }
 
 TEST_CASE("Dunn: all distances zero (identical points) returns infinity",
@@ -859,7 +859,7 @@ TEST_CASE("Dunn: all distances zero (identical points) returns infinity",
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   REQUIRE(std::isinf(dunn));
 }
 
@@ -879,7 +879,7 @@ TEST_CASE("Dunn: singleton cluster and multi-point cluster",
   });
   assign_clusters(prob, 2, {0, 0, 1}, {0, 2});
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   // d(0,1)=0 => max_intra=0 => Dunn = +inf
   REQUIRE(std::isinf(dunn));
   REQUIRE(dunn > 0.0);
@@ -899,7 +899,7 @@ TEST_CASE("Dunn: hand-computed value for 4-point clustering",
   auto prob = make_problem({{0.0}, {2.0}, {10.0}, {12.0}});
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
 
-  double dunn = dtwc::scores::dunnIndex(prob);
+  double dunn = dtwc::scores::dunn(prob);
   REQUIRE_THAT(dunn, WithinAbs(4.0, 1e-10));
 }
 
@@ -916,7 +916,7 @@ TEST_CASE("CH: positive for well-separated clusters",
   });
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
 
-  double ch = dtwc::scores::calinskiHarabaszIndex(prob);
+  double ch = dtwc::scores::calinski_harabasz(prob);
   INFO("CH = " << ch);
   REQUIRE(std::isfinite(ch));
   REQUIRE(ch > 0.0);
@@ -931,7 +931,7 @@ TEST_CASE("CH: k=1 throws (k-1=0 division by zero)",
   assign_clusters(prob, 1, {0, 0, 0}, {0});
 
   // Implementation explicitly throws for k <= 1
-  REQUIRE_THROWS_AS(dtwc::scores::calinskiHarabaszIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
 }
 
 TEST_CASE("CH: k=N (each point in own cluster) throws",
@@ -944,7 +944,7 @@ TEST_CASE("CH: k=N (each point in own cluster) throws",
   });
   assign_clusters(prob, 3, {0, 1, 2}, {0, 1, 2});
 
-  REQUIRE_THROWS_AS(dtwc::scores::calinskiHarabaszIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
 }
 
 TEST_CASE("CH: unclustered problem throws",
@@ -952,7 +952,7 @@ TEST_CASE("CH: unclustered problem throws",
 {
   auto prob = make_problem({{1.0}, {2.0}, {3.0}, {4.0}});
   // centroids_ind is empty
-  REQUIRE_THROWS_AS(dtwc::scores::calinskiHarabaszIndex(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
 }
 
 TEST_CASE("CH: better clustering has higher CH than worse one",
@@ -967,11 +967,11 @@ TEST_CASE("CH: better clustering has higher CH than worse one",
 
   auto prob_good = make_problem(series);
   assign_clusters(prob_good, 2, {0, 0, 1, 1}, {0, 2});
-  double ch_good = dtwc::scores::calinskiHarabaszIndex(prob_good);
+  double ch_good = dtwc::scores::calinski_harabasz(prob_good);
 
   auto prob_bad = make_problem(series);
   assign_clusters(prob_bad, 2, {0, 1, 0, 1}, {0, 1});
-  double ch_bad = dtwc::scores::calinskiHarabaszIndex(prob_bad);
+  double ch_bad = dtwc::scores::calinski_harabasz(prob_bad);
 
   INFO("CH good=" << ch_good << " bad=" << ch_bad);
   REQUIRE(ch_good > ch_bad);
@@ -987,7 +987,7 @@ TEST_CASE("CH: three-cluster case is finite and positive",
   });
   assign_clusters(prob, 3, {0,0,1,1,2,2}, {0,2,4});
 
-  double ch = dtwc::scores::calinskiHarabaszIndex(prob);
+  double ch = dtwc::scores::calinski_harabasz(prob);
   INFO("CH (3 clusters) = " << ch);
   REQUIRE(std::isfinite(ch));
   REQUIRE(ch > 0.0);

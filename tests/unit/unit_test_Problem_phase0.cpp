@@ -57,40 +57,40 @@ TEST_CASE("[Phase0] writeMedoids throws std::runtime_error on bad path",
   // Build a small problem and set the output folder to an invalid path
   // so that writeMedoids fails to open the file.
   Problem prob = make_small_problem(5);
-  prob.set_numberOfClusters(2);
-  prob.N_repetition = 1;
-  prob.maxIter = 1;
+  prob.set_n_clusters(2);
+  prob.set_n_repetitions(1);
+  prob.set_max_iter(1);
 
   // Point output to a non-existent directory that cannot be created.
   // On both Windows and Unix this should fail to open a file.
   prob.set_output_folder("/nonexistent_dir_phase0_test/deep/nested/path");
 
-  // cluster_by_kMedoidsLloyd() eventually calls writeMedoids() which
+  // cluster_by_kmedoids_lloyd() eventually calls writeMedoids() which
   // currently does `throw 1` (an int).
   // After the fix it should throw std::runtime_error.
   //
   // EXPECTED TO FAIL on unmodified code: REQUIRE_THROWS_AS expects
   // std::runtime_error but gets int.
-  REQUIRE_THROWS_AS(prob.cluster_by_kMedoidsLloyd(), std::runtime_error);
+  REQUIRE_THROWS_AS(prob.cluster_by_kmedoids_lloyd(), std::runtime_error);
 }
 
 // ---------------------------------------------------------------------------
-// Test 4: fillDistanceMatrix properties
+// Test 4: fill_distance_matrix properties
 // ---------------------------------------------------------------------------
-TEST_CASE("[Phase0] fillDistanceMatrix properties",
+TEST_CASE("[Phase0] fill_distance_matrix properties",
           "[Phase0][Problem][distanceMatrix]")
 {
   constexpr int N = 5;
   Problem prob = make_small_problem(N);
 
   // Fill the distance matrix.
-  prob.fillDistanceMatrix();
-  REQUIRE(prob.isDistanceMatrixFilled());
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
 
   SECTION("diagonal is zero")
   {
     for (int i = 0; i < N; ++i) {
-      const double d = prob.distByInd(i, i);
+      const double d = prob.dist_by_ind(i, i);
       REQUIRE_THAT(d, WithinAbs(0.0, 1e-15));
     }
   }
@@ -99,8 +99,8 @@ TEST_CASE("[Phase0] fillDistanceMatrix properties",
   {
     for (int i = 0; i < N; ++i) {
       for (int j = i + 1; j < N; ++j) {
-        const double dij = prob.distByInd(i, j);
-        const double dji = prob.distByInd(j, i);
+        const double dij = prob.dist_by_ind(i, j);
+        const double dji = prob.dist_by_ind(j, i);
         REQUIRE_THAT(dij, WithinAbs(dji, 1e-15));
       }
     }
@@ -110,7 +110,7 @@ TEST_CASE("[Phase0] fillDistanceMatrix properties",
   {
     for (int i = 0; i < N; ++i) {
       for (int j = 0; j < N; ++j) {
-        REQUIRE(prob.distByInd(i, j) >= 0.0);
+        REQUIRE(prob.dist_by_ind(i, j) >= 0.0);
       }
     }
   }

@@ -324,11 +324,11 @@ TEST_CASE("Problem ZeroCost ndim=2: distances are finite and non-negative", "[mv
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  double d01 = prob.distByInd(0, 1);
-  double d02 = prob.distByInd(0, 2);
-  double d12 = prob.distByInd(1, 2);
+  double d01 = prob.dist_by_ind(0, 1);
+  double d02 = prob.dist_by_ind(0, 2);
+  double d12 = prob.dist_by_ind(1, 2);
 
   REQUIRE(d01 >= 0.0);
   REQUIRE(d02 >= 0.0);
@@ -356,8 +356,8 @@ TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missin
   prob_clean.set_data(std::move(data_clean));
   prob_clean.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob_clean.set_verbose(false);
-  prob_clean.fillDistanceMatrix();
-  double d_clean = prob_clean.distByInd(0, 1);
+  prob_clean.fill_distance_matrix();
+  double d_clean = prob_clean.dist_by_ind(0, 1);
 
   dtwc::Data data_nan;
   data_nan.ndim = 2;
@@ -371,8 +371,8 @@ TEST_CASE("Problem ZeroCost ndim=2: NaN reduces distance vs clean", "[mv][missin
   prob_nan.set_data(std::move(data_nan));
   prob_nan.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob_nan.set_verbose(false);
-  prob_nan.fillDistanceMatrix();
-  double d_nan = prob_nan.distByInd(0, 1);
+  prob_nan.fill_distance_matrix();
+  double d_nan = prob_nan.dist_by_ind(0, 1);
 
   // NaN removes the large channel-1 cost at t=0, so d_nan < d_clean
   REQUIRE(d_nan < d_clean);
@@ -392,9 +392,9 @@ TEST_CASE("Problem ZeroCost ndim=2: identical series gives 0", "[mv][missing][pr
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  REQUIRE_THAT(prob.distByInd(0, 1), WithinAbs(0.0, 1e-10));
+  REQUIRE_THAT(prob.dist_by_ind(0, 1), WithinAbs(0.0, 1e-10));
 }
 
 TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][problem]")
@@ -410,9 +410,9 @@ TEST_CASE("Problem ZeroCost ndim=1 still works correctly", "[mv][missing][proble
   prob.set_data(std::move(data));
   prob.missing_strategy = dtwc::core::MissingStrategy::ZeroCost;
   prob.set_verbose(false);
-  prob.fillDistanceMatrix();
+  prob.fill_distance_matrix();
 
-  double d = prob.distByInd(0, 1);
+  double d = prob.dist_by_ind(0, 1);
   REQUIRE(d >= 0.0);
   REQUIRE(!dtwc::is_missing(d));
 }
