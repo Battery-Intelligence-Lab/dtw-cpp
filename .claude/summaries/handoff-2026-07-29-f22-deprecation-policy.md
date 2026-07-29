@@ -24,6 +24,15 @@
   leaks a Clang diagnostic ignore; llfio-OFF reports the expected 24/33.
 - Localized and registered that prerequisite as F45 in
   `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
+- Closed F45 in product commit `392d3ed`: one product-owned LLFIO wrapper
+  restores Clang diagnostic state at both public-header boundaries.
+- Passed the four-profile actual ON/OFF compiler gate, killed all 3/3
+  registered mutants with exact source restoration, and proved both F22
+  drivers now report the identical 24/33 expected-red ledger.
+- Rebuilt and passed canonical 122/122 with six exact capability skips and
+  llfio-OFF 122/122 with nine. A concurrent-matrix run was rejected as harness
+  evidence after shared source-root `CSV` collisions; the two affected tests
+  passed 2/2 in each unchanged build before both serial full passes.
 
 ## Decisions
 
@@ -43,13 +52,17 @@
 - Do not filter LLFIO out of the F22 compiler driver. F45 must contain the
   third-party diagnostic state at both product include boundaries, after which
   canonical LLFIO-ON must match llfio-OFF at 24/33 before F22 resumes.
+- Use the real `build/nollfio` compile database for the F45 OFF profile; a
+  canonical-context flag filter is not configuration evidence.
+- Run full configured CTest matrices serially while their generated metadata
+  gives every test the repository source root as its working directory.
 
 ## Exact resume point
 
-Commit the F45 registration as its own `docs:` commit. Then implement only the
-registered LLFIO include wrapper and three-mutation gate, prove canonical and
-llfio-OFF both report 24/33, and close F45. Resume F22 by adding its exhaustive
-C++ behavior fixture before beginning alias product attempt 1/2.
+Commit the F45 closure records as their own `docs:` commit. Then add the
+exhaustive self-contained C++ behavior fixture to the existing
+`test_problem_api_2_0` target, preserving the CTest inventory, before beginning
+F22 alias product attempt 1/2.
 
 ## Open risks
 

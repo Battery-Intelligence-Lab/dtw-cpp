@@ -272,8 +272,9 @@ F22_CPP_DIAGNOSTICS inventory=33/33 legacy=24/33 canonical_silent=33/33 overload
 ```
 
 The exact upstream leak and its separately registered repair are F45; see
-`.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`. It must close
-before an F22 C++ product attempt.
+`.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`. F45 closed in
+`392d3ed`; canonical LLFIO-ON and actual llfio-OFF now print the identical
+24/33 expected-red ledger above. F22 product attempt 1 remains unused.
 
 ### Python runtime policy
 

@@ -613,6 +613,15 @@ Critical knowledge to avoid repeating mistakes.
   deprecated sentinel after each public include under `-Werror`; OFF does not
   prove ON. Evidence:
   `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
+- **Different CTest build matrices are not process-isolated when tests use the
+  source root as their working directory. [confirmed]** Running canonical and
+  llfio-OFF matrices concurrently made both `unit_test_fileOperations`
+  processes create/remove the same relative `CSV` directory; one matrix
+  reported locked-file failures and an unrelated adversarial executable exited
+  `0xc0000409`. Both named tests then passed 2/2 in each unchanged build, and
+  both complete matrices passed serially. Run configured matrices one at a
+  time unless every artifact path is build-local. Evidence:
+  `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
 
 ## LR-core Solver (Phase 4)
 

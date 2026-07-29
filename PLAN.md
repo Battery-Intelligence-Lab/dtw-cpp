@@ -711,14 +711,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       (invalid/unwritable base) in a real process and require a typed
       `dtwc::` error with an actionable message, never a raw filesystem
       exception; the inherited code must fail this gate.
-- [ ] **F45 — canonical LLFIO-ON public headers suppress all downstream Clang
+- [x] **F45 — canonical LLFIO-ON public headers suppress all downstream Clang
       deprecation diagnostics.** quickcpplib's `ringbuffer_log.hpp`, included
       by LLFIO, installs a bare ignore with no push/pop. The unmasked F22
       driver reports canonical 0/33 versus llfio-OFF 24/33 [confirmed].
       First gate: bracket the dependency at both mmap public-header boundaries,
       compile a deprecated sentinel after each header, kill three registered
       mutations, and require LLFIO-ON and OFF to agree at 24/33 before F22
-      alias product work. Evidence:
+      alias product work. Product attempt 1 (`392d3ed`) passes all four compiler
+      profiles, 3/3 mutations, exact ON/OFF 24/33 parity, and both serial
+      122-test matrices. Evidence:
       `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
@@ -1253,6 +1255,13 @@ colour system transfer verbatim**.
   or count a masked result. Add one product-owned include wrapper, direct
   probes for both mmap public headers, three mutation kills, and require the
   canonical LLFIO-ON ledger to match llfio-OFF at 24/33 before F22 resumes.
+- 2026-07-29 (F45 closure): Retain product attempt 1, `392d3ed`. The wrapper is
+  the sole raw LLFIO include and both mmap headers route through it; actual
+  canonical/llfio-OFF contexts pass 4/4 direct profiles, all three registered
+  mutants lose the exact expected diagnostics and restore exact bytes, and
+  both F22 drivers agree at 24/33. Full matrices pass only as serial evidence:
+  running them concurrently collides on source-root relative test artifacts.
+  F22 product attempt 1 remains unused.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1301,3 +1310,8 @@ colour system transfer verbatim**.
   LLFIO-ON reports 0/33. The independent probe localizes the C++ disagreement
   to quickcpplib's unbalanced diagnostic pragma. F45 is registered and must
   close before F22 product attempt 1.
+- 2026-07-29 (F45 CLOSED): `392d3ed` contains quickcpplib's diagnostic state
+  at both public-header boundaries. Direct compiler profiles pass 4/4, mutants
+  die 3/3 with exact restoration, canonical and llfio-OFF F22 ledgers are
+  identical at 24/33, and the serial full matrices pass 122/122 with exact
+  six/nine skips. Resume F22 at its exhaustive C++ behavior fixture.
