@@ -678,6 +678,7 @@ function test_f22_matlab_deprecation_policy(testCase)
     end
 
     f22_verify_config_setter_atomicity(testCase);
+    f22_verify_warning_precedes_config_effect(testCase, warningId);
 
     constructorConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
     constructorSilent = constructorConstraint.satisfiedBy( ...
@@ -685,24 +686,24 @@ function test_f22_matlab_deprecation_policy(testCase)
     constructed = constructorConstraint.FunctionOutputs{1};
     verifyTrue(testCase, constructorSilent, ...
         'dtwc.Problem construction emitted a deprecation warning.');
-    verifyClass(testCase, constructed, 'dtwc.Problem');
-    verifyEqual(testCase, constructed.name(), 'f22_constructor_silent');
+    assertClass(testCase, constructed, 'dtwc.Problem');
+    assertEqual(testCase, constructed.name(), 'f22_constructor_silent');
 
     writerConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
     writerSilent = writerConstraint.satisfiedBy( ...
         @() f22_silent_distance_writer(X, D));
     verifyTrue(testCase, writerSilent, ...
         'Canonical Problem.set_distance_matrix emitted a warning.');
-    verifyEqual(testCase, writerConstraint.FunctionOutputs{1}, D);
+    assertEqual(testCase, writerConstraint.FunctionOutputs{1}, D);
 
     tier1Constraint = IssuesNoWarnings('WhenNargoutIs', 1);
     tier1Silent = tier1Constraint.satisfiedBy(@() f22_silent_tier1_fit(X));
     fitted = tier1Constraint.FunctionOutputs{1};
     verifyTrue(testCase, tier1Silent, ...
         'Canonical DTWClustering.fit emitted a deprecation warning.');
-    verifyClass(testCase, fitted, 'dtwc.DTWClustering');
-    verifyNumElements(testCase, fitted.Labels, size(X, 1));
-    verifyNumElements(testCase, fitted.MedoidIndices, 2);
+    assertClass(testCase, fitted, 'dtwc.DTWClustering');
+    assertNumElements(testCase, fitted.Labels, size(X, 1));
+    assertNumElements(testCase, fitted.MedoidIndices, 2);
 
     allPass = warningProfiles == 15 && messages == 15 && ...
               canonicalSilent == 15 && equivalent == 15 && ...
@@ -838,41 +839,41 @@ end
 function f22_verify_nondegenerate_value(testCase, oldName, value, D)
     switch oldName
         case 'dtwc.Problem.Band'
-            verifyEqual(testCase, value.cached, 3);
-            verifyEqual(testCase, value.native, 3);
+            assertEqual(testCase, value.cached, 3);
+            assertEqual(testCase, value.native, 3);
         case 'dtwc.Problem.Verbose'
-            verifyTrue(testCase, value.cached);
-            verifyTrue(testCase, value.native);
+            assertTrue(testCase, value.cached);
+            assertTrue(testCase, value.native);
         case 'dtwc.Problem.MaxIter'
-            verifyEqual(testCase, value.cached, 7);
-            verifyEqual(testCase, value.native, 7);
+            assertEqual(testCase, value.cached, 7);
+            assertEqual(testCase, value.native, 7);
         case 'dtwc.Problem.NRepetition'
-            verifyEqual(testCase, value.cached, 3);
-            verifyEqual(testCase, value.native, 3);
+            assertEqual(testCase, value.cached, 3);
+            assertEqual(testCase, value.native, 3);
         case 'dtwc.Problem.get_distance_matrix'
-            verifyEqual(testCase, value, D);
+            assertEqual(testCase, value, D);
         case 'dtwc.Problem.Size'
-            verifyEqual(testCase, value, 6);
+            assertEqual(testCase, value, 6);
         case 'dtwc.Problem.ClusterSize'
-            verifyEqual(testCase, value, 2);
+            assertEqual(testCase, value, 2);
         case 'dtwc.Problem.Name'
-            verifyEqual(testCase, value, 'f22_read_alias');
+            assertEqual(testCase, value, 'f22_read_alias');
         case 'dtwc.Problem.CentroidsInd'
-            verifyNumElements(testCase, value, 2);
-            verifyTrue(testCase, all(value >= 1 & value <= 6));
+            assertNumElements(testCase, value, 2);
+            assertTrue(testCase, all(value >= 1 & value <= 6));
         case 'dtwc.Problem.ClustersInd'
-            verifyNumElements(testCase, value, 6);
-            verifyTrue(testCase, all(value >= 1 & value <= 2));
+            assertNumElements(testCase, value, 6);
+            assertTrue(testCase, all(value >= 1 & value <= 2));
         case {'dtwc.davies_bouldin_index', ...
               'dtwc.dunn_index', ...
               'dtwc.calinski_harabasz_index'}
-            verifyTrue(testCase, isscalar(value) && isfinite(value));
-            verifyGreaterThan(testCase, value, 0);
+            assertTrue(testCase, isscalar(value) && isfinite(value));
+            assertGreaterThan(testCase, value, 0);
         case {'dtwc.adjusted_rand_index', ...
               'dtwc.normalized_mutual_information'}
-            verifyTrue(testCase, isscalar(value) && isfinite(value));
-            verifyGreaterThan(testCase, value, 0);
-            verifyLessThan(testCase, value, 1);
+            assertTrue(testCase, isscalar(value) && isfinite(value));
+            assertGreaterThan(testCase, value, 0);
+            assertLessThan(testCase, value, 1);
         otherwise
             error('dtwc:f22TestOracle', ...
                 'Unknown F22 non-degenerate observation: %s.', oldName);
@@ -886,30 +887,67 @@ function f22_verify_config_setter_atomicity(testCase)
     prob = dtwc.Problem('f22_config_atomicity');
 
     prob.set_band(3);
-    verifyError(testCase, @() prob.set_band([4 5]), ...
+    assertError(testCase, @() prob.set_band([4 5]), ...
         'dtwc:invalidArgument');
     info = dtwc_mex('Problem_get_info', prob.get_handle());
-    verifyEqual(testCase, prob.Band, 3);
-    verifyEqual(testCase, info.band, 3);
+    assertEqual(testCase, prob.Band, 3);
+    assertEqual(testCase, info.band, 3);
 
     prob.set_verbose(true);
-    verifyError(testCase, @() prob.set_verbose([false true]), ...
+    assertError(testCase, @() prob.set_verbose([false true]), ...
         'dtwc:invalidArgument');
     info = dtwc_mex('Problem_get_info', prob.get_handle());
-    verifyTrue(testCase, prob.Verbose);
-    verifyTrue(testCase, info.verbose);
+    assertTrue(testCase, prob.Verbose);
+    assertTrue(testCase, info.verbose);
 
     prob.set_max_iter(7);
-    verifyError(testCase, @() prob.set_max_iter([8 9]), ...
+    assertError(testCase, @() prob.set_max_iter([8 9]), ...
         'dtwc:invalidArgument');
     info = dtwc_mex('Problem_get_info', prob.get_handle());
-    verifyEqual(testCase, prob.MaxIter, 7);
-    verifyEqual(testCase, info.max_iter, 7);
+    assertEqual(testCase, prob.MaxIter, 7);
+    assertEqual(testCase, info.max_iter, 7);
 
     prob.set_n_repetitions(3);
-    verifyError(testCase, @() prob.set_n_repetitions([4 5]), ...
+    assertError(testCase, @() prob.set_n_repetitions([4 5]), ...
         'dtwc:invalidArgument');
     info = dtwc_mex('Problem_get_info', prob.get_handle());
-    verifyEqual(testCase, prob.NRepetition, 3);
-    verifyEqual(testCase, info.n_repetitions, 3);
+    assertEqual(testCase, prob.NRepetition, 3);
+    assertEqual(testCase, info.n_repetitions, 3);
+end
+
+function f22_verify_warning_precedes_config_effect(testCase, warningId)
+%   Escalating the compatibility warning to an error must stop each
+%   mutating alias before either the MATLAB cache or native state changes.
+    prob = dtwc.Problem('f22_config_warning_order');
+    prob.set_band(3);
+    prob.set_verbose(true);
+    prob.set_max_iter(7);
+    prob.set_n_repetitions(3);
+
+    warningState = warning;
+    warningCleanup = onCleanup(@() warning(warningState)); %#ok<NASGU>
+    warning('error', warningId);
+
+    assertError(testCase, @() f22_assign_config_alias(prob, 'Band', 4), ...
+        warningId);
+    assertError(testCase, ...
+        @() f22_assign_config_alias(prob, 'Verbose', false), warningId);
+    assertError(testCase, @() f22_assign_config_alias(prob, 'MaxIter', 8), ...
+        warningId);
+    assertError(testCase, ...
+        @() f22_assign_config_alias(prob, 'NRepetition', 4), warningId);
+
+    info = dtwc_mex('Problem_get_info', prob.get_handle());
+    assertEqual(testCase, prob.Band, 3);
+    assertTrue(testCase, prob.Verbose);
+    assertEqual(testCase, prob.MaxIter, 7);
+    assertEqual(testCase, prob.NRepetition, 3);
+    assertEqual(testCase, info.band, 3);
+    assertTrue(testCase, info.verbose);
+    assertEqual(testCase, info.max_iter, 7);
+    assertEqual(testCase, info.n_repetitions, 3);
+end
+
+function f22_assign_config_alias(prob, propertyName, value)
+    prob.(propertyName) = value;
 end
