@@ -63,7 +63,7 @@
 // open(), and sync()) are compiled out; their no-llfio replacements throw, so a
 // build without llfio can never silently pretend to have mmap support.
 #ifdef DTWC_HAS_MMAP
-#include <llfio/v2.0/llfio.hpp>
+#include "llfio_include.hpp"
 #endif
 
 namespace dtwc::core {

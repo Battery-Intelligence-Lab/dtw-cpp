@@ -49,7 +49,7 @@
 // build never references this type.
 #ifdef DTWC_HAS_MMAP
 
-#include <llfio/v2.0/llfio.hpp>
+#include "llfio_include.hpp"
 
 namespace dtwc::core {
 

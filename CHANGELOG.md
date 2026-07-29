@@ -8,6 +8,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed LLFIO-enabled public headers so third-party pragmas no longer suppress
+  downstream Clang deprecation diagnostics.
 - Added the frozen C++ `DataLoader::start_column`/`start_row` and
   `settings::paths::set_data_path`/`set_results_path` canonical names, including
   exact filesystem-path and C-string overloads. The four camelCase 1.x names
