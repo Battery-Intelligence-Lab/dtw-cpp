@@ -59,8 +59,21 @@
 namespace nb = nanobind;
 using namespace nb::literals; // for _a arg names
 
+namespace {
+
+void warn_deprecated_alias(const char *old_name, const char *new_name) {
+  std::string message(old_name);
+  message += " is deprecated; use ";
+  message += new_name;
+  if (PyErr_WarnEx(PyExc_DeprecationWarning, message.c_str(), 1) < 0)
+    throw nb::python_error();
+}
+
+} // namespace
+
 NB_MODULE(_dtwcpp_core, m) {
   m.attr("__version__") = DTWC_VERSION_STRING;
+  m.attr("_F22_DEPRECATION_POLICY") = true;
   m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
@@ -764,11 +777,23 @@ NB_MODULE(_dtwcpp_core, m) {
     }, "name"_a)
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
-    .def_rw("max_iter", &dtwc::Problem::maxIter)
-    .def_rw("n_repetitions", &dtwc::Problem::N_repetition,
-            "Repetitions for iterative methods.")
-    .def_rw("n_repetition", &dtwc::Problem::N_repetition,
-            "Deprecated alias for n_repetitions (kept one cycle, §4).")
+    .def_prop_rw("max_iter", &dtwc::Problem::max_iter,
+                 &dtwc::Problem::set_max_iter)
+    .def_prop_rw("n_repetitions", &dtwc::Problem::n_repetitions,
+                 &dtwc::Problem::set_n_repetitions,
+                 "Repetitions for iterative methods.")
+    .def_prop_rw("n_repetition",
+                 [](const dtwc::Problem &p) {
+                   warn_deprecated_alias("Problem.n_repetition",
+                                         "Problem.n_repetitions");
+                   return p.n_repetitions();
+                 },
+                 [](dtwc::Problem &p, int value) {
+                   warn_deprecated_alias("Problem.n_repetition",
+                                         "Problem.n_repetitions");
+                   p.set_n_repetitions(value);
+                 },
+                 "Deprecated alias for n_repetitions (kept one cycle, §4).")
     .def_prop_rw("random_seed", &dtwc::Problem::random_seed,
                  &dtwc::Problem::set_random_seed,
                  "Invocation-local seed for Lloyd and MIP warm starts.")
@@ -824,7 +849,11 @@ NB_MODULE(_dtwcpp_core, m) {
     // ---- read accessors ----
     .def_prop_ro("size", &dtwc::Problem::size)
     .def("n_clusters", &dtwc::Problem::n_clusters, "Number of clusters (was cluster_size()).")
-    .def_prop_ro("cluster_size", [](const dtwc::Problem &p) { return p.n_clusters(); },
+    .def_prop_ro("cluster_size", [](const dtwc::Problem &p) {
+                   warn_deprecated_alias("Problem.cluster_size",
+                                         "Problem.n_clusters");
+                   return p.n_clusters();
+                 },
                  "Deprecated alias for n_clusters() (kept one cycle, §4).")
     .def("labels", &dtwc::Problem::labels,
          "Cluster label of each series (reads clusters_ind; parity with Result.labels).")
@@ -844,7 +873,11 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("dist_by_ind", &dtwc::Problem::dist_by_ind, "i"_a, "j"_a)
     // ---- config setters ----
     .def("set_n_clusters", &dtwc::Problem::set_n_clusters, "n_clusters"_a)
-    .def("set_number_of_clusters", [](dtwc::Problem &p, int n) { p.set_n_clusters(n); },
+    .def("set_number_of_clusters", [](dtwc::Problem &p, int n) {
+           warn_deprecated_alias("Problem.set_number_of_clusters",
+                                 "Problem.set_n_clusters");
+           p.set_n_clusters(n);
+         },
          "n_clusters"_a, "Deprecated alias for set_n_clusters (kept one cycle, §4).")
     .def("set_method", &dtwc::Problem::set_method, "method"_a)
     .def("set_band", &dtwc::Problem::set_band, "band"_a)
@@ -881,11 +914,22 @@ NB_MODULE(_dtwcpp_core, m) {
     .def("distance_matrix", read_distance_matrix_np,
          "Fill (if needed) and return the full NxN distance matrix as a numpy\n"
          "array (independent copy; use set_distance_matrix to write).")
-    .def("distance_matrix_numpy", read_distance_matrix_np,
+    .def("distance_matrix_numpy", [read_distance_matrix_np](dtwc::Problem &p) {
+           warn_deprecated_alias("Problem.distance_matrix_numpy",
+                                 "Problem.distance_matrix");
+           return read_distance_matrix_np(p);
+         },
          "Deprecated alias for distance_matrix() (kept one cycle, §4).")
     .def("set_distance_matrix", write_distance_matrix_np, "dm"_a,
          "Load a precomputed NxN distance matrix (e.g. from a GPU compute).")
-    .def("set_distance_matrix_from_numpy", write_distance_matrix_np, "dm"_a,
+    .def("set_distance_matrix_from_numpy",
+         [write_distance_matrix_np](
+           dtwc::Problem &p,
+           nb::ndarray<const double, nb::ndim<2>, nb::c_contig> dm) {
+           warn_deprecated_alias("Problem.set_distance_matrix_from_numpy",
+                                 "Problem.set_distance_matrix");
+           write_distance_matrix_np(p, dm);
+         }, "dm"_a,
          "Deprecated alias for set_distance_matrix() (kept one cycle, §4).")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
     .def("read_distance_matrix", &dtwc::Problem::read_distance_matrix, "path"_a,
@@ -1137,6 +1181,8 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::scores::davies_bouldin(prob);
   }, "prob"_a, "Compute Davies-Bouldin index (lower is better).");
   m.def("davies_bouldin_index", [](dtwc::Problem &prob) {
+    warn_deprecated_alias("dtwcpp.davies_bouldin_index",
+                          "dtwcpp.davies_bouldin");
     nb::gil_scoped_release release;
     return dtwc::scores::davies_bouldin(prob);
   }, "prob"_a, "Deprecated alias for davies_bouldin() (kept one cycle, §4).");
@@ -1147,6 +1193,7 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "prob"_a,
      "Compute Dunn index (min inter-cluster distance / max intra-cluster diameter).");
   m.def("dunn_index", [](dtwc::Problem &prob) {
+    warn_deprecated_alias("dtwcpp.dunn_index", "dtwcpp.dunn");
     nb::gil_scoped_release release;
     return dtwc::scores::dunn(prob);
   }, "prob"_a, "Deprecated alias for dunn() (kept one cycle, §4).");
@@ -1162,6 +1209,8 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Compute Calinski-Harabasz index (medoid-adapted; higher is better).");
   m.def("calinski_harabasz_index", [](dtwc::Problem &prob) {
+    warn_deprecated_alias("dtwcpp.calinski_harabasz_index",
+                          "dtwcpp.calinski_harabasz");
     nb::gil_scoped_release release;
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Deprecated alias for calinski_harabasz() (kept one cycle, §4).");
@@ -1173,6 +1222,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "Adjusted Rand index between two label assignments (1.0 = perfect agreement).");
   m.def("adjusted_rand_index", [](const std::vector<int> &labels_true,
                                     const std::vector<int> &labels_pred) {
+    warn_deprecated_alias("dtwcpp.adjusted_rand_index",
+                          "dtwcpp.adjusted_rand");
     return dtwc::scores::adjusted_rand(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Deprecated alias for adjusted_rand() (kept one cycle, §4).");
@@ -1184,6 +1235,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "Normalized Mutual Information between two label assignments ([0,1]).");
   m.def("normalized_mutual_information", [](const std::vector<int> &labels_true,
                                               const std::vector<int> &labels_pred) {
+    warn_deprecated_alias("dtwcpp.normalized_mutual_information",
+                          "dtwcpp.normalized_mutual_info");
     return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Deprecated alias for normalized_mutual_info() (kept one cycle, §4).");

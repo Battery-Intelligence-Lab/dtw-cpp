@@ -238,10 +238,6 @@ class Result:
         return png
 
 
-# Deprecated alias name for the Tier-1 result (kept one cycle, api-contract §4).
-ClusterResult = Result
-
-
 # Canonical clustering methods. This is exactly the dtwc_cl CLI vocabulary
 # (dtwc_cl.cpp: "auto, pam, clara, kmedoids, mip, hierarchical"), so the SAME
 # name is valid on cpu/gpu (dispatched here) and on hpc (forwarded to

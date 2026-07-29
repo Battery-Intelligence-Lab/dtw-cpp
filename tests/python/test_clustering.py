@@ -23,7 +23,7 @@ def _make_problem(data, names=None):
 def _cluster_with_fast_pam(prob, k=3):
     """Cluster using fast_pam and apply results to prob for scoring."""
     result = dtwcpp.fast_pam(prob, k)
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.clusters_ind = result.labels
     prob.centroids_ind = result.medoid_indices
     return result
@@ -149,12 +149,12 @@ class TestSilhouetteAndDBI:
         """Davies-Bouldin Index is non-negative."""
         prob = _make_problem(well_separated_data)
         _cluster_with_fast_pam(prob, 3)
-        dbi = dtwcpp.davies_bouldin_index(prob)
+        dbi = dtwcpp.davies_bouldin(prob)
         assert dbi >= 0.0
 
     def test_well_separated_low_dbi(self, well_separated_data):
         """Well-separated data should have low DBI (< 1)."""
         prob = _make_problem(well_separated_data)
         _cluster_with_fast_pam(prob, 3)
-        dbi = dtwcpp.davies_bouldin_index(prob)
+        dbi = dtwcpp.davies_bouldin(prob)
         assert dbi < 1.0, f"Expected low DBI, got {dbi}"

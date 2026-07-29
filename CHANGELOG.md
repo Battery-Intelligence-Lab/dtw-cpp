@@ -13,6 +13,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   legacy Problem I/O overloads now emit their registered replacement
   diagnostics while remaining behavior-identical; canonical I/O names own the
   implementations and canonical Problem moves remain warning-silent.
+- Enforced the frozen Python deprecation policy for all 13 retained alias
+  operations. Each now emits one caller-attributed `DeprecationWarning` before
+  effects while canonical operations stay silent; `ClusterResult` remains an
+  uncached, identity-preserving alias of `Result`.
 - Fixed LLFIO-enabled public headers so third-party pragmas no longer suppress
   downstream Clang deprecation diagnostics.
 - Added the frozen C++ `DataLoader::start_column`/`start_row` and

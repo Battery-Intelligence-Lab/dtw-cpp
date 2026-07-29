@@ -404,8 +404,8 @@ class TestPlot:
 
     def test_plot_without_matrix_returns_none(self, capsys):
         """An hpc-style result (labels only) can't plot; it reports sizes."""
-        res = dtwcpp.ClusterResult([0, 0, 1, 1], device="hpc", elapsed_s=1.0,
-                                   k=2, n_series=4)
+        res = dtwcpp.Result([0, 0, 1, 1], device="hpc", elapsed_s=1.0,
+                            k=2, n_series=4)
         assert res.plot(show=False) is None
         assert "no local distance matrix" in capsys.readouterr().out
 
@@ -522,7 +522,7 @@ class TestClusterMethodDispatch:
     def test_unknown_method_raises(self):
         """Unknown method must raise, not silently run FastPAM.
 
-        Pre-fix: method is ignored, FastPAM runs, a ClusterResult is returned
+        Pre-fix: method is ignored, FastPAM runs, a Result is returned
         with NO exception -> this test fails. Post-fix: ValueError."""
         with pytest.raises(ValueError, match="unknown method"):
             dtwcpp.cluster(_two_groups(), k=2, method="not_a_real_method")

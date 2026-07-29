@@ -129,6 +129,18 @@ _PROBLEM_DEPRECATED = [
 )
 def test_module_symbol_exists(name):
     """Every contract Python-column module symbol is present with its exact name."""
+    if name == "ClusterResult":
+        with pytest.warns(
+            DeprecationWarning,
+            match=(
+                r"^dtwcpp\.ClusterResult is deprecated; "
+                r"use dtwcpp\.Result$"
+            ),
+        ) as caught:
+            resolved = getattr(dtwcpp, name)
+        assert len(caught) == 1
+        assert resolved is dtwcpp.Result
+        return
     assert hasattr(dtwcpp, name), f"dtwcpp.{name} missing (contract §1/§2/§5/§6)"
 
 
@@ -158,8 +170,8 @@ def test_problem_canonical_member_exists(name):
 @pytest.mark.parametrize("name", _PROBLEM_DEPRECATED)
 def test_problem_deprecated_alias_still_resolves(name):
     """§4: deprecated names survive one cycle; nothing silently disappears."""
-    p = dtwcpp.Problem("parity")
-    assert hasattr(p, name), f"Problem.{name} should still resolve one cycle (§4)"
+    member = inspect.getattr_static(dtwcpp.Problem, name)
+    assert member is not None, f"Problem.{name} should still resolve one cycle (§4)"
 
 
 @pytest.mark.parametrize("name", ["Enhanced", "Webb"])
@@ -199,7 +211,13 @@ def test_result_member_exists(name):
 
 
 def test_result_is_clusterresult_alias():
-    assert dtwcpp.Result is dtwcpp.ClusterResult
+    with pytest.warns(
+        DeprecationWarning,
+        match=r"^dtwcpp\.ClusterResult is deprecated; use dtwcpp\.Result$",
+    ) as caught:
+        cluster_result = dtwcpp.ClusterResult
+    assert len(caught) == 1
+    assert dtwcpp.Result is cluster_result
 
 
 # ===========================================================================

@@ -67,7 +67,7 @@ result = dtwcpp.fast_pam(prob, n_clusters=3)
 print(f"FastPAM result: {result}")
 
 # Apply labels to Problem for scoring
-prob.set_number_of_clusters(3)
+prob.set_n_clusters(3)
 prob.clusters_ind = result.labels
 prob.centroids_ind = result.medoid_indices
 
@@ -75,7 +75,7 @@ sil = dtwcpp.silhouette(prob)
 sil_mean = np.mean(sil)
 print(f"Mean silhouette: {sil_mean:.3f}")
 
-dbi = dtwcpp.davies_bouldin_index(prob)
+dbi = dtwcpp.davies_bouldin(prob)
 print(f"Davies-Bouldin Index: {dbi:.3f}")
 
 # --- Distance matrix visualization ---

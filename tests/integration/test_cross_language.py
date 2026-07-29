@@ -460,7 +460,7 @@ class TestEndToEndPipeline:
         assert result.total_cost > 0
 
         # Apply clustering result for scoring
-        prob.set_number_of_clusters(3)
+        prob.set_n_clusters(3)
         prob.clusters_ind = result.labels
         prob.centroids_ind = result.medoid_indices
 
@@ -471,7 +471,7 @@ class TestEndToEndPipeline:
         # Well-separated data should have high silhouette
         assert np.mean(sil) > 0.5
 
-        dbi = dtwcpp.davies_bouldin_index(prob)
+        dbi = dtwcpp.davies_bouldin(prob)
         assert dbi >= 0.0
         assert dbi < 1.0  # well-separated => low DBI
 
