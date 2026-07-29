@@ -1167,9 +1167,9 @@ colour system transfer verbatim**.
   and historical advisory timings only when a tracked raw artifact exists.
   Correctness/loudness repairs route to F27–F31; R1 changes no runtime behavior.
 - 2026-07-23 (R1 record-retirement truth): Git history confirms
-  `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`. Record hygiene
-  preserves that deletion and repairs the live UNIMODULAR/LESSONS/CITATIONS
-  records instead of recreating obsolete ledgers.
+  `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`; do not recreate
+  them. Record hygiene preserves that deletion and repairs the live
+  UNIMODULAR/LESSONS/CITATIONS records instead of recreating obsolete ledgers.
 - 2026-07-23 (R1 repository hygiene): Remove only the five registered non-data
   artifacts after routing consumers to byte-identical static assets. Retain
   the orphaned `data/test/AllGestureWiimoteX_dist_50.csv` byte-identically
@@ -1222,6 +1222,11 @@ colour system transfer verbatim**.
   matrices pass. The Arrow reader executes rather than skips. CTest inventories
   remain 122/122/124; tracked CMake manifests remain 28 versus frozen 27, owned
   solely by F39. Campaign cursor advances to F22.
+- 2026-07-29 (inherited record-hygiene marker): A stash/rerun at pre-closure
+  HEAD `8e542ae` proves `check_record_hygiene.py` already rejected PLAN for
+  omitting the exact `do not recreate them` marker even though equivalent
+  record-retirement prose remained. Restore the exact phrase without changing
+  the rule; require the complete checker to pass before F22 work.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1254,3 +1259,6 @@ colour system transfer verbatim**.
   reader runs 390 assertions/11 cases. F21 CLOSED; resume at F22. Evidence:
   `.claude/baselines/2026-07-29-f21-cpp-renames.md` and
   `.claude/summaries/handoff-2026-07-29-f21-cpp-renames.md`.
+- 2026-07-29 (record-hygiene restoration): Restored the exact retirement marker
+  required by `check_record_hygiene.py`; semantic policy is unchanged and the
+  complete checker passes. Resume remains F22.
