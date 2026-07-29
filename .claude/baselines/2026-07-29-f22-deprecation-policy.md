@@ -555,6 +555,48 @@ The two-attempt cap is exhausted. Do not rescue-tune a third C++ mutation run;
 continue the independently registered Python and MATLAB mutation gates and
 the remaining F22 evidence.
 
+#### Executed Python mutation verdict — PASS
+
+Commit `fd6a664` adds
+`scripts/test_f22_python_deprecation_mutations.py`. Preflight resolved one
+built and one installed CPython 3.13 extension and printed:
+
+```text
+F22_PYTHON_MUTATION_PREFLIGHT inventory=31/31 warning_removals=13/13 behavior_identity=13/13 policy=5/5 native=25/25 pure=6/6 source_files=3/3 built=C:\D\git\dtw-cpp\build\cfg-gate-normal\python\_dtwcpp_core.cp313-win_amd64.pyd installed=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd verdict=PASS
+```
+
+Attempt 1 killed all 31 mutants and passed its final 18/18 control, but the
+runner rejected the evidence because it had imposed an unregistered
+initial-hash-equals-final-hash requirement on separately linked clean
+extensions. The two clean hashes were
+`28C5AC8D8F15438E1E62AD45698F16B33B2CC23A4201852A0472E72A02063080`
+and
+`2E5A5FCE59D8276FFCF0EB11DD63F2F0C5B0C6322DA6AA994FC518791D6EC60D`.
+Both artifacts independently matched their installed copy and passed 18/18;
+byte-reproducible linking was never part of the registered band.
+
+Attempt 2 retained exact source restoration and fresh built/imported identity
+but removed only that false deterministic-link assumption. Its clean controls
+were:
+
+```text
+F22_PYTHON_MUTATION_CONTROL label=initial tests=18/18 sha256=CD5F4B7A9B230F842731686D2AF169596E7F7E44AB15BBF9EF390B7DE8A571E8 verdict=PASS
+F22_PYTHON_MUTATION_CONTROL label=final tests=18/18 sha256=B572C24045572E842B24369384E69981596C354AD3F53C2C2BD4C280D12C1B25 verdict=PASS
+F22_PYTHON_NATIVE_RESTORE clean_rebuild=1 initial_sha256=CD5F4B7A9B230F842731686D2AF169596E7F7E44AB15BBF9EF390B7DE8A571E8 final_sha256=B572C24045572E842B24369384E69981596C354AD3F53C2C2BD4C280D12C1B25 built_imported_match=1 verdict=PASS
+```
+
+Every native mutant compiled `_dtwcpp_core.cpp`, produced a non-clean binary,
+was copied and hash-verified through a fresh interpreter, and failed its exact
+registered pytest dimension. The decisive final marker was:
+
+```text
+F22_PYTHON_MUTATIONS controls=2/2 inventory=31/31 warning_removals=13/13 behavior_identity=13/13 policy=5/5 native_kills=25/25 pure_kills=6/6 killed=31/31 survived=0 source_restores=31/31 source_files=3/3 native_restore=pass skips=0 verdict=PASS
+```
+
+Post-run `git diff --quiet HEAD --` over the three sources exited 0. The final
+built and installed extension SHA-256 were both
+`B572C24045572E842B24369384E69981596C354AD3F53C2C2BD4C280D12C1B25`.
+
 ### R6 — documentation, immutable hygiene, and full native gates
 
 - `CHANGELOG.md` Unreleased names the warning policy and retained aliases.

@@ -1339,3 +1339,13 @@ colour system transfer verbatim**.
   exhausted; do not rescue-tune a third run. Continue the independent Python
   and MATLAB mutation gates; F22 remains open. Evidence:
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R5-F22 Python mutations PASS): `fd6a664` permanently kills
+  31/31 mutants: 13 warning removals, 13 behavior/identity corruptions, and
+  five policy corruptions, split 25 native/6 pure. Every native mutant
+  recompiles, copies, and fresh-import verifies its extension; both clean
+  controls pass 18/18 and all 31 source restorations match exact SHA-256.
+  Attempt 1 was rejected only for an unregistered deterministic-link hash
+  assumption; attempt 2 retains built/imported identity without requiring two
+  separate clean links to be byte-identical. Continue at MATLAB mutations;
+  the C++ 33/46 falsification still prevents F22 closure. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.

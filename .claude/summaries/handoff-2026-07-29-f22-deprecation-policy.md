@@ -111,10 +111,17 @@ Then run the registered focused gates before creating any mutation runner.
   timed out after 300 seconds on the first I/O forwarding mutant. The band is
   FALSIFIED at 33/46; no runtime mutant is credited, all five source hashes
   restore exactly, and a third attempt is prohibited.
+- `fd6a664` adds the Python 31-mutant runner. Attempt 2 passes 31/31
+  (13 warning, 13 behavior/identity, five policy; 25 native, six pure), with
+  18/18 initial/final controls, fresh built/imported extension identity, and
+  exact restoration of all three source files. Attempt 1's discarded
+  initial/final clean-hash equality was a harness assumption, not a product
+  failure; separately linked clean `.pyd` files need not be byte-identical.
 
 ## Updated exact resume point
 
-Run and commit the independently registered Python 31-mutant gate, then the
-MATLAB 33-mutant/two-release gate. Do not rerun or rescue-tune the C++ mutation
-runner. After those verdicts, update contract/generated docs, run all F22 full
-gates, and record whether the falsified C++ mutation band prevents closure.
+Run and commit the MATLAB 33-mutant/two-release gate. Do not rerun or
+rescue-tune the C++ mutation runner. After that verdict, update
+contract/generated docs, run all F22 full gates, and record that the falsified
+C++ mutation band prevents closure unless a later governed decision overturns
+the two-attempt cap.
