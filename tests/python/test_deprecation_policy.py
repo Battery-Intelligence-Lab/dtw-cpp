@@ -94,10 +94,7 @@ def _cluster_count_pair() -> tuple[Any, Any]:
 
 
 def _matrix_pair() -> tuple[Any, Any]:
-    canonical, legacy = _problem_pair()
-    canonical.set_distance_matrix(_DISTANCE_MATRIX)
-    legacy.set_distance_matrix(_DISTANCE_MATRIX)
-    return canonical, legacy
+    return _problem_pair()
 
 
 def _scoring_problem(name: str) -> Any:
@@ -203,6 +200,7 @@ def _equal_matrix(
     legacy: np.ndarray,
 ) -> None:
     del canonical_subject
+    np.testing.assert_array_equal(canonical, _DISTANCE_MATRIX)
     np.testing.assert_array_equal(legacy, canonical)
     independent = legacy_subject.distance_matrix()
     np.testing.assert_array_equal(independent, legacy)
@@ -310,6 +308,7 @@ _CASES = [
         lambda problem: problem.distance_matrix(),
         lambda problem: problem.distance_matrix_numpy(),
         _equal_matrix,
+        _matrix_snapshot,
     ),
     AliasCase(
         "set_distance_matrix_from_numpy",
