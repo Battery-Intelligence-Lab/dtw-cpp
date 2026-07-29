@@ -106,4 +106,83 @@ no test credit yet.**
 
 ## Decisive outputs
 
-Pending.
+Execution commit:
+
+```text
+aff26272b56370d29557900c6005e01fde9407c5
+```
+
+### Canonical LLFIO-ON / Arrow-OFF
+
+The clean-first build was initially launched with `--parallel 1`. At
+115/622 objects this unnecessary compile-only restriction was stopped by
+verifying and terminating exactly its `ninja.exe` PID 48188 and owning
+`cmake.exe` PID 54972. The clean step had already removed the old graph.
+The same Ninja graph resumed with normal parallel compilation and exited 0
+after 261.1 seconds; the settling build printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+The regenerated inventory remained exactly 122 with one
+`test_problem_api_2_0` entry. The serial full command was:
+
+```text
+ctest --test-dir build/highs-1151 -C Release --output-on-failure --no-tests=error -j 1
+```
+
+Its decisive summary was:
+
+```text
+100% tests passed, 0 tests failed out of 122
+
+Total Test time (real) = 175.39 sec
+
+The following tests did not run:
+	 51 - test_cuda_correctness (Skipped)
+	 53 - test_cuda_lb_keogh (Skipped)
+	 57 - test_io_readers (Skipped)
+	 58 - test_metal_correctness (Skipped)
+	 59 - test_metal_lb_keogh (Skipped)
+	 60 - test_metal_mmap (Skipped)
+```
+
+An exact set comparison reported:
+
+```text
+SKIPS=6 NAMES=test_cuda_correctness,test_cuda_lb_keogh,test_io_readers,test_metal_correctness,test_metal_lb_keogh,test_metal_mmap
+SKIP_SET_MATCH=True
+```
+
+The full transcript recorded the F22 entry itself:
+
+```text
+Start  61: test_problem_api_2_0
+61/122 Test  #61: test_problem_api_2_0 ......................   Passed   52.51 sec
+```
+
+The same fresh entry was then run verbosely to expose its subject markers:
+
+```text
+61: F22_CPP_SILENT count=0/33 entities=none canonical_deprecation_lines=0
+61: F22_CPP_DIAGNOSTICS inventory=33/33 legacy=33/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=PASS
+61: F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS
+61: ===============================================================================
+61: All tests passed (229 assertions in 5 test cases)
+1/1 Test #61: test_problem_api_2_0 .............   Passed   15.81 sec
+```
+
+`Testing/Temporary/LastTestsFailed.log` still contained the historical line
+`61:test_problem_api_2_0` after both green executions. It is mutable stale
+state, not a current verdict; the complete current transcripts above are the
+evidence.
+
+Verdict: **PASS [confirmed]** — 122/122, zero failed, the exact six registered
+capability skips, and both F22 subjects executed above their registered
+assertion/case floors.
+
+### Remaining gates
+
+Pending: llfio-OFF, Arrow-ON, Python, MATLAB R2024b, MATLAB R2025b.

@@ -17,6 +17,11 @@
   `--model fable --effort medium`; the final whole-campaign review will use
   that exact model/effort with read-only tools and will not accept completion
   without a structured CLEAN verdict.
+- Clean-first rebuilt the canonical HiGHS/llfio matrix, settled it to
+  `ninja: no work to do`, and passed 122/122 serially with the exact six
+  capability skips.
+- Re-ran the hardened F22 entry verbosely: diagnostics 33/33, behavior 33/33,
+  229 assertions / 5 cases, zero skips.
 
 ## Decisions
 
@@ -50,3 +55,6 @@ immediately.
 - The claim most likely to fail is that a forced-fresh binding build reproduces
   the exact registered inventory without exposing a stale generated manifest
   or runtime-path dependency.
+- CTest's mutable `LastTestsFailed.log` retained a historical F22 failure after
+  two current green runs; only the current complete transcript may adjudicate
+  a gate.

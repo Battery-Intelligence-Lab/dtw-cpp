@@ -656,6 +656,14 @@ Critical knowledge to avoid repeating mistakes.
   pattern family, and pin explicit exclusions for canonical/private lookalikes.
   Evidence: `scripts/check_docs_contract.py` at `43e1c44` and
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- **CTest's `LastTestsFailed.log` can remain stale after a green rerun.
+  [confirmed]** The clean-first F22 canonical matrix passed 122/122 and its
+  focused subject then passed 229 assertions/5 cases, while
+  `build/highs-1151/Testing/Temporary/LastTestsFailed.log` still contained
+  `61:test_problem_api_2_0` from an older run. Use the current command's exit
+  and complete transcript for adjudication; the mutable helper file is useful
+  only when timestamped and reconciled to that same run. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
 
 ## LR-core Solver (Phase 4)
 
