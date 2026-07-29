@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -115,5 +116,21 @@ using cstring_path_setter_t = void (*)(const char *);
   static_cast<problem_set_int_t>(&dtwc::Problem::set_n_repetitions);
 [[maybe_unused]] constexpr problem_int_read_t canonical_33_read =
   static_cast<problem_int_read_t>(&dtwc::Problem::n_repetitions);
+
+// Canonical users must be able to move Problems without diagnostics emitted
+// by compiler-generated operations on the two retained deprecated fields.
+[[maybe_unused]] dtwc::Problem canonical_move_construct(
+  dtwc::Problem &&source)
+{
+  dtwc::Problem moved{ std::move(source) };
+  return moved;
+}
+
+[[maybe_unused]] void canonical_move_assign(
+  dtwc::Problem &destination,
+  dtwc::Problem &&source)
+{
+  destination = std::move(source);
+}
 
 } // namespace
