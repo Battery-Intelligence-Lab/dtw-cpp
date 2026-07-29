@@ -881,8 +881,8 @@ end
 
 function f22_verify_config_setter_atomicity(testCase)
 %   A rejected canonical value must not update MATLAB's cached observation
-%   ahead of the native setter. These asymmetric vector candidates are
-%   accepted by a plain typed-double property but rejected by get_scalar().
+%   ahead of the native setter. These asymmetric vector candidates expose
+%   any scalar-boundary bug that consumes only the first native element.
     prob = dtwc.Problem('f22_config_atomicity');
 
     prob.set_band(3);
@@ -891,6 +891,13 @@ function f22_verify_config_setter_atomicity(testCase)
     info = dtwc_mex('Problem_get_info', prob.get_handle());
     verifyEqual(testCase, prob.Band, 3);
     verifyEqual(testCase, info.band, 3);
+
+    prob.set_verbose(true);
+    verifyError(testCase, @() prob.set_verbose([false true]), ...
+        'dtwc:invalidArgument');
+    info = dtwc_mex('Problem_get_info', prob.get_handle());
+    verifyTrue(testCase, prob.Verbose);
+    verifyTrue(testCase, info.verbose);
 
     prob.set_max_iter(7);
     verifyError(testCase, @() prob.set_max_iter([8 9]), ...
