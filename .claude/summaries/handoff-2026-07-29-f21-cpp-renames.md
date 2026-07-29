@@ -13,6 +13,11 @@
 - Registered the expected-red, exact-signature, runtime-state, deprecation,
   mutation, docs, and full-gate bands in
   `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
+- Ran the corrected inherited-tree public-header probe. Canonical compilation
+  exits 1 with all four names diagnosed (including the private `start_row`
+  collision); the otherwise-identical legacy control exits 0. The first
+  ad-hoc command's missing RapidCSV include is retained as invalid harness
+  evidence, not misreported as an F21 result.
 
 ## Decisions
 
@@ -30,9 +35,10 @@
 
 ## Exact resume point
 
-Commit this preregistration, add the focused public-header fixture without
-product changes, and run the registered inherited-tree red/legacy-control
-probe. Product attempts consumed: 0/2.
+Add the focused public-header fixture without product changes, build the
+existing `unit_test_DataLoader` target to retain the compile-red evidence, then
+implement the canonical-owned/deprecated-forwarder repair. Product attempts
+consumed: 0/2.
 
 ## Open risks
 

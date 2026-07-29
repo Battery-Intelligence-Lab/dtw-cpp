@@ -180,4 +180,55 @@ Verdict: **BASELINE PASS [confirmed]** at
 
 ## Decisive evidence
 
-Pending.
+### R1 — inherited expected-red and legacy control
+
+The first ad-hoc compiler command was invalid because it omitted the configured
+RapidCSV include directory. Both fixtures stopped before the subject:
+
+```text
+dtwc\fileOperations.hpp:40:10: fatal error: 'rapidcsv.h' file not found
+canonical_exit=1
+legacy_exit=1
+```
+
+This is harness evidence, not an F21 verdict and not a product attempt. The
+corrected command used the include directories from
+`build/highs-1151/compile_commands.json`. It printed:
+
+```text
+<stdin>:5:10: error: no member named 'start_column' in 'dtwc::DataLoader'
+    5 |   loader.start_column(3);
+      |   ~~~~~~ ^
+<stdin>:6:10: error: 'start_row' is a private member of 'dtwc::DataLoader'
+    6 |   loader.start_row(7);
+      |          ^
+dtwc\DataLoader.hpp:242:7: note: implicitly declared private here
+  242 |   int start_row{ 0 };                     //!< Starting row for data extraction
+      |       ^
+<stdin>:6:19: error: called object type 'int' is not a function or function pointer
+    6 |   loader.start_row(7);
+      |   ~~~~~~~~~~~~~~~~^
+<stdin>:7:26: error: no member named 'set_data_path' in namespace 'dtwc::settings::paths'; did you mean 'setDataPath'?
+    7 |   dtwc::settings::paths::set_data_path("data");
+      |                          ^~~~~~~~~~~~~
+      |                          setDataPath
+dtwc\settings.hpp:74:13: note: 'setDataPath' declared here
+   74 | inline void setDataPath(const fs::path &path) { data = path; }
+      |             ^
+<stdin>:8:26: error: no member named 'set_results_path' in namespace 'dtwc::settings::paths'; did you mean 'setResultsPath'?
+    8 |   dtwc::settings::paths::set_results_path("results");
+      |                          ^~~~~~~~~~~~~~~~
+      |                          setResultsPath
+dtwc\settings.hpp:82:13: note: 'setResultsPath' declared here
+   82 | inline void setResultsPath(const fs::path &path) { results = path; }
+      |             ^
+5 errors generated.
+canonical_exit=1
+legacy_exit=0
+```
+
+Verdict: **R1 PASS [confirmed]**. All four canonical names are unreachable on
+the inherited public-header surface, the `start_row` collision is explicit,
+and the otherwise-identical legacy control compiles.
+
+R2–R6 pending.
