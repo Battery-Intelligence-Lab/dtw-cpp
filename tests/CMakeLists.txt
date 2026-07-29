@@ -5,6 +5,22 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     add_executable_with_coverage_and_test(${TEST_SOURCE})    # Add executable with coverage
 endforeach()
 
+# F21 is a public-header compile and state-equivalence gate, never a capability
+# probe. It uses the existing DataLoader target so CTest and tracked-CMake
+# inventories stay fixed. Require both the exact route marker and Catch2's
+# independent floor; clear the repository-wide skip return code.
+if(TARGET unit_test_DataLoader)
+    set_property(
+        TEST unit_test_DataLoader
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        unit_test_DataLoader
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION
+                "F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 loader_state=22/22 path_state=16/16 cstring_copy=4/4 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((79|[89][0-9]|[1-9][0-9][0-9]+) assertions in ([2-9]|[1-9][0-9]+) test cases\\)")
+endif()
+
 # F13 is an executed-contract gate, not a capability probe. Require Catch2's
 # own summary to prove the registered assertion/case floors and force the
 # 65-point resident failure fixture through a multi-worker OpenMP region.
