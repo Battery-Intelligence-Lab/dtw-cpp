@@ -1198,6 +1198,16 @@ colour system transfer verbatim**.
   registered from the F20 handoff/baseline. Closed-finding prose and the
   pre-F21 progress log archived verbatim to
   `.claude/PLAN-archive-2026-07-27-r0-f20.md`; PLAN slimmed to open work.
+- 2026-07-29 (F21 registration): Implement exactly the frozen setter surface:
+  `start_column(int)`, `start_row(int)`, and both `fs::path`/C-string overloads
+  of `set_data_path`/`set_results_path`. Rename the colliding private loader
+  fields with no semantic change; canonical functions own behaviour and the
+  four legacy names become deprecated inline forwarders. Do not invent
+  canonical no-argument getters. Reuse `unit_test_DataLoader`, poison/restore
+  global path state, require 12/12 mutation kills, preserve CTest and tracked
+  CMake inventories, and cap product work at two attempts. F22 retains the
+  exhaustive cross-language deprecation audit. Evidence:
+  `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1218,3 +1228,8 @@ colour system transfer verbatim**.
   `.claude/summaries/handoff-2026-07-24-f20-storage-policy.md`.
 - 2026-07-27 (Fable): PLAN reconciled and slimmed; pre-F21 detail archived at
   `.claude/PLAN-archive-2026-07-27-r0-f20.md`. Campaign cursor F21.
+- 2026-07-29 (R3-F21 registration): Clean base
+  `ab41930b35e1cce25af2b785c154e92628822fb1` passes canonical 122/122 with
+  the exact six capability skips. Expected-red, exact-overload,
+  state-equivalence, path-lifetime, deprecation, 12-mutation, documentation,
+  and three-build bands registered before the decisive compile probe.
