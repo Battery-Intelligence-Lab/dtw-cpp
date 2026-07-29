@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Added the frozen C++ `DataLoader::start_column`/`start_row` and
+  `settings::paths::set_data_path`/`set_results_path` canonical names, including
+  exact filesystem-path and C-string overloads. The four camelCase 1.x names
+  remain behavior-identical deprecated forwarders for the 2.x transition.
 - Fixed `Problem::set_storage_policy` so the next owning `set_data` call now
   selects Heap or mmap series backing across C++, Python, and MATLAB.
   Mmap-backed Problems retain their store/name lifetime after moves; unsupported

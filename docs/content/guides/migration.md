@@ -10,8 +10,9 @@ description: "Complete rename table, deprecations, and behavioural changes."
 
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the promised transition, not a claim that
-every diagnostic is implemented. F21 covers four missing canonical C++ names;
-F22 covers retained aliases/fields that do not emit their required warning.
+every diagnostic is implemented. Rows 35–38 are implemented with canonical
+C++ names and deprecated forwarders; F22 covers the other retained
+aliases/fields that do not emit their required warning.
 
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
@@ -77,8 +78,8 @@ the dense matrix and CSV checkpoint fit in memory.
 **Duplicate-elimination principle (surface report §7).** Documentation exposes
 one canonical name per concept. Compatibility aliases remain callable for the
 specified transition window; they do not become a second canonical spelling.
-F22 records incomplete diagnostics, and F21 records the four canonical C++
-spellings that are still absent.
+Rows 35–38 now satisfy that rule; F22 records incomplete diagnostics elsewhere
+in the compatibility inventory.
 
 ---
 

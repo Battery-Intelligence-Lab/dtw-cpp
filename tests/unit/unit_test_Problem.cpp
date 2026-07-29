@@ -25,7 +25,7 @@ using namespace dtwc;
 // Initialize settings::paths::data from compile-time definition for tests
 struct TestPathInitializer {
   TestPathInitializer() {
-    dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
+    dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR);
   }
 };
 static TestPathInitializer testPathInit;
@@ -42,7 +42,7 @@ TEST_CASE("dtwFull_test", "[dtwFull]")
   constexpr int Ndata_max = 10;
 
   dtwc::DataLoader dl{ settings::paths::data / "dummy", Ndata_max };
-  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+  dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob{ probName, dl }; // Create a problem.
 

@@ -1412,7 +1412,7 @@ static int run_cli_main(int argc, char *argv[])
   else {
     // Default: CSV/TSV via DataLoader
     dtwc::DataLoader dl{input_file};
-    dl.startColumn(skip_cols).startRow(skip_rows);
+    dl.start_column(skip_cols).start_row(skip_rows);
     prob.set_data(dl.load());
     if (verbose)
       std::cout << "Data loaded: " << prob.size() << " series [" << clk << "]\n";

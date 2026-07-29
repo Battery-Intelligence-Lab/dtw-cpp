@@ -61,29 +61,45 @@ namespace paths {
 
 /// @brief Path to the data directory.
 /// @details Defaults to "./data" relative to current working directory.
-///          Can be set at runtime via setDataPath() or direct assignment.
+///          Can be set at runtime via set_data_path() or direct assignment.
 inline fs::path data = fs::path{ "." } / "data";
 
 /// @brief Path to the results/output directory.
 /// @details Defaults to "./results/" relative to current working directory.
-///          Can be set at runtime via setResultsPath() or direct assignment.
+///          Can be set at runtime via set_results_path() or direct assignment.
 inline fs::path results = fs::path{ "." } / "results/";
 
 /// @brief Set the data directory path.
 /// @param path New path (as fs::path).
-inline void setDataPath(const fs::path &path) { data = path; }
+inline void set_data_path(const fs::path &path) { data = path; }
 
 /// @brief Set the data directory path from C-string.
 /// @param path New path (as C-string).
-inline void setDataPath(const char *path) { data = fs::path(path); }
+inline void set_data_path(const char *path) { data = fs::path(path); }
 
 /// @brief Set the results directory path.
 /// @param path New path (as fs::path).
-inline void setResultsPath(const fs::path &path) { results = path; }
+inline void set_results_path(const fs::path &path) { results = path; }
 
 /// @brief Set the results directory path from C-string.
 /// @param path New path (as C-string).
-inline void setResultsPath(const char *path) { results = fs::path(path); }
+inline void set_results_path(const char *path) { results = fs::path(path); }
+
+/// @brief Deprecated 1.x alias for set_data_path().
+[[deprecated("use set_data_path")]]
+inline void setDataPath(const fs::path &path) { set_data_path(path); }
+
+/// @brief Deprecated 1.x C-string alias for set_data_path().
+[[deprecated("use set_data_path")]]
+inline void setDataPath(const char *path) { set_data_path(path); }
+
+/// @brief Deprecated 1.x alias for set_results_path().
+[[deprecated("use set_results_path")]]
+inline void setResultsPath(const fs::path &path) { set_results_path(path); }
+
+/// @brief Deprecated 1.x C-string alias for set_results_path().
+[[deprecated("use set_results_path")]]
+inline void setResultsPath(const char *path) { set_results_path(path); }
 
 } // namespace paths
 

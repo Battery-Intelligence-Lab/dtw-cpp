@@ -120,7 +120,7 @@ CanonicalResult run_pipeline()
   // Load the recorded CSV via the exact code path the CLI uses (DataLoader,
   // no header/id columns), so C++ and CLI ingest identical series.
   dtwc::DataLoader dl{ data_csv() };
-  dl.startColumn(0).startRow(0);
+  dl.start_column(0).start_row(0);
 
   dtwc::Problem prob{ "conformance" };
   prob.set_data(dl.load());

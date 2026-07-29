@@ -238,8 +238,8 @@ inline LoadedData route_series_storage(
  */
 class DataLoader
 {
-  int start_col{ 0 };                     //!< Starting column for data extraction
-  int start_row{ 0 };                     //!< Starting row for data extraction
+  int start_col_{ 0 };                    //!< Starting column for data extraction
+  int start_row_{ 0 };                    //!< Starting row for data extraction
   int Ndata{ -1 };                        //!< Number of data rows to load
   int verbose{ 1 };                       //!< Verbosity level
   char delim{ ',' };                      //!< Column delimiter character
@@ -264,8 +264,8 @@ public:
   }
 
   // Accessor methods
-  auto startColumn() { return start_col; } //!< Get the starting column for data loading.
-  auto startRow() { return start_row; }    //!< Get the starting row for data loading.
+  auto startColumn() { return start_col_; } //!< Get the starting column for data loading.
+  auto startRow() { return start_row_; }    //!< Get the starting row for data loading.
   auto n_data() { return Ndata; }          //!< Get the number of data points to load.
   auto delimiter() { return delim; }       //!< Get the delimiter used in data files.
   auto path() { return data_path; }        //!< Get the path of the data file or directory.
@@ -288,18 +288,22 @@ public:
    * @param N Starting column
    * @return Reference to self for chaining
    */
-  DataLoader &startColumn(int N)
+  DataLoader &start_column(int N)
   {
-    start_col = N;
+    start_col_ = N;
     return *this;
   }
+  [[deprecated("use start_column")]]
+  DataLoader &startColumn(int N) { return start_column(N); }
 
   //!< Set start row
-  DataLoader &startRow(int N)
+  DataLoader &start_row(int N)
   {
-    start_row = N;
+    start_row_ = N;
     return *this;
   }
+  [[deprecated("use start_row")]]
+  DataLoader &startRow(int N) { return start_row(N); }
 
   //!< Set number of data rows
   DataLoader &n_data(int N)
@@ -456,7 +460,7 @@ public:
     int line_no = 0;
     size_t n_rows = 0;
     while (std::getline(in, line)) {
-      if (line_no++ < start_row) continue;
+      if (line_no++ < start_row_) continue;
       ++n_rows;
       if (Ndata >= 0 && static_cast<int>(n_rows) >= Ndata) break;
     }
@@ -469,7 +473,7 @@ private:
   Data load_heap()
   {
     Data d;
-    const LoadOptions opts{ Ndata, verbose, start_row, start_col, delim };
+    const LoadOptions opts{ Ndata, verbose, start_row_, start_col_, delim };
     ++s_bulk_read_invocations;
     if (fs::is_directory(data_path))
       std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, opts);
@@ -495,10 +499,10 @@ private:
     int line_no = 0;
     int n_rows = 0;
     while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) {
-      if (line_no++ < start_row) continue;
+      if (line_no++ < start_row_) continue;
       ++n_rows;
       const std::size_t count = text_io_detail::parse_numeric_row<data_t>(
-        line, data_path, static_cast<std::size_t>(line_no), start_col, delim,
+        line, data_path, static_cast<std::size_t>(line_no), start_col_, delim,
         [](data_t) {});
       names.push_back(std::to_string(n_rows));
       flat_sizes.push_back(count);
@@ -529,14 +533,14 @@ private:
       throw std::runtime_error("DataLoader::load_metadata: cannot open " + file.string());
     ignoreBOM(in);
     std::string line;
-    for (int i = 0; i < start_row; ++i) std::getline(in, line);
+    for (int i = 0; i < start_row_; ++i) std::getline(in, line);
     std::size_t count = 0;
-    std::size_t row = static_cast<std::size_t>(start_row);
+    std::size_t row = static_cast<std::size_t>(start_row_);
     bool first_data_line = true;
     while (std::getline(in, line)) {
       ++row;
       const auto value = text_io_detail::parse_series_value_row<data_t>(
-        line, file, row, start_col, delim, first_data_line);
+        line, file, row, start_col_, delim, first_data_line);
       first_data_line = false;
       if (value) ++count;
     }

@@ -271,7 +271,7 @@ TEST_CASE("Batch loader preserves textual NaN and later fields",
     "sensor-A,1,nan,3\n"
     "sensor-B,4,5,6\n");
   DataLoader loader(file.path);
-  loader.startColumn(1).verbosity(0);
+  loader.start_column(1).verbosity(0);
 
   const Data loaded = loader.load_local();
   REQUIRE(loaded.size() == 2);
@@ -296,7 +296,7 @@ TEST_CASE("Batch loader rejects malformed and unapproved non-finite fields",
     DYNAMIC_SECTION("token='" << token << "'") {
       TemporaryBatchFile file(".csv", "id,1," + token + ",3\n");
       DataLoader loader(file.path);
-      loader.startColumn(1).verbosity(0);
+      loader.start_column(1).verbosity(0);
       REQUIRE_THROWS_WITH(loader.load_local(),
         ContainsSubstring("row 1, column 3"));
       REQUIRE_THROWS_WITH(loader.load_metadata(),
@@ -311,7 +311,7 @@ TEST_CASE("Batch loader uses exact delimiters and arbitrary skipped fields",
   TemporaryBatchFile valid(".tsv",
     "sensor A\tquality=good\t+1\t-2.5\t1e3\n");
   DataLoader loader(valid.path);
-  loader.startColumn(2).verbosity(0);
+  loader.start_column(2).verbosity(0);
   const Data loaded = loader.load_local();
   REQUIRE(loaded.p_vec.size() == 1);
   CHECK(loaded.p_vec[0] == std::vector<double>{1.0, -2.5, 1000.0});
@@ -319,7 +319,7 @@ TEST_CASE("Batch loader uses exact delimiters and arbitrary skipped fields",
 
   TemporaryBatchFile empty_field(".tsv", "id\t1\t\t3\n");
   DataLoader invalid(empty_field.path);
-  invalid.startColumn(1).verbosity(0);
+  invalid.start_column(1).verbosity(0);
   REQUIRE_THROWS_WITH(invalid.load_local(),
     ContainsSubstring("row 1, column 3"));
 }

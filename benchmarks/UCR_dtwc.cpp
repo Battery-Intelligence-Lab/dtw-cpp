@@ -78,7 +78,7 @@ inline void UCR_2018()
   auto [UCR_list, Nc_list] = get_UCR_2018_files();
 
   dtwc::DataLoader dl;
-  dl.startColumn(1); // For not reading first column of *.tsv files;
+  dl.start_column(1); // For not reading first column of *.tsv files;
 
   fs::path out_folder = settings::paths::results / "benchmark";
 

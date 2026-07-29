@@ -33,7 +33,7 @@
 #endif
 
 static struct TestDataInitCheckpoint {
-  TestDataInitCheckpoint() { dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR); }
+  TestDataInitCheckpoint() { dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR); }
 } test_data_init_checkpoint_;
 
 using Catch::Matchers::WithinAbs;
@@ -46,7 +46,7 @@ namespace {
 Problem make_problem(int N_data)
 {
   dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
-  dl.startColumn(1).startRow(1);
+  dl.start_column(1).start_row(1);
   dtwc::Problem prob{ "checkpoint_test", dl };
   return prob;
 }

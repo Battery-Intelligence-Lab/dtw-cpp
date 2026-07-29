@@ -355,9 +355,12 @@ the CLI (`dtwc_cl.cpp:471-555`) is the other path. Chained setters return
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
 
-The four snake_case path/builder names in this section and rename-table rows
-35–38 remain unimplemented frozen promises (F21); only the camelCase
-`startColumn`/`startRow` and `setDataPath`/`setResultsPath` spellings exist.
+The four canonical setter/path names in this section are implemented.
+`start_column(int)` and `start_row(int)` own the loader mutations;
+`set_data_path` and `set_results_path` each preserve both the `fs::path` and
+C-string overloads. The four camelCase spellings remain deprecated inline
+forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
+getters were not renamed by the frozen table and remain unchanged.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
 
@@ -503,8 +506,9 @@ L1.
 
 Frozen registry of public camelCase/duplicate/divergent names. Column
 **Compatibility requirement** states the promised transition, not a claim that
-every diagnostic is implemented. F21 covers four missing canonical C++ names;
-F22 covers retained aliases/fields that do not emit their required warning.
+every diagnostic is implemented. Rows 35–38 are implemented with canonical
+C++ names and deprecated forwarders; F22 covers the other retained
+aliases/fields that do not emit their required warning.
 
 | # | Concept | 1.x name(s) | 2.0 canonical | Compatibility requirement |
 |---|---|---|---|---|
@@ -570,8 +574,8 @@ the dense matrix and CSV checkpoint fit in memory.
 **Duplicate-elimination principle (surface report §7).** Documentation exposes
 one canonical name per concept. Compatibility aliases remain callable for the
 specified transition window; they do not become a second canonical spelling.
-F22 records incomplete diagnostics, and F21 records the four canonical C++
-spellings that are still absent.
+Rows 35–38 now satisfy that rule; F22 records incomplete diagnostics elsewhere
+in the compatibility inventory.
 
 ---
 

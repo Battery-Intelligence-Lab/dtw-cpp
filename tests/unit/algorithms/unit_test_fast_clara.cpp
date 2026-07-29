@@ -36,13 +36,13 @@ static struct TestDataInitCLARA
 {
   TestDataInitCLARA()
   {
-    dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR);
+    dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR);
     // Route CSV output to a per-run temp dir so the test doesn't pollute the
     // repo root or build tree (CWD-dependent otherwise).
     const auto out = std::filesystem::temp_directory_path() / "dtwc_fast_clara_test";
     std::error_code ec;
     std::filesystem::create_directories(out, ec);
-    dtwc::settings::paths::setResultsPath(out);
+    dtwc::settings::paths::set_results_path(out);
   }
 } test_data_init_clara_;
 

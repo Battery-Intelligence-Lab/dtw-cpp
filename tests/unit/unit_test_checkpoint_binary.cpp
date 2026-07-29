@@ -25,7 +25,7 @@
 #endif
 
 static struct TestDataInitCheckpointBin {
-  TestDataInitCheckpointBin() { dtwc::settings::paths::setDataPath(DTWC_TEST_DATA_DIR); }
+  TestDataInitCheckpointBin() { dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR); }
 } test_data_init_checkpoint_bin_;
 
 using namespace dtwc;
@@ -37,7 +37,7 @@ namespace {
 Problem make_problem_bin(int N_data)
 {
   dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
-  dl.startColumn(1).startRow(1);
+  dl.start_column(1).start_row(1);
   dtwc::Problem prob{ "ckpt_bin_test", dl };
   return prob;
 }

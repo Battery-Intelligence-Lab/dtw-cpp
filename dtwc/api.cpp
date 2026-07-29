@@ -142,7 +142,7 @@ Data Dataset::materialize_local() const
 {
   if (is_path()) {
     DataLoader loader(path());
-    loader.startColumn(skip_cols_).verbosity(0);
+    loader.start_column(skip_cols_).verbosity(0);
     if (delimiter_ != 0) loader.delimiter(delimiter_);
     try {
       return loader.load_local();

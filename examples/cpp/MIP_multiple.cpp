@@ -24,10 +24,10 @@ int main()
   auto Nc = dtwc::Range(3, 6); // Clustering for Nc = 3,4,5. Range function like Python so 6 is not included.
 
   // Optional: Set data path if not running from project root
-  // dtwc::settings::paths::setDataPath("/path/to/your/data");
+  // dtwc::settings::paths::set_data_path("/path/to/your/data");
 
   dtwc::DataLoader dl{ dtwc::settings::paths::data / "dummy", Ndata_max };
-  dl.startColumn(1).startRow(1); // Since dummy files are in Pandas format skip first row/column.
+  dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.
 

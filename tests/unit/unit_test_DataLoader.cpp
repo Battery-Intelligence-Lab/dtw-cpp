@@ -182,7 +182,7 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
   {
     fs::path testPath = "test.csv";
     DataLoader loader;
-    loader.startColumn(1).startRow(3).n_data(100).path(testPath).verbosity(1);
+    loader.start_column(1).start_row(3).n_data(100).path(testPath).verbosity(1);
     // Test if the method chaining correctly sets the properties
     REQUIRE(loader.startColumn() == 1);
     REQUIRE(loader.startRow() == 3);

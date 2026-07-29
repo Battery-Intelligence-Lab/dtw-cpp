@@ -83,6 +83,9 @@ def assert_contract_audit_state() -> None:
         "[gap F20",
         "advisory stored",
         "advisory only",
+        "F21 covers four missing canonical C++ names",
+        "remain unimplemented frozen promises (F21)",
+        "spellings that are still absent",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -106,6 +109,8 @@ def assert_contract_audit_state() -> None:
         "`data()` returns `const Data&`",
         "neither binding\nrepeats the assignment",
         "private C++ state; CLI exposes `--dc`",
+        "Rows 35–38 are implemented",
+        "`start_column(int)` and `start_row(int)` own the loader mutations",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
@@ -118,7 +123,7 @@ def assert_contract_audit_state() -> None:
             "frozen contract must record exactly eight reviewer resolutions"
         )
     missing_findings = [
-        f"F{number}" for number in (18, *range(21, 27))
+        f"F{number}" for number in (18, *range(22, 27))
         if f"F{number}" not in contract
     ]
     if missing_findings:
@@ -136,6 +141,7 @@ def assert_migration_behaviors() -> None:
         "Explicit GPU requests no longer warn and run on CPU",
         "Requesting an unavailable MIP solver no longer prints and returns",
         "Ten C++ `Problem` fields are now private",
+        "Rows 35–38 are implemented",
     )
     missing = [item for item in required if item not in migration]
     if missing:

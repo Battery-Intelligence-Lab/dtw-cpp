@@ -125,9 +125,12 @@ the CLI (`dtwc_cl.cpp:471-555`) is the other path. Chained setters return
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
 
-The four snake_case path/builder names in this section and rename-table rows
-35–38 remain unimplemented frozen promises (F21); only the camelCase
-`startColumn`/`startRow` and `setDataPath`/`setResultsPath` spellings exist.
+The four canonical setter/path names in this section are implemented.
+`start_column(int)` and `start_row(int)` own the loader mutations;
+`set_data_path` and `set_results_path` each preserve both the `fs::path` and
+C-string overloads. The four camelCase spellings remain deprecated inline
+forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
+getters were not renamed by the frozen table and remain unchanged.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
 

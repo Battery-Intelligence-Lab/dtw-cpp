@@ -46,7 +46,7 @@ Problem make_dummy_problem(int N_data, int Nc)
   // cross-TU initialization order could then reset it to "./data", making the
   // test CWD-dependent and causing the intermittent Windows 0xc0000409 hunt.
   dtwc::DataLoader dl{ std::filesystem::path{DTWC_TEST_DATA_DIR} / "dummy", N_data };
-  dl.startColumn(1).startRow(1);
+  dl.start_column(1).start_row(1);
 
   dtwc::Problem prob{ "test_clustering", dl };
   prob.set_numberOfClusters(Nc);
