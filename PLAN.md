@@ -477,6 +477,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       complete R6 documentation/full gates, and do not rerun or rescue-tune the
       exhausted C++ campaign. Evidence:
       `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+      **R6 DOC STATUS 2026-07-29:** `43e1c44` synchronises the authoritative
+      and generated contracts, migrates all ordinary calls found by the
+      whole-tree sweep, and permanently guards the complete 30/33 C++,
+      12/13 Python, and 15 MATLAB inventories. Generation, the real-CLI
+      contract checker, record hygiene, syntax checks, canonical imports, and
+      adversarial re-review pass. Run the registered full gates next; F22
+      remains unchecked because the C++ mutation verdict is still 33/46
+      FALSIFIED.
 - [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
       Its module exposes `CheckpointOptions` and directory save/load only
       (`python/src/_dtwcpp_core.cpp:1105-1125`), while MATLAB delivered
@@ -1366,3 +1374,12 @@ colour system transfer verbatim**.
   gates; F22 remains open because the exhausted C++ band is FALSIFIED at
   33/46. Evidence:
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R6-F22 documentation PASS): `43e1c44` updates the frozen
+  contract and generated pages to the implemented deprecation policy, corrects
+  every audited live-source anchor, migrates every ordinary legacy call found
+  by the whole-tree sweep, and adds complete-inventory positive/exclusion
+  controls to the real-CLI documentation checker. Generation, contract,
+  record-hygiene, syntax, canonical-import, and adversarial-review gates pass.
+  Continue with the three serial native matrices and fresh Python/MATLAB full
+  gates; the exhausted C++ 33/46 mutation falsification still prevents F22
+  closure.

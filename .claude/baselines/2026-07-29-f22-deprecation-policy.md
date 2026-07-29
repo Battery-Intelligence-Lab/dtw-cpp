@@ -668,6 +668,41 @@ process trees were stopped, the seven targets were checked clean, both
 assumptions were fixed before the decisive run, and none is credited as a
 mutation attempt.
 
+#### Executed documentation and ordinary-call verdict — PASS
+
+Commit `43e1c44` synchronises the authoritative contract and generated Tier-1,
+Tier-2, and migration pages with the implemented 33/13/15 deprecation
+inventories. It also migrates every ordinary call found by the independent
+whole-tree sweep and adds a permanent, path-attributed checker over the
+affected command, skill, guide, report, and executable-script surfaces.
+
+The checker pins 30 unique C++ names / 33 diagnostic entities, 12 Python
+symbols / 13 warning operations, and 15 MATLAB warning operations. It executes
+a positive control for every registered name/operation family and negative
+controls for the private `fillDistanceMatrix_BruteForce`, the canonical
+no-argument `startColumn()`/`startRow()` getters, MATLAB's `'Band'` option name,
+and native `ClusteringResult.medoid_indices`.
+
+The decisive documentation gate printed:
+
+```text
+generated documentation is current
+generated documentation is current
+documentation contract checks passed
+record hygiene checks passed
+F22_DOC_CANONICAL_IMPORTS count=5/5 verdict=PASS
+```
+
+`py_compile` over `scripts/check_docs_contract.py` and all five migrated Kasper
+executables exited 0. `git diff --check` exited 0 with only the repository's
+line-ending conversion warnings. A second adversarial source-anchor and
+inventory review reported no blocker after every enumerated stale local line
+reference was corrected. The ordinary-call verdict is **0 remaining
+[confirmed]** by `scripts/check_docs_contract.py` plus the independent
+whole-tree inventory sweep; compatibility declarations, fixtures, generated
+rename inventories, historical records, native result fields, and the private
+brute-force implementation are deliberately excluded.
+
 ### R6 — documentation, immutable hygiene, and full native gates
 
 - `CHANGELOG.md` Unreleased names the warning policy and retained aliases.

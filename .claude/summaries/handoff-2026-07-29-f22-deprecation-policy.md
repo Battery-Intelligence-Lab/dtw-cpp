@@ -126,13 +126,21 @@ Then run the registered focused gates before creating any mutation runner.
 - MATLAB fatal assertions produce `Failed=1, Incomplete=1`; the permanent
   runner registers that exact shape for MW01–MW04, MB01–MB08, and MB11–MB15,
   while the other sixteen kills require `Incomplete=0`.
+- `43e1c44` completes the F22 documentation task. The authoritative and
+  generated contracts now describe the implemented 33/13/15 policy without
+  claiming F22 evidence closure, all audited live-source anchors are current,
+  and ordinary examples/scripts use canonical names.
+- `scripts/check_docs_contract.py` now pins 30 unique C++ names/33 entities,
+  12 Python symbols/13 operations, and 15 MATLAB operations with positive and
+  exclusion controls. Generation, the real-CLI contract check, record hygiene,
+  syntax checks, five canonical score imports, `git diff --check`, and a second
+  adversarial review all pass.
 
 ## Updated exact resume point
 
-Update `docs/api-contract-2.0.md`, the ordinary stale documentation examples,
-and `scripts/check_docs_contract.py`; regenerate the derived contract pages and
-pass both documentation checkers plus record hygiene. Then run all registered
-F22 full gates serially and record the final adjudication. Do not rerun or
-rescue-tune the C++ mutation runner: its exhausted 33/46 falsification prevents
-F22 closure unless a later governed decision explicitly overturns the
-two-attempt cap.
+Run all registered F22 full gates serially and record the final adjudication:
+canonical, llfio-OFF, and Arrow-ON native matrices first; then a forced fresh
+Python extension and its focused/full suites; then a forced fresh OpenMP MEX
+and the five MATLAB suites under R2024b and R2025b. Do not rerun or rescue-tune
+the C++ mutation runner: its exhausted 33/46 falsification prevents F22 closure
+unless a later governed decision explicitly overturns the two-attempt cap.

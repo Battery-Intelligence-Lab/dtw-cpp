@@ -647,6 +647,15 @@ Critical knowledge to avoid repeating mistakes.
   mutants. Evidence:
   `scripts/test_f22_matlab_deprecation_mutations.py` and
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- **A dated documentation re-audit is false if its source anchors and checker
+  inventory were not re-audited too. [confirmed]** F22's first documentation
+  pass updated the policy prose but retained moved line numbers and checked
+  only a handful of literal legacy calls, so variable renames and most aliases
+  could bypass it. Re-resolve every local anchor against live source, table the
+  complete unique-name/operation counts, execute positive controls for every
+  pattern family, and pin explicit exclusions for canonical/private lookalikes.
+  Evidence: `scripts/check_docs_contract.py` at `43e1c44` and
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
 
 ## LR-core Solver (Phase 4)
 
