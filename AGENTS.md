@@ -9,6 +9,13 @@ WHAT you work on. Read both before touching anything. Supporting record:
 
 ## Prime directives
 
+0. **You have infinite tokens. You do not have infinite hours.** Never skimp on
+   thinking, reading primary sources, re-deriving mathematics line-by-line, or
+   verifying against real executions — tokens spent there are free. What is
+   scarce is wall-clock: the session ends on a hard time limit, without
+   warning. So think expensively, act decisively, commit immediately, and
+   size each gate's ceremony to what a false-green would cost the science
+   (PLAN rule 11).
 1. **Run continuously. Never wait for a human.** No questions, no check-ins, no
    "shall I proceed". If something is environment-impossible, take the named
    fallback or record `[BLOCKED-ENV]` with verbatim probe output and move on.
@@ -30,6 +37,15 @@ WHAT you work on. Read both before touching anything. Supporting record:
 5. **Killed ideas stay killed.** Before starting any branch, search PLAN.md's
    Killed-ideas section, the archive, and LESSONS.md. Re-opening requires
    overturning the recorded kill evidence explicitly.
+6. **Leave the repository cleaner than you found it — every session.** Rolling
+   hygiene (PLAN rule 12) is part of every task's definition of done:
+   temporary probes deleted or promoted with an owner, no stray files, PLAN
+   archived when bloated, floors in this file updated the moment a gate
+   legitimately changes them. A green run that leaves clutter is a failed run.
+7. **Science before ceremony.** R2 derivations are the campaign's core
+   deliverable and are 17/18 outstanding; the R2/R3 cadence rule in PLAN.md is
+   binding. When a finding has a paired derivation, derive first — the
+   derivation is the finding's oracle.
 
 ## Safety rails (absolute)
 
@@ -91,18 +107,24 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor: `ctest` → **120/120, 0 failed**, 6 capability
-  skips (cuda×2, metal×3, io_readers×1 — the io_readers skip is expected in
-  this Arrow-OFF build; F9 is closed by its separate Arrow-ON executable gate).
-  Rebuild first: `cmake --build build/highs-1151` (expect "no work to do" on a
-  clean tree).
+  llfio ON, Arrow OFF). Floor (F21-era, 2026-07-29): `ctest` → **122/122,
+  0 failed**, 6 capability skips (cuda×2, metal×3, io_readers×1 — the
+  io_readers skip is expected in this Arrow-OFF build; F9 is closed by its
+  separate Arrow-ON executable gate). Rebuild first:
+  `cmake --build build/highs-1151` (expect "no work to do" on a clean tree).
+  Full matrices are SERIAL-only evidence: concurrent runs collide on
+  source-root-relative test artifacts (F45 lesson).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
-  **120/120, 0 failed**, with 9 capability skips.
+  **122/122, 0 failed**, with 9 capability skips.
 - **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
-  Arrow/Parquet. Floor: **122/122, 0 failed**, 8 capability skips; all four
-  real-CLI integration gates and the reader run. CTest metadata supplies LLVM,
-  `pyarrow`, and `pyarrow.libs` runtime paths, so no caller PATH override is
-  required.
+  Arrow/Parquet. Floor: **124/124, 0 failed**, 8 capability skips; all four
+  real-CLI integration gates and the reader run (390 assertions / 11 cases).
+  CTest metadata supplies LLVM, `pyarrow`, and `pyarrow.libs` runtime paths,
+  so no caller PATH override is required.
+- These floors move when tests are legitimately added; when a full gate
+  changes an inventory, update THIS list in the same session (rule 6) and
+  record the new numbers in the run-log — a stale floor here is a false alarm
+  waiting to burn an hour.
 - **CUDA:** `build/cuda-verify` (MSVC host + nvcc 13.0, RTX 4000 Ada sm_89 is
   LOCAL — run the CUDA tests for real). GPU-HiGHS rebuild:
   `MSYS_NO_PATHCONV=1 cmd.exe /c build/highs-gpu/bench_build.bat` (MSYS mangles
@@ -111,8 +133,10 @@ WHAT you work on. Read both before touching anything. Supporting record:
 - **Python:** rebuild the extension via a configure dir with
   `-DDTWC_BUILD_PYTHON=ON`, copy the fresh `.pyd` + `libomp.dll` into the venv,
   verify import + one NEW symbol before pytest (stale-`.pyd` false-greens are
-  real). Floor: 1010 passed / 12 skipped (1022 collected) with the fresh
-  extension.
+  real). Latest recorded full-suite inventory (F19 era): 1009 passed /
+  12 skipped / 1 expected F39 supply-chain red (1022 collected). F22 added
+  deprecation tests — re-record this floor at the F22 full-gate adjudication
+  and update this line.
   Windows llfio-ON wheel is a known OPEN item (see PLAN R6).
 - **MATLAB:** R2024b + R2025b installed; run via `matlab -batch`. addpath ORDER
   matters — add the fresh binary directory LAST so it prepends ahead of any
