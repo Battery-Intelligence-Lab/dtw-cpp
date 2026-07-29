@@ -1227,6 +1227,17 @@ colour system transfer verbatim**.
   omitting the exact `do not recreate them` marker even though equivalent
   record-retirement prose remained. Restore the exact phrase without changing
   the rule; require the complete checker to pass before F22 work.
+- 2026-07-29 (F22 registration): Retain exactly 33 C++ diagnostic entities,
+  12 Python symbols/13 base operations, and 15 MATLAB aliases. F19's two raw
+  C++ fields stay public `int`; canonical I/O owns behavior. Python
+  `cluster_size` and both distance aliases are in scope, while
+  `ClusterResult` must remain exactly `Result`. MATLAB `set_distance_matrix`
+  is already canonical and stays silent; the four PascalCase configuration
+  properties warn on assignment, their only frozen canonical replacement.
+  Preserve F18's two named retained-red MATLAB cases, reuse existing test
+  inventories, require 46/31/33 mutation kills, and cap product work at two
+  attempts. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1262,3 +1273,9 @@ colour system transfer verbatim**.
 - 2026-07-29 (record-hygiene restoration): Restored the exact retirement marker
   required by `check_record_hygiene.py`; semantic policy is unchanged and the
   complete checker passes. Resume remains F22.
+- 2026-07-29 (R3-F22 registration): Clean base `5352bc0` passes canonical
+  122/122 with the exact six capability skips. Exhaustive cross-language
+  inventory, expected-red, warning/count/attribution, canonical-silence,
+  behavior-identity, fresh-binding, two-release MATLAB, 110-mutation, docs,
+  and three-build bands are registered before decisive fixtures or product
+  edits.
