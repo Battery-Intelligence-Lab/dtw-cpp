@@ -27,6 +27,14 @@
   registered capability skips.
 - Re-ran the llfio-OFF F22 entry verbosely: diagnostics 33/33, behavior 33/33,
   229 assertions / 5 cases, zero skips.
+- Reconfigured and clean-first rebuilt the PyArrow 23.0.1 Arrow-ON matrix,
+  settled it to `ninja: no work to do`, and passed 124/124 serially with the
+  exact eight registered capability skips.
+- Proved through CTest's JSON test model that the reader receives all three
+  registered runtime-path modifications; then executed its 390 assertions /
+  11 cases with no skip.
+- Re-ran the Arrow-ON F22 entry verbosely: diagnostics 33/33, behavior 33/33,
+  229 assertions / 5 cases, zero skips.
 
 ## Decisions
 
@@ -42,12 +50,11 @@
 
 ## Exact resume point
 
-Clean-first build and run the Arrow-ON 124-test matrix serially, then prove the
-real reader executed 390 assertions / 11 cases. Follow with forced-fresh Python
-focused/full and forced-fresh OpenMP MATLAB focused/full on R2024b then R2025b.
-Extract exact skip names rather than trusting aggregate CTest success. Append
-exact outputs to the run-log after each gate and commit each completed evidence
-step immediately.
+Force-clean the Python extension, install the exact new binary plus `libomp`,
+prove hashes/provenance/new-symbol discrimination, then run focused/full
+Python. Follow with forced-fresh OpenMP MATLAB focused/full on R2024b then
+R2025b. Append exact outputs to the run-log after each gate and commit each
+completed evidence step immediately.
 
 ## Open risks
 

@@ -243,6 +243,96 @@ Verdict: **PASS [confirmed]** — 122/122, zero failed, the exact nine registere
 capability skips, and both F22 subjects executed above their registered
 assertion/case floors.
 
+### Arrow-ON / LLFIO-OFF
+
+The independent preflight found PyArrow 23.0.1, its runtime directories, and
+the pinned package descriptors. Configuration printed:
+
+```text
+PYARROW_RUNTIME=C:\D\git\dtw-cpp\.venv\Lib\site-packages\pyarrow
+PYARROW_LIBS_RUNTIME=C:\D\git\dtw-cpp\.venv\Lib\site-packages\pyarrow.libs
+PYARROW_LIBS_DLL_COUNT=1
+--   llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.
+--   Arrow:    YES (v23.0.1) — system install
+--   Parquet:  YES (v23.0.1) — system install
+-- Arrow + Parquet linked — IPC and Parquet reading enabled
+ARROW_CACHE_ASSERT=PASS
+```
+
+The clean-first build removed 387 files, rebuilt its complete 388-edge graph,
+exited 0, and its settling inventory printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+INVENTORY_COUNT=124
+F22_ENTRIES=1
+READER_ENTRIES=1
+```
+
+The first runtime-metadata assertion rejected the preflight:
+
+```text
+READER_METADATA_PYARROW=False
+READER_METADATA_PYARROW_LIBS=False
+```
+
+No test had run. The strings were present in `ctest -N -V`; the assertion had
+compared Windows backslashes against CTest's forward slashes. The independent
+CTest JSON model then exposed the exact three `ENVIRONMENT_MODIFICATION`
+entries, and an exact-string assertion printed:
+
+```text
+READER_ENV_ENTRIES=3
+READER_RUNTIME_METADATA=PASS
+PRE_CTEST_EXCLUSIVITY=PASS
+```
+
+The registered serial command was:
+
+```text
+ctest --test-dir build/arrow-pyarrow-23 -C Release --output-on-failure --no-tests=error -j 1
+```
+
+Its decisive summary and F22 entry were:
+
+```text
+Start  61: test_problem_api_2_0
+61/124 Test  #61: test_problem_api_2_0 ......................   Passed    7.73 sec
+100% tests passed, 0 tests failed out of 124
+Total Test time (real) =  92.37 sec
+```
+
+The exact skip-set check printed:
+
+```text
+SKIPS=8 NAMES=unit_test_mmap_data_store,unit_test_mmap_distance_matrix,test_cuda_correctness,test_cuda_lb_keogh,test_metal_correctness,test_metal_lb_keogh,test_metal_mmap,unit_test_benders
+SKIP_SET_MATCH=True
+```
+
+The fresh verbose F22 execution printed:
+
+```text
+61: F22_CPP_SILENT count=0/33 entities=none canonical_deprecation_lines=0
+61: F22_CPP_DIAGNOSTICS inventory=33/33 legacy=33/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=PASS
+61: F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS
+61: All tests passed (229 assertions in 5 test cases)
+1/1 Test #61: test_problem_api_2_0 .............   Passed    9.20 sec
+```
+
+The real reader then ran verbosely under the CTest-provided runtime paths:
+
+```text
+57: All tests passed (390 assertions in 11 test cases)
+1/1 Test #57: test_io_readers ..................   Passed    0.58 sec
+READER_ASSERTION_FLOOR=True
+READER_SKIP_ABSENT=True
+```
+
+Verdict: **PASS [confirmed]** — 124/124, zero failed, the exact eight
+registered capability skips, both F22 subjects above their floors, and the
+reader executed 390 assertions / 11 cases rather than skipping.
+
 ### Remaining gates
 
-Pending: Arrow-ON, Python, MATLAB R2024b, MATLAB R2025b.
+Pending: Python, MATLAB R2024b, MATLAB R2025b.
