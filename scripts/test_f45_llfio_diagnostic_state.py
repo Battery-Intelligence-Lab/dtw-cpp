@@ -17,10 +17,12 @@ import sys
 SENTINEL_NAME = "f45_downstream_deprecated"
 SENTINEL_MESSAGE = "F45 downstream deprecation sentinel"
 RAW_INCLUDE = re.compile(
-    r'^\s*#\s*include\s*[<"]llfio/v2\.0/llfio\.hpp[>"]\s*$'
+    r'^\s*#\s*include\s*[<"]llfio/v2\.0/llfio\.hpp[>"]'
+    r"\s*(?:(?://|/\*).*)?$"
 )
 WRAPPER_INCLUDE = re.compile(
-    r'^\s*#\s*include\s*"llfio_include\.hpp"\s*$'
+    r'^\s*#\s*include\s*"llfio_include\.hpp"'
+    r"\s*(?:(?://|/\*).*)?$"
 )
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 ERROR_LINE = re.compile(r"\b(?:fatal )?error(?:\s+[A-Z]+\d+)?:", re.IGNORECASE)
@@ -207,6 +209,27 @@ def error_lines(output: str) -> list[str]:
     return [line for line in clean.splitlines() if ERROR_LINE.search(line)]
 
 
+def validate_include_patterns() -> None:
+    raw_controls = (
+        '#include <llfio/v2.0/llfio.hpp>',
+        ' # include "llfio/v2.0/llfio.hpp" // trailing rationale',
+        '#include <llfio/v2.0/llfio.hpp> /* trailing rationale */',
+    )
+    wrapper_controls = (
+        '#include "llfio_include.hpp"',
+        '# include "llfio_include.hpp" // trailing rationale',
+        '#include "llfio_include.hpp" /* trailing rationale */',
+    )
+    if not all(RAW_INCLUDE.fullmatch(line) for line in raw_controls):
+        raise RuntimeError("raw LLFIO include pattern rejected a control")
+    if not all(WRAPPER_INCLUDE.fullmatch(line) for line in wrapper_controls):
+        raise RuntimeError("wrapper include pattern rejected a control")
+    if RAW_INCLUDE.fullmatch("// #include <llfio/v2.0/llfio.hpp>"):
+        raise RuntimeError("raw LLFIO include pattern accepted a comment")
+    if WRAPPER_INCLUDE.fullmatch('// #include "llfio_include.hpp"'):
+        raise RuntimeError("wrapper include pattern accepted a comment")
+
+
 def audit_tracked_headers(source_dir: Path) -> tuple[bool, int, int]:
     tracked = subprocess.run(
         [
@@ -287,6 +310,7 @@ def main() -> int:
     )
 
     try:
+        validate_include_patterns()
         require_inside(build_dir, source_dir, "build directory")
         require_inside(off_build_dir, source_dir, "LLFIO-OFF build directory")
         on_compiler, on_context = compile_context(
