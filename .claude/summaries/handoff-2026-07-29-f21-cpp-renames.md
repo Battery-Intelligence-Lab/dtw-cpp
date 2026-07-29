@@ -31,6 +31,22 @@
 - Added the permanent 12-case mutation harness in `36b9c99`. Its decisive run
   killed 8/8 compile mutants and 4/4 runtime mutants, passed both controls,
   reported zero survivors, emitted no stderr, and restored exact source bytes.
+- Closed the immutable-product hygiene band: canonical-only compilation is
+  clean under `-Werror=deprecated-declarations`, the legacy probe emits exactly
+  four replacement diagnostics, ordinary legacy setter calls outside the
+  compatibility fixture are zero, and both documentation gates pass.
+- Passed the full canonical matrix at 122/122 with exactly 6 skips, llfio-OFF
+  at 122/122 with exactly 9, and Arrow-ON at 124/124 with exactly 8.
+- Proved `test_io_readers` executed in Arrow-ON: 390 assertions in 11 test
+  cases. All three direct F21 executions printed the exact marker and 81
+  assertions in 2 test cases.
+- Confirmed inventories did not move: CTest remains 122/122/124 and tracked
+  CMake manifests remain 28. The expected F39 slice reproduced only
+  `assert 28 == 27` (62 passed, 1 failed).
+- Exposed rather than hid an inherited record-hygiene failure: both the live
+  closure tree and a stash/rerun at pre-closure HEAD `8e542ae` omit the
+  checker's exact `do not recreate them` marker while retaining equivalent
+  prose. This is outside F21 and must be repaired in a separate docs commit.
 
 ## Decisions
 
@@ -48,12 +64,17 @@
 
 ## Exact resume point
 
-Commit the R5 evidence, then run R6 from the immutable product commit: full
-canonical, llfio-OFF, and Arrow-ON rebuild/CTest matrices; assert the Arrow
-reader executed; rerun documentation, deprecation/call-site hygiene, supply
-chain, and inventory checks. If all registered bands pass, close F21 in a
-separate bookkeeping commit and advance the campaign cursor to F22. Product
-attempts consumed: 1/2.
+F21 is closed after product attempt 1/2. Commit the closure bookkeeping, repair
+the inherited exact record-hygiene marker in its own docs commit, rerun that
+gate, then resume at F22: re-read its frozen alias inventory, search killed
+ideas/history, register the cross-language diagnostic bands before decisive
+probes, and preserve canonical silence plus behavior identity.
+
+## Final verdict
+
+**F21 CLOSED [confirmed]** by
+`.claude/baselines/2026-07-29-f21-cpp-renames.md`. Rollback is local commit
+`5e4a7b6`; no remote or irreversible action occurred.
 
 ## Open risks
 

@@ -310,4 +310,175 @@ fb267cb9bcb8259a08961d574817e5a6657785ddb54aaab479f4aaba200a236f  dtwc/DataLoade
 Verdict: **R5 PASS [confirmed]**. All 12 registered mutants were killed, both
 controls passed, and the exact source bytes were restored.
 
-R6 full-matrix and immutable-product checks pending.
+### R4/R6 — immutable-product hygiene and full matrices
+
+All decisive commands below ran at:
+
+```text
+8e542aeadcec5baa1f1feea80717af398b1ebf0b
+```
+
+Initial and final tracked status were clean. The canonical-only warning probe
+exited 0 under `-Werror=deprecated-declarations`. The legacy-only probe exited
+1 and printed:
+
+```text
+<stdin>:5:10: error: 'startColumn' is deprecated: use start_column [-Werror,-Wdeprecated-declarations]
+<stdin>:5:25: error: 'startRow' is deprecated: use start_row [-Werror,-Wdeprecated-declarations]
+<stdin>:6:26: error: 'setDataPath' is deprecated: use set_data_path [-Werror,-Wdeprecated-declarations]
+<stdin>:7:26: error: 'setResultsPath' is deprecated: use set_results_path [-Werror,-Wdeprecated-declarations]
+4 errors generated.
+legacy_messages=True,True,True,True
+```
+
+The ordinary-call search outside the deliberate compatibility fixture printed:
+
+```text
+ordinary_legacy_calls=0
+```
+
+The immutable documentation rerun printed:
+
+```text
+generated documentation is current
+generated documentation is current
+documentation contract checks passed
+```
+
+Verdict: **R4 PASS [confirmed]**. Canonical consumers are warning-clean, all
+four legacy setters are loud with the exact replacement, ordinary repository
+calls are canonical, and the authoritative/rendered contract is current.
+
+The full canonical matrix printed:
+
+```text
+100% tests passed, 0 tests failed out of 122
+Total Test time (real) = 60.63 sec
+```
+
+Its exact six capability skips were:
+
+```text
+test_cuda_correctness
+test_cuda_lb_keogh
+test_io_readers
+test_metal_correctness
+test_metal_lb_keogh
+test_metal_mmap
+```
+
+`ctest -N` printed `Total Tests: 122`. The direct focused run printed:
+
+```text
+F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 loader_state=22/22 path_state=16/16 cstring_copy=4/4 skips=0 verdict=PASS
+All tests passed (81 assertions in 2 test cases)
+```
+
+The full llfio-OFF matrix printed:
+
+```text
+100% tests passed, 0 tests failed out of 122
+Total Test time (real) = 49.01 sec
+```
+
+Its exact nine capability skips were:
+
+```text
+unit_test_mmap_data_store
+unit_test_mmap_distance_matrix
+test_cuda_correctness
+test_cuda_lb_keogh
+test_io_readers
+test_metal_correctness
+test_metal_lb_keogh
+test_metal_mmap
+unit_test_benders
+```
+
+`ctest -N` printed `Total Tests: 122`. Its direct F21 run printed the same
+registered marker and `All tests passed (81 assertions in 2 test cases)`.
+
+The full Arrow-ON matrix printed:
+
+```text
+100% tests passed, 0 tests failed out of 124
+Total Test time (real) =  26.93 sec
+```
+
+Its exact eight capability skips were:
+
+```text
+unit_test_mmap_data_store
+unit_test_mmap_distance_matrix
+test_cuda_correctness
+test_cuda_lb_keogh
+test_metal_correctness
+test_metal_lb_keogh
+test_metal_mmap
+unit_test_benders
+```
+
+`ctest -N` printed `Total Tests: 124`. The focused run passed 2/2, printed the
+same F21 marker and 81/2 Catch2 summary, and proved the reader executed:
+
+```text
+Test command: C:\D\git\dtw-cpp\build\arrow-pyarrow-23\bin\test_io_readers.exe
+All tests passed (390 assertions in 11 test cases)
+test_io_readers ... Passed
+```
+
+The first rebuild wrapper in each build directory expired while the
+header-triggered Ninja work continued. No runner terminated or cleaned that
+work. After each process quiesced, the identical required build command exited
+0; the canonical build completed 147 edges, while the llfio-OFF and Arrow-ON
+verification reruns printed `ninja: no work to do.` These wrapper expirations
+are retained as harness evidence and are not substituted for the successful
+decisive build exits.
+
+The tracked CMake inventory remained:
+
+```text
+tracked_dot_cmake=19
+tracked_cmakelists=9
+tracked_cmake_total=28
+```
+
+The separately owned F39 Python slice reproduced its registered mismatch and
+no other failure:
+
+```text
+......................................................F........          [100%]
+E       assert 28 == 27
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+1 failed, 62 passed in 1.57s
+```
+
+Verdict: **R6 PASS [confirmed]**. Every F21 band is green, all three registered
+matrix counts and skip counts are exact, the Arrow reader ran, inventories did
+not move, and the sole supply-chain mismatch remains isolated to F39.
+
+One non-registered repository-record probe was also run and is not hidden:
+`uv run python scripts/check_record_hygiene.py` exited 1 because PLAN lacks the
+exact phrase `do not recreate them`. Stashing every F21 closure edit and
+rerunning at `8e542aeadcec5baa1f1feea80717af398b1ebf0b` produced the identical
+failure:
+
+```text
+AssertionError: PLAN omits required current markers: ['do not recreate them']
+```
+
+The live PLAN and the pre-F21 PLAN both retain the equivalent record-retirement
+rule as “instead of recreating obsolete ledgers”; therefore this is
+**INHERITED [confirmed]**, not an F21 delta or R6 subject. It will be restored
+as a separate documentation task so F21 closure does not absorb an unrelated
+record repair.
+
+## Final verdict
+
+**F21 CLOSED [confirmed].** Product attempt 1/2 succeeded. The frozen C++
+setter surface is live with exact overloads and state semantics; old spellings
+remain source-compatible, behavior-identical, and loudly deprecated. Rollback,
+if required, is the local product commit `5e4a7b6`; no irreversible or remote
+action occurred. The claim most likely to be wrong was that C-string calls
+proved an exact C-string overload; explicit function-pointer assertions and
+remove-overload mutants now make that claim directly testable.

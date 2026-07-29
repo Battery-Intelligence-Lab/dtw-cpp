@@ -13,16 +13,16 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-27, reconciled after the F20 run):** 2.0.0rc1 release state
+**Status (2026-07-29, after the F21 run):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
-active with D1 CLOSED; R3 active with **F13, F14, F15, F19, F33 CLOSED**.
+active with D1 CLOSED; R3 active with **F13, F14, F15, F19, F21, F33 CLOSED**.
 Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
 checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 (fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
 **F18** (residuals → F40/F41/F42), **F20** (residuals → F43/F44). **F12**
 partially closed (CUDA verified on the local RTX; real Metal
-`[BLOCKED-ENV]`). **Campaign cursor: F21.** The final **2.0.0 tag gates on
+`[BLOCKED-ENV]`). **Campaign cursor: F22.** The final **2.0.0 tag gates on
 R0–R6 CLEAN**; R7 (WASM Playground) is a 2.1 feature and does not gate the
 tag. Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
 never wait on them.
@@ -441,7 +441,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       owns the toolset-runtime incompatibility, F44 the cache-path taxonomy
       escape. Registered bands and full evidence:
       `.claude/baselines/2026-07-24-f20-storage-policy.md`.
-- [ ] **F21 — four frozen C++ snake_case entry points are absent.**
+- [x] **F21 — four frozen C++ snake_case entry points are absent.**
       `DataLoader` exposes only `startColumn`/`startRow`
       (`dtwc/DataLoader.hpp:124-157`), and `settings::paths` exposes only
       `setDataPath`/`setResultsPath` (`dtwc/settings.hpp:74-86`), despite the
@@ -450,6 +450,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       First gate: a public-header compile fixture calling all four canonical
       spellings must fail on the inherited tree, then pass while the four legacy
       calls still compile and produce identical loader configuration/path state.
+      **CLOSED 2026-07-29:** product attempt 1 (`5e4a7b6`) adds the exact
+      canonical-owned setter surface, preserves both path overloads, and makes
+      the four old setters deprecated forwarders. The permanent fixture
+      (`a48635b`) proves 12/12 signatures and 81 assertions/2 cases in all three
+      builds; `36b9c99` kills 12/12 registered mutants. Full gates pass
+      canonical 122/122 (6 skips), llfio-OFF 122/122 (9), and Arrow-ON 124/124
+      (8), with the reader executing 390 assertions/11 cases. Evidence:
+      `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
 - [ ] **F22 — compatibility aliases do not obey the frozen deprecation
       policy.** C++ `maxIter`/`N_repetition` remain unannotated public fields;
       most Python aliases forward without `DeprecationWarning`; MATLAB legacy
@@ -1208,6 +1216,12 @@ colour system transfer verbatim**.
   CMake inventories, and cap product work at two attempts. F22 retains the
   exhaustive cross-language deprecation audit. Evidence:
   `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
+- 2026-07-29 (F21 closure): Product attempt 1 is retained. Exact canonical and
+  compatibility signatures, state/path semantics, C-string lifetime, loud
+  diagnostics, generated docs, 12/12 mutation kills, and all three full
+  matrices pass. The Arrow reader executes rather than skips. CTest inventories
+  remain 122/122/124; tracked CMake manifests remain 28 versus frozen 27, owned
+  solely by F39. Campaign cursor advances to F22.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1233,3 +1247,10 @@ colour system transfer verbatim**.
   the exact six capability skips. Expected-red, exact-overload,
   state-equivalence, path-lifetime, deprecation, 12-mutation, documentation,
   and three-build bands registered before the decisive compile probe.
+- 2026-07-29 (R3-F21 closure): `a48635b` exposes the gap red-first; `5e4a7b6`
+  implements the canonical-owned/deprecated-forwarder repair; `36b9c99`
+  permanently kills all 12 registered mutants. Canonical 122/122 with 6 skips,
+  llfio-OFF 122/122 with 9, and Arrow-ON 124/124 with 8 all pass; the Arrow
+  reader runs 390 assertions/11 cases. F21 CLOSED; resume at F22. Evidence:
+  `.claude/baselines/2026-07-29-f21-cpp-renames.md` and
+  `.claude/summaries/handoff-2026-07-29-f21-cpp-renames.md`.

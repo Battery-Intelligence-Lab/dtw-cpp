@@ -595,6 +595,15 @@ Critical knowledge to avoid repeating mistakes.
   mmap creation failures. A bad temp environment can therefore escape as
   `filesystem_error` instead of the public `IOError`; poison the discovery
   step and require transaction preservation before claiming taxonomy closure.
+- **A public rename is a symbol-table migration, not a textual alias.
+  [confirmed]** F21 could not add `DataLoader::start_row(int)` because a private
+  `int start_row` already occupied the member name. The inherited compile probe
+  exposed both the access violation and “called object type `int`” error before
+  product work. Rename coupled private storage coherently, pin exact overloads
+  with function-pointer casts (a string literal can hide a missing
+  `const char*` overload through conversion), and mutation-test both canonical
+  ownership and legacy forwarding. Evidence:
+  `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
 
 ## LR-core Solver (Phase 4)
 
