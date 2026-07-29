@@ -183,6 +183,66 @@ Verdict: **PASS [confirmed]** — 122/122, zero failed, the exact six registered
 capability skips, and both F22 subjects executed above their registered
 assertion/case floors.
 
+### LLFIO-OFF / Arrow-OFF
+
+The independent preflight found no competing DTWC++ build/test process and
+reconfigured the established Ninja/Release matrix. Cache assertions printed:
+
+```text
+--   llfio:    OFF (DTWC_ENABLE_LLFIO=OFF) — mmap disabled.
+-- ║  CUDA:      OFF
+-- ║  Metal:     OFF
+-- ║  HiGHS:     OFF
+NOLLFIO_CACHE_ASSERT=PASS
+```
+
+The clean-first build removed 385 files, rebuilt its complete 386-edge graph,
+exited 0, and the settling build printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+INVENTORY_COUNT=122
+F22_ENTRIES=1
+PRE_CTEST_EXCLUSIVITY=PASS
+```
+
+The registered serial command was:
+
+```text
+ctest --test-dir build/nollfio -C Release --output-on-failure --no-tests=error -j 1
+```
+
+Its decisive summary and subject entry were:
+
+```text
+Start  61: test_problem_api_2_0
+61/122 Test  #61: test_problem_api_2_0 ......................   Passed    7.40 sec
+100% tests passed, 0 tests failed out of 122
+Total Test time (real) =  88.07 sec
+```
+
+The exact skip-set check printed:
+
+```text
+SKIPS=9 NAMES=unit_test_mmap_data_store,unit_test_mmap_distance_matrix,test_cuda_correctness,test_cuda_lb_keogh,test_io_readers,test_metal_correctness,test_metal_lb_keogh,test_metal_mmap,unit_test_benders
+SKIP_SET_MATCH=True
+```
+
+The fresh verbose subject execution printed:
+
+```text
+61: F22_CPP_SILENT count=0/33 entities=none canonical_deprecation_lines=0
+61: F22_CPP_DIAGNOSTICS inventory=33/33 legacy=33/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=PASS
+61: F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS
+61: All tests passed (229 assertions in 5 test cases)
+1/1 Test #61: test_problem_api_2_0 .............   Passed   23.75 sec
+```
+
+Verdict: **PASS [confirmed]** — 122/122, zero failed, the exact nine registered
+capability skips, and both F22 subjects executed above their registered
+assertion/case floors.
+
 ### Remaining gates
 
-Pending: llfio-OFF, Arrow-ON, Python, MATLAB R2024b, MATLAB R2025b.
+Pending: Arrow-ON, Python, MATLAB R2024b, MATLAB R2025b.

@@ -22,6 +22,11 @@
   capability skips.
 - Re-ran the hardened F22 entry verbosely: diagnostics 33/33, behavior 33/33,
   229 assertions / 5 cases, zero skips.
+- Reconfigured and clean-first rebuilt the llfio-OFF matrix, settled it to
+  `ninja: no work to do`, and passed 122/122 serially with the exact nine
+  registered capability skips.
+- Re-ran the llfio-OFF F22 entry verbosely: diagnostics 33/33, behavior 33/33,
+  229 assertions / 5 cases, zero skips.
 
 ## Decisions
 
@@ -37,12 +42,12 @@
 
 ## Exact resume point
 
-Clean-first build and run the canonical 122-test matrix serially. Then do the
-same for llfio-OFF and Arrow-ON, followed by forced-fresh Python focused/full
-and forced-fresh OpenMP MATLAB focused/full on R2024b then R2025b. Extract
-exact skip names rather than trusting aggregate CTest success. Append exact
-outputs to the run-log after each gate and commit each completed evidence step
-immediately.
+Clean-first build and run the Arrow-ON 124-test matrix serially, then prove the
+real reader executed 390 assertions / 11 cases. Follow with forced-fresh Python
+focused/full and forced-fresh OpenMP MATLAB focused/full on R2024b then R2025b.
+Extract exact skip names rather than trusting aggregate CTest success. Append
+exact outputs to the run-log after each gate and commit each completed evidence
+step immediately.
 
 ## Open risks
 
