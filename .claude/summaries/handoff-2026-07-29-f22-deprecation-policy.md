@@ -33,6 +33,19 @@
   llfio-OFF 122/122 with nine. A concurrent-matrix run was rejected as harness
   evidence after shared source-root `CSV` collisions; the two affected tests
   passed 2/2 in each unchanged build before both serial full passes.
+- Hardened the F45 raw-include inventory in `f7f91d6` so trailing line/block
+  comments cannot hide an include and the audit proves its own controls.
+- Committed the exhaustive F22 C++ behavior fixture and combined
+  diagnostic/behavior launcher in `c210504` without changing the 122-test
+  CTest inventory.
+- Forced the generator-independent compiler-probe fallback: it reproduced the
+  exact 24/33 inherited diagnostic ledger and exact nine silent entities.
+- Ran the canonical and llfio-OFF behavior executables. Both passed 229
+  assertions in five cases and printed the exact 33/33 behavior, 4/4 field,
+  7/7 I/O, 6/6 file, and 2/2 stdout marker with zero skips.
+- Ran the preferred compiler driver and combined CTest entry in both builds.
+  Both drivers reproduced 24/33; both CTest entries failed only because the
+  registered 33/33 product diagnostic marker is still absent.
 
 ## Decisions
 
@@ -56,13 +69,17 @@
   canonical-context flag filter is not configuration evidence.
 - Run full configured CTest matrices serially while their generated metadata
   gives every test the repository source root as its working directory.
+- Keep one CTest entry by using a tests-only Python 3.9 launcher. On generators
+  without `compile_commands.json`, force three marked, build-local
+  `EXCLUDE_FROM_ALL` object probes instead of weakening the compile context or
+  requiring a newer-than-3.26 CMake launcher property.
 
 ## Exact resume point
 
-Commit the F45 closure records as their own `docs:` commit. Then add the
-exhaustive self-contained C++ behavior fixture to the existing
-`test_problem_api_2_0` target, preserving the CTest inventory, before beginning
-F22 alias product attempt 1/2.
+Begin F22 product attempt 1/2 from clean commit `c210504`. Implement the C++
+canonical-owned I/O and deprecated fields/functions, native and pure-Python
+warning paths, and MATLAB property/function warnings in disjoint file scopes.
+Then run the registered focused gates before creating any mutation runner.
 
 ## Open risks
 
@@ -71,5 +88,8 @@ F22 alias product attempt 1/2.
 - Warning inside a shared MATLAB MEX command contaminates canonical wrappers.
 - A stale Python extension can false-green the pure-Python aliases; the final
   gate requires a fresh native discriminator and matching hashes.
+- CPython 3.13 calls module `__getattr__` twice for `from ... import` and star
+  import. Suppress only importlib's `_handle_fromlist` preflight; never cache
+  `ClusterResult`, or later lookups become silently non-deprecated.
 - The most likely decision to need later revision is write-only warning
   semantics for the four readable PascalCase MATLAB config properties.

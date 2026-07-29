@@ -1262,6 +1262,14 @@ colour system transfer verbatim**.
   both F22 drivers agree at 24/33. Full matrices pass only as serial evidence:
   running them concurrently collides on source-root relative test artifacts.
   F22 product attempt 1 remains unused.
+- 2026-07-29 (F22 C++ behavior gate): Reuse the existing
+  `test_problem_api_2_0` entry through a CMake-3.26-compatible tests-only Python
+  launcher, rather than adding a CTest entry or relying on the CMake-3.29
+  `TEST_LAUNCHER` property. Preserve real compiler context on Visual Studio
+  with three marked, build-local, `EXCLUDE_FROM_ALL` object probes. Commit
+  `c210504` passes the 33/33 behavior gate with 229 assertions/5 cases in both
+  canonical and llfio-OFF builds; both combined entries remain exact 24/33
+  expected red until product attempt 1.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1315,3 +1323,9 @@ colour system transfer verbatim**.
   die 3/3 with exact restoration, canonical and llfio-OFF F22 ledgers are
   identical at 24/33, and the serial full matrices pass 122/122 with exact
   six/nine skips. Resume F22 at its exhaustive C++ behavior fixture.
+- 2026-07-29 (R3-F22 C++ behavior fixture): `c210504` adds the exhaustive
+  behavior oracle and the single-entry diagnostic launcher. The forced
+  cross-generator fallback and preferred drivers reproduce the exact 24/33
+  inherited red; canonical and llfio-OFF executables both pass 229
+  assertions/5 cases with the registered 33/33 compatibility marker. Begin
+  F22 product attempt 1.

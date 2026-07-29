@@ -329,6 +329,57 @@ They are harness errors, not F22 results. The exact tracked commands
 `scripts/generate_docs.py --check` and `scripts/check_docs_contract.py`
 subsequently passed.
 
+## Pre-product C++ behavior-fixture evidence
+
+Commit `c210504` adds the exhaustive behavior fixture and makes the existing
+`test_problem_api_2_0` CTest entry run the real compiler-diagnostic driver
+before the Catch2 executable. It adds no CTest entry. The launcher requires
+Python 3.9 only when tests are enabled; test-off/core configurations remain
+Python-free. A generator-independent, `EXCLUDE_FROM_ALL` object-probe fallback
+preserves the diagnostic gate on Visual Studio, where
+`compile_commands.json` is unavailable.
+
+The fallback itself was forced in the canonical build before relying on it. It
+compiled all three marked subjects and printed:
+
+```text
+F22_CPP_SILENT count=9/33 entities=Problem::readDistanceMatrix(const fs::path&),Problem::writeDistanceMatrix(const std::string&) const,Problem::writeDistanceMatrix() const,Problem::printClusters() const,Problem::writeClusters(),Problem::writeMedoidMembers(int,int) const,Problem::writeSilhouettes(),Problem::maxIter,Problem::N_repetition canonical_deprecation_lines=0
+F22_CPP_DIAGNOSTICS inventory=33/33 legacy=24/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=EXPECTED_RED
+F22_FORCE_PROBES_EXIT=1
+```
+
+The preferred compile-database path printed the same two diagnostic lines and
+`F22_DIRECT_DRIVER_EXIT=1`. The real canonical executable then printed:
+
+```text
+F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS
+===============================================================================
+All tests passed (229 assertions in 5 test cases)
+
+F22_CPP_BEHAVIOR_CANONICAL_EXIT=0
+```
+
+The llfio-OFF/HiGHS-OFF executable independently exercised the exact
+`SolverError` and unchanged-state route and printed:
+
+```text
+F22_CPP_COMPAT inventory=33/33 behavior=33/33 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS
+===============================================================================
+All tests passed (229 assertions in 5 test cases)
+
+F22_CPP_BEHAVIOR_NOLLFIO_EXIT=0
+```
+
+Its preferred diagnostic driver again reported exactly 24/33 and the same nine
+silent entities. The combined CTest entry failed in both builds with exit 8
+because the required 33/33 diagnostic PASS marker was absent; each output
+contained only the exact 24/33 `EXPECTED_RED` marker above and did not launch
+the behavior child. Both CTest inventories remain 122.
+
+Verdict: **BEHAVIOR FIXTURE PASS / PRODUCT DIAGNOSTICS EXPECTED RED
+[confirmed]** by commit `c210504` and the verbatim outputs above. F22 product
+attempt 1 remains unused.
+
 ### R2 — C++ diagnostics, ownership, and behavior
 
 The permanent public-header gate table-drives all 33 entities:
