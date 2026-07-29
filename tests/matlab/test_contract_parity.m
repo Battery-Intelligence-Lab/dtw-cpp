@@ -677,6 +677,8 @@ function test_f22_matlab_deprecation_policy(testCase)
         f22_verify_nondegenerate_value(testCase, oldName, aliasValue, D);
     end
 
+    f22_verify_config_setter_atomicity(testCase);
+
     constructorConstraint = IssuesNoWarnings('WhenNargoutIs', 1);
     constructorSilent = constructorConstraint.satisfiedBy( ...
         @() dtwc.Problem('f22_constructor_silent'));
@@ -756,9 +758,13 @@ function value = f22_config_operation(X, propertyName, candidate, canonical)
             info = dtwc_mex('Problem_get_info', prob.get_handle());
             value = struct('cached', prob.Verbose, 'native', info.verbose);
         case 'MaxIter'
-            value = prob.MaxIter;
+            info = dtwc_mex('Problem_get_info', prob.get_handle());
+            value = struct('cached', prob.MaxIter, ...
+                           'native', info.max_iter);
         case 'NRepetition'
-            value = prob.NRepetition;
+            info = dtwc_mex('Problem_get_info', prob.get_handle());
+            value = struct('cached', prob.NRepetition, ...
+                           'native', info.n_repetitions);
         otherwise
             error('dtwc:f22TestOracle', ...
                 'Unknown configuration observation: %s.', propertyName);
@@ -838,9 +844,11 @@ function f22_verify_nondegenerate_value(testCase, oldName, value, D)
             verifyTrue(testCase, value.cached);
             verifyTrue(testCase, value.native);
         case 'dtwc.Problem.MaxIter'
-            verifyEqual(testCase, value, 7);
+            verifyEqual(testCase, value.cached, 7);
+            verifyEqual(testCase, value.native, 7);
         case 'dtwc.Problem.NRepetition'
-            verifyEqual(testCase, value, 3);
+            verifyEqual(testCase, value.cached, 3);
+            verifyEqual(testCase, value.native, 3);
         case 'dtwc.Problem.get_distance_matrix'
             verifyEqual(testCase, value, D);
         case 'dtwc.Problem.Size'
@@ -869,4 +877,32 @@ function f22_verify_nondegenerate_value(testCase, oldName, value, D)
             error('dtwc:f22TestOracle', ...
                 'Unknown F22 non-degenerate observation: %s.', oldName);
     end
+end
+
+function f22_verify_config_setter_atomicity(testCase)
+%   A rejected canonical value must not update MATLAB's cached observation
+%   ahead of the native setter. These asymmetric vector candidates are
+%   accepted by a plain typed-double property but rejected by get_scalar().
+    prob = dtwc.Problem('f22_config_atomicity');
+
+    prob.set_band(3);
+    verifyError(testCase, @() prob.set_band([4 5]), ...
+        'dtwc:invalidArgument');
+    info = dtwc_mex('Problem_get_info', prob.get_handle());
+    verifyEqual(testCase, prob.Band, 3);
+    verifyEqual(testCase, info.band, 3);
+
+    prob.set_max_iter(7);
+    verifyError(testCase, @() prob.set_max_iter([8 9]), ...
+        'dtwc:invalidArgument');
+    info = dtwc_mex('Problem_get_info', prob.get_handle());
+    verifyEqual(testCase, prob.MaxIter, 7);
+    verifyEqual(testCase, info.max_iter, 7);
+
+    prob.set_n_repetitions(3);
+    verifyError(testCase, @() prob.set_n_repetitions([4 5]), ...
+        'dtwc:invalidArgument');
+    info = dtwc_mex('Problem_get_info', prob.get_handle());
+    verifyEqual(testCase, prob.NRepetition, 3);
+    verifyEqual(testCase, info.n_repetitions, 3);
 end
