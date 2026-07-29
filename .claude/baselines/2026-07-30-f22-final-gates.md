@@ -333,6 +333,87 @@ Verdict: **PASS [confirmed]** — 124/124, zero failed, the exact eight
 registered capability skips, both F22 subjects above their floors, and the
 reader executed 390 assertions / 11 cases rather than skipping.
 
+### Python forced-fresh binding — attempt 1
+
+The preflight confirmed a clean tree, no competing process, Ninja/Release,
+Python and llfio ON, Arrow and HiGHS OFF, one built and one installed ABI
+artifact, and LLVM `libomp.dll`. The clean-first `_dtwcpp_core` target removed
+168 files, rebuilt a 42-edge dependency graph, and linked the extension.
+The settling build printed `ninja: no work to do`. Installation and import
+provenance printed:
+
+```text
+BUILT_PYD_COUNT=1
+INSTALLED_PYD_COUNT=1
+BUILT=C:\D\git\dtw-cpp\build\cfg-gate-normal\python\_dtwcpp_core.cp313-win_amd64.pyd
+INSTALLED=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+BUILT_SHA256=0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF
+INSTALLED_SHA256=0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF
+BUILT_IMPORTED_HASH_MATCH=True
+LIBOMP_SHA256=5E6AC41ED81DFF9B41642A2F62CFD4784AA1C7CA1D348BEBD08FC54492C94466
+PACKAGE=C:\D\git\dtw-cpp\python\dtwcpp\__init__.py
+CORE=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+F22_NATIVE=True
+HIGHS=False
+PYTHON_PROVENANCE=PASS
+```
+
+This is a genuinely new binary: its pre-build hash was
+`9FE527ADC2C813FF59618D34000D6C9707536131DD7033DDD255F1C88AD54165`.
+Fresh collection printed 18 focused and 1,041 full tests. The decisive
+focused run printed:
+
+```text
+..................F22_PYTHON_GATE alias_symbols=12 operations=13 primary_warn_once=13 canonical_silent=13 equivalent=13 class_routes=3 identity=2 ordinary_legacy=0 verdict=PASS
+
+18 passed in 7.97s
+PYTHON_FOCUSED_SUMMARY=True
+PYTHON_FOCUSED_MARKER=True
+PYTHON_FOCUSED_SKIP_ABSENT=True
+```
+
+The first full attempt was outside the registered band:
+
+```text
+=========== 7 failed, 1022 passed, 12 skipped in 101.62s (0:01:41) ============
+PYTEST_EXIT=1
+PYTHON_FULL_EXPECTED_SUMMARY=False
+PYTHON_FULL_FAILED_COUNT=0
+PYTHON_FULL_SOLE_F39=False
+PYTHON_FULL_LEDGER_28_VS_27=True
+```
+
+The seven pytest failure lines were:
+
+```text
+FAILED tests/python/test_hpc.py::TestLocalRoundTrip::test_required_input_message_names_toml_first
+FAILED tests/python/test_hpc.py::TestLocalRoundTrip::test_two_groups_recovered
+FAILED tests/python/test_hpc.py::TestLocalRoundTrip::test_seeded_restart_improves_registered_fixture
+FAILED tests/python/test_hpc.py::TestLocalRoundTrip::test_cli_rejects_zero_restart_count
+FAILED tests/python/test_hpc.py::TestLocalRoundTrip::test_cli_missing_strategy_is_honored
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+FAILED tests/python/test_version_ssot.py::test_version_file_python_metadata_and_cli_match
+```
+
+The parser's zero failed-count is itself rejected: it disagrees with pytest's
+verbatim seven-line ledger and cannot adjudicate this run. The trace identifies
+the setup fault [confirmed]: clean-first building only `_dtwcpp_core` deleted
+`build/cfg-gate-normal/bin/dtwc_cl.exe`; the HPC helper then selected
+`build/arrow-pyarrow-23/bin/dtwc_cl.exe`, whose direct subprocesses returned
+`3221225781`, while the version test reported:
+
+```text
+AssertionError: dtwc_cl executable not found; set DTWC_CL_PATH
+```
+
+The expected F39 failure remained exactly `assert 28 == 27`. No source change
+is justified. Attempt 2 may run only after rebuilding `dtwc_cl` from the same
+clean graph, pinning `DTWC_CL_PATH` to it, and independently executing the CLI
+version/error/runtime probes.
+
+Attempt-1 verdict: **FALSIFIED [confirmed]** — 7/1,041 failures rather than the
+registered sole F39 red.
+
 ### Remaining gates
 
 Pending: Python, MATLAB R2024b, MATLAB R2025b.

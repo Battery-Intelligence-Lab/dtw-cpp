@@ -664,6 +664,16 @@ Critical knowledge to avoid repeating mistakes.
   and complete transcript for adjudication; the mutable helper file is useful
   only when timestamped and reconciled to that same run. Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
+- **A clean-first scoped target deletes sibling executables required by a
+  later cross-surface suite. [confirmed]** Clean-first building only
+  `_dtwcpp_core` produced and installed a fresh extension but removed
+  `build/cfg-gate-normal/bin/dtwc_cl.exe`. The subsequent Python suite selected
+  an Arrow-build CLI for five HPC cases and could not find the intended CLI for
+  its version case, yielding six setup-caused failures plus the expected F39
+  red. After any scoped clean-first binding build, enumerate and rebuild every
+  executable consumed by the downstream gate, pin its path, and run it once
+  outside the harness before simulation. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
 
 ## LR-core Solver (Phase 4)
 

@@ -35,6 +35,14 @@
   11 cases with no skip.
 - Re-ran the Arrow-ON F22 entry verbosely: diagnostics 33/33, behavior 33/33,
   229 assertions / 5 cases, zero skips.
+- Clean-first rebuilt and installed a genuinely new Python extension, proved
+  built/imported hash identity plus the F22 discriminator, and passed the
+  focused 18/18 gate with its exact marker.
+- The first full Python attempt FALSIFIED its band at 7 failed / 1,022 passed /
+  12 skipped. Clean-first targeting only `_dtwcpp_core` had deleted the
+  `cfg-gate-normal` CLI: five HPC cases selected the Arrow CLI outside its
+  CTest runtime, the version test found no intended CLI, and F39 remained the
+  seventh expected red. This failure is retained, not reclassified as a pass.
 
 ## Decisions
 
@@ -50,11 +58,12 @@
 
 ## Exact resume point
 
-Force-clean the Python extension, install the exact new binary plus `libomp`,
-prove hashes/provenance/new-symbol discrimination, then run focused/full
-Python. Follow with forced-fresh OpenMP MATLAB focused/full on R2024b then
-R2025b. Append exact outputs to the run-log after each gate and commit each
-completed evidence step immediately.
+Before Python attempt 2, build `dtwc_cl` from the already-clean
+`cfg-gate-normal` graph, pin `DTWC_CL_PATH` to that exact binary, and prove its
+version, required-input diagnostic, and a real local clustering execution.
+Then run the final full Python attempt. Follow with forced-fresh OpenMP MATLAB
+focused/full on R2024b then R2025b. Append exact outputs to the run-log after
+each gate and commit each completed evidence step immediately.
 
 ## Open risks
 
@@ -70,3 +79,5 @@ completed evidence step immediately.
 - CTest's mutable `LastTestsFailed.log` retained a historical F22 failure after
   two current green runs; only the current complete transcript may adjudicate
   a gate.
+- Only one Python full-gate attempt remains under the two-attempt rule. It must
+  not start until the exact intended CLI route is executable outside CTest.
