@@ -637,6 +637,16 @@ Critical knowledge to avoid repeating mistakes.
   printed verdict must use fatal `assert*` checks before that marker (or return
   an explicit boolean into it). Evidence:
   `tests/matlab/test_contract_parity.m::test_f22_matlab_deprecation_policy`.
+- **A fatal MATLAB unit-test assertion sets both `Failed` and `Incomplete`.
+  [confirmed]** Treating every killed mutant as `failed=1 incomplete=0` rejects
+  the strongest failures as harness errors; treating either value as
+  acceptable can hide an unexpected abort. Register the exact result shape per
+  mutant before execution. F22's dual-release campaign observed
+  `passed=0 failed=1 incomplete=1` for its seventeen fatal-assertion mutants
+  and `passed=0 failed=1 incomplete=0` for its sixteen nonfatal-verdict
+  mutants. Evidence:
+  `scripts/test_f22_matlab_deprecation_mutations.py` and
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
 
 ## LR-core Solver (Phase 4)
 

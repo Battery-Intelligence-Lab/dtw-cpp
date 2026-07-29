@@ -597,6 +597,77 @@ Post-run `git diff --quiet HEAD --` over the three sources exited 0. The final
 built and installed extension SHA-256 were both
 `B572C24045572E842B24369384E69981596C354AD3F53C2C2BD4C280D12C1B25`.
 
+#### Executed MATLAB mutation verdict — PASS
+
+Commit `8d66125` adds the permanent dual-release exact-byte runner
+`scripts/test_f22_matlab_deprecation_mutations.py`. Its preflight prints:
+
+```text
+F22_MATLAB_MUTATION_PREFLIGHT inventory=33/33 warning_removals=15/15 behavior_corruptions=15/15 policy_mutations=3/3 versions=2/2 source_files=7/7 mex=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64 verdict=PASS
+```
+
+The runner touched `dtwc_mex.cpp`'s timestamp without changing its bytes,
+forced a real Release rebuild, required the compile/link lines, checked
+`DTWC_ALLOW_SEQUENTIAL:BOOL=OFF`, and then printed:
+
+```text
+F22_MATLAB_MEX_BUILD source_compiled=1 linked=1 openmp_cache=1 sha256=B81FA4EF34E7845DE104DE677CC04857BAB0CE6497DC07B890396928872A91D2 bytes=685056 verdict=PASS
+```
+
+Every MATLAB process used build-local unique preferences and temporary
+directories, resolved the exact repository `.m` source and fresh MEX, observed
+its requested installed release, validated the exact five-field OpenMP probe,
+and engaged at least two real threads. The clean controls were:
+
+```text
+F22_MATLAB_CONTROL_RESULT label=initial release=R2024b passed=1 failed=0 incomplete=0
+F22_MATLAB_CONTROL_RESULT label=initial release=R2025b passed=1 failed=0 incomplete=0
+F22_MATLAB_CONTROL_RESULT label=final release=R2024b passed=1 failed=0 incomplete=0
+F22_MATLAB_CONTROL_RESULT label=final release=R2025b passed=1 failed=0 incomplete=0
+```
+
+MATLAB marks a test with a fatal `assert*` as both failed and incomplete. The
+runner therefore registered, before mutation execution, exact
+`passed=0 failed=1 incomplete=1` kills for MW01–MW04, MB01–MB08, and
+MB11–MB15, and exact `passed=0 failed=1 incomplete=0` kills for the other
+sixteen mutants. All 66 release results matched those fixed ledgers and their
+mutation-specific diagnostic; syntax, undefined-symbol, stale-MEX, wrong-path,
+wrong-release, missing-marker, and unexpected-result failures remained harness
+errors rather than kills.
+
+The decisive final marker was:
+
+```text
+F22_MATLAB_MUTATIONS controls=4/4 versions=2/2 mutations=33/33 release_kills=66/66 warning_removals=15/15 behavior_corruptions=15/15 policy_mutations=3/3 source_restores=33/33 source_files=7/7 mex_hash_checks=140/140 skips=0 survived=0 verdict=PASS
+```
+
+The complete raw ledger is
+`build/mex-verify-msvc/tests/f22-matlab-mutations-attempt1.log`, SHA-256
+`21407D915115F529F94C390BB08A884B9188EEBE1574EA5A1C990080D1D55748`.
+It contains exactly 66 `F22_MATLAB_MUTANT_RESULT` lines, 33 per-mutant verdict
+lines, and four control lines. The completed recovery manifest has eight
+records and independently rehashes to:
+
+```text
+bindings/matlab/+dtwc/Problem.m CDBE501BA6013FAEC3CE4B80B116BF1D40241131F40833EC296529399FF7FEDF
+bindings/matlab/+dtwc/DTWClustering.m 756BA4D335D85844C70DB3DDA78ED2505488962CF99CCA4B46DECC503986F6D1
+bindings/matlab/+dtwc/davies_bouldin_index.m 8994F006ED0758406B031CF2AD4BA0AF1A87AF13B615FA3B2A6E705EABF62F6D
+bindings/matlab/+dtwc/dunn_index.m 6B21D9F94900BC2B7CDE487544F59B04483C5130DE06C2ED084CE28F561E21E9
+bindings/matlab/+dtwc/calinski_harabasz_index.m F8CECE1FEEDA33D5861E9CCD66F2309259BCDDE65C4C20DF83E68082CC7CD6C3
+bindings/matlab/+dtwc/adjusted_rand_index.m 4FF76BDABE944E69EEE7EC32499655CD69595F8E458426377D631EE30D7B0E1C
+bindings/matlab/+dtwc/normalized_mutual_information.m 5888161C79501B4D3639DAF8EA786C68A5FE45962505BD687DBC4B82B6AAE378
+build/mex-verify-msvc/bin/dtwc_mex.mexw64 B81FA4EF34E7845DE104DE677CC04857BAB0CE6497DC07B890396928872A91D2
+```
+
+`git diff --quiet HEAD -- <seven targets>` exited 0 after the run, and a fresh
+runner preflight passed. Earlier launcher/audit interruptions were rejected
+before any mutant result: one terminal wrapper exited 124 while its clean MEX
+build child remained, and two source reviews found the marker-reachability and
+fatal-incomplete ledger assumptions during clean-control startup. The exact
+process trees were stopped, the seven targets were checked clean, both
+assumptions were fixed before the decisive run, and none is credited as a
+mutation attempt.
+
 ### R6 — documentation, immutable hygiene, and full native gates
 
 - `CHANGELOG.md` Unreleased names the warning policy and retained aliases.

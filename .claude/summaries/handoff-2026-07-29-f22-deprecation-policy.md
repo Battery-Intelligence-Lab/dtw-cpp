@@ -117,11 +117,22 @@ Then run the registered focused gates before creating any mutation runner.
   exact restoration of all three source files. Attempt 1's discarded
   initial/final clean-hash equality was a harness assumption, not a product
   failure; separately linked clean `.pyd` files need not be byte-identical.
+- `8d66125` adds the permanent MATLAB 33-mutant runner. Decisive attempt 1
+  passes all 33 mutants on R2024b and R2025b: 66/66 release kills, 4/4 clean
+  controls, 33/33 exact source restorations, and 140/140 pre/post MEX hash
+  checks. The seven source hashes and fresh 685056-byte MEX hash match the
+  completed eight-record recovery manifest; the raw ledger SHA-256 is
+  `21407D915115F529F94C390BB08A884B9188EEBE1574EA5A1C990080D1D55748`.
+- MATLAB fatal assertions produce `Failed=1, Incomplete=1`; the permanent
+  runner registers that exact shape for MW01–MW04, MB01–MB08, and MB11–MB15,
+  while the other sixteen kills require `Incomplete=0`.
 
 ## Updated exact resume point
 
-Run and commit the MATLAB 33-mutant/two-release gate. Do not rerun or
-rescue-tune the C++ mutation runner. After that verdict, update
-contract/generated docs, run all F22 full gates, and record that the falsified
-C++ mutation band prevents closure unless a later governed decision overturns
-the two-attempt cap.
+Update `docs/api-contract-2.0.md`, the ordinary stale documentation examples,
+and `scripts/check_docs_contract.py`; regenerate the derived contract pages and
+pass both documentation checkers plus record hygiene. Then run all registered
+F22 full gates serially and record the final adjudication. Do not rerun or
+rescue-tune the C++ mutation runner: its exhausted 33/46 falsification prevents
+F22 closure unless a later governed decision explicitly overturns the
+two-attempt cap.

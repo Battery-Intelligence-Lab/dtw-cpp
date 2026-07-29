@@ -469,6 +469,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `pytest.warns(DeprecationWarning)` exactly once per call, and MATLAB
       captures one stable warning identifier/message—while asserting canonical
       names stay silent and results remain identical.
+      **R5 STATUS 2026-07-29:** product repairs and all focused gates are
+      retained. Python kills 31/31 registered mutants and MATLAB kills 33/33
+      on both R2024b and R2025b (66/66 release kills, 140/140 MEX hash checks).
+      The C++ mutation band remains FALSIFIED at 33/46 after both permitted
+      attempts timed out on the first runtime mutant. Keep F22 unchecked,
+      complete R6 documentation/full gates, and do not rerun or rescue-tune the
+      exhausted C++ campaign. Evidence:
+      `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
 - [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
       Its module exposes `CheckpointOptions` and directory save/load only
       (`python/src/_dtwcpp_core.cpp:1105-1125`), while MATLAB delivered
@@ -1348,4 +1356,13 @@ colour system transfer verbatim**.
   assumption; attempt 2 retains built/imported identity without requiring two
   separate clean links to be byte-identical. Continue at MATLAB mutations;
   the C++ 33/46 falsification still prevents F22 closure. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R5-F22 MATLAB mutations PASS): `8d66125` permanently kills
+  all 33 registered mutants on both R2024b and R2025b: 15 warning removals,
+  15 behavior corruptions, and three policy corruptions. Four clean controls
+  pass, all 66 release kills match their exact failed/incomplete ledgers, all
+  33 source restores match exact SHA-256, and the immutable fresh OpenMP MEX
+  passes 140/140 pre/post hash checks. Continue at R6 documentation and full
+  gates; F22 remains open because the exhausted C++ band is FALSIFIED at
+  33/46. Evidence:
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
