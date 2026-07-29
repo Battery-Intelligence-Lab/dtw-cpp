@@ -1329,3 +1329,13 @@ colour system transfer verbatim**.
   inherited red; canonical and llfio-OFF executables both pass 229
   assertions/5 cases with the registered 33/33 compatibility marker. Begin
   F22 product attempt 1.
+- 2026-07-29 (R5-F22 C++ mutations FALSIFIED): `26330fd` adds the permanent
+  46-mutant exact-byte runner. Attempts 1/2 and 2/2 each pass the initial
+  33/33 diagnostic, 33/33 behavior, 229-assertion/5-case control and kill all
+  33 diagnostic removals with exact restoration, then the first I/O
+  forwarding mutant's focused CTest exceeds 300 seconds. Credit no runtime
+  mutant: the registered band is FALSIFIED at 33/46. All five sources match
+  their pre-run SHA-256 and `git diff` is clean. The two-attempt cap is
+  exhausted; do not rescue-tune a third run. Continue the independent Python
+  and MATLAB mutation gates; F22 remains open. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.

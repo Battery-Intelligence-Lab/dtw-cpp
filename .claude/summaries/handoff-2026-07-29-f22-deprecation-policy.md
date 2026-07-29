@@ -93,3 +93,28 @@ Then run the registered focused gates before creating any mutation runner.
   `ClusterResult`, or later lookups become silently non-deprecated.
 - The most likely decision to need later revision is write-only warning
   semantics for the four readable PascalCase MATLAB config properties.
+
+## Continuation — product and C++ mutation evidence
+
+- Product commits `3c837c5`, `a767dcd`, and `4b687cb` implement the frozen
+  C++, Python, and MATLAB policies. Focused diagnostics/behavior gates pass;
+  MATLAB passes the hardened 15/15 case on both R2024b and R2025b through the
+  fresh MEX.
+- MATLAB test commits `880f9d5` and `8f2e639` pin four-field failure
+  atomicity, warning-before-effect ordering, and prevent a nonfatal
+  `verify*` failure from printing a false-green verdict.
+- `d9da7f2` records the `mxGetScalar` cardinality and MATLAB verdict-marker
+  lessons.
+- `26330fd` adds the registered C++ 46-mutant runner. Both allowed attempts
+  passed the initial 33/33 diagnostic + 33/33 behavior control with 229
+  assertions/5 cases and killed/restored 33/33 diagnostic removals. Both
+  timed out after 300 seconds on the first I/O forwarding mutant. The band is
+  FALSIFIED at 33/46; no runtime mutant is credited, all five source hashes
+  restore exactly, and a third attempt is prohibited.
+
+## Updated exact resume point
+
+Run and commit the independently registered Python 31-mutant gate, then the
+MATLAB 33-mutant/two-release gate. Do not rerun or rescue-tune the C++ mutation
+runner. After those verdicts, update contract/generated docs, run all F22 full
+gates, and record whether the falsified C++ mutation band prevents closure.

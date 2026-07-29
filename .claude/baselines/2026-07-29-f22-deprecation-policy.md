@@ -506,6 +506,55 @@ SHA-256 identity, run clean controls before and after, and kill:
 
 No survivor is rescue-tuned. A falsified mutation band is recorded as such.
 
+#### Executed C++ mutation verdict — FALSIFIED
+
+Commit `26330fd` adds the permanent exact-byte runner
+`scripts/test_f22_cpp_deprecation_mutations.py`. Its preflight prints:
+
+```text
+F22_CPP_MUTATION_PREFLIGHT inventory=46/46 diagnostic_removals=33/33 io_forwarding=7/7 field_crosswires=4/4 canonical_warning=1/1 wrong_message=1/1 source_files=5/5 verdict=PASS
+```
+
+Both permitted decisive attempts passed the initial real-binary control:
+
+```text
+F22_CPP_MUTATION_CONTROL label=initial diagnostic=33/33 behavior=33/33 assertions=229 cases=5 verdict=PASS
+```
+
+Both then killed and restored all 33 diagnostic-removal mutants. The last
+successful per-mutant line in each attempt was:
+
+```text
+F22_CPP_MUTATION name=diag-set-results-path-cstring category=diagnostic_removal gate=diagnostic killed=1 restore=pass
+```
+
+Attempt 1 used a missing-path corruption for the first I/O forwarder. Attempt
+2 replaced that with the bounded corruption
+`read_distance_matrix(p); refresh_distance_matrix();`; both attempts reached
+the same verbatim harness failure:
+
+```text
+F22_CPP_MUTATION_HARNESS_ERROR command failed to run: ['C:\\Program Files\\CMake\\bin\\ctest.EXE', '--test-dir', 'C:\\D\\git\\dtw-cpp\\build\\highs-1151', '-C', 'Release', '-R', '^test_problem_api_2_0$', '--output-on-failure', '-V']: Command '['C:\\Program Files\\CMake\\bin\\ctest.EXE', '--test-dir', 'C:\\D\\git\\dtw-cpp\\build\\highs-1151', '-C', 'Release', '-R', '^test_problem_api_2_0$', '--output-on-failure', '-V']' timed out after 300 seconds
+```
+
+No I/O, field, canonical-warning, or wrong-message runtime mutant is credited
+as killed. The registered 46/46 band is therefore **FALSIFIED at 33/46
+[confirmed]**, not partially passed. Both outer `finally` paths restored all
+five targets; `git diff --quiet HEAD -- <five targets>` exited 0 after each
+attempt. Post-attempt SHA-256 values were:
+
+```text
+dtwc/Problem.hpp F725479D5BF3CABA4A8246DEC7E76BDD60A3CBAD743B7881BB8C87F2F692F99C
+dtwc/Problem.cpp 1D25162CEADC4E7009BC4BAC404F6A7399A982E73DF10467B76B4206C2B1C97A
+dtwc/scores.hpp 6B02592A51DEAC76C90BA569C70F50F04D69608425A4807738C17EF09830B55F
+dtwc/DataLoader.hpp FB267CB9BCB8259A08961D574817E5A6657785DDB54AAAB479F4AABA200A236F
+dtwc/settings.hpp 8DB709C7A67C0D3E2D4093B6E0780EB9F54A4E50A98CE45C74001C81A8C82063
+```
+
+The two-attempt cap is exhausted. Do not rescue-tune a third C++ mutation run;
+continue the independently registered Python and MATLAB mutation gates and
+the remaining F22 evidence.
+
 ### R6 — documentation, immutable hygiene, and full native gates
 
 - `CHANGELOG.md` Unreleased names the warning policy and retained aliases.
