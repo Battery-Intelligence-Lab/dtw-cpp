@@ -619,10 +619,10 @@ Adapt tests to the actual API. Cover at least:
 
 Use the **same method names** as C++ for cross-language consistency:
 - **Classes**: Keep PascalCase: `Problem`, `DataLoader`, `Data`
-- **Methods**: Keep original C++ names (camelCase): `fillDistanceMatrix`, `distByInd`
+- **Methods**: Use the canonical C++ snake_case names: `fill_distance_matrix`, `dist_by_ind`
 - **Properties**: Map builder getters/setters using MATLAB conventions but keep C++ names where possible
 - **Enums**: Keep PascalCase for type and original value names
-- **Free functions**: Keep C++ names; MATLAB conventions allow camelCase
+- **Free functions**: Keep the canonical C++ snake_case names
 
 ## Step 7: Verify Cross-Language Consistency
 
@@ -705,14 +705,14 @@ When generating bindings, produce a side-by-side usage example showing the same 
 using namespace dtwc;
 
 DataLoader loader;
-loader.path("data/ECG200").startColumn(1).delimiter(',');
+loader.path("data/ECG200").start_column(1).delimiter(',');
 Data data = loader.load();
 
 Problem prob("ECG200", loader);
 prob.set_method(Method::Kmedoids);
-prob.maxIter = 100;
-prob.band = 10;
-prob.fillDistanceMatrix();
+prob.set_max_iter(100);
+prob.set_band(10);
+prob.fill_distance_matrix();
 prob.cluster();
 auto sil = scores::silhouette(prob);
 ```
@@ -723,15 +723,15 @@ import dtwc
 
 loader = dtwc.DataLoader()
 loader.path = "data/ECG200"
-loader.startColumn = 1
+loader.start_column = 1
 loader.delimiter = ","
 data = loader.load()
 
 prob = dtwc.Problem("ECG200", loader)
 prob.method = dtwc.Method.Kmedoids
-prob.maxIter = 100
+prob.max_iter = 100
 prob.band = 10
-prob.fillDistanceMatrix()
+prob.fill_distance_matrix()
 prob.cluster()
 sil = dtwc.silhouette(prob)
 ```
@@ -740,15 +740,15 @@ sil = dtwc.silhouette(prob)
 ```matlab
 loader = dtwc.DataLoader();
 loader.path = 'data/ECG200';
-loader.startColumn = 1;
+loader.start_column = 1;
 loader.delimiter = ',';
 data = loader.load();
 
 prob = dtwc.Problem('ECG200', loader);
 prob.method = dtwc.Method.Kmedoids;
-prob.maxIter = 100;
-prob.band = 10;
-prob.fillDistanceMatrix();
+prob.set_max_iter(100);
+prob.set_band(10);
+prob.fill_distance_matrix();
 prob.cluster();
 sil = dtwc.silhouette(prob);
 ```

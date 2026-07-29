@@ -19,7 +19,7 @@ from dtwcpp import (
     fast_pam,
     fast_clara,
     silhouette,
-    davies_bouldin_index,
+    davies_bouldin,
 )
 
 OUT = Path(".claude/reports/test_kasper_analysis")
@@ -35,13 +35,13 @@ def load_data():
 
 def score(prob: Problem, labels, medoids, k):
     # Wire result back into prob state so silhouette/DBI work.
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.clusters_ind = list(map(int, labels))
     prob.centroids_ind = list(map(int, medoids))
     if not prob.is_distance_matrix_filled():
         prob.fill_distance_matrix()
     sil = silhouette(prob)
-    db = davies_bouldin_index(prob)
+    db = davies_bouldin(prob)
     return float(np.mean(sil)), float(db), [float(s) for s in sil]
 
 

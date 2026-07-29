@@ -87,7 +87,7 @@ Most plausible quantity is **battery/traction power in watts** of an e-bike or l
 
 ### 3.4 Correctness of FastPAM on ragged input
 
-`fast_pam` (`dtwc/algorithms/fast_pam.cpp:92-251`) operates exclusively on the precomputed distance matrix via `prob.distByInd(p, x)` — it never touches `data.p_vec`. `Data::p_vec` is `vector<vector<data_t>>` ([Data.hpp:34](../../../dtwc/Data.hpp#L34)) and `Data::series_length(i)` returns the per-series length. **Variable-length input is handled correctly through the precompute-once, lookup-many pattern.** Independent review confirms this; no structural fix needed in the algorithm.
+`fast_pam` (`dtwc/algorithms/fast_pam.cpp:92-251`) operates exclusively on the precomputed distance matrix via `prob.dist_by_ind(p, x)` — it never touches `data.p_vec`. `Data::p_vec` is `vector<vector<data_t>>` ([Data.hpp:34](../../../dtwc/Data.hpp#L34)) and `Data::series_length(i)` returns the per-series length. **Variable-length input is handled correctly through the precompute-once, lookup-many pattern.** Independent review confirms this; no structural fix needed in the algorithm.
 
 ---
 

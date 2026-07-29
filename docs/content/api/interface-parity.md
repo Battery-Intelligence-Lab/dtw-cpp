@@ -165,7 +165,7 @@ sil = dtwcpp.silhouette(prob)
 ```matlab
 prob = dtwc.Problem('demo');
 prob.set_data(series);
-prob.Band = 10;
+prob.set_band(10);
 prob.set_n_clusters(2);
 
 result = dtwc.fast_pam(prob, 2);

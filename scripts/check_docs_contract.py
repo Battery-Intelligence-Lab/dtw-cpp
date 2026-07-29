@@ -86,6 +86,15 @@ def assert_contract_audit_state() -> None:
         "F21 covers four missing canonical C++ names",
         "remain unimplemented frozen promises (F21)",
         "spellings that are still absent",
+        "aliases currently do not emit the frozen runtime warnings",
+        "F22 owns their missing deprecation diagnostics",
+        "F22 records that retained aliases do not all emit",
+        "Rows 35–38 are implemented",
+        "F22 records incomplete diagnostics",
+        "get_/set_distance_matrix",
+        "do not yet emit the required diagnostics (F22)",
+        "F22 owns missing diagnostics",
+        "do not currently emit runtime warnings (F22)",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -109,8 +118,28 @@ def assert_contract_audit_state() -> None:
         "`data()` returns `const Data&`",
         "neither binding\nrepeats the assignment",
         "private C++ state; CLI exposes `--dc`",
-        "Rows 35–38 are implemented",
         "`start_column(int)` and `start_row(int)` own the loader mutations",
+        "four configuration properties warn on assignment",
+        "deprecated actual `int` fields",
+        "C++ retained 1.x alias",
+        "caller-attributed `DeprecationWarning`",
+        "dedicated `+dtwc/*.m` compatibility wrappers",
+        "Every retained\ncallable alias in this table emits",
+        "`set_distance_matrix` is canonical and warning-silent",
+        "33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB",
+        "`ClusterResult` (`python/dtwcpp/__init__.py:306-326`)",
+        "`Result.medoid_indices` (`python/dtwcpp/_api.py:102-107`)",
+        "`dtwc_mex.cpp:224-230`",
+        "`__init__.py:213-238`",
+        "`_api.py:281-301`",
+        "`dtwc_cl.cpp:1343-1419`",
+        "`DataLoader.hpp:291-297`",
+        "`DataLoader.hpp:299-306`",
+        "`distance.hpp:35-42`",
+        "scores.hpp:38-39",
+        "settings.hpp:88-94",
+        "dtwc_cl.cpp:717-725",
+        "`_hpc.py:527-601`",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
@@ -123,7 +152,7 @@ def assert_contract_audit_state() -> None:
             "frozen contract must record exactly eight reviewer resolutions"
         )
     missing_findings = [
-        f"F{number}" for number in (18, *range(22, 27))
+        f"F{number}" for number in (18, *range(23, 27))
         if f"F{number}" not in contract
     ]
     if missing_findings:
@@ -136,16 +165,40 @@ def assert_migration_behaviors() -> None:
     migration = (ROOT / "docs/content/guides/migration.md").read_text(
         encoding="utf-8"
     )
+    migration = compact(migration)
     required = (
         "`Result.distance_matrix` is `None` for matrix-free methods",
         "Explicit GPU requests no longer warn and run on CPU",
         "Requesting an unavailable MIP solver no longer prints and returns",
         "Ten C++ `Problem` fields are now private",
-        "Rows 35–38 are implemented",
+        "Every retained callable alias in this table emits its required C++ compile "
+        "diagnostic or Python/MATLAB runtime warning",
+        "`set_distance_matrix` is canonical and warning-silent",
+        "33 C++ diagnostic entities, 13 Python alias operations, and 15 "
+        "MATLAB alias operations",
     )
     missing = [item for item in required if item not in migration]
     if missing:
         raise AssertionError(f"migration guide omits behaviors: {missing}")
+
+
+def assert_f22_changelog() -> None:
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    unreleased_start = changelog.index("# Unreleased")
+    next_release = changelog.index("# 2.0.0rc1", unreleased_start)
+    unreleased = compact(changelog[unreleased_start:next_release])
+    required = (
+        "all 33 retained 1.x compatibility entities",
+        "all 13 retained alias operations",
+        "all 15 retained alias operations",
+        "`ClusterResult` remains an uncached, identity-preserving alias",
+        "canonical operations stay silent",
+    )
+    missing = [item for item in required if item not in unreleased]
+    if missing:
+        raise AssertionError(
+            f"Unreleased changelog omits F22 behaviors: {missing}"
+        )
 
 
 def assert_rc1_changelog() -> None:
@@ -469,6 +522,248 @@ def assert_remaining_docs_truth() -> None:
         raise AssertionError(f"remaining docs omit current truth: {missing}")
 
 
+def assert_f22_ordinary_call_hygiene() -> None:
+    paths = (
+        ".claude/commands/cluster.md",
+        ".claude/commands/evaluate.md",
+        ".claude/commands/help.md",
+        ".claude/commands/visualize.md",
+        ".claude/openmp-crashcourse.md",
+        ".claude/reports/test_kasper_analysis/REPORT.md",
+        ".claude/skills/python-wrapper-skill.md",
+        ".claude/skills/matlab-wrapper-skill.md",
+        "docs/content/api/interface-parity.md",
+        "docs/content/method/gpu-backends.md",
+        ".claude/reports/test_kasper_analysis/rerun_znorm.py",
+        ".claude/reports/test_kasper_analysis/rescore_kasper.py",
+        ".claude/reports/test_kasper_analysis/run_extended.py",
+        ".claude/reports/test_kasper_analysis/run_kasper.py",
+        ".claude/reports/test_kasper_analysis/run_preprocessed.py",
+    )
+    sources = {
+        relative: (ROOT / relative).read_text(encoding="utf-8")
+        for relative in paths
+    }
+    cxx_calls = (
+        "set_numberOfClusters",
+        "refreshDistanceMatrix",
+        "readDistanceMatrix",
+        "maxDistance",
+        "distByInd",
+        "isDistanceMatrixFilled",
+        "printDistanceMatrix",
+        "writeDistanceMatrix",
+        "printClusters",
+        "writeClusters",
+        "writeMedoidMembers",
+        "writeSilhouettes",
+        "findTotalCost",
+        "assignClusters",
+        "calculateMedoids",
+        "cluster_by_MIP",
+        "cluster_by_kMedoidsLloyd",
+        "cluster_size",
+        "daviesBouldinIndex",
+        "dunnIndex",
+        "calinskiHarabaszIndex",
+        "adjustedRandIndex",
+        "normalizedMutualInformation",
+        "setDataPath",
+        "setResultsPath",
+    )
+    score_aliases = (
+        "davies_bouldin_index",
+        "dunn_index",
+        "calinski_harabasz_index",
+        "adjusted_rand_index",
+        "normalized_mutual_information",
+    )
+    python_calls = (
+        "set_number_of_clusters",
+        "distance_matrix_numpy",
+        "set_distance_matrix_from_numpy",
+        *score_aliases,
+    )
+    cxx_unique = set(cxx_calls) | {
+        "fillDistanceMatrix",
+        "startColumn",
+        "startRow",
+        "maxIter",
+        "N_repetition",
+    }
+    python_unique = set(python_calls) | {
+        "n_repetition",
+        "cluster_size",
+        "ClusterResult",
+        "medoid_indices",
+    }
+    inventory_shape = (
+        len(cxx_unique),
+        33,  # three overloads make 33 diagnostic entities from 30 names.
+        len(python_unique),
+        13,  # n_repetition has independently warned read/write operations.
+        4 + 5 + 1 + len(score_aliases),
+    )
+    if inventory_shape != (30, 33, 12, 13, 15):
+        raise AssertionError(
+            f"F22 ordinary-call checker inventory drift: {inventory_shape}"
+        )
+    patterns = (
+        (
+            "C++ callable alias",
+            re.compile(
+                rf"\b(?:{'|'.join(map(re.escape, cxx_calls))})\s*\("
+            ),
+        ),
+        (
+            "C++ fill-distance alias",
+            re.compile(r"\bfillDistanceMatrix(?!_BruteForce)\s*\("),
+        ),
+        (
+            "C++ loader-setter alias",
+            re.compile(
+                r"\b(?:startColumn|startRow)\s*\(\s*(?!\))"
+                r"|\.\s*(?:startColumn|startRow)\s*="
+            ),
+        ),
+        (
+            "C++ deprecated field",
+            re.compile(r"(?:\.|->)\s*(?:maxIter|N_repetition)\b"),
+        ),
+        (
+            "Python callable alias",
+            re.compile(
+                rf"\b(?:{'|'.join(map(re.escape, python_calls))})\s*\("
+            ),
+        ),
+        (
+            "Python property alias",
+            re.compile(r"\.(?:n_repetition|cluster_size)\b"),
+        ),
+        (
+            "Python module alias",
+            re.compile(r"\bClusterResult\b"),
+        ),
+        (
+            "Python Result.medoid_indices alias",
+            re.compile(r"\bResult\s*\.\s*medoid_indices\b"),
+        ),
+        (
+            "MATLAB configuration-property write alias",
+            re.compile(
+                r"\.\s*(?:Band|Verbose|MaxIter|NRepetition)\s*=(?!=)"
+            ),
+        ),
+        (
+            "MATLAB callable alias",
+            re.compile(
+                rf"\b(?:get_distance_matrix|"
+                rf"{'|'.join(map(re.escape, score_aliases))})\s*\("
+            ),
+        ),
+        (
+            "MATLAB dependent-property read alias",
+            re.compile(
+                r"(?:\b(?:prob|problem)\s*\.|\bdtwc\.Problem\.)\s*"
+                r"(?:Size|ClusterSize|Name|CentroidsInd|ClustersInd)\b"
+            ),
+        ),
+    )
+    pattern_by_label = dict(patterns)
+    positive_controls = [
+        *(
+            ("C++ callable alias", f"obj.{name}(1)")
+            for name in cxx_calls
+        ),
+        ("C++ fill-distance alias", "prob.fillDistanceMatrix()"),
+        ("C++ loader-setter alias", "loader.startColumn(1)"),
+        ("C++ loader-setter alias", "loader.startRow = 1"),
+        ("C++ deprecated field", "prob.maxIter"),
+        ("C++ deprecated field", "prob->N_repetition"),
+        *(
+            ("Python callable alias", f"obj.{name}()")
+            for name in python_calls
+        ),
+        ("Python property alias", "prob.n_repetition"),
+        ("Python property alias", "prob.cluster_size"),
+        ("Python module alias", "from dtwcpp import ClusterResult"),
+        ("Python Result.medoid_indices alias", "Result.medoid_indices"),
+        *(
+            (
+                "MATLAB configuration-property write alias",
+                f"prob.{name} = value",
+            )
+            for name in ("Band", "Verbose", "MaxIter", "NRepetition")
+        ),
+        ("MATLAB callable alias", "prob.get_distance_matrix()"),
+        *(
+            ("MATLAB callable alias", f"dtwc.{name}()")
+            for name in score_aliases
+        ),
+        *(
+            ("MATLAB dependent-property read alias", f"prob.{name}")
+            for name in ("Size", "ClusterSize", "Name", "CentroidsInd", "ClustersInd")
+        ),
+    ]
+    missed_controls = [
+        f"{label}: {sample!r}"
+        for label, sample in positive_controls
+        if not pattern_by_label[label].search(sample)
+    ]
+    if missed_controls:
+        raise AssertionError(
+            "F22 ordinary-call checker misses its controls: "
+            + "; ".join(missed_controls)
+        )
+    negative_controls = (
+        ("C++ fill-distance alias", "Problem::fillDistanceMatrix_BruteForce"),
+        ("C++ loader-setter alias", "loader.startColumn()"),
+        ("C++ loader-setter alias", "loader.startRow()"),
+        ("MATLAB configuration-property write alias", "'Band', 10"),
+        ("Python Result.medoid_indices alias", "native_result.medoid_indices"),
+    )
+    false_positive_controls = [
+        f"{label}: {sample!r}"
+        for label, sample in negative_controls
+        if pattern_by_label[label].search(sample)
+    ]
+    if false_positive_controls:
+        raise AssertionError(
+            "F22 ordinary-call checker rejects canonical/private controls: "
+            + "; ".join(false_positive_controls)
+        )
+    violations: list[str] = []
+    for relative, source in sources.items():
+        for label, pattern in patterns:
+            match = pattern.search(source)
+            if match:
+                line = source.count("\n", 0, match.start()) + 1
+                violations.append(
+                    f"{relative}:{line}: {label}: {match.group(0)!r}"
+                )
+    if violations:
+        raise AssertionError(
+            "ordinary F22 documentation/call sites retain aliases: "
+            + "; ".join(violations)
+        )
+    text = "\n".join(sources.values())
+    required = (
+        "prob.set_band(10);",
+        "fill_distance_matrix",
+        "dist_by_ind",
+        ".set_n_clusters(",
+        "davies_bouldin(",
+        "calinski_harabasz(",
+        "adjusted_rand(",
+        "normalized_mutual_info(",
+    )
+    missing = [marker for marker in required if marker not in text]
+    if missing:
+        raise AssertionError(
+            f"ordinary F22 documentation/call sites omit canonical forms: {missing}"
+        )
+
+
 def cli_flags(text: str) -> set[str]:
     return set(re.findall(r"(?<![\w-])--[a-z][a-z0-9-]*", text))
 
@@ -526,6 +821,7 @@ def main() -> int:
     assert_freeze_governance()
     assert_contract_audit_state()
     assert_migration_behaviors()
+    assert_f22_changelog()
     assert_rc1_changelog()
     assert_env_messages()
     assert_tier1_signatures()
@@ -533,6 +829,7 @@ def main() -> int:
     assert_dtw_derivation_sync()
     assert_gpu_backend_page()
     assert_remaining_docs_truth()
+    assert_f22_ordinary_call_hygiene()
     if args.cli is not None:
         assert_cli_reference(args.cli.resolve())
     print("documentation contract checks passed")

@@ -21,8 +21,8 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 | Aspect | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
 | Set | `std::string dtwc::device(std::string_view name)` | `dtwcpp.device(name: str) -> str` | `dtwc.device(name)` |
-| Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:123`) | `name = dtwc.device()` |
-| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same (`_parse_device`, `__init__.py:78`) | same |
+| Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:213-238`) | `name = dtwc.device()` |
+| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same (`_parse_device`, `__init__.py:135-163`) | same |
 | Returns | normalized name (lower-cased) | normalized name | normalized name |
 | Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
 | Delegates to | `dtwc::env().set_device(name)` | `_DEFAULT_DEVICE`; CPU/GPU mirrored into `Env`, HPC credentials deferred to the wrapper | MEX `set_device` → `Env` |
@@ -60,7 +60,7 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
 | `device` | `""` = global default; else per-call override | `None` = global | `''` = global; explicit/global selection is reported but the local `Problem` does not yet consume GPU routing `[gap F40]` |
 | `max_iter` | `100` | `100` | `100` |
-| unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:151`) | `dtwc:invalidArgument` |
+| unknown `method` | `InvalidInput` (never silently PAM) | `ValueError` (`_normalize_method`, `_api.py:281-301`) | `dtwc:invalidArgument` |
 
 MATLAB F40 source anchors:
 `bindings/matlab/+dtwc/cluster.m:36-39` selects or reads Env,
@@ -106,8 +106,8 @@ Canonical class name is **`Result`** in all three languages. Python keeps
 | `medoids` | `const std::vector<int>& medoids() const` | `res.medoids` → `np.ndarray[int]` | `res.medoids` → int32 row (1-based) |
 | `score(name)` | `double score(std::string_view name) const` | `res.score(name: str) -> float` | `s = res.score(name)` |
 | `save(dir)` | `void save(const std::filesystem::path& dir) const` | `res.save(dir)` | `res.save(dir)` |
-| `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:93`) | `res.plot()` |
-| (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:85`) | `res.cost` |
+| `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:201-238`) | `res.plot()` |
+| (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:97`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
@@ -125,16 +125,16 @@ forcing the matrix-only files; this approved exception is specified in §7 item
 2.
 
 *`plot()` is Python/MATLAB only.* It renders a classical-MDS 2D scatter of the
-distance matrix coloured by cluster (`_api.py:93-130`). **C++ has no `plot()`**:
+distance matrix coloured by cluster (`_api.py:201-238`). **C++ has no `plot()`**:
 it calls `save(dir)` to emit the plottable CSVs above, which any plotting tool
 (or the `dtwc.visualize` skill) consumes. On an `hpc` run only labels return, so
-`plot()` prints cluster sizes and returns nothing (`_api.py:99-103`).
+`plot()` prints cluster sizes and returns nothing (`_api.py:207-211`).
 
 ### 1.5 `DTWClustering` — sklearn-style estimator (Python + MATLAB)
 
 A live public class exists in both bindings and 2.0 **retains it** (it is the
 scikit-learn-idiomatic entry point, distinct from the functional Tier-1 `cluster()`):
-Python `dtwcpp.DTWClustering` (`python/dtwcpp/_clustering.py:36`, `BaseEstimator,
+Python `dtwcpp.DTWClustering` (`python/dtwcpp/_clustering.py:39`, `BaseEstimator,
 ClusterMixin`) and MATLAB `dtwc.DTWClustering` (`bindings/matlab/+dtwc/DTWClustering.m`).
 It has no C++ twin (sklearn estimator idiom is language-specific) and stays
 Python/MATLAB-only.

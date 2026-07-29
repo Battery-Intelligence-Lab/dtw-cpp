@@ -118,7 +118,7 @@ Any C++ method that may run for more than a few milliseconds **must** release th
 
 ```cpp
 // GOOD — releases GIL during expensive C++ computation
-.def("fillDistanceMatrix", &Problem::fillDistanceMatrix,
+.def("fill_distance_matrix", &Problem::fill_distance_matrix,
      py::call_guard<py::gil_scoped_release>(),
      "Fill the full distance matrix (releases GIL)")
 
@@ -273,8 +273,10 @@ m.def("function_name", &Namespace::functionName<double>,
 The goal is cross-language consistency. Use the **same names** as C++ everywhere:
 
 - **Classes**: Keep PascalCase (same as C++): `Problem`, `DataLoader`, `Data`
-- **Methods/functions in binding layer**: Keep original C++ names (camelCase): `fillDistanceMatrix`, `distByInd`
-- **Methods in sugar layer**: Provide **both** the original camelCase name AND a snake_case alias. The camelCase name is the primary (for cross-language consistency), the snake_case alias is for Pythonic convenience.
+- **Methods/functions in binding layer**: Use the canonical C++ snake_case names: `fill_distance_matrix`, `dist_by_ind`
+- **Methods in sugar layer**: Expose the canonical snake_case name. Retain an
+  older spelling only when the API contract explicitly requires a
+  compatibility window, and make that alias warn before forwarding.
 - **Enums**: Keep PascalCase for type, keep original value names
 - **Module name**: Use lowercase, e.g., `dtwcpp` or project-specific name
 - **Free functions**: In binding layer keep C++ names; in sugar layer provide snake_case aliases
@@ -553,13 +555,13 @@ class Problem:
     def __init__(self, name: str) -> None: ...
 
     method: Method
-    maxIter: int
+    max_iter: int
     band: int
-    N_repetition: int
+    n_repetitions: int
     name: str
 
     def cluster(self) -> None: ...
-    def fillDistanceMatrix(self) -> None: ...
+    def fill_distance_matrix(self) -> None: ...
     def size(self) -> int: ...
     # ... all other methods with type annotations
 
@@ -603,14 +605,14 @@ When generating bindings, produce a side-by-side usage example showing the same 
 using namespace dtwc;
 
 DataLoader loader;
-loader.path("data/ECG200").startColumn(1).delimiter(',');
+loader.path("data/ECG200").start_column(1).delimiter(',');
 Data data = loader.load();
 
 Problem prob("ECG200", loader);
 prob.set_method(Method::Kmedoids);
-prob.maxIter = 100;
-prob.band = 10;
-prob.fillDistanceMatrix();
+prob.set_max_iter(100);
+prob.set_band(10);
+prob.fill_distance_matrix();
 prob.cluster();
 auto sil = scores::silhouette(prob);
 ```
@@ -621,15 +623,15 @@ import dtwc
 
 loader = dtwc.DataLoader()
 loader.path = "data/ECG200"
-loader.startColumn = 1
+loader.start_column = 1
 loader.delimiter = ","
 data = loader.load()
 
 prob = dtwc.Problem("ECG200", loader)
 prob.method = dtwc.Method.Kmedoids
-prob.maxIter = 100
+prob.max_iter = 100
 prob.band = 10
-prob.fillDistanceMatrix()
+prob.fill_distance_matrix()
 prob.cluster()
 sil = dtwc.silhouette(prob)
 ```
@@ -638,15 +640,15 @@ sil = dtwc.silhouette(prob)
 ```matlab
 loader = dtwc.DataLoader();
 loader.path = 'data/ECG200';
-loader.startColumn = 1;
+loader.start_column = 1;
 loader.delimiter = ',';
 data = loader.load();
 
 prob = dtwc.Problem('ECG200', loader);
 prob.method = dtwc.Method.Kmedoids;
-prob.maxIter = 100;
-prob.band = 10;
-prob.fillDistanceMatrix();
+prob.set_max_iter(100);
+prob.set_band(10);
+prob.fill_distance_matrix();
 prob.cluster();
 sil = dtwc.silhouette(prob);
 ```

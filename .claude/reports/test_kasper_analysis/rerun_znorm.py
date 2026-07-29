@@ -18,7 +18,7 @@ from dtwcpp import (
     Problem,
     fast_pam,
     silhouette,
-    davies_bouldin_index,
+    davies_bouldin,
     z_normalize,
 )
 
@@ -49,13 +49,13 @@ def main():
             t_pam = time.perf_counter() - t0
 
             # Wire result for scoring
-            p.set_number_of_clusters(k)
+            p.set_n_clusters(k)
             p.clusters_ind = list(map(int, res.labels))
             p.centroids_ind = list(map(int, res.medoid_indices))
             if not p.is_distance_matrix_filled():
                 p.fill_distance_matrix()
             ms = float(np.mean(silhouette(p)))
-            dbi = float(davies_bouldin_index(p))
+            dbi = float(davies_bouldin(p))
 
             sizes = np.bincount(np.asarray(res.labels, dtype=int), minlength=k).tolist()
             entry = {

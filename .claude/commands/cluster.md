@@ -79,7 +79,7 @@ prob.set_distance_type(dc.DistanceType.DTW)
 prob.set_variant(dc.DTWVariant.STANDARD)  # or user choice
 prob.set_band(BAND)
 prob.set_method(dc.Method.Kmedoids)
-prob.set_number_of_clusters(K)
+prob.set_n_clusters(K)
 # Missing data?
 # prob.set_missing_strategy(dc.MissingStrategy.AROW)
 
@@ -96,8 +96,8 @@ cost = prob.get_cost()
 
 # Internal metrics
 sil = dc.silhouette(prob)
-dbi = dc.davies_bouldin_index(prob)
-ch = dc.calinski_harabasz_index(prob)
+dbi = dc.davies_bouldin(prob)
+ch = dc.calinski_harabasz(prob)
 
 print(f"\nClustering complete in {elapsed:.2f}s")
 print(f"Cost: {cost:.4f}")

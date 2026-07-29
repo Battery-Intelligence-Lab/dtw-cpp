@@ -90,7 +90,7 @@ This repo prefers `thread_local` for hot-path buffers (warping functions).
 
 - Named form: `#pragma omp critical(name)` — different names = different locks.
 - **Expensive.** Serialises the block. Use only for infrequent operations.
-- This repo uses it for the lazy-init double-check pattern in `distByInd`.
+- This repo uses it for the lazy-init double-check pattern in `dist_by_ind`.
 
 ### Double-check pattern
 

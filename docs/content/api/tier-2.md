@@ -17,18 +17,20 @@ deprecation diagnostic is complete.
 
 ### 2.1 `Problem` — configuration setters
 
-Canonical config setters are snake_case. The eleven retained public fields are
-`maxIter`, `N_repetition`, `band`, `variant_params`, `missing_strategy`,
-`distance_strategy`, `cuda_settings`, `mip_settings`, `init_fun`,
-`clusters_ind`, and `centroids_ind`.
+Canonical config setters are snake_case. Eleven expert/result fields remain
+public: the deprecated actual `int` fields `maxIter` and `N_repetition`, plus
+`band`, `variant_params`, `missing_strategy`, `distance_strategy`,
+`cuda_settings`, `mip_settings`, `init_fun`, `clusters_ind`, and
+`centroids_ind`. Canonical accessors for the two deprecated fields are
+out-of-line and warning-silent.
 
 | Concept | C++ 2.0 `[rename]` | Python 2.0 | MATLAB 2.0 | Live source |
 |---|---|---|---|---|
-| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | C++ `set_numberOfClusters` (`Problem.hpp`); Py `set_number_of_clusters` (`_dtwcpp_core.cpp`); MEX already `set_n_clusters` (`Problem.m`) |
+| k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | retained field `maxIter` (`Problem.hpp`) |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | retained field `N_repetition` (`Problem.hpp`) |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`) |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`) |
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
@@ -51,7 +53,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 
 ### 2.2 `Problem` — distance-matrix & clustering methods `[rename: camelCase → snake_case]`
 
-| C++ live (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
+| C++ retained 1.x alias (Problem.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|
 | `refreshDistanceMatrix()` | `refresh_distance_matrix()` | `refresh_distance_matrix()` (live) | `refresh_distance_matrix()` `[introduced-2.0]` |
 | `readDistanceMatrix(path)` | `read_distance_matrix(path)` | `read_distance_matrix(path)` `[introduced-2.0]` | `read_distance_matrix(path)` `[introduced-2.0]` |
@@ -84,7 +86,7 @@ independent copy. The language-specific semantics are retained.
 **‡ Python read/write rename.** `distance_matrix()` and
 `set_distance_matrix()` are canonical and live. The old
 `distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
-compatibility aliases; F22 owns their missing deprecation diagnostics.
+compatibility aliases; each emits one caller-attributed `DeprecationWarning`.
 
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
@@ -112,13 +114,13 @@ The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
 covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
-the CLI (`dtwc_cl.cpp:471-555`) is the other path. Chained setters return
+the CLI (`dtwc_cl.cpp:1343-1419`) is the other path. Chained setters return
 `DataLoader&`.
 
 | C++ live (DataLoader.hpp) | C++ 2.0 canonical |
 |---|---|
-| `startColumn(int)` (:46-110) | `start_column(int)` |
-| `startRow(int)` | `start_row(int)` |
+| `startColumn(int)` (`DataLoader.hpp:291-297`) | `start_column(int)` |
+| `startRow(int)` (`DataLoader.hpp:299-306`) | `start_row(int)` |
 | `n_data(int)` | `n_data(int)` (unchanged) |
 | `delimiter(char)` | `delimiter(char)` (unchanged) |
 | `path(fs::path)` | `path(fs::path)` (unchanged) |
@@ -138,7 +140,7 @@ Canonical scheme drops the redundant `Index`/`Information` noun (the fixed
 decision `daviesBouldinIndex → davies_bouldin` sets the pattern; applied
 uniformly). Same name in all three languages.
 
-| Concept | C++ live (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
+| Concept | C++ retained 1.x alias (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
 |---|---|---|---|---|
 | silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
 | Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
@@ -150,10 +152,11 @@ uniformly). Same name in all three languages.
 
 Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
 `dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same
-(`dtwc_mex.cpp:792-874`). The canonical Adjusted-Rand and Normalized-MI
-spellings are adjudicated in §10 item 1. F22 records that retained aliases do
-not all emit the promised warning.
+`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same five
+public spellings in their dedicated `+dtwc/*.m` compatibility wrappers. Every
+old Python/MATLAB call emits one deprecation warning before forwarding; the
+shared MEX score commands remain warning-silent. The canonical Adjusted-Rand
+and Normalized-MI spellings are adjudicated in §10 item 1.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -176,7 +179,7 @@ route; neither name is reserved future work.
 
 ### 2.6 Distance free functions (Tier-2, all languages)
 
-Canonical namespace is `dtwc::distance::*` (`distance.hpp:29`), mirrored by
+Canonical namespace is `dtwc::distance::*` (`distance.hpp:33`), mirrored by
 Python `dtwcpp.distance.*` (`distance.py`) and MATLAB `+dtwc/+distance/`.
 
 | Variant | C++ `dtwc::distance::` | Python `dtwcpp.distance.` | MATLAB `dtwc.distance.` |
@@ -195,8 +198,8 @@ is **overloaded by design** and this is the one sanctioned break from "one name
 per concept":
 
 - In **C++**, `dtwc::distance::dtw` names *both* the standard single-pair function
-  (`distance.hpp:31`, no `DTWVariantParams` arg) *and* the variant dispatcher
-  (`distance.hpp:87`, with `DTWVariantParams`). The two are C++ overloads resolved
+  (`distance.hpp:35-42`, no `DTWVariantParams` arg) *and* the variant dispatcher
+  (`distance.hpp:94-144`, with `DTWVariantParams`). The two are C++ overloads resolved
   by argument list, so there is no `dtwc::distance::standard`.
 - In **Python/MATLAB**, the standard single-pair call is named `standard(x,y,…)`
   (there is no argument overloading), and `dtw(x,y,variant=…)` is the dispatcher

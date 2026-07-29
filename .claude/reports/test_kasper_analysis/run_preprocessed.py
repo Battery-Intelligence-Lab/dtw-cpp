@@ -25,7 +25,7 @@ from dtwcpp import (
     fast_pam,
     fast_clara,
     silhouette,
-    davies_bouldin_index,
+    davies_bouldin,
 )
 
 OUT = Path(".claude/reports/test_kasper_analysis")
@@ -78,13 +78,13 @@ def length_correlation(rides_lengths: np.ndarray, labels: np.ndarray) -> float:
 
 
 def score_and_check(prob, res, k, raw_series, rides_lengths):
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.clusters_ind = list(map(int, res.labels))
     prob.centroids_ind = list(map(int, res.medoid_indices))
     if not prob.is_distance_matrix_filled():
         prob.fill_distance_matrix()
     mean_sil = float(np.mean(silhouette(prob)))
-    dbi = float(davies_bouldin_index(prob))
+    dbi = float(davies_bouldin(prob))
     sizes = np.bincount(np.asarray(res.labels, dtype=int), minlength=k).tolist()
     medoid_idles = [medoid_idle_fraction(raw_series, m) for m in res.medoid_indices]
     lvar = length_correlation(rides_lengths, np.asarray(res.labels))

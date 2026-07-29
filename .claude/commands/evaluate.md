@@ -38,7 +38,7 @@ print(f"N = {data.size}, k = {k}")
 
 # Rebuild Problem with labels
 prob = dc.Problem(data)
-prob.set_number_of_clusters(k)
+prob.set_n_clusters(k)
 # Derive medoids: for each cluster, pick the series with lowest total intra-cluster distance
 # (or skip if user provided medoids)
 dm = dc.compute_distance_matrix(data, band=BAND)
@@ -55,9 +55,9 @@ prob.set_clusters_and_medoids(list(labels), medoids)
 
 ```python
 sil = dc.silhouette(prob)          # per-point
-dbi = dc.davies_bouldin_index(prob)
-ch  = dc.calinski_harabasz_index(prob)
-dun = dc.dunn_index(prob)
+dbi = dc.davies_bouldin(prob)
+ch  = dc.calinski_harabasz(prob)
+dun = dc.dunn(prob)
 inr = dc.inertia(prob)
 
 print(f"\nInternal metrics:")
@@ -74,8 +74,8 @@ print(f"  Inertia:           {inr:>8.4f}  (within-cluster dispersion)")
 ```python
 if gt_path:
     gt = np.loadtxt(gt_path, dtype=int, skiprows=1)
-    ari = dc.adjusted_rand_index(list(gt), list(labels))
-    nmi = dc.normalized_mutual_information(list(gt), list(labels))
+    ari = dc.adjusted_rand(list(gt), list(labels))
+    nmi = dc.normalized_mutual_info(list(gt), list(labels))
     print(f"\nExternal metrics (vs ground truth):")
     print(f"  Adjusted Rand Index: {ari:.4f}  (1.0 perfect, 0 random)")
     print(f"  Normalized MI:       {nmi:.4f}  (1.0 perfect)")

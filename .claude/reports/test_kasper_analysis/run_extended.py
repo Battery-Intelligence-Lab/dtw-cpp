@@ -20,8 +20,8 @@ from sklearn.metrics import silhouette_score, davies_bouldin_score, calinski_har
 
 import dtwcpp
 from dtwcpp import (
-    Problem, fast_pam, silhouette, davies_bouldin_index,
-    calinski_harabasz_index, dunn_index, adjusted_rand_index,
+    Problem, fast_pam, silhouette, davies_bouldin,
+    calinski_harabasz, dunn, adjusted_rand,
     build_dendrogram, cut_dendrogram, HierarchicalOptions, Linkage,
 )
 import dtwcpp.preprocess as pp
@@ -38,22 +38,22 @@ def setup_problem(series, names, band):
 
 
 def score_full(prob, labels, medoids, k):
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.clusters_ind = list(map(int, labels))
     prob.centroids_ind = list(map(int, medoids)) if medoids else list(range(k))
     if not prob.is_distance_matrix_filled():
         prob.fill_distance_matrix()
     sil = float(np.mean(silhouette(prob)))
-    db  = float(davies_bouldin_index(prob))
+    db  = float(davies_bouldin(prob))
     try:
-        ch = float(calinski_harabasz_index(prob))
+        ch = float(calinski_harabasz(prob))
     except Exception as e:
         ch = float('nan')
     try:
-        dunn = float(dunn_index(prob))
+        dunn_score = float(dunn(prob))
     except Exception as e:
-        dunn = float('nan')
-    return sil, db, ch, dunn
+        dunn_score = float('nan')
+    return sil, db, ch, dunn_score
 
 
 def main():
@@ -152,9 +152,9 @@ def main():
         l_raw  = np.array(summary["raw_band100"][f"pam_k{k}"]["labels"])
         l_pre  = np.array(summary["preprocessed"][f"pam_k{k}"]["labels"])
         l_feat = np.array(summary["features"][f"kmeans_k{k}"]["labels"])
-        ari_raw_feat = float(adjusted_rand_index(l_raw.tolist(), l_feat.tolist()))
-        ari_raw_pre  = float(adjusted_rand_index(l_raw.tolist(), l_pre.tolist()))
-        ari_pre_feat = float(adjusted_rand_index(l_pre.tolist(), l_feat.tolist()))
+        ari_raw_feat = float(adjusted_rand(l_raw.tolist(), l_feat.tolist()))
+        ari_raw_pre  = float(adjusted_rand(l_raw.tolist(), l_pre.tolist()))
+        ari_pre_feat = float(adjusted_rand(l_pre.tolist(), l_feat.tolist()))
         summary["ari"][f"k{k}"] = {
             "raw_vs_features": ari_raw_feat,
             "raw_vs_preprocessed": ari_raw_pre,

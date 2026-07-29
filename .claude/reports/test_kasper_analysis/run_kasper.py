@@ -19,7 +19,7 @@ from dtwcpp import (
     fast_pam,
     fast_clara,
     silhouette,
-    davies_bouldin_index,
+    davies_bouldin,
     compute_distance_matrix,
 )
 
@@ -66,7 +66,7 @@ def pam_run(series, names, band, k):
         mean_sil = float("nan")
         print(f"  silhouette failed: {e}")
     try:
-        db = float(davies_bouldin_index(p))
+        db = float(davies_bouldin(p))
     except Exception as e:
         db = float("nan")
         print(f"  db_index failed: {e}")

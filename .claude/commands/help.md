@@ -65,14 +65,14 @@ Convert: `dtwc-convert input.csv output.parquet`.
 
 **Internal** (no ground truth):
 - `silhouette()` — mean ∈ [-1, 1]; > 0.5 good
-- `davies_bouldin_index()` — lower better
-- `calinski_harabasz_index()` — higher better
-- `dunn_index()` — higher better
+- `davies_bouldin()` — lower better
+- `calinski_harabasz()` — higher better
+- `dunn()` — higher better
 - `inertia()` — within-cluster dispersion
 
 **External** (require ground truth):
-- `adjusted_rand_index()` — 1.0 perfect, 0 random
-- `normalized_mutual_information()` — 1.0 perfect
+- `adjusted_rand()` — 1.0 perfect, 0 random
+- `normalized_mutual_info()` — 1.0 perfect
 
 ## Python API quick reference
 
@@ -90,7 +90,7 @@ labels = clustering.labels_
 # Advanced Problem API
 prob = dc.Problem(data)
 prob.set_method(dc.Method.Kmedoids)
-prob.set_number_of_clusters(3)
+prob.set_n_clusters(3)
 prob.cluster()
 
 # Raw DTW distance

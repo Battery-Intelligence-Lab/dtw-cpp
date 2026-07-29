@@ -139,7 +139,7 @@ costs = []
 for k in range(2, 11):
     prob = dc.Problem(data)
     prob.set_method(dc.Method.Kmedoids)
-    prob.set_number_of_clusters(k)
+    prob.set_n_clusters(k)
     prob.cluster()
     costs.append((k, prob.get_cost()))
 ks, cs = zip(*costs)
