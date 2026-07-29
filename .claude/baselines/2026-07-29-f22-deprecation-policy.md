@@ -235,8 +235,11 @@ product edit. Product work is capped at two attempts.
 
 After the permanent fixtures are committed but before product work:
 
-- C++ diagnostic marker reports inventory 33/33, legacy diagnostics 24/33,
-  the exact nine silent entities above, and canonical diagnostic output zero;
+- the unmasked canonical LLFIO-ON C++ diagnostic marker first exposes F45's
+  inherited dependency-state leak at legacy diagnostics 0/33 and all 33
+  entities silent; after F45 is independently repaired, both canonical
+  LLFIO-ON and llfio-OFF report inventory 33/33, legacy diagnostics 24/33, the
+  exact nine silent entities above, and zero canonical deprecation lines;
 - Python focused collection is exactly 18 cases: 2 pass and 16 fail, where the
   failures are only the twelve previously silent symbols/operations and the
   three additional `ClusterResult` resolution routes plus the ordinary-call
@@ -247,6 +250,83 @@ After the permanent fixtures are committed but before product work:
 
 Expected-red evidence consumes no product attempt. A harness error is not an
 F22 verdict.
+
+## Decisive red-first evidence
+
+The permanent fixtures were committed in `b70a259`. No product file changed.
+
+### C++ public-header diagnostics
+
+The canonical LLFIO-ON driver exited 1 and printed:
+
+```text
+F22_CPP_SILENT count=33/33 entities=Problem::set_numberOfClusters(int),Problem::refreshDistanceMatrix(),Problem::readDistanceMatrix(const fs::path&),Problem::maxDistance() const,Problem::distByInd(int,int),Problem::isDistanceMatrixFilled() const,Problem::fillDistanceMatrix(),Problem::printDistanceMatrix() const,Problem::writeDistanceMatrix(const std::string&) const,Problem::writeDistanceMatrix() const,Problem::printClusters() const,Problem::writeClusters(),Problem::writeMedoidMembers(int,int) const,Problem::writeSilhouettes(),Problem::findTotalCost(),Problem::assignClusters(),Problem::calculateMedoids(),Problem::cluster_by_MIP(),Problem::cluster_by_kMedoidsLloyd(),Problem::cluster_size() const,scores::daviesBouldinIndex(Problem&),scores::dunnIndex(Problem&),scores::calinskiHarabaszIndex(Problem&),scores::adjustedRandIndex(labels,labels),scores::normalizedMutualInformation(labels,labels),DataLoader::startColumn(int),DataLoader::startRow(int),settings::paths::setDataPath(const fs::path&),settings::paths::setDataPath(const char*),settings::paths::setResultsPath(const fs::path&),settings::paths::setResultsPath(const char*),Problem::maxIter,Problem::N_repetition canonical_deprecation_lines=0
+F22_CPP_DIAGNOSTICS inventory=33/33 legacy=0/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=FAIL
+```
+
+The llfio-OFF arbiter exited 1 at the registered alias gap:
+
+```text
+F22_CPP_SILENT count=9/33 entities=Problem::readDistanceMatrix(const fs::path&),Problem::writeDistanceMatrix(const std::string&) const,Problem::writeDistanceMatrix() const,Problem::printClusters() const,Problem::writeClusters(),Problem::writeMedoidMembers(int,int) const,Problem::writeSilhouettes(),Problem::maxIter,Problem::N_repetition canonical_deprecation_lines=0
+F22_CPP_DIAGNOSTICS inventory=33/33 legacy=24/33 canonical_silent=33/33 overloads=31/31 fields=2/2 skips=0 verdict=EXPECTED_RED
+```
+
+The exact upstream leak and its separately registered repair are F45; see
+`.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`. It must close
+before an F22 C++ product attempt.
+
+### Python runtime policy
+
+The focused collection printed:
+
+```text
+18 tests collected in 8.26s
+```
+
+The decisive run printed:
+
+```text
+FFFFFFFFFFFF.FFF.F                                                       [100%]
+16 failed, 2 passed in 7.08s
+```
+
+The 16 failures are exactly twelve silent primary operations, three silent
+`ClusterResult` resolution routes, and the ordinary-use gate's exact nine
+calls. The two passes are the existing `Result.medoid_indices` warning and a
+silent plain package import.
+
+### MATLAB runtime policy
+
+Both R2024b Update 1 and R2025b Update 5 selected exactly one F22 case and
+reported zero passed / one failed / zero incomplete with:
+
+```text
+F22_MATLAB_DEPRECATION aliases=15/15 warning_profiles=0/15 messages=0/15 canonical_silent=15/15 equivalence=15/15 constructor_silent=1/1 tier1_silent=1/1 skips=0 verdict=FAIL
+```
+
+Both runs used:
+
+```text
+C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+bytes=1501696
+sha256=45CFBDFD2C8A4795D23790406F656FE1E5A789A8607490B8ED8832D53B78390F
+```
+
+This older MEX is valid inherited interface evidence, not final acceptance;
+R4 still requires a fresh build and two-release hash/provenance gate.
+
+### Harness notes
+
+During registration, two guessed checker names were invalid:
+
+```text
+C:\D\git\dtw-cpp\.venv\Scripts\python.exe: can't open file 'C:\\D\\git\\dtw-cpp\\scripts\\check_generated_docs.py': [Errno 2] No such file or directory
+C:\D\git\dtw-cpp\.venv\Scripts\python.exe: can't open file 'C:\\D\\git\\dtw-cpp\\scripts\\check_documentation_contract.py': [Errno 2] No such file or directory
+```
+
+They are harness errors, not F22 results. The exact tracked commands
+`scripts/generate_docs.py --check` and `scripts/check_docs_contract.py`
+subsequently passed.
 
 ### R2 — C++ diagnostics, ownership, and behavior
 

@@ -15,6 +15,15 @@
   canonical silence, fresh binding, two-release MATLAB, mutation, docs, and
   three-build full-gate bands in
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- Committed the three-language red-first fixtures in `b70a259`.
+- Reproduced Python's exact 18 collected / 16 failed / 2 passed inherited
+  ledger and MATLAB's exact 15/15 behavior-but-0/15-warning marker on both
+  installed releases.
+- Exposed an additional public-header defect instead of masking it: canonical
+  LLFIO-ON compilation reports 0/33 legacy diagnostics because quickcpplib
+  leaks a Clang diagnostic ignore; llfio-OFF reports the expected 24/33.
+- Localized and registered that prerequisite as F45 in
+  `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
 
 ## Decisions
 
@@ -31,13 +40,16 @@
   replacements were frozen.
 - Preserve the two named retained-red F18 MATLAB tests; F22 full-suite success
   is 85/82/2/3 after adding its one case, not a false zero-failure claim.
+- Do not filter LLFIO out of the F22 compiler driver. F45 must contain the
+  third-party diagnostic state at both product include boundaries, after which
+  canonical LLFIO-ON must match llfio-OFF at 24/33 before F22 resumes.
 
 ## Exact resume point
 
-Commit this registration as its own `docs:` commit. Then add the permanent C++,
-Python, and MATLAB fixtures red-first without product edits; capture the exact
-inherited verdicts against R1 and commit the retained evidence before beginning
-product attempt 1/2.
+Commit the F45 registration as its own `docs:` commit. Then implement only the
+registered LLFIO include wrapper and three-mutation gate, prove canonical and
+llfio-OFF both report 24/33, and close F45. Resume F22 by adding its exhaustive
+C++ behavior fixture before beginning alias product attempt 1/2.
 
 ## Open risks
 

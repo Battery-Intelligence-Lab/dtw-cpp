@@ -604,6 +604,15 @@ Critical knowledge to avoid repeating mistakes.
   `const char*` overload through conversion), and mutation-test both canonical
   ownership and legacy forwarding. Evidence:
   `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
+- **A third-party public header can silently change every caller diagnostic.
+  [confirmed]** The Windows-Clang quickcpplib header pulled through LLFIO uses
+  a bare `#pragma clang diagnostic ignored "-Wdeprecated-declarations"` with
+  no push/pop. Consequently `#include <dtwc.hpp>` made all 24 already-retained
+  C++ aliases silent in canonical LLFIO-ON while identical llfio-OFF diagnosed
+  24. Bracket optional-dependency includes at the DTWC++ boundary and test a
+  deprecated sentinel after each public include under `-Werror`; OFF does not
+  prove ON. Evidence:
+  `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
 
 ## LR-core Solver (Phase 4)
 

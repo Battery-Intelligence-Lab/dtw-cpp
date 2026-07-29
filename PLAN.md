@@ -711,6 +711,15 @@ Open findings first (status after R0 adjudication — update these boxes there):
       (invalid/unwritable base) in a real process and require a typed
       `dtwc::` error with an actionable message, never a raw filesystem
       exception; the inherited code must fail this gate.
+- [ ] **F45 — canonical LLFIO-ON public headers suppress all downstream Clang
+      deprecation diagnostics.** quickcpplib's `ringbuffer_log.hpp`, included
+      by LLFIO, installs a bare ignore with no push/pop. The unmasked F22
+      driver reports canonical 0/33 versus llfio-OFF 24/33 [confirmed].
+      First gate: bracket the dependency at both mmap public-header boundaries,
+      compile a deprecated sentinel after each header, kill three registered
+      mutations, and require LLFIO-ON and OFF to agree at 24/33 before F22
+      alias product work. Evidence:
+      `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1238,6 +1247,12 @@ colour system transfer verbatim**.
   inventories, require 46/31/33 mutation kills, and cap product work at two
   attempts. Evidence:
   `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (F45 registration): Treat quickcpplib's unbalanced Clang
+  diagnostic ignore as an independently capped prerequisite, not an F22
+  attempt. Do not filter it from the F22 driver, patch generated dependencies,
+  or count a masked result. Add one product-owned include wrapper, direct
+  probes for both mmap public headers, three mutation kills, and require the
+  canonical LLFIO-ON ledger to match llfio-OFF at 24/33 before F22 resumes.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1279,3 +1294,10 @@ colour system transfer verbatim**.
   behavior-identity, fresh-binding, two-release MATLAB, 110-mutation, docs,
   and three-build bands are registered before decisive fixtures or product
   edits.
+- 2026-07-29 (R3-F22 expected red / F45 split): Commit `b70a259` exposes the
+  inherited three-language gaps without product edits: Python 18 collected,
+  16 failed / 2 passed; both MATLAB releases report 15/15 alias equivalence
+  but 0/15 warning profiles; llfio-OFF reports C++ 24/33 while canonical
+  LLFIO-ON reports 0/33. The independent probe localizes the C++ disagreement
+  to quickcpplib's unbalanced diagnostic pragma. F45 is registered and must
+  close before F22 product attempt 1.
