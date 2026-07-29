@@ -622,6 +622,21 @@ Critical knowledge to avoid repeating mistakes.
   both complete matrices passed serially. Run configured matrices one at a
   time unless every artifact path is build-local. Evidence:
   `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
+- **`mxGetScalar` does not enforce the scalar shape its name suggests.
+  [confirmed]** F22 passed vector configuration candidates through a helper
+  documented as extracting a scalar; native state consumed element one while
+  MATLAB cached the complete vector. Check `mxGetNumberOfElements(...) == 1`
+  at the shared numeric/logical boundary and mutate native state before the
+  wrapper cache. This affects `get_scalar` callers, not uint64 handles, which
+  use a different decoder. Evidence:
+  `tests/matlab/test_contract_parity.m::f22_verify_config_setter_atomicity`.
+- **A MATLAB `verify*` failure does not stop a hand-written verdict marker.
+  [confirmed]** F22's first atomicity failure recorded the test as failed but
+  continued to print `verdict=PASS` because the marker's counters omitted the
+  nonfatal checks. Every load-bearing oracle that is not represented in the
+  printed verdict must use fatal `assert*` checks before that marker (or return
+  an explicit boolean into it). Evidence:
+  `tests/matlab/test_contract_parity.m::test_f22_matlab_deprecation_policy`.
 
 ## LR-core Solver (Phase 4)
 
