@@ -1,7 +1,8 @@
 # D1 — DTW recurrence and the Sakoe–Chiba adjustment window
 
-**Verdict:** CPU **CONFIRMED**; cross-backend **DISCREPANCY** F12; CUDA and
-Metal runtime parity **OPEN**.
+**Verdict:** CPU and real-CUDA **CONFIRMED**; Metal source conformance
+**CONFIRMED**, while real-Metal execution remains **DISCREPANCY** F12
+(`[BLOCKED-ENV]` on the Windows host).
 
 This note derives the scalar DTW objective implemented by DTWC++ and then
 checks it against the live code. Sakoe and Chiba are the primary source for
@@ -317,7 +318,9 @@ rounding does not enter their verdict.
 
 ## Code-conformance table
 
-Line numbers refer to commit `9f78212`.
+The CPU line numbers refer to derivation commit `9f78212`. The GPU rows were
+reconciled after implementation commit `4583443`; their executable evidence
+lives in the named F12 artifact rather than being inferred from source.
 
 | Claim | Live implementation | Evidence and verdict |
 |---|---|---|
@@ -333,8 +336,8 @@ Line numbers refer to commit `9f78212`.
 | Missing-data AROW wrapper does not bypass the fixed window | `dtwc/warping_missing_arow.hpp:153-172` | Endpoint feasibility precedes its singleton/full fallback. **CONFIRMED**. |
 | Independent DP oracle and third mathematical arbiter | `tests/unit/adversarial/test_banded_dtw_adversarial.cpp:41-317` | Full-matrix DP and exhaustive path enumeration reproduce the registered costs and path counts; the live public route agrees. **CONFIRMED**: 70/70 tagged assertions. |
 | Neither accumulated form is a metric | `tests/unit/adversarial/test_dtw_mathematical_properties.cpp:134-177` | Exact identity and triangle counterexamples above drive `dtwFull`. **CONFIRMED**: 11/11 tagged assertions. |
-| CUDA uses the same fixed geometry | `dtwc/cuda/cuda_dtw.cu:223-269`, repeated at `445-454`, `615-636`, `1797-1818`, `1949-1957`, `2057-2072` | CUDA still computes an endpoint-scaled `slope`/`window` corridor and uses signed `band+1`. **DISCREPANCY** → existing finding F12. |
-| Metal value/sentinel parity | `dtwc/metal/metal_dtw.mm:110`, `dtwc/metal/metal_dtw.mm:137-143`, `dtwc/metal/metal_dtw.mm:1741-1745` | Geometry is fixed-diagonal in source, but a no-path `FLT_MAX` is widened to double rather than translated to CPU `DBL_MAX`. Runtime is unavailable in the canonical build. **DISCREPANCY** F12 for the sentinel; runtime **OPEN**. |
+| CUDA uses the same fixed geometry | `dtwc/cuda/cuda_dtw.cu:69`, used by the pairwise kernels at `:277`, `:307`, `:455`, `:645` and one/K-vs-N kernels at `:1732`, `:1760`, `:1851`, `:1974` | One ordered-subtraction predicate implements $\lvert i-j\rvert\le w$ without signed `abs` overflow in every kernel family. The local RTX gate reproduces the independent path ledger in both singleton orientations: 515 assertions/6 F12 cases and 7,827 assertions/61 unfiltered cases. **CONFIRMED** by `.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`. |
+| Metal fixed geometry and public sentinel | `dtwc/metal/metal_dtw.mm:137-175`, `:250-287`, `:501-530`, `:597-627`, with public normalization at `:1759` and `:2139` | Widened arithmetic clips all four fixed corridors and exact device `FLT_MAX` is translated to public `DBL_MAX`. Permanent independent-oracle cases cover pairwise and K-vs-N source routes. Three reviews found no remaining source defect, but this host has no Metal compiler/device and the binary executes zero assertions before capability skip. Source **CONFIRMED**; real-device parity remains **DISCREPANCY** F12 / `[BLOCKED-ENV]`. |
 
 The full reference kernel currently passes its `size_t` dimensions through
 `int` casts when indexing `ScratchMatrix` (`dtw_kernel.hpp:220-240`). D1 does
@@ -345,11 +348,15 @@ required.
 
 ## Decisive artifact
 
-The preregistered ledger, inherited red, exhaustive path counts, focused
+The CPU preregistered ledger, inherited red, exhaustive path counts, focused
 outputs, complete 114-target gate, assumptions, and rollback are recorded in
-`.claude/baselines/2026-07-23-r2-d1-dtw.md`.
+`.claude/baselines/2026-07-23-r2-d1-dtw.md`. The later GPU repair, independent
+oracle, real-RTX outputs, and Metal environment probe are recorded in
+`.claude/baselines/2026-07-24-f12-gpu-fixed-band-parity.md`.
 
 **D1 final verdict:** the standard CPU recurrence, boundary conditions, scalar
 cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity
-claim are **CONFIRMED**. CUDA geometry and exact Metal no-path parity remain
-**DISCREPANCY** F12; neither backend is closed without its executable gate.
+claim are **CONFIRMED**. CUDA geometry and exact public no-path translation are
+also **CONFIRMED** on the local RTX. Metal source implements the same contract,
+but its real-device executable gate remains **DISCREPANCY** F12 and cannot be
+closed by Windows source inspection.

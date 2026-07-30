@@ -7,7 +7,7 @@ present. Remaining targets are tracked in `PLAN.md` Phase R2.
 
 | ID | Topic | File | Verdict |
 |---|---|---|---|
-| D1 | DTW recurrence and Sakoe–Chiba adjustment window | [01-dtw-recurrence-sakoe-chiba.md](01-dtw-recurrence-sakoe-chiba.md) | CPU **CONFIRMED**; **DISCREPANCY** F12 for CUDA geometry and exact Metal no-path parity; GPU runtime **OPEN** |
+| D1 | DTW recurrence and Sakoe–Chiba adjustment window | [01-dtw-recurrence-sakoe-chiba.md](01-dtw-recurrence-sakoe-chiba.md) | CPU **CONFIRMED**; real-CUDA **CONFIRMED**; Metal source **CONFIRMED**, real-device execution **DISCREPANCY** F12 (`[BLOCKED-ENV]`) |
 
 Verdict meanings:
 
