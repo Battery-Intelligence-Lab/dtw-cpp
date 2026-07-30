@@ -778,6 +778,15 @@ Critical knowledge to avoid repeating mistakes.
   build directory, complete the rebuild, and require a separate
   `ninja: no work to do.` settling run before CTest. Evidence:
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- **Pytest does not create a missing parent of `--basetemp`. [confirmed]**
+  F23's first decisive Python command used
+  `--basetemp=build/f23-green/focused` while `build/f23-green` did not exist.
+  Pytest created neither ancestor and errored in fixture setup before the
+  wire-format subject ran; two fixture-free export tests still passed, making
+  the partial output especially easy to misread. Before a decisive run, create
+  and verify the immediate parent of every nested `--basetemp`, or use a direct
+  child of an existing build root. Evidence:
+  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 
 ## LR-core Solver (Phase 4)
 

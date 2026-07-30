@@ -55,17 +55,20 @@
   during import with zero subject tests and no marker; the full parity gate was
   exactly 155 passed / 2 expected missing-symbol failures. The registered red
   is therefore confirmed without consuming a product attempt.
+- Product attempt 1 compiled and its fresh-artifact provenance passed, including
+  the intended `_hpc` CLI route, but the focused pytest command errored before
+  the wire subject because the parent of its nested `--basetemp` did not exist.
+  Exact outcome: 2 passed / 1 setup error / no marker. The unchanged product
+  proceeds to attempt 2 only after explicitly creating and verifying that
+  parent; the registered band is unchanged.
 
 ## Exact resume point
 
-Implement the two native-extension lambdas and unconditional package exports.
-Then clean-first rebuild the extension, rebuild the sibling CLI, prove
-built/installed hashes and both new symbols in a fresh process, and run the
-focused/parity/full registered gates. Before the full gate, prove that
-`_hpc.find_dtwc_binary()` selects the freshly rebuilt
-`build/cfg-gate-normal/bin/dtwc_cl.exe`; the preflight audit found that the
-newer Arrow binary currently wins discovery.
-Product attempts consumed: `0 / 2`.
+Create and verify `build/f23-green`, then rerun the unchanged focused product
+on attempt 2. If green, run parity and the combined inventory with both CLI
+environment routes pinned to the already rebuilt
+`build/cfg-gate-normal/bin/dtwc_cl.exe`.
+Product attempts consumed: `1 / 2`.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or
 operator state has changed. The claim most likely to be wrong is the exact

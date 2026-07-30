@@ -322,3 +322,64 @@ FAILED tests/python/test_contract_parity.py::test_module_symbol_exists[load_bina
 before collection, exactly two new parity nodes failed, all 155 inherited
 parity nodes passed, and no F23 success marker existed. Product attempts remain
 `0 / 2`.
+
+## Product attempt 1 - invalid harness
+
+The source-only adversarial review was GO: the save lambda snapshots all native
+state before releasing the GIL; the load lambda prepares UTF-8 path text and
+native result state before a scoped release, restores the GIL before throwing
+the exact typed error, and returns by value; no generic binding catch can
+misclassify `std::bad_alloc`. The clean-first Clang 21.1.8 build succeeded, a
+separate extension build printed `ninja: no work to do.`, the sibling CLI was
+rebuilt, and the combined settling build printed `ninja: no work to do.`.
+
+The installed extension provenance was:
+
+```text
+BUILT_COUNT=1
+INSTALLED_COUNT=1
+BUILT_PYD=C:\D\git\dtw-cpp\build\cfg-gate-normal\python\_dtwcpp_core.cp313-win_amd64.pyd
+INSTALLED_PYD=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+PYD_SHA256=9523C92343748374D70012CA51B91250E0D888982C4145B46B9582BF9D25499D
+PYD_DIFFERS_FROM_STALE=True
+LIBOMP_SHA256=5E6AC41ED81DFF9B41642A2F62CFD4784AA1C7CA1D348BEBD08FC54492C94466
+LIBOMP_MATCH=True
+PUBLIC_FILE=C:\D\git\dtw-cpp\python\dtwcpp\__init__.py
+CORE_FILE=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+SYMBOLS=4/4
+IDENTITIES=2/2
+ALL_UNIQUE=2/2
+HPC_SELECTED=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
+FRESH_IMPORT=PASS
+2.0.0rc1
+```
+
+The first decisive command was:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:DTWC_CL_PATH=(Resolve-Path 'build/cfg-gate-normal/bin/dtwc_cl.exe').Path; $env:DTWC_CL_BIN=$env:DTWC_CL_PATH; .venv\Scripts\python.exe -m pytest -p no:cacheprovider -q -s --basetemp=build/f23-green/focused tests/python/test_binary_checkpoint.py
+```
+
+Its output was:
+
+```text
+E..
+=================================== ERRORS ====================================
+_ ERROR at setup of test_binary_checkpoint_exact_wire_roundtrip_and_io_errors _
+
+self = WindowsPath('C:/D/git/dtw-cpp/build/f23-green/focused'), mode = 448
+parents = False, exist_ok = False
+
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [WinError 3] The system cannot find the path specified: 'C:\D\git\dtw-cpp\build\f23-green\focused'
+
+=========================== short test summary info ===========================
+ERROR tests/python/test_binary_checkpoint.py::test_binary_checkpoint_exact_wire_roundtrip_and_io_errors
+2 passed, 1 error in 2.50s
+```
+
+**[confirmed] Attempt-1 verdict: INVALID-HARNESS, registered band not met.**
+`build/f23-green` did not exist, so pytest failed before the subject fixture
+could run. The product source is unchanged for attempt 2, and the 3/3 band is
+unchanged. Conservatively, the preregistered attempt counter advances to
+`1 / 2`.
