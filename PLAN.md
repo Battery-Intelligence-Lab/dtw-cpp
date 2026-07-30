@@ -920,6 +920,28 @@ Open findings first (status after R0 adjudication — update these boxes there):
       noncanonical convergence, and nonscalar fields; reject before filesystem
       effects, then round-trip a non-degenerate result with all five fields and
       medoid order exact on R2024b and R2025b.
+- [ ] **F54 — the live Enhanced pruning cascade does not take the documented
+      maximum with LB_Keogh.** `LowerBoundStrategy::Enhanced` constructs a
+      Keogh envelope but evaluates only symmetric LB_Enhanced. For the
+      registered `{C,A,B}` ordering at radius 1, the first two exact distances
+      are zero, while the final pair has Kim 0, Enhanced 0, Keogh 10, and DTW
+      20. The inherited route therefore performs all three full evaluations.
+      First gate: preserve the exact matrix while both the direct and public
+      `Problem` routes report exactly 3 pairs, 1 envelope prune, 1 early
+      abandon, and 2 full evaluations under serial OpenMP. Repair by taking
+      `max(Enhanced,Keogh)`; do not claim saved exact-matrix work because the
+      abandoned pair is recomputed for publication.
+- [ ] **F55 — the local Webb implementation and its MinLR omission are
+      misidentified.** `lb_webb` is the paper's all-index `LB_Webb_NoLR`
+      bridge/correction formula plus a conservative tail-flag cap, not full
+      Algorithm 2 with `MinLRPaths`. The source and changelog claim that the
+      omission can only loosen the bound, but Webb and Petitjean report Wafer
+      tightness 0.96904 for NoLR versus 0.96891 for full Webb, disproving that
+      ordering. First gate: compare the live formula with an independent
+      direct-predicate NoLR oracle, reach all four correction branches, prove
+      the tail-cap inequality separately, and correct every provenance and
+      ordering claim. Do not attribute the repository's Enhanced/Keogh
+      counterexamples to the paper.
 - [ ] **F56 — Python binary-checkpoint failure formatting is not total over
       accepted filesystem paths.** The binding converts `std::filesystem::path`
       with `u8string()` and the exception translator later uses
@@ -931,6 +953,18 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `dtwcpp.IOError` without a secondary Unicode/conversion exception and
       retain an unambiguous reversible path representation. Record
       platform-impossible cases as `[BLOCKED-ENV]`, not as coverage.
+- [ ] **F57 — CPU LB_Webb window arithmetic has signed overflow at a valid
+      full-covering `INT_MAX` radius.** `twoW=2*w` and signed free counters can
+      overflow even though a radius larger than `n-1` is geometrically
+      equivalent to `n-1`. On `A={-2,-2}`, `B={0,0}`, inherited wrapped flags
+      can double-count and return inadmissible L1/squared values 8/16 instead
+      of global DTW 4/8. First gate: require exact
+      `F57_LB_WEBB_INTMAX` results, global-radius parity and admissibility in a
+      non-skippable target, then repeat under WSL UBSan. Normalize the effective
+      radius to `min(max(band,0),n-1)` and use overflow-safe unsigned
+      geometry/counters. F46 retains public envelope shape/provenance,
+      negative-mode, aliasing, and unrepresentable-length ownership; F50
+      retains device arithmetic.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1260,6 +1294,17 @@ colour system transfer verbatim**.
   unchanged attempt 2 passed every immutable counter. Keep F56 separate and
   advance immediately to D3. Evidence:
   `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
+- 2026-07-30 (D3 registration): Treat the production `lb_webb` as
+  `LB_Webb_NoLR` plus a separately proved conservative tail cap; no ordering is
+  claimed between it and full Algorithm 2. D3 owns exact-arithmetic
+  admissibility and ordering for finite equal-length scalar L1 and unrooted
+  squared-L2 inputs with a shared saturated window. F54, F55, and F57 are
+  closure prerequisites discovered by the pre-execution audits. Two isolated
+  non-skippable targets bind the exact D3 and F57 markers, serial live-cascade
+  reachability, `INT_MAX` behavior, and a two-product-attempt cap before any
+  decisive execution. F46/F50 and D17 retain their separate public-envelope,
+  device, and floating-threshold scopes. Evidence:
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
