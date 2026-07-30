@@ -158,8 +158,10 @@ is `RUN_SERIAL`, and has a finite timeout.
 - Keogh greater: `A=(-1,-1,-1,-1)`,
   `B=(-1,-1,0,-1)`, `w=1` gives symmetric Keogh 1 and Enhanced 0 at
   effective `V=2`.
-- Strict tail cap: `A=(-1,0)`, `B=(-1,2)`, `w=2` gives production
-  L1/squared `0/0`, exact-predicate NoLR `2/4`, and DTW `2/4`.
+- Strict tail cap: `A=(0,0,1,1)`, `B=(1,1,2,0)`, `w=1` gives production
+  L1/squared `3/3` and exact-predicate NoLR `4/4`. Every nonzero difference is
+  one, so the witness distinguishes the tail predicate under both metrics
+  without conflicting with F57's required `w>=n-1` saturation.
 - Nondegenerate upper tail:
   `A=(0,0,20,5,5,5,5)`, `B=(0,0,0,0,0,10,0)`, `w=2`; negating both
   exercises the lower tail.
@@ -236,6 +238,12 @@ advisory. The claim most expected to be wrong is exact correspondence of the
 production recurrence with the direct-predicate NoLR reference at clipped
 tails; the all-case ledger, strict-tail witnesses, and branch counters are
 the arbiters.
+
+Preregistration correction before either new test was executed: the initial
+two-point strict-tail candidate used `w=n`. F57's already registered effective
+radius maps that to `n-1`, where the candidate is no longer strict. The
+four-point `w=1` witness above preserves the unchanged `tail_strict=2/2`
+counter and tests the intended tail-cap fact under both metrics.
 
 ## Inherited clean-base baseline
 

@@ -23,6 +23,11 @@
   exact `ninja: no work to do`, and ran the inherited serial three-target
   baseline. It passed 3/3 in 4.43 seconds; the output is recorded verbatim in
   the D3 baseline. None of the three new discriminators existed in that run.
+- Before either new target executed, an adversarial consistency pass rejected
+  the proposed two-point tail witness because its `w=n` radius is canonically
+  `n-1` under F57. Replaced it without changing the marker by the exact
+  four-point `w=1` witness: capped L1/squared `3/3`, direct-predicate NoLR
+  `4/4`.
 
 ## Decisions
 
