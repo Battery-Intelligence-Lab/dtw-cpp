@@ -27,8 +27,9 @@ partially closed (CUDA verified on the local RTX; real Metal
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
 attempts exhausted. Its final serial gates pass all three native matrices,
 fresh Python with the registered F39 red, and both MATLAB releases with the
-registered F18 red; F22 stays unchecked. **Campaign cursor: F23, then D3 per
-the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
+  registered F18 red; F22 stays unchecked. **Campaign cursor: F51's
+  wire-canonicality safety prerequisite, then F23, then D3 per the R2/R3 cadence
+  rule.** The final **2.0.0 tag gates on R0–R6
 CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
 Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -339,11 +340,12 @@ rounds (all lenses) produce zero new confirmed findings. Every confirmed bug:
 failing test → fix → full-gate re-run → own commit. Every dead hypothesis:
 recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
-**Immediate next step (2026-07-30):** execute F23's fresh-extension expected
-red and frozen binary-checkpoint parity gate. D2 is CLOSED by
-`.claude/baselines/2026-07-30-d2-lb-keogh.md`; advance to D3 after F23 under
-the cadence rule. F22 remains unchecked because its exhausted C++ mutation
-closure band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
+**Immediate next step (2026-07-30):** close F51's deterministic binary-v1
+wire-canonicality safety prerequisite, then execute F23's fresh-extension
+expected red and frozen binary-checkpoint parity gate. D2 is CLOSED by
+`.claude/baselines/2026-07-30-d2-lb-keogh.md`; advance to D3 after F23 under the
+cadence rule. F22 remains unchecked because its exhausted C++ mutation closure
+band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
 
 **Suggested sequencing for the remaining findings (improvise freely, rule 8 —
 this is a route, not a script).** Cluster by shared context so each cluster
@@ -876,6 +878,18 @@ Open findings first (status after R0 adjudication — update these boxes there):
       DTW 10. Clamp the host envelope radius to `max_L-1` with checked
       conversions; run CUDA locally and record Metal `[BLOCKED-ENV]` if no
       Apple executor exists.
+- [ ] **F51 — binary-v1 result checkpoints trust noncanonical wire state before
+      proving its size.** The reader allocates from signed `k`/`N`, ignores
+      reserved/padding bytes, accepts any nonzero convergence byte and trailing
+      payload, and decodes native representations despite the documented
+      little-endian format. F23 would expose this parser directly to Python.
+      First gate: preserve the registered 72-byte oracle while all 85 fixed
+      corruptions return false, throw zero exceptions, and leave the destination
+      unchanged; prove exact size before count-derived allocation, explicit LE
+      integer/binary64 codecs, save-load-save byte identity, and all seven F17
+      semantic-invalid files still reach the CLI's contextual validator. These
+      cases seed rather than replace the later randomized checkpoint/config
+      robustness lens.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1163,6 +1177,17 @@ colour system transfer verbatim**.
   marker, 157 parity nodes, and registered 1,048-node full inventory before
   closure. Evidence:
   `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
+- 2026-07-30 (F51 registration and cadence departure): Before F23 exposes the
+  binary reader, close its newly audited deterministic wire-safety prerequisite
+  without changing version-1 valid bytes. F51 owns explicit little-endian
+  codecs, exact size-before-allocation, canonical structural bytes/EOF, and
+  unchanged-on-false behavior across 85 fixed corruptions. F17 retains
+  contextual semantics; the later checkpoint/config lens retains randomized
+  fuzz, provenance/authentication, durability, and option combinations while
+  adopting the 85 cases as seeds. This prerequisite discovered inside the open
+  F23 task is a safety-driven cadence departure; resume F23 immediately after
+  F51 and D3 immediately after F23. Evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
