@@ -551,3 +551,51 @@ are exactly 123/123, 123/123, and 125/125 with exactly 6/9/8 registered
 capability skips; the Arrow reader executed rather than skipped at 390
 assertions / 11 cases. The stronger post-F51 binary subject executed at 298/2
 with its exact marker.
+
+## Documentation, checker controls, and hygiene
+
+Commit `282cbb9` updates the frozen contract, generated Tier-2 mirror, both
+Python/checkpointing guides, and the permanent documentation checker. The
+contract limits the live path statement to valid Unicode and discloses F56
+rather than claiming exhaustive native-filename coverage.
+
+The positive gates printed:
+
+```text
+generated documentation is current
+
+generated documentation is current
+documentation contract checks passed
+
+record hygiene checks passed
+
+banned_tracked_paths=0
+unexpected_zero_byte_files=0
+targeted_duplicate_groups=0
+asset_routes=4/4
+required_ignore_targets=23/23
+high_confidence_secret_hits=0
+codecov_badge_query_hits=0
+changelog_structure=PASS
+seed_compatibility_markers=2/2
+VERDICT=PASS
+```
+
+Three in-memory negative controls proved that the new checker rejects its
+load-bearing drift classes without modifying the worktree:
+
+```text
+NEGATIVE_CONTROL=missing_doc_signature verdict=REJECTED detail=Python binary-checkpoint documentation drift: {'contract': ['`load_binary_checkpoint(path) -> ClusteringResult`']}
+NEGATIVE_CONTROL=reordered_save_gil verdict=REJECTED detail=Python binary-checkpoint writer omits or reorders marker after offset 237: nb::gil_scoped_release release;
+NEGATIVE_CONTROL=missing_native_export verdict=REJECTED detail=Python binary-checkpoint exports must each appear once in the native import and once in __all__: {'save_binary_checkpoint': {'native_import': 0, '__all__': 1}}
+F23_DOC_CHECKER_NEGATIVE_CONTROLS=3/3
+```
+
+**[confirmed] F23 verdict: PASS.** Product attempt 2 met every frozen focused
+counter; the public, parity, full Python, native, generated-documentation,
+contract, and hygiene gates all meet their preregistered bands. F56 is an
+explicit later finding, not a hidden generalisation of the valid-path evidence.
+Rollback remains the F23 commits in reverse order; no remote state changed.
+The claim most likely to be wrong is that the source-text ordering checker
+captures every semantically equivalent GIL lifetime, because it intentionally
+pins the current implementation shape rather than parsing C++ control flow.

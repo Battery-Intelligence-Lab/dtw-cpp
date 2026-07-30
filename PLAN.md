@@ -13,11 +13,11 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-30, after the D2 final-gate adjudication):** 2.0.0rc1 release state
+**Status (2026-07-30, after the F23 final-gate adjudication):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
 active with D1–D2 CLOSED (**D3–D18 outstanding — 16/18 remain**); R3 active
-with **F13, F14, F15, F19, F21, F33, F45 CLOSED**.
+with **F13, F14, F15, F19, F21, F23, F33, F45, F51 CLOSED**.
 Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
 checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 (fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
@@ -27,9 +27,8 @@ partially closed (CUDA verified on the local RTX; real Metal
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
 attempts exhausted. Its final serial gates pass all three native matrices,
 fresh Python with the registered F39 red, and both MATLAB releases with the
-  registered F18 red; F22 stays unchecked. **Campaign cursor: F51's
-  wire-canonicality safety prerequisite, then F23, then D3 per the R2/R3 cadence
-  rule.** The final **2.0.0 tag gates on R0–R6
+registered F18 red; F22 stays unchecked. **Campaign cursor: D3, then the paired
+GPU-LB findings per the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
 CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
 Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -568,9 +567,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       pass, including the expected F18/F39 reds, but do not reinterpret the
       exhausted C++ mutation criterion. F22 remains FALSIFIED and unchecked.
       Evidence: `.claude/baselines/2026-07-30-f22-final-gates.md`.
-- [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
-      Its module exposes `CheckpointOptions` and directory save/load only
-      (`python/src/_dtwcpp_core.cpp:1145-1169`), while MATLAB delivered
+- [x] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
+      At registration, its module exposed `CheckpointOptions` and directory
+      save/load only (`python/src/_dtwcpp_core.cpp:1145-1169` at base
+      `ab08ac1`), while MATLAB delivered
       `save_binary_checkpoint`/`load_binary_checkpoint`
       (`bindings/matlab/dtwc_mex.cpp:958-973`). First gate: import both names
       from the freshly rebuilt extension, round-trip a non-degenerate
@@ -578,6 +578,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       count, assert field equality and malformed/missing-file typed errors, and
       compare the emitted bytes with the C++ reader. The current extension must
       fail at import before implementation.
+      **CLOSED 2026-07-30:** direct GIL-safe native bindings and unconditional
+      package exports passed the exact 72-byte/10-field/3-error marker at 3/3,
+      contract parity at 157/157, and the registered 1,046/1,048 Python
+      inventories with only F39 red. The stronger native checkpoint gate
+      retained 298/2; all three serial matrices retained exact 6/9/8 skips.
+      Documentation, generated mirrors, adversarial checker controls, and
+      hygiene pass. F56 owns the separately disclosed non-UTF-8/surrogate path
+      residual.
 - [ ] **F24 — Python HPC failures bypass the frozen device-error contract.**
       `python/dtwcpp/_hpc.py:395-405,445-456` raises wrapper-specific
       `RuntimeError` messages, while Python intentionally defers HPC credential
@@ -1244,6 +1252,14 @@ colour system transfer verbatim**.
   `u8string()`/`PyErr_SetString` surrogateescape and lone-surrogate boundary
   under a separate immutable cross-platform gate. F23's exhausted attempts are
   not rescue-tuned.
+- 2026-07-30 (F23 closure): Expose the frozen native binary-v1 result codec
+  directly through Python, snapshot mutable bound state before releasing the
+  GIL, return a new `ClusteringResult` on load, and map false reads to the exact
+  typed `dtwcpp.IOError` after reacquisition. Attempt 1 was conservatively
+  consumed by a recorded missing-`--basetemp`-parent harness error; the
+  unchanged attempt 2 passed every immutable counter. Keep F56 separate and
+  advance immediately to D3. Evidence:
+  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1285,3 +1301,12 @@ colour system transfer verbatim**.
   390/11; documentation and all hygiene checkers passed. Resume F23, then D3.
   Evidence:
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- 2026-07-30 (F23 CLOSED): Commits `90fa58d`, `5bf517f`, and `282cbb9`
+  preserve the red-first public/import contract, GIL-safe direct native
+  bindings, exact independent wire oracle, public documentation, and permanent
+  drift checks. Focused Python passed 3/3 with its exact marker; parity passed
+  157/157; Python-only and combined inventories were exactly 1,046 and 1,048
+  with only the registered F39 red. The F51 subject retained 298/2; native
+  matrices passed 123/123, 123/123, and 125/125 with 6/9/8 skips; Arrow readers
+  ran 390/11. F56 owns the disclosed path residual. Resume D3. Evidence:
+  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.

@@ -77,11 +77,16 @@
   `PyErr_SetString` cannot faithfully cover surrogateescaped/non-UTF-8
   PathLike inputs. It does not invalidate F23's registered Windows valid-path
   gate and receives its own later error-boundary repair.
+- Commit `282cbb9` documents the live API, valid-Unicode boundary, typed
+  failures, structural-only semantics, and regenerated Tier-2 mirror. The
+  permanent checker passed its positive gate and rejected all three in-memory
+  negative controls. Generated docs, documentation contract, record hygiene,
+  repository hygiene, and diff checks are green.
 
 ## Exact resume point
 
-Complete the documentation/checker updates and run their gates, then close F23
-and advance immediately to D3.
+F23 is CLOSED. Register D3's preflight findings F54/F55 before any decisive
+derivation run, then complete D3 and its paired implementation repair.
 Product attempts executed: `2 / 2`; attempt 2 passed.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or
