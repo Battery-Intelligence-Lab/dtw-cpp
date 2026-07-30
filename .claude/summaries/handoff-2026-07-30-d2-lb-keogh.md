@@ -18,6 +18,14 @@
   checks, exact execution marker, and two-attempt cap in
   `.claude/baselines/2026-07-30-d2-lb-keogh.md` before adding or running the
   new test.
+- Added and committed the non-skippable permanent executable oracle as
+  `21ba41d` (`test: add exhaustive D2 LB Keogh oracle`).
+- Decisive focused verdict: **PASS**. The exact marker reported
+  `2004 / 28602 / 17712 / 2/2`, and Catch2 reported 40 assertions in one test
+  case; CTest reported 1/1 passed, zero failed, 0.41 seconds.
+- The executed unequal-length arbiter falsifies F29's old premise under the
+  current fixed-window geometry. The negative-band helper discrepancy and
+  both safe full-DTW callers were independently reached.
 
 ## Decisions
 
@@ -38,8 +46,8 @@
 
 ## Exact resume point
 
-Add `tests/unit/adversarial/test_lb_keogh_derivation.cpp` and its explicit
-CTest marker/floor properties. Build `build/highs-1151`, run only that target
-first, and append its output and verdict to the D2 baseline before any wider
-gate.
-
+Write `docs/derivations/02-envelopes-lb-keogh.md`, update the derivation index
+and verified citations, add documentation-drift guards, and register the
+confirmed envelope/Kim/TADPole/API discrepancies as separate R3 findings.
+Then run the focused five inherited targets, docs gate, and full canonical,
+llfio-OFF, and Arrow-ON matrices; update the test-inventory floors.
