@@ -383,3 +383,26 @@ ERROR tests/python/test_binary_checkpoint.py::test_binary_checkpoint_exact_wire_
 could run. The product source is unchanged for attempt 2, and the 3/3 band is
 unchanged. Conservatively, the preregistered attempt counter advances to
 `1 / 2`.
+
+## Product attempt 2 - focused acceptance
+
+Before retrying, `build/f23-green` was created and verified as a directory.
+The unchanged product target and sibling CLI printed
+`ninja: no work to do.`, and the built/installed extension pair retained
+SHA-256
+`9523C92343748374D70012CA51B91250E0D888982C4145B46B9582BF9D25499D`.
+
+The same focused command then printed:
+
+```text
+F23_PYTHON_CHECKPOINT exports=2/2 fields=10/10 bytes=72/72 cpp_reader=2/2 io_errors=3/3 skips=0 verdict=PASS
+...
+3 passed in 2.10s
+```
+
+**[confirmed] Attempt-2 focused verdict: PASS.** Exactly three tests passed,
+the sole marker printed once with every counter exact, no skip/xfail/error
+occurred, and the emitted bytes matched the independently registered
+72-byte/SHA-256 oracle. The product was committed immediately as `5bf517f`.
+Both registered product attempts have now been executed; no later gate may
+weaken or rescue-tune this implementation.

@@ -61,14 +61,17 @@
   Exact outcome: 2 passed / 1 setup error / no marker. The unchanged product
   proceeds to attempt 2 only after explicitly creating and verifying that
   parent; the registered band is unchanged.
+- Attempt 2 ran the unchanged product after verifying the basetemp parent and
+  passed exactly 3/3 with the sole exact `F23_PYTHON_CHECKPOINT` marker. Commit
+  `5bf517f` contains the two GIL-safe native lambdas, unconditional exports, and
+  Unreleased changelog entry.
 
 ## Exact resume point
 
-Create and verify `build/f23-green`, then rerun the unchanged focused product
-on attempt 2. If green, run parity and the combined inventory with both CLI
-environment routes pinned to the already rebuilt
+Run parity and the combined inventory with both CLI environment routes pinned
+to the already rebuilt
 `build/cfg-gate-normal/bin/dtwc_cl.exe`.
-Product attempts consumed: `1 / 2`.
+Product attempts executed: `2 / 2`; attempt 2 passed.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or
 operator state has changed. The claim most likely to be wrong is the exact
