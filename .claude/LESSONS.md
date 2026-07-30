@@ -796,6 +796,17 @@ Critical knowledge to avoid repeating mistakes.
   unpaired-surrogate inputs where the platform permits them; build typed errors
   from a representation Python can always decode. Evidence: F56 in `PLAN.md`
   and the F23 binding audit.
+- **A fail-closed source checker must pin verdicts, not merely workloads.
+  [confirmed]** D3 initially pinned exhaustive inventory counts and output
+  markers while omitting eight `violations == 0` assertions and most of F57's
+  parity/admissibility assertions; the test could still clear its assertion
+  floor after those verdicts were removed. Raw marker scans also accepted
+  commented-out C++, and independent CTest marker/floor substrings did not
+  prove one composite pass regex. Strip comments and literals before code
+  checks, pin every load-bearing zero/result assertion, and require the exact
+  `PASS_REGULAR_EXPRESSION` property that couples marker to floor. Six
+  in-memory mutants now reject. Evidence:
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 
 ## LR-core Solver (Phase 4)
 

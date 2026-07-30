@@ -533,3 +533,120 @@ passed 24 assertions. The two-attempt product budget is exhausted with a green
 final result. Focused F54/F57 behavior is confirmed; D3 closure still requires
 the registered provenance/derivation corrections, WSL UBSan execution, and
 the serial integration matrices.
+
+## Derivation and fail-closed documentation contract
+
+Commit `7dce222` added the complete D3 derivation, primary-source scope,
+assumptions and units, independent witnesses, and code-conformance map. A
+post-draft adversarial audit replaced the informal Webb collision argument
+with the stronger cellwise inequality
+`row_bridge(i) + column_correction(j) <= point_cost(i,j)` for every admissible
+path cell. Its four branch cases cover the exact all-index NoLR predicates,
+the paper's explicit negated flags, and production's conservative equality
+extension.
+
+Commit `639e1c4` added the fail-closed D3 documentation contract. The direct
+checker result was:
+
+```text
+generated documentation is current
+documentation contract checks passed
+```
+
+An independent read-only review first found that inventory counts alone did
+not pin the eight zero-violation verdicts, that only 8/24 F57 assertions were
+pinned, that comments/literals could satisfy code markers, and that CTest's
+marker and assertion floor were not required in one expression. After those
+defects were repaired, these six in-memory mutations were all rejected:
+
+```text
+D3_CHECKER_MUTATION d3_zero_verdict=REJECTED
+D3_CHECKER_MUTATION f57_admissibility=REJECTED
+D3_CHECKER_MUTATION production_commented=REJECTED
+D3_CHECKER_MUTATION cascade_commented=REJECTED
+D3_CHECKER_MUTATION ctest_split_pass=REJECTED
+D3_CHECKER_MUTATION ctest_commented_composite=REJECTED
+```
+
+The final independent narrow re-audit reported `CLEAN`.
+
+## WSL UBSan F57 gate
+
+Before execution, the existing build was inspected without rebuilding. The
+exact environment probe was:
+
+```text
+Ubuntu clang version 18.1.3 (1ubuntu1)
+Target: x86_64-pc-linux-gnu
+Thread model: posix
+InstalledDir: /usr/bin
+cmake version 3.28.3
+1.11.1
+CMAKE_BUILD_TYPE:STRING=RelWithDebInfo
+DTWC_ENABLE_ARROW:BOOL=OFF
+DTWC_ENABLE_CUDA:BOOL=OFF
+DTWC_ENABLE_HIGHS:BOOL=OFF
+DTWC_ENABLE_LLFIO:BOOL=OFF
+DTWC_ENABLE_METAL:BOOL=OFF
+DTWC_ENABLE_MPI:BOOL=OFF
+dtwc_ENABLE_SANITIZER_UNDEFINED:BOOL=ON
+```
+
+The registered target was then rebuilt with:
+
+```text
+wsl.exe --cd /mnt/c/D/git/dtw-cpp env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 cmake --build build/ubsan-wsl --target test_lb_webb_intmax -j 2
+```
+
+The reconfigure reported `Compiler: Clang 18.1.3`, `Build type:
+RelWithDebInfo`, `Testing: ON`, every optional backend OFF, and the build
+finished by linking `bin/test_lb_webb_intmax`. Diagnostics were the inherited
+unsupported `-fno-signaling-nans` warning, two inherited requested-loop
+vectorization warnings, dirty ignored CPM-cache warnings, and the expected
+no-MIP-solver warning. No UBSan diagnostic appeared.
+
+The decisive command was:
+
+```text
+wsl.exe --cd /mnt/c/D/git/dtw-cpp env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/ubsan-wsl -R ^test_lb_webb_intmax$ --output-on-failure --no-tests=error -V -j 1
+```
+
+Its complete output was:
+
+```text
+Internal ctest changing into directory: /mnt/c/D/git/dtw-cpp/build/ubsan-wsl
+UpdateCTestConfiguration  from :/mnt/c/D/git/dtw-cpp/build/ubsan-wsl/DartConfiguration.tcl
+Parse Config file:/mnt/c/D/git/dtw-cpp/build/ubsan-wsl/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/mnt/c/D/git/dtw-cpp/build/ubsan-wsl/DartConfiguration.tcl
+Parse Config file:/mnt/c/D/git/dtw-cpp/build/ubsan-wsl/DartConfiguration.tcl
+Test project /mnt/c/D/git/dtw-cpp/build/ubsan-wsl
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 11
+    Start 11: test_lb_webb_intmax
+
+11: Test command: /mnt/c/D/git/dtw-cpp/build/ubsan-wsl/bin/test_lb_webb_intmax
+11: Working Directory: /mnt/c/D/git/dtw-cpp
+11: Test timeout computed to be: 30
+11: Randomness seeded to: 466888232
+11: F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS
+11: ===============================================================================
+11: All tests passed (24 assertions in 1 test case)
+11:
+1/1 Test #11: test_lb_webb_intmax ..............   Passed    0.03 sec
+
+The following tests passed:
+	test_lb_webb_intmax
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.06 sec
+```
+
+WSL UBSan verdict: **PASS [confirmed]**. The target executed 24 assertions,
+printed the exact registered marker, incurred zero skips, and produced no
+undefined-behavior diagnostic under `halt_on_error=1`.

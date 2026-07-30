@@ -75,6 +75,20 @@
 - PLAN's live D3 and fuzz wording now uses the same theorem domains. A binding
   decision explicitly supersedes matching stale claims in the immutable plan
   archives rather than rewriting those historical records.
+- Commit `7dce222` adds the complete D3 derivation. Its final Webb proof is
+  cellwise: every admissible path cell covers its row bridge plus its column
+  correction, including full, overlap, zero, reflected, and production
+  equality cases. The derivation has 40 unique sequential equation tags.
+- Commit `639e1c4` adds the fail-closed D3 documentation checker. An independent
+  audit found and drove repairs for four false-green classes; six in-memory
+  mutants covering missing verdicts, commented product/cascade code, and split
+  or commented CTest expressions all reject. The final narrow re-audit was
+  `CLEAN`, and the live checker passes.
+- F57 is **PASS [confirmed]** under the existing WSL UBSan build: Clang 18.1.3,
+  RelWithDebInfo, optional backends OFF,
+  `UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1`. The non-skippable target
+  printed its exact marker and passed 24/24 assertions with zero sanitizer
+  diagnostics in 0.06 seconds.
 
 ## Decisions
 
@@ -93,10 +107,12 @@
 
 ## Exact resume point
 
-Commit the F55 PLAN/handoff bookkeeping, then write the complete D3 derivation
-with a fail-closed contract checker. Run F57 under the existing WSL UBSan build
-before the focused inherited and three full serial integration matrices.
-Close F54/F55/F57 and D3 only after those gates and the final hygiene pass are
+Commit this sanitizer evidence, then rebuild and run the focused inherited D3
+subjects plus both new targets. Run the canonical, llfio-OFF, and Arrow-ON
+matrices serially and adjudicate prospective floors 125/125, 125/125, and
+127/127 with exact 6/9/8 skip sets, Arrow reader 390 assertions/11 cases, and
+all four real-CLI markers. Close F54/F55/F57 and D3 only after those gates,
+documentation/record/repository hygiene, and clean-tree verification are
 recorded.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
