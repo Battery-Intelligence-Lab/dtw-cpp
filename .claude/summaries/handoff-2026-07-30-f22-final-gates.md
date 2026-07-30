@@ -50,6 +50,13 @@
 - Python attempt 2 met the registered expected-red band exactly: 1,041
   collected = 1,028 passed + 12 skipped + only the F39 `28 == 27` failure,
   with zero error nodes. Post-run built/imported extension hashes still match.
+- Clean-first rebuilt the OpenMP MEX and proved source compilation/link plus a
+  new 685,056-byte hash. R2024b focused passed 1/1 with the exact 15/15 marker,
+  OpenMP 2/2, one MEX path, and unchanged hash.
+- R2024b full attempt 1 ran all five suites and printed the registered two
+  failed/three incomplete names, but the post-run oracle lost embedded double
+  quotes through `matlab -batch` and exited before printing the custom ledger.
+  It is retained as FALSIFIED; one full attempt remains.
 
 ## Decisions
 
@@ -65,10 +72,10 @@
 
 ## Exact resume point
 
-Force a clean OpenMP MEX rebuild, prove source compilation/hash/cache identity,
-and run focused/full MATLAB serially on R2024b then R2025b through that same
-MEX. Append exact outputs to the run-log after each gate and commit each
-completed evidence step immediately.
+Run the final R2024b full wrapper with single-quoted MATLAB cell arrays and
+require the exact 85/82/2/3 ledger. Then run focused/full R2025b through the
+same unchanged MEX. Append exact outputs to the run-log after each gate and
+commit each completed evidence step immediately.
 
 ## Open risks
 
@@ -87,3 +94,5 @@ completed evidence step immediately.
 - `test_hpc` ignores `DTWC_CL_PATH` and selects the newest build-tree CLI by
   mtime. Future clean binding gates must build `_dtwcpp_core` and `dtwc_cl`
   together and assert the helper-selected path before the suite.
+- Only one R2024b full attempt remains. PowerShell-to-`matlab -batch` wrappers
+  must use MATLAB single-quoted character cell arrays for expected names.

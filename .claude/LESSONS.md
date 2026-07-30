@@ -677,6 +677,14 @@ Critical knowledge to avoid repeating mistakes.
   candidate by mtime, so assert that helper's selected path explicitly.
   Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
+- **PowerShell can strip embedded MATLAB double-quote delimiters passed through
+  `matlab -batch`. [confirmed]** An 85-test R2024b run reached its exact
+  expected failed/incomplete ledger, but the post-run oracle's MATLAB string
+  array became bare identifiers and exited before printing the registered
+  summary. Use single-quoted MATLAB character arrays/cell arrays in an inline
+  PowerShell batch argument, and emit newlines with a separate
+  `fprintf('%s',newline)` to avoid a second quoting layer. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
 
 ## LR-core Solver (Phase 4)
 

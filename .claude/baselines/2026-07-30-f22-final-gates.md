@@ -518,6 +518,93 @@ Verdict: **PASS WITH REGISTERED F39 RED [confirmed]** — focused 18/18 with the
 exact F22 marker; full 1,041 = 1,028 passed + 12 registered skips + only the
 known F39 inventory failure; zero error nodes; fresh native identity proven.
 
+### MATLAB fresh MEX and R2024b
+
+The preflight found both release executables, a clean tree, one old MEX, and
+the source hash
+`BDB6086BE23E3DB71C0B2FE3FF5536A8BCBA624331CD3CB3A47160E9B78C1782`.
+The current Visual Studio 18/R2024b-SDK configuration regenerated with
+`DTWC_ALLOW_SEQUENTIAL=OFF`, llfio/Arrow/CUDA/Metal/HiGHS OFF in the effective
+summary, and OpenMP enabled through `-openmp:experimental`.
+
+The clean-first Release target compiled `dtwc_mex.cpp`, linked the MEX, and a
+settling build changed no source. Provenance printed:
+
+```text
+MEX_SOURCE_COMPILED=True
+MEX_LINKED=True
+MEX_SOURCE_SHA256=BDB6086BE23E3DB71C0B2FE3FF5536A8BCBA624331CD3CB3A47160E9B78C1782
+MEX_ARTIFACT_COUNT=1
+MEX_ARTIFACT=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+MEX_BYTES=685056
+MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+MEX_HASH_CHANGED=True
+PRE_MATLAB_EXCLUSIVITY=PASS
+```
+
+The old pre-build MEX hash was
+`8872FF10EA1F05FFD4A7E4D7657DE39BD64EE0974DB99282F1125F98071B26EE`.
+An independent static audit counted the five suites as 14 + 34 + 28 + 8 + 1 =
+85 tests and reconciled the registered failed/incomplete sets before any
+MATLAB execution.
+
+#### R2024b focused
+
+The focused process used unique repository-local preferences and temp
+directories, `OMP_NUM_THREADS=2`, repository sources first, and the fresh MEX
+directory last. Its decisive output was:
+
+```text
+MATLAB_RELEASE=R2024b
+MEX_SELECTED=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+MEX_COUNT=1
+OMP_AVAILABLE=1 OMP_MAX=2 OMP_ENGAGED=2 OMP_PASS=1 OMP_REASON=
+F22_MATLAB_DEPRECATION aliases=15/15 warning_profiles=15/15 messages=15/15 canonical_silent=15/15 equivalence=15/15 constructor_silent=1/1 tier1_silent=1/1 skips=0 verdict=PASS
+F22_MATLAB_FOCUSED release=R2024b total=1 passed=1 failed=0 incomplete=0
+MATLAB_EXIT=0
+FOCUSED_MARKER_COUNT=1
+FOCUSED_SUMMARY_COUNT=1
+POST_FOCUSED_MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+```
+
+The isolated runtime contained no reparse points, every entry resolved below
+its exact directory, and cleanup reported `RUNTIME_CLEANED=True`.
+
+#### R2024b full attempt 1
+
+An overbroad process guard first observed unrelated MATLAB sessions in other
+repositories and exited before creating a runtime or starting MATLAB. It
+contributed no attempt or test credit. The corrected repository-scoped guard
+then launched the 85-test suite.
+
+The suite itself ran all five files, printed the exact F22 marker, and printed
+the registered names:
+
+```text
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_test_api/test_parallelisation_serial_is_honest
+```
+
+The post-run assertion was nevertheless invalid: embedded MATLAB double-quote
+string delimiters were stripped at the PowerShell-to-`-batch` boundary. MATLAB
+therefore exited 1 with:
+
+```text
+Unrecognized function or variable 'test_dtwclustering_metric_routes_match_exhaustive_oracle'.
+```
+
+The custom 85/82/2/3 line never executed, so the otherwise matching result
+names do not receive gate credit. The MEX remained byte-identical, the log
+contained one F22 marker, two failed-name lines, and three incomplete-name
+lines, and the isolated runtime was safely removed.
+
+Attempt-1 verdict: **FALSIFIED [confirmed]** — the post-run name-set oracle did
+not execute. The sole remaining attempt must use single-quoted MATLAB cell
+arrays and reproduce the complete custom ledger.
+
 ### Remaining gates
 
 Pending: MATLAB R2024b, MATLAB R2025b.
