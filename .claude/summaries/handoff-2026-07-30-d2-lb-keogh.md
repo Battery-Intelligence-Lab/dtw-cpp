@@ -82,6 +82,11 @@
   generated D2 metadata. The serial matrix verdict is **PASS [confirmed]**:
   123/123, zero failed, exact nine registered capability skips. Its fresh
   verbose D2 run also printed the exact marker and 65 assertions in one case.
+- Regenerated, rebuilt, and settled the Arrow-ON graph; validated 125 generated
+  tests and all three reader runtime paths. The serial matrix verdict is
+  **PASS [confirmed]**: 125/125, zero failed, exact eight registered skips.
+  Fresh subject runs proved D2 65/1 with its exact marker, the Arrow reader at
+  390/11, and all four real-CLI F14/F17/F8/F13 markers (6/6, no skip).
 
 ## Decisions
 
@@ -111,8 +116,7 @@
 
 ## Exact resume point
 
-Commit the llfio-OFF execution evidence, then rebuild, settle, and run the
-Arrow-ON matrix serially at the registered 125/125 floor. Prove its exact
-eight-name capability-skip set, the fresh D2 marker and 65/1 floor, the
-reader's 390 assertions in 11 cases, and all four real-CLI markers. Update
-AGENTS.md and PLAN.md only from those observed inventories.
+Commit the Arrow execution evidence, rerun the integrated documentation and
+repository-hygiene closure, then update AGENTS.md's observed floors and
+PLAN.md's D2 status/cursor in a separate bookkeeping commit. Keep
+F27-F30/F46-F50 open and preserve F29's remaining real-device gate.
