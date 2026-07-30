@@ -438,6 +438,37 @@ TEST_CASE(
   REQUIRE(pruned_stats.pruned_by_ub == 0);
   REQUIRE(brute_stats.pruned_by_lb == 0);
   REQUIRE(brute_stats.pruned_by_ub == 0);
+
+  // The complementary pair proves that the global-envelope stage actually
+  // executes. Together with the zero-DTW pair above it distinguishes a
+  // disabled LB (0,0), an unsafe radius-zero LB (1,1), and the correct global
+  // full-window LB (0,1).
+  const Series separated_a = { 0.0, 0.0 };
+  const Series separated_b = { 2.0, 2.0 };
+  REQUIRE(dtwc::dtwFull_L<double>(separated_a, separated_b) == 4.0);
+  REQUIRE(
+    production_bounds(separated_a, separated_b, 2, 2).symmetric_l1
+    == 4.0);
+  auto separated_pruned_problem = make_problem(
+    { separated_a, separated_b }, -1, "d2_tadpole_reachable_pruned");
+  auto separated_brute_problem = make_problem(
+    { separated_a, separated_b }, -1, "d2_tadpole_reachable_brute");
+  dtwc::algorithms::TADPoleStats separated_pruned_stats;
+  dtwc::algorithms::TADPoleStats separated_brute_stats;
+  const auto separated_pruned = dtwc::algorithms::tadpole(
+    separated_pruned_problem, 1, 1.0, true, &separated_pruned_stats);
+  const auto separated_brute = dtwc::algorithms::tadpole(
+    separated_brute_problem, 1, 1.0, false, &separated_brute_stats);
+  REQUIRE(separated_pruned.labels == separated_brute.labels);
+  REQUIRE(
+    separated_pruned.medoid_indices == separated_brute.medoid_indices);
+  REQUIRE(separated_pruned.total_cost == separated_brute.total_cost);
+  REQUIRE(separated_pruned_stats.total_pairs == 1);
+  REQUIRE(separated_pruned_stats.dtw_calls == 1);
+  REQUIRE(separated_pruned_stats.pruned_by_lb == 1);
+  REQUIRE(separated_pruned_stats.pruned_by_ub == 0);
+  REQUIRE(separated_brute_stats.pruned_by_lb == 0);
+  REQUIRE(separated_brute_stats.pruned_by_ub == 0);
   ++call_sites;
 
   REQUIRE(call_sites == 2);
@@ -448,4 +479,3 @@ TEST_CASE(
     << " call_sites=" << call_sites << "/2"
     << " skips=0 verdict=PASS\n";
 }
-
