@@ -50,14 +50,21 @@
   F52 owns false-load `dtwc:runtime` versus `dtwc:ioError`; F53 owns incomplete
   or narrowing result conversion and the weak sorted-medoid/two-field test.
 - Product attempts are capped at two.
+- Commit `90fa58d` adds the permanent red-first test module and the two parity
+  nodes. Against the unchanged stale extension, the focused module failed
+  during import with zero subject tests and no marker; the full parity gate was
+  exactly 155 passed / 2 expected missing-symbol failures. The registered red
+  is therefore confirmed without consuming a product attempt.
 
 ## Exact resume point
 
-Add the permanent three-test Python module and the two parity nodes, commit
-them, then execute the inherited stale-extension import/parity red before
-touching F23 product code. After repair, clean-first rebuild the extension,
-rebuild the sibling CLI, prove built/installed hashes and both new symbols in a
-fresh process, and run the focused/parity/full registered gates.
+Implement the two native-extension lambdas and unconditional package exports.
+Then clean-first rebuild the extension, rebuild the sibling CLI, prove
+built/installed hashes and both new symbols in a fresh process, and run the
+focused/parity/full registered gates. Before the full gate, prove that
+`_hpc.find_dtwc_binary()` selects the freshly rebuilt
+`build/cfg-gate-normal/bin/dtwc_cl.exe`; the preflight audit found that the
+newer Arrow binary currently wins discovery.
 Product attempts consumed: `0 / 2`.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or

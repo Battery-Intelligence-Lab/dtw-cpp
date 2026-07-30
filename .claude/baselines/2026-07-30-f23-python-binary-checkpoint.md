@@ -255,3 +255,70 @@ The claim most likely to be wrong is the exact 1,048-node full inventory because
 collection can change independently while this campaign advances. It is
 decisive here: any mismatch must be explained from named collected nodes before
 a verdict, never silently re-registered after execution.
+
+## Expected-red execution
+
+Commit `90fa58d` added the permanent tests before any F23 product edit. The
+built and installed native extensions remained byte-identical to the registered
+stale SHA-256
+`0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF`.
+
+The focused command was:
+
+```text
+.venv\Scripts\python.exe -m pytest tests/python/test_binary_checkpoint.py -q -s --basetemp=build/f23-red/tmp-focused -o cache_dir=build/f23-red/cache-focused
+```
+
+It ran zero subject tests, printed no PASS marker, and failed at the public
+import exactly as registered:
+
+```text
+=================================== ERRORS ====================================
+___________ ERROR collecting tests/python/test_binary_checkpoint.py ___________
+ImportError while importing test module 'C:\D\git\dtw-cpp\tests\python\test_binary_checkpoint.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+C:\Users\engs2321\AppData\Roaming\uv\python\cpython-3.13.7-windows-x86_64-none\Lib\importlib\__init__.py:88: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\python\test_binary_checkpoint.py:12: in <module>
+    from dtwcpp import load_binary_checkpoint, save_binary_checkpoint
+E   ImportError: cannot import name 'load_binary_checkpoint' from 'dtwcpp' (C:\D\git\dtw-cpp\python\dtwcpp\__init__.py)
+=========================== short test summary info ===========================
+ERROR tests/python/test_binary_checkpoint.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 2.73s
+```
+
+The complete parity command was:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; .venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/python/test_contract_parity.py -q --basetemp=build/f23-red/tmp-parity
+```
+
+Its verdict was the registered two missing symbols with every inherited node
+green:
+
+```text
+.................................................FF..................... [ 45%]
+........................................................................ [ 91%]
+.............                                                            [100%]
+================================== FAILURES ===================================
+______________ test_module_symbol_exists[save_binary_checkpoint] ______________
+E       AssertionError: dtwcpp.save_binary_checkpoint missing (contract §1/§2/§5/§6)
+E       assert False
+E        +  where False = hasattr(dtwcpp, 'save_binary_checkpoint')
+______________ test_module_symbol_exists[load_binary_checkpoint] ______________
+E       AssertionError: dtwcpp.load_binary_checkpoint missing (contract §1/§2/§5/§6)
+E       assert False
+E        +  where False = hasattr(dtwcpp, 'load_binary_checkpoint')
+=========================== short test summary info ===========================
+FAILED tests/python/test_contract_parity.py::test_module_symbol_exists[save_binary_checkpoint]
+FAILED tests/python/test_contract_parity.py::test_module_symbol_exists[load_binary_checkpoint]
+2 failed, 155 passed in 2.53s
+```
+
+**[confirmed] Expected-red verdict: PASS.** The focused public import failed
+before collection, exactly two new parity nodes failed, all 155 inherited
+parity nodes passed, and no F23 success marker existed. Product attempts remain
+`0 / 2`.
