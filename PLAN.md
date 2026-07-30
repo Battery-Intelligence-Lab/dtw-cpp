@@ -13,11 +13,17 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-30, after the F23 final-gate adjudication):** 2.0.0rc1 release state
+**Status (2026-07-30, mid-D3 final adjudication):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
-active with D1–D2 CLOSED (**D3–D18 outstanding — 16/18 remain**); R3 active
-with **F13, F14, F15, F19, F21, F23, F33, F45, F51 CLOSED**.
+active with D1–D2 CLOSED and **D3 in final adjudication** (D4–D18 outstanding —
+15/18 remain once D3 closes); R3 active
+with **F13, F14, F15, F19, F21, F23, F33, F45, F51 CLOSED**. D3's derivation
+(`7dce222`), fail-closed doc gate (`639e1c4`), F54 cascade-max repair
+(`d09cf9c`+`53506a9`), F55 provenance corrections (`6abff20`), and F57
+saturation repair (`29f9103`, WSL-UBSan clean) are all committed with focused
+gates green (D3 115/115, F57 24/24); **none of D3/F54/F55/F57 is closed until
+the serial full-matrix adjudication below runs.**
 Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
 checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 (fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
@@ -27,8 +33,15 @@ partially closed (CUDA verified on the local RTX; real Metal
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
 attempts exhausted. Its final serial gates pass all three native matrices,
 fresh Python with the registered F39 red, and both MATLAB releases with the
-registered F18 red; F22 stays unchecked. **Campaign cursor: D3, then the paired
-GPU-LB findings per the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
+registered F18 red; F22 stays unchecked. **Campaign cursor: (1) finish the
+D3/F54/F55/F57 closure gates — serial canonical/llfio-OFF/Arrow-ON matrices
+against the prospective 125/125, 125/125, 127/127 floors with exact 6/9/8
+skips, Arrow reader 390/11, all four real-CLI markers, then docs/CHANGELOG,
+checkbox flips, AGENTS floor confirmation, and the rule-12 hygiene sweep;
+(2) the GPU-LB CUDA cluster (F27, F29, F47, F50 local-RTX halves; Metal halves
+`[BLOCKED-ENV]`, gates implemented-and-retained) — D2/D3 now supply the
+admissibility oracles it was waiting for; (3) D4 (EAPruned) per the cadence
+rule.** The final **2.0.0 tag gates on R0–R6
 CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
 Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -246,6 +259,13 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       ordering with full Algorithm 2. Enhanced dominates matching-direction
       Keogh at effective `V=1`; exact repository witnesses establish both
       strict directions at effective `V>=2`, so the live cascade takes max.
+      **Status 2026-07-30:** derivation committed (`7dce222`, 40 equation
+      tags, cellwise Webb proof), fail-closed doc checker committed
+      (`639e1c4`, six mutants reject), expected red CONFIRMED, product
+      attempt 2 PASS (D3 115/115 + F57 24/24, ctest 2/2), F57 WSL-UBSan
+      clean. CLOSES only with the serial full-matrix adjudication in the
+      Immediate-next-step block. Evidence:
+      `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 - [ ] **D4. EAPruned exactness + the relaxed threshold constant.** Herrmann &
       Webb argument (every optimal-path cell ≤ DTW ≤ UB ⇒ pruning exact). Then
       derive the accumulation-error bound that justifies
@@ -344,12 +364,21 @@ rounds (all lenses) produce zero new confirmed findings. Every confirmed bug:
 failing test → fix → full-gate re-run → own commit. Every dead hypothesis:
 recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
-**Immediate next step (2026-07-30):** close F51's deterministic binary-v1
-wire-canonicality safety prerequisite, then execute F23's fresh-extension
-expected red and frozen binary-checkpoint parity gate. D2 is CLOSED by
-`.claude/baselines/2026-07-30-d2-lb-keogh.md`; advance to D3 after F23 under the
-cadence rule. F22 remains unchecked because its exhausted C++ mutation closure
-band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
+**Immediate next step (2026-07-30):** finish the D3 closure per the exact
+resume point in
+`.claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md`: rebuild the
+canonical tree, rerun the focused inherited D3 subjects plus both new
+non-skippable targets, then run the canonical, llfio-OFF, and Arrow-ON
+matrices SERIALLY and adjudicate the prospective floors 125/125, 125/125, and
+127/127 with exact 6/9/8 skip sets, Arrow reader 390 assertions/11 cases, and
+all four real-CLI markers. Close D3, F54, F55, and F57 only after those gates
+plus documentation/CHANGELOG, record hygiene, AGENTS floor confirmation, and
+clean-tree verification are recorded; the claim most at risk (per the handoff)
+is exact clipped-tail equivalence between the production recurrence and the
+direct-predicate NoLR oracle — adjudicate it from the registered exhaustive
+ledger, never by moving the band. Then proceed to the GPU-LB CUDA cluster
+(F27, F29, F47, F50), then D4. F22 remains unchecked because its exhausted C++
+mutation closure band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
 
 **Suggested sequencing for the remaining findings (improvise freely, rule 8 —
 this is a route, not a script).** Cluster by shared context so each cluster
@@ -489,21 +518,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       Registered fixture, oracles, and bands:
       `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
 - [x] **F19 — the frozen `Problem` encapsulation/accessor cleanup was
-      incomplete.** Configuration and result fields remained publicly mutable;
-      promised C++ `last_iterations()`, `set_output_folder(path)`, and `name()`
-      accessors were absent; MATLAB still performed binding-side result
-      writeback after core algorithms already wrote the same state
-      (`dtwc/Problem.hpp:206-234`, `bindings/matlab/dtwc_mex.cpp:326-330,
-      1142-1203`). First gate: a compile-time contract fixture must fail on the
-      three missing canonical accessors and a source/API guard must reject raw
-      mutation of fields designated private by the frozen contract; separately,
-      deleting each redundant MATLAB writeback in a probe must leave the
-      returned and stored labels/medoids digit-identical.
-      **CLOSED 2026-07-24** (`3612b68`): exactly ten fields privatized;
-      eleven retained by the original freeze/F22/M25/M37; 31/31 public-header
-      assertions, twelve permanent mutations, 24/24 MATLAB routes across
-      R2024b/R2025b; the impossible Python aggregate ledger retained as
-      arithmetically FALSIFIED evidence (not rescue-tuned). Evidence:
+      incomplete.** CLOSED 2026-07-24 (`3612b68`): ten fields privatized,
+      canonical accessors added, redundant MATLAB writeback removed; 31/31
+      public-header assertions, twelve permanent mutations, 24/24 MATLAB
+      routes on both releases. Full registration prose archived verbatim in
+      `.claude/PLAN-archive-2026-07-30-decisions.md`. Evidence:
       `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
 - [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
       routing.** The setter only validates and stores an enum
@@ -531,21 +550,12 @@ Open findings first (status after R0 adjudication — update these boxes there):
       escape. Registered bands and full evidence:
       `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - [x] **F21 — four frozen C++ snake_case entry points are absent.**
-      `DataLoader` exposes only `startColumn`/`startRow`
-      (`dtwc/DataLoader.hpp:124-157`), and `settings::paths` exposes only
-      `setDataPath`/`setResultsPath` (`dtwc/settings.hpp:74-86`), despite the
-      frozen rename table promising `start_column`, `start_row`,
-      `set_data_path`, and `set_results_path` with deprecated old-name shims.
-      First gate: a public-header compile fixture calling all four canonical
-      spellings must fail on the inherited tree, then pass while the four legacy
-      calls still compile and produce identical loader configuration/path state.
-      **CLOSED 2026-07-29:** product attempt 1 (`5e4a7b6`) adds the exact
-      canonical-owned setter surface, preserves both path overloads, and makes
-      the four old setters deprecated forwarders. The permanent fixture
-      (`a48635b`) proves 12/12 signatures and 81 assertions/2 cases in all three
-      builds; `36b9c99` kills 12/12 registered mutants. Full gates pass
-      canonical 122/122 (6 skips), llfio-OFF 122/122 (9), and Arrow-ON 124/124
-      (8), with the reader executing 390 assertions/11 cases. Evidence:
+      CLOSED 2026-07-29 (`5e4a7b6`, `a48635b`, `36b9c99`): canonical
+      `start_column`/`start_row`/`set_data_path`/`set_results_path` added with
+      deprecated old-name forwarders; 12/12 signatures, 81 assertions/2 cases
+      in all three builds, 12/12 mutants killed, all three full matrices
+      green. Full registration prose archived verbatim in
+      `.claude/PLAN-archive-2026-07-30-decisions.md`. Evidence:
       `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
 - [ ] **F22 — compatibility aliases failed the frozen deprecation
       policy.** At registered base `5352bc0`, C++ `maxIter`/`N_repetition`
@@ -573,24 +583,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       exhausted C++ mutation criterion. F22 remains FALSIFIED and unchecked.
       Evidence: `.claude/baselines/2026-07-30-f22-final-gates.md`.
 - [x] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
-      At registration, its module exposed `CheckpointOptions` and directory
-      save/load only (`python/src/_dtwcpp_core.cpp:1145-1169` at base
-      `ab08ac1`), while MATLAB delivered
-      `save_binary_checkpoint`/`load_binary_checkpoint`
-      (`bindings/matlab/dtwc_mex.cpp:958-973`). First gate: import both names
-      from the freshly rebuilt extension, round-trip a non-degenerate
-      `ClusteringResult` with distinct labels, medoids, cost, and iteration
-      count, assert field equality and malformed/missing-file typed errors, and
-      compare the emitted bytes with the C++ reader. The current extension must
-      fail at import before implementation.
-      **CLOSED 2026-07-30:** direct GIL-safe native bindings and unconditional
-      package exports passed the exact 72-byte/10-field/3-error marker at 3/3,
-      contract parity at 157/157, and the registered 1,046/1,048 Python
-      inventories with only F39 red. The stronger native checkpoint gate
-      retained 298/2; all three serial matrices retained exact 6/9/8 skips.
-      Documentation, generated mirrors, adversarial checker controls, and
-      hygiene pass. F56 owns the separately disclosed non-UTF-8/surrogate path
-      residual.
+      CLOSED 2026-07-30: GIL-safe `save_binary_checkpoint`/
+      `load_binary_checkpoint` bound over the frozen native binary-v1 codec
+      with typed `dtwcpp.IOError`; exact 72-byte/10-field/3-error marker 3/3,
+      parity 157/157, registered 1,046/1,048 inventories with only the F39
+      red. F56 owns the disclosed non-UTF-8/surrogate path residual. Full
+      registration prose archived verbatim in
+      `.claude/PLAN-archive-2026-07-30-decisions.md`. Evidence:
+      `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 - [ ] **F24 — Python HPC failures bypass the frozen device-error contract.**
       `python/dtwcpp/_hpc.py:395-405,445-456` raises wrapper-specific
       `RuntimeError` messages, while Python intentionally defers HPC credential
@@ -936,6 +936,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       abandon, and 2 full evaluations under serial OpenMP. Repair by taking
       `max(Enhanced,Keogh)`; do not claim saved exact-matrix work because the
       abandoned pair is recomputed for publication.
+      **Repair retained 2026-07-30:** `d09cf9c` activates both bounds and takes
+      their maximum; `53506a9` corrected the test's output literal (attempt 1
+      conservatively consumed on that literal alone). Focused attempt 2 PASS
+      115/115 with the exact registered counters. Closure pending the D3
+      serial adjudication.
 - [ ] **F55 — the local Webb implementation and its MinLR omission are
       misidentified.** `lb_webb` is the paper's all-index `LB_Webb_NoLR`
       bridge/correction formula plus a conservative tail-flag cap, not full
@@ -947,6 +952,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       the tail-cap inequality separately, and correct every provenance and
       ordering claim. Do not attribute the repository's Enhanced/Keogh
       counterexamples to the paper.
+      **Corrections retained 2026-07-30:** `6abff20` fixes provenance across
+      source contracts, public enum/metric page, changelog, lessons, legacy
+      test commentary, and the 2026-07-08 run-log corrigendum;
+      `check_docs_contract.py` passes. Closes only with the D3 gates.
 - [ ] **F56 — Python binary-checkpoint failure formatting is not total over
       accepted filesystem paths.** The binding converts `std::filesystem::path`
       with `u8string()` and the exception translator later uses
@@ -970,6 +979,12 @@ Open findings first (status after R0 adjudication — update these boxes there):
       geometry/counters. F46 retains public envelope shape/provenance,
       negative-mode, aliasing, and unrepresentable-length ownership; F50
       retains device arithmetic.
+      **Repair retained 2026-07-30:** `29f9103` saturates the CPU Webb/Enhanced
+      radius and makes the doubled radius and free counters unsigned and
+      saturating; `13cd4f6` added the analytic nonconstant discriminator.
+      Focused 24/24 passes normally and under WSL UBSan
+      (`halt_on_error=1`) with zero diagnostics. Closure pending the D3
+      serial adjudication.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1154,7 +1169,7 @@ colour system transfer verbatim**.
   replace the design, not add a third token special case.
 - Full kill-context lives in the archive (`### Explicit rejections`, Phase 5) and `.claude/LESSONS.md`.
 
-## Binding decisions (digest — append NEW decisions here; closed-finding prose moved to `.claude/PLAN-archive-2026-07-29-decisions.md` and earlier archives)
+## Binding decisions (digest — append NEW decisions here; closed-finding prose moved to `.claude/PLAN-archive-2026-07-30-decisions.md`, `.claude/PLAN-archive-2026-07-29-decisions.md`, and earlier archives)
 
 - 2026-07-06: `default_data_t` = double; Float32 explicit opt-in. `MetricType::L2` is a real multivariate L2. No-silent-fallback promoted to Global Constraint. Local benchmarks ADVISORY (shared machine).
 - 2026-07-10: llfio pinned `b17613f…`; codecov + all 36 workflow actions SHA-pinned; Arrow 19.0.1 SHA-256 enforced; stale tracked MEX binary removed; HiGHS bundled in wheels, Gurobi external; production publication = manual explicit-go only.
@@ -1227,78 +1242,33 @@ colour system transfer verbatim**.
   rather than rescue-tuning this one. The cadence cursor moves to D2 before
   another R3 finding. Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
-- 2026-07-30 (D2 adversarial split): The explicit path-row proof and
-  17,712-case arbiter replace F29's obsolete slope-window premise; executable
-  CUDA/Metal confirmation remains required, but prefix truncation alone no
-  longer justifies a repair. Keep five newly localized subjects separate:
-  envelope representation/validation (F46), squared Kim units (F47), empty
-  TADPole bounds (F48), Problem/band cache provenance (F49), and device
-  envelope integer overflow (F50). This avoids hiding independent fixes
-  inside the derivation or overloading F27/F28. Evidence:
+- 2026-07-30 (D2 split + closure, digest): D2 CLOSED; its path-row proof and
+  17,712-case arbiter falsified F29's old premise (real-device execution still
+  required); five split subjects registered as F46–F50 rather than hidden in
+  the derivation. Verbatim entries:
+  `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence:
   `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- 2026-07-30 (D2 closure): Close the mathematical derivation and its two
-  nonempty CPU call-site classes after the focused 6/6 gate, exact 65/1 oracle,
-  serial 123/123, 123/123, and 125/125 matrices with exact 6/9/8 skips, Arrow
-  reader 390/11, and final documentation/hygiene passes. This does not close
-  F27–F30 or F46–F50; F29 still requires real CUDA/Metal execution, and F50 is
-  the current owner for device envelope integer overflow, superseding the
-  historical F12 digest's generic F28–F30 assignment without rewriting it.
-  Resume F23, then D3. Evidence:
-  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- 2026-07-30 (F23 registration): Bind the existing binary-v1
-  `ClusteringResult` writer/reader directly as
-  `save_binary_checkpoint(result, path) -> None` and
-  `load_binary_checkpoint(path) -> ClusteringResult`; failed reads and native
-  write failures cross Python as `dtwcpp.IOError`. Preserve the wire format and
-  require F51's deterministic wire-canonicality prerequisite before exposure;
-  the later checkpoint/config lens retains randomized fuzz,
-  semantic/provenance/authentication, and CLI/config combinations. Require the
-  fresh-extension expected red, the independent 72-byte oracle, exact 3-test
-  marker, 157 parity nodes, and registered 1,048-node full inventory before
-  closure. Evidence:
+- 2026-07-30 (F51 + F23 registration/closure, digest): F51 CLOSED — binary-v1
+  wire made strictly canonical (explicit LE codecs, size-before-allocation,
+  unchanged-on-false across the 85-case corpus that now seeds the robustness
+  lens). F23 CLOSED — Python `save_binary_checkpoint`/`load_binary_checkpoint`
+  bound GIL-safely over the frozen native codec with typed `dtwcpp.IOError`;
+  F56 owns the disclosed non-UTF-8/surrogate path residual. Verbatim entries:
+  `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`,
   `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
-- 2026-07-30 (F51 registration and cadence departure): Before F23 exposes the
-  binary reader, close its newly audited deterministic wire-safety prerequisite
-  without changing version-1 valid bytes. F51 owns explicit little-endian
-  codecs, exact size-before-allocation, canonical structural bytes/EOF, and
-  unchanged-on-false behavior across 85 fixed corruptions. F17 retains
-  contextual semantics; the later checkpoint/config lens retains randomized
-  fuzz, provenance/authentication, durability, and option combinations while
-  adopting the 85 cases as seeds. This prerequisite discovered inside the open
-  F23 task is a safety-driven cadence departure; resume F23 immediately after
-  F51 and D3 immediately after F23. Evidence:
-  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 - 2026-07-30 (F23/F51 MATLAB audit split): Keep two confirmed MATLAB defects
   out of the Python binding and native wire-codec scopes. F52 owns the binary
   load false-result's `dtwc:runtime` versus frozen `dtwc:ioError` mismatch.
   F53 owns incomplete/non-integral MATLAB result conversion plus the parity
   test's sorted-medoid/two-field blind spot. Both join the later MEX/checkpoint
   cluster; neither delays F51 -> F23 -> D3.
-- 2026-07-30 (F51 closure): Retain binary version 1 while making every scalar
-  codec explicit little endian, requiring canonical structural bytes and exact
-  same-stream length before allocation, publishing only a complete local
-  candidate, and mapping writer failures to the frozen taxonomy. The immutable
-  85-case marker passed on product attempt 1 at 298/2; F17 retained 12/12
-  contextual compatibility; serial native matrices remained
-  123/123, 123/123, and 125/125 with exact 6/9/8 skips and Arrow reader 390/11.
-  The deterministic corpus seeds the later robustness fuzz; semantics,
-  provenance/authentication, and durability remain outside F51. Resume F23,
-  then D3. Evidence:
-  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 - 2026-07-30 (F23 path residual): Close F23 only over its registered valid
   Windows `str`/`PathLike` cases; do not generalise that evidence to every
   native filename representation. F56 owns the confirmed
   `u8string()`/`PyErr_SetString` surrogateescape and lone-surrogate boundary
   under a separate immutable cross-platform gate. F23's exhausted attempts are
   not rescue-tuned.
-- 2026-07-30 (F23 closure): Expose the frozen native binary-v1 result codec
-  directly through Python, snapshot mutable bound state before releasing the
-  GIL, return a new `ClusteringResult` on load, and map false reads to the exact
-  typed `dtwcpp.IOError` after reacquisition. Attempt 1 was conservatively
-  consumed by a recorded missing-`--basetemp`-parent harness error; the
-  unchanged attempt 2 passed every immutable counter. Keep F56 separate and
-  advance immediately to D3. Evidence:
-  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 - 2026-07-30 (D3 registration): Treat the production `lb_webb` as
   `LB_Webb_NoLR` plus a separately proved conservative tail cap; no ordering is
   claimed between it and full Algorithm 2. D3 owns exact-arithmetic
@@ -1347,29 +1317,27 @@ colour system transfer verbatim**.
   clustering (a)–(f). AGENTS.md floors updated to the current 122/122/122/124
   CTest and 1009/12/1-expected-F39-red Python inventories. Cursor unchanged:
   F22 final serial full-gate adjudication, then F23 per the cadence.
-- 2026-07-30 (R2-D2 CLOSED): Commits `21ba41d`, `f4bdd55`, `39e9a92`, and
-  `06c8d89` preserve the exhaustive oracle, TADPole reachability, independent
-  multivariate discriminator, derivation, and source/public contracts. Focused
-  6/6 and serial native 123/123, 123/123, 125/125 gates pass with exact
-  6/9/8 skips; D2 prints its exact marker at 65/1 in every matrix, Arrow readers
-  run 390/11, and final docs/hygiene are green. F27–F30/F46–F50 remain open.
-  Resume F23, then D3. Evidence:
-  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- 2026-07-30 (F51 CLOSED): Commits `6f30665`, `68773a7`, and `59e5ebc`
-  preserve the red-first 85-input corpus, signed/false accepted-state coverage,
-  and strict binary-v1 codec. Product attempt 1 printed the exact
-  `F51_BINARY_CHECKPOINT` marker at 298 assertions / 2 cases; F17 remained
-  12/12; canonical, llfio-OFF, and Arrow-ON serial matrices passed
-  123/123, 123/123, and 125/125 with exact 6/9/8 skips; Arrow readers executed
-  390/11; documentation and all hygiene checkers passed. Resume F23, then D3.
-  Evidence:
-  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
-- 2026-07-30 (F23 CLOSED): Commits `90fa58d`, `5bf517f`, and `282cbb9`
-  preserve the red-first public/import contract, GIL-safe direct native
-  bindings, exact independent wire oracle, public documentation, and permanent
-  drift checks. Focused Python passed 3/3 with its exact marker; parity passed
-  157/157; Python-only and combined inventories were exactly 1,046 and 1,048
-  with only the registered F39 red. The F51 subject retained 298/2; native
-  matrices passed 123/123, 123/123, and 125/125 with 6/9/8 skips; Arrow readers
-  ran 390/11. F56 owns the disclosed path residual. Resume D3. Evidence:
-  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
+- 2026-07-30 (R2-D2, F51, F23 CLOSED — digest): full entries archived verbatim
+  in `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence in the three
+  same-dated `.claude/baselines/` files. Post-F23 serial floors: 123/123,
+  123/123, 125/125 with exact 6/9/8 skips; Python 1,046/1,048 inventories with
+  only the registered F39 red.
+- 2026-07-30 (D3 in flight — Codex session): preregistration `8f8e7e5`,
+  red-first oracles `244adf7`, expected red CONFIRMED (envelope-prune count 0
+  and raw `INT_MAX` Webb 8 vs exact 4), F54 repair `d09cf9c`+`53506a9`, F57
+  discriminator `13cd4f6` and saturation repair `29f9103`, F55 provenance
+  sweep `6abff20`, derivation `7dce222`, fail-closed doc checker `639e1c4`,
+  WSL-UBSan pass recorded `8ca732e`. Product attempts consumed 2/2 with the
+  final attempt PASS (115/115 + 24/24, ctest 2/2). Serial full-matrix
+  adjudication and closure bookkeeping NOT yet run — that is the campaign
+  cursor. Evidence: `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md` and
+  `.claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md`.
+- 2026-07-30 (Fable reconciliation v2.2): PLAN slimmed per rule 12 — closed
+  D2/F51/F23 Binding-decision and Progress prose archived verbatim to
+  `.claude/PLAN-archive-2026-07-30-decisions.md`; status and cursor rewritten
+  to the mid-D3 adjudication state; D3/F54/F55/F57 tasks annotated with their
+  retained commits; AGENTS.md updated with the prospective post-D3 floors
+  (125/125, 125/125, 127/127 — confirm by running, never assume) and the
+  proven WSL-UBSan recipe. Next slim target when PLAN again exceeds ~1,200
+  lines: compress the longest closed `[x]` finding bodies (F17/F18/F20/F23) to
+  digest+baseline pointers, archiving the prose verbatim first.

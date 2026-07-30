@@ -121,6 +121,19 @@ WHAT you work on. Read both before touching anything. Supporting record:
   real-CLI integration gates and the reader run (390 assertions / 11 cases).
   CTest metadata supplies LLVM, `pyarrow`, and `pyarrow.libs` runtime paths,
   so no caller PATH override is required.
+- **Prospective post-D3 floors (registered, NOT yet adjudicated):** the D3
+  session added two non-skippable targets (`test_lb_enhanced_webb_derivation`
+  + `test_lb_webb_intmax`) to every build, so the expected serial
+  floors become canonical **125/125**, llfio-OFF **125/125**, Arrow-ON
+  **127/127**, with the same exact 6/9/8 skip sets. These are prospective
+  until the D3 closure adjudication runs them serially and records the
+  verbatim output; on PASS, promote them to the recorded floors above in the
+  same session.
+- **WSL UBSan build (proven on F57):** `build/ubsan-wsl` — WSL Clang 18.1.3,
+  RelWithDebInfo, all optional backends OFF; run via
+  `wsl.exe --cd /mnt/c/D/git/dtw-cpp env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/ubsan-wsl -R <target> --no-tests=error`.
+  Use it for any signed-overflow/UB-suspect finding; zero diagnostics is the
+  band.
 - These floors move when tests are legitimately added; when a full gate
   changes an inventory, update THIS list in the same session (rule 6) and
   record the new numbers in the run-log — a stale floor here is a false alarm
