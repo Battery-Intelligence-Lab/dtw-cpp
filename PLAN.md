@@ -626,16 +626,20 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `y={0,0,0,0,0,0,1,1,1,1}`, full DTW, envelope band 1, threshold 0.5.
       True DTW is zero, so the pair must not be pruned. Reject or widen any LB
       envelope that does not cover the actual DTW window before dispatch.
-- [ ] **F29 — GPU LB_Keogh truncates unequal lengths without a validity
-      proof.** Both kernels compare equal-index prefixes only through
-      `min(Li,Lj)` (`dtwc/cuda/cuda_dtw.cu:861-892`,
-      `dtwc/metal/metal_dtw.mm:934-953`), while backend DTW band geometry is
-      length-aware and already differs under F12. First CUDA gate:
-      `a={0,0.25}`, `b={0,0,0.25}`, band 0; the current prefix L1 bound is
-      0.25 while slope-adjusted banded DTW is 0, so threshold 0.1 must not prune
-      the pair. A real-Metal result and a third mathematical arbiter are
-      required before claiming unequal-length support there. Until proved,
-      pruning must reject or bypass unequal-length pairs loudly.
+- [ ] **F29 — unequal-length GPU LB_Keogh prefixes lacked a proof and an
+      executable gate.** Both kernels compare only the first `min(Li,Lj)`
+      rows. D2's path-row proof now shows that this truncation is admissible
+      under the repaired fixed window `|i-j|<=band` whenever a path exists and
+      the envelope covers that window; its exhaustive independent arbiter
+      passes 17,712 feasible cases. The inherited fixture
+      `a={0,0.25}`, `b={0,0,0.25}`, band 0 is **FALSIFIED** as a test of that
+      claim: fixed-band DTW has no path because `|2-3|=1`. Replacement CUDA
+      gate: at band 1 require the corrected zero-warp fixture to survive a
+      0.1 threshold at exact distance 0, and require `{0,0}` versus
+      `{1,1,1}` to return prefix LB 2 and exact L1 DTW 3 (survives threshold
+      3.5). The same real-Metal gate or a recorded `[BLOCKED-ENV]` result is
+      required before closure; no product repair is justified unless an
+      executable disagrees with the derived values.
 - [ ] **F30 — explicit GPU option requests silently degrade.** Metal disables
       requested LB on regtile/banded-row and after LB-buffer allocation failure
       (`dtwc/metal/metal_dtw.mm:1480-1490,1523-1537`); CUDA ignores LB when
@@ -822,6 +826,56 @@ Open findings first (status after R0 adjudication — update these boxes there):
       profiles, 3/3 mutations, exact ON/OFF 24/33 parity, and both serial
       122-test matrices. Evidence:
       `.claude/baselines/2026-07-29-f45-llfio-diagnostic-state.md`.
+- [ ] **F46 — the public envelope API cannot represent or enforce its
+      admissibility contract.** `compute_envelopes(..., band<0)` silently
+      constructs a radius-zero envelope although negative DTW bands mean full
+      DTW; bare `Envelope` stores mutable arrays without source length/window
+      provenance; vector/span Keogh overloads either index to query length or
+      silently truncate while ignoring the lower-array length; pointer outputs
+      permit destructive aliasing. D2's exact fixture confirms bound 2 against
+      full DTW 0. First gate: table-drive negative/full mode, too-short and
+      unequal upper/lower arrays, too-narrow valid-shaped envelopes, and both
+      alias classes. The replacement must expose an explicit radius/full
+      descriptor, validate coverage and shape before reading, keep unchecked
+      pointer kernels internal, and raise typed errors rather than coerce or
+      truncate.
+- [ ] **F47 — squared-L2 LB_Kim is advertised but computed in L1 units.**
+      `lb_kim_valid<SquaredL2Metric>` is true and the metrics page claims
+      support, while both implementations return raw absolute feature
+      differences. For `{0}` versus `{0.5}`, the advertised bound is 0.5 but
+      squared DTW is 0.25; `{0,0}` versus `{0.25,0.25}` gives 0.25 versus
+      0.125. Current matrix consumers avoid squared Kim, so this is a public
+      primitive/trait defect rather than proven live matrix corruption. First
+      gate: metric-dispatch both fixtures plus exhaustive small-series
+      admissibility; implement squared feature costs (or reject the trait)
+      and synchronize the public documentation.
+- [ ] **F48 — TADPole's empty-series upper bound classifies no-path pairs as
+      neighbours.** Empty series are accepted and exact DTW returns the
+      no-path maximum, but empty envelopes and the diagonal L1 upper bound both
+      return zero. On `{{0},{},{}}`, band 0, `dc=1`, `k=1`, brute TADPole
+      selects centre 0 while pruned TADPole selects centre 1. First gate:
+      assert that exact no-path value and the inherited medoid disagreement;
+      repair by rejecting empty series or bypassing every bound shortcut under
+      one documented empty-distance policy, then require prune/brute identity.
+- [ ] **F49 — direct pruned-matrix fill can cache a distance under the wrong
+      band provenance.** `fill_distance_matrix_pruned(Problem&, int band,...)`
+      accepts a radius independent of `Problem::band` and publishes the result
+      into that Problem's current dense cache. Configure band 1 for
+      `{0,0,1}`/`{0,1,1}` (distance 0), then direct-fill band 0 with bounds
+      disabled: inherited code caches distance 1 as if current. First gate:
+      require typed rejection before any matrix write and unchanged cache
+      state; remove the redundant argument or enforce exact equality.
+- [ ] **F50 — GPU envelope window arithmetic overflows at `INT_MAX`.** Both
+      device kernels form signed `k+w+1`; host launchers accept any nonnegative
+      `int` radius. A valid full-covering `INT_MAX` band can therefore wrap
+      even though CPU envelope construction and repaired DTW band geometry are
+      safe. Source defect is confirmed; the expected numeric CUDA/Metal
+      result remains inferred until execution. First real-backend gate:
+      standalone LB on `{{0,10},{10,10}}` at `INT_MAX` must equal the CPU
+      global symmetric LB 10, then the thresholded matrix must preserve exact
+      DTW 10. Clamp the host envelope radius to `max_L-1` with checked
+      conversions; run CUDA locally and record Metal `[BLOCKED-ENV]` if no
+      Apple executor exists.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1098,6 +1152,15 @@ colour system transfer verbatim**.
   rather than rescue-tuning this one. The cadence cursor moves to D2 before
   another R3 finding. Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
+- 2026-07-30 (D2 adversarial split): The explicit path-row proof and
+  17,712-case arbiter replace F29's obsolete slope-window premise; executable
+  CUDA/Metal confirmation remains required, but prefix truncation alone no
+  longer justifies a repair. Keep five newly localized subjects separate:
+  envelope representation/validation (F46), squared Kim units (F47), empty
+  TADPole bounds (F48), Problem/band cache provenance (F49), and device
+  envelope integer overflow (F50). This avoids hiding independent fixes
+  inside the derivation or overloading F27/F28. Evidence:
+  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
 
 ## Progress log (append-only; older entries in the archive)
 

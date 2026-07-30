@@ -51,6 +51,11 @@
   repair gets its own failing gate and commit.
 - Floating threshold roundoff is deferred to D17; D2 uses exactly
   representable integer fixtures.
+- The adversarial call-site inventory registered F46–F50 as distinct subjects:
+  envelope representation/validation, squared Kim units, empty-series
+  TADPole, direct-fill band/cache provenance, and GPU envelope `INT_MAX`
+  arithmetic. F29 now carries a feasible replacement device gate rather than
+  its falsified slope-window fixture.
 
 ## Exact resume point
 
