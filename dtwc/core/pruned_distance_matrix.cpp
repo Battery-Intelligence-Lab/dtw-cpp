@@ -218,7 +218,8 @@ PruningStats fill_distance_matrix_pruned(
       // Envelope-based bounds (Keogh / Enhanced / Webb) all require equal
       // lengths. Take the max: each is valid, and Enhanced deliberately runs
       // alongside Keogh because neither dominates for effective V >= 2.
-      // Webb already dominates matching-direction Keogh, so it stands alone.
+      // In this L1 route, the symmetric local Webb-NoLR-plus-tail-cap bound
+      // dominates symmetric Keogh, so it stands alone.
       bool lb_keogh_used = false;
       const bool equal_len = prob.series(i).size() == prob.series(j).size();
       if (use_lb_keogh && equal_len) {

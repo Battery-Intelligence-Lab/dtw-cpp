@@ -78,3 +78,25 @@ Findings:
 Full `ctest` (build/highs-1151): see the commit message / session note for the final count
 (baseline 90/90 → +1 new suite `test_lb_enhanced_webb`). No regression: the pruned matrix stays
 digit-identical, so all existing correctness tests are unaffected.
+
+## F55 provenance corrigendum — 2026-07-30
+
+The numerical outputs above remain verbatim evidence for the code that ran,
+but the original “What shipped” identification is false. The public
+`lb_webb` function used by every logged `webb` value is the paper's all-index
+`LB_Webb_NoLR` bridge and corrections plus a conservative trailing-flag cap;
+it is not full Algorithm 2, which contains `MinLRPaths`. Omitting
+`MinLRPaths` has no universal loosening direction: the paper's Wafer table
+reports NoLR tightness 0.96904 versus 0.96891 for full Webb. Only the separate
+tail cap has the proved order
+`production <= exact-predicate NoLR <= DTW`.
+
+The original Enhanced attribution is also superseded. Directional
+LB_Enhanced with effective `V=1` dominates matching-direction Keogh. For
+effective `V>=2`, exact D3 repository witnesses establish both strict order
+directions; Tan et al. are not the source of that no-ordering result. The
+measured 3.3% and 10.9% gains above describe this one benchmark and do not
+establish a universal growth law.
+
+Confirmed evidence: `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`
+and `tests/unit/adversarial/test_lb_enhanced_webb_derivation.cpp`.

@@ -1,24 +1,30 @@
 /**
  * @file test_lb_enhanced_webb.cpp
- * @brief Adversarial validity + tightness tests for LB_Enhanced and LB_Webb.
+ * @brief Adversarial validity and tightness tests for LB_Enhanced and the
+ *        local LB_Webb_NoLR-plus-tail-cap implementation.
  *
  * @details The load-bearing contract of any DTW lower bound is
- *              LB(A, B) <= DTW_w(A, B)   for ALL A, B   (same window w, same metric)
+ *              LB(A, B) <= DTW_w(A, B)
+ *          in the finite, equal-length scalar L1/squared-L2 domain with the
+ *          same window and point cost.
  *          If it ever fails, pruning built on the bound silently returns wrong
  *          results. These are the primitives added in Task 5.2; the exact-matrix
  *          build gains no DTW-call reduction from them (see the run-log), so the
- *          value asserted here is: (1) VALIDITY [HARD], (2) LB_Webb >= LB_Keogh
- *          [HARD, provable], (3) envelope correctness. Tightness magnitude is an
+ *          value asserted here is: (1) VALIDITY [HARD], (2) the local
+ *          NoLR-plus-tail-cap result >= matching-direction LB_Keogh [HARD,
+ *          provable], (3) envelope correctness. Tightness magnitude is an
  *          ADVISORY bench, not asserted here.
  *
  *          REGISTERED BANDS (fixed before running):
  *            - LB_Enhanced <= DTW_w + 1e-9 and LB_Webb <= DTW_w + 1e-9
  *              (L1 and SquaredL2), random + adversarial, bands {0,1,2,5,10,20,
  *              10% of n}, lengths incl. edge {2,3,4,5,6,7} and n slightly > 2V.
- *            - LB_Webb(A,B) >= LB_Keogh(A, env B) - 1e-9 (per instance).
- *            - LB_Webb_sym >= LB_Keogh_sym - 1e-9 (per instance).
+ *            - Local Webb(A,B) >= LB_Keogh(A, env B) - 1e-9 (per instance).
+ *            - Local Webb_sym >= LB_Keogh_sym - 1e-9 (per instance).
  *            - LB >= 0 ; LB(x, x) == 0.
- *          NO "LB_Enhanced >= LB_Keogh" claim: SDM 2019 proves no such ordering.
+ *          Effective V=1 Enhanced dominates matching-direction Keogh. For
+ *          effective V>=2, the D3 exact oracle—not SDM 2019—contains strict
+ *          witnesses in both order directions.
  *
  *          All randomised tests use std::mt19937 seed=12345 for reproducibility.
  *
@@ -245,7 +251,7 @@ TEST_CASE("LB_Enhanced/LB_Webb <= DTW for tiny lengths and n ~ 2V",
 }
 
 // =========================================================================
-//  AREA 3: LB_Webb >= LB_Keogh (provable — Webb = Keogh_1dir + nonneg terms)
+//  AREA 3: local NoLR-plus-tail-cap >= Keogh (bridge + nonnegative corrections)
 // =========================================================================
 
 TEST_CASE("LB_Webb(A,B) >= LB_Keogh(A, env B) per instance (L1)",
@@ -432,8 +438,9 @@ TEST_CASE("WebbEnvelope: lu = L(U), ul = U(L) match naive double-window",
 //
 //  REGISTERED BANDS (before the run):
 //    - mean(webb_sym) >= mean(keogh_sym) >= mean(kim)     [expected]
-//    - mean(enhanced_sym): reported, NO ordering asserted (SDM 2019: unordered
-//      vs Keogh). If mean(webb_sym) < mean(keogh_sym) on clustered data the
+//    - mean(enhanced_sym): reported, with no ordering asserted at effective
+//      V>=2 (later D3 exact witnesses run in both directions). If
+//      mean(webb_sym) < mean(keogh_sym) on clustered data the
 //      "Webb tightens the cascade" claim is FALSIFIED (a deliverable).
 //  These are TIGHTNESS ratios (bound / true DTW; higher = tighter, max 1.0),
 //  NOT a matrix-build speedup: on an exact matrix no LB reduces DTW calls.

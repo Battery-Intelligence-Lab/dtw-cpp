@@ -13,8 +13,10 @@
  *            - KimKeogh: Cascade Kim -> Keogh.
  *            - Enhanced: Cascade Kim -> max(LB_Keogh, LB_Enhanced), because
  *                        neither envelope bound dominates for effective V>=2.
- *            - Webb:     Cascade Kim -> LB_Webb (Webb & Petitjean PR 2021;
- *                        always >= LB_Keogh). Requires band >= 0, equal lengths.
+ *            - Webb:     Cascade Kim -> symmetric local LB_Webb_NoLR plus its
+ *                        conservative tail cap. In this L1 route it dominates
+ *                        symmetric Keogh; it is not full Algorithm 2. Requires
+ *                        band >= 0 and equal lengths.
  *
  *          NOTE (Task 5.2): tighter bounds do NOT reduce DTW calls on an EXACT
  *          full-matrix build — every entry must be computed exactly, and the

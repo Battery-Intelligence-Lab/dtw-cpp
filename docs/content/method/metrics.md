@@ -72,9 +72,27 @@ generally looser than LB_Keogh in its valid regime.
 
 ### LB_Enhanced and LB_Webb
 
-The C++ lower-bound library also implements LB_Enhanced and LB_Webb for
-supported metrics. Their validity and the registered relationship
-`LB_Webb >= LB_Keogh` are exercised by the adversarial lower-bound suite.
+The C++ lower-bound library implements LB_Enhanced and retains `lb_webb` and
+the `Webb` strategy as historical public names. The local Webb implementation
+is the paper's all-index `LB_Webb_NoLR` bridge and corrections plus a separate
+conservative trailing-flag cap. It is not full Algorithm 2, which includes
+`MinLRPaths`, and no universal ordering between the local variant and full
+Webb is claimed.
+
+Inside the confirmed finite, nonempty, equal-length scalar L1 or unrooted
+squared-L2 domain, the envelope, lower bound, and DTW must use the same
+saturated window. The local directional Webb result is at least the
+matching-direction LB_Keogh; taking the maximum of both directions therefore
+dominates symmetric Keogh. The tail-cap proof is a different statement:
+the production result is no greater than exact-predicate NoLR and remains
+admissible.
+
+For effective `V=1`, directional LB_Enhanced dominates matching-direction
+Keogh. For effective `V>=2`, neither dominates: the D3 exact oracle contains
+strict witnesses in both directions, so the `Enhanced` cascade evaluates
+their maximum. Custom point costs, nonfinite inputs, mutable envelope
+shape/provenance, and last-ULP threshold decisions are outside this confirmed
+contract.
 
 ## Choosing a metric
 

@@ -617,8 +617,7 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
 //
 //  Reference: C. W. Tan, F. Petitjean, G. I. Webb, "Elastic bands across the
 //  path: A new framework and method to lower bound DTW," SDM 2019
-//  (arXiv:1808.09617), Eq. 3.7 & Theorem 3.2. Cross-checked against the
-//  authors' MATLAB (lbEnhanced.m) and Java (LbEnhanced.java).
+//  (arXiv:1808.09617), Theorem 3.1, Eq. 3.7, and Theorem 3.2.
 //
 //  Idea. Near the two ends the boundary conditions pin the warping path
 //  (A[0]<->B[0], A[n-1]<->B[n-1]), so the first/last V columns admit only a
@@ -626,16 +625,19 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
 //  The middle uses the ordinary LB_Keogh envelope term. Theorem 3.2 proves the
 //  band sets L_1..L_V, the middle envelope sets, and the mirror sets R_1..R_V
 //  are MUTUALLY DISJOINT and each is crossed by every warping path, so the sum
-//  of per-set minima is <= DTW_w for any V <= n/2 and any nonnegative metric.
+//  of per-set minima is <= DTW_w for the ordered point costs supported here.
 //
 //  The near-side clip (j < i only) is what keeps the sets disjoint: extending a
 //  band arm to j > i would place a cell in two adjacent bands and can push the
-//  sum above DTW. NOTE: LB_Enhanced is NOT provably >= LB_Keogh pointwise — the
-//  column arm delta(A[j],B[i]) may undercut the Keogh term at a position; its
-//  advantage over Keogh is empirical/on-average (SDM 2019 §5).
+//  sum above DTW. At effective V=1, directional LB_Enhanced dominates the
+//  matching-direction LB_Keogh because forced-corner costs dominate endpoint
+//  interval projections. At effective V>=2, neither bound dominates: the D3
+//  exact oracle contains strict witnesses in both directions. That no-ordering
+//  result is repository evidence, not a claim attributed to Tan et al.
 //
-//  Validity requires: |A|==|B|==n, the SAME window w in the bound and the DTW
-//  it bounds, the SAME metric, and V <= n/2 (enforced by nBands=min(V,n/2)).
+//  Confirmed validity requires finite equal-length scalar inputs, L1 or
+//  unrooted squared-L2 point costs, the SAME saturated window in the envelope,
+//  bound, and DTW, and V <= n/2 (enforced by nBands=min(V,n/2)).
 
 /**
  * @brief LB_Enhanced core: elastic-band lower bound on banded DTW_w.
@@ -716,13 +718,16 @@ double lb_enhanced_symmetric(std::span<const double> x, const Envelope &env_x,
 }
 
 // ======================================================================
-//  LB_Webb (Webb & Petitjean, Pattern Recognition 2021) — envelope bound
+//  Local LB_Webb_NoLR plus a conservative tail cap
 // ======================================================================
 //
 //  Reference: G. I. Webb & F. Petitjean, "Tight lower bounds for dynamic time
-//  warping," Pattern Recognition 115 (2021) 107895 (arXiv:2102.07076), Alg. 2
-//  & Thm 2. Implemented clean-room from the algorithm (the authors' Java is
-//  GPL-3.0 and is NOT reproduced here).
+//  warping," Pattern Recognition 115 (2021) 107895 (arXiv:2102.07076), Thm 2
+//  and Eqs. 26-43. The public API retains the historical `lb_webb` name, but
+//  this implementation is the paper's later all-index `LB_Webb_NoLR` formula
+//  plus the separate trailing-flag cap described below. Full Algorithm 2 also
+//  contains `MinLRPaths` and is not implemented here. The authors' GPL-3.0
+//  Java is NOT reproduced.
 //
 //  Two passes over equal-length A, B with window w:
 //    Pass 1 (bridge, A vs envelope of B): the ordinary one-directional LB_Keogh
@@ -735,24 +740,28 @@ double lb_enhanced_symmetric(std::span<const double> x, const Envelope &env_x,
 //      UL^B/LU^B supplies the exact overlap to subtract off.
 //
 //  Because pass 1 IS one-directional LB_Keogh and every pass-2 term is
-//  nonnegative, LB_Webb(A,B) >= LB_Keogh(A, env B) ALWAYS; the symmetric
-//  version therefore dominates symmetric LB_Keogh. (LB_Webb is NOT ordered
-//  against LB_Improved — tighter on most UCR sets, looser on some.)
+//  nonnegative for a point cost satisfying Theorem 2, the local directional
+//  bound dominates matching-direction Keogh; the maximum of both directions
+//  therefore dominates symmetric Keogh. D3 confirms this for finite scalar L1
+//  and unrooted squared-L2 costs.
 //
-//  This implementation OMITS the paper's MinLRPaths corner DP (an O(1) exact
-//  tightening of the first/last 3 alignments): running the plain bridge at the
-//  corners only LOOSENS the bound, never breaks validity. The validity contract
-//  LB_Webb <= DTW_w is the hard gate (adversarial test).
+//  No ordering is claimed between this NoLR variant and full Algorithm 2:
+//  treating the all-index formula as Algorithm 2 with an additive tightening
+//  removed is incorrect. The paper's Wafer results even report NoLR tighter
+//  than full Webb. Only the trailing-flag change below has a one-sided proof.
 //
 //  Free-flag alignment: pass 1 sets free[k] once the trailing window [k-2w, k]
 //  is entirely free; a B column j is "free" iff its centred window [j-w, j+w]
 //  is free, i.e. free[j+w] (capped at n-1 in the tail — a conservative, still
-//  valid, subset test). Counters init to w to model the pinned pre/post-series
-//  boundary as free.
+//  valid, subset test). A true capped flag implies the exact clipped-window
+//  predicate, so this cap can only replace a full correction by a no-larger
+//  overlap correction or zero:
+//      production tail-cap <= exact-predicate NoLR <= DTW.
+//  Counters init to w to model the pinned pre/post-series boundary as free.
 //
 //  Validity requires: |A|==|B|==n, the SAME window w in the bound, envelopes,
-//  and the DTW it bounds, and a metric satisfying Thm 2 (L1 with equality;
-//  SquaredL2 satisfied).
+//  and the DTW it bounds, finite scalar data, and a point cost satisfying
+//  Thm 2. D3 verifies L1 (equality) and unrooted squared L2 (nonnegative slack).
 
 /// Precomputed envelopes for LB_Webb: primary U,L plus secondary LU=L(U), UL=U(L).
 struct WebbEnvelope {
@@ -785,7 +794,7 @@ inline WebbEnvelope compute_webb_envelope(const std::vector<double> &series, int
 }
 
 /**
- * @brief LB_Webb (one-directional): lower bound on banded DTW_w, A query, B candidate.
+ * @brief Local LB_Webb_NoLR-plus-tail-cap lower bound, A query, B candidate.
  *
  * @tparam Metric Pointwise cost functor (L1Metric or SquaredL2Metric).
  * @param A     Query series (length n).
@@ -796,7 +805,8 @@ inline WebbEnvelope compute_webb_envelope(const std::vector<double> &series, int
  *              n-1 become the equivalent global radius n-1.
  * @param free_scratch  Scratch of at least n chars, reused across calls (may be nullptr).
  * @param metric Pointwise cost.
- * @return Lower bound (summed cost). >= LB_Keogh(A, env B).
+ * @return Lower bound (summed cost), at least matching-direction LB_Keogh for
+ *         the supported L1 and unrooted squared-L2 costs.
  */
 template <typename Metric = L1Metric>
 double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
@@ -864,7 +874,8 @@ double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
   return b;
 }
 
-/// Symmetric LB_Webb: max over both roles. Dominates symmetric LB_Keogh.
+/// Symmetric local NoLR-plus-tail-cap bound; dominates symmetric LB_Keogh for
+/// the supported L1 and unrooted squared-L2 costs.
 template <typename Metric = L1Metric>
 double lb_webb_symmetric(std::span<const double> x, const WebbEnvelope &ex,
                          std::span<const double> y, const WebbEnvelope &ey,
