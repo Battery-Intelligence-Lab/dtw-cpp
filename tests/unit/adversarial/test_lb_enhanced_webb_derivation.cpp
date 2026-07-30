@@ -1099,7 +1099,8 @@ TEST_CASE(
     ==
     "Distance matrix is being filled!\n"
     "Pruned strategy: 3 pairs, 1 early-abandoned, pruning ratio: "
-    "0.333333\n");
+    "0.333333\n"
+    "Distance matrix has been filled!\n");
   ++cascade_routes;
   REQUIRE(cascade_routes == 2);
 
