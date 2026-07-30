@@ -237,10 +237,15 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       falsified, but its real-device gate and F27–F30/F46–F50 remain open.
       Evidence: `docs/derivations/02-envelopes-lb-keogh.md` and
       `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- [ ] **D3. LB_Enhanced + LB_Webb.** Admissibility proofs (Tan SDM 2019; Webb &
-      Petitjean PR 2021); prove `LB_Webb ≥ LB_Keogh`; prove our tail-cap
-      column-align variant (`idx=min(j+w,n-1)`) only loosens (stays valid);
-      document that NO ordering exists between Enhanced and Keogh (take-max).
+- [ ] **D3. LB_Enhanced + local LB_Webb_NoLR plus tail cap.** Prove
+      admissibility in the registered finite equal-length scalar L1/squared-L2
+      domain (Tan SDM 2019; Webb & Petitjean PR 2021). Prove the local
+      directional bound dominates matching-direction Keogh and its symmetric
+      maximum dominates symmetric Keogh. Prove only the column-alignment tail
+      cap (`idx=min(j+w,n-1)`) is no greater than exact-predicate NoLR; claim no
+      ordering with full Algorithm 2. Enhanced dominates matching-direction
+      Keogh at effective `V=1`; exact repository witnesses establish both
+      strict directions at effective `V>=2`, so the live cascade takes max.
 - [ ] **D4. EAPruned exactness + the relaxed threshold constant.** Herrmann &
       Webb argument (every optimal-path cell ≤ DTW ≤ UB ⇒ pruning exact). Then
       derive the accumulation-error bound that justifies
@@ -969,7 +974,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
 
-- [ ] **Property/metamorphic fuzz harness** (new `tests/fuzz/` or Catch2 generators, seeds committed): invariants checked on random + adversarial inputs (NaN/Inf payloads, empty, length-1, constant series, mixed lengths, huge magnitudes, denormals) across all variant×metric×mode combinations: symmetry `d(x,y)=d(y,x)`; `d(x,x)=0`; `DTW_band ≥ DTW_full` and monotone in band; `LB_* ≤ DTW` (all LBs); `LB_Webb ≥ LB_Keogh`; `DTW_I ≤ DTW_D`; `dtwFull_eap == dtwFull_L`; prune==no-prune digit-identical (TADPole, pruned matrix); MSM/TWE triangle inequality; checkpoint save→load→identical state. Every violation is a bug or a documented, justified exclusion.
+- [ ] **Property/metamorphic fuzz harness** (new `tests/fuzz/` or Catch2 generators, seeds committed): classify each generated case against the subject's documented contract before applying an invariant; out-of-contract NaN/Inf, empty, mixed-length, metric, or mode cases require a typed rejection or an explicitly documented behavior, not a borrowed theorem. Within each valid domain check symmetry `d(x,y)=d(y,x)`; `d(x,x)=0`; `DTW_band ≥ DTW_full` and monotonicity in band; `DTW_I ≤ DTW_D`; `dtwFull_eap == dtwFull_L`; prune==no-prune digit identity (TADPole, pruned matrix); MSM/TWE triangle inequality; and checkpoint save→load→identical state. Apply the D3 LB invariants only to finite nonempty equal-length scalar L1/unrooted squared-L2 inputs with a shared saturated window and valid envelope provenance: every bound is `≤ DTW`, the local directional NoLR-plus-tail-cap result is `≥` matching-direction Keogh, and the symmetric maximum is `≥` symmetric Keogh. Every violation is a bug or a documented, justified exclusion.
 - [ ] **Cross-oracle differential test** vs aeon 1.5.0 (uv env): randomized non-degenerate pairs, all shared distances (DTW/banded/MSM/TWE/DTW_I/soft-DTW value), committed seeds, band 1e-9 rel. Disagreement = numbers-ledger entry, arbitrate with a third computation before touching code.
 - [ ] **Python surface fuzz:** wrong dtypes, non-contiguous/strided arrays, zero-length series, single series, k>N, k=0/negative, unicode names, generator inputs, polars/Arrow edge shapes — every failure must be a typed exception with an actionable message, never a crash or silent wrong result.
 - [ ] **Integer-width & overflow audit:** grep-driven sweep for remaining `int` index arithmetic on N²-scale quantities (the Metal int32 `pair_indices` pruning cap is KNOWN and documented — verify the documented cap actually throws/warns at the boundary rather than wrapping); `n*(n+1)/2` sites; size_t↔int narrowing in OpenMP loop indices.
@@ -1305,6 +1310,19 @@ colour system transfer verbatim**.
   decisive execution. F46/F50 and D17 retain their separate public-envelope,
   device, and floating-threshold scopes. Evidence:
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- 2026-07-30 (F55 provenance correction): Preserve the public `Webb` API name
+  for compatibility, but identify its implementation as all-index
+  `LB_Webb_NoLR` plus a separately proved tail cap. Only
+  `production <= exact-predicate NoLR` has a loosening direction; the paper's
+  Wafer result rejects a universal NoLR/full-Algorithm-2 order. Enhanced
+  dominates matching-direction Keogh at effective `V=1`; the no-ordering
+  statement at `V>=2` comes from the D3 exact witnesses, not Tan et al. This
+  decision explicitly supersedes the stale Algorithm-2, blanket-Enhanced, and
+  universal-LB-fuzz wording preserved in
+  `.claude/PLAN-archive-2026-07-20-phases0-9.md` and
+  `.claude/PLAN-archive-2026-07-27-r0-f20.md`; those verbatim archives are not
+  rewritten. F55 closes only with the D3 derivation and integration gates.
+  Evidence: `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 
 ## Progress log (append-only; older entries in the archive)
 

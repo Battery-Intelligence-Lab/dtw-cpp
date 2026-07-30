@@ -66,6 +66,15 @@
   exact F57 marker and passed 24/24 assertions. CTest reported 2/2, zero
   failures, zero skips, in 0.68 seconds. The complete terminal output is in
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- Commit `6abff20` corrects F55 across source contracts, the public enum and
+  metric page, the historical changelog, canonical lessons, legacy test
+  commentary, and the 2026-07-08 run log's dated corrigendum. It preserves the
+  API name while identifying local NoLR-plus-tail-cap, scopes metric and
+  directional/symmetric ordering claims, and restores Enhanced's effective
+  `V=1` dominance. `uv run python scripts/check_docs_contract.py` passed.
+- PLAN's live D3 and fuzz wording now uses the same theorem domains. A binding
+  decision explicitly supersedes matching stale claims in the immutable plan
+  archives rather than rewriting those historical records.
 
 ## Decisions
 
@@ -84,11 +93,11 @@
 
 ## Exact resume point
 
-Commit the attempt-2 evidence. Then correct F55's source/public/historical
-provenance claims and write the complete D3 derivation with a contract checker.
-Run F57 under the existing WSL UBSan build before the focused inherited and
-three full serial integration matrices. Close F54/F55/F57 and D3 only after
-those gates and the final hygiene pass are recorded.
+Commit the F55 PLAN/handoff bookkeeping, then write the complete D3 derivation
+with a fail-closed contract checker. Run F57 under the existing WSL UBSan build
+before the focused inherited and three full serial integration matrices.
+Close F54/F55/F57 and D3 only after those gates and the final hygiene pass are
+recorded.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
 remote or operator state has changed. The claim most likely to be wrong is
