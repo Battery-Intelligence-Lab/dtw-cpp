@@ -78,6 +78,10 @@
   **PASS [confirmed]**, 123/123, zero failed, exact six registered capability
   skips. A fresh verbose D2 run printed the exact marker and 65 assertions in
   one case.
+- Regenerated, rebuilt, and settled the llfio-OFF graph before validating its
+  generated D2 metadata. The serial matrix verdict is **PASS [confirmed]**:
+  123/123, zero failed, exact nine registered capability skips. Its fresh
+  verbose D2 run also printed the exact marker and 65 assertions in one case.
 
 ## Decisions
 
@@ -107,8 +111,8 @@
 
 ## Exact resume point
 
-Commit the canonical execution evidence, then rebuild, settle, and run the
-llfio-OFF and Arrow-ON matrices serially at the registered 123/123 and 125/125
-floors. Prove the exact capability-skip name sets rather than trusting CTest's
-aggregate percentage, and prove Arrow's reader ran at least 390 assertions in
-11 cases. Update AGENTS.md and PLAN.md only from those observed inventories.
+Commit the llfio-OFF execution evidence, then rebuild, settle, and run the
+Arrow-ON matrix serially at the registered 125/125 floor. Prove its exact
+eight-name capability-skip set, the fresh D2 marker and 65/1 floor, the
+reader's 390 assertions in 11 cases, and all four real-CLI markers. Update
+AGENTS.md and PLAN.md only from those observed inventories.
