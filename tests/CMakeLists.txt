@@ -125,6 +125,24 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     endif()
 endforeach()
 
+# D2's proof gate executes exhaustive finite inventories and both full-DTW
+# call-site classes. It is never a capability probe: require the exact marker,
+# a substantive Catch2 assertion floor, and serial OpenMP scheduling so the
+# nearest-neighbour threshold discriminator has deterministic pair order.
+if(TARGET test_lb_keogh_derivation)
+    set_property(
+        TEST test_lb_keogh_derivation
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        test_lb_keogh_derivation
+        PROPERTIES
+            ENVIRONMENT "OMP_NUM_THREADS=1"
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            PASS_REGULAR_EXPRESSION
+                "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\(([3-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)"
+            RUN_SERIAL TRUE)
+endif()
+
 # F21 is a public-header compile and state-equivalence gate, never a capability
 # probe. It uses the existing DataLoader target so CTest and tracked-CMake
 # inventories stay fixed. Require both the exact route marker and Catch2's
