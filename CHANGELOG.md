@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed the CPU `Enhanced` pruning strategy to evaluate
+  `max(LB_Keogh, LB_Enhanced)` after LB_Kim. Effective `V>=2` has no
+  pointwise ordering with Keogh, so selecting Enhanced alone could silently
+  weaken the documented cascade.
 - Added public Python `save_binary_checkpoint` and
   `load_binary_checkpoint` bindings for binary-v1 `ClusteringResult`
   checkpoints. Both accept path-like objects and release the GIL during native

@@ -11,7 +11,8 @@
  *            - Kim:      LB_Kim only (O(1), currently L1-valued; F47).
  *            - Keogh:    LB_Keogh only (requires band >= 0).
  *            - KimKeogh: Cascade Kim -> Keogh.
- *            - Enhanced: Cascade Kim -> LB_Enhanced (Tan et al. SDM 2019).
+ *            - Enhanced: Cascade Kim -> max(LB_Keogh, LB_Enhanced), because
+ *                        neither envelope bound dominates for effective V>=2.
  *            - Webb:     Cascade Kim -> LB_Webb (Webb & Petitjean PR 2021;
  *                        always >= LB_Keogh). Requires band >= 0, equal lengths.
  *

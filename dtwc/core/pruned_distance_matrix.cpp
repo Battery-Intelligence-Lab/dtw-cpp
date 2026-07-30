@@ -81,8 +81,9 @@ PruningStats fill_distance_matrix_pruned(
 
   // Resolve the effective lower-bound strategy. Auto keeps the historical
   // Kim+Keogh cascade; None disables both (equivalent to brute-force with
-  // the pruned framework's bookkeeping); Kim/Keogh/KimKeogh flip individual
-  // bounds on or off.
+  // the pruned framework's bookkeeping). Enhanced activates Keogh as well:
+  // neither bound dominates the other for effective V >= 2, so the cascade
+  // must retain their maximum.
   bool use_lb_kim_flag = false;
   bool use_lb_keogh_flag = false;
   bool use_lb_enhanced_flag = false;
@@ -98,6 +99,7 @@ PruningStats fill_distance_matrix_pruned(
       break;
     case dtwc::LowerBoundStrategy::Enhanced:
       use_lb_kim_flag = true;
+      use_lb_keogh_flag = true;
       use_lb_enhanced_flag = true;
       break;
     case dtwc::LowerBoundStrategy::Webb:
@@ -213,9 +215,10 @@ PruningStats fill_distance_matrix_pruned(
       // If Kim is disabled, start at 0 (no-op threshold); Keogh may still fire.
       double lb = use_lb_kim_flag ? lb_kim(summaries[i], summaries[j]) : 0.0;
 
-      // Envelope-based bounds (Keogh / Enhanced / Webb) all require equal lengths.
-      // Take the max: each is a valid lower bound, the tightest is best. Only one
-      // of keogh/enhanced/webb is active per strategy, but the code is uniform.
+      // Envelope-based bounds (Keogh / Enhanced / Webb) all require equal
+      // lengths. Take the max: each is valid, and Enhanced deliberately runs
+      // alongside Keogh because neither dominates for effective V >= 2.
+      // Webb already dominates matching-direction Keogh, so it stands alone.
       bool lb_keogh_used = false;
       const bool equal_len = prob.series(i).size() == prob.series(j).size();
       if (use_lb_keogh && equal_len) {

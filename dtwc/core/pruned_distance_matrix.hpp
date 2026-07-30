@@ -3,7 +3,8 @@
  * @brief Exact distance-matrix construction with LB-guided cutoff attempts.
  *
  * @details Builds an exact distance matrix using cascading lower bounds
- * (LB_Kim -> LB_Keogh -> early-abandon DTW). The bound cascade is L1-valued.
+ * (LB_Kim -> configured envelope bound(s) -> early-abandon DTW). Enhanced
+ * evaluates max(LB_Keogh, LB_Enhanced); the bound cascade is L1-valued.
  *
  * The strategy for all-pairs distance matrix:
  * - Precompute summaries and Lemire envelopes once in O(sum_i n_i), or O(N*n)
