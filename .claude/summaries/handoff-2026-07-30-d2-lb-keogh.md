@@ -73,6 +73,11 @@
   `36509/29`, `2572/6`, `63/11`, `5584/26`, and `49/16`
   assertions/cases. These inherited counts are observations, not retroactive
   bands.
+- Rebuilt and settled the complete canonical graph, validated its generated
+  fail-closed D2 metadata, then ran the matrix serially. Verdict:
+  **PASS [confirmed]**, 123/123, zero failed, exact six registered capability
+  skips. A fresh verbose D2 run printed the exact marker and 65 assertions in
+  one case.
 
 ## Decisions
 
@@ -102,9 +107,8 @@
 
 ## Exact resume point
 
-Commit the focused execution evidence, then run the complete canonical,
-llfio-OFF, and Arrow-ON matrices serially at the registered 123/123, 123/123,
-and 125/125 floors. Prove the exact capability-skip name sets rather than
-trusting CTest's aggregate percentage, and prove Arrow's reader ran at least
-390 assertions in 11 cases. Update AGENTS.md and PLAN.md only from those
-observed inventories.
+Commit the canonical execution evidence, then rebuild, settle, and run the
+llfio-OFF and Arrow-ON matrices serially at the registered 123/123 and 125/125
+floors. Prove the exact capability-skip name sets rather than trusting CTest's
+aggregate percentage, and prove Arrow's reader ran at least 390 assertions in
+11 cases. Update AGENTS.md and PLAN.md only from those observed inventories.
