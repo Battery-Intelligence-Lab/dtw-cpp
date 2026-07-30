@@ -13,7 +13,7 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-29, after the F22 evidence run):** 2.0.0rc1 release state
+**Status (2026-07-30, after the F22 final-gate adjudication):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
 active with only D1 CLOSED (**D2–D18 untouched — R2 is now the priority
@@ -25,9 +25,11 @@ checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 partially closed (CUDA verified on the local RTX; real Metal
 `[BLOCKED-ENV]`). **F22** products + docs retained; Python 31/31 and MATLAB
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
-attempts exhausted. **Campaign cursor: F22 final serial full-gate
-adjudication, then F23, interleaved with R2 derivations (see the R2/R3
-cadence rule).** The final **2.0.0 tag gates on R0–R6 CLEAN**; R7 (WASM
+attempts exhausted. Its final serial gates pass all three native matrices,
+fresh Python with the registered F39 red, and both MATLAB releases with the
+registered F18 red; F22 stays unchecked. **Campaign cursor: D2 derivation,
+then F23 per the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
+CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
 Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
 never wait on them.
@@ -330,13 +332,11 @@ rounds (all lenses) produce zero new confirmed findings. Every confirmed bug:
 failing test → fix → full-gate re-run → own commit. Every dead hypothesis:
 recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
-**Immediate next step (2026-07-29):** run the registered F22 full gates
-serially (three native matrices, then a forced-fresh Python extension +
-suites, then a forced-fresh OpenMP MEX + five MATLAB suites on R2024b and
-R2025b), record the final adjudication in
-`.claude/baselines/2026-07-29-f22-deprecation-policy.md`, and leave F22
-unchecked (the exhausted C++ 33/46 falsification is the recorded verdict —
-do not rerun it). Then continue per the suggested clustering below.
+**Immediate next step (2026-07-30):** complete D2 from definitions before
+opening F23. The F22 final serial gates are fully adjudicated in
+`.claude/baselines/2026-07-30-f22-final-gates.md`: every registered execution
+band passes, but F22 remains unchecked because its exhausted C++ mutation
+closure band is FALSIFIED at 33/46. Do not rerun or rescue-tune it.
 
 **Suggested sequencing for the remaining findings (improvise freely, rule 8 —
 this is a route, not a script).** Cluster by shared context so each cluster
@@ -561,6 +561,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       adversarial re-review pass. Run the registered full gates next; F22
       remains unchecked because the C++ mutation verdict is still 33/46
       FALSIFIED.
+      **R6 FULL-GATE STATUS 2026-07-30:** `340ed88` records serial PASS results
+      for canonical 122/122 (six skips), llfio-OFF 122/122 (nine), Arrow-ON
+      124/124 (eight; reader 390 assertions/11 cases), fresh Python 18/18 and
+      1,041 = 1,028 passed + 12 skipped + only F39 red, and both MATLAB
+      releases at focused 1/1 and full 85/82/2/3 with only F18 red. These
+      execution gates do not reinterpret the exhausted C++ mutation band:
+      F22 remains FALSIFIED and unchecked. Evidence:
+      `.claude/baselines/2026-07-30-f22-final-gates.md`.
 - [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
       Its module exposes `CheckpointOptions` and directory save/load only
       (`python/src/_dtwcpp_core.cpp:1105-1125`), while MATLAB delivered
@@ -1082,6 +1090,14 @@ colour system transfer verbatim**.
   `c210504` passes the 33/33 behavior gate with 229 assertions/5 cases in both
   canonical and llfio-OFF builds; both combined entries remain exact 24/33
   expected red until product attempt 1.
+- 2026-07-30 (F22 final adjudication): Retain the repaired product, tests, and
+  documentation after every registered serial execution band passes, but do
+  not close F22 or reinterpret its independent mutation criterion. Both
+  permitted C++ attempts remain exhausted at 33/46, so F22 is permanently
+  FALSIFIED evidence unless a future plan explicitly registers a new finding
+  rather than rescue-tuning this one. The cadence cursor moves to D2 before
+  another R3 finding. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1164,3 +1180,14 @@ colour system transfer verbatim**.
   clustering (a)–(f). AGENTS.md floors updated to the current 122/122/122/124
   CTest and 1009/12/1-expected-F39-red Python inventories. Cursor unchanged:
   F22 final serial full-gate adjudication, then F23 per the cadence.
+- 2026-07-30 (R6-F22 final gates / closure FALSIFIED): Commits `aff2627` through
+  `340ed88` register and preserve the serial full-gate evidence. Canonical,
+  llfio-OFF, and Arrow-ON pass 122/122, 122/122, and 124/124 with exact
+  six/nine/eight capability skips; the Arrow reader runs 390 assertions/11
+  cases. A forced-fresh Python extension passes F22 18/18 and the full 1,041
+  inventory has only the registered F39 `28 == 27` red. One fresh OpenMP MEX
+  passes focused 1/1 and full 85/82/2/3 on both R2024b/R2025b with only the
+  registered F18 names. F22 nevertheless remains unchecked: the independent
+  C++ mutation band exhausted both attempts at 33/46. Resume at D2, then F23
+  per cadence. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
