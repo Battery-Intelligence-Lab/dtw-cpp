@@ -256,6 +256,56 @@ Negative counts request impossible vector lengths but fail synchronously before
 the allocator; the separate positive-count discriminator requests exactly one
 bounded 1028-byte allocation from the inherited code.
 
+## Expected-red execution
+
+The permanent fixture was committed as `6f30665` before product work. The
+canonical target rebuilt successfully, then CTest executed target #82 with the
+registered build-local environment and failed closed because the exact green
+marker was absent.
+
+The observed ledgers matched the preregistration exactly:
+
+```text
+F51_RED_OBSERVATION corpus=85 false=74 accepted=8 threw=3 unchanged=77/85
+F51_SIZE_PREFLIGHT_OBSERVATION false=1 threw=0 unchanged=1/1 allocations_1028=1
+```
+
+The three throws were verbatim `vector too long` for negative k, negative N,
+and the wrong-endian count. The eight false acceptances were both reserved
+bytes, all three padding bytes, convergence 2/255, and one trailing byte; each
+published over the sentinel destination. The allocation discriminator returned
+false without throwing and left the destination unchanged, but observed the
+single registered 1028-byte allocation.
+
+The independent typed-writer branch also failed as predicted:
+
+```text
+CHECK( writer_threw_io_error )
+with expansion:
+  false
+
+CHECK_FALSE( writer_threw_other )
+with expansion:
+  !true
+```
+
+Catch2 and CTest summaries were:
+
+```text
+test cases:   2 |   0 passed |  2 failed
+assertions: 298 | 276 passed | 22 failed
+
+0% tests passed, 1 tests failed out of 1
+Total Test time (real) =   0.54 sec
+The following tests FAILED:
+         82 - unit_test_checkpoint_binary (Failed)
+```
+
+Verdict against the registered inherited band: **FALSIFIED [confirmed]**.
+Every predicted defect class executed, the allocation-order discriminator was
+exact, no unregistered large allocation was attempted, and no product attempt
+had begun.
+
 ## Decisive gates
 
 F51 passes only if:

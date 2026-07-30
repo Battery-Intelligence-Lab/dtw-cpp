@@ -23,6 +23,12 @@
 - Captured the untouched F17 real-CLI baseline: exact 12/12 marker, zero skips,
   and 1/1 CTest pass; its production writer/reader preflight covers all seven
   semantic-invalid modes before the CLI rejects them contextually.
+- Committed the permanent test/metadata as `6f30665` and executed the inherited
+  expected red. It matched the preregistration exactly:
+  `false=74 accepted=8 threw=3 unchanged=77/85`,
+  `allocations_1028=1`, and the writer raised a non-`dtwc::IOError`.
+  Catch2 reported 298 assertions / 2 failed cases; CTest #82 failed because the
+  green marker was absent.
 
 ## Decisions
 
@@ -38,9 +44,9 @@
 
 ## Exact resume point
 
-Commit this preregistration, replace the inherited binary checkpoint test with
-the permanent deterministic red-first gate, and execute the expected red before
-any product change. Product attempts consumed: `0 / 2`.
+Implement product attempt 1 in `dtwc/checkpoint.cpp`/`.hpp`, then rebuild and
+execute target #82 against the immutable marker before any wider gate. Product
+attempts consumed: `0 / 2`.
 
 Rollback is the eventual local F51 commits in reverse order. No remote,
 published, data, or operator state changed. The claim most likely to be wrong
