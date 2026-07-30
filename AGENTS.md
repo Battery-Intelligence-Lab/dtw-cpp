@@ -140,8 +140,9 @@ WHAT you work on. Read both before touching anything. Supporting record:
   matters — add the fresh binary directory LAST so it prepends ahead of any
   stale MEX (wrong order → 0xc0000005 from an old binary; check
   `which('dtwc_mex','-all')` first). Current five-suite OpenMP inventory:
-  **82 collected, 81 passed, 0 failed, 1 expected opposite-flavor capability
-  skip** (`test_parallelisation_serial_is_honest`) on both MATLAB versions.
+  **85 collected, 82 passed, 2 expected F18 failures, 3 incomplete** (those
+  two failures plus the expected opposite-flavor capability skip
+  `test_parallelisation_serial_is_honest`) on both MATLAB versions.
 - **Conformance (permanent parity gate):** labels/medoids digit-identical across
   all 4 routes; silhouette 0.96894972764334841, DB 0.038333333333333337,
   dunn 11.5 vs `tests/conformance/conformance_reference.txt` (≤1e-12 rel).

@@ -650,6 +650,100 @@ Verdict: **PASS WITH REGISTERED F18 RED [confirmed]** — focused 1/1 and full
 85/82/2/3, exact failed/incomplete sets, exact F22 marker, OpenMP engaged,
 unambiguous source/MEX path, and unchanged fresh binary hash.
 
-### Remaining gates
+### MATLAB R2025b
 
-Pending: MATLAB R2025b.
+The second release reused the exact same source tree and immutable fresh MEX
+as R2024b. A repository-scoped process guard found no competing MATLAB
+process before either launch.
+
+#### R2025b focused
+
+The focused process again used unique repository-local preferences and temp
+directories, `OMP_NUM_THREADS=2`, repository sources first, and the fresh MEX
+directory last. Its decisive output was:
+
+```text
+MATLAB_RELEASE=R2025b
+MEX_SELECTED=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+MEX_COUNT=1
+OMP_AVAILABLE=1 OMP_MAX=2 OMP_ENGAGED=2 OMP_PASS=1 OMP_REASON=
+F22_MATLAB_DEPRECATION aliases=15/15 warning_profiles=15/15 messages=15/15 canonical_silent=15/15 equivalence=15/15 constructor_silent=1/1 tier1_silent=1/1 skips=0 verdict=PASS
+F22_MATLAB_FOCUSED release=R2025b total=1 passed=1 failed=0 incomplete=0
+MATLAB_EXIT=0
+FOCUSED_MARKER_COUNT=1
+FOCUSED_SUMMARY_COUNT=1
+POST_FOCUSED_MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+```
+
+The isolated runtime contained no reparse point, every entry resolved below
+its exact directory, and cleanup reported `RUNTIME_CLEANED=True`.
+
+#### R2025b full
+
+The full process ran the same five suites and emitted:
+
+```text
+MATLAB_RELEASE=R2025b
+MEX_SELECTED=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+MEX_COUNT=1
+OMP_AVAILABLE=1 OMP_MAX=2 OMP_ENGAGED=2 OMP_PASS=1 OMP_REASON=
+F22_MATLAB_DEPRECATION aliases=15/15 warning_profiles=15/15 messages=15/15 canonical_silent=15/15 equivalence=15/15 constructor_silent=1/1 tier1_silent=1/1 skips=0 verdict=PASS
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_test_api/test_parallelisation_serial_is_honest
+F22_MATLAB_FULL release=R2025b total=85 passed=82 failed=2 incomplete=3
+MATLAB_EXIT=0
+FULL_MARKER_COUNT=1
+FULL_SUMMARY_COUNT=1
+FAILED_SET_MATCH=True
+INCOMPLETE_SET_MATCH=True
+POST_FULL_MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+```
+
+The two failures and three incompletes are byte-for-byte the registered F18
+set; no additional failure appeared. The 233-entry isolated runtime contained
+no reparse point, every entry resolved below its exact directory, and cleanup
+reported `RUNTIME_CLEANED=True`. A post-cleanup process probe found no
+repository-scoped MATLAB process. The source and MEX hashes remained:
+
+```text
+MEX_SOURCE_SHA256=BDB6086BE23E3DB71C0B2FE3FF5536A8BCBA624331CD3CB3A47160E9B78C1782
+MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+```
+
+Verdict: **PASS WITH REGISTERED F18 RED [confirmed]** — focused 1/1 and full
+85/82/2/3, exact failed/incomplete sets, exact F22 marker, OpenMP engaged,
+unambiguous source/MEX path, and unchanged fresh binary hash.
+
+## Final adjudication
+
+The final execution campaign met every preregistered full-gate band:
+
+- canonical: 122/122, zero failed, exact six capability skips;
+- llfio-OFF: 122/122, zero failed, exact nine capability skips;
+- Arrow-ON: 124/124, zero failed, exact eight capability skips, with the
+  Arrow reader executing 390 assertions in 11 cases;
+- Python: focused 18/18; full 1,041 = 1,028 passed + 12 skipped + only the
+  registered F39 `28 == 27` failure;
+- R2024b and R2025b: focused 1/1 and full 85/82/2/3 on each, with only the
+  registered F18 names.
+
+Final-full-gate verdict: **PASS WITH REGISTERED F18/F39 RED [confirmed]** by
+the verbatim ledgers above.
+
+F22 closure verdict: **FALSIFIED [confirmed]**. These green full gates do not
+alter the independently registered C++ mutation result: only 33 of 46
+required mutants were killed before both permitted attempts exhausted their
+300-second runtime-mutant cap. F22 therefore remains unchecked. Its product,
+tests, and documentation stay retained; no third mutation run or
+reinterpretation is permitted.
+
+The claim most likely to be wrong is that the full Python inventory always
+selects the intended sibling CLI: `test_hpc` discovers build-tree binaries by
+mtime rather than honoring `DTWC_CL_PATH`. This run confirms the claim only
+for the recorded attempt-2 route, whose selected executable, byte-level
+diagnostics, real conformance output, and formerly failing nodes were checked
+before the full suite. Future fresh-extension gates must rebuild and assert
+both native siblings again.

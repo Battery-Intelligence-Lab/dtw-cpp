@@ -61,6 +61,15 @@
   attempt 2 met the registered 85/82/2/3 ledger with the exact two failed and
   three incomplete names. The F22 marker appeared exactly once, OpenMP engaged
   2/2, the MEX hash stayed unchanged, and the runtime was cleaned.
+- R2025b focused met the registered 1/1 ledger with the exact F22 marker,
+  OpenMP 2/2, one MEX path, and unchanged fresh-binary hash.
+- R2025b full met the registered 85/82/2/3 ledger with the exact two F18
+  failures and three incompletes. Its 233-entry isolated runtime was contained
+  and removed; no repository-scoped MATLAB process remained.
+- The complete F22 final-gate campaign passes all registered native,
+  Python-with-F39-red, and MATLAB-with-F18-red bands. F22 itself remains
+  FALSIFIED and unchecked because both permitted C++ mutation attempts stopped
+  at 33/46. No evidence was reinterpreted and no third attempt is allowed.
 
 ## Decisions
 
@@ -73,24 +82,22 @@
 - Force clean-first rebuilds of all three native matrices. The earlier mutation
   runner restored source bytes, but a clean object-file state was not separately
   evidenced after its timeout.
+- Retain the repaired F22 product, tests, and documentation, but leave its PLAN
+  checkbox open: full-gate health cannot satisfy the independently falsified
+  mutation closure band.
+- Move the campaign cursor to D2 before opening another R3 finding. R2 has only
+  D1 closed, and PLAN's cadence requires a derivation after the completed F22
+  finding cycle.
 
 ## Exact resume point
 
-Run focused/full R2025b through the same unchanged MEX and require the exact
-1/1 and 85/82/2/3 ledgers. Then finalize the F22 adjudication, working-rule
-floor, PLAN/handoff cursor, and commit each completed evidence step.
+Finalize the PLAN cursor and commit the F22 adjudication bookkeeping. Then
+derive D2 (envelopes and LB_Keogh) from definitions before changing product
+code or opening F23. Register admissibility, provenance, malformed-envelope,
+metric, full-window, and non-degenerate numerical gates before decisive runs.
 
 ## Open risks
 
-- All three native dry builds currently need CMake regeneration; generated
-  inventory drift must be checked again after each rebuild.
-- Python full acceptance intentionally includes the known F39 supply-chain
-  inventory failure unless F39 has independently closed.
-- MATLAB full acceptance intentionally includes two retained F18 failures;
-  any different failed/incomplete name is a regression.
-- The claim most likely to fail is that a forced-fresh binding build reproduces
-  the exact registered inventory without exposing a stale generated manifest
-  or runtime-path dependency.
 - CTest's mutable `LastTestsFailed.log` retained a historical F22 failure after
   two current green runs; only the current complete transcript may adjudicate
   a gate.
@@ -99,3 +106,10 @@ floor, PLAN/handoff cursor, and commit each completed evidence step.
   together and assert the helper-selected path before the suite.
 - PowerShell-to-`matlab -batch` wrappers must use MATLAB single-quoted
   character cell arrays for expected names.
+- D2's most dangerous ambiguity is whether a negative legacy band means a full
+  DTW window or radius zero. The current envelope helper maps it to zero, so
+  the derivation must settle the public contract before any compatibility shim
+  or test can be trusted.
+- LB_Keogh is metric-dependent. In particular, an unsquared endpoint term is
+  not automatically admissible for squared-L2 DTW; D2 must prove or kill every
+  trait specialization independently.
