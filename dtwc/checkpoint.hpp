@@ -21,6 +21,7 @@
 #pragma once
 
 #include "core/clustering_result.hpp"
+#include "error.hpp"
 
 #include <string>
 #include <filesystem>
@@ -68,7 +69,7 @@ bool load_checkpoint(Problem &prob, const std::string &path);
 
 /// Save clustering result to a compact binary file.
 ///
-/// Binary format (little-endian):
+/// Binary format (strict little-endian):
 ///   bytes 0-3:   magic "DCKP"
 ///   bytes 4-5:   version uint16 = 1
 ///   bytes 6-7:   reserved (0)
@@ -83,14 +84,19 @@ bool load_checkpoint(Problem &prob, const std::string &path);
 ///
 /// @param result  The clustering result to save.
 /// @param path    File path for the binary checkpoint.
-/// @throws std::runtime_error if the file cannot be written.
+/// @throws InvalidInput if a count or integer field is not representable by
+///         the version-1 int32 wire format.
+/// @throws IOError if the file or its parent directories cannot be written.
 void save_binary_checkpoint(const core::ClusteringResult &result,
                             const std::filesystem::path &path);
 
 /// Load clustering result from a binary checkpoint file.
 ///
-/// Validates the magic bytes and version. Returns false if the file
-/// does not exist or has an invalid header.
+/// Validates the complete header, canonical structural bytes, exact file
+/// length, and payload before publishing a local candidate. Structural
+/// validation deliberately does not impose clustering-semantic or provenance
+/// policy. Returns false without changing @p result if the file is missing,
+/// inaccessible, malformed, or cannot be decoded.
 ///
 /// @param result  The ClusteringResult to populate.
 /// @param path    File path of the binary checkpoint.

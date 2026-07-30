@@ -747,6 +747,29 @@ Critical knowledge to avoid repeating mistakes.
   PowerShell batch argument, and emit newlines with a separate
   `fprintf('%s',newline)` to avoid a second quoting layer. Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
+- **Writing native scalar objects is not an endian implementation.
+  [confirmed]** Binary-v1 documented little endian but wrote and read native
+  `int32_t`, `uint16_t`, and `double` objects; the local x86-64 fixture happened
+  to agree while malformed signed counts allocated or threw before payload
+  length was known. Encode unsigned bit patterns byte-by-byte, assert the exact
+  binary64 representation, validate all canonical header bytes, and compare
+  the same open stream's exact size before any count-derived allocation.
+  Evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- **A round-trip fixture needs both sides of every binary state.
+  [confirmed]** F51's first strengthened fixture used only `converged=true` and
+  nonnegative payload integers, so an always-true boolean codec or broken
+  signed payload could satisfy the exact marker. Preserve the corruption
+  corpus, but make accepted compatibility fixtures execute canonical zero and
+  negative payload values too. Evidence:
+  `tests/unit/unit_test_checkpoint_binary.cpp`.
+- **Whole-file formatting can bury a small persistence fix in unrelated churn.
+  [confirmed]** Running `clang-format -i` over the legacy checkpoint
+  translation unit changed 1,103 diff lines around a roughly 300-line codec
+  replacement. Reconstruct untouched regions from the committed source and
+  format only changed line ranges before review. Evidence: F51 implementation
+  preflight recorded in
+  `.claude/summaries/handoff-2026-07-30-f51-binary-checkpoint-wire.md`.
 
 ## LR-core Solver (Phase 4)
 

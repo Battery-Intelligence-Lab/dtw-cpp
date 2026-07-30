@@ -198,6 +198,15 @@ the directory checkpoint and mmap cache. An explicitly imported or already
 available distance matrix may still be used for scoring, but replay does not
 create or compute unused matrix state.
 
+Version 1 is a strict little-endian wire format: a 32-byte canonical header is
+followed by int32 medoid indices and labels. Reserved and padding bytes must be
+zero, convergence must be encoded as 0 or 1, and the file must end exactly
+after the declared payload. The reader verifies those properties and the exact
+payload length before allocating from either count; a rejected read leaves the
+destination result unchanged. This structural validation deliberately does
+not establish that labels, medoids, N, k, or the producing configuration are
+semantically compatible. The CLI performs those contextual replay checks.
+
 ## Example workflow
 
 ### Start a long computation

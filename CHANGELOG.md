@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Made binary-v1 clustering-result checkpoints host-independent and
+  fail-closed: all scalars use explicit little-endian encoding, readers reject
+  noncanonical structural bytes and wrong lengths before count-derived
+  allocation, failed reads leave the destination unchanged, and writer I/O
+  failures use the public error taxonomy. The format version and its existing
+  semantic/provenance limits are unchanged.
 - Added the D2 envelope/LB_Keogh derivation and executable oracle. It confirms
   scalar L1 and unrooted squared-L2 admissibility, including the feasible
   unequal-length prefix theorem and additive dependent/independent

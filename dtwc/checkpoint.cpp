@@ -9,14 +9,15 @@
 #include "checkpoint.hpp"
 #include "Problem.hpp"
 #include "core/sha256.hpp"
+#include "error.hpp"
 
 #include <array>
 #include <atomic>
 #include <bit>
 #include <charconv>
 #include <chrono>
+#include <climits>
 #include <cmath>
-#include <cstring>
 #include <cstdint>
 #include <cstdio>
 #include <ctime>
@@ -621,8 +622,243 @@ bool load_checkpoint(Problem &prob, const std::string &path)
 
 namespace {
 
-constexpr char BINARY_MAGIC[4] = { 'D', 'C', 'K', 'P' };
-constexpr uint16_t BINARY_VERSION = 1;
+  constexpr std::array<std::uint8_t, 4> BINARY_MAGIC{
+    UINT8_C(0x44), UINT8_C(0x43), UINT8_C(0x4b), UINT8_C(0x50)
+  };
+  constexpr std::uint16_t BINARY_VERSION = 1;
+  constexpr std::size_t BINARY_HEADER_SIZE = 32;
+  constexpr std::size_t BINARY_INTEGER_SIZE = 4;
+
+  static_assert(CHAR_BIT == 8);
+  static_assert(sizeof(std::int32_t) == BINARY_INTEGER_SIZE);
+  static_assert(sizeof(std::uint64_t) == 8);
+  static_assert(sizeof(double) == sizeof(std::uint64_t));
+  static_assert(std::numeric_limits<double>::is_iec559);
+  static_assert(std::numeric_limits<double>::radix == 2);
+  static_assert(std::numeric_limits<double>::digits == 53);
+  static_assert(std::numeric_limits<double>::max_exponent == 1024);
+  static_assert(
+    std::bit_cast<std::uint64_t>(-13.25)
+    == UINT64_C(0xc02a800000000000));
+  static_assert(
+    std::numeric_limits<int>::digits
+    >= std::numeric_limits<std::int32_t>::digits);
+
+  constexpr char wire_byte(std::uint8_t value) noexcept
+  {
+    return std::bit_cast<char>(value);
+  }
+
+  constexpr std::uint8_t wire_byte(char value) noexcept
+  {
+    return static_cast<std::uint8_t>(static_cast<unsigned char>(value));
+  }
+
+  void store_le_u16(char *destination, std::uint16_t value) noexcept
+  {
+    destination[0] = wire_byte(static_cast<std::uint8_t>(value & UINT16_C(0xff)));
+    destination[1] =
+      wire_byte(static_cast<std::uint8_t>((value >> 8U) & UINT16_C(0xff)));
+  }
+
+  void store_le_u32(char *destination, std::uint32_t value) noexcept
+  {
+    for (std::size_t byte = 0; byte < BINARY_INTEGER_SIZE; ++byte) {
+      destination[byte] = wire_byte(static_cast<std::uint8_t>(
+        (value >> (8U * byte)) & UINT32_C(0xff)));
+    }
+  }
+
+  void store_le_u64(char *destination, std::uint64_t value) noexcept
+  {
+    for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
+      destination[byte] = wire_byte(static_cast<std::uint8_t>(
+        (value >> (8U * byte)) & UINT64_C(0xff)));
+    }
+  }
+
+  void store_le_i32(char *destination, std::int32_t value) noexcept
+  {
+    store_le_u32(destination, std::bit_cast<std::uint32_t>(value));
+  }
+
+  void store_le_f64(char *destination, double value) noexcept
+  {
+    store_le_u64(destination, std::bit_cast<std::uint64_t>(value));
+  }
+
+  std::uint16_t load_le_u16(const char *source) noexcept
+  {
+    return static_cast<std::uint16_t>(
+      static_cast<std::uint16_t>(wire_byte(source[0]))
+      | (static_cast<std::uint16_t>(wire_byte(source[1])) << 8U));
+  }
+
+  std::uint32_t load_le_u32(const char *source) noexcept
+  {
+    std::uint32_t value = 0;
+    for (std::size_t byte = 0; byte < BINARY_INTEGER_SIZE; ++byte) {
+      value |= static_cast<std::uint32_t>(wire_byte(source[byte]))
+               << (8U * byte);
+    }
+    return value;
+  }
+
+  std::uint64_t load_le_u64(const char *source) noexcept
+  {
+    std::uint64_t value = 0;
+    for (std::size_t byte = 0; byte < sizeof(value); ++byte) {
+      value |= static_cast<std::uint64_t>(wire_byte(source[byte]))
+               << (8U * byte);
+    }
+    return value;
+  }
+
+  std::int32_t load_le_i32(const char *source) noexcept
+  {
+    return std::bit_cast<std::int32_t>(load_le_u32(source));
+  }
+
+  double load_le_f64(const char *source) noexcept
+  {
+    return std::bit_cast<double>(load_le_u64(source));
+  }
+
+  bool int32_representable(int value) noexcept
+  {
+    const auto wide = static_cast<std::intmax_t>(value);
+    return wide >= static_cast<std::intmax_t>(
+             std::numeric_limits<std::int32_t>::min())
+           && wide <= static_cast<std::intmax_t>(
+                std::numeric_limits<std::int32_t>::max());
+  }
+
+  void validate_binary_result(const core::ClusteringResult &result)
+  {
+    constexpr auto INT32_MAX_U =
+      static_cast<std::uintmax_t>(std::numeric_limits<std::int32_t>::max());
+    if (static_cast<std::uintmax_t>(result.medoid_indices.size())
+        > INT32_MAX_U) {
+      throw InvalidInput(
+        "save_binary_checkpoint: medoid count exceeds the int32 wire limit.");
+    }
+    if (static_cast<std::uintmax_t>(result.labels.size()) > INT32_MAX_U) {
+      throw InvalidInput(
+        "save_binary_checkpoint: label count exceeds the int32 wire limit.");
+    }
+    if (!int32_representable(result.iterations)) {
+      throw InvalidInput(
+        "save_binary_checkpoint: iterations exceeds the int32 wire limit.");
+    }
+    for (const int value : result.medoid_indices) {
+      if (!int32_representable(value)) {
+        throw InvalidInput(
+          "save_binary_checkpoint: medoid index exceeds the int32 wire limit.");
+      }
+    }
+    for (const int value : result.labels) {
+      if (!int32_representable(value)) {
+        throw InvalidInput(
+          "save_binary_checkpoint: label exceeds the int32 wire limit.");
+      }
+    }
+  }
+
+  void write_le_i32(std::ostream &output, std::int32_t value)
+  {
+    std::array<char, BINARY_INTEGER_SIZE> bytes{};
+    store_le_i32(bytes.data(), value);
+    output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+  }
+
+  bool read_exact(std::istream &input, char *destination, std::size_t size)
+  {
+    if (size
+        > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()))
+      return false;
+    input.read(destination, static_cast<std::streamsize>(size));
+    return input.gcount() == static_cast<std::streamsize>(size) && !input.bad();
+  }
+
+  bool read_le_i32(std::istream &input, std::int32_t &value)
+  {
+    std::array<char, BINARY_INTEGER_SIZE> bytes{};
+    if (!read_exact(input, bytes.data(), bytes.size())) return false;
+    value = load_le_i32(bytes.data());
+    return true;
+  }
+
+  bool decode_binary_checkpoint(std::ifstream &input,
+                                core::ClusteringResult &candidate)
+  {
+    const std::streampos end_position = input.tellg();
+    if (end_position == std::streampos(-1)) return false;
+    const std::streamoff file_size = static_cast<std::streamoff>(end_position);
+    if (file_size < 0
+        || static_cast<std::uintmax_t>(file_size) < BINARY_HEADER_SIZE)
+      return false;
+
+    input.seekg(0, std::ios::beg);
+    if (!input) return false;
+
+    std::array<char, BINARY_HEADER_SIZE> header{};
+    if (!read_exact(input, header.data(), header.size())) return false;
+    for (std::size_t byte = 0; byte < BINARY_MAGIC.size(); ++byte) {
+      if (wire_byte(header[byte]) != BINARY_MAGIC[byte]) return false;
+    }
+    if (load_le_u16(header.data() + 4) != BINARY_VERSION
+        || wire_byte(header[6]) != 0 || wire_byte(header[7]) != 0
+        || wire_byte(header[21]) != 0 || wire_byte(header[22]) != 0
+        || wire_byte(header[23]) != 0)
+      return false;
+
+    const std::int32_t k = load_le_i32(header.data() + 8);
+    const std::int32_t n = load_le_i32(header.data() + 12);
+    const std::int32_t iterations = load_le_i32(header.data() + 16);
+    const std::uint8_t converged = wire_byte(header[20]);
+    const double total_cost = load_le_f64(header.data() + 24);
+    if (k < 0 || n < 0 || converged > 1) return false;
+
+    const auto k_unsigned = static_cast<std::uintmax_t>(k);
+    const auto n_unsigned = static_cast<std::uintmax_t>(n);
+    constexpr auto SIZE_MAX_U =
+      static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max());
+    if (k_unsigned > SIZE_MAX_U || n_unsigned > SIZE_MAX_U) return false;
+    const auto k_size = static_cast<std::size_t>(k_unsigned);
+    const auto n_size = static_cast<std::size_t>(n_unsigned);
+    if (k_size > std::numeric_limits<std::size_t>::max() - n_size)
+      return false;
+    const std::size_t integer_count = k_size + n_size;
+    std::size_t payload_size = 0;
+    if (!checked_multiply(integer_count, BINARY_INTEGER_SIZE, payload_size)
+        || payload_size
+             > std::numeric_limits<std::size_t>::max() - BINARY_HEADER_SIZE)
+      return false;
+    const std::size_t expected_size = BINARY_HEADER_SIZE + payload_size;
+    if (static_cast<std::uintmax_t>(file_size)
+        != static_cast<std::uintmax_t>(expected_size))
+      return false;
+
+    candidate.medoid_indices.resize(k_size);
+    candidate.labels.resize(n_size);
+    for (int &value : candidate.medoid_indices) {
+      std::int32_t wire_value = 0;
+      if (!read_le_i32(input, wire_value)) return false;
+      value = static_cast<int>(wire_value);
+    }
+    for (int &value : candidate.labels) {
+      std::int32_t wire_value = 0;
+      if (!read_le_i32(input, wire_value)) return false;
+      value = static_cast<int>(wire_value);
+    }
+    if (input.peek() != std::char_traits<char>::eof() || input.bad())
+      return false;
+
+    candidate.total_cost = total_cost;
+    candidate.iterations = static_cast<int>(iterations);
+    candidate.converged = converged == 1;
+    return true;
+  }
 
 } // anonymous namespace
 
@@ -630,127 +866,92 @@ constexpr uint16_t BINARY_VERSION = 1;
 void save_binary_checkpoint(const core::ClusteringResult &result,
                             const fs::path &path)
 {
-  // Ensure parent directory exists
-  if (path.has_parent_path())
-    fs::create_directories(path.parent_path());
+  // No failed validation may create a directory or truncate an existing file.
+  validate_binary_result(result);
 
-  std::ofstream out(path, std::ios::binary);
-  if (!out.is_open())
-    throw std::runtime_error("Cannot open binary checkpoint for writing: " + path.string());
+  try {
+    if (path.has_parent_path()) {
+      std::error_code error;
+      fs::create_directories(path.parent_path(), error);
+      if (error) {
+        throw IOError(
+          "Cannot create binary checkpoint directory: "
+          + path.parent_path().string() + ": " + error.message());
+      }
+    }
 
-  // Header
-  out.write(BINARY_MAGIC, 4);
+    std::ofstream output(
+      path, std::ios::out | std::ios::binary | std::ios::trunc);
+    if (!output.is_open()) {
+      throw IOError(
+        "Cannot open binary checkpoint for writing: " + path.string());
+    }
 
-  const uint16_t version = BINARY_VERSION;
-  out.write(reinterpret_cast<const char *>(&version), sizeof(version));
+    const auto k = static_cast<std::int32_t>(result.medoid_indices.size());
+    const auto n = static_cast<std::int32_t>(result.labels.size());
+    const auto iterations = static_cast<std::int32_t>(result.iterations);
+    std::array<char, BINARY_HEADER_SIZE> header{};
+    for (std::size_t byte = 0; byte < BINARY_MAGIC.size(); ++byte)
+      header[byte] = wire_byte(BINARY_MAGIC[byte]);
+    store_le_u16(header.data() + 4, BINARY_VERSION);
+    store_le_i32(header.data() + 8, k);
+    store_le_i32(header.data() + 12, n);
+    store_le_i32(header.data() + 16, iterations);
+    header[20] = wire_byte(result.converged ? std::uint8_t{ 1 }
+                                            : std::uint8_t{ 0 });
+    store_le_f64(header.data() + 24, result.total_cost);
+    output.write(header.data(), static_cast<std::streamsize>(header.size()));
 
-  const uint16_t reserved = 0;
-  out.write(reinterpret_cast<const char *>(&reserved), sizeof(reserved));
+    for (const int value : result.medoid_indices)
+      write_le_i32(output, static_cast<std::int32_t>(value));
+    for (const int value : result.labels)
+      write_le_i32(output, static_cast<std::int32_t>(value));
 
-  const int32_t k = static_cast<int32_t>(result.medoid_indices.size());
-  const int32_t N = static_cast<int32_t>(result.labels.size());
-  const int32_t iterations = static_cast<int32_t>(result.iterations);
-  out.write(reinterpret_cast<const char *>(&k), sizeof(k));
-  out.write(reinterpret_cast<const char *>(&N), sizeof(N));
-  out.write(reinterpret_cast<const char *>(&iterations), sizeof(iterations));
-
-  const uint8_t converged = result.converged ? 1 : 0;
-  out.write(reinterpret_cast<const char *>(&converged), sizeof(converged));
-
-  const char padding[3] = { 0, 0, 0 };
-  out.write(padding, 3);
-
-  out.write(reinterpret_cast<const char *>(&result.total_cost), sizeof(result.total_cost));
-
-  // Medoid indices
-  for (int32_t i = 0; i < k; ++i) {
-    const int32_t val = static_cast<int32_t>(result.medoid_indices[i]);
-    out.write(reinterpret_cast<const char *>(&val), sizeof(val));
+    output.close();
+    if (!output)
+      throw IOError("Write error on binary checkpoint: " + path.string());
+  } catch (const fs::filesystem_error &error) {
+    throw IOError(
+      "Binary checkpoint filesystem failure: " + std::string(error.what()));
+  } catch (const std::ios_base::failure &error) {
+    throw IOError(
+      "Binary checkpoint stream failure: " + std::string(error.what()));
   }
-
-  // Labels
-  for (int32_t i = 0; i < N; ++i) {
-    const int32_t val = static_cast<int32_t>(result.labels[i]);
-    out.write(reinterpret_cast<const char *>(&val), sizeof(val));
-  }
-
-  if (!out.good())
-    throw std::runtime_error("Write error on binary checkpoint: " + path.string());
 }
 
 
 bool load_binary_checkpoint(core::ClusteringResult &result,
                             const fs::path &path)
 {
-  if (!fs::exists(path))
+  try {
+    // One stream owns both the exact-length proof and the subsequent decode,
+    // avoiding a path-based time-of-check/time-of-use split.
+    std::ifstream input(path, std::ios::in | std::ios::binary | std::ios::ate);
+    if (!input.is_open()) return false;
+
+    core::ClusteringResult candidate;
+    bool decoded = false;
+    try {
+      decoded = decode_binary_checkpoint(input, candidate);
+    } catch (...) {
+      input.close();
+      return false;
+    }
+
+    // A successful EOF probe sets eofbit. Clear that expected state so close
+    // can report its own failure independently.
+    if (decoded) input.clear();
+    input.close();
+    if (!decoded || input.fail()) return false;
+
+    static_assert(
+      std::is_nothrow_move_assignable_v<core::ClusteringResult>,
+      "Binary checkpoint publication must preserve the strong guarantee");
+    result = std::move(candidate);
+    return true;
+  } catch (...) {
     return false;
-
-  std::ifstream in(path, std::ios::binary);
-  if (!in.is_open())
-    return false;
-
-  // Read and validate magic
-  char magic[4];
-  in.read(magic, 4);
-  if (!in.good() || std::memcmp(magic, BINARY_MAGIC, 4) != 0)
-    return false;
-
-  // Read and validate version
-  uint16_t version = 0;
-  in.read(reinterpret_cast<char *>(&version), sizeof(version));
-  if (!in.good() || version != BINARY_VERSION)
-    return false;
-
-  // Skip reserved
-  uint16_t reserved = 0;
-  in.read(reinterpret_cast<char *>(&reserved), sizeof(reserved));
-
-  // Read header fields
-  int32_t k = 0, N = 0, iterations = 0;
-  in.read(reinterpret_cast<char *>(&k), sizeof(k));
-  in.read(reinterpret_cast<char *>(&N), sizeof(N));
-  in.read(reinterpret_cast<char *>(&iterations), sizeof(iterations));
-
-  uint8_t converged = 0;
-  in.read(reinterpret_cast<char *>(&converged), sizeof(converged));
-
-  // Skip padding
-  char padding[3];
-  in.read(padding, 3);
-
-  double total_cost = 0.0;
-  in.read(reinterpret_cast<char *>(&total_cost), sizeof(total_cost));
-
-  if (!in.good())
-    return false;
-
-  // Read medoid indices
-  std::vector<int> medoid_indices(k);
-  for (int32_t i = 0; i < k; ++i) {
-    int32_t val = 0;
-    in.read(reinterpret_cast<char *>(&val), sizeof(val));
-    medoid_indices[i] = val;
   }
-
-  // Read labels
-  std::vector<int> labels(N);
-  for (int32_t i = 0; i < N; ++i) {
-    int32_t val = 0;
-    in.read(reinterpret_cast<char *>(&val), sizeof(val));
-    labels[i] = val;
-  }
-
-  if (!in.good())
-    return false;
-
-  // Populate result
-  result.medoid_indices = std::move(medoid_indices);
-  result.labels = std::move(labels);
-  result.total_cost = total_cost;
-  result.iterations = iterations;
-  result.converged = (converged != 0);
-
-  return true;
 }
 
 } // namespace dtwc
