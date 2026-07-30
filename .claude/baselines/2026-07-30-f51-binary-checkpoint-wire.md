@@ -122,7 +122,7 @@ structural property:
 | trailing payload | 1 | append one zero byte |
 | bad magic | 1 | change byte 0 from `D` to `X` |
 | bad version | 1 | encode LE version 2 |
-| wrong-endian count | 1 | encode intended BE `k=128` as `00 00 00 80`; inherited LE decoding observes `INT32_MIN`, so the red is safe and cannot request a huge allocation |
+| wrong-endian count | 1 | encode intended BE `k=128` as `00 00 00 80`; inherited LE decoding observes `INT32_MIN` and synchronously fails vector length validation before reaching the allocator |
 | **total** | **85** | |
 
 For each input:
@@ -154,6 +154,24 @@ false acceptances. Negative `k`, negative `N`, and the safely wrong-endian
 count throw before publication. The committed test must print observed counts
 before failing; disagreement changes the diagnosis, never the registered green
 band.
+
+### Independent size-before-allocation discriminator
+
+The fixed 85-case corpus proves rejection/canonicality but does not by itself
+execute-prove ordering of the size check: its positive counts are only 3/7,
+while its negative counts fail `vector::max_size` validation before heap
+allocation. Add one separate safe adversary, not counted among the 85:
+
+- retain the 72-byte file but encode little-endian `k=257`;
+- arm the repository's existing global `operator new` probe pattern for exactly
+  `257 * sizeof(int) = 1028` bytes only around the production load;
+- require false return, zero throws, unchanged destination, and zero matching
+  allocations after repair.
+
+The inherited reader is predicted to make exactly one 1028-byte allocation
+before discovering the short payload. This is a bounded 1 KiB discriminator,
+not a large-allocation experiment. The repaired marker adds
+`size_preflight=1/1`.
 
 ## Registered implementation boundary
 
@@ -210,9 +228,10 @@ Out of scope:
 ## Permanent test and exact green marker
 
 Rewrite the existing auto-globbed
-`tests/unit/unit_test_checkpoint_binary.cpp`; add no CTest target or tracked
-CMake manifest. Use deterministic build-root-local scratch state rather than
-running clustering to obtain a result.
+`tests/unit/unit_test_checkpoint_binary.cpp`; add no new target, source file, or
+CMake manifest. Attach the required metadata to that existing target in the
+already-tracked `tests/CMakeLists.txt`. Use deterministic build-root-local
+scratch state rather than running clustering to obtain a result.
 
 The target has at least two Catch2 cases and at least 270 assertions:
 
@@ -224,7 +243,7 @@ The target has at least two Catch2 cases and at least 270 assertions:
 The sole green marker is:
 
 ```text
-F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS
+F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS
 ```
 
 No case may skip or xfail. CTest metadata must require the marker, reject actual
@@ -232,8 +251,10 @@ skip diagnostics, clear `SKIP_RETURN_CODE`, run serially, and root temporary
 state under the configured build directory.
 
 The expected-red execution occurs after the test commit and before product
-work. All corruptions were selected adversarially before that execution; none
-requests a large allocation from the inherited code.
+work. All corruptions were selected adversarially before that execution.
+Negative counts request impossible vector lengths but fail synchronously before
+the allocator; the separate positive-count discriminator requests exactly one
+bounded 1028-byte allocation from the inherited code.
 
 ## Decisive gates
 

@@ -885,7 +885,8 @@ Open findings first (status after R0 adjudication — update these boxes there):
       little-endian format. F23 would expose this parser directly to Python.
       First gate: preserve the registered 72-byte oracle while all 85 fixed
       corruptions return false, throw zero exceptions, and leave the destination
-      unchanged; prove exact size before count-derived allocation, explicit LE
+      unchanged; a separate bounded `k=257` allocation probe must prove exact
+      size before count-derived allocation. Require explicit LE
       integer/binary64 codecs, save-load-save byte identity, and all seven F17
       semantic-invalid files still reach the CLI's contextual validator. These
       cases seed rather than replace the later randomized checkpoint/config

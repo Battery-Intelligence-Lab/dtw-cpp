@@ -11,6 +11,9 @@
 - Registered 85 safe deterministic corruptions: 72 truncations, negative k/N,
   each reserved/padding byte, two convergence values, trailing data, bad
   magic/version, and a safely wrong-endian count.
+- Added a separate bounded k=257/72-byte allocation-order discriminator using
+  the existing global-new probe pattern: inherited one 1028-byte allocation,
+  repaired zero, without changing the 85-case corpus.
 - Registered exact false/no-throw/unchanged, valid-byte, resave, F17 semantic
   compatibility, real-CLI, native-matrix, documentation, hygiene, and
   two-attempt bands in
