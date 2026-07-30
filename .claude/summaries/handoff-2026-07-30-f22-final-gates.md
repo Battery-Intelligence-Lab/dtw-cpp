@@ -57,6 +57,10 @@
   failed/three incomplete names, but the post-run oracle lost embedded double
   quotes through `matlab -batch` and exited before printing the custom ledger.
   It is retained as FALSIFIED; one full attempt remains.
+- A separate single-quoted cell-array boundary probe passed, then R2024b full
+  attempt 2 met the registered 85/82/2/3 ledger with the exact two failed and
+  three incomplete names. The F22 marker appeared exactly once, OpenMP engaged
+  2/2, the MEX hash stayed unchanged, and the runtime was cleaned.
 
 ## Decisions
 
@@ -72,10 +76,9 @@
 
 ## Exact resume point
 
-Run the final R2024b full wrapper with single-quoted MATLAB cell arrays and
-require the exact 85/82/2/3 ledger. Then run focused/full R2025b through the
-same unchanged MEX. Append exact outputs to the run-log after each gate and
-commit each completed evidence step immediately.
+Run focused/full R2025b through the same unchanged MEX and require the exact
+1/1 and 85/82/2/3 ledgers. Then finalize the F22 adjudication, working-rule
+floor, PLAN/handoff cursor, and commit each completed evidence step.
 
 ## Open risks
 
@@ -94,5 +97,5 @@ commit each completed evidence step immediately.
 - `test_hpc` ignores `DTWC_CL_PATH` and selects the newest build-tree CLI by
   mtime. Future clean binding gates must build `_dtwcpp_core` and `dtwc_cl`
   together and assert the helper-selected path before the suite.
-- Only one R2024b full attempt remains. PowerShell-to-`matlab -batch` wrappers
-  must use MATLAB single-quoted character cell arrays for expected names.
+- PowerShell-to-`matlab -batch` wrappers must use MATLAB single-quoted
+  character cell arrays for expected names.

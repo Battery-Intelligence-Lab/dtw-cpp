@@ -605,6 +605,51 @@ Attempt-1 verdict: **FALSIFIED [confirmed]** — the post-run name-set oracle di
 not execute. The sole remaining attempt must use single-quoted MATLAB cell
 arrays and reproduce the complete custom ledger.
 
+#### R2024b full attempt 2
+
+Before the final attempt, an isolated PowerShell-to-MATLAB boundary probe used
+the intended single-quoted cell-array representation and printed:
+
+```text
+CELL_ORACLE=PASS
+MATLAB_EXIT=0
+CELL_ORACLE_MARKERS=1
+```
+
+Its runtime was validated and removed. The final full process then used the
+same fresh MEX and source paths as the focused gate. Its decisive output was:
+
+```text
+MATLAB_RELEASE=R2024b
+MEX_SELECTED=C:\D\git\dtw-cpp\build\mex-verify-msvc\bin\dtwc_mex.mexw64
+MEX_COUNT=1
+OMP_AVAILABLE=1 OMP_MAX=2 OMP_ENGAGED=2 OMP_PASS=1 OMP_REASON=
+F22_MATLAB_DEPRECATION aliases=15/15 warning_profiles=15/15 messages=15/15 canonical_silent=15/15 equivalence=15/15 constructor_silent=1/1 tier1_silent=1/1 skips=0 verdict=PASS
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+FAILED_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_routes_match_exhaustive_oracle
+INCOMPLETE_NAME=test_contract_parity/test_dtwclustering_metric_validation_precedes_effects
+INCOMPLETE_NAME=test_test_api/test_parallelisation_serial_is_honest
+F22_MATLAB_FULL release=R2024b total=85 passed=82 failed=2 incomplete=3
+MATLAB_EXIT=0
+FULL_MARKER_COUNT=1
+FULL_SUMMARY_COUNT=1
+FAILED_SET_MATCH=True
+INCOMPLETE_SET_MATCH=True
+POST_FULL_MEX_SHA256=8C39AD28001B9D0C30824CCDE15CAC84AC3F1ADCAB1079FA69E8671C0A1D9064
+```
+
+The retained F18 details remained exact: one route reports unknown MEX command
+`DTWClustering_compute_distance_matrix`, and the validation-order case reports
+actual `MATLAB:fit:expectedNonempty` versus expected `dtwc:invalidArgument`.
+No new failure appeared. The 30-entry isolated runtime contained no reparse
+points, every entry resolved below its exact directory, and cleanup reported
+`RUNTIME_CLEANED=True`.
+
+Verdict: **PASS WITH REGISTERED F18 RED [confirmed]** — focused 1/1 and full
+85/82/2/3, exact failed/incomplete sets, exact F22 marker, OpenMP engaged,
+unambiguous source/MEX path, and unchanged fresh binary hash.
+
 ### Remaining gates
 
-Pending: MATLAB R2024b, MATLAB R2025b.
+Pending: MATLAB R2025b.
