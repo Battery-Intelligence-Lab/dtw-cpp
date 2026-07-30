@@ -84,6 +84,26 @@ TEST_CASE("F57 LB_Webb saturates an INT_MAX radius",
   REQUIRE(at_intmax.webb_l1 <= exact_global_l1);
   REQUIRE(at_intmax.webb_squared <= exact_global_squared);
 
+  // This nonconstant pair distinguishes geometric saturation from merely
+  // widening the signed arithmetic. With the global window, both the
+  // free-above and free-below correction branches contribute exactly one.
+  const Series saturation_a{ 0.0, 0.0 };
+  const Series saturation_b{ -1.0, 1.0 };
+  constexpr double exact_saturation_bound = 2.0;
+  const auto saturation_at_n_minus_one =
+    evaluate_bounds(saturation_a, saturation_b, radius_n_minus_one);
+  const auto saturation_at_n =
+    evaluate_bounds(saturation_a, saturation_b, radius_n);
+  const auto saturation_at_intmax =
+    evaluate_bounds(saturation_a, saturation_b, INT_MAX);
+
+  REQUIRE(saturation_at_n_minus_one.webb_l1 == exact_saturation_bound);
+  REQUIRE(saturation_at_n.webb_l1 == exact_saturation_bound);
+  REQUIRE(saturation_at_intmax.webb_l1 == exact_saturation_bound);
+  REQUIRE(saturation_at_n_minus_one.webb_squared == exact_saturation_bound);
+  REQUIRE(saturation_at_n.webb_squared == exact_saturation_bound);
+  REQUIRE(saturation_at_intmax.webb_squared == exact_saturation_bound);
+
   std::cout
     << "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 "
        "admissible=2/2 skips=0 verdict=PASS\n";
