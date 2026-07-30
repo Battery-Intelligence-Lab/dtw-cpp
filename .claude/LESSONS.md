@@ -11,13 +11,73 @@ Critical knowledge to avoid repeating mistakes.
   matrix; what cannot be transferred automatically are metric-only
   approximation or integrality-gap results.
 - **DTW-AROW ≠ zero-cost DTW.** AROW constrains missing values to diagonal alignment.
-- **LB_Keogh valid only for L1 and squared L2.** Not cosine or Huber.
+- **LB_Keogh admissibility is a domain contract, not just a metric name.**
+  For finite scalar inputs and a centered envelope whose radius covers the
+  actual fixed DTW window, the projection sum is admissible for additive L1
+  and unrooted squared-L2 objectives. Coordinatewise boxes extend that proof
+  to dependent additive multivariate DTW; summing the scalar proofs extends it
+  to independent additive DTW. It does not prove the shared-path multivariate
+  Euclidean, cosine, or Huber forms, and a negative helper band is radius zero,
+  not a full-DTW envelope.
 - **LB_Webb ≥ LB_Keogh ALWAYS; LB_Webb ≥ LB_Improved is NOT guaranteed** (Webb & Petitjean 2021: tighter on 47 UCR sets, looser on 13). LB_Petitjean is the one that dominates LB_Improved; LB_Webb is its projection-free approximation. Test `Webb ≥ Keogh`, never `Webb ≥ Improved`.
 - **LB_Enhanced is NOT provably ≥ LB_Keogh** (SDM 2019 — the column arm δ(A[j],B[i]) can undercut the Keogh term at a position; the win is empirical/on-average). Its gain GROWS with band width (measured +3.3% at 10% band → +10.9% at 40%): it is the WIDE-band tool. Assert only validity; in a cascade take max over bounds so a looser Enhanced never regresses.
 - **A DTW lower bound cannot reduce DTW calls when building an EXACT full distance matrix.** LBs skip work only where the exact value is not needed (NN-search: skip if LB ≥ best-so-far). An exact matrix needs every entry, so a tighter LB (Webb/Enhanced) buys nothing there — its value is for NN/query paths and for pair-skipping density pruning (TADPole). Exact-matrix speedups come from cell-pruning (PrunedDTW/EAPruned, returns exact), not from tighter bounds.
 - **LB/UB pair-skip pruning needs a density/NN consumer — k-medoids, MIP and LR-core are NOT it** (they read essentially the whole N×N matrix: `fast_pam_swap` fills it and the SWAP loop reads every candidate pair). That is WHY TADPole (Task 5.3) is a NEW `Method` (density-peaks clustering), not an accelerator bolted onto the existing methods. The prunable step is the cutoff-kernel density `ρ_i=|{j: d<dc}|` (binary "d<dc" test) + the δ nearest-higher-density search. Cutoff kernel only — the Gaussian ρ=Σexp(−(d/dc)²) needs every exact distance and cannot prune.
-- **TADPole's δ(global densest point) = max of all OTHER points' δ (Begum Table 2), NOT Rodriguez–Laio's max_j d(densest,j).** Use TADPole's convention or the highest-density point's γ=ρ·δ (hence its center-selection) diverges. Also fix a strict total order for ρ-ties (ρ desc, index asc) or δ/parents/labels are nondeterministic — the "identical to brute force" guarantee assumes identical inputs incl. tie policy.
+- **TADPole's δ(global densest point) = max of all OTHER points' δ (Begum Table 2), NOT Rodriguez–Laio's max_j d(densest,j).** Use TADPole's convention or the highest-density point's γ=ρ·δ (hence its center-selection) diverges. Also fix a strict total order for ρ-ties (ρ desc, index asc) or δ/parents/labels are nondeterministic. Exact arithmetic preserves prune/brute decisions in the D2 domain and the exactly representable regression confirms that case; bit-level identity at a floating threshold remains D17.
 - **`compute_envelopes(series, band<0)` gives the band-0 envelope (= the series itself), NOT a full-warp envelope.** It does `w = max(band,0)`, so passing `band=-1` (full DTW) yields `LB_Keogh = Σ|q−s| = ED ≥ full-DTW` — an INVALID lower bound (prunes true neighbours). For full DTW pass a window ≥ series length (global min/max envelope) to get a valid weak LB. Cost TADPole a wrong-ρ bug in review; caught before merge by the LB≤DTW bounds test.
+- **A lower bound's provenance is part of its value.** A bare pair of
+  upper/lower vectors does not say which source, metric units, radius/full
+  mode, or length produced it. Shape-correct arrays from a narrower window can
+  make flawless LB_Keogh algebra inadmissible; truncating to the shortest
+  vector merely hides the contract breach. Carry and validate provenance at
+  the public boundary, then keep unchecked pointer kernels internal (F46).
+- **Metric compatibility traits must test units, not family names.** Scalar L2
+  is `|a-b|`, but unrooted squared L2 is `(a-b)^2`; advertising one raw
+  absolute-value LB_Kim implementation for both makes `0.5` a claimed lower
+  bound on a true squared cost of `0.25`. A compile-time “valid” trait is a
+  scientific claim and needs a metric-discriminating executable fixture (F47).
+- **A zero pruning count does not prove a pruning stage ran.** The safe
+  full-DTW TADPole fixture and a disabled LB both report zero decisions. Pair
+  it with a separated-range case that must prune: the joint `(0,1)` fingerprint
+  distinguishes disabled, unsafe radius-zero, and correct global-envelope
+  implementations. Reachability needs both a negative and a positive control.
+- **Admissibility does not imply tightness or a prune rate.** From
+  `LB <= d` and `d >= dc` one cannot infer `LB >= dc`; a valid weak bound may
+  clear no thresholds. Register an executed decision count or bound-gap
+  distribution before claiming work reduction.
+- **A bound-decision counter is not automatically an avoided-work counter.**
+  TADPole deliberately pre-triggers pair `(0,1)` to bind its lazy distance
+  function before parallel work. That pair can later increment
+  `pruned_by_lb` even though its DTW was already computed. `pruned_by_lb` and
+  `pruned_by_ub` count density decisions; only the deduplicated `dtw_calls`
+  ledger can support an avoided-work claim.
+- **Additive multivariate objectives need a unit model.** Summing channels is
+  dimensionally meaningful only when they share a commensurate unit or have
+  been scaled/nondimensionalized. A correct coordinatewise inequality does
+  not license a single `U`/`U^2` ledger for raw heterogeneous physical units.
+- **Re-run counterexamples after changing upstream geometry.** F29's inherited
+  unequal-length band-zero fixture stopped being a finite-DTW case when D1
+  repaired the window to `|i-j| <= band`. The old narrative was not evidence:
+  an explicit path arbiter showed prefix LB_Keogh is admissible for every
+  registered feasible fixed window. A killed premise must be replaced by a
+  feasible discriminator, never carried forward by name.
+- **Bound shortcuts must share the exact distance's empty/no-path domain.**
+  Returning zero from an empty envelope or diagonal upper bound while exact
+  DTW returns the maximum sentinel changes TADPole neighbour and medoid
+  decisions. Either reject empty series once or bypass every shortcut under
+  one documented policy; mixing local “harmless” empty defaults is unsafe
+  (F48).
+- **Published caches must bind every computation parameter.** A helper that
+  accepts a band independent of `Problem::band()` can compute under one window
+  and publish into a cache whose validity snapshot names another. Reject the
+  mismatch before the first write or remove the redundant parameter; output
+  equality on easy fixtures cannot establish provenance (F49).
+- **Clamp logical full windows before device integer arithmetic.** A public
+  `INT_MAX` radius is semantically just global coverage, but evaluating
+  `k+w+1` in signed GPU-kernel arithmetic can overflow before clipping. Clamp
+  on the host to `max_length-1`, validate narrowing, and execute the extreme
+  case on the real backend; source inspection alone cannot assert the wrapped
+  numeric result (F50).
 - **WDTW/ADTW/DDTW/Soft-DTW are distinct recurrence/cost policies, not metric swaps.** They share the unified kernel family, but each still changes DTW semantics in a real way.
 - **EAPruned (exact cell-pruning) needs a RELAXED prune threshold under the Clang/GCC Release reassociation flag set.** **[confirmed]** The historical randomized gate recorded a no-slack threshold returning +inf on approximately 1/200 pairs (`.claude/baselines/2026-07-08-eap.md`); the retained fix prunes against `thr = ub·(1 + n_long·16·ε)`, and relaxing a pruning threshold only adds computed cells. **[inferred]** The likely mechanism is association/rounding disagreement between the DP sum and diagonal-UB sum: the build permits reassociation through `-fassociative-math` together with `-fno-signed-zeros` and `-fno-trapping-math`, but no exact failing bytes or flag-ablation artifact survives to prove causation. The factor 16 is regression-tested, not a proved worst-case bound; its derivation remains PLAN R2-D4. The build is not `-ffast-math`: `cmake/StandardProjectSettings.cmake` supplies an explicit flag set without `-ffinite-math-only`, and `dtwc/CMakeLists.txt` adds `-fno-finite-math-only` to `dtwc++`.
 - **EAPruned's exact-matrix speedup is data-cohesion-dependent, NOT a flat multiplier.** With a diagonal UB and no NN cutoff (all-pairs exact), pruning is heavy only for near-diagonal pairs (DTW ≈ Euclidean): near-diagonal 6–12×, mild-warp 5–10×, but UNRELATED cross-cluster pairs prune ~nothing (~98% cells) and get only ~1.5× (from the leaner inner loop, not pruning). So a cohesive dataset (many within-cluster pairs) speeds the matrix build a lot; an incoherent one barely. The paper's headline 2.88× is NN-search with a tightening cutoff — a DIFFERENT regime; do not register it as the exact-matrix band. Never slower than plain DP in any measured case.
@@ -327,7 +387,9 @@ Critical knowledge to avoid repeating mistakes.
   exposes widened `FLT_MAX`, not the backend-independent public `DBL_MAX`
   contract. Centralize exact sentinel translation in the result-copy boundary
   and test exact equality; `isfinite`, positivity, and approximate comparison
-  all accept the wrong value.
+  all accept the wrong value. The same translation applies to threshold-pruned
+  GPU pairs: their public result is finite `DBL_MAX`, not `+inf`; documentation
+  and bindings must not promise an IEEE infinity that the API never returns.
 - **A maximum finite value cannot double as “no best result yet.”** A valid
   assignment distance or objective may be exact finite `DBL_MAX`; initializing
   `best = DBL_MAX` and later testing `best == DBL_MAX` therefore collides with

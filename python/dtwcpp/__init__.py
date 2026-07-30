@@ -255,7 +255,12 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
     metric : str, default='l1'
         Distance metric: 'l1' or 'squared_euclidean'.
     use_pruning : bool, default=True
-        Use LB_Keogh pruning (CPU only).
+        Select the legacy CPU LB-guided exact-matrix path for L1. LB_Kim and,
+        when ``band >= 0``, LB_Keogh can select an early-abandon cutoff, but an
+        abandoned pair is recomputed without a cutoff because every matrix
+        entry is required. Thus this is not a speed guarantee. ``band=-1``
+        disables LB_Keogh; squared Euclidean uses the direct exact path. GPU
+        backends have separate lower-bound options.
     device : str or None, default=None
         Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', or 'cuda:N'. ``None`` uses
         the global default set via :func:`device` (itself 'cpu' unless changed).

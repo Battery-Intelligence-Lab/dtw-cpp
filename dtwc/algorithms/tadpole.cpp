@@ -1,12 +1,15 @@
 /**
  * @file tadpole.cpp
- * @brief TADPole density-peaks clustering with admissible DTW pruning.
+ * @brief TADPole density-peaks clustering with conditionally admissible DTW pruning.
  *
  * @details Implements dtwc::algorithms::tadpole (see tadpole.hpp). Algorithm and
  *   pruning follow Begum, Ulanova, Dau, Wang & Keogh, arXiv:1612.00637 (extended
  *   TADPole / KDD 2015), density-peaks core from Rodriguez & Laio, *Science* 2014.
  *
- *   ── Pruning admissibility (why labels are provably identical to brute force) ──
+ *   ── Pruning admissibility inside the supported finite/nonempty domain ──
+ *   For finite, nonempty, equal-length Standard-L1 univariate series whose
+ *   length fits the integer band API, the following decisions preserve the
+ *   brute-force result.
  *   ρ_i uses the CUTOFF kernel ρ_i = |{ j≠i : d(i,j) < dc }| — a binary "d<dc"
  *   test per pair. With LB ≤ d ≤ UB:
  *     • LB ≥ dc  ⇒ d ≥ dc ⇒ NOT (d<dc)              → not a neighbour, skip DTW
@@ -16,8 +19,12 @@
  *   (d ≥ LB ≥ dc) and agrees with the brute path's strict `d < dc`. The δ step
  *   prunes a candidate q when LB(i,q) ≥ best-so-far (Begum Table 7): d(i,q) ≥ LB ≥
  *   best ⇒ q cannot lower the running minimum, so skipping it cannot change δ_i or
- *   the parent. The `prune` flag toggles ONLY whether these skips fire; every ρ,
- *   δ, γ-ranking and assignment decision is bit-for-bit the same either way.
+ *   the parent. In exact arithmetic those decisions preserve the brute-force
+ *   result; the permanent exactly representable regression confirms that
+ *   regime. Bit-level identity when a floating reduction lands near `dc` or
+ *   `best` remains D17. Empty series are outside the guarantee (F48), and the
+ *   configuration predicate does not yet validate finiteness or integer length
+ *   representability (F46).
  *
  * @author Volkan Kumtepeli
  * @date 8 Jul 2026
@@ -44,9 +51,11 @@ namespace algorithms {
 
 namespace {
 
-/// True when LB_Keogh + the Euclidean upper bound are provably valid for prob's
-/// DTW: plain Standard DTW, univariate, no NaN handling — the case where the
-/// dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp make_standard).
+/// Configuration-only predicate for the regime where LB_Keogh + the diagonal L1
+/// upper bound can be valid: plain Standard DTW, univariate, no NaN handling —
+/// the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
+/// make_standard). It does not inspect samples for finiteness or check that a
+/// series length fits the integer envelope-radius API (F46).
 bool bounds_valid(const Problem &prob)
 {
   return prob.variant_params.variant == core::DTWVariant::Standard

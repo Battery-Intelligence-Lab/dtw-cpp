@@ -107,4 +107,14 @@ Below this threshold the CPU routes return the finite no-path sentinel `numeric_
 
 Widening the window only adds admissible paths. Therefore the exact banded value is non-increasing in $$w$$ and is always at least the full-DTW value. A narrower band can reduce work, but it can also increase the dissimilarity or eliminate every path; choose it from the timing variation allowed by the application. The fixed-window definition and endpoint conditions come from [Sakoe and Chiba (1978)](https://doi.org/10.1109/TASSP.1978.1163055).
 
-Cross-backend parity remains open under finding F12. CUDA source currently uses an endpoint-scaled corridor rather than the fixed window above. Metal source uses fixed geometry, but its double-returning no-path route widens `FLT_MAX` rather than returning the CPU `DBL_MAX` sentinel. Until executable backend gates close F12, the exact geometry and sentinel in this section describe the CPU routes.
+CUDA's fixed-window geometry and public no-path sentinel are confirmed on the
+local RTX. Its registered real-device gate covers pairwise and one/K-vs-N
+kernel families, both singleton orientations, infeasible windows, and
+`INT_MAX`.
+
+Metal source implements the same fixed geometry and sentinel translation, but
+real-device execution remains `[BLOCKED-ENV]` under F12. The permanent Metal
+gate contains the independent oracle, but this Windows host cannot compile or
+execute the Objective-C++/Metal path. Thus the contract above is executable
+evidence for CPU and CUDA, source-confirmed for Metal, and still awaiting an
+Apple-device parity result.

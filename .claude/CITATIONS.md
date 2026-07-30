@@ -25,10 +25,50 @@ References used during development. Verify each citation independently before pu
 
 ## Lower Bounds and Fast DTW
 
-- Keogh, E. & Ratanamahatana, C. A. (2005). Exact Indexing of Dynamic Time Warping. *Knowledge and Information Systems*, 7(3), 358-386.
-- Kim, S.-W., Park, S., & Chu, W. W. (2001). An Index-Based Approach for Similarity Search Supporting Time Warping in Large Sequence Databases. *ICDE 2001*, 607-614.
-- Rakthanmanon, T. et al. (2012). Searching and Mining Trillions of Time Series Subsequences under Dynamic Time Warping. *ACM SIGKDD*, 262-270.
-- Lemire, D. (2009). Faster retrieval with a two-pass dynamic-time-warping lower bound. *Pattern Recognition*, 42(9), 2169-2180.
+- Keogh, E. & Ratanamahatana, C. A. (2005). Exact Indexing of
+  Dynamic Time Warping. *Knowledge and Information Systems*, 7(3), 358–386.
+  https://doi.org/10.1007/s10115-004-0154-9; author-hosted full paper
+  accessed 2026-07-30:
+  https://www.cs.ucr.edu/~eamonn/KAIS_2004_warping.pdf —
+  **[confirmed]** Equations (6)–(7) define the upper/lower envelope, and
+  Proposition 1 proves `LB_Keogh(Q,C) <= DTW(Q,C)` for sequences of the same
+  length under a global window `j-r <= i <= j+r`. The paper uses squared
+  point contributions and takes a square root for both distances. It is not
+  cited as a verbatim source for DTWC++'s L1, unrooted-squared,
+  unequal-prefix, symmetric-maximum, or multivariate extensions; those are
+  derived in D2.
+- Kim, S.-W., Park, S., & Chu, W. W. (2001). An Index-Based Approach for
+  Similarity Search Supporting Time Warping in Large Sequence Databases.
+  *Proceedings of the 17th International Conference on Data Engineering*,
+  607–614. https://doi.org/10.1109/ICDE.2001.914875 —
+  **[confirmed]** The bibliographic metadata, DOI, and closed-access status
+  were verified through DBLP on 2026-07-30. **[inferred]** Formula-level
+  compatibility with DTWC++: the closed/paywalled full text was not accessed,
+  so this citation does not prove that either current `lb_kim` overload
+  matches the paper's objective or units. Rakthanmanon et al. independently
+  describe the original four-feature bound and their reduced endpoint-only
+  `LB_KimFL`.
+- Rakthanmanon, T., Campana, B., Mueen, A., Batista, G. E. A. P. A.,
+  Westover, M. B., Zhu, Q., Zakaria, J., & Keogh, E. (2012). Searching and
+  Mining Trillions of Time Series Subsequences under Dynamic Time Warping.
+  *ACM SIGKDD*, 262–270. https://doi.org/10.1145/2339530.2339576;
+  author-hosted full paper accessed 2026-07-30:
+  https://www.cs.ucr.edu/~eamonn/SIGKDD_trillion.pdf —
+  **[confirmed]** The UCR Suite uses squared contributions for normalized,
+  equal-length subsequence search, reverses the query/candidate roles only
+  after the first envelope bound fails to prune, and then uses the maximum of
+  the two directional LB_Keogh values. This is not a source for DTWC++'s L1
+  or unequal-length extensions.
+- Lemire, D. (2006). Streaming Maximum-Minimum Filter Using No More Than
+  Three Comparisons per Element. *Nordic Journal of Computing*, 13(4),
+  328–339. https://arxiv.org/abs/cs/0610046 —
+  **[confirmed]** Full arXiv record and paper accessed 2026-07-30. Source for
+  the monotone-deque running extrema algorithm used by envelope construction,
+  not for LB_Keogh admissibility.
+- Lemire, D. (2009). Faster retrieval with a two-pass dynamic-time-warping
+  lower bound. *Pattern Recognition*, 42(9), 2169–2180. — Source for the
+  distinct two-pass LB_Improved result; do not conflate it with the 2006
+  streaming maximum-minimum filter.
 
 ## DTW Variants
 

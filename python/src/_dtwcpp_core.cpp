@@ -988,8 +988,9 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
 
       if (use_pruning && (mt == dtwc::core::MetricType::L1 || mt == dtwc::core::MetricType::L2)) {
-        // LB-pruned version: precomputes envelopes + summaries,
-        // uses early-abandon DTW guided by LB_Kim / LB_Keogh thresholds.
+        // Legacy LB-guided exact-matrix route. LB_Kim, and LB_Keogh only for
+        // band >= 0, can select a cutoff attempt. A cutoff result is recomputed
+        // without early abandon because every matrix entry is required.
         dtwc::core::compute_distance_matrix_pruned(series, ptr, band, mt);
       } else {
         // Standard unpruned version (for non-L1 metrics or when pruning disabled).
@@ -1016,9 +1017,12 @@ NB_MODULE(_dtwcpp_core, m) {
   }, "series"_a, "band"_a = -1, "metric"_a = "l1", "use_pruning"_a = true,
      "Compute pairwise DTW distance matrix entirely in C++.\n\n"
      "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
-     "When use_pruning=True (default), uses LB_Kim and LB_Keogh lower\n"
-     "bounds with early-abandon DTW for faster computation (L1 metric only).\n"
-     "Much faster than calling dtw_distance in a Python loop.");
+     "For L1 (and the core's equivalent scalar L2), use_pruning=True\n"
+     "selects the legacy LB-guided exact-matrix path.\n"
+     "band=-1 disables LB_Keogh. Every early-abandoned pair is\n"
+     "recomputed without a cutoff; this option is not a speed guarantee.\n"
+     "Squared Euclidean uses the direct exact path.\n"
+     "This avoids a Python-level pair loop.");
 
   // =========================================================================
   // FastPAM
@@ -1317,8 +1321,9 @@ NB_MODULE(_dtwcpp_core, m) {
         "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
         "Returns NxN numpy array of DTW distances.\n"
-        "When `use_lb_keogh=True` and `lb_threshold > 0`, pairs whose LB_Keogh\n"
-        "lower bound exceeds `lb_threshold` are pruned (+inf in result).");
+        "When `use_lb_keogh=True`, `band >= 0`, and `lb_threshold > 0`, pairs\n"
+        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned (finite\n"
+        "double-max sentinel in result, not IEEE infinity).");
 
   m.def("compute_lb_keogh_cuda",
         [](const std::vector<std::vector<double>> &series,
@@ -1403,7 +1408,8 @@ NB_MODULE(_dtwcpp_core, m) {
         "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
         "Returns NxN numpy array of DTW distances. Pairs whose LB_Keogh lower\n"
-        "bound exceeds `lb_threshold` are pruned (result entry +inf) when\n"
+        "bound exceeds `lb_threshold` are pruned (finite double-max result\n"
+        "sentinel, not IEEE infinity) when\n"
         "`use_lb_keogh=True` on a wavefront dispatch path.");
 
   m.attr("METAL_AVAILABLE") = true;

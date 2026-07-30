@@ -8,6 +8,7 @@ present. Remaining targets are tracked in `PLAN.md` Phase R2.
 | ID | Topic | File | Verdict |
 |---|---|---|---|
 | D1 | DTW recurrence and Sakoe–Chiba adjustment window | [01-dtw-recurrence-sakoe-chiba.md](01-dtw-recurrence-sakoe-chiba.md) | CPU **CONFIRMED**; real-CUDA **CONFIRMED**; Metal source **CONFIRMED**, real-device execution **DISCREPANCY** F12 (`[BLOCKED-ENV]`) |
+| D2 | Envelopes and LB_Keogh admissibility | [02-envelopes-lb-keogh.md](02-envelopes-lb-keogh.md) | Scalar CPU L1/squared, feasible unequal prefix, and additive dependent/independent MV **CONFIRMED**; API/metric/domain/provenance **DISCREPANCY** F46–F49; GPU **DISCREPANCY/OPEN** F27–F30/F50 |
 
 Verdict meanings:
 

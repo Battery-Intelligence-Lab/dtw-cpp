@@ -95,8 +95,8 @@ kernel void dtw_wavefront(
   const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
   // Pruning path: resolve the work index through the compacted pair list so
-  // we only touch active pairs (pruned pairs have their +∞ already stamped
-  // by compact_active_pairs).
+  // we only touch active pairs (pruned pairs already carry the
+  // finite FLT_MAX device sentinel written by compact_active_pairs).
   const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
   long a_idx, b_idx;
@@ -865,8 +865,8 @@ kernel void dtw_regtile_w8(
 // ---------------------------------------------------------------------------
 
 // One threadgroup per series. Each thread covers ceil(max_L / ntids) positions.
-// Brute-force O(band) scan per position; simple and cache-friendly for the
-// small bands used in practice.
+// Each position scans at most min(L, 2*band+1) values; radius zero still costs
+// O(1) per element.
 kernel void compute_envelopes(
     device const float*   all_series      [[buffer(0)]],
     device const int*     lengths         [[buffer(1)]],
@@ -955,8 +955,8 @@ kernel void compute_lb_keogh(
 }
 
 // One thread per pair. Partitions pairs into active (lb <= threshold, appended
-// to active_pairs via atomic counter) and pruned (+∞ stamped into
-// result_matrix at both (si, sj) and (sj, si)).
+// to active_pairs via atomic counter) and pruned (the finite FLT_MAX device
+// sentinel is written to result_matrix at both (si, sj) and (sj, si)).
 kernel void compact_active_pairs(
     device const float*   lb_values     [[buffer(0)]],
     device int*           active_pairs  [[buffer(1)]],
@@ -1486,9 +1486,9 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     // -----------------------------------------------------------------------
     // Optional LB_Keogh pre-pass: compute envelopes, pairwise lower bounds,
-    // and compact pairs whose LB <= threshold. Pruned pairs get +∞ stamped
-    // into the result matrix here; the DTW dispatch below then runs only on
-    // the survivor list (passed via pair_indices[work_idx]).
+    // and compact pairs whose LB <= threshold. Pruned pairs get the
+    // finite FLT_MAX device sentinel here; normalized to public double-max on copy.
+    // the DTW dispatch below then runs only on the survivor list.
     //
     // Only wavefront / wavefront_global kernels support pair_indices in this
     // pass. If user requested LB but selected banded_row/regtile, we silently
@@ -1612,7 +1612,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           }
         }
 
-        // 3. Compact (stamp +∞ for pruned, atomic-append active pids).
+        // 3. Compact (stamp FLT_MAX for pruned, atomic-append active pids).
         {
           id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
           id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
@@ -1788,7 +1788,7 @@ MetalDistMatResult compute_distance_matrix_metal(
 
 // ---------------------------------------------------------------------------
 // Standalone LB_Keogh for all N*(N-1)/2 pairs. Mirrors
-// cuda::compute_lb_keogh_cuda — no DTW dispatch, no thresholding, no +∞
+// cuda::compute_lb_keogh_cuda — no DTW dispatch or threshold-result sentinel
 // stamping; just upload series, run envelope + LB kernels, download values.
 // ---------------------------------------------------------------------------
 MetalLBResult compute_lb_keogh_metal(

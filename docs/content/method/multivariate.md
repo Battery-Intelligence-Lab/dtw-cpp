@@ -149,12 +149,51 @@ double lb_squared = dtwc::core::lb_keogh_mv_squared(
     query_ptr, n_steps, ndim, upper.data(), lower.data());
 ```
 
-The implemented bound is scoped to equal-length dependent DTW with additive
-L1 or squared-L2 costs. The envelope window must cover the DTW window; an
-unbanded DTW therefore needs a full-width admissible envelope. A thresholded
-search can reject a candidate when the bound exceeds its cutoff, but an exact
-distance matrix still has to compute and store every requested finite
-distance.
+For each timestep, the per-channel intervals form an axis-aligned box. With
+$$p=1$$ for additive L1 and $$p=2$$ for additive squared L2, the primitive
+computes
+
+$$
+\sum_i\sum_d \delta(x_{i,d};L_{i,d},U_{i,d})^p,
+$$
+
+where $$\delta$$ is the distance to an interval. Every candidate vector
+aligned to row $$i$$ lies inside that box coordinate by coordinate, so this
+sum is no larger than one aligned path-cell cost. Charging distinct rows to
+distinct path cells proves the bound. This coordinatewise box argument is a
+DTWC++ extension; the original Keogh proposition is scalar and same-length.
+
+The result has units $$U$$ for L1 and $$U^2$$ for unrooted squared L2. It does
+not establish a bound for multivariate Euclidean `MVL2Dist`, whose square root
+couples channels.
+
+That unit ledger assumes channels share a commensurate unit after scaling or
+nondimensionalization. An unweighted sum of raw heterogeneous physical units
+has no single physical unit and is outside this contract.
+
+For independent DTW, each channel is allowed to choose a different path.
+Apply the scalar envelope proof to each channel's own minimum and then sum the
+channel bounds. The same primitive is therefore admissible when the
+independent objective is the additive sum of per-channel L1 or squared-L2 DTW
+values and each envelope covers that channel's fixed window. The D2
+opposite-warp discriminator reports bound `3/3`, independent objectives
+`4/4`, and shared-path dependent objectives `8/20` in L1/squared units; the
+last pair prevents a dependent computation from posing as the independent
+arbiter.
+
+The envelope radius must cover the fixed DTW radius. Full DTW needs the
+per-channel global minima and maxima at every row; passing a negative band to
+`compute_envelopes_mv` instead produces radius-zero envelopes. Mathematically,
+the row-charging proof also permits the first `min(n,m)` rows of a feasible
+unequal-length fixed-window problem. The current raw-pointer API does not carry
+candidate length, envelope length, or radius provenance, however, so it cannot
+validate that use; F46 owns the safe public shape and coverage contract.
+
+A thresholded search can reject a candidate only when these assumptions hold
+and the bound exceeds its cutoff. An exact distance matrix still has to compute
+and store every requested finite distance. See the
+[D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md)
+for the scalar, prefix, and both multivariate proofs.
 
 ## `Problem` dispatch
 

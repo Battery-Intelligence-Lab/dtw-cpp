@@ -48,6 +48,27 @@ def compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def braced_body(source: str, signature: str, label: str) -> str:
+    """Return one source body so implementation guards cannot match comments."""
+    start = source.find(signature)
+    if start < 0:
+        raise AssertionError(f"cannot locate {label} signature")
+    opening = source.find("{", start + len(signature))
+    if opening < 0:
+        raise AssertionError(f"cannot locate {label} opening brace")
+
+    depth = 0
+    for pos in range(opening, len(source)):
+        char = source[pos]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[opening + 1:pos]
+    raise AssertionError(f"cannot locate {label} closing brace")
+
+
 def assert_freeze_governance() -> None:
     status = (ROOT / "docs/api-contract-2.0.md").read_text(
         encoding="utf-8"
@@ -356,8 +377,9 @@ def assert_dtw_derivation_sync() -> None:
             "not a metric",
             "non-increasing",
             "CPU routes",
-            "finding F12",
-            "CUDA source currently uses an endpoint-scaled corridor",
+            "CUDA's fixed-window geometry and public no-path sentinel are confirmed on the local RTX.",
+            "Metal source implements the same fixed geometry and sentinel translation",
+            "`[BLOCKED-ENV]` under F12",
         ),
         "citations": (
             "10.1109/TASSP.1978.1163055",
@@ -381,7 +403,11 @@ def assert_dtw_derivation_sync() -> None:
         ),
     }
     drift = {
-        name: [marker for marker in markers if marker not in text[name]]
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(text[name])
+        ]
         for name, markers in required.items()
     }
     drift = {name: markers for name, markers in drift.items() if markers}
@@ -402,11 +428,545 @@ def assert_dtw_derivation_sync() -> None:
     broken_table_math = [
         line
         for line in text["derivation"].splitlines()
-        if line.startswith("|") and ("$|" in line or "|$" in line)
+        if line.lstrip().startswith("|") and ("$|" in line or "|$" in line)
     ]
     if broken_table_math:
         raise AssertionError(
             f"D1 derivation drift: raw table math pipes {broken_table_math}"
+        )
+
+
+def assert_lb_keogh_derivation_sync() -> None:
+    paths = {
+        "derivation": ROOT / "docs/derivations/02-envelopes-lb-keogh.md",
+        "index": ROOT / "docs/derivations/README.md",
+        "citations": ROOT / ".claude/CITATIONS.md",
+        "lessons": ROOT / ".claude/LESSONS.md",
+        "gpu_site": ROOT / "docs/content/method/gpu-backends.md",
+        "metrics_site": ROOT / "docs/content/method/metrics.md",
+        "multivariate_site": ROOT / "docs/content/method/multivariate.md",
+        "algorithms_site": ROOT / "docs/content/method/algorithms.md",
+        "dtw_site": ROOT / "docs/content/method/dtw.md",
+        "python_site": ROOT / "docs/content/getting-started/python.md",
+        "python_api": ROOT / "python/dtwcpp/__init__.py",
+        "python_binding": ROOT / "python/src/_dtwcpp_core.cpp",
+        "method_enum": ROOT / "dtwc/enums/Method.hpp",
+        "cli_source": ROOT / "dtwc/dtwc_cl.cpp",
+        "lower_bound_api": ROOT / "dtwc/core/lower_bounds.hpp",
+        "lower_bound": ROOT / "dtwc/core/lower_bound_impl.hpp",
+        "cuda_header": ROOT / "dtwc/cuda/cuda_dtw.cuh",
+        "cuda_source": ROOT / "dtwc/cuda/cuda_dtw.cu",
+        "metal_source": ROOT / "dtwc/metal/metal_dtw.mm",
+        "public_distance": ROOT / "dtwc/core/public_distance.hpp",
+        "pruned_header": ROOT / "dtwc/core/pruned_distance_matrix.hpp",
+        "pruned_source": ROOT / "dtwc/core/pruned_distance_matrix.cpp",
+        "tadpole": ROOT / "dtwc/algorithms/tadpole.cpp",
+        "tadpole_header": ROOT / "dtwc/algorithms/tadpole.hpp",
+        "changelog": ROOT / "CHANGELOG.md",
+        "oracle": (
+            ROOT / "tests/unit/adversarial/test_lb_keogh_derivation.cpp"
+        ),
+        "ctest": ROOT / "tests/CMakeLists.txt",
+        "baseline": ROOT / ".claude/baselines/2026-07-30-d2-lb-keogh.md",
+    }
+    missing_paths = [
+        str(path.relative_to(ROOT))
+        for path in paths.values()
+        if not path.is_file()
+    ]
+    if missing_paths:
+        raise AssertionError(f"D2 derivation drift: missing files {missing_paths}")
+
+    text = {
+        name: path.read_text(encoding="utf-8")
+        for name, path in paths.items()
+    }
+    required = {
+        "derivation": (
+            "# D2 — envelopes and LB_Keogh admissibility",
+            "Proposition 1",
+            "`r >= w`",
+            "`w >= |n-m|`",
+            "$U^2$",
+            "Their sum is not generally admissible",
+            "## Unequal-length prefix theorem",
+            "No approximation is used",
+            "## Full-DTW call sites",
+            "## The negative-band discrepancy",
+            "## Executable oracle",
+            "## Code-conformance table",
+            "direct $\\Theta(m\\min(m,2r+1))$ extrema scans",
+            "CUDA `dtwc/cuda/cuda_dtw.cu:782-813`",
+            "`dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224`",
+            "`dtwc/core/lower_bound_impl.hpp:419-527,593-611`",
+            "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
+            "All tests passed (65 assertions in 1 test case)",
+            "2,004",
+            "28,602",
+            "17,712",
+            "`min(n,m)`",
+            "channels share a commensurate unit $U$",
+            "Raw heterogeneous physical units require an explicit scaling/weighting model",
+            "Independent DTW allows each channel",
+            "production multivariate bounds are `3 U` and `3 U^2`",
+            "**DISCREPANCY** F46",
+            "**DISCREPANCY** F47",
+            "**DISCREPANCY** F30: requests can silently disable or fall back",
+            "`dtwc/metal/metal_dtw.mm:1512-1515`",
+            "TADPole's empty domain is **DISCREPANCY** F48",
+            "direct-call band/cache provenance is **DISCREPANCY** F49",
+            "**DISCREPANCY** F50",
+            "D17",
+        ),
+        "index": (
+            "02-envelopes-lb-keogh.md",
+            "Scalar CPU L1/squared, feasible unequal prefix, and additive dependent/independent MV **CONFIRMED**",
+            "API/metric/domain/provenance **DISCREPANCY** F46–F49",
+            "GPU **DISCREPANCY/OPEN** F27–F30/F50",
+        ),
+        "citations": (
+            "10.1007/s10115-004-0154-9",
+            "KAIS_2004_warping.pdf",
+            "Proposition 1",
+            "sequences of the same length",
+            "10.1109/ICDE.2001.914875",
+            "closed/paywalled full text was not accessed",
+            "**[inferred]** Formula-level compatibility",
+            "10.1145/2339530.2339576",
+            "SIGKDD_trillion.pdf",
+            "normalized, equal-length subsequence search",
+            "https://arxiv.org/abs/cs/0610046",
+            "monotone-deque running extrema algorithm",
+            "distinct two-pass LB_Improved result",
+        ),
+        "gpu_site": (
+            "envelope coverage—not equality—is the admissibility condition",
+            "`r >= w`",
+            "summing only the first `min(n,m)` query rows is still admissible",
+            "Full DTW requires the global envelope",
+            "Only when the bound is admissible does `LB > threshold` certify",
+            "`numeric_limits<double>::max()`",
+            "not IEEE infinity",
+            "exact-arithmetic-admissible Metal",
+        ),
+        "lessons": (
+            "LB_Keogh admissibility is a domain contract",
+            "centered envelope whose radius covers the actual fixed DTW window",
+            "shared-path multivariate Euclidean, cosine, or Huber",
+            "Admissibility does not imply tightness or a prune rate",
+            "A bound-decision counter is not automatically an avoided-work counter",
+            "Additive multivariate objectives need a unit model",
+            "bit-level identity at a floating threshold remains D17",
+        ),
+        "metrics_site": (
+            "unrooted squared-L2 bound squares each excess and has units `U^2`",
+            "require finite input samples and ordered finite envelope bounds",
+            "F47",
+        ),
+        "multivariate_site": (
+            "coordinatewise box argument is a DTWC++ extension",
+            "original Keogh proposition is scalar and same-length",
+            "channels share a commensurate unit after scaling or nondimensionalization",
+            "For independent DTW",
+            "independent objectives `4/4`",
+            "both multivariate proofs",
+        ),
+        "algorithms_site": (
+            "For finite, nonempty, equal-length Standard-L1 pairs",
+            "representable by the integer band API",
+            "TADPole constructs a global-minimum/global-maximum envelope",
+            "exactly representable regression confirms that regime",
+            "threshold analysis remains D17",
+            "F48",
+        ),
+        "dtw_site": (
+            "CUDA's fixed-window geometry and public no-path sentinel are confirmed on the local RTX.",
+            "Metal source implements the same fixed geometry and sentinel translation",
+            "`[BLOCKED-ENV]` under F12",
+        ),
+        "python_site": (
+            "legacy CPU LB-guided exact-matrix path",
+            "`band=-1` disables LB_Keogh",
+            "recomputed",
+        ),
+        "python_api": (
+            "legacy CPU LB-guided exact-matrix path",
+            "``band=-1``",
+            "disables LB_Keogh",
+            "recomputed",
+        ),
+        "python_binding": (
+            "legacy LB-guided exact-matrix",
+            "band=-1 disables LB_Keogh",
+            "recomputed",
+            "`band >= 0`",
+            "finite double-max",
+            "not IEEE infinity",
+        ),
+        "method_enum": (
+            "conditionally admissible LB/UB pruning",
+            "Exact-arithmetic identity covers finite, nonempty, equal-length Standard-L1",
+            "floating thresholds remain D17",
+            "empty series remain F48",
+        ),
+        "cli_source": (
+            "TADPole density-peaks with conditionally admissible LB/UB DTW pruning",
+        ),
+        "lower_bound": (
+            "A negative band is coerced to radius zero",
+            "full-DTW envelope",
+            "Envelope carries no source-length or radius provenance",
+            "repository-derived extension",
+            "separately minimized per-channel",
+            "Channels must share a commensurate unit",
+            "The current implementation is in L1 units",
+        ),
+        "cuda_header": (
+            "finite public",
+            "double-max no-result sentinel",
+            "not IEEE infinity",
+        ),
+        "metal_source": (
+            "finite FLT_MAX device sentinel",
+            "normalized to public double-max on copy",
+        ),
+        "changelog": (
+            "F48 records the empty-series TADPole inconsistency",
+            "F49 records direct-call band/cache provenance",
+            "floating threshold identity remains open under D17",
+            "TADPole LB/UB counters describe density decisions",
+            "CUDA's Python pruning documentation now states the required nonnegative band",
+        ),
+        "tadpole_header": (
+            "finite, nonempty, equal-length Standard-L1",
+            "The live TADPole route does not call",
+            "Admissibility alone does not promise any prune rate",
+            "Density-stage NOT-neighbour decisions by LB",
+            "Exact arithmetic preserves",
+            "Floating bit-level identity at a threshold remains D17",
+            "Empty series are a known exception (F48)",
+        ),
+        "pruned_source": (
+            "recomputed without a cutoff; this legacy route does not skip required work.",
+        ),
+        "baseline": (
+            "## Remaining closure bands registered before execution",
+            "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
+            "All tests passed (65 assertions in 1 test case)",
+            "canonical `build/highs-1151`: 123/123",
+            "llfio-OFF `build/nollfio`: 123/123",
+            "Arrow-ON `build/arrow-pyarrow-23`: 125/125",
+            "decisive target must now report exactly 65 assertions in one case",
+        ),
+    }
+    drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(text[name])
+        ]
+        for name, markers in required.items()
+    }
+    drift = {name: markers for name, markers in drift.items() if markers}
+    if drift:
+        raise AssertionError(f"D2 derivation drift: missing markers {drift}")
+
+    compact_required = {
+        "lower_bound": (
+            "const std::size_t w = static_cast<std::size_t>(std::max(band, 0));",
+            "if (w >= n)",
+            "const auto n = std::min(query.size(), env.upper.size());",
+            "return std::max(lb1, lb2);",
+            "sum += excess * excess;",
+        ),
+        "lower_bound_api": (
+            "lb_kim_valid<SquaredL2Metric> = true;",
+        ),
+        "cuda_source": (
+            "const bool do_lb_pruning = opts.use_lb_keogh && (opts.band >= 0);",
+        ),
+        "metal_source": (
+            "const bool pipeline_uses_pair_indices = !use_banded_row && !use_regtile;",
+            "bool lb_active = lb_requested && pipeline_uses_pair_indices && num_pairs > 0;",
+            "if (!buf_upper || !buf_lower || !buf_lb || !buf_pair_indices || !buf_active_count)",
+            "lb_active = false;",
+        ),
+        "pruned_source": (
+            "const bool use_lb_keogh = use_lb_keogh_flag && (band >= 0);",
+            "const bool use_lb_keogh = use_lb && (band >= 0);",
+            "const bool equal_len = prob.series(i).size() == prob.series(j).size();",
+            "dist = dtw_with_abandon(-1.0);",
+        ),
+        "tadpole": (
+            "const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;",
+            "if (can_prune && si.size() == sj.size())",
+            "if (lb >= dc)",
+            "LB_Keogh + the diagonal L1",
+            "permanent exactly representable regression",
+            "Bit-level identity when a floating reduction",
+        ),
+        "oracle": (
+            "REQUIRE(envelope_cases == 2004);",
+            "REQUIRE(equal_cases == 28602);",
+            "REQUIRE(unequal_cases == 17712);",
+            "REQUIRE(discriminator.forward_l1 == 8.0);",
+            "REQUIRE(discriminator.reverse_l1 == 2.0);",
+            "REQUIRE(discriminator.forward_squared == 22.0);",
+            "REQUIRE(discriminator.reverse_squared == 4.0);",
+            "REQUIRE(singleton.symmetric_l1 == 0.5);",
+            "REQUIRE(singleton.symmetric_squared == 0.25);",
+            "REQUIRE(independent_l1 == 4.0);",
+            "REQUIRE(independent_squared == 4.0);",
+            "REQUIRE(mv_l1 == 3.0);",
+            "REQUIRE(mv_squared == 3.0);",
+            "REQUIRE(dependent_l1 == 8.0);",
+            "REQUIRE(dependent_squared == 20.0);",
+            "REQUIRE(unsafe_negative_bound == 2.0);",
+            "REQUIRE(unsafe_negative_bound > dtwc::dtwFull_L<double>(x, y));",
+            "REQUIRE(matrix_stats.pruned_by_lb_keogh == 0);",
+            "REQUIRE(pruned_stats.pruned_by_lb == 0);",
+            "REQUIRE(separated_pruned_stats.pruned_by_lb == 1);",
+            "REQUIRE(call_sites == 2);",
+        ),
+    }
+    compact_drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(text[name])
+        ]
+        for name, markers in compact_required.items()
+    }
+    compact_drift = {
+        name: markers
+        for name, markers in compact_drift.items()
+        if markers
+    }
+    if compact_drift:
+        raise AssertionError(
+            f"D2 production/oracle drift: missing markers {compact_drift}"
+        )
+
+    implementation_bodies = {
+        "public_float_normalization": braced_body(
+            text["public_distance"],
+            "inline constexpr double normalize_public_distance(float value) noexcept",
+            "Float32 public-distance normalization",
+        ),
+        "cuda_compaction": braced_body(
+            text["cuda_source"],
+            "__global__ void compact_active_pairs_kernel(",
+            "CUDA LB compaction kernel",
+        ),
+        "cuda_envelopes": braced_body(
+            text["cuda_source"],
+            "__global__ void compute_envelopes_kernel(",
+            "CUDA envelope kernel",
+        ),
+        "cuda_copy": braced_body(
+            text["cuda_source"],
+            "std::vector<double> convert_result_matrix(",
+            "CUDA result conversion",
+        ),
+        "metal_compaction": braced_body(
+            text["metal_source"],
+            "kernel void compact_active_pairs(",
+            "Metal LB compaction kernel",
+        ),
+        "metal_envelopes": braced_body(
+            text["metal_source"],
+            "kernel void compute_envelopes(",
+            "Metal envelope kernel",
+        ),
+        "metal_copy": text["metal_source"],
+    }
+    implementation_required = {
+        "public_float_normalization": (
+            "value == std::numeric_limits<float>::max()",
+            "? std::numeric_limits<double>::max()",
+            ": static_cast<double>(value)",
+        ),
+        "cuda_compaction": (
+            "lb_values[pid] <= threshold",
+            "static_cast<T>(3.402823466e+38f)",
+            "static_cast<T>(1.7976931348623157e+308)",
+            "result_matrix[si * N + sj] = INF;",
+            "result_matrix[sj * N + si] = INF;",
+        ),
+        "cuda_envelopes": (
+            "const int lo = (k >= w) ? k - w : 0;",
+            "const int hi = (k + w + 1 < L) ? k + w + 1 : L;",
+            "for (int j = lo + 1; j < hi; ++j)",
+        ),
+        "cuda_copy": (
+            "dtwc::gpu::detail::normalize_public_distance(src[row_offset + j])",
+        ),
+        "metal_compaction": (
+            "lb_values[pid] <= threshold",
+            "const float INF = 3.402823466e+38f;",
+            "result_matrix[si * N_series + sj] = INF;",
+            "result_matrix[sj * N_series + si] = INF;",
+        ),
+        "metal_envelopes": (
+            "const int lo = (k >= w) ? k - w : 0;",
+            "const int hi = (k + w + 1 < L) ? k + w + 1 : L;",
+            "for (int j = lo + 1; j < hi; ++j)",
+        ),
+        "metal_copy": (
+            "result.matrix[i * N + j] = dtwc::gpu::detail::normalize_public_distance(out_ptr[i * N + j]);",
+        ),
+    }
+    implementation_drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(implementation_bodies[name])
+        ]
+        for name, markers in implementation_required.items()
+    }
+    implementation_drift = {
+        name: markers
+        for name, markers in implementation_drift.items()
+        if markers
+    }
+    if implementation_drift:
+        raise AssertionError(
+            "D2 GPU sentinel implementation drift: "
+            f"missing code markers {implementation_drift}"
+        )
+
+    ctest_subjects = re.findall(
+        r"if\(TARGET test_lb_keogh_derivation\)(.*?)endif\(\)",
+        text["ctest"],
+        flags=re.DOTALL,
+    )
+    if len(ctest_subjects) != 1:
+        raise AssertionError(
+            "D2 CTest drift: expected one test_lb_keogh_derivation policy block"
+        )
+    ctest_subject = compact(ctest_subjects[0])
+    ctest_markers = (
+        "PROPERTY SKIP_RETURN_CODE)",
+        'ENVIRONMENT "OMP_NUM_THREADS=1"',
+        'FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"',
+        "PASS_REGULAR_EXPRESSION",
+        "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
+        r"All tests passed \\((6[5-9]|[7-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)",
+        "RUN_SERIAL TRUE",
+    )
+    missing_ctest = [
+        marker for marker in ctest_markers if marker not in ctest_subject
+    ]
+    if missing_ctest:
+        raise AssertionError(
+            f"D2 CTest drift: missing non-skipping execution markers {missing_ctest}"
+        )
+
+    unsupported_math = [
+        marker
+        for marker in ("\\(", "\\)", "\\[", "\\]")
+        if marker in text["derivation"]
+    ]
+    if unsupported_math:
+        raise AssertionError(
+            "D2 derivation drift: unsupported GitHub math delimiters "
+            f"{unsupported_math}"
+        )
+    if text["derivation"].count("$$") % 2:
+        raise AssertionError("D2 derivation drift: unbalanced display-math delimiters")
+    broken_table_math = [
+        line
+        for line in text["derivation"].splitlines()
+        if line.lstrip().startswith("|") and ("$|" in line or "|$" in line)
+    ]
+    if broken_table_math:
+        raise AssertionError(
+            f"D2 derivation drift: raw table math pipes {broken_table_math}"
+        )
+
+    stale = {
+        "dtw_site": (
+            "CUDA source currently uses an endpoint-scaled corridor",
+            "Metal source uses fixed geometry, but its double-returning no-path route widens `FLT_MAX`",
+        ),
+        "gpu_site": (
+            "without a validity proof (F29)",
+            "supported only for equal-length L1 series with a matching admissible envelope",
+            "pruned pairs remain +inf",
+            "stamp +∞ into result",
+        ),
+        "metrics_site": (
+            "valid L1, L2, and Squared L2 specializations",
+            "valid for the same three pointwise metrics",
+        ),
+        "python_site": (
+            "Enable LB_Keogh pruning (CPU only)",
+        ),
+        "python_api": (
+            "Use LB_Keogh pruning (CPU only)",
+        ),
+        "python_binding": (
+            "for faster computation (L1 metric only)",
+            "pruned (+inf in result)",
+            "result entry +inf",
+        ),
+        "method_enum": (
+            "Result is provably identical to brute-force",
+            "plain L1/SquaredL2 DTW",
+        ),
+        "cuda_header": (
+            "get INF (no DTW)",
+        ),
+        "metal_source": (
+            "pruned pairs have their +∞",
+            "pruned (+∞ stamped",
+            "Pruned pairs get +∞",
+            "stamp +∞ for pruned",
+        ),
+        "pruned_header": (
+            "saving ~30-60%",
+            "early-abandon helped",
+        ),
+        "pruned_source": (
+            "saving 30-60%",
+        ),
+        "algorithms_site": (
+            "pins the result to the brute-force",
+            "Exact relative to its brute-force",
+        ),
+        "lessons": (
+            '"identical to brute force" guarantee',
+        ),
+        "tadpole": (
+            "bit-for-bit the same either way",
+            "LB_Keogh + the Euclidean upper bound",
+        ),
+        "tadpole_header": (
+            "pairs are far (LB ≥ dc) and prune",
+            "by LB ≥ dc (no DTW)",
+            "by UB < dc (no DTW)",
+            "plain L1/SquaredL2",
+            "tighter cascade bounds (LB_Webb",
+            "Labels are identical either way",
+            "labels are identical to the brute-force",
+        ),
+    }
+    present_stale = {
+        name: [
+            marker
+            for marker in markers
+            if marker in compact(text[name])
+        ]
+        for name, markers in stale.items()
+    }
+    present_stale = {
+        name: markers
+        for name, markers in present_stale.items()
+        if markers
+    }
+    if present_stale:
+        raise AssertionError(
+            f"D2 documentation retains stale claims: {present_stale}"
         )
 
 
@@ -435,12 +995,13 @@ def assert_gpu_backend_page() -> None:
     required = (
         "equal-length L1",
         "thresholded",
-        "`+inf`",
+        "`numeric_limits<double>::max()`",
+        "not IEEE infinity",
         "`dtwc::KernelOverride`",
         "`Problem::lb_strategy()` is CPU-only",
         "`Problem::set_lb_strategy(LowerBoundStrategy)`",
         "`DistanceMatrixStrategy::Auto` is CPU-only",
-        "O(N·L·r)",
+        "Θ(N·L·min(L, 2r+1))",
         "O(N²·L)",
         "benchmarks/results/mac_m2max/metal_vs_cpu.json",
         "historical, advisory",
@@ -827,6 +1388,7 @@ def main() -> int:
     assert_tier1_signatures()
     assert_method_catalog()
     assert_dtw_derivation_sync()
+    assert_lb_keogh_derivation_sync()
     assert_gpu_backend_page()
     assert_remaining_docs_truth()
     assert_f22_ordinary_call_hygiene()

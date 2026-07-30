@@ -38,13 +38,37 @@ extra partial-plus-full work to be a pessimization on its fixture.
 ### LB_Keogh
 
 LB_Keogh constructs an envelope around one series and measures how far the
-other lies outside it. The implementation requires a Sakoe–Chiba band and has
-valid L1, L2, and Squared L2 specializations.
+other lies outside it. For a fixed DTW radius `w`, the envelope radius `r`
+must satisfy `r >= w`; a wider envelope is valid but weaker. Full DTW requires
+an envelope that repeats the candidate's global minimum and maximum. Passing a
+negative band directly to the current low-level envelope helper instead
+constructs a radius-zero envelope, which is not generally admissible for full
+DTW (F46).
+
+The admissibility statements in this section require finite input samples and
+ordered finite envelope bounds. Missing-value policies and non-finite data are
+outside the D2 proof.
+
+The L1 (and scalar L2) bound has amplitude units `U`; the unrooted squared-L2
+bound squares each excess and has units `U^2`. The implementation provides
+separate L1 and squared-excess primitives. The scalar L2 selector has the same
+point cost as L1; this statement does not extend to multivariate Euclidean L2.
+
+For a feasible fixed window (`w >= |n-m|`), a directional bound may sum only
+the first `min(n,m)` rows and remains admissible: every included row can be
+charged to one distinct path cell. The symmetric bound is the maximum of the
+two directional bounds, not their sum. The complete proof and executable
+oracle are in the
+[D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
 
 ### LB_Kim
 
 LB_Kim is an O(1) bound derived from endpoint and range summaries. It is valid
-for the same three pointwise metrics and is generally looser than LB_Keogh.
+for the current scalar L1 cost (and scalar L2, which is identical to L1).
+Although the public trait currently advertises squared-L2 compatibility, the
+implementation still returns raw absolute feature differences. That result is
+not an admissible squared-L2 bound; the mismatch is tracked as F47. LB_Kim is
+generally looser than LB_Keogh in its valid regime.
 
 ### LB_Enhanced and LB_Webb
 

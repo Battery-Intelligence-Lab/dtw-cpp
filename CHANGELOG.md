@@ -8,6 +8,26 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Added the D2 envelope/LB_Keogh derivation and executable oracle. It confirms
+  scalar L1 and unrooted squared-L2 admissibility, including the feasible
+  unequal-length prefix theorem and additive dependent/independent
+  multivariate extensions, and records the current envelope/Kim and GPU
+  metric/window/prefix-execution/overflow limitations as F46-F50 and
+  F27-F29. F48 records the empty-series TADPole inconsistency; F49 records
+  direct-call band/cache provenance. GPU threshold-result documentation now
+  names the actual finite public double-max sentinel rather than IEEE
+  infinity. The former unconditional TADPole prune/brute identity wording is
+  now scoped to exact arithmetic and the exactly representable regression;
+  floating threshold identity remains open under D17.
+- Tightened lower-bound interface contracts: TADPole LB/UB counters describe
+  density decisions rather than guaranteed avoided DTWs, no prune rate is
+  inferred from admissibility alone, additive multivariate unit claims require
+  commensurate/scaled channels, and CUDA's Python pruning documentation now
+  states the required nonnegative band.
+- Corrected the legacy CPU exact-matrix lower-bound documentation: a cutoff
+  result is recomputed without a cutoff because every entry is required, and
+  `band=-1` disables LB_Keogh. This removes the unsupported speed implication
+  without changing runtime behavior.
 - Enforced the frozen C++ deprecation policy for all 33 retained 1.x
   compatibility entities. `Problem::maxIter`/`N_repetition` and the seven
   legacy Problem I/O overloads now emit their registered replacement
@@ -539,7 +559,7 @@ the release candidate; they are not additional rc1 summary bullets.
 - New tighter DTW lower bounds in `dtwc/core/lower_bound_impl.hpp`, templated on the pointwise metric (`L1Metric` + `SquaredL2Metric`): **`lb_enhanced`** (Tan, Petitjean & Webb, *SDM 2019*, elastic bands + LB_Keogh middle) and **`lb_webb`** / `lb_webb_symmetric` (Webb & Petitjean, *Pattern Recognition* 2021 — always ≥ LB_Keogh). `lb_webb` is **clean-room from Algorithm 2** (the authors' Java is GPL-3.0 and is NOT reproduced); it omits the paper's MinLRPaths corner DP and blanket-caps the tail free-flag — both LOOSEN, never break, the bound (validity is the hard gate). New `WebbEnvelope` (U, L, plus secondary `LU=L(U)`, `UL=U(L)`) built by reusing `compute_envelopes`. Wired into `LowerBoundStrategy { …, Enhanced, Webb }` and the Problem pruned cascade as selectable primitives.
 - **HONEST REFRAME — the plan's "≥25% fewer full DTW calls on matrix build" band was NOT chased; it is unachievable as written.** `[confirmed]` from source: `fill_distance_matrix_pruned` builds an EXACT matrix, and the kernel's early-abandon returns the `maxValue` sentinel (never the exact value), so every abandoned pair is recomputed fully (partial + full > full). Since `lb ≤ dtw`, `lb > threshold ⇒ dtw > threshold ⇒` abandon always fires ⇒ always recomputes; a tighter LB pushes MORE pairs into the worse bucket and drives `computed_full_dtw` DOWN while doing MORE work. A lower bound skips a DTW only where the exact value is not needed (NN-search); an exact full matrix has no such pairs. Exact-matrix DTW-work reduction is **Task 5.3 (TADPole)** / **5.4 (PrunedDTW cell-pruning)**; Task 5.2 delivers the primitives those consume. The pruned strategy is currently a pessimisation for exact matrices (documented — see LESSONS).
 - **Validity [HARD] → CONFIRMED.** `LB_Enhanced ≤ DTW_w` and `LB_Webb ≤ DTW_w` (L1 and SquaredL2) over random + adversarial inputs (shared endpoints, query-just-outside-envelope, constant, extreme 1e12), bands {0,1,2,5,10,20, 10%-of-n}, lengths incl. edge {2..11} and n≈2V; non-negativity and `LB(x,x)=0`. Provable and asserted: `LB_Webb ≥ LB_Keogh` per instance (Webb = one-dir LB_Keogh + non-negative Thm-2 corrections; symmetric ⇒ ≥ symmetric Keogh). **No `LB_Enhanced ≥ LB_Keogh` claim** — SDM 2019 proves no such ordering; the cascade takes the max, so a looser Enhanced never regresses. Test `tests/unit/adversarial/test_lb_enhanced_webb.cpp`: **39273 assertions / 14 cases**. Pruned + {Enhanced, Webb, Keogh} give a **digit-identical** matrix vs BruteForce (`unit_test_pruned_distance_matrix.cpp [strategy]`).
-- **Tightness bench (`[.][lb_tightness][bench]`, ADVISORY) → `.claude/baselines/2026-07-08-lb-cascade.md`.** mean(LB/DTW) over 2480 clustered pairs, n=128: at **band=10%** keogh 0.550 → enhanced 0.568 (+3.3%) → **webb 0.676 (+23.0%)**; at **band=40%** keogh 0.406 → enhanced 0.450 (+10.9%) → **webb 0.550 (+35.6%)**. LB_Webb tightens the envelope cascade meaningfully at both bands; **LB_Enhanced's gain grows with band width** (its designed regime — "optimal V increases with W"), a minor win at 10% and the tool for wide bands. LB_Kim ≈ 0.016 (near-useless standalone; correct as the O(1) pre-filter).
+- **Tightness bench (`[.][lb_tightness][bench]`, ADVISORY) → `.claude/baselines/2026-07-08-lb-cascade.md`.** mean(LB/DTW) over 2480 clustered pairs, n=128: at **band=10%** keogh 0.550 → enhanced 0.568 (+3.3%) → **webb 0.676 (+23.0%)**; at **band=40%** keogh 0.406 → enhanced 0.450 (+10.9%) → **webb 0.550 (+35.6%)**. LB_Webb tightens the envelope cascade meaningfully at both bands; **LB_Enhanced's gain grows with band width** (its designed regime — "optimal V increases with W"), a minor win at 10% and the tool for wide bands. LB_Kim ≈ 0.016 (near-useless standalone; correct as the O(1) pre-filter). **Superseded scope note (D2/F47):** that final “correct” statement applies only in L1/scalar-L2 units; the current squared-L2 trait is a recorded discrepancy because LB_Kim still returns unsquared absolute gaps.
 
 ### Added (Phase 5 · Task 5.3 — TADPole density-peaks clustering with admissible pruning)
 
@@ -1221,7 +1241,7 @@ Cited cuDTW++ (Schmidt & Hundt 2020) and LB_Keogh (Keogh & Ratanamahatana 2005) 
 * Refactored DTW into `detail::*_impl` helpers with distance callable template parameter.
 * Added `metric` parameter to `dtw_distance` Python binding.
 * Added `compute_distance_matrix` Python function with OpenMP parallelism.
-* Added **LB-pruned distance matrix** (`compute_distance_matrix_pruned`). Precomputes envelopes and summaries once, then uses LB_Kim (O(1)) and LB_Keogh (O(n)) as early-abandon thresholds for each DTW computation. Reduces inner-loop work by 30-60% for correlated series. Enabled by default in the Python `compute_distance_matrix` binding via `use_pruning=True`.
+* Added **LB-pruned distance matrix** (`compute_distance_matrix_pruned`). Precomputes envelopes and summaries once, then uses LB_Kim (O(1)) and LB_Keogh (O(n)) as early-abandon thresholds for each DTW computation. Reduces inner-loop work by 30-60% for correlated series. Enabled by default in the Python `compute_distance_matrix` binding via `use_pruning=True`. **Superseded (Task 5.2/D2):** the 30-60% exact-matrix speed claim is false because every abandoned pair is recomputed to obtain its exact value; this path can add work and its counters are not a savings measure.
 * Added `distance_matrix_numpy()` method to `Problem` Python class.
 * Added `-ffast-math` (GCC/Clang) and `/fp:fast` (MSVC) for Release builds.
 * Added **Google Highway SIMD infrastructure** (`DTWC_ENABLE_SIMD` option, default OFF). Prototype kernels for future use.

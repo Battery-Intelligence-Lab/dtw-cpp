@@ -1,20 +1,24 @@
 /**
  * @file pruned_distance_matrix.hpp
- * @brief Distance matrix construction with cascading lower bound pruning.
+ * @brief Exact distance-matrix construction with LB-guided cutoff attempts.
  *
- * @details Builds a distance matrix using cascading lower bounds
- * (LB_Kim -> LB_Keogh -> early-abandon DTW) to speed up computation.
- * Only valid for L1 metric (which is the current default).
+ * @details Builds an exact distance matrix using cascading lower bounds
+ * (LB_Kim -> LB_Keogh -> early-abandon DTW). The bound cascade is L1-valued.
  *
  * The strategy for all-pairs distance matrix:
- * - Precompute SeriesSummary (O(N*n)) and Envelopes (O(N*n*band)) once.
- * - For each pair (i,j), compute max(LB_Kim, LB_Keogh) as a lower bound.
+ * - Precompute summaries and Lemire envelopes once in O(sum_i n_i), or O(N*n)
+ *   for N equal-length series of length n.
+ * - For each pair (i,j), evaluate the configured Kim/envelope-bound cascade.
  * - Track per-row nearest-neighbor distance as it's discovered.
- * - Pass the LB as early_abandon hint to dtwFull_L / dtwBanded: if the
- *   partial DTW cost exceeds some upper bound, it returns early with max_value.
- *   We then retry without early-abandon (since we need the actual distance).
- *   The benefit: many DTW computations terminate early, saving ~30-60% of
- *   inner-loop iterations for correlated series.
+ * - If that bound clears the current nearest-neighbor threshold, attempt DTW
+ *   with the threshold as its cutoff. A cutoff sentinel triggers a retry
+ *   without early abandon because every exact entry is required.
+ *
+ * This route does not skip an exact matrix entry or a required full result.
+ * An abandoned attempt adds work before recomputation, so its counters are
+ * branch-accounting diagnostics rather than evidence of work saved. With
+ * band=-1, LB_Keogh is disabled; constructing its current radius-zero envelope
+ * would not be admissible for full DTW.
  *
  * References:
  *   - E. Keogh, C.A. Ratanamahatana, "Exact indexing of dynamic time warping",
@@ -47,12 +51,12 @@ namespace dtwc::core {
 /// Statistics from pruned distance matrix construction.
 struct PruningStats {
   size_t total_pairs = 0;         ///< Total unique pairs (upper triangle)
-  size_t pruned_by_lb_kim = 0;    ///< Pairs where LB_Kim > nn threshold (early-abandon helped)
-  size_t pruned_by_lb_keogh = 0;  ///< Pairs where LB_Keogh > nn threshold (early-abandon helped)
-  size_t early_abandoned = 0;     ///< DTW computations that terminated early
-  size_t computed_full_dtw = 0;   ///< Pairs that required full DTW (no early abandon)
+  size_t pruned_by_lb_kim = 0;    ///< Pairs where LB_Kim selected the cutoff branch
+  size_t pruned_by_lb_keogh = 0;  ///< Pairs where an envelope LB selected that branch
+  size_t early_abandoned = 0;     ///< Cutoff attempts followed by exact recomputation
+  size_t computed_full_dtw = 0;   ///< Pairs computed directly without a cutoff attempt
 
-  /// Fraction of pairs that benefited from early-abandon (0.0 to 1.0).
+  /// Fraction of pairs whose first attempt abandoned; not a work-saved ratio.
   double pruning_ratio() const
   {
     return total_pairs > 0
@@ -64,7 +68,7 @@ struct PruningStats {
 /// Fill a Problem's distance matrix with LB-guided early-abandon DTW.
 ///
 /// @param prob      Problem with data loaded
-/// @param band      Sakoe-Chiba band width (-1 for full DTW)
+/// @param band      Sakoe-Chiba band width (-1 for full DTW; disables Keogh)
 /// @param lb_strat  Which lower bound(s) to apply (Auto -> Kim+Keogh cascade).
 ///                  None short-circuits to brute-force within the pruned fill.
 /// @return Pruning statistics
@@ -81,7 +85,8 @@ PruningStats fill_distance_matrix_pruned(
 /// @param series  Vector of time series
 /// @param output  Pre-allocated N*N output array (row-major)
 /// @param band    Sakoe-Chiba band width (-1 for full DTW)
-/// @param metric  Pointwise metric (only L1 benefits from LB pruning)
+/// @param metric  Pointwise metric. L1/scalar L2 select the LB-guided route;
+///                SquaredL2 is computed directly.
 /// @return Pruning statistics
 PruningStats compute_distance_matrix_pruned(
   const std::vector<std::vector<double>> &series,

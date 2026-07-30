@@ -175,11 +175,31 @@ configured limits.
 
 ## TADPole
 
-TADPole implements density-peaks clustering with admissible lower/upper bounds.
-For equal-length Standard DTW it can classify some cutoff comparisons without
-an exact DTW; unsupported variants fall back to exact comparisons without
-changing the result. Its deterministic tie order pins the result to the
-brute-force density-peaks oracle for the same cutoff.
+TADPole implements density-peaks clustering with lower/upper-bound pruning.
+For finite, nonempty, equal-length Standard-L1 pairs whose series length is
+representable by the integer band API, TADPole can classify some cutoff
+comparisons without an exact DTW. In its density stage, `LB >= dc` proves that
+a pair is not a neighbour, while `UB < dc` proves that it is; a bound interval
+that straddles `dc` triggers exact DTW. In its separation stage, `LB >= best`
+proves that a candidate cannot improve the current nearest-higher-density
+distance.
+
+The LB_Keogh radius covers the configured fixed DTW radius. Under full DTW,
+TADPole constructs a global-minimum/global-maximum envelope; it does not pass
+the negative band to the low-level helper. Unequal-length pairs and
+unsupported variants take the exact route. Within this finite, nonempty,
+integer-representable contract, exact arithmetic makes the bound decisions
+admissible and preserves the deterministic brute-force density-peaks result.
+The permanent exactly representable regression confirms that regime; it does
+not establish bit-level identity when floating reductions straddle `dc` or
+`best`. That threshold analysis remains D17. The proof and call-site oracle
+are in the
+[D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
+
+Empty series are a known exception (F48): exact DTW returns the no-path
+sentinel, while the current empty envelope and diagonal upper bound both
+return zero. Do not rely on pruned/brute TADPole identity for data containing
+empty series until that finding closes.
 
 **CLI:** `dtwc_cl -k 5 --method tadpole --dc 2.0`
 
@@ -194,4 +214,4 @@ brute-force density-peaks oracle for the same cutoff.
 | Lloyd's (`kmedoids`) | Local optimum | Uses configured distance storage | Dense | Simple assignment/update |
 | MIP | Certified when solved to optimality | $$O(N^2)$$ distance storage plus solver model | Dense | Solver-backed exact result |
 | LR-core | Certified or loud failure | $$O(N^2)$$ distance storage | Dense | In-tree exact result |
-| TADPole | Exact relative to its brute-force density-peaks oracle | Threshold routing may use mmap | Density/cutoff search | Admissible pair pruning |
+| TADPole | Exact-arithmetic identity for finite, nonempty supported inputs with integer-representable lengths; exactly representable regression confirmed; floating thresholds remain D17 and empty series F48 | Threshold routing may use mmap | Density/cutoff search | Admissible pair pruning |

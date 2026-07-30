@@ -1,12 +1,11 @@
 /**
  * @file pruned_distance_matrix.cpp
- * @brief Implementation of pruned distance matrix construction.
+ * @brief Implementation of exact LB-guided distance-matrix construction.
  *
  * @details Fills a distance matrix using cascading lower bounds
  * (LB_Kim -> LB_Keogh) to guide early-abandon in DTW computations.
- * All pairs are computed exactly -- early-abandon makes individual
- * DTW computations terminate sooner when partial cost exceeds an
- * upper bound, saving 30-60% of inner-loop work for correlated data.
+ * All pairs are computed exactly. If a cutoff attempt abandons, the pair is
+ * recomputed without a cutoff; this legacy route does not skip required work.
  *
  * @author Volkan Kumtepeli
  * @author Claude 4.6
@@ -34,7 +33,7 @@ namespace dtwc::core {
 
 // =========================================================================
 //  Standards-safe atomic min for non-negative doubles. Relaxed ordering is
-//  sufficient: stale values only reduce pruning effectiveness, not correctness.
+//  sufficient: a stale larger threshold can only suppress cutoff attempts.
 // =========================================================================
 
 static inline void atomic_min_double(std::atomic<double> &value, double candidate) noexcept
@@ -127,6 +126,8 @@ PruningStats fill_distance_matrix_pruned(
   }
 
   // Step 2: Precompute envelopes for LB_Keogh / LB_Enhanced (band >= 0) — parallel.
+  // Full DTW (band == -1) deliberately disables every envelope bound rather
+  // than interpreting the helper's negative-band coercion as a valid envelope.
   // Lock-free by design: each iteration writes only to its own index.
   // LB_Enhanced reuses the same (upper,lower) Envelope as LB_Keogh; LB_Webb needs
   // the extended envelope set (adds the secondary L(U), U(L) arrays).
@@ -164,9 +165,8 @@ PruningStats fill_distance_matrix_pruned(
 
   // Step 6: Parallel loop over all upper-triangle pairs.
   // Each pair (i, j) is decoded from a linear index k.
-  // nn_dist is shared: reads may be stale (relaxed consistency) but
-  // this only reduces pruning effectiveness, not correctness —
-  // every pair still gets the exact DTW distance.
+  // nn_dist is shared: reads may be stale (relaxed consistency), which can
+  // only suppress cutoff attempts. Every pair still gets the exact DTW distance.
 
   // Use contiguous pair-index blocks so each worker accumulates statistics and
   // reuses its Webb scratch without a shared critical section.  Blocks preserve
@@ -324,7 +324,8 @@ PruningStats compute_distance_matrix_pruned(
   for (size_t i = 0; i < N * N; ++i)
     output[i] = 0.0;
 
-  // LB pruning only valid for L1 (and L2 which is equivalent for scalars)
+  // This legacy bound cascade is L1-valued. Runtime L2 is identical to L1 for
+  // scalars; SquaredL2 bypasses the cascade and is computed directly.
   const bool use_lb = (metric == MetricType::L1 || metric == MetricType::L2);
 
   // Step 1: Precompute summaries for LB_Kim
@@ -335,7 +336,8 @@ PruningStats compute_distance_matrix_pruned(
       summaries[i] = compute_summary(series[i]);
   }
 
-  // Step 2: Precompute envelopes for LB_Keogh (only if band >= 0)
+  // Step 2: Precompute envelopes for LB_Keogh only if band >= 0. Full DTW
+  // deliberately disables Keogh rather than using a radius-zero envelope.
   const bool use_lb_keogh = use_lb && (band >= 0);
   std::vector<Envelope> envelopes;
   if (use_lb_keogh) {
@@ -352,8 +354,8 @@ PruningStats compute_distance_matrix_pruned(
 
   // Step 4: Compute all upper-triangle pairs with OpenMP parallelism.
   // Each thread gets contiguous rows. nn_dist reads may be stale across
-  // threads (relaxed consistency) but this only reduces pruning effectiveness,
-  // not correctness -- every pair still gets the exact distance.
+  // threads (relaxed consistency), but this can only suppress cutoff attempts;
+  // every pair still gets the exact distance.
   std::vector<PruningStats> row_stats(N);
   auto compute_row = [&](size_t i) {
     auto &local = row_stats[i];
@@ -381,11 +383,9 @@ PruningStats compute_distance_matrix_pruned(
         }
       }
 
-      // nn_dist[i] and nn_dist[j] are both updated atomically (CAS) after each
-      // pair (see lines 446-451), so either may be concurrently written by other
-      // threads while read here. This is benign: a stale value only reduces
-      // pruning effectiveness, never correctness (nn_dist feeds an early-abandon
-      // threshold only).
+      // nn_dist[i] and nn_dist[j] are both updated atomically after each pair,
+      // so either may be concurrently written by other threads while read here.
+      // This is benign: a stale larger value can only suppress a cutoff attempt.
       const double threshold = std::min(
         nn_dist[i].load(std::memory_order_relaxed),
         nn_dist[j].load(std::memory_order_relaxed));
@@ -422,9 +422,8 @@ PruningStats compute_distance_matrix_pruned(
       output[j * N + i] = dist;
 
       // Update nearest-neighbor distances for pruning.
-      // Use atomic min for both endpoints — matches the Problem-based version
-      // (lines 256-257). The previous design only updated nn_dist[i], reducing
-      // pruning effectiveness for later pairs involving series j.
+      // Use atomic min for both endpoints, matching the Problem-based version.
+      // Updating only nn_dist[i] would suppress later cutoff opportunities for j.
       atomic_min_double(nn_dist[i], dist);
       atomic_min_double(nn_dist[j], dist);
     }

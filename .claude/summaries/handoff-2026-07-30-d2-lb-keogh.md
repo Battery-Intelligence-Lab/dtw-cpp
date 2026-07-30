@@ -34,6 +34,38 @@
   the exact unchanged marker. The joint TADPole fingerprint was `(0,1)`, which
   proves both rejection of the unsafe radius-zero envelope and positive
   reachability of the intended global-envelope stage.
+- Wrote the complete D2 derivation, synchronized the derivation index,
+  primary-source ledger, public method pages, Python docs/docstrings, and
+  source contracts, and added a permanent documentation-drift assertion that
+  pins the exact oracle and non-skipping CTest policy.
+- The first integrated docs run exposed only a source-token wrapping
+  false-red for the exact `band=-1 disables LB_Keogh` marker. Rewrapping that
+  same compiled docstring made the marker source-auditable; the immediate
+  rerun passed with `generated documentation is current` and
+  `documentation contract checks passed`. Record/repository hygiene and
+  `git diff --check` also pass.
+- An integrated adversarial review rejected the draft exclusion of independent
+  multivariate DTW. The proof now applies the scalar bound to each separately
+  minimized channel path, while an opposite-warp fixture distinguishes the
+  independent objective from shared-path dependent DTW.
+- Preregistered and executed the supplementary multivariate discriminator:
+  production bound `3/3`, independent DTW `4/4`, dependent DTW `8/20`.
+  The decisive canonical target passed the exact marker with **65 assertions
+  in one case**, 1/1 passed, zero failed, zero skips; commit `39e9a92`
+  contains only that test and its permanent CTest floor.
+- Corrected six pre-closure false-greens: radius-zero complexity, FP32
+  selected-precision wording, the `w`/`r` existence condition, omitted
+  F48/F49 summaries, finite/int-representable TADPole scope, and comment-only
+  GPU sentinel checking. The guard now inspects the actual CUDA/Metal compact
+  writes and public Float32-to-Float64 normalization.
+- Removed the last universal floating-point overclaim from TADPole's public
+  and source contracts. Exact arithmetic and the executed exactly
+  representable fixture are confirmed; prune/brute identity at a floating
+  threshold remains explicitly open under D17.
+- Final independent guard/math audits corrected TADPole decision-counter and
+  prune-rate semantics, pinned both GPU survivor predicates and CUDA's
+  nonnegative-band condition, mapped F30, repaired live anchors, and stated
+  the commensurate/scaled-channel assumption behind multivariate units.
 
 ## Decisions
 
@@ -56,11 +88,15 @@
   TADPole, direct-fill band/cache provenance, and GPU envelope `INT_MAX`
   arithmetic. F29 now carries a feasible replacement device gate rather than
   its falsified slope-window fixture.
+- F46's radius-contract audit also owns TADPole's unchecked
+  `size_t`-to-`int` full-envelope narrowing. D2 makes no pruning claim for
+  non-finite samples; the current configuration-only predicate does not
+  inspect that domain.
 
 ## Exact resume point
 
-Write `docs/derivations/02-envelopes-lb-keogh.md`, update the derivation index
-and verified citations, add documentation-drift guards, and register the
-confirmed envelope/Kim/TADPole/API discrepancies as separate R3 findings.
-Then run the focused five inherited targets, docs gate, and full canonical,
-llfio-OFF, and Arrow-ON matrices; update the test-inventory floors.
+Obtain the final read-only pre-closure review, commit the synchronized D2
+derivation/docs task, then rebuild and run the focused six-target gate followed
+by the serial canonical, llfio-OFF, and Arrow-ON matrices at the registered
+123/123, 123/123, and 125/125 floors. Update AGENTS.md and PLAN.md only from
+those observed inventories.

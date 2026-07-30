@@ -1734,7 +1734,7 @@ static int run_cli_main(int argc, char *argv[])
       std::cout << "LR-core clustering finished, cost=" << result.total_cost
                 << " [" << clk << "]\n";
   } else if (method == "tadpole") {
-    // TADPole density-peaks with admissible LB/UB DTW pruning.
+    // TADPole density-peaks with conditionally admissible LB/UB DTW pruning.
     prob.set_n_clusters(n_clusters);
     prob.set_tadpole_dc(tadpole_dc); // <0 ⇒ auto-select from a DTW subsample
     prob.set_method(dtwc::Method::TADPole);

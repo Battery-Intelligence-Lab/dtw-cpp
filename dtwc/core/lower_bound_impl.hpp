@@ -3,8 +3,10 @@
  * @brief Lower bound functions for DTW pruning (LB_Keogh, LB_Kim).
  *
  * @details Header-only implementations of O(n) and O(1) lower bounds on DTW
- *          distance. These enable early-abandon pruning when building distance
- *          matrices: if LB > current best, the full DTW can be skipped.
+ *          distance. A consumer that does not need every exact distance may
+ *          skip a pair when a bound clears its threshold. The legacy exact
+ *          distance-matrix route can only use a bound to select a cutoff
+ *          attempt; an abandoned pair is recomputed without a cutoff.
  *
  *          References:
  *          - E. Keogh, C. A. Ratanamahatana, "Exact indexing of dynamic time
@@ -38,6 +40,12 @@ namespace dtwc::core {
  *          when computing LB_Keogh against multiple query series. For each
  *          position i, the upper envelope is the max and the lower envelope is
  *          the min of the series values within the Sakoe-Chiba band [i-band, i+band].
+ *
+ *          A negative band is coerced to radius zero; it does not request a
+ *          full-DTW envelope. For full DTW, an admissible Keogh construction
+ *          needs the global envelope (radius at least n-1). The input and two
+ *          output ranges must not overlap; this unchecked pointer routine does
+ *          not detect destructive aliasing (F46).
  *
  * @tparam T Numeric data type (float, double).
  * @param series Input time series pointer.
@@ -122,9 +130,13 @@ void compute_envelopes(const T *series, std::size_t n, int band,
  *
  * @tparam T Numeric data type.
  * @param series Input time series.
- * @param band Sakoe-Chiba band width.
+ * @param band Sakoe-Chiba band width. Negative values are coerced to radius
+ *             zero, not interpreted as full DTW.
  * @param upper_out Output upper envelope vector (resized to match series).
  * @param lower_out Output lower envelope vector (resized to match series).
+ *
+ * @warning series, upper_out, and lower_out must be three distinct vectors;
+ *          aliasing is not checked (F46).
  */
 template <typename T>
 void compute_envelopes(const std::vector<T> &series, int band,
@@ -141,8 +153,18 @@ void compute_envelopes(const std::vector<T> &series, int band,
  *
  * @details Computes a lower bound on DTW(query, candidate) using the L1
  *          (absolute difference) metric. The envelopes must be precomputed from
- *          the CANDIDATE series via compute_envelopes(). The bound is tight when
- *          the Sakoe-Chiba band constraint is used in the DTW computation.
+ *          the CANDIDATE series. Against a fixed DTW radius w, admissibility
+ *          requires an envelope radius r >= w that covers every candidate
+ *          index reachable from each included query row. Full DTW therefore
+ *          requires a global envelope. Inputs must be finite, lower[i] <=
+ *          upper[i], and all three arrays must contain at least n elements.
+ *          This unchecked kernel cannot validate shape, radius, or source
+ *          provenance (F46). The result has the same units as an L1 DTW sum.
+ *          For unequal lengths, D2 separately derives the admissibility of
+ *          including the first min(query length, candidate length) rows when
+ *          the fixed window is feasible and covered; that prefix result is a
+ *          repository theorem, not part of the source paper's equal-length
+ *          proposition.
  *
  *          If query[i] lies within [lower[i], upper[i]], it contributes 0 to the
  *          lower bound. Otherwise, the contribution is the distance to the
@@ -150,10 +172,10 @@ void compute_envelopes(const std::vector<T> &series, int band,
  *
  * @tparam T Numeric data type.
  * @param query Query series pointer.
- * @param n Length of the query (must match envelope length).
+ * @param n Number of query rows included in the bound.
  * @param upper Upper envelope of the candidate series.
  * @param lower Lower envelope of the candidate series.
- * @return Lower bound value (always <= true DTW distance under the band constraint).
+ * @return Lower-bound value under the stated coverage assumptions.
  */
 template <typename T>
 T lb_keogh(const T *query, std::size_t n,
@@ -188,6 +210,9 @@ T lb_keogh(const T *query, std::size_t n,
  * @param upper Upper envelope of the candidate.
  * @param lower Lower envelope of the candidate.
  * @return Lower bound value.
+ *
+ * @warning The current overload does not validate either envelope length. Both
+ *          vectors must contain at least query.size() elements (F46).
  */
 template <typename T>
 T lb_keogh(const std::vector<T> &query,
@@ -206,6 +231,11 @@ T lb_keogh(const std::vector<T> &query,
  *          lower bounds. The min-vs-min and max-vs-max comparisons add further
  *          tightness.
  *
+ *          The current implementation is in L1 units: every feature gap is an
+ *          unsquared absolute difference. It is not generally admissible for a
+ *          squared-L2 DTW even though lb_kim_valid<SquaredL2Metric> currently
+ *          advertises that combination; F47 owns that runtime/trait mismatch.
+ *
  *          Complexity: O(1) if min/max features are precomputed per series.
  *          This convenience overload computes them on the fly in O(n).
  *
@@ -214,7 +244,7 @@ T lb_keogh(const std::vector<T> &query,
  * @param nx Length of first series.
  * @param y Second series pointer.
  * @param ny Length of second series.
- * @return Lower bound value (always <= true DTW distance).
+ * @return L1-valued lower bound for finite, nonempty scalar L1/scalar-L2 DTW.
  */
 template <typename T>
 T lb_kim(const T *x, std::size_t nx, const T *y, std::size_t ny)
@@ -282,7 +312,7 @@ inline SeriesSummary compute_summary(const std::vector<double> &series)
   return compute_summary(std::span<const double>(series));
 }
 
-/// LB_Kim using precomputed summaries -- O(1).
+/// LB_Kim using precomputed summaries -- O(1), in L1 units (F47).
 inline double lb_kim(const SeriesSummary &a, const SeriesSummary &b)
 {
   double d = 0;
@@ -294,11 +324,15 @@ inline double lb_kim(const SeriesSummary &a, const SeriesSummary &b)
 }
 
 /// Precomputed upper/lower envelopes for LB_Keogh.
+///
+/// Envelope carries no source-length or radius provenance, and its mutable
+/// arrays may have different lengths. Public validation is deferred to F46.
 struct Envelope {
   std::vector<double> upper, lower;
 };
 
-/// Compute envelope from a time series span with given band width.
+/// Compute envelope from a span; a negative band remains radius zero (F46).
+/// The returned Envelope does not record the source length or resolved radius.
 inline Envelope compute_envelope(std::span<const double> series, int band)
 {
   Envelope env;
@@ -316,13 +350,16 @@ inline Envelope compute_envelope(const std::vector<double> &series, int band)
 }
 
 /// LB_Keogh from span + precomputed Envelope.
+///
+/// Current F46 behavior truncates to min(query.size(), env.upper.size()),
+/// ignores env.lower.size(), and cannot verify source or radius provenance.
 inline double lb_keogh(std::span<const double> query, const Envelope &env)
 {
   const auto n = std::min(query.size(), env.upper.size());
   return lb_keogh(query.data(), n, env.upper.data(), env.lower.data());
 }
 
-/// Convenience overload: LB_Keogh from vector + precomputed Envelope.
+/// Convenience overload with the same unchecked F46 truncation behavior.
 inline double lb_keogh(const std::vector<double> &query, const Envelope &env)
 {
   const std::size_t n = std::min(query.size(), env.upper.size());
@@ -362,14 +399,19 @@ inline double lb_keogh_symmetric(
  *          element at timestep t, channel d is at index t*ndim+d.
  *          For ndim==1 this delegates to compute_envelopes() (zero overhead).
  *
- *          The per-channel lower bound computed from these envelopes is a
- *          valid lower bound on dependent multivariate DTW (Keogh 2005).
+ *          The bounds formed from these per-channel envelopes are
+ *          repository-derived extensions, not claims from the scalar Keogh
+ *          proposition. Coordinatewise projection proves the dependent
+ *          additive-cost form; summing separately minimized scalar bounds
+ *          proves the independent additive-cost form. Both inherit the scalar
+ *          coverage, finiteness, negative-band, and non-aliasing preconditions.
  *
  * @tparam T Numeric data type (float, double).
  * @param series Input multivariate series, interleaved layout, n_steps * ndim elements.
  * @param n_steps Number of timesteps.
  * @param ndim Number of channels (dimensions).
- * @param band Sakoe-Chiba band width (half-window radius).
+ * @param band Sakoe-Chiba band width (half-window radius). Negative values
+ *             are coerced to radius zero, not interpreted as full DTW.
  * @param upper_out Output: upper envelope, same interleaved layout (pre-allocated).
  * @param lower_out Output: lower envelope, same interleaved layout (pre-allocated).
  */
@@ -447,8 +489,13 @@ void compute_envelopes_mv(const T *series, std::size_t n_steps, std::size_t ndim
  * @brief LB_Keogh for multivariate interleaved series using L1 metric.
  *
  * @details Sums per-channel LB_Keogh contributions across all channels.
- *          This is a valid lower bound on dependent multivariate DTW under the
- *          Sakoe-Chiba band constraint (proven in Keogh & Ratanamahatana 2005).
+ *          This repository-derived extension is admissible for dependent
+ *          multivariate DTW with an additive L1 channel cost and one shared
+ *          path. It is also admissible for independent DTW whose objective
+ *          sums the separately minimized per-channel L1 DTWs. Both require the
+ *          scalar envelope coverage and finiteness assumptions.
+ *          Channels must share a commensurate unit or be scaled/nondimensionalized
+ *          before the unweighted sum has a physical-unit interpretation.
  *          For ndim==1 this delegates to the scalar lb_keogh() (zero overhead).
  *
  * @tparam T Numeric data type.
@@ -457,7 +504,7 @@ void compute_envelopes_mv(const T *series, std::size_t n_steps, std::size_t ndim
  * @param ndim Number of channels.
  * @param upper Upper envelope of the candidate (from compute_envelopes_mv).
  * @param lower Lower envelope of the candidate (from compute_envelopes_mv).
- * @return Lower bound value (always <= true DTW distance under the band constraint).
+ * @return Lower-bound value under the stated additive-cost and coverage assumptions.
  */
 template <typename T>
 T lb_keogh_mv(const T *query, std::size_t n_steps, std::size_t ndim,
@@ -486,13 +533,16 @@ T lb_keogh_mv(const T *query, std::size_t n_steps, std::size_t ndim,
 /**
  * @brief LB_Keogh with SquaredL2 metric: sum of squared distances to envelope boundary.
  *
- * @details A valid lower bound on DTW computed with the SquaredL2 metric.
+ * @details A lower bound on DTW computed with the SquaredL2 metric when the
+ *          scalar envelope coverage, shape, and finiteness assumptions stated
+ *          for lb_keogh() hold. The result is in squared-data units.
  *          If the query point lies within [lower[i], upper[i]], the contribution
  *          is zero. Otherwise it is the square of the distance to the nearest boundary.
  *
  * @tparam T Numeric data type.
  * @param query Query series pointer.
- * @param n Length of the series (must match envelope length).
+ * @param n Number of query rows included in the bound; both envelope arrays
+ *          must contain at least n elements.
  * @param upper Upper envelope of the candidate.
  * @param lower Lower envelope of the candidate.
  * @return SquaredL2 lower bound value.
@@ -523,7 +573,12 @@ T lb_keogh_squared(const T *query, std::size_t n,
  * @brief LB_Keogh SquaredL2 for multivariate interleaved series.
  *
  * @details Sums squared per-channel LB contributions across all channels.
- *          Valid lower bound on dependent multivariate DTW using SquaredL2 metric.
+ *          This repository-derived extension is admissible for dependent
+ *          multivariate DTW with additive squared channel costs and one shared
+ *          path, and for independent DTW that sums separately minimized
+ *          per-channel squared-L2 DTWs. It requires the scalar coverage and
+ *          finiteness assumptions and returns squared-data units; channels
+ *          must be commensurate or pre-scaled for that unit ledger.
  *          For ndim==1 this delegates to lb_keogh_squared() (zero overhead).
  *
  * @tparam T Numeric data type.

@@ -709,7 +709,8 @@ __global__ void dtw_regtile_kernel(
 // =========================================================================
 //
 // Each block handles one series. Each thread computes one element's envelope
-// using a brute-force O(band) scan — simple and efficient for small bands.
+// by scanning at most min(L, 2*band+1) values; radius zero still costs O(1)
+// per element.
 // Output: upper_envelopes[i * max_L + k] and lower_envelopes[i * max_L + k].
 
 template <typename T>

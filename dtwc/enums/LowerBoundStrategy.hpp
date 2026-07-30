@@ -8,19 +8,20 @@
  *          struct. Semantics:
  *            - Auto:     Kim+Keogh cascade when applicable (current default).
  *            - None:     Disable both; behaves like BruteForce within Pruned.
- *            - Kim:      LB_Kim only (cheapest, O(1) per pair).
+ *            - Kim:      LB_Kim only (O(1), currently L1-valued; F47).
  *            - Keogh:    LB_Keogh only (requires band >= 0).
- *            - KimKeogh: Cascade Kim -> Keogh (tightest non-GPU bound).
+ *            - KimKeogh: Cascade Kim -> Keogh.
  *            - Enhanced: Cascade Kim -> LB_Enhanced (Tan et al. SDM 2019).
  *            - Webb:     Cascade Kim -> LB_Webb (Webb & Petitjean PR 2021;
  *                        always >= LB_Keogh). Requires band >= 0, equal lengths.
  *
  *          NOTE (Task 5.2): tighter bounds do NOT reduce DTW calls on an EXACT
  *          full-matrix build — every entry must be computed exactly, and the
- *          pruned path recomputes any early-abandoned pair. These strategies
- *          exist as SELECTABLE primitives for the online/NN and future
- *          density-pruning (TADPole) paths, and for cross-comparison; the
- *          resulting matrix is digit-identical regardless of strategy.
+ *          pruned path recomputes any early-abandoned pair. These selectors
+ *          configure that legacy exact-matrix route for diagnostics and
+ *          cross-comparison. They do not configure TADPole: TADPole owns its
+ *          internal bound where a classified far-pair distance need not be
+ *          materialised.
  *
  * @date 2026-04-12
  */

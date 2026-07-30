@@ -2,9 +2,11 @@
  * @file lower_bounds.hpp
  * @brief Compile-time metric x lower-bound compatibility matrix.
  *
- * @details Records which (metric, lower-bound) combinations are valid.
- *          Actual lower-bound implementations are Phase 2; this header
- *          provides the compile-time predicates that will guard them.
+ * @details Records which (metric, lower-bound) combinations consumers may
+ *          select. Implementations live in lower_bound_impl.hpp. F47 records
+ *          that the current SquaredL2/LB_Kim predicate is broader than the
+ *          L1-valued implementation, so this matrix is audited behavior rather
+ *          than a blanket mathematical proof.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026

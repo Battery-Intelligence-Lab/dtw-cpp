@@ -48,7 +48,8 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
 
-  /// When positive, pairs with LB > threshold get INF (no DTW).
+  /// When positive, pairs with LB > threshold get the finite public
+  /// double-max no-result sentinel (no DTW), not IEEE infinity.
   /// CUDA default is -1.0 (threshold-off sentinel); Metal uses 0.0 with
   /// different semantics. Kept per-backend for backward compatibility.
   double lb_threshold = -1.0;

@@ -75,8 +75,17 @@ Parameters:
 | `series` | list of list/array | required | Input time series |
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `metric` | str | `"l1"` | `"l1"` or `"squared_euclidean"` |
-| `use_pruning` | bool | `True` | Enable LB_Keogh pruning (CPU only) |
+| `use_pruning` | bool | `True` | Select the legacy CPU LB-guided exact-matrix path (L1 only) |
 | `device` | str | `"cpu"` | `"cpu"`, `"cuda"`, or `"cuda:N"` |
+
+`use_pruning=True` is an execution-strategy switch, not a speed guarantee.
+On the CPU L1 route, LB_Kim and (for `band >= 0`) LB_Keogh can select an
+early-abandon cutoff. An abandoned pair is then recomputed without a cutoff
+because every exact matrix entry is required. `band=-1` disables LB_Keogh
+rather than constructing an inadmissible radius-zero envelope for full DTW;
+LB_Kim can still select the cutoff path. Squared Euclidean uses the direct
+exact route, and this high-level switch does not enable either GPU backend's
+separate lower-bound option.
 
 ## DTWClustering class
 
