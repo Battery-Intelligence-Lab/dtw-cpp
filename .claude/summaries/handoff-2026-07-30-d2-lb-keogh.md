@@ -66,6 +66,13 @@
   prune-rate semantics, pinned both GPU survivor predicates and CUDA's
   nonnegative-band condition, mapped F30, repaired live anchors, and stated
   the commensurate/scaled-channel assumption behind multivariate units.
+- Rebuilt and ran the integrated six-executable focused gate serially.
+  Verdict: **PASS**, 6/6 Passed, zero failed, no CTest Skipped result. The D2
+  oracle printed its exact registered marker and 65 assertions in one case.
+  The five inherited binaries each printed their own Catch2 pass summary:
+  `36509/29`, `2572/6`, `63/11`, `5584/26`, and `49/16`
+  assertions/cases. These inherited counts are observations, not retroactive
+  bands.
 
 ## Decisions
 
@@ -95,8 +102,9 @@
 
 ## Exact resume point
 
-Obtain the final read-only pre-closure review, commit the synchronized D2
-derivation/docs task, then rebuild and run the focused six-target gate followed
-by the serial canonical, llfio-OFF, and Arrow-ON matrices at the registered
-123/123, 123/123, and 125/125 floors. Update AGENTS.md and PLAN.md only from
-those observed inventories.
+Commit the focused execution evidence, then run the complete canonical,
+llfio-OFF, and Arrow-ON matrices serially at the registered 123/123, 123/123,
+and 125/125 floors. Prove the exact capability-skip name sets rather than
+trusting CTest's aggregate percentage, and prove Arrow's reader ran at least
+390 assertions in 11 cases. Update AGENTS.md and PLAN.md only from those
+observed inventories.
