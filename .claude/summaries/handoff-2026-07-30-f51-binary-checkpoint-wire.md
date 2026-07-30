@@ -17,6 +17,9 @@
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 - Captured the untouched canonical target baseline: test #82 passed with
   9 assertions / 1 case; CTest names the F17 real-CLI sibling as test #123.
+- Captured the untouched F17 real-CLI baseline: exact 12/12 marker, zero skips,
+  and 1/1 CTest pass; its production writer/reader preflight covers all seven
+  semantic-invalid modes before the CLI rejects them contextually.
 
 ## Decisions
 

@@ -65,6 +65,19 @@ Total Test time (real) =   4.70 sec
 This is the inherited baseline only: it covers a clustering-derived round trip,
 missing path, and bad magic, but none of F51's wire-canonicality classes.
 
+The untouched real-CLI compatibility baseline also executed:
+
+```text
+F17_CLI_RESUME subject=real_dtwc_cl writer=production_serializer runs=12/12 replay_fields=10/10 markers=2/2 algorithm_skipped=1/1 fresh_discriminator=4/4 checkpoint_preserved=10/10 rejection_cases=9/9 sources_preserved=2/2 skips=0
+1/1 Test #123: test_cli_resume_state ............   Passed    2.13 sec
+100% tests passed, 0 tests failed out of 1
+Total Test time (real) =   2.16 sec
+```
+
+Because its fixture writer round-trips every non-malformed mode through the
+production reader before invoking the CLI, this executes the seven registered
+structurally valid/semantically invalid parser cases as well as the valid file.
+
 ## Exact preserved valid oracle
 
 The fixture is coherent (`labels[medoids[slot]] == slot`) and discriminates
