@@ -361,6 +361,52 @@ TEST_CASE(
   REQUIRE(singleton.symmetric_l1 == 0.5);
   REQUIRE(singleton.symmetric_squared == 0.25);
 
+  // Repository-derived multivariate extension. The two channels prefer
+  // opposite warp directions, so independent DTW is the sum of two separate
+  // scalar path minima rather than one shared-path dependent objective.
+  const Series mv_query_0 = { 0.0, 3.0, 3.0 };
+  const Series mv_candidate_0 = { 0.0, 0.0, 2.0 };
+  const Series mv_query_1 = { 0.0, 0.0, 2.0 };
+  const Series mv_candidate_1 = { 0.0, 3.0, 3.0 };
+  const PathCosts independent_0 =
+    exact_path_costs(mv_query_0, mv_candidate_0, 1);
+  const PathCosts independent_1 =
+    exact_path_costs(mv_query_1, mv_candidate_1, 1);
+  REQUIRE(independent_0.l1 == 2.0);
+  REQUIRE(independent_1.l1 == 2.0);
+  REQUIRE(independent_0.squared == 2.0);
+  REQUIRE(independent_1.squared == 2.0);
+  const double independent_l1 = independent_0.l1 + independent_1.l1;
+  const double independent_squared =
+    independent_0.squared + independent_1.squared;
+  REQUIRE(independent_l1 == 4.0);
+  REQUIRE(independent_squared == 4.0);
+
+  const std::array<double, 6> mv_query = { 0, 0, 3, 0, 3, 2 };
+  const std::array<double, 6> mv_candidate = { 0, 0, 0, 3, 2, 3 };
+  std::array<double, 6> mv_upper{};
+  std::array<double, 6> mv_lower{};
+  dtwc::core::compute_envelopes_mv(
+    mv_candidate.data(), 3, 2, 1, mv_upper.data(), mv_lower.data());
+  const double mv_l1 = dtwc::core::lb_keogh_mv(
+    mv_query.data(), 3, 2, mv_upper.data(), mv_lower.data());
+  const double mv_squared = dtwc::core::lb_keogh_mv_squared(
+    mv_query.data(), 3, 2, mv_upper.data(), mv_lower.data());
+  REQUIRE(mv_l1 == 3.0);
+  REQUIRE(mv_squared == 3.0);
+  REQUIRE(mv_l1 <= independent_l1);
+  REQUIRE(mv_squared <= independent_squared);
+
+  const double dependent_l1 = dtwc::dtwBanded_mv(
+    mv_query.data(), 3, mv_candidate.data(), 3, 2, 1);
+  const double dependent_squared = dtwc::dtwBanded_mv(
+    mv_query.data(), 3, mv_candidate.data(), 3, 2, 1, -1.0,
+    dtwc::core::MetricType::SquaredL2);
+  REQUIRE(dependent_l1 == 8.0);
+  REQUIRE(dependent_squared == 20.0);
+  REQUIRE(independent_l1 < dependent_l1);
+  REQUIRE(independent_squared < dependent_squared);
+
   // Full-DTW gotcha: negative radius is currently coerced to radius zero.
   const Series x = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
   const Series y = { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1 };

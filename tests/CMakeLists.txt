@@ -139,7 +139,7 @@ if(TARGET test_lb_keogh_derivation)
             ENVIRONMENT "OMP_NUM_THREADS=1"
             FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
             PASS_REGULAR_EXPRESSION
-                "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\(([3-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)"
+                "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((6[5-9]|[7-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)"
             RUN_SERIAL TRUE)
 endif()
 
