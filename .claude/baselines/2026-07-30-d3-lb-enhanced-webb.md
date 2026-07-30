@@ -434,3 +434,102 @@ proves the public method also emits its existing completion line. Add exactly
 `Distance matrix has been filled!\n` to the expected string; no counter,
 marker, subject behavior, or pass/fail band changes. Product attempts are now
 `1 / 2`.
+
+## Product attempt 2 — final focused adjudication
+
+Commit `53506a9` corrected only the incomplete public-output oracle. Before
+the final execution, a fourth read-only adversarial audit found that the
+original constant-series F57 fixture would distinguish signed overflow but
+would not distinguish radius saturation from merely widening the arithmetic.
+Commit `13cd4f6` therefore added the nonconstant analytic discriminator
+`A={0,0}`, `B={-1,1}`. Its exact global L1 and squared bound is 2; radii
+`n-1`, `n`, and `INT_MAX` must all return 2. Without geometric saturation,
+the latter two return zero even with wide counters. The case exercises both
+the full upper and full lower correction branches. It does not change the
+registered marker or band.
+
+The same audit confirmed before execution that commit `29f9103`:
+
+- resolves the shared effective radius as
+  `min(max(band,0),n-1)`;
+- preserves every representable in-band result algebraically;
+- uses unsigned saturated doubled-radius and free-run arithmetic; and
+- computes the shifted flag index as
+  `j + min(w,n-1-j)`, which cannot exceed `n-1`.
+
+The separate F46 ownership of unrepresentable series lengths, envelope
+shape/provenance, and `2*n` scratch sizing is unchanged.
+
+The focused build command was:
+
+```text
+cmake --build build/highs-1151 --target test_lb_enhanced_webb_derivation test_lb_webb_intmax
+```
+
+It exited zero after compiling the changed product and both targets. Its
+diagnostics were only the inherited unsupported `-fno-signaling-nans` warning
+and inherited llfio header-only pragma warning.
+
+The final product-attempt command was unchanged:
+
+```text
+ctest --test-dir build/highs-1151 -C Release -R '^(test_lb_enhanced_webb_derivation|test_lb_webb_intmax)$' --output-on-failure --no-tests=error -V -j 1
+```
+
+Its complete terminal output was:
+
+```text
+UpdateCTestConfiguration  from :C:/D/git/dtw-cpp/build/highs-1151/DartConfiguration.tcl
+Parse Config file:C:/D/git/dtw-cpp/build/highs-1151/DartConfiguration.tcl
+Test project C:/D/git/dtw-cpp/build/highs-1151
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 9
+    Start  9: test_lb_enhanced_webb_derivation
+
+9: Test command: C:\D\git\dtw-cpp\build\highs-1151\bin\test_lb_enhanced_webb_derivation.exe
+9: Working Directory: C:/D/git/dtw-cpp
+9: Environment variables:
+9:  OMP_NUM_THREADS=1
+9: Test timeout computed to be: 60
+9: Randomness seeded to: 3457699623
+9: [DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.
+9:   Distance-matrix computation will be extremely slow for large datasets.
+9:   Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.
+9: D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 webb_cases=35982 webb_branches=4/4 webb_strict=2/2 tail_cases=35982 tail_strict=2/2 metric_cases=140 order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS
+9: ===============================================================================
+9: All tests passed (115 assertions in 1 test case)
+9:
+1/2 Test  #9: test_lb_enhanced_webb_derivation ...   Passed    0.50 sec
+test 11
+    Start 11: test_lb_webb_intmax
+
+11: Test command: C:\D\git\dtw-cpp\build\highs-1151\bin\test_lb_webb_intmax.exe
+11: Working Directory: C:/D/git/dtw-cpp
+11: Test timeout computed to be: 30
+11: Randomness seeded to: 3905802112
+11: F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS
+11: ===============================================================================
+11: All tests passed (24 assertions in 1 test case)
+11:
+2/2 Test #11: test_lb_webb_intmax ................   Passed    0.07 sec
+
+The following tests passed:
+	test_lb_enhanced_webb_derivation
+	test_lb_webb_intmax
+
+100% tests passed, 0 tests failed out of 2
+
+Total Test time (real) =   0.68 sec
+```
+
+Attempt-2 verdict: **PASS [confirmed]** against both preregistered exact
+markers. Both subjects ran with zero skips. D3 passed 115 assertions and F57
+passed 24 assertions. The two-attempt product budget is exhausted with a green
+final result. Focused F54/F57 behavior is confirmed; D3 closure still requires
+the registered provenance/derivation corrections, WSL UBSan execution, and
+the serial integration matrices.

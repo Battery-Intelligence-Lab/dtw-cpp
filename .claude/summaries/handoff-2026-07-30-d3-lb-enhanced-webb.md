@@ -50,6 +50,22 @@
   `Distance matrix has been filled!` line. Attempt 1 is conservatively consumed;
   correct only that literal and run the unchanged F54 product together with
   F57 in attempt 2.
+- Commit `53506a9` corrected that exact output literal. A fresh read-only
+  pre-run audit then found the F57 constant-series case could pass a
+  widened-but-unsaturated implementation. Commit `13cd4f6` added an analytic
+  nonconstant discriminator with exact global L1/squared value 2 at radii
+  `n-1`, `n`, and `INT_MAX`; it exercises both full-correction directions
+  without changing the registered marker.
+- Commit `29f9103` saturates the CPU Webb/Enhanced radius, makes Webb's doubled
+  radius and counters unsigned and saturating, and replaces `j+w` by bounded
+  addition. The static audit found no objection within F57's registered
+  normal domain; F46 retains unrepresentable lengths and envelope
+  shape/provenance.
+- Final product attempt 2 is **PASS [confirmed]**. The unchanged serial command
+  printed the exact D3 marker and passed 115/115 assertions, then printed the
+  exact F57 marker and passed 24/24 assertions. CTest reported 2/2, zero
+  failures, zero skips, in 0.68 seconds. The complete terminal output is in
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 
 ## Decisions
 
@@ -68,10 +84,11 @@
 
 ## Exact resume point
 
-Commit the exact three-line public-output oracle correction. Then implement
-F57's saturated effective radius and unsigned Webb counters as its own product
-commit. Rebuild both gates and execute them together as final product attempt
-2; no rescue tuning remains after that run.
+Commit the attempt-2 evidence. Then correct F55's source/public/historical
+provenance claims and write the complete D3 derivation with a contract checker.
+Run F57 under the existing WSL UBSan build before the focused inherited and
+three full serial integration matrices. Close F54/F55/F57 and D3 only after
+those gates and the final hygiene pass are recorded.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
 remote or operator state has changed. The claim most likely to be wrong is
