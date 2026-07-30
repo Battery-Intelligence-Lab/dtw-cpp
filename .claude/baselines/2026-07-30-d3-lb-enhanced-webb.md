@@ -378,3 +378,59 @@ Errors while running CTest
 Both named targets had already compiled, linked, and executed in this run, so
 the subject red is not inferred from that diagnostic. A settled rebuild is
 required before a green verdict.
+
+## Product attempt 1 — F54
+
+Commit `d09cf9c` changed only F54's product route and directly coupled public
+contracts: `LowerBoundStrategy::Enhanced` now activates both Keogh and
+Enhanced and retains their maximum after Kim. The focused target rebuilt
+successfully.
+
+The unchanged D3 gate passed all mathematical and direct/public F54 state
+checks, then exposed an incomplete whole-output test oracle:
+
+```text
+C:/D/git/dtw-cpp/tests/unit/adversarial/test_lb_enhanced_webb_derivation.cpp(1102): FAILED:
+  REQUIRE( public_output.str() == "Distance matrix is being filled!\n" "Pruned strategy: 3 pairs, 1 early-abandoned, pruning ratio: " "0.333333\n" )
+with expansion:
+  "Distance matrix is being filled!
+  Pruned strategy: 3 pairs, 1 early-abandoned, pruning ratio: 0.333333
+  Distance matrix has been filled!
+  "
+  ==
+  "Distance matrix is being filled!
+  Pruned strategy: 3 pairs, 1 early-abandoned, pruning ratio: 0.333333
+  "
+with messages:
+  first envelope violation:
+  first Enhanced structure violation:
+  first path violation:
+  first Enhanced violation:
+  first Webb violation:
+  first tail violation:
+  first predicate violation:
+
+===============================================================================
+test cases:   1 |   0 passed | 1 failed
+assertions: 114 | 113 passed | 1 failed
+```
+
+CTest's exact summary was:
+
+```text
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   0.48 sec
+
+The following tests FAILED:
+	  9 - test_lb_enhanced_webb_derivation (Failed)
+```
+
+Attempt-1 verdict: **FALSIFIED by test-harness expectation, product behavior
+confirmed through the preceding 113 assertions**. In particular, the repaired
+direct ledger, both complete exact matrices, public route, and exact pruning
+summary all passed before the final string comparison. The captured output
+proves the public method also emits its existing completion line. Add exactly
+`Distance matrix has been filled!\n` to the expected string; no counter,
+marker, subject behavior, or pass/fail band changes. Product attempts are now
+`1 / 2`.

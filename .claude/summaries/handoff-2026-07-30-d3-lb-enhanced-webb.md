@@ -42,6 +42,14 @@
   route reported envelope-prune count 0 instead of 1. F57 failed at assertion
   3 because raw `INT_MAX` Webb returned L1 8 instead of exact 4. CTest reported
   0/2 passed in 0.54 seconds. Product attempts remain 0/2.
+- F54 product commit `d09cf9c` activates both Keogh and Enhanced and retains
+  their maximum. Product attempt 1 passed 113/114 assertions, including every
+  mathematical ledger, exact F54 primitive/counter value, and both full
+  matrices. The sole red was the test's incomplete whole-output literal: the
+  public method correctly appended its existing
+  `Distance matrix has been filled!` line. Attempt 1 is conservatively consumed;
+  correct only that literal and run the unchanged F54 product together with
+  F57 in attempt 2.
 
 ## Decisions
 
@@ -60,11 +68,10 @@
 
 ## Exact resume point
 
-Implement product attempt 1: make Enhanced evaluate the maximum of its own
-bound and Keogh; normalize Webb's effective radius before signed arithmetic
-and use unsigned counters. Correct only directly coupled source contracts in
-that product commit. Rebuild both targets, execute the unchanged exact markers,
-and record the verdict before any further repair.
+Commit the exact three-line public-output oracle correction. Then implement
+F57's saturated effective radius and unsigned Webb counters as its own product
+commit. Rebuild both gates and execute them together as final product attempt
+2; no rescue tuning remains after that run.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
 remote or operator state has changed. The claim most likely to be wrong is
