@@ -236,3 +236,40 @@ advisory. The claim most expected to be wrong is exact correspondence of the
 production recurrence with the direct-predicate NoLR reference at clipped
 tails; the all-case ledger, strict-tail witnesses, and branch counters are
 the arbiters.
+
+## Inherited clean-base baseline
+
+After registration commit `8f8e7e5`, the working tree was clean. The canonical
+rebuild printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+The registered inherited command was:
+
+```text
+ctest --test-dir build/highs-1151 -C Release -R '^(test_lb_enhanced_webb|unit_test_lower_bounds|unit_test_pruned_distance_matrix)$' --output-on-failure --no-tests=error -j 1
+```
+
+Its complete terminal output was:
+
+```text
+Test project C:/D/git/dtw-cpp/build/highs-1151
+    Start  8: test_lb_enhanced_webb
+1/3 Test  #8: test_lb_enhanced_webb ..............   Passed    0.13 sec
+    Start 36: unit_test_lower_bounds
+2/3 Test #36: unit_test_lower_bounds .............   Passed    0.19 sec
+    Start 42: unit_test_pruned_distance_matrix
+3/3 Test #42: unit_test_pruned_distance_matrix ...   Passed    4.06 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Total Test time (real) =   4.43 sec
+```
+
+Baseline verdict: **PASS [confirmed]** for the three inherited executables.
+This does not contradict F54/F55/F57: the inherited tests contain neither the
+live take-max discriminator nor an independent NoLR/tail oracle nor the
+`INT_MAX` arithmetic case.

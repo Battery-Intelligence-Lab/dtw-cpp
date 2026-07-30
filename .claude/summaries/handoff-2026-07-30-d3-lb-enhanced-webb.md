@@ -19,6 +19,10 @@
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 - Updated the primary-source ledger and PLAN finding/decision records before
   adding tests or running binaries.
+- Committed preregistration as `8f8e7e5`, rebuilt the canonical tree with
+  exact `ninja: no work to do`, and ran the inherited serial three-target
+  baseline. It passed 3/3 in 4.43 seconds; the output is recorded verbatim in
+  the D3 baseline. None of the three new discriminators existed in that run.
 
 ## Decisions
 
@@ -37,9 +41,9 @@
 
 ## Exact resume point
 
-Commit the preregistration. Then run and append the clean-base inherited
-focused baseline before adding either new test. No simulation or test binary
-has run during D3 preflight.
+Add and commit the two permanent red-first test executables and their CTest
+policies without changing product code. Then rebuild and execute both expected
+reds, recording the exact failures before product attempt 1.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
 remote or operator state has changed. The claim most likely to be wrong is
