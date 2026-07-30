@@ -216,6 +216,7 @@ std::vector<std::pair<std::string, Result>> semantic_compatibility_results()
 
   auto result = valid_result();
   result.labels.pop_back();
+  result.converged = false;
   fixtures.emplace_back("wrong-n", std::move(result));
 
   result = valid_result();
@@ -223,7 +224,7 @@ std::vector<std::pair<std::string, Result>> semantic_compatibility_results()
   fixtures.emplace_back("wrong-k", std::move(result));
 
   result = valid_result();
-  result.labels.front() = 3;
+  result.labels.front() = -1;
   fixtures.emplace_back("bad-label", std::move(result));
 
   result = valid_result();
