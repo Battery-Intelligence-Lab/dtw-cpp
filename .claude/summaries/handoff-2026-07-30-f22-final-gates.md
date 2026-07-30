@@ -43,6 +43,13 @@
   `cfg-gate-normal` CLI: five HPC cases selected the Arrow CLI outside its
   CTest runtime, the version test found no intended CLI, and F39 remained the
   seventh expected red. This failure is retained, not reclassified as a pass.
+- Rebuilt the sibling CLI from the same clean graph; independently proved its
+  route, exact version/error bytes, real conformance partition, and the six
+  formerly unexpected nodes at 6/6. An independent adversarial execution
+  reproduced those checks and issued GO.
+- Python attempt 2 met the registered expected-red band exactly: 1,041
+  collected = 1,028 passed + 12 skipped + only the F39 `28 == 27` failure,
+  with zero error nodes. Post-run built/imported extension hashes still match.
 
 ## Decisions
 
@@ -58,12 +65,10 @@
 
 ## Exact resume point
 
-Before Python attempt 2, build `dtwc_cl` from the already-clean
-`cfg-gate-normal` graph, pin `DTWC_CL_PATH` to that exact binary, and prove its
-version, required-input diagnostic, and a real local clustering execution.
-Then run the final full Python attempt. Follow with forced-fresh OpenMP MATLAB
-focused/full on R2024b then R2025b. Append exact outputs to the run-log after
-each gate and commit each completed evidence step immediately.
+Force a clean OpenMP MEX rebuild, prove source compilation/hash/cache identity,
+and run focused/full MATLAB serially on R2024b then R2025b through that same
+MEX. Append exact outputs to the run-log after each gate and commit each
+completed evidence step immediately.
 
 ## Open risks
 
@@ -79,5 +84,6 @@ each gate and commit each completed evidence step immediately.
 - CTest's mutable `LastTestsFailed.log` retained a historical F22 failure after
   two current green runs; only the current complete transcript may adjudicate
   a gate.
-- Only one Python full-gate attempt remains under the two-attempt rule. It must
-  not start until the exact intended CLI route is executable outside CTest.
+- `test_hpc` ignores `DTWC_CL_PATH` and selects the newest build-tree CLI by
+  mtime. Future clean binding gates must build `_dtwcpp_core` and `dtwc_cl`
+  together and assert the helper-selected path before the suite.

@@ -414,6 +414,110 @@ version/error/runtime probes.
 Attempt-1 verdict: **FALSIFIED [confirmed]** — 7/1,041 failures rather than the
 registered sole F39 red.
 
+### Python forced-fresh binding — attempt 2
+
+The sibling CLI was rebuilt from the same clean `cfg-gate-normal` graph:
+
+```text
+[1/3] Building CXX object CMakeFiles/dtwc_cl.dir/dtwc/dtwc_cl.cpp.obj
+[2/3] Linking CXX executable bin\dtwc_cl.exe
+CFG_CLI_SHA256=F88AD896455CF708710B980E30FD17FA2FFF74F474C7EEF1BD892B7F53A8745E
+```
+
+`test_hpc` does not honor `DTWC_CL_PATH`: its helper chooses the newest
+build-tree CLI. Both the helper route and the environment route were therefore
+asserted separately:
+
+```text
+EXPECTED=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
+SELECTED=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
+HPC_ROUTE_MATCH=True
+```
+
+Independent subprocess probes then printed:
+
+```text
+CLI_VERSION_STDOUT='2.0.0rc1\n'
+CLI_VERSION_STDERR=''
+CLI_VERSION_EXIT=0
+CLI_REQUIRED_STDOUT=''
+CLI_REQUIRED_STDERR='Error: --input is required via CLI or config file (TOML; YAML if built with DTWC_ENABLE_YAML)\n'
+CLI_REQUIRED_EXIT=1
+CLI_DIAGNOSTIC_PREFLIGHT=PASS
+```
+
+A real CLI conformance run against the recorded non-degenerate dataset exited
+zero and reproduced the canonical partition:
+
+```text
+CLI_REAL_EXIT=0
+CLI_REAL_STDERR=''
+CLI_REAL_LABELS=0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2
+CLI_REAL_MEDOIDS=4,13,22
+CLI_REAL_SILHOUETTE=0.96894972666666657
+CLI_REAL_CONFORMANCE=PASS
+```
+
+The first cleanup assertion expected only three result files and rejected the
+probe because the CLI also emitted its checkpoint and distance matrix. All
+five exact files were then validated under the probe directory and removed:
+
+```text
+PROBE_FILES=conformance_checkpoint.bin,conformance_distance_matrix.csv,conformance_labels.csv,conformance_medoids.csv,conformance_silhouettes.csv
+PROBE_CLEANED=True
+POST_CLI_EXTENSION_MATCH=True
+```
+
+The six formerly unexpected pytest nodes passed before the final full run:
+
+```text
+......                                                                   [100%]
+6 passed in 8.62s
+CLI_PREFLIGHT_SUMMARY_MATCH=True
+CLI_PREFLIGHT_SKIP_LINES=0
+```
+
+An independent adversarial execution reproduced the same route, exact
+diagnostics, a separate four-series real clustering, and 6/6 focused result,
+then issued GO. The first attempt to launch the final suite was stopped before
+pytest because its exclusivity guard observed two finishing provenance-only
+Python processes; both were absent on the resolving probe. No full-run credit
+or attempt was assigned to that aborted launch.
+
+The final full command used the exact intended CLI and fresh installed
+extension. Its complete ledger was:
+
+```text
+ATTEMPT2_EXCLUSIVITY=PASS
+ATTEMPT2_ROUTE=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
+collected 1041 items
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+=========== 1 failed, 1028 passed, 12 skipped in 132.10s (0:02:12) ============
+PYTEST_EXIT=1
+PYTHON_FULL_COLLECTION_MATCH=True
+PYTHON_FULL_SUMMARY_MATCH=True
+PYTHON_FULL_FAILED_COUNT=1
+PYTHON_FULL_SOLE_F39=True
+PYTHON_FULL_LEDGER_28_VS_27=True
+PYTHON_FULL_EXPECTED_F39_RED=PASS
+PYTHON_FULL_ERROR_LINES=0
+```
+
+The sole failure retained the exact frozen ledger:
+
+```text
+>       assert manifest_total == 27
+E       assert 28 == 27
+```
+
+Post-run built/installed extension hashes remained identical at
+`0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF`,
+and repository hygiene passed.
+
+Verdict: **PASS WITH REGISTERED F39 RED [confirmed]** — focused 18/18 with the
+exact F22 marker; full 1,041 = 1,028 passed + 12 registered skips + only the
+known F39 inventory failure; zero error nodes; fresh native identity proven.
+
 ### Remaining gates
 
-Pending: Python, MATLAB R2024b, MATLAB R2025b.
+Pending: MATLAB R2024b, MATLAB R2025b.

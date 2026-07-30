@@ -671,8 +671,11 @@ Critical knowledge to avoid repeating mistakes.
   an Arrow-build CLI for five HPC cases and could not find the intended CLI for
   its version case, yielding six setup-caused failures plus the expected F39
   red. After any scoped clean-first binding build, enumerate and rebuild every
-  executable consumed by the downstream gate, pin its path, and run it once
-  outside the harness before simulation. Evidence:
+  executable consumed by the downstream gate and run it once outside the
+  harness before simulation. `test_version_ssot` honors `DTWC_CL_PATH`, but
+  `test_hpc` does not: `_hpc.find_dtwc_binary` chooses the newest build-tree
+  candidate by mtime, so assert that helper's selected path explicitly.
+  Evidence:
   `.claude/baselines/2026-07-30-f22-final-gates.md`.
 
 ## LR-core Solver (Phase 4)
