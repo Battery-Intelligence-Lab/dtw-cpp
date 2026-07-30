@@ -25,6 +25,7 @@
 #include <algorithm>   // for min, max, fill, max_element, min_element
 #include <cmath>       // for abs
 #include <cstddef>     // for size_t
+#include <limits>      // for numeric_limits
 #include <span>        // for span
 #include <type_traits> // for is_same_v
 #include <vector>      // for vector
@@ -646,7 +647,8 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
  * @param n       Common series length.
  * @param upper_B Upper envelope of B (radius = band).
  * @param lower_B Lower envelope of B.
- * @param band    Sakoe-Chiba window radius w (>= 0).
+ * @param band    Sakoe-Chiba window radius w; negative values become zero and
+ *                values above n-1 become the equivalent global radius n-1.
  * @param V       Bands per end (>= 1); clamped to n/2 for validity.
  * @param metric  Pointwise cost (default L1).
  * @return Lower bound (summed cost, same metric as the bounded DTW).
@@ -660,7 +662,7 @@ T lb_enhanced(const T *A, const T *B, std::size_t n,
   if (n == 1) return metric(A[0], B[0]);
 
   const int ni = static_cast<int>(n);
-  const int w = std::max(band, 0);
+  const int w = std::min(std::max(band, 0), ni - 1);
   int nBands = std::min(V, ni / 2);
   if (nBands < 1) nBands = 1;
 
@@ -790,7 +792,8 @@ inline WebbEnvelope compute_webb_envelope(const std::vector<double> &series, int
  * @param ea    Webb envelopes of A (window = band).
  * @param B     Candidate series (length n).
  * @param eb    Webb envelopes of B (window = band).
- * @param band  Window radius w.
+ * @param band  Window radius w; negative values become zero and values above
+ *              n-1 become the equivalent global radius n-1.
  * @param free_scratch  Scratch of at least n chars, reused across calls (may be nullptr).
  * @param metric Pointwise cost.
  * @return Lower bound (summed cost). >= LB_Keogh(A, env B).
@@ -804,8 +807,14 @@ double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
   const std::size_t n = A.size();
   if (n == 0 || B.size() != n || ea.upper.size() != n || eb.upper.size() != n)
     return 0.0;
-  const int w = std::max(band, 0);
-  const int twoW = 2 * w;
+  const std::size_t w = std::min(
+    static_cast<std::size_t>(std::max(band, 0)), n - 1);
+  constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();
+  const std::size_t two_w = w > max_size - w ? max_size : 2 * w;
+  const auto increment_saturated = [](std::size_t value) noexcept {
+    constexpr std::size_t limit = std::numeric_limits<std::size_t>::max();
+    return value == limit ? value : value + 1;
+  };
 
   std::vector<char> local;
   std::vector<char> &freeAbove = free_scratch ? *free_scratch : local;
@@ -818,28 +827,29 @@ double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
   const auto &ULA = ea.ul;   const auto &LUA = ea.lu;     // secondary of A
 
   double b = 0.0;
-  int cUp = w, cLo = w;                                   // pre-series counted free
+  std::size_t cUp = w, cLo = w;                            // pre-series counted free
   for (std::size_t i = 0; i < n; ++i) {
     const double ai = A[i];
     if (ai > UB[i]) {
       b += metric(ai, UB[i]);
       cUp = 0;
-      cLo = (UB[i] >= ULA[i]) ? cLo + 1 : 0;
+      cLo = (UB[i] >= ULA[i]) ? increment_saturated(cLo) : 0;
     } else if (ai < LB[i]) {
       b += metric(ai, LB[i]);
       cLo = 0;
-      cUp = (LB[i] <= LUA[i]) ? cUp + 1 : 0;
+      cUp = (LB[i] <= LUA[i]) ? increment_saturated(cUp) : 0;
     } else {
-      ++cUp; ++cLo;
+      cUp = increment_saturated(cUp);
+      cLo = increment_saturated(cLo);
     }
-    Fa[i] = (cUp > twoW) ? 1 : 0;
-    Fb[i] = (cLo > twoW) ? 1 : 0;
+    Fa[i] = (cUp > two_w) ? 1 : 0;
+    Fb[i] = (cLo > two_w) ? 1 : 0;
   }
 
   const auto &UA = ea.upper; const auto &LA = ea.lower;   // envelope of A
   const auto &ULB = eb.ul;   const auto &LUB = eb.lu;     // secondary of B
   for (std::size_t j = 0; j < n; ++j) {
-    const std::size_t idx = std::min(j + static_cast<std::size_t>(w), n - 1);
+    const std::size_t idx = j + std::min(w, n - 1 - j);
     const double bj = B[j];
     if (Fa[idx] && bj > UA[j]) {
       b += metric(bj, UA[j]);

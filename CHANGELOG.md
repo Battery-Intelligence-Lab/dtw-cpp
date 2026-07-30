@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed CPU LB_Webb and LB_Enhanced window geometry for valid extreme radii:
+  radii above `n-1` now use the equivalent global window, and LB_Webb's
+  doubled radius, free-run counters, and shifted indices cannot overflow.
 - Fixed the CPU `Enhanced` pruning strategy to evaluate
   `max(LB_Keogh, LB_Enhanced)` after LB_Kim. Effective `V>=2` has no
   pointwise ordering with Keogh, so selecting Enhanced alone could silently
