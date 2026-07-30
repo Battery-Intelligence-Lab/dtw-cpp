@@ -94,6 +94,8 @@ from dtwcpp._dtwcpp_core import (
     # Checkpointing
     save_checkpoint,
     load_checkpoint,
+    save_binary_checkpoint,
+    load_binary_checkpoint,
     CheckpointOptions,
 )
 
@@ -436,7 +438,8 @@ __all__ = [
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
     "MPI_AVAILABLE",
     "check_system",
-    "save_checkpoint", "load_checkpoint", "CheckpointOptions",
+    "save_checkpoint", "load_checkpoint",
+    "save_binary_checkpoint", "load_binary_checkpoint", "CheckpointOptions",
     "DTWClustering", "DTWCKMedoids",
     "save_dataset_csv", "load_dataset_csv",
     "save_dataset_hdf5", "load_dataset_hdf5",

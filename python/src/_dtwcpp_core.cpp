@@ -53,8 +53,9 @@
 #include <Eigen/Core>
 
 #include <cstring>
-#include <vector>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace nb = nanobind;
 using namespace nb::literals; // for _a arg names
@@ -67,6 +68,12 @@ void warn_deprecated_alias(const char *old_name, const char *new_name) {
   message += new_name;
   if (PyErr_WarnEx(PyExc_DeprecationWarning, message.c_str(), 1) < 0)
     throw nb::python_error();
+}
+
+std::string utf8_path_text(const std::filesystem::path &path) {
+  const std::u8string encoded = path.u8string();
+  return std::string(
+    reinterpret_cast<const char *>(encoded.data()), encoded.size());
 }
 
 } // namespace
@@ -1167,6 +1174,37 @@ NB_MODULE(_dtwcpp_core, m) {
         "Returns True if checkpoint was loaded successfully, False otherwise.\n"
         "Validates that matrix dimensions match the Problem's data size.\n"
         "Sets distance matrix filled flag if all pairs are computed.");
+
+  m.def("save_binary_checkpoint",
+        [](const dtwc::core::ClusteringResult &result,
+           const std::filesystem::path &path) {
+    // A Python thread may mutate the bound result after the GIL is released.
+    // Snapshot it first so the native writer always observes one coherent value.
+    const dtwc::core::ClusteringResult snapshot = result;
+    nb::gil_scoped_release release;
+    dtwc::save_binary_checkpoint(snapshot, path);
+  }, "result"_a, "path"_a,
+     "Save a ClusteringResult to a binary version-1 checkpoint.");
+
+  m.def("load_binary_checkpoint", [](const std::filesystem::path &path) {
+    // Prepare all Python-facing text while the GIL is held. The release scope
+    // contains only native state and filesystem work.
+    const std::string path_text = utf8_path_text(path);
+    dtwc::core::ClusteringResult result;
+    bool loaded = false;
+    {
+      nb::gil_scoped_release release;
+      loaded = dtwc::load_binary_checkpoint(result, path);
+    }
+    if (!loaded) {
+      throw dtwc::IOError(
+        "load_binary_checkpoint: cannot read a valid binary result "
+        "checkpoint from '" + path_text + "'.");
+    }
+    return result;
+  }, "path"_a,
+     "Load a ClusteringResult from a binary version-1 checkpoint.\n\n"
+     "Raises IOError if the checkpoint is absent, inaccessible, or invalid.");
 
   // =========================================================================
   // Scores

@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Added public Python `save_binary_checkpoint` and
+  `load_binary_checkpoint` bindings for binary-v1 `ClusteringResult`
+  checkpoints. Both accept path-like objects and release the GIL during native
+  filesystem work; failed loads raise the public typed `dtwcpp.IOError`.
 - Made binary-v1 clustering-result checkpoints host-independent and
   fail-closed: all scalars use explicit little-endian encoding, readers reject
   noncanonical structural bytes and wrong lengths before count-derived
