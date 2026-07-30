@@ -1151,6 +1151,18 @@ colour system transfer verbatim**.
   historical F12 digest's generic F28–F30 assignment without rewriting it.
   Resume F23, then D3. Evidence:
   `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
+- 2026-07-30 (F23 registration): Bind the existing binary-v1
+  `ClusteringResult` writer/reader directly as
+  `save_binary_checkpoint(result, path) -> None` and
+  `load_binary_checkpoint(path) -> ClusteringResult`; failed reads and native
+  write failures cross Python as `dtwcpp.IOError`. Preserve the wire format and
+  require F51's deterministic wire-canonicality prerequisite before exposure;
+  the later checkpoint/config lens retains randomized fuzz,
+  semantic/provenance/authentication, and CLI/config combinations. Require the
+  fresh-extension expected red, the independent 72-byte oracle, exact 3-test
+  marker, 157 parity nodes, and registered 1,048-node full inventory before
+  closure. Evidence:
+  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 
 ## Progress log (append-only; older entries in the archive)
 

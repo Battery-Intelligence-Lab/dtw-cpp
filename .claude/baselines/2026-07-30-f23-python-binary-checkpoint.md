@@ -1,0 +1,257 @@
+# F23 Python binary-result checkpoint bindings - 2026-07-30
+
+## Scope and clean base
+
+- Base: `ab08ac1a5b514ed07f45b50e9f8f6168d621feb6`
+  (`docs: close D2 campaign task`).
+- `git status --short` produced no output.
+- Subject: expose the frozen binary `ClusteringResult` checkpoint writer and
+  reader through the live public Python package as
+  `save_binary_checkpoint(result, path) -> None` and
+  `load_binary_checkpoint(path) -> ClusteringResult`.
+- Product attempts: at most two. The committed red-first tests and the inherited
+  baseline are not product attempts. A failed product compile or decisive
+  runtime gate consumes an attempt; no registered band may be weakened after a
+  run.
+- Precondition: F51's wire-canonicality repair must be green before either
+  Python function is exposed. This preflight finding was registered before any
+  F23 product or test edit.
+- Rollback is the eventual local F23 product commit plus its test/documentation
+  commits in reverse order. No remote or operator state may change.
+
+The live killed-ideas section, archived checkpoint decisions, `LESSONS.md`, the
+F17 baseline/handoff, the frozen API contract, the C++ serializer/deserializer,
+the MATLAB binding, and the current Python extension/package/tests were inspected
+before registration. No F23-specific route was killed. F17 deliberately froze
+binary v1 as completed-result replay rather than method-specific continuation.
+
+## Confirmed inherited state
+
+At the clean base, both the built and installed extension are the same artifact:
+
+```text
+C:\D\git\dtw-cpp\build\cfg-gate-normal\python\_dtwcpp_core.cp313-win_amd64.pyd
+0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF
+C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+0E6FCE5C3C312B916E845F1A1D30F2E86F37B663D30809EAE131160562932BDF
+```
+
+The import route and missing-symbol observations are:
+
+```text
+PUBLIC_FILE=C:\D\git\dtw-cpp\python\dtwcpp\__init__.py
+CORE_FILE=C:\D\git\dtw-cpp\.venv\Lib\site-packages\dtwcpp\_dtwcpp_core.cp313-win_amd64.pyd
+SAVE_BINARY=False
+LOAD_BINARY=False
+CORE_SAVE_BINARY=False
+CORE_LOAD_BINARY=False
+```
+
+Source SHA-256 values at registration are:
+
+```text
+python/src/_dtwcpp_core.cpp
+6C247C4554BA57BBC3A71B21179CCA81F67F0E84EF8246A73BAE4DB4A19B81B5
+python/dtwcpp/__init__.py
+7B92FA33A154E6393B4EB55D6566D39BA33BAE57B9937D8055EE6E888EE4FF42
+dtwc/checkpoint.cpp
+00F09F3BFEC55BCE039547A4E83E6BF54517541003D204955312DFF66EFCC130
+tests/python/test_contract_parity.py
+F1FA984228A121CDF528E312F6F9F135BFF3EEE5A7C216070A1DC7C19B4F06C7
+```
+
+The configured Python gate is Release, Clang/Ninja, Python 3.13, llfio ON,
+Arrow OFF, HiGHS OFF. The inherited collections are:
+
+```text
+155 tests collected in 1.74s
+1041 tests collected in 1.88s
+2 tests collected in 3.57s
+1043 tests collected in 2.55s
+```
+
+Those are respectively contract parity, `tests/python`, conformance, and their
+combined public-Python inventory. The last recorded full result for the
+1,041-item Python inventory was 1,028 passed, 12 skipped, and the sole expected
+F39 supply-chain failure. D2 added two conformance nodes, so the pre-F23
+arithmetic ledger is 1,030 passed + 12 skipped + 1 expected F39 red = 1,043.
+
+The native binary checkpoint test contains one case and nine assertions:
+round-trip of all five fields, missing-file false, and bad-magic false. Its
+actual focused execution is recorded only after this registration.
+
+## Frozen Python boundary
+
+The two public functions are direct Tier-2 bindings, not a new file format:
+
+```text
+save_binary_checkpoint(result: ClusteringResult, path) -> None
+load_binary_checkpoint(path) -> ClusteringResult
+```
+
+Both names must exist on `dtwcpp._dtwcpp_core`, be imported by `dtwcpp`, and
+appear in `dtwcpp.__all__`. A stale native extension must make the public
+package import fail rather than allowing the editable Python layer to mask the
+missing core symbols.
+
+`path` accepts `str | os.PathLike[str]` through nanobind's filesystem caster.
+The functions release the GIL around filesystem work. Existing native
+`std::runtime_error` and `std::filesystem::filesystem_error` writer failures are
+translated at this public boundary to `dtwcpp.IOError`; an unrelated exception
+such as `std::bad_alloc` is not misclassified as I/O. A failed native read
+raises `dtwcpp.IOError` with the exact message:
+
+```text
+load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
+```
+
+This intentionally differs from directory `load_checkpoint`, whose frozen
+return type remains `bool`. A direct binary-result load has no destination
+`Problem` and therefore returns a new `ClusteringResult`; silently returning an
+empty result or `None` would erase the distinction between a legitimate empty
+object and malformed state.
+
+F23 does not change binary-v1 bytes, add provenance, reinterpret
+`converged=false`, or validate a result against an external N/k. The preflight
+found that a thin binding would expose unchecked signed count allocation,
+native-endian decoding despite the documented little-endian format, and
+noncanonical reserved/padding/convergence/trailing bytes. F51 therefore owns
+that narrow deterministic wire-canonicality prerequisite. The later
+checkpoint/config robustness lens retains randomized corruptions, fuzz
+crash/hang/leak work, semantic/provenance/authentication policy, and CLI/TOML
+combinations; F51's fixed corpus seeds rather than duplicates it.
+
+## Independent wire oracle
+
+The non-degenerate fixture is deliberately non-uniform and coherent: each
+medoid's label equals its medoid-vector slot.
+
+| Field | Registered value |
+|---|---|
+| labels | `[2, 1, 0, 2, 2, 0, 0]` |
+| medoid indices | `[6, 1, 4]` |
+| total cost | `-13.25` |
+| iterations | `0x01020304` = `16909060` |
+| converged | `true` |
+
+An independent Python `struct.pack` oracle using
+`<4sHHiiiB3xd3i7i` produced:
+
+```text
+WIRE_LENGTH=72
+WIRE_SHA256=DC832EDBD214FD847B7EC8BC57884881F1CEA196139FAC7DD5B939D5E7CD1A98
+WIRE_HEX=44434b5001000000030000000700000004030201010000000000000000802ac006000000010000000400000002000000010000000000000002000000020000000000000000000000
+DOUBLE_HEX=0000000000802ac0
+```
+
+The byte count is derived independently:
+
+```text
+4 magic + 2 version + 2 reserved + 3*4 signed header
++ 1 converged + 3 padding + 8 binary64
++ 3*4 medoids + 7*4 labels = 72 bytes
+```
+
+This fixture catches field-order, count, padding, integer-width, byte order,
+convergence, signed-binary64, and sign errors. The finite negative cost is valid
+for Soft-DTW results and is exactly representable, so no rounded decimal claim
+substitutes for the registered eight raw bytes. Two independent read-only
+computations (.NET `BinaryWriter`/SHA-256 and Node literal decoding/hash) agree
+with the Python oracle. This host reports little endian; current production
+native-object writes match the registered bytes here but are not evidence for a
+big-endian implementation.
+
+## Registered red-first tests
+
+Add `tests/python/test_binary_checkpoint.py` before product work. Its module
+imports both names from the live public package at collection time, so the
+inherited extension must produce a collection error naming a missing F23
+symbol. Also add the two frozen names to the hard-coded `_CHECKPOINT` contract
+inventory. Before implementation:
+
+1. the focused file fails during import/collection and runs zero subject tests;
+2. the two new contract-parity parameters fail because both public symbols are
+   absent;
+3. no passing F23 marker exists.
+
+Any inherited green is a false subject and stops product work until explained.
+
+After implementation the focused file has exactly three tests:
+
+1. exact bytes plus two production C++ reader calls, all ten loaded field
+   comparisons, `None` writer return, missing/malformed typed read errors, and
+   a typed writer-open error;
+2. public/core export identity for both names;
+3. exact membership of both names in `dtwcpp.__all__`.
+
+The sole green marker is:
+
+```text
+F23_PYTHON_CHECKPOINT exports=2/2 fields=10/10 bytes=72/72 cpp_reader=2/2 io_errors=3/3 skips=0 verdict=PASS
+```
+
+The focused acceptance band is exactly 3 passed, zero failed/error/skipped,
+one marker, the 72-byte SHA-256 above, and all counters exact. Contract parity
+must become 157/157. No test may use `skip` or `xfail`.
+
+## Fresh-extension and regression gates
+
+Before a decisive green:
+
+1. clean-first rebuild `_dtwcpp_core` in `build/cfg-gate-normal`;
+2. rebuild its sibling `dtwc_cl` after the clean so full Python route selection
+   cannot fall through to a stale external CLI;
+3. copy the fresh `.pyd` and `libomp.dll` into the venv package;
+4. print package/core paths plus built/installed SHA-256 equality;
+5. import both newly added symbols before pytest.
+
+All pytest temporary state is rooted under `build/`. The combined post-F23
+Python/conformance inventory is registered at exactly 1,048 nodes:
+
+```text
+1035 passed, 12 skipped, 1 expected F39 failure
+```
+
+The sole allowed failure is
+`tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete`
+with its inherited 28-versus-27 F39 discrepancy. If F39 closes before this gate,
+the arithmetically equivalent band is 1,036 passed and 12 skipped. Any other
+failure or error is F23 red.
+
+The existing native binary reader/writer test must still execute at its
+inherited assertion/case floor. The serial native matrices remain:
+
+- canonical: 123/123, zero failed, exact six capability skips;
+- llfio OFF: 123/123, zero failed, exact nine capability skips;
+- Arrow ON: 125/125, zero failed, exact eight capability skips, reader
+  390 assertions / 11 cases.
+
+Documentation acceptance requires the frozen contract and rendered Tier-2
+mirror to say both Python binary functions are live, the checkpointing/Python
+guides to demonstrate the returned `ClusteringResult` and typed failure, one
+Unreleased changelog line, current generated docs, documentation-contract
+checks, record hygiene, repository hygiene, and zero `git diff --check`
+diagnostics.
+
+## Adversarial checks before execution
+
+- A Python-only serializer is forbidden: both operations must call the existing
+  production C++ functions.
+- Comparing two Python objects alone is insufficient: bytes must match the
+  independent wire oracle and each saved file must be parsed twice through the
+  bound C++ reader.
+- A helper import is insufficient: tests drive `import dtwcpp`, core symbols,
+  package re-exports, and `__all__`.
+- A stale `.pyd` cannot pass because the new symbol import precedes pytest and
+  built/installed hashes must match.
+- A generic `RuntimeError`/`OSError` is insufficient: both malformed and missing
+  paths must be exact `dtwcpp.IOError` instances and also satisfy the frozen
+  dual inheritance.
+- F51 must make binary-v1 deterministic wire parsing green before F23 exposure;
+  wider fuzz/semantic/config robustness remains an explicit future owner, not
+  an inferred F23 green.
+
+The claim most likely to be wrong is the exact 1,048-node full inventory because
+collection can change independently while this campaign advances. It is
+decisive here: any mismatch must be explained from named collected nodes before
+a verdict, never silently re-registered after execution.
