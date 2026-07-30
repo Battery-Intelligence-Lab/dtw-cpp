@@ -40,6 +40,8 @@
 - The later checkpoint/config robustness lens consumes the 85 cases as fixed
   seeds and retains randomized fuzzing, semantic/provenance/authentication,
   atomicity/durability, and CLI/config combinations.
+- F52 separately owns MATLAB's false-load error-taxonomy mismatch; F53 owns its
+  incomplete/narrowing result conversion and weak field/order parity test.
 - Product attempts are capped at two.
 
 ## Exact resume point

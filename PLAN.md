@@ -891,6 +891,27 @@ Open findings first (status after R0 adjudication — update these boxes there):
       semantic-invalid files still reach the CLI's contextual validator. These
       cases seed rather than replace the later randomized checkpoint/config
       robustness lens.
+- [ ] **F52 — MATLAB binary-checkpoint load failures bypass the frozen I/O
+      taxonomy.** `cmd_load_binary_checkpoint` throws `std::runtime_error` when
+      the production reader returns false, so the MEX catch ladder publishes
+      `dtwc:runtime` instead of contract-required `dtwc:ioError`
+      (`bindings/matlab/dtwc_mex.cpp:965-972,1510-1519`). First gate: drive
+      missing and structurally malformed files through the public
+      `dtwc.load_binary_checkpoint` wrapper under both installed MATLAB
+      releases; each must raise exact identifier `dtwc:ioError`, retain an
+      actionable path-bearing message, and never crash or return a default
+      result.
+- [ ] **F53 — MATLAB binary-checkpoint result conversion accepts incomplete or
+      non-integral state and its parity test masks field/order loss.**
+      `mx_to_clustering_result` requires only labels/medoids, defaults three
+      missing fields, narrows arbitrary doubles to `int`, and treats every
+      nonzero convergence value as true; the live test compares only label
+      count and sorted medoids (`dtwc_mex.cpp:908-940`;
+      `test_contract_parity.m:527-537`). First gate: table-drive each missing
+      field, fractional/non-finite/out-of-int32 indices and iterations,
+      noncanonical convergence, and nonscalar fields; reject before filesystem
+      effects, then round-trip a non-degenerate result with all five fields and
+      medoid order exact on R2024b and R2025b.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1189,6 +1210,12 @@ colour system transfer verbatim**.
   F23 task is a safety-driven cadence departure; resume F23 immediately after
   F51 and D3 immediately after F23. Evidence:
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- 2026-07-30 (F23/F51 MATLAB audit split): Keep two confirmed MATLAB defects
+  out of the Python binding and native wire-codec scopes. F52 owns the binary
+  load false-result's `dtwc:runtime` versus frozen `dtwc:ioError` mismatch.
+  F53 owns incomplete/non-integral MATLAB result conversion plus the parity
+  test's sorted-medoid/two-field blind spot. Both join the later MEX/checkpoint
+  cluster; neither delays F51 -> F23 -> D3.
 
 ## Progress log (append-only; older entries in the archive)
 

@@ -34,6 +34,9 @@
   by F51; F23 product work waits for its deterministic wire-canonicality gate.
   The later checkpoint/config robustness lens retains randomized fuzz,
   semantic/provenance/authentication, and CLI/config combinations.
+- Separate source-confirmed MATLAB issues are numbered rather than absorbed:
+  F52 owns false-load `dtwc:runtime` versus `dtwc:ioError`; F53 owns incomplete
+  or narrowing result conversion and the weak sorted-medoid/two-field test.
 - Product attempts are capped at two.
 
 ## Exact resume point
