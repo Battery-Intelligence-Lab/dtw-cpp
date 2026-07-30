@@ -158,13 +158,15 @@ is `RUN_SERIAL`, and has a finite timeout.
 - Keogh greater: `A=(-1,-1,-1,-1)`,
   `B=(-1,-1,0,-1)`, `w=1` gives symmetric Keogh 1 and Enhanced 0 at
   effective `V=2`.
-- Strict tail cap: `A=(0,0,1,1)`, `B=(1,1,2,0)`, `w=1` gives production
-  L1/squared `3/3` and exact-predicate NoLR `4/4`. Every nonzero difference is
-  one, so the witness distinguishes the tail predicate under both metrics
-  without conflicting with F57's required `w>=n-1` saturation.
-- Nondegenerate upper tail:
-  `A=(0,0,20,5,5,5,5)`, `B=(0,0,0,0,0,10,0)`, `w=2`; negating both
-  exercises the lower tail.
+- Strict upper/lower tail pair:
+  `A=(0,0,20,5,5,5,5)`, `B=(0,0,0,0,0,10,0)`, `w=2` gives production
+  L1/squared `20/400` and exact-predicate NoLR `30/450`; negating both gives
+  the same values through the lower branch. `tail_strict=2/2` counts these two
+  branch orientations, and each orientation must pass both metrics.
+- Supplementary binary tail:
+  `A=(0,0,1,1)`, `B=(1,1,2,0)`, `w=1` gives production L1/squared `3/3`
+  and exact-predicate NoLR `4/4`. Every nonzero difference is one, so it
+  independently distinguishes the predicate without metric scaling.
 - Default `V=5`: the fixed length-10 series in the committed oracle must
   distinguish `w=0` from `w=1`; an additional odd-length case prevents
   accidental even-length-only coverage.
@@ -241,9 +243,10 @@ the arbiters.
 
 Preregistration correction before either new test was executed: the initial
 two-point strict-tail candidate used `w=n`. F57's already registered effective
-radius maps that to `n-1`, where the candidate is no longer strict. The
-four-point `w=1` witness above preserves the unchanged `tail_strict=2/2`
-counter and tests the intended tail-cap fact under both metrics.
+radius maps that to `n-1`, where the candidate is no longer strict. The stable
+`tail_strict=2/2` counter now means the nondegenerate upper/lower pair above,
+with both metrics checked for each orientation; the four-point `w=1` case is
+retained as a supplementary metric-independent discriminator.
 
 ## Inherited clean-base baseline
 

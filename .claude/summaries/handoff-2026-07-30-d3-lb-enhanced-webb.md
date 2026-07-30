@@ -25,9 +25,10 @@
   the D3 baseline. None of the three new discriminators existed in that run.
 - Before either new target executed, an adversarial consistency pass rejected
   the proposed two-point tail witness because its `w=n` radius is canonically
-  `n-1` under F57. Replaced it without changing the marker by the exact
-  four-point `w=1` witness: capped L1/squared `3/3`, direct-predicate NoLR
-  `4/4`.
+  `n-1` under F57. The unchanged `tail_strict=2/2` marker now counts stable
+  nondegenerate upper/lower orientations: capped L1/squared `20/400`,
+  direct-predicate NoLR `30/450` for the source pair and its negation. The
+  exact four-point `w=1` witness `3/3 < 4/4` remains supplementary.
 
 ## Decisions
 
