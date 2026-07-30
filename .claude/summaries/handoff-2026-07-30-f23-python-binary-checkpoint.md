@@ -69,11 +69,19 @@
   1,033 passed / 12 skipped / sole expected F39 red = 1,046; the combined
   inventory is exactly 1,035 passed / 12 skipped / the same sole red = 1,048.
   Both explicit CLI variables and `_hpc` selected the fresh cfg-gate binary.
+- The stronger native binary gate retained its exact marker at 298 assertions /
+  2 cases. Canonical, llfio-OFF, and Arrow-ON serial matrices passed 123/123,
+  123/123, and 125/125 with exact 6/9/8 skips; the Arrow reader executed at
+  390 assertions / 11 cases.
+- A post-green cross-platform audit registered F56: `path.u8string()` plus
+  `PyErr_SetString` cannot faithfully cover surrogateescaped/non-UTF-8
+  PathLike inputs. It does not invalidate F23's registered Windows valid-path
+  gate and receives its own later error-boundary repair.
 
 ## Exact resume point
 
-Complete the documentation/checker updates and run their gates, then execute
-the focused native checkpoint gate and all three serial native matrices.
+Complete the documentation/checker updates and run their gates, then close F23
+and advance immediately to D3.
 Product attempts executed: `2 / 2`; attempt 2 passed.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or

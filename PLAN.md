@@ -912,6 +912,17 @@ Open findings first (status after R0 adjudication — update these boxes there):
       noncanonical convergence, and nonscalar fields; reject before filesystem
       effects, then round-trip a non-degenerate result with all five fields and
       medoid order exact on R2024b and R2025b.
+- [ ] **F56 — Python binary-checkpoint failure formatting is not total over
+      accepted filesystem paths.** The binding converts `std::filesystem::path`
+      with `u8string()` and the exception translator later uses
+      `PyErr_SetString`; POSIX surrogateescaped non-UTF-8 filenames can yield
+      invalid UTF-8, while Windows lone surrogates can fail before native I/O.
+      First gate: on POSIX, construct a missing path from raw undecodable bytes
+      through `os.fsdecode`; on Windows, probe an unpaired surrogate where the
+      runtime permits it. Every reachable case must raise exact
+      `dtwcpp.IOError` without a secondary Unicode/conversion exception and
+      retain an unambiguous reversible path representation. Record
+      platform-impossible cases as `[BLOCKED-ENV]`, not as coverage.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1227,6 +1238,12 @@ colour system transfer verbatim**.
   provenance/authentication, and durability remain outside F51. Resume F23,
   then D3. Evidence:
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- 2026-07-30 (F23 path residual): Close F23 only over its registered valid
+  Windows `str`/`PathLike` cases; do not generalise that evidence to every
+  native filename representation. F56 owns the confirmed
+  `u8string()`/`PyErr_SetString` surrogateescape and lone-surrogate boundary
+  under a separate immutable cross-platform gate. F23's exhausted attempts are
+  not rescue-tuned.
 
 ## Progress log (append-only; older entries in the archive)
 

@@ -787,6 +787,15 @@ Critical knowledge to avoid repeating mistakes.
   and verify the immediate parent of every nested `--basetemp`, or use a direct
   child of an existing build root. Evidence:
   `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
+- **`PathLike[str]` plus a UTF-8 exception message is not automatically an
+  all-filesystem-path contract. [confirmed]** Converting a native path with
+  `path.u8string()` and later passing `what()` through `PyErr_SetString`
+  handles valid Unicode, but POSIX surrogateescape filenames can produce
+  invalid UTF-8 and Windows lone surrogates can fail conversion before the
+  native I/O call. Test raw undecodable filename bytes on POSIX and
+  unpaired-surrogate inputs where the platform permits them; build typed errors
+  from a representation Python can always decode. Evidence: F56 in `PLAN.md`
+  and the F23 binding audit.
 
 ## LR-core Solver (Phase 4)
 

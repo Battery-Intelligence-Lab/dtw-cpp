@@ -409,7 +409,13 @@ weaken or rescue-tune this implementation.
 
 ## Python regression inventories
 
-The complete contract-parity gate passed exactly:
+The complete contract-parity command was:
+
+```text
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:DTWC_CL_PATH=(Resolve-Path 'build/cfg-gate-normal/bin/dtwc_cl.exe').Path; $env:DTWC_CL_BIN=$env:DTWC_CL_PATH; .venv\Scripts\python.exe -m pytest -p no:cacheprovider -q --basetemp=build/f23-green/parity tests/python/test_contract_parity.py
+```
+
+It passed exactly:
 
 ```text
 ........................................................................ [ 45%]
@@ -429,6 +435,10 @@ FULL_GATE_CLI=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
 The combined registered inventory was exact:
 
 ```text
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:DTWC_CL_PATH=(Resolve-Path 'build/cfg-gate-normal/bin/dtwc_cl.exe').Path; $env:DTWC_CL_BIN=$env:DTWC_CL_PATH; .venv\Scripts\python.exe -m pytest -p no:cacheprovider -q --basetemp=build/f23-green/full tests/python tests/conformance/test_conformance.py
+```
+
+```text
 ================================== FAILURES ===================================
 ________________ test_live_tracked_cmake_inventory_is_complete ________________
 
@@ -446,6 +456,10 @@ FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory
 The Python-only floor was also executed rather than inferred:
 
 ```text
+$env:PYTHONDONTWRITEBYTECODE='1'; $env:DTWC_CL_PATH=(Resolve-Path 'build/cfg-gate-normal/bin/dtwc_cl.exe').Path; $env:DTWC_CL_BIN=$env:DTWC_CL_PATH; .venv\Scripts\python.exe -m pytest -p no:cacheprovider -q --basetemp=build/f23-green/python-only tests/python
+```
+
+```text
 ================================== FAILURES ===================================
 ________________ test_live_tracked_cmake_inventory_is_complete ________________
 E       assert 28 == 27
@@ -460,3 +474,80 @@ red.** The only failure in each inventory is the exact inherited F39
 28-versus-27 supply-chain assertion. The totals are exactly 1,046 Python nodes
 and 1,048 combined nodes; no F23, CLI-routing, conformance, or unrelated
 failure occurred.
+
+## Native regression matrices
+
+All three native build commands printed `ninja: no work to do.` before
+execution. The
+focused native command was:
+
+```text
+ctest --test-dir build/highs-1151 -R '^unit_test_checkpoint_binary$' -j 1 -V --output-on-failure
+```
+
+Its subject evidence was exact:
+
+```text
+F51_RED_OBSERVATION corpus=85 false=85 accepted=0 threw=0 unchanged=85/85
+F51_SIZE_PREFLIGHT_OBSERVATION false=1 threw=0 unchanged=1/1 allocations_1028=0
+F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS
+All tests passed (298 assertions in 2 test cases)
+100% tests passed, 0 tests failed out of 1
+```
+
+The three full matrices ran serially:
+
+```text
+ctest --test-dir build/highs-1151 -j 1 -V --output-on-failure
+ctest --test-dir build/nollfio -j 1 -V --output-on-failure
+ctest --test-dir build/arrow-pyarrow-23 -j 1 -V --output-on-failure
+ctest --test-dir build/arrow-pyarrow-23 -R '^test_io_readers$' -j 1 -V --output-on-failure
+```
+
+Their verbatim summaries were:
+
+```text
+100% tests passed, 0 tests failed out of 123
+Total Test time (real) =  91.60 sec
+The following tests did not run:
+         52 - test_cuda_correctness (Skipped)
+         54 - test_cuda_lb_keogh (Skipped)
+         58 - test_io_readers (Skipped)
+         59 - test_metal_correctness (Skipped)
+         60 - test_metal_lb_keogh (Skipped)
+         61 - test_metal_mmap (Skipped)
+
+100% tests passed, 0 tests failed out of 123
+Total Test time (real) =  78.29 sec
+The following tests did not run:
+         37 - unit_test_mmap_data_store (Skipped)
+         38 - unit_test_mmap_distance_matrix (Skipped)
+         52 - test_cuda_correctness (Skipped)
+         54 - test_cuda_lb_keogh (Skipped)
+         58 - test_io_readers (Skipped)
+         59 - test_metal_correctness (Skipped)
+         60 - test_metal_lb_keogh (Skipped)
+         61 - test_metal_mmap (Skipped)
+         80 - unit_test_benders (Skipped)
+
+100% tests passed, 0 tests failed out of 125
+Total Test time (real) =  79.07 sec
+The following tests did not run:
+         37 - unit_test_mmap_data_store (Skipped)
+         38 - unit_test_mmap_distance_matrix (Skipped)
+         52 - test_cuda_correctness (Skipped)
+         54 - test_cuda_lb_keogh (Skipped)
+         59 - test_metal_correctness (Skipped)
+         60 - test_metal_lb_keogh (Skipped)
+         61 - test_metal_mmap (Skipped)
+         80 - unit_test_benders (Skipped)
+
+All tests passed (390 assertions in 11 test cases)
+100% tests passed, 0 tests failed out of 1
+```
+
+**[confirmed] Native regression verdict: PASS.** The three matrix inventories
+are exactly 123/123, 123/123, and 125/125 with exactly 6/9/8 registered
+capability skips; the Arrow reader executed rather than skipped at 390
+assertions / 11 cases. The stronger post-F51 binary subject executed at 298/2
+with its exact marker.
