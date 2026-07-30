@@ -92,7 +92,9 @@ Keogh. For effective `V>=2`, neither dominates: the D3 exact oracle contains
 strict witnesses in both directions, so the `Enhanced` cascade evaluates
 their maximum. Custom point costs, nonfinite inputs, mutable envelope
 shape/provenance, and last-ULP threshold decisions are outside this confirmed
-contract.
+contract. The complete assumptions, proofs, witnesses, and code-conformance
+map are in the
+[D3 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/03-lb-enhanced-webb.md).
 
 ## Choosing a metric
 
