@@ -290,3 +290,91 @@ Baseline verdict: **PASS [confirmed]** for the three inherited executables.
 This does not contradict F54/F55/F57: the inherited tests contain neither the
 live take-max discriminator nor an independent NoLR/tail oracle nor the
 `INT_MAX` arithmetic case.
+
+## Permanent-gate expected red
+
+Commit `244adf7` added both new executable gates and their fail-closed CTest
+policies without changing product code. The focused build regenerated the
+CMake graph, compiled and linked both targets, and exited zero. Its only
+compiler diagnostics were the inherited unsupported
+`-fno-signaling-nans` warning and the inherited llfio header-only pragma
+warning.
+
+The serial verbose command was:
+
+```text
+ctest --test-dir build/highs-1151 -C Release -R '^(test_lb_enhanced_webb_derivation|test_lb_webb_intmax)$' --output-on-failure --no-tests=error -V -j 1
+```
+
+D3 executed the complete finite oracle before reaching F54. Its exact failure
+block was:
+
+```text
+C:/D/git/dtw-cpp/tests/unit/adversarial/test_lb_enhanced_webb_derivation.cpp(1061): FAILED:
+  REQUIRE( stats.pruned_by_lb_keogh == 1 )
+with expansion:
+  0 == 1
+with messages:
+  first envelope violation:
+  first Enhanced structure violation:
+  first path violation:
+  first Enhanced violation:
+  first Webb violation:
+  first tail violation:
+  first predicate violation:
+
+===============================================================================
+test cases:  1 |  0 passed | 1 failed
+assertions: 89 | 88 passed | 1 failed
+```
+
+The empty violation messages plus 88 preceding passing assertions confirm
+that the independent envelopes, cut structure, explicit paths, Enhanced
+formula/admissibility, Webb direct predicates/dominance/admissibility, tail
+implication, metric condition, default `V=5`, strict order/tail witnesses, and
+primitive F54 values all passed. The sole red is the live cascade's missing
+Keogh maximum.
+
+F57's exact failure block was:
+
+```text
+C:/D/git/dtw-cpp/tests/unit/adversarial/test_lb_webb_intmax.cpp(67): FAILED:
+  REQUIRE( at_intmax.webb_l1 == exact_global_l1 )
+with expansion:
+  8.0 == 4.0
+
+===============================================================================
+test cases: 1 | 1 failed
+assertions: 3 | 2 passed | 1 failed
+```
+
+The aggregate verdict was:
+
+```text
+0% tests passed, 2 tests failed out of 2
+
+Total Test time (real) =   0.54 sec
+
+The following tests FAILED:
+	  9 - test_lb_enhanced_webb_derivation (Failed)
+	 11 - test_lb_webb_intmax (Failed)
+```
+
+Expected-red verdict: **CONFIRMED**. F54 is observed as envelope-prune count
+zero after every mathematical prerequisite passes. F57 is observed as the
+inadmissible doubled L1 value 8 against exact global value 4. Product attempts
+remain `0 / 2`.
+
+CTest also emitted this post-run configure-glob diagnostic:
+
+```text
+-- GLOB mismatch!
+The following files were added:
+  +unit/adversarial/test_lb_enhanced_webb_derivation.cpp
+  +unit/adversarial/test_lb_webb_intmax.cpp
+Errors while running CTest
+```
+
+Both named targets had already compiled, linked, and executed in this run, so
+the subject red is not inferred from that diagnostic. A settled rebuild is
+required before a green verdict.

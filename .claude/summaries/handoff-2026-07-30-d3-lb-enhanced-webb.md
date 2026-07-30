@@ -33,6 +33,15 @@
   as evidence for the no-ordering claim. Replaced it without changing the
   counter by the effective-`V=2` exact pair with Enhanced 10 and Keogh 0; its
   partner remains the effective-`V=2` pair with Enhanced 0 and Keogh 1.
+- Added and committed both permanent red-first targets as `244adf7`. Three
+  final read-only audits checked the independent reference mathematics,
+  compile/API routes, marker semantics, assertion floors, skip rejection, and
+  F54 false-green hazards before execution.
+- Expected red is **CONFIRMED**. D3 passed 88/89 assertions and every
+  mathematical violation ledger, then failed only because the live Enhanced
+  route reported envelope-prune count 0 instead of 1. F57 failed at assertion
+  3 because raw `INT_MAX` Webb returned L1 8 instead of exact 4. CTest reported
+  0/2 passed in 0.54 seconds. Product attempts remain 0/2.
 
 ## Decisions
 
@@ -51,9 +60,11 @@
 
 ## Exact resume point
 
-Add and commit the two permanent red-first test executables and their CTest
-policies without changing product code. Then rebuild and execute both expected
-reds, recording the exact failures before product attempt 1.
+Implement product attempt 1: make Enhanced evaluate the maximum of its own
+bound and Keogh; normalize Webb's effective radius before signed arithmetic
+and use unsigned counters. Correct only directly coupled source contracts in
+that product commit. Rebuild both targets, execute the unchanged exact markers,
+and record the verdict before any further repair.
 
 Rollback is the eventual local D3/F54/F55/F57 commits in reverse order. No
 remote or operator state has changed. The claim most likely to be wrong is
