@@ -87,6 +87,9 @@
   **PASS [confirmed]**: 125/125, zero failed, exact eight registered skips.
   Fresh subject runs proved D2 65/1 with its exact marker, the Arrow reader at
   390/11, and all four real-CLI F14/F17/F8/F13 markers (6/6, no skip).
+- Final clean-tree documentation-contract, record-hygiene, repository-hygiene,
+  and `git diff --check` gates pass. D2 is **CLOSED [confirmed]**; native floors
+  are now 123/123, 123/123, and 125/125. F27-F30/F46-F50 remain open.
 
 ## Decisions
 
@@ -116,7 +119,6 @@
 
 ## Exact resume point
 
-Commit the Arrow execution evidence, rerun the integrated documentation and
-repository-hygiene closure, then update AGENTS.md's observed floors and
-PLAN.md's D2 status/cursor in a separate bookkeeping commit. Keep
-F27-F30/F46-F50 open and preserve F29's remaining real-device gate.
+Commit the D2 closure bookkeeping, then start F23 by preregistering and running
+the fresh-extension expected red for the two missing Python binary-checkpoint
+bindings. Resume D3 after F23 under the R2/R3 cadence rule.

@@ -13,11 +13,11 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-30, after the F22 final-gate adjudication):** 2.0.0rc1 release state
+**Status (2026-07-30, after the D2 final-gate adjudication):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
-active with only D1 CLOSED (**D2–D18 untouched — R2 is now the priority
-debt**); R3 active with **F13, F14, F15, F19, F21, F33, F45 CLOSED**.
+active with D1–D2 CLOSED (**D3–D18 outstanding — 16/18 remain**); R3 active
+with **F13, F14, F15, F19, F21, F33, F45 CLOSED**.
 Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
 checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 (fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
@@ -27,8 +27,8 @@ partially closed (CUDA verified on the local RTX; real Metal
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
 attempts exhausted. Its final serial gates pass all three native matrices,
 fresh Python with the registered F39 red, and both MATLAB releases with the
-registered F18 red; F22 stays unchecked. **Campaign cursor: D2 derivation,
-then F23 per the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
+registered F18 red; F22 stays unchecked. **Campaign cursor: F23, then D3 per
+the R2/R3 cadence rule.** The final **2.0.0 tag gates on R0–R6
 CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
 Tag/publication/hosted-CI/ARC/Metal-runtime remain explicit USER actions —
@@ -226,10 +226,17 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       **CONFIRMED** by `9f78212` and derivation commit `cf5b9d8`; CUDA geometry
       is **CONFIRMED** by `4583443`, while exact real-Metal parity remains
       **DISCREPANCY** F12.
-- [ ] **D2. Envelopes + LB_Keogh.** Keogh & Ratanamahatana admissibility proof;
-      formalize the recorded gotcha that `compute_envelopes(series, band<0)`
-      yields a band-0 envelope (LB invalid for full DTW) — state the correct
-      construction and verify the two call-site classes.
+- [x] **D2. Envelopes + LB_Keogh.** The derivation proves scalar L1/squared-L2
+      admissibility, feasible unequal-length prefixes, and additive dependent
+      and independent multivariate forms, with explicit units and assumptions.
+      The exhaustive oracle covers 2,004 envelopes, 28,602 equal-length paths,
+      17,712 unequal-length paths, and both nonempty CPU full-DTW call-site
+      classes; the exact target passes 65 assertions/1 case in all three
+      matrices. Canonical/llfio-OFF/Arrow-ON pass 123/123, 123/123, and 125/125
+      with exact 6/9/8 skips; Arrow readers pass 390/11. F29's old premise is
+      falsified, but its real-device gate and F27–F30/F46–F50 remain open.
+      Evidence: `docs/derivations/02-envelopes-lb-keogh.md` and
+      `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
 - [ ] **D3. LB_Enhanced + LB_Webb.** Admissibility proofs (Tan SDM 2019; Webb &
       Petitjean PR 2021); prove `LB_Webb ≥ LB_Keogh`; prove our tail-cap
       column-align variant (`idx=min(j+w,n-1)`) only loosens (stays valid);
@@ -332,11 +339,11 @@ rounds (all lenses) produce zero new confirmed findings. Every confirmed bug:
 failing test → fix → full-gate re-run → own commit. Every dead hypothesis:
 recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
-**Immediate next step (2026-07-30):** complete D2 from definitions before
-opening F23. The F22 final serial gates are fully adjudicated in
-`.claude/baselines/2026-07-30-f22-final-gates.md`: every registered execution
-band passes, but F22 remains unchecked because its exhausted C++ mutation
-closure band is FALSIFIED at 33/46. Do not rerun or rescue-tune it.
+**Immediate next step (2026-07-30):** execute F23's fresh-extension expected
+red and frozen binary-checkpoint parity gate. D2 is CLOSED by
+`.claude/baselines/2026-07-30-d2-lb-keogh.md`; advance to D3 after F23 under
+the cadence rule. F22 remains unchecked because its exhausted C++ mutation
+closure band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
 
 **Suggested sequencing for the remaining findings (improvise freely, rule 8 —
 this is a route, not a script).** Cluster by shared context so each cluster
@@ -534,13 +541,16 @@ Open findings first (status after R0 adjudication — update these boxes there):
       canonical 122/122 (6 skips), llfio-OFF 122/122 (9), and Arrow-ON 124/124
       (8), with the reader executing 390 assertions/11 cases. Evidence:
       `.claude/baselines/2026-07-29-f21-cpp-renames.md`.
-- [ ] **F22 — compatibility aliases do not obey the frozen deprecation
-      policy.** C++ `maxIter`/`N_repetition` remain unannotated public fields;
-      most Python aliases forward without `DeprecationWarning`; MATLAB legacy
-      properties/functions forward without the promised loud notice
-      (`dtwc/Problem.hpp:208-209`, `python/src/_dtwcpp_core.cpp:770-771,
-      888-893,1143-1193`, `bindings/matlab/+dtwc/Problem.m:24-36,93-119,
-      327-345`). First gate: table-drive every retained alias—C++ compile probes
+- [ ] **F22 — compatibility aliases failed the frozen deprecation
+      policy.** At registered base `5352bc0`, C++ `maxIter`/`N_repetition`
+      were unannotated, most Python aliases forwarded without
+      `DeprecationWarning`, and MATLAB legacy properties/functions forwarded
+      silently. Representative retained repairs now live at
+      `dtwc/Problem.hpp:258-261`,
+      `python/src/_dtwcpp_core.cpp:785-796,850-857,875-881,914-933,1183-1246`,
+      and `bindings/matlab/+dtwc/Problem.m:96-134,193-199,362-396`; the
+      complete inventory is pinned in the F22 baseline. First gate: table-drive
+      every retained alias—C++ compile probes
       require a deprecation diagnostic, Python uses
       `pytest.warns(DeprecationWarning)` exactly once per call, and MATLAB
       captures one stable warning identifier/message—while asserting canonical
@@ -548,32 +558,19 @@ Open findings first (status after R0 adjudication — update these boxes there):
       **R5 STATUS 2026-07-29:** product repairs and all focused gates are
       retained. Python kills 31/31 registered mutants and MATLAB kills 33/33
       on both R2024b and R2025b (66/66 release kills, 140/140 MEX hash checks).
-      The C++ mutation band remains FALSIFIED at 33/46 after both permitted
-      attempts timed out on the first runtime mutant. Keep F22 unchecked,
-      complete R6 documentation/full gates, and do not rerun or rescue-tune the
-      exhausted C++ campaign. Evidence:
+      The C++ mutation band is permanently FALSIFIED at 33/46 after both
+      permitted attempts timed out on the first runtime mutant. Keep F22
+      unchecked and do not rerun or rescue-tune the exhausted campaign. Evidence:
       `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
-      **R6 DOC STATUS 2026-07-29:** `43e1c44` synchronises the authoritative
-      and generated contracts, migrates all ordinary calls found by the
-      whole-tree sweep, and permanently guards the complete 30/33 C++,
-      12/13 Python, and 15 MATLAB inventories. Generation, the real-CLI
-      contract checker, record hygiene, syntax checks, canonical imports, and
-      adversarial re-review pass. Run the registered full gates next; F22
-      remains unchecked because the C++ mutation verdict is still 33/46
-      FALSIFIED.
-      **R6 FULL-GATE STATUS 2026-07-30:** `340ed88` records serial PASS results
-      for canonical 122/122 (six skips), llfio-OFF 122/122 (nine), Arrow-ON
-      124/124 (eight; reader 390 assertions/11 cases), fresh Python 18/18 and
-      1,041 = 1,028 passed + 12 skipped + only F39 red, and both MATLAB
-      releases at focused 1/1 and full 85/82/2/3 with only F18 red. These
-      execution gates do not reinterpret the exhausted C++ mutation band:
-      F22 remains FALSIFIED and unchecked. Evidence:
-      `.claude/baselines/2026-07-30-f22-final-gates.md`.
+      **R6 STATUS 2026-07-30:** documentation and every registered final gate
+      pass, including the expected F18/F39 reds, but do not reinterpret the
+      exhausted C++ mutation criterion. F22 remains FALSIFIED and unchecked.
+      Evidence: `.claude/baselines/2026-07-30-f22-final-gates.md`.
 - [ ] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
       Its module exposes `CheckpointOptions` and directory save/load only
-      (`python/src/_dtwcpp_core.cpp:1105-1125`), while MATLAB delivered
+      (`python/src/_dtwcpp_core.cpp:1145-1169`), while MATLAB delivered
       `save_binary_checkpoint`/`load_binary_checkpoint`
-      (`bindings/matlab/dtwc_mex.cpp:956-969`). First gate: import both names
+      (`bindings/matlab/dtwc_mex.cpp:958-973`). First gate: import both names
       from the freshly rebuilt extension, round-trip a non-degenerate
       `ClusteringResult` with distinct labels, medoids, cost, and iteration
       count, assert field equality and malformed/missing-file typed errors, and
@@ -591,7 +588,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       network call. The inherited wrapper must fail type and text assertions.
 - [ ] **F25 — public invalid states still rely on build-dependent
       assertions.** `Problem::get_name` and `Problem::p_vec` guard view mode
-      with `assert(!data.is_view())` (`dtwc/Problem.hpp:250-259`), contrary to
+      with `assert(!data.is_view())` (`dtwc/Problem.hpp:300-324`), contrary to
       the frozen typed-error rule; public matrix/store accessors retain further
       bounds assertions. First gate: inventory every assertion reachable from a
       public entry, then run the same invalid view-mode/index fixtures in Debug
@@ -602,7 +599,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
 - [ ] **F26 — Python `Problem.set_view_data` is named as a view but copies into
       owning storage.** Its binding converts Python input to
       `std::vector<std::vector<double>>`, builds an owning `Data`, and only then
-      calls the C++ view setter (`python/src/_dtwcpp_core.cpp:872-879`); true
+      calls the C++ view setter (`python/src/_dtwcpp_core.cpp:901-908`); true
       non-owning spans remain C++/CLARA-internal. First gate: bind a contiguous
       ndarray through the public Python method, mutate a non-degenerate element
       in the source, and require `Problem.series()`/a recomputed distance to
@@ -610,8 +607,8 @@ Open findings first (status after R0 adjudication — update these boxes there):
       Non-contiguous, readonly, dtype, and lifetime cases must be explicit and
       typed. The inherited binding must fail the aliasing assertion.
 - [ ] **F27 — GPU LB_Keogh uses L1 excess under squared-L2 DTW.** CUDA and
-      Metal always sum raw envelope excess (`dtwc/cuda/cuda_dtw.cu:872-892`,
-      `dtwc/metal/metal_dtw.mm:945-953`) even when the distance kernel uses
+      Metal always sum raw envelope excess (`dtwc/cuda/cuda_dtw.cu:766-811`,
+      `dtwc/metal/metal_dtw.mm:946-954`) even when the distance kernel uses
       squared local costs, so threshold pruning can discard a pair whose true
       squared-DTW cost is below threshold. First gate on each real backend:
       series `{0}` and `{0.5}`, band 0, squared L2, LB enabled, threshold 0.3;
@@ -620,7 +617,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
 - [ ] **F28 — Metal permits a narrow LB envelope for full DTW.** When DTW is
       unbanded and `lb_envelope_band` is unset, Metal chooses roughly
       `max_L/10`; it also accepts an explicitly narrower window
-      (`dtwc/metal/metal_dtw.mm:1497-1502`). Such a bound is not admissible for
+      (`dtwc/metal/metal_dtw.mm:1510-1515`). Such a bound is not admissible for
       the larger/full warping window. First real-Metal gate (forced
       Wavefront): `x={0,0,0,0,1,1,1,1,1,1}`,
       `y={0,0,0,0,0,0,1,1,1,1}`, full DTW, envelope band 1, threshold 0.5.
@@ -642,11 +639,11 @@ Open findings first (status after R0 adjudication — update these boxes there):
       executable disagrees with the derived values.
 - [ ] **F30 — explicit GPU option requests silently degrade.** Metal disables
       requested LB on regtile/banded-row and after LB-buffer allocation failure
-      (`dtwc/metal/metal_dtw.mm:1480-1490,1523-1537`); CUDA ignores LB when
-      `band<0` (`dtwc/cuda/cuda_dtw.cu:1563-1567`); unsupported kernel
+      (`dtwc/metal/metal_dtw.mm:1493-1504,1536-1550`); CUDA ignores LB when
+      `band<0` (`dtwc/cuda/cuda_dtw.cu:1473-1480`); unsupported kernel
       overrides silently select Auto (`dtwc/enums/KernelOverride.hpp:8-10`);
       Metal FP64 quietly becomes FP32 unless verbose
-      (`dtwc/metal/metal_dtw.mm:1262-1264`). The existing Metal LB test
+      (`dtwc/metal/metal_dtw.mm:1263-1264`). The existing Metal LB test
       explicitly expects the banded-row no-op. First gate: table-drive every
       explicit option across supported/unsupported paths and the injected
       allocation seam. Each request must execute, raise a typed error, or return
@@ -655,8 +652,9 @@ Open findings first (status after R0 adjudication — update these boxes there):
       taxonomy.** `Problem` raises `DeviceError` for unavailable/uncompiled and
       empty-result cases, but Metal allocation/launch failures throw
       `std::runtime_error` and pass through `Problem::fill_distance_matrix`
-      (`dtwc/Problem.cpp:817-820,861-911`,
-      `dtwc/metal/metal_dtw.mm:1274-1294,1564-1599,1623-1628,1725-1737`).
+      (`dtwc/Problem.cpp:895-924,944-996`,
+      `dtwc/metal/metal_dtw.mm:1274-1295,1577-1582,1607-1612,1636-1641,
+      1665-1672,1736-1751`).
       First gate: inject one allocation failure and one command/kernel failure
       through the real public `Problem` route; both must raise `DeviceError`
       with backend/action context and preserve prior Problem state. Direct
@@ -715,7 +713,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
 - [ ] **F37 — the frozen cross-language `Result::save` byte contract is
       violated by language-owned emitters.** The contract promises identical
       corresponding C++/Python/MATLAB/CLI files
-      (`docs/api-contract-2.0.md:194-200,728-734`), but Python delegates the
+      (`docs/api-contract-2.0.md:201-208,779-787`), but Python delegates the
       matrix to NumPy's default `savetxt` and MATLAB delegates to
       `writematrix`. The registered F14 3x3 values make real Python
       `Result.save` write 212 Windows bytes, SHA-256
@@ -832,8 +830,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       DTW; bare `Envelope` stores mutable arrays without source length/window
       provenance; vector/span Keogh overloads either index to query length or
       silently truncate while ignoring the lower-array length; pointer outputs
-      permit destructive aliasing. D2's exact fixture confirms bound 2 against
-      full DTW 0. First gate: table-drive negative/full mode, too-short and
+      permit destructive aliasing; TADPole also narrows `size()` to `int`
+      without a range check (`dtwc/algorithms/tadpole.cpp:149-160`). D2's exact
+      fixture confirms bound 2 against full DTW 0. First gate: table-drive
+      negative/full mode, too-short and
       unequal upper/lower arrays, too-narrow valid-shaped envelopes, and both
       alias classes. The replacement must expose an explicit radius/full
       descriptor, validate coverage and shape before reading, keep unchecked
@@ -1125,25 +1125,6 @@ colour system transfer verbatim**.
   omitting the exact `do not recreate them` marker even though equivalent
   record-retirement prose remained. Restore the exact phrase without changing
   the rule; require the complete checker to pass before F22 work.
-- 2026-07-29 (F22 registration): Retain exactly 33 C++ diagnostic entities,
-  12 Python symbols/13 base operations, and 15 MATLAB aliases. F19's two raw
-  C++ fields stay public `int`; canonical I/O owns behavior. Python
-  `cluster_size` and both distance aliases are in scope, while
-  `ClusterResult` must remain exactly `Result`. MATLAB `set_distance_matrix`
-  is already canonical and stays silent; the four PascalCase configuration
-  properties warn on assignment, their only frozen canonical replacement.
-  Preserve F18's two named retained-red MATLAB cases, reuse existing test
-  inventories, require 46/31/33 mutation kills, and cap product work at two
-  attempts. Evidence:
-  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
-- 2026-07-29 (F22 C++ behavior gate): Reuse the existing
-  `test_problem_api_2_0` entry through a CMake-3.26-compatible tests-only Python
-  launcher, rather than adding a CTest entry or relying on the CMake-3.29
-  `TEST_LAUNCHER` property. Preserve real compiler context on Visual Studio
-  with three marked, build-local, `EXCLUDE_FROM_ALL` object probes. Commit
-  `c210504` passes the 33/33 behavior gate with 229 assertions/5 cases in both
-  canonical and llfio-OFF builds; both combined entries remain exact 24/33
-  expected red until product attempt 1.
 - 2026-07-30 (F22 final adjudication): Retain the repaired product, tests, and
   documentation after every registered serial execution band passes, but do
   not close F22 or reinterpret its independent mutation criterion. Both
@@ -1161,6 +1142,15 @@ colour system transfer verbatim**.
   envelope integer overflow (F50). This avoids hiding independent fixes
   inside the derivation or overloading F27/F28. Evidence:
   `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
+- 2026-07-30 (D2 closure): Close the mathematical derivation and its two
+  nonempty CPU call-site classes after the focused 6/6 gate, exact 65/1 oracle,
+  serial 123/123, 123/123, and 125/125 matrices with exact 6/9/8 skips, Arrow
+  reader 390/11, and final documentation/hygiene passes. This does not close
+  F27–F30 or F46–F50; F29 still requires real CUDA/Metal execution, and F50 is
+  the current owner for device envelope integer overflow, superseding the
+  historical F12 digest's generic F28–F30 assignment without rewriting it.
+  Resume F23, then D3. Evidence:
+  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1169,68 +1159,10 @@ colour system transfer verbatim**.
   `.claude/PLAN-archive-2026-07-27-r0-f20.md`; the F20 verdict, F21
   registration/closure, and record-hygiene-restoration entries are archived
   verbatim in `.claude/PLAN-archive-2026-07-29-decisions.md`.
-- 2026-07-29 (R3-F22 registration): Clean base `5352bc0` passes canonical
-  122/122 with the exact six capability skips. Exhaustive cross-language
-  inventory, expected-red, warning/count/attribution, canonical-silence,
-  behavior-identity, fresh-binding, two-release MATLAB, 110-mutation, docs,
-  and three-build bands are registered before decisive fixtures or product
-  edits.
-- 2026-07-29 (R3-F22 expected red / F45 split): Commit `b70a259` exposes the
-  inherited three-language gaps without product edits: Python 18 collected,
-  16 failed / 2 passed; both MATLAB releases report 15/15 alias equivalence
-  but 0/15 warning profiles; llfio-OFF reports C++ 24/33 while canonical
-  LLFIO-ON reports 0/33. The independent probe localizes the C++ disagreement
-  to quickcpplib's unbalanced diagnostic pragma. F45 is registered and must
-  close before F22 product attempt 1.
-- 2026-07-29 (F45 CLOSED): `392d3ed` contains quickcpplib's diagnostic state
-  at both public-header boundaries. Direct compiler profiles pass 4/4, mutants
-  die 3/3 with exact restoration, canonical and llfio-OFF F22 ledgers are
-  identical at 24/33, and the serial full matrices pass 122/122 with exact
-  six/nine skips. Resume F22 at its exhaustive C++ behavior fixture.
-- 2026-07-29 (R3-F22 C++ behavior fixture): `c210504` adds the exhaustive
-  behavior oracle and the single-entry diagnostic launcher. The forced
-  cross-generator fallback and preferred drivers reproduce the exact 24/33
-  inherited red; canonical and llfio-OFF executables both pass 229
-  assertions/5 cases with the registered 33/33 compatibility marker. Begin
-  F22 product attempt 1.
-- 2026-07-29 (R5-F22 C++ mutations FALSIFIED): `26330fd` adds the permanent
-  46-mutant exact-byte runner. Attempts 1/2 and 2/2 each pass the initial
-  33/33 diagnostic, 33/33 behavior, 229-assertion/5-case control and kill all
-  33 diagnostic removals with exact restoration, then the first I/O
-  forwarding mutant's focused CTest exceeds 300 seconds. Credit no runtime
-  mutant: the registered band is FALSIFIED at 33/46. All five sources match
-  their pre-run SHA-256 and `git diff` is clean. The two-attempt cap is
-  exhausted; do not rescue-tune a third run. Continue the independent Python
-  and MATLAB mutation gates; F22 remains open. Evidence:
-  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
-- 2026-07-29 (R5-F22 Python mutations PASS): `fd6a664` permanently kills
-  31/31 mutants: 13 warning removals, 13 behavior/identity corruptions, and
-  five policy corruptions, split 25 native/6 pure. Every native mutant
-  recompiles, copies, and fresh-import verifies its extension; both clean
-  controls pass 18/18 and all 31 source restorations match exact SHA-256.
-  Attempt 1 was rejected only for an unregistered deterministic-link hash
-  assumption; attempt 2 retains built/imported identity without requiring two
-  separate clean links to be byte-identical. Continue at MATLAB mutations;
-  the C++ 33/46 falsification still prevents F22 closure. Evidence:
-  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
-- 2026-07-29 (R5-F22 MATLAB mutations PASS): `8d66125` permanently kills
-  all 33 registered mutants on both R2024b and R2025b: 15 warning removals,
-  15 behavior corruptions, and three policy corruptions. Four clean controls
-  pass, all 66 release kills match their exact failed/incomplete ledgers, all
-  33 source restores match exact SHA-256, and the immutable fresh OpenMP MEX
-  passes 140/140 pre/post hash checks. Continue at R6 documentation and full
-  gates; F22 remains open because the exhausted C++ band is FALSIFIED at
-  33/46. Evidence:
-  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
-- 2026-07-29 (R6-F22 documentation PASS): `43e1c44` updates the frozen
-  contract and generated pages to the implemented deprecation policy, corrects
-  every audited live-source anchor, migrates every ordinary legacy call found
-  by the whole-tree sweep, and adds complete-inventory positive/exclusion
-  controls to the real-CLI documentation checker. Generation, contract,
-  record-hygiene, syntax, canonical-import, and adversarial-review gates pass.
-  Continue with the three serial native matrices and fresh Python/MATLAB full
-  gates; the exhausted C++ 33/46 mutation falsification still prevents F22
-  closure.
+- Detailed F22/F45 registration, attempt, mutation, documentation, and final
+  gate entries are archived verbatim in
+  `.claude/PLAN-archive-2026-07-29-decisions.md`; the live F22 task and final
+  binding decision preserve its permanent 33/46 falsification and attempt cap.
 - 2026-07-29 (Fable reconciliation + campaign guidance v2.1): PLAN slimmed —
   closed-finding Binding-decision and Progress prose (F8/F9, F13–F21, F45,
   R0/R1 residue) archived verbatim to
@@ -1243,14 +1175,11 @@ colour system transfer verbatim**.
   clustering (a)–(f). AGENTS.md floors updated to the current 122/122/122/124
   CTest and 1009/12/1-expected-F39-red Python inventories. Cursor unchanged:
   F22 final serial full-gate adjudication, then F23 per the cadence.
-- 2026-07-30 (R6-F22 final gates / closure FALSIFIED): Commits `aff2627` through
-  `340ed88` register and preserve the serial full-gate evidence. Canonical,
-  llfio-OFF, and Arrow-ON pass 122/122, 122/122, and 124/124 with exact
-  six/nine/eight capability skips; the Arrow reader runs 390 assertions/11
-  cases. A forced-fresh Python extension passes F22 18/18 and the full 1,041
-  inventory has only the registered F39 `28 == 27` red. One fresh OpenMP MEX
-  passes focused 1/1 and full 85/82/2/3 on both R2024b/R2025b with only the
-  registered F18 names. F22 nevertheless remains unchecked: the independent
-  C++ mutation band exhausted both attempts at 33/46. Resume at D2, then F23
-  per cadence. Evidence:
-  `.claude/baselines/2026-07-30-f22-final-gates.md`.
+- 2026-07-30 (R2-D2 CLOSED): Commits `21ba41d`, `f4bdd55`, `39e9a92`, and
+  `06c8d89` preserve the exhaustive oracle, TADPole reachability, independent
+  multivariate discriminator, derivation, and source/public contracts. Focused
+  6/6 and serial native 123/123, 123/123, 125/125 gates pass with exact
+  6/9/8 skips; D2 prints its exact marker at 65/1 in every matrix, Arrow readers
+  run 390/11, and final docs/hygiene are green. F27–F30/F46–F50 remain open.
+  Resume F23, then D3. Evidence:
+  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.

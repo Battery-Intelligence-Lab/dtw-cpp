@@ -320,3 +320,120 @@
 - 2026-07-29 (record-hygiene restoration): Restored the exact retirement marker
   required by `check_record_hygiene.py`; semantic policy is unchanged and the
   complete checker passes. Resume remains F22.
+
+## Binding decisions moved on 2026-07-30
+
+- 2026-07-29 (F22 registration): Retain exactly 33 C++ diagnostic entities,
+  12 Python symbols/13 base operations, and 15 MATLAB aliases. F19's two raw
+  C++ fields stay public `int`; canonical I/O owns behavior. Python
+  `cluster_size` and both distance aliases are in scope, while
+  `ClusterResult` must remain exactly `Result`. MATLAB `set_distance_matrix`
+  is already canonical and stays silent; the four PascalCase configuration
+  properties warn on assignment, their only frozen canonical replacement.
+  Preserve F18's two named retained-red MATLAB cases, reuse existing test
+  inventories, require 46/31/33 mutation kills, and cap product work at two
+  attempts. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (F22 C++ behavior gate): Reuse the existing
+  `test_problem_api_2_0` entry through a CMake-3.26-compatible tests-only Python
+  launcher, rather than adding a CTest entry or relying on the CMake-3.29
+  `TEST_LAUNCHER` property. Preserve real compiler context on Visual Studio
+  with three marked, build-local, `EXCLUDE_FROM_ALL` object probes. Commit
+  `c210504` passes the 33/33 behavior gate with 229 assertions/5 cases in both
+  canonical and llfio-OFF builds; both combined entries remain exact 24/33
+  expected red until product attempt 1.
+
+## Progress entries moved on 2026-07-30
+
+- 2026-07-29 (R3-F22 registration): Clean base `5352bc0` passes canonical
+  122/122 with the exact six capability skips. Exhaustive cross-language
+  inventory, expected-red, warning/count/attribution, canonical-silence,
+  behavior-identity, fresh-binding, two-release MATLAB, 110-mutation, docs,
+  and three-build bands are registered before decisive fixtures or product
+  edits.
+- 2026-07-29 (R3-F22 expected red / F45 split): Commit `b70a259` exposes the
+  inherited three-language gaps without product edits: Python 18 collected,
+  16 failed / 2 passed; both MATLAB releases report 15/15 alias equivalence
+  but 0/15 warning profiles; llfio-OFF reports C++ 24/33 while canonical
+  LLFIO-ON reports 0/33. The independent probe localizes the C++ disagreement
+  to quickcpplib's unbalanced diagnostic pragma. F45 is registered and must
+  close before F22 product attempt 1.
+- 2026-07-29 (F45 CLOSED): `392d3ed` contains quickcpplib's diagnostic state
+  at both public-header boundaries. Direct compiler profiles pass 4/4, mutants
+  die 3/3 with exact restoration, canonical and llfio-OFF F22 ledgers are
+  identical at 24/33, and the serial full matrices pass 122/122 with exact
+  six/nine skips. Resume F22 at its exhaustive C++ behavior fixture.
+- 2026-07-29 (R3-F22 C++ behavior fixture): `c210504` adds the exhaustive
+  behavior oracle and the single-entry diagnostic launcher. The forced
+  cross-generator fallback and preferred drivers reproduce the exact 24/33
+  inherited red; canonical and llfio-OFF executables both pass 229
+  assertions/5 cases with the registered 33/33 compatibility marker. Begin
+  F22 product attempt 1.
+- 2026-07-29 (R5-F22 C++ mutations FALSIFIED): `26330fd` adds the permanent
+  46-mutant exact-byte runner. Attempts 1/2 and 2/2 each pass the initial
+  33/33 diagnostic, 33/33 behavior, 229-assertion/5-case control and kill all
+  33 diagnostic removals with exact restoration, then the first I/O
+  forwarding mutant's focused CTest exceeds 300 seconds. Credit no runtime
+  mutant: the registered band is FALSIFIED at 33/46. All five sources match
+  their pre-run SHA-256 and `git diff` is clean. The two-attempt cap is
+  exhausted; do not rescue-tune a third run. Continue the independent Python
+  and MATLAB mutation gates; F22 remains open. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R5-F22 Python mutations PASS): `fd6a664` permanently kills
+  31/31 mutants: 13 warning removals, 13 behavior/identity corruptions, and
+  five policy corruptions, split 25 native/6 pure. Every native mutant
+  recompiles, copies, and fresh-import verifies its extension; both clean
+  controls pass 18/18 and all 31 source restorations match exact SHA-256.
+  Attempt 1 was rejected only for an unregistered deterministic-link hash
+  assumption; attempt 2 retains built/imported identity without requiring two
+  separate clean links to be byte-identical. Continue at MATLAB mutations;
+  the C++ 33/46 falsification still prevents F22 closure. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R5-F22 MATLAB mutations PASS): `8d66125` permanently kills
+  all 33 registered mutants on both R2024b and R2025b: 15 warning removals,
+  15 behavior corruptions, and three policy corruptions. Four clean controls
+  pass, all 66 release kills match their exact failed/incomplete ledgers, all
+  33 source restores match exact SHA-256, and the immutable fresh OpenMP MEX
+  passes 140/140 pre/post hash checks. Continue at R6 documentation and full
+  gates; F22 remains open because the exhausted C++ band is FALSIFIED at
+  33/46. Evidence:
+  `.claude/baselines/2026-07-29-f22-deprecation-policy.md`.
+- 2026-07-29 (R6-F22 documentation PASS): `43e1c44` updates the frozen
+  contract and generated pages to the implemented deprecation policy, corrects
+  every audited live-source anchor, migrates every ordinary legacy call found
+  by the whole-tree sweep, and adds complete-inventory positive/exclusion
+  controls to the real-CLI documentation checker. Generation, contract,
+  record-hygiene, syntax, canonical-import, and adversarial-review gates pass.
+  Continue with the three serial native matrices and fresh Python/MATLAB full
+  gates; the exhausted C++ 33/46 mutation falsification still prevents F22
+  closure.
+- 2026-07-30 (R6-F22 final gates / closure FALSIFIED): Commits `aff2627` through
+  `340ed88` register and preserve the serial full-gate evidence. Canonical,
+  llfio-OFF, and Arrow-ON pass 122/122, 122/122, and 124/124 with exact
+  six/nine/eight capability skips; the Arrow reader runs 390 assertions/11
+  cases. A forced-fresh Python extension passes F22 18/18 and the full 1,041
+  inventory has only the registered F39 `28 == 27` red. One fresh OpenMP MEX
+  passes focused 1/1 and full 85/82/2/3 on both R2024b/R2025b with only the
+  registered F18 names. F22 nevertheless remains unchecked: the independent
+  C++ mutation band exhausted both attempts at 33/46. Resume at D2, then F23
+  per cadence. Evidence:
+  `.claude/baselines/2026-07-30-f22-final-gates.md`.
+
+## F22 task detail moved on 2026-07-30
+
+      **R6 DOC STATUS 2026-07-29:** `43e1c44` synchronises the authoritative
+      and generated contracts, migrates all ordinary calls found by the
+      whole-tree sweep, and permanently guards the complete 30/33 C++,
+      12/13 Python, and 15 MATLAB inventories. Generation, the real-CLI
+      contract checker, record hygiene, syntax checks, canonical imports, and
+      adversarial re-review pass. Run the registered full gates next; F22
+      remains unchecked because the C++ mutation verdict is still 33/46
+      FALSIFIED.
+      **R6 FULL-GATE STATUS 2026-07-30:** `340ed88` records serial PASS results
+      for canonical 122/122 (six skips), llfio-OFF 122/122 (nine), Arrow-ON
+      124/124 (eight; reader 390 assertions/11 cases), fresh Python 18/18 and
+      1,041 = 1,028 passed + 12 skipped + only F39 red, and both MATLAB
+      releases at focused 1/1 and full 85/82/2/3 with only F18 red. These
+      execution gates do not reinterpret the exhausted C++ mutation band:
+      F22 remains FALSIFIED and unchecked. Evidence:
+      `.claude/baselines/2026-07-30-f22-final-gates.md`.

@@ -43,7 +43,7 @@ WHAT you work on. Read both before touching anything. Supporting record:
    archived when bloated, floors in this file updated the moment a gate
    legitimately changes them. A green run that leaves clutter is a failed run.
 7. **Science before ceremony.** R2 derivations are the campaign's core
-   deliverable and are 17/18 outstanding; the R2/R3 cadence rule in PLAN.md is
+   deliverable and are 16/18 outstanding; the R2/R3 cadence rule in PLAN.md is
    binding. When a finding has a paired derivation, derive first — the
    derivation is the finding's oracle.
 
@@ -107,7 +107,7 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor (F21-era, 2026-07-29): `ctest` → **122/122,
+  llfio ON, Arrow OFF). Floor (D2-era, 2026-07-30): `ctest` → **123/123,
   0 failed**, 6 capability skips (cuda×2, metal×3, io_readers×1 — the
   io_readers skip is expected in this Arrow-OFF build; F9 is closed by its
   separate Arrow-ON executable gate). Rebuild first:
@@ -115,9 +115,9 @@ WHAT you work on. Read both before touching anything. Supporting record:
   Full matrices are SERIAL-only evidence: concurrent runs collide on
   source-root-relative test artifacts (F45 lesson).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
-  **122/122, 0 failed**, with 9 capability skips.
+  **123/123, 0 failed**, with 9 capability skips.
 - **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
-  Arrow/Parquet. Floor: **124/124, 0 failed**, 8 capability skips; all four
+  Arrow/Parquet. Floor: **125/125, 0 failed**, 8 capability skips; all four
   real-CLI integration gates and the reader run (390 assertions / 11 cases).
   CTest metadata supplies LLVM, `pyarrow`, and `pyarrow.libs` runtime paths,
   so no caller PATH override is required.
