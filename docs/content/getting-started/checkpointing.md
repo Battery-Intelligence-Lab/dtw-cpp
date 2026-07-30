@@ -101,9 +101,9 @@ opts.enabled = false;              // Whether checkpointing is enabled
 No algorithm or save/load function currently consumes these fields. Call
 `save_checkpoint` and `load_checkpoint` explicitly.
 
-## Python API
+## Python directory API
 
-The same functions are exposed through the Python bindings:
+The directory-checkpoint functions are exposed through the Python bindings:
 
 ```python
 import dtwcpp
@@ -206,6 +206,45 @@ payload length before allocating from either count; a rejected read leaves the
 destination result unchanged. This structural validation deliberately does
 not establish that labels, medoids, N, k, or the producing configuration are
 semantically compatible. The CLI performs those contextual replay checks.
+
+### Python binary-result API
+
+Tier-2 clustering functions such as `fast_pam` return a
+`dtwcpp.ClusteringResult` that can be saved directly. Both binary functions
+accept valid-Unicode `str` or `os.PathLike[str]` values (including
+`pathlib.Path`) and release the GIL during native filesystem work:
+
+```python
+from pathlib import Path
+
+import dtwcpp
+
+binary_path = Path("./results/run1_checkpoint.bin")
+result = dtwcpp.fast_pam(prob, 5)
+assert dtwcpp.save_binary_checkpoint(result, binary_path) is None
+
+try:
+    replayed = dtwcpp.load_binary_checkpoint(binary_path)
+except dtwcpp.IOError as error:
+    print(f"Checkpoint unavailable: {error}")
+    raise
+
+assert isinstance(replayed, dtwcpp.ClusteringResult)
+```
+
+`load_binary_checkpoint(path) -> ClusteringResult` returns a new result object;
+it does not mutate a `Problem`. Missing, inaccessible, or structurally invalid
+files raise `dtwcpp.IOError` (also a `DtwcError` and `OSError`) with the exact
+message:
+
+```text
+load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
+```
+
+Here `<path>` is replaced by the supplied path. Native write failures from
+`save_binary_checkpoint(result, path) -> None` also raise `dtwcpp.IOError`.
+Surrogateescaped non-UTF-8 filenames and lone-surrogate path values remain
+outside this valid-Unicode path guarantee.
 
 ## Example workflow
 

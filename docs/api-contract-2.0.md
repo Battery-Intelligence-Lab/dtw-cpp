@@ -457,8 +457,8 @@ are snake_case; current availability and gaps are explicit below.
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} | live | live `[introduced-2.0]` |
 | save dir checkpoint | `save_checkpoint(const Problem&, path)` | live | live `[introduced-2.0]` |
 | load dir checkpoint | `load_checkpoint(Problem&, path) -> bool` | live | live `[introduced-2.0]` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | absent `[gap F23]` | live `[introduced-2.0]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | absent `[gap F23]` | live `[introduced-2.0]` |
+| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
+| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
 `CheckpointOptions` is presently a passive configuration carrier: no
 algorithm or save/load call consumes `enabled`, `save_interval`, or
@@ -477,8 +477,23 @@ out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
 fails loudly.
 Binary v1 has no data, input-order, configuration, or producing-method identity,
 so the caller must select the same `<output>/<name>`, input order, and
-configuration. It is result replay, not mid-algorithm continuation. Python
-lacks the two direct binary bindings (F23).
+configuration. It is result replay, not mid-algorithm continuation.
+
+Python accepts valid-Unicode `str | os.PathLike[str]` values for both binary
+paths and releases the GIL while the native filesystem operation runs. A
+successful save returns `None`; a successful load returns a new
+`ClusteringResult`. Native write failures raise `dtwcpp.IOError`. A missing,
+inaccessible, or structurally invalid binary read raises `dtwcpp.IOError` with
+the exact message below, where `<path>` is the supplied path:
+
+```text
+load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
+```
+
+As specified in §5, `dtwcpp.IOError` subclasses both `DtwcError` and `OSError`.
+F56 tracks the remaining error-formatting boundary for surrogateescaped
+non-UTF-8 filenames and lone-surrogate path values; the live guarantee above
+does not claim those representations.
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,
@@ -809,7 +824,10 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    load whenever `--checkpoint` is supplied, and mmap caches reopen
    automatically; neither requires `--resume`. The latter flag is solely the
    structurally validated completed-result replay described in §2.7. Python
-   binary bindings are missing (F23). A non-full FastCLARA run
+   exposes that binary result surface as
+   `save_binary_checkpoint(result, path) -> None` and
+   `load_binary_checkpoint(path) -> ClusteringResult`; invalid reads raise the
+   typed `dtwcpp.IOError` described there. A non-full FastCLARA run
    has no parent distance matrix and therefore rejects the directory checkpoint
    and imported dense matrix paths; its automatic binary result checkpoint is
    still written. The full-sample PAM fallback retains the ordinary triple.

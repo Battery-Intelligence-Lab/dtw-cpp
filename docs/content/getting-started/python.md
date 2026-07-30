@@ -380,7 +380,7 @@ Install the dependency: `uv add pyarrow`
 
 ## Checkpointing
 
-For long-running computations, save and resume distance matrix state:
+For long-running computations, save and resume distance-matrix state:
 
 ```python
 from dtwcpp import save_checkpoint, load_checkpoint, CheckpointOptions
@@ -393,6 +393,47 @@ loaded = load_checkpoint(prob, "./checkpoints")
 if loaded:
     print("Resumed from checkpoint")
 ```
+
+Binary result checkpoints are separate: they persist the
+`dtwcpp.ClusteringResult` returned by Tier-2 clustering functions, rather than
+a `Problem` distance matrix. Both paths accept valid-Unicode `str` or
+`os.PathLike[str]` values:
+
+```python
+from pathlib import Path
+
+import dtwcpp
+
+checkpoint_path = Path("./results/run1_checkpoint.bin")
+result = dtwcpp.fast_pam(prob, 5)
+assert dtwcpp.save_binary_checkpoint(result, checkpoint_path) is None
+
+try:
+    restored = dtwcpp.load_binary_checkpoint(checkpoint_path)
+except dtwcpp.IOError as error:
+    # Missing, inaccessible, and malformed binary checkpoints arrive here.
+    raise RuntimeError(f"Could not restore clustering result: {error}") from error
+
+assert isinstance(restored, dtwcpp.ClusteringResult)
+```
+
+Thus `save_binary_checkpoint(result, path) -> None` and
+`load_binary_checkpoint(path) -> ClusteringResult`. A failed binary read raises
+`dtwcpp.IOError` (both `DtwcError` and `OSError`) with:
+
+```text
+load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
+```
+
+Here `<path>` is replaced by the supplied path. Both functions release the GIL
+while the C++ filesystem operation runs.
+Surrogateescaped non-UTF-8 filenames and lone-surrogate path values remain
+outside this valid-Unicode path guarantee.
+
+The reader validates the binary wire structure, not dataset/configuration
+provenance or N/k compatibility. Reuse a result only with the matching input
+order and clustering configuration, and apply any application-specific
+semantic checks before trusting it.
 
 See [Checkpointing](../checkpointing/) for full details.
 

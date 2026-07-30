@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 from pathlib import Path
 import re
@@ -69,6 +70,19 @@ def braced_body(source: str, signature: str, label: str) -> str:
     raise AssertionError(f"cannot locate {label} closing brace")
 
 
+def assert_ordered_markers(
+    source: str, label: str, markers: tuple[str, ...]
+) -> None:
+    cursor = 0
+    for marker in markers:
+        position = source.find(marker, cursor)
+        if position < 0:
+            raise AssertionError(
+                f"{label} omits or reorders marker after offset {cursor}: {marker}"
+            )
+        cursor = position + len(marker)
+
+
 def assert_freeze_governance() -> None:
     status = (ROOT / "docs/api-contract-2.0.md").read_text(
         encoding="utf-8"
@@ -116,6 +130,9 @@ def assert_contract_audit_state() -> None:
         "do not yet emit the required diagnostics (F22)",
         "F22 owns missing diagnostics",
         "do not currently emit runtime warnings (F22)",
+        "absent `[gap F23]`",
+        "Python binary bindings are missing (F23)",
+        "lacks the two direct binary bindings",
     )
     present = [marker for marker in stale if marker in contract]
     if present:
@@ -173,12 +190,142 @@ def assert_contract_audit_state() -> None:
             "frozen contract must record exactly eight reviewer resolutions"
         )
     missing_findings = [
-        f"F{number}" for number in (18, *range(23, 27))
+        f"F{number}" for number in (18, *range(24, 27))
         if f"F{number}" not in contract
     ]
     if missing_findings:
         raise AssertionError(
             f"frozen contract hides 2.0 implementation gaps: {missing_findings}"
+        )
+
+
+def assert_python_binary_checkpoint_contract() -> None:
+    paths = {
+        "contract": ROOT / "docs/api-contract-2.0.md",
+        "checkpointing": ROOT / "docs/content/getting-started/checkpointing.md",
+        "python_site": ROOT / "docs/content/getting-started/python.md",
+    }
+    text = {
+        name: compact(path.read_text(encoding="utf-8"))
+        for name, path in paths.items()
+    }
+    signatures = (
+        "`save_binary_checkpoint(result, path) -> None`",
+        "`load_binary_checkpoint(path) -> ClusteringResult`",
+    )
+    required = {
+        "contract": (
+            *signatures,
+            "`str | os.PathLike[str]`",
+            "valid-Unicode",
+            "releases the GIL",
+            "Native write failures raise `dtwcpp.IOError`",
+            "`dtwcpp.IOError` subclasses both `DtwcError` and `OSError`",
+            "F56",
+        ),
+        "checkpointing": (
+            *signatures,
+            "`dtwcpp.ClusteringResult`",
+            "valid-Unicode",
+            "assert isinstance(replayed, dtwcpp.ClusteringResult)",
+            "except dtwcpp.IOError as error:",
+            "also a `DtwcError` and `OSError`",
+            "does not establish that labels, medoids, N, k, or the producing "
+            "configuration are semantically compatible",
+        ),
+        "python_site": (
+            *signatures,
+            "`dtwcpp.ClusteringResult`",
+            "valid-Unicode",
+            "assert isinstance(restored, dtwcpp.ClusteringResult)",
+            "except dtwcpp.IOError as error:",
+            "both `DtwcError` and `OSError`",
+            "validates the binary wire structure, not dataset/configuration "
+            "provenance or N/k compatibility",
+        ),
+    }
+    exact_read_error = (
+        "load_binary_checkpoint: cannot read a valid binary result "
+        "checkpoint from '<path>'."
+    )
+    drift = {
+        name: [
+            marker
+            for marker in (*markers, exact_read_error)
+            if marker not in text[name]
+        ]
+        for name, markers in required.items()
+    }
+    drift = {name: markers for name, markers in drift.items() if markers}
+    if drift:
+        raise AssertionError(
+            f"Python binary-checkpoint documentation drift: {drift}"
+        )
+
+    binding = (ROOT / "python/src/_dtwcpp_core.cpp").read_text(encoding="utf-8")
+    save_body = compact(braced_body(
+        binding, 'm.def("save_binary_checkpoint"', "Python binary writer"
+    ))
+    load_body = compact(braced_body(
+        binding, 'm.def("load_binary_checkpoint"', "Python binary reader"
+    ))
+    save_required = (
+        "const dtwc::core::ClusteringResult snapshot = result;",
+        "nb::gil_scoped_release release;",
+        "dtwc::save_binary_checkpoint(snapshot, path);",
+    )
+    load_required = (
+        "const std::string path_text = utf8_path_text(path);",
+        "dtwc::core::ClusteringResult result;",
+        "bool loaded = false;",
+        "nb::gil_scoped_release release;",
+        "loaded = dtwc::load_binary_checkpoint(result, path);",
+        "} if (!loaded)",
+        "throw dtwc::IOError(",
+        '"load_binary_checkpoint: cannot read a valid binary result "',
+        '"checkpoint from \'" + path_text + "\'."',
+        "return result;",
+    )
+    assert_ordered_markers(
+        save_body, "Python binary-checkpoint writer", save_required
+    )
+    assert_ordered_markers(
+        load_body, "Python binary-checkpoint reader", load_required
+    )
+
+    package = (ROOT / "python/dtwcpp/__init__.py").read_text(encoding="utf-8")
+    package_tree = ast.parse(package)
+    native_imports = [
+        alias.name
+        for node in ast.walk(package_tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "dtwcpp._dtwcpp_core"
+        for alias in node.names
+    ]
+    all_assignments = [
+        node.value
+        for node in package_tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        )
+    ]
+    if len(all_assignments) != 1:
+        raise AssertionError("cannot locate one literal dtwcpp.__all__ assignment")
+    all_exports = ast.literal_eval(all_assignments[0])
+    export_drift = {
+        name: {
+            "native_import": native_imports.count(name),
+            "__all__": all_exports.count(name),
+        }
+        for name in ("save_binary_checkpoint", "load_binary_checkpoint")
+        if native_imports.count(name) != 1 or all_exports.count(name) != 1
+    }
+    if export_drift:
+        raise AssertionError(
+            "Python binary-checkpoint exports must each appear once in the "
+            f"native import and once in __all__: {export_drift}"
         )
 
 
@@ -1381,6 +1528,7 @@ def main() -> int:
                    check=True)
     assert_freeze_governance()
     assert_contract_audit_state()
+    assert_python_binary_checkpoint_contract()
     assert_migration_behaviors()
     assert_f22_changelog()
     assert_rc1_changelog()
