@@ -133,8 +133,10 @@ WHAT you work on. Read both before touching anything. Supporting record:
 - **Python:** rebuild the extension via a configure dir with
   `-DDTWC_BUILD_PYTHON=ON`, copy the fresh `.pyd` + `libomp.dll` into the venv,
   verify import + one NEW symbol before pytest (stale-`.pyd` false-greens are
-  real). Current F22-era full-suite inventory: **1028 passed / 12 skipped /
-  1 expected F39 supply-chain red (1041 collected)**.
+  real). Current F23-era Python inventory: **1033 passed / 12 skipped /
+  1 expected F39 supply-chain red (1046 collected)**; with the two permanent
+  conformance nodes: **1035 passed / 12 skipped / 1 expected F39 red
+  (1048 collected)**.
   Windows llfio-ON wheel is a known OPEN item (see PLAN R6).
 - **MATLAB:** R2024b + R2025b installed; run via `matlab -batch`. addpath ORDER
   matters — add the fresh binary directory LAST so it prepends ahead of any

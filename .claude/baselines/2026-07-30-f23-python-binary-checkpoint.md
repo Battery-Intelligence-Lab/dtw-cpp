@@ -406,3 +406,57 @@ occurred, and the emitted bytes matched the independently registered
 72-byte/SHA-256 oracle. The product was committed immediately as `5bf517f`.
 Both registered product attempts have now been executed; no later gate may
 weaken or rescue-tune this implementation.
+
+## Python regression inventories
+
+The complete contract-parity gate passed exactly:
+
+```text
+........................................................................ [ 45%]
+........................................................................ [ 91%]
+.............                                                            [100%]
+157 passed in 1.91s
+```
+
+Before the combined gate, both `DTWC_CL_PATH` and `DTWC_CL_BIN` named the fresh
+`build/cfg-gate-normal/bin/dtwc_cl.exe`, and the independent `_hpc` helper
+selected that same path:
+
+```text
+FULL_GATE_CLI=C:\D\git\dtw-cpp\build\cfg-gate-normal\bin\dtwc_cl.exe
+```
+
+The combined registered inventory was exact:
+
+```text
+================================== FAILURES ===================================
+________________ test_live_tracked_cmake_inventory_is_complete ________________
+
+    def test_live_tracked_cmake_inventory_is_complete():
+        archive_pins, manifest_total = pins.tracked_cmake_archive_pins(ROOT)
+>       assert manifest_total == 27
+E       assert 28 == 27
+
+tests\python\test_supply_chain_pins.py:493: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+1 failed, 1035 passed, 12 skipped in 74.96s (0:01:14)
+```
+
+The Python-only floor was also executed rather than inferred:
+
+```text
+================================== FAILURES ===================================
+________________ test_live_tracked_cmake_inventory_is_complete ________________
+E       assert 28 == 27
+tests\python\test_supply_chain_pins.py:493: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/python/test_supply_chain_pins.py::test_live_tracked_cmake_inventory_is_complete
+1 failed, 1033 passed, 12 skipped in 76.73s (0:01:16)
+```
+
+**[confirmed] Python regression verdict: PASS against the registered expected
+red.** The only failure in each inventory is the exact inherited F39
+28-versus-27 supply-chain assertion. The totals are exactly 1,046 Python nodes
+and 1,048 combined nodes; no F23, CLI-routing, conformance, or unrelated
+failure occurred.

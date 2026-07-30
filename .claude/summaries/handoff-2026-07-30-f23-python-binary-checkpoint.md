@@ -65,12 +65,15 @@
   passed exactly 3/3 with the sole exact `F23_PYTHON_CHECKPOINT` marker. Commit
   `5bf517f` contains the two GIL-safe native lambdas, unconditional exports, and
   Unreleased changelog entry.
+- Contract parity is exactly 157/157. The Python-only inventory is exactly
+  1,033 passed / 12 skipped / sole expected F39 red = 1,046; the combined
+  inventory is exactly 1,035 passed / 12 skipped / the same sole red = 1,048.
+  Both explicit CLI variables and `_hpc` selected the fresh cfg-gate binary.
 
 ## Exact resume point
 
-Run parity and the combined inventory with both CLI environment routes pinned
-to the already rebuilt
-`build/cfg-gate-normal/bin/dtwc_cl.exe`.
+Complete the documentation/checker updates and run their gates, then execute
+the focused native checkpoint gate and all three serial native matrices.
 Product attempts executed: `2 / 2`; attempt 2 passed.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or
