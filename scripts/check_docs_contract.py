@@ -70,6 +70,166 @@ def braced_body(source: str, signature: str, label: str) -> str:
     raise AssertionError(f"cannot locate {label} closing brace")
 
 
+def cpp_projection(source: str, *, keep_literals: bool) -> str:
+    """Blank C++ comments and optionally literals without changing offsets."""
+    projected = list(source)
+
+    def blank(start: int, stop: int) -> None:
+        for offset in range(start, stop):
+            if projected[offset] not in "\r\n":
+                projected[offset] = " "
+
+    cursor = 0
+    while cursor < len(source):
+        if source.startswith("//", cursor):
+            stop = source.find("\n", cursor + 2)
+            if stop < 0:
+                stop = len(source)
+            blank(cursor, stop)
+            cursor = stop
+            continue
+        if source.startswith("/*", cursor):
+            closing = source.find("*/", cursor + 2)
+            if closing < 0:
+                raise AssertionError("unterminated C++ block comment")
+            stop = closing + 2
+            blank(cursor, stop)
+            cursor = stop
+            continue
+        if source.startswith('R"', cursor):
+            delimiter_end = source.find("(", cursor + 2)
+            if delimiter_end < 0:
+                raise AssertionError("unterminated C++ raw-string delimiter")
+            delimiter = source[cursor + 2:delimiter_end]
+            terminator = ")" + delimiter + '"'
+            closing = source.find(terminator, delimiter_end + 1)
+            if closing < 0:
+                raise AssertionError("unterminated C++ raw string")
+            stop = closing + len(terminator)
+            if not keep_literals:
+                blank(cursor, stop)
+            cursor = stop
+            continue
+        if source[cursor] in {'"', "'"}:
+            quote = source[cursor]
+            stop = cursor + 1
+            escaped = False
+            while stop < len(source):
+                char = source[stop]
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == quote:
+                    stop += 1
+                    break
+                stop += 1
+            else:
+                raise AssertionError("unterminated C++ quoted literal")
+            if not keep_literals:
+                blank(cursor, stop)
+            cursor = stop
+            continue
+        cursor += 1
+    return "".join(projected)
+
+
+def cmake_projection(source: str) -> str:
+    """Blank CMake comments while preserving quoted and bracket arguments."""
+    projected = list(source)
+
+    def blank(start: int, stop: int) -> None:
+        for offset in range(start, stop):
+            if projected[offset] not in "\r\n":
+                projected[offset] = " "
+
+    cursor = 0
+    while cursor < len(source):
+        if source[cursor] == '"':
+            cursor += 1
+            escaped = False
+            while cursor < len(source):
+                char = source[cursor]
+                cursor += 1
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    break
+            else:
+                raise AssertionError("unterminated CMake quoted argument")
+            continue
+        bracket = re.match(r"\[(=*)\[", source[cursor:])
+        if bracket is not None:
+            terminator = "]" + bracket.group(1) + "]"
+            closing = source.find(
+                terminator,
+                cursor + len(bracket.group(0)),
+            )
+            if closing < 0:
+                raise AssertionError("unterminated CMake bracket argument")
+            cursor = closing + len(terminator)
+            continue
+        if source[cursor] == "#":
+            bracket_comment = re.match(r"#\[(=*)\[", source[cursor:])
+            if bracket_comment is not None:
+                terminator = "]" + bracket_comment.group(1) + "]"
+                closing = source.find(
+                    terminator,
+                    cursor + len(bracket_comment.group(0)),
+                )
+                if closing < 0:
+                    raise AssertionError("unterminated CMake bracket comment")
+                stop = closing + len(terminator)
+            else:
+                stop = source.find("\n", cursor + 1)
+                if stop < 0:
+                    stop = len(source)
+            blank(cursor, stop)
+            cursor = stop
+            continue
+        cursor += 1
+    return "".join(projected)
+
+
+def function_body(source: str, signature: str, label: str) -> str:
+    """Return code-only function body after balancing braced defaults."""
+    structural = cpp_projection(source, keep_literals=False)
+    start = structural.find(signature)
+    if start < 0:
+        raise AssertionError(f"cannot locate {label} signature")
+    arguments = structural.find("(", start)
+    if arguments < 0:
+        raise AssertionError(f"cannot locate {label} argument list")
+
+    paren_depth = 0
+    signature_end = -1
+    for pos in range(arguments, len(structural)):
+        if structural[pos] == "(":
+            paren_depth += 1
+        elif structural[pos] == ")":
+            paren_depth -= 1
+            if paren_depth == 0:
+                signature_end = pos
+                break
+    if signature_end < 0:
+        raise AssertionError(f"cannot locate {label} argument-list end")
+
+    opening = structural.find("{", signature_end)
+    if opening < 0:
+        raise AssertionError(f"cannot locate {label} opening brace")
+    depth = 0
+    for pos in range(opening, len(structural)):
+        if structural[pos] == "{":
+            depth += 1
+        elif structural[pos] == "}":
+            depth -= 1
+            if depth == 0:
+                return structural[opening + 1:pos]
+    raise AssertionError(f"cannot locate {label} closing brace")
+
+
 def assert_ordered_markers(
     source: str, label: str, markers: tuple[str, ...]
 ) -> None:
@@ -1117,6 +1277,626 @@ def assert_lb_keogh_derivation_sync() -> None:
         )
 
 
+def assert_lb_enhanced_webb_derivation_sync() -> None:
+    d3_marker = (
+        "D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 "
+        "full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 "
+        "webb_cases=35982 webb_branches=4/4 webb_strict=2/2 "
+        "tail_cases=35982 tail_strict=2/2 metric_cases=140 "
+        "order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS"
+    )
+    f57_marker = (
+        "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 "
+        "admissible=2/2 skips=0 verdict=PASS"
+    )
+    d3_result = "All tests passed (115 assertions in 1 test case)"
+    f57_result = "All tests passed (24 assertions in 1 test case)"
+
+    paths = {
+        "derivation": ROOT / "docs/derivations/03-lb-enhanced-webb.md",
+        "index": ROOT / "docs/derivations/README.md",
+        "citations": ROOT / ".claude/CITATIONS.md",
+        "lessons": ROOT / ".claude/LESSONS.md",
+        "metrics_site": ROOT / "docs/content/method/metrics.md",
+        "lower_bound": ROOT / "dtwc/core/lower_bound_impl.hpp",
+        "strategy": ROOT / "dtwc/enums/LowerBoundStrategy.hpp",
+        "pruned_header": ROOT / "dtwc/core/pruned_distance_matrix.hpp",
+        "pruned_source": ROOT / "dtwc/core/pruned_distance_matrix.cpp",
+        "changelog": ROOT / "CHANGELOG.md",
+        "oracle": (
+            ROOT
+            / "tests/unit/adversarial/test_lb_enhanced_webb_derivation.cpp"
+        ),
+        "intmax_oracle": (
+            ROOT / "tests/unit/adversarial/test_lb_webb_intmax.cpp"
+        ),
+        "ctest": ROOT / "tests/CMakeLists.txt",
+        "baseline": (
+            ROOT / ".claude/baselines/2026-07-30-d3-lb-enhanced-webb.md"
+        ),
+        "legacy_baseline": (
+            ROOT / ".claude/baselines/2026-07-08-lb-cascade.md"
+        ),
+        "handoff": (
+            ROOT
+            / ".claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md"
+        ),
+        "plan": ROOT / "PLAN.md",
+    }
+    missing_paths = [
+        str(path.relative_to(ROOT))
+        for path in paths.values()
+        if not path.is_file()
+    ]
+    if missing_paths:
+        raise AssertionError(f"D3 derivation drift: missing files {missing_paths}")
+
+    text = {
+        name: path.read_text(encoding="utf-8")
+        for name, path in paths.items()
+    }
+    required = {
+        "derivation": (
+            "# D3",
+            "LB_Enhanced",
+            "`LB_Webb_NoLR`",
+            "## Assumptions, units, and exclusions",
+            "finite, nonempty, equal-length scalar",
+            "unrooted squared-L2",
+            "$U$",
+            "$U^2$",
+            "not a metric",
+            "same saturated window",
+            "No modelling approximation is used",
+            "effective `V=1`",
+            "effective `V>=2`",
+            "forced-corner",
+            "interval projection",
+            "mutually disjoint",
+            "four-point",
+            "`MinLRPaths`",
+            "production tail-cap",
+            "exact-predicate NoLR",
+            "no universal relative",
+            "D17",
+            "F46",
+            "## Executable oracle",
+            d3_marker,
+            d3_result,
+            f57_marker,
+            f57_result,
+            "## Code-conformance table",
+        ),
+        "index": (
+            "03-lb-enhanced-webb.md",
+            "LB_Enhanced",
+            "LB_Webb_NoLR",
+            "L1",
+            "squared-L2",
+            "**CONFIRMED**",
+        ),
+        "citations": (
+            "10.1137/1.9781611975673.59",
+            "Theorem 3.1",
+            "Eq. 3.7",
+            "Theorem 3.2",
+            "`LB_Enhanced^1` uniformly tighter than LB_Keogh",
+            "10.1016/j.patcog.2021.107895",
+            "Theorem 2",
+            "Eqs. 26–43",
+            "Algorithm 2 defines full LB_Webb with `MinLRPaths`",
+            "`LB_Webb_NoLR` formula applies the bridge and corrections over all indices",
+            "0.96904",
+            "0.96891",
+        ),
+        "lessons": (
+            "local `LB_Webb_NoLR` plus a tail cap, not full Algorithm 2",
+            "omitting it has no universal order",
+            "`production <= exact-predicate NoLR`",
+            "LB_Enhanced/Keogh ordering depends on effective V",
+            "At `V=1`",
+            "At effective `V>=2`",
+            "The live cascade takes the maximum",
+        ),
+        "metrics_site": (
+            "paper's all-index `LB_Webb_NoLR` bridge and corrections plus a separate conservative trailing-flag cap",
+            "It is not full Algorithm 2, which includes `MinLRPaths`",
+            "no universal ordering between the local variant and full Webb",
+            "local directional Webb result is at least the matching-direction LB_Keogh",
+            "production result is no greater than exact-predicate NoLR and remains admissible",
+            "For effective `V=1`",
+            "For effective `V>=2`, neither dominates",
+            "the `Enhanced` cascade evaluates their maximum",
+            "unrooted squared-L2",
+        ),
+        "lower_bound": (
+            "Theorem 3.1, Eq. 3.7, and Theorem 3.2",
+            "At effective V=1, directional LB_Enhanced dominates",
+            "At effective V>=2, neither bound dominates",
+            "Local LB_Webb_NoLR plus a conservative tail cap",
+            "all-index `LB_Webb_NoLR` formula",
+            "Full Algorithm 2 also",
+            "contains `MinLRPaths` and is not implemented here",
+            "No ordering is claimed between this NoLR variant and full Algorithm 2",
+            "production tail-cap <= exact-predicate NoLR <= DTW",
+            "L1 (equality) and unrooted squared L2 (nonnegative slack)",
+        ),
+        "strategy": (
+            "Cascade Kim -> max(LB_Keogh, LB_Enhanced)",
+            "neither envelope bound dominates for effective V>=2",
+            "symmetric local LB_Webb_NoLR plus its",
+            "conservative tail cap",
+            "it is not full Algorithm 2",
+        ),
+        "pruned_header": (
+            "Enhanced",
+            "evaluates max(LB_Keogh, LB_Enhanced)",
+            "the bound cascade is L1-valued",
+            "A cutoff sentinel triggers a retry",
+            "every exact entry is required",
+        ),
+        "pruned_source": (
+            "Enhanced activates Keogh as well",
+            "neither bound dominates the other for effective V >= 2",
+            "symmetric local Webb-NoLR-plus-tail-cap bound",
+            "dominates symmetric Keogh",
+        ),
+        "changelog": (
+            "paper's all-index `LB_Webb_NoLR` formula plus a conservative trailing-flag cap",
+            "not full Algorithm 2 with `MinLRPaths`",
+            "no universal ordering with full Webb is claimed",
+            "Enhanced dominates matching-direction Keogh at effective `V=1`",
+            "exact D3 witnesses establish both order directions at `V>=2`",
+            "`max(LB_Keogh, LB_Enhanced)`",
+        ),
+        "baseline": (
+            "## Primary-source boundary",
+            "## Preregistered proof obligations",
+            "## Preregistered independent D3 oracle",
+            "## Preregistered F57 gate",
+            "## Product attempt 2 — final focused adjudication",
+            d3_marker,
+            d3_result,
+            f57_marker,
+            f57_result,
+            "Attempt-2 verdict: **PASS [confirmed]**",
+        ),
+        "legacy_baseline": (
+            "## F55 provenance corrigendum — 2026-07-30",
+            "The numerical outputs above remain verbatim evidence",
+            "all-index `LB_Webb_NoLR` bridge and corrections plus a conservative trailing-flag cap",
+            "`production <= exact-predicate NoLR <= DTW`",
+            "No universal ordering with full Webb is claimed",
+            "effective `V=1` dominates matching-direction Keogh",
+            "effective `V>=2`",
+        ),
+        "handoff": (
+            "# Handoff — R2-D3 LB_Enhanced and LB_Webb_NoLR",
+            "Final product attempt 2 is **PASS [confirmed]**",
+            "passed 115/115 assertions",
+            "passed 24/24 assertions",
+            "CTest reported 2/2, zero failures, zero skips",
+            "corrects F55 across source contracts",
+            "conservative tail cap",
+        ),
+        "plan": (
+            "**D3. LB_Enhanced + local LB_Webb_NoLR plus tail cap.**",
+            "local directional bound dominates matching-direction Keogh",
+            "only the column-alignment tail cap",
+            "effective `V=1`",
+            "effective `V>=2`",
+            "**F54 — the live Enhanced pruning cascade",
+            "**F55 — the local Webb implementation",
+            "**F57 — CPU LB_Webb window arithmetic",
+            "2026-07-30 (D3 registration)",
+            "shared saturated window",
+            "2026-07-30 (F55 provenance correction)",
+            "`production <= exact-predicate NoLR`",
+        ),
+    }
+    drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(text[name])
+        ]
+        for name, markers in required.items()
+    }
+    drift = {name: markers for name, markers in drift.items() if markers}
+    if drift:
+        raise AssertionError(f"D3 derivation drift: missing markers {drift}")
+
+    implementation_bodies = {
+        "enhanced": function_body(
+            text["lower_bound"],
+            "T lb_enhanced(const T *A",
+            "LB_Enhanced implementation",
+        ),
+        "enhanced_symmetric": function_body(
+            text["lower_bound"],
+            "double lb_enhanced_symmetric(",
+            "symmetric LB_Enhanced implementation",
+        ),
+        "webb": function_body(
+            text["lower_bound"],
+            "double lb_webb(std::span<const double> A",
+            "local LB_Webb_NoLR implementation",
+        ),
+        "webb_symmetric": function_body(
+            text["lower_bound"],
+            "double lb_webb_symmetric(",
+            "symmetric local LB_Webb_NoLR implementation",
+        ),
+    }
+    implementation_required = {
+        "enhanced": (
+            "const int w = std::min(std::max(band, 0), ni - 1);",
+            "int nBands = std::min(V, ni / 2);",
+            "if (nBands < 1) nBands = 1;",
+            "for (int j = jlo; j < i; ++j)",
+            "for (int i = nBands; i < ni - nBands; ++i)",
+        ),
+        "enhanced_symmetric": (
+            "return std::max(lb_xy, lb_yx);",
+        ),
+        "webb": (
+            "const std::size_t w = std::min( static_cast<std::size_t>(std::max(band, 0)), n - 1);",
+            "const std::size_t two_w = w > max_size - w ? max_size : 2 * w;",
+            "return value == limit ? value : value + 1;",
+            "std::size_t cUp = w, cLo = w;",
+            "cLo = (UB[i] >= ULA[i]) ? increment_saturated(cLo) : 0;",
+            "cUp = (LB[i] <= LUA[i]) ? increment_saturated(cUp) : 0;",
+            "Fa[i] = (cUp > two_w) ? 1 : 0;",
+            "Fb[i] = (cLo > two_w) ? 1 : 0;",
+            "const std::size_t idx = j + std::min(w, n - 1 - j);",
+            "if (Fa[idx] && bj > UA[j])",
+            "else if (Fb[idx] && bj < LA[j])",
+            "else if (bj > ULB[j] && ULB[j] >= UA[j])",
+            "else if (bj < LUB[j] && LUB[j] <= LA[j])",
+        ),
+        "webb_symmetric": (
+            "return std::max(lb_xy, lb_yx);",
+        ),
+    }
+    implementation_drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker not in compact(implementation_bodies[name])
+        ]
+        for name, markers in implementation_required.items()
+    }
+    implementation_drift = {
+        name: markers
+        for name, markers in implementation_drift.items()
+        if markers
+    }
+    if implementation_drift:
+        raise AssertionError(
+            "D3 lower-bound implementation drift: "
+            f"missing code markers {implementation_drift}"
+        )
+
+    pruned = compact(
+        cpp_projection(text["pruned_source"], keep_literals=False)
+    )
+    enhanced_route = re.search(
+        r"case dtwc::LowerBoundStrategy::Enhanced:\s*"
+        r"use_lb_kim_flag = true;\s*"
+        r"use_lb_keogh_flag = true;\s*"
+        r"use_lb_enhanced_flag = true;",
+        pruned,
+    )
+    if enhanced_route is None:
+        raise AssertionError(
+            "D3 cascade drift: Enhanced no longer activates Kim, Keogh, "
+            "and Enhanced together"
+        )
+    pruned_markers = (
+        "if (use_lb_keogh || use_lb_enhanced)",
+        "if (use_lb_keogh && equal_len)",
+        "const double lb_k = lb_keogh_symmetric(",
+        "if (lb_k > lb) { lb = lb_k;",
+        "if (use_lb_enhanced && equal_len)",
+        "const double lb_e = lb_enhanced_symmetric(",
+        "if (lb_e > lb) { lb = lb_e;",
+        "if (use_lb_webb && equal_len)",
+        "const double lb_w = lb_webb_symmetric(",
+    )
+    missing_pruned = [
+        marker for marker in pruned_markers if marker not in pruned
+    ]
+    if missing_pruned:
+        raise AssertionError(
+            f"D3 cascade implementation drift: missing markers {missing_pruned}"
+        )
+
+    oracle_required = {
+        "oracle": (
+            "REQUIRE(envelope_cases == 2004);",
+            "REQUIRE(envelope_audit.violations == 0);",
+            "REQUIRE(structure_cases == 19);",
+            "REQUIRE(structure_audit.violations == 0);",
+            "REQUIRE(path_cases == 35982);",
+            "REQUIRE(full_cover_cases == 7380);",
+            "REQUIRE(path_audit.violations == 0);",
+            "REQUIRE(enhanced_cases == 68787);",
+            "REQUIRE(enhanced_audit.violations == 0);",
+            "REQUIRE(webb_cases == 35982);",
+            "REQUIRE(webb_audit.violations == 0);",
+            "REQUIRE(branch_hits.full_upper);",
+            "REQUIRE(branch_hits.full_lower);",
+            "REQUIRE(branch_hits.overlap_upper);",
+            "REQUIRE(branch_hits.overlap_lower);",
+            "REQUIRE(tail_cases == 35982);",
+            "REQUIRE(tail_audit.violations == 0);",
+            "REQUIRE(predicate_audit.violations == 0);",
+            "REQUIRE(metric_cases == 140);",
+            "REQUIRE(metric_audit.violations == 0);",
+            "REQUIRE(v5_w0_l1 == 38.0);",
+            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 0, false) == 38.0);",
+            "REQUIRE(v5_w0_sq == 186.0);",
+            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 0, true) == 186.0);",
+            "REQUIRE(v5_w1_l1 == 6.0);",
+            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 1, false) == 8.0);",
+            "REQUIRE(v5_w1_sq == 6.0);",
+            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 1, true) == 8.0);",
+            "v5_w1_l1 == reference_enhanced(v5_a, v5_b, 1, 5, false));",
+            "v5_w1_sq == reference_enhanced(v5_a, v5_b, 1, 5, true));",
+            "REQUIRE(odd_l1 == reference_enhanced(v5_odd_a, v5_odd_b, 1, 5, false));",
+            "REQUIRE(odd_sq == reference_enhanced(v5_odd_a, v5_odd_b, 1, 5, true));",
+            "REQUIRE(odd_l1 <= full_matrix_dtw(v5_odd_a, v5_odd_b, 1, false));",
+            "REQUIRE(odd_sq <= full_matrix_dtw(v5_odd_a, v5_odd_b, 1, true));",
+            "REQUIRE(enhanced_v5 == 4);",
+            "REQUIRE(enhanced == 2.0);",
+            "REQUIRE(enhanced == 10.0);",
+            "REQUIRE(enhanced == 0.0);",
+            "REQUIRE(keogh == 0.0);",
+            "REQUIRE(keogh == 1.0);",
+            "REQUIRE(enhanced > keogh);",
+            "REQUIRE(keogh > enhanced);",
+            "REQUIRE(order_witnesses == 2);",
+            "REQUIRE(direct_keogh(webb_a, webb_eb, false) == 0.0);",
+            "REQUIRE(strict_webb_l1 == 3.0);",
+            "REQUIRE(strict_webb_l1 > direct_keogh(webb_a, webb_eb, false));",
+            "REQUIRE(direct_keogh(webb_a, webb_eb, true) == 0.0);",
+            "REQUIRE(strict_webb_sq == 9.0);",
+            "REQUIRE(strict_webb_sq > direct_keogh(webb_a, webb_eb, true));",
+            "REQUIRE(webb_strict == 2);",
+            "REQUIRE(tail_prod_l1 == 3.0);",
+            "REQUIRE(tail_exact_l1 == 4.0);",
+            "REQUIRE(tail_prod_l1 < tail_exact_l1);",
+            "REQUIRE(tail_prod_sq == 3.0);",
+            "REQUIRE(tail_exact_sq == 4.0);",
+            "REQUIRE(tail_prod_sq < tail_exact_sq);",
+            "REQUIRE(capped_l1 == 20.0);",
+            "REQUIRE(exact_l1 == 30.0);",
+            "REQUIRE(capped_sq == 400.0);",
+            "REQUIRE(exact_sq == 450.0);",
+            "REQUIRE(capped_l1 < exact_l1);",
+            "REQUIRE(capped_sq < exact_sq);",
+            "REQUIRE(exact_l1 <= full_matrix_dtw(a, b, 2, false));",
+            "REQUIRE(exact_sq <= full_matrix_dtw(a, b, 2, true));",
+            "REQUIRE(tail_strict == 2);",
+            "REQUIRE(cascade_enhanced == 0.0);",
+            "REQUIRE(cascade_keogh == 10.0);",
+            "REQUIRE(stats.total_pairs == 3);",
+            "REQUIRE(stats.pruned_by_lb_kim == 0);",
+            "REQUIRE(stats.pruned_by_lb_keogh == 1);",
+            "REQUIRE(stats.early_abandoned == 1);",
+            "REQUIRE(stats.computed_full_dtw == 2);",
+            "REQUIRE(stats.early_abandoned <= stats.pruned_by_lb_keogh);",
+            "REQUIRE(direct_problem.is_distance_matrix_filled());",
+            "direct_problem.dense_distance_matrix().get(i, j) == expected_matrix[i][j]);",
+            "REQUIRE(public_problem.is_distance_matrix_filled());",
+            "public_problem.dense_distance_matrix().get(i, j) == expected_matrix[i][j]);",
+            "REQUIRE(cascade_routes == 2);",
+        ),
+        "intmax_oracle": (
+            "evaluate_bounds(a, b, INT_MAX)",
+            "REQUIRE(at_n_minus_one.webb_l1 == exact_global_l1);",
+            "REQUIRE(at_n.webb_l1 == exact_global_l1);",
+            "REQUIRE(at_intmax.webb_l1 == exact_global_l1);",
+            "REQUIRE(at_n_minus_one.webb_squared == exact_global_squared);",
+            "REQUIRE(at_n.webb_squared == exact_global_squared);",
+            "REQUIRE(at_intmax.webb_squared == exact_global_squared);",
+            "REQUIRE(at_n.webb_l1 == at_n_minus_one.webb_l1);",
+            "REQUIRE(at_intmax.webb_l1 == at_n_minus_one.webb_l1);",
+            "REQUIRE(at_n.webb_squared == at_n_minus_one.webb_squared);",
+            "REQUIRE(at_intmax.webb_squared == at_n_minus_one.webb_squared);",
+            "REQUIRE(at_n_minus_one.enhanced_l1 == exact_global_l1);",
+            "REQUIRE(at_n.enhanced_l1 == at_n_minus_one.enhanced_l1);",
+            "REQUIRE(at_intmax.enhanced_l1 == at_n_minus_one.enhanced_l1);",
+            "REQUIRE(at_n_minus_one.enhanced_squared == exact_global_squared);",
+            "REQUIRE(at_n.enhanced_squared == at_n_minus_one.enhanced_squared);",
+            "REQUIRE(at_intmax.enhanced_squared == at_n_minus_one.enhanced_squared);",
+            "REQUIRE(at_intmax.webb_l1 <= exact_global_l1);",
+            "REQUIRE(at_intmax.webb_squared <= exact_global_squared);",
+            "const Series saturation_a{ 0.0, 0.0 };",
+            "const Series saturation_b{ -1.0, 1.0 };",
+            "constexpr double exact_saturation_bound = 2.0;",
+            "REQUIRE(saturation_at_n_minus_one.webb_l1 == exact_saturation_bound);",
+            "REQUIRE(saturation_at_n.webb_l1 == exact_saturation_bound);",
+            "REQUIRE(saturation_at_intmax.webb_l1 == exact_saturation_bound);",
+            "REQUIRE(saturation_at_n_minus_one.webb_squared == exact_saturation_bound);",
+            "REQUIRE(saturation_at_n.webb_squared == exact_saturation_bound);",
+            "REQUIRE(saturation_at_intmax.webb_squared == exact_saturation_bound);",
+        ),
+    }
+    oracle_code = {
+        name: compact(cpp_projection(text[name], keep_literals=False))
+        for name in oracle_required
+    }
+    oracle_drift = {
+        name: [
+            marker
+            for marker in markers
+            if marker
+            not in oracle_code[name]
+        ]
+        for name, markers in oracle_required.items()
+    }
+    oracle_drift = {
+        name: markers for name, markers in oracle_drift.items() if markers
+    }
+    if oracle_drift:
+        raise AssertionError(
+            f"D3 executable-oracle drift: missing markers {oracle_drift}"
+        )
+
+    oracle_output_markers = {
+        "oracle": d3_marker,
+        "intmax_oracle": f57_marker,
+    }
+    output_drift = {
+        name: marker
+        for name, marker in oracle_output_markers.items()
+        if marker not in compact(
+            re.sub(
+                r'"\s*"',
+                "",
+                cpp_projection(text[name], keep_literals=True),
+            )
+        )
+    }
+    if output_drift:
+        raise AssertionError(
+            "D3 executable-oracle output drift: "
+            f"missing active string markers {output_drift}"
+        )
+
+    ctest_specs = {
+        "test_lb_enhanced_webb_derivation": (
+            d3_marker,
+            "(4[0-9]|[5-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case",
+            'ENVIRONMENT "OMP_NUM_THREADS=1"',
+            "RUN_SERIAL TRUE",
+            "TIMEOUT 60",
+        ),
+        "test_lb_webb_intmax": (
+            f57_marker,
+            "(1[2-9]|[2-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case",
+            "RUN_SERIAL TRUE",
+            "TIMEOUT 30",
+        ),
+    }
+    ctest_code = cmake_projection(text["ctest"])
+    for target, target_markers in ctest_specs.items():
+        target_marker, assertion_floor, *execution_markers = target_markers
+        policy_blocks = re.findall(
+            rf"if\(TARGET {re.escape(target)}\)(.*?)endif\(\)",
+            ctest_code,
+            flags=re.DOTALL,
+        )
+        if len(policy_blocks) != 1:
+            raise AssertionError(
+                f"D3 CTest drift: expected one {target} policy block"
+            )
+        policy = compact(policy_blocks[0])
+        composite_pass = (
+            f"{target_marker}(.|[\\r\\n])*All tests passed "
+            f"\\\\({assertion_floor}\\\\)"
+        )
+        policy_required = (
+            "PROPERTY SKIP_RETURN_CODE)",
+            "FAIL_REGULAR_EXPRESSION",
+            r'"(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]',
+            f'PASS_REGULAR_EXPRESSION "{composite_pass}"',
+            *execution_markers,
+        )
+        missing_policy = [
+            marker for marker in policy_required if marker not in policy
+        ]
+        if missing_policy:
+            raise AssertionError(
+                f"D3 CTest drift for {target}: missing markers "
+                f"{missing_policy}"
+            )
+        if re.search(r"SKIP_RETURN_CODE\s+[0-9]", policy):
+            raise AssertionError(
+                f"D3 CTest drift: {target} restores a numeric skip code"
+            )
+
+    unsupported_math = [
+        marker
+        for marker in ("\\(", "\\)", "\\[", "\\]")
+        if marker in text["derivation"]
+    ]
+    if unsupported_math:
+        raise AssertionError(
+            "D3 derivation drift: unsupported GitHub math delimiters "
+            f"{unsupported_math}"
+        )
+    if text["derivation"].count("$$") % 2:
+        raise AssertionError(
+            "D3 derivation drift: unbalanced display-math delimiters"
+        )
+    broken_table_math = []
+    for line in text["derivation"].splitlines():
+        if not line.lstrip().startswith("|"):
+            continue
+        in_math = False
+        escaped = False
+        for char in line:
+            if char == "\\" and not escaped:
+                escaped = True
+                continue
+            if char == "$" and not escaped:
+                in_math = not in_math
+            elif char == "|" and in_math and not escaped:
+                broken_table_math.append(line)
+                break
+            escaped = False
+    if broken_table_math:
+        raise AssertionError(
+            f"D3 derivation drift: raw table math pipes {broken_table_math}"
+        )
+
+    # Immutable plan archives and run logs retain verbatim historical evidence.
+    # Reject false claims only on live explanatory and implementation surfaces;
+    # the 2026-07-08 log is separately required to carry its dated corrigendum.
+    live_claim_files = (
+        "derivation",
+        "index",
+        "citations",
+        "lessons",
+        "metrics_site",
+        "lower_bound",
+        "strategy",
+        "pruned_header",
+        "pruned_source",
+        "changelog",
+    )
+    stale_claims = (
+        "clean-room from algorithm 2",
+        "clean room from algorithm 2",
+        "both loosen, never break",
+        "omission only loosens",
+        "omitting minlrpaths can only loosen",
+        "any nonnegative metric",
+        "sdm 2019 proves no such ordering",
+        "lb_enhanced is not provably >= lb_keogh",
+        "cross-checked against the authors' matlab",
+        "cross checked against the authors' matlab",
+        "authors' matlab and java",
+    )
+    present_stale = {
+        name: [
+            marker
+            for marker in stale_claims
+            if marker in compact(text[name]).lower()
+        ]
+        for name in live_claim_files
+    }
+    present_stale = {
+        name: markers for name, markers in present_stale.items() if markers
+    }
+    if present_stale:
+        raise AssertionError(
+            f"D3 documentation retains stale claims: {present_stale}"
+        )
+
+
 def assert_gpu_backend_page() -> None:
     page = (ROOT / "docs/content/method/gpu-backends.md").read_text(
         encoding="utf-8"
@@ -1537,6 +2317,7 @@ def main() -> int:
     assert_method_catalog()
     assert_dtw_derivation_sync()
     assert_lb_keogh_derivation_sync()
+    assert_lb_enhanced_webb_derivation_sync()
     assert_gpu_backend_page()
     assert_remaining_docs_truth()
     assert_f22_ordinary_call_hygiene()
