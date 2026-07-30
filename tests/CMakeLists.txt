@@ -125,6 +125,40 @@ foreach(TEST_SOURCE ${TEST_SOURCES})
     endif()
 endforeach()
 
+# F51 is the permanent binary-v1 wire-format gate.  Keep all fixture writes
+# inside the configured build, reject Catch2 skip semantics, and require both
+# the exact subject marker and an independent assertion/case floor.
+if(TARGET unit_test_checkpoint_binary)
+    set(_f51_test_root
+        "${CMAKE_CURRENT_BINARY_DIR}/f51-binary-checkpoint")
+    if(NOT IS_ABSOLUTE "${_f51_test_root}")
+        message(FATAL_ERROR
+            "F51 fixture root must be absolute: ${_f51_test_root}")
+    endif()
+    get_filename_component(_f51_test_root_leaf "${_f51_test_root}" NAME)
+    if(NOT _f51_test_root_leaf STREQUAL "f51-binary-checkpoint")
+        message(FATAL_ERROR
+            "F51 fixture root terminal leaf drift: ${_f51_test_root}")
+    endif()
+    target_compile_definitions(
+        unit_test_checkpoint_binary
+        PRIVATE
+            DTWC_F51_TEST_ROOT="${_f51_test_root}")
+    set_property(
+        TEST unit_test_checkpoint_binary
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        unit_test_checkpoint_binary
+        PROPERTIES
+            ENVIRONMENT
+                "TMP=${_f51_test_root};TEMP=${_f51_test_root};TMPDIR=${_f51_test_root}"
+            FAIL_REGULAR_EXPRESSION
+                "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)"
+            PASS_REGULAR_EXPRESSION
+                "F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((27[0-9]|2[89][0-9]|[3-9][0-9][0-9]|[1-9][0-9][0-9][0-9]+) assertions in ([2-9]|[1-9][0-9]+) test cases\\)"
+            RUN_SERIAL TRUE)
+endif()
+
 # D2's proof gate executes exhaustive finite inventories and both full-DTW
 # call-site classes. It is never a capability probe: require the exact marker,
 # a substantive Catch2 assertion floor, and serial OpenMP scheduling so the
