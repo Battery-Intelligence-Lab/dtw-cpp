@@ -26,6 +26,10 @@
 - The executed unequal-length arbiter falsifies F29's old premise under the
   current fixed-window geometry. The negative-band helper discrepancy and
   both safe full-DTW callers were independently reached.
+- An adversarial call-site review correctly observed that the first TADPole
+  fixture proves safety but not positive LB-stage reachability. A
+  separated-range full-DTW pair and its exact `pruned_by_lb=1` fingerprint are
+  now preregistered as a supplementary gate before execution.
 
 ## Decisions
 
