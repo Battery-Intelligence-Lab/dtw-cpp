@@ -30,6 +30,10 @@
   fixture proves safety but not positive LB-stage reachability. A
   separated-range full-DTW pair and its exact `pruned_by_lb=1` fingerprint are
   now preregistered as a supplementary gate before execution.
+- Landed that strengthened gate as `f4bdd55`; it passed 51 assertions with
+  the exact unchanged marker. The joint TADPole fingerprint was `(0,1)`, which
+  proves both rejection of the unsafe radius-zero envelope and positive
+  reachability of the intended global-envelope stage.
 
 ## Decisions
 
