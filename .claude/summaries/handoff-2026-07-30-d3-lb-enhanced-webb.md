@@ -29,6 +29,10 @@
   nondegenerate upper/lower orientations: capped L1/squared `20/400`,
   direct-predicate NoLR `30/450` for the source pair and its negation. The
   exact four-point `w=1` witness `3/3 < 4/4` remains supplementary.
+- The pre-execution math audit also rejected a `V=1` Enhanced-greater witness
+  as evidence for the no-ordering claim. Replaced it without changing the
+  counter by the effective-`V=2` exact pair with Enhanced 10 and Keogh 0; its
+  partner remains the effective-`V=2` pair with Enhanced 0 and Keogh 1.
 
 ## Decisions
 

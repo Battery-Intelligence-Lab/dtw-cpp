@@ -153,8 +153,8 @@ is `RUN_SERIAL`, and has a finite timeout.
 
 - Webb strictness: `A=(-1,-1)`, `B=(-1,2)`, `w=1` gives Webb L1/squared
   `3/9` and matching-direction Keogh `0/0`.
-- Enhanced greater: `A=(-1,0)`, `B=(0,-1)`, `w=1` gives symmetric
-  Enhanced 2 and Keogh 0.
+- Enhanced greater at effective `V=2`: `A=(10,0,0,0)`,
+  `B=(0,10,0,0)`, `w=1` gives symmetric Enhanced 10 and Keogh 0.
 - Keogh greater: `A=(-1,-1,-1,-1)`,
   `B=(-1,-1,0,-1)`, `w=1` gives symmetric Keogh 1 and Enhanced 0 at
   effective `V=2`.
@@ -247,6 +247,12 @@ radius maps that to `n-1`, where the candidate is no longer strict. The stable
 `tail_strict=2/2` counter now means the nondegenerate upper/lower pair above,
 with both metrics checked for each orientation; the four-point `w=1` case is
 retained as a supplementary metric-independent discriminator.
+
+The same pre-execution audit replaced the original Enhanced-greater witness:
+its effective `V=1` belongs to the separately proved uniformly tighter case
+and could not establish no ordering for larger `V`. The length-four
+effective-`V=2` witness above now pairs with the existing Keogh-greater
+effective-`V=2` witness; `order_witnesses=2/2` is unchanged.
 
 ## Inherited clean-base baseline
 
