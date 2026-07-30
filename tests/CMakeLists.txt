@@ -177,6 +177,43 @@ if(TARGET test_lb_keogh_derivation)
             RUN_SERIAL TRUE)
 endif()
 
+# D3 is an exhaustive proof/oracle gate plus two live pruning routes. It is
+# never a capability probe: pin every finite inventory and branch discriminator,
+# require a substantive Catch2 floor, and force serial OpenMP pair ordering.
+if(TARGET test_lb_enhanced_webb_derivation)
+    set_property(
+        TEST test_lb_enhanced_webb_derivation
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        test_lb_enhanced_webb_derivation
+        PROPERTIES
+            ENVIRONMENT "OMP_NUM_THREADS=1"
+            FAIL_REGULAR_EXPRESSION
+                "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)"
+            PASS_REGULAR_EXPRESSION
+                "D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 webb_cases=35982 webb_branches=4/4 webb_strict=2/2 tail_cases=35982 tail_strict=2/2 metric_cases=140 order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((4[0-9]|[5-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)"
+            RUN_SERIAL TRUE
+            TIMEOUT 60)
+endif()
+
+# F57 isolates the valid INT_MAX CPU-window defect from D3's mathematical
+# oracle and from F46/F50's public-envelope/device scopes. Require the exact
+# saturated-radius marker and an independent Catch2 floor; never accept a skip.
+if(TARGET test_lb_webb_intmax)
+    set_property(
+        TEST test_lb_webb_intmax
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        test_lb_webb_intmax
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION
+                "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)"
+            PASS_REGULAR_EXPRESSION
+                "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS(.|[\r\n])*All tests passed \\((1[2-9]|[2-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)"
+            RUN_SERIAL TRUE
+            TIMEOUT 30)
+endif()
+
 # F21 is a public-header compile and state-equivalence gate, never a capability
 # probe. It uses the existing DataLoader target so CTest and tracked-CMake
 # inventories stay fixed. Require both the exact route marker and Catch2's
