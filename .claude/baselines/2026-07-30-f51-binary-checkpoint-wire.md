@@ -47,6 +47,24 @@ checkpoint/config robustness lens. Pulling this narrow canonical-wire subset
 forward is justified because F23 would otherwise add a new public parser entry
 point. No killed idea is reopened.
 
+The untouched canonical target inventory and focused execution at the
+registered source base were:
+
+```text
+Test  #82: unit_test_checkpoint_binary
+Test #123: test_cli_resume_state
+Total Tests: 2
+
+All tests passed (9 assertions in 1 test case)
+
+1/1 Test #82: unit_test_checkpoint_binary ......   Passed    4.58 sec
+100% tests passed, 0 tests failed out of 1
+Total Test time (real) =   4.70 sec
+```
+
+This is the inherited baseline only: it covers a clustering-derived round trip,
+missing path, and bad magic, but none of F51's wire-canonicality classes.
+
 ## Exact preserved valid oracle
 
 The fixture is coherent (`labels[medoids[slot]] == slot`) and discriminates

@@ -15,6 +15,8 @@
   compatibility, real-CLI, native-matrix, documentation, hygiene, and
   two-attempt bands in
   `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
+- Captured the untouched canonical target baseline: test #82 passed with
+  9 assertions / 1 case; CTest names the F17 real-CLI sibling as test #123.
 
 ## Decisions
 
