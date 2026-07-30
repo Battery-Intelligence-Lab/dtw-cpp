@@ -29,6 +29,24 @@
   `allocations_1028=1`, and the writer raised a non-`dtwc::IOError`.
   Catch2 reported 298 assertions / 2 failed cases; CTest #82 failed because the
   green marker was absent.
+- An independent final source review found and closed two pre-run gaps:
+  compile-time rejection of unsupported mixed-word-order binary64 and accepted
+  fixture coverage for canonical false plus a negative payload integer.
+  The latter is committed as `68773a7`.
+- Product attempt 1 is committed as `59e5ebc`. It uses numeric magic bytes,
+  explicit LE integer/binary64 codecs, exact same-stream size preflight,
+  canonical header/EOF checks, local-candidate publication, writer preflight,
+  and narrow `InvalidInput`/`IOError` taxonomy.
+- Focused F51 passed its exact marker at 298 assertions / 2 cases:
+  `false=85 accepted=0 threw=0 unchanged=85/85`,
+  `allocations_1028=0`, exact 72-byte writer/resave identity, five fields, and
+  seven semantic-compatibility fixtures.
+- F17's production serializer and real CLI retained the exact 12/12 marker.
+  Serial full matrices passed canonical 123/123, llfio-OFF 123/123, and
+  Arrow-ON 125/125 with exact 6/9/8 skips; the Arrow reader executed
+  390 assertions / 11 cases.
+- Documentation generation/contract, record hygiene, repository hygiene,
+  targeted formatting, `git diff --check`, and clean-worktree checks passed.
 
 ## Decisions
 
@@ -43,14 +61,19 @@
 - F52 separately owns MATLAB's false-load error-taxonomy mismatch; F53 owns its
   incomplete/narrowing result conversion and weak field/order parity test.
 - Product attempts are capped at two.
+- Product attempt 1 passed; attempt 2 was not consumed.
 
 ## Exact resume point
 
-Implement product attempt 1 in `dtwc/checkpoint.cpp`/`.hpp`, then rebuild and
-execute target #82 against the immutable marker before any wider gate. Product
-attempts consumed: `0 / 2`.
+F51 is closed. Resume the already registered F23 Python binary-checkpoint
+bindings from
+`.claude/summaries/handoff-2026-07-30-f23-python-binary-checkpoint.md`.
+Implement its red-first three-test surface against fresh-extension provenance;
+then resume D3.
 
-Rollback is the eventual local F51 commits in reverse order. No remote,
-published, data, or operator state changed. The claim most likely to be wrong
-is the inherited `74 false / 8 accepted / 3 throws` split; the repaired 85/85
-band is fixed.
+Rollback is commits `59e5ebc`, `68773a7`, and `6f30665` in reverse order,
+followed by the F51 bookkeeping commits. No remote, published, data, or
+operator state changed. The claim most likely to be wrong is cross-host
+binary64 interoperability on an architecture not represented locally; the
+known-bit-pattern static assertion rejects mixed-word order, but only the local
+Clang/x86-64 execution was run.

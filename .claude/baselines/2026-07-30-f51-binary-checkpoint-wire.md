@@ -329,3 +329,150 @@ No pass band may be revised after execution. The claim most likely to be wrong
 is the predicted inherited `74/8/3` split; the exact 85/85 repaired verdict,
 unchanged-state requirement, and valid bytes are immutable even if the red
 implementation fails in a different safe way.
+
+## Product attempt 1 and adversarial pre-run review
+
+The implementation was held from execution until an independent source-only
+review re-read every changed line. It confirmed size-before-allocation,
+transactionality, exact EOF, and semantic compatibility, then found two
+pre-run gaps:
+
+1. numeric-limits assertions alone did not reject mixed-word-order binary64;
+2. accepted round trips used only `converged=true` and nonnegative payloads.
+
+Before the decisive run, the product added the registered `-13.25` binary64
+bit-pattern static assertion. The existing seven-case compatibility inventory
+was strengthened without changing its marker: `wrong-n` now carries canonical
+false and `bad-label` carries `-1`. That test-only strengthening is commit
+`68773a7`. A second review returned `GO` and confirmed that narrow
+filesystem/stream exception translation cannot remap `InvalidInput`.
+
+Targeted format checks and the focused compile exited 0. Product attempt 1 is
+commit `59e5ebc` (`fix: canonicalize binary checkpoint wire format`).
+
+## Product attempt 1 focused execution
+
+The canonical real executable printed:
+
+```text
+F51_RED_OBSERVATION corpus=85 false=85 accepted=0 threw=0 unchanged=85/85
+F51_SIZE_PREFLIGHT_OBSERVATION false=1 threw=0 unchanged=1/1 allocations_1028=0
+F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS
+===============================================================================
+All tests passed (298 assertions in 2 test cases)
+
+1/1 Test #82: unit_test_checkpoint_binary ......   Passed    0.64 sec
+100% tests passed, 0 tests failed out of 1
+```
+
+Verdict: **PASS [confirmed]** against the immutable marker on product attempt
+1. Attempt 2 was not consumed. Exact byte equality against all 72 registered
+bytes entails the production artifact's registered SHA-256
+`DC832EDBD214FD847B7EC8BC57884881F1CEA196139FAC7DD5B939D5E7CD1A98`;
+the production reader independently recovered all five fields.
+
+## Real-CLI compatibility
+
+After rebuilding both the production fixture writer and `dtwc_cl`, test #123
+printed:
+
+```text
+F17_CLI_RESUME subject=real_dtwc_cl writer=production_serializer runs=12/12 replay_fields=10/10 markers=2/2 algorithm_skipped=1/1 fresh_discriminator=4/4 checkpoint_preserved=10/10 rejection_cases=9/9 sources_preserved=2/2 skips=0
+1/1 Test #123: test_cli_resume_state ............   Passed    1.80 sec
+100% tests passed, 0 tests failed out of 1
+```
+
+Verdict: **PASS [confirmed]**. All seven structurally valid but semantically
+invalid fixtures still reached the CLI's contextual validator.
+
+## Serial native matrices
+
+Every build was rebuilt and then independently settled to:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+The first canonical all-target wrapper exceeded its 120-second process
+ceiling. Its result was discarded. The exact build tree had no live Ninja
+process afterward; `ninja -t recompact` repaired the truncated build log, the
+header-dependent rebuild completed, and only the subsequent no-work settling
+run authorized CTest.
+
+Completed serial CTest summaries were:
+
+```text
+canonical build/highs-1151:
+100% tests passed, 0 tests failed out of 123
+The following tests did not run:
+ 52 - test_cuda_correctness (Skipped)
+ 54 - test_cuda_lb_keogh (Skipped)
+ 58 - test_io_readers (Skipped)
+ 59 - test_metal_correctness (Skipped)
+ 60 - test_metal_lb_keogh (Skipped)
+ 61 - test_metal_mmap (Skipped)
+
+llfio-OFF build/nollfio:
+100% tests passed, 0 tests failed out of 123
+The following tests did not run:
+ 37 - unit_test_mmap_data_store (Skipped)
+ 38 - unit_test_mmap_distance_matrix (Skipped)
+ 52 - test_cuda_correctness (Skipped)
+ 54 - test_cuda_lb_keogh (Skipped)
+ 58 - test_io_readers (Skipped)
+ 59 - test_metal_correctness (Skipped)
+ 60 - test_metal_lb_keogh (Skipped)
+ 61 - test_metal_mmap (Skipped)
+ 80 - unit_test_benders (Skipped)
+
+Arrow-ON build/arrow-pyarrow-23:
+100% tests passed, 0 tests failed out of 125
+The following tests did not run:
+ 37 - unit_test_mmap_data_store (Skipped)
+ 38 - unit_test_mmap_distance_matrix (Skipped)
+ 52 - test_cuda_correctness (Skipped)
+ 54 - test_cuda_lb_keogh (Skipped)
+ 59 - test_metal_correctness (Skipped)
+ 60 - test_metal_lb_keogh (Skipped)
+ 61 - test_metal_mmap (Skipped)
+ 80 - unit_test_benders (Skipped)
+```
+
+These are the exact registered `123/123`, `123/123`, `125/125` inventories and
+`6/9/8` capability-skip counts. The Arrow reader separately executed:
+
+```text
+All tests passed (390 assertions in 11 test cases)
+1/1 Test #58: test_io_readers ..................   Passed    0.14 sec
+100% tests passed, 0 tests failed out of 1
+```
+
+## Documentation, hygiene, and final verdict
+
+The commands printed:
+
+```text
+generated documentation is current
+documentation contract checks passed
+record hygiene checks passed
+banned_tracked_paths=0
+unexpected_zero_byte_files=0
+targeted_duplicate_groups=0
+asset_routes=4/4
+required_ignore_targets=23/23
+high_confidence_secret_hits=0
+codecov_badge_query_hits=0
+changelog_structure=PASS
+seed_compatibility_markers=2/2
+VERDICT=PASS
+```
+
+Targeted formatting, `git diff --check`, and the clean-worktree check also
+passed. `checkpoint.hpp`, the rendered guide, Unreleased changelog, and
+`LESSONS.md` now describe strict little endian and preserve the
+semantic/provenance boundary.
+
+Final F51 verdict: **PASS [confirmed]**. Every registered decisive band is
+green, the invalid corpus becomes fixed seed material for the later randomized
+robustness lens, and F23 may now expose the native codec.

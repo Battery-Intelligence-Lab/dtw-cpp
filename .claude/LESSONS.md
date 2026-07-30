@@ -770,6 +770,14 @@ Critical knowledge to avoid repeating mistakes.
   format only changed line ranges before review. Evidence: F51 implementation
   preflight recorded in
   `.claude/summaries/handoff-2026-07-30-f51-binary-checkpoint-wire.md`.
+- **A timed-out build wrapper can leave Ninja's log non-authoritative.
+  [confirmed]** F51's first full canonical rebuild was killed by a 120-second
+  wrapper ceiling; the recovery build warned `premature end of file` and a
+  premature repeat still rebuilt header dependents. Inspect live process
+  command lines before killing anything, run `ninja -t recompact` on the exact
+  build directory, complete the rebuild, and require a separate
+  `ninja: no work to do.` settling run before CTest. Evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 
 ## LR-core Solver (Phase 4)
 

@@ -20,6 +20,14 @@
   provenance, native matrices, documentation, hygiene, two-attempt cap, and
   rollback in
   `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
+- Closed F51 on product attempt 1. Its exact 85-input gate passed at 298/2,
+  F17 retained 12/12, native matrices retained 123/123, 123/123, and 125/125
+  with exact 6/9/8 skips, and Arrow readers executed 390/11. F23 may now expose
+  the codec.
+- A read-only binding audit localized the implementation to two extension
+  lambdas, unconditional package exports, one new three-test module, and the
+  existing parity inventory. It also identified a mutable-result race unless
+  save snapshots the native result before releasing the GIL.
 
 ## Decisions
 
@@ -29,6 +37,10 @@
   `dtwcpp.IOError`. Directory `load_checkpoint(prob, path) -> bool` is unchanged.
 - Both operations release the GIL for filesystem work, and native write failures
   are translated to the frozen typed I/O error.
+- Save copies the bound `ClusteringResult` while the GIL is held, then releases
+  the GIL around native I/O; load keeps only native state in the release scope
+  and throws after the GIL is restored. The failed-load path text is prepared
+  as UTF-8 before release.
 - F23 preserves binary v1 exactly and performs no contextual N/k or semantic
   validation. The preflight found a narrow unsafe-reader prerequisite now owned
   by F51; F23 product work waits for its deterministic wire-canonicality gate.
@@ -41,9 +53,11 @@
 
 ## Exact resume point
 
-Commit this preregistration, register and close F51's wire-canonicality
-prerequisite, then add the permanent red-first Python tests and execute their
-inherited import/parity red before touching F23 product code.
+Add the permanent three-test Python module and the two parity nodes, commit
+them, then execute the inherited stale-extension import/parity red before
+touching F23 product code. After repair, clean-first rebuild the extension,
+rebuild the sibling CLI, prove built/installed hashes and both new symbols in a
+fresh process, and run the focused/parity/full registered gates.
 Product attempts consumed: `0 / 2`.
 
 Rollback is the eventual local F23 commits in reverse order. No remote or

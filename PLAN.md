@@ -878,7 +878,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       DTW 10. Clamp the host envelope radius to `max_L-1` with checked
       conversions; run CUDA locally and record Metal `[BLOCKED-ENV]` if no
       Apple executor exists.
-- [ ] **F51 — binary-v1 result checkpoints trust noncanonical wire state before
+- [x] **F51 — binary-v1 result checkpoints trust noncanonical wire state before
       proving its size.** The reader allocates from signed `k`/`N`, ignores
       reserved/padding bytes, accepts any nonzero convergence byte and trailing
       payload, and decodes native representations despite the documented
@@ -1216,6 +1216,17 @@ colour system transfer verbatim**.
   F53 owns incomplete/non-integral MATLAB result conversion plus the parity
   test's sorted-medoid/two-field blind spot. Both join the later MEX/checkpoint
   cluster; neither delays F51 -> F23 -> D3.
+- 2026-07-30 (F51 closure): Retain binary version 1 while making every scalar
+  codec explicit little endian, requiring canonical structural bytes and exact
+  same-stream length before allocation, publishing only a complete local
+  candidate, and mapping writer failures to the frozen taxonomy. The immutable
+  85-case marker passed on product attempt 1 at 298/2; F17 retained 12/12
+  contextual compatibility; serial native matrices remained
+  123/123, 123/123, and 125/125 with exact 6/9/8 skips and Arrow reader 390/11.
+  The deterministic corpus seeds the later robustness fuzz; semantics,
+  provenance/authentication, and durability remain outside F51. Resume F23,
+  then D3. Evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1248,3 +1259,12 @@ colour system transfer verbatim**.
   run 390/11, and final docs/hygiene are green. F27–F30/F46–F50 remain open.
   Resume F23, then D3. Evidence:
   `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
+- 2026-07-30 (F51 CLOSED): Commits `6f30665`, `68773a7`, and `59e5ebc`
+  preserve the red-first 85-input corpus, signed/false accepted-state coverage,
+  and strict binary-v1 codec. Product attempt 1 printed the exact
+  `F51_BINARY_CHECKPOINT` marker at 298 assertions / 2 cases; F17 remained
+  12/12; canonical, llfio-OFF, and Arrow-ON serial matrices passed
+  123/123, 123/123, and 125/125 with exact 6/9/8 skips; Arrow readers executed
+  390/11; documentation and all hygiene checkers passed. Resume F23, then D3.
+  Evidence:
+  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`.
