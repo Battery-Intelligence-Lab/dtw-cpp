@@ -803,3 +803,109 @@ floor. Zero tests failed, D3 and F57 executed as ordinary passes, and the nine
 capability skips match the preregistered set exactly. D3/F54/F55/F57 remain
 open pending Arrow-ON full-matrix and runtime-subject gates plus closure
 bookkeeping and hygiene.
+
+### Arrow-ON matrix and executable subjects
+
+`cmake --build build/arrow-pyarrow-23` regenerated the retained tree with
+Clang 21.1.8, Release, OpenMP ON, llfio/CUDA/Metal/MPI/HiGHS OFF, and system
+Arrow 23.0.1 plus Parquet 23.0.1 ON. As in llfio-OFF, the configure-dependent
+glob diagnostic named exactly the two expected D3 sources. A mandatory second
+build printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+Generated metadata contained exactly 127 tests and all seven registered
+runtime subjects. Every CTest environment prepended the LLVM, `pyarrow`, and
+`pyarrow.libs` directories; the cache selected the proven
+`build/f9-arrow-config` Arrow/Parquet packages. The adjudicator self-test again
+rejected 25/25 mutations before runtime.
+
+The full-matrix command was:
+
+```text
+uv run python scripts/adjudicate_d3_closure.py arrow
+```
+
+Its load-bearing terminal output was:
+
+```text
+  9/127 Test   #9: test_lb_enhanced_webb_derivation ..........   Passed    0.44 sec
+ 11/127 Test  #11: test_lb_webb_intmax .......................   Passed    0.20 sec
+ 60/127 Test  #60: test_io_readers ...........................   Passed    0.30 sec
+124/127 Test #124: test_distance_matrix_csv_contract .........   Passed    0.77 sec
+125/127 Test #125: test_cli_resume_state .....................   Passed    2.91 sec
+126/127 Test #126: test_fast_clara_parquet_parity ............   Passed    1.90 sec
+127/127 Test #127: test_fast_clara_assignment_contract .......   Passed    1.84 sec
+
+100% tests passed, 0 tests failed out of 127
+
+Label Time Summary:
+arrow          =   3.74 sec*proc (2 tests)
+f13            =   1.84 sec*proc (1 test)
+f14            =   0.77 sec*proc (1 test)
+f17            =   2.91 sec*proc (1 test)
+f8             =   1.90 sec*proc (1 test)
+integration    =   7.41 sec*proc (4 tests)
+
+Total Test time (real) = 100.18 sec
+
+The following tests did not run:
+	 39 - unit_test_mmap_data_store (Skipped)
+	 40 - unit_test_mmap_distance_matrix (Skipped)
+	 54 - test_cuda_correctness (Skipped)
+	 56 - test_cuda_lb_keogh (Skipped)
+	 61 - test_metal_correctness (Skipped)
+	 62 - test_metal_lb_keogh (Skipped)
+	 63 - test_metal_mmap (Skipped)
+	 82 - unit_test_benders (Skipped)
+D3_CLOSURE_ARROW rc=0 inventory=127/127 subjects=1/1 skips=8/8 skip_set_match=True summary_exact=True verdict=PASS
+```
+
+Arrow full-matrix verdict: **PASS [confirmed]** against the prospective
+127/127 floor. Zero tests failed, the eight capability skips match the
+preregistered set, and the Arrow reader and all four integration routes
+executed as ordinary passes.
+
+The separate verbose executable command was:
+
+```text
+uv run python scripts/adjudicate_d3_closure.py arrow-subjects
+```
+
+Its complete load-bearing marker ledger and summary were:
+
+```text
+9: D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 webb_cases=35982 webb_branches=4/4 webb_strict=2/2 tail_cases=35982 tail_strict=2/2 metric_cases=140 order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS
+9: All tests passed (115 assertions in 1 test case)
+1/7 Test   #9: test_lb_enhanced_webb_derivation ......   Passed    0.45 sec
+11: F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS
+11: All tests passed (24 assertions in 1 test case)
+2/7 Test  #11: test_lb_webb_intmax ...................   Passed    0.14 sec
+60: All tests passed (390 assertions in 11 test cases)
+3/7 Test  #60: test_io_readers .......................   Passed    0.21 sec
+124: -- F14_CSV_PUBLIC subject=real_dtwc_cl+native_result runs=2/2 route_markers=1/1 matrix_pairs=1/1 rows=27/27 lf=27/27 cr=0/0 final_lf=2/2 blank_tail=0 mmap=unavailable skips=0
+4/7 Test #124: test_distance_matrix_csv_contract .....   Passed    0.52 sec
+125: F17_CLI_RESUME subject=real_dtwc_cl writer=production_serializer runs=12/12 replay_fields=10/10 markers=2/2 algorithm_skipped=1/1 fresh_discriminator=4/4 checkpoint_preserved=10/10 rejection_cases=9/9 sources_preserved=2/2 skips=0
+5/7 Test #125: test_cli_resume_state .................   Passed    3.21 sec
+126: -- F8_PARITY subject=real_dtwc_cl runs=6 route_markers=12/12 parity=9/9 configs=3/3_distinct fixture_sha256=2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8
+6/7 Test #126: test_fast_clara_parquet_parity ........   Passed    2.22 sec
+127: -- F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=4/4 route_markers=8/8 artifact_pairs=6/6 payloads=4/4 objective_bytes=4/4 stream_rejections=2/2 skips=0 fixture_sha256=2F259F418A6BB9C62CA0004CB334C05E8309213F5A76DC890F83C15D5BDA3CA8
+7/7 Test #127: test_fast_clara_assignment_contract ...   Passed    2.19 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Total Test time (real) =   8.98 sec
+D3_CLOSURE_ARROW-SUBJECTS rc=0 subjects=7/7 markers=7/7 summary_exact=True skip_free=True verdict=PASS
+```
+
+Arrow executable-subject verdict: **PASS [confirmed]**. D3 passed 115
+assertions, F57 passed 24, the Arrow reader executed exactly 390 assertions in
+11 cases, and all four real-CLI markers matched exactly with zero skips.
+
+All three prospective post-D3 matrix floors are now runtime-confirmed. Final
+D3/F54/F55/F57 closure still requires the explicitly registered bookkeeping,
+floor promotion, documentation/CHANGELOG reconciliation, and rule-12 hygiene
+commit; no product retuning is permitted or needed.

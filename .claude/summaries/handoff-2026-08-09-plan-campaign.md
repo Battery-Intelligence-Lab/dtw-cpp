@@ -74,3 +74,23 @@ paths, and one marker-pinned entry for each D3 target. Then run the serial full
 matrix against the exact eight-name skip set. Only after that passes, run the
 seven verbose runtime subjects for D3, F57, the 390/11 reader, and all four
 real-CLI markers.
+
+- **[confirmed]** The Arrow-ON graph regenerated to exactly 127 tests with
+  Arrow/Parquet 23.0.1, seven registered runtime subjects, and the generated
+  LLVM/`pyarrow`/`pyarrow.libs` runtime path. A settling build printed
+  `ninja: no work to do.`
+- **[confirmed]** The serial Arrow-ON matrix passed 127/127 in 100.18 seconds,
+  zero failed, with exactly the registered eight capability skips.
+- **[confirmed]** The verbose runtime selection passed 7/7 in 8.98 seconds:
+  D3 115/1, F57 24/1, reader 390/11, and exact F14/F17/F8/F13 real-CLI
+  markers. The adjudicator reported markers 7/7 and no skips.
+
+Exact resume point: complete D3/F54/F55/F57 closure bookkeeping. Promote the
+confirmed 125/125, 125/125, and 127/127 floors in `AGENTS.md`; close the four
+PLAN checkboxes and replace the mid-adjudication cursor with the GPU-LB CUDA
+cluster; append a dated Binding decision and Progress digest; reconcile the
+Unreleased CHANGELOG and derivation index/status. Then run documentation,
+record, repository-hygiene, diff, inventory, and clean-tree checks. PLAN is
+over its ~1,200-line hygiene threshold, so archive the longest closed finding
+prose exactly as its own rule-12 bookkeeping task rather than mixing it into
+the scientific closure commit.
