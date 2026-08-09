@@ -8,6 +8,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Added the reproducible D3 derivation and fail-closed executable oracles for
+  LB_Enhanced and the local LB_Webb_NoLR-plus-tail-cap implementation. The
+  finite exact-arithmetic campaign covers 2,004 envelope cases, 35,982 path
+  and Webb cases, 68,787 Enhanced configurations, all four Webb correction
+  branches, strict ordering/tail witnesses, both live pruning routes, and
+  saturated `INT_MAX` window arithmetic. The post-D3 native floors are
+  125/125 (llfio ON), 125/125 (llfio OFF), and 127/127 (Arrow ON), with the
+  Arrow reader and all four real-CLI integration routes executing.
 - Corrected the lower-bound provenance contract: the public `Webb` API is the
   paper's all-index `LB_Webb_NoLR` formula plus a conservative trailing-flag
   cap, not full Algorithm 2 with `MinLRPaths`. Only that separate tail cap is

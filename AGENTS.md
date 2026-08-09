@@ -107,7 +107,7 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor (D2-era, 2026-07-30): `ctest` → **123/123,
+  llfio ON, Arrow OFF). Floor (D3-era, 2026-08-09): `ctest` → **125/125,
   0 failed**, 6 capability skips (cuda×2, metal×3, io_readers×1 — the
   io_readers skip is expected in this Arrow-OFF build; F9 is closed by its
   separate Arrow-ON executable gate). Rebuild first:
@@ -115,20 +115,19 @@ WHAT you work on. Read both before touching anything. Supporting record:
   Full matrices are SERIAL-only evidence: concurrent runs collide on
   source-root-relative test artifacts (F45 lesson).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
-  **123/123, 0 failed**, with 9 capability skips.
+  **125/125, 0 failed**, with 9 capability skips.
 - **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
-  Arrow/Parquet. Floor: **125/125, 0 failed**, 8 capability skips; all four
+  Arrow/Parquet. Floor: **127/127, 0 failed**, 8 capability skips; all four
   real-CLI integration gates and the reader run (390 assertions / 11 cases).
   CTest metadata supplies LLVM, `pyarrow`, and `pyarrow.libs` runtime paths,
   so no caller PATH override is required.
-- **Prospective post-D3 floors (registered, NOT yet adjudicated):** the D3
-  session added two non-skippable targets (`test_lb_enhanced_webb_derivation`
-  + `test_lb_webb_intmax`) to every build, so the expected serial
-  floors become canonical **125/125**, llfio-OFF **125/125**, Arrow-ON
-  **127/127**, with the same exact 6/9/8 skip sets. These are prospective
-  until the D3 closure adjudication runs them serially and records the
-  verbatim output; on PASS, promote them to the recorded floors above in the
-  same session.
+- **D3 floor evidence:** the two non-skippable targets
+  (`test_lb_enhanced_webb_derivation` + `test_lb_webb_intmax`) execute in all
+  three matrices. The 2026-08-09 serial adjudication confirmed the exact
+  125/125, 125/125, and 127/127 floors with unchanged 6/9/8 skip sets; the
+  Arrow executable gate additionally confirmed D3 115/1, F57 24/1, the reader
+  390/11, and all four real-CLI markers. Evidence:
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 - **WSL UBSan build (proven on F57):** `build/ubsan-wsl` — WSL Clang 18.1.3,
   RelWithDebInfo, all optional backends OFF; run via
   `wsl.exe --cd /mnt/c/D/git/dtw-cpp env UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 ctest --test-dir build/ubsan-wsl -R <target> --no-tests=error`.
