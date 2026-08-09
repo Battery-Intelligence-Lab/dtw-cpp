@@ -909,3 +909,24 @@ All three prospective post-D3 matrix floors are now runtime-confirmed. Final
 D3/F54/F55/F57 closure still requires the explicitly registered bookkeeping,
 floor promotion, documentation/CHANGELOG reconciliation, and rule-12 hygiene
 commit; no product retuning is permitted or needed.
+
+## Final closure verdict — 2026-08-09
+
+`AGENTS.md` now records the observed 125/125, 125/125, and 127/127 floors;
+`CHANGELOG.md` and the derivation index name the closed executable evidence.
+`PLAN.md` closes D3, F54, F55, and F57 and moves the cursor to the GPU-LB CUDA
+cluster followed by D4. The most-at-risk claim—clipped-tail production
+equivalence to the direct-predicate NoLR oracle—passed the immutable 35,982-case
+ledger, both strict tail orientations, both metrics, and all four correction
+branches without a band change.
+
+Final verdict: **PASS [confirmed]**. D3's finite equal-length scalar L1 and
+unrooted squared-L2 claims, F54's live maximum cascade, F55's local-variant
+provenance and one-sided tail ordering, and F57's saturated CPU window
+arithmetic are closed by the named derivation, independent oracles, WSL UBSan
+run, three serial native matrices, and Arrow executable routes. F46, F50, and
+D17 retain the explicitly excluded public-envelope provenance, device-window,
+and floating-threshold domains.
+
+Rollback remains the local D3/F54/F55/F57 commits in reverse order. No remote,
+tag, publication, data, or operator state changed.

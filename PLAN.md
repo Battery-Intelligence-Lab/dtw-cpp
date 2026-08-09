@@ -13,17 +13,18 @@
 > Re-opening a killed idea requires explicitly overturning the recorded kill
 > evidence, never forgetting it.
 
-**Status (2026-07-30, mid-D3 final adjudication):** 2.0.0rc1 release state
+**Status (2026-08-09, post-D3 closure):** 2.0.0rc1 release state
 committed (not tagged or published). Refactor Phases 0–7 CLOSED; Phase 8
 (8.0/8.1, findings F1–F10, sanitizer gate) CLOSED. Phases R0–R1 CLOSED; R2
-active with D1–D2 CLOSED and **D3 in final adjudication** (D4–D18 outstanding —
-15/18 remain once D3 closes); R3 active
-with **F13, F14, F15, F19, F21, F23, F33, F45, F51 CLOSED**. D3's derivation
-(`7dce222`), fail-closed doc gate (`639e1c4`), F54 cascade-max repair
-(`d09cf9c`+`53506a9`), F55 provenance corrections (`6abff20`), and F57
-saturation repair (`29f9103`, WSL-UBSan clean) are all committed with focused
-gates green (D3 115/115, F57 24/24); **none of D3/F54/F55/F57 is closed until
-the serial full-matrix adjudication below runs.**
+active with **D1–D3 CLOSED** and D4–D18 outstanding (15/18 remain); R3 active
+with **F13, F14, F15, F19, F21, F23, F33, F45, F51, F54, F55, F57 CLOSED**.
+D3's 40-equation derivation (`7dce222`), fail-closed documentation gate
+(`639e1c4`), F54 cascade-max repair (`d09cf9c`+`53506a9`), F55 provenance
+corrections (`6abff20`), and F57 saturation repair (`29f9103`) pass the exact
+focused/WSL-UBSan gates and the serial canonical, llfio-OFF, and Arrow-ON
+matrices at **125/125, 125/125, and 127/127** with exact 6/9/8 skip sets;
+Arrow runtime evidence confirms D3 115/1, F57 24/1, reader 390/11, and all four
+real-CLI markers.
 Repair-retained but closure-FALSIFIED, both attempts exhausted, evidence-only
 checkboxes (never rescue-tune): **F11** (parser replacement → F36), **F16**
 (fail-closed metadata → F38), **F17** (manifest reconciliation → F39),
@@ -33,14 +34,10 @@ partially closed (CUDA verified on the local RTX; real Metal
 66/66 mutation gates pass; the C++ mutation band is FALSIFIED 33/46 with both
 attempts exhausted. Its final serial gates pass all three native matrices,
 fresh Python with the registered F39 red, and both MATLAB releases with the
-registered F18 red; F22 stays unchecked. **Campaign cursor: (1) finish the
-D3/F54/F55/F57 closure gates — serial canonical/llfio-OFF/Arrow-ON matrices
-against the prospective 125/125, 125/125, 127/127 floors with exact 6/9/8
-skips, Arrow reader 390/11, all four real-CLI markers, then docs/CHANGELOG,
-checkbox flips, AGENTS floor confirmation, and the rule-12 hygiene sweep;
-(2) the GPU-LB CUDA cluster (F27, F29, F47, F50 local-RTX halves; Metal halves
+registered F18 red; F22 stays unchecked. **Campaign cursor: (1) the GPU-LB
+CUDA cluster (F27, F29, F47, F50 local-RTX halves; Metal halves
 `[BLOCKED-ENV]`, gates implemented-and-retained) — D2/D3 now supply the
-admissibility oracles it was waiting for; (3) D4 (EAPruned) per the cadence
+admissibility oracles it was waiting for; (2) D4 (EAPruned) per the cadence
 rule.** The final **2.0.0 tag gates on R0–R6
 CLEAN**; R7 (WASM
 Playground) is a 2.1 feature and does not gate the tag.
@@ -250,7 +247,7 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       falsified, but its real-device gate and F27–F30/F46–F50 remain open.
       Evidence: `docs/derivations/02-envelopes-lb-keogh.md` and
       `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- [ ] **D3. LB_Enhanced + local LB_Webb_NoLR plus tail cap.** Prove
+- [x] **D3. LB_Enhanced + local LB_Webb_NoLR plus tail cap.** Prove
       admissibility in the registered finite equal-length scalar L1/squared-L2
       domain (Tan SDM 2019; Webb & Petitjean PR 2021). Prove the local
       directional bound dominates matching-direction Keogh and its symmetric
@@ -259,12 +256,13 @@ Derivation targets — each is one checkbox, one file, one conformance pass:
       ordering with full Algorithm 2. Enhanced dominates matching-direction
       Keogh at effective `V=1`; exact repository witnesses establish both
       strict directions at effective `V>=2`, so the live cascade takes max.
-      **Status 2026-07-30:** derivation committed (`7dce222`, 40 equation
+      **CLOSED 2026-08-09:** derivation committed (`7dce222`, 40 equation
       tags, cellwise Webb proof), fail-closed doc checker committed
       (`639e1c4`, six mutants reject), expected red CONFIRMED, product
       attempt 2 PASS (D3 115/115 + F57 24/24, ctest 2/2), F57 WSL-UBSan
-      clean. CLOSES only with the serial full-matrix adjudication in the
-      Immediate-next-step block. Evidence:
+      clean. Serial canonical/llfio-OFF/Arrow-ON matrices pass 125/125,
+      125/125, and 127/127 with exact 6/9/8 skips; Arrow runtime subjects pass
+      7/7 with reader 390/11 and all four real-CLI markers. Evidence:
       `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 - [ ] **D4. EAPruned exactness + the relaxed threshold constant.** Herrmann &
       Webb argument (every optimal-path cell ≤ DTW ≤ UB ⇒ pruning exact). Then
@@ -364,21 +362,15 @@ rounds (all lenses) produce zero new confirmed findings. Every confirmed bug:
 failing test → fix → full-gate re-run → own commit. Every dead hypothesis:
 recorded FALSIFIED in the run-log. R2 discrepancies enter here as findings.
 
-**Immediate next step (2026-07-30):** finish the D3 closure per the exact
-resume point in
-`.claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md`: rebuild the
-canonical tree, rerun the focused inherited D3 subjects plus both new
-non-skippable targets, then run the canonical, llfio-OFF, and Arrow-ON
-matrices SERIALLY and adjudicate the prospective floors 125/125, 125/125, and
-127/127 with exact 6/9/8 skip sets, Arrow reader 390 assertions/11 cases, and
-all four real-CLI markers. Close D3, F54, F55, and F57 only after those gates
-plus documentation/CHANGELOG, record hygiene, AGENTS floor confirmation, and
-clean-tree verification are recorded; the claim most at risk (per the handoff)
-is exact clipped-tail equivalence between the production recurrence and the
-direct-predicate NoLR oracle — adjudicate it from the registered exhaustive
-ledger, never by moving the band. Then proceed to the GPU-LB CUDA cluster
-(F27, F29, F47, F50), then D4. F22 remains unchecked because its exhausted C++
-mutation closure band is FALSIFIED at 33/46; do not rerun or rescue-tune it.
+**Immediate next step (2026-08-09):** execute the GPU-LB correctness cluster
+against the now-closed D2/D3 admissibility oracles: F27 (squared-L2 LB_Keogh),
+F29 (feasible unequal-length prefix execution), F47 (squared-L2 LB_Kim), and
+F50 (`INT_MAX` device window arithmetic). Run every CUDA half on the local RTX
+and implement-and-retain matching Metal gates with `[BLOCKED-ENV]` runtime
+evidence on this Windows host. Keep F28's real-Metal-only narrow-envelope
+subject open. Then complete D4 before opening another finding, per the cadence
+rule. F22 remains unchecked because its exhausted C++ mutation closure band is
+FALSIFIED at 33/46; do not rerun or rescue-tune it.
 
 **Suggested sequencing for the remaining findings (improvise freely, rule 8 —
 this is a route, not a script).** Cluster by shared context so each cluster
@@ -925,7 +917,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       noncanonical convergence, and nonscalar fields; reject before filesystem
       effects, then round-trip a non-degenerate result with all five fields and
       medoid order exact on R2024b and R2025b.
-- [ ] **F54 — the live Enhanced pruning cascade does not take the documented
+- [x] **F54 — the live Enhanced pruning cascade does not take the documented
       maximum with LB_Keogh.** `LowerBoundStrategy::Enhanced` constructs a
       Keogh envelope but evaluates only symmetric LB_Enhanced. For the
       registered `{C,A,B}` ordering at radius 1, the first two exact distances
@@ -939,9 +931,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       **Repair retained 2026-07-30:** `d09cf9c` activates both bounds and takes
       their maximum; `53506a9` corrected the test's output literal (attempt 1
       conservatively consumed on that literal alone). Focused attempt 2 PASS
-      115/115 with the exact registered counters. Closure pending the D3
-      serial adjudication.
-- [ ] **F55 — the local Webb implementation and its MinLR omission are
+      115/115 with the exact registered counters. **CLOSED 2026-08-09:** all
+      three serial matrices and the Arrow runtime subjects pass; evidence is
+      the D3 baseline.
+- [x] **F55 — the local Webb implementation and its MinLR omission are
       misidentified.** `lb_webb` is the paper's all-index `LB_Webb_NoLR`
       bridge/correction formula plus a conservative tail-flag cap, not full
       Algorithm 2 with `MinLRPaths`. The source and changelog claim that the
@@ -955,7 +948,9 @@ Open findings first (status after R0 adjudication — update these boxes there):
       **Corrections retained 2026-07-30:** `6abff20` fixes provenance across
       source contracts, public enum/metric page, changelog, lessons, legacy
       test commentary, and the 2026-07-08 run-log corrigendum;
-      `check_docs_contract.py` passes. Closes only with the D3 gates.
+      `check_docs_contract.py` passes. **CLOSED 2026-08-09:** the exhaustive
+      direct-predicate/branch/tail ledger and all three serial matrices pass;
+      evidence is the D3 baseline.
 - [ ] **F56 — Python binary-checkpoint failure formatting is not total over
       accepted filesystem paths.** The binding converts `std::filesystem::path`
       with `u8string()` and the exception translator later uses
@@ -967,7 +962,7 @@ Open findings first (status after R0 adjudication — update these boxes there):
       `dtwcpp.IOError` without a secondary Unicode/conversion exception and
       retain an unambiguous reversible path representation. Record
       platform-impossible cases as `[BLOCKED-ENV]`, not as coverage.
-- [ ] **F57 — CPU LB_Webb window arithmetic has signed overflow at a valid
+- [x] **F57 — CPU LB_Webb window arithmetic has signed overflow at a valid
       full-covering `INT_MAX` radius.** `twoW=2*w` and signed free counters can
       overflow even though a radius larger than `n-1` is geometrically
       equivalent to `n-1`. On `A={-2,-2}`, `B={0,0}`, inherited wrapped flags
@@ -983,8 +978,9 @@ Open findings first (status after R0 adjudication — update these boxes there):
       radius and makes the doubled radius and free counters unsigned and
       saturating; `13cd4f6` added the analytic nonconstant discriminator.
       Focused 24/24 passes normally and under WSL UBSan
-      (`halt_on_error=1`) with zero diagnostics. Closure pending the D3
-      serial adjudication.
+      (`halt_on_error=1`) with zero diagnostics. **CLOSED 2026-08-09:** the
+      non-skippable 24-assertion target passes in all three serial matrices and
+      the Arrow runtime selection; evidence is the D3 baseline.
 
 Remaining lenses (verbatim from 8.2 — each is one round-item; run all, round
 after round, to the exit band):
@@ -1293,6 +1289,16 @@ colour system transfer verbatim**.
   `.claude/PLAN-archive-2026-07-27-r0-f20.md`; those verbatim archives are not
   rewritten. F55 closes only with the D3 derivation and integration gates.
   Evidence: `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- 2026-08-09 (D3/F54/F55/F57 closure): Promote the preregistered post-D3
+  floors after serial runtime adjudication, not inventory inference:
+  canonical 125/125 with six exact skips, llfio-OFF 125/125 with nine, and
+  Arrow-ON 127/127 with eight. The separate Arrow selection executed D3
+  115/1, F57 24/1, reader 390/11, and all four real-CLI markers. The exhaustive
+  direct-predicate ledger confirms the most-at-risk clipped-tail claim without
+  moving its band. Close D3 and its F54/F55/F57 prerequisites; retain F46/F50
+  and D17 ownership of public provenance, device arithmetic, and floating
+  thresholds. Evidence:
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1341,3 +1347,11 @@ colour system transfer verbatim**.
   proven WSL-UBSan recipe. Next slim target when PLAN again exceeds ~1,200
   lines: compress the longest closed `[x]` finding bodies (F17/F18/F20/F23) to
   digest+baseline pointers, archiving the prose verbatim first.
+- 2026-08-09 (D3/F54/F55/F57 CLOSED): fail-closed adjudicator self-test
+  rejected 25/25 transcript mutations; focused canonical subjects passed 5/5;
+  serial canonical/llfio-OFF/Arrow-ON matrices passed 125/125, 125/125, and
+  127/127 with exact 6/9/8 skips; the Arrow executable selection passed 7/7
+  with D3 115/1, F57 24/1, reader 390/11, and four exact real-CLI markers.
+  AGENTS floors, derivation index, and CHANGELOG were promoted only after
+  execution. Cursor: GPU-LB CUDA cluster F27/F29/F47/F50, then D4. Evidence:
+  `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.

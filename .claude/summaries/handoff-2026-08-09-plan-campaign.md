@@ -94,3 +94,24 @@ record, repository-hygiene, diff, inventory, and clean-tree checks. PLAN is
 over its ~1,200-line hygiene threshold, so archive the longest closed finding
 prose exactly as its own rule-12 bookkeeping task rather than mixing it into
 the scientific closure commit.
+
+## D3 closure verdict
+
+- **PASS [confirmed].** D3, F54, F55, and F57 are closed. The complete evidence
+  chain is the 40-equation derivation, fail-closed documentation checker,
+  exhaustive independent oracles, focused 5/5 run, WSL UBSan 24/24 run, three
+  serial matrices at 125/125, 125/125, and 127/127 with exact 6/9/8 skips, and
+  the Arrow 7/7 executable gate.
+- The most-at-risk clipped-tail claim passed the immutable 35,982-case ledger,
+  both strict tail orientations, both metrics, and all four Webb correction
+  branches. No band moved and no rescue attempt was used after product attempt
+  2 passed.
+- `AGENTS.md`, `CHANGELOG.md`, the derivation index, PLAN checkboxes/status,
+  Binding decision, Progress digest, and the D3 run-log are synchronized.
+
+Exact resume point: perform the rule-12 PLAN slimming task already named in
+the prior v2.2 entry. Archive the live prose for the longest closed findings
+verbatim before replacing it with digest-plus-evidence pointers; prove the
+archive text is exact and all record/docs/repository-hygiene checks pass. Then
+start the GPU-LB CUDA cluster F27/F29/F47/F50, using D2/D3 as the mathematical
+oracle and running each locally executable half on the RTX before D4.
