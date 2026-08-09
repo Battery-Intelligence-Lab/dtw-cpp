@@ -468,46 +468,18 @@ Open findings first (status after R0 adjudication — update these boxes there):
       open as an evidence-state checkbox only: no further implementation is
       owned here. F38 uniquely owns fail-closed metadata architecture, and the
       binding active resume pointer is F17.
-- [ ] **F17 — CLI `--resume` reads and discards clustering state.**
-      `dtwc/dtwc_cl.cpp:1398-1405` loads a binary `ClusteringResult` into the
-      block-local `ckpt_result`, prints its metadata, and has no later consumer;
-      the ordinary clustering path then runs and overwrites the automatic
-      checkpoint. First gate: drive the real CLI from a valid binary checkpoint
-      with deliberately distinguishable labels, medoids, cost, and iteration
-      count; the inherited CLI must fail an assertion that resumed state affects
-      the result rather than merely producing the verbose “Loaded checkpoint”
-      line. Define the supported continuation semantics before repair—never
-      silently relabel a read-and-discard operation as resume.
-      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `fb853eb` replays
-      all five fields of a completed binary result (v1 = generic completed
-      result, not iteration state), skips every clustering method, preserves
-      the source binary, rejects unusable requested state, and kills all
-      twelve registered mutants; closure falsified only by the frozen
-      supply-chain manifest sub-band (observed 28 vs frozen 27, caused by the
-      new legitimate CMake driver). Attempts exhausted — evidence-only
-      checkbox; F39 uniquely owns inventory reconciliation. Registered bands
-      and both attempt records:
+- [ ] **F17 — CLI resume replay. REPAIR RETAINED / CLOSURE FALSIFIED
+      2026-07-24:** completed-result replay and 12/12 mutation gate pass;
+      frozen manifest sub-band failed 28 vs 27. Attempts exhausted; F39 owns
+      reconciliation. Verbatim registration/status archived in
+      `.claude/PLAN-archive-2026-08-09-findings.md`; evidence:
       `.claude/baselines/2026-07-24-f17-cli-resume.md`.
-- [ ] **F18 — MATLAB estimator accepts routing options that do not reach its
-      `Problem`.** `DTWClustering.Metric` is stored but never read by `fit`;
-      `Device` updates global `Env`, but each repetition creates a default
-      `Problem` whose `distance_strategy` remains `Auto`, and `fast_pam` does not
-      consult `Env` (`bindings/matlab/+dtwc/DTWClustering.m:53-155`,
-      `dtwc/Problem.cpp:778-787`). First gates: a non-degenerate fixture whose
-      L1 and squared-L2 medoids/cost differ must make the estimator match the
-      corresponding explicit `Problem` route, and a fresh CUDA-enabled MEX must
-      prove `Device='gpu'` reaches CUDA dispatch rather than merely validating
-      the global device. The current constructor-only parity test is not a gate.
-      **ATTEMPTS EXHAUSTED / FALSIFIED 2026-07-24:** attempt 1 failed to
-      compile; attempt 2 passed the ordinary metric/validation, guarded-source,
-      and offline HPC poison markers, but the first R2024b valid CUDA profile
-      crashed `0xc0000005` under `CUDAPrecision::Auto` before any kernel row
-      (forced FP32/FP64 both return exact distance 10; forcing a precision
-      would be rescue-tuning). Product files rolled back; red-first cases and
-      the permanent runner retained in `625b5b7`. F40 owns the functional
-      `dtwc.cluster` route, F41 real-Metal reachability, F42 the
-      Auto-selector crash — F42 is a prerequisite for reopening F18.
-      Registered fixture, oracles, and bands:
+- [ ] **F18 — MATLAB estimator routing. ATTEMPTS EXHAUSTED / FALSIFIED
+      2026-07-24:** product rolled back after R2024b CUDA Auto crashed before
+      the first kernel row; retained red-first gates are `625b5b7`. F40/F41/F42
+      own the separated residuals, with F42 prerequisite to reopening. Verbatim
+      registration/status archived in
+      `.claude/PLAN-archive-2026-08-09-findings.md`; evidence:
       `.claude/baselines/2026-07-24-f18-matlab-routing.md`.
 - [x] **F19 — the frozen `Problem` encapsulation/accessor cleanup was
       incomplete.** CLOSED 2026-07-24 (`3612b68`): ten fields privatized,
@@ -516,30 +488,12 @@ Open findings first (status after R0 adjudication — update these boxes there):
       routes on both releases. Full registration prose archived verbatim in
       `.claude/PLAN-archive-2026-07-30-decisions.md`. Evidence:
       `.claude/baselines/2026-07-24-f19-problem-encapsulation.md`.
-- [ ] **F20 — `Problem::set_storage_policy` is an advisory no-op for storage
-      routing.** The setter only validates and stores an enum
-      (`dtwc/Problem.hpp:339-345`); heap/mmap selection is owned independently
-      by `DataLoader` (`dtwc/DataLoader.hpp:200-203,276-323`). This does not
-      satisfy the frozen §2.1/§6.3 promise that the `Problem` setting overrides
-      local series storage. First gate: derive and register which subsequent
-      load/set-data operation the setter governs, then force Heap and Mmap on a
-      payload above a deterministic threshold; backing mode must differ while
-      series bytes and downstream distances remain identical. The inherited
-      setter must fail by leaving both routes unchanged.
-      **REPAIR RETAINED / CLOSURE FALSIFIED 2026-07-24:** `aa9781c` routes
-      owning `Problem::set_data(Data)` (the registered governed boundary,
-      shared by C++/Python/MATLAB; non-retroactive; `set_view_data` stays an
-      explicit non-owning bypass) and loader construction through the shared
-      series-storage router with loud unsupported-route rejection
-      (Float32/llfio-OFF/CUDA/Metal mapped); `f1ef5e0` makes derived DTW
-      closures move-stable. Focused llfio-ON 963/5 and llfio-OFF 606/5 pass,
-      mutations 11/11 killed, full gates 122/122, 122/122, 124/124 — but the
-      six-binding band is FALSIFIED at 5/6: the R2024b MATLAB llfio-ON MEX
-      crashes `0xc0000005` in LLFIO's first `std::mutex` lock (VS 14.50
-      constexpr-mutex vs R2024b's private MSVCP140 14.36; R2025b passes)
-      before any I/O. Both attempts consumed — evidence-only checkbox; F43
-      owns the toolset-runtime incompatibility, F44 the cache-path taxonomy
-      escape. Registered bands and full evidence:
+- [ ] **F20 — storage-policy routing. REPAIR RETAINED / CLOSURE FALSIFIED
+      2026-07-24:** C++/Python and R2025b routes pass, but R2024b llfio-ON
+      crashes in the first runtime mutex lock; 5/6 binding band, both attempts
+      consumed. F43/F44 own the separated residuals. Verbatim
+      registration/status archived in
+      `.claude/PLAN-archive-2026-08-09-findings.md`; evidence:
       `.claude/baselines/2026-07-24-f20-storage-policy.md`.
 - [x] **F21 — four frozen C++ snake_case entry points are absent.**
       CLOSED 2026-07-29 (`5e4a7b6`, `a48635b`, `36b9c99`): canonical
@@ -574,14 +528,10 @@ Open findings first (status after R0 adjudication — update these boxes there):
       pass, including the expected F18/F39 reds, but do not reinterpret the
       exhausted C++ mutation criterion. F22 remains FALSIFIED and unchecked.
       Evidence: `.claude/baselines/2026-07-30-f22-final-gates.md`.
-- [x] **F23 — Python lacks the frozen binary result-checkpoint bindings.**
-      CLOSED 2026-07-30: GIL-safe `save_binary_checkpoint`/
-      `load_binary_checkpoint` bound over the frozen native binary-v1 codec
-      with typed `dtwcpp.IOError`; exact 72-byte/10-field/3-error marker 3/3,
-      parity 157/157, registered 1,046/1,048 inventories with only the F39
-      red. F56 owns the disclosed non-UTF-8/surrogate path residual. Full
-      registration prose archived verbatim in
-      `.claude/PLAN-archive-2026-07-30-decisions.md`. Evidence:
+- [x] **F23 — Python binary result checkpoints. CLOSED 2026-07-30:** native
+      binary-v1 bindings pass exact 3/3, parity 157/157, and registered full
+      inventories; F56 owns path-formatting residuals. Verbatim live closure
+      prose archived in `.claude/PLAN-archive-2026-08-09-findings.md`; evidence:
       `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
 - [ ] **F24 — Python HPC failures bypass the frozen device-error contract.**
       `python/dtwcpp/_hpc.py:395-405,445-456` raises wrapper-specific
@@ -1165,106 +1115,14 @@ colour system transfer verbatim**.
   replace the design, not add a third token special case.
 - Full kill-context lives in the archive (`### Explicit rejections`, Phase 5) and `.claude/LESSONS.md`.
 
-## Binding decisions (digest — append NEW decisions here; closed-finding prose moved to `.claude/PLAN-archive-2026-07-30-decisions.md`, `.claude/PLAN-archive-2026-07-29-decisions.md`, and earlier archives)
+## Binding decisions (digest — append NEW decisions here; verbatim prose is in the dated `.claude/PLAN-archive-*` files, most recently the two 2026-08-09 archives)
 
-- 2026-07-06: `default_data_t` = double; Float32 explicit opt-in. `MetricType::L2` is a real multivariate L2. No-silent-fallback promoted to Global Constraint. Local benchmarks ADVISORY (shared machine).
-- 2026-07-10: llfio pinned `b17613f…`; codecov + all 36 workflow actions SHA-pinned; Arrow 19.0.1 SHA-256 enforced; stale tracked MEX binary removed; HiGHS bundled in wheels, Gurobi external; production publication = manual explicit-go only.
-- 2026-07-10 (M-series authorizations, all still binding): soft-DTW unification boundary (M5→R4); device-aware Tier-1 `auto` (M12); mmap v1/v2 invalidated, v3 authenticated identity + crash-safe publication + payload integrity (M14/M15/M53); cross-language Tier-1 seed 42, `42+i` restarts, Lloyd/MIP included (M13/M17); estimator literal fit/predict semantics (M23); barycenter real-work convergence + finite-state rejection (M24); dense-cache semantic binding + matrix-free dispatch reconciliation (M25/M37); transactional MIP publication (M33); DTW variant parameter domains (M34); Soft-DTW helper domain + denormal scaling (M46); HPC submission envelope/grammar/identity hardening (M28/M31/M32); dense checkpoint v2 identity (M49).
-- 2026-07-10 (H4): MATLAB Tier-1 keeps the original six-method set in 2.0 (parity = 2.1); C++ HPC is a throwing beta boundary (no transport, no silent CPU fallback; Oxford ARC/2.1 owns enablement).
-- 2026-07-12 (F7): truthful CLI RAM policy — `--ram-limit` is the Parquet series materialisation cap (hard-errors elsewhere); `--mmap-threshold` selects distance storage; matrix-free runs emit labels/medoids + binary checkpoint, dense CSVs only when a matrix exists.
-- 2026-07-12 (F4): seeded RNG schedule versioned `portable-v1` (identical across MSVC STL/libstdc++); unseeded Tier-2 mutable-engine contract unchanged.
-- 2026-07-12: Phase 9/R7 authorized (Emscripten+embind, worker pool no pthreads, unibatt palette verbatim, `dtwc::warping_path` additive API). `[BLOCKED-ENV]` record-and-continue promoted into the execution contract.
-- 2026-07-23 (F11 preflight): “Repo-wide” in F11 means every tracked
-  `CPMAddPackage(URL ...)` archive declaration, not every internet-bearing
-  workflow command or package-manager resolution. The latter audit found
-  distinct workflow-integrity and shell-grammar subjects, now F34 and F35.
-  Keeping them separate prevents an example-archive fix from falsely closing
-  the wider supply chain and preserves one finding per implementation commit.
-- 2026-07-24 (F11/F36): The exact example pin and no-override runtime proof are
-  retained in `653b0e6`, but the generic parser closure is FALSIFIED. After two
-  capped inventory pivots, final audits reproduced `CUSTOM_CACHE_KEY` and
-  quoted-line-continuation false-greens with all production counters passing.
-  Per the registered no-third-attempt band, freeze the lexical deny-list,
-  leave F11 open, route replacement architecture to F36, and continue at F12.
-- 2026-07-24 (F12 registration): One fixed-band behavioral task owns all six
-  CUDA geometry copies and the backend-independent public double no-path
-  sentinel. The D1 non-degenerate fixture, explicit path counts, exact
-  pairwise/one-vs-N route matrix, `INT_MAX`, and two-attempt cap are binding.
-  Local CUDA executes on the RTX. The probe found Windows 11 with neither
-  `xcrun` nor a Metal compiler, so real-Metal execution is `[BLOCKED-ENV]`;
-  implement and retain its permanent gate, leave F12 open, and continue after
-  all locally executable bands pass.
-- 2026-07-24 (F12 local verdict): Retain repair attempt 1 in `4583443`.
-  Canonical CUDA geometry and exact public sentinel translation pass every
-  registered real-RTX route, including both singleton orientations. Metal's
-  matching no-LB source/tests survive two independent reviews, but the local
-  binary necessarily skips with zero assertions. This is partial closure:
-  keep F12 and D1's Metal discrepancy open, route LB integer arithmetic to
-  F28-F30 as registered, and resume the campaign at F13.
-- 2026-07-23 (R0 provenance): Vinod (1969) is retained as early
-  optimization-based clustering history, not evidence for DTWC++'s diagonal
-  p-median matrix. The record attributes its linking rows to Balinski and the
-  classical complete model to ReVelle-Swain; the interrupted “same program”
-  and independent-lineage claims were removed.
-- 2026-07-23 (R1 record-retirement truth): Git history confirms
-  `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`; do not recreate
-  them. Record hygiene preserves that deletion and repairs the live
-  UNIMODULAR/LESSONS/CITATIONS records instead of recreating obsolete ledgers.
-- 2026-07-23 (R1 branch disposition): The first `4797c97` snapshot was 548
-  commits ahead of both local and stale `origin/main`, and 51 ahead of stale
-  `origin/Claude`. During final review, `origin/Claude` advanced to `4797c97`;
-  its local reflog says `2026-07-23 18:14:56 +0100: update by push`. This agent
-  issued no remote mutation. Non-sample hooks were absent, but four running
-  GitHub Desktop processes predated the event, so actor/cause remains
-  `[inferred: unknown]`. The global no-remote-operation sub-band is FALSIFIED;
-  agent authorization compliance passes. Do not “repair” it locally. After
-  R0–R6 close, the operator sequence is re-read server state, fetch/prune,
-  fresh ancestry and divergence checks, release-gate rerun, decide
-  retain/restore, review PR/hosted gates, then fast-forward only where ancestry
-  permits. Rebase, merge, force update, tag, and publication remain
-  unauthorized here.
-- 2026-07-13 (F7 re-review): D1 guard placement (outside `#ifdef DTWC_HAS_PARQUET`) is load-bearing; D2 CUDA/auto rejection recorded as breaking. F8–F10 opened.
-- 2026-07-23: PLAN v2.0 adopted (this file); prior plan archived verbatim; AGENTS.md created as the Codex working-rules SSOT.
-- 2026-07-29 (inherited record-hygiene marker): A stash/rerun at pre-closure
-  HEAD `8e542ae` proves `check_record_hygiene.py` already rejected PLAN for
-  omitting the exact `do not recreate them` marker even though equivalent
-  record-retirement prose remained. Restore the exact phrase without changing
-  the rule; require the complete checker to pass before F22 work.
-- 2026-07-30 (F22 final adjudication): Retain the repaired product, tests, and
-  documentation after every registered serial execution band passes, but do
-  not close F22 or reinterpret its independent mutation criterion. Both
-  permitted C++ attempts remain exhausted at 33/46, so F22 is permanently
-  FALSIFIED evidence unless a future plan explicitly registers a new finding
-  rather than rescue-tuning this one. The cadence cursor moves to D2 before
-  another R3 finding. Evidence:
-  `.claude/baselines/2026-07-30-f22-final-gates.md`.
-- 2026-07-30 (D2 split + closure, digest): D2 CLOSED; its path-row proof and
-  17,712-case arbiter falsified F29's old premise (real-device execution still
-  required); five split subjects registered as F46–F50 rather than hidden in
-  the derivation. Verbatim entries:
-  `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence:
-  `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
-- 2026-07-30 (F51 + F23 registration/closure, digest): F51 CLOSED — binary-v1
-  wire made strictly canonical (explicit LE codecs, size-before-allocation,
-  unchanged-on-false across the 85-case corpus that now seeds the robustness
-  lens). F23 CLOSED — Python `save_binary_checkpoint`/`load_binary_checkpoint`
-  bound GIL-safely over the frozen native codec with typed `dtwcpp.IOError`;
-  F56 owns the disclosed non-UTF-8/surrogate path residual. Verbatim entries:
-  `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence:
-  `.claude/baselines/2026-07-30-f51-binary-checkpoint-wire.md`,
-  `.claude/baselines/2026-07-30-f23-python-binary-checkpoint.md`.
-- 2026-07-30 (F23/F51 MATLAB audit split): Keep two confirmed MATLAB defects
-  out of the Python binding and native wire-codec scopes. F52 owns the binary
-  load false-result's `dtwc:runtime` versus frozen `dtwc:ioError` mismatch.
-  F53 owns incomplete/non-integral MATLAB result conversion plus the parity
-  test's sorted-medoid/two-field blind spot. Both join the later MEX/checkpoint
-  cluster; neither delays F51 -> F23 -> D3.
-- 2026-07-30 (F23 path residual): Close F23 only over its registered valid
-  Windows `str`/`PathLike` cases; do not generalise that evidence to every
-  native filename representation. F56 owns the confirmed
-  `u8string()`/`PyErr_SetString` surrogateescape and lone-surrogate boundary
-  under a separate immutable cross-platform gate. F23's exhausted attempts are
-  not rescue-tuned.
+- Decisions through F23's 2026-07-30 path residual remain binding and are
+  archived verbatim in `.claude/PLAN-archive-2026-08-09-decisions.md`. In
+  particular, `.claude/MISSING.md` / `READ.md` were retired by `0449f7c`;
+  do not recreate them. F11/F16/F17/F18/F20/F22 retain their registered
+  falsification and attempt caps; local-only/no-publication restrictions and
+  every M-series authorization remain unchanged.
 - 2026-07-30 (D3 registration): Treat the production `lb_webb` as
   `LB_Webb_NoLR` plus a separately proved conservative tail cap; no ordering is
   claimed between it and full Algorithm 2. D3 owns exact-arithmetic
@@ -1311,42 +1169,9 @@ colour system transfer verbatim**.
   gate entries are archived verbatim in
   `.claude/PLAN-archive-2026-07-29-decisions.md`; the live F22 task and final
   binding decision preserve its permanent 33/46 falsification and attempt cap.
-- 2026-07-29 (Fable reconciliation + campaign guidance v2.1): PLAN slimmed —
-  closed-finding Binding-decision and Progress prose (F8/F9, F13–F21, F45,
-  R0/R1 residue) archived verbatim to
-  `.claude/PLAN-archive-2026-07-29-decisions.md`; record-hygiene checker
-  passes post-slim. New binding guidance added: infinite-tokens/finite-hours
-  framing, rule 11 (evidence effort proportional to consequence), rule 12
-  (rolling hygiene in every task), the R2/R3 cadence rule (R2 at 1/18 is the
-  priority debt; alternate derivations with findings, paired derivation
-  first), the derivation↔finding pairing map, and the suggested R3 finding
-  clustering (a)–(f). AGENTS.md floors updated to the current 122/122/122/124
-  CTest and 1009/12/1-expected-F39-red Python inventories. Cursor unchanged:
-  F22 final serial full-gate adjudication, then F23 per the cadence.
-- 2026-07-30 (R2-D2, F51, F23 CLOSED — digest): full entries archived verbatim
-  in `.claude/PLAN-archive-2026-07-30-decisions.md`; evidence in the three
-  same-dated `.claude/baselines/` files. Post-F23 serial floors: 123/123,
-  123/123, 125/125 with exact 6/9/8 skips; Python 1,046/1,048 inventories with
-  only the registered F39 red.
-- 2026-07-30 (D3 in flight — Codex session): preregistration `8f8e7e5`,
-  red-first oracles `244adf7`, expected red CONFIRMED (envelope-prune count 0
-  and raw `INT_MAX` Webb 8 vs exact 4), F54 repair `d09cf9c`+`53506a9`, F57
-  discriminator `13cd4f6` and saturation repair `29f9103`, F55 provenance
-  sweep `6abff20`, derivation `7dce222`, fail-closed doc checker `639e1c4`,
-  WSL-UBSan pass recorded `8ca732e`. Product attempts consumed 2/2 with the
-  final attempt PASS (115/115 + 24/24, ctest 2/2). Serial full-matrix
-  adjudication and closure bookkeeping NOT yet run — that is the campaign
-  cursor. Evidence: `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md` and
-  `.claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md`.
-- 2026-07-30 (Fable reconciliation v2.2): PLAN slimmed per rule 12 — closed
-  D2/F51/F23 Binding-decision and Progress prose archived verbatim to
-  `.claude/PLAN-archive-2026-07-30-decisions.md`; status and cursor rewritten
-  to the mid-D3 adjudication state; D3/F54/F55/F57 tasks annotated with their
-  retained commits; AGENTS.md updated with the prospective post-D3 floors
-  (125/125, 125/125, 127/127 — confirm by running, never assume) and the
-  proven WSL-UBSan recipe. Next slim target when PLAN again exceeds ~1,200
-  lines: compress the longest closed `[x]` finding bodies (F17/F18/F20/F23) to
-  digest+baseline pointers, archiving the prose verbatim first.
+- Reconciliation/progress entries from 2026-07-29 through the 2026-07-30 D3
+  in-flight handoff and v2.2 slimming are archived verbatim in
+  `.claude/PLAN-archive-2026-08-09-decisions.md`.
 - 2026-08-09 (D3/F54/F55/F57 CLOSED): fail-closed adjudicator self-test
   rejected 25/25 transcript mutations; focused canonical subjects passed 5/5;
   serial canonical/llfio-OFF/Arrow-ON matrices passed 125/125, 125/125, and
@@ -1355,3 +1180,8 @@ colour system transfer verbatim**.
   AGENTS floors, derivation index, and CHANGELOG were promoted only after
   execution. Cursor: GPU-LB CUDA cluster F27/F29/F47/F50, then D4. Evidence:
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- 2026-08-09 (rule-12 slimming): F17/F18/F20/F23 live bodies and older
+  Binding-decision/Progress digests moved verbatim to the two 2026-08-09 PLAN
+  archives; exact line-for-line comparison against `d2e8834` passes for all
+  six blocks. The live PLAN is again below its ~1,200-line threshold and keeps
+  current status, attempt caps, record-retirement markers, and evidence links.

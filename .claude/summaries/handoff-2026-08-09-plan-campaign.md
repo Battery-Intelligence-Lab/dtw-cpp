@@ -115,3 +115,16 @@ verbatim before replacing it with digest-plus-evidence pointers; prove the
 archive text is exact and all record/docs/repository-hygiene checks pass. Then
 start the GPU-LB CUDA cluster F27/F29/F47/F50, using D2/D3 as the mathematical
 oracle and running each locally executable half on the RTX before D4.
+
+## Rule-12 PLAN slimming
+
+- F17/F18/F20/F23 live bodies are preserved line-for-line in
+  `.claude/PLAN-archive-2026-08-09-findings.md`; comparison with source commit
+  `d2e8834` passes at 20/21/25/9 exact lines.
+- The 98-line historical Binding-decision block and 36-line Progress block are
+  preserved line-for-line in `.claude/PLAN-archive-2026-08-09-decisions.md`.
+  The live digests retain the attempt caps, operator restrictions, exact record
+  retirement markers, current D3 state, and baseline pointers.
+- PLAN is below its registered ~1,200-line hygiene threshold. Exact resume:
+  register and execute the GPU-LB cluster F27/F29/F47/F50; no D4 execution
+  starts until those paired lower-bound findings are adjudicated.
