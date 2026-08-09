@@ -58,3 +58,19 @@ current pre-regeneration inventory is 123, while the registered post-D3 floor
 is 125. Reinspect the generated inventory and CTest policies, settle to a
 no-work build, then run the serial 125/125 gate against the exact nine-name
 skip set. Do not run Arrow concurrently.
+
+- **[confirmed]** The llfio-OFF graph regenerated to exactly 125 tests, both
+  D3 targets were non-skippable and marker-pinned, and a settling build printed
+  `ninja: no work to do.`
+- **[confirmed]** The serial llfio-OFF matrix passed 125/125 in 102.05 seconds,
+  zero failed, with exactly the registered nine capability skips. D3 and F57
+  executed as ordinary passes. Evidence is appended to the D3 run-log.
+
+Exact resume point: regenerate and completely build
+`build/arrow-pyarrow-23`; its current pre-regeneration inventory is 125, while
+the registered post-D3 floor is 127. Require a settled no-work build, exact
+127-test inventory, the expected Arrow/Parquet compile definitions and runtime
+paths, and one marker-pinned entry for each D3 target. Then run the serial full
+matrix against the exact eight-name skip set. Only after that passes, run the
+seven verbose runtime subjects for D3, F57, the 390/11 reader, and all four
+real-CLI markers.

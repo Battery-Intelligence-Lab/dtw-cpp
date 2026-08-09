@@ -740,3 +740,66 @@ floor. D3 and F57 both executed as ordinary passes, zero tests failed, and the
 six capability skips match the preregistered set exactly. This promotes only
 the canonical floor; D3/F54/F55/F57 remain open until the llfio-OFF and
 Arrow-ON gates, Arrow runtime subjects, documentation, and hygiene close.
+
+### llfio-OFF matrix
+
+`cmake --build build/nollfio` regenerated the retained llfio-OFF tree with
+Clang 21.1.8, Release, OpenMP ON, and llfio/CUDA/Metal/MPI/HiGHS OFF. The
+regeneration's configure-dependent glob diagnostic named exactly the two
+expected additions:
+
+```text
+-- GLOB mismatch!
+The following files were added:
+  +unit/adversarial/test_lb_enhanced_webb_derivation.cpp
+  +unit/adversarial/test_lb_webb_intmax.cpp
+```
+
+The build exited zero. A mandatory settling rebuild then printed:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+Generated CTest metadata contained exactly 125 tests and one non-skippable,
+serial, marker-pinned entry for each D3 target. The adjudicator self-test again
+rejected 25/25 mutations before runtime. The decisive command was:
+
+```text
+uv run python scripts/adjudicate_d3_closure.py nollfio
+```
+
+Its load-bearing terminal output was:
+
+```text
+  9/125 Test   #9: test_lb_enhanced_webb_derivation ..........   Passed    0.43 sec
+ 11/125 Test  #11: test_lb_webb_intmax .......................   Passed    0.07 sec
+
+100% tests passed, 0 tests failed out of 125
+
+Label Time Summary:
+f14            =   0.55 sec*proc (1 test)
+f17            =   2.43 sec*proc (1 test)
+integration    =   2.98 sec*proc (2 tests)
+
+Total Test time (real) = 102.05 sec
+
+The following tests did not run:
+	 39 - unit_test_mmap_data_store (Skipped)
+	 40 - unit_test_mmap_distance_matrix (Skipped)
+	 54 - test_cuda_correctness (Skipped)
+	 56 - test_cuda_lb_keogh (Skipped)
+	 60 - test_io_readers (Skipped)
+	 61 - test_metal_correctness (Skipped)
+	 62 - test_metal_lb_keogh (Skipped)
+	 63 - test_metal_mmap (Skipped)
+	 82 - unit_test_benders (Skipped)
+D3_CLOSURE_NOLLFIO rc=0 inventory=125/125 subjects=1/1 skips=9/9 skip_set_match=True summary_exact=True verdict=PASS
+```
+
+llfio-OFF verdict: **PASS [confirmed]** against the prospective 125/125
+floor. Zero tests failed, D3 and F57 executed as ordinary passes, and the nine
+capability skips match the preregistered set exactly. D3/F54/F55/F57 remain
+open pending Arrow-ON full-matrix and runtime-subject gates plus closure
+bookkeeping and hygiene.
