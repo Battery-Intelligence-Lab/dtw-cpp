@@ -650,3 +650,93 @@ Total Test time (real) =   0.06 sec
 WSL UBSan verdict: **PASS [confirmed]**. The target executed 24 assertions,
 printed the exact registered marker, incurred zero skips, and produced no
 undefined-behavior diagnostic under `halt_on_error=1`.
+
+## 2026-08-09 closure continuation — focused and canonical gates
+
+The closure resumed from committed adjudicator base `a62e285`. Before any
+runtime execution, `scripts/adjudicate_d3_closure.py self-test` rejected all
+25 transcript mutations, and direct inspection confirmed the exact CTest
+marker/floor policies, both product routes, saturated CPU arithmetic, and the
+registered six-name canonical skip set.
+
+The first canonical rebuild was not a no-work build: it rebuilt 227 of 228
+reported Ninja edges because the retained build tree's dependency timestamps
+were stale. It completed successfully; the diagnostic classes were the
+already-recorded unsupported `-fno-signaling-nans` warning and LLFIO's
+header-only error-category pragma. A second rebuild printed verbatim:
+
+```text
+[0/2] Re-checking globbed directories...
+ninja: no work to do.
+```
+
+The focused closure command was:
+
+```text
+uv run python scripts/adjudicate_d3_closure.py focused
+```
+
+Its load-bearing output was:
+
+```text
+8: All tests passed (39273 assertions in 14 test cases)
+1/5 Test  #8: test_lb_enhanced_webb ..............   Passed    0.14 sec
+9: D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 webb_cases=35982 webb_branches=4/4 webb_strict=2/2 tail_cases=35982 tail_strict=2/2 metric_cases=140 order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS
+9: All tests passed (115 assertions in 1 test case)
+2/5 Test  #9: test_lb_enhanced_webb_derivation ...   Passed    0.62 sec
+11: F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS
+11: All tests passed (24 assertions in 1 test case)
+3/5 Test #11: test_lb_webb_intmax ................   Passed    0.11 sec
+38: All tests passed (63 assertions in 11 test cases)
+4/5 Test #38: unit_test_lower_bounds .............   Passed    0.11 sec
+44: All tests passed (5584 assertions in 26 test cases)
+5/5 Test #44: unit_test_pruned_distance_matrix ...   Passed    3.62 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Total Test time (real) =   4.65 sec
+D3_CLOSURE_FOCUSED rc=0 subjects=5/5 markers=2/2 summary_exact=True skip_free=True verdict=PASS
+```
+
+Focused verdict: **PASS [confirmed]**. All five named executables ran; neither
+D3 nor F57 could skip, and both exact registered markers and assertion floors
+were observed.
+
+After the settled build, the documentation-contract and record-hygiene gates
+both passed. The decisive canonical command was:
+
+```text
+uv run python scripts/adjudicate_d3_closure.py canonical
+```
+
+Its load-bearing terminal output was:
+
+```text
+  8/125 Test   #8: test_lb_enhanced_webb .....................   Passed    0.09 sec
+  9/125 Test   #9: test_lb_enhanced_webb_derivation ..........   Passed    0.39 sec
+ 11/125 Test  #11: test_lb_webb_intmax .......................   Passed    0.04 sec
+
+100% tests passed, 0 tests failed out of 125
+
+Label Time Summary:
+f14            =   0.96 sec*proc (1 test)
+f17            =   2.83 sec*proc (1 test)
+integration    =   3.78 sec*proc (2 tests)
+
+Total Test time (real) = 111.78 sec
+
+The following tests did not run:
+	 54 - test_cuda_correctness (Skipped)
+	 56 - test_cuda_lb_keogh (Skipped)
+	 60 - test_io_readers (Skipped)
+	 61 - test_metal_correctness (Skipped)
+	 62 - test_metal_lb_keogh (Skipped)
+	 63 - test_metal_mmap (Skipped)
+D3_CLOSURE_CANONICAL rc=0 inventory=125/125 subjects=1/1 skips=6/6 skip_set_match=True summary_exact=True verdict=PASS
+```
+
+Canonical verdict: **PASS [confirmed]** against the prospective 125/125
+floor. D3 and F57 both executed as ordinary passes, zero tests failed, and the
+six capability skips match the preregistered set exactly. This promotes only
+the canonical floor; D3/F54/F55/F57 remain open until the llfio-OFF and
+Arrow-ON gates, Arrow runtime subjects, documentation, and hygiene close.
