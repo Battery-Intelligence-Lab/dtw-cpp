@@ -166,7 +166,7 @@ function(run_cli_route route output_dir threshold expect_mmap)
         "${route} distance-matrix output")
     require_occurrences(
         "${normalized_stdout}"
-        "\"${output_dir}//conformance_distance_matrix.csv\"" 1
+        "\"${matrix_path}\"" 1
         "${route} exact distance-matrix path")
     foreach(execution_marker IN ITEMS
             "DTWC++ Clustering"
@@ -185,7 +185,7 @@ function(run_cli_route route output_dir threshold expect_mmap)
             "${route} mmap route")
         require_occurrences(
             "${normalized_stdout}"
-            "\"${output_dir}//conformance_distmat.cache\"" 1
+            "\"${cache_path}\"" 1
             "${route} exact mmap cache")
         if(NOT EXISTS "${cache_path}")
             message(FATAL_ERROR

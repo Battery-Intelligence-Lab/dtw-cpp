@@ -8,6 +8,21 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Registered the F15 `libcxx` deterministic-series fingerprint row for Apple
+  Clang + libc++. Scalar/row hashes match the existing libstdc++ schedule;
+  the continuous accelerator stream differs by a few ULPs and is now an
+  accepted coherent profile rather than a `profile == nullptr` failure.
+- Fixed the F22 C++ deprecation probe so Apple Clang's paired
+  `-Xpreprocessor -fopenmp` (and `-Xclang -fopenmp`) is copied from
+  `compile_commands.json` instead of a bare `-fopenmp`, which Apple Clang
+  rejects as an unsupported option. Unix absolute paths such as `/Users/...`
+  are no longer treated as MSVC `/U` flags. LLFIO's libc++
+  `char_traits<std::byte>` deprecation is ignored only inside
+  `llfio_include.hpp`, so `-Werror=deprecated-declarations` still diagnoses
+  DTWC++ aliases.
+- Fixed the F14 distance-matrix CSV contract so path markers use a single
+  separator (`matrix_path` / `cache_path`) instead of a doubled slash, which
+  made the real CLI's POSIX output miss the registered exact-path check.
 - Enforced the frozen C++ deprecation policy for all 33 retained 1.x
   compatibility entities. `Problem::maxIter`/`N_repetition` and the seven
   legacy Problem I/O overloads now emit their registered replacement

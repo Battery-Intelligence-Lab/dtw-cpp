@@ -379,6 +379,8 @@ def compile_context(arguments: list[str]) -> tuple[str, list[str]]:
     if not arguments:
         raise RuntimeError("empty compile command")
     compiler = arguments[0].strip('"')
+    compiler_name = Path(compiler).name.lower()
+    msvc_slash_flags = compiler_name in ("cl", "cl.exe") or "clang-cl" in compiler_name
     context: list[str] = []
     index = 1
     paired_options = {
@@ -388,7 +390,14 @@ def compile_context(arguments: list[str]) -> tuple[str, list[str]]:
         "--sysroot",
         "-target",
         "--target",
+        # Apple Clang rejects a bare -fopenmp; CMake records
+        # -Xpreprocessor -fopenmp (and sometimes -Xclang -fopenmp).
+        "-Xpreprocessor",
+        "-Xclang",
     }
+    define_include_prefixes = ("-I", "-D", "-U")
+    if msvc_slash_flags:
+        define_include_prefixes += ("/I", "/D", "/U")
     while index < len(arguments):
         argument = arguments[index]
         if argument in paired_options:
@@ -398,7 +407,7 @@ def compile_context(arguments: list[str]) -> tuple[str, list[str]]:
             index += 2
             continue
         if (
-            argument.startswith(("-I", "/I", "-D", "/D", "-U", "/U"))
+            argument.startswith(define_include_prefixes)
             and '\\"' not in argument
         ):
             context.append(argument.strip('"'))

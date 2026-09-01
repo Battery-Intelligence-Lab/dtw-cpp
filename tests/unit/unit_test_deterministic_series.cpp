@@ -108,6 +108,21 @@ constexpr Profile kLibstdcxx{
   }
 };
 
+constexpr Profile kLibcxx{
+  "libcxx",
+  "1D063EF12CB8680807CEEEF9F8C2F35331D0AA91186F824A16D9F3B2954AEF77",
+  "7DE312EABCFFB71D857BF97B9CFCE9C08A6F855E7CE25B863342BE46CBC38B73",
+  "E81034CE0654315D254D07FA518DDCE7472A542A4EECBD740935E9DFF891022E",
+  {
+    UINT64_C(0x4017B933480DF696), UINT64_C(0xC01953416B53F15F),
+    UINT64_C(0x40166012566A8F3E), UINT64_C(0x3FFEFDF719BF921C),
+    UINT64_C(0xBFF15561688E12F2), UINT64_C(0xC0200041BE89C29E),
+    UINT64_C(0xBFEA14A986DAD398), UINT64_C(0xC00A9B4B96F5696D),
+    UINT64_C(0xC01C92166F9FE92A), UINT64_C(0x4008246451B14AA8),
+    UINT64_C(0xC021BE586FDF2D37), UINT64_C(0x4011C288EB7D97C0),
+  }
+};
+
 void update_little_endian_double(
     dtwc::core::detail::Sha256 &sha, double value)
 {
@@ -154,6 +169,7 @@ const Profile *profile_for(std::string_view accelerator_hash)
   if (accelerator_hash == kRelaxed.accelerator_hash) return &kRelaxed;
   if (accelerator_hash == kPrecise.accelerator_hash) return &kPrecise;
   if (accelerator_hash == kLibstdcxx.accelerator_hash) return &kLibstdcxx;
+  if (accelerator_hash == kLibcxx.accelerator_hash) return &kLibcxx;
   return nullptr;
 }
 
@@ -162,7 +178,8 @@ const Profile *coherent_profile(
     std::string_view full_hash,
     std::string_view band0_hash)
 {
-  for (const Profile *profile : {&kRelaxed, &kPrecise, &kLibstdcxx}) {
+  for (const Profile *profile :
+       {&kRelaxed, &kPrecise, &kLibstdcxx, &kLibcxx}) {
     if (accelerator_hash == profile->accelerator_hash
         && full_hash == profile->full_hash
         && band0_hash == profile->band0_hash) {

@@ -435,10 +435,14 @@ Critical knowledge to avoid repeating mistakes.
   `/fp:precise`; Clang without those relaxations matched MSVC. Linux
   libstdc++ produced a third result because the standard does not prescribe
   `uniform_real_distribution`'s engine-to-real mapping; there even the scalar
-  `[-1,1]` bytes differ. A behavior-neutral extraction must compare raw
-  IEEE-754 bytes under each verified compiler-plus-standard-library profile,
-  preserve the distribution type and draw schedule, and never relabel legacy
-  STL-distribution fixtures as `portable-v1`.
+  `[-1,1]` bytes differ. Apple Clang + libc++ is a fourth coherent row:
+  scalar/row `[-1,1]` hashes match libstdc++, but the continuous `[-10,10]`
+  stream differs by a few ULPs while the 3×3 full/band-0 oracles still hash
+  to the libstdc++ matrices. Register that row as `libcxx`; do not skip F15
+  or replace the STL distribution. A behavior-neutral extraction must compare
+  raw IEEE-754 bytes under each verified compiler-plus-standard-library
+  profile, preserve the distribution type and draw schedule, and never
+  relabel legacy STL-distribution fixtures as `portable-v1`.
 - **Catch2 decomposition rejects unparenthesized logical OR.** An expression
   such as `CHECK((a && b) || (c && d))` reaches Catch2's deleted/decomposition
   guard and fails to compile; force the complete predicate to `bool` with one
