@@ -92,8 +92,21 @@ OracleAssignment independent_assignment_oracle(
       });
 
     result.labels[point] = static_cast<int>(candidates[0].slot);
-    result.nearest[point] = candidates[0].distance;
-    if (k > 1) result.second[point] = candidates[1].distance;
+    // The Release flag set includes -fno-signed-zeros. GCC may flush -0.0 to
+    // +0.0 on a copy; Apple Clang often preserves the sign bit. The F13
+    // contract already canonicalizes a zero *objective* to +0.0. Do the same
+    // for stored nearest/second distances so the oracle is not a signed-zero
+    // compiler fingerprint.
+    volatile double nearest = candidates[0].distance;
+    if (nearest == 0.0)
+      nearest = 0.0;
+    result.nearest[point] = nearest;
+    if (k > 1) {
+      volatile double second = candidates[1].distance;
+      if (second == 0.0)
+        second = 0.0;
+      result.second[point] = second;
+    }
 
     const double next = total + candidates[0].distance;
     if (!std::isfinite(next)) {
@@ -239,7 +252,7 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
     UINT64_C(0x4340000000000000),
     UINT64_C(0x0000000000000000),
     UINT64_C(0x3ff0000000000000),
-    UINT64_C(0x8000000000000000),
+    UINT64_C(0x0000000000000000),
     UINT64_C(0xc340000000000000),
     UINT64_C(0x4000000000000000),
   };
@@ -249,6 +262,7 @@ TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
 
   const auto zero = independent_assignment_oracle({{-0.0, +0.0}});
   REQUIRE(zero.labels == std::vector<int>{0});
+  REQUIRE(bits(zero.nearest[0]) == UINT64_C(0x0000000000000000));
   REQUIRE(bits(zero.objective) == UINT64_C(0x0000000000000000));
 
   const double maximum = std::numeric_limits<double>::max();

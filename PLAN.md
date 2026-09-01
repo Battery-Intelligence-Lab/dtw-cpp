@@ -1164,3 +1164,12 @@ colour system transfer verbatim**.
   clustering (a)–(f). AGENTS.md floors updated to the current 122/122/122/124
   CTest and 1009/12/1-expected-F39-red Python inventories. Cursor unchanged:
   F22 final serial full-gate adjudication, then F23 per the cadence.
+- 2026-09-01 (HPC GCC vs Apple Clang gate repairs): Arrhenius
+  `LastTest.log` failed F13 signed-zero nearest bits, F22 canonical
+  `Problem` construction, and F8 Soft-DTW `total_cost` last bits (2 ULP)
+  after F14/F15 from `95bd137` already passed. Binding repairs: F13 oracle
+  stores exact-zero nearest/second as `+0.0`; F22 silences GCC constructor
+  NSDMI diagnostics around `Problem` constructors only; F8 accepts
+  `CE31540B20B024C0` as a second Soft-DTW cost encoding while resident≡stream
+  and labels/medoids stay exact. Do not skip these tests. Evidence:
+  `.claude/baselines/2026-09-01-hpc-gcc-fp-and-deprecation.md`.

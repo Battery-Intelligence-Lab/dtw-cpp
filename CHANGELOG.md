@@ -8,6 +8,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Canonical construction of `Problem` no longer diagnoses the deprecated
+  `maxIter` / `N_repetition` fields under GCC's constructor NSDMI check, so
+  the F22 canonical probe stays silent while caller access of those fields
+  still warns. The F13 assignment oracle now stores exact-zero nearest/second
+  distances as `+0.0`, matching the existing zero-objective rule, because
+  `-fno-signed-zeros` lets GCC flush `-0.0`. F8 Soft-DTW resident/stream
+  parity still requires byte-identical checkpoints and exact labels/medoids,
+  and now accepts a registered 2-ULP GCC encoding of `total_cost` alongside
+  the original MSVC/Apple Clang bytes.
 - Registered the F15 `libcxx` deterministic-series fingerprint row for Apple
   Clang + libc++. Scalar/row hashes match the existing libstdc++ schedule;
   the continuous accelerator stream differs by a few ULPs and is now an

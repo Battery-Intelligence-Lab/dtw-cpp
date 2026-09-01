@@ -443,6 +443,19 @@ Critical knowledge to avoid repeating mistakes.
   raw IEEE-754 bytes under each verified compiler-plus-standard-library
   profile, preserve the distribution type and draw schedule, and never
   relabel legacy STL-distribution fixtures as `portable-v1`.
+- **A last-bit pin is not portable across GCC vs Apple Clang under the
+  Release reassociation set.** Arrhenius `LastTest.log` (2026-09-01) failed
+  three gates that were green on Apple Clang: F13 pinned `nearest[]` bits
+  `0x8000000000000000` (`-0.0`) while GCC flushed them to `+0.0`; F22's
+  canonical probe treated GCC's constructor-NSDMI use of deprecated
+  `maxIter`/`N_repetition` as a canonical diagnostic; F8 Soft-DTW
+  `total_cost` differed by 2 ULP (`CC…` vs `CE…`) after resident≡stream and
+  labels/medoids already matched. Canonicalize signed zeros in the F13
+  oracle the same way as the zero objective; pragma-silence *constructors*
+  (not the fields) in `Problem.hpp`; register a second Soft-DTW cost encoding
+  and keep resident≡stream byte-identity. Do not skip the tests, do not
+  loosen Standard DTW goldens, and do not remove `[[deprecated]]` from the
+  fields. Evidence: `.claude/baselines/2026-09-01-hpc-gcc-fp-and-deprecation.md`.
 - **Catch2 decomposition rejects unparenthesized logical OR.** An expression
   such as `CHECK((a && b) || (c && d))` reaches Catch2's deleted/decomposition
   guard and fails to compile; force the complete predicate to `bool` with one
