@@ -49,11 +49,17 @@
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
+#include <mip/pdlp_lp.hpp>
 
 #include <Eigen/Core>
 
+#include <algorithm>
 #include <cstring>
+#include <exception>
 #include <filesystem>
+#include <initializer_list>
+#include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -70,6 +76,39 @@ void warn_deprecated_alias(const char *old_name, const char *new_name) {
     throw nb::python_error();
 }
 
+/// Hand an owning buffer to numpy with no leak window and no nested GIL scope.
+///
+/// The vector is moved onto the heap, the capsule is constructed while a
+/// unique_ptr still owns it (so a throwing capsule allocation frees it), and
+/// only then is ownership released to the capsule. Callers hold the GIL, so no
+/// `gil_scoped_acquire` is nested inside a live release.
+nb::ndarray<nb::numpy, double> adopt_as_ndarray(
+  std::vector<double> &&values, std::initializer_list<size_t> shape) {
+  // numpy never dereferences a zero-sized array, but nanobind still wants a
+  // real address; an empty vector may report data() == nullptr.
+  if (values.empty()) values.reserve(1);
+  auto owned = std::make_unique<std::vector<double>>(std::move(values));
+  double *ptr = owned->data();
+  nb::capsule owner(owned.get(), [](void *p) noexcept {
+    std::unique_ptr<std::vector<double>>(static_cast<std::vector<double> *>(p));
+  });
+  owned.release(); // the capsule owns the buffer from here on
+  return nb::ndarray<nb::numpy, double>(ptr, shape, owner);
+}
+
+/// Move an N*N GPU result into an owned buffer, refusing a size mismatch.
+/// A backend that returns fewer elements than n*n must not be zero-padded into
+/// something that reads as a valid distance matrix.
+std::vector<double> checked_square_matrix(
+  std::vector<double> &&matrix, size_t n, const char *backend) {
+  if (matrix.size() != n * n)
+    throw dtwc::DeviceError(
+      std::string(backend) + " returned " + std::to_string(matrix.size())
+      + " distances for " + std::to_string(n) + " series; expected "
+      + std::to_string(n * n) + ".");
+  return std::move(matrix);
+}
+
 std::string utf8_path_text(const std::filesystem::path &path) {
   const std::u8string encoded = path.u8string();
   return std::string(
@@ -83,6 +122,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("_F22_DEPRECATION_POLICY") = true;
   m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
+  m.attr("PDLP_GPU_AVAILABLE") = dtwc::mip::pdlp_gpu_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
   // =========================================================================
@@ -518,14 +558,19 @@ NB_MODULE(_dtwcpp_core, m) {
       // (n*(n+1)/2 entries) so a true zero-copy view into a full N*N layout
       // is structurally impossible. Modifying the returned array does NOT
       // mutate the C++ matrix; use set(i, j, v) for that.
-      const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
+      // G4: the packed->dense expansion and the memcpy are O(N^2) and would
+      // block every other Python thread. `dm` is const here, so releasing is safe.
       const size_t n = dm.size();
-      double *ptr = new double[n * n];
-      // Eigen is column-major; numpy expects row-major. The matrix is
-      // symmetric, so the byte layout is identical and memcpy is correct.
-      std::memcpy(ptr, full.data(), n * n * sizeof(double));
-      nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
-      return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+      std::vector<double> values(n * n);
+      {
+        nb::gil_scoped_release release;
+        const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
+        // Eigen is column-major; numpy expects row-major. The matrix is
+        // symmetric, so the byte layout is identical and memcpy is correct.
+        if (n > 0)
+          std::memcpy(values.data(), full.data(), n * n * sizeof(double));
+      }
+      return adopt_as_ndarray(std::move(values), {n, n});
     }, "Return an independent copy of the full N*N distance matrix.\n\n"
        "The C++ matrix stores only the upper triangle, so this expands to a\n"
        "full symmetric N*N numpy array. Modifying the returned array does NOT\n"
@@ -748,18 +793,21 @@ NB_MODULE(_dtwcpp_core, m) {
   // COPY because the C++ store keeps only the upper triangle, so a zero-copy view
   // into a full NxN layout is structurally impossible (§2.2 ‡).
   auto read_distance_matrix_np = [](dtwc::Problem &prob) {
+    // Size is only known after the fill, so both happen inside one release.
+    std::vector<double> values;
+    size_t n = 0;
     {
       nb::gil_scoped_release release;
       prob.fill_distance_matrix();
+      const auto &dm = prob.dense_distance_matrix();
+      n = dm.size();
+      const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
+      values.resize(n * n);
+      // Symmetric matrix: col-major == row-major, safe to memcpy.
+      if (n > 0)
+        std::memcpy(values.data(), full.data(), n * n * sizeof(double));
     }
-    const auto &dm = prob.dense_distance_matrix();
-    const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
-    const size_t n = dm.size();
-    double *ptr = new double[n * n];
-    // Symmetric matrix: col-major == row-major, safe to memcpy.
-    std::memcpy(ptr, full.data(), n * n * sizeof(double));
-    nb::capsule owner(ptr, [](void *p) noexcept { delete[] static_cast<double *>(p); });
-    return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+    return adopt_as_ndarray(std::move(values), {n, n});
   };
   // Shared writer: load a precomputed NxN matrix (e.g. from a GPU compute).
   auto write_distance_matrix_np =
@@ -777,7 +825,13 @@ NB_MODULE(_dtwcpp_core, m) {
           mat.set(i, j, data[i * n + j]);
     };
 
-  nb::class_<dtwc::Problem>(m, "Problem")
+  nb::class_<dtwc::Problem>(m, "Problem",
+    "A clustering problem: data, configuration, distance matrix and results.\n\n"
+    "Threading: a Problem instance must not be used concurrently from multiple\n"
+    "Python threads; the GIL is released during C++ work so that other threads\n"
+    "can run, but two threads calling methods on the same Problem race on its\n"
+    "lazily-filled distance cache. Use one Problem per thread, or call\n"
+    "fill_distance_matrix() first and only read afterwards.")
     .def(nb::init<>())
     .def("__init__", [](dtwc::Problem *p, const std::string &name) {
       new (p) dtwc::Problem(name);
@@ -877,7 +931,14 @@ NB_MODULE(_dtwcpp_core, m) {
          "Medoid index of the cluster that series i belongs to.")
     .def("is_distance_matrix_filled", &dtwc::Problem::is_distance_matrix_filled)
     .def("max_distance", &dtwc::Problem::max_distance)
-    .def("dist_by_ind", &dtwc::Problem::dist_by_ind, "i"_a, "j"_a)
+    .def("dist_by_ind", [](dtwc::Problem &p, int i, int j) {
+      nb::gil_scoped_release release;
+      return p.dist_by_ind(i, j);
+    }, "i"_a, "j"_a,
+       "Distance between series i and j, computing it on demand.\n\n"
+       "The lazy compute path MUTATES this Problem, so it must not be called\n"
+       "concurrently from several Python threads on the same object (see the\n"
+       "Problem class docstring).")
     // ---- config setters ----
     .def("set_n_clusters", &dtwc::Problem::set_n_clusters, "n_clusters"_a)
     .def("set_number_of_clusters", [](dtwc::Problem &p, int n) {
@@ -939,9 +1000,15 @@ NB_MODULE(_dtwcpp_core, m) {
          }, "dm"_a,
          "Deprecated alias for set_distance_matrix() (kept one cycle, §4).")
     .def("refresh_distance_matrix", &dtwc::Problem::refresh_distance_matrix)
-    .def("read_distance_matrix", &dtwc::Problem::read_distance_matrix, "path"_a,
-         "Read a distance matrix from a CSV file.")
-    .def("print_distance_matrix", &dtwc::Problem::print_distance_matrix)
+    .def("read_distance_matrix", [](dtwc::Problem &p, const std::filesystem::path &path) {
+      nb::gil_scoped_release release;
+      p.read_distance_matrix(path);
+    }, "path"_a,
+         "Read a distance matrix from a CSV file (REPLACES this Problem's matrix).")
+    .def("print_distance_matrix", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.print_distance_matrix();
+    })
     .def("use_mmap_distance_matrix",
          [](dtwc::Problem &p, const std::filesystem::path &cache_path) {
            p.use_mmap_distance_matrix(cache_path);
@@ -952,7 +1019,10 @@ NB_MODULE(_dtwcpp_core, m) {
       nb::gil_scoped_release release;
       p.cluster();
     }, "Run clustering (Lloyd k-medoids or MIP).")
-    .def("find_total_cost", &dtwc::Problem::find_total_cost)
+    .def("find_total_cost", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      return p.find_total_cost();
+    }, "Total cost of the current cluster assignment.")
     .def("assign_clusters", [](dtwc::Problem &p) {
       nb::gil_scoped_release release;
       p.assign_clusters();
@@ -963,10 +1033,19 @@ NB_MODULE(_dtwcpp_core, m) {
     })
     // ---- I/O ----
     .def("print_clusters", &dtwc::Problem::print_clusters)
-    .def("write_clusters", &dtwc::Problem::write_clusters)
+    .def("write_clusters", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_clusters();
+    }, "Write the cluster-assignment CSV.")
     .def("write_medoid_members", &dtwc::Problem::write_medoid_members, "iter"_a, "rep"_a = 0)
-    .def("write_distance_matrix", nb::overload_cast<>(&dtwc::Problem::write_distance_matrix, nb::const_))
-    .def("write_silhouettes", &dtwc::Problem::write_silhouettes)
+    .def("write_distance_matrix", [](const dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_distance_matrix();
+    })
+    .def("write_silhouettes", [](dtwc::Problem &p) {
+      nb::gil_scoped_release release;
+      p.write_silhouettes();
+    }, "Write per-series silhouette scores.")
     .def("__repr__", [](const dtwc::Problem &p) {
       return "Problem(name='" + p.name() + "', n=" + std::to_string(p.size())
              + ", k=" + std::to_string(p.n_clusters()) + ")";
@@ -988,7 +1067,20 @@ NB_MODULE(_dtwcpp_core, m) {
     dtwc::warn_if_single_threaded();
 
     const size_t n = series.size();
-    double* ptr = new double[n * n]();  // zero-init
+    // Owned buffer instead of a raw new[]: anything throwing between the
+    // allocation and the capsule used to leak the whole N^2 matrix.
+    std::vector<double> values(n * n, 0.0);
+    double *ptr = values.data();
+
+    // One exception_ptr slot per OpenMP thread. Each thread writes only its
+    // own slot, so the error path stays lock-free: an `omp critical` around a
+    // shared flag would serialise the hot loop and is the wrong fix.
+#ifdef _OPENMP
+    const int n_error_slots = std::max(1, omp_get_max_threads());
+#else
+    const int n_error_slots = 1;
+#endif
+    std::vector<std::exception_ptr> errors(static_cast<size_t>(n_error_slots));
 
     // Release GIL only for the compute-heavy section
     {
@@ -1004,23 +1096,40 @@ NB_MODULE(_dtwcpp_core, m) {
         // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
         // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
         // no two threads share the same i value.
+        // num_threads pins the team to the number of slots sized above, so
+        // omp_get_thread_num() can never index past `errors`.
         #ifdef _OPENMP
-        #pragma omp parallel for schedule(dynamic, 16)
+        #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
         #endif
         for (int i = 0; i < static_cast<int>(n); ++i) {
-            for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-                double d = (band >= 0)
-                    ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
-                    : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-                ptr[i * n + j] = d;
-                ptr[j * n + i] = d;
+#ifdef _OPENMP
+            const size_t slot = static_cast<size_t>(omp_get_thread_num());
+#else
+            const size_t slot = 0;
+#endif
+            // dtwBanded/dtwFull_L throw on NaN input. An exception escaping an
+            // OpenMP region is undefined behaviour and terminates the process,
+            // i.e. a hard interpreter crash instead of a Python InvalidInput.
+            if (errors[slot]) continue;
+            try {
+              for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+                  double d = (band >= 0)
+                      ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
+                      : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+                  ptr[i * n + j] = d;
+                  ptr[j * n + i] = d;
+              }
+            } catch (...) {
+              errors[slot] = std::current_exception();
             }
         }
       }
     }  // GIL re-acquired here
 
-    nb::capsule owner(ptr, [](void* p) noexcept { delete[] static_cast<double*>(p); });
-    return nb::ndarray<nb::numpy, double>(ptr, {n, n}, owner);
+    for (const auto &error : errors)
+      if (error) std::rethrow_exception(error);
+
+    return adopt_as_ndarray(std::move(values), {n, n});
   }, "series"_a, "band"_a = -1, "metric"_a = "l1", "use_pruning"_a = true,
      "Compute pairwise DTW distance matrix entirely in C++.\n\n"
      "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
@@ -1164,16 +1273,38 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", enabled=" + (o.enabled ? "True" : "False") + ")";
     });
 
-  m.def("save_checkpoint", &dtwc::save_checkpoint, "prob"_a, "path"_a,
+  m.def("save_checkpoint", [](const dtwc::Problem &prob,
+                              const std::string &path,
+                              dtwc::core::MetricType metric) {
+        // N^2 CSV write; released for consistency with save_binary_checkpoint.
+        // `prob` is const here and the writer only reads it.
+        nb::gil_scoped_release release;
+        dtwc::save_checkpoint(prob, path, metric);
+      }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
         "Save distance matrix checkpoint to directory.\n\n"
         "Creates distances.csv and metadata.txt in the given directory.\n"
-        "The directory is created if it does not exist.");
+        "The directory is created if it does not exist.\n\n"
+        "`metric` is the pointwise metric the stored distances were computed\n"
+        "with. It is part of the identity fingerprint, so a SquaredL2 matrix is\n"
+        "no longer accepted by a later L1 load. Mirrors the CLI's --metric and\n"
+        "defaults to L1 for backward compatibility.");
 
-  m.def("load_checkpoint", &dtwc::load_checkpoint, "prob"_a, "path"_a,
+  m.def("load_checkpoint", [](dtwc::Problem &prob,
+                              const std::string &path,
+                              dtwc::core::MetricType metric) {
+        nb::gil_scoped_release release;
+        return dtwc::load_checkpoint(prob, path, metric);
+      }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
         "Load distance matrix checkpoint from directory.\n\n"
         "Returns True if checkpoint was loaded successfully, False otherwise.\n"
         "Validates that matrix dimensions match the Problem's data size.\n"
-        "Sets distance matrix filled flag if all pairs are computed.");
+        "Sets distance matrix filled flag if all pairs are computed.\n\n"
+        "`metric` is the pointwise metric THIS run computes with: a checkpoint\n"
+        "written under a different metric no longer matches the identity\n"
+        "fingerprint and is rejected. Mirrors the CLI's --metric; defaults to\n"
+        "L1 for backward compatibility.\n\n"
+        "MUTATES `prob`: do not run it concurrently with any other method on\n"
+        "the same Problem (see the Problem class docstring).");
 
   m.def("save_binary_checkpoint",
         [](const dtwc::core::ClusteringResult &result,
@@ -1322,6 +1453,55 @@ NB_MODULE(_dtwcpp_core, m) {
      "scoring functions work after this call (§2.5).\n\n"
      "Reference: Ng & Han (2002), IEEE TKDE 14(5).");
 
+
+  // =========================================================================
+  // PDLP LP-relaxation arbiter (E2: was C++-only)
+  // =========================================================================
+
+  m.def("pdlp_gpu_available", &dtwc::mip::pdlp_gpu_available,
+        "True if this build's HiGHS carries the cuPDLP GPU backend.\n\n"
+        "The GPU-LP counterpart of HIGHS_AVAILABLE: the device is a property\n"
+        "of the linked HiGHS build, not a per-call toggle.");
+
+  nb::class_<dtwc::mip::PdlpParams>(m, "PdlpParams")
+    .def(nb::init<>())
+    .def_rw("variant", &dtwc::mip::PdlpParams::variant)
+    .def_rw("tol", &dtwc::mip::PdlpParams::tol)
+    .def_rw("iteration_limit", &dtwc::mip::PdlpParams::iteration_limit)
+    .def_rw("use_gpu", &dtwc::mip::PdlpParams::use_gpu)
+    .def_rw("verbose", &dtwc::mip::PdlpParams::verbose);
+
+  nb::class_<dtwc::mip::PdlpResult>(m, "PdlpResult")
+    .def_ro("lp_bound", &dtwc::mip::PdlpResult::lp_bound)
+    .def_ro("solved", &dtwc::mip::PdlpResult::solved)
+    .def_ro("iterations", &dtwc::mip::PdlpResult::iterations)
+    .def_ro("gpu_used", &dtwc::mip::PdlpResult::gpu_used)
+    .def("__repr__", [](const dtwc::mip::PdlpResult &r) {
+      return "PdlpResult(lp_bound=" + std::to_string(r.lp_bound)
+             + ", solved=" + (r.solved ? "True" : "False")
+             + ", iterations=" + std::to_string(r.iterations)
+             + ", gpu_used=" + (r.gpu_used ? "True" : "False") + ")";
+    });
+
+  m.def("pdlp_lp_bound",
+        [](nb::ndarray<const double, nb::ndim<2>, nb::c_contig> D, int k,
+           const dtwc::mip::PdlpParams &params) {
+          if (D.shape(0) != D.shape(1))
+            throw dtwc::InvalidInput("pdlp_lp_bound: D must be square.");
+          if (D.shape(0) > static_cast<size_t>(std::numeric_limits<int>::max()))
+            throw dtwc::InvalidInput("pdlp_lp_bound: N exceeds INT_MAX.");
+          const int n = static_cast<int>(D.shape(0));
+          const double *data = D.data();
+          nb::gil_scoped_release release;
+          return dtwc::mip::pdlp_lp_bound(data, n, k, params);
+        },
+        "D"_a, "k"_a, "params"_a = dtwc::mip::PdlpParams{},
+        "Solve the p-median LP relaxation with HiGHS PDLP.\n\n"
+        "Returns the LP-relaxation optimum in RAW distance units - a valid\n"
+        "lower bound on the integer k-medoids cost, NOT a clustering. It is\n"
+        "the independent arbiter for the matrix-free LR-core bound.\n"
+        "Requires a HiGHS build; raises SolverError otherwise.");
+
   // =========================================================================
   // CUDA (optional)
   // =========================================================================
@@ -1345,14 +1525,15 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.verbose = verbose;
           opts.use_lb_keogh = use_lb_keogh;
           opts.lb_threshold = lb_threshold;
-          nb::gil_scoped_release release;
-          auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-          size_t n = result.n;
-          double* data = new double[n * n];
-          std::copy(result.matrix.begin(), result.matrix.end(), data);
-          nb::gil_scoped_acquire acquire;
-          nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
-          return nb::ndarray<nb::numpy, double>(data, {n, n}, owner);
+          std::vector<double> matrix;
+          size_t n = 0;
+          {
+            nb::gil_scoped_release release;
+            auto result = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
+            n = result.n;
+            matrix = checked_square_matrix(std::move(result.matrix), n, "CUDA");
+          }
+          return adopt_as_ndarray(std::move(matrix), {n, n});
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
@@ -1366,14 +1547,14 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("compute_lb_keogh_cuda",
         [](const std::vector<std::vector<double>> &series,
            int band, int device_id) {
-          nb::gil_scoped_release release;
-          auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
-          size_t np = result.lb_values.size();
-          double* data = new double[np];
-          std::copy(result.lb_values.begin(), result.lb_values.end(), data);
-          nb::gil_scoped_acquire acquire;
-          nb::capsule owner(data, [](void* p) noexcept { delete[] static_cast<double*>(p); });
-          return nb::ndarray<nb::numpy, double>(data, {np}, owner);
+          std::vector<double> lb_values;
+          {
+            nb::gil_scoped_release release;
+            auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
+            lb_values = std::move(result.lb_values);
+          }
+          const size_t np = lb_values.size();
+          return adopt_as_ndarray(std::move(lb_values), {np});
         },
         "series"_a, "band"_a, "device_id"_a = 0,
         "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
@@ -1431,14 +1612,15 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.use_lb_keogh = use_lb_keogh;
           opts.lb_threshold = lb_threshold;
           opts.lb_envelope_band = lb_envelope_band;
-          nb::gil_scoped_release release;
-          auto result = dtwc::metal::compute_distance_matrix_metal(series, opts);
-          size_t n = result.n;
-          double *data = new double[n * n];
-          std::copy(result.matrix.begin(), result.matrix.end(), data);
-          nb::gil_scoped_acquire acquire;
-          nb::capsule owner(data, [](void *p) noexcept { delete[] static_cast<double *>(p); });
-          return nb::ndarray<nb::numpy, double>(data, {n, n}, owner);
+          std::vector<double> matrix;
+          size_t n = 0;
+          {
+            nb::gil_scoped_release release;
+            auto result = dtwc::metal::compute_distance_matrix_metal(series, opts);
+            n = result.n;
+            matrix = checked_square_matrix(std::move(result.matrix), n, "Metal");
+          }
+          return adopt_as_ndarray(std::move(matrix), {n, n});
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,

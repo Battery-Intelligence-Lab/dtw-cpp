@@ -151,6 +151,13 @@ void require_m50_matrix(const std::vector<double> &actual,
 TEST_CASE("M50 CUDA no-launch paths report no kernel or fallback",
           "[cuda][kernel_override][no_launch][m50]")
 {
+  // A16: a CUDA entry point on a device-less host is now a typed DeviceError,
+  // so the no-work reporting contract is only meaningful with a device present.
+  if (!dtwc::cuda::cuda_available()) {
+    SKIP("No CUDA device");
+    return;
+  }
+
   dtwc::cuda::CUDADistMatOptions options;
   // An unsupported CUDA family would report a fallback if dispatch happened.
   // No-work returns must instead report that no kernel was launched at all.

@@ -8,8 +8,9 @@
 #ifdef DTWC_HAS_CUDA
 
 #include <cuda_runtime.h>
-#include <string>
+#include <atomic>
 #include <mutex>
+#include <string>
 
 namespace dtwc::cuda {
 
@@ -39,20 +40,34 @@ struct GPUConfig {
 };
 
 /// Query GPU config for a device. Result is cached per device_id.
-inline GPUConfig query_gpu_config(int device_id = 0) {
-  // Thread-safe lazy initialization per device
-  static std::mutex mtx;
-  static GPUConfig configs[16];  // support up to 16 GPUs
-  static bool initialized[16] = {};
+///
+/// Called once per kernel launch from every dispatching host thread, so the
+/// cache hit is lock-free: one acquire load and a reference return. Only the
+/// one-time fill takes the lock, so exactly one thread ever writes a slot (the
+/// std::string member makes an unsynchronised double write a real race). A
+/// failed query leaves the slot unpublished for a retry and returns a shared
+/// immutable default, never a reference INTO that slot -- a later successful
+/// fill would otherwise rewrite it under a live reader.
+inline const GPUConfig &query_gpu_config(int device_id = 0) {
+  static GPUConfig configs[16];          // support up to 16 GPUs
+  static std::atomic<bool> ready[16];    // value-initialised to false
+  static std::mutex fill_mtx;            // one-time fill only
 
   if (device_id < 0 || device_id >= 16) device_id = 0;
 
-  std::lock_guard<std::mutex> lock(mtx);
-  if (initialized[device_id]) return configs[device_id];
+  if (ready[device_id].load(std::memory_order_acquire))
+    return configs[device_id];
+
+  const std::lock_guard<std::mutex> lock(fill_mtx);
+  if (ready[device_id].load(std::memory_order_relaxed))
+    return configs[device_id];
 
   cudaDeviceProp prop;
   cudaError_t err = cudaGetDeviceProperties(&prop, device_id);
-  if (err != cudaSuccess) return configs[device_id];
+  if (err != cudaSuccess) {
+    static const GPUConfig kUnavailable{};
+    return kUnavailable;
+  }
 
   GPUConfig &cfg = configs[device_id];
   cfg.device_id = device_id;
@@ -86,7 +101,7 @@ inline GPUConfig query_gpu_config(int device_id = 0) {
     cfg.fp64_rate = FP64Rate::Slow;
   }
 
-  initialized[device_id] = true;
+  ready[device_id].store(true, std::memory_order_release);
   return cfg;
 }
 

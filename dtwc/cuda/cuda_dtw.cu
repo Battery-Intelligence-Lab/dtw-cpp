@@ -23,6 +23,7 @@
 #include "cuda_memory.cuh"
 #include "gpu_config.cuh"
 #include "kernel_selection.hpp"
+#include "launch_prep.hpp"
 #include "../detail/decode_pair.hpp"
 
 #ifdef DTWC_HAS_CUDA
@@ -31,13 +32,10 @@
 #include <device_launch_parameters.h>
 
 #include <algorithm>
-#include <chrono>
-#include <climits>
+#include <atomic>
 #include <cmath>
 #include <cstring>
-#include <limits>
 #include <iostream>
-#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -83,6 +81,19 @@ bool resolve_fp32(CUDAPrecision precision, int device_id)
     return query_gpu_config(device_id).fp64_rate == FP64Rate::Slow;
   }
   throw std::logic_error("resolve_fp32: unreachable CUDAPrecision");
+}
+
+/// C6: the queried opt-in shared-memory cap was computed and never read, so an
+/// over-large request surfaced as a bare "invalid argument" from CUDA.
+void require_shared_mem_fits(size_t shared_mem, int device_id, const char *what)
+{
+  const size_t cap = query_gpu_config(device_id).max_shared_per_block;
+  if (cap > 0 && shared_mem > cap)
+    throw dtwc::DeviceError(
+        std::string(what) + ": needs " + std::to_string(shared_mem)
+        + " bytes of shared memory per block, but device "
+        + std::to_string(device_id) + " allows at most " + std::to_string(cap)
+        + ". Reduce the series length or the band.");
 }
 
 } // namespace
@@ -1132,14 +1143,9 @@ std::vector<double> launch_dtw_kernel(
     detail::KernelPath kernel_path,
     const int *pair_indices = nullptr)
 {
-  // Validate grid dimension fits in int (CUDA limit: 2^31-1 blocks in x)
-  if (num_pairs > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    throw std::runtime_error(
-        "Too many DTW pairs (" + std::to_string(num_pairs) +
-        ") for a single CUDA kernel launch. Maximum: " +
-        std::to_string(std::numeric_limits<int>::max()) +
-        ". Reduce N or use the MPI backend for distributed computation.");
-  }
+  // Last line of defence. Every public entry point applies the same guard
+  // before it allocates the NxN result or runs the LB_Keogh pre-pass.
+  detail::require_pair_count_fits(num_pairs, "launch_dtw_kernel");
 
   const size_t series_bytes = N * max_L * sizeof(T);
   const size_t matrix_elems = N * N;
@@ -1218,18 +1224,13 @@ std::vector<double> launch_dtw_kernel(
         static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
   } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: shared memory and block size configuration
-    const bool preload = (max_L <= 512);
-    // L<=512: preload mode (2 series + 3 anti-diag buffers = 5)
-    // 512<L<=1024: 3-buffer mode (3 anti-diag buffers)
-    // 1024<L<=2048: double-buffer mode (2 anti-diag buffers, saves occupancy)
-    // L>2048: 3-buffer mode — the double-buffer register cache (MAX_SI=8 per
-    //         thread * 256 threads = 2048) would drop anti-diagonal cells (Task 0.1).
-    const size_t n_bufs =
-        preload ? 5 : ((max_L > 1024 && max_L <= 2048) ? 2 : 3);
+    // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
+    // detail::wavefront_buffer_count so both dispatch paths share it.
+    const size_t n_bufs = detail::wavefront_buffer_count(max_L);
     if (max_L > 2048) {
-      static bool logged = false;
-      if (!logged) {
-        logged = true;
+      // Lock-free warn-once: exchange() is a single RMW, never a mutex.
+      static std::atomic<bool> logged{ false };
+      if (!logged.exchange(true, std::memory_order_relaxed)) {
         std::cerr << "[CUDA] max_L=" << max_L
                   << " > 2048: using the 3-buffer wavefront path "
                      "(the double-buffer register cache would drop cells).\n";
@@ -1240,6 +1241,8 @@ std::vector<double> launch_dtw_kernel(
     // Block size heuristic tuned for the anti-diagonal wavefront pattern.
     constexpr int block_size = 256;
 
+    require_shared_mem_fits(shared_mem, device_id, "dtw_wavefront_kernel");
+
     // Request extended shared memory if needed (>48 KB)
     if (shared_mem > 48 * 1024) {
       CUDA_CHECK(cudaFuncSetAttribute(dtw_wavefront_kernel<T>,
@@ -1248,7 +1251,7 @@ std::vector<double> launch_dtw_kernel(
     }
 
     // Determine whether to use persistent mode
-    auto gpu_cfg = query_gpu_config(device_id);
+    const auto &gpu_cfg = query_gpu_config(device_id);
     int blocks_per_sm = 0;
     cudaOccupancyMaxActiveBlocksPerMultiprocessor(
         &blocks_per_sm, dtw_wavefront_kernel<T>, block_size, shared_mem);
@@ -1436,35 +1439,40 @@ CUDADistMatResult compute_distance_matrix_cuda(
 {
   validate_cuda_precision(opts.precision);
   validate_kernel_override(opts.kernel_override);
+  const size_t N = series.size();
+  // Both guards run before the N*N allocation and before the LB_Keogh
+  // pre-pass: a missing device must not answer with a zero matrix (A16),
+  // and a pair count that does not fit the launch geometry must not be
+  // narrowed to int by the pre-pass (A15).
+  detail::require_cuda_device(cuda_available(), "compute_distance_matrix_cuda");
+  detail::require_pair_count_fits(detail::upper_triangle_pairs(N),
+                                  "compute_distance_matrix_cuda");
+
   CUDADistMatResult result;
   result.kernel_used = "none";
-  const size_t N = series.size();
   result.n = N;
   result.matrix.resize(N * N, 0.0);
 
-  if (N <= 1 || !cuda_available()) return result;
+  if (N <= 1) return result;
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
   // Find max length for padding
-  size_t max_L = 0;
-  std::vector<int> lengths(N);
-  for (size_t i = 0; i < N; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    max_L = std::max(max_L, series[i].size());
-  }
+  std::vector<int> lengths;
+  const size_t max_L = detail::scan_series_lengths(series, lengths);
 
   if (max_L == 0) return result;
 
   const auto kernel_selection = detail::select_kernel(
-      max_L, opts.kernel_override);
+      detail::kernel_selection_length(max_L, opts.max_length_hint),
+      opts.kernel_override);
   result.kernel_used = std::string(
       detail::kernel_path_name(kernel_selection.path));
   result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
 
   // Fix 1: No pair index arrays — pairs are decoded on-device via decode_pair().
   // This eliminates 2 * num_pairs * sizeof(int) host allocation + H2D transfer.
-  const size_t num_pairs = N * (N - 1) / 2;
+  const size_t num_pairs = detail::upper_triangle_pairs(N);
   result.pairs_computed = num_pairs;
 
   // Determine compute precision
@@ -1580,23 +1588,23 @@ CUDALBResult compute_lb_keogh_cuda(
     const std::vector<std::vector<double>> &series,
     int band, int device_id)
 {
-  CUDALBResult result;
   const size_t N = series.size();
+  detail::require_cuda_device(cuda_available(), "compute_lb_keogh_cuda");
+  detail::require_pair_count_fits(detail::upper_triangle_pairs(N),
+                                  "compute_lb_keogh_cuda");
+
+  CUDALBResult result;
   result.n = N;
 
-  if (N <= 1 || band < 0 || !cuda_available()) return result;
+  if (N <= 1 || band < 0) return result;
 
   CUDA_CHECK(cudaSetDevice(device_id));
 
-  size_t max_L = 0;
-  std::vector<int> lengths(N);
-  for (size_t i = 0; i < N; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    max_L = std::max(max_L, series[i].size());
-  }
+  std::vector<int> lengths;
+  const size_t max_L = detail::scan_series_lengths(series, lengths);
   if (max_L == 0) return result;
 
-  const size_t num_pairs = N * (N - 1) / 2;
+  const size_t num_pairs = detail::upper_triangle_pairs(N);
 
   // Use FP64 for standalone LB computation (accuracy matters for pruning decisions)
   result.lb_values = launch_lb_keogh_standalone<double>(
@@ -2194,15 +2202,11 @@ std::vector<double> launch_one_vs_all_kernel(
 
   } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: one block per target, grid.y = K queries
-    const bool preload = (max_L <= 512);
-    // Task 0.1: L>2048 uses the 3-buffer path (the double-buffer register
-    // cache of MAX_SI*256=2048 cells would drop longer anti-diagonals).
-    const size_t n_bufs =
-        preload ? 5 : ((max_L > 1024 && max_L <= 2048) ? 2 : 3);
+    const size_t n_bufs = detail::wavefront_buffer_count(max_L);
     if (max_L > 2048) {
-      static bool logged = false;
-      if (!logged) {
-        logged = true;
+      // Lock-free warn-once: exchange() is a single RMW, never a mutex.
+      static std::atomic<bool> logged{ false };
+      if (!logged.exchange(true, std::memory_order_relaxed)) {
         std::cerr << "[CUDA] 1-vs-N max_L=" << max_L
                   << " > 2048: using the 3-buffer wavefront path "
                      "(the double-buffer register cache would drop cells).\n";
@@ -2213,6 +2217,9 @@ std::vector<double> launch_one_vs_all_kernel(
     int block_size;
     if (max_L <= 512)      block_size = 128;
     else                   block_size = 256;
+
+    require_shared_mem_fits(shared_mem, device_id,
+                            "dtw_one_vs_all_wavefront_kernel");
 
     if (shared_mem > 48 * 1024) {
       CUDA_CHECK(cudaFuncSetAttribute(dtw_one_vs_all_wavefront_kernel<T>,
@@ -2269,12 +2276,16 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
 {
   validate_cuda_precision(opts.precision);
   validate_kernel_override(opts.kernel_override);
-  CUDAOneVsNResult result;
   const size_t N = series.size();
+  detail::require_cuda_device(cuda_available(), "compute_dtw_one_vs_all");
+  // One query row: the kernel indexes the output as int(query*N + target).
+  detail::require_pair_count_fits(N, "compute_dtw_one_vs_all");
+
+  CUDAOneVsNResult result;
   result.n = N;
   result.distances.resize(N, 0.0);
 
-  if (N == 0 || !cuda_available()) return result;
+  if (N == 0) return result;
   if (query_index >= N) {
     throw std::runtime_error("query_index " + std::to_string(query_index) +
                              " out of range [0, " + std::to_string(N) + ")");
@@ -2282,16 +2293,13 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
-  size_t max_L = 0;
-  std::vector<int> lengths(N);
-  for (size_t i = 0; i < N; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    max_L = std::max(max_L, series[i].size());
-  }
+  std::vector<int> lengths;
+  const size_t max_L = detail::scan_series_lengths(series, lengths);
   if (max_L == 0) return result;
 
   const auto kernel_selection = detail::select_kernel(
-      max_L, opts.kernel_override);
+      detail::kernel_selection_length(max_L, opts.max_length_hint),
+      opts.kernel_override);
   result.kernel_used = std::string(
       detail::kernel_path_name(kernel_selection.path));
   result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
@@ -2334,25 +2342,27 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
 {
   validate_cuda_precision(opts.precision);
   validate_kernel_override(opts.kernel_override);
-  CUDAOneVsNResult result;
   const size_t N = series.size();
+  detail::require_cuda_device(cuda_available(),
+                              "compute_dtw_one_vs_all(external query)");
+  detail::require_pair_count_fits(N, "compute_dtw_one_vs_all(external query)");
+
+  CUDAOneVsNResult result;
   result.n = N;
   result.distances.resize(N, 0.0);
 
-  if (N == 0 || !cuda_available()) return result;
+  if (N == 0) return result;
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
-  size_t max_L = query.size();
-  std::vector<int> lengths(N);
-  for (size_t i = 0; i < N; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    max_L = std::max(max_L, series[i].size());
-  }
+  std::vector<int> lengths;
+  const size_t max_L =
+      detail::scan_series_lengths(series, lengths, query.size());
   if (max_L == 0) return result;
 
   const auto kernel_selection = detail::select_kernel(
-      max_L, opts.kernel_override);
+      detail::kernel_selection_length(max_L, opts.max_length_hint),
+      opts.kernel_override);
   result.kernel_used = std::string(
       detail::kernel_path_name(kernel_selection.path));
   result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;
@@ -2395,14 +2405,18 @@ CUDAKVsNResult compute_dtw_k_vs_all(
 {
   validate_cuda_precision(opts.precision);
   validate_kernel_override(opts.kernel_override);
-  CUDAKVsNResult result;
   const size_t N = series.size();
   const size_t K = query_indices.size();
+  detail::require_cuda_device(cuda_available(), "compute_dtw_k_vs_all");
+  // The kernel indexes the K*N output as int(query*N + target).
+  detail::require_pair_count_fits(K * N, "compute_dtw_k_vs_all");
+
+  CUDAKVsNResult result;
   result.n = N;
   result.k = K;
   result.distances.resize(K * N, 0.0);
 
-  if (N == 0 || K == 0 || !cuda_available()) return result;
+  if (N == 0 || K == 0) return result;
 
   for (size_t qi = 0; qi < K; ++qi) {
     if (query_indices[qi] >= N) {
@@ -2414,16 +2428,13 @@ CUDAKVsNResult compute_dtw_k_vs_all(
 
   CUDA_CHECK(cudaSetDevice(opts.device_id));
 
-  size_t max_L = 0;
-  std::vector<int> lengths(N);
-  for (size_t i = 0; i < N; ++i) {
-    lengths[i] = static_cast<int>(series[i].size());
-    max_L = std::max(max_L, series[i].size());
-  }
+  std::vector<int> lengths;
+  const size_t max_L = detail::scan_series_lengths(series, lengths);
   if (max_L == 0) return result;
 
   const auto kernel_selection = detail::select_kernel(
-      max_L, opts.kernel_override);
+      detail::kernel_selection_length(max_L, opts.max_length_hint),
+      opts.kernel_override);
   result.kernel_used = std::string(
       detail::kernel_path_name(kernel_selection.path));
   result.kernel_override_fell_back = kernel_selection.fell_back_to_auto;

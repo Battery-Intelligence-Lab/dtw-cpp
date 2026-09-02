@@ -1241,12 +1241,12 @@ MetalDistMatResult compute_distance_matrix_metal(
   if (N <= 1) return result;
 
   auto &ctx = context();
-  if (!ctx.initialized) {
-    if (opts.verbose) {
-      std::cerr << "[Metal] Backend unavailable: " << ctx.init_error << '\n';
-    }
-    return result;
-  }
+  // A16 parity with CUDA: an unavailable backend is a typed DeviceError,
+  // never a zero-filled result that reads as a valid answer.
+  if (!ctx.initialized)
+    throw dtwc::DeviceError("Metal backend unavailable: "
+                            + (ctx.init_error.empty()
+                                 ? std::string("unknown") : ctx.init_error));
 
   // Find max length and build padded FP32 input buffer.
   int max_L = 0;
@@ -1801,7 +1801,12 @@ MetalLBResult compute_lb_keogh_metal(
   if (N <= 1 || band < 0) return result;
 
   auto &ctx = context();
-  if (!ctx.initialized) return result;
+  // A16 parity with CUDA: an unavailable backend is a typed DeviceError,
+  // never a zero-filled result that reads as a valid answer.
+  if (!ctx.initialized)
+    throw dtwc::DeviceError("Metal backend unavailable: "
+                            + (ctx.init_error.empty()
+                                 ? std::string("unknown") : ctx.init_error));
 
   int max_L = 0;
   std::vector<int> lengths(N);
@@ -1963,12 +1968,12 @@ MetalKVsNResult compute_kvn_impl(
   if (Kq == 0 || N == 0) return result;
 
   auto &ctx = context();
-  if (!ctx.initialized) {
-    if (opts.verbose) {
-      std::cerr << "[Metal] Backend unavailable: " << ctx.init_error << '\n';
-    }
-    return result;
-  }
+  // A16 parity with CUDA: an unavailable backend is a typed DeviceError,
+  // never a zero-filled result that reads as a valid answer.
+  if (!ctx.initialized)
+    throw dtwc::DeviceError("Metal backend unavailable: "
+                            + (ctx.init_error.empty()
+                                 ? std::string("unknown") : ctx.init_error));
 
   // Shared max_L across queries and targets. Users with very different query
   // vs target lengths pay padding cost; the CUDA path has the same behavior.
