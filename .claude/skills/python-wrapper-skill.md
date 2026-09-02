@@ -1,5 +1,5 @@
 ---
-description: "Analyze C++ headers and generate pybind11 Python bindings with Pythonic sugar layer. Maintains OOP consistency (CasADi-style) so switching between C++ and Python feels seamless."
+description: "HISTORICAL pybind11 binding-generator notes. DTWC++ ships nanobind bindings in python/src/_dtwcpp_core.cpp — do NOT generate pybind11 code for this repo. Kept for the CasADi-style cross-language design rules only."
 allowed-tools:
   - Read
   - Write
@@ -10,15 +10,22 @@ allowed-tools:
   - Task
 ---
 
-# Python Wrapper Generator
+# Python Wrapper Generator (historical — pybind11)
+
+> **STATUS: obsolete for DTWC++.** This repository migrated to **nanobind**;
+> the live bindings are `python/src/_dtwcpp_core.cpp` and the package is
+> `dtwcpp`. Everything below describes the older pybind11 generator and is
+> retained only for the cross-language API design rules (§Step 1, §Step 3,
+> §parity). Do **not** emit `pybind11/*` includes or `PYBIND11_MODULE` into
+> this repo; extend the nanobind module instead.
 
 Generate complete pybind11 Python bindings from C++ header files, following CasADi's cross-language design philosophy: **the same class names, same method signatures, same feel** — Python code should read naturally while mapping 1:1 to the C++ API.
 
 ## Requirements
 
 - **pybind11** >= 2.10 (for `pybind11/stl/filesystem.h`)
-- **C++17** or newer
-- **Python** >= 3.8
+- **C++20** or newer (DTWC++ minimum; see `.claude/cpp-style.md`)
+- **Python** >= 3.9 (DTWC++ `requires-python`)
 
 ## Input
 
@@ -599,6 +606,10 @@ When generating bindings, produce a side-by-side usage example showing the same 
 
 ### Example (DTW clustering workflow):
 
+Illustrative template only — it shows the *shape* of cross-language parity, not the
+shipped DTWC++ surface (there is no `DataLoader` in the Python/MATLAB packages;
+see `dtwcpp.load` / `dtwc.load`).
+
 **C++:**
 ```cpp
 #include "dtwc/dtwc.hpp"
@@ -619,7 +630,7 @@ auto sil = scores::silhouette(prob);
 
 **Python:**
 ```python
-import dtwc
+import dtwcpp as dtwc
 
 loader = dtwc.DataLoader()
 loader.path = "data/ECG200"

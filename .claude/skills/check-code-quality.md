@@ -430,7 +430,8 @@ rg -n 'dtw_kernel_|resolve_dtw_fn|AROWCell|SoftCell' \
 # User-facing docs vs implementation
 rg -n 'CLI flags take precedence|command-line flags take precedence' \
   docs/content/getting-started/configuration.md docs/content/getting-started/cli.md
-rg -n 'TODO: This always overrides CLI values if the YAML key exists' dtwc/dtwc_cl.cpp
+# The hand-rolled YAML loader was removed; any 'yaml' in the CLI means it is back
+rg -in 'yaml' dtwc/dtwc_cl.cpp
 
 # Test / algorithm naming drift
 rg -n 'fast_pam' tests/unit/adversarial/test_fast_pam_adversarial.cpp tests/unit/algorithms/unit_test_fast_pam.cpp

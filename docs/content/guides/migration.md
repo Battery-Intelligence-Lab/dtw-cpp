@@ -65,8 +65,8 @@ falsified; that does not change the implemented public policy.
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (settings.hpp:88-94) | `set_data_path` | C++ `[[deprecated]]` |
 | 38 | set results path | `settings::paths::setResultsPath` (settings.hpp:96-102) | `set_results_path` | C++ `[[deprecated]]` |
-| 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:306-326`) | `Result` | uncached identity-preserving warning alias 1 cycle |
-| 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:102-107`) | `Result.medoids` | warning alias 1 cycle |
+| 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:319-339`) | `Result` | uncached identity-preserving warning alias 1 cycle |
+| 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`) | `Result.medoids` | warning alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
 | 42 | CLI dtype default | `--dtype float32` (dtwc_cl.cpp:717-725) | `--dtype float64` | old accepted, default flips (§8) |
 

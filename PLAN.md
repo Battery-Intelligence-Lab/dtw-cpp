@@ -474,8 +474,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       reconciliation. Verbatim registration/status archived in
       `.claude/PLAN-archive-2026-08-09-findings.md`; evidence:
       `.claude/baselines/2026-07-24-f17-cli-resume.md`.
-- [ ] **F18 — MATLAB estimator routing. ATTEMPTS EXHAUSTED / FALSIFIED
-      2026-07-24:** product rolled back after R2024b CUDA Auto crashed before
+- [x] **F18 — MATLAB estimator routing. CLOSED 2026-09-02:** `DTWClustering.fit`
+      executes `Metric` (exact SquaredL2 matrix via `DTWClustering_compute_distance_matrix`)
+      and `Device` (validated through `Env`, restored on error, forwarded to the
+      Problem's strategy and `cuda_settings.device_id`); both red gates green on
+      R2024b and R2025b (`.claude/reports/2026-09-02-matlab-parity.md`,
+      `-adversarial-matlab.md`). GPU execution itself remains unverified here
+      (no CUDA MEX built); F41/F42 keep that. Historical status: ATTEMPTS
+      EXHAUSTED / FALSIFIED 2026-07-24: product rolled back after R2024b CUDA Auto crashed before
       the first kernel row; retained red-first gates are `625b5b7`. F40/F41/F42
       own the separated residuals, with F42 prerequisite to reopening. Verbatim
       registration/status archived in
@@ -704,8 +710,14 @@ Open findings first (status after R0 adjudication — update these boxes there):
       Preserve the exact 39 workflow-action, 7 archive, and 1 Arrow identities,
       all F17 behavior/mutations, and the 120/120, 120/120, 122/122 full-suite
       floors.
-- [ ] **F40 — functional MATLAB `dtwc.cluster(...,'device',...)` validates Env
-      but still computes through a default CPU `Problem`.** The F18 audit found
+- [x] **F40 — CLOSED 2026-09-02:** `dtwc.cluster` is now argument parsing plus
+      one MEX call into C++ `dtwc::cluster`, so device, method set, `k <= N`,
+      `max_iter`, `skip_*` and output naming are the C++ ones by construction
+      (`.claude/reports/2026-09-02-matlab-parity.md`). The CUDA-MEX profiling gate
+      below was NOT run (no CUDA MEX here); GPU routing is inherited from C++
+      `configure_device`, not measured. Historical text: functional MATLAB
+      `dtwc.cluster(...,'device',...)` validated Env
+      but still computed through a default CPU `Problem`. The F18 audit found
       this separate Tier-1 function changes or reads the global device, records
       that name in `Result`, then creates an Auto `Problem`; FastPAM, CLARA,
       MIP, and hierarchical routes never consume the device. It exposes no
@@ -1173,6 +1185,21 @@ colour system transfer verbatim**.
   for attribution. `[BLOCKED-ENV]`: HiGHS-enabled MEX crashes MATLAB on any MIP
   solve. Evidence: `.claude/baselines/2026-09-02-quality-campaign.md`,
   `.claude/reports/2026-09-02-*.md`.
+- 2026-09-02 (second pass — parity / checkpoint / portability): MEX HiGHS crash
+  root-caused (MATLAB private msvcp140 14.36 vs constexpr `std::mutex`; tree-wide
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR` for MATLAB builds), MATLAB MIP/PDLP run
+  on R2024b+R2025b, `matlab_suite` in CTest (123 passed, floor 121);
+  `[BLOCKED-ENV]` retired. Mid-fill interval checkpoint implemented
+  (`Problem::checkpoint`, rows between saves, one retained generation) and the
+  latent resume bug fixed (brute-force `resize(N)` wiped restored matrices).
+  F15 generator made portable (`genrand_res53`, one fingerprint). YAML CLI
+  config removed. CasADi parity: `skip_rows`/`lr_max_nodes` everywhere; Python
+  and MATLAB Tier-1 re-routed through C++ `load`/`cluster` (F18/F40 closed;
+  7 Python + 9 MATLAB drifts); Tier-1 routes made side-effect-free (Lloyd wrote
+  CWD-relative `./results`); UTF-8 names end to end. Serial gates: 130/130,
+  130/130, 132/132 (6/9/8 skips), CUDA 4/4, Python 1112/16/0, MATLAB
+  124/123/0/1 both releases. Evidence: `.claude/reports/2026-09-02-*.md`,
+  `.claude/summaries/handoff-2026-09-02-parity-checkpoint.md`.
 
 ## Progress log (append-only; older entries in the archive)
 

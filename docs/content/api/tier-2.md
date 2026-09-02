@@ -40,7 +40,7 @@ out-of-line and warning-silent.
 | lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
 | storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
@@ -223,19 +223,36 @@ are snake_case; current availability and gaps are explicit below.
 
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
-| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`} | live | live `[introduced-2.0]` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path)` | live | live `[introduced-2.0]` |
-| load dir checkpoint | `load_checkpoint(Problem&, path) -> bool` | live | live `[introduced-2.0]` |
+| options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
+| save dir checkpoint | `save_checkpoint(const Problem&, path, core::MetricType metric = L1)` | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load dir checkpoint | `load_checkpoint(Problem&, path, core::MetricType metric = L1) -> bool` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
 | save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
 | load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
-`CheckpointOptions` is presently a passive configuration carrier: no
-algorithm or save/load call consumes `enabled`, `save_interval`, or
-`directory`. Persistence is explicit through `save_checkpoint(prob, path)` and
-`load_checkpoint(prob, path)`.
+`CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
+the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
+BruteForce row schedule in consecutive blocks of `save_interval` completed
+matrix rows and publishes one generation after each block, the last block
+included, so a completed fill leaves a complete checkpoint. Each save runs on
+the calling thread after its block has joined; a save that throws propagates out
+of `fill_distance_matrix()`, leaving the computed cells resident and the
+previously published generation valid. `enabled` requires dense distance storage
+and `save_interval >= 1`; either violation raises `InvalidInput` before any
+distance is computed, and `DistanceMatrixStrategy::Pruned` is downgraded to
+`BruteForce` because only the row schedule has save points. `enabled` defaults
+to `false`, in which case the fill is unchanged. Each save writes the whole
+`N`x`N` CSV, so it costs `O(N^2)` bytes and time and an automatic fill costs
+`O(N^3 / save_interval)` in total; choose `save_interval` so a save is a small
+fraction of a block (a block costs about `save_interval * N` DTWs, a save about
+`N^2` number formats). Explicit persistence through
+`save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
+remains the only way to save outside a fill. The CLI opts in with
+`--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`.
 
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
-`generations/<id>/{distances.csv,metadata.txt}` payload. A binary result
+`generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
+exactly one generation after a successful save: the old generation is removed
+only after `CURRENT` points at the new one. A binary result
 checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
 `<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
 fields of the completed binary result, restores them into `Problem`, skips

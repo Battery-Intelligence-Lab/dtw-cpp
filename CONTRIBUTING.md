@@ -31,7 +31,7 @@ For further details, refer to the [develop folder](https://github.com/Battery-In
 
 ### How to find good first issues to work on
 
-Issues labelled with `good first issue` are great starting points. Additionally, check our [TODO.md](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/main/develop/TODO.md) for next steps that might not be listed as issues yet.
+Issues labelled with `good first issue` are great starting points. Additionally, check our [TODO list](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/.claude/TODO.md) for next steps that might not be listed as issues yet.
 
 ## Learning Material
 

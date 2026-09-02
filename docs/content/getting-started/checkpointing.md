@@ -27,7 +27,9 @@ Directory checkpoint v2 publishes a small root `CURRENT` file whose lowercase
 64-hex generation ID selects immutable
 `generations/<id>/{distances.csv,metadata.txt}` files. A successful save writes
 and validates a new generation before atomically replacing `CURRENT`; it does
-not overwrite the active generation in place.
+not overwrite the active generation in place. A directory holds exactly one
+generation after a successful save: the old generation is removed only after
+`CURRENT` points at the new one.
 
 - **`distances.csv`** -- the exact N-by-N matrix; an empty field is the only
   uncomputed representation.
@@ -93,18 +95,26 @@ legacy, or malformed state returns `false` without changing `Problem`.
 
 ### CheckpointOptions
 
-`CheckpointOptions` is currently a passive configuration carrier:
+`CheckpointOptions` drives automatic mid-fill saving through `Problem::checkpoint`:
 
 ```cpp
-dtwc::CheckpointOptions opts;
-opts.directory = "./checkpoints";  // Directory to save checkpoint files
-opts.save_interval = 100;          // Save every N pairs computed (reserved)
-opts.enabled = false;              // Whether checkpointing is enabled
+prob.checkpoint.directory = "./checkpoints"; // Directory to save checkpoint files
+prob.checkpoint.save_interval = 100;        // Completed matrix rows between saves
+prob.checkpoint.enabled = true;             // Enable automatic mid-fill saving
+prob.fill_distance_matrix();                // Saves a generation every 100 rows
 ```
 
-No algorithm or save/load function currently consumes these fields --
-`save_interval` in particular is inert, and there is no periodic save. Call
-`save_checkpoint` and `load_checkpoint` explicitly.
+`fill_distance_matrix()` then fills rows in consecutive blocks of
+`save_interval` rows and publishes one generation after each block, the last
+block included. Enabling it requires dense distance storage and
+`save_interval >= 1`; either violation raises `InvalidInput` before any distance
+is computed. `enabled` defaults to `false`, in which case the fill is unchanged
+and you call `save_checkpoint` and `load_checkpoint` explicitly.
+
+Each save writes the whole N-by-N CSV, so it costs O(N^2) bytes and time and an
+automatic fill costs O(N^3 / save_interval) in total. Choose `save_interval` so
+a save costs a small fraction of a block: a block costs about
+`save_interval * N` DTW computations, a save about N^2 number formats.
 
 ## Python directory API
 

@@ -8,6 +8,112 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fix (C++ Tier-1):** `Problem::cluster()` with `Method::Kmedoids` wrote
+  per-repetition medoid and best-repetition CSVs into the CWD-relative
+  `./results/` on every call and threw when the folder was missing, and it
+  printed Lloyd progress unconditionally. Clustering routes no longer perform
+  file I/O and print only when `verbose()` is set; `cluster_and_process()`
+  still writes exactly what it wrote before, and every writer now creates its
+  output directory. Benders progress lines are gated the same way.
+- **Added:** `Result::distance_matrix()` (dense row-major N×N, filling on
+  demand like `score`) in C++, mirrored by Python and used by MATLAB
+  `Result.plot`.
+- **Changed:** `MIPSettings::lr_max_nodes` and `LagrangianParams::max_nodes`
+  are `std::int64_t` (were `long`, 32-bit on Windows).
+- **Fix:** series and dataset names derived from file paths are UTF-8 on every
+  platform (were the native code page on Windows, which Python could not
+  decode and which the CLI wrote as mojibake).
+- **Changed (build):** `dtwc::load()` rejects the pre-2.0
+  `load(source, skip_cols, delimiter)` argument shape at compile time instead
+  of binding the delimiter character to `skip_rows`.
+- **Changed (MATLAB Tier-1):** `dtwc.cluster` delegates to C++ `dtwc::cluster`
+  through one MEX call instead of re-implementing routing in `.m`. `kmedoids`
+  now runs Lloyd k-medoids rather than FastPAM; `onebatch`, `lrcore` and
+  `tadpole` are added; `auto` follows the C++ rule; `k <= N` is enforced with
+  the C++ message; `max_iter` reaches CLARA; `skip_cols`/`skip_rows` apply to
+  in-memory sources; `device=` is a per-call override that no longer mutates
+  the process device. `Result.score`/`save` are the C++ members, so the output
+  CSVs carry the dataset's series names and match the CLI byte for byte.
+- **Changed (MATLAB):** `dtwc.DTWClustering` executes `Metric` and `Device`
+  instead of only storing them (closes F18/F40); `dtwc.Dataset.materialize`
+  honours `skip_cols` for in-memory sources; `save_checkpoint`/`load_checkpoint`
+  take the optional `metric` token C++ and Python already had, so a SquaredL2
+  matrix is no longer stamped and reloaded as L1. `dtwc.cluster`/`dtwc.load`
+  accept a cell array of numeric vectors as a ragged in-memory source;
+  `DTWClustering` with `Device='gpu:N'` forwards the ordinal to
+  `cuda_settings.device_id`; `Problem.get_cuda_settings` added.
+- **Changed (Python):** `dtwcpp.device()` returns the canonical name from
+  `dtwc::device` and `Env` is the only device store; path sources are parsed by
+  the C++ `DataLoader` (non-numeric id columns and ragged rows now load; no
+  numpy text parser remains); in-memory `skip_cols` erases columns as C++ does;
+  `cluster()` enforces `k <= N` and rejects an empty dataset with the C++
+  messages; `Result.score`/`save` work after matrix-free methods by filling the
+  matrix lazily as C++ does; `Problem.checkpoint` is bound (in-place mutation
+  works); `get_device()` is a deprecated alias of `device()`;
+  `dtwcpp.UndefinedScore` is bound (subclass of `InvalidInput`) and
+  `Result.save` warns and skips the silhouettes file on it as C++ does; ragged
+  in-memory sources load; series names come from the C++ loader, so all four
+  `Result.save` CSVs are byte-identical to the CLI's (UTF-8 names included).
+  Tier-1 `Dataset` materialises straight into a bound `dtwc::Data` with the
+  GIL released (2000×500: 0.40 s and 32 MB of Python objects → 0.19 s and
+  none); `Result.distance_matrix` fills on demand; NaN/inf in `save` follow
+  the C++ writer (empty field / `InvalidInput`). A single-column CSV now
+  yields N series of length 1, as the CLI does.
+- **Added:** automatic mid-fill checkpointing. `Problem::checkpoint`
+  (`CheckpointOptions{directory, save_interval, enabled}`) is now consumed by
+  `fill_distance_matrix()`: `save_interval` is the number of completed matrix
+  rows between saves; the brute-force fill runs disjoint row blocks and
+  publishes one generation after each block, including the last, so a crash
+  loses at most one block and a completed fill leaves a complete checkpoint.
+  `enabled` with `save_interval < 1`, an empty directory, or mmap storage is an
+  `InvalidInput` before any work; `Pruned` + `enabled` runs the exact
+  brute-force path (verbose note); CUDA/Metal save once after the fill. Each
+  save writes the full N×N matrix (O(N²) per save), documented with sizing
+  guidance. CLI: `--checkpoint-interval <rows>` (requires `--checkpoint`).
+  Exposed as `Problem.checkpoint` in Python (in-place mutation works) and
+  MATLAB (`set_checkpoint` / `get_checkpoint`).
+- **Fix:** resuming from a checkpoint through `fill_distance_matrix()` never
+  worked: the brute-force fill called `resize(N)` unconditionally, and
+  `DenseDistanceMatrix::resize` NaN-fills every slot, so a restored matrix was
+  discarded and recomputed. The resize is now conditional on a size change;
+  a real resume on a 25-series set went from 15 s to 0.15 s.
+- **Fix:** a checkpoint directory now holds exactly one generation; the
+  previous one is removed only after `CURRENT` points at the new one. Saves
+  used to accumulate one full N×N CSV each.
+- **Breaking (CLI/build):** the `--yaml-config` option, the
+  `DTWC_ENABLE_YAML` build option and the yaml-cpp dependency are removed.
+  `--config` (TOML, via CLI11) is the only configuration mechanism; the YAML
+  loader silently overrode explicitly given command-line flags. Migrate
+  `config.yaml` files to the same kebab-case keys in TOML. The required-input
+  error now reads `Error: --input is required via CLI or config file (TOML)`.
+- **Fix (MATLAB):** a MEX built with `-DDTWC_ENABLE_HIGHS=ON` no longer crashes
+  MATLAB R2024b (`0xc0000005` on a HiGHS worker thread) on `Method::MIP`
+  solves. A MEX runs against MATLAB's private `msvcp140.dll`; STL 14.40+ emits
+  a constexpr `std::mutex` that older runtimes fault on. MSVC-ABI MATLAB builds
+  now compile every TU, including fetched HiGHS and llfio, with
+  `_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR`. Verified: the same binary crashed
+  R2024b and passed R2025b before the fix, passes both after.
+- **Added:** `tests/matlab` runs under CTest as `matlab_suite` when
+  `DTWC_BUILD_MATLAB` is ON and MATLAB is found; a MATLAB "Incomplete"
+  (filtered-by-assumption) fails the gate instead of reading as a pass, and the
+  passed count is floored.
+- **Added (Tier-1 parity):** `load()` gains `skip_rows` after `skip_cols` in
+  C++, Python and MATLAB: leading lines for a path source, leading series for an
+  in-memory source; negative values are rejected. Python `device="hpc"` rejects
+  a non-zero value because the SLURM transport cannot carry it.
+- **Added:** `MIPSettings.lr_max_nodes` is readable and writable from Python
+  (shown in `repr`) and MATLAB (`set_mip_settings` / `get_mip_settings`).
+- **Changed (tests):** the shared deterministic generators in
+  `tests/support/deterministic_series.hpp` produce byte-identical doubles on
+  every conforming C++20 implementation: an exact 53-bit `genrand_res53`
+  conversion replaces `std::uniform_real_distribution`, whose engine-to-real
+  mapping is implementation-defined. F15 registers one fingerprint per
+  schedule instead of four per-toolchain profiles. Nominal ranges are
+  `[-1, 1)` and `[-10, 10)`.
+- Records: stale agent-facing guidance corrected (pybind11 wrapper skill marked
+  historical, dead `develop/TODO.md` links, closed TODO rows B03/D03,
+  `medoid_utils.hpp` tombstone); `.mailmap` maps Kasper Westman's PR #32
+  commits to his GitHub address.
 - **Breaking:** Benders decomposition (`Method::MIP` with
   `mip_settings.benders = "on"/"auto"`) now throws `dtwc::SolverError` when its
   cut loop reaches `max_benders_iter`, or its master stops non-optimally,

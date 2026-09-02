@@ -22,7 +22,7 @@ Key pages — check each for relevance:
 |------|---------------|
 | `getting-started/installation.md` | CMake options, dependencies, platform notes |
 | `getting-started/cli.md` | Every CLI flag with examples |
-| `getting-started/configuration.md` | TOML/YAML config options |
+| `getting-started/configuration.md` | TOML config options |
 | `getting-started/supported-data.md` | I/O formats, file layouts, compression |
 | `getting-started/python.md` | Python API, dtwc-convert, PyPI |
 | `getting-started/matlab.md` | MATLAB MEX bindings |
@@ -57,7 +57,7 @@ result = dtwcpp.cluster(data, k=5, method="clara")
 
 #### MATLAB
 \`\`\`matlab
-result = dtwc_cluster(data, 'k', 5, 'method', 'clara');
+result = dtwc.cluster(data, 5, 'method', 'clara');
 \`\`\`
 ```
 
@@ -65,7 +65,7 @@ Example files to keep updated:
 - `examples/cpp/example_new_features.cpp`
 - `examples/python/` (numbered: `01_quickstart.py`, `02_...`, etc.)
 - `examples/cpp/config.toml`
-- `bindings/matlab/examples/example_quickstart.m`
+- `examples/matlab/example_quickstart.m`
 
 ### 4. Mermaid Diagrams
 

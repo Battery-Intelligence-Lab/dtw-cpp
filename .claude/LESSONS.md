@@ -601,22 +601,16 @@ Critical knowledge to avoid repeating mistakes.
   user-visible output contracts, finish all writes, close explicitly, then
   check stream state and return or throw the typed I/O failure. F14 applied
   this at all three matrix-file openers after the production audit.
-- **An RNG engine and seed do not uniquely specify floating-point fixture
-  bytes.** F15's identical `mt19937` draws through
-  `uniform_real_distribution<double>(-10,10)` produced different last bits
-  under the repository's relaxed Clang Release flags and MSVC's
-  `/fp:precise`; Clang without those relaxations matched MSVC. Linux
-  libstdc++ produced a third result because the standard does not prescribe
-  `uniform_real_distribution`'s engine-to-real mapping; there even the scalar
-  `[-1,1]` bytes differ. Apple Clang + libc++ is a fourth coherent row: the
-  scalar/row `[-1,1]` hashes match libstdc++, the continuous `[-10,10]` stream
-  differs by a few ULPs, and the 3x3 full/band-0 oracles still hash to the
-  libstdc++ matrices. Register that row as `libcxx` (PR #32, Kasper Westman,
-  evidence `.claude/baselines/2026-09-01-f15-libcxx-profile.md`); do not skip
-  F15 or replace the STL distribution. A behavior-neutral extraction must compare raw
-  IEEE-754 bytes under each verified compiler-plus-standard-library profile,
-  preserve the distribution type and draw schedule, and never relabel legacy
-  STL-distribution fixtures as `portable-v1`.
+- **`std::mt19937` is bit-exact by the standard; `uniform_real_distribution` /
+  `generate_canonical` are not. [confirmed 2026-09-02]** The same seed gave four
+  byte-different fixtures (MSVC, relaxed Clang, libstdc++, libc++), each needing
+  a hand-registered profile row. `tests/support/deterministic_series.hpp` now
+  converts integers itself (`genrand_res53`, `k * 0x1p-52` / `k * 0x1.4p-49`, one
+  correctly rounded op, nothing to reassociate or fuse) and F15 registers ONE
+  fingerprint per schedule; verified byte-identical across clang/MSVC-STL,
+  g++/libstdc++ and `-O0 -ffp-contract=off`. Never hash distribution output, and
+  never write `lo + (hi-lo)*u` in a fixture: `/fp:contract` or
+  `-fassociative-math` turns it into an FMA and the bits move.
 - **Catch2 decomposition rejects unparenthesized logical OR.** An expression
   such as `CHECK((a && b) || (c && d))` reaches Catch2's deleted/decomposition
   guard and fails to compile; force the complete predicate to `bool` with one
@@ -1233,25 +1227,24 @@ Critical knowledge to avoid repeating mistakes.
 
 ## MATLAB / MEX (audit 2026-09-02)
 
-- **[BLOCKED-ENV] A HiGHS-enabled MEX crashes MATLAB on this box, and
-  `tests/matlab/*.m` are NOT registered in CTest.** Building `dtwc_mex` with
-  `-DDTWC_ENABLE_HIGHS=ON` and running any `Method::MIP` solve aborts MATLAB
-  R2024b with `Exit Status: 0xc0000005, Access violation` on a HiGHS worker
-  thread (`MSVCP140.dll ... Thrd_yield`), for BOTH toolchains (clang+Ninja
-  `build/mex-highs`, MSVC+VS `build/mex-highs-msvc`; re-confirmed 2026-09-02
-  inside `dtwc_mex.mexw64` on `test_cluster_mip.m`), so every recorded MEX build
-  in the repo is HiGHS-OFF and the MATLAB MIP route has never been executed
-  here. `tests/CMakeLists.txt` globs `*.cpp` only, so the `.m` files run solely
-  by hand and only against a HiGHS-OFF MEX:
-  `cmake --build build/mex-verify --target dtwc_mex`, then
-  `matlab -batch "addpath(<ABSOLUTE build/mex-verify/bin>); addpath(<ABSOLUTE
-  bindings/matlab>); runtests(<ABSOLUTE .m path>)"`. Two traps: the paths must
-  be WINDOWS absolute (an MSYS `/c/...` path makes
-  `exist(''dtwc_mex'',''file'')` return 0 and every case comes back "Filtered by
-  assumption" — Incomplete, which reads like a pass in the summary table, so
-  always print `sum([r.Passed])`); and anything on the MIP route, such as
-  `test_cluster_mip.m`, is capability-guarded and reports "no exact MIP solver
-  compiled into dtwc_mex" rather than a false green.
+- **A MEX inherits MATLAB's private MSVC runtime, so a constexpr `std::mutex`
+  is a cross-release landmine. [confirmed 2026-09-02]** The SAME HiGHS-enabled
+  `dtwc_mex.mexw64` crashed R2024b (`0xc0000005`, `Thrd_yield+184`, `RAX=0`) and
+  passed R2025b; the hosts differ only in `bin/win64/MSVCP140.dll` 14.36 vs
+  14.40. STL 14.40+ emits an all-zero constexpr mutex that 14.36's `_Mtx_lock`
+  dereferences. Remedy: top-level
+  `add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)` guarded by
+  `DTWC_BUILD_MATLAB AND (MSVC OR (WIN32 AND CMAKE_CXX_SIMULATE_ID STREQUAL
+  "MSVC"))`, placed BEFORE `Dependencies.cmake` so it reaches fetched HiGHS and
+  llfio (the ctor inlines into their objects; a define on `dtwc_mex` alone
+  cannot work — check `_deps/highs-build/.../highs.vcxproj`). Kill the DLL-clash
+  hypothesis first with `llvm-objdump -p` (HiGHS is static; MATLAB's own
+  `highs.dll` is never imported). Nearest-export stack labels name neither the
+  failing function nor its caller; a binary-identical, host-different
+  differential localises the fault in one run. `tests/matlab` now runs under
+  CTest as `matlab_suite` (needs `DTWC_BUILD_MATLAB=ON` and `matlab` on PATH);
+  MATLAB "Incomplete" (filtered-by-assumption) is a silent skip, so the gate
+  fails on it outside an explicit allow-list and floors the passed count.
 - **CMake 4.2 `FindMatlab` only exports `mexFunction` under `if(MSVC)`.** A
   Clang (GNU-frontend) MEX on Windows then links with no entry point and MATLAB
   says "Invalid MEX-file ...: Gateway function is missing". `build/mex-verify`
@@ -1263,3 +1256,61 @@ Critical knowledge to avoid repeating mistakes.
   and every caller then evaluated `INT_MIN - 1` — signed overflow, in the helper
   added to remove signed overflow. Check the boundary the CALLER will cross, not
   the one the helper converts (`bindings/matlab/dtwc_mex.cpp`).
+
+## Parity, checkpoint, portability campaign (2026-09-02, second pass)
+
+- **`DenseDistanceMatrix::resize(N)` is a wipe, not a growth. [confirmed]**
+  It NaN-fills every packed slot, and `fillDistanceMatrix_BruteForce` called
+  it unconditionally, so `load_checkpoint` + `fill_distance_matrix` discarded
+  the restored matrix and recomputed everything: resume never worked through
+  the fill entry point (25 series: 15 s vs 0.15 s after `if (m.size() != N)`).
+  The pruned builder had already been fixed with a comment claiming the
+  brute-force path matched; read the code, not the comment. Every semantic
+  setter invalidates through `refresh_distance_matrix()` → `resize(0)`, which
+  is why the conditional resize is safe.
+- **A checkpoint that never prunes generations is O(N³/interval) on disk.**
+  Mid-fill saves published one immutable full N×N generation each and kept
+  them all (6 after run 1, 7 after run 2). Retain exactly one generation,
+  removed only after `CURRENT` points at the new one, and document the O(N²)
+  per-save cost with a sizing rule next to the interval knob.
+- **Tier-1 routes must be side-effect-free. [confirmed]**
+  `Problem::cluster()` → Lloyd persisted per-repetition medoid CSVs into the
+  CWD-relative `./results/` and threw when it was missing; nothing exercised it
+  because the C++ tests ran from the source root, which has a gitignored
+  `results/`. It surfaced only when MATLAB Tier-1 started routing `kmedoids`
+  through C++. Rule: algorithms print only under `verbose()` and write nothing;
+  `cluster_and_process()` owns artifacts via an explicit flag; every writer
+  creates its directory. Test from a fresh temp CWD and assert it stays empty.
+- **Re-route bindings through the C++ Tier-1, do not re-implement it.**
+  MATLAB re-implemented `cluster` in `.m` and drifted six ways (kmedoids ran
+  FastPAM, three methods missing, device mutated the global, ordinal names,
+  clara ignored max_iter, no `k <= N`); Python drifted seven. One MEX/nanobind
+  call into `dtwc::cluster`/`dtwc::load` closed them all at once and deleted
+  the `.m` writer and the numpy parser. Remaining Python-owned pieces (HPC
+  route, `elapsed_s`, `plot`) are the only legitimate wrapper logic.
+- **MSVC `char8_t` → `fs::path` throws on unmappable bytes. [confirmed]**
+  `fs::path(std::u8string)` raises `system_error` ("No mapping for the Unicode
+  character exists") when the UTF-8 is invalid, so a native-encoded `--name`
+  from `argv` would have failed every write. `utf8_to_path` validates first and
+  falls back to the native narrow interpretation. Loader-produced names are
+  UTF-8 on every platform (`path_to_utf8`); writers convert back with
+  `utf8_to_path`; the CLI `--name` from `argv` is still ACP on Windows.
+- **Generated docs bite twice.** `docs/content/contributing/guideline.md`,
+  `math/lr-core.md`, `api/tier-*.md`, `getting-started/{cli,configuration,
+  checkpointing}.md` are outputs of `scripts/generate_docs.py`; hand edits are
+  reverted by the next contract check, and `check_docs_contract.py --cli`
+  compares BOTH `cli.md` and `configuration.md` against the live `--help`.
+  Edit `docs/api-contract-2.0.md` or the source, then regenerate.
+- **`PASS_REGULAR_EXPRESSION` makes CTest ignore the exit code.** A "rejects
+  unknown option" test written that way passes on any output containing the
+  phrase. Drive the binary from a `.cmake` script that asserts the non-zero
+  exit AND the flag name, not the CLI11 wording.
+- **Deleted overloads close positional-argument traps.** Inserting `int
+  skip_rows` before `char delimiter` let a future `load(p, 0, ',')` bind `','`
+  to `skip_rows=44`; `load(path, int, char, string_view) = delete` turns it
+  into a compile error. A non-dependent `static_assert(!requires{...})` on a
+  deleted call is a hard error on clang 19; use a dependent `requires`
+  expression through a concept.
+- **`long` is not a width.** `lr_max_nodes` was `long` (32-bit on Windows,
+  64-bit on Linux) and became a public setter in two bindings before anyone
+  noticed. Use `std::int64_t` for anything that crosses a binding.

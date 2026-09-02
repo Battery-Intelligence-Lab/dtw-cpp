@@ -42,7 +42,7 @@ int main(int argc, char **argv)
     : &quot;tests/conformance/data/conformance_series.csv&quot;;
 
   dtwc::device(&quot;cpu&quot;);
-  const auto data = dtwc::load(csv, 0, &#x27;,&#x27;, &quot;quickstart&quot;);
+  const auto data = dtwc::load(csv, 0, 0, &#x27;,&#x27;, &quot;quickstart&quot;);
   const auto result = dtwc::cluster(data, 3, &quot;pam&quot;, 3, &quot;cpu&quot;, 100);
 
   // Canonicalise cluster IDs so the printed answer is independent of medoid order.

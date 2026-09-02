@@ -13,7 +13,7 @@
 | Functions | camelCase (legacy) / snake_case (new) | `dtwBanded`, `fast_pam`, `fill_distance_matrix` |
 | Variables | snake_case | `p_vec`, `clusters_ind`, `band` |
 | Public members | snake_case (no underscore) | `band`, `name`, `data` |
-| Private members | snake_case + trailing `_` | `dtw_fn_`, `distMat` |
+| Private members | snake_case + trailing `_` | `dtw_fn_`, `data_`, `series_storage_owner_` |
 | Constants | UPPER_SNAKE_CASE | `DEFAULT_BAND_LENGTH` |
 | Enums | PascalCase class + PascalCase values | `Method::Kmedoids`, `Solver::HiGHS` |
 | Namespaces | snake_case | `dtwc`, `dtwc::core`, `dtwc::algorithms` |

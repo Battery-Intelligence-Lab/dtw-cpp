@@ -185,7 +185,7 @@ dtwc_cl --input data.tsv --n-clusters 3 \
 ```
 
 Accepted values are `error` (default), `zero_cost`, `arow`, and `interpolate`.
-The same `missing-strategy` key is available in TOML and YAML configuration.
+The same `missing-strategy` key is available in TOML configuration.
 Non-error missing handling cannot be combined with a non-standard DTW variant,
 because that combination would otherwise substitute the missing-data recurrence
 for the requested variant.

@@ -11,4 +11,4 @@ Here you may find the documentation how to contribute!
 
 [The list of contributors](contributors/)
 
-[TODO list](https://github.com/Battery-Intelligence-Lab/dtw-cpp/tree/main/develop/TODO.md)
+[TODO list](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/.claude/TODO.md)

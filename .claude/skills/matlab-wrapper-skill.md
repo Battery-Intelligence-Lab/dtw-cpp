@@ -17,7 +17,7 @@ Generate complete MEX-based MATLAB bindings from C++ header files, following Cas
 ## Requirements
 
 - **MATLAB** R2018a+ (for interleaved complex / `mxGetDoubles` API)
-- **C++17** or newer
+- **C++20** or newer (DTWC++ minimum; see `.claude/cpp-style.md`)
 - Legacy C MEX API (`mex.h`, `matrix.h`) — do NOT use the C++ MEX API (`mex.hpp`/`mexAdapter.hpp`)
 
 ## Input
@@ -699,6 +699,10 @@ When generating bindings, produce a side-by-side usage example showing the same 
 
 ### Example (DTW clustering workflow):
 
+Illustrative template only — it shows the *shape* of cross-language parity, not the
+shipped DTWC++ surface (there is no `DataLoader` in the Python/MATLAB packages;
+see `dtwcpp.load` / `dtwc.load`).
+
 **C++:**
 ```cpp
 #include "dtwc/dtwc.hpp"
@@ -719,7 +723,7 @@ auto sil = scores::silhouette(prob);
 
 **Python:**
 ```python
-import dtwc
+import dtwcpp as dtwc
 
 loader = dtwc.DataLoader()
 loader.path = "data/ECG200"

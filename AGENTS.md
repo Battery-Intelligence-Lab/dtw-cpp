@@ -107,17 +107,17 @@ WHAT you work on. Read both before touching anything. Supporting record:
 ## Build & gate recipes (proven; details in archive §Proven recipes)
 
 - **Canonical gate:** `build/highs-1151` (clang + Ninja + Release, HiGHS ON,
-  llfio ON, Arrow OFF). Floor (quality-campaign, 2026-09-02): `ctest` → **128/128,
-  0 failed**, 6 capability skips (cuda×2, metal×3, io_readers×1 — the
+  llfio ON, Arrow OFF). Floor (parity/checkpoint campaign, 2026-09-02): `ctest`
+  → **130/130, 0 failed**, 6 capability skips (cuda×2, metal×3, io_readers×1 — the
   io_readers skip is expected in this Arrow-OFF build; F9 is closed by its
   separate Arrow-ON executable gate). Rebuild first:
   `cmake --build build/highs-1151` (expect "no work to do" on a clean tree).
   Full matrices are SERIAL-only evidence: concurrent runs collide on
   source-root-relative test artifacts (F45 lesson).
 - **llfio-OFF build:** `build/nollfio` — must configure, build, and pass
-  **128/128, 0 failed**, with 9 capability skips.
+  **130/130, 0 failed**, with 9 capability skips.
 - **Arrow-ON build:** `build/arrow-pyarrow-23` — PyArrow 23 supplies shared
-  Arrow/Parquet. Floor: **130/130, 0 failed**, 8 capability skips; all four
+  Arrow/Parquet. Floor: **132/132, 0 failed**, 8 capability skips; all four
   real-CLI integration gates and the reader run (390 assertions / 11 cases).
   CTest metadata supplies LLVM, `pyarrow`, and `pyarrow.libs` runtime paths,
   so no caller PATH override is required.
@@ -148,18 +148,19 @@ WHAT you work on. Read both before touching anything. Supporting record:
 - **Python:** rebuild the extension via a configure dir with
   `-DDTWC_BUILD_PYTHON=ON`, copy the fresh `.pyd` + `libomp.dll` into the venv,
   verify import + one NEW symbol before pytest (stale-`.pyd` false-greens are
-  real). Current F23-era Python inventory: **1033 passed / 12 skipped /
-  1 expected F39 supply-chain red (1046 collected)**; with the two permanent
-  conformance nodes: **1035 passed / 12 skipped / 1 expected F39 red
-  (1048 collected)**.
+  real). Current inventory (parity campaign, 2026-09-02): **1112 passed /
+  16 skipped / 0 failed (1128 collected)**; the former F39 supply-chain red
+  no longer fires (manifest count re-pinned). The 4 extra skips are GPU-gated
+  device-canonicalisation cases on a CUDA-OFF module.
   Windows llfio-ON wheel is a known OPEN item (see PLAN R6).
 - **MATLAB:** R2024b + R2025b installed; run via `matlab -batch`. addpath ORDER
   matters — add the fresh binary directory LAST so it prepends ahead of any
   stale MEX (wrong order → 0xc0000005 from an old binary; check
-  `which('dtwc_mex','-all')` first). Current five-suite OpenMP inventory:
-  **85 collected, 82 passed, 2 expected F18 failures, 3 incomplete** (those
-  two failures plus the expected opposite-flavor capability skip
-  `test_parallelisation_serial_is_honest`) on both MATLAB versions.
+  `which('dtwc_mex','-all')` first). Current inventory (HiGHS-ON MSVC MEX,
+  `build/mex-highs-fix`, 2026-09-02): **124 collected, 123 passed, 0 failed,
+  1 incomplete** (the expected opposite-flavor capability skip
+  `test_parallelisation_serial_is_honest`) on R2024b and R2025b. Registered in
+  CTest as `matlab_suite` (floor `DTWC_MATLAB_SUITE_MIN_PASSED=121`).
 - **Conformance (permanent parity gate):** labels/medoids digit-identical across
   all 4 routes; silhouette 0.96894972764334841, DB 0.038333333333333337,
   dunn 11.5 vs `tests/conformance/conformance_reference.txt` (≤1e-12 rel).

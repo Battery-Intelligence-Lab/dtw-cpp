@@ -57,9 +57,13 @@ def dtw_distance(x, y, band=-1, metric="l1"):
 ```
 python/
   dtwcpp/
-    __init__.py       # Public API, check_system()
+    __init__.py       # Public API re-exports, check_system()
+    _api.py           # Dataset, load(), cluster(), Result, plot()
     _clustering.py    # DTWClustering sklearn-compatible class
+    _hpc.py           # SLURM device backend
+    distance.py       # Public pairwise surface (dtwcpp.distance.dtw, ...)
     io.py             # CSV/HDF5/Parquet I/O utilities
+    convert.py, preprocess.py, features.py, diagnose.py, test.py, sklearn.py
   src/
     _dtwcpp_core.cpp  # nanobind C++ bindings
 ```

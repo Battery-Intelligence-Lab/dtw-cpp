@@ -86,7 +86,7 @@ verdict rules are in
 | G05 | OPEN | Multi-stream CUDA pipeline; current production path is one serialized stream → **R5**. |
 | B01 | OPEN | First PyPI release/trusted publisher → **R6/operator**; workflow/dry-run preparation is complete. |
 | B02 | DONE | **CLOSED-BY `c4ba175`, Task 6.2 `8debf1d`:** MATLAB Phase 2 is delivered; fresh-MEX gate 61/61. |
-| B03 | OPEN | **MIXED:** tracked MEX removed by `8debf1d`; explicit `*.mexw64` ignore protection → **R1 tracked-junk audit**. |
+| B03 | DONE | **CLOSED-BY `8debf1d`, `4797c97`:** tracked MEX removed; `*.mexw64`/`*.mexa64`/`*.mexmaci64` ignores are now enforced (`.gitignore:67-69`, guarded by `scripts/check_repo_hygiene.py` REQUIRED_IGNORE_TARGETS). |
 | M01 | DONE | **CLOSED-BY-REJECTED `af67486`:** odd-cycle band falsified; the recorded LR/B&B chain remains binding. |
 | A01 | OPEN | Two-phase within-/cross-group clustering → **R5/2.1**, only after a quality/complexity band is registered. |
 | A02 | OPEN | **MIXED:** device-aware selection closed by `4e59d05`; measured resource/cost model → **R4 then R5**. |
@@ -96,7 +96,7 @@ verdict rules are in
 | PL04 | OPEN | **MIXED:** developer-absolute LLVM path, floor 3.26, and host visibility repaired by `7aef30d`; fail-closed preset metadata guard → **R3/F38**. |
 | D01 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** conversion guide delivered at `docs/content/guides/data-formats.md`. |
 | D02 | DONE | **CLOSED-BY Task 7.3 `8debf1d`:** Mermaid website architecture diagram delivered. |
-| D03 | OPEN | Byte-identical, separately referenced docs logos → **R1 tracked-junk audit**; preserve both consumers if deduplicated. |
+| D03 | DONE | **CLOSED-BY `4797c97`:** the duplicate `docs/docs_logo.png` is gone; `docs/static/docs_logo.png` is the single source, and both Doxygen/Hugo consumers are asserted by `scripts/check_repo_hygiene.py`. |
 | DEF01 | OPEN | DDTW recurrence fusion remains an explicit **2.1/R5 non-goal** unless profiling reopens it. |
 | DEF02 | DONE | **CLOSED-BY-SUPERSEDED `9511efd`, `9becd53`, `ef978e2`:** full semantic/content cache identity supersedes filename-plus-size. |
 | DEF03 | OPEN | **MIXED:** nanoarrow C Data ingestion closed by `3f827c2`; replacing Arrow C++ file readers remains an explicit **2.1 non-goal**. |

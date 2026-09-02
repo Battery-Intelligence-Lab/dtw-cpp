@@ -13,7 +13,7 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 - **DTW variants**: Standard, DDTW, WDTW, ADTW, Soft-DTW, MSM, and TWE
 - **Distance metrics**: L1 (default) and squared Euclidean
 - **GPU acceleration**: CUDA support for distance matrix computation
-- **Configuration files**: TOML (native) and YAML (optional) configuration support
+- **Configuration files**: TOML configuration support (CLI11 native)
 - **Checkpointing**: Save and resume distance matrix computation
 - **Flexible I/O**: CSV/TSV plus optional Arrow/Parquet input, configurable row/column skipping, and stable CSV outputs
 
@@ -179,8 +179,11 @@ file to stream them under the cap.
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
+| `--checkpoint-interval <rows>` | Publish a checkpoint generation every N completed distance-matrix rows (requires `--checkpoint`) | off (save once, at the end) |
 | `--resume` | Replay the completed automatic binary result at `<output>/<name>_checkpoint.bin` | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
+
+Without `--checkpoint-interval` the dense checkpoint is written once, after clustering. With it, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; the flag requires `--checkpoint <dir>` and exits 1 without it. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows
@@ -238,7 +241,6 @@ remain independent distance-matrix mechanisms.
 | Flag | Description |
 |------|-------------|
 | `--config <path>` | TOML configuration file (CLI11 native) |
-| `--yaml-config <path>` | YAML configuration file (requires `-DDTWC_ENABLE_YAML=ON`) |
 
 See [Configuration Files](configuration.md) for full details and examples.
 

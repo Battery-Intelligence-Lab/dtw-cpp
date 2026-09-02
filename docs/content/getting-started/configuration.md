@@ -5,9 +5,7 @@ weight: 9
 
 # Configuration Files
 
-`dtwc_cl` supports native CLI11 TOML configuration and an optional YAML subset.
-They do not have identical coverage or precedence, so choose the format
-deliberately.
+`dtwc_cl` supports native CLI11 TOML configuration.
 
 The [live CLI reference](../cli/) is the source of truth for option semantics,
 accepted values, defaults, and aliases.
@@ -36,7 +34,7 @@ Canonical keys and aliases represented by the live CLI are:
 | FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--batch-weighting`, `--dc` |
 | Hierarchical | `--linkage` |
 | Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--benders` |
-| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--resume`, `--mmap-threshold` |
+| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--checkpoint-interval`, `--resume`, `--mmap-threshold` |
 | Diagnostics | `--verbose` |
 
 Use canonical keys (`dtype`, `gpu-precision`) rather than their aliases in new
@@ -44,53 +42,19 @@ files. The repository's complete example is
 [`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml).
 
 `checkpoint` enables the dense CSV distance checkpoint, which loads on startup
-and saves on completion. The separate `resume` key maps the live `--resume`
+and saves on completion. `checkpoint-interval` additionally publishes a
+generation every N completed distance-matrix rows and requires `checkpoint`.
+The separate `resume` key maps the live `--resume`
 flag: it validates and replays the completed binary result selected by the same
 `output` and `name`, restores all result fields, skips clustering, and preserves
 the binary file. It is not algorithm-state continuation, does not add
 `max-iter`, and assumes the same input order/configuration because binary v1 has
 no semantic fingerprint. Missing or incompatible state is a hard error.
 
-These four flags control the command invocation rather than the clustering
-payload and are passed on the command line: `--help`, `--version`, `--config`,
-and `--yaml-config`.
+These three flags control the command invocation rather than the clustering
+payload and are passed on the command line: `--help`, `--version`, and
+`--config`.
 
 Current method values are `auto`, `pam`, `onebatch`, `clara`, `kmedoids`,
 `mip`, `lrcore`, `hierarchical`, and `tadpole`. Current variants are
 `standard`, `ddtw`, `wdtw`, `adtw`, `softdtw`, `msm`, and `twe`.
-
-## YAML
-
-YAML requires yaml-cpp:
-
-```bash
-cmake -S . -B build -DDTWC_ENABLE_YAML=ON
-dtwc_cl --yaml-config examples/cpp/config.yaml
-```
-
-Build the configured tree using the platform recipe in the installation guide
-before invoking `dtwc_cl`.
-
-The YAML loader currently runs after CLI11 parsing and overwrites a supported
-command-line value when the same key is present. This is a known precedence
-bug. Until it is fixed, treat YAML as the source of truth for keys present in
-the YAML file.
-
-The manually mapped canonical YAML keys are:
-
-| Area | YAML keys |
-|---|---|
-| Core | `input`, `output`, `name`, `n-clusters`, `method`, `band`, `metric`, `variant`, `max-iter`, `n-init`, `verbose` |
-| Device/storage | `device`, `dtype`, `ram-limit`, `gpu-precision`, `resume` |
-| Distance semantics | `wdtw-g`, `adtw-penalty`, `sdtw-gamma`, `msm-c`, `twe-nu`, `twe-lambda`, `mv-mode`, `missing-strategy` |
-| Sampling/hierarchy | `sample-size`, `n-samples`, `seed`, `linkage` |
-| Solver | `solver`, `mip-gap`, `time-limit`, `no-warm-start`, `numeric-focus`, `mip-focus`, `verbose-solver` |
-
-Deprecated YAML keys `clusters` and `restart` are accepted with warnings; the
-canonical key wins when both are present.
-
-YAML does not currently map `column`, CSV skip controls, OneBatchPAM controls,
-`dc`, `benders`, `checkpoint`, `dist-matrix`, or `mmap-threshold`. Supply those
-through the CLI/TOML route instead of assuming the YAML reader consumed them.
-The repository example is
-[`examples/cpp/config.yaml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.yaml).

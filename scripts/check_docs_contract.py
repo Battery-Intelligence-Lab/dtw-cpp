@@ -305,7 +305,7 @@ def assert_contract_audit_state() -> None:
         "## 10. Adjudicated reviewer decisions",
         "CURRENT",
         "generations/<id>",
-        "passive configuration carrier",
+        "consumed by `Problem::fill_distance_matrix()`",
         "independent copy",
         "Python `Problem.set_view_data` currently constructs owning",
         "completed-result replay",
@@ -325,11 +325,11 @@ def assert_contract_audit_state() -> None:
         "Every retained\ncallable alias in this table emits",
         "`set_distance_matrix` is canonical and warning-silent",
         "33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB",
-        "`ClusterResult` (`python/dtwcpp/__init__.py:306-326`)",
-        "`Result.medoid_indices` (`python/dtwcpp/_api.py:102-107`)",
+        "`ClusterResult` (`python/dtwcpp/__init__.py:319-339`)",
+        "`Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`)",
         "`dtwc_mex.cpp:224-230`",
-        "`__init__.py:213-238`",
-        "`_api.py:281-301`",
+        "`__init__.py:214-242`",
+        "`_api.py:413-433`",
         "`dtwc_cl.cpp:1343-1419`",
         "`DataLoader.hpp:291-297`",
         "`DataLoader.hpp:299-306`",
@@ -357,6 +357,55 @@ def assert_contract_audit_state() -> None:
         raise AssertionError(
             f"frozen contract hides 2.0 implementation gaps: {missing_findings}"
         )
+
+
+# F4: a `file:START-END` pin that merely EXISTS as a string is worse than no
+# pin -- the guard stays green while the range points at unrelated code. Each
+# entry names the identifier the pinned window must actually contain; the range
+# is read out of the contract, so the document and this script cannot drift
+# apart. Python column only (the C++/MATLAB pins have their own owners).
+PYTHON_LINE_PINS = (
+    (r"`Result\.medoid_indices` \(`python/dtwcpp/_api\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/_api.py", "def medoid_indices"),
+    (r"`_normalize_method`, `_api\.py:(\d+)-(\d+)`",
+     "python/dtwcpp/_api.py", "def _normalize_method"),
+    (r"`res\.plot\(png=\"clusters_2d\.png\", show=True\)` \(`_api\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/_api.py", "def plot(self"),
+    (r"prints cluster sizes and returns nothing \(`_api\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/_api.py", "no local distance matrix to plot"),
+    (r"the\s+property fills the retained `Problem` on first read.*?\(`_api\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/_api.py", "def distance_matrix"),
+    (r"`ClusterResult` \(`python/dtwcpp/__init__\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/__init__.py", 'if name != "ClusterResult"'),
+    (r"`dtwcpp\.device\(\) -> str` \(`__init__\.py:(\d+)-(\d+)`\)",
+     "python/dtwcpp/__init__.py", "def device(device=None)"),
+    (r"`_parse_device`, `__init__\.py:(\d+)-(\d+)`",
+     "python/dtwcpp/__init__.py", "def _parse_device"),
+)
+
+
+def assert_python_line_pins() -> None:
+    """Every Python line pin must really bracket the symbol it names."""
+    contract = (ROOT / "docs/api-contract-2.0.md").read_text(encoding="utf-8")
+    for pattern, relative, identifier in PYTHON_LINE_PINS:
+        match = re.search(pattern, contract, re.DOTALL)
+        if match is None:
+            raise AssertionError(
+                f"frozen contract lost the line pin naming {identifier!r}"
+            )
+        start, end = int(match.group(1)), int(match.group(2))
+        lines = (ROOT / relative).read_text(encoding="utf-8").splitlines()
+        if not 0 < start <= end <= len(lines):
+            raise AssertionError(
+                f"{relative}:{start}-{end} is outside the file "
+                f"(1-{len(lines)})"
+            )
+        window = "\n".join(lines[start - 1:end])
+        if identifier not in window:
+            raise AssertionError(
+                f"contract pin {relative}:{start}-{end} no longer contains "
+                f"{identifier!r} -- re-anchor it"
+            )
 
 
 def assert_python_binary_checkpoint_contract() -> None:
@@ -563,7 +612,7 @@ def assert_tier1_signatures() -> None:
     cpp_needles = (
         'std::string device(std::string_view name);',
         'std::string device();',
-        'Dataset load(const std::filesystem::path &source, int skip_cols = 0, char delimiter = 0, std::string_view name = "");',
+        'Dataset load(const std::filesystem::path &source, int skip_cols = 0, int skip_rows = 0, char delimiter = 0, std::string_view name = "");',
         'Result cluster(const Dataset &data, int k, std::string_view method = "pam", int band = -1, std::string_view device = "", int max_iter = 100);',
         'double score(std::string_view name) const;',
         'void save(const std::filesystem::path &directory) const;',
@@ -2288,16 +2337,6 @@ def assert_cli_reference(binary: Path) -> None:
             f"  documented but not live: {sorted(config_dead)}"
         )
 
-    source = (ROOT / "dtwc/dtwc_cl.cpp").read_text(encoding="utf-8")
-    yaml_keys = set(re.findall(r'set_if_unset\("([a-z0-9-]+)"', source))
-    missing_yaml = sorted(
-        key for key in yaml_keys if f"`{key}`" not in config_text
-    )
-    if missing_yaml:
-        raise AssertionError(
-            f"configuration page omits canonical YAML keys: {missing_yaml}"
-        )
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -2309,6 +2348,7 @@ def main() -> int:
                    check=True)
     assert_freeze_governance()
     assert_contract_audit_state()
+    assert_python_line_pins()
     assert_python_binary_checkpoint_contract()
     assert_migration_behaviors()
     assert_f22_changelog()
