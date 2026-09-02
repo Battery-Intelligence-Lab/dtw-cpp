@@ -21,7 +21,8 @@ classdef DTWClustering
 %   Band : int (default -1)
 %       Sakoe-Chiba band width. -1 for full DTW.
 %   Metric : char (default 'l1')
-%       Pointwise distance metric.
+%       Pointwise cost metric: 'l1' or 'squared_euclidean'. A non-L1 metric
+%       requires Variant 'standard' and MissingStrategy 'error'.
 %   MaxIter : int (default 100)
 %       Maximum iterations for the clustering algorithm.
 %   NInit : int (default 1)
@@ -34,6 +35,9 @@ classdef DTWClustering
 %       Penalty for non-diagonal steps in ADTW.
 %   MissingStrategy : char (default 'error')
 %       Strategy for NaN values: 'error', 'zero_cost', 'arow', 'interpolate'.
+%   Device : char (default '')
+%       Per-call device override ('' = the process device). Validated through
+%       dtwc.device and restored afterwards, so fit() never mutates it.
 %
 %   Properties (read-only, set after fit)
 %   -------------------------------------
@@ -108,12 +112,34 @@ classdef DTWClustering
             % Validate the executable distance contract before input/device or
             % Problem effects, including values changed after construction.
             obj.validate_variant_parameters();
+            metric = obj.resolve_metric();
             validateattributes(X, {'numeric'}, {'2d', 'nonempty'}, 'fit', 'X');
 
-            % Device selection delegates to dtwc::Env (contract §1.5). An unknown
-            % device / gpu-without-backend raises dtwc:deviceError (no silent fallback).
-            if ~isempty(obj.Device)
-                dtwc.device(obj.Device);
+            % Per-call device override (contract §1.5): resolved through the one
+            % dtwc::Env registry for validation and normalisation, then restored,
+            % so fit() never leaves the process device changed. An unknown device
+            % / gpu-without-backend raises dtwc:deviceError (no silent fallback).
+            if isempty(obj.Device)
+                activeDevice = dtwc.device();
+            else
+                previousDevice = dtwc.device();
+                deviceCleanup = onCleanup(@() dtwc.device(previousDevice));
+                activeDevice = dtwc.device(obj.Device);
+            end
+            if strcmp(activeDevice, 'hpc')
+                error('dtwc:deviceError', ...
+                    ['DTWClustering: device=''hpc'' offloads the whole job and ' ...
+                     'has no MATLAB transport. Use the Python API or ' ...
+                     'scripts/slurm/slurm_remote.sh.']);
+            end
+
+            % Problem's lazy matrix is intrinsically L1, so a non-L1 metric needs
+            % the exact matrix built up front -- the same rule the Python
+            % estimator follows (dtwcpp/_clustering.py).
+            precomputed = [];
+            if ~strcmp(metric, 'l1')
+                precomputed = dtwc_mex('DTWClustering_compute_distance_matrix', ...
+                    double(X), double(obj.Band), metric);
             end
 
             bestCost = Inf;
@@ -132,6 +158,7 @@ classdef DTWClustering
                 prob.set_band(obj.Band);
                 prob.set_max_iter(obj.MaxIter);
                 prob.set_verbose(false);
+                dtwc.DTWClustering.apply_device_strategy(prob, activeDevice);
 
                 % Set DTW variant
                 if ~strcmp(obj.Variant, 'standard')
@@ -148,6 +175,10 @@ classdef DTWClustering
                 % Set missing strategy
                 if ~strcmp(obj.MissingStrategy, 'error')
                     prob.set_missing_strategy(obj.MissingStrategy);
+                end
+
+                if ~isempty(precomputed)
+                    prob.set_distance_matrix(precomputed);
                 end
 
                 % Run FastPAM
@@ -189,6 +220,30 @@ classdef DTWClustering
     end
 
     methods (Access = private)
+        function metric = resolve_metric(obj)
+        %RESOLVE_METRIC Normalise and validate Metric before any other effect.
+        %   Returns the canonical token. The accepted set and the incompatible
+        %   cross-products mirror the Python estimator (dtwcpp/_clustering.py).
+            metric = lower(strtrim(char(obj.Metric)));
+            if ~ismember(metric, {'l1', 'squared_euclidean'})
+                error('dtwc:invalidArgument', ...
+                      'Unknown Metric ''%s''. Expected one of: l1, squared_euclidean.', ...
+                      char(obj.Metric));
+            end
+            if strcmp(metric, 'l1'), return; end
+            if ~strcmp(obj.Variant, 'standard')
+                error('dtwc:invalidArgument', ...
+                      ['Metric ''%s'' is implemented only for Variant ''standard''; ' ...
+                       'Variant ''%s'' has its intrinsic L1 cost.'], ...
+                      metric, obj.Variant);
+            end
+            if ~strcmp(obj.MissingStrategy, 'error')
+                error('dtwc:invalidArgument', ...
+                      'Metric ''%s'' is not implemented with MissingStrategy ''%s''.', ...
+                      metric, obj.MissingStrategy);
+            end
+        end
+
         function validate_variant_parameters(obj)
             if ~isfinite(obj.WdtwG) || obj.WdtwG < 0
                 error('dtwc:invalidArgument', ...
@@ -197,6 +252,45 @@ classdef DTWClustering
             if ~isfinite(obj.AdtwPenalty) || obj.AdtwPenalty < 0
                 error('dtwc:invalidArgument', ...
                       'ADTW penalty must be finite and non-negative.');
+            end
+        end
+    end
+
+    methods (Static, Hidden)
+        function index = gpu_index(deviceName)
+        %GPU_INDEX Ordinal N of a canonical 'gpu:N'/'cuda:N' name (0 otherwise).
+        %   Mirrors dtwc::Env::set_device, which parses the suffix into
+        %   device_index() and reports it back through the canonical name.
+            index = 0;
+            name = char(deviceName);
+            colon = strfind(name, ':');
+            if isempty(colon), return; end
+            index = str2double(name((colon(1) + 1):end));
+            if ~isfinite(index) || index ~= fix(index) || index < 0
+                error('dtwc:deviceError', ...
+                    'DTWClustering: unknown device ''%s''.', name);
+            end
+        end
+
+        function apply_device_strategy(prob, activeDevice)
+        %APPLY_DEVICE_STRATEGY Make the Problem execute on the selected device.
+        %   Mirrors C++ detail::configure_device (dtwc/api.cpp): the GPU ordinal
+        %   of a 'gpu:N' selection reaches Problem::cuda_settings.device_id
+        %   before the strategy is chosen, so 'gpu:1' does not run on GPU 0.
+        %   Without this the Problem kept its CPU default and a 'gpu' request was
+        %   silently honoured on the CPU (gap F40).
+            if strcmp(activeDevice, 'cpu'), return; end
+            info = dtwc_mex('system_check');
+            if ~info.cuda && ~info.metal
+                error('dtwc:deviceError', ...
+                    ['DTWClustering: device ''%s'' was selected but this build ' ...
+                     'has no GPU backend.'], activeDevice);
+            end
+            prob.set_cuda_settings(dtwc.DTWClustering.gpu_index(activeDevice));
+            if info.cuda
+                prob.set_distance_strategy('cuda');
+            else
+                prob.set_distance_strategy('metal');
             end
         end
     end

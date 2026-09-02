@@ -79,6 +79,55 @@ function test_tier1_load_matrix_and_options(testCase)
     verifySize(testCase, Xm, size(testCase.TestData.X));
 end
 
+function test_tier1_load_skip_rows(testCase)
+%   §1.2 skip_rows: header LINES for a path, leading SERIES for a matrix.
+    ds = dtwc.load(testCase.TestData.X, 'skip_rows', 2);
+    verifyEqual(testCase, ds.SkipRows, 2);
+    [Xm, ~] = ds.materialize();
+    verifySize(testCase, Xm, size(testCase.TestData.X) - [2 0]);
+
+    f = [tempname '.csv'];
+    fid = fopen(f, 'w');
+    fprintf(fid, 'id,t0,t1\nunit,s,s\na,0,0\nb,10,11\n');
+    fclose(fid);
+    c = onCleanup(@() delete(f));
+    hdr = dtwc.load(f, 'skip_cols', 1, 'skip_rows', 2, 'delimiter', ',');
+    [Xh, ~] = hdr.materialize();
+    verifyEqual(testCase, Xh, [0 0; 10 11]);
+end
+
+function test_tier1_load_negative_skip_rows_rejected(testCase)
+%   §1.2 skip_rows is validated exactly as skip_cols is.
+    cols = '';
+    rows = '';
+    try
+        dtwc.load(testCase.TestData.X, 'skip_cols', -1);
+    catch e
+        cols = e.identifier;
+    end
+    try
+        dtwc.load(testCase.TestData.X, 'skip_rows', -1);
+    catch e
+        rows = e.identifier;
+    end
+    verifyNotEmpty(testCase, cols);
+    verifyEqual(testCase, rows, cols);
+
+    % Both of the above are MATLAB's own inputParser rejections, so on their
+    % own they would still pass if skip_rows were dropped downstream. Drive the
+    % gateway directly to reach C++ detail::validate_skips and pin its verbatim
+    % message (dtwc/api.cpp: "load: skip_rows must be non-negative.").
+    X = testCase.TestData.X;
+    cpp_rows = capture_error(@() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, ...
+        '', 100, 0, -1, '', ''));
+    verifyEqual(testCase, cpp_rows.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, cpp_rows.message, 'load: skip_rows must be non-negative.');
+    cpp_cols = capture_error(@() dtwc_mex('tier1_cluster', X, 2, 'pam', -1, ...
+        '', 100, -1, 0, '', ''));
+    verifyEqual(testCase, cpp_cols.identifier, 'dtwc:invalidArgument');
+    verifyEqual(testCase, cpp_cols.message, 'load: skip_cols must be non-negative.');
+end
+
 function test_tier1_cluster_returns_result(testCase)
 %   §1.3 dtwc.cluster -> §1.4 dtwc.Result (Tier-1 pam path).
     res = dtwc.cluster(testCase.TestData.X, testCase.TestData.k, ...
@@ -308,6 +357,56 @@ function test_tier1_dtwclustering_device_param(testCase)
     verifyNumElements(testCase, c.Labels, 6);
 end
 
+function test_dtwclustering_gpu_index_is_parsed_from_the_canonical_name(testCase)
+%   S3: the resolver behind Device='gpu:N'. Env::set_device parses the suffix
+%   into device_index() and reports it back in the canonical name, so the
+%   estimator's resolver must read the same ordinal out of that name.
+    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('cpu'), 0);
+    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('gpu'), 0);
+    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('gpu:1'), 1);
+    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('cuda:3'), 3);
+    verifyError(testCase, @() dtwc.DTWClustering.gpu_index('gpu:x'), ...
+        'dtwc:deviceError');
+end
+
+function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
+%   S3: DTWClustering.fit set the CUDA strategy but never the device id, so
+%   'gpu:1' silently executed on GPU 0 -- C++ configure_device (dtwc/api.cpp)
+%   sets cuda_settings.device_id = index. Capability-branched rather than
+%   assumption-filtered: an Incomplete is a silent skip that the matlab_suite
+%   gate rejects, so BOTH builds must assert something here.
+    info = dtwc_mex('system_check');
+    if info.cuda || info.metal
+        prob = dtwc.Problem('gpu_ordinal');
+        prob.set_data(testCase.TestData.X);
+        dtwc.DTWClustering.apply_device_strategy(prob, 'gpu:1');
+        verifyEqual(testCase, prob.get_cuda_settings().device_id, 1);
+        fprintf('S3_GPU_ORDINAL branch=gpu observed_device_id=%d\n', ...
+                prob.get_cuda_settings().device_id);
+    else
+        % No GPU backend: Env must reject the request before fit() creates a
+        % Problem, and the process device must be left untouched.
+        dtwc.device('cpu');
+        c = dtwc.DTWClustering('NClusters', 2, 'Device', 'gpu:1');
+        verifyError(testCase, @() c.fit(testCase.TestData.X), 'dtwc:deviceError');
+        verifyEqual(testCase, dtwc.device(), 'cpu');
+        fprintf('S3_GPU_ORDINAL branch=no-gpu rejected-before-effect\n');
+    end
+end
+
+function test_problem_cuda_settings_round_trip(testCase)
+%   §2.1 set_cuda_settings/get_cuda_settings; omitting precision keeps it.
+    prob = dtwc.Problem('cuda_roundtrip');
+    verifyEqual(testCase, prob.get_cuda_settings(), ...
+        struct('device_id', 0, 'precision', 0));
+    prob.set_cuda_settings(2, 1);
+    verifyEqual(testCase, prob.get_cuda_settings(), ...
+        struct('device_id', 2, 'precision', 1));
+    prob.set_cuda_settings(3);
+    verifyEqual(testCase, prob.get_cuda_settings(), ...
+        struct('device_id', 3, 'precision', 1));
+end
+
 % =========================================================================
 %  Tier 2 — Problem config setters (contract §2.1)
 % =========================================================================
@@ -352,6 +451,17 @@ function test_problem_set_mip_settings_roundtrip(testCase)
     verifyEqual(testCase, got.mip_gap, 1e-4, 'AbsTol', 1e-12);
     verifyEqual(testCase, got.max_benders_iter, 150);
     verifyEqual(testCase, char(got.benders), 'on');
+end
+
+function test_problem_set_mip_settings_lr_max_nodes(testCase)
+%   §2.1 lr_max_nodes round-trips and rejects a non-integer, as other int fields do.
+    prob = dtwc.Problem('lr_nodes');
+    verifyEqual(testCase, prob.get_mip_settings().lr_max_nodes, 2000000);
+    prob.set_mip_settings(struct('lr_max_nodes', 12345));
+    verifyEqual(testCase, prob.get_mip_settings().lr_max_nodes, 12345);
+    verifyError(testCase, @() prob.set_mip_settings(struct('lr_max_nodes', 1.5)), ...
+                ?MException);
+    verifyEqual(testCase, prob.get_mip_settings().lr_max_nodes, 12345);
 end
 
 function test_problem_set_data_ragged(testCase)
@@ -721,6 +831,17 @@ function test_f22_matlab_deprecation_policy(testCase)
             constructorSilent, tier1Silent, verdict);
     verifyTrue(testCase, allPass, ...
         'F22 MATLAB deprecation contract is incomplete.');
+end
+
+function err = capture_error(fn)
+%CAPTURE_ERROR Run fn and return the MException it must raise.
+    err = [];
+    try
+        fn();
+    catch caught
+        err = caught;
+    end
+    assert(~isempty(err), 'expected an error, none was raised');
 end
 
 function [value, message, identifier] = f22_invoke_and_capture_warning(operation)

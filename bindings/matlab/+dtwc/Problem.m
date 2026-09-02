@@ -284,7 +284,8 @@ classdef Problem < handle
         function set_mip_settings(obj, s)
         %SET_MIP_SETTINGS Configure MIP solver tuning from a struct.
         %   Recognised fields: mip_gap, time_limit_sec, warm_start, numeric_focus,
-        %   mip_focus, verbose_solver, max_benders_iter, benders ('auto'|'on'|'off').
+        %   mip_focus, verbose_solver, max_benders_iter, lr_max_nodes,
+        %   benders ('auto'|'on'|'off').
             dtwc_mex('Problem_set_mip_settings', obj.Handle, s);
         end
 
@@ -293,11 +294,41 @@ classdef Problem < handle
             s = dtwc_mex('Problem_get_mip_settings', obj.Handle);
         end
 
+        function set_checkpoint(obj, opts)
+        %SET_CHECKPOINT Configure automatic mid-fill checkpointing (contract §2.7).
+        %   prob.set_checkpoint(dtwc.CheckpointOptions('directory', d, ...
+        %                                              'save_interval', 100, ...
+        %                                              'enabled', true))
+        %
+        %   fill_distance_matrix() then runs the exact BruteForce row schedule in
+        %   consecutive blocks of save_interval completed rows and publishes a
+        %   checkpoint generation after each block. Fields are optional; any
+        %   omitted field keeps its current value. enabled requires dense storage
+        %   and save_interval >= 1, both checked before any distance is computed.
+            dtwc_mex('Problem_set_checkpoint', obj.Handle, opts);
+        end
+
+        function opts = get_checkpoint(obj)
+        %GET_CHECKPOINT Return the current checkpoint options as a struct.
+            opts = dtwc_mex('Problem_get_checkpoint', obj.Handle);
+        end
+
         function set_cuda_settings(obj, device_id, precision)
         %SET_CUDA_SETTINGS Configure CUDA dispatch (device_id, precision).
-        %   precision: 0 = Auto, 1 = FP32, 2 = FP64.
-            if nargin < 3, precision = 0; end
-            dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id), double(precision));
+        %   precision: 0 = Auto, 1 = FP32, 2 = FP64. Omitting precision keeps
+        %   the Problem's current value, as C++ configure_device does when it
+        %   sets only cuda_settings.device_id.
+            if nargin < 3
+                dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id));
+            else
+                dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id), double(precision));
+            end
+        end
+
+        function s = get_cuda_settings(obj)
+        %GET_CUDA_SETTINGS Return CUDA dispatch settings as a struct.
+        %   Fields: device_id, precision (0 = Auto, 1 = FP32, 2 = FP64).
+            s = dtwc_mex('Problem_get_cuda_settings', obj.Handle);
         end
 
         % =================================================================

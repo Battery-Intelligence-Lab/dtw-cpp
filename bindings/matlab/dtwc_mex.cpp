@@ -37,6 +37,8 @@
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
 #include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
+#include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
+#include "../../dtwc/core/pruned_distance_matrix.hpp" // exact metric-aware matrix builder
 
 #include <string>
 #include <vector>
@@ -342,6 +344,37 @@ static std::string get_string(const mxArray *mx) {
   std::string result(str);
   mxFree(str);
   return result;
+}
+
+/// Optional trailing string argument; "" when absent or empty.
+static std::string optional_string(int nrhs, const mxArray *prhs[], int index,
+                                   const char *arg_name) {
+  if (nrhs <= index || mxIsEmpty(prhs[index])) return {};
+  require_char(prhs[index], arg_name);
+  return get_string(prhs[index]);
+}
+
+/// Optional trailing integer argument, validated exactly (no UB cast).
+static int optional_int(int nrhs, const mxArray *prhs[], int index,
+                        const char *arg_name, int fallback) {
+  if (nrhs <= index || mxIsEmpty(prhs[index])) return fallback;
+  return get_exact_int(prhs[index], arg_name);
+}
+
+/// One delimiter character; 0 keeps the extension-derived default.
+static char parse_delimiter(const std::string &value) {
+  if (value.empty()) return static_cast<char>(0);
+  if (value.size() != 1)
+    throw std::invalid_argument("delimiter must be a single character.");
+  return value[0];
+}
+
+/// Optional metric token; absent means L1, matching C++/Python defaults.
+static dtwc::core::MetricType optional_metric(int nrhs, const mxArray *prhs[],
+                                              int index) {
+  const std::string token = optional_string(nrhs, prhs, index, "metric");
+  if (token.empty()) return dtwc::core::MetricType::L1;
+  return dtwc::core::parse_metric_token(token);
 }
 
 /// Build a ClusteringResult MATLAB struct from a C++ ClusteringResult
@@ -882,7 +915,8 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, max_benders_iter, benders).");
+      "warm_start, numeric_focus, mip_focus, verbose_solver, max_benders_iter, benders, "
+      "lr_max_nodes).");
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
@@ -892,6 +926,8 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = static_cast<int>(get_scalar(f, "mip_focus"));
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
   if (mxArray *f = mxGetField(s, 0, "max_benders_iter")) m.max_benders_iter = static_cast<int>(get_scalar(f, "max_benders_iter"));
+  if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
+    m.lr_max_nodes = exact_int_from_double(get_scalar(f, "lr_max_nodes"), "lr_max_nodes");
   if (mxArray *f = mxGetField(s, 0, "benders")) {
     if (!mxIsChar(f)) throw std::invalid_argument("mip_settings.benders must be a string ('auto'/'on'/'off').");
     m.benders = get_string(f);
@@ -905,8 +941,9 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   const auto &m = prob.mip_settings;
   const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus",
-                           "mip_focus", "verbose_solver", "max_benders_iter", "benders" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 8, fields);
+                           "mip_focus", "verbose_solver", "max_benders_iter", "benders",
+                           "lr_max_nodes" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 9, fields);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
@@ -915,11 +952,50 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   mxSetField(s, 0, "verbose_solver", mxCreateLogicalScalar(m.verbose_solver));
   mxSetField(s, 0, "max_benders_iter", mxCreateDoubleScalar(m.max_benders_iter));
   mxSetField(s, 0, "benders", mxCreateString(m.benders.c_str()));
+  mxSetField(s, 0, "lr_max_nodes", mxCreateDoubleScalar(static_cast<double>(m.lr_max_nodes)));
   plhs[0] = s;
 }
 
 /// set_cuda_settings(device_id, precision) — CUDA dispatch passthrough (contract §2.1).
 /// precision: 0 = Auto, 1 = FP32, 2 = FP64 (see CUDASettings docs).
+/// set_checkpoint(handle, struct) -- writes Problem::checkpoint, which
+/// fill_distance_matrix() consumes (contract 2.7). Fields are optional; the
+/// current value is kept for any field the struct omits.
+static void cmd_Problem_set_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3)
+    throw std::invalid_argument("Problem_set_checkpoint requires handle and a struct.");
+  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
+  const mxArray *s = prhs[2];
+  if (!mxIsStruct(s))
+    throw std::invalid_argument("checkpoint must be a struct (fields: directory, "
+      "save_interval, enabled).");
+
+  dtwc::CheckpointOptions options = prob.checkpoint;
+  if (mxArray *f = mxGetField(s, 0, "directory")) {
+    require_char(f, "checkpoint.directory");
+    options.directory = get_string(f);
+  }
+  if (mxArray *f = mxGetField(s, 0, "save_interval"))
+    options.save_interval =
+      exact_int_from_double(get_scalar(f, "save_interval"), "checkpoint.save_interval");
+  if (mxArray *f = mxGetField(s, 0, "enabled"))
+    options.enabled = (get_scalar(f, "enabled") != 0.0);
+  prob.checkpoint = options;
+}
+
+/// get_checkpoint() -> struct mirroring CheckpointOptions (round-trip).
+static void cmd_Problem_get_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Problem_get_checkpoint requires a handle.");
+  const auto &options = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->checkpoint;
+  const char *fields[] = { "directory", "save_interval", "enabled" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 3, fields);
+  mxSetField(s, 0, "directory", mxCreateString(options.directory.c_str()));
+  mxSetField(s, 0, "save_interval",
+             mxCreateDoubleScalar(static_cast<double>(options.save_interval)));
+  mxSetField(s, 0, "enabled", mxCreateLogicalScalar(options.enabled));
+  plhs[0] = s;
+}
+
 static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("Problem_set_cuda_settings requires handle and device_id.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
@@ -927,6 +1003,17 @@ static void cmd_Problem_set_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, c
   settings.device_id = get_exact_int(prhs[2], "device_id");
   if (nrhs > 3) settings.precision = get_cuda_precision(prhs[3]);
   prob.set_cuda_settings(settings);
+}
+
+/// get_cuda_settings() -> struct mirroring CUDASettings (round-trip).
+static void cmd_Problem_get_cuda_settings(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Problem_get_cuda_settings requires a handle.");
+  const auto &settings = HandleManager<dtwc::Problem>::get(get_handle(prhs[1]))->cuda_settings;
+  const char *fields[] = { "device_id", "precision" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 2, fields);
+  mxSetField(s, 0, "device_id", mxCreateDoubleScalar(static_cast<double>(settings.device_id)));
+  mxSetField(s, 0, "precision", mxCreateDoubleScalar(static_cast<double>(settings.precision)));
+  plhs[0] = s;
 }
 
 static void cmd_Problem_refresh_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -982,14 +1069,17 @@ static void cmd_save_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArr
   if (nrhs < 3) throw std::invalid_argument("save_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  dtwc::save_checkpoint(prob, get_string(prhs[2]));
+  // The metric is part of the checkpoint identity: an L1 and a SquaredL2 matrix
+  // over the same data are different numbers (C++/Python default to L1 too).
+  dtwc::save_checkpoint(prob, get_string(prhs[2]), optional_metric(nrhs, prhs, 3));
 }
 
 static void cmd_load_checkpoint(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("load_checkpoint requires handle and directory path.");
   require_char(prhs[2], "path");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]));
+  const bool ok = dtwc::load_checkpoint(prob, get_string(prhs[2]),
+                                       optional_metric(nrhs, prhs, 3));
   plhs[0] = mxCreateLogicalScalar(ok);
 }
 
@@ -1364,6 +1454,104 @@ static void cmd_pdlp_lp_bound(int nlhs, mxArray *plhs[], int nrhs, const mxArray
 }
 
 // =========================================================================
+//  Tier-1 API (contract 1.3 / 1.4): ONE C++ route
+//
+//  cluster.m parses arguments and calls tier1_cluster once. Method routing,
+//  the k <= N guard, the per-call device override, max_iter, and the
+//  skip_cols/skip_rows source semantics are all decided by dtwc::cluster(),
+//  so the MATLAB layer has no routing logic that can drift from C++.
+// =========================================================================
+
+/// tier1_cluster(source, k, method, band, device, max_iter,
+///               skip_cols, skip_rows, delimiter, name) -> struct.
+/// `source` is a char path, an N x L real double matrix, or a cell of series.
+static void cmd_tier1_cluster(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3)
+    throw std::invalid_argument("tier1_cluster requires a data source and k.");
+  const int k = get_exact_int(prhs[2], "k");
+  const std::string method = optional_string(nrhs, prhs, 3, "method");
+  const int band = optional_int(nrhs, prhs, 4, "band", dtwc::settings::DEFAULT_BAND);
+  const std::string device = optional_string(nrhs, prhs, 5, "device");
+  const int max_iter = optional_int(nrhs, prhs, 6, "max_iter", 100);
+  const int skip_cols = optional_int(nrhs, prhs, 7, "skip_cols", 0);
+  const int skip_rows = optional_int(nrhs, prhs, 8, "skip_rows", 0);
+  const char delimiter = parse_delimiter(optional_string(nrhs, prhs, 9, "delimiter"));
+  const std::string name = optional_string(nrhs, prhs, 10, "name");
+
+  const dtwc::Dataset dataset = mxIsChar(prhs[1])
+    ? dtwc::load(std::filesystem::path(get_string(prhs[1])), skip_cols, skip_rows,
+                 delimiter, name)
+    : dtwc::load(mxIsCell(prhs[1]) ? cell_to_series(prhs[1], "data")
+                                   : matrix_to_series(prhs[1], "data"),
+                 skip_cols, skip_rows, delimiter, name);
+
+  auto result = std::make_shared<dtwc::Result>(dtwc::cluster(
+    dataset, k, method.empty() ? std::string("pam") : method, band, device, max_iter));
+  const uint64_t h = HandleManager<dtwc::Result>::create(result);
+
+  const char *fields[] = { "handle", "labels", "medoid_indices", "total_cost",
+                           "device", "name" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 6, fields);
+  mxArray *handle_mx = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
+  *static_cast<uint64_t *>(mxGetData(handle_mx)) = h;
+  mxSetField(s, 0, "handle", handle_mx);
+  mxSetField(s, 0, "labels", ivec_to_mx_1based(result->labels()));
+  mxSetField(s, 0, "medoid_indices", ivec_to_mx_1based(result->medoids()));
+  mxSetField(s, 0, "total_cost", mxCreateDoubleScalar(result->cost()));
+  mxSetField(s, 0, "device", mxCreateString(result->device().c_str()));
+  mxSetField(s, 0, "name", mxCreateString(dataset.name().c_str()));
+  plhs[0] = s;
+}
+
+static void cmd_Result_delete(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("Result_delete requires a handle.");
+  HandleManager<dtwc::Result>::destroy(get_handle(prhs[1]));
+}
+
+/// Result_score(handle, name) -> scalar. dtwc::Result::score owns the name set.
+static void cmd_Result_score(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3)
+    throw std::invalid_argument("Result_score requires a handle and a score name.");
+  require_char(prhs[2], "score");
+  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
+  plhs[0] = mxCreateDoubleScalar(res.score(get_string(prhs[2])));
+}
+
+/// Result_save(handle, directory). The C++ writer owns the four CSVs, so the
+/// series names it emits are the dataset's, not MATLAB ordinals.
+static void cmd_Result_save(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3)
+    throw std::invalid_argument("Result_save requires a handle and a directory.");
+  require_char(prhs[2], "directory");
+  const auto &res = *HandleManager<dtwc::Result>::get(get_handle(prhs[1]));
+  res.save(std::filesystem::path(get_string(prhs[2])));
+}
+
+/// DTWClustering_compute_distance_matrix(X, band, metric) -> N x N matrix.
+/// The estimator's non-L1 route: the same exact builder the Python estimator
+/// uses when metric != 'l1' (Problem's lazy matrix is intrinsically L1).
+static void cmd_DTWClustering_compute_distance_matrix(
+  int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2)
+    throw std::invalid_argument(
+      "DTWClustering_compute_distance_matrix requires a data matrix.");
+  const auto series = matrix_to_series(prhs[1]);
+  const int band = optional_int(nrhs, prhs, 2, "band", dtwc::settings::DEFAULT_BAND);
+  const dtwc::core::MetricType metric = optional_metric(nrhs, prhs, 3);
+
+  const size_t N = series.size();
+  std::vector<double> row_major(N * N, 0.0);
+  dtwc::core::compute_distance_matrix_pruned(series, row_major.data(), band, metric);
+
+  mxArray *out = mxCreateDoubleMatrix(N, N, mxREAL);
+  double *dst = mxGetDoubles(out);
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = 0; j < N; ++j)
+      dst[i + j * N] = row_major[i * N + j];
+  plhs[0] = out;
+}
+
+// =========================================================================
 //  Legacy "cluster" command (stateless, backward-compatible)
 // =========================================================================
 
@@ -1404,6 +1592,10 @@ static void cmd_cluster_legacy(int nlhs, mxArray *plhs[], int nrhs, const mxArra
 // =========================================================================
 
 static void cleanup_at_exit() {
+  // Results own their Problem through a shared_ptr and are never registered in
+  // HandleManager<Problem>, so the two drains are independent; Results go first
+  // only so a Result's Problem is released before the Problem table is walked.
+  HandleManager<dtwc::Result>::drain();
   HandleManager<dtwc::Problem>::drain();
 }
 
@@ -1475,6 +1667,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_mip_settings") cmd_Problem_get_mip_settings(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_cuda_settings") cmd_Problem_set_cuda_settings(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_get_cuda_settings") cmd_Problem_get_cuda_settings(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_checkpoint") cmd_Problem_set_checkpoint(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_get_checkpoint") cmd_Problem_get_checkpoint(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_n_clusters") cmd_Problem_n_clusters(nlhs, plhs, nrhs, prhs);
     // Problem methods
     else if (cmd == "Problem_fill_distance_matrix") cmd_Problem_fill_distance_matrix(nlhs, plhs, nrhs, prhs);
@@ -1520,6 +1715,13 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // LP-relaxation bound (PDLP)
     else if (cmd == "pdlp_lp_bound") cmd_pdlp_lp_bound(nlhs, plhs, nrhs, prhs);
     else if (cmd == "pdlp_gpu_available") cmd_pdlp_gpu_available(nlhs, plhs, nrhs, prhs);
+    // Tier-1 route (contract 1.3 / 1.4): dtwc::cluster owns every decision
+    else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_save") cmd_Result_save(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Result_delete") cmd_Result_delete(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "DTWClustering_compute_distance_matrix")
+      cmd_DTWClustering_compute_distance_matrix(nlhs, plhs, nrhs, prhs);
     // Legacy backward-compatible command
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
     // System capability check

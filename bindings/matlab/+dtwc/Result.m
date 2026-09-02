@@ -6,6 +6,8 @@ classdef Result < handle
 %
 %   Returned by dtwc.cluster(). Carries the cluster assignment, medoid indices,
 %   total cost and the device the run used, plus score()/save()/plot() helpers.
+%   score() and save() are the C++ dtwc::Result members, so the scores and the
+%   four output CSVs (series names included) are byte-for-byte the CLI's.
 %
 %   Properties
 %   ----------
@@ -24,17 +26,32 @@ classdef Result < handle
     end
 
     properties (Access = private)
-        Prob   % dtwc.Problem kept alive so score() can read clustering state
+        Handle uint64 = uint64(0)  % C++ dtwc::Result (owns the clustered Problem)
+        DatasetName char = 'dataset'
+        Dmat = []                  % cached distance matrix for plot()
     end
 
     methods
-        function obj = Result(prob, labels, medoids, cost, device)
-        %RESULT Construct a Result (called by dtwc.cluster).
-            obj.Prob    = prob;
-            obj.labels  = labels;
-            obj.medoids = medoids;
-            obj.cost    = cost;
-            obj.device  = device;
+        function obj = Result(info)
+        %RESULT Construct a Result from the tier1_cluster gateway struct.
+            obj.Handle      = info.handle;
+            obj.labels      = info.labels;
+            obj.medoids     = info.medoid_indices;
+            obj.cost        = info.total_cost;
+            obj.device      = info.device;
+            obj.DatasetName = info.name;
+        end
+
+        function delete(obj)
+        %DELETE Release the C++ Result (and the Problem it owns).
+            if obj.Handle > 0
+                try
+                    dtwc_mex('Result_delete', obj.Handle);
+                catch
+                    % MEX may be unloaded during MATLAB shutdown
+                end
+                obj.Handle = uint64(0);
+            end
         end
 
         function s = score(obj, name)
@@ -44,23 +61,9 @@ classdef Result < handle
         %   s = res.score('dunn')
         %   s = res.score('calinski_harabasz')
         %   s = res.score('inertia')
-            nm = lower(strrep(char(name), '-', '_'));
-            switch nm
-                case 'silhouette'
-                    s = mean(dtwc.silhouette(obj.Prob));
-                case 'davies_bouldin'
-                    s = dtwc.davies_bouldin(obj.Prob);
-                case 'dunn'
-                    s = dtwc.dunn(obj.Prob);
-                case 'calinski_harabasz'
-                    s = dtwc.calinski_harabasz(obj.Prob);
-                case 'inertia'
-                    s = dtwc.inertia(obj.Prob);
-                otherwise
-                    error('dtwc:invalidArgument', ...
-                          ['Unknown score ''%s''. Valid: silhouette, davies_bouldin, ' ...
-                           'dunn, calinski_harabasz, inertia.'], char(name));
-            end
+        %
+        %   The accepted names and their definitions are C++ Result::score's.
+            s = dtwc_mex('Result_score', obj.Handle, char(name));
         end
 
         function save(obj, dir)
@@ -68,41 +71,9 @@ classdef Result < handle
         %   res.save(outdir)
         %
         %   Emits <name>_labels.csv, <name>_medoids.csv, <name>_distance_matrix.csv
-        %   and <name>_silhouettes.csv, matching the CLI output-file contract.
-            if ~exist(dir, 'dir'); mkdir(dir); end
-            nm  = obj.Prob.name();
-            lab = double(obj.labels);
-            med = double(obj.medoids);
-            N   = numel(lab);
-
-            % <name>_labels.csv : "name,cluster" (0-based series names + 0-based cluster)
-            fid = fopen(fullfile(dir, [nm '_labels.csv']), 'w');
-            fprintf(fid, 'name,cluster\n');
-            for i = 1:N
-                fprintf(fid, '%d,%d\n', i - 1, lab(i) - 1);
-            end
-            fclose(fid);
-
-            % <name>_medoids.csv : "cluster,medoid_index,medoid_name"
-            fid = fopen(fullfile(dir, [nm '_medoids.csv']), 'w');
-            fprintf(fid, 'cluster,medoid_index,medoid_name\n');
-            for c = 1:numel(med)
-                fprintf(fid, '%d,%d,%d\n', c - 1, med(c) - 1, med(c) - 1);
-            end
-            fclose(fid);
-
-            % <name>_distance_matrix.csv
-            D = obj.Prob.distance_matrix();
-            writematrix(D, fullfile(dir, [nm '_distance_matrix.csv']));
-
-            % <name>_silhouettes.csv : "name,cluster,silhouette"
-            sil = dtwc.silhouette(obj.Prob);
-            fid = fopen(fullfile(dir, [nm '_silhouettes.csv']), 'w');
-            fprintf(fid, 'name,cluster,silhouette\n');
-            for i = 1:N
-                fprintf(fid, '%d,%d,%.10g\n', i - 1, lab(i) - 1, sil(i));
-            end
-            fclose(fid);
+        %   and <name>_silhouettes.csv through C++ Result::save, so the series
+        %   names are the dataset's and the bytes match the CLI's.
+            dtwc_mex('Result_save', obj.Handle, char(dir));
         end
 
         function varargout = plot(obj)
@@ -111,7 +82,7 @@ classdef Result < handle
         %
         %   Uses a manual classical MDS (double-centred squared-distance eigen-
         %   decomposition) so no toolbox dependency is required.
-            D = obj.Prob.distance_matrix();
+            D = obj.distance_matrix();
             n = size(D, 1);
             J = eye(n) - ones(n) / n;
             B = -0.5 * (J * (D.^2) * J);
@@ -125,9 +96,34 @@ classdef Result < handle
             f = figure('Visible', 'off');
             ax = axes('Parent', f);
             scatter(ax, coords(:, 1), coords(:, 2), 36, double(obj.labels), 'filled');
-            title(ax, sprintf('%s: %d clusters (MDS)', obj.Prob.name(), numel(obj.medoids)));
+            title(ax, sprintf('%s: %d clusters (MDS)', obj.DatasetName, ...
+                              numel(obj.medoids)));
             xlabel(ax, 'MDS-1'); ylabel(ax, 'MDS-2');
             if nargout > 0, varargout{1} = ax; end
         end
+    end
+
+    methods (Access = private)
+        function D = distance_matrix(obj)
+        %DISTANCE_MATRIX Distance matrix of the clustered Problem, cached.
+        %   dtwc::Result owns its Problem privately and publishes the matrix
+        %   only through save() (api.hpp), so the matrix is read back from a
+        %   scratch save rather than recomputed.
+            if isempty(obj.Dmat)
+                scratch = [tempname '_dtwc_mds'];
+                cleaner = onCleanup(@() remove_directory(scratch));
+                dtwc_mex('Result_save', obj.Handle, scratch);
+                obj.Dmat = readmatrix( ...
+                    fullfile(scratch, [obj.DatasetName '_distance_matrix.csv']), ...
+                    'Delimiter', ',', 'NumHeaderLines', 0);
+            end
+            D = obj.Dmat;
+        end
+    end
+end
+
+function remove_directory(d)
+    if exist(d, 'dir')
+        rmdir(d, 's');
     end
 end

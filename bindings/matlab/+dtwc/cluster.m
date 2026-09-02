@@ -9,15 +9,23 @@ function res = cluster(data, k, varargin)
 %
 %   Parameters
 %   ----------
-%   data : dtwc.Dataset, N x L numeric matrix, or file path.
-%   k : number of clusters (positive integer).
-%   method : 'pam' | 'kmedoids' | 'clara' | 'mip' | 'hierarchical' (alias 'hclust')
-%            | 'auto'. Default 'pam'. Unknown method -> 'dtwc:invalidArgument'.
+%   data : dtwc.Dataset, N x L numeric matrix, cell array of numeric vectors
+%          (ragged in-memory source, one series per cell), or file path.
+%   k : number of clusters (positive integer, at most the number of series).
+%   method : 'auto' | 'pam' | 'onebatch' | 'clara' | 'kmedoids' | 'mip' |
+%            'lrcore' | 'tadpole' | 'hierarchical' (alias 'hclust').
+%            Default 'pam'. Unknown method -> 'dtwc:invalidArgument'.
 %   band : Sakoe-Chiba band. -1 = full DTW. Default -1.
-%   device : per-call device override ('' = keep global). Delegates to dtwc::Env.
+%   device : per-call device override ('' = keep the process device). The
+%            override is local to this call and never mutates dtwc.device().
 %   max_iter : maximum iterations. Default 100.
 %
-%   See also dtwc.load, dtwc.Result, dtwc.fast_pam
+%   This function parses arguments and makes ONE gateway call. Method routing,
+%   the k <= N guard, the device override and the source semantics
+%   (skip_cols/skip_rows/delimiter/name) are all decided by C++ dtwc::cluster(),
+%   so MATLAB cannot drift from the reference implementation.
+%
+%   See also dtwc.load, dtwc.Result, dtwc.device
 
     p = inputParser;
     addRequired(p, 'data');
@@ -28,65 +36,39 @@ function res = cluster(data, k, varargin)
     addParameter(p, 'max_iter', 100, @(v) isnumeric(v) && isscalar(v) && v > 0);
     parse(p, data, k, varargin{:});
 
-    method   = lower(strrep(char(p.Results.method), '-', '_'));
-    dev      = char(p.Results.device);
-    max_iter = double(p.Results.max_iter);
-
-    % Per-call device override delegates to dtwc::Env (no silent fallback).
-    if ~isempty(dev)
-        dtwc.device(dev);
-    end
-    activeDevice = dtwc.device();   % normalised device name for Result.device
-
-    % Materialise the data source into an N x L matrix (+ optional names).
-    names = {};
     if isa(data, 'dtwc.Dataset')
-        [X, names] = data.materialize();
-        nm = data.Name;
-    elseif isnumeric(data)
-        X = double(data);
-        nm = 'dataset';
-    elseif ischar(data) || isstring(data)
-        [X, names] = dtwc.load(data).materialize();
-        [~, nm, ~] = fileparts(char(data));
+        source    = data.Source;
+        skip_cols = data.SkipCols;
+        skip_rows = data.SkipRows;
+        delimiter = data.Delimiter;
+        name      = data.Name;
+    elseif isnumeric(data) || iscell(data) || ischar(data) || isstring(data)
+        source    = data;
+        skip_cols = 0;
+        skip_rows = 0;
+        delimiter = '';
+        name      = '';   % '' lets C++ derive the name (file stem / 'dataset')
     else
         error('dtwc:invalidArgument', ...
-              'cluster: data must be a dtwc.Dataset, a numeric matrix, or a file path.');
+              ['cluster: data must be a dtwc.Dataset, a numeric matrix, a cell ' ...
+               'array of numeric vectors, or a file path.']);
     end
 
-    prob = dtwc.Problem(nm);
-    prob.set_band(double(p.Results.band));
-    prob.set_max_iter(max_iter);
-    if isempty(names)
-        prob.set_data(X);
+    if ischar(source) || isstring(source)
+        source = char(source);
+    elseif iscell(source)
+        % Ragged in-memory source: one cell per series, matching the C++
+        % load(series_type) overload the Python list route already uses.
+        source = dtwc.Dataset.normalise_cell_series(source, 'cluster');
     else
-        prob.set_data(X, names);
+        source = double(source);
     end
 
-    switch method
-        case {'pam', 'kmedoids', 'auto'}
-            r = dtwc.fast_pam(prob, k, 'MaxIter', max_iter, ...
-                'Seed', dtwc.default_random_seed());
-            labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
-        case 'clara'
-            r = dtwc.fast_clara(prob, k, ...
-                'Seed', dtwc.default_random_seed());
-            labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
-        case 'mip'
-            prob.set_n_clusters(k);   % Problem::Nc defaults to 1: without this
-                                      % the exact backend solves for 1 medoid.
-            prob.set_method('mip');
-            prob.cluster();
-            labels = prob.labels(); medoids = prob.medoids(); cost = prob.find_total_cost();
-        case {'hierarchical', 'hclust'}
-            dend = dtwc.build_dendrogram(prob);
-            r = dtwc.cut_dendrogram(dend, prob, k);
-            labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
-        otherwise
-            error('dtwc:invalidArgument', ...
-                  ['Unknown method ''%s''. Valid: pam, kmedoids, clara, mip, ' ...
-                   'hierarchical (hclust), auto.'], char(p.Results.method));
-    end
+    out = dtwc_mex('tier1_cluster', source, double(k), ...
+                   char(p.Results.method), double(p.Results.band), ...
+                   char(p.Results.device), double(p.Results.max_iter), ...
+                   double(skip_cols), double(skip_rows), ...
+                   char(delimiter), char(name));
 
-    res = dtwc.Result(prob, labels, medoids, cost, activeDevice);
+    res = dtwc.Result(out);
 end
