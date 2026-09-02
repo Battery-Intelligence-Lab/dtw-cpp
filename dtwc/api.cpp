@@ -347,7 +347,14 @@ Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
       "scripts/slurm/slurm_remote.sh. No local fallback was attempted.");
   }
 
+  const auto execution_target = selected == Device::GPU
+    ? detail::Tier1ExecutionTarget::GPU
+    : detail::Tier1ExecutionTarget::CPU;
+
   auto problem = std::make_shared<Problem>(dataset.name());
+  // Must precede set_data: StoragePolicy::Auto can spill a large dataset to the
+  // mmap store, which the CUDA/Metal upload paths reject outright.
+  problem->set_storage_policy(detail::tier1_storage_policy(execution_target));
   problem->set_data(dataset.materialize_local());
   if (problem->size() == 0) throw InvalidInput("cluster: dataset is empty.");
   if (static_cast<std::size_t>(k) > problem->size())
@@ -356,9 +363,6 @@ Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
   problem->set_max_iter(max_iter);
   configure_device(*problem, selected, device_index);
 
-  const auto execution_target = selected == Device::GPU
-    ? detail::Tier1ExecutionTarget::GPU
-    : detail::Tier1ExecutionTarget::CPU;
   method = detail::resolve_tier1_method(method, problem->size(), execution_target);
 
   core::ClusteringResult result;

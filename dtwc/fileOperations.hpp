@@ -148,6 +148,18 @@ inline std::string lower_ascii(std::string_view token)
   return result;
 }
 
+/// ASCII case-insensitive equality without allocating a lowered copy.
+/// `lower` must already be lowercase; used on the per-field hot path.
+inline bool equals_ascii_ci(std::string_view token, std::string_view lower)
+{
+  if (token.size() != lower.size()) return false;
+  for (std::size_t i = 0; i < token.size(); ++i)
+    if (std::tolower(static_cast<unsigned char>(token[i]))
+        != static_cast<unsigned char>(lower[i]))
+      return false;
+  return true;
+}
+
 [[noreturn]] inline void throw_numeric_field_error(
   const fs::path &path, std::size_t row, std::size_t column,
   std::string_view reason, std::string_view token)
@@ -169,8 +181,7 @@ T parse_numeric_field(std::string_view raw_token, const fs::path &path,
   if (token.empty())
     throw_numeric_field_error(path, row, column, "empty numeric field", token);
 
-  const std::string lower = lower_ascii(token);
-  if (lower == "nan") {
+  if (equals_ascii_ci(token, "nan")) {
     if constexpr (std::is_floating_point_v<T>)
       return std::numeric_limits<T>::quiet_NaN();
     else

@@ -16,6 +16,7 @@ target_sources(dtwc++
   env.cpp
   initialisation.cpp
   scores.cpp
+  system_memory.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp

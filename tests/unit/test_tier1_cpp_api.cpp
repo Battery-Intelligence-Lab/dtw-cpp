@@ -383,6 +383,24 @@ TEST_CASE("Tier-1 auto method resolution is compatible with its execution target
   CHECK(resolve_tier1_method("clara", 5001, Tier1ExecutionTarget::GPU) == "clara");
 }
 
+TEST_CASE("Tier-1 pins heap series storage for a GPU execution target",
+          "[api][tier1][device][storage]")
+{
+  using dtwc::detail::Tier1ExecutionTarget;
+  using dtwc::detail::tier1_storage_policy;
+
+  // fill_distance_matrix throws DeviceError on mmap-backed series, and
+  // StoragePolicy::Auto spills above the free-RAM threshold (now measured on
+  // Windows too), so the Tier-1 GPU route must install Heap before set_data.
+  CHECK(tier1_storage_policy(Tier1ExecutionTarget::GPU)
+        == dtwc::core::StoragePolicy::Heap);
+  // CPU and HPC keep the caller-visible default; Tier-2 mmap use is untouched.
+  CHECK(tier1_storage_policy(Tier1ExecutionTarget::CPU)
+        == dtwc::core::StoragePolicy::Auto);
+  CHECK(tier1_storage_policy(Tier1ExecutionTarget::HPC)
+        == dtwc::core::StoragePolicy::Auto);
+}
+
 TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
 {
   const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();

@@ -28,6 +28,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -287,4 +288,98 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
 #endif
 
   fs::remove_all(scratch);
+}
+
+// ===========================================================================
+// (e) Free-RAM query and the pure StoragePolicy::Auto decision.
+//     Before the Windows GlobalMemoryStatusEx branch existed,
+//     available_ram_bytes() returned 0 here, so the Auto threshold collapsed to
+//     SIZE_MAX and Auto could never spill on Windows — this case is the guard.
+// ===========================================================================
+TEST_CASE("available_ram_bytes reports a nonzero figure on supported platforms",
+          "[storage][ram]")
+{
+#if defined(_WIN32) || defined(__linux__) || defined(__APPLE__)
+  REQUIRE(dtwc::detail::available_ram_bytes() > 0);
+#else
+  // Unsupported platform: 0 documents "unknown", and Auto must then stay on heap.
+  REQUIRE(dtwc::detail::available_ram_bytes() == 0);
+  REQUIRE(dtwc::detail::choose_storage(1u << 30, 0, 0) == core::StoragePolicy::Heap);
+#endif
+}
+
+TEST_CASE("choose_storage decides Auto routing from footprint, free RAM and limit",
+          "[storage][ram]")
+{
+  using dtwc::detail::choose_storage;
+  constexpr std::size_t gib = std::size_t{ 1 } << 30;
+
+  // Tiny dataset against 8 GiB free: stays on heap (threshold = 4 GiB).
+  REQUIRE(choose_storage(288, 8 * gib, 0) == core::StoragePolicy::Heap);
+  // Footprint above half of free RAM: spills to the mapped store.
+  REQUIRE(choose_storage(5 * gib, 8 * gib, 0) == core::StoragePolicy::Mmap);
+  // Exactly at the threshold is not "exceeds".
+  REQUIRE(choose_storage(4 * gib, 8 * gib, 0) == core::StoragePolicy::Heap);
+  // Unknown free RAM (0) with no override: never spills, whatever the footprint.
+  REQUIRE(choose_storage(1024 * gib, 0, 0) == core::StoragePolicy::Heap);
+  // An explicit ram_limit() override wins over the free-RAM figure, both ways.
+  REQUIRE(choose_storage(288, 8 * gib, 1) == core::StoragePolicy::Mmap);
+  REQUIRE(choose_storage(1024 * gib, 0, 2048 * gib) == core::StoragePolicy::Heap);
+}
+
+TEST_CASE("StoragePolicy::Auto keeps a tiny dataset on heap with the real RAM query",
+          "[storage][ram]")
+{
+  dtwc::env().set_device("cpu");
+  DataLoader dl{ fixture_path() };
+  dl.verbosity(0).storage_policy(core::StoragePolicy::Auto); // no ram_limit override
+
+  LoadedData loaded = dl.load_stored();
+
+  REQUIRE_FALSE(loaded.is_mmap());
+  REQUIRE(loaded.data.size() == 6);
+  // ... and the same 288 B footprint would route to mmap against a lower budget.
+  REQUIRE(dtwc::detail::choose_storage(
+            dtwc::detail::series_footprint_bytes(loaded.data),
+            dtwc::detail::available_ram_bytes(), 1)
+          == core::StoragePolicy::Mmap);
+}
+
+// ===========================================================================
+// Problem::set_ram_limit — set_data() previously hardcoded ram_limit_bytes = 0,
+// so the Tier-1/Python route had no way to bound the Auto spill threshold that
+// DataLoader::ram_limit() already exposed.
+// ===========================================================================
+TEST_CASE("Problem::set_ram_limit bounds the set_data Auto threshold",
+          "[storage][ram]")
+{
+  dtwc::env().set_device("cpu");
+  DataLoader dl{ fixture_path() };
+  dl.verbosity(0);
+
+  Problem plain{ "ram_limit_default" };
+  REQUIRE(plain.ram_limit() == 0); // 0 = derive the threshold from free RAM
+  plain.set_storage_policy(core::StoragePolicy::Auto);
+  plain.set_data(dl.load());
+  REQUIRE_FALSE(plain.data().is_view()); // 288 B fits any real budget: heap
+
+  Problem limited{ "ram_limit_one_byte" };
+  limited.set_storage_policy(core::StoragePolicy::Auto);
+  limited.set_ram_limit(1); // every dataset now exceeds the threshold
+  REQUIRE(limited.ram_limit() == 1);
+
+  std::ostringstream captured;
+  std::streambuf *const saved = std::cerr.rdbuf(captured.rdbuf());
+  limited.set_data(dl.load());
+  std::cerr.rdbuf(saved);
+
+#ifdef DTWC_HAS_MMAP
+  REQUIRE(limited.data().is_view()); // routed to the mapped store
+  REQUIRE(captured.str().empty());
+#else
+  // No llfio: the spill cannot be honoured, so it warns loudly and keeps RAM.
+  // The quoted threshold proves the override reached route_series_storage.
+  REQUIRE_FALSE(limited.data().is_view());
+  REQUIRE(captured.str().find("storage threshold (1 B)") != std::string::npos);
+#endif
 }

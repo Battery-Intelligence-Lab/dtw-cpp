@@ -187,6 +187,7 @@ private:
   double tadpole_dc_{ -1.0 };
   LowerBoundStrategy lb_strategy_{ LowerBoundStrategy::Auto };
   core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto };
+  std::size_t ram_limit_bytes_{ 0 }; //!< set_data() footprint threshold override (bytes); 0 = default (50% free RAM).
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
@@ -341,7 +342,8 @@ public:
     rebind_dtw_fn();
   }
   Problem(std::string_view problem_name, DataLoader &loader)
-    : storage_policy_{ loader.storage_policy() }, name_{ problem_name }
+    : storage_policy_{ loader.storage_policy() },
+      ram_limit_bytes_{ loader.ram_limit() }, name_{ problem_name }
   {
     adopt_loaded_data(loader.load_stored());
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
@@ -427,6 +429,7 @@ public:
   double tadpole_dc() const { return tadpole_dc_; }
   LowerBoundStrategy lb_strategy() const { return lb_strategy_; }
   core::StoragePolicy storage_policy() const { return storage_policy_; }
+  std::size_t ram_limit() const { return ram_limit_bytes_; }
   bool verbose() const { return verbose_; }
   const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
@@ -480,6 +483,8 @@ public:
     // Governs future owning set_data calls; installed data is not moved.
     storage_policy_ = policy;
   }
+  /// Footprint threshold override for the next owning set_data (bytes; 0 = default).
+  void set_ram_limit(std::size_t bytes) { ram_limit_bytes_ = bytes; }
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(
@@ -510,7 +515,7 @@ public:
     auto loaded = detail::route_series_storage(
       std::move(candidate),
       storage_policy_,
-      0,
+      ram_limit_bytes_,
       {},
       "Problem::set_data");
     adopt_loaded_data(std::move(loaded));

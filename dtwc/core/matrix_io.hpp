@@ -135,14 +135,34 @@ inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path 
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
     std::vector<Cell> row;
-    std::istringstream ss(line);
-    std::string cell;
-    while (std::getline(ss, cell, ',')) {
+    // std::from_chars, not std::stod: the writer emits locale-independent
+    // binary64 (see the file header), and std::stod honours LC_NUMERIC, so a
+    // de_DE locale read "1.5" back as 1. A partial parse is an error, not a
+    // truncation.
+    // Loop shape matches the previous std::getline(ss, cell, ',') exactly,
+    // including dropping a trailing empty field after a final comma.
+    std::string_view rest{ line };
+    while (!rest.empty()) {
+      const auto comma = rest.find(',');
+      const std::string_view cell =
+        comma == std::string_view::npos ? rest : rest.substr(0, comma);
       if (cell.empty()) {
-        row.push_back({0.0, false});   // empty field → uncomputed
+        row.push_back({ 0.0, false }); // empty field → uncomputed
       } else {
-        row.push_back({std::stod(cell), true});
+        double value{};
+        const auto parsed = std::from_chars(
+          cell.data(), cell.data() + cell.size(), value,
+          std::chars_format::general);
+        if (parsed.ec != std::errc{} || parsed.ptr != cell.data() + cell.size())
+          throw std::runtime_error(
+            "Invalid numeric field '" + std::string(cell) + "' in "
+            + path.string());
+        row.push_back({ value, true });
       }
+      if (comma == std::string_view::npos)
+        rest = {};
+      else
+        rest.remove_prefix(comma + 1);
     }
     rows.push_back(std::move(row));
   }

@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <bit>
+#include <clocale>
+#include <cstdlib>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -549,6 +551,62 @@ TEST_CASE("F14 mmap empty and nonfinite routes execute without partial output",
 }
 
 #endif
+
+TEST_CASE("F14 CSV read is independent of the C numeric locale",
+          "[f14][csv][dense][locale]")
+{
+  // read_csv used std::stod, which honours LC_NUMERIC: under a comma-decimal
+  // locale it stopped at the '.' and read "1.5" back as 1. std::from_chars is
+  // locale-independent by specification. The writer already used to_chars.
+  struct c_numeric_locale_guard
+  {
+    std::string saved;
+    c_numeric_locale_guard()
+    {
+      const char *const current = std::setlocale(LC_NUMERIC, nullptr);
+      saved = current != nullptr ? current : "C";
+    }
+    ~c_numeric_locale_guard() { std::setlocale(LC_NUMERIC, saved.c_str()); }
+  } guard;
+
+  const char *applied = nullptr;
+  for (const char *name : { "de-DE", "German", "de_DE.UTF-8", "de_DE" })
+    if (std::setlocale(LC_NUMERIC, name) != nullptr) {
+      applied = name;
+      break;
+    }
+
+  if (applied == nullptr) {
+    std::cout << "F14_LOCALE_NUMERIC locale=unavailable "
+                 "reason=no_German_LC_NUMERIC_locale_installed\n";
+    CHECK(std::strtod("1.5", nullptr) == 1.5);
+    return;
+  }
+
+  // Without this the case would prove nothing: the locale must actually bite.
+  const bool comma_decimal = std::strtod("1.5", nullptr) != 1.5;
+
+  const auto path = fresh_path("locale.csv");
+  dtwc::core::DenseDistanceMatrix matrix;
+  matrix.resize(2);
+  matrix.set(0, 0, 0.0);
+  matrix.set(1, 0, 1.5);
+  matrix.set(1, 1, 0.0);
+  dtwc::io::write_csv(matrix, path);
+  const std::string bytes = read_binary(path);
+
+  dtwc::core::DenseDistanceMatrix loaded;
+  dtwc::io::read_csv(loaded, path);
+
+  std::cout << "F14_LOCALE_NUMERIC locale=" << applied << " comma_decimal="
+            << (comma_decimal ? "yes" : "no") << " ran\n";
+  CHECK(comma_decimal);
+  CHECK(bytes.find("1.5") != std::string::npos);
+  CHECK(bytes.find("1,5") == std::string::npos);
+  REQUIRE(loaded.size() == 2);
+  CHECK(loaded.get(1, 0) == 1.5);
+  CHECK(loaded.get(0, 1) == 1.5);
+}
 
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")
 {

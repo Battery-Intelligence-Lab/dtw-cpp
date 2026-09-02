@@ -36,41 +36,27 @@
 #include "core/mmap_data_store.hpp" //!< For core::MmapDataStore (mmap-backed store; llfio)
 #endif
 
-// Platform free-RAM query for the StoragePolicy::Auto default threshold. Lightweight
-// POSIX headers only — deliberately NO <windows.h> in this widely-included header
-// (it is unused elsewhere in the core and would leak min/max macros).
-#if defined(__linux__)
-#include <unistd.h>
-#elif defined(__APPLE__)
-#include <sys/sysctl.h>
-#endif
+// Platform free-RAM query for the StoragePolicy::Auto default threshold lives in
+// system_memory.cpp — deliberately NO <windows.h> in this widely-included header
+// (it reaches every consumer through <dtwc/dtwc.hpp> and would leak ERROR,
+// GetMessage and the min/max macros).
 
 namespace dtwc {
 
 namespace detail {
-/// @brief Best-effort free physical RAM in bytes.
-/// @details Returns 0 when the platform query is unavailable (e.g. Windows here);
-///          callers then treat the auto-mmap threshold as effectively unlimited, so
-///          StoragePolicy::Auto stays on heap unless an explicit ram_limit() is set.
-inline std::size_t available_ram_bytes()
-{
-#if defined(__linux__)
-  const long pages = ::sysconf(_SC_AVPHYS_PAGES);
-  const long psize = ::sysconf(_SC_PAGE_SIZE);
-  if (pages > 0 && psize > 0)
-    return static_cast<std::size_t>(pages) * static_cast<std::size_t>(psize);
-  return 0;
-#elif defined(__APPLE__)
-  std::uint64_t mem = 0;
-  std::size_t len = sizeof(mem);
-  int mib[2] = { CTL_HW, HW_MEMSIZE }; // total physical (a safe upper proxy for free)
-  if (::sysctl(mib, 2, &mem, &len, nullptr, 0) == 0)
-    return static_cast<std::size_t>(mem);
-  return 0;
-#else
-  return 0;
-#endif
-}
+/// @brief Best-effort free physical RAM in bytes (see system_memory.cpp).
+/// @details The platforms report three different quantities, all "memory a new
+///          allocation can plausibly use right now":
+///          Linux `_SC_AVPHYS_PAGES` — MemFree, EXCLUDING reclaimable page cache;
+///          Windows `MEMORYSTATUSEX::ullAvailPhys` — free + standby (≈ MemAvailable);
+///          macOS `host_statistics64(HOST_VM_INFO64)` — free + inactive pages.
+///          They are NOT comparable across platforms: the same dataset can spill
+///          to mmap on Linux and stay on the heap on Windows or macOS.
+/// @return 0 means UNKNOWN — the platform has no supported query, or the query
+///         failed. Unknown is not "no free RAM": callers must treat it as "do not
+///         auto-spill" (see choose_storage), so StoragePolicy::Auto stays on heap
+///         unless an explicit ram_limit() is set.
+std::size_t available_ram_bytes();
 } // namespace detail
 
 /**
@@ -113,14 +99,33 @@ inline std::size_t series_footprint_bytes(const Data &data)
   return total;
 }
 
-inline std::size_t series_storage_threshold(std::size_t override_bytes)
+/// @brief Effective footprint threshold above which StoragePolicy::Auto spills to mmap.
+/// @param override_bytes explicit ram_limit() override; 0 = derive from free RAM.
+/// @param available_bytes free physical RAM, or 0 for UNKNOWN (see available_ram_bytes).
+/// @return the override when set, else half of the known free RAM, else SIZE_MAX —
+///         unknown free RAM makes the threshold unreachable, i.e. Auto never spills.
+inline std::size_t series_storage_threshold(
+  std::size_t override_bytes, std::size_t available_bytes)
 {
   if (override_bytes > 0)
     return override_bytes;
-  const std::size_t available = available_ram_bytes();
-  return available > 0
-    ? available / 2
+  return available_bytes > 0
+    ? available_bytes / 2
     : std::numeric_limits<std::size_t>::max();
+}
+
+/// @brief The StoragePolicy::Auto decision as a pure function of its three inputs.
+/// @return Mmap iff the estimated footprint exceeds series_storage_threshold();
+///         Heap otherwise — including whenever free RAM is unknown and no
+///         ram_limit() override is set.
+inline core::StoragePolicy choose_storage(
+  std::size_t estimated_bytes,
+  std::size_t available_bytes,
+  std::size_t limit_bytes)
+{
+  return estimated_bytes > series_storage_threshold(limit_bytes, available_bytes)
+    ? core::StoragePolicy::Mmap
+    : core::StoragePolicy::Heap;
 }
 
 #ifdef DTWC_HAS_MMAP
@@ -174,11 +179,14 @@ inline LoadedData route_series_storage(
   }
 
   const std::size_t footprint = series_footprint_bytes(resident);
+  const std::size_t available = available_ram_bytes();
   const std::size_t threshold =
-    series_storage_threshold(ram_limit_bytes);
+    series_storage_threshold(ram_limit_bytes, available);
   const bool want_mmap =
     policy == core::StoragePolicy::Mmap
-    || (policy == core::StoragePolicy::Auto && footprint > threshold);
+    || (policy == core::StoragePolicy::Auto
+        && choose_storage(footprint, available, ram_limit_bytes)
+             == core::StoragePolicy::Mmap);
 
   if (!want_mmap) {
     out.data = std::move(resident);
@@ -384,7 +392,8 @@ public:
     return *this;
   }
 
-  //!< Set the footprint threshold override in bytes (0 = default: 50% of free RAM).
+  //!< Set the footprint threshold override in bytes (0 = default: 50% of free RAM,
+  //!< or no spilling at all when the platform cannot report free RAM).
   //!< Auto routes to the mmap store when the estimated footprint exceeds this.
   DataLoader &ram_limit(std::size_t bytes)
   {
@@ -444,7 +453,8 @@ public:
    * @brief Storage-policy-aware load (StoragePolicy::Auto/Heap/Mmap routing, Task 1.4).
    * @details Auto spills to the mmap-backed store when the estimated footprint
    *          (rows x lengths x sizeof(data_t)) exceeds the threshold (ram_limit(),
-   *          else 50% of free RAM). The mmap route returns a Data that is a view into
+   *          else 50% of free RAM; Heap when free RAM is unknown and no ram_limit()
+   *          override is set). The mmap route returns a Data that is a view into
    *          the store — the SAME view-mode span machinery CLARA uses (preserved
    *          untouched) — bundled with the owning store so the view stays valid. On
    *          device='hpc' this returns a metadata-only Data (no store). No silent

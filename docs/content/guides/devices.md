@@ -20,6 +20,17 @@ cannot be honoured raises a device error; DTWC++ does not silently run the same
 request on CPU. Matrix-free schedules (`onebatch`, `clara`, and `tadpole`) are
 currently CPU-only and reject a GPU request.
 
+GPU distance kernels cannot read mmap-backed series. `StoragePolicy::Auto`
+spills a dataset above half the free physical RAM into the mapped store, so a
+large GPU run through the Tier-2 `Problem` API must select
+`StoragePolicy::Heap` (or raise `ram_limit`) before `set_data`; otherwise
+`fill_distance_matrix` raises a device error naming `mmap-backed series data`
+rather than falling back to the CPU. The Tier-1 `cluster(...)` entry point
+already pins `Heap` when the selected device is a GPU, and the native CLI never
+routes series storage at all. See
+[Data formats and conversion](../data-formats/) for the free-RAM
+quantities each platform reports.
+
 ## HPC setup (beta)
 
 Copy `scripts/slurm/env.example` to `.env` at the repository root:
