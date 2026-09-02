@@ -157,7 +157,12 @@ function(run_cli_route route output_dir threshold expect_mmap)
     endif()
     require_no_skip("${route} CLI" "${stdout}" "${stderr}")
 
-    string(REPLACE "\\" "/" normalized_stdout "${stdout}")
+    # std::filesystem::path streams through std::quoted, so a Windows
+    # separator arrives as an escaped pair. Collapse the escaped form
+    # first so both platforms normalize to a single "/" and the exact
+    # path markers below stay platform-neutral.
+    string(REPLACE "\\\\" "/" normalized_stdout "${stdout}")
+    string(REPLACE "\\" "/" normalized_stdout "${normalized_stdout}")
     set(matrix_path "${output_dir}/conformance_distance_matrix.csv")
     set(cache_path "${output_dir}/conformance_distmat.cache")
     set(matrix_marker "Distance matrix written to")
@@ -166,7 +171,7 @@ function(run_cli_route route output_dir threshold expect_mmap)
         "${route} distance-matrix output")
     require_occurrences(
         "${normalized_stdout}"
-        "\"${output_dir}//conformance_distance_matrix.csv\"" 1
+        "\"${matrix_path}\"" 1
         "${route} exact distance-matrix path")
     foreach(execution_marker IN ITEMS
             "DTWC++ Clustering"
@@ -185,7 +190,7 @@ function(run_cli_route route output_dir threshold expect_mmap)
             "${route} mmap route")
         require_occurrences(
             "${normalized_stdout}"
-            "\"${output_dir}//conformance_distmat.cache\"" 1
+            "\"${cache_path}\"" 1
             "${route} exact mmap cache")
         if(NOT EXISTS "${cache_path}")
             message(FATAL_ERROR

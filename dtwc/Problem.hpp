@@ -315,6 +315,20 @@ public:
   std::vector<int> centroids_ind; //!< indices of cluster centroids. [0, Np)
 
   // Constructors:
+  // GCC emits -Wdeprecated-declarations for in-class initializers of the
+  // deprecated maxIter / N_repetition fields at every constructor definition.
+  // Canonical construction must stay silent (F22); caller access of those
+  // fields must still diagnose. Same push/pop as Problem.cpp accessors.
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
   Problem() { rebind_dtw_fn(); }
   Problem(std::string_view problem_name) : name_{ problem_name }
   {
@@ -326,6 +340,13 @@ public:
     adopt_loaded_data(loader.load_stored());
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
   Problem(const Problem &) = delete;
   Problem &operator=(const Problem &) = delete;
   Problem(Problem &&);

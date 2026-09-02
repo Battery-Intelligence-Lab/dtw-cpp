@@ -373,7 +373,7 @@ if(TARGET unit_test_deterministic_series)
         TEST unit_test_deterministic_series
         PROPERTY SKIP_RETURN_CODE)
     set(_f15_focused_regex
-        "F15_TEST_SUPPORT profile=(relaxed|precise|libstdcxx) scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0(.|[\r\n])*All tests passed \\((3[5-9]|[4-9][0-9]|[1-9][0-9][0-9]+) assertions in ([5-9]|[1-9][0-9]+) test cases\\)")
+        "F15_TEST_SUPPORT profile=(relaxed|precise|libstdcxx|libcxx) scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0(.|[\r\n])*All tests passed \\((3[5-9]|[4-9][0-9]|[1-9][0-9][0-9]+) assertions in ([5-9]|[1-9][0-9]+) test cases\\)")
     set_tests_properties(
         unit_test_deterministic_series
         PROPERTIES
