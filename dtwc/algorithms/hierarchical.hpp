@@ -77,7 +77,8 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
 /**
  * @brief Cut a dendrogram to produce k flat clusters with medoids.
  *
- * Replays the last N-k merges using union-find, then assigns medoids
+ * Replays the FIRST N-k merges using union-find (the remaining k-1 merges are
+ * the ones that would collapse the k surviving clusters), then assigns medoids
  * by minimising each cluster member's sum of distances to cluster peers.
  * Tie-breaking: smallest original index wins.
  *
@@ -85,6 +86,11 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
  * @param prob  Problem whose distance matrix is used for medoid computation.
  * @param k     Number of clusters (1 <= k <= dend.n_points).
  * @return core::ClusteringResult with labels, medoid_indices, and total_cost.
+ *
+ * @throws std::runtime_error if `dend` is not a well-formed dendrogram over
+ *         `prob` — n_points != prob.size(), merges.size() != n_points - 1, a
+ *         cluster id outside [0, n_points), or a merge list that does not
+ *         reduce N points to k components (A2).
  *
  * @note 2.0 (Task 1.6): writes the result back into `prob` (clusters_ind,
  *       centroids_ind, n_clusters) so scores work with no manual wiring. 1.x

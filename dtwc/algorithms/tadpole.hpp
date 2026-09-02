@@ -65,6 +65,7 @@ struct TADPoleStats {
   std::size_t pruned_by_lb = 0;  ///< Density-stage NOT-neighbour decisions by LB ≥ dc.
   std::size_t pruned_by_ub = 0;  ///< Density-stage neighbour decisions by UB < dc.
   double dc = 0.0;               ///< Cutoff distance used.
+  bool pruning_enabled = false;  ///< Whether the LB/UB path ran at all (see @p prune).
 
   /// Fraction of the brute-force DTW work avoided. 0 on the brute path.
   double pruned_fraction() const
@@ -84,6 +85,12 @@ struct TADPoleStats {
  * @param dc          Cutoff distance for the density kernel (must be > 0).
  * @param prune       true  → apply LB/UB pruning where the live predicate permits;
  *                    false → compute every DTW (independent brute-force oracle).
+ *                    The predicate rejects anything but Standard, univariate,
+ *                    float64, MissingStrategy::Error — in particular there is NO
+ *                    PRUNING ON FLOAT32 DATA (bounds from float64 storage against
+ *                    an exact side that branches on is_f32() are inadmissible),
+ *                    where prune=true costs the same as prune=false and
+ *                    TADPoleStats::pruning_enabled reports it.
  *                    Exact-arithmetic identity is proved for finite, nonempty,
  *                    equal-length Standard-L1 univariate inputs with
  *                    integer-representable lengths. Floating threshold identity

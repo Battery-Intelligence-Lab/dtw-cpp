@@ -230,7 +230,10 @@ void pam1_naive_swap_impl(Problem& prob, int N, int k,
           }
         }
       }
-      #pragma omp critical
+      // G1: an UNNAMED critical region shares one implementation-defined name
+      // program-wide, serialising against every unnamed critical in any linked
+      // TU. Each per-thread reduction gets its own name.
+      #pragma omp critical(dtwc_pam1_naive_swap_reduce)
       {
         if (better_swap(local_best_delta, local_best_x_new, best_delta, best_x_new)) {
           best_delta = local_best_delta;
@@ -354,7 +357,8 @@ void fastpam1_swap_impl(Problem& prob, int N, int k,
           }
         }
       }
-      #pragma omp critical
+      // G1: distinct name, see pam1_naive_swap_impl.
+      #pragma omp critical(dtwc_fastpam1_swap_reduce)
       {
         if (better_swap(local_best_delta, local_best_x_new, best_delta, best_x_new)) {
           best_delta = local_best_delta;
@@ -485,7 +489,8 @@ core::ClusteringResult fast_pam_swap(Problem& prob, const std::vector<int>& init
           }
         }
       }
-      #pragma omp critical
+      // G1: distinct name, see pam1_naive_swap_impl.
+      #pragma omp critical(dtwc_fast_pam_single_medoid_reduce)
       {
         if (loc_present
             && (!best_present || loc_cost < best_cost

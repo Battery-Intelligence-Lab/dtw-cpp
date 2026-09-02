@@ -6,6 +6,7 @@
 #include "one_batch_pam.hpp"
 
 #include "../Problem.hpp"
+#include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
 #include "../error.hpp"
 
@@ -122,7 +123,9 @@ struct FixedBatchDistances {
         row_evaluations[static_cast<std::size_t>(i)] = calls;
         row_maxima[static_cast<std::size_t>(i)] = row_max;
       } catch (...) {
-        #pragma omp critical
+        // G1: an unnamed critical region serialises against every other
+        // unnamed critical in any linked TU. Name it.
+        #pragma omp critical(dtwc_one_batch_table_failure)
         { if (!failure) failure = std::current_exception(); }
       }
     }
@@ -303,15 +306,30 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     converged = true;
     sweeps = 1;
   } else {
+    // C1: `base_removal_gain` and `tolerance` depend only on (nearest,
+    // nearest_distance, second_distance), so they change exactly when a swap is
+    // accepted — not once per candidate. Hoisting them out of the candidate loop
+    // removes one heap allocation and one O(m) pass per candidate (N of each per
+    // sweep); both scratch vectors are allocated once and reused. The
+    // accumulation order over j is unchanged, so the result is digit-identical.
+    std::vector<double> base_removal_gain(static_cast<std::size_t>(k), 0.0);
+    std::vector<double> removal_gain(static_cast<std::size_t>(k), 0.0);
+    double tolerance = 0.0;
+    const auto refresh_swap_state = [&] {
+      std::fill(base_removal_gain.begin(), base_removal_gain.end(), 0.0);
+      for (std::size_t j = 0; j < m; ++j)
+        base_removal_gain[static_cast<std::size_t>(nearest[j])]
+          += nearest_distance[j] - second_distance[j];
+      tolerance = options.relative_tolerance * estimated_cost(nearest_distance);
+    };
+    refresh_swap_state();
+
     for (; sweeps < options.max_iter; ++sweeps) {
       bool changed = false;
       for (std::size_t candidate = 0; candidate < n; ++candidate) {
         if (is_medoid[candidate]) continue;
 
-        std::vector<double> removal_gain(static_cast<std::size_t>(k), 0.0);
-        for (std::size_t j = 0; j < m; ++j)
-          removal_gain[static_cast<std::size_t>(nearest[j])]
-            += nearest_distance[j] - second_distance[j];
+        removal_gain = base_removal_gain;
 
         double add_gain = 0.0;
         for (std::size_t j = 0; j < m; ++j) {
@@ -329,13 +347,12 @@ core::ClusteringResult one_batch_pam(Problem& prob,
         const auto best_it = std::max_element(removal_gain.begin(), removal_gain.end());
         const int slot = static_cast<int>(std::distance(removal_gain.begin(), best_it));
         const double gain = add_gain + *best_it;
-        const double tolerance = options.relative_tolerance
-          * estimated_cost(nearest_distance);
         if (gain > tolerance) {
           is_medoid[static_cast<std::size_t>(medoids[slot])] = false;
           medoids[slot] = static_cast<int>(candidate);
           is_medoid[candidate] = true;
           nearest_two(distances, medoids, nearest, nearest_distance, second_distance);
+          refresh_swap_state();
           ++accepted_swaps;
           changed = true;
         }
@@ -352,17 +369,27 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   // exact() updates the evaluation counter, so keep this loop serial. DTW work
   // dominates and selected medoids are frequently in the batch; correctness
   // and an exact observable count are preferable to an atomic hot path here.
+  //
+  // exact() is the one distance read here that the fixed-batch table's
+  // finiteness check cannot cover: it is reached precisely when a selected
+  // medoid is NOT in the batch. Unguarded, a non-finite d makes `d < best` false
+  // in every slot, the point silently keeps label 0, and the run publishes a
+  // wrong partition where fast_pam / clarans / fast_clara all throw.
   for (std::size_t point = 0; point < n; ++point) {
     double best = std::numeric_limits<double>::infinity();
     int label = 0;
     for (int slot = 0; slot < k; ++slot) {
-      const double d = distances.exact(point, medoids[slot]);
+      const double d = core::detail::require_finite_medoid_distance(
+        distances.exact(point, medoids[slot]), "one_batch_pam", point, slot, medoids[slot]);
       if (d < best) { best = d; label = slot; }
     }
     result.labels[point] = label;
     point_cost[point] = best;
   }
-  result.total_cost = std::accumulate(point_cost.begin(), point_cost.end(), 0.0);
+  // Point-ordered accumulation: the published objective is a cross-route byte
+  // contract, so it uses the same reassociation-proof accumulator as fast_pam,
+  // clarans and fast_clara rather than a plain std::accumulate.
+  result.total_cost = core::detail::ordered_medoid_objective(point_cost, "one_batch_pam");
   result.iterations = sweeps;
   result.converged = converged;
 

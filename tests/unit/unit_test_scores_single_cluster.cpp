@@ -10,7 +10,8 @@
  *   - Dunn: there are no inter-cluster pairs, so min_inter stays at
  *          numeric_limits<double>::max() and the ratio is a meaningless huge
  *          value (or +inf).
- * The fix rejects Nc < 2 with std::invalid_argument.
+ * The fix rejects Nc < 2 with dtwc::InvalidInput (the project taxonomy; it
+ * derives from std::runtime_error).
  *
  * These tests exercise the LIVE public entry points dtwc::scores::davies_bouldin
  * and dtwc::scores::dunn (declared in scores.hpp) on a clustered (non-empty
@@ -57,20 +58,20 @@ Problem make_single_cluster_problem()
 
 } // namespace
 
-TEST_CASE("DBI: single cluster (Nc<2) throws invalid_argument, not silent 0",
+TEST_CASE("DBI: single cluster (Nc<2) throws InvalidInput, not silent 0",
           "[scores][dbi][r4]")
 {
   auto prob = make_single_cluster_problem();
   REQUIRE(prob.n_clusters() == 1);
-  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), dtwc::InvalidInput);
 }
 
-TEST_CASE("Dunn: single cluster (Nc<2) throws invalid_argument, not silent inf",
+TEST_CASE("Dunn: single cluster (Nc<2) throws InvalidInput, not silent inf",
           "[scores][dunn][r4]")
 {
   auto prob = make_single_cluster_problem();
   REQUIRE(prob.n_clusters() == 1);
-  REQUIRE_THROWS_AS(scores::dunn(prob), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::dunn(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("DBI/Dunn: empty-centroids problem still throws the 'cluster first' error",
@@ -83,6 +84,6 @@ TEST_CASE("DBI/Dunn: empty-centroids problem still throws the 'cluster first' er
   std::vector<std::string> names = { "a", "b" };
   prob.set_data(Data(std::move(vecs), std::move(names)));
 
-  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), std::runtime_error);
-  REQUIRE_THROWS_AS(scores::dunn(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(scores::dunn(prob), dtwc::InvalidInput);
 }

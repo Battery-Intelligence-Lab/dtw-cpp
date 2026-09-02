@@ -755,8 +755,15 @@ BarycenterClusteringResult barycenter_kmeans(
     centers = std::move(next_centers);
     result.iterations = iteration + 1;
   }
-  result.total_cost = assign(
-    data, centers, result.labels, workspaces, assignment_workers);
+  // D7: on the converged path the loop already stored `result.labels` and
+  // `result.total_cost` from that iteration's assign(), and `centers` has not
+  // changed since (the break precedes the centre update), so re-assigning would
+  // repeat a full N*k DBA-DTW pass for an identical answer. Only the
+  // max_iter-exhausted path needs it: there the last iteration did update
+  // `centers` after its assign().
+  if (!result.converged)
+    result.total_cost = assign(
+      data, centers, result.labels, workspaces, assignment_workers);
   result.barycenters = std::move(centers);
   return result;
 }

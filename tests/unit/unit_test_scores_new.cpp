@@ -80,7 +80,7 @@ TEST_CASE("Dunn Index: known 4-point problem", "[scores][dunn]")
 TEST_CASE("Dunn Index: throws when not clustered", "[scores][dunn]")
 {
   Problem prob("empty");
-  REQUIRE_THROWS_AS(scores::dunn(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::dunn(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Dunn Index: well-separated > poorly-separated", "[scores][dunn]")
@@ -122,7 +122,7 @@ TEST_CASE("Inertia: known 4-point problem", "[scores][inertia]")
 TEST_CASE("Inertia: throws when not clustered", "[scores][inertia]")
 {
   Problem prob("empty");
-  REQUIRE_THROWS_AS(scores::inertia(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::inertia(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Inertia: better clustering has lower inertia", "[scores][inertia]")
@@ -168,7 +168,7 @@ TEST_CASE("Calinski-Harabasz Index: known 4-point problem", "[scores][ch]")
 TEST_CASE("Calinski-Harabasz Index: throws when not clustered", "[scores][ch]")
 {
   Problem prob("empty");
-  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Calinski-Harabasz Index: throws with 1 cluster", "[scores][ch]")
@@ -181,7 +181,7 @@ TEST_CASE("Calinski-Harabasz Index: throws with 1 cluster", "[scores][ch]")
   prob.set_n_clusters(1);
   prob.clusters_ind = { 0, 0 };
   prob.centroids_ind = { 0 };
-  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Calinski-Harabasz Index: better clustering has higher CH", "[scores][ch]")

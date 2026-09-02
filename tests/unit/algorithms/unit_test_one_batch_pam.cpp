@@ -622,3 +622,49 @@ TEST_CASE("OneBatchPAM 50k registered warped scaling and quality band",
     std::cout << (i == 0 ? "" : ",") << result.medoid_indices[i];
   std::cout << '\n';
 }
+
+TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
+          "[one_batch_pam][nonfinite]")
+{
+  // A6: `FixedBatchDistances::exact` was the only distance read in the algorithm
+  // layer that skipped `require_finite_medoid_distance`, and the objective used
+  // a plain std::accumulate instead of `ordered_medoid_objective`. `exact()` is
+  // only reached for a medoid that is NOT in the fixed batch — the one path the
+  // constructor's finiteness check cannot cover. A non-finite d there makes
+  // `d < best` false for every slot, so the point keeps label 0 and the run
+  // publishes a silently wrong partition with a non-finite total_cost, where
+  // fast_pam / clarans / fast_clara all throw.
+  //
+  // Poison pair: series {+DBL_MAX} and {-DBL_MAX}. Their length-1 L1 DTW is
+  // 2*DBL_MAX = +inf, while every other pair stays finite (<= DBL_MAX). If
+  // either extreme lands in the batch the constructor already throws; the gap is
+  // the seeds where both are outside the batch but one is chosen as a medoid.
+  const double huge = std::numeric_limits<double>::max();
+  std::vector<std::vector<data_t>> series{
+    { 0.0 }, { 1.0 }, { 2.0 }, { 3.0 }, { huge }, { -huge }
+  };
+  std::vector<std::string> names{ "a", "b", "c", "d", "pos", "neg" };
+
+  int returned = 0, threw = 0;
+  for (std::uint64_t seed = 0; seed < 64; ++seed) {
+    Problem problem("obpam_nonfinite");
+    problem.set_data(Data(std::vector<std::vector<data_t>>(series),
+                          std::vector<std::string>(names)));
+    algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 2;
+    options.batch_size = 2;
+    options.random_seed = seed;
+    try {
+      const auto result = algorithms::one_batch_pam(problem, options);
+      ++returned;
+      INFO("seed " << seed << " returned total_cost " << result.total_cost);
+      REQUIRE(std::isfinite(result.total_cost));
+    } catch (const InvalidInput&) {
+      ++threw; // loud rejection: the required behaviour
+    }
+  }
+  // Non-vacuity: the poison configuration really is reachable in this sweep.
+  // (A `returned + threw == 64` check would be tautological — every iteration
+  // increments exactly one counter and any other exception escapes the loop.)
+  REQUIRE(threw > 0);
+}

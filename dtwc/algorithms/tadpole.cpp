@@ -52,14 +52,21 @@ namespace algorithms {
 namespace {
 
 /// Configuration-only predicate for the regime where LB_Keogh + the diagonal L1
-/// upper bound can be valid: plain Standard DTW, univariate, no NaN handling —
-/// the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
+/// upper bound can be valid: plain Standard DTW, univariate, float64, no NaN
+/// handling — the case where dispatch binds L1 `dtwBanded` (dtw_dispatch.cpp
 /// make_standard). It does not inspect samples for finiteness or check that a
 /// series length fits the integer envelope-radius API (F46).
+///
+/// Float32 is excluded because the prune would not be ADMISSIBLE: the bound path
+/// reads Data::series() (float64 storage) while the exact side goes through
+/// Problem::dist_by_ind, which branches on is_f32() — the two sides of the bound
+/// would come from different data. Float32 therefore takes the exact path
+/// everywhere, a slowdown TADPoleStats::pruning_enabled reports.
 bool bounds_valid(const Problem &prob)
 {
   return prob.variant_params.variant == core::DTWVariant::Standard
          && prob.data().ndim == 1
+         && !prob.data().is_f32()
          && prob.missing_strategy == core::MissingStrategy::Error;
 }
 
@@ -169,30 +176,38 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
     std::vector<int> rho_local(N, 0);
     std::size_t loc_plb = 0, loc_pub = 0;
 
+    // `can_prune` is loop-invariant, so it selects the whole i-body once rather
+    // than being retested per pair, and keeps prob.series() — which throws under
+    // Float32 — strictly inside the pruning branch.
     #pragma omp for schedule(dynamic, 8) nowait
     for (int i = 0; i < N; ++i) {
-      auto si = prob.series(i);
-      for (int j = i + 1; j < N; ++j) {
-        auto sj = prob.series(j);
-        bool neighbour;
-        if (can_prune && si.size() == sj.size()) {
-          const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
-          if (lb >= dc) {                            // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
-            neighbour = false;
-            ++loc_plb;
-          } else {
-            const double ub = diagonal_ub_l1(si, sj);
-            if (ub < dc) {                           // Case B: d ≤ UB < dc ⇒ neighbour
-              neighbour = true;
-              ++loc_pub;
-            } else {                                 // Case D: bounds straddle dc ⇒ exact
-              neighbour = (exact(i, j) < dc);
+      if (can_prune) {
+        const auto si = prob.series(i);
+        for (int j = i + 1; j < N; ++j) {
+          const auto sj = prob.series(j);
+          bool neighbour;
+          if (si.size() == sj.size()) {
+            const double lb = core::lb_keogh_symmetric(si, envs[i], sj, envs[j]);
+            if (lb >= dc) {                            // Case C: d ≥ LB ≥ dc ⇒ not a neighbour
+              neighbour = false;
+              ++loc_plb;
+            } else {
+              const double ub = diagonal_ub_l1(si, sj);
+              if (ub < dc) {                           // Case B: d ≤ UB < dc ⇒ neighbour
+                neighbour = true;
+                ++loc_pub;
+              } else {                                 // Case D: bounds straddle dc ⇒ exact
+                neighbour = (exact(i, j) < dc);
+              }
             }
+          } else {
+            neighbour = (exact(i, j) < dc);
           }
-        } else {
-          neighbour = (exact(i, j) < dc);
+          if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
         }
-        if (neighbour) { ++rho_local[i]; ++rho_local[j]; }
+      } else {
+        for (int j = i + 1; j < N; ++j)
+          if (exact(i, j) < dc) { ++rho_local[i]; ++rho_local[j]; }
       }
     }
     #pragma omp critical(tadpole_density_reduce)
@@ -211,17 +226,26 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
 
   #pragma omp parallel for schedule(dynamic, 8)
   for (int i = 0; i < N; ++i) {
-    auto si = prob.series(i);
     double best = kInf;
     int best_parent = -1;
-    for (int q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
-      if (q == i || !higher_density(q, i, rho)) continue;
-      if (can_prune && si.size() == prob.series(q).size()) {
-        const double lb = core::lb_keogh_symmetric(si, envs[i], prob.series(q), envs[q]);
-        if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
+    if (can_prune) { // prob.series() only on the pruning path — see above
+      const auto si = prob.series(i);
+      for (int q = 0; q < N; ++q) { // ascending index ⇒ ties resolve to the smallest index
+        if (q == i || !higher_density(q, i, rho)) continue;
+        const auto sq = prob.series(q);
+        if (si.size() == sq.size()) {
+          const double lb = core::lb_keogh_symmetric(si, envs[i], sq, envs[q]);
+          if (lb >= best) continue; // d ≥ LB ≥ best ⇒ q cannot lower the min (nor tie-win)
+        }
+        const double d = exact(i, q);
+        if (d < best) { best = d; best_parent = q; }
       }
-      const double d = exact(i, q);
-      if (d < best) { best = d; best_parent = q; }
+    } else {
+      for (int q = 0; q < N; ++q) {
+        if (q == i || !higher_density(q, i, rho)) continue;
+        const double d = exact(i, q);
+        if (d < best) { best = d; best_parent = q; }
+      }
     }
     delta[i] = best;
     parent[i] = best_parent;
@@ -291,6 +315,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
     stats->pruned_by_lb = plb;
     stats->pruned_by_ub = pub;
     stats->dc = dc;
+    stats->pruning_enabled = can_prune;
   }
 
   core::ClusteringResult result;

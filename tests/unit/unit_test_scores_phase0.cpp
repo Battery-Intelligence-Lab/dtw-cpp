@@ -70,7 +70,7 @@ TEST_CASE("DBI throws when not clustered", "[scores][dbi]")
 {
   Problem prob("empty_test");
   // centroids_ind is empty -> should throw
-  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(scores::davies_bouldin(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("DBI is smaller for well-separated clusters than for overlapping", "[scores][dbi]")

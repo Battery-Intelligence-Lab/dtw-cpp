@@ -317,7 +317,7 @@ TEST_CASE("TADPole: unequal-length series fall back to exact (still admissible)"
   const int N = 30;
   std::vector<std::vector<data_t>> v;
   std::vector<std::string> nm;
-  std::mt19937 rng(7);
+  std::mt19937 rng(7); // NOLINT(cert-msc51-cpp) fixed seed: deterministic fixture, not security
   std::normal_distribution<double> jit(0.0, 0.4);
   for (int i = 0; i < N; ++i) {
     const int g = i % 3;
@@ -358,4 +358,74 @@ TEST_CASE("TADPole: >=50% of brute-force DTW calls pruned", "[.][tadpole][bench]
               st.pruned_by_lb, st.pruned_by_ub);
   REQUIRE(res.labels.size() == static_cast<std::size_t>(N));
   REQUIRE(frac >= 0.50);
+}
+
+TEST_CASE("TADPole: Float32 data disables LB/UB pruning (A1)", "[tadpole][float32]")
+{
+  // A1 regression. `bounds_valid` gated on variant/ndim/missing_strategy only, so
+  // under Precision::Float32 LB/UB came from float64 storage while exact() routes
+  // through Problem::dist_by_ind, which does branch on is_f32(): different data on
+  // the two sides of the bound, so the prune stops being admissible.
+  // barycenter.cpp:150 already handled this.
+  // Contract: on Float32 input, prune=true must equal prune=false exactly, AND it
+  // must do so by not pruning at all — the ledger has to show zero LB/UB decisions
+  // and pruning_enabled == false, so the fallback is observable rather than silent.
+  // The f64 control below keeps this from passing vacuously (i.e. if bounds_valid
+  // returned false for every input).
+  const int N = 24, len = 16;
+  std::vector<std::vector<float>> v;
+  std::vector<std::string> nm;
+  for (int i = 0; i < N; ++i) {
+    const int g = i % 3;
+    std::vector<float> s(static_cast<std::size_t>(len));
+    for (int t = 0; t < len; ++t)
+      s[static_cast<std::size_t>(t)] =
+        static_cast<float>(g * 20.0 + std::sin(0.3 * t + 0.11 * i));
+    v.push_back(std::move(s));
+    nm.push_back("f" + std::to_string(i));
+  }
+  Problem pa("f32A"), pb("f32B");
+  pa.set_data(Data(std::vector<std::vector<float>>(v), std::vector<std::string>(nm)));
+  pb.set_data(Data(std::move(v), std::move(nm)));
+  REQUIRE(pa.data().is_f32());
+  pa.set_band(3);
+  pb.set_band(3);
+
+  const double dc = algorithms::tadpole_auto_dc(pa, 5.0);
+  algorithms::TADPoleStats sp{}, sb{};
+  auto pruned = algorithms::tadpole(pa, 3, dc, /*prune=*/true, &sp);
+  auto brute = algorithms::tadpole(pb, 3, dc, /*prune=*/false, &sb);
+  REQUIRE(pruned.labels == brute.labels);
+  REQUIRE(pruned.medoid_indices == brute.medoid_indices);
+
+  // The requested prune was refused, and refused loudly.
+  REQUIRE_FALSE(sp.pruning_enabled);
+  REQUIRE(sp.pruned_by_lb == 0);
+  REQUIRE(sp.pruned_by_ub == 0);
+  REQUIRE(sp.dtw_calls == sb.dtw_calls); // identical work to the brute oracle
+  REQUIRE(sp.pruned_fraction() == 0.0);
+
+  // f64 control on the SAME numbers: with the only difference being storage
+  // precision, pruning must actually engage. Without this the assertions above
+  // would still hold if bounds_valid rejected every input.
+  std::vector<std::vector<data_t>> d;
+  std::vector<std::string> dn;
+  for (int i = 0; i < N; ++i) {
+    std::vector<data_t> s(static_cast<std::size_t>(len));
+    for (int t = 0; t < len; ++t)
+      s[static_cast<std::size_t>(t)] =
+        static_cast<data_t>(static_cast<float>((i % 3) * 20.0 + std::sin(0.3 * t + 0.11 * i)));
+    d.push_back(std::move(s));
+    dn.push_back("d" + std::to_string(i));
+  }
+  Problem pd("f64ctl");
+  pd.set_data(Data(std::move(d), std::move(dn)));
+  REQUIRE_FALSE(pd.data().is_f32());
+  pd.set_band(3);
+
+  algorithms::TADPoleStats sd{};
+  algorithms::tadpole(pd, 3, algorithms::tadpole_auto_dc(pd, 5.0), /*prune=*/true, &sd);
+  REQUIRE(sd.pruning_enabled);
+  REQUIRE(sd.pruned_by_lb + sd.pruned_by_ub > 0);
+  REQUIRE(sd.dtw_calls < sd.total_pairs);
 }

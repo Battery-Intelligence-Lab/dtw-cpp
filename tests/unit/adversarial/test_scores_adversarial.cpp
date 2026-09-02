@@ -9,9 +9,13 @@
  *           b(i) = min avg distance to any other cluster.
  *
  *   DBI = (1/k) * sum_i max_{j!=i} (S_i + S_j) / d(c_i, c_j)
- *     where S_i = avg distance from cluster members to medoid i.
- *     NOTE: DBI and CH index are currently commented out in scores.cpp.
- *           Tests for those are included as DISABLED (skipped) sections.
+ *     where S_i = avg distance from cluster members to medoid i, and k, i, j
+ *     range over the REALISED (non-empty) clusters only.
+ *
+ *   CH  = (B / (k-1)) / (W / (N-k))   (medoid-adapted Calinski-Harabasz 1974)
+ *
+ * All of the above are defined on the realised partition; a declared-but-empty
+ * cluster has no medoid, no scatter and no b(i) contribution (A7).
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026
@@ -30,6 +34,7 @@
 #include <cmath>
 #include <random>
 #include <utility>
+#include <stdexcept>
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
@@ -443,12 +448,11 @@ TEST_CASE("Silhouette: unclustered problem returns -1 vector",
 
 // ===========================================================================
 // Area 2: DBI and CH Index
-// NOTE: These are commented out in the production code (scores.cpp).
-//       The tests below are disabled (will not compile/run until DBI/CH are
-//       implemented). They serve as a specification for future implementation.
+// D2: these were dead behind `#if 0` with the stale comment "not yet
+// implemented". Both ARE implemented (scores::davies_bouldin,
+// scores::calinski_harabasz), so the block is live again; the two single-cluster
+// cases now assert the hardened contract (throw) rather than "returns 0 or inf".
 // ===========================================================================
-
-#if 0  // DISABLED: DBI and CH index not yet implemented in production code
 
 TEST_CASE("DBI: non-negative",
           "[scores][dbi][adversarial]")
@@ -479,7 +483,7 @@ TEST_CASE("DBI: well-separated clusters have low DBI",
   REQUIRE_THAT(dbi, WithinAbs(0.0, 1e-10));
 }
 
-TEST_CASE("DBI: single cluster returns 0 or handles gracefully",
+TEST_CASE("DBI: single cluster throws (undefined, not a silent 0)",
           "[scores][dbi][adversarial]")
 {
   auto prob = make_problem({
@@ -488,9 +492,9 @@ TEST_CASE("DBI: single cluster returns 0 or handles gracefully",
   assign_clusters(prob, 1, {0, 0, 0}, {0});
   prob.fill_distance_matrix();
 
-  // With k=1, no other cluster to compare => DBI should be 0
-  double dbi = dtwc::scores::davies_bouldin(prob);
-  REQUIRE(dbi >= 0.0);
+  // With k=1 the max_{j!=i} set is empty, so DBI is undefined. Returning 0 would
+  // report the WORST possible clustering as perfect.
+  REQUIRE_THROWS_AS(dtwc::scores::davies_bouldin(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("CH index: positive for well-separated clusters",
@@ -503,11 +507,11 @@ TEST_CASE("CH index: positive for well-separated clusters",
   assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
   prob.fill_distance_matrix();
 
-  double ch = dtwc::scores::CH_index(prob);
+  double ch = dtwc::scores::calinski_harabasz(prob);
   REQUIRE(ch > 0.0);
 }
 
-TEST_CASE("CH index: k=1 handles gracefully (division by k-1)",
+TEST_CASE("CH index: k=1 throws instead of dividing by k-1 == 0",
           "[scores][ch][adversarial]")
 {
   auto prob = make_problem({
@@ -516,14 +520,8 @@ TEST_CASE("CH index: k=1 handles gracefully (division by k-1)",
   assign_clusters(prob, 1, {0, 0}, {0});
   prob.fill_distance_matrix();
 
-  // k-1 = 0 => division by zero. Should handle gracefully.
-  // Expect 0, NaN, or exception -- not a crash.
-  double ch = dtwc::scores::CH_index(prob);
-  // Just check it doesn't crash; value may be 0 or inf
-  REQUIRE((ch >= 0.0 || std::isinf(ch) || std::isnan(ch)));
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
-
-#endif  // DISABLED: DBI and CH index
 
 // ===========================================================================
 // Area 3: Adjusted Rand Index (ARI) — adversarial tests
@@ -842,7 +840,7 @@ TEST_CASE("Dunn: unclustered problem throws",
 {
   auto prob = make_problem({{1.0, 2.0}, {3.0, 4.0}});
   // Do NOT set centroids
-  REQUIRE_THROWS_AS(dtwc::scores::dunn(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::dunn(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Dunn: all distances zero (identical points) returns infinity",
@@ -931,7 +929,7 @@ TEST_CASE("CH: k=1 throws (k-1=0 division by zero)",
   assign_clusters(prob, 1, {0, 0, 0}, {0});
 
   // Implementation explicitly throws for k <= 1
-  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("CH: k=N (each point in own cluster) throws",
@@ -944,7 +942,7 @@ TEST_CASE("CH: k=N (each point in own cluster) throws",
   });
   assign_clusters(prob, 3, {0, 1, 2}, {0, 1, 2});
 
-  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("CH: unclustered problem throws",
@@ -952,7 +950,7 @@ TEST_CASE("CH: unclustered problem throws",
 {
   auto prob = make_problem({{1.0}, {2.0}, {3.0}, {4.0}});
   // centroids_ind is empty
-  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::calinski_harabasz(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("CH: better clustering has higher CH than worse one",
@@ -1045,7 +1043,7 @@ TEST_CASE("Inertia: unclustered problem throws",
           "[scores][inertia][adversarial]")
 {
   auto prob = make_problem({{1.0, 2.0}, {3.0, 4.0}});
-  REQUIRE_THROWS_AS(dtwc::scores::inertia(prob), std::runtime_error);
+  REQUIRE_THROWS_AS(dtwc::scores::inertia(prob), dtwc::InvalidInput);
 }
 
 TEST_CASE("Inertia: hand-computed value",
@@ -1088,4 +1086,134 @@ TEST_CASE("Inertia: misassigned point increases inertia",
   REQUIRE(iner_bad > iner_good);
   REQUIRE_THAT(iner_good, WithinAbs(2.0, 1e-10));
   REQUIRE_THAT(iner_bad,  WithinAbs(100.0, 1e-10));
+}
+
+// ===========================================================================
+// Area 5: degenerate partitions (A3, A4, A5, A7)
+//
+// These five cases are the ones the audit found untested. Each is checked
+// against the standard definition, not against the implementation:
+//   Silhouette (Rousseeuw, J. Comput. Appl. Math. 20:53-65, 1987)
+//     a(i) = mean d(i, .) within C_i (over |C_i|-1 peers), b(i) = min over the
+//     OTHER NON-EMPTY clusters of the mean d(i, .), s(i) = (b-a)/max(a,b),
+//     with s(i) = 0 when |C_i| = 1 and when a = b = 0. Needs >= 2 non-empty
+//     clusters; sklearn raises otherwise.
+//   Davies-Bouldin (IEEE TPAMI 1(2):224-227, 1979)
+//     R_ij = (S_i + S_j) / M_ij, DB = (1/k) sum_i max_{j != i} R_ij. Axiom (3)
+//     of the paper is R_ij = 0 iff S_i = S_j = 0, and R_ij is strictly
+//     decreasing in M_ij, so M_ij -> 0 with S_i + S_j > 0 gives R_ij -> +inf
+//     (the WORST value), never a skipped pair.
+// ===========================================================================
+
+TEST_CASE("A3 · Silhouette: one realised cluster throws, never reports ~+1",
+          "[scores][silhouette][adversarial][degenerate]")
+{
+  // Before A3 the b(i) search only ran on `i != i_c`, so with one cluster `min`
+  // stayed at numeric_limits<double>::max() and s(i) = (MAX - a)/MAX ~ 1.0:
+  // three visibly different series scored a "perfect" clustering.
+  auto prob = make_problem({
+    {0, 0, 0}, {5, 5, 5}, {50, 50, 50},
+  });
+  assign_clusters(prob, 1, {0, 0, 0}, {0});
+  prob.fill_distance_matrix();
+
+  REQUIRE_THROWS_AS(dtwc::scores::silhouette(prob), dtwc::InvalidInput);
+}
+
+TEST_CASE("A5 · Silhouette: a = b = 0 gives 0, not NaN",
+          "[scores][silhouette][adversarial][degenerate]")
+{
+  // Two clusters, all four series identical => every within- and between-cluster
+  // distance is 0, so a(i) = b(i) = 0 and the raw formula is 0/0. Rousseeuw's
+  // convention is s(i) = 0. A NaN here poisons any downstream mean.
+  auto prob = make_problem({
+    {1, 1, 1}, {1, 1, 1},
+    {1, 1, 1}, {1, 1, 1},
+  });
+  assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
+  prob.fill_distance_matrix();
+
+  auto sil = dtwc::scores::silhouette(prob);
+  REQUIRE(sil.size() == 4);
+  for (double s : sil) {
+    REQUIRE_FALSE(std::isnan(s));
+    REQUIRE_THAT(s, WithinAbs(0.0, 1e-15));
+  }
+}
+
+TEST_CASE("A4 · DBI: coincident medoids with real spread give +inf, not 0",
+          "[scores][dbi][adversarial][degenerate]")
+{
+  // The worst possible configuration: the two medoids are the SAME series
+  // (M_01 = 0) while both clusters have real internal spread (S_i > 0). The old
+  // `if (d_ij > 0)` skipped the only pair, max_ratio kept its 0.0 initialiser
+  // and DBI reported 0.0 = perfect.
+  auto prob = make_problem({
+    {0, 0, 0}, {8, 8, 8},   // cluster 0, medoid = series 0
+    {0, 0, 0}, {9, 9, 9},   // cluster 1, medoid = series 2 (identical to 0)
+  });
+  assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
+  prob.fill_distance_matrix();
+
+  // Sanity: the medoids really are at distance 0 while the scatters are not.
+  REQUIRE(prob.dist_by_ind(0, 2) == 0.0);
+  REQUIRE(prob.dist_by_ind(1, 0) > 0.0);
+
+  const double dbi = dtwc::scores::davies_bouldin(prob);
+  REQUIRE(std::isinf(dbi));
+  REQUIRE(dbi > 0.0);
+}
+
+TEST_CASE("A4 · DBI: coincident medoids with zero scatter give 0 (axiom 3)",
+          "[scores][dbi][adversarial][degenerate]")
+{
+  // M_ij = 0 AND S_i = S_j = 0 is 0/0. Davies & Bouldin's axiom (3) states
+  // R_ij = 0 iff S_i = S_j = 0, so the limit to take here is 0, not +inf.
+  auto prob = make_problem({
+    {2, 2, 2}, {2, 2, 2},
+    {2, 2, 2}, {2, 2, 2},
+  });
+  assign_clusters(prob, 2, {0, 0, 1, 1}, {0, 2});
+  prob.fill_distance_matrix();
+
+  const double dbi = dtwc::scores::davies_bouldin(prob);
+  REQUIRE_FALSE(std::isnan(dbi));
+  REQUIRE_THAT(dbi, WithinAbs(0.0, 1e-15));
+}
+
+TEST_CASE("A7 · Scores use the realised label set, not the declared n_clusters",
+          "[scores][adversarial][degenerate]")
+{
+  // n_clusters() says 3; the labels realise only cluster 0. dunn used the
+  // DECLARED count, passed its Nc >= 2 guard, found no inter-cluster pair and
+  // returned DBL_MAX / max_intra ~ 1.8e308 as an ordinary finite number.
+  auto prob = make_problem({
+    {0, 0, 0}, {1, 1, 1}, {2, 2, 2},
+  });
+  assign_clusters(prob, 3, {0, 0, 0}, {0, 0, 0});
+  prob.fill_distance_matrix();
+
+  REQUIRE(prob.n_clusters() == 3);
+  REQUIRE_THROWS_AS(dtwc::scores::dunn(prob), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(dtwc::scores::davies_bouldin(prob), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(dtwc::scores::silhouette(prob), dtwc::InvalidInput);
+
+  SECTION("an empty declared cluster does not change a realised 2-cluster score") {
+    // Same partition realised two ways: declared k = 2 (tight) and declared
+    // k = 3 with cluster 2 empty. The realised partition is identical, so every
+    // score must be DIGIT-identical; before A7 the 1/k normalisers differed.
+    auto tight = make_problem({{0, 0}, {0, 0}, {10, 10}, {10, 10}});
+    assign_clusters(tight, 2, {0, 0, 1, 1}, {0, 2});
+    tight.fill_distance_matrix();
+
+    auto padded = make_problem({{0, 0}, {0, 0}, {10, 10}, {10, 10}});
+    assign_clusters(padded, 3, {0, 0, 1, 1}, {0, 2, 2});
+    padded.fill_distance_matrix();
+
+    REQUIRE(dtwc::scores::davies_bouldin(padded) == dtwc::scores::davies_bouldin(tight));
+    REQUIRE(dtwc::scores::dunn(padded) == dtwc::scores::dunn(tight));
+    REQUIRE(dtwc::scores::calinski_harabasz(padded)
+            == dtwc::scores::calinski_harabasz(tight));
+    REQUIRE(dtwc::scores::silhouette(padded) == dtwc::scores::silhouette(tight));
+  }
 }

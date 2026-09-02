@@ -267,3 +267,57 @@ TEST_CASE("Hierarchical: merge sizes are correct", "[hierarchical]")
   // Step 2: {0,1}+{2,3} → size 4
   REQUIRE(dend.merges[2].new_size == 4);
 }
+
+// ---------------------------------------------------------------------------
+// A2: cut_dendrogram must not trust a caller-supplied Dendrogram
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Hierarchical: cut_dendrogram rejects a malformed Dendrogram", "[hierarchical][validation]")
+{
+  // `Dendrogram` is default-constructible with both fields publicly writable and
+  // is exported to Python, so cut_dendrogram is reachable with a hand-built
+  // struct. Before A2 it read dend.merges[i] and indexed UF::parent with
+  // unvalidated cluster ids — an out-of-bounds read from pure Python.
+  auto prob = make_4point_problem();
+
+  SECTION("n_points disagreeing with prob.size()") {
+    dtwc::algorithms::Dendrogram d;
+    d.n_points = 10;
+    d.merges.resize(9); // well-formed count for n_points=10, wrong problem
+    for (int i = 0; i < 9; ++i) { d.merges[static_cast<size_t>(i)].cluster_a = 0;
+                                  d.merges[static_cast<size_t>(i)].cluster_b = i + 1; }
+    REQUIRE_THROWS_AS(dtwc::algorithms::cut_dendrogram(d, prob, 2), std::runtime_error);
+  }
+
+  SECTION("merges shorter than n_points - 1 (the Python OOB report)") {
+    dtwc::algorithms::Dendrogram d;
+    d.n_points = 4;
+    d.merges.clear(); // cut_dendrogram would replay merges[0..2] of an empty vector
+    REQUIRE_THROWS_AS(dtwc::algorithms::cut_dendrogram(d, prob, 1), std::runtime_error);
+  }
+
+  SECTION("cluster id out of range") {
+    dtwc::algorithms::Dendrogram d;
+    d.n_points = 4;
+    d.merges.resize(3);
+    d.merges[0].cluster_a = 0; d.merges[0].cluster_b = 1;
+    d.merges[1].cluster_a = 2; d.merges[1].cluster_b = 3;
+    d.merges[2].cluster_a = 0; d.merges[2].cluster_b = 99; // OOB into UF::parent
+    REQUIRE_THROWS_AS(dtwc::algorithms::cut_dendrogram(d, prob, 1), std::runtime_error);
+  }
+
+  SECTION("negative cluster id") {
+    dtwc::algorithms::Dendrogram d;
+    d.n_points = 4;
+    d.merges.resize(3);
+    d.merges[0].cluster_a = -1; d.merges[0].cluster_b = 1;
+    d.merges[1].cluster_a = 2; d.merges[1].cluster_b = 3;
+    d.merges[2].cluster_a = 0; d.merges[2].cluster_b = 2;
+    REQUIRE_THROWS_AS(dtwc::algorithms::cut_dendrogram(d, prob, 1), std::runtime_error);
+  }
+
+  SECTION("a well-formed dendrogram still works") {
+    auto good = dtwc::algorithms::build_dendrogram(prob);
+    REQUIRE_NOTHROW(dtwc::algorithms::cut_dendrogram(good, prob, 2));
+  }
+}

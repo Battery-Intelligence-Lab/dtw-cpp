@@ -14,20 +14,79 @@
 
 #include "scores.hpp"
 #include "Problem.hpp"
+#include "error.hpp"
 #include "parallelisation.hpp"
 
-#include <algorithm>      // for std::max
+#include <algorithm>      // for std::max, std::count_if
 #include <cmath>          // for std::log
 #include <cstddef>
 #include <cstdint>        // for int64_t
 #include <iostream>
 #include <limits>         // for std::numeric_limits
-#include <stdexcept>      // for std::runtime_error
+#include <stdexcept>      // for std::invalid_argument
+#include <string>         // for std::to_string
 #include <unordered_map>
 #include <utility>        // for pair
 #include <vector>
 
 namespace dtwc::scores {
+
+namespace {
+
+/**
+ * @brief Member count of every declared cluster id, validating the labelling.
+ *
+ * All internal validity indices are defined on the REALISED partition — the set
+ * of labels that actually occur — not on the declared `n_clusters`. A
+ * declared-but-empty cluster has no members, hence no scatter, no medoid and no
+ * b(i) contribution; counting it corrupts the 1/k normaliser and lets the
+ * "at least 2 clusters" guards pass vacuously.
+ */
+std::vector<int> cluster_counts_checked(const Problem &prob, const char *who)
+{
+  const auto N = prob.size();
+  const int Nc = prob.n_clusters();
+  if (prob.clusters_ind.size() != N)
+    throw InvalidInput(std::string(who) + ": clusters_ind holds "
+                             + std::to_string(prob.clusters_ind.size()) + " labels for "
+                             + std::to_string(N) + " points.");
+
+  std::vector<int> counts(static_cast<std::size_t>(std::max(Nc, 0)), 0);
+  for (auto i : Range(N)) {
+    const int c = prob.clusters_ind[i];
+    if (c < 0 || c >= Nc)
+      throw InvalidInput(std::string(who) + ": label " + std::to_string(c)
+                               + " on point " + std::to_string(i) + " is outside [0, "
+                               + std::to_string(Nc) + ").");
+    ++counts[static_cast<std::size_t>(c)];
+  }
+  return counts;
+}
+
+/// Number of non-empty clusters in `counts`.
+int n_realised_clusters(const std::vector<int> &counts)
+{
+  return static_cast<int>(std::count_if(counts.begin(), counts.end(),
+                                        [](int c) { return c > 0; }));
+}
+
+/// Shared guard: an internal index that compares clusters needs at least two
+/// NON-EMPTY ones. Throws UndefinedScore (not the plain InvalidInput of the
+/// other guards) so a save path that must survive an undefined index can catch
+/// exactly this case. Returns the realised count.
+int require_two_realised(const std::vector<int> &counts, const char *who, const char *why)
+{
+  const int realised = n_realised_clusters(counts);
+  if (realised < 2)
+    throw UndefinedScore(std::string(who) + " requires at least 2 non-empty clusters; "
+                                + why + " Got " + std::to_string(realised)
+                                + " realised cluster(s) out of " + std::to_string(counts.size())
+                                + " declared.");
+  return realised;
+}
+
+} // anonymous namespace
+
 
 /**
  * @brief Calculates the silhouette score for each data point in a given clustering problem.
@@ -54,6 +113,14 @@ std::vector<double> silhouette(Problem &prob)
     return silhouettes;
   }
 
+  // s(i) is only defined when a SECOND non-empty cluster supplies b(i);
+  // otherwise `min` stays at DBL_MAX and (min - a)/min evaluates to ~ +1.0 — a
+  // "perfect" score for one cluster. sklearn raises here for the same reason.
+  const auto counts = cluster_counts_checked(prob, "silhouette");
+  require_two_realised(counts, "silhouette",
+                       "b(i) is the mean distance to the nearest OTHER cluster, which does not "
+                       "exist for a single realised cluster.");
+
   prob.fill_distance_matrix(); //!< We need all pairwise distance for silhouette score.
 
   auto oneTask = [&](size_t i_b) {
@@ -79,7 +146,11 @@ std::vector<double> silhouette(Problem &prob)
           min = std::min(min, mean_distances[i].second);
         }
 
-      silhouettes[i_b] = (min - mean_distances[i_c].second) / std::max(min, mean_distances[i_c].second);
+      // a = b = 0 is 0/0; Rousseeuw's convention is s(i) = 0 (neither well nor
+      // badly placed). A NaN here would poison any downstream mean.
+      const double a = mean_distances[i_c].second;
+      const double denom = std::max(min, a);
+      silhouettes[i_b] = (denom > 0.0) ? (min - a) / denom : 0.0;
     }
   };
 
@@ -98,7 +169,7 @@ std::vector<double> silhouette(Problem &prob)
  * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
  * @return double The Davies-Bouldin index.
  *
- * @note Requires that the data has already been clustered; throws std::runtime_error if centroids are not set.
+ * @note Requires that the data has already been clustered; throws dtwc::InvalidInput if centroids are not set.
  * @see https://en.wikipedia.org/wiki/Davies%E2%80%93Bouldin_index for more information on the Davies-Bouldin index.
  */
 double davies_bouldin(Problem &prob)
@@ -106,7 +177,7 @@ double davies_bouldin(Problem &prob)
   const auto Nc = prob.n_clusters(); //!< Number of clusters
 
   if (prob.centroids_ind.empty()) {
-    throw std::runtime_error("Cluster before calculating DBI");
+    throw InvalidInput("Cluster before calculating DBI");
   }
 
   // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
@@ -114,19 +185,25 @@ double davies_bouldin(Problem &prob)
   // loop below finds nothing and the index silently collapses to 0. Reject
   // Nc < 2 with a clear error instead (audit handoff-2026-06-01:25).
   if (Nc < 2)
-    throw std::invalid_argument(
+    throw InvalidInput(
       "davies_bouldin requires at least 2 clusters; the Davies-Bouldin index "
       "is undefined for a single cluster (no inter-cluster separation).");
+
+  // k, i and j range over the REALISED clusters: an empty one has no meaningful
+  // S_c or medoid, yet would still divide the final sum.
+  const auto cluster_counts = cluster_counts_checked(prob, "davies_bouldin");
+  const int k_realised = require_two_realised(
+    cluster_counts, "davies_bouldin",
+    "R_ij needs a second cluster j != i, so the index is undefined "
+    "for a single realised cluster.");
 
   prob.fill_distance_matrix(); //!< We need all pairwise distances for the Davies-Bouldin index.
 
   // Compute within-cluster scatter S_i = (1/|C_i|) * sum_{x in C_i} d(x, medoid_i)
   std::vector<double> scatter(Nc, 0.0);
-  std::vector<int> cluster_counts(Nc, 0);
   for (auto i : Range(prob.size())) {
     int ci = prob.clusters_ind[i];
     scatter[ci] += prob.dist_by_ind(static_cast<int>(i), prob.centroids_ind[ci]);
-    cluster_counts[ci]++;
   }
   for (int c = 0; c < Nc; ++c) {
     if (cluster_counts[c] > 0)
@@ -134,22 +211,30 @@ double davies_bouldin(Problem &prob)
   }
 
   // Compute DBI = (1/k) * sum_i max_{j != i} R_ij
-  // where R_ij = (S_i + S_j) / d(medoid_i, medoid_j)
+  // where R_ij = (S_i + S_j) / M_ij and M_ij = d(medoid_i, medoid_j).
   double dbi = 0.0;
   for (int i = 0; i < Nc; ++i) {
+    if (cluster_counts[i] == 0) continue; // skip empty clusters
     double max_ratio = 0.0;
     for (int j = 0; j < Nc; ++j) {
-      if (i != j) {
-        const double d_ij = prob.dist_by_ind(prob.centroids_ind[i], prob.centroids_ind[j]);
-        if (d_ij > 0) {
-          double ratio = (scatter[i] + scatter[j]) / d_ij;
-          max_ratio = std::max(max_ratio, ratio);
-        }
-      }
+      if (i == j || cluster_counts[j] == 0) continue;
+      const double d_ij = prob.dist_by_ind(prob.centroids_ind[i], prob.centroids_ind[j]);
+      const double combined_scatter = scatter[i] + scatter[j];
+      // M_ij == 0 must NOT skip the pair. Davies & Bouldin (1979) require R_ij to
+      // be strictly decreasing in M_ij with R_ij = 0 iff S_i = S_j = 0, so the
+      // M_ij -> 0 limit is +inf when the clusters have any spread and 0 in the
+      // 0/0 case (their axiom 3). Skipping it reported the worst configuration
+      // — coincident medoids with real spread — as a perfect DBI = 0.
+      double ratio;
+      if (d_ij > 0.0)
+        ratio = combined_scatter / d_ij;
+      else
+        ratio = (combined_scatter > 0.0) ? std::numeric_limits<double>::infinity() : 0.0;
+      max_ratio = std::max(max_ratio, ratio);
     }
     dbi += max_ratio;
   }
-  return dbi / Nc;
+  return dbi / k_realised;
 }
 
 /**
@@ -164,16 +249,17 @@ double davies_bouldin(Problem &prob)
 double dunn(Problem &prob)
 {
   if (prob.centroids_ind.empty())
-    throw std::runtime_error("Cluster before calculating Dunn Index");
+    throw InvalidInput("Cluster before calculating Dunn Index");
 
   // The Dunn index is min(inter-cluster distance) / max(intra-cluster diameter).
   // With a single cluster there are no inter-cluster pairs, so min_inter stays
   // at numeric_limits::max() and the result is a meaningless huge value (or
-  // +inf). Reject Nc < 2 with a clear error (audit handoff-2026-06-01:25).
-  if (prob.n_clusters() < 2)
-    throw std::invalid_argument(
-      "dunn requires at least 2 clusters; the Dunn index is undefined for a "
-      "single cluster (no inter-cluster distances exist).");
+  // +inf). The count must be of REALISED clusters: on declared n_clusters,
+  // Nc = 3 with only label 0 in use passed the guard and returned ~1.8e308.
+  const auto counts = cluster_counts_checked(prob, "dunn");
+  require_two_realised(counts, "dunn",
+                       "the index is a ratio of inter- to intra-cluster distances and no "
+                       "inter-cluster pair exists.");
 
   prob.fill_distance_matrix();
 
@@ -210,7 +296,7 @@ double dunn(Problem &prob)
 double inertia(Problem &prob)
 {
   if (prob.centroids_ind.empty())
-    throw std::runtime_error("Cluster before calculating inertia");
+    throw InvalidInput("Cluster before calculating inertia");
 
   prob.fill_distance_matrix();
 
@@ -236,15 +322,20 @@ double inertia(Problem &prob)
 double calinski_harabasz(Problem &prob)
 {
   if (prob.centroids_ind.empty())
-    throw std::runtime_error("Cluster before calculating Calinski-Harabasz Index");
+    throw InvalidInput("Cluster before calculating Calinski-Harabasz Index");
 
   const auto N = static_cast<int>(prob.size());
-  const auto k = prob.n_clusters();
+  const auto Nc = prob.n_clusters();
+
+  // k is the number of REALISED clusters: it sets both the (k-1) and the (N-k)
+  // degrees of freedom, so an empty declared cluster would bias both.
+  const auto cluster_counts = cluster_counts_checked(prob, "calinski_harabasz");
+  const int k = n_realised_clusters(cluster_counts);
 
   if (k <= 1)
-    throw std::runtime_error("Calinski-Harabasz Index requires at least 2 clusters");
+    throw InvalidInput("Calinski-Harabasz Index requires at least 2 clusters");
   if (N <= k)
-    throw std::runtime_error("Calinski-Harabasz Index requires more points than clusters");
+    throw InvalidInput("Calinski-Harabasz Index requires more points than clusters");
 
   prob.fill_distance_matrix();
 
@@ -270,12 +361,9 @@ double calinski_harabasz(Problem &prob)
   }
 
   // Between-cluster scatter B = sum_c |c| * d(medoid_c, overall_medoid)^2
-  std::vector<int> cluster_counts(k, 0);
-  for (int i = 0; i < N; ++i)
-    cluster_counts[prob.clusters_ind[i]]++;
-
   double B = 0.0;
-  for (int c = 0; c < k; ++c) {
+  for (int c = 0; c < Nc; ++c) {
+    if (cluster_counts[c] == 0) continue; // an empty cluster has no medoid
     double d = prob.dist_by_ind(prob.centroids_ind[c], overall_medoid);
     B += cluster_counts[c] * d * d;
   }

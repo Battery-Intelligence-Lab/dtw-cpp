@@ -226,26 +226,49 @@ namespace {
    * @param ram_budget   Available bytes for chunk data.
    * @return Total cost (sum of distances to nearest medoid).
    */
+  /**
+   * @brief Chunked nearest-medoid assignment streamed from Parquet.
+   *
+   * One body for both precisions. `F32` selects the reader entry point, the
+   * per-series accessor and the resident-byte size at COMPILE time, so each
+   * instantiation emits exactly the loop the two hand-written copies emitted —
+   * no runtime branch enters the per-element inner loop.
+   */
+  template <bool F32, typename DtwFn>
   double assign_all_points_chunked(
-    const Problem::dtw_fn_t &dtw_fn,
+    const DtwFn &dtw_fn,
     const Data &medoid_data,
     const std::vector<int> &medoid_indices,
     std::vector<int> &labels,
     const io::ParquetChunkReader &reader,
     size_t ram_budget)
   {
+    const auto series_at = [](const Data &d, int index) {
+      if constexpr (F32)
+        return d.series_f32(static_cast<size_t>(index));
+      else
+        return d.series(static_cast<size_t>(index));
+    };
+
     const auto N = reader.logical_series_count();
     const int k = static_cast<int>(medoid_data.size());
     labels.resize(static_cast<size_t>(N));
 
-    const size_t medoid_bytes = resident_data_bytes(medoid_data, sizeof(data_t));
-    if (medoid_bytes >= ram_budget)
-      throw InvalidInput(
-        "fast_clara: ram_limit_bytes is too small to retain the selected "
-        "medoid series during chunked assignment.");
+    const size_t medoid_bytes =
+      resident_data_bytes(medoid_data, F32 ? sizeof(float) : sizeof(data_t));
+    if (medoid_bytes >= ram_budget) {
+      if constexpr (F32)
+        throw InvalidInput(
+          "fast_clara: ram_limit_bytes is too small to retain the selected "
+          "Float32 medoid series during chunked assignment.");
+      else
+        throw InvalidInput(
+          "fast_clara: ram_limit_bytes is too small to retain the selected "
+          "medoid series during chunked assignment.");
+    }
     const size_t chunk_budget = ram_budget - medoid_bytes;
 
-    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, false);
+    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, F32);
     int total_rg = reader.num_row_groups();
 
     core::detail::OrderedMedoidObjective total_cost("fast_clara");
@@ -254,7 +277,8 @@ namespace {
 
     for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
       int batch_count = std::min(rg_per_batch, total_rg - rg);
-      Data chunk = reader.read_row_groups(rg, batch_count);
+      Data chunk = F32 ? reader.read_row_groups_f32(rg, batch_count)
+                       : reader.read_row_groups(rg, batch_count);
 
       const int chunk_size = static_cast<int>(chunk.size());
       best_dists.resize(static_cast<size_t>(chunk_size));
@@ -270,85 +294,12 @@ namespace {
           double best_dist = std::numeric_limits<double>::max();
           int best_label = 0;
           bool has_best = false;
-          auto series_p = chunk.series(p);
+          auto series_p = series_at(chunk, p);
 
           for (int m = 0; m < k; ++m) {
             const double d = core::detail::require_finite_medoid_distance(
               global_index == medoid_indices[m]
-                ? 0.0 : dtw_fn(series_p, medoid_data.series(m)),
-              "fast_clara", static_cast<std::size_t>(global_index),
-              m, medoid_indices[m]);
-            if (!has_best || d < best_dist) {
-              best_dist = d;
-              best_label = m;
-              has_best = true;
-            }
-          }
-
-          labels[static_cast<size_t>(global_index)] = best_label;
-          best_dists[static_cast<size_t>(p)] = best_dist;
-        } catch (...) {
-          capture_assignment_failure(
-            std::current_exception(), global_index, failure, failure_point);
-        }
-      }
-      if (failure) std::rethrow_exception(failure);
-      total_cost.add(best_dists);
-      global_offset += chunk_size;
-    }
-
-    return total_cost.value();
-  }
-
-  /// Float32 variant: loads chunks as float32 (2x memory saving per chunk).
-  double assign_all_points_chunked_f32(
-    const Problem::dtw_fn_f32_t &dtw_fn_f32,
-    const Data &medoid_data,
-    const std::vector<int> &medoid_indices,
-    std::vector<int> &labels,
-    const io::ParquetChunkReader &reader,
-    size_t ram_budget)
-  {
-    const auto N = reader.logical_series_count();
-    const int k = static_cast<int>(medoid_data.size());
-    labels.resize(static_cast<size_t>(N));
-
-    const size_t medoid_bytes = resident_data_bytes(medoid_data, sizeof(float));
-    if (medoid_bytes >= ram_budget)
-      throw InvalidInput(
-        "fast_clara: ram_limit_bytes is too small to retain the selected "
-        "Float32 medoid series during chunked assignment.");
-    const size_t chunk_budget = ram_budget - medoid_bytes;
-
-    int rg_per_batch = reader.row_groups_per_batch(chunk_budget, true);
-    int total_rg = reader.num_row_groups();
-
-    core::detail::OrderedMedoidObjective total_cost("fast_clara");
-    std::vector<double> best_dists;
-    int64_t global_offset = 0;
-
-    for (int rg = 0; rg < total_rg; rg += rg_per_batch) {
-      int batch_count = std::min(rg_per_batch, total_rg - rg);
-      Data chunk = reader.read_row_groups_f32(rg, batch_count);
-
-      const int chunk_size = static_cast<int>(chunk.size());
-      best_dists.resize(static_cast<size_t>(chunk_size));
-      std::exception_ptr failure;
-      std::int64_t failure_point = global_offset + chunk_size;
-
-#pragma omp parallel for schedule(dynamic) if (chunk_size > 64)
-      for (int p = 0; p < chunk_size; ++p) {
-        const auto global_index = global_offset + p;
-        try {
-          double best_dist = std::numeric_limits<double>::max();
-          int best_label = 0;
-          bool has_best = false;
-          auto series_p = chunk.series_f32(p);
-
-          for (int m = 0; m < k; ++m) {
-            const double d = core::detail::require_finite_medoid_distance(
-              global_index == medoid_indices[m]
-                ? 0.0 : dtw_fn_f32(series_p, medoid_data.series_f32(m)),
+                ? 0.0 : dtw_fn(series_p, series_at(medoid_data, m)),
               "fast_clara", static_cast<std::size_t>(global_index),
               m, medoid_indices[m]);
             if (!has_best || d < best_dist) {
@@ -442,11 +393,11 @@ namespace {
       std::vector<int> labels;
       double total_cost;
       if (opts.use_float32) {
-        total_cost = assign_all_points_chunked_f32(
+        total_cost = assign_all_points_chunked<true>(
           prob_template.dtw_function_f32(), medoid_data, full_medoids, labels,
           reader, opts.ram_limit_bytes);
       } else {
-        total_cost = assign_all_points_chunked(
+        total_cost = assign_all_points_chunked<false>(
           prob_template.dtw_function(), medoid_data, full_medoids, labels,
           reader, opts.ram_limit_bytes);
       }
