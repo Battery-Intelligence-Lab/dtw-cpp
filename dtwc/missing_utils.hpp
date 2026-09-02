@@ -47,6 +47,19 @@ bool has_missing(const std::vector<T> &v)
   return has_missing(std::span<const T>{v});
 }
 
+/// Returns true if the range is non-empty and every element is NaN.
+/// Such a series carries no observed value, so interpolate_linear() cannot
+/// reconstruct it; callers reject it before dispatch rather than let the
+/// throw happen inside a per-pair (parallel) lambda.
+template <typename T>
+bool all_missing(std::span<const T> v)
+{
+  if (v.empty()) return false;
+  for (const auto &x : v)
+    if (!is_missing(x)) return false;
+  return true;
+}
+
 /// Returns the fraction of NaN values in the range (0.0 if empty).
 template <typename T>
 double missing_rate(std::span<const T> v)

@@ -13,14 +13,12 @@
 
 #pragma once
 
-#include "settings.hpp"
-#include "types/Range.hpp"
+#include "types/Range.hpp" // not used here; consumers still reach Range through it
 
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <exception>
-#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <utility>
@@ -64,12 +62,18 @@ inline int get_max_threads()
 /// Heuristic: each thread gets ~chunks_per_thread work units. This balances
 /// dispatch overhead (fewer, larger chunks) against load imbalance (more, smaller chunks).
 /// For 168 threads with N=8926: chunk=13. For 16 threads with N=28: chunk=1.
-inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
+inline int omp_chunk_size_for(int n_iterations, int chunks_per_thread, int nthreads)
 {
   if (chunks_per_thread <= 0)
     throw std::invalid_argument("omp_chunk_size: chunks_per_thread must be positive");
-  const int nthreads = get_max_threads();
+  if (nthreads <= 0)
+    throw std::invalid_argument("omp_chunk_size: nthreads must be positive");
   return std::max(1, n_iterations / (nthreads * chunks_per_thread));
+}
+
+inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
+{
+  return omp_chunk_size_for(n_iterations, chunks_per_thread, get_max_threads());
 }
 
 /**
@@ -84,11 +88,15 @@ inline int omp_chunk_size(int n_iterations, int chunks_per_thread = 4)
  * @param i_end The upper bound of the loop index.
  * @param isParallel Flag to enable/disable parallel execution (default is true).
  * @param chunks_per_thread Dynamic-scheduling granularity (default is 4).
+ * @param max_workers Upper bound on workers for THIS region only (0 = the
+ *        OpenMP default), applied through a num_threads(...) clause. Nothing
+ *        process-wide is mutated, so one constrained call cannot pin later ones.
  */
 template <typename Tfun>
 void run_openmp(Tfun &task_indv, size_t i_end,
                 [[maybe_unused]] bool isParallel = true,
-                [[maybe_unused]] int chunks_per_thread = 4)
+                [[maybe_unused]] int chunks_per_thread = 4,
+                [[maybe_unused]] int max_workers = 0)
 {
   if (chunks_per_thread <= 0)
     throw std::invalid_argument("run_openmp: chunks_per_thread must be positive");
@@ -100,7 +108,10 @@ void run_openmp(Tfun &task_indv, size_t i_end,
 
 #ifdef _OPENMP
   if (isParallel) {
-    const int chunk = omp_chunk_size(end, chunks_per_thread);
+    const int available = get_max_threads();
+    const int nthreads =
+      (max_workers > 0) ? std::min(max_workers, available) : available;
+    const int chunk = omp_chunk_size_for(end, chunks_per_thread, nthreads);
     // An exception may not leave an OpenMP structured block. Capture one
     // O(1)-space exception pointer under a named OpenMP critical region, then
     // rethrow the lowest-index failure on the caller thread after the implicit
@@ -110,7 +121,7 @@ void run_openmp(Tfun &task_indv, size_t i_end,
     std::exception_ptr failure;
     int failure_index = end;
     std::atomic<int> earliest_failure{end};
-#pragma omp parallel for schedule(dynamic, chunk)
+#pragma omp parallel for schedule(dynamic, chunk) num_threads(nthreads)
     for (int i = 0; i < end; i++) {
       if (i > earliest_failure.load(std::memory_order_acquire)) continue;
       try {
@@ -125,7 +136,7 @@ void run_openmp(Tfun &task_indv, size_t i_end,
 #pragma omp critical(dtwc_run_openmp_exception)
         {
           if (i < failure_index) {
-            failure = std::move(current);
+            failure = current;
             failure_index = i;
           }
         }
@@ -161,20 +172,17 @@ void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 32)
 {
   const bool useParallel = (numMaxParallelWorkers != 1);
 
+  // Region-local limit only, so a later unconstrained fill still sees the
+  // machine's full thread count (and pruned_distance_matrix's block_count
+  // stays call-order independent).
+  int requestedThreads = 0;
   if (useParallel && numMaxParallelWorkers > 0) {
     const int maxThreads = get_max_threads();
-#ifdef _OPENMP
-    // Respect the requested thread limit, but don't exceed system maximum
-    const int requestedThreads = static_cast<int>(std::min(
-      numMaxParallelWorkers,
-      static_cast<size_t>(maxThreads)));
-    omp_set_num_threads(requestedThreads);
-#else
-    (void)maxThreads; // warning already emitted by get_max_threads()
-#endif
+    requestedThreads = static_cast<int>(std::min(
+      numMaxParallelWorkers, static_cast<size_t>(maxThreads)));
   }
 
-  run_openmp(task_indv, i_end, useParallel);
+  run_openmp(task_indv, i_end, useParallel, 4, requestedThreads);
 }
 
 } // namespace dtwc

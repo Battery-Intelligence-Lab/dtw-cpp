@@ -17,6 +17,8 @@
  * Categories:
  *   - InvalidInput : the caller supplied bad arguments or data (a validation
  *                    failure at a public API boundary).
+ *   - UndefinedScore : (an InvalidInput) a quality score is undefined for the
+ *                    labelling supplied, e.g. fewer than two non-empty clusters.
  *   - SolverError  : an optimisation solver (HiGHS/Gurobi) rejected the model,
  *                    failed to run, or returned a non-optimal status.
  *   - DeviceError  : a compute-device (CPU/CUDA/...) selection or operation
@@ -52,6 +54,17 @@ class InvalidInput : public Error
 {
 public:
   using Error::Error;
+};
+
+/// A clustering-quality score is mathematically undefined for the labelling it
+/// was asked to score (fewer than two non-empty clusters). It is a kind of
+/// InvalidInput, but a caller that only wants to skip an unwritable score file
+/// must be able to distinguish it from a corrupt labelling or bad data, which
+/// must still propagate.
+class UndefinedScore : public InvalidInput
+{
+public:
+  using InvalidInput::InvalidInput;
 };
 
 /// An optimisation solver rejected/failed the model or returned a non-optimal status.

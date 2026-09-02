@@ -34,7 +34,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <ostream>
 #include <sstream>
@@ -178,44 +177,47 @@ inline Eigen::MatrixXd to_full_matrix(const core::DenseDistanceMatrix &dm)
 
 namespace dtwc::core {
 
-/// Stream output: prints CSV format (same as io::write_csv) to any ostream.
-/// Defined in dtwc::core so ADL resolves it for DenseDistanceMatrix arguments.
-inline std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
+namespace detail {
+
+/// Emit the full N x N CSV. Assumes preflight_distance_matrix_csv() has
+/// ALREADY run on @p dm: it is the only part of the write that can throw, and
+/// the F14 contract requires it to run before the destination is truncated.
+/// Callers that must preflight before opening the file (Problem_IO's mmap CSV
+/// copy) call this directly rather than paying a second O(N^2) value scan.
+template <class Matrix>
+inline std::ostream &write_distance_matrix_csv_preflighted(std::ostream &os,
+                                                           const Matrix &dm)
 {
-  detail::preflight_distance_matrix_csv(dm);
   const size_t n = dm.size();
   std::array<char, 64> number{};
   for (size_t i = 0; i < n; ++i) {
     for (size_t j = 0; j < n; ++j) {
       if (j > 0) os.put(',');
-      const auto token =
-        detail::distance_matrix_csv_token(dm.get(i, j), number);
+      const auto token = distance_matrix_csv_token(dm.get(i, j), number);
       if (!token.empty())
         os.write(token.data(), static_cast<std::streamsize>(token.size()));
-      // uncomputed → empty field
+      // uncomputed -> empty field
     }
     os.put('\n');
   }
   return os;
 }
 
+} // namespace detail
+
+/// Stream output: prints CSV format (same as io::write_csv) to any ostream.
+/// Defined in dtwc::core so ADL resolves it for DenseDistanceMatrix arguments.
+inline std::ostream &operator<<(std::ostream &os, const DenseDistanceMatrix &dm)
+{
+  detail::preflight_distance_matrix_csv(dm);
+  return detail::write_distance_matrix_csv_preflighted(os, dm);
+}
+
 /// Stream output for MmapDistanceMatrix (same CSV format as DenseDistanceMatrix).
 inline std::ostream &operator<<(std::ostream &os, const MmapDistanceMatrix &dm)
 {
   detail::preflight_distance_matrix_csv(dm);
-  const size_t n = dm.size();
-  std::array<char, 64> number{};
-  for (size_t i = 0; i < n; ++i) {
-    for (size_t j = 0; j < n; ++j) {
-      if (j > 0) os.put(',');
-      const auto token =
-        detail::distance_matrix_csv_token(dm.get(i, j), number);
-      if (!token.empty())
-        os.write(token.data(), static_cast<std::streamsize>(token.size()));
-    }
-    os.put('\n');
-  }
-  return os;
+  return detail::write_distance_matrix_csv_preflighted(os, dm);
 }
 
 } // namespace dtwc::core

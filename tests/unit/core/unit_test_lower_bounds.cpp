@@ -18,6 +18,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <span>
 #include <vector>
 #include <random>
 
@@ -105,7 +106,7 @@ TEST_CASE("lb_kim identical series gives zero", "[lower_bounds][lb_kim]")
 // ---------------------------------------------------------------------------
 TEST_CASE("lb_keogh <= DTW for random series", "[lower_bounds][lb_keogh][property]")
 {
-  std::mt19937 rng(42); // deterministic seed
+  std::mt19937 rng(42); // NOLINT(cert-msc51-cpp): fixed seed keeps this property test reproducible.
   std::uniform_real_distribution<data_t> dist(-10.0, 10.0);
 
   constexpr int N_pairs = 10;
@@ -137,7 +138,7 @@ TEST_CASE("lb_keogh <= DTW for random series", "[lower_bounds][lb_keogh][propert
 // ---------------------------------------------------------------------------
 TEST_CASE("lb_kim <= DTW for random series", "[lower_bounds][lb_kim][property]")
 {
-  std::mt19937 rng(123); // deterministic seed
+  std::mt19937 rng(123); // NOLINT(cert-msc51-cpp): fixed seed keeps this property test reproducible.
   std::uniform_real_distribution<data_t> dist(-10.0, 10.0);
 
   constexpr int N_pairs = 10;
@@ -246,4 +247,111 @@ TEST_CASE("compute_envelopes large band covers full series", "[lower_bounds][env
     REQUIRE_THAT(upper[i], WithinAbs(series_max, 1e-15));
     REQUIRE_THAT(lower[i], WithinAbs(series_min, 1e-15));
   }
+}
+
+// ---------------------------------------------------------------------------
+// A5: band < 0 means UNBANDED DTW, not radius 0.
+//
+// lb_enhanced/lb_webb clamp the window with `max(band, 0)`, which collapses the
+// elastic arms onto the diagonal. A diagonal cell is only forced when the band
+// pins the path to it; an unbanded path may step around it entirely, so the
+// clamp produces an INADMISSIBLE bound.
+//
+// Counterexample (L1, n = 4):
+//   A = [0, 5, 0, 0], B = [0, 0, 5, 0]
+//   full DTW path (0,0)->(0,1)->(1,2)->(2,3)->(3,3) costs 0,
+//   while the clamped bound charges |A[1]-B[1]| + |A[2]-B[2]| = 10.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("lb_enhanced is admissible for band < 0", "[lower_bounds][lb_enhanced][admissibility]")
+{
+  const std::vector<data_t> A = { 0.0, 5.0, 0.0, 0.0 };
+  const std::vector<data_t> B = { 0.0, 0.0, 5.0, 0.0 };
+
+  const data_t true_dtw = dtwc::dtwFull_L<data_t>(A, B);
+  REQUIRE_THAT(true_dtw, WithinAbs(0.0, 1e-12));
+
+  const auto env_B = dtwc::core::compute_envelope(B, -1);
+  const double lb = dtwc::core::lb_enhanced(
+    std::span<const double>(A), std::span<const double>(B), env_B, -1, 2);
+
+  REQUIRE(lb <= true_dtw + 1e-12);
+}
+
+TEST_CASE("lb_webb is admissible for band < 0", "[lower_bounds][lb_webb][admissibility]")
+{
+  const std::vector<data_t> A = { 0.0, 5.0, 0.0, 0.0 };
+  const std::vector<data_t> B = { 0.0, 0.0, 5.0, 0.0 };
+
+  const data_t true_dtw = dtwc::dtwFull_L<data_t>(A, B);
+  REQUIRE_THAT(true_dtw, WithinAbs(0.0, 1e-12));
+
+  const auto ea = dtwc::core::compute_webb_envelope(A, -1);
+  const auto eb = dtwc::core::compute_webb_envelope(B, -1);
+  const double lb = dtwc::core::lb_webb(
+    std::span<const double>(A), ea, std::span<const double>(B), eb, -1);
+
+  REQUIRE(lb <= true_dtw + 1e-12);
+}
+
+// ---------------------------------------------------------------------------
+// F46 `.lower` size gap: the public entry points validated only `env.upper`
+// and then indexed `lower` / `ul` / `lu`, reading out of bounds when the
+// arrays disagree. Every array an entry point reads is now checked.
+//
+// LB_Keogh keeps its D2-derived prefix semantics: it includes the first
+// min(query.size(), env.upper.size()) rows, because the unequal-length prefix
+// theorem shows that dropping the remaining rows discards only nonnegative
+// terms. The size check therefore demands coverage of that prefix, not
+// equality; only an array shorter than the prefix forces the trivial 0.
+// LB_Enhanced and LB_Webb have no prefix theorem and keep exact equality.
+//
+// Fixture (both cases): A = [1,2,3,4] is the query, B = [4,3,2,1] the
+// candidate, band 1, so the centred window [i-1, i+1] gives
+//   env_B.upper = [4, 4, 3, 2],  env_B.lower = [3, 2, 1, 1].
+// ---------------------------------------------------------------------------
+
+TEST_CASE("lb_keogh truncates to the covered envelope prefix",
+          "[lower_bounds][envelopes][sizes]")
+{
+  const std::vector<data_t> A = { 1.0, 2.0, 3.0, 4.0 };
+  const std::vector<data_t> B = { 4.0, 3.0, 2.0, 1.0 };
+
+  auto env_B = dtwc::core::compute_envelope(B, 1);
+  REQUIRE(env_B.upper == std::vector<data_t>{ 4.0, 4.0, 3.0, 2.0 });
+  REQUIRE(env_B.lower == std::vector<data_t>{ 3.0, 2.0, 1.0, 1.0 });
+
+  env_B.upper.pop_back(); // upper.size() == 3, lower.size() == 4
+
+  // n = min(4, 3) = 3, and lower covers [0, 3), so the prefix bound is taken:
+  //   i=0: 1 < lower[0]=3 -> 2      i=1: 2 in [2,4] -> 0
+  //   i=2: 3 in [1,3]     -> 0      total = 2
+  CHECK(dtwc::core::lb_keogh(std::span<const double>(A), env_B) == 2.0);
+  CHECK(dtwc::core::lb_keogh(A, env_B) == 2.0);
+}
+
+TEST_CASE("lower-bound entry points reject a ragged envelope",
+          "[lower_bounds][envelopes][sizes]")
+{
+  const std::vector<data_t> A = { 1.0, 2.0, 3.0, 4.0 };
+  const std::vector<data_t> B = { 4.0, 3.0, 2.0, 1.0 };
+
+  auto env_B = dtwc::core::compute_envelope(B, 1);
+  env_B.lower.pop_back(); // upper.size() == 4, lower.size() == 3
+
+  // n = min(4, 4) = 4 but lower stops at 3, so indexing it over the prefix
+  // would read out of bounds; the trivially admissible 0 is returned instead.
+
+  CHECK(dtwc::core::lb_keogh(std::span<const double>(A), env_B) == 0.0);
+  CHECK(dtwc::core::lb_keogh(A, env_B) == 0.0);
+  CHECK(dtwc::core::lb_enhanced(
+          std::span<const double>(A), std::span<const double>(B), env_B, 1, 2)
+        == 0.0);
+
+  auto ea = dtwc::core::compute_webb_envelope(A, 1);
+  auto eb = dtwc::core::compute_webb_envelope(B, 1);
+  eb.lu.pop_back(); // upper.size() == 4, lu.size() == 3
+  CHECK(dtwc::core::lb_webb(
+          std::span<const double>(A), ea, std::span<const double>(B), eb, 1)
+        == 0.0);
 }

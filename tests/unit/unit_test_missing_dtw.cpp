@@ -16,8 +16,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
-#include <cmath>   // for NAN, std::nan
 #include <limits>
 #include <vector>
 
@@ -422,4 +422,96 @@ TEST_CASE("dtwMissing_banded: SquaredL2 no NaN matches standard", "[missing_dtw]
   const auto standard_result = dtwBanded<double>(x, y, band, -1, metric);
 
   REQUIRE_THAT(missing_result, WithinAbs(standard_result, 1e-12));
+}
+
+// ===========================================================================
+// A3: an all-NaN series under MissingStrategy::Interpolate must be rejected by
+// the SERIAL pre-scan, with a diagnostic naming the offending series — not by
+// interpolate_linear() throwing from inside the parallel per-pair lambda.
+// ===========================================================================
+
+TEST_CASE("Interpolate: all-NaN series is rejected by the serial pre-scan",
+          "[missing_dtw][interpolate][prescan][regression]")
+{
+  Data data;
+  data.ndim = 1;
+  data.p_vec = { { 1, 2, 3, 4 }, { NaN, NaN, NaN, NaN }, { 2, 3, 4, 5 } };
+  data.p_names = { "clean", "all_nan", "other" };
+
+  Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  prob.set_missing_strategy(core::MissingStrategy::Interpolate);
+
+  // The message must identify the series, which only the serial pre-scan can do
+  // (the per-pair lambda sees two anonymous spans).
+  REQUIRE_THROWS_WITH(
+    prob.fill_distance_matrix(),
+    Catch::Matchers::ContainsSubstring("all_nan")
+      && Catch::Matchers::ContainsSubstring("index 1"));
+}
+
+TEST_CASE("Interpolate: a partially-missing series still fills normally",
+          "[missing_dtw][interpolate][prescan]")
+{
+  Data data;
+  data.ndim = 1;
+  data.p_vec = { { 1, 2, 3, 4 }, { NaN, 2, NaN, 4 } };
+  data.p_names = { "clean", "gappy" };
+
+  Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  prob.set_missing_strategy(core::MissingStrategy::Interpolate);
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(!is_missing(prob.dist_by_ind(0, 1)));
+}
+
+// ===========================================================================
+// A4: MissingStrategy::Error means "throw on NaN". It was implemented only in
+// Problem::fill_distance_matrix; the pairwise entry points ran the recurrence
+// on NaN and returned NaN, which is ALSO the "uncomputed" sentinel of
+// DenseDistanceMatrix — an unfillable matrix with no diagnostic.
+// ===========================================================================
+
+TEST_CASE("distance::dtw honours MissingStrategy::Error",
+          "[missing_dtw][error_strategy][regression]")
+{
+  const std::vector<double> x{ 1, 2, NaN, 4 };
+  const std::vector<double> y{ 1, 2, 3, 4 };
+  const core::DTWVariantParams params{}; // Standard
+
+  REQUIRE_THROWS_AS(
+    distance::dtw<double>(x, y, params, -1, core::MetricType::L1,
+                          core::MissingStrategy::Error),
+    InvalidInput);
+  REQUIRE_THROWS_AS(
+    distance::dtw<double>(y, x, params, -1, core::MetricType::L1,
+                          core::MissingStrategy::Error),
+    InvalidInput);
+
+  // Clean input on the same path is untouched.
+  REQUIRE_NOTHROW(distance::dtw<double>(y, y, params, -1, core::MetricType::L1,
+                                        core::MissingStrategy::Error));
+}
+
+TEST_CASE("core::dtw_runtime honours MissingStrategy::Error",
+          "[missing_dtw][error_strategy][regression]")
+{
+  const std::vector<double> x{ 1, 2, NaN, 4 };
+  const std::vector<double> y{ 1, 2, 3, 4 };
+
+  core::DTWOptions opts;
+  opts.missing_strategy = core::MissingStrategy::Error;
+
+  REQUIRE_THROWS_AS(
+    core::dtw_runtime(x.data(), x.size(), y.data(), y.size(), opts),
+    InvalidInput);
+  REQUIRE_THROWS_AS(
+    core::dtw_runtime(y.data(), y.size(), x.data(), x.size(), opts),
+    InvalidInput);
+
+  // A NaN-free call returns the ordinary distance, unchanged.
+  REQUIRE_THAT(core::dtw_runtime(y.data(), y.size(), y.data(), y.size(), opts),
+               WithinAbs(0.0, 1e-12));
 }

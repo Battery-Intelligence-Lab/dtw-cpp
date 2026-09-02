@@ -28,7 +28,12 @@
 ## Performance Rules
 
 - **No virtual dispatch in hot paths** — use CRTP or templates; virtual only at API boundary
-- **No `std::min({a,b,c})`** — use `std::min(a, std::min(b,c))` (2.5-3x faster)
+- **`std::min({a,b,c})` vs nested `std::min` — measure, don't assume.** The
+  2.45×–3.14× win recorded at `65e249b` was specific to the legacy full/banded
+  kernels; rolling `BM_dtwFull_L/4000` was unchanged (1.006×). The live
+  recurrences use the initialiser-list form (`core/dtw_kernel.hpp:60, 77, 176`,
+  `core/msm.hpp`, `core/twe.hpp`) and are **not** to be rewritten on this rule
+  alone — see LESSONS.md, "Nested `std::min` helped specific legacy kernels".
 - **Template judiciously** — on constraint type only (2-3 variants), NOT on metric type
 - **thread_local scratch buffers** — resize, never shrink, avoid per-call allocation
 - **Lock-free parallel** — structure decomposition so threads write non-overlapping regions

@@ -44,6 +44,13 @@ double dtw_runtime(const double* x, std::size_t nx,
       opts.missing_strategy);
   }
 
+  // MissingStrategy::Error reached here: enforce its "throw on NaN" contract
+  // before the recurrence, which would otherwise return NaN — the same value
+  // the distance matrix uses for "uncomputed".
+  reject_missing_under_error_strategy<double>(
+    std::span<const double>{x, nx}, std::span<const double>{y, ny},
+    "dtw_runtime");
+
   // Dispatch on variant. Historically this function always used Standard DTW,
   // silently dropping `opts.variant_params.variant` — that bug is fixed here.
   switch (opts.variant_params.variant) {

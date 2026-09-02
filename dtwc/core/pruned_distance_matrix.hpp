@@ -41,11 +41,8 @@
 #include "lower_bound_impl.hpp"
 #include "../settings.hpp"
 
-#include <vector>
-#include <algorithm>
-#include <cmath>
 #include <cstddef>
-#include <limits>
+#include <vector>
 
 namespace dtwc::core {
 

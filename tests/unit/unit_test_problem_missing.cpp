@@ -69,7 +69,14 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
   }
 }
 
-TEST_CASE("Problem: OpenMP worker exceptions rethrow without publishing a full cache",
+// An all-NaN series under Interpolate used to surface as a raw
+// "interpolate_linear: all values are NaN" thrown from the per-pair lambda and
+// rethrown by run_openmp. It is now rejected by the serial pre-scan in
+// fill_distance_matrix, which can name the offending series. The invariant this
+// case guards is unchanged: the failed fill must not publish a full cache.
+// (run_openmp's own lowest-index rethrow contract is covered directly by
+// unit_test_parallelisation.cpp, "OpenMP task failures rethrow ...".)
+TEST_CASE("Problem: a rejected fill does not publish a full cache",
           "[problem][missing][m40]")
 {
   const double nan = std::numeric_limits<double>::quiet_NaN();
@@ -98,7 +105,7 @@ TEST_CASE("Problem: OpenMP worker exceptions rethrow without publishing a full c
       prob.set_verbose(false);
 
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
-        ContainsSubstring("interpolate_linear: all values are NaN"));
+        ContainsSubstring("'all-missing' (index 1) is entirely NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
       CHECK(prob.dense_distance_matrix().count_computed()
             < prob.dense_distance_matrix().packed_count());

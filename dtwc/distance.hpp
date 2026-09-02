@@ -115,6 +115,7 @@ T dtw(std::span<const T> x, std::span<const T> y,
   }
 
   case core::MissingStrategy::Error:
+    core::reject_missing_under_error_strategy<T>(x, y, "distance::dtw");
     break;
   default:
     core::validate_missing_strategy(missing_strategy);

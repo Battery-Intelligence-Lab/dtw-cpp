@@ -14,21 +14,18 @@
  *          short-side buffer; the banded kernel iterates the short side
  *          outside while rolling a long-side buffer.
  *
- *          Position-agnostic costs (L1, SquaredL2) capture the two span
- *          pointers and return `metric(a[row], b[col])`. Position-aware
- *          costs (WeightedL1 for WDTW) additionally index a weight table
- *          by `|row - col|`.
+ *          Position-agnostic costs (L1) capture the two span pointers and
+ *          return `metric(a[row], b[col])`. Position-aware costs (WeightedL1
+ *          for WDTW) additionally index a weight table by `|row - col|`.
  *
- *          This header also keeps the existing `MetricType`→functor dispatch
- *          (formerly in warping.hpp detail:: namespace) so any caller can
- *          pick a cost functor from a runtime metric enum.
+ *          `MetricType`→functor dispatch deliberately does NOT live here; see
+ *          the note below.
  *
  * @date 2026-04-12
  */
 
 #pragma once
 
-#include "dtw_options.hpp" // for MetricType
 #include "../missing_utils.hpp" // for is_missing — bitwise NaN, safe under -ffast-math
 
 #include <cmath>     // std::abs
@@ -36,45 +33,6 @@
 #include <limits>    // std::numeric_limits (AROW NaN sentinel)
 
 namespace dtwc::core {
-
-// ===========================================================================
-// Position-agnostic scalar pointwise distances (for standalone / test use)
-// ===========================================================================
-
-/// L1 (absolute difference).
-struct L1Dist {
-  template <typename T>
-  T operator()(T a, T b) const noexcept { return std::abs(a - b); }
-};
-
-/// Squared L2: (a - b)^2.
-struct SquaredL2Dist {
-  template <typename T>
-  T operator()(T a, T b) const noexcept { const T d = a - b; return d * d; }
-};
-
-/// Multivariate L1 across `ndim` channels: sum of |a[d] - b[d]|.
-struct MVL1Dist {
-  template <typename T>
-  T operator()(const T* a, const T* b, std::size_t ndim) const noexcept {
-    T sum = T(0);
-    for (std::size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
-    return sum;
-  }
-};
-
-/// Multivariate Squared L2 across `ndim` channels: sum of (a[d] - b[d])^2.
-struct MVSquaredL2Dist {
-  template <typename T>
-  T operator()(const T* a, const T* b, std::size_t ndim) const noexcept {
-    T sum = T(0);
-    for (std::size_t d = 0; d < ndim; ++d) {
-      const T diff = a[d] - b[d];
-      sum += diff * diff;
-    }
-    return sum;
-  }
-};
 
 // -----------------------------------------------------------------------------
 // Metric -> cost-functor dispatch lives in EXACTLY ONE place: dtwc::detail in
@@ -104,17 +62,6 @@ struct SpanL1Cost {
   }
 };
 
-/// Squared-L2 cost at cell (row, col): (x[row] - y[col])^2.
-template <typename T>
-struct SpanSquaredL2Cost {
-  const T* x;
-  const T* y;
-  T operator()(std::size_t row, std::size_t col) const noexcept {
-    const T d = x[row] - y[col];
-    return d * d;
-  }
-};
-
 /// WDTW cost at cell (row, col): weights[|row - col|] * |x[row] - y[col]|.
 /// `weights` must be indexable at least up to max(row, col).
 template <typename T>
@@ -139,24 +86,6 @@ struct SpanMVL1Cost {
     const T* b = y + col * ndim;
     T sum = T(0);
     for (std::size_t d = 0; d < ndim; ++d) sum += std::abs(a[d] - b[d]);
-    return sum;
-  }
-};
-
-/// Multivariate Squared-L2 at (row, col).
-template <typename T>
-struct SpanMVSquaredL2Cost {
-  const T* x;
-  const T* y;
-  std::size_t ndim;
-  T operator()(std::size_t row, std::size_t col) const noexcept {
-    const T* a = x + row * ndim;
-    const T* b = y + col * ndim;
-    T sum = T(0);
-    for (std::size_t d = 0; d < ndim; ++d) {
-      const T diff = a[d] - b[d];
-      sum += diff * diff;
-    }
     return sum;
   }
 };

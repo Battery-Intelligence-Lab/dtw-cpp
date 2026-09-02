@@ -27,7 +27,6 @@
 #include <cstddef>     // for size_t
 #include <limits>      // for numeric_limits
 #include <span>        // for span
-#include <type_traits> // for is_same_v
 #include <vector>      // for vector
 
 #include "distance_metric.hpp" // for L1Metric, SquaredL2Metric (delta functors)
@@ -327,10 +326,27 @@ inline double lb_kim(const SeriesSummary &a, const SeriesSummary &b)
 /// Precomputed upper/lower envelopes for LB_Keogh.
 ///
 /// Envelope carries no source-length or radius provenance, and its mutable
-/// arrays may have different lengths. Public validation is deferred to F46.
+/// arrays may be resized independently, so every entry point checks EVERY
+/// array it will index before touching one.
 struct Envelope {
   std::vector<double> upper, lower;
 };
+
+/// True when EVERY envelope array can be indexed over [0, n). LB_Keogh admits a
+/// shorter prefix (D2), so it needs coverage, not equality.
+inline bool envelope_covers(const Envelope &env, std::size_t n) noexcept
+{
+  return env.upper.size() >= n && env.lower.size() >= n;
+}
+
+/// True when every array of the envelope has exactly the length the caller
+/// will index. LB_Enhanced and LB_Webb are equal-length constructions with no
+/// prefix theorem, so a length mismatch in either direction is a provenance
+/// error rather than a truncation.
+inline bool envelope_sizes_ok(const Envelope &env, std::size_t n) noexcept
+{
+  return env.upper.size() == n && env.lower.size() == n;
+}
 
 /// Compute envelope from a span; a negative band remains radius zero (F46).
 /// The returned Envelope does not record the source length or resolved radius.
@@ -352,20 +368,22 @@ inline Envelope compute_envelope(const std::vector<double> &series, int band)
 
 /// LB_Keogh from span + precomputed Envelope.
 ///
-/// Current F46 behavior truncates to min(query.size(), env.upper.size()),
-/// ignores env.lower.size(), and cannot verify source or radius provenance.
+/// Includes the first min(query.size(), env.upper.size()) rows: by D2's
+/// unequal-length prefix theorem the dropped rows contribute only nonnegative
+/// terms, so the prefix bound stays admissible. A ragged envelope (a `lower`
+/// shorter than that prefix) would be read out of bounds, so 0 -- itself a
+/// valid bound -- is returned instead. Radius provenance is still unrecorded.
 inline double lb_keogh(std::span<const double> query, const Envelope &env)
 {
   const auto n = std::min(query.size(), env.upper.size());
+  if (n == 0 || !envelope_covers(env, n)) return 0.0;
   return lb_keogh(query.data(), n, env.upper.data(), env.lower.data());
 }
 
-/// Convenience overload with the same unchecked F46 truncation behavior.
+/// Convenience overload with the same prefix and coverage contract.
 inline double lb_keogh(const std::vector<double> &query, const Envelope &env)
 {
-  const std::size_t n = std::min(query.size(), env.upper.size());
-  if (n == 0) return 0.0;
-  return lb_keogh(query.data(), n, env.upper.data(), env.lower.data());
+  return lb_keogh(std::span<const double>(query), env);
 }
 
 /// Symmetric LB_Keogh: max of both directions.
@@ -649,8 +667,10 @@ T lb_keogh_mv_squared(const T *query, std::size_t n_steps, std::size_t ndim,
  * @param n       Common series length.
  * @param upper_B Upper envelope of B (radius = band).
  * @param lower_B Lower envelope of B.
- * @param band    Sakoe-Chiba window radius w; negative values become zero and
- *                values above n-1 become the equivalent global radius n-1.
+ * @param band    Sakoe-Chiba window radius w >= 0; values above n-1 become the
+ *                equivalent global radius n-1. A NEGATIVE band means unbanded
+ *                DTW, for which this construction is not admissible, so the
+ *                function returns 0 (no useful bound) instead.
  * @param V       Bands per end (>= 1); clamped to n/2 for validity.
  * @param metric  Pointwise cost (default L1).
  * @return Lower bound (summed cost, same metric as the bounded DTW).
@@ -662,6 +682,11 @@ T lb_enhanced(const T *A, const T *B, std::size_t n,
 {
   if (n == 0) return T(0);
   if (n == 1) return metric(A[0], B[0]);
+  // A negative band means UNBANDED DTW, not radius 0. Clamping it to 0 pins the
+  // elastic arms to the diagonal, and an unbanded path is free to step around
+  // those cells — the bound would be INADMISSIBLE. Counterexample (L1, V=2):
+  // A=[0,5,0,0], B=[0,0,5,0] gives 10 while the full DTW is 0.
+  if (band < 0) return T(0);
 
   const int ni = static_cast<int>(n);
   const int w = std::min(std::max(band, 0), ni - 1);
@@ -700,7 +725,8 @@ double lb_enhanced(std::span<const double> query, std::span<const double> candid
                    Metric metric = Metric{})
 {
   const std::size_t n = query.size();
-  if (n == 0 || candidate.size() != n || env_candidate.upper.size() != n) return 0.0;
+  if (n == 0 || candidate.size() != n || !envelope_sizes_ok(env_candidate, n))
+    return 0.0;
   return lb_enhanced<double, Metric>(query.data(), candidate.data(), n,
                                      env_candidate.upper.data(),
                                      env_candidate.lower.data(), band, V, metric);
@@ -771,6 +797,13 @@ struct WebbEnvelope {
   std::vector<double> ul;     ///< U(L(S)) — upper envelope of the lower envelope
 };
 
+/// True when all four Webb arrays have the length the caller will index.
+inline bool envelope_sizes_ok(const WebbEnvelope &env, std::size_t n) noexcept
+{
+  return env.upper.size() == n && env.lower.size() == n
+      && env.lu.size() == n && env.ul.size() == n;
+}
+
 /// Compute the four LB_Webb envelope arrays for a series (window radius = band).
 inline WebbEnvelope compute_webb_envelope(std::span<const double> series, int band)
 {
@@ -801,8 +834,9 @@ inline WebbEnvelope compute_webb_envelope(const std::vector<double> &series, int
  * @param ea    Webb envelopes of A (window = band).
  * @param B     Candidate series (length n).
  * @param eb    Webb envelopes of B (window = band).
- * @param band  Window radius w; negative values become zero and values above
- *              n-1 become the equivalent global radius n-1.
+ * @param band  Window radius w >= 0; values above n-1 become the equivalent
+ *              global radius n-1. A NEGATIVE band means unbanded DTW, for
+ *              which this bound is not admissible, so 0 is returned.
  * @param free_scratch  Scratch of at least n chars, reused across calls (may be nullptr).
  * @param metric Pointwise cost.
  * @return Lower bound (summed cost), at least matching-direction LB_Keogh for
@@ -815,8 +849,12 @@ double lb_webb(std::span<const double> A, const WebbEnvelope &ea,
                Metric metric = Metric{})
 {
   const std::size_t n = A.size();
-  if (n == 0 || B.size() != n || ea.upper.size() != n || eb.upper.size() != n)
+  if (n == 0 || B.size() != n
+      || !envelope_sizes_ok(ea, n) || !envelope_sizes_ok(eb, n))
     return 0.0;
+  // See lb_enhanced: a negative band is unbanded DTW, and clamping it to
+  // radius 0 makes the bound inadmissible on the same 4-point counterexample.
+  if (band < 0) return 0.0;
   const std::size_t w = std::min(
     static_cast<std::size_t>(std::max(band, 0)), n - 1);
   constexpr std::size_t max_size = std::numeric_limits<std::size_t>::max();

@@ -9,8 +9,10 @@
 #include "selector_validation.hpp"
 #include "variant_validation.hpp"
 #include "../error.hpp"
+#include "../missing_utils.hpp"
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -48,6 +50,35 @@ inline void validate_variant_missing_semantics(
 }
 
 /**
+ * Enforce the MissingStrategy::Error contract ("throw if NaN") on a pairwise
+ * call. Without it the recurrence returns NaN — also DenseDistanceMatrix's
+ * "uncomputed" sentinel — so a computed result would be indistinguishable from
+ * an unfilled entry and all_computed() could never become true. The per-pair
+ * counterpart of Problem::fill_distance_matrix's scan: O(n + m) against an
+ * O(n·m) recurrence.
+ */
+template <typename T>
+inline void reject_missing_under_error_strategy(
+  std::span<const T> x, std::span<const T> y, std::string_view where)
+{
+  if (has_missing(x) || has_missing(y))
+    throw InvalidInput(
+      std::string(where)
+      + ": NaN detected in input under MissingStrategy::Error. Set the missing "
+        "strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
+}
+
+/// Reject a multivariate call on a feature that is univariate in this release.
+/// Shared with the bind-time guards in dtw_dispatch.cpp so the Problem-level and
+/// per-call boundaries cannot state the same rule differently.
+inline void require_univariate(std::size_t ndim, const char *feature)
+{
+  if (ndim > 1)
+    throw InvalidInput(std::string(feature)
+                       + " is univariate in this release (ndim must be 1)");
+}
+
+/**
  * Validate every Problem-level distance axis whose legality is known before
  * dispatch, allocation, or cache mutation.
  *
@@ -81,14 +112,16 @@ inline void validate_problem_distance_semantics(
     }
   }
 
-  if (ndim > 1 && params.variant == DTWVariant::MSM) {
-    throw InvalidInput(
-      "MSM distance is univariate in this release (ndim must be 1)");
-  }
-  if (ndim > 1 && params.variant == DTWVariant::TWE) {
-    throw InvalidInput(
-      "TWE distance is univariate in this release (ndim must be 1)");
-  }
+  if (params.variant == DTWVariant::MSM) require_univariate(ndim, "MSM distance");
+  if (params.variant == DTWVariant::TWE) require_univariate(ndim, "TWE distance");
+  if (params.variant == DTWVariant::SoftDTW) require_univariate(ndim, "Soft-DTW");
+
+  // Interpolation is defined on a single channel stream: interpolate_linear()
+  // would fill a gap from the neighbouring *channel's* values on an
+  // interleaved multivariate buffer, and `band` would count flat elements
+  // rather than timesteps. Reject rather than return a meaningless number.
+  if (missing_strategy == MissingStrategy::Interpolate)
+    require_univariate(ndim, "MissingStrategy::Interpolate");
 }
 
 } // namespace dtwc::core

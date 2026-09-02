@@ -2,9 +2,14 @@
  * @file medoid_assignment_policy.hpp
  * @brief Shared finite-state and ordered-sum policy for medoid assignment.
  *
- * Full assignment scans deliberately remain owned by their algorithms until
- * the behavior-frozen R4 consolidation. This header centralizes only the
- * numerical contract that those scans must enforce.
+ * Full assignment scans are owned by their algorithms; this header centralizes
+ * only the numerical contract they must all enforce (finiteness and the
+ * point-ordered published objective).
+ *
+ * The scans are NOT candidates for a single shared loop: they differ in
+ * parallel-vs-serial execution, index space, distance signature and per-element
+ * side effects, so folding them together needs runtime policy switches in the
+ * library's hottest loops. See medoid_utils.hpp (D1).
  */
 
 #pragma once

@@ -486,3 +486,34 @@ TEST_CASE("Problem::dtw_function_f32 honours MissingStrategy::ZeroCost", "[f32][
                                            std::span<const float>{y});
   REQUIRE_THAT(d, WithinAbs(0.0, 1e-5));
 }
+
+// =========================================================================
+//  A2 regression: MV + DTWVariant::SoftDTW must not silently flatten channels.
+//
+//  make_soft_dtw() has no ndim branch: it passed the *flat* buffer length
+//  (ndim * steps) to the full-matrix kernel with a univariate L1 cost, so an
+//  ndim=2 request returned a soft-DTW over the interleaved channel stream.
+//  MSM and TWE already reject ndim > 1 at bind time; SoftDTW now matches.
+// =========================================================================
+
+TEST_CASE("MV + SoftDTW is rejected at bind time, not silently flattened",
+          "[mv][soft_dtw][regression]")
+{
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    {1, 10, 2, 20, 3, 30},
+    {2, 11, 3, 21, 4, 31}
+  };
+  data.p_names = {"a", "b"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  REQUIRE_THROWS_AS(prob.set_variant(dtwc::core::DTWVariant::SoftDTW),
+                    dtwc::InvalidInput);
+
+  // The direct-assignment path (public variant_params) is caught by the fill preflight.
+  prob.variant_params.variant = dtwc::core::DTWVariant::SoftDTW;
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
+}

@@ -59,6 +59,11 @@ template <typename T>
 auto make_interpolate(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
+  // interpolate_linear() is univariate: on an interleaved MV buffer it would
+  // fill a gap from the neighbouring channel's values and `p.band` would count
+  // flat elements, not timesteps. Rejected at bind time (serial — before the
+  // parallel fill), mirroring make_msm/make_twe.
+  require_univariate(p.data().ndim, "MissingStrategy::Interpolate");
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     auto xi = has_missing(x) ? interpolate_linear(x) : std::vector<T>(x.begin(), x.end());
     auto yi = has_missing(y) ? interpolate_linear(y) : std::vector<T>(y.begin(), y.end());
@@ -246,10 +251,13 @@ auto make_soft_dtw(const Problem &p)
   // identical, and swap-symmetric inputs across gamma {0.1..10.0}
   // (unit_test_soft_dtw.cpp [phase3]).
   //
-  // Flat-vector MV treatment preserved: band and multivariate channels
-  // aren't part of the soft_dtw contract. The gradient backward pass in
-  // soft_dtw_gradient() still uses its own full matrix — orthogonal to
-  // the forward distance dispatch.
+  // Univariate only: multivariate channels aren't part of the soft_dtw
+  // contract (soft_dtw_gradient() and distance::soft_dtw are univariate too),
+  // and the flat-vector treatment this used to inherit ran the recurrence over
+  // the interleaved channel stream. Rejected at bind time (serial — before the
+  // parallel fill), mirroring make_msm/make_twe. `Problem::band` is
+  // intentionally ignored: soft-DTW is a full O(n·m) recurrence here.
+  require_univariate(p.data().ndim, "Soft-DTW");
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     const bool swap = x.size() > y.size();
     const auto a = swap ? y : x;
@@ -278,8 +286,7 @@ template <typename T>
 auto make_msm(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data().ndim > 1)
-    throw InvalidInput("MSM distance is univariate in this release (ndim must be 1)");
+  require_univariate(p.data().ndim, "MSM distance");
   const T c = static_cast<T>(p.variant_params.msm_c);
   return [c](std::span<const T> x, std::span<const T> y) -> double {
     return normalize_public_distance(msm_distance<T>(x, y, c));
@@ -290,8 +297,7 @@ template <typename T>
 auto make_twe(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
 {
-  if (p.data().ndim > 1)
-    throw InvalidInput("TWE distance is univariate in this release (ndim must be 1)");
+  require_univariate(p.data().ndim, "TWE distance");
   const T nu  = static_cast<T>(p.variant_params.twe_nu);
   const T lam = static_cast<T>(p.variant_params.twe_lambda);
   return [nu, lam](std::span<const T> x, std::span<const T> y) -> double {

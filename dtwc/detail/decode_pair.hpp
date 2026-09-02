@@ -56,16 +56,27 @@ DTWC_DECODE_PAIR_HD inline void decode_pair(std::int64_t k, std::int64_t N,
   // Approximate the row from the quadratic formula, then correct exactly.
   std::int64_t row = static_cast<std::int64_t>(
       floor(Nd - 0.5 - sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd)));
-  if (row < 0) row = 0; // defensive: valid k already yields row >= 0
+  // Clamp high FIRST and low LAST: for N < 2 the high clamp alone would leave
+  // row = N - 2 < 0, i.e. a negative index handed to the caller.
+  if (row > N - 2) row = N - 2; // defensive: valid k already yields row <= N-2
+  if (row < 0) row = 0;         // defensive: valid k already yields row >= 0
 
-  // Row `row` starts at linear index row*(2N - row - 1)/2. All arithmetic is
-  // 64-bit, so the product never wraps.
+  // Row `row` starts at linear index row*(2N - row - 1)/2; all 64-bit, never
+  // wraps. Kept in a variable so the corrections below cost a comparison per
+  // pair, not a fresh multiply and divide.
   std::int64_t row_start = row * (2 * N - row - 1) / 2;
 
-  // Correct any residual FP rounding upward. The audited-correct MPI copy used
-  // `while`; the buggy CUDA/Metal copies used a single `if` that could not
-  // recover when the seed underestimated the row by more than one.
-  while (row_start + (N - row - 1) <= k) {
+  // Correct down, then up. Both loops are `while`, not `if`: a seed off by
+  // more than one is recoverable (the MSL sibling's integer isqrt can
+  // overshoot, and a single-`if` up-correction was the retired CUDA/Metal bug).
+  while (row > 0 && row_start > k) {
+    --row;
+    row_start = row * (2 * N - row - 1) / 2;
+  }
+
+  // `row + 1 < N` only bounds the N < 2 case, where the row width is 0 and the
+  // loop would never terminate; for valid input the true row is <= N-2.
+  while (row + 1 < N && row_start + (N - row - 1) <= k) {
     row_start += (N - row - 1);
     ++row;
   }
@@ -104,9 +115,12 @@ static inline void decode_pair(long k, long N, thread long &i, thread long &j)
   // can be up to one too high, so correct in BOTH directions (an up-only loop
   // like the retired copies cannot recover from an overestimate).
   long row = (a - s) / 2;
-  while (row > 0 && row * (2 * N - row - 1) / 2 > k) --row; // correct down
   long row_start = row * (2 * N - row - 1) / 2;
-  while (row_start + (N - row - 1) <= k) {                  // correct up
+  while (row > 0 && row_start > k) {                        // correct down
+    --row;
+    row_start = row * (2 * N - row - 1) / 2;
+  }
+  while (row + 1 < N && row_start + (N - row - 1) <= k) {    // correct up
     row_start += (N - row - 1);
     ++row;
   }

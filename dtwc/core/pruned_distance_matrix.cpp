@@ -13,6 +13,7 @@
  */
 
 #include "pruned_distance_matrix.hpp"
+#include "../detail/decode_pair.hpp"
 #include "lower_bound_impl.hpp"
 #include "selector_validation.hpp"
 #include "../warping.hpp"
@@ -76,8 +77,12 @@ PruningStats fill_distance_matrix_pruned(
     return stats;
   }
 
-  // Ensure matrix is sized
-  dm.resize(static_cast<size_t>(N));
+  // Ensure the matrix is sized. resize() re-fills every packed slot with NaN,
+  // so it must NOT run when the matrix is already the right size: Auto resolves
+  // to Pruned for Standard DTW, and an unconditional resize discarded a
+  // restored checkpoint. Matches the brute-force fill (Problem.cpp).
+  if (dm.size() != static_cast<size_t>(N))
+    dm.resize(static_cast<size_t>(N));
 
   // Resolve the effective lower-bound strategy. Auto keeps the historical
   // Kim+Keogh cascade; None disables both (equivalent to brute-force with
@@ -198,18 +203,23 @@ PruningStats fill_distance_matrix_pruned(
                           + (block_index < larger_block_count ? 1 : 0);
 
     for (size_t k = pair_begin; k < pair_end; ++k) {
-      // Decode linear pair index k -> (i, j) in the upper triangle.
-      // Row i: using the quadratic formula on k = i*N - i*(i+1)/2 + (j - i - 1)
-      const double Nd = static_cast<double>(N);
-      const double kd = static_cast<double>(k);
-      int i = static_cast<int>(Nd - 0.5 - std::sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd));
-      // Correct for floating-point imprecision
-      int64_t row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
-      if (static_cast<int64_t>(k) - row_start >= static_cast<int64_t>(N - i - 1)) {
-        ++i;
-        row_start = static_cast<int64_t>(i) * N - static_cast<int64_t>(i) * (i + 1) / 2;
+      // Decode linear pair index k -> (i, j) in the upper triangle via the SSOT
+      // (dtwc/detail/decode_pair.hpp), not a local copy of its retired form.
+      std::int64_t di = 0, dj = 0;
+      dtwc::detail::decode_pair(static_cast<std::int64_t>(k),
+                                static_cast<std::int64_t>(N), di, dj);
+      const int i = static_cast<int>(di);
+      const int j = static_cast<int>(dj);
+
+      // Honour an entry that is already present (e.g. a restored checkpoint):
+      // keep its value and seed the NN thresholds from it. Skipped pairs are
+      // counted in stats.total_pairs but in none of the sub-counters.
+      if (dm.is_computed(static_cast<size_t>(i), static_cast<size_t>(j))) {
+        const double kept = dm.get(static_cast<size_t>(i), static_cast<size_t>(j));
+        atomic_min_double(nn_dist[static_cast<size_t>(i)], kept);
+        atomic_min_double(nn_dist[static_cast<size_t>(j)], kept);
+        continue;
       }
-      int j = static_cast<int>(static_cast<int64_t>(k) - row_start) + i + 1;
 
       // Compute lower bound (cascading: LB_Kim, then LB_Keogh).
       // If Kim is disabled, start at 0 (no-op threshold); Keogh may still fire.
@@ -428,8 +438,12 @@ PruningStats compute_distance_matrix_pruned(
       // Update nearest-neighbor distances for pruning.
       // Use atomic min for both endpoints, matching the Problem-based version.
       // Updating only nn_dist[i] would suppress later cutoff opportunities for j.
-      atomic_min_double(nn_dist[i], dist);
-      atomic_min_double(nn_dist[j], dist);
+      // Skipped when no lower bound is in use (SquaredL2): nothing reads the
+      // threshold then, so these would be two contended CAS loops per pair.
+      if (use_lb) {
+        atomic_min_double(nn_dist[i], dist);
+        atomic_min_double(nn_dist[j], dist);
+      }
     }
   };
   run_openmp(compute_row, N, true, 8);

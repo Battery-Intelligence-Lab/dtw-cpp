@@ -375,3 +375,41 @@ TEST_CASE("kDecodePairMSL integer-isqrt algorithm matches SSOT decode_pair",
     CHECK(lj == N - 1);
   }
 }
+
+// =========================================================================
+//  Degenerate N (audit 2026-09-02, item 4). The low clamp used to run BEFORE
+//  the high clamp, so for N < 2 the high clamp `row = N - 2` re-introduced a
+//  negative row after the low clamp had already removed it; the caller then
+//  indexed a series array at -1. The clamps are now ordered high-then-low, and
+//  the up-correction is bounded by `row + 1 < N` so the zero-width row of the
+//  N == 1 case terminates instead of spinning forever.
+// =========================================================================
+TEST_CASE("decode_pair is total and non-negative for degenerate N",
+          "[decode_pair][edge][regression]")
+{
+  SECTION("N = 2 is the smallest N with a pair")
+  {
+    REQUIRE(2 * (2 - 1) / 2 == 1);
+    std::int64_t i = -1, j = -1;
+    dtwc::detail::decode_pair(0, 2, i, j);
+    CHECK(i == 0);
+    CHECK(j == 1);
+    CHECK(mpi_reference_decode(0, 2) == std::make_pair(i, j));
+  }
+
+  SECTION("N = 1 has no pairs; an out-of-contract k must still terminate "
+          "with a non-negative row")
+  {
+    REQUIRE(1 * (1 - 1) / 2 == 0);
+    std::int64_t i = -1, j = -1;
+    dtwc::detail::decode_pair(0, 1, i, j); // hangs / returns i = -1 unfixed
+    CHECK(i >= 0);
+  }
+
+  SECTION("N = 0 likewise cannot yield a negative row")
+  {
+    std::int64_t i = -1, j = -1;
+    dtwc::detail::decode_pair(0, 0, i, j);
+    CHECK(i >= 0);
+  }
+}

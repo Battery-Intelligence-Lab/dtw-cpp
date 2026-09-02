@@ -267,3 +267,43 @@ TEST_CASE("Increasing band width monotonically decreases DTW cost", "[Phase1][dt
   double full_dist = dtwFull<dt>(x, y);
   REQUIRE_THAT(prev_dist, WithinAbs(full_dist, 1e-12));
 }
+
+// ---------------------------------------------------------------------------
+// A6: WDTW weight-array length precondition.
+//
+// SpanWeightedL1Cost indexes weights[|row - col|], whose maximum is
+// max(nx, ny) - 1. None of the weights-taking public overloads checked
+// weights.size(), so a short array read out of bounds (F46 applied to
+// weights) and returned a plausible-looking number.
+// ---------------------------------------------------------------------------
+TEST_CASE("WDTW rejects a weight array shorter than max(|x|, |y|)",
+          "[dtw_variants][wdtw][precondition][regression]")
+{
+  const std::vector<double> x = { 1, 2, 3, 4, 5 };
+  const std::vector<double> y = { 5, 4, 3, 2, 1 };
+  const std::vector<double> short_w = { 1.0, 1.0 };            // needs 5
+  const auto full_w = wdtw_weights<double>(4, 0.05);           // max_dev = 4 -> size 5
+
+  const std::span<const double> sw{ short_w };
+  const std::span<const double> fw{ full_w };
+
+  CHECK_THROWS_AS(wdtwFull<double>(x.data(), x.size(), y.data(), y.size(), sw),
+                  InvalidInput);
+  CHECK_THROWS_AS(wdtwBanded<double>(x.data(), x.size(), y.data(), y.size(), sw, 2),
+                  InvalidInput);
+  CHECK_NOTHROW(wdtwFull<double>(x.data(), x.size(), y.data(), y.size(), fw));
+  CHECK_NOTHROW(wdtwBanded<double>(x.data(), x.size(), y.data(), y.size(), fw, 2));
+
+  // Multivariate: the bound is in TIMESTEPS, not flat elements.
+  const std::vector<double> xm = { 1, 10, 2, 20, 3, 30 };  // 3 steps x 2 channels
+  const std::vector<double> ym = { 3, 30, 2, 20, 1, 10 };
+  const auto short_mv = wdtw_weights<double>(1, 0.05);     // size 2, needs 3
+  const auto full_mv = wdtw_weights<double>(2, 0.05);      // size 3
+  const std::span<const double> smv{ short_mv };
+  const std::span<const double> fmv{ full_mv };
+
+  CHECK_THROWS_AS(wdtwFull_mv<double>(xm.data(), 3, ym.data(), 3, 2, smv), InvalidInput);
+  CHECK_THROWS_AS(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, smv, 1), InvalidInput);
+  CHECK_NOTHROW(wdtwFull_mv<double>(xm.data(), 3, ym.data(), 3, 2, fmv));
+  CHECK_NOTHROW(wdtwBanded_mv<double>(xm.data(), 3, ym.data(), 3, 2, fmv, 1));
+}

@@ -32,11 +32,14 @@
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "core/variant_validation.hpp"
+#include "error.hpp"
 
+#include <algorithm>      // std::max
 #include <cmath>          // std::exp
 #include <cstddef>        // size_t
 #include <limits>
 #include <span>
+#include <string>         // std::to_string (weight-length diagnostic)
 #include <type_traits>    // std::type_identity_t
 #include <vector>
 
@@ -59,6 +62,22 @@ std::vector<data_t> wdtw_weights(int max_dev, data_t g = 0.05, data_t w_max = 1.
   return weights;
 }
 
+namespace detail {
+/// WDTW cost functors index `weights[|row - col|]`, whose maximum is
+/// max(nx, ny) - 1, so the table must hold at least max(nx, ny) entries.
+/// Validated once per call at the public boundary — never per cell.
+inline void require_wdtw_weight_span(std::size_t weights_size,
+                                     std::size_t nx, std::size_t ny)
+{
+  const std::size_t needed = std::max(nx, ny);
+  if (weights_size < needed)
+    throw InvalidInput(
+      "WDTW: weights array holds " + std::to_string(weights_size)
+      + " entries but the series pair needs " + std::to_string(needed)
+      + " (max(|x|, |y|)). Build it with wdtw_weights(max(|x|, |y|) - 1, g).");
+}
+} // namespace detail
+
 // ---------------------------------------------------------------------------
 // Scalar WDTW â€” full matrix / banded, with precomputed weights
 // ---------------------------------------------------------------------------
@@ -69,6 +88,7 @@ data_t wdtwFull(const data_t *x, size_t nx, const data_t *y, size_t ny,
 {
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
+  detail::require_wdtw_weight_span(weights.size(), nx, ny);
 
   const bool swap = nx > ny;
   const data_t* xs = swap ? y : x;
@@ -97,6 +117,7 @@ data_t wdtwBanded(const data_t *x, size_t nx, const data_t *y, size_t ny,
   if (band < 0) return wdtwFull<data_t>(x, nx, y, ny, weights);
   if (nx == 0 || ny == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx == ny) return 0;
+  detail::require_wdtw_weight_span(weights.size(), nx, ny);
 
   const bool swap = nx > ny;
   const data_t* xs = swap ? y : x;
@@ -215,6 +236,7 @@ data_t wdtwFull_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t ny_
   if (ndim == 1) return wdtwFull<data_t>(x, nx_steps, y, ny_steps, weights);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx_steps == ny_steps) return 0;
+  detail::require_wdtw_weight_span(weights.size(), nx_steps, ny_steps);
 
   const bool swap = nx_steps > ny_steps;
   const data_t* xs = swap ? y : x;
@@ -249,6 +271,7 @@ data_t wdtwBanded_mv(const data_t *x, size_t nx_steps, const data_t *y, size_t n
   if (ndim == 1) return wdtwBanded<data_t>(x, nx_steps, y, ny_steps, weights, band);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (x == y && nx_steps == ny_steps) return 0;
+  detail::require_wdtw_weight_span(weights.size(), nx_steps, ny_steps);
 
   const bool swap = nx_steps > ny_steps;
   const data_t* xs = swap ? y : x;

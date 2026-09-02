@@ -15,8 +15,17 @@
 #include "enums/enums.hpp"
 
 #include <cstdint>
+// <string> is unused here; kept because 24 TUs (incl. examples/ and
+// benchmarks/, which are OFF in every configured gate) use std::string
+// without including it, so removal cannot be build-proven from here.
 #include <string>
 #include <filesystem>
+// <iostream> is unused here but reaches consumers transitively; removing it
+// needs benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp,
+// dtwc/mip/mip_Gurobi.cpp, tests/unit/core/unit_test_pruned_distance_matrix.cpp
+// and tests/unit/test_storage_policy.cpp to include it themselves first
+// (benchmarks and examples are OFF in the canonical gate, so a green build
+// here would not prove it safe).
 #include <iostream>
 #include <random>
 
@@ -43,7 +52,7 @@ using data_t = double;
 /// @details Its initial seed remains 29 for compatibility. Deterministic Tier-1
 ///          entry points instead construct invocation-local engines from
 ///          `settings::DEFAULT_RANDOM_SEED`; they never consume this state.
-inline std::mt19937 randGenerator(29);
+inline std::mt19937 randGenerator(29); // NOLINT(cert-msc51-cpp): fixed seed is the documented reproducibility contract.
 } // namespace dtwc
 
 

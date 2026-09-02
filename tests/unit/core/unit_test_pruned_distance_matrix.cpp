@@ -14,15 +14,20 @@
 #include <dtwc.hpp>
 #include <core/lower_bounds.hpp>
 #include <core/pruned_distance_matrix.hpp>
+#include <detail/decode_pair.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
+#include <cstdint>
 #include <vector>
 #include <string>
 #include <cmath>
 #include <limits>
 #include <sstream>
+#include <filesystem>
+#include <system_error>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -1010,4 +1015,302 @@ TEST_CASE("Pruned Enhanced/Webb lower-bound strategies match BruteForce exactly"
         }
     }
   }
+}
+
+// =========================================================================
+//  A7: the pruned fill must honour entries that are already present.
+//
+//  fill_distance_matrix_pruned() called dm.resize(N) unconditionally, and
+//  DenseDistanceMatrix::resize() re-fills every packed slot with NaN — so a
+//  restored checkpoint was discarded the moment the fill started (Auto
+//  resolves to Pruned for Standard DTW). The brute-force fill already skips
+//  computed pairs; the pruned fill now does the same.
+// =========================================================================
+
+TEST_CASE("Pruned fill preserves pre-populated distance-matrix entries",
+          "[pruned_distance_matrix][checkpoint][regression]")
+{
+  auto prob = make_problem_with_data(
+    { { 1, 2, 3, 4, 5 }, { 5, 4, 3, 2, 1 }, { 1, 1, 1, 1, 1 }, { 2, 4, 6, 8, 10 } },
+    { "a", "b", "c", "d" }, -1);
+
+  auto &dm = std::get<core::DenseDistanceMatrix>(prob.distance_matrix());
+  dm.resize(prob.size());
+
+  // A sentinel no DTW of this data can produce, standing in for a restored
+  // checkpoint entry. It must survive the fill untouched.
+  constexpr double sentinel = 12345.0;
+  dm.set(0, 1, sentinel);
+
+  const auto stats = core::fill_distance_matrix_pruned(prob, -1,
+                                                       LowerBoundStrategy::Auto);
+  CAPTURE(stats.total_pairs);
+
+  REQUIRE(dm.get(0, 1) == sentinel);
+  // Every other pair is still filled exactly.
+  for (size_t i = 0; i < prob.size(); ++i)
+    for (size_t j = i; j < prob.size(); ++j)
+      REQUIRE(dm.is_computed(i, j));
+  REQUIRE_THAT(dm.get(0, 2), WithinAbs(dtwFull_L<double>(prob.series(0), prob.series(2)), 1e-12));
+}
+
+// =========================================================================
+//  A12 follow-up (audit 2026-09-02, item 2). The pruned fill is f64-only: its
+//  summaries, envelopes and kernels all read Problem::series(), which rejects
+//  a Float32 store. Float32 + Standard DTW + band >= 0 + N >= 64 + dense used
+//  to resolve Auto -> Pruned and then raise Data::series' precision error from
+//  inside the parallel region. Auto must route f32 to the exact dense fill,
+//  and an explicit Pruned request must be refused by name before any worker
+//  starts.
+// =========================================================================
+
+namespace {
+
+/// N deterministic length-16 series with distinct shapes, exactly
+/// representable in neither precision so the f32/f64 comparison is real.
+std::vector<std::vector<double>> f32_gate_series(size_t n)
+{
+  std::vector<std::vector<double>> vecs;
+  vecs.reserve(n);
+  for (size_t i = 0; i < n; ++i) {
+    std::vector<double> v(16);
+    for (size_t t = 0; t < v.size(); ++t)
+      v[t] = std::sin(0.25 * static_cast<double>(t) + 0.125 * static_cast<double>(i))
+             * (1.0 + 0.03125 * static_cast<double>(i));
+    vecs.push_back(std::move(v));
+  }
+  return vecs;
+}
+
+std::vector<std::string> f32_gate_names(size_t n)
+{
+  std::vector<std::string> names;
+  names.reserve(n);
+  for (size_t i = 0; i < n; ++i) names.push_back("s" + std::to_string(i));
+  return names;
+}
+
+Problem make_f32_problem(const std::vector<std::vector<double>> &f64_series, int band_val)
+{
+  std::vector<std::vector<float>> f32_series;
+  f32_series.reserve(f64_series.size());
+  for (const auto &v : f64_series) {
+    std::vector<float> converted;
+    converted.reserve(v.size());
+    for (const double x : v) converted.push_back(static_cast<float>(x));
+    f32_series.push_back(std::move(converted));
+  }
+  Problem prob("pruned_f32_gate");
+  prob.band = band_val;
+  prob.set_data(Data(std::move(f32_series), f32_gate_names(f64_series.size())));
+  return prob;
+}
+
+} // namespace
+
+TEST_CASE("Float32 data never reaches the f64-only pruned fill",
+          "[pruned_distance_matrix][strategy][f32][regression]")
+{
+  constexpr size_t N = 64; // pruned_strategy_applicable's size floor
+  constexpr int band = 4;  // ... and its band >= 0 requirement
+  const auto f64_series = f32_gate_series(N);
+
+  SECTION("Auto falls back to the exact dense fill and matches the f64 matrix")
+  {
+    auto prob_f32 = make_f32_problem(f64_series, band);
+    prob_f32.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+    REQUIRE_NOTHROW(prob_f32.fill_distance_matrix()); // threw Data::series unfixed
+    REQUIRE(prob_f32.is_distance_matrix_filled());
+
+    auto prob_f64 = make_problem_with_data(f64_series, f32_gate_names(N), band);
+    prob_f64.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+    prob_f64.fill_distance_matrix();
+
+    for (int i = 0; i < static_cast<int>(N); ++i)
+      for (int j = 0; j < static_cast<int>(N); ++j)
+        REQUIRE_THAT(prob_f32.dist_by_ind(i, j),
+                     WithinAbs(prob_f64.dist_by_ind(i, j), 1e-4));
+  }
+
+  SECTION("An explicit Pruned request is a typed InvalidInput, not a worker throw")
+  {
+    auto prob_f32 = make_f32_problem(f64_series, band);
+    prob_f32.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+    REQUIRE_THROWS_AS(prob_f32.fill_distance_matrix(), dtwc::InvalidInput);
+    REQUIRE_FALSE(prob_f32.is_distance_matrix_filled());
+  }
+
+  SECTION("Explicit Pruned + f32 + mmap distance storage still fills")
+  {
+    // Audit 2026-09-02, D3: the f32 guard was placed ABOVE the
+    // `Pruned && has_mmap_storage -> BruteForce` downgrade, so this
+    // combination started throwing even though the downgrade routes it to the
+    // exact generic row fill, which handles f32 correctly.
+#ifndef DTWC_HAS_MMAP
+    SKIP("mmap distance storage not compiled in (llfio)");
+#else
+    const auto scratch = std::filesystem::temp_directory_path() / "dtwc_pruned_f32_mmap";
+    std::filesystem::remove_all(scratch);
+    std::filesystem::create_directories(scratch);
+
+    auto prob_f32 = make_f32_problem(f64_series, band);
+    prob_f32.distance_strategy = dtwc::DistanceMatrixStrategy::Pruned;
+    prob_f32.use_mmap_distance_matrix(scratch / "pruned-f32.dtwm");
+    REQUIRE_NOTHROW(prob_f32.fill_distance_matrix());
+    REQUIRE(prob_f32.is_distance_matrix_filled());
+
+    auto prob_f64 = make_problem_with_data(f64_series, f32_gate_names(N), band);
+    prob_f64.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+    prob_f64.fill_distance_matrix();
+    for (int i = 0; i < static_cast<int>(N); ++i)
+      for (int j = 0; j < static_cast<int>(N); ++j)
+        REQUIRE_THAT(prob_f32.dist_by_ind(i, j),
+                     WithinAbs(prob_f64.dist_by_ind(i, j), 1e-4));
+
+    std::error_code ec;
+    std::filesystem::remove_all(scratch, ec);
+#endif
+  }
+
+  SECTION("Non-vacuity: the pruned builder itself still cannot take f32 data")
+  {
+    // Without the routing guard above, Auto would reach exactly this call and
+    // surface a Data::series precision std::runtime_error from inside the
+    // parallel region. If this ever stops throwing, the two sections above are
+    // no longer testing anything and must be revisited.
+    auto prob_f32 = make_f32_problem(f64_series, band);
+    REQUIRE_THROWS_AS(dtwc::core::fill_distance_matrix_pruned(prob_f32, band),
+                      std::runtime_error);
+    REQUIRE(prob_f32.data().is_f32());
+  }
+}
+
+// =========================================================================
+//  A7 companion (audit 2026-09-02, item 10). The sentinel test above calls
+//  fill_distance_matrix_pruned() directly at N = 4 / band = -1, which
+//  pruned_strategy_applicable would never route to Pruned. This case builds
+//  the configuration Auto actually resolves to Pruned for — Standard DTW,
+//  dense storage, MissingStrategy::Error, band >= 0, N >= 64 — and drives it
+//  through the public Problem::fill_distance_matrix().
+// =========================================================================
+TEST_CASE("Auto-resolved Pruned fill preserves pre-populated entries at N=64",
+          "[pruned_distance_matrix][checkpoint][strategy][auto][regression]")
+{
+  constexpr size_t N = 64;
+  constexpr int band = 4;
+  const auto series = f32_gate_series(N);
+
+  auto reference = make_problem_with_data(series, f32_gate_names(N), band);
+  reference.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
+  reference.fill_distance_matrix();
+
+  auto prob = make_problem_with_data(series, f32_gate_names(N), band);
+  prob.distance_strategy = dtwc::DistanceMatrixStrategy::Auto;
+  REQUIRE(prob.variant_params.variant == dtwc::core::DTWVariant::Standard);
+  REQUIRE(prob.missing_strategy == dtwc::core::MissingStrategy::Error);
+
+  auto &dm = std::get<core::DenseDistanceMatrix>(prob.distance_matrix());
+  dm.resize(prob.size());
+  constexpr double sentinel = 12345.0; // no DTW of this data can produce it
+  dm.set(0, 1, sentinel);
+
+  prob.fill_distance_matrix();
+
+  REQUIRE(dm.get(0, 1) == sentinel);
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = i; j < N; ++j)
+      REQUIRE(dm.is_computed(i, j));
+  for (int i = 0; i < static_cast<int>(N); ++i)
+    for (int j = 0; j < static_cast<int>(N); ++j)
+      if (!(i == 0 && j == 1) && !(i == 1 && j == 0))
+        REQUIRE_THAT(prob.dist_by_ind(i, j),
+                     WithinAbs(reference.dist_by_ind(i, j), 1e-10));
+}
+
+// =========================================================================
+//  decode_pair SSOT: the pruned fill decoded pair indices with its own
+//  single-`if` correction — the exact form decode_pair.hpp documents as
+//  retired and broken. It now calls the SSOT.
+//
+//  The SSOT's host decode corrected the row in ONE direction only, unlike its
+//  MSL sibling. An FP64 seed cannot be forced to overestimate at any reachable
+//  N (every intermediate is exact below ~5.7e7), so the overestimate is
+//  exercised on a replica of the algorithm with the seed deliberately raised
+//  by one — the same white-box technique the MSL parity test uses.
+// =========================================================================
+
+namespace {
+
+std::int64_t encode_pair_index(std::int64_t i, std::int64_t j, std::int64_t N)
+{
+  return i * (2 * N - i - 1) / 2 + (j - i - 1);
+}
+
+/// Replica of dtwc::detail::decode_pair with a caller-supplied seed bias, so a
+/// seed that OVERESTIMATES the row can be constructed on purpose.
+/// @param two_way  true  -> the shipped algorithm (correct down, then up);
+///                 false -> the retired up-only form.
+void decode_pair_with_seed_bias(std::int64_t k, std::int64_t N, std::int64_t bias,
+                                bool two_way, std::int64_t &i, std::int64_t &j)
+{
+  const double Nd = static_cast<double>(N);
+  const double kd = static_cast<double>(k);
+  std::int64_t row = static_cast<std::int64_t>(
+      std::floor(Nd - 0.5 - std::sqrt((Nd - 0.5) * (Nd - 0.5) - 2.0 * kd))) + bias;
+  if (row > N - 2) row = N - 2;
+  if (row < 0) row = 0;
+  std::int64_t row_start = row * (2 * N - row - 1) / 2;
+  if (two_way)
+    while (row > 0 && row_start > k) {                          // correct down
+      --row;
+      row_start = row * (2 * N - row - 1) / 2;
+    }
+  while (row + 1 < N && row_start + (N - row - 1) <= k) {       // correct up
+    row_start += (N - row - 1);
+    ++row;
+  }
+  i = row;
+  j = row + 1 + (k - row_start);
+}
+
+} // namespace
+
+// The host decode's FP64 seed is exact for every reachable N (all intermediates
+// stay below 2^53), so an overestimate cannot be produced through the public
+// signature — the attempt is recorded here rather than claimed. What IS
+// testable, white-box, is the correction algorithm the two decoders share: the
+// MSL sibling seeds from a FLOORED integer isqrt, which genuinely overshoots,
+// and the host copy corrected upward only. This pins that a down-correction is
+// load-bearing, and that the shipped decode agrees with the two-way form.
+TEST_CASE("decode_pair recovers from a row seed that is too high",
+          "[pruned_distance_matrix][decode_pair][regression]")
+{
+  bool up_only_ever_wrong = false;
+
+  for (const std::int64_t N : { std::int64_t(4), std::int64_t(63), std::int64_t(64),
+                                std::int64_t(1000) }) {
+    const std::int64_t num_pairs = N * (N - 1) / 2;
+    const std::int64_t stride = std::max<std::int64_t>(1, num_pairs / 500);
+    for (std::int64_t k = 0; k < num_pairs; k += stride) {
+      std::int64_t ei = -1, ej = -1;
+      dtwc::detail::decode_pair(k, N, ei, ej);
+      REQUIRE(encode_pair_index(ei, ej, N) == k);
+
+      for (const std::int64_t bias : { std::int64_t(1), std::int64_t(2) }) {
+        std::int64_t bi = -1, bj = -1;
+        decode_pair_with_seed_bias(k, N, bias, true, bi, bj);
+        CAPTURE(N, k, bias, ei, ej, bi, bj);
+        REQUIRE(bi == ei);   // two-way correction always recovers
+        REQUIRE(bj == ej);
+
+        std::int64_t ui = -1, uj = -1;
+        decode_pair_with_seed_bias(k, N, bias, false, ui, uj);
+        if (ui != ei || uj != ej) up_only_ever_wrong = true;
+      }
+    }
+  }
+
+  // The retired up-only form must be demonstrably wrong somewhere, otherwise
+  // this test would pass for the wrong reason.
+  CHECK(up_only_ever_wrong);
 }

@@ -506,3 +506,37 @@ TEST_CASE("MV Missing explicit L2 is NaN-aware Euclidean in f64 and f32",
   require_missing_mv_l2_metric_contract<double>();
   require_missing_mv_l2_metric_contract<float>();
 }
+
+// =========================================================================
+//  A1 regression: MV + MissingStrategy::Interpolate must not silently
+//  flatten channels.
+//
+//  interpolate_linear() is univariate: on an interleaved ndim=2 buffer it
+//  fills a NaN by averaging its *neighbouring channel* values, and the band
+//  then counts flat elements rather than timesteps. There is no multivariate
+//  interpolation contract in this release, so — exactly like MSM/TWE — the
+//  combination is rejected at bind time (serial, before the parallel fill)
+//  instead of returning a meaningless number.
+// =========================================================================
+
+TEST_CASE("MV + Interpolate is rejected at bind time, not silently flattened",
+          "[mv][missing][interpolate][regression]")
+{
+  dtwc::Data data;
+  data.ndim = 2;
+  data.p_vec = {
+    {1, 10, NaN, 20, 3, 30},  // 3 timesteps x 2 channels, NaN in channel 0 at t=1
+    {1, 11, 2, 21, 3, 31}
+  };
+  data.p_names = {"a", "b"};
+
+  dtwc::Problem prob;
+  prob.set_data(std::move(data));
+  prob.set_verbose(false);
+  REQUIRE_THROWS_AS(prob.set_missing_strategy(dtwc::core::MissingStrategy::Interpolate),
+                    dtwc::InvalidInput);
+
+  // The direct assignment path (public member) is still caught by the fill preflight.
+  prob.missing_strategy = dtwc::core::MissingStrategy::Interpolate;
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
+}
