@@ -33,94 +33,39 @@ namespace fs = std::filesystem;
 
 namespace {
 
-constexpr std::string_view kWindowsScalarHash =
-  "70CC88A06F050E253AF62FF5A73D2AE2D659A287A286D88EEB1871C7C45E13EB";
-constexpr std::string_view kWindowsRowsHash =
-  "B930ACBCF449361A1370E185F5610D9B4BDEBD71FAC07772C3E3449AB29C1733";
-constexpr std::string_view kLibstdcxxScalarHash =
-  "194FB0E76C52FCD84F09960547EEDC6A43788FDCC89F739DF44E3C49AF7B16E0";
-constexpr std::string_view kLibstdcxxRowsHash =
-  "1F9E6847BA0FFC7943EBCA024827CD6B5A890B8911BFF4F6C59211F3C28892AB";
+// One registered value per generator schedule. The helper draws through
+// std::mt19937 (bit-exact by [rand.eng.mers]) and converts with exact
+// power-of-two arithmetic, so these bytes hold on every conforming C++20
+// implementation regardless of standard library or floating-point flags.
+constexpr std::string_view kScalarHash =
+  "61AB689BE59BF61D2BA25B45F78AE17E78B4F2419468C2D6610A45648179DDAA";
+constexpr std::string_view kRowsHash =
+  "274D8720FE3233369FE21B8972F41AF3AC04D0D7424B55CC14E250A2719482F0";
+constexpr std::string_view kAcceleratorHash =
+  "7BE394A68EC73B6097B38F6965E9BE03DEA4030191D8BAE6692A3B42A473214A";
 
-constexpr std::array<std::uint64_t, 5> kWindowsScalarBits{
-  UINT64_C(0x3FE2FA8F6CD7F876), UINT64_C(0xBFE4429ABC432780),
-  UINT64_C(0x3FE1E67511EED8FC), UINT64_C(0x3FC8CB2C149941A8),
-  UINT64_C(0xBFBBBBCF0DB01E60),
+constexpr std::array<std::uint64_t, 5> kScalarBits{
+  UINT64_C(0xBFD00F11C3415C28), UINT64_C(0x3FECD880D177ACA8),
+  UINT64_C(0x3FDDB1FA3C799D44), UINT64_C(0x3FC941AEB3196580),
+  UINT64_C(0xBFE603CA646EEF3E),
 };
 
-constexpr std::array<std::uint64_t, 5> kLibstdcxxScalarBits{
-  UINT64_C(0x3FE2FA8F6CD7F878), UINT64_C(0xBFE4429ABC43277F),
-  UINT64_C(0x3FE1E67511EED8FE), UINT64_C(0x3FC8CB2C149941B0),
-  UINT64_C(0xBFBBBBCF0DB01E50),
+constexpr std::array<std::uint64_t, 12> kRowsBits{
+  UINT64_C(0x3FB6392C2AF436C0), UINT64_C(0xBFDC5E645968420C),
+  UINT64_C(0xBFC352D0AF27DFF8), UINT64_C(0x3FE610CFE93057BC),
+  UINT64_C(0x3FA0CACD46B9A300), UINT64_C(0x3FC217455E7C63E8),
+  UINT64_C(0xBFEE2D7A701FD9EE), UINT64_C(0xBFE505CA07FD467E),
+  UINT64_C(0x3FC901A90CB8CA58), UINT64_C(0x3FD686BD2766D08C),
+  UINT64_C(0xBFD9B122CB0964CC), UINT64_C(0x3FDD88E5A84510FC),
 };
 
-struct Profile
-{
-  std::string_view name;
-  std::string_view accelerator_hash;
-  std::string_view full_hash;
-  std::string_view band0_hash;
-  std::array<std::uint64_t, 12> accelerator_bits;
-};
-
-constexpr Profile kRelaxed{
-  "relaxed",
-  "BFACE25683F745B965459B36DDA75C9C4EDA8035EF4AFBED4722BC2E1F34758B",
-  "700163C5AC813BABD00845295CEEC6D3FD2C8DD13CEE7A918B442EE2440549B3",
-  "494C9E299092EED43414A2ABEA110CC4A05D579F3B8162257D4D637F45C933EB",
-  {
-    UINT64_C(0x4017B933480DF694), UINT64_C(0xC01953416B53F160),
-    UINT64_C(0x40166012566A8F3B), UINT64_C(0x3FFEFDF719BF9212),
-    UINT64_C(0xBFF15561688E12FC), UINT64_C(0xC0200041BE89C29E),
-    UINT64_C(0xBFEA14A986DAD398), UINT64_C(0xC00A9B4B96F5696D),
-    UINT64_C(0xC01C92166F9FE92C), UINT64_C(0x4008246451B14AA3),
-    UINT64_C(0xC021BE586FDF2D38), UINT64_C(0x4011C288EB7D97C0),
-  }
-};
-
-constexpr Profile kPrecise{
-  "precise",
-  "C53236B99DC783C3AC0129B58652C25C95ED72F7922A39B369A9E89AF94824B0",
-  "E79B3ACEAF951A614278879049CA66B887AEC388754DA9005308897ACB12526C",
-  "2405A565FEEBAF9998D3A1A778105911EC8DEA996A6EE5EFC58A9997D8432ABD",
-  {
-    UINT64_C(0x4017B933480DF694), UINT64_C(0xC01953416B53F160),
-    UINT64_C(0x40166012566A8F3C), UINT64_C(0x3FFEFDF719BF9210),
-    UINT64_C(0xBFF15561688E1300), UINT64_C(0xC0200041BE89C29E),
-    UINT64_C(0xBFEA14A986DAD3A0), UINT64_C(0xC00A9B4B96F5696C),
-    UINT64_C(0xC01C92166F9FE92C), UINT64_C(0x4008246451B14AA4),
-    UINT64_C(0xC021BE586FDF2D38), UINT64_C(0x4011C288EB7D97C0),
-  }
-};
-
-constexpr Profile kLibstdcxx{
-  "libstdcxx",
-  "5D3594B036ED60CAA686D8472C630488B86290BAD1805806FBB38894B96F2C53",
-  "7DE312EABCFFB71D857BF97B9CFCE9C08A6F855E7CE25B863342BE46CBC38B73",
-  "E81034CE0654315D254D07FA518DDCE7472A542A4EECBD740935E9DFF891022E",
-  {
-    UINT64_C(0x4017B933480DF696), UINT64_C(0xC01953416B53F15F),
-    UINT64_C(0x40166012566A8F3E), UINT64_C(0x3FFEFDF719BF9220),
-    UINT64_C(0xBFF15561688E12F0), UINT64_C(0xC0200041BE89C29E),
-    UINT64_C(0xBFEA14A986DAD3A0), UINT64_C(0xC00A9B4B96F5696C),
-    UINT64_C(0xC01C92166F9FE92A), UINT64_C(0x4008246451B14AA8),
-    UINT64_C(0xC021BE586FDF2D37), UINT64_C(0x4011C288EB7D97C0),
-  }
-};
-
-constexpr Profile kLibcxx{
-  "libcxx",
-  "1D063EF12CB8680807CEEEF9F8C2F35331D0AA91186F824A16D9F3B2954AEF77",
-  "7DE312EABCFFB71D857BF97B9CFCE9C08A6F855E7CE25B863342BE46CBC38B73",
-  "E81034CE0654315D254D07FA518DDCE7472A542A4EECBD740935E9DFF891022E",
-  {
-    UINT64_C(0x4017B933480DF696), UINT64_C(0xC01953416B53F15F),
-    UINT64_C(0x40166012566A8F3E), UINT64_C(0x3FFEFDF719BF921C),
-    UINT64_C(0xBFF15561688E12F2), UINT64_C(0xC0200041BE89C29E),
-    UINT64_C(0xBFEA14A986DAD398), UINT64_C(0xC00A9B4B96F5696D),
-    UINT64_C(0xC01C92166F9FE92A), UINT64_C(0x4008246451B14AA8),
-    UINT64_C(0xC021BE586FDF2D37), UINT64_C(0x4011C288EB7D97C0),
-  }
+constexpr std::array<std::uint64_t, 12> kAcceleratorBits{
+  UINT64_C(0xC00412D63411B332), UINT64_C(0x4022075082EACBE9),
+  UINT64_C(0x40128F3C65CC024A), UINT64_C(0x3FFF921A5FDFBEE0),
+  UINT64_C(0xC01B84BCFD8AAB0E), UINT64_C(0xC01B853B73001070),
+  UINT64_C(0xC021AD394BB42953), UINT64_C(0x401D4B4997564B44),
+  UINT64_C(0x40002DABBEDB7A61), UINT64_C(0x4010A5538E824645),
+  UINT64_C(0xC0232D36FBB7CB0F), UINT64_C(0x4022CBE07B9C288E),
 };
 
 void update_little_endian_double(
@@ -162,31 +107,6 @@ std::string ieee_sha256(
     for (const double value : row)
       update_little_endian_double(sha, value);
   return finish_hex(sha);
-}
-
-const Profile *profile_for(std::string_view accelerator_hash)
-{
-  if (accelerator_hash == kRelaxed.accelerator_hash) return &kRelaxed;
-  if (accelerator_hash == kPrecise.accelerator_hash) return &kPrecise;
-  if (accelerator_hash == kLibstdcxx.accelerator_hash) return &kLibstdcxx;
-  if (accelerator_hash == kLibcxx.accelerator_hash) return &kLibcxx;
-  return nullptr;
-}
-
-const Profile *coherent_profile(
-    std::string_view accelerator_hash,
-    std::string_view full_hash,
-    std::string_view band0_hash)
-{
-  for (const Profile *profile :
-       {&kRelaxed, &kPrecise, &kLibstdcxx, &kLibcxx}) {
-    if (accelerator_hash == profile->accelerator_hash
-        && full_hash == profile->full_hash
-        && band0_hash == profile->band0_hash) {
-      return profile;
-    }
-  }
-  return nullptr;
 }
 
 std::string read_source(std::string_view relative)
@@ -242,21 +162,16 @@ TEST_CASE("F15 benchmark scalar bytes retain the registered schedule",
           "[f15][test_support][scalar]")
 {
   const auto series = dtwc::test_support::benchmark_series(5, 42);
-  const std::string hash = ieee_sha256(series);
-  const auto *expected =
-    (hash == kWindowsScalarHash) ? &kWindowsScalarBits
-    : (hash == kLibstdcxxScalarHash) ? &kLibstdcxxScalarBits
-    : nullptr;
 
-  REQUIRE(expected != nullptr);
-  REQUIRE(series.size() == expected->size());
+  REQUIRE(series.size() == kScalarBits.size());
+  CHECK(ieee_sha256(series) == kScalarHash);
   CHECK(series == dtwc::test_support::benchmark_series(5, 42));
   CHECK(series != dtwc::test_support::benchmark_series(5, 43));
   for (std::size_t i = 0; i < series.size(); ++i) {
     CAPTURE(i);
-    CHECK(std::bit_cast<std::uint64_t>(series[i]) == (*expected)[i]);
+    CHECK(std::bit_cast<std::uint64_t>(series[i]) == kScalarBits[i]);
     CHECK(series[i] >= -1.0);
-    CHECK(series[i] <= 1.0);
+    CHECK(series[i] < 1.0);
   }
 }
 
@@ -264,27 +179,28 @@ TEST_CASE("F15 benchmark rows use a fresh base-plus-row engine",
           "[f15][test_support][row_seeded]")
 {
   const auto rows = dtwc::test_support::benchmark_series_set(3, 4, 100);
-  const std::string scalar_hash =
-    ieee_sha256(dtwc::test_support::benchmark_series(5, 42));
-  const std::string rows_hash = ieee_sha256(rows);
+
   REQUIRE(rows.size() == 3);
-  CHECK((
-    (scalar_hash == kWindowsScalarHash
-     && rows_hash == kWindowsRowsHash)
-    || (scalar_hash == kLibstdcxxScalarHash
-        && rows_hash == kLibstdcxxRowsHash)));
+  CHECK(ieee_sha256(rows) == kRowsHash);
+  std::size_t offset = 0;
   for (std::size_t row = 0; row < rows.size(); ++row) {
     CAPTURE(row);
     CHECK(rows[row].size() == 4);
     CHECK(rows[row] == dtwc::test_support::benchmark_series(
       4, 100 + static_cast<unsigned>(row)));
+    for (const double value : rows[row]) {
+      CAPTURE(offset);
+      CHECK(std::bit_cast<std::uint64_t>(value) == kRowsBits[offset]);
+      ++offset;
+    }
   }
+  CHECK(offset == kRowsBits.size());
   CHECK(rows[0] != rows[1]);
   CHECK(rows[1] != rows[2]);
   CHECK(rows != dtwc::test_support::benchmark_series_set(3, 4, 101));
 }
 
-TEST_CASE("F15 accelerator bytes select one coherent compiler profile",
+TEST_CASE("F15 accelerator bytes are toolchain independent",
           "[f15][test_support][continuous]")
 {
   const auto series =
@@ -293,23 +209,18 @@ TEST_CASE("F15 accelerator bytes select one coherent compiler profile",
   for (const auto &row : series)
     CHECK(row.size() == 4);
 
-  const std::string hash = ieee_sha256(series);
-  const Profile *profile = profile_for(hash);
-  REQUIRE(profile != nullptr);
-  CHECK(hash == profile->accelerator_hash);
-
+  CHECK(ieee_sha256(series) == kAcceleratorHash);
   std::size_t offset = 0;
   for (const auto &row : series) {
     for (const double value : row) {
-      CAPTURE(offset, profile->name);
-      CHECK(std::bit_cast<std::uint64_t>(value)
-            == profile->accelerator_bits[offset]);
+      CAPTURE(offset);
+      CHECK(std::bit_cast<std::uint64_t>(value) == kAcceleratorBits[offset]);
       CHECK(value >= -10.0);
-      CHECK(value <= 10.0);
+      CHECK(value < 10.0);
       ++offset;
     }
   }
-  CHECK(offset == profile->accelerator_bits.size());
+  CHECK(offset == kAcceleratorBits.size());
 }
 
 TEST_CASE("F15 dense assembly calls only the ordered upper triangle",
@@ -344,10 +255,12 @@ TEST_CASE("F15 dense assembly calls only the ordered upper triangle",
 TEST_CASE("F15 production dense references equal an independent full-matrix DP",
           "[f15][test_support][oracle]")
 {
+  // DTW outputs depend on the build floating-point flags, so the contract here
+  // is agreement with an independent DP inside the same build, never a
+  // registered cross-toolchain hash.
   const auto series =
     dtwc::test_support::accelerator_series_set(3, 4, 42);
-  const Profile *profile = profile_for(ieee_sha256(series));
-  REQUIRE(profile != nullptr);
+  REQUIRE(ieee_sha256(series) == kAcceleratorHash);
 
   const auto full = dtwc::test_support::symmetric_zero_diagonal_matrix(
     series,
@@ -361,23 +274,14 @@ TEST_CASE("F15 production dense references equal an independent full-matrix DP",
     });
   const auto independent_full = independent_matrix(series, -1);
   const auto independent_band0 = independent_matrix(series, 0);
-  const std::string accelerator_hash = ieee_sha256(series);
-  const std::string full_hash = ieee_sha256(full);
-  const std::string band0_hash = ieee_sha256(band0);
-  const Profile *coherent =
-    coherent_profile(accelerator_hash, full_hash, band0_hash);
 
   REQUIRE(full.size() == 9);
   REQUIRE(band0.size() == 9);
-  REQUIRE(coherent != nullptr);
-  CHECK(coherent == profile);
   CHECK(full == independent_full);
   CHECK(band0 == independent_band0);
   CHECK(full != band0);
-  CHECK(full_hash == profile->full_hash);
-  CHECK(band0_hash == profile->band0_hash);
   for (std::size_t i = 0; i < full.size(); ++i) {
-    CAPTURE(i, profile->name);
+    CAPTURE(i);
     CHECK(std::bit_cast<std::uint64_t>(full[i])
           == std::bit_cast<std::uint64_t>(independent_full[i]));
     CHECK(std::bit_cast<std::uint64_t>(band0[i])
@@ -464,23 +368,23 @@ TEST_CASE("F15 all registered consumers reach shared support",
   CHECK(contains(fixed_band, "enumerate_paths"));
   CHECK_FALSE(contains(fixed_band, "deterministic_series.hpp"));
 
-  const auto series =
-    dtwc::test_support::accelerator_series_set(3, 4, 42);
-  const auto full = dtwc::test_support::symmetric_zero_diagonal_matrix(
-    series,
-    [](const auto &left, const auto &right) {
-      return dtwc::dtwFull_L<double>(left, right);
-    });
-  const auto band0 = dtwc::test_support::symmetric_zero_diagonal_matrix(
-    series,
-    [](const auto &left, const auto &right) {
-      return dtwc::dtwBanded<double>(left, right, 0);
-    });
-  const Profile *profile = coherent_profile(
-    ieee_sha256(series), ieee_sha256(full), ieee_sha256(band0));
-  REQUIRE(profile != nullptr);
+  // The shared generator must not reintroduce an implementation-defined
+  // real-value mapping; that is what made the registered bytes unportable.
+  const std::string support =
+    read_source("tests/support/deterministic_series.hpp");
+  CHECK(contains(support, "std::mt19937"));
+  // Both spellings: CTAD (`uniform_real_distribution dist(...)`) drops the
+  // angle bracket, and generate_canonical is the same unportable mapping.
+  CHECK_FALSE(contains(support, "uniform_real_distribution"));
+  CHECK_FALSE(contains(support, "generate_canonical"));
+
+  REQUIRE(ieee_sha256(dtwc::test_support::benchmark_series(5, 42))
+          == kScalarHash);
+  REQUIRE(ieee_sha256(dtwc::test_support::benchmark_series_set(3, 4, 100))
+          == kRowsHash);
+  REQUIRE(ieee_sha256(dtwc::test_support::accelerator_series_set(3, 4, 42))
+          == kAcceleratorHash);
   std::cout
-    << "F15_TEST_SUPPORT profile=" << profile->name
-    << " scalar=ran row_seeded=ran continuous=ran dense=ran"
-       " source_audit=ran skips=0\n";
+    << "F15_TEST_SUPPORT generator=portable scalar=ran row_seeded=ran"
+       " continuous=ran dense=ran source_audit=ran skips=0\n";
 }
