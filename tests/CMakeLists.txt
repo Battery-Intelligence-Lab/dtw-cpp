@@ -362,7 +362,7 @@ if(TARGET unit_test_problem_storage_policy)
             RUN_SERIAL TRUE)
 endif()
 
-# F15 freezes the two shared deterministic generator schedules and the dense
+# F15 freezes the three portable deterministic generator schedules and the dense
 # symmetric CPU-reference traversal. This target is mandatory in every build.
 if(TARGET unit_test_deterministic_series)
     target_compile_definitions(
@@ -373,7 +373,7 @@ if(TARGET unit_test_deterministic_series)
         TEST unit_test_deterministic_series
         PROPERTY SKIP_RETURN_CODE)
     set(_f15_focused_regex
-        "F15_TEST_SUPPORT profile=(relaxed|precise|libstdcxx|libcxx) scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0(.|[\r\n])*All tests passed \\((3[5-9]|[4-9][0-9]|[1-9][0-9][0-9]+) assertions in ([5-9]|[1-9][0-9]+) test cases\\)")
+        "F15_TEST_SUPPORT generator=portable scalar=ran row_seeded=ran continuous=ran dense=ran source_audit=ran skips=0(.|[\r\n])*All tests passed \\((17[7-9]|1[89][0-9]|[2-9][0-9][0-9]|[1-9][0-9][0-9][0-9]+) assertions in ([6-9]|[1-9][0-9]+) test cases\\)")
     set_tests_properties(
         unit_test_deterministic_series
         PROPERTIES
@@ -741,6 +741,30 @@ if(TARGET dtwc_cl)
             TIMEOUT 120)
 endif()
 
+# The hand-rolled --yaml-config loader was removed (TOML via --config is the one
+# CLI config mechanism). Pin the real binary rejecting the flag: a stale build or
+# a re-added option would make this rejection disappear. The script asserts a
+# non-zero exit AND that the flag is named back, instead of a
+# PASS_REGULAR_EXPRESSION (which ignores the exit code and pinned CLI11 wording).
+if(TARGET dtwc_cl)
+    add_test(
+        NAME test_cli_rejects_yaml_config
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DCLI=$<TARGET_FILE:dtwc_cl>"
+            "-DOPTION=--yaml-config"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_rejects_unknown_option.cmake"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(
+        test_cli_rejects_yaml_config
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            LABELS "cli"
+            PASS_REGULAR_EXPRESSION
+                "CLI_REJECTS_UNKNOWN_OPTION subject=real_dtwc_cl option=--yaml-config exit=[0-9]+ nonzero=1 named=1 skips=0"
+            TIMEOUT 60)
+endif()
+
 # F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability
 # probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.
@@ -830,5 +854,41 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_test_compile_defs)
                     "PATH=path_list_prepend:${_arrow_runtime_dir}")
             endforeach()
         endforeach()
+    endif()
+endif()
+
+# ── MATLAB .m suites ───────────────────────────────────────────────────────
+# One CTest entry drives tests/matlab through the freshly built MEX. Incomplete
+# means "filtered by assumption" — a silent skip that reads as green in MATLAB's
+# summary — so it fails the gate. The sole exclusion is the parallelisation
+# capability PAIR: BOTH names are allow-listed, so at most these two may be
+# Incomplete (an OpenMP-ON build filters the serial case, an OpenMP-OFF build the
+# runtime case; the allow-list does not itself pin which, nor that only one is).
+# The passed-count floor proves the suite actually ran rather than being filtered
+# out. DTWC_MATLAB_SUITE_MIN_PASSED is pinned two below the measured run (123
+# passed on R2024b and R2025b, 2026-09-02); re-pin it and the AGENTS.md MATLAB
+# inventory whenever the suite grows.
+set(DTWC_MATLAB_SUITE_MIN_PASSED 121 CACHE STRING
+    "Minimum MATLAB test cases that must PASS for matlab_suite to be green")
+
+# find_program(matlab) is PATH-only, so a normal install (MATLAB not on PATH)
+# made this test vanish with no diagnostic. find_package caches the same
+# variables bindings/matlab uses, and MAIN_PROGRAM yields the executable itself.
+if(DTWC_BUILD_MATLAB)
+    find_package(Matlab COMPONENTS MX_LIBRARY MAIN_PROGRAM)
+    # This guard is what makes the $<TARGET_FILE_DIR:dtwc_mex> genex below legal:
+    # bindings/matlab is added AFTER tests, but it creates dtwc_mex under exactly
+    # this MX_LIBRARY condition, and a genex is resolved at generate time.
+    if(Matlab_FOUND AND Matlab_MAIN_PROGRAM)
+        add_test(
+            NAME matlab_suite
+            COMMAND "${Matlab_MAIN_PROGRAM}" -batch
+                "addpath('${CMAKE_SOURCE_DIR}/bindings/matlab'); addpath('$<TARGET_FILE_DIR:dtwc_mex>'); r = runtests('${CMAKE_CURRENT_SOURCE_DIR}/matlab'); allowed = {'test_test_api/test_parallelisation_runtime_engages', 'test_test_api/test_parallelisation_serial_is_honest'}; bad = setdiff({r([r.Incomplete]).Name}, allowed); fprintf('matlab_suite: %d run, %d passed, %d failed, %d incomplete%s', numel(r), sum([r.Passed]), sum([r.Failed]), sum([r.Incomplete]), newline); assert(sum([r.Failed]) == 0 && isempty(bad) && sum([r.Passed]) >= ${DTWC_MATLAB_SUITE_MIN_PASSED}, 'matlab_suite gate failed');"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(matlab_suite PROPERTIES
+            LABELS "matlab" RUN_SERIAL TRUE TIMEOUT 1800)
+    else()
+        message(WARNING
+            "DTWC_BUILD_MATLAB=ON but MATLAB not found: matlab_suite not registered")
     endif()
 endif()

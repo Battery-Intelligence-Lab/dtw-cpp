@@ -45,7 +45,6 @@ option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
 # Silently ignored on non-Apple platforms.
 option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
-option(DTWC_ENABLE_YAML "Enable YAML configuration file support via yaml-cpp" OFF)
 option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
 
 # Parallelism is a hard requirement, not a silent-optional: if OpenMP is not
@@ -55,6 +54,19 @@ option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OF
 # thread-warning in the parallelisation layer). This keeps "core builds without
 # optional deps" as an EXPLICIT choice, never a silent serial fallback.
 option(DTWC_ALLOW_SEQUENTIAL "Allow configuring without OpenMP (single-threaded, EXTREMELY slow) — explicit opt-out of the parallelism requirement" OFF)
+
+# A MEX runs inside MATLAB's OWN private msvcp140.dll (R2024b ships 14.36).
+# A std::mutex built by a newer STL's constexpr ctor is all-zeros and faults in
+# that older runtime's _Mtx_lock, so opt every TU here - including the fetched
+# HiGHS/llfio targets, which inline the ctor - back to the dynamic-init ctor.
+# Directory scope means EVERY target configured in a DTWC_BUILD_MATLAB=ON tree
+# gets it (dtwc++, mip-solvers, fetched HiGHS/llfio, dtwc_cl, tests, the Python
+# module) - deliberately, since mixing defining and non-defining TUs is IFNDR;
+# std::mutex layout is unchanged either way (MSVC STL <mutex> keeps the same
+# _Mtx_storage member), only the constexpr-ness of its constructor.
+if(DTWC_BUILD_MATLAB AND (MSVC OR (WIN32 AND CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")))
+  add_compile_definitions(_DISABLE_CONSTEXPR_MUTEX_CONSTRUCTOR)
+endif()
 
 # CUDA must be detected at directory scope (enable_language cannot be called
 # inside a function). Do it here before dtwc_setup_dependencies().
@@ -272,12 +284,6 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
   if(APPLE AND OpenMP_CXX_FOUND AND OpenMP_omp_LIBRARY)
     install(FILES "${OpenMP_omp_LIBRARY}" DESTINATION lib COMPONENT runtime)
     set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "@loader_path/../lib")
-  endif()
-
-  # Optional YAML config support for CLI tool
-  if(DTWC_ENABLE_YAML AND TARGET yaml-cpp::yaml-cpp)
-    target_link_libraries(dtwc_cl PRIVATE yaml-cpp::yaml-cpp)
-    target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
   endif()
 endif()
 

@@ -116,29 +116,6 @@ function(dtwc_setup_dependencies)
     endif()
   endif()
 
-  # yaml-cpp — YAML configuration file support (MIT license, optional)
-  if(DTWC_ENABLE_YAML AND NOT TARGET yaml-cpp)
-    CPMAddPackage(
-      NAME yaml-cpp
-      URL "https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.9.0.tar.gz"
-      URL_HASH SHA256=25cb043240f828a8c51beb830569634bc7ac603978e0f69d6b63558dadefd49a
-      # yaml-cpp-0.9.0 release, published 2026-02-04. The previous URL omitted
-      # the `yaml-cpp-` tag prefix and returned 404; the content hash both fixes
-      # that live build bug and pins the archive bytes.
-      SYSTEM
-      EXCLUDE_FROM_ALL
-      OPTIONS "YAML_CPP_BUILD_TESTS OFF" "YAML_CPP_BUILD_TOOLS OFF"
-    )
-    # Ensure namespaced alias exists (CPM subdirectory may not create it)
-    if(TARGET yaml-cpp AND NOT TARGET yaml-cpp::yaml-cpp)
-      add_library(yaml-cpp::yaml-cpp ALIAS yaml-cpp)
-    endif()
-    if(NOT TARGET yaml-cpp)
-      message(WARNING "yaml-cpp not found -- YAML config support disabled")
-      set(DTWC_ENABLE_YAML OFF PARENT_SCOPE)
-    endif()
-  endif()
-
   # llfio — memory-mapped I/O for large distance matrices (OPTIONAL).
   # Optional per the project "optional deps only" rule (Task 0.12): the core
   # must configure without llfio. When disabled/absent, DTWC_HAS_MMAP is never

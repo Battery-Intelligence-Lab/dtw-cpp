@@ -19,7 +19,7 @@ USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
 BRACKET_OPEN = re.compile(r"\[(?P<equals>=*)\[")
 VERSION_REF = re.compile(r"v?\d+(?:[._-][0-9A-Za-z]+)*\Z", re.IGNORECASE)
-REGISTERED_CMAKE_MANIFEST_TOTAL = 28  # fb853eb added tests/integration/test_cli_resume_state.cmake (2026-07-24)
+REGISTERED_CMAKE_MANIFEST_TOTAL = 29  # added tests/integration/test_cli_rejects_unknown_option.cmake (2026-09-02)
 CPM_PARSE_KEYWORDS = {
     "BITBUCKET_REPOSITORY",
     "CUSTOM_CACHE_KEY",
@@ -93,12 +93,6 @@ REGISTERED_ARCHIVE_IDENTITIES = (
         "Eigen",
         "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2",
         "e4de6b08f33fd8b8985d2f204381408c660bffa6170ac65b68ae1bd3cd575c0a",
-    ),
-    (
-        "cmake/Dependencies.cmake",
-        "yaml-cpp",
-        "https://github.com/jbeder/yaml-cpp/archive/refs/tags/yaml-cpp-0.9.0.tar.gz",
-        "25cb043240f828a8c51beb830569634bc7ac603978e0f69d6b63558dadefd49a",
     ),
     (
         "cmake/Dependencies.cmake",
