@@ -22,6 +22,7 @@
 #include <cctype>
 #include <fstream>
 #include <iomanip>
+#include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <system_error>
@@ -56,12 +57,12 @@ std::string derive_name(const std::filesystem::path &path)
   return "dataset";
 }
 
-void validate_common(const Dataset &dataset, int k, int max_iter)
+/// Dataset itself needs no check here: both load() overloads reject a negative
+/// skip_cols and Dataset's constructors are private.
+void validate_common(int k, int max_iter)
 {
   if (k <= 0) throw InvalidInput("cluster: k must be positive.");
   if (max_iter <= 0) throw InvalidInput("cluster: max_iter must be positive.");
-  if (dataset.skip_cols() < 0)
-    throw InvalidInput("load: skip_cols must be non-negative.");
 }
 
 std::string normalize_method(std::string_view value)
@@ -264,7 +265,18 @@ void Result::save(const std::filesystem::path &directory) const
       throw IOError("Result::save: cannot write " + matrix_path.string());
   }, problem_->distance_matrix());
 
-  const auto silhouette_values = scores::silhouette(*problem_);
+  // s(i) is undefined with fewer than two realised clusters, where
+  // scores::silhouette() throws UndefinedScore. save() must not fail a
+  // clustering that succeeded: warn and skip the file, as the CLI does.
+  // Result::score("silhouette") still throws — asking for the number is a
+  // different contract. A corrupt labelling still propagates.
+  std::vector<double> silhouette_values;
+  try {
+    silhouette_values = scores::silhouette(*problem_);
+  } catch (const UndefinedScore &e) {
+    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
+    return;
+  }
   {
     std::ofstream out(silhouettes_path);
     ensure_output(out, silhouettes_path);
@@ -278,7 +290,7 @@ void Result::save(const std::filesystem::path &directory) const
 Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
                int band, std::string_view requested_device, int max_iter)
 {
-  validate_common(dataset, k, max_iter);
+  validate_common(k, max_iter);
   std::string method = normalize_method(requested_method);
 
   // A per-call override is validated with a local Env so it neither changes nor

@@ -282,12 +282,13 @@ struct LoadOutcome
   std::string exception;
 };
 
-LoadOutcome try_load(Problem &problem, const fs::path &checkpoint)
+LoadOutcome try_load(Problem &problem, const fs::path &checkpoint,
+                     core::MetricType metric = core::MetricType::L1)
 {
   SilenceCout silence;
   LoadOutcome outcome;
   try {
-    outcome.loaded = load_checkpoint(problem, checkpoint.string());
+    outcome.loaded = load_checkpoint(problem, checkpoint.string(), metric);
   } catch (const std::exception &error) {
     outcome.threw = true;
     outcome.exception = error.what();
@@ -317,12 +318,13 @@ struct SaveOutcome
   std::string exception;
 };
 
-SaveOutcome try_save(const Problem &problem, const fs::path &checkpoint)
+SaveOutcome try_save(const Problem &problem, const fs::path &checkpoint,
+                     core::MetricType metric = core::MetricType::L1)
 {
   SilenceCout silence;
   SaveOutcome outcome;
   try {
-    save_checkpoint(problem, checkpoint.string());
+    save_checkpoint(problem, checkpoint.string(), metric);
   } catch (const std::exception &error) {
     outcome.threw = true;
     outcome.exception = error.what();
@@ -655,6 +657,27 @@ TEST_CASE("dense checkpoint identity covers every distance semantic axis",
     mutate(target);
     install_target_cache(target);
     require_rejected_unchanged(target, checkpoint, name);
+  }
+
+  // 16th axis: the pointwise metric. It is not a Problem field, it is the
+  // argument the CLI already computes and previously discarded on the dense
+  // path -- distance_checkpoint_identity() hardcoded MetricType::L1, so a
+  // SquaredL2 matrix carried an L1 fingerprint and a later L1 run accepted it
+  // (audit 2026-09-02, A5).
+  CHECK(source.distance_checkpoint_identity(core::MetricType::L1)
+        != source.distance_checkpoint_identity(core::MetricType::SquaredL2));
+
+  {
+    Problem target{"m49_identity_metric_target"};
+    target.set_data(make_f64_data());
+    install_target_cache(target);
+    const ProblemSnapshot before = snapshot(target);
+    const LoadOutcome outcome =
+      try_load(target, checkpoint, core::MetricType::SquaredL2);
+    INFO("load exception: " << outcome.exception);
+    CHECK_FALSE(outcome.threw);
+    CHECK_FALSE(outcome.loaded);
+    CHECK(state_matches(target, before));
   }
 }
 

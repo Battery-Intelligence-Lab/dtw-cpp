@@ -9,10 +9,10 @@
 
 #include <algorithm>
 #include <chrono>
-#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -121,6 +121,59 @@ TEST_CASE("Tier-1 C++ conformance fixture clusters, scores, and saves", "[api][t
   fs::remove_all(out, ec);
 }
 
+TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
+          "[api][tier1][save][degenerate]")
+{
+  // Regression: scores::silhouette() rejects fewer than two REALISED clusters,
+  // and save() called it after writing labels/medoids/matrix, so a legal run was
+  // left with a half-populated directory plus an exception. save() must warn and
+  // skip the silhouette file instead. score("silhouette") keeps throwing.
+  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+
+  SECTION("k = 1 is a legal request") {
+    const auto dataset = dtwc::load(
+      dtwc::Dataset::series_type{{0.0, 1.0, 2.0}, {0.0, 2.0, 4.0}, {5.0, 5.0, 5.0}},
+      0, 0, "k1");
+    const auto result = dtwc::cluster(dataset, 1, "pam", -1, "cpu", 10);
+    REQUIRE(result.medoids().size() == 1);
+    REQUIRE_THROWS_AS(result.score("silhouette"), dtwc::InvalidInput);
+
+    const fs::path out =
+      fs::temp_directory_path() / ("dtwc_tier1_k1_" + std::to_string(nonce));
+    REQUIRE_NOTHROW(result.save(out));
+    REQUIRE(first_line(out / "k1_labels.csv") == "name,cluster");
+    REQUIRE(first_line(out / "k1_medoids.csv") == "cluster,medoid_index,medoid_name");
+    REQUIRE(fs::exists(out / "k1_distance_matrix.csv"));
+    REQUIRE_FALSE(fs::exists(out / "k1_silhouettes.csv"));
+    std::error_code ec;
+    fs::remove_all(out, ec);
+  }
+
+  SECTION("k = 2 collapsing to one realised cluster") {
+    // Four identical series: every distance is 0, ties resolve to the lower
+    // medoid slot, so one declared cluster ends up empty and the realised count
+    // is 1 even though k = 2 was requested.
+    const auto dataset = dtwc::load(
+      dtwc::Dataset::series_type{
+        {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
+      0, 0, "dup");
+    const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+    const auto &labels = result.labels();
+    const int realised = static_cast<int>(
+      std::set<int>(labels.begin(), labels.end()).size());
+    REQUIRE(realised == 1);
+
+    const fs::path out =
+      fs::temp_directory_path() / ("dtwc_tier1_dup_" + std::to_string(nonce));
+    REQUIRE_NOTHROW(result.save(out));
+    REQUIRE(first_line(out / "dup_labels.csv") == "name,cluster");
+    REQUIRE(first_line(out / "dup_medoids.csv") == "cluster,medoid_index,medoid_name");
+    REQUIRE_FALSE(fs::exists(out / "dup_silhouettes.csv"));
+    std::error_code ec;
+    fs::remove_all(out, ec);
+  }
+}
+
 TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG",
           "[api][tier1][seed]")
 {
@@ -145,7 +198,7 @@ TEST_CASE("Tier-1 C++ PAM uses the shared local seed without touching legacy RNG
   // Tier-1 owns an invocation-local engine.  Its result is the seed-42 oracle,
   // and the call must neither consume nor reseed mutable Tier-2 randGenerator.
   const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(8675309);
+  dtwc::randGenerator.seed(8675309); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before = dtwc::randGenerator;
   const auto result = dtwc::cluster(
     dtwc::load(seed_sensitive_series()), 3, "pam", -1, "cpu", 100);
@@ -167,14 +220,14 @@ TEST_CASE("Tier-1 C++ Lloyd is invocation-local and independent of legacy RNG",
   fs::create_directories(out);
   dtwc::settings::paths::results = out;
 
-  dtwc::randGenerator.seed(17);
+  dtwc::randGenerator.seed(17); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before_first = dtwc::randGenerator;
   const auto first = dtwc::cluster(
     dtwc::load(seed_sensitive_series(), 0, 0, "lloyd_first"),
     3, "kmedoids", -1, "cpu", 100);
   CHECK(dtwc::randGenerator == legacy_rng_before_first);
 
-  dtwc::randGenerator.seed(8675309);
+  dtwc::randGenerator.seed(8675309); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before_second = dtwc::randGenerator;
   const auto second = dtwc::cluster(
     dtwc::load(seed_sensitive_series(), 0, 0, "lloyd_second"),
@@ -225,7 +278,7 @@ TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers"
   REQUIRE(dtwc::Problem{}.random_seed() == dtwc::settings::DEFAULT_RANDOM_SEED);
 
   const auto legacy_rng_original = dtwc::randGenerator;
-  dtwc::randGenerator.seed(271828);
+  dtwc::randGenerator.seed(271828); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before = dtwc::randGenerator;
   auto problem = seed_sensitive_problem();
   problem.set_n_clusters(3);

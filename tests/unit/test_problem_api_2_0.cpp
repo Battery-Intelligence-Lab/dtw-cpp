@@ -131,8 +131,8 @@ constexpr std::string_view f22_clusters_stdout =
   "The cluster with centroid s1 has following members: s0 s1 s2 \n"
   "The cluster with centroid s4 has following members: s3 s4 s5 \n";
 
-constexpr std::string_view f22_failed_read_stdout =
-  "Distance matrix could not be read! Continuing without matrix!\n";
+constexpr std::string_view f22_failed_read_message =
+  "Cannot open file for reading";
 
 bool f22_same_bits(double lhs, double rhs)
 {
@@ -801,21 +801,34 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     Problem failed_canonical = make_f22_problem();
     failed_legacy.fill_distance_matrix();
     failed_canonical.fill_distance_matrix();
+    // A failed read propagates (audit 2026-09-02 A1); the deprecated alias must
+    // fail exactly like the canonical spelling and must leave the already
+    // filled matrix untouched.
+    const auto capture_failure = [](auto &&call) {
+      std::string message;
+      try {
+        std::forward<decltype(call)>(call)();
+      } catch (const std::exception &error) {
+        message = error.what();
+      }
+      return message;
+    };
     std::string legacy_failure;
     DTWC_PUSH_NO_DEPRECATED
-    legacy_failure = f22_capture_stdout([&] {
+    legacy_failure = capture_failure([&] {
       failed_legacy.readDistanceMatrix(
         source_root / "missing-legacy.csv");
     });
     DTWC_POP_NO_DEPRECATED
-    const auto canonical_failure = f22_capture_stdout([&] {
+    const auto canonical_failure = capture_failure([&] {
       failed_canonical.read_distance_matrix(
         source_root / "missing-canonical.csv");
     });
     const bool failure_identity =
-      legacy_failure == f22_failed_read_stdout
-      && canonical_failure == f22_failed_read_stdout
-      && legacy_failure == canonical_failure
+      legacy_failure.find(f22_failed_read_message) != std::string::npos
+      && canonical_failure.find(f22_failed_read_message) != std::string::npos
+      && legacy_failure.find("missing-legacy.csv") != std::string::npos
+      && canonical_failure.find("missing-canonical.csv") != std::string::npos
       && f22_matrix_matches(failed_legacy, f22_distance_oracle)
       && f22_matrix_matches(failed_canonical, f22_distance_oracle);
 

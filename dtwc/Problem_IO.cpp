@@ -12,18 +12,38 @@
 
 #include "Problem.hpp"
 #include "core/matrix_io.hpp"
-#include "fileOperations.hpp"
 #include "scores.hpp"      // for silhouette
-#include "settings.hpp"    // for data_t, randGenerator, band
 #include "types/Range.hpp" // for Range
 
-#include <array>
 #include <fstream>
 #include <iostream> // for cout
+#include <type_traits> // for std::is_same_v, std::decay_t (visit_distmat)
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
 
 namespace dtwc {
+
+namespace {
+
+/// Open an output file, failing loudly: an unchecked ofstream silently produces
+/// no file at all when the output folder is unwritable.
+std::ofstream open_output(const std::filesystem::path &path)
+{
+  std::ofstream file(path, std::ios_base::out);
+  if (!file.good())
+    throw std::runtime_error("Cannot open file for writing: " + path.string());
+  return file;
+}
+
+/// Close an output file and report a write error instead of losing it.
+void close_output(std::ofstream &file, const std::filesystem::path &path)
+{
+  file.close();
+  if (!file.good())
+    throw std::runtime_error("Write error on file: " + path.string());
+}
+
+} // namespace
 
 /**
  *  @brief Writes the medoids and their corresponding total cost to a CSV file.
@@ -85,8 +105,8 @@ void Problem::print_clusters() const
 void Problem::write_clusters()
 {
   const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
-
-  std::ofstream myFile(output_folder_ / file_name, std::ios_base::out);
+  const auto path = output_folder_ / file_name;
+  std::ofstream myFile = open_output(path);
 
   myFile << "Cluster centroids:\n";
 
@@ -104,28 +124,40 @@ void Problem::write_clusters()
 
   myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
 
-  myFile.close();
+  close_output(myFile, path);
 }
 
 /**
  *  @brief Writes silhouette scores for each data point to a CSV file.
  *  @details Calculates silhouette scores using the 'scores::silhouette' function.
+ *
+ *  s(i) is undefined with fewer than two realised clusters, where
+ *  scores::silhouette() throws UndefinedScore. Writing output is not the place
+ *  to abort a completed clustering: warn and skip the file, as the CLI does.
+ *  Only that case is caught; a corrupt labelling still propagates.
  */
 void Problem::write_silhouettes()
 {
-  const auto silhouettes = scores::silhouette(*this);
+  std::vector<double> silhouettes;
+  try {
+    silhouettes = scores::silhouette(*this);
+  } catch (const UndefinedScore &e) {
+    std::cerr << "Warning: silhouettes skipped: " << e.what() << '\n';
+    return;
+  }
 
   std::string silhouette_name{ name_ + "_silhouettes_Nc_" };
 
   silhouette_name += std::to_string(n_clusters()) + ".csv";
 
-  std::ofstream myFile(output_folder_ / silhouette_name, std::ios_base::out);
+  const auto path = output_folder_ / silhouette_name;
+  std::ofstream myFile = open_output(path);
 
   myFile << "Silhouettes:\n";
   for (auto i : Range(size()))
     myFile << get_name(i) << ',' << silhouettes[i] << '\n';
 
-  myFile.close();
+  close_output(myFile, path);
 }
 
 /**
@@ -138,8 +170,8 @@ void Problem::write_medoid_members(int iter, int rep) const
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  std::ofstream medoidMembers(
-    output_folder_ / medoid_name, std::ios_base::out);
+  const auto path = output_folder_ / medoid_name;
+  std::ofstream medoidMembers = open_output(path);
   for (const auto i_c : Range(n_clusters())) {
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
@@ -148,41 +180,34 @@ void Problem::write_medoid_members(int iter, int rep) const
     medoidMembers << '\n';
   }
 
-  medoidMembers.close();
+  close_output(medoidMembers, path);
 }
 
 /**
  *  @brief Writes the distance matrix to a file.
- *  @param name_ The name of the output file.
+ *  @param name_ The name of the output file. Matches the declaration in
+ *         Problem.hpp; the body uses only the parameter, never the member it hides.
  */
 void Problem::write_distance_matrix(const std::string &name_) const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
+  const auto path = output_folder_ / name_;
   visit_distmat([&](const auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      io::write_csv(m, output_folder_ / name_);
+      io::write_csv(m, path);
     } else {
-      // MmapDistanceMatrix: data is already on disk. Write a CSV copy for inspection.
+      // MmapDistanceMatrix: data already on disk; write a CSV copy through the
+      // shared formatter. F14 requires rejecting a non-finite value BEFORE the
+      // destination is truncated, so the preflight is hoisted above the open
+      // and the already-preflighted emitter is called directly -- operator<<
+      // would repeat that O(N^2) scan. Bytes are identical either way.
       core::detail::preflight_distance_matrix_csv(m);
-      const size_t n = m.size();
-      const auto path = output_folder_ / name_;
       std::ofstream file(
         path, std::ios::out | std::ios::binary | std::ios::trunc);
       if (!file.good())
         throw std::runtime_error("Cannot open file for writing: " + path.string());
-      std::array<char, 64> number{};
-      for (size_t i = 0; i < n; ++i) {
-        for (size_t j = 0; j < n; ++j) {
-          if (j > 0) file.put(',');
-          const auto token =
-            core::detail::distance_matrix_csv_token(m.get(i, j), number);
-          if (!token.empty())
-            file.write(
-              token.data(), static_cast<std::streamsize>(token.size()));
-        }
-        file.put('\n');
-      }
+      core::detail::write_distance_matrix_csv_preflighted(file, m);
       file.close();
       if (!file.good())
         throw std::runtime_error("Write error on file: " + path.string());
@@ -196,36 +221,34 @@ void Problem::write_distance_matrix(const std::string &name_) const
  */
 void Problem::writeBestRep(int best_rep)
 {
-  std::ofstream bestRepFile(
-    output_folder_
-      / (name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv"),
-    std::ios_base::out);
+  const auto path = output_folder_
+    / (name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv");
+  std::ofstream bestRepFile = open_output(path);
   bestRepFile << best_rep << '\n';
-  bestRepFile.close();
+  close_output(bestRepFile, path);
 
   std::cout << "Best repetition: " << best_rep << '\n';
 }
 
 /**
  *  @brief Reads the distance matrix from a file.
- *  @details If the matrix cannot be read, continues without it.
+ *  @details A read failure is reported to the caller: deciding whether to
+ *  continue without a precomputed matrix belongs to the caller, not the reader.
+ *  Swallowing it made a failed load indistinguishable from a successful one.
  *  @param distMat_path The file path of the distance matrix.
+ *  @throws std::exception if the file cannot be opened or parsed.
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
-  try {
-    ensure_dense_cache_configuration_current();
-    visit_distmat([&](auto &m) {
-      if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-        io::read_csv(m, distMat_path);
-      } else {
-        throw std::runtime_error("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
-                                 "(use warm-start via use_mmap_distance_matrix instead).");
-      }
-    });
-  } catch (...) {
-    std::cout << "Distance matrix could not be read! Continuing without matrix!" << '\n';
-  }
+  ensure_dense_cache_configuration_current();
+  visit_distmat([&](auto &m) {
+    if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
+      io::read_csv(m, distMat_path);
+    } else {
+      throw std::runtime_error("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
+                               "(use warm-start via use_mmap_distance_matrix instead).");
+    }
+  });
 }
 
 } // namespace dtwc

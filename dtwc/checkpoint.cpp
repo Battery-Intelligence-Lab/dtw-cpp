@@ -449,7 +449,8 @@ void replace_current(const fs::path &temporary, const fs::path &current)
 } // anonymous namespace
 
 
-void save_checkpoint(const Problem &prob, const std::string &path)
+void save_checkpoint(const Problem &prob, const std::string &path,
+                     core::MetricType metric)
 {
   // Complete every semantic, shape, identity, and finite-value check before
   // touching the filesystem. A zero-sized Dense matrix is the valid deferred
@@ -477,7 +478,7 @@ void save_checkpoint(const Problem &prob, const std::string &path)
           "Dense checkpoint contains a computed non-finite distance.");
     }
   }
-  const auto identity = prob.distance_checkpoint_identity();
+  const auto identity = prob.distance_checkpoint_identity(metric);
   const std::string identity_hex = digest_hex(identity);
   const std::string timestamp = current_timestamp();
   std::size_t maximum_row_size = 0;
@@ -576,7 +577,8 @@ void save_checkpoint(const Problem &prob, const std::string &path)
 }
 
 
-bool load_checkpoint(Problem &prob, const std::string &path)
+bool load_checkpoint(Problem &prob, const std::string &path,
+                     core::MetricType metric)
 {
   try {
     // Capture the proven Dense destination without invoking a mutable accessor.
@@ -584,7 +586,7 @@ bool load_checkpoint(Problem &prob, const std::string &path)
     auto *destination = std::get_if<core::DenseDistanceMatrix>(&prob.distMat);
     if (destination == nullptr) return false;
     prob.validate_dense_cache_configuration();
-    const auto expected_identity = prob.distance_checkpoint_identity();
+    const auto expected_identity = prob.distance_checkpoint_identity(metric);
     const std::string expected_identity_hex = digest_hex(expected_identity);
     const std::size_t expected_n = prob.size();
     if (expected_n == 0) return false;

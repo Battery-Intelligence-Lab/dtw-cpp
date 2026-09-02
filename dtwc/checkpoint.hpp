@@ -2,10 +2,14 @@
  * @file checkpoint.hpp
  * @brief Save/resume checkpointing for distance matrix computation.
  *
- * @details For large datasets, fill_distance_matrix() can take hours.
- * These functions allow saving a (possibly partial) distance matrix
- * to disk and resuming later, avoiding re-computation of already
- * computed pairs.
+ * @details For large datasets, fill_distance_matrix() can take hours. These
+ * functions save a (possibly partial) distance matrix to disk and restore it
+ * later, so pairs already computed are not recomputed.
+ *
+ * Known limitation: saving is EXPLICIT. Nothing checkpoints from inside
+ * fill_distance_matrix() -- no interval, no callback -- so a crash during one
+ * uninterrupted fill loses that whole fill. Call save_checkpoint() yourself,
+ * between phases and never from inside the parallel fill.
  *
  * Dense checkpoint v2 publishes immutable generations:
  *   - CURRENT -- one lowercase 64-hex generation identifier
@@ -21,6 +25,7 @@
 #pragma once
 
 #include "core/clustering_result.hpp"
+#include "core/dtw_options.hpp"
 #include "error.hpp"
 
 #include <string>
@@ -34,7 +39,7 @@ class Problem;
 /// Options controlling automatic checkpoint behavior.
 struct CheckpointOptions {
   std::string directory = "./checkpoints";  ///< Directory to save checkpoint files.
-  int save_interval = 100;                  ///< Save every N pairs computed (reserved for future use).
+  int save_interval = 100;                  ///< INERT: no code path reads this. See the file header.
   bool enabled = false;                     ///< Whether checkpointing is enabled.
 };
 
@@ -45,10 +50,14 @@ struct CheckpointOptions {
 /// generations are never overwritten. Unverifiable legacy direct-file
 /// directories are upgraded only by a successful save.
 ///
-/// @param prob  The Problem whose distance matrix to save.
-/// @param path  Directory path for checkpoint files.
+/// @param prob   The Problem whose distance matrix to save.
+/// @param path   Directory path for checkpoint files.
+/// @param metric Pointwise metric the stored distances were computed with. It is
+///        part of the identity fingerprint: an L1 and a SquaredL2 matrix over
+///        the same data are different numbers.
 /// @throws std::runtime_error if files cannot be written.
-void save_checkpoint(const Problem &prob, const std::string &path);
+void save_checkpoint(const Problem &prob, const std::string &path,
+                     core::MetricType metric = core::MetricType::L1);
 
 /// Load a checkpoint and restore the distance matrix into the Problem.
 ///
@@ -59,11 +68,14 @@ void save_checkpoint(const Problem &prob, const std::string &path);
 /// Legacy direct-file directories are rejected because their data identity is
 /// unverifiable.
 ///
-/// @param prob  The Problem to restore the distance matrix into.
-/// @param path  Directory path containing checkpoint files.
+/// @param prob   The Problem to restore the distance matrix into.
+/// @param path   Directory path containing checkpoint files.
+/// @param metric Pointwise metric this run computes with; a checkpoint written
+///        under a different metric no longer matches the identity fingerprint.
 /// @return true if checkpoint was loaded successfully; false without changing
 ///         Problem state if it is absent, incompatible, or malformed.
-bool load_checkpoint(Problem &prob, const std::string &path);
+bool load_checkpoint(Problem &prob, const std::string &path,
+                     core::MetricType metric = core::MetricType::L1);
 
 // ---- Binary checkpoint for ClusteringResult --------------------------------
 

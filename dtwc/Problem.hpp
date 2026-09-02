@@ -14,7 +14,6 @@
 
 #include "Data.hpp"           // for Data
 #include "DataLoader.hpp"     // for DataLoader
-#include "fileOperations.hpp" // for load_batch_file, readFile
 #include "settings.hpp"       // for data_t, resultsPath
 #include "error.hpp"          // for InvalidInput
 #include "enums/enums.hpp"    // for using Enum types.
@@ -28,17 +27,15 @@
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t
 #include <filesystem>  // for operator/, path
-#include <ostream>     // for operator<<, basic_ostream, ofstream
 #include <string>      // for char_traits, operator+, operator<<
 #include <string_view> // for string_view
 #include <utility>     // for pair
 #include <vector>      // for vector, allocator
-#include <type_traits> // std::decay_t
 #include <functional>  // std::function
 #include <unordered_map> // std::unordered_map
 #include <span>        // std::span
-#include <iostream>
 #include <memory>
+#include <atomic>      // for std::atomic (RelaxedFlag)
 #include <stdexcept>
 
 #include "core/distance_matrix.hpp"
@@ -46,7 +43,8 @@
 namespace dtwc {
 
 class Problem;
-bool load_checkpoint(Problem &prob, const std::string &path);
+bool load_checkpoint(Problem &prob, const std::string &path,
+                     core::MetricType metric);
 
 /// CUDA-specific compute settings. Only used when distance_strategy == CUDA.
 /// Metal has no equivalent — it auto-picks the system default device and FP32.
@@ -73,9 +71,26 @@ struct MIPSettings {
   int numeric_focus = 1;           ///< Gurobi NumericFocus (0-3).
   int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
   bool verbose_solver = false;     ///< Show solver log output.
-  int max_benders_iter = 200;      ///< Maximum Benders iterations.
+  int max_benders_iter = 200;      ///< Maximum Benders iterations (cap exhausted ⇒ SolverError).
   std::string benders = "auto";    ///< Benders mode: "auto" (N>200), "on", "off".
+  long lr_max_nodes = 2000000;     ///< Method::LRCore branch-and-bound node cap (mip::LagrangianParams::max_nodes).
 };
+
+/// Reject MIP settings a solver would otherwise turn into a solver-worded error.
+/// `mip_gap < 0` (or NaN) is outside HiGHS's `mip_rel_gap` domain, which the
+/// option guard reports as "HiGHS rejected option" rather than as bad input.
+inline void validate_mip_settings(const MIPSettings &s)
+{
+  const auto reject = [](std::string_view field, std::string_view rule, const std::string &got) {
+    throw InvalidInput("MIPSettings::" + std::string(field) + " must be " + std::string(rule)
+                       + "; got " + got + ".");
+  };
+  if (!(s.mip_gap >= 0.0)) reject("mip_gap", ">= 0", std::to_string(s.mip_gap));
+  if (s.max_benders_iter <= 0) reject("max_benders_iter", ">= 1", std::to_string(s.max_benders_iter));
+  if (s.lr_max_nodes < 1) reject("lr_max_nodes", ">= 1", std::to_string(s.lr_max_nodes));
+  if (s.benders != "auto" && s.benders != "on" && s.benders != "off")
+    reject("benders", "'auto', 'on' or 'off'", "'" + s.benders + "'");
+}
 
 /// Strategy for computing the pairwise distance matrix.
 enum class DistanceMatrixStrategy {
@@ -145,9 +160,27 @@ private:
     size_t n{ 0 };
     size_t ndim{ 1 };
   };
+  /// Boolean flag written from a const method, where two threads may hold one
+  /// const Problem& (Python releases the GIL around the const writers). Relaxed
+  /// ordering suffices: the flag guards a pure recomputation, not a publication.
+  /// std::atomic is neither copyable nor movable, so the value-moving members
+  /// are what keep Problem's `= default` move operations well-formed.
+  class RelaxedFlag
+  {
+    std::atomic<bool> value_{ false };
+    bool get() const noexcept { return value_.load(std::memory_order_relaxed); }
+
+  public:
+    RelaxedFlag() = default;
+    RelaxedFlag(RelaxedFlag &&other) noexcept : value_{ other.get() } {}
+    RelaxedFlag &operator=(RelaxedFlag &&other) noexcept { return *this = other.get(); }
+    RelaxedFlag &operator=(bool v) noexcept { value_.store(v, std::memory_order_relaxed); return *this; }
+    explicit operator bool() const noexcept { return get(); }
+  };
+
   DistanceCacheIdentity mmap_cache_identity_{};
   bool mmap_cache_identity_bound_{ false };
-  mutable bool mmap_cache_data_validated_{ false };
+  mutable RelaxedFlag mmap_cache_data_validated_{};
   mutable DistanceCacheConfiguration dense_cache_configuration_{};
   mutable bool dense_cache_configuration_bound_{ false };
 
@@ -197,6 +230,11 @@ private:
   const dtw_fn_f32_t &validated_dtw_function_f32() const;
   void repair_dtw_binding_after_relocation();
   void ensure_dense_cache_configuration_current();
+  /// As ensure_dense_cache_configuration_current(), minus the leading preflight,
+  /// for callers that have already run preflight_current_distance_semantics().
+  /// The SWAP kernel issues N^2 dist_by_ind() calls per iteration, so paying for
+  /// that preflight twice per element is not free.
+  void ensure_dense_cache_configuration_current_preflighted();
   void validate_dense_cache_configuration() const;
   void ensure_dtw_function_configuration_current();
   void validate_dtw_function_configuration() const;
@@ -208,7 +246,8 @@ private:
 
   // Private functions:
   friend struct ProblemStoragePolicyTestAccess;
-  friend bool load_checkpoint(Problem &prob, const std::string &path);
+  friend bool load_checkpoint(Problem &prob, const std::string &path,
+                              core::MetricType metric);
   friend void MIP_clustering_byBenders(Problem &prob);
   // Benders disables only heuristic artifact files; public Lloyd always passes true.
   void cluster_by_kmedoids_lloyd_impl(bool persist_artifacts);
@@ -555,7 +594,8 @@ public:
   /// Full data-plus-distance-semantics identity used by durable checkpoints.
   /// Names and clustering outputs are intentionally excluded because they do
   /// not affect any stored distance.
-  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity() const;
+  core::MmapDistanceMatrix::fingerprint_type distance_checkpoint_identity(
+    core::MetricType metric = core::MetricType::L1) const;
   /// Bind persistent storage to this Problem's exact data/configuration.
   /// Non-L1 identities are for matching external/GPU producers only; the CPU
   /// lazy/fill paths reject them before writing because their local cost is L1.

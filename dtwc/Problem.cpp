@@ -37,16 +37,12 @@
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 
-#include <algorithm> // for max_element, min, min_element, sample
 #include <array>     // for array
-#include <cmath>     // for sqrt, floor
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstring>   // for memcpy
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
-#include <iterator>  // for back_insert_iterator, back_inserter
 #include <limits>    // for numeric_limits
-#include <random>    // for mt19937, discrete_distribution, unifo...
 #include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -465,6 +461,11 @@ void Problem::repair_dtw_binding_after_relocation()
 void Problem::ensure_dense_cache_configuration_current()
 {
   preflight_current_distance_semantics();
+  ensure_dense_cache_configuration_current_preflighted();
+}
+
+void Problem::ensure_dense_cache_configuration_current_preflighted()
+{
   repair_dtw_binding_after_relocation();
   if (!std::holds_alternative<core::DenseDistanceMatrix>(distMat)
       || dense_cache_configuration_is_current())
@@ -575,10 +576,13 @@ Problem::distance_cache_identity(core::MetricType metric) const
 }
 
 core::MmapDistanceMatrix::fingerprint_type
-Problem::distance_checkpoint_identity() const
+Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
   preflight_current_distance_semantics();
-  return distance_cache_identity(core::MetricType::L1).full;
+  // The metric is part of the identity: without it a SquaredL2 run writes the
+  // same fingerprint as an L1 run over the same data, and a later L1 run then
+  // accepts the wrong matrix.
+  return distance_cache_identity(metric).full;
 }
 
 void Problem::clear_mmap_cache_identity()
@@ -652,7 +656,7 @@ void Problem::use_mmap_distance_matrix(
   } else {
     distMat = core::MmapDistanceMatrix(cache_path, N, identity.full);
   }
-  mmap_cache_identity_ = std::move(identity);
+  mmap_cache_identity_ = identity;
   mmap_cache_identity_bound_ = true;
   mmap_cache_data_validated_ = false;
 }
@@ -672,9 +676,11 @@ void Problem::use_mmap_distance_matrix(
  */
 double Problem::dist_by_ind(int i, int j)
 {
+  // Exactly ONE preflight per call: the SWAP kernel issues N^2 of these per
+  // iteration. Order (preflight → mmap identity → dense-cache) is load-bearing.
   preflight_current_distance_semantics();
   validate_mmap_cache_identity();
-  ensure_dense_cache_configuration_current();
+  ensure_dense_cache_configuration_current_preflighted();
   if (i == j) return 0.0;
 
   const size_t N = data_.size();
@@ -725,7 +731,10 @@ double Problem::dist_by_ind(int i, int j)
 /**
  * @brief Determines whether the pruned distance matrix strategy is applicable.
  * @details The pruned strategy requires Standard/ADTW with MissingStrategy::Error
- *          (raw lower-bound kernels cannot implement a missing-data dispatcher).
+ *          (raw lower-bound kernels cannot implement a missing-data dispatcher)
+ *          and Float64 storage: the lower-bound summaries, envelopes and
+ *          kernels are all f64-only and reach the data through
+ *          Problem::series(), which rejects a Float32 store.
  * @return true if pruned strategy can be used.
  */
 static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_storage)
@@ -737,6 +746,7 @@ static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_stora
   return supported_variant
       && prob.missing_strategy == core::MissingStrategy::Error
       && has_dense_storage
+      && !prob.data().is_f32()
       && prob.band >= 0
       && prob.size() >= 64;
 }
@@ -832,7 +842,9 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
 
-  // Pre-scan for NaN if strategy is Error
+  // Serial missing-data pre-scan. Both branches run BEFORE the parallel fill so
+  // the diagnostic can name the offending series (a per-pair lambda sees two
+  // anonymous spans) and no per-pair path has to throw.
   if (missing_strategy == core::MissingStrategy::Error) {
     for (size_t i = 0; i < data_.size(); ++i) {
       const bool has_nan = data_.is_f32()
@@ -843,6 +855,21 @@ void Problem::fill_distance_matrix()
           "fill_distance_matrix: NaN detected in series '" + std::string(series_name(i))
           + "' (index " + std::to_string(i)
           + "). Set missing_strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
+      }
+    }
+  } else if (missing_strategy == core::MissingStrategy::Interpolate) {
+    // interpolate_linear() has no observed value to interpolate from when a
+    // series is entirely NaN, and used to throw from inside the per-pair lambda.
+    for (size_t i = 0; i < data_.size(); ++i) {
+      const bool all_nan = data_.is_f32()
+                             ? all_missing(data_.series_f32(i))
+                             : all_missing(series(i));
+      if (all_nan) {
+        throw InvalidInput(
+          "fill_distance_matrix: series '" + std::string(series_name(i))
+          + "' (index " + std::to_string(i)
+          + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
+            "interpolate from. Use ZeroCost or AROW, or drop the series.");
       }
     }
   }
@@ -890,6 +917,22 @@ void Problem::fill_distance_matrix()
                    "BruteForce to fill the configured mmap distance matrix.\n";
     }
     effective = DistanceMatrixStrategy::BruteForce;
+  }
+
+  // The lower-bound summaries, envelopes and kernels are f64-only and reach the
+  // data through series(), which rejects a Float32 store. Auto never selects
+  // Pruned for f32 (pruned_strategy_applicable), so reaching here means the
+  // caller asked for it explicitly: name it as a caller error before any worker
+  // starts rather than downgrade silently.
+  //
+  // Must stay BELOW the mmap downgrade above: Pruned + mmap storage is already
+  // routed to the generic row fill, which handles f32 correctly.
+  if (effective == DistanceMatrixStrategy::Pruned && data_.is_f32()) {
+    throw InvalidInput(
+      "Problem::fill_distance_matrix: DistanceMatrixStrategy::Pruned requires "
+      "Float64 series storage; this Problem holds Float32 data. Use "
+      "DistanceMatrixStrategy::Auto or BruteForce, or load the data as "
+      "Float64.");
   }
 
   // Shared post-GPU handler. Templated on the backend's result type (both
@@ -1060,7 +1103,11 @@ void Problem::cluster_by_mip()
   // Validate before Benders policy: an invalid stored selector must not bypass
   // membership checks merely because the large-N route ignores mipSolver.
   validate_solver(mipSolver);
-  // Auto-dispatch to Benders decomposition for large N
+  // Validate every consumed MIPSettings field before any solver sees it: an
+  // unrecognised `benders` selector otherwise tests false below and silently
+  // means "off", and a negative `mip_gap` reaches HiGHS as an out-of-domain
+  // option value, reported as a solver failure rather than as bad input.
+  validate_mip_settings(mip_settings);
   const bool use_benders = (mip_settings.benders == "on") || (mip_settings.benders == "auto" && data_.size() > 200);
 
   if (use_benders) {
