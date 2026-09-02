@@ -133,7 +133,19 @@ void run_openmp(Tfun &task_indv, size_t i_end,
                && !earliest_failure.compare_exchange_weak(
                  observed, i, std::memory_order_release,
                  std::memory_order_relaxed)) {}
-#pragma omp critical(dtwc_run_openmp_exception)
+        // Deliberately UNNAMED. A *named* critical makes GCC emit a COMMON
+        // symbol `.gomp_critical_user_<name>` into every TU that inlines this
+        // header. With -flto and a static libdtwc++.a, ld.bfd's search for a
+        // real definition of that COMMON symbol drags unused archive members
+        // into the link and hands their COMDAT symbols a second
+        // PREVAILING_DEF_IRONLY resolution, so lto1 aborts with "multiple
+        // prevailing defs" (binutils PR ld/32083, GCC PR lto/116361).
+        // Observed on GCC 13.3 / binutils 2.42, Release + IPO: the Linux MPI
+        // CI job failed to link unit_test_run_thread_scope. Do NOT re-add a
+        // name here, and do not add other unnamed criticals to hot paths —
+        // all unnamed criticals share one runtime lock. This one is on the
+        // exception path only.
+#pragma omp critical
         {
           if (i < failure_index) {
             failure = current;

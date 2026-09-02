@@ -8,6 +8,18 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fix (build, GCC + LTO):** `run_openmp`'s exception-capture region is an
+  unnamed `#pragma omp critical` again. The named form made GCC emit a COMMON
+  `.gomp_critical_user_dtwc_run_openmp_exception` symbol into every TU that
+  includes `parallelisation.hpp`; with IPO/LTO on and a static `libdtwc++.a`,
+  ld.bfd's search for a real definition of that COMMON symbol pulled unused
+  archive members into the link and gave their COMDAT symbols a second
+  `PREVAILING_DEF_IRONLY` resolution, so `lto1` aborted with
+  `multiple prevailing defs for 'resize'` (binutils PR ld/32083, GCC PR
+  lto/116361). Seen on GCC 13.3 / binutils 2.42 in the Release Linux MPI CI
+  job, linking `unit_test_run_thread_scope`. Behaviour is unchanged: the
+  region is on the exception path only and still rethrows the lowest failing
+  index.
 - **Fix (silent wrong numbers):** the distance-matrix CSV reader parsed with
   `std::stod`, which honours the C locale, so under a comma-decimal locale
   `1.5` read as `1`. It now uses `std::from_chars` like the series loader

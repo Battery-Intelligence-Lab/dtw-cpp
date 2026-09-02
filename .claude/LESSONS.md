@@ -1337,3 +1337,16 @@ Critical knowledge to avoid repeating mistakes.
 - **Stale CMake caches keep a removed option's value.** Re-adding
   `DTWC_ENABLE_YAML` (default ON) left every existing build dir at OFF; the
   canonical gate silently tested without YAML until `-DDTWC_ENABLE_YAML=ON`.
+- **A *named* `#pragma omp critical` in a header breaks GCC LTO + static
+  libs.** GCC lowers `critical(name)` to a COMMON symbol
+  `.gomp_critical_user_<name>` emitted in every TU that inlines the header.
+  Linking with `-flto` against `libdtwc++.a`, ld.bfd searches the archive for a
+  real definition of that COMMON, drags in unused members, and marks their
+  COMDAT symbols `PREVAILING_DEF_IRONLY` a second time; `lto1` then dies with
+  `multiple prevailing defs for 'resize'` — a name that has nothing to do with
+  the cause (GCC prints the `DECL_NAME` of whichever chain it walks first).
+  Confirmations: the failing test object was the only one carrying the COMMON
+  symbol; linking the same objects directly instead of through the archive
+  worked; `-fuse-ld=gold` and `--whole-archive` worked; dropping the name fixed
+  it. Named criticals are fine inside `.cpp` files; never put one in a header.
+

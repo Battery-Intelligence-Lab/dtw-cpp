@@ -91,6 +91,29 @@ target_include_directories(dtwc++ PUBLIC .)
 # release_arrow (see python/CMakeLists.txt, which does not add this path).
 target_include_directories(dtwc++ PRIVATE extern)
 
+# A NAMED `#pragma omp critical(x)` in a header makes GCC emit a COMMON symbol
+# `.gomp_critical_user_x` into every TU that includes it. Under IPO/LTO with the
+# static libdtwc++.a, ld.bfd searches the archive for a real definition of that
+# COMMON, pulls in unused members, and gives their COMDAT symbols a second
+# PREVAILING_DEF_IRONLY resolution -- lto1 then aborts with "multiple prevailing
+# defs" (binutils PR ld/32083, GCC PR lto/116361). Named criticals are fine in a
+# .cpp; in a header they are a build break that only shows up on Linux/Release.
+file(GLOB_RECURSE _dtwc_headers CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp")
+foreach(_hdr IN LISTS _dtwc_headers)
+  file(STRINGS "${_hdr}" _omp_criticals REGEX "pragma[ \t]+omp[ \t]+critical")
+  foreach(_line IN LISTS _omp_criticals)
+    string(REGEX MATCH "critical[ \t]*[(]" _named "${_line}")
+    if(_named)
+      message(FATAL_ERROR
+        "Named '#pragma omp critical(...)' in ${_hdr}:${_line}  "
+        "Headers must use the unnamed form: the named one emits a COMMON "
+        ".gomp_critical_user_* symbol that breaks GCC LTO links against "
+        "libdtwc++.a (binutils PR ld/32083, GCC PR lto/116361).")
+    endif()
+  endforeach()
+endforeach()
+unset(_dtwc_headers)
+
 target_link_libraries(dtwc++
   PRIVATE
   mip-solvers
