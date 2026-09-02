@@ -2,8 +2,9 @@
  * @file medoid_utils.hpp
  * @brief Medoid-list validation shared by the medoid-based clustering algorithms.
  *
- * @details D1: the former `assign_to_nearest`, `compute_nearest_and_second` and
- * `find_cluster_medoid` helpers were removed. They had no production caller and
+ * @details D1: the former shared `assign_to_nearest`, `compute_nearest_and_second`
+ * and `find_cluster_medoid` helpers were removed from this header (fast_pam.cpp
+ * keeps its own file-local `compute_nearest_and_second`). They had no caller and
  * their semantics had drifted from every shipping assignment loop (no
  * `require_finite_medoid_distance`, plain `+=` instead of the ordered published
  * objective, a `DBL_MAX` sentinel). The shipping copies differ by parallel vs

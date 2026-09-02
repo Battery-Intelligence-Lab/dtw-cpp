@@ -78,11 +78,13 @@ void MIP_clustering_byBenders(Problem &prob)
   (void)prob;
 #ifdef DTWC_ENABLE_HIGHS
   dtwc::Clock clk;
+  // Progress output only on request: Problem::cluster() must stay silent.
+  const bool verbose_log = prob.mip_settings.verbose_solver || prob.verbose();
   const int Nb = static_cast<int>(prob.size());
   const int Nc = prob.n_clusters();
 
   if (Nb <= 0 || Nc <= 0 || Nc > Nb) {
-    std::cout << "Benders: invalid problem size (N=" << Nb << ", k=" << Nc << ")\n";
+    std::cerr << "Benders: invalid problem size (N=" << Nb << ", k=" << Nc << ")\n";
     return;
   }
 
@@ -156,7 +158,8 @@ void MIP_clustering_byBenders(Problem &prob)
       best_cost = prob.find_total_cost();
     }
 
-    std::cout << "Benders warm start: PAM cost = " << best_cost << "\n";
+    if (verbose_log)
+      std::cout << "Benders warm start: PAM cost = " << best_cost << "\n";
   }
 
   // --- Build master problem (disaggregated formulation) ---
@@ -324,7 +327,8 @@ void MIP_clustering_byBenders(Problem &prob)
 
     if (bound_gap <= abs_eps + prob.mip_settings.mip_gap * std::abs(best_cost)) {
       converged = true;
-      std::cout << "Benders converged at iteration " << iter
+      if (verbose_log)
+        std::cout << "Benders converged at iteration " << iter
                 << ", cost = " << best_cost
                 << ", LB = " << master_lb
                 << ", gap = " << rel_gap << "\n";
@@ -382,7 +386,7 @@ void MIP_clustering_byBenders(Problem &prob)
       ++cuts_added;
     }
 
-    if (prob.mip_settings.verbose_solver)
+    if (verbose_log)
       std::cout << "Benders iter " << iter
                 << ": LB=" << master_lb
                 << " actual=" << actual_cost
@@ -425,8 +429,9 @@ void MIP_clustering_byBenders(Problem &prob)
 
   result_transaction.publish(std::move(result), "Benders");
 
-  std::cout << "Benders decomposition complete: cost = " << best_cost
-            << " (" << clk << ")\n";
+  if (verbose_log)
+    std::cout << "Benders decomposition complete: cost = " << best_cost
+              << " (" << clk << ")\n";
 
 #else
   throw SolverError(

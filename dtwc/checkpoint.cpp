@@ -30,6 +30,7 @@
 #include <string_view>
 #include <system_error>
 #include <type_traits>
+#include <vector>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -574,6 +575,20 @@ void save_checkpoint(const Problem &prob, const std::string &path,
   write_file(cleanup.current_temporary, id + "\n");
   replace_current(cleanup.current_temporary, root / "CURRENT");
   cleanup.published = true;
+
+  // Retain exactly one generation. Pruning happens only after CURRENT names the
+  // new generation, so a failure here costs disk, never the published state; the
+  // errors are therefore swallowed rather than unwinding a successful save. The
+  // victims are listed before any removal because deleting entries while a
+  // directory_iterator is open is unspecified.
+  std::error_code ignored;
+  std::vector<fs::path> superseded;
+  for (fs::directory_iterator entry(generations, ignored), last;
+       entry != last; entry.increment(ignored)) {
+    if (ignored) break;
+    if (entry->path().filename() != id) superseded.push_back(entry->path());
+  }
+  for (const auto &stale : superseded) fs::remove_all(stale, ignored);
 }
 
 

@@ -20,6 +20,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <vector>
 #include <string>
 
@@ -61,17 +65,22 @@ TEST_CASE("[Phase0] writeMedoids throws std::runtime_error on bad path",
   prob.set_n_repetitions(1);
   prob.set_max_iter(1);
 
-  // Point output to a non-existent directory that cannot be created.
-  // On both Windows and Unix this should fail to open a file.
-  prob.set_output_folder("/nonexistent_dir_phase0_test/deep/nested/path");
+  // The writers now create their output directory, so an "uncreatable" folder
+  // must be one create_directories() genuinely cannot make: a child of a
+  // regular file, which fails on both Windows and POSIX.
+  const auto nonce = std::to_string(
+    std::chrono::steady_clock::now().time_since_epoch().count());
+  const auto blocker = std::filesystem::temp_directory_path()
+                     / ("dtwc_phase0_blocker_" + nonce);
+  { std::ofstream file(blocker); file << "not a directory\n"; }
+  prob.set_output_folder(blocker / "deep" / "nested" / "path");
 
-  // cluster_by_kmedoids_lloyd() eventually calls writeMedoids() which
-  // currently does `throw 1` (an int).
-  // After the fix it should throw std::runtime_error.
-  //
-  // EXPECTED TO FAIL on unmodified code: REQUIRE_THROWS_AS expects
-  // std::runtime_error but gets int.
-  REQUIRE_THROWS_AS(prob.cluster_by_kmedoids_lloyd(), std::runtime_error);
+  // cluster_and_process() owns the run artifacts and reaches writeMedoids(),
+  // which used to `throw 1` (an int); it must report std::runtime_error.
+  REQUIRE_THROWS_AS(prob.cluster_and_process(), std::runtime_error);
+
+  std::error_code ec;
+  std::filesystem::remove(blocker, ec);
 }
 
 // ---------------------------------------------------------------------------

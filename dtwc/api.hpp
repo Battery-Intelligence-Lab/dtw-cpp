@@ -29,35 +29,44 @@ public:
   const std::filesystem::path &path() const;
   const std::string &name() const noexcept { return name_; }
   int skip_cols() const noexcept { return skip_cols_; }
+  int skip_rows() const noexcept { return skip_rows_; }
   char delimiter() const noexcept { return delimiter_; }
 
 private:
-  friend Dataset load(const std::filesystem::path &, int, char, std::string_view);
-  friend Dataset load(series_type, int, char, std::string_view);
+  friend Dataset load(const std::filesystem::path &, int, int, char, std::string_view);
+  friend Dataset load(series_type, int, int, char, std::string_view);
   friend class Result;
   friend Result cluster(const Dataset &, int, std::string_view, int,
                         std::string_view, int);
 
-  explicit Dataset(std::filesystem::path source, int skip_cols, char delimiter,
-                   std::string name);
-  explicit Dataset(series_type source, int skip_cols, char delimiter,
-                   std::string name);
+  explicit Dataset(std::filesystem::path source, int skip_cols, int skip_rows,
+                   char delimiter, std::string name);
+  explicit Dataset(series_type source, int skip_cols, int skip_rows,
+                   char delimiter, std::string name);
 
   Data materialize_local() const;
 
   std::variant<std::filesystem::path, series_type> source_;
   int skip_cols_ = 0;
+  int skip_rows_ = 0;
   char delimiter_ = 0;
   std::string name_ = "dataset";
 };
 
-/** Wrap a path lazily.  No file is opened until cluster() is called. */
+/** Wrap a path lazily.  No file is opened until cluster() is called.
+ *  `skip_rows` drops that many leading LINES of the file, as `--skip-rows` does. */
 Dataset load(const std::filesystem::path &source, int skip_cols = 0,
+             int skip_rows = 0, char delimiter = 0, std::string_view name = "");
+
+/** Wrap an in-memory row-per-series array.  `skip_rows` drops that many leading
+ *  SERIES — one memory row is one file line. */
+Dataset load(Dataset::series_type source, int skip_cols = 0, int skip_rows = 0,
              char delimiter = 0, std::string_view name = "");
 
-/** Wrap an in-memory row-per-series array. */
-Dataset load(Dataset::series_type source, int skip_cols = 0,
-             char delimiter = 0, std::string_view name = "");
+/** Poison the pre-2.0 3-argument shape `load(src, skip_cols, delimiter)`: without
+ *  these, `load(p, 0, ',')` binds the char to `skip_rows` (','==44) instead. */
+Dataset load(const std::filesystem::path &, int, char, std::string_view = "") = delete;
+Dataset load(Dataset::series_type, int, char, std::string_view = "") = delete;
 
 /** Set the process-wide device and return its canonical name. */
 std::string device(std::string_view name);
@@ -72,6 +81,10 @@ public:
   const std::vector<int> &labels() const noexcept;
   const std::vector<int> &medoids() const noexcept;
   double score(std::string_view name) const;
+  /** Dense row-major N*N pairwise DTW distances, matching Python's
+   *  `Result.distance_matrix`.  Fills the matrix first if it is not yet
+   *  materialised, exactly as score() does. */
+  std::vector<double> distance_matrix() const;
   void save(const std::filesystem::path &directory) const;
   double cost() const noexcept { return cost_; }
   const std::string &device() const noexcept { return device_; }

@@ -15,6 +15,7 @@
  * @date 07 Jul 2026
  */
 
+#include <cstdint>
 #include "lagrangian_root.hpp"
 
 #include "nearest_medoid.hpp"
@@ -584,7 +585,7 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   struct Frame { int pos; int opened; double opened_rho; std::vector<int> S; };
   std::vector<Frame> stack;
   stack.push_back({ 0, 0, 0.0, {} });
-  long nodes = 0;
+  std::int64_t nodes = 0;
   bool capped = false;
 
   while (!stack.empty()) {
@@ -645,10 +646,10 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
     r.gap = (best_cost - r.lower_bound) / denom;
     r.certified_optimal = false;
     std::fprintf(stderr,
-                 "lagrangian_root_exact: node cap %ld reached at N=%d k=%d before the tree "
+                 "lagrangian_root_exact: node cap %lld reached at N=%d k=%d before the tree "
                  "closed; returning best incumbent (cost %.10g, gap %.3e) UNCERTIFIED. "
                  "Raise params.max_nodes or use an exact MIP solver for a certificate.\n",
-                 params.max_nodes, N, k, best_cost, r.gap);
+                 static_cast<long long>(params.max_nodes), N, k, best_cost, r.gap);
   } else {
     r.lower_bound = best_cost; // tree fully explored ⇒ incumbent is optimal.
     r.gap = 0.0;

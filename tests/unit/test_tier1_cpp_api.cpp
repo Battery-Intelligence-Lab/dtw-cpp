@@ -11,7 +11,11 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <limits>
+#include <iterator>
+#include <sstream>
+#include <system_error>
 #include <set>
 #include <string>
 #include <vector>
@@ -21,6 +25,29 @@
 #endif
 
 namespace fs = std::filesystem;
+
+// The pre-2.0 shape `load(src, skip_cols, delimiter)` must not silently rebind
+// the delimiter to skip_rows (','==44); api.hpp poisons it with deleted
+// overloads. A requires-expression is the only compile-time way to assert that
+// about an overload SET (std::is_invocable_v cannot name one), but it must be
+// DEPENDENT: clang 19 evaluates a non-dependent requires-expression eagerly and
+// reports "call to deleted function" as a hard error instead of an unsatisfied
+// requirement. Removing either deleted declaration turns these asserts red
+// (verified by deleting them in a standalone probe).
+template <class Source>
+concept dtwc_load_binds_char_as_skip_rows =
+  requires(Source source) { dtwc::load(source, 0, ','); }
+  || requires(Source source) { dtwc::load(source, 1, ',', "name"); };
+
+template <class Source>
+concept dtwc_load_accepts_full_shape =
+  requires(Source source) { dtwc::load(source, 0, 1, ',', "name"); };
+
+static_assert(!dtwc_load_binds_char_as_skip_rows<fs::path>);
+static_assert(!dtwc_load_binds_char_as_skip_rows<dtwc::Dataset::series_type>);
+// Positive controls: the asserts above must not pass because load() is unusable.
+static_assert(dtwc_load_accepts_full_shape<fs::path>);
+static_assert(dtwc_load_accepts_full_shape<dtwc::Dataset::series_type>);
 
 namespace {
 
@@ -93,7 +120,7 @@ TEST_CASE("Tier-1 C++ conformance fixture clusters, scores, and saves", "[api][t
   REQUIRE(dtwc::device("cpu") == "cpu");
   REQUIRE(dtwc::device() == "cpu");
 
-  const auto dataset = dtwc::load(fixture(), 0, ',', "quickstart");
+  const auto dataset = dtwc::load(fixture(), 0, 0, ',', "quickstart");
   const auto result = dtwc::cluster(dataset, 3, "pam", 3, "cpu", 100);
   const auto [labels, medoids] = canonicalise(result);
 
@@ -133,7 +160,7 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
   SECTION("k = 1 is a legal request") {
     const auto dataset = dtwc::load(
       dtwc::Dataset::series_type{{0.0, 1.0, 2.0}, {0.0, 2.0, 4.0}, {5.0, 5.0, 5.0}},
-      0, 0, "k1");
+      0, 0, 0, "k1");
     const auto result = dtwc::cluster(dataset, 1, "pam", -1, "cpu", 10);
     REQUIRE(result.medoids().size() == 1);
     REQUIRE_THROWS_AS(result.score("silhouette"), dtwc::InvalidInput);
@@ -156,7 +183,7 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
     const auto dataset = dtwc::load(
       dtwc::Dataset::series_type{
         {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
-      0, 0, "dup");
+      0, 0, 0, "dup");
     const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
     const auto &labels = result.labels();
     const int realised = static_cast<int>(
@@ -223,14 +250,14 @@ TEST_CASE("Tier-1 C++ Lloyd is invocation-local and independent of legacy RNG",
   dtwc::randGenerator.seed(17); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before_first = dtwc::randGenerator;
   const auto first = dtwc::cluster(
-    dtwc::load(seed_sensitive_series(), 0, 0, "lloyd_first"),
+    dtwc::load(seed_sensitive_series(), 0, 0, 0, "lloyd_first"),
     3, "kmedoids", -1, "cpu", 100);
   CHECK(dtwc::randGenerator == legacy_rng_before_first);
 
   dtwc::randGenerator.seed(8675309); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before_second = dtwc::randGenerator;
   const auto second = dtwc::cluster(
-    dtwc::load(seed_sensitive_series(), 0, 0, "lloyd_second"),
+    dtwc::load(seed_sensitive_series(), 0, 0, 0, "lloyd_second"),
     3, "kmedoids", -1, "cpu", 100);
   CHECK(dtwc::randGenerator == legacy_rng_before_second);
   CHECK(canonicalise(first) == canonicalise(second));
@@ -262,7 +289,7 @@ TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
     current.set_clusters(medoids);
   };
 
-  problem.cluster_by_kmedoids_lloyd();
+  problem.cluster_and_process(); // owns the run artifacts; cluster() does not
   CHECK(repetition == 2);
   CHECK(problem.find_total_cost() == 20.0);
   CHECK(problem.medoids() == std::vector<int>{0, 3, 6});
@@ -354,4 +381,266 @@ TEST_CASE("Tier-1 auto method resolution is compatible with its execution target
   // Explicit incompatibilities stay explicit so the existing DeviceError path
   // remains loud rather than silently substituting a different algorithm.
   CHECK(resolve_tier1_method("clara", 5001, Tier1ExecutionTarget::GPU) == "clara");
+}
+
+TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
+{
+  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
+  const fs::path csv =
+    fs::temp_directory_path() / ("dtwc_skip_rows_" + std::to_string(nonce) + ".csv");
+  {
+    std::ofstream out(csv);
+    out << "id,t0,t1,t2\n"
+           "unit,s,s,s\n"
+           "a,0,0,0\n"
+           "b,0,0,1\n"
+           "c,10,10,10\n"
+           "d,10,10,11\n";
+  }
+
+  SECTION("a path source skips leading FILE LINES, like --skip-rows") {
+    const auto dataset = dtwc::load(csv, 1, 2, ',', "hdr");
+    CHECK(dataset.skip_rows() == 2);
+    const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+    REQUIRE(result.labels().size() == 4);
+
+    // The two text header lines are unparseable, so an unskipped load must fail
+    // loudly rather than silently returning a shorter or garbled dataset.
+    REQUIRE_THROWS_AS(
+      dtwc::cluster(dtwc::load(csv, 1, 0, ',', "unskipped"), 2, "pam", -1, "cpu", 10),
+      dtwc::IOError);
+  }
+
+  SECTION("an in-memory source skips leading SERIES") {
+    const auto dataset = dtwc::load(
+      dtwc::Dataset::series_type{
+        {7.0, 7.0}, {7.0, 7.0}, {0.0, 0.0}, {0.0, 1.0}, {9.0, 9.0}},
+      0, 2, 0, "mem");
+    const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+    REQUIRE(result.labels().size() == 3);
+  }
+
+  SECTION("negative skip_rows is rejected by both overloads") {
+    REQUIRE_THROWS_AS(dtwc::load(csv, 0, -1), dtwc::InvalidInput);
+    REQUIRE_THROWS_AS(
+      dtwc::load(dtwc::Dataset::series_type{{0.0, 1.0}}, 0, -1),
+      dtwc::InvalidInput);
+  }
+
+  std::error_code ec;
+  fs::remove(csv, ec);
+}
+
+namespace {
+
+/// Switch the process working directory for the duration of a scope. Tier-1
+/// must not depend on (or write into) whatever directory the caller ran from.
+class ScopedWorkingDirectory
+{
+public:
+  explicit ScopedWorkingDirectory(const fs::path &directory)
+    : previous_{ fs::current_path() }
+  {
+    fs::current_path(directory);
+  }
+  ~ScopedWorkingDirectory()
+  {
+    std::error_code ec;
+    fs::current_path(previous_, ec);
+  }
+  ScopedWorkingDirectory(const ScopedWorkingDirectory &) = delete;
+  ScopedWorkingDirectory &operator=(const ScopedWorkingDirectory &) = delete;
+
+private:
+  fs::path previous_;
+};
+
+/// Capture std::cout for the duration of a scope, restoring it on any exit.
+class ScopedCoutRedirect
+{
+public:
+  explicit ScopedCoutRedirect(std::streambuf *sink) : previous_{ std::cout.rdbuf(sink) } {}
+  ~ScopedCoutRedirect() { std::cout.rdbuf(previous_); }
+  ScopedCoutRedirect(const ScopedCoutRedirect &) = delete;
+  ScopedCoutRedirect &operator=(const ScopedCoutRedirect &) = delete;
+
+private:
+  std::streambuf *previous_;
+};
+
+fs::path make_sandbox(const std::string &tag)
+{
+  const auto nonce =
+    std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+  const auto directory = fs::temp_directory_path() / (tag + nonce);
+  fs::create_directories(directory);
+  return directory;
+}
+
+dtwc::Dataset::series_type two_cluster_series()
+{
+  return { { 0.0, 0.0, 0.0 }, { 0.1, 0.0, 0.1 },
+           { 9.0, 9.0, 9.0 }, { 9.1, 9.0, 9.1 } };
+}
+
+} // namespace
+
+TEST_CASE("Tier-1 C++ cluster() leaves the working directory untouched",
+          "[api][tier1][sideeffects]")
+{
+  // Problem::output_folder_ defaults to the CWD-relative settings::paths::results,
+  // so a Tier-1 route that wrote run artifacts failed (or littered) whenever the
+  // caller ran from a directory without ./results/.
+  const auto sandbox = make_sandbox("dtwc_tier1_cwd_");
+  const auto series = two_cluster_series();
+
+  {
+    const ScopedWorkingDirectory cwd{ sandbox };
+    for (const auto *method : { "kmedoids", "lrcore", "tadpole" }) {
+      const auto result =
+        dtwc::cluster(dtwc::load(series), 2, method, -1, "cpu", 10);
+      CHECK(result.labels().size() == series.size());
+      CHECK(result.medoids().size() == 2);
+    }
+    CHECK(fs::is_empty(sandbox));
+  }
+
+  CHECK(fs::is_empty(sandbox));
+  std::error_code ec;
+  fs::remove_all(sandbox, ec);
+}
+
+TEST_CASE("Problem::cluster() prints to stdout only when verbose",
+          "[api][tier1][sideeffects][verbose]")
+{
+  const auto make_problem = [](dtwc::Method method) {
+    dtwc::Problem problem("stdout_silence");
+    problem.set_data(dtwc::Data(
+      std::vector<std::vector<dtwc::data_t>>{ { 0.0, 0.0, 0.0 }, { 0.1, 0.0, 0.1 },
+                                              { 9.0, 9.0, 9.0 }, { 9.1, 9.0, 9.1 } },
+      std::vector<std::string>{ "a", "b", "c", "d" }));
+    problem.set_n_clusters(2);
+    problem.set_method(method);
+    problem.set_max_iter(10);
+    problem.set_n_repetitions(1);
+    return problem;
+  };
+
+  // Every method Problem::cluster() dispatches to that is buildable without an
+  // optional backend. Method::MIP is covered by the HiGHS suites.
+  for (const auto method :
+       { dtwc::Method::Kmedoids, dtwc::Method::LRCore, dtwc::Method::TADPole }) {
+    auto quiet = make_problem(method);
+    std::ostringstream quiet_sink;
+    {
+      const ScopedCoutRedirect redirect{ quiet_sink.rdbuf() };
+      quiet.cluster();
+    }
+    CHECK(quiet_sink.str().empty());
+
+    auto loud = make_problem(method);
+    loud.set_verbose(true);
+    std::ostringstream loud_sink;
+    {
+      const ScopedCoutRedirect redirect{ loud_sink.rdbuf() };
+      loud.cluster();
+    }
+
+    // Gating changes what is printed, never what is computed.
+    CHECK(quiet.medoids() == loud.medoids());
+    CHECK(quiet.labels() == loud.labels());
+
+    // Only Lloyd has verbose progress of its own; the exact routes stay silent
+    // either way, so the non-empty assertion is scoped to the one that prints.
+    if (method == dtwc::Method::Kmedoids) CHECK_FALSE(loud_sink.str().empty());
+  }
+}
+
+TEST_CASE("Tier-1 Result::distance_matrix is the dense symmetric N-by-N matrix",
+          "[api][tier1][result]")
+{
+  const auto series = two_cluster_series();
+  const auto result = dtwc::cluster(dtwc::load(series), 2, "kmedoids", -1, "cpu", 10);
+
+  const auto flat = result.distance_matrix();
+  const std::size_t n = series.size();
+  REQUIRE(flat.size() == n * n);
+
+  // Independent oracle: the same series through Problem::dist_by_ind.
+  dtwc::Problem oracle("distance_matrix_oracle");
+  oracle.set_data(dtwc::Data(
+    two_cluster_series(), std::vector<std::string>{ "a", "b", "c", "d" }));
+  oracle.fill_distance_matrix();
+
+  for (std::size_t i = 0; i < n; ++i) {
+    CHECK(flat[i * n + i] == 0.0);
+    for (std::size_t j = 0; j < n; ++j) {
+      CHECK(flat[i * n + j] == flat[j * n + i]);
+      CHECK(flat[i * n + j]
+            == oracle.dist_by_ind(static_cast<int>(i), static_cast<int>(j)));
+    }
+  }
+}
+
+TEST_CASE("Tier-1 carries a non-ASCII name as UTF-8 end to end",
+          "[api][tier1][unicode]")
+{
+  // path::string() is the native narrow encoding (Windows ACP), so a
+  // non-ASCII stem reached Python as an undecodable byte; fs::path built back
+  // from a UTF-8 std::string would then write a mojibake filename. Both ends
+  // go through path_to_utf8 / utf8_to_path.
+  const std::string cafe = "caf\xc3\xa9"; // U+00E9 as UTF-8, source-encoding independent
+  const auto sandbox = make_sandbox("dtwc_utf8_e2e_");
+
+  SECTION("a file source names the Dataset, and save() names its files, in UTF-8")
+  {
+    const auto csv = sandbox / dtwc::utf8_to_path(cafe + ".csv");
+    {
+      std::ofstream out(csv);
+      REQUIRE(out.good());
+      out << "0,0,0\n0,0,1\n9,9,9\n9,9,8\n";
+    }
+
+    const auto dataset = dtwc::load(csv);
+    CHECK(dataset.name() == cafe);
+
+    const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+    const auto out_dir = sandbox / "saved";
+    result.save(out_dir);
+
+    bool found = false;
+    for (const auto &entry : fs::directory_iterator(out_dir)) {
+      const auto name = dtwc::path_to_utf8(entry.path().filename());
+      if (name.find(cafe) != std::string::npos) found = true;
+      // No mojibake: the ACP round trip would have produced these bytes.
+      CHECK(name.find("caf\xc3\x83") == std::string::npos);
+    }
+    CHECK(found);
+    CHECK(fs::exists(out_dir / dtwc::utf8_to_path(cafe + "_labels.csv")));
+  }
+
+  SECTION("a directory source writes UTF-8 series names inside the CSVs")
+  {
+    const auto folder = sandbox / "folder";
+    fs::create_directories(folder);
+    for (const auto &stem : { cafe, std::string{ "zeta" } }) {
+      std::ofstream out(folder / dtwc::utf8_to_path(stem + ".csv"));
+      REQUIRE(out.good());
+      out << (stem == "zeta" ? "9\n8\n7\n" : "1\n2\n3\n");
+    }
+
+    const auto result =
+      dtwc::cluster(dtwc::load(folder), 2, "pam", -1, "cpu", 10);
+    const auto out_dir = sandbox / "folder_saved";
+    result.save(out_dir);
+
+    std::ifstream labels(out_dir / "folder_labels.csv", std::ios::binary);
+    REQUIRE(labels.good());
+    const std::string bytes{ std::istreambuf_iterator<char>(labels),
+                             std::istreambuf_iterator<char>() };
+    CHECK(bytes.find(cafe) != std::string::npos);
+  }
+
+  std::error_code ec;
+  fs::remove_all(sandbox, ec);
 }

@@ -6,7 +6,7 @@
  * require a Problem or distance matrix.
  *
  * D1: the assign_to_nearest / compute_nearest_and_second / find_cluster_medoid
- * cases were removed with the helpers themselves. They had no production caller
+ * cases were removed with the shared helpers themselves. They had no caller
  * and their semantics differed from every shipping assignment loop, so they were
  * false coverage for logic that lives in the algorithms.
  *

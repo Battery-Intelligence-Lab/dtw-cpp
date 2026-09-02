@@ -91,7 +91,7 @@ TEST_CASE("Dependencies.cmake pins the supply chain", "[supply-chain][build]")
     // mirror tarball would be accepted silently. UNFIXED tree has ZERO real
     // `URL_HASH SHA256=<64-hex>` directives (count 0 < 4). The `[0-9a-f]{64}`
     // anchor deliberately does NOT match the "SHA256=<hash>" placeholders in
-    // the yaml-cpp / Arrow OPEN comments, so only genuine directives count.
+    // the Arrow OPEN comment, so only genuine directives count.
     const std::regex url_hash{ R"(URL_HASH\s+SHA256=[0-9a-f]{64})" };
     REQUIRE(regex_count(deps, url_hash) >= 4);
   }

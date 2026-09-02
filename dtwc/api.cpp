@@ -51,14 +51,22 @@ std::string canonical_device_name(const Env &e)
 std::string derive_name(const std::filesystem::path &path)
 {
   if (path.has_filename()) {
-    const auto stem = path.stem().string();
+    // UTF-8 end to end: every writer turns this name back into a path
+    // component with utf8_to_path(), so the round trip is lossless.
+    const auto stem = path_to_utf8(path.stem());
     if (!stem.empty()) return stem;
   }
   return "dataset";
 }
 
+void validate_skips(int skip_cols, int skip_rows)
+{
+  if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
+  if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
+}
+
 /// Dataset itself needs no check here: both load() overloads reject a negative
-/// skip_cols and Dataset's constructors are private.
+/// skip_cols/skip_rows and Dataset's constructors are private.
 void validate_common(int k, int max_iter)
 {
   if (k <= 0) throw InvalidInput("cluster: k must be positive.");
@@ -117,15 +125,16 @@ void ensure_output(std::ofstream &stream, const std::filesystem::path &path)
 
 } // namespace
 
-Dataset::Dataset(std::filesystem::path source, int skip_cols, char delimiter,
-                 std::string name)
-  : source_(std::move(source)), skip_cols_(skip_cols), delimiter_(delimiter),
-    name_(std::move(name))
+Dataset::Dataset(std::filesystem::path source, int skip_cols, int skip_rows,
+                 char delimiter, std::string name)
+  : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
+    delimiter_(delimiter), name_(std::move(name))
 {}
 
-Dataset::Dataset(series_type source, int skip_cols, char delimiter, std::string name)
-  : source_(std::move(source)), skip_cols_(skip_cols), delimiter_(delimiter),
-    name_(std::move(name))
+Dataset::Dataset(series_type source, int skip_cols, int skip_rows, char delimiter,
+                 std::string name)
+  : source_(std::move(source)), skip_cols_(skip_cols), skip_rows_(skip_rows),
+    delimiter_(delimiter), name_(std::move(name))
 {}
 
 bool Dataset::is_path() const noexcept
@@ -143,7 +152,7 @@ Data Dataset::materialize_local() const
 {
   if (is_path()) {
     DataLoader loader(path());
-    loader.start_column(skip_cols_).verbosity(0);
+    loader.start_column(skip_cols_).start_row(skip_rows_).verbosity(0);
     if (delimiter_ != 0) loader.delimiter(delimiter_);
     try {
       return loader.load_local();
@@ -155,6 +164,12 @@ Data Dataset::materialize_local() const
   }
 
   auto series = std::get<series_type>(source_);
+  // One memory row is one file line, so skip_rows drops leading series exactly
+  // as it drops leading lines of a batch file.
+  const auto dropped = std::min<std::size_t>(
+    static_cast<std::size_t>(skip_rows_), series.size());
+  series.erase(series.begin(),
+               series.begin() + static_cast<std::ptrdiff_t>(dropped));
   if (skip_cols_ > 0) {
     for (auto &row : series) {
       if (static_cast<std::size_t>(skip_cols_) > row.size())
@@ -167,19 +182,19 @@ Data Dataset::materialize_local() const
   return Data(std::move(series), std::move(names));
 }
 
-Dataset load(const std::filesystem::path &source, int skip_cols, char delimiter,
-             std::string_view name)
+Dataset load(const std::filesystem::path &source, int skip_cols, int skip_rows,
+             char delimiter, std::string_view name)
 {
-  if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
+  validate_skips(skip_cols, skip_rows);
   std::string resolved = name.empty() ? derive_name(source) : std::string(name);
-  return Dataset(source, skip_cols, delimiter, std::move(resolved));
+  return Dataset(source, skip_cols, skip_rows, delimiter, std::move(resolved));
 }
 
-Dataset load(Dataset::series_type source, int skip_cols, char delimiter,
-             std::string_view name)
+Dataset load(Dataset::series_type source, int skip_cols, int skip_rows,
+             char delimiter, std::string_view name)
 {
-  if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
-  return Dataset(std::move(source), skip_cols, delimiter,
+  validate_skips(skip_cols, skip_rows);
+  return Dataset(std::move(source), skip_cols, skip_rows, delimiter,
                  name.empty() ? "dataset" : std::string(name));
 }
 
@@ -218,6 +233,21 @@ double Result::score(std::string_view name) const
       "calinski_harabasz, inertia.");
 }
 
+std::vector<double> Result::distance_matrix() const
+{
+  // Matrix-free methods leave the matrix unmaterialised; asking for it is an
+  // explicit request for the full N*N, as score() and save() already treat it.
+  problem_->fill_distance_matrix();
+  const std::size_t n = problem_->size();
+  std::vector<double> flat(n * n);
+  for (std::size_t i = 0; i < n; ++i)
+    for (std::size_t j = 0; j < n; ++j)
+      flat[i * n + j] =
+        problem_->dist_by_ind(static_cast<int>(i), static_cast<int>(j));
+
+  return flat;
+}
+
 void Result::save(const std::filesystem::path &directory) const
 {
   std::error_code ec;
@@ -226,12 +256,14 @@ void Result::save(const std::filesystem::path &directory) const
     throw IOError("Result::save: cannot create '" + directory.string() + "': "
                   + ec.message());
 
-  const auto base = directory / problem_->name();
-  const auto labels_path = std::filesystem::path(base.string() + "_labels.csv");
-  const auto medoids_path = std::filesystem::path(base.string() + "_medoids.csv");
-  const auto matrix_path = std::filesystem::path(base.string() + "_distance_matrix.csv");
-  const auto silhouettes_path =
-    std::filesystem::path(base.string() + "_silhouettes.csv");
+  // problem_->name() is UTF-8 (api.cpp::derive_name); utf8_to_path keeps it so
+  // on the way back to the filesystem. path::string() would re-decode it as the
+  // native narrow encoding and write a mojibake filename on Windows.
+  const std::string &base = problem_->name();
+  const auto labels_path = directory / utf8_to_path(base + "_labels.csv");
+  const auto medoids_path = directory / utf8_to_path(base + "_medoids.csv");
+  const auto matrix_path = directory / utf8_to_path(base + "_distance_matrix.csv");
+  const auto silhouettes_path = directory / utf8_to_path(base + "_silhouettes.csv");
 
   {
     std::ofstream out(labels_path);

@@ -6,12 +6,21 @@
  * functions save a (possibly partial) distance matrix to disk and restore it
  * later, so pairs already computed are not recomputed.
  *
- * Known limitation: saving is EXPLICIT. Nothing checkpoints from inside
- * fill_distance_matrix() -- no interval, no callback -- so a crash during one
- * uninterrupted fill loses that whole fill. Call save_checkpoint() yourself,
- * between phases and never from inside the parallel fill.
+ * Saving is either explicit (call save_checkpoint()) or automatic. Automatic
+ * saving is driven by Problem::checkpoint (a CheckpointOptions): with
+ * `enabled`, fill_distance_matrix() saves a new generation after every
+ * `save_interval` completed matrix rows, on the calling thread, after the
+ * parallel row block has joined. Never call save_checkpoint() yourself from
+ * inside a parallel region.
  *
- * Dense checkpoint v2 publishes immutable generations:
+ * If an automatic save throws, the exception propagates out of
+ * fill_distance_matrix(): the distances computed so far stay in memory and the
+ * previously published generation on disk remains valid and loadable.
+ *
+ * Dense checkpoint v2 publishes immutable generations. A directory holds
+ * exactly one generation after a successful save: the old generation is removed
+ * only once CURRENT points at the new one, so a reader never observes a
+ * directory without a valid payload.
  *   - CURRENT -- one lowercase 64-hex generation identifier
  *   - generations/<id>/distances.csv -- exact full NxN matrix; an empty field
  *     is the only uncomputed representation
@@ -37,18 +46,33 @@ namespace dtwc {
 class Problem;
 
 /// Options controlling automatic checkpoint behavior.
+///
+/// Consumed by Problem::fill_distance_matrix() through Problem::checkpoint.
+/// With `enabled` the fill runs the BruteForce row schedule in consecutive
+/// blocks of `save_interval` rows and publishes one generation after each
+/// block, the last block included, so a completed fill leaves a complete
+/// checkpoint. `enabled` requires dense distance storage and
+/// `save_interval >= 1`; either violation is an InvalidInput raised before any
+/// distance is computed.
 struct CheckpointOptions {
   std::string directory = "./checkpoints";  ///< Directory to save checkpoint files.
-  int save_interval = 100;                  ///< INERT: no code path reads this. See the file header.
-  bool enabled = false;                     ///< Whether checkpointing is enabled.
+  /// Completed matrix rows between automatic saves (>= 1). Every save writes the
+  /// whole N-by-N CSV, so it costs O(N^2) bytes and time and a fill costs
+  /// O(N^3 / save_interval) in total. Choose `save_interval` so a save is a small
+  /// fraction of a block: a block costs about save_interval * N DTWs, a save
+  /// about N^2 number formats.
+  int save_interval = 100;
+  bool enabled = false;                     ///< Whether automatic mid-fill checkpointing is enabled.
 };
 
 /// Save the current distance matrix state to a checkpoint directory.
 ///
 /// Validates the complete source before filesystem effects, streams a new
 /// immutable generation, and atomically replaces CURRENT. Existing active
-/// generations are never overwritten. Unverifiable legacy direct-file
-/// directories are upgraded only by a successful save.
+/// generations are never overwritten. After CURRENT names the new generation,
+/// every other generation directory is removed (best effort), so a directory
+/// holds exactly one generation after a successful save. Unverifiable legacy
+/// direct-file directories are upgraded only by a successful save.
 ///
 /// @param prob   The Problem whose distance matrix to save.
 /// @param path   Directory path for checkpoint files.

@@ -410,7 +410,7 @@ TEST_CASE("F14 native Result save matches the registered dense stream bytes",
 {
   const auto dataset = dtwc::load(
     std::vector<std::vector<double>>{{0.0}, {1.0}, {3.0}},
-    0, ',', "f14_result");
+    0, 0, ',', "f14_result");
   const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 100);
   const auto directory = fresh_path("result");
   result.save(directory);

@@ -81,6 +81,45 @@ fs::path active_checkpoint_payload(const std::string &dir)
   return root / "generations" / generation;
 }
 
+
+/// pairs_computed recorded in the manifest of the active generation.
+std::size_t manifest_pairs_computed(const std::string &dir)
+{
+  std::ifstream manifest(active_checkpoint_payload(dir) / "metadata.txt",
+                         std::ios::binary);
+  REQUIRE(manifest.good());
+  const std::string key = "pairs_computed=";
+  std::string line;
+  while (std::getline(manifest, line))
+    if (line.rfind(key, 0) == 0)
+      return static_cast<std::size_t>(std::stoull(line.substr(key.size())));
+  FAIL("checkpoint manifest has no pairs_computed key");
+  return 0;
+}
+
+
+/// Number of immutable generations published under a checkpoint root.
+std::size_t count_generations(const std::string &dir)
+{
+  const fs::path generations = fs::path(dir) / "generations";
+  if (!fs::exists(generations)) return 0;
+  std::size_t total = 0;
+  for (const auto &entry : fs::directory_iterator(generations))
+    if (entry.is_directory()) ++total;
+  return total;
+}
+
+/// Bit-exact comparison of two resident dense distance matrices.
+void require_identical_matrices(const Problem &lhs, const Problem &rhs)
+{
+  const auto &a = lhs.dense_distance_matrix();
+  const auto &b = rhs.dense_distance_matrix();
+  REQUIRE(a.size() == b.size());
+  REQUIRE(a.packed_count() == b.packed_count());
+  for (std::size_t k = 0; k < a.packed_count(); ++k)
+    REQUIRE(a.raw()[k] == b.raw()[k]);
+}
+
 } // anonymous namespace
 
 
@@ -275,6 +314,10 @@ TEST_CASE("save_checkpoint overwrites existing checkpoint", "[checkpoint]")
   prob.fill_distance_matrix();
   save_checkpoint(prob, ckpt_dir);
 
+  // The superseded partial generation is gone: one directory, one generation.
+  REQUIRE(count_generations(ckpt_dir) == 1);
+  REQUIRE(manifest_pairs_computed(ckpt_dir) == N * (N + 1) / 2);
+
   // Load and verify it's the full matrix
   auto prob2 = make_problem(N);
   bool loaded = load_checkpoint(prob2, ckpt_dir);
@@ -316,4 +359,251 @@ TEST_CASE("DenseDistanceMatrix count_computed and all_computed", "[checkpoint][d
 
   REQUIRE(dm.count_computed() == 10); // N*(N+1)/2
   REQUIRE(dm.all_computed());
+}
+
+
+// ---------------------------------------------------------------------------
+// 9. Automatic mid-fill checkpointing: one generation per row block
+// ---------------------------------------------------------------------------
+TEST_CASE("Automatic checkpointing retains exactly one generation",
+          "[checkpoint][fill]")
+{
+  constexpr int N = 5;
+  auto reference = make_problem(N);
+  reference.fill_distance_matrix();
+
+  auto ckpt_dir = make_temp_dir("auto_interval1");
+  auto prob = make_problem(N);
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 1;
+  prob.checkpoint.directory = ckpt_dir;
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
+
+  // Five blocks each publish a generation, and each publication supersedes the
+  // previous one, so the directory holds exactly one: the complete matrix.
+  REQUIRE(count_generations(ckpt_dir) == 1);
+  REQUIRE(manifest_pairs_computed(ckpt_dir) == N * (N + 1) / 2);
+
+  auto restored = make_problem(N);
+  REQUIRE(load_checkpoint(restored, ckpt_dir));
+  REQUIRE(restored.is_distance_matrix_filled());
+  require_identical_matrices(restored, reference);
+
+  cleanup_dir(ckpt_dir);
+}
+
+
+// ---------------------------------------------------------------------------
+// 10. Crash-resume: a resumed fill recomputes only the missing cells
+// ---------------------------------------------------------------------------
+TEST_CASE("Resumed automatic fill only computes uncomputed cells",
+          "[checkpoint][fill]")
+{
+  constexpr int N = 6;
+  auto reference = make_problem(N);
+  reference.fill_distance_matrix();
+
+  // Stand-in for a crash after the first two rows: rows 0 and 1 are marked
+  // computed with sentinel values no DTW kernel can produce.
+  auto crashed = make_problem(N);
+  {
+    auto &matrix = crashed.dense_distance_matrix();
+    matrix.resize(N); // allocation is deferred until the first fill
+    for (int i = 0; i < 2; ++i)
+      for (int j = i + 1; j < N; ++j)
+        matrix.set(i, j, 900.0 + 10.0 * i + j);
+  }
+  auto partial_dir = make_temp_dir("resume_partial");
+  save_checkpoint(crashed, partial_dir);
+  // Mid-fill evidence survives pruning: the surviving generation is the partial
+  // one, and its manifest counts exactly the cells computed so far.
+  REQUIRE(count_generations(partial_dir) == 1);
+  REQUIRE(manifest_pairs_computed(partial_dir) == 9);
+
+  auto resumed = make_problem(N);
+  REQUIRE(load_checkpoint(resumed, partial_dir));
+  // 5 entries from row 0 plus 4 from row 1; the diagonal is still uncomputed.
+  REQUIRE(resumed.dense_distance_matrix().count_computed() == 9);
+
+  auto resume_dir = make_temp_dir("resume_fill");
+  resumed.checkpoint.enabled = true;
+  resumed.checkpoint.save_interval = 2;
+  resumed.checkpoint.directory = resume_dir;
+  resumed.fill_distance_matrix();
+
+  REQUIRE(resumed.is_distance_matrix_filled());
+  REQUIRE(resumed.dense_distance_matrix().count_computed() == N * (N + 1) / 2);
+  REQUIRE(count_generations(resume_dir) == 1);
+  REQUIRE(manifest_pairs_computed(resume_dir) == N * (N + 1) / 2);
+
+  // Poisoned cells survive untouched: the resumed fill did not recompute them.
+  for (int i = 0; i < 2; ++i)
+    for (int j = i + 1; j < N; ++j)
+      REQUIRE(resumed.dist_by_ind(i, j) == 900.0 + 10.0 * i + j);
+
+  // Every previously missing cell is the exact brute-force value.
+  for (int i = 2; i < N; ++i)
+    for (int j = i; j < N; ++j)
+      REQUIRE(resumed.dist_by_ind(i, j) == reference.dist_by_ind(i, j));
+
+  cleanup_dir(partial_dir);
+  cleanup_dir(resume_dir);
+}
+
+
+// ---------------------------------------------------------------------------
+// 11. Invalid automatic-checkpoint settings fail before any work
+// ---------------------------------------------------------------------------
+TEST_CASE("Automatic checkpointing rejects a non-positive save interval",
+          "[checkpoint][fill]")
+{
+  auto ckpt_dir = make_temp_dir("auto_interval0");
+  auto prob = make_problem(4);
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 0;
+  prob.checkpoint.directory = ckpt_dir;
+
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  REQUIRE_FALSE(fs::exists(ckpt_dir));
+}
+
+
+// ---------------------------------------------------------------------------
+// 12. Disabled checkpointing writes nothing
+// ---------------------------------------------------------------------------
+TEST_CASE("Disabled checkpointing creates no checkpoint directory",
+          "[checkpoint][fill]")
+{
+  auto ckpt_dir = make_temp_dir("auto_disabled");
+  auto prob = make_problem(5);
+  prob.checkpoint.directory = ckpt_dir;
+  REQUIRE_FALSE(prob.checkpoint.enabled); // default
+
+  prob.fill_distance_matrix();
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE_FALSE(fs::exists(ckpt_dir));
+}
+
+
+// ---------------------------------------------------------------------------
+// 13. Mapped distance storage rejects automatic checkpointing
+// ---------------------------------------------------------------------------
+#ifdef DTWC_HAS_MMAP
+TEST_CASE("Automatic checkpointing rejects mmap distance storage",
+          "[checkpoint][fill]")
+{
+  auto scratch = make_temp_dir("auto_mmap");
+  fs::create_directories(scratch);
+  auto ckpt_dir = make_temp_dir("auto_mmap_ckpt");
+
+  auto prob = make_problem(5);
+  prob.use_mmap_distance_matrix(fs::path(scratch) / "distmat.dtwcache");
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 2;
+  prob.checkpoint.directory = ckpt_dir;
+
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
+  REQUIRE_FALSE(fs::exists(ckpt_dir));
+
+  cleanup_dir(scratch);
+}
+#endif
+
+
+// ---------------------------------------------------------------------------
+// 14. Pruned + automatic checkpointing downgrades to the exact row schedule
+// ---------------------------------------------------------------------------
+TEST_CASE("Automatic checkpointing downgrades Pruned to BruteForce",
+          "[checkpoint][fill]")
+{
+  constexpr int N = 8;
+  auto reference = make_problem(N);
+  reference.distance_strategy = DistanceMatrixStrategy::BruteForce;
+  reference.fill_distance_matrix();
+
+  auto ckpt_dir = make_temp_dir("auto_pruned");
+  auto prob = make_problem(N);
+  prob.distance_strategy = DistanceMatrixStrategy::Pruned;
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 3;
+  prob.checkpoint.directory = ckpt_dir;
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+
+  REQUIRE(prob.is_distance_matrix_filled());
+  REQUIRE(count_generations(ckpt_dir) == 1);
+  require_identical_matrices(prob, reference);
+
+  cleanup_dir(ckpt_dir);
+}
+
+
+// ---------------------------------------------------------------------------
+// 15. Automatic checkpointing rejects an empty directory before any work
+// ---------------------------------------------------------------------------
+TEST_CASE("Automatic checkpointing rejects an empty directory",
+          "[checkpoint][fill]")
+{
+  auto prob = make_problem(4);
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 2;
+  prob.checkpoint.directory.clear();
+
+  REQUIRE_THROWS_AS(prob.fill_distance_matrix(), InvalidInput);
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  REQUIRE(prob.dense_distance_matrix().count_computed() == 0);
+}
+
+
+// ---------------------------------------------------------------------------
+// 16. A throwing automatic save keeps the cells the completed blocks computed
+// ---------------------------------------------------------------------------
+TEST_CASE("A failing automatic save preserves computed distances",
+          "[checkpoint][fill]")
+{
+  constexpr int N = 6;
+  auto reference = make_problem(N);
+  reference.fill_distance_matrix();
+
+  // A regular file where the checkpoint root belongs: the first save fails in
+  // the filesystem, after its row block has already been computed.
+  auto scratch = make_temp_dir("save_throws");
+  fs::create_directories(scratch);
+  const fs::path blocking_file = fs::path(scratch) / "not_a_directory";
+  {
+    std::ofstream blocker(blocking_file);
+    blocker << "occupied";
+  }
+  REQUIRE(fs::is_regular_file(blocking_file));
+
+  auto prob = make_problem(N);
+  {
+    // Row 0 is poisoned with values no DTW kernel can produce, so any later
+    // recomputation of those cells is visible.
+    auto &matrix = prob.dense_distance_matrix();
+    matrix.resize(N);
+    for (int j = 1; j < N; ++j)
+      matrix.set(0, j, 900.0 + j);
+  }
+  prob.checkpoint.enabled = true;
+  prob.checkpoint.save_interval = 2;
+  prob.checkpoint.directory = blocking_file.string();
+
+  REQUIRE_THROWS(prob.fill_distance_matrix());
+  REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  // Diagonal (6) + poisoned row 0 (5) + genuine row 1 (4) from the first block.
+  REQUIRE(prob.dense_distance_matrix().count_computed() == 15);
+
+  // A subsequent disabled fill completes and touches only uncomputed cells.
+  prob.checkpoint.enabled = false;
+  REQUIRE_NOTHROW(prob.fill_distance_matrix());
+  REQUIRE(prob.is_distance_matrix_filled());
+  for (int j = 1; j < N; ++j)
+    REQUIRE(prob.dist_by_ind(0, j) == 900.0 + j);
+  for (int i = 1; i < N; ++i)
+    for (int j = i; j < N; ++j)
+      REQUIRE(prob.dist_by_ind(i, j) == reference.dist_by_ind(i, j));
+
+  cleanup_dir(scratch);
 }

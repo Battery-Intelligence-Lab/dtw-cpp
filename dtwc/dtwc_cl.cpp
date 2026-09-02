@@ -1,15 +1,14 @@
 /**
  * @file dtwc_cl.cpp
- * @brief Command line interface for DTWC++ with TOML/YAML configuration support.
+ * @brief Command line interface for DTWC++ with TOML configuration support.
  *
- * @details Full CLI tool using CLI11 with TOML config file support and optional
- * YAML support via yaml-cpp. Supports PAM, CLARA, MIP, and hierarchical clustering
- * methods, all DTW variants, checkpointing, and flexible output.
+ * @details Full CLI tool using CLI11 with TOML config file support. Supports
+ * PAM, CLARA, MIP, and hierarchical clustering methods, all DTW variants,
+ * checkpointing, and flexible output.
  *
  * Usage:
  *   dtwc_cl --input data.csv -k 5 --method pam -v
  *   dtwc_cl --config config.toml
- *   dtwc_cl --config config.yaml   (requires -DDTWC_ENABLE_YAML=ON)
  *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
@@ -39,10 +38,6 @@
 // without linking CLI11 (see tests/unit/unit_test_cli_args.cpp, Task 0.9).
 #ifndef DTWC_CL_NO_MAIN
 #include <CLI/CLI.hpp>
-
-#ifdef DTWC_HAS_YAML
-#include <yaml-cpp/yaml.h>
-#endif
 #endif
 
 #include <algorithm>
@@ -387,7 +382,7 @@ static std::string validate_metric_for_device(const std::string &metric, bool is
 }
 
 /// Validate normalized distance semantics before Env, data, or cache side
-/// effects. This also covers YAML values that bypass CLI11 transformers.
+/// effects. It also rejects values that reach the kernels unvalidated.
 static std::string validate_cli_distance_configuration(
   const std::string &variant, const std::string &metric,
   const std::string &mv_mode, const std::string &missing_strategy, bool is_cuda)
@@ -426,8 +421,8 @@ static std::string validate_cli_distance_configuration(
 /// and a linkage rule. Returns an empty string when OK.
 ///
 /// `method`, `solver` and `linkage` reach their dispatch chains as raw strings,
-/// and a value that bypasses CLI11's CheckedTransformer (a YAML key, normalised
-/// by hand) used to select nothing at all: an unknown `method` left `result`
+/// a value that bypasses CLI11's CheckedTransformer used to select nothing at
+/// all: an unknown `method` left `result`
 /// default-constructed yet still wrote label files, an unknown `solver` stayed
 /// on HiGHS and an unknown `linkage` became Average. Reject before any data,
 /// cache, or filesystem side effect.
@@ -701,14 +696,14 @@ static void write_silhouettes_csv(const fs::path &path,
 // ---------------------------------------------------------------------------
 // CLI / TOML flag deprecation registry (api-contract-2.0.md §4, §7 item 3)
 // ---------------------------------------------------------------------------
-// The CLI flag set and the TOML/YAML config keys are a de-facto API (they are
+// The CLI flag set and the TOML config keys are a de-facto API (they are
 // composed by `scripts/slurm/jobs/cluster_generic.slurm` and
 // `python/dtwcpp/_hpc.py::build_dtwc_command`). When a flag/key is renamed to the
 // 2.0 contract vocabulary the OLD spelling stays ACCEPTED but emits a one-line
 // deprecation warning to stderr pointing at the new spelling (one warning per
-// use). TOML/YAML keys are the long-flag names without the leading "--", so a
-// single table below drives the CLI, the `--config` TOML path (CLI11 maps config
-// keys onto the same options) and the `--yaml-config` path.
+// use). TOML keys are the long-flag names without the leading "--", so a
+// single table below drives the CLI and the `--config` TOML path (CLI11 maps
+// config keys onto the same options).
 //
 //   old CLI flag / TOML key   ->  new canonical CLI flag / TOML key    contract ref
 //   --clusters  / clusters    ->  --n-clusters / n-clusters            §1.5, §2.1 (n_clusters)
@@ -735,7 +730,7 @@ inline const std::vector<CliRename> &cli_renames()
 }
 
 /// Exact one-line deprecation warning written to stderr when an old spelling is
-/// used. Format is fixed and shared by every rename (CLI flag AND TOML/YAML key).
+/// used. Format is fixed and shared by every rename (CLI flag AND TOML key).
 inline std::string format_deprecation_warning(std::string_view old_flag,
                                               std::string_view new_flag)
 {
@@ -749,7 +744,7 @@ inline std::string format_deprecation_warning(std::string_view old_flag,
 
 /// Canonical spelling for a deprecated flag/key, or "" if `spelling` is not a
 /// known deprecated name. Accepts either the "--flag" form or the bare
-/// TOML/YAML "key" form (no leading dashes).
+/// TOML "key" form (no leading dashes).
 inline std::string canonical_flag_for(std::string_view spelling)
 {
   for (const auto &r : cli_renames()) {
@@ -773,10 +768,6 @@ static int run_cli_main(int argc, char *argv[])
   // `max-iter`). Deprecated keys are accepted with a warning per cli_renames():
   //   clusters -> n-clusters,  restart -> resume.
   app.set_config("--config", "", "Read TOML configuration file");
-
-  // YAML config file (optional, processed after CLI parsing)
-  std::string yaml_config_path;
-  app.add_option("--yaml-config", yaml_config_path, "Read YAML configuration file (requires -DDTWC_ENABLE_YAML=ON)");
 
   // Input/output
   std::string input_file;
@@ -923,6 +914,11 @@ static int run_cli_main(int argc, char *argv[])
   // Checkpointing
   std::string checkpoint_dir;
   app.add_option("--checkpoint", checkpoint_dir, "Checkpoint directory for save/resume");
+  int checkpoint_interval = 0;
+  auto *checkpoint_interval_opt = app.add_option(
+    "--checkpoint-interval", checkpoint_interval,
+    "Save a checkpoint generation every N filled distance-matrix rows "
+    "(requires --checkpoint)");
 
   // Binary checkpoint resume & mmap threshold
   bool resume = false;
@@ -947,7 +943,7 @@ static int run_cli_main(int argc, char *argv[])
               {"highs", "highs"}, {"gurobi", "gurobi"}},
           CLI::ignore_case));
 
-  // MIP solver settings (kebab-case: matches CLI flags, TOML keys, and YAML keys)
+  // MIP solver settings (kebab-case: matches CLI flags and TOML keys)
   double mip_gap = 1e-5;
   int time_limit = -1;
   bool no_warm_start = false;
@@ -993,7 +989,7 @@ static int run_cli_main(int argc, char *argv[])
   app.add_flag("-v,--verbose", verbose, "Verbose output");
 
   // Show help if no arguments provided (before CLI11 parses, so --input
-  // is not required yet — YAML may provide it).
+  // is not required yet — a config file may provide it).
   if (argc == 1) {
     std::cout << app.help() << '\n';
     return EXIT_SUCCESS;
@@ -1015,92 +1011,9 @@ static int run_cli_main(int argc, char *argv[])
     resume = resume || restart_deprecated;
   }
 
-  // ---- YAML config loading (post-parse, CLI flags take precedence) ----
-  if (!yaml_config_path.empty()) {
-#ifdef DTWC_HAS_YAML
-    try {
-      YAML::Node config = YAML::LoadFile(yaml_config_path);
-
-      // TODO: This always overrides CLI values if the YAML key exists.
-      // Should use app["--flag"]->count() to check if CLI was explicitly set.
-      // Pre-existing issue — fixing requires refactoring all set_if_unset calls.
-      auto set_if_unset = [&](const std::string &key, auto &var) {
-        if (config[key]) {
-          using T = std::decay_t<decltype(var)>;
-          var = config[key].as<T>();
-        }
-      };
-
-      set_if_unset("input", input_file);
-      set_if_unset("output", output_dir);
-      set_if_unset("name", prob_name);
-      set_if_unset("n-clusters", n_clusters);
-      set_if_unset("method", method);
-      set_if_unset("band", band);
-      set_if_unset("metric", metric);
-      set_if_unset("variant", variant);
-      set_if_unset("max-iter", max_iter);
-      set_if_unset("n-init", n_init);
-      set_if_unset("solver", solver);
-      set_if_unset("device", device);
-      set_if_unset("dtype", dtype_str);
-      set_if_unset("ram-limit", ram_limit_str);
-      set_if_unset("gpu-precision", gpu_precision);
-      set_if_unset("resume", resume);
-      set_if_unset("verbose", verbose);
-
-      // MIP solver settings
-      set_if_unset("mip-gap", mip_gap);
-      set_if_unset("time-limit", time_limit);
-      set_if_unset("no-warm-start", no_warm_start);
-      set_if_unset("numeric-focus", numeric_focus);
-      set_if_unset("mip-focus", mip_focus);
-      set_if_unset("verbose-solver", verbose_solver);
-
-      // DTW variant parameters
-      set_if_unset("wdtw-g", wdtw_g);
-      set_if_unset("adtw-penalty", adtw_penalty);
-      set_if_unset("sdtw-gamma", sdtw_gamma);
-      set_if_unset("msm-c", msm_c);
-      set_if_unset("twe-nu", twe_nu);
-      set_if_unset("twe-lambda", twe_lambda);
-      set_if_unset("mv-mode", mv_mode);
-      set_if_unset("missing-strategy", missing_strategy);
-
-      // CLARA parameters
-      set_if_unset("sample-size", sample_size);
-      set_if_unset("n-samples", n_samples);
-      set_if_unset("seed", clara_seed);
-
-      // Hierarchical
-      set_if_unset("linkage", linkage_str);
-
-      // Deprecated YAML keys (accepted with a warning; canonical key wins).
-      if (config["clusters"]) {
-        std::cerr << format_deprecation_warning("--clusters", "--n-clusters") << "\n";
-        if (!config["n-clusters"]) n_clusters = config["clusters"].as<int>();
-      }
-      if (config["restart"]) {
-        std::cerr << format_deprecation_warning("--restart", "--resume") << "\n";
-        if (!config["resume"]) resume = config["restart"].as<bool>();
-      }
-
-      if (verbose)
-        std::cout << "Loaded YAML config: " << yaml_config_path << "\n";
-    } catch (const YAML::Exception &e) {
-      std::cerr << "Error loading YAML config: " << e.what() << "\n";
-      return EXIT_FAILURE;
-    }
-#else
-    std::cerr << "Error: YAML config requires building with -DDTWC_ENABLE_YAML=ON\n";
-    return EXIT_FAILURE;
-#endif
-  }
-
-  // ---- Post-parse validation (catches both CLI and YAML values) ----
+  // ---- Post-parse validation (catches both CLI and config-file values) ----
   if (input_file.empty()) {
-    std::cerr << "Error: --input is required via CLI or config file "
-                 "(TOML; YAML if built with DTWC_ENABLE_YAML)\n";
+    std::cerr << "Error: --input is required via CLI or config file (TOML)\n";
     return EXIT_FAILURE;
   }
   if (n_clusters < 1) {
@@ -1112,8 +1025,8 @@ static int run_cli_main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
 
-  // Normalize YAML string values that bypass CLI11's CheckedTransformer.
-  // Must replicate both case-folding AND alias mappings from the CLI definitions.
+  // Normalize selector spellings that can reach the dispatch chains without
+  // passing through CLI11's CheckedTransformer (case-folding AND aliases).
   auto to_lower = [](std::string &s) {
     for (auto &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
   };
@@ -1133,7 +1046,7 @@ static int run_cli_main(int argc, char *argv[])
   if (missing_strategy == "zero-cost" || missing_strategy == "zerocost")
     missing_strategy = "zero_cost";
 
-  // Normalize dtype/gpu-precision aliases from YAML (bypass CheckedTransformer)
+  // Normalize dtype/gpu-precision aliases (may bypass CheckedTransformer)
   to_lower(dtype_str);
   if (dtype_str == "f32" || dtype_str == "fp32" || dtype_str == "float") dtype_str = "float32";
   if (dtype_str == "f64" || dtype_str == "fp64" || dtype_str == "double") dtype_str = "float64";
@@ -1165,7 +1078,7 @@ static int run_cli_main(int argc, char *argv[])
 
   // Materialize and validate the complete parameter value object before Env,
   // output-directory, input, cache, or distance effects.  Validate inactive
-  // fields too: all CLI/YAML values are public and participate in cache identity.
+  // fields too: all CLI/config values are public and participate in cache identity.
   dtwc::core::DTWVariantParams vparams;
   if (variant == "ddtw")
     vparams.variant = dtwc::core::DTWVariant::DDTW;
@@ -1662,6 +1575,19 @@ static int run_cli_main(int argc, char *argv[])
       std::cerr << "Warning: Could not load distance matrix: " << e.what()
                 << "\nContinuing without precomputed matrix.\n";
     }
+  }
+
+  // ---- Automatic mid-fill checkpointing ----
+  // Opt-in: --checkpoint alone keeps the historical save-once-at-the-end
+  // behaviour; the interval flag is what enables periodic saves.
+  if (checkpoint_interval_opt->count() > 0) {
+    if (checkpoint_dir.empty()) {
+      std::cerr << "Error: --checkpoint-interval requires --checkpoint <dir>.\n";
+      return EXIT_FAILURE;
+    }
+    prob.checkpoint.directory = checkpoint_dir;
+    prob.checkpoint.save_interval = checkpoint_interval;
+    prob.checkpoint.enabled = true;
   }
 
   // ---- Load checkpoint if available ----

@@ -25,7 +25,7 @@ int main(int argc, char **argv)
       throw std::runtime_error("conformance input is not a regular file");
 
     dtwc::device("cpu");
-    const auto dataset = dtwc::load(input, 0, ',', "conformance");
+    const auto dataset = dtwc::load(input, 0, 0, ',', "conformance");
     const auto result = dtwc::cluster(dataset, 3, "pam", 3, "cpu", 100);
     if (result.labels().size() != 27 || result.medoids().size() != 3
         || result.device() != "cpu") {

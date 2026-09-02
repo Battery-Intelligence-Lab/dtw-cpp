@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <vector>
 
 namespace dtwc {
@@ -49,7 +50,7 @@ struct LagrangianParams
   double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
   int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
   int kelley_max_major = 500;  ///< Cutting-plane (Kelley) variant only: cap on major iterations (each adds one cut + re-solves the small master LP).
-  long max_nodes = 2000000;    ///< Exact B&B (lagrangian_root_exact) only: cap on branch-and-bound nodes before giving up (returns best-so-far, certified_optimal=false — never silent).
+  std::int64_t max_nodes = 2000000; ///< Exact B&B (lagrangian_root_exact) only: cap on branch-and-bound nodes before giving up (returns best-so-far, certified_optimal=false — never silent).
 };
 
 /// @brief Result of a Lagrangian-root solve. Bounds are in RAW distance units

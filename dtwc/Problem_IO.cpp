@@ -15,8 +15,10 @@
 #include "scores.hpp"      // for silhouette
 #include "types/Range.hpp" // for Range
 
+#include <filesystem> // for create_directories
 #include <fstream>
 #include <iostream> // for cout
+#include <system_error> // for error_code
 #include <type_traits> // for std::is_same_v, std::decay_t (visit_distmat)
 #include <string>  // for allocator, char_traits, operator+
 #include <vector>  // for vector, operator==
@@ -25,10 +27,26 @@ namespace dtwc {
 
 namespace {
 
+/// Create the destination directory before writing into it. output_folder_
+/// defaults to the CWD-relative settings::paths::results, which need not exist:
+/// an ofstream on a missing directory just fails, so the writers created a
+/// runtime error out of a perfectly ordinary first run.
+void ensure_output_directory(const std::filesystem::path &path)
+{
+  const auto directory = path.parent_path();
+  if (directory.empty()) return;
+  std::error_code ec;
+  std::filesystem::create_directories(directory, ec);
+  if (ec && !std::filesystem::is_directory(directory))
+    throw std::runtime_error("Cannot create output directory: "
+                             + directory.string() + ": " + ec.message());
+}
+
 /// Open an output file, failing loudly: an unchecked ofstream silently produces
 /// no file at all when the output folder is unwritable.
 std::ofstream open_output(const std::filesystem::path &path)
 {
+  ensure_output_directory(path);
   std::ofstream file(path, std::ios_base::out);
   if (!file.good())
     throw std::runtime_error("Cannot open file for writing: " + path.string());
@@ -54,7 +72,8 @@ void close_output(std::ofstream &file, const std::filesystem::path &path)
 void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep, double total_cost)
 {
   const auto outPath = output_folder_
-                       / (name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
+    / utf8_to_path(name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
+  ensure_output_directory(outPath);
   std::ofstream medoidsFile(outPath, std::ios_base::out);
 
   if (!medoidsFile.good()) {
@@ -105,7 +124,7 @@ void Problem::print_clusters() const
 void Problem::write_clusters()
 {
   const auto file_name = name_ + "_Nc_" + std::to_string(Nc) + ".csv";
-  const auto path = output_folder_ / file_name;
+  const auto path = output_folder_ / utf8_to_path(file_name);
   std::ofstream myFile = open_output(path);
 
   myFile << "Cluster centroids:\n";
@@ -150,7 +169,7 @@ void Problem::write_silhouettes()
 
   silhouette_name += std::to_string(n_clusters()) + ".csv";
 
-  const auto path = output_folder_ / silhouette_name;
+  const auto path = output_folder_ / utf8_to_path(silhouette_name);
   std::ofstream myFile = open_output(path);
 
   myFile << "Silhouettes:\n";
@@ -170,7 +189,7 @@ void Problem::write_medoid_members(int iter, int rep) const
   const std::string medoid_name = "medoidMembers_Nc_" + std::to_string(Nc) + "_rep_"
                                   + std::to_string(rep) + "_iter_" + std::to_string(iter) + ".csv";
 
-  const auto path = output_folder_ / medoid_name;
+  const auto path = output_folder_ / utf8_to_path(medoid_name);
   std::ofstream medoidMembers = open_output(path);
   for (const auto i_c : Range(n_clusters())) {
     for (const auto i_p : Range(size()))
@@ -192,7 +211,8 @@ void Problem::write_distance_matrix(const std::string &name_) const
 {
   validate_mmap_cache_identity();
   validate_dense_cache_configuration();
-  const auto path = output_folder_ / name_;
+  const auto path = output_folder_ / utf8_to_path(name_);
+  ensure_output_directory(path);
   visit_distmat([&](const auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
       io::write_csv(m, path);
@@ -222,7 +242,7 @@ void Problem::write_distance_matrix(const std::string &name_) const
 void Problem::writeBestRep(int best_rep)
 {
   const auto path = output_folder_
-    / (name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv");
+    / utf8_to_path(name_ + "_bestRepetition_Nc_" + std::to_string(Nc) + ".csv");
   std::ofstream bestRepFile = open_output(path);
   bestRepFile << best_rep << '\n';
   close_output(bestRepFile, path);

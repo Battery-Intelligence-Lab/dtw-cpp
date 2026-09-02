@@ -31,12 +31,50 @@
 #include <vector>     // for vector
 #include <fstream>
 #include <stdexcept> // for std::runtime_error
+#include <system_error> // for std::system_error (utf8_to_path fallback)
 #include <string_view>
 #include <type_traits>
 
 namespace dtwc {
 
 namespace fs = std::filesystem;
+
+/**
+ * @brief The UTF-8 bytes of a path, for identifiers that cross a language boundary.
+ *
+ * @details `std::filesystem::path::string()` returns the NATIVE narrow encoding,
+ * which on Windows is the active ANSI code page: a file named `cafe\u00e9.csv`
+ * yields the byte 0xE9, which the Python binding cannot decode as UTF-8 and the
+ * CLI writes verbatim into its CSVs. Series and dataset names are carried as
+ * UTF-8 on every platform so C++, Python and MATLAB see identical bytes.
+ */
+inline std::string path_to_utf8(const fs::path &p)
+{
+  const auto encoded = p.u8string();
+  return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+}
+
+/**
+ * @brief The inverse of path_to_utf8: a UTF-8 identifier as a path component.
+ *
+ * @details `fs::path` built from a plain `std::string` re-decodes it in the
+ * native narrow encoding, so a UTF-8 name would reach the filesystem as mojibake
+ * on Windows. Going through `std::u8string` keeps the round trip
+ * `path_to_utf8(utf8_to_path(s)) == s`. On POSIX the bytes pass through.
+ */
+inline fs::path utf8_to_path(std::string_view name)
+{
+  try {
+    return fs::path(std::u8string(reinterpret_cast<const char8_t *>(name.data()),
+                                  name.size()));
+  } catch (const std::system_error &) {
+    // Not valid UTF-8. The only producer of such a name is a native-encoded
+    // string that never went through a loader (a Windows ANSI `--name` from
+    // argv), so interpret it natively rather than failing the write: MSVC's
+    // char8_t conversion THROWS on an unmappable sequence.
+    return fs::path(std::string(name));
+  }
+}
 
 /**
  * @brief Ignores Byte Order Mark (BOM) in UTF-8 encoded files.
@@ -350,7 +388,7 @@ auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
       std::cout << file << "\tSize: " << p.size() << '\n';
 
     p_vec.push_back(std::move(p));
-    p_names.push_back(file.stem().string());
+    p_names.push_back(path_to_utf8(file.stem()));
   }
 
   if (opts.verbose > 0)

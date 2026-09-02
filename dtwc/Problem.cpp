@@ -37,6 +37,7 @@
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 
+#include <algorithm> // for min
 #include <array>     // for array
 #include <cstdint>   // for uint32_t, uint64_t
 #include <cstring>   // for memcpy
@@ -751,6 +752,27 @@ static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_stora
       && prob.size() >= 64;
 }
 
+/// Reject automatic-checkpoint settings that fill_distance_matrix cannot honour,
+/// before any distance is computed.
+void Problem::validate_checkpoint_settings() const
+{
+  if (!checkpoint.enabled) return;
+  if (checkpoint.save_interval < 1)
+    throw InvalidInput(
+      "Problem::fill_distance_matrix: checkpoint.save_interval must be at least "
+      "1 row when checkpoint.enabled; got "
+      + std::to_string(checkpoint.save_interval) + ".");
+  if (checkpoint.directory.empty())
+    throw InvalidInput(
+      "Problem::fill_distance_matrix: checkpoint.enabled requires a non-empty "
+      "checkpoint.directory.");
+  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat))
+    throw InvalidInput(
+      "Problem::fill_distance_matrix: automatic checkpointing requires dense "
+      "distance storage. Mapped storage is already durable on disk; the dense "
+      "checkpoint format is for heap matrices.");
+}
+
 /**
  * @brief Fills the distance matrix using brute-force parallel computation.
  * @details Original implementation: parallel loop over all upper-triangle pairs
@@ -763,10 +785,13 @@ void Problem::fillDistanceMatrix_BruteForce()
                                        ? &validated_dtw_function_f32()
                                        : nullptr;
 
-  // Resize (Dense only — mmap is pre-allocated at creation).
+  // Resize (Dense only — mmap is pre-allocated at creation). resize() re-fills
+  // every packed slot with NaN, so it must NOT run when the matrix is already
+  // the right size: an unconditional resize discarded a restored checkpoint and
+  // recomputed every pair. Matches core::fill_distance_matrix_pruned.
   visit_distmat([&](auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      m.resize(N);
+      if (m.size() != N) m.resize(N);
     }
   });
 
@@ -799,7 +824,24 @@ void Problem::fillDistanceMatrix_BruteForce()
       }
     }
   };
-  run_openmp(fill_row, N, true, 8);
+  if (!checkpoint.enabled) {
+    run_openmp(fill_row, N, true, 8);
+    return;
+  }
+
+  // Invariant: each block is a disjoint row range [block_begin, end); the save
+  // runs on the main thread after run_openmp has joined, so it never observes a
+  // partially written row.
+  const size_t stride = static_cast<size_t>(checkpoint.save_interval);
+  size_t block_begin = 0;
+  auto fill_block = [&](size_t k) { fill_row(block_begin + k); };
+  for (; block_begin < N; block_begin += stride) {
+    const size_t end = std::min(block_begin + stride, N);
+    run_openmp(fill_block, end - block_begin, true, 8);
+    // The tag must be the metric this fill computed; both autosave sites read
+    // it from the bound dense cache configuration, never from a literal.
+    save_checkpoint(*this, checkpoint.directory, dense_cache_metric());
+  }
 }
 
 /**
@@ -813,6 +855,7 @@ void Problem::fillDistanceMatrix_BruteForce()
  */
 void Problem::fill_distance_matrix()
 {
+  validate_checkpoint_settings();
   preflight_current_distance_semantics();
   validate_lower_bound_strategy(lb_strategy_);
   validate_mmap_cache_identity();
@@ -915,6 +958,17 @@ void Problem::fill_distance_matrix()
     if (verbose_) {
       std::cout << "Pruned strategy requires dense distance storage; using exact "
                    "BruteForce to fill the configured mmap distance matrix.\n";
+    }
+    effective = DistanceMatrixStrategy::BruteForce;
+  }
+
+  // Mid-fill checkpoint saves exist only on the BruteForce row path (the pruned
+  // builder owns its own schedule). Pruned is an exact optimisation hint, so
+  // downgrade rather than refuse.
+  if (effective == DistanceMatrixStrategy::Pruned && checkpoint.enabled) {
+    if (verbose_) {
+      std::cout << "Automatic checkpointing saves on the exact BruteForce row "
+                   "schedule; using BruteForce instead of Pruned.\n";
     }
     effective = DistanceMatrixStrategy::BruteForce;
   }
@@ -1049,6 +1103,11 @@ void Problem::fill_distance_matrix()
       "Problem::fill_distance_matrix: unreachable distance strategy");
   }
 
+  // BruteForce already saved after its last row block; every other backend fills
+  // in one call, so its only automatic save is here.
+  if (checkpoint.enabled && effective != DistanceMatrixStrategy::BruteForce)
+    save_checkpoint(*this, checkpoint.directory, dense_cache_metric());
+
   if (verbose_)
     std::cout << "Distance matrix has been filled!" << '\n';
 }
@@ -1087,6 +1146,14 @@ void Problem::cluster()
  */
 void Problem::cluster_and_process()
 {
+  // cluster() is side-effect free by contract; the heuristic run artifacts
+  // (per-repetition medoids, best-repetition record) belong to this entry point.
+  struct ArtifactScope
+  {
+    bool &flag;
+    explicit ArtifactScope(bool &f) : flag{ f } { flag = true; }
+    ~ArtifactScope() { flag = false; }
+  } artifact_scope{ persist_run_artifacts_ };
   cluster();
   print_clusters(); // Prints to screen.
   write_distance_matrix();
@@ -1238,7 +1305,7 @@ void Problem::init_with_seed(std::uint64_t seed)
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
-  cluster_by_kmedoids_lloyd_impl(true);
+  cluster_by_kmedoids_lloyd_impl(persist_run_artifacts_);
 }
 
 void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
@@ -1260,21 +1327,24 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
   std::vector<int> best_labels;
 
   for (int i_rand = 0; i_rand < repetitions; i_rand++) {
-    std::cout << "Metoid initialisation is started.\n";
+    if (verbose_) std::cout << "Metoid initialisation is started.\n";
     init_with_seed(random_seed_ + static_cast<std::uint64_t>(i_rand));
 
-    std::cout << "Metoid initialisation is finished. "
-              << Nc << " medoids are initialised.\n"
-              << "Start clustering:\n";
+    if (verbose_)
+      std::cout << "Metoid initialisation is finished. "
+                << Nc << " medoids are initialised.\n"
+                << "Start clustering:\n";
 
     auto [status, total_cost, iters] =
       cluster_by_kMedoidsLloyd_single(i_rand, persist_artifacts);
     last_iterations_ = iters;
 
-    if (status == 0)
-      std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
-    else if (status == -1)
-      std::cout << "Maximum iteration is reached before medoids are converged!\n";
+    if (verbose_) {
+      if (status == 0)
+        std::cout << "Medoids are same for last two iterations, algorithm is converged!\n";
+      else if (status == -1)
+        std::cout << "Maximum iteration is reached before medoids are converged!\n";
+    }
 
     if (i_rand == 0 || total_cost < best_cost) {
       best_cost = total_cost;
@@ -1283,7 +1353,8 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
       best_medoids = centroids_ind;
       best_labels = clusters_ind;
     }
-    std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
+    if (verbose_)
+      std::cout << "Tot cost: " << total_cost << " best cost: " << best_cost << " i rand: " << i_rand << '\n';
   }
 
   centroids_ind = std::move(best_medoids);
@@ -1291,7 +1362,7 @@ void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
   last_iterations_ = best_iterations;
   if (persist_artifacts)
     writeBestRep(best_rep);
-  else
+  else if (verbose_)
     std::cout << "Best repetition: " << best_rep << '\n';
 }
 
@@ -1318,18 +1389,22 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
   for (int i = 0; i < iteration_limit; i++) {
     actual_iters = i + 1;
 
-    std::cout << "Medoids: ";
-    for (auto medoid : centroids_ind)
-      std::cout << get_name(medoid) << ' ';
+    if (verbose_) {
+      std::cout << "Medoids: ";
+      for (auto medoid : centroids_ind)
+        std::cout << get_name(medoid) << ' ';
+    }
 
     centroids_all.push_back(centroids_ind);
 
     assign_clusters();
 
-    std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
-              << find_total_cost() << ".\n"; // Uses clusters_ind to find cost.
+    if (verbose_) {
+      std::cout << " Iteration: " << i << " completed with cost: " << std::setprecision(10)
+                << find_total_cost() << ".\n"; // Uses clusters_ind to find cost.
 
-    print_clusters();
+      print_clusters();
+    }
     distanceInClusters(); // Just populates distance matrix ahead.
     calculate_medoids();   // Changes centroids_ind
 
@@ -1348,7 +1423,8 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
     assign_clusters();
 
   const double total_cost = find_total_cost();
-  std::cout << "Procedure is completed with cost: " << total_cost << '\n';
+  if (verbose_)
+    std::cout << "Procedure is completed with cost: " << total_cost << '\n';
   if (persist_artifacts)
     writeMedoids(centroids_all, rep, total_cost);
   return {status, total_cost, actual_iters};

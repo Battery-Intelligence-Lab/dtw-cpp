@@ -93,13 +93,14 @@ MPIDistMatResult compute_distance_matrix_mpi(
 
   // Divide pairs among ranks: contiguous blocks with remainder distributed.
   //
-  // TODO(Phase 5, perf — PLAN.md "Phase 5 — Speed & algorithms program"):
+  // TODO(perf — archived plan `.claude/PLAN-archive-2026-07-20-phases0-9.md`
+  // "Phase 5 — Speed & algorithms program"; reopen under PLAN.md R5):
   // Contiguous linear-index blocks give each rank an equal *count* of pairs,
   // but not an equal amount of *work*. A contiguous block clusters around
   // specific rows i, so with variable-length series the O(L_i * L_j) DTW cost
   // is unbalanced across ranks (the triangular-partition load imbalance noted
   // in the 2026-06-01 audit). This is a performance concern only — results are
-  // correct — so it is deferred to Phase 5 and deliberately not fixed here.
+  // correct — so it is deferred and deliberately not fixed here.
   const size_t pairs_per_rank = total_pairs / static_cast<size_t>(world_size);
   const size_t remainder = total_pairs % static_cast<size_t>(world_size);
 

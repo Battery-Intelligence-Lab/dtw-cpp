@@ -122,7 +122,7 @@ TEST_CASE("validate_metric_for_device rejects a non-L1 metric on the CPU path", 
   REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/true).empty());
 }
 
-TEST_CASE("CLI distance config rejects YAML transformer bypasses before work",
+TEST_CASE("CLI distance config rejects transformer bypasses before work",
           "[cli][config][distance]")
 {
   CHECK(validate_cli_distance_configuration(
@@ -164,9 +164,9 @@ TEST_CASE("CLI route selectors reject values that bypass CLI11 transformers",
           "[cli][config][method][solver][linkage]")
 {
   // Audit 2026-09-02 A7: method/solver/linkage dispatch chains had no terminal
-  // else, so a selector that reached them unvalidated (from YAML, whose manual
-  // normalisation had drifted from the CheckedTransformer maps) silently
-  // produced an empty result / the default solver / Average linkage.
+  // else, so a selector that reached them unvalidated (bypassing the
+  // CheckedTransformer maps) silently produced an empty result / the default
+  // solver / Average linkage.
   CHECK(validate_cli_route_selectors("auto", "highs", "average").empty());
   CHECK(validate_cli_route_selectors("tadpole", "gurobi", "single").empty());
   CHECK(validate_cli_route_selectors("onebatch", "highs", "complete").empty());
@@ -606,7 +606,7 @@ TEST_CASE("CLI rejects legacy precomputed CSV plus mmap before false success",
 //
 // These pin the SSOT table (cli_renames) and the warning formatter that
 // dtwc_cl main() iterates in its post-parse handler to (a) accept an old flag /
-// old TOML-or-YAML key, (b) emit exactly one stderr warning per use, and (c)
+// old TOML key, (b) emit exactly one stderr warning per use, and (c)
 // yield precedence to the canonical spelling. The unit test cannot link CLI11
 // (DTWC_CL_NO_MAIN excludes it), so it drives the CLI11-free mechanism directly;
 // the live CLI11 routing + stderr emission is exercised end-to-end against the
@@ -621,8 +621,8 @@ TEST_CASE("cli_renames maps deprecated flags to contract-canonical names", "[cli
   REQUIRE(canonical_flag_for("--clusters") == "--n-clusters"); // §1.5/§2.1 n_clusters
   REQUIRE(canonical_flag_for("--restart") == "--resume");      // §2.7
 
-  // TOML/YAML "old key acceptance": the bare-key form (no leading dashes, i.e.
-  // how it appears in a --config TOML or --yaml-config file) resolves the same.
+  // TOML "old key acceptance": the bare-key form (no leading dashes, i.e. how
+  // it appears in a --config TOML file) resolves the same.
   REQUIRE(canonical_flag_for("clusters") == "--n-clusters");
   REQUIRE(canonical_flag_for("restart") == "--resume");
 

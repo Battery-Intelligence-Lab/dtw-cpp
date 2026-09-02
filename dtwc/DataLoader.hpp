@@ -550,7 +550,7 @@ private:
     std::vector<std::size_t> flat_sizes;
     for (const auto &file : sorted_directory_files(data_path)) {
       if (!ndata_wants_more(Ndata, names.size())) break;
-      names.push_back(file.stem().string());
+      names.push_back(path_to_utf8(file.stem()));
       flat_sizes.push_back(count_series_values(file));
     }
     return Data::metadata_only(std::move(names), std::move(flat_sizes), 1);

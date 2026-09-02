@@ -436,3 +436,52 @@ TEST_CASE("Problem::read_distance_matrix propagates a failed read",
     std::filesystem::remove(bad);
   }
 }
+
+TEST_CASE("Directory-source series names are UTF-8 on every platform",
+          "[fileOperations][unicode]")
+{
+  // path::string() is the NATIVE narrow encoding: on Windows the ACP, so this
+  // stem came back as the single byte 0xE9 and the Python binding raised
+  // UnicodeDecodeError while the CLI wrote "caf\351" into its CSVs. The stem is
+  // spelled with a universal-character escape so the assertion does not depend
+  // on this source file's own encoding.
+  const std::u8string stem = u8"caf\u00e9";
+  const std::string expected_utf8 = "caf\xc3\xa9";
+
+  const auto folder = fs::temp_directory_path()
+                    / ("dtwc_utf8_names_"
+                       + std::to_string(reinterpret_cast<std::uintptr_t>(&stem)));
+  fs::create_directories(folder);
+  const auto file = folder / fs::path(stem + u8".csv");
+  {
+    std::ofstream out(file);
+    REQUIRE(out.good());
+    out << "1\n2\n3\n";
+  }
+
+  DataLoader loader(folder);
+  loader.verbosity(0);
+  dtwc::Problem problem("utf8_names");
+  problem.set_data(loader.load_local());
+
+  REQUIRE(problem.size() == 1);
+  CHECK(std::string{ problem.series_name(0) } == expected_utf8);
+
+  // The metadata-only folder route names series the same way.
+  DataLoader metadata_loader(folder);
+  metadata_loader.verbosity(0);
+  const auto metadata = metadata_loader.load_metadata();
+  REQUIRE(metadata.size() == 1);
+  CHECK(std::string{ metadata.name(0) } == expected_utf8);
+
+  // utf8_to_path is the inverse, and must not throw on a name that never came
+  // from a loader: MSVC's char8_t conversion throws on unmappable bytes, which
+  // would turn a native-encoded CLI --name into a failed write.
+  CHECK(path_to_utf8(utf8_to_path(expected_utf8)) == expected_utf8);
+  CHECK(utf8_to_path("plain.csv").string() == "plain.csv");
+  const std::string native_ansi = "caf\xe9.csv"; // lone 0xE9: not valid UTF-8
+  CHECK(utf8_to_path(native_ansi).string() == native_ansi);
+
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+}

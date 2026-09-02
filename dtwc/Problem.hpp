@@ -25,7 +25,7 @@
 #include <variant>
 
 #include <cstddef>     // for size_t
-#include <cstdint>     // for uint64_t
+#include <cstdint>     // for uint64_t, int64_t
 #include <filesystem>  // for operator/, path
 #include <string>      // for char_traits, operator+, operator<<
 #include <string_view> // for string_view
@@ -39,12 +39,9 @@
 #include <stdexcept>
 
 #include "core/distance_matrix.hpp"
+#include "checkpoint.hpp" // for CheckpointOptions, load_checkpoint
 
 namespace dtwc {
-
-class Problem;
-bool load_checkpoint(Problem &prob, const std::string &path,
-                     core::MetricType metric);
 
 /// CUDA-specific compute settings. Only used when distance_strategy == CUDA.
 /// Metal has no equivalent — it auto-picks the system default device and FP32.
@@ -73,7 +70,7 @@ struct MIPSettings {
   bool verbose_solver = false;     ///< Show solver log output.
   int max_benders_iter = 200;      ///< Maximum Benders iterations (cap exhausted ⇒ SolverError).
   std::string benders = "auto";    ///< Benders mode: "auto" (N>200), "on", "off".
-  long lr_max_nodes = 2000000;     ///< Method::LRCore branch-and-bound node cap (mip::LagrangianParams::max_nodes).
+  std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap (mip::LagrangianParams::max_nodes). Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
 };
 
 /// Reject MIP settings a solver would otherwise turn into a solver-worded error.
@@ -191,6 +188,9 @@ private:
   LowerBoundStrategy lb_strategy_{ LowerBoundStrategy::Auto };
   core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto };
   bool verbose_{ false };
+  /// Run-artifact files (per-repetition medoids, best-repetition record) belong
+  /// to cluster_and_process(); cluster() itself is side-effect free.
+  bool persist_run_artifacts_{ false };
   path_t output_folder_{ settings::paths::results };
   std::string name_{};
   std::unique_ptr<LoadedData> series_storage_owner_;
@@ -218,6 +218,9 @@ private:
   bool distance_cache_configuration_matches(
     const DistanceCacheConfiguration &expected) const;
   bool dense_cache_configuration_is_current() const;
+  /// Metric the dense cache was bound with, i.e. the metric the CPU fill
+  /// computes. Automatic checkpoint saves tag their generation with it.
+  core::MetricType dense_cache_metric() const noexcept { return dense_cache_configuration_.metric; }
   static void preflight_distance_semantics(
     const core::DTWVariantParams &params,
     core::MissingStrategy missing,
@@ -240,6 +243,7 @@ private:
   void validate_dtw_function_configuration() const;
   DistanceCacheIdentity distance_cache_identity(core::MetricType metric) const;
   void validate_mmap_cache_identity() const;
+  void validate_checkpoint_settings() const;
   void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
   void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
@@ -249,7 +253,8 @@ private:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
   friend void MIP_clustering_byBenders(Problem &prob);
-  // Benders disables only heuristic artifact files; public Lloyd always passes true.
+  // Benders disables the nested heuristic's artifact files unconditionally; the
+  // public Lloyd forwards persist_run_artifacts_.
   void cluster_by_kmedoids_lloyd_impl(bool persist_artifacts);
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
     int rep, bool persist_artifacts);
@@ -308,6 +313,7 @@ public:
   DistanceMatrixStrategy distance_strategy{ DistanceMatrixStrategy::Auto }; /*!< Distance matrix strategy. */
   CUDASettings cuda_settings;                /*!< GPU options (used when distance_strategy == GPU). */
   MIPSettings mip_settings;                  /*!< MIP solver tuning parameters. */
+  CheckpointOptions checkpoint;              /*!< Automatic mid-fill checkpointing (see checkpoint.hpp). */
 
   std::function<void(Problem &)> init_fun{ init::random }; /*!< Initialisation function. */
 

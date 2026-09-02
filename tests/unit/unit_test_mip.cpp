@@ -750,6 +750,7 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
   benders.mip_settings.benders = "on";
   benders.mip_settings.warm_start = true;
   benders.mip_settings.max_benders_iter = 50;
+  benders.set_verbose(true); // Benders progress is verbose-gated; artifacts are not.
   std::string benders_stdout;
   {
     ScopedCoutCapture capture;
@@ -776,8 +777,10 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
   lloyd.set_random_seed(1234);
   std::string lloyd_stdout;
   {
+    // cluster_and_process() is the entry point that owns the run artifacts;
+    // cluster()/cluster_by_kmedoids_lloyd() are side-effect free.
     ScopedCoutCapture capture;
-    lloyd.cluster_by_kmedoids_lloyd();
+    lloyd.cluster_and_process();
     lloyd_stdout = capture.str();
   }
 
