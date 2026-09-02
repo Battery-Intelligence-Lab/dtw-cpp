@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed macOS Python source and editable installs by statically bundling HiGHS
+  into the native extension, eliminating the unresolved
+  `@rpath/libhighs.1.dylib` import dependency.
 - Canonical construction of `Problem` no longer diagnoses the deprecated
   `maxIter` / `N_repetition` fields under GCC's constructor NSDMI check, so
   the F22 canonical probe stays silent while caller access of those fields

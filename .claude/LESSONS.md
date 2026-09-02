@@ -37,6 +37,12 @@ Critical knowledge to avoid repeating mistakes.
 
 ## Python packaging / bindings
 
+- **A wheel repair tool does not protect local source/editable installs.**
+  HiGHS defaults to a shared library on Unix, leaving the installed Python
+  extension with `@rpath/libhighs.1.dylib` but no `LC_RPATH`; cibuildwheel can
+  repair release wheels, while `uv pip install -e .` cannot. Build HiGHS and
+  its extras as scoped PIC static libraries for Python packaging, and assert
+  the resulting CMake target type during configuration.
 - **Never infer Python import provenance from the checkout layout.** The
   2026-07-23 probe found a mixed environment: `dtwcpp` and `_api.py` resolve to
   `python/dtwcpp/` in the repository, while `_dtwcpp_core` resolves to the venv
