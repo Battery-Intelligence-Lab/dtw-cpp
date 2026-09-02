@@ -344,8 +344,9 @@ class DTWClustering(BaseEstimator, ClusterMixin):
         if restart_count - 1 > max_seed - DEFAULT_RANDOM_SEED:
             raise ValueError("n_init is too large for distinct uint64 restart seeds")
 
-        from dtwcpp import compute_distance_matrix, _resolve_device, get_device
-        eff_device = self.device if self.device is not None else get_device()
+        import dtwcpp
+        from dtwcpp import compute_distance_matrix, _resolve_device
+        eff_device = self.device if self.device is not None else dtwcpp.device()
         backend, _ = _resolve_device(eff_device)
         semantics = self._validate_semantics(backend)
 

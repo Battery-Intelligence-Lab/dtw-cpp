@@ -2,7 +2,7 @@
 
 This file deliberately drives the public ``dtwcpp`` surface.  Legacy spellings
 belong here (and in the binding/contract history), not in ordinary examples or
-tests.  The registered inventory is 12 symbols and 13 primary operations
+tests.  The registered inventory is 13 symbols and 14 primary operations
 because ``Problem.n_repetition`` has distinct read and write operations.
 """
 
@@ -108,6 +108,11 @@ def _scoring_problem(name: str) -> Any:
 
 def _scoring_pair() -> tuple[Any, Any]:
     return _scoring_problem("f22-canonical"), _scoring_problem("f22-legacy")
+
+
+def _device_pair() -> tuple[Any, Any]:
+    dtwcpp.device("cpu")
+    return None, None
 
 
 def _label_pair() -> tuple[Any, Any]:
@@ -366,6 +371,15 @@ _CASES = [
         _equal,
     ),
     AliasCase(
+        "get_device",
+        "dtwcpp.get_device",
+        "dtwcpp.device",
+        _device_pair,
+        lambda _: dtwcpp.device(),
+        lambda _: dtwcpp.get_device(),
+        _equal,
+    ),
+    AliasCase(
         "ClusterResult",
         "dtwcpp.ClusterResult",
         "dtwcpp.Result",
@@ -400,8 +414,8 @@ def _print_green_marker():
     )
     if complete:
         print(
-            "F22_PYTHON_GATE alias_symbols=12 operations=13 "
-            "primary_warn_once=13 canonical_silent=13 equivalent=13 "
+            "F22_PYTHON_GATE alias_symbols=13 operations=14 "
+            "primary_warn_once=14 canonical_silent=14 equivalent=14 "
             "class_routes=3 identity=2 ordinary_legacy=0 verdict=PASS"
         )
 
@@ -519,6 +533,7 @@ _LEGACY_CALL_NAMES = {
     "adjusted_rand_index",
     "normalized_mutual_information",
     "ClusterResult",
+    "get_device",
 }
 
 _LEGACY_ATTRIBUTE_NAMES = {

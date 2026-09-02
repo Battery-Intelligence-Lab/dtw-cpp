@@ -164,7 +164,18 @@ class TestBuildCommand:
 # This is the cluster job minus the ssh/rsync transport. Skips if no binary.
 # ---------------------------------------------------------------------------
 def _local_binary():
-    return _hpc.find_dtwc_binary("C:/D/git/dtw-cpp")
+    """The canonical gate binary, else the newest built dtwc_cl under the repo.
+
+    find_dtwc_binary picks the most recently built binary, which on a machine
+    with several configured build trees can be one that cannot start (the
+    Arrow tree needs the pyarrow DLL directories on PATH). Prefer the gate's
+    own binary, exactly as tests/python/test_api.py does.
+    """
+    root = Path(__file__).resolve().parents[2]
+    canonical = root / "build" / "highs-1151" / "bin" / "dtwc_cl.exe"
+    if canonical.is_file():
+        return str(canonical)
+    return _hpc.find_dtwc_binary(str(root))
 
 
 def _bash_path(path):
@@ -1219,8 +1230,7 @@ class TestLocalRoundTrip:
         )
         assert completed.returncode != 0
         assert completed.stderr == (
-            "Error: --input is required via CLI or config file "
-            "(TOML; YAML if built with DTWC_ENABLE_YAML)\n"
+            "Error: --input is required via CLI or config file (TOML)\n"
         )
 
     def test_two_groups_recovered(self, tmp_path):

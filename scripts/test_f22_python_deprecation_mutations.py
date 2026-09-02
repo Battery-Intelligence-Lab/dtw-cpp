@@ -24,8 +24,8 @@ from typing import Iterable
 
 
 PASS_MARKER = (
-    "F22_PYTHON_GATE alias_symbols=12 operations=13 "
-    "primary_warn_once=13 canonical_silent=13 equivalent=13 "
+    "F22_PYTHON_GATE alias_symbols=13 operations=14 "
+    "primary_warn_once=14 canonical_silent=14 equivalent=14 "
     "class_routes=3 identity=2 ordinary_legacy=0 verdict=PASS"
 )
 SUMMARY = re.compile(r"(?P<failed>\d+) failed, (?P<passed>\d+) passed")
@@ -72,7 +72,7 @@ def native_warning_removal(
         "warning_removal",
         True,
         1,
-        17,
+        18,
         (fragment,),
         (
             Edit(
@@ -108,7 +108,7 @@ MUTATIONS = (
         "warning_removal",
         False,
         4,
-        14,
+        15,
         ("ClusterResult", "lookup", "from_import", "star_import"),
         (Edit(INIT, "    if not importlib_preflight:", "    if False:"),),
     ),
@@ -117,7 +117,7 @@ MUTATIONS = (
         "warning_removal",
         False,
         1,
-        17,
+        18,
         ("Result.medoid_indices",),
         (
             Edit(
@@ -134,7 +134,7 @@ MUTATIONS = (
         "behavior_identity",
         False,
         4,
-        14,
+        15,
         ("ClusterResult", "lookup", "from_import", "star_import"),
         (Edit(INIT, "    return Result\n", "    return ClusteringResult\n"),),
     ),
@@ -143,7 +143,7 @@ MUTATIONS = (
         "behavior_identity",
         False,
         1,
-        17,
+        18,
         ("Result.medoid_indices",),
         (
             Edit(
@@ -158,7 +158,7 @@ MUTATIONS = (
         "policy",
         False,
         1,
-        17,
+        18,
         ("Result.medoid_indices",),
         (Edit(API, "DeprecationWarning, stacklevel=2)",
               "DeprecationWarning, stacklevel=200)"),),
@@ -168,7 +168,7 @@ MUTATIONS = (
         "policy",
         False,
         2,
-        16,
+        17,
         ("from_import", "star_import"),
         (Edit(INIT, "    if not importlib_preflight:", "    if True:"),),
     ),
@@ -236,7 +236,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("set_number_of_clusters",),
         (Edit(CORE, "           p.set_n_clusters(n);",
               "           p.set_n_clusters(n + 1);"),),
@@ -246,7 +246,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("n_repetition_get",),
         (Edit(CORE, "                   return p.n_repetitions();",
               "                   return p.n_repetitions() + 1;"),),
@@ -256,7 +256,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("n_repetition_set",),
         (Edit(CORE, "                   p.set_n_repetitions(value);",
               "                   p.set_n_repetitions(value + 1);"),),
@@ -266,7 +266,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("cluster_size",),
         (Edit(CORE, "                   return p.n_clusters();",
               "                   return p.n_clusters() + 1;"),),
@@ -276,7 +276,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("distance_matrix_numpy",),
         (
             Edit(
@@ -293,7 +293,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("set_distance_matrix_from_numpy",),
         (
             Edit(
@@ -310,7 +310,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("davies_bouldin_index",),
         (
             Edit(
@@ -327,7 +327,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("dunn_index",),
         (
             Edit(
@@ -344,7 +344,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("calinski_harabasz_index",),
         (
             Edit(
@@ -361,7 +361,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("adjusted_rand_index",),
         (
             Edit(
@@ -379,7 +379,7 @@ MUTATIONS = (
         "behavior_identity",
         True,
         1,
-        17,
+        18,
         ("normalized_mutual_information",),
         (
             Edit(
@@ -397,7 +397,7 @@ MUTATIONS = (
         "policy",
         True,
         11,
-        7,
+        8,
         NATIVE_CASES,
         (Edit(CORE, "PyExc_DeprecationWarning", "PyExc_FutureWarning"),),
     ),
@@ -406,7 +406,7 @@ MUTATIONS = (
         "policy",
         True,
         11,
-        7,
+        8,
         NATIVE_CASES,
         (
             Edit(
@@ -428,7 +428,7 @@ MUTATIONS = (
         "policy",
         True,
         2,
-        16,
+        17,
         ("distance_matrix_numpy", "set_distance_matrix_from_numpy"),
         (
             Edit(
@@ -796,10 +796,10 @@ def run_control(
         )
     if tested.stdout.count(PASS_MARKER) != 1:
         raise GateError(f"{label}: PASS marker count drift")
-    if re.search(r"\b18 passed\b", tested.stdout) is None:
-        raise GateError(f"{label}: focused 18-pass ledger missing")
+    if re.search(r"\b19 passed\b", tested.stdout) is None:
+        raise GateError(f"{label}: focused 19-pass ledger missing")
     print(
-        f"F22_PYTHON_MUTATION_CONTROL label={label} tests=18/18 "
+        f"F22_PYTHON_MUTATION_CONTROL label={label} tests=19/19 "
         f"sha256={built_hash} verdict=PASS"
     )
     return built_hash

@@ -56,40 +56,31 @@ def save_dataset_csv(
 def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
     """Load a time-series dataset from CSV.
 
-    Expects an optional header row followed by numeric rows.
+    Expects an optional header row followed by numeric rows. Only the header
+    detection is done here; the numeric rows are parsed by the C++
+    ``DataLoader`` — the one reader the CLI, C++ and :func:`dtwcpp.load` share.
 
     Returns
     -------
     data : np.ndarray
         (N, L) float64 array.
     names : list[str]
-        Column names from the header (empty strings if no header).
+        Column names from the header (empty list if no header).
     """
     path = Path(path)
     with open(path, newline="") as f:
-        reader = csv.reader(f)
-        first_row = next(reader)
+        first_row = next(csv.reader(f), [])
 
-        # Detect whether the first row is a header or data.
-        try:
-            first_values = [float(v) for v in first_row]
-            is_header = False
-        except ValueError:
-            is_header = True
+    try:
+        [float(value) for value in first_row]
+    except ValueError:
+        names_out, skip_rows = first_row, 1
+    else:
+        names_out, skip_rows = [], 0
 
-        rows: list[list[float]] = []
-        if not is_header:
-            rows.append(first_values)
-            names_out: list[str] = []
-        else:
-            names_out = first_row
-
-        for row in reader:
-            if row:  # skip blank lines
-                rows.append([float(v) for v in row])
-
-    data = np.array(rows, dtype=np.float64)
-    return data, names_out
+    from dtwcpp import _dtwcpp_core
+    rows = _dtwcpp_core._read_data(str(path), 0, skip_rows, ",").p_vec
+    return np.array([row for row in rows if row], dtype=np.float64), names_out
 
 
 # ---------------------------------------------------------------------------

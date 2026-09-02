@@ -3,6 +3,8 @@
 @brief Tests for the unified device()/load()/cluster()/result.plot() interface.
 @author Volkan Kumtepeli
 """
+import subprocess
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -56,6 +58,54 @@ class TestLoad:
         ds = dtwcpp.load([[1.0, 2.0], [3.0, 4.0]])
         assert ds.as_series() == [[1.0, 2.0], [3.0, 4.0]]
 
+    def test_skip_rows_drops_leading_file_lines(self, tmp_path):
+        """§1.2 parity with C++ load(..., skip_rows) and dtwc_cl --skip-rows."""
+        csv = tmp_path / "hdr.csv"
+        csv.write_text(
+            "id,t0,t1\nunit,s,s\n1,0,0\n2,10,11\n", encoding="utf-8")
+        ds = dtwcpp.load(csv, skip_cols=1, skip_rows=2, delimiter=",")
+        assert ds.skip_rows == 2
+        assert ds.as_series() == [[0.0, 0.0], [10.0, 11.0]]
+
+    def test_skip_rows_drops_leading_series_in_memory(self):
+        ds = dtwcpp.load([[7.0, 7.0], [7.0, 7.0], [0.0, 1.0]], skip_rows=2)
+        assert ds.as_series() == [[0.0, 1.0]]
+
+    @pytest.mark.parametrize("bad,error", [(-1, ValueError), (1.0, TypeError)])
+    def test_invalid_skip_rows_is_rejected_by_cluster(self, bad, error):
+        ds = dtwcpp.Dataset([[0.0], [1.0]], skip_rows=bad)
+        with pytest.raises(error, match="skip_rows"):
+            dtwcpp.cluster(ds, k=1, max_iter=1, device="cpu")
+
+    def test_skip_rows_is_not_silently_dropped_on_hpc(self):
+        ds = dtwcpp.Dataset("/remote/staged.tsv", skip_rows=2)
+        with pytest.raises(dtwcpp.InvalidInput, match="skip_rows"):
+            dtwcpp.cluster(ds, k=1, device="hpc")
+
+    def test_path_source_parses_a_non_numeric_id_column(self, tmp_path):
+        """§1.2: skip_cols drops FIELDS before numeric parsing, as C++ does."""
+        csv = tmp_path / "named.csv"
+        csv.write_text("alpha,0,0\nbeta,10,11\n", encoding="utf-8")
+        ds = dtwcpp.load(csv, skip_cols=1)
+        assert ds.as_series() == [[0.0, 0.0], [10.0, 11.0]]
+
+    def test_path_source_supports_ragged_rows(self, tmp_path):
+        """C++ DataLoader stores variable-length series; Python must too."""
+        csv = tmp_path / "ragged.csv"
+        csv.write_text("0,1,2\n3,4\n", encoding="utf-8")
+        assert dtwcpp.load(csv).as_series() == [[0.0, 1.0, 2.0], [3.0, 4.0]]
+
+    def test_in_memory_source_honours_skip_cols(self):
+        """C++ erases the leading columns of in-memory rows (api.cpp)."""
+        ds = dtwcpp.load([[9.0, 0.0, 1.0], [9.0, 2.0, 3.0]], skip_cols=1)
+        assert ds.as_series() == [[0.0, 1.0], [2.0, 3.0]]
+
+    def test_in_memory_skip_cols_beyond_series_length_is_rejected(self):
+        ds = dtwcpp.load([[0.0, 1.0]], skip_cols=3)
+        with pytest.raises(dtwcpp.InvalidInput,
+                           match="skip_cols exceeds an in-memory series length"):
+            ds.as_series()
+
 
 # ---------------------------------------------------------------------------
 # cluster() — C++ Tier-1 validate_common parity (M39)
@@ -92,8 +142,9 @@ class TestClusterCommonValidation:
 
         monkeypatch.setattr(_api, "load", poison("load"))
         monkeypatch.setattr(_api.Dataset, "as_series", poison("as_series"))
+        monkeypatch.setattr(_api.Dataset, "as_data", poison("as_data"))
         monkeypatch.setattr(_api, "_run_local_method", poison("local dispatch"))
-        monkeypatch.setattr(dtwcpp, "get_device", poison("get_device"))
+        monkeypatch.setattr(dtwcpp, "device", poison("device lookup"))
         monkeypatch.setattr(dtwcpp, "_resolve_device", poison("device resolution"))
         monkeypatch.setattr(
             dtwcpp, "compute_distance_matrix", poison("distance compute"),
@@ -253,6 +304,16 @@ class TestClusterCommonValidation:
 # cluster() — local cpu path
 # ---------------------------------------------------------------------------
 class TestClusterLocal:
+    def test_k_above_series_count_is_rejected(self):
+        """Parity with C++ cluster(): k must not exceed the number of series."""
+        with pytest.raises(dtwcpp.InvalidInput,
+                           match="k must not exceed the number of series"):
+            dtwcpp.cluster([[0.0], [1.0]], k=3)
+
+    def test_empty_dataset_is_rejected(self):
+        with pytest.raises(dtwcpp.InvalidInput, match="dataset is empty"):
+            dtwcpp.cluster([], k=1)
+
     def test_recovers_two_groups(self):
         res = dtwcpp.cluster(_two_groups(), k=2)
         assert res.n_series == 12
@@ -384,10 +445,344 @@ class TestMatrixFreeBand:
         full = dtwcpp.cluster([x, y], k=1, method=method, band=-1)
         banded = dtwcpp.cluster([x, y], k=1, method=method, band=5)
 
-        assert full.distance_matrix is None
-        assert banded.distance_matrix is None
+        # Matrix-free: the run itself materialises nothing (the cache is
+        # empty); reading the property is an explicit N^2 request (F5).
+        assert full._distance_matrix is None
+        assert banded._distance_matrix is None
         assert full.cost == pytest.approx(8.6, abs=1e-12)
         assert banded.cost == pytest.approx(63.85, abs=1e-12)
+
+
+class TestCpuMatrixRoute:
+    """cluster() fills the matrix through the Problem the CLI itself uses.
+
+    Tier-1 no longer materialises a Python list to hand to
+    compute_distance_matrix; the two routes must stay digit-identical, banded
+    and unbanded.
+    """
+
+    _X = [0.2, -0.1, 1.4, 3.2, 7.1, 12.3, 9.2, 4.4,
+          1.1, -0.3, 0.5, -0.8, 0.2, 0.7, -0.4, 0.9,
+          -0.2, 0.3, -0.7, 0.4, -0.1, 0.6, -0.5, 0.8]
+    _Y = [-0.4, -0.2, 0.1, -0.3, 0.4, -0.1, 0.2, 0.0,
+          0.35, 0.05, 1.55, 3.35, 7.25, 12.45, 9.35, 4.55,
+          1.25, -0.15, 0.65, -0.65, 0.35, 0.85, -0.25, 1.05]
+
+    @pytest.mark.parametrize("band", [-1, 5])
+    def test_matrix_is_digit_identical_to_compute_distance_matrix(self, band):
+        res = dtwcpp.cluster([self._X, self._Y], k=1, method="pam", band=band)
+        oracle = dtwcpp.compute_distance_matrix([self._X, self._Y], band=band)
+        assert res.distance_matrix.tolist() == oracle.tolist()
+
+
+class TestMatrixFreeScoring:
+    """C++ Result::score/save fill the retained Problem lazily (api.cpp)."""
+
+    _SERIES = [[0.0], [0.5], [1.0], [8.0], [8.5], [9.0]]
+
+    @pytest.mark.parametrize("method", ["onebatch", "clara", "tadpole"])
+    @pytest.mark.parametrize(
+        "score", ["silhouette", "davies_bouldin", "dunn", "inertia"])
+    def test_score_is_available_after_a_matrix_free_run(self, method, score):
+        """The lazily filled matrix must score identically to an eager one."""
+        res = dtwcpp.cluster(self._SERIES, k=2, method=method)
+        assert res._distance_matrix is None
+        oracle = dtwcpp.Result(
+            res.labels, device="cpu", elapsed_s=0.0, k=2,
+            n_series=len(self._SERIES), medoid_indices=res.medoids,
+            distance_matrix=dtwcpp.compute_distance_matrix(self._SERIES))
+        assert res.score(score) == pytest.approx(oracle.score(score), abs=1e-12)
+
+    @pytest.mark.parametrize("method", ["onebatch", "clara", "tadpole"])
+    def test_distance_matrix_fills_on_demand_after_a_matrix_free_run(self, method):
+        """F5: C++ Result::distance_matrix() fills the retained Problem.
+
+        Reading the property is an explicit N^2 request; before this fix it
+        stayed None forever and plot() refused a perfectly local cpu run.
+        """
+        res = dtwcpp.cluster(self._SERIES, k=2, method=method)
+        assert res._distance_matrix is None          # nothing materialised yet
+        filled = res.distance_matrix
+        assert filled is not None
+        assert res._distance_matrix is filled        # cached, filled once
+        np.testing.assert_allclose(
+            filled, dtwcpp.compute_distance_matrix(self._SERIES), atol=1e-12)
+
+    def test_plot_works_after_a_matrix_free_cpu_run(self, tmp_path):
+        """A cpu run always has a local matrix, so plot() must not refuse."""
+        import matplotlib
+        matplotlib.use("Agg")
+        res = dtwcpp.cluster(self._SERIES, k=2, method="clara")
+        out = tmp_path / "clara.png"
+        assert res.plot(png=str(out), show=False) == str(out)
+        assert out.exists()
+
+    def test_unknown_score_still_rejected_after_matrix_free_run(self):
+        res = dtwcpp.cluster(self._SERIES, k=2, method="clara")
+        with pytest.raises(dtwcpp.InvalidInput, match="unknown score"):
+            res.score("nope")
+
+    def test_save_after_a_matrix_free_run_writes_all_four_files(self, tmp_path):
+        res = dtwcpp.cluster(self._SERIES, k=2, method="clara")
+        res.save(tmp_path)
+        for suffix in ("_labels.csv", "_medoids.csv", "_distance_matrix.csv",
+                       "_silhouettes.csv"):
+            assert (tmp_path / f"{res.name}{suffix}").exists()
+
+    def test_hpc_result_still_reports_the_missing_matrix(self):
+        res = dtwcpp.Result([0, 0, 1, 1], device="hpc", elapsed_s=1.0,
+                            k=2, n_series=4)
+        with pytest.raises(dtwcpp.InvalidInput, match="no local distance matrix"):
+            res.score("silhouette")
+
+
+# ---------------------------------------------------------------------------
+# §1.4 save() with an undefined silhouette — warn and skip, never propagate
+# ---------------------------------------------------------------------------
+class TestSaveUndefinedSilhouette:
+    """C++ ``Result::save`` catches ``UndefinedScore``, warns, skips the file.
+
+    ``score("silhouette")`` keeps raising: asking for the number is a different
+    contract (api.cpp:281-299, api-contract-2.0.md §1.4).
+    """
+
+    _SERIES = [[0.0, 0.1], [0.5, 0.4], [1.0, 1.1], [8.0, 8.2]]
+
+    def test_undefined_score_is_a_bound_leaf_under_invalid_input(self):
+        assert issubclass(dtwcpp.UndefinedScore, dtwcpp.InvalidInput)
+        assert issubclass(dtwcpp.UndefinedScore, dtwcpp.DtwcError)
+        assert issubclass(dtwcpp.UndefinedScore, ValueError)
+
+    def test_silhouette_of_one_cluster_raises_undefined_score(self):
+        prob = dtwcpp.Problem("one")
+        prob.set_data(self._SERIES, [str(i) for i in range(len(self._SERIES))])
+        prob.set_distance_matrix(dtwcpp.compute_distance_matrix(self._SERIES))
+        prob.set_n_clusters(1)
+        prob.clusters_ind = [0] * len(self._SERIES)
+        prob.centroids_ind = [0]
+        with pytest.raises(dtwcpp.UndefinedScore, match="at least 2 non-empty"):
+            dtwcpp.silhouette(prob)
+
+    def test_save_with_one_cluster_warns_on_stderr_and_skips_the_file(
+            self, tmp_path, capsys):
+        """C++ Result::save writes to std::cerr and returns (api.cpp:284-289).
+
+        A Python ``warnings.warn`` here would turn a *successful* save into an
+        exception under ``-W error``; the CLI does not fail, so neither may we.
+        """
+        import warnings
+
+        res = dtwcpp.cluster(self._SERIES, k=1, method="pam")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            res.save(tmp_path)
+        err = capsys.readouterr().err
+        assert err.startswith("Warning: silhouettes skipped: silhouette "
+                              "requires at least 2 non-empty clusters;")
+        assert err.endswith("\n")
+        for suffix in ("_labels.csv", "_medoids.csv", "_distance_matrix.csv"):
+            assert (tmp_path / f"{res.name}{suffix}").is_file()
+        assert not (tmp_path / f"{res.name}_silhouettes.csv").exists()
+
+    def test_score_silhouette_still_raises_undefined_score(self):
+        res = dtwcpp.cluster(self._SERIES, k=1, method="pam")
+        with pytest.raises(dtwcpp.UndefinedScore):
+            res.score("silhouette")
+
+
+# ---------------------------------------------------------------------------
+# §1.2 ragged in-memory sources — C++ load(series_type) takes variable lengths
+# ---------------------------------------------------------------------------
+class TestRaggedInMemorySource:
+    _RAGGED = [[0.0, 0.1, 0.2, 0.3], [0.05, 0.15], [9.0, 9.1, 9.2],
+               [9.2, 9.05, 9.1, 9.3, 9.15]]
+
+    def test_as_series_preserves_variable_lengths(self):
+        assert dtwcpp.load(self._RAGGED).as_series() == self._RAGGED
+
+    def test_cluster_runs_on_a_ragged_list(self):
+        res = dtwcpp.cluster(self._RAGGED, k=2, method="pam")
+        assert len(res.labels) == len(self._RAGGED)
+
+    def test_labels_match_the_cpp_path_on_the_same_ragged_data(self):
+        res = dtwcpp.cluster(self._RAGGED, k=2, method="pam")
+        prob = dtwcpp.Problem("dataset")
+        prob.set_band(-1)
+        prob.set_data(self._RAGGED,
+                      [str(i) for i in range(len(self._RAGGED))])
+        prob.set_distance_matrix(dtwcpp.compute_distance_matrix(self._RAGGED))
+        ref = dtwcpp.fast_pam_seeded(prob, 2, dtwcpp.DEFAULT_RANDOM_SEED, 100)
+        np.testing.assert_array_equal(res.labels, ref.labels)
+        np.testing.assert_array_equal(res.medoids, ref.medoid_indices)
+
+    def test_skip_rows_and_skip_cols_apply_to_ragged_rows(self):
+        ds = dtwcpp.load([[7.0, 7.0], [1.0, 0.0, 1.0], [2.0, 5.0]],
+                         skip_rows=1, skip_cols=1)
+        assert ds.as_series() == [[0.0, 1.0], [5.0]]
+
+    def test_skip_cols_beyond_a_ragged_series_is_rejected(self):
+        ds = dtwcpp.load([[0.0, 1.0, 2.0], [3.0]], skip_cols=2)
+        with pytest.raises(dtwcpp.InvalidInput,
+                           match="skip_cols exceeds an in-memory series length"):
+            ds.as_series()
+
+
+# ---------------------------------------------------------------------------
+# §1.4 series names — Tier-1 output carries the loader's names, as C++ does
+# ---------------------------------------------------------------------------
+def _dtwc_cl_binary():
+    """The canonical gate binary, else the newest built dtwc_cl under the repo."""
+    from dtwcpp import _hpc
+    root = Path(__file__).resolve().parents[2]
+    canonical = root / "build" / "highs-1151" / "bin" / "dtwc_cl.exe"
+    if canonical.is_file():
+        return str(canonical)
+    return _hpc.find_dtwc_binary(str(root))
+
+
+class TestSeriesNames:
+    """``Problem::series_name(i)`` comes from the loader, not from ``range(N)``."""
+
+    def test_batch_file_names_are_the_loader_row_numbers(self, tmp_path):
+        csv = tmp_path / "batch.csv"
+        csv.write_text("0,1\n2,3\n4,5\n", encoding="utf-8")
+        assert dtwcpp.load(csv).series_names() == ["1", "2", "3"]
+
+    def test_folder_names_are_file_stems(self, tmp_path):
+        folder = tmp_path / "folder"
+        folder.mkdir()
+        (folder / "alpha.csv").write_text("0,1,2\n", encoding="utf-8")
+        (folder / "beta.csv").write_text("9,8,7\n", encoding="utf-8")
+        assert dtwcpp.load(folder).series_names() == ["alpha", "beta"]
+
+    def test_in_memory_names_are_the_zero_based_ordinals(self):
+        assert dtwcpp.load([[0.0], [1.0]]).series_names() == ["0", "1"]
+
+    def test_saved_labels_carry_the_file_names(self, tmp_path):
+        csv = tmp_path / "named.csv"
+        csv.write_text("0,0.1\n0.2,0.1\n9,9.1\n9.2,9.0\n", encoding="utf-8")
+        res = dtwcpp.cluster(dtwcpp.load(csv), k=2, method="pam")
+        res.save(tmp_path)
+        lines = (tmp_path / "named_labels.csv").read_text().splitlines()
+        assert [line.split(",")[0] for line in lines[1:]] == ["1", "2", "3", "4"]
+
+    def test_save_is_byte_identical_to_the_cli(self, tmp_path):
+        """A CLI run and a Python run on one file must write the same bytes."""
+        binary = _dtwc_cl_binary()
+        assert binary is not None, "no dtwc_cl binary found; build one first"
+        csv = tmp_path / "parity.csv"
+        np.savetxt(csv, _two_groups(), delimiter=",")
+        cli_out = tmp_path / "cli"
+        py_out = tmp_path / "py"
+        run = subprocess.run(
+            [binary, "-i", str(csv), "-o", str(cli_out), "--name", "parity",
+             "-k", "2", "-m", "pam"],
+            capture_output=True, text=True)
+        assert run.returncode == 0, run.stderr
+        dtwcpp.cluster(dtwcpp.load(csv), k=2, method="pam").save(py_out)
+        for suffix in ("_labels.csv", "_medoids.csv", "_silhouettes.csv",
+                       "_distance_matrix.csv"):
+            assert (py_out / f"parity{suffix}").read_bytes() == \
+                (cli_out / f"parity{suffix}").read_bytes(), suffix
+
+
+class TestNonAsciiSeriesNames:
+    """F1: a folder holding a non-ASCII file name must round-trip as UTF-8."""
+
+    @staticmethod
+    def _folder(tmp_path):
+        folder = tmp_path / "uni"
+        folder.mkdir()
+        for stem, row in (("caf\u00e9", "0,0.1"), ("beta", "0.2,0.1"),
+                          ("gamma", "9,9.1"), ("delta", "9.2,9.0")):
+            (folder / f"{stem}.csv").write_text(row + "\n", encoding="utf-8")
+        return folder
+
+    def test_load_decodes_a_non_ascii_file_stem(self, tmp_path):
+        names = dtwcpp.load(self._folder(tmp_path)).series_names()
+        assert "caf\u00e9" in names
+
+    def test_save_is_byte_identical_to_the_cli_for_a_non_ascii_folder(
+            self, tmp_path):
+        """The four CSVs must be cmp-identical to dtwc_cl on a non-ASCII name.
+
+        C++ emits the loader name as UTF-8 bytes through a text-mode ofstream;
+        Result.save must therefore write UTF-8 with the platform line ending,
+        not the locale encoding.
+        """
+        binary = _dtwc_cl_binary()
+        assert binary is not None, "no dtwc_cl binary found; build one first"
+        folder = self._folder(tmp_path)
+        cli_out = tmp_path / "cli"
+        py_out = tmp_path / "py"
+        run = subprocess.run(
+            [binary, "-i", str(folder), "-o", str(cli_out), "--name", "uni",
+             "-k", "2", "-m", "pam"],
+            capture_output=True, text=True)
+        assert run.returncode == 0, run.stderr
+        dtwcpp.cluster(dtwcpp.load(folder), k=2, method="pam").save(py_out)
+        for suffix in ("_labels.csv", "_medoids.csv", "_silhouettes.csv",
+                       "_distance_matrix.csv"):
+            assert (py_out / f"uni{suffix}").read_bytes() == \
+                (cli_out / f"uni{suffix}").read_bytes(), suffix
+
+
+class TestNonFiniteDistanceMatrixCsv:
+    """F8: save() must mirror dtwc/core/matrix_io.hpp exactly.
+
+    NaN is an uncomputed cell and is written as an EMPTY field; +/-inf is
+    refused by preflight_distance_matrix_csv BEFORE the file is opened. The
+    oracle is the C++ writer itself (Problem.write_distance_matrix), not a
+    transcription of the rule.
+    """
+
+    _SERIES = [[0.0], [1.0], [2.0], [3.0]]
+
+    @staticmethod
+    def _cpp_matrix_csv(matrix, tmp_path):
+        prob = dtwcpp.Problem("oracle")
+        prob.set_data(TestNonFiniteDistanceMatrixCsv._SERIES,
+                      [str(i) for i in range(4)])
+        prob.set_distance_matrix(matrix)
+        prob.output_folder = str(tmp_path)
+        prob.write_distance_matrix()
+        return (tmp_path / "oracle_distanceMatrix.csv").read_bytes()
+
+    @staticmethod
+    def _result(matrix):
+        return dtwcpp.Result(
+            [0, 0, 1, 1], device="cpu", elapsed_s=0.0, k=2, n_series=4,
+            medoid_indices=[0, 2], distance_matrix=matrix, name="nonfinite")
+
+    def test_nan_is_written_as_an_empty_field_like_cpp(self, tmp_path):
+        D = np.array([[0.0, 1.0, np.nan, 3.0],
+                      [1.0, 0.0, 2.0, 3.0],
+                      [np.nan, 2.0, 0.0, 1.0],
+                      [3.0, 3.0, 1.0, 0.0]])
+        oracle = self._cpp_matrix_csv(D, tmp_path / "cpp")
+        py_out = tmp_path / "py"
+        self._result(D).save(py_out)
+        written = (py_out / "nonfinite_distance_matrix.csv").read_bytes()
+        assert written == oracle
+        assert written.startswith(b"0,1,,3\n")
+
+    @pytest.mark.parametrize("value", [np.inf, -np.inf])
+    def test_inf_raises_invalid_input_before_the_matrix_file_exists(
+            self, tmp_path, value):
+        D = np.array([[0.0, value, 1.0, 1.0],
+                      [value, 0.0, 1.0, 1.0],
+                      [1.0, 1.0, 0.0, 1.0],
+                      [1.0, 1.0, 1.0, 0.0]])
+        with pytest.raises(dtwcpp.InvalidInput) as py_err:
+            self._result(D).save(tmp_path)
+        with pytest.raises(dtwcpp.InvalidInput) as cpp_err:
+            self._cpp_matrix_csv(D, tmp_path / "cpp")
+        assert str(py_err.value) == str(cpp_err.value)
+        assert str(py_err.value) == (
+            "distance-matrix CSV: computed non-finite value at row 0, column 1.")
+        # Labels/medoids are already on disk, as in C++ Result::save.
+        assert (tmp_path / "nonfinite_labels.csv").is_file()
+        assert not (tmp_path / "nonfinite_distance_matrix.csv").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -487,9 +882,9 @@ class TestClusterMethodDispatch:
             def set_band(self, band):
                 self.band = band
 
-            def set_data(self, series, names):
-                self.series = series
-                self.names = names
+            def set_data(self, data):
+                self.series = data.p_vec
+                self.names = data.p_names
 
             def set_distance_matrix(self, matrix):
                 self.matrix = matrix
@@ -603,7 +998,7 @@ class TestClusterMethodDispatch:
         assert res.n_series == 12
         # CLARA's scaling contract is O(Ns), not O(N²): Tier 1 must not
         # materialise a full matrix merely to populate an auxiliary result field.
-        assert res.distance_matrix is None
+        assert res._distance_matrix is None
         assert len(set(res.labels[:6])) == 1
         assert len(set(res.labels[6:])) == 1
         assert res.labels[0] != res.labels[11]

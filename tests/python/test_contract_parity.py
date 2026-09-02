@@ -196,6 +196,9 @@ def test_error_hierarchy():
     assert issubclass(dtwcpp.DtwcError, Exception)
     assert issubclass(dtwcpp.InvalidInput, dtwcpp.DtwcError)
     assert issubclass(dtwcpp.InvalidInput, ValueError)
+    # The one sub-leaf: dtwc::UndefinedScore derives from dtwc::InvalidInput, so
+    # `except InvalidInput` still catches it (§6).
+    assert issubclass(dtwcpp.UndefinedScore, dtwcpp.InvalidInput)
     assert issubclass(dtwcpp.SolverError, dtwcpp.DtwcError)
     assert issubclass(dtwcpp.SolverError, RuntimeError)
     assert issubclass(dtwcpp.DeviceError, dtwcpp.DtwcError)
@@ -232,10 +235,35 @@ def test_result_is_clusterresult_alias():
 @pytest.mark.parametrize(
     "name",
     ["mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
-     "verbose_solver", "benders", "max_benders_iter"],
+     "verbose_solver", "benders", "max_benders_iter", "lr_max_nodes"],
 )
 def test_mip_settings_field_exists(name):
     assert hasattr(dtwcpp.MIPSettings(), name), f"MIPSettings.{name} missing (§2.1)"
+
+
+def test_mip_settings_lr_max_nodes_roundtrip():
+    """§2.1: lr_max_nodes reaches the C++ Problem and is reported back."""
+    s = dtwcpp.MIPSettings()
+    assert s.lr_max_nodes == 2000000
+    s.lr_max_nodes = 12345
+    assert "lr_max_nodes=12345" in repr(s)
+
+    prob = dtwcpp.Problem("lr_nodes")
+    prob.mip_settings = s
+    assert prob.mip_settings.lr_max_nodes == 12345
+
+
+def test_mip_settings_lr_max_nodes_below_one_is_rejected():
+    """validate_mip_settings runs before LR-core consumes the node cap."""
+    prob = dtwcpp.Problem("lr_nodes_invalid")
+    prob.set_data([[0.0, 1.0], [1.0, 0.0], [2.0, 2.0]], ["a", "b", "c"])
+    prob.set_n_clusters(2)
+    s = dtwcpp.MIPSettings()
+    s.lr_max_nodes = 0
+    prob.mip_settings = s
+    prob.method = dtwcpp.Method.LRCore
+    with pytest.raises(dtwcpp.InvalidInput, match="lr_max_nodes"):
+        prob.cluster()
 
 
 # ===========================================================================
@@ -252,9 +280,10 @@ def test_cluster_signature_defaults():
 
 
 def test_load_signature_defaults():
-    """§1.2: load(source, *, skip_cols=0, delimiter=None, name=None)."""
+    """§1.2: load(source, *, skip_cols=0, skip_rows=0, delimiter=None, name=None)."""
     p = inspect.signature(dtwcpp.load).parameters
     assert p["skip_cols"].default == 0
+    assert p["skip_rows"].default == 0
     assert p["delimiter"].default is None
     assert p["name"].default is None
 

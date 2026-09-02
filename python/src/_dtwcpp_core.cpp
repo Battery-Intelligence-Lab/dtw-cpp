@@ -17,6 +17,7 @@
 #include <nanobind/stl/vector.h>
 #include <nanobind/stl/function.h>
 #include <nanobind/stl/filesystem.h>
+#include <nanobind/stl/pair.h>
 
 #ifdef _OPENMP
 #include <omp.h>
@@ -133,8 +134,13 @@ NB_MODULE(_dtwcpp_core, m) {
   // `except ValueError:` and `except dtwcpp.InvalidInput:` both catch it. The
   // types are function-local statics (module lifetime) referenced by the single
   // captureless translator below (registered so it runs before the default one).
+  // UndefinedScore is the one sub-leaf: it mirrors dtwc::UndefinedScore, which
+  // derives from dtwc::InvalidInput, so a caller that only wants to skip an
+  // unwritable score file can distinguish it while `except InvalidInput` (and
+  // `except ValueError`) keep catching it.
   static PyObject *g_exc_base = PyErr_NewException("dtwcpp.DtwcError", PyExc_Exception, nullptr);
   static PyObject *g_exc_invalid = nullptr;
+  static PyObject *g_exc_undefined_score = nullptr;
   static PyObject *g_exc_solver = nullptr;
   static PyObject *g_exc_device = nullptr;
   static PyObject *g_exc_io = nullptr;
@@ -146,12 +152,15 @@ NB_MODULE(_dtwcpp_core, m) {
       return exc;
     };
     g_exc_invalid = make_leaf("dtwcpp.InvalidInput", PyExc_ValueError);
+    g_exc_undefined_score =
+      PyErr_NewException("dtwcpp.UndefinedScore", g_exc_invalid, nullptr);
     g_exc_solver = make_leaf("dtwcpp.SolverError", PyExc_RuntimeError);
     g_exc_device = make_leaf("dtwcpp.DeviceError", PyExc_RuntimeError);
     g_exc_io = make_leaf("dtwcpp.IOError", PyExc_OSError);
   }
   m.attr("DtwcError") = nb::borrow(g_exc_base);
   m.attr("InvalidInput") = nb::borrow(g_exc_invalid);
+  m.attr("UndefinedScore") = nb::borrow(g_exc_undefined_score);
   m.attr("SolverError") = nb::borrow(g_exc_solver);
   m.attr("DeviceError") = nb::borrow(g_exc_device);
   m.attr("IOError") = nb::borrow(g_exc_io);
@@ -160,6 +169,9 @@ NB_MODULE(_dtwcpp_core, m) {
     [](const std::exception_ptr &p, void * /*payload*/) {
       try {
         std::rethrow_exception(p);
+      } catch (const dtwc::UndefinedScore &e) {
+        // Must precede InvalidInput: UndefinedScore derives from it.
+        PyErr_SetString(g_exc_undefined_score, e.what());
       } catch (const dtwc::InvalidInput &e) {
         PyErr_SetString(g_exc_invalid, e.what());
       } catch (const dtwc::SolverError &e) {
@@ -200,6 +212,53 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
         "Canonical lower-case name of a Device ('cpu'/'gpu'/'hpc').");
+
+  m.def("device", [](const std::string &name) {
+        // Env::set_device probes GPU/HPC availability (device query, .env read,
+        // sinfo) without touching Python; hold no GIL across it.
+        nb::gil_scoped_release release;
+        return dtwc::device(name);
+      }, "name"_a,
+        "Set the process-wide device and return its CANONICAL name\n"
+        "('cpu'/'gpu'/'gpu:N'/'hpc'), exactly as dtwc::device(name) does.");
+
+  m.def("device", []() { return dtwc::device(); },
+        "Canonical name of the process-wide device (dtwc::device()).");
+
+  // =========================================================================
+  // Tier-1 file parsing (api-contract-2.0.md §1.2)
+  // =========================================================================
+
+  m.def("_read_data",
+        [](const std::filesystem::path &source, int skip_cols, int skip_rows,
+           const std::string &delimiter) {
+    if (skip_cols < 0) throw dtwc::InvalidInput("load: skip_cols must be non-negative.");
+    if (skip_rows < 0) throw dtwc::InvalidInput("load: skip_rows must be non-negative.");
+    if (delimiter.size() > 1)
+      throw dtwc::InvalidInput("load: delimiter must be a single character.");
+    // File I/O and parsing touch no Python object, so the GIL is released for
+    // the whole read exactly as every other I/O binding here does.
+    nb::gil_scoped_release release;
+    dtwc::DataLoader loader(source);
+    loader.start_column(skip_cols).start_row(skip_rows).verbosity(0);
+    if (!delimiter.empty()) loader.delimiter(delimiter[0]);
+    try {
+      return loader.load_local();
+    } catch (const dtwc::Error &) {
+      throw;
+    } catch (const std::exception &e) {
+      throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
+    }
+  }, "source"_a, "skip_cols"_a = 0, "skip_rows"_a = 0, "delimiter"_a = std::string{},
+     "Read a batch file or folder with the C++ DataLoader and return the owning\n"
+     "dtwc::Data (series + names) with no intermediate Python objects. Backs\n"
+     "dtwcpp.Dataset, whose handle is handed straight to Problem.set_data(Data),\n"
+     "so Python and C++ parse a path with one implementation: skip_cols drops\n"
+     "leading FIELDS before numeric parsing, skip_rows drops leading LINES, an\n"
+     "empty delimiter means infer from the extension, and variable-length rows\n"
+     "are preserved. The names are the loader's own -- file stem per file for a\n"
+     "folder, 1-based row number for a batch file -- so Tier-1 output carries\n"
+     "the same series names the CLI writes.");
 
   // =========================================================================
   // Enums
@@ -427,6 +486,8 @@ NB_MODULE(_dtwcpp_core, m) {
             "Maximum Benders iterations (default 200).")
     .def_rw("benders", &dtwc::MIPSettings::benders,
             "Benders decomposition mode: 'auto' (N>200), 'on', or 'off'.")
+    .def_rw("lr_max_nodes", &dtwc::MIPSettings::lr_max_nodes,
+            "Method.LRCore branch-and-bound node cap (>= 1, default 2000000).")
     .def("__repr__", [](const dtwc::MIPSettings &s) {
       return "MIPSettings(gap=" + std::to_string(s.mip_gap)
              + ", time_limit=" + std::to_string(s.time_limit_sec)
@@ -435,6 +496,7 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", mip_focus=" + std::to_string(s.mip_focus)
              + ", benders=" + s.benders
              + ", max_benders_iter=" + std::to_string(s.max_benders_iter)
+             + ", lr_max_nodes=" + std::to_string(s.lr_max_nodes)
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
 
@@ -898,6 +960,11 @@ NB_MODULE(_dtwcpp_core, m) {
                  "GPU compute options (used when distance_strategy == CUDA).")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
+    .def_rw("checkpoint", &dtwc::Problem::checkpoint,
+            nb::rv_policy::reference_internal,
+            "Automatic mid-fill checkpointing options (CheckpointOptions),\n"
+            "consumed by fill_distance_matrix(). The getter returns a view of\n"
+            "the member, so prob.checkpoint.enabled = True mutates the Problem.")
     .def_prop_rw("verbose", &dtwc::Problem::verbose,
                  &dtwc::Problem::set_verbose,
                  "Print progress messages for long-running operations.")
@@ -1262,11 +1329,23 @@ NB_MODULE(_dtwcpp_core, m) {
   // Checkpointing
   // =========================================================================
 
-  nb::class_<dtwc::CheckpointOptions>(m, "CheckpointOptions")
+  nb::class_<dtwc::CheckpointOptions>(m, "CheckpointOptions",
+    "Automatic mid-fill checkpointing options, read by\n"
+    "Problem.fill_distance_matrix() through Problem.checkpoint.")
     .def(nb::init<>())
-    .def_rw("directory", &dtwc::CheckpointOptions::directory)
-    .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval)
-    .def_rw("enabled", &dtwc::CheckpointOptions::enabled)
+    .def_rw("directory", &dtwc::CheckpointOptions::directory,
+            "Checkpoint directory. Empty with enabled raises InvalidInput.")
+    .def_rw("save_interval", &dtwc::CheckpointOptions::save_interval,
+            "Completed matrix ROWS between automatic saves (>= 1). The fill\n"
+            "runs consecutive row blocks of this size and publishes one\n"
+            "generation after each block, the last included, so a completed\n"
+            "fill leaves ceil(N / save_interval) generations. A value below 1\n"
+            "with enabled raises InvalidInput.")
+    .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
+            "Enable automatic mid-fill checkpointing. Requires dense distance\n"
+            "storage (mmap storage raises InvalidInput) and a non-empty\n"
+            "directory; both are checked before any distance is computed.\n"
+            "DistanceMatrixStrategy.Pruned is downgraded to BruteForce.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)

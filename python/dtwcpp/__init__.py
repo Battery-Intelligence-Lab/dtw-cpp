@@ -43,6 +43,7 @@ from dtwcpp._dtwcpp_core import (
     # Error taxonomy (api-contract-2.0.md §5)
     DtwcError,
     InvalidInput,
+    UndefinedScore,
     SolverError,
     DeviceError,
     IOError,
@@ -103,6 +104,8 @@ if _F22_DEPRECATION_POLICY is not True:
     raise ImportError(
         "dtwcpp native extension does not implement the F22 deprecation policy"
     )
+
+from dtwcpp._dtwcpp_core import device as _core_device
 
 from dtwcpp._dtwcpp_core import (
     CUDA_AVAILABLE,
@@ -195,21 +198,17 @@ def _resolve_device(device):
     return (backend, device_id)
 
 
-_DEFAULT_DEVICE = "cpu"
+# ``hpc`` is the one selection Python owns: ``dtwc::Env::set_device("hpc")``
+# validates the ``.env`` file and the SSH login eagerly, which the contract
+# (§1.1) defers to submit time so declaring the device never blocks on the
+# network. Every local selection lives in ``dtwc::Env``, so there is no Python
+# copy of the device to drift from it.
+_HPC_SELECTED = False
 
 
-def _sync_env(name):
-    """Mirror the Python device selection into the shared
-    ``dtwc::Env`` registry (api-contract-2.0.md §6 — "device() delegates to Env").
-
-    ``cpu``/``gpu``/``cuda`` sync after operational validation. ``hpc`` is NOT
-    eagerly validated here — its ``.env``/SSH credential check runs at offload
-    submit time, not at ``device()`` set-time, so declaring ``device("hpc")`` never
-    blocks on the network.
-    """
-    base = name.split(":", 1)[0]
-    if base in ("cpu", "gpu", "cuda"):
-        env().set_device(name)
+def _current_device():
+    """Canonical name of the active default device."""
+    return "hpc" if _HPC_SELECTED else _core_device()
 
 
 def device(device=None):
@@ -217,32 +216,39 @@ def device(device=None):
 
     Call with no argument to read the current default; pass a name to set it.
     Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``, or
-    ``"hpc"``. The friendly name is stored verbatim (e.g. ``"gpu"``) and resolved per call, and
-    the selection is mirrored into the shared ``dtwc::Env`` registry (§6). An
-    explicit ``device=`` argument always overrides this global default.
+    ``"hpc"``. A local selection is stored in the shared ``dtwc::Env`` registry
+    (§6) and the CANONICAL name that ``dtwc::device()`` reports is returned, so
+    ``"cuda:0"`` comes back as ``"gpu"`` exactly as it does in C++ and MATLAB.
+    An explicit ``device=`` argument always overrides this global default.
 
     Examples
     --------
-    >>> dtwcpp.device("gpu")     # subsequent ops require an available GPU
+    >>> dtwcpp.device("cuda:0")  # subsequent ops require an available GPU
     'gpu'
     >>> dtwcpp.device()          # read the current default
     'gpu'
     """
-    global _DEFAULT_DEVICE
+    global _HPC_SELECTED
     if device is None:
-        return _DEFAULT_DEVICE
+        return _current_device()
     backend, _ = _parse_device(device)     # type + syntax validation
     normalized = device.strip().lower()
-    if backend != "hpc":
-        _resolve_device(normalized)        # operational validation; no fallback
-    _sync_env(normalized)                  # mirror into dtwc::Env (shared source of truth)
-    _DEFAULT_DEVICE = normalized           # update only after successful validation
-    return _DEFAULT_DEVICE
+    if backend == "hpc":
+        _HPC_SELECTED = True               # credentials checked at submit time
+        return "hpc"
+    _resolve_device(normalized)            # operational validation; no fallback
+    canonical = _core_device(normalized)   # dtwc::device(): sets Env, canonicalises
+    _HPC_SELECTED = False                  # update only after successful validation
+    return canonical
 
 
 def get_device():
-    """Return the current global default device string."""
-    return _DEFAULT_DEVICE
+    """Deprecated alias for :func:`device` (kept one cycle, §4)."""
+    import warnings
+
+    warnings.warn("dtwcpp.get_device is deprecated; use dtwcpp.device",
+                  DeprecationWarning, stacklevel=2)
+    return _current_device()
 
 
 def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, device=None):
@@ -280,7 +286,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
         )
 
     if device is None:
-        device = _DEFAULT_DEVICE
+        device = _current_device()
     backend, device_id = _resolve_device(device)
     if backend == "hpc":
         raise ValueError(
@@ -415,7 +421,8 @@ __all__ = [
     "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",
     "BarycenterClusteringResult",
     "Problem", "Env", "env", "device_to_string", "data_from_arrow_c_array",
-    "DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError",
+    "DtwcError", "InvalidInput", "UndefinedScore", "SolverError", "DeviceError",
+    "IOError",
     "DEFAULT_RANDOM_SEED",
     "soft_dtw_gradient",
     "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
