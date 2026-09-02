@@ -8,6 +8,28 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fix (silent wrong numbers):** the distance-matrix CSV reader parsed with
+  `std::stod`, which honours the C locale, so under a comma-decimal locale
+  `1.5` read as `1`. It now uses `std::from_chars` like the series loader
+  (locale-independent), with a de-DE regression test.
+- **Fix (YAML):** a YAML `null`/`~` value is an error naming the key
+  (`omit the key to use the default`); it used to reach CLI11 as an empty
+  value that set `band` to 0 or switched flags on.
+- **Changed:** Tier-1 `cluster()` on a GPU device pins `StoragePolicy::Heap`
+  before loading, so large datasets never land on the mmap store that CUDA/Metal
+  reject; `Problem::set_ram_limit`/`ram_limit` are honoured by `set_data` (the
+  limit was hardcoded to 0 on that path). macOS free RAM is now
+  `host_statistics64` free+inactive (was total RAM). `<windows.h>` no longer
+  leaks through the public headers (`available_ram_bytes` moved to
+  `system_memory.cpp`).
+- **Fix (Windows):** `StoragePolicy::Auto` never spilled series to the mmap
+  store on Windows because the free-RAM query was unimplemented and returned
+  0, which the threshold treated as unlimited. It now uses
+  `GlobalMemoryStatusEx`; an unknown free-RAM value is documented as
+  heap-only. The decision is the pure `choose_storage(estimated, available,
+  limit)`. Consequence: large datasets on Windows now behave as on Linux,
+  including the explicit `DeviceError` when a mapped store meets a CUDA/Metal
+  strategy.
 - **Fix (C++ Tier-1):** `Problem::cluster()` with `Method::Kmedoids` wrote
   per-repetition medoid and best-repetition CSVs into the CWD-relative
   `./results/` on every call and threw when the folder was missing, and it
@@ -82,10 +104,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   used to accumulate one full N×N CSV each.
 - **Breaking (CLI/build):** the `--yaml-config` option, the
   `DTWC_ENABLE_YAML` build option and the yaml-cpp dependency are removed.
-  `--config` (TOML, via CLI11) is the only configuration mechanism; the YAML
-  loader silently overrode explicitly given command-line flags. Migrate
-  `config.yaml` files to the same kebab-case keys in TOML. The required-input
-  error now reads `Error: --input is required via CLI or config file (TOML)`.
+  `--config` is the only configuration mechanism and now accepts **TOML or
+  YAML**, detected from content and parsed into CLI11's own config items
+  (`dtwc/cli/config_file.hpp`), so both formats share keys, validators and
+  deprecation warnings, and a command-line value always beats the file (the
+  old YAML loader silently overrode explicit flags). YAML parsing uses the
+  optional header-only fkYAML (MIT; `DTWC_ENABLE_YAML`, default ON; OFF refuses
+  YAML with `built without YAML support; use TOML`). A config key matching no
+  CLI option is now an error in both formats (was silently ignored). Example
+  `examples/cpp/config.yaml`. The required-input error reads
+  `Error: --input is required via CLI or config file (TOML or YAML)`.
 - **Fix (MATLAB):** a MEX built with `-DDTWC_ENABLE_HIGHS=ON` no longer crashes
   MATLAB R2024b (`0xc0000005` on a HiGHS worker thread) on `Method::MIP`
   solves. A MEX runs against MATLAB's private `msvcp140.dll`; STL 14.40+ emits

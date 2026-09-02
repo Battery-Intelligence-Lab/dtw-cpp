@@ -541,7 +541,7 @@ $Mutations = @(
         Profile = 'llfio-on'
         RelativePath = 'dtwc/Problem.hpp'
         Kind = 'Regex'
-        Pattern = '(?m)^    auto loaded = detail::route_series_storage\(\r?\n      std::move\(candidate\),\r?\n      storage_policy_,\r?\n      0,\r?\n      \{\},\r?\n      "Problem::set_data"\);\r?\n    adopt_loaded_data\(std::move\(loaded\)\);'
+        Pattern = '(?m)^    auto loaded = detail::route_series_storage\(\r?\n      std::move\(candidate\),\r?\n      storage_policy_,\r?\n      ram_limit_bytes_,\r?\n      \{\},\r?\n      "Problem::set_data"\);\r?\n    adopt_loaded_data\(std::move\(loaded\)\);'
         Replacement = '    data_ = std::move(candidate);{EOL}    series_storage_owner_.reset();'
         Description = 'restore advisory-only Problem setter behavior'
     }
@@ -549,9 +549,9 @@ $Mutations = @(
         Id = 'M02'
         Profile = 'llfio-on'
         RelativePath = 'dtwc/DataLoader.hpp'
-        Kind = 'Exact'
-        Needle = '|| (policy == core::StoragePolicy::Auto && footprint > threshold);'
-        Replacement = '|| footprint > threshold;'
+        Kind = 'Regex'
+        Pattern = '\|\| \(policy == core::StoragePolicy::Auto\r?\n        && choose_storage\(footprint, available, ram_limit_bytes\)\r?\n             == core::StoragePolicy::Mmap\);'
+        Replacement = '|| choose_storage(footprint, available, ram_limit_bytes) == core::StoragePolicy::Mmap;'
         Description = 'ignore Heap in the shared routing predicate'
     }
     [pscustomobject]@{
@@ -559,7 +559,7 @@ $Mutations = @(
         Profile = 'llfio-on'
         RelativePath = 'dtwc/DataLoader.hpp'
         Kind = 'Regex'
-        Pattern = '(?m)(^  const bool want_mmap =\r?\n    )policy == core::StoragePolicy::Mmap(\r?\n    \|\| \(policy == core::StoragePolicy::Auto && footprint > threshold\);)'
+        Pattern = '(?m)(^  const bool want_mmap =\r?\n    )policy == core::StoragePolicy::Mmap(\r?\n    \|\| \(policy == core::StoragePolicy::Auto\r?\n        && choose_storage\(footprint, available, ram_limit_bytes\)\r?\n             == core::StoragePolicy::Mmap\);)'
         Replacement = '$1false$2'
         Description = 'ignore explicit Mmap in the shared routing predicate'
     }

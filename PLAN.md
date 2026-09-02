@@ -1198,7 +1198,12 @@ colour system transfer verbatim**.
   7 Python + 9 MATLAB drifts); Tier-1 routes made side-effect-free (Lloyd wrote
   CWD-relative `./results`); UTF-8 names end to end. Serial gates: 130/130,
   130/130, 132/132 (6/9/8 skips), CUDA 4/4, Python 1112/16/0, MATLAB
-  124/123/0/1 both releases. Evidence: `.claude/reports/2026-09-02-*.md`,
+  124/123/0/1 both releases. Addendum: YAML config reinstated through CLI11's
+  `from_config` with fkYAML (flags beat file; unknown keys error); Windows
+  free-RAM query fixed (Auto never spilled to mmap); ancillary-library survey
+  recommends no further dependency (fast_float pending a libc++ floor
+  decision). Gates after: 131/131, 131/131, 133/133. Evidence:
+  `.claude/reports/2026-09-02-*.md`,
   `.claude/summaries/handoff-2026-09-02-parity-checkpoint.md`.
 
 ## Progress log (append-only; older entries in the archive)

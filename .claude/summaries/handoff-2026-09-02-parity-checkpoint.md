@@ -37,18 +37,29 @@ quality, clean up anything obsolete.
   `utf8_to_path`). (`tier1-side-effects`)
 - **Obsolete sweep**: compiled tree clean; stale skills/TODO/style docs fixed;
   `.mailmap` for Kasper Westman. (`obsolete-sweep`)
+- **YAML reinstated the right way** (maintainer asked): `--config` accepts TOML
+  or YAML, sniffed from content and parsed into CLI11 `ConfigItem`s by
+  `dtwc/cli/config_file.hpp` (fkYAML v0.4.4, MIT, `DTWC_ENABLE_YAML` default
+  ON; caches from before today carry a stale OFF). Unknown config keys are now
+  errors in both formats. (`yaml-cli11`, `adversarial-yaml-ram`)
+- **Windows free-RAM bug**: `available_ram_bytes()` returned 0 so
+  `StoragePolicy::Auto` never spilled; `GlobalMemoryStatusEx` added, decision
+  extracted to `choose_storage`. (`available-ram`)
+- **Library survey** (`ancillary-library-survey`): no other dependency
+  justified; fast_float is the one candidate worth revisiting if the libc++
+  floor is below LLVM 20 (floating `from_chars`).
 
 ## Final gates (serial, this tree)
 
 | Gate | Result |
 |---|---|
-| `build/highs-1151` | 130/130, 6 skips |
-| `build/nollfio` | 130/130, 9 skips |
-| `build/arrow-pyarrow-23` | 132/132, 8 skips |
+| `build/highs-1151` (YAML ON) | 131/131, 6 skips |
+| `build/nollfio` (YAML ON) | 131/131, 9 skips |
+| `build/arrow-pyarrow-23` (YAML ON) | 133/133, 8 skips |
 | `build/cuda-verify` (`-R cuda`) | 4/4, none skipped |
 | Python (`tests/python`) | 1112 passed, 16 skipped, 0 failed |
 | MATLAB `matlab_suite` (R2024b, R2025b) | 124 run, 123 passed, 0 failed, 1 allow-listed incomplete |
-| docs contract, repo/record hygiene, supply-chain pins (29 manifests), F22 C++ | PASS |
+| docs contract, repo/record hygiene, supply-chain pins (30 manifests, 7 archives), F22 C++ | PASS |
 
 ## Decisions
 

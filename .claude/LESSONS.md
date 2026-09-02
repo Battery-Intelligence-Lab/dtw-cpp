@@ -1314,3 +1314,26 @@ Critical knowledge to avoid repeating mistakes.
 - **`long` is not a width.** `lr_max_nodes` was `long` (32-bit on Windows,
   64-bit on Linux) and became a public setter in two bindings before anyone
   noticed. Use `std::int64_t` for anything that crosses a binding.
+- **Config files go through CLI11's `from_config`, never a side loader.**
+  A hand-rolled YAML loader silently overrode explicit flags. The fix is a
+  `CLI::ConfigBase` subclass that sniffs TOML vs YAML from the first
+  non-comment line and emits `ConfigItem`s, so precedence, validation and
+  deprecation warnings are CLI11's. Two traps: CLI11 ignores unknown config
+  keys unless `allow_config_extras(error)`; YAML `null`/`~` must be an error,
+  because an empty string reaches CLI11 as a value (`band: ~` → band 0).
+- **`std::stod` honours the C locale; `std::from_chars` does not.** The
+  matrix CSV reader read `1.5` as `1` under de-DE. Every numeric parse in the
+  library is `from_chars` now; test with `setlocale(LC_NUMERIC, "de-DE")`.
+- **Never include `<windows.h>` in a header reachable from `dtwc.hpp`.** Even
+  with `WIN32_LEAN_AND_MEAN`/`NOMINMAX` it leaks `ERROR`/`GetMessage` and adds
+  ~47k preprocessed lines per TU. Platform calls live in a `.cpp`
+  (`system_memory.cpp`); the header keeps the declaration and a comment.
+- **"Free RAM" is three different quantities.** Linux `_SC_AVPHYS_PAGES`
+  (MemFree), Windows `ullAvailPhys` (includes standby), macOS
+  `host_statistics64` free+inactive (was TOTAL via `HW_MEMSIZE`, so Auto never
+  spilled there either). Windows returned 0, which the threshold read as
+  unlimited. `choose_storage(estimated, available, limit)` is the pure decision;
+  Tier-1 GPU routes pin Heap because CUDA/Metal reject mapped series.
+- **Stale CMake caches keep a removed option's value.** Re-adding
+  `DTWC_ENABLE_YAML` (default ON) left every existing build dir at OFF; the
+  canonical gate silently tested without YAML until `-DDTWC_ENABLE_YAML=ON`.
