@@ -84,20 +84,6 @@ function(dtwc_setup_dependencies)
   # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
   # to ensure scikit-build-core has configured paths first.
 
-  # RapidCSV - header-only CSV parser (BSD 3-Clause license)
-  if (NOT TARGET rapidcsv::rapidcsv)
-    CPMAddPackage(
-      NAME rapidcsv
-      GITHUB_REPOSITORY d99kris/rapidcsv
-      VERSION 8.92
-      DOWNLOAD_ONLY YES
-    )
-
-    add_library(rapidcsv::rapidcsv INTERFACE IMPORTED)
-    set_target_properties(rapidcsv::rapidcsv PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${rapidcsv_SOURCE_DIR}/src")
-  endif()
-
   # Eigen3 — header-only linear algebra (MPL2 / Apache-2.0 / BSD-3)
   # Used for scratch matrices (aligned SIMD-ready allocation, zero-copy Map),
   # replacing custom ScratchMatrix and DenseDistanceMatrix internals.

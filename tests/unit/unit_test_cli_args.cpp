@@ -160,6 +160,27 @@ TEST_CASE("CLI distance config rejects YAML transformer bypasses before work",
         == "--device cuda supports --variant standard only");
 }
 
+TEST_CASE("CLI route selectors reject values that bypass CLI11 transformers",
+          "[cli][config][method][solver][linkage]")
+{
+  // Audit 2026-09-02 A7: method/solver/linkage dispatch chains had no terminal
+  // else, so a selector that reached them unvalidated (from YAML, whose manual
+  // normalisation had drifted from the CheckedTransformer maps) silently
+  // produced an empty result / the default solver / Average linkage.
+  CHECK(validate_cli_route_selectors("auto", "highs", "average").empty());
+  CHECK(validate_cli_route_selectors("tadpole", "gurobi", "single").empty());
+  CHECK(validate_cli_route_selectors("onebatch", "highs", "complete").empty());
+
+  CHECK_THAT(validate_cli_route_selectors("obp", "highs", "average"),
+             Catch::Matchers::ContainsSubstring("unsupported --method 'obp'"));
+  CHECK_THAT(validate_cli_route_selectors("kmedoid", "highs", "average"),
+             Catch::Matchers::ContainsSubstring("unsupported --method 'kmedoid'"));
+  CHECK_THAT(validate_cli_route_selectors("pam", "cplex", "average"),
+             Catch::Matchers::ContainsSubstring("unsupported --solver 'cplex'"));
+  CHECK_THAT(validate_cli_route_selectors("pam", "highs", "ward"),
+             Catch::Matchers::ContainsSubstring("unsupported --linkage 'ward'"));
+}
+
 // ---------------------------------------------------------------------------
 // Parquet RAM-limit planning (Task 8.2 F7)
 // ---------------------------------------------------------------------------

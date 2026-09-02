@@ -14,12 +14,18 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <concepts>
+#include <filesystem>
+#include <fstream>
+#include <system_error>
 #include <iostream>
+#include <set>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 using Catch::Matchers::WithinAbs;
 
@@ -349,4 +355,144 @@ TEST_CASE("F21 canonical C++ loader and path names preserve legacy state",
     << "F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 "
        "loader_state=22/22 path_state=16/16 cstring_copy=4/4 "
        "skips=0 verdict=PASS\n";
+}
+
+#ifdef DTWC_HAS_MMAP
+TEST_CASE("default_series_cache_path is collision-free across concurrent loads",
+          "[DataLoader][mmap][concurrency]")
+{
+  // Audit 2026-09-02 (B): the temp-path generator used a plain
+  // `static std::size_t counter` incremented with `counter++`, so two
+  // concurrent load_stored() calls could observe the same value and route two
+  // different data sets to the same mapped .dtws file. One relaxed atomic
+  // fetch_add per load call restores uniqueness at no per-series cost.
+  constexpr int n_threads = 8;
+  constexpr int per_thread = 256;
+  std::vector<std::vector<std::string>> produced(n_threads);
+  std::vector<std::thread> workers;
+  workers.reserve(n_threads);
+  for (int t = 0; t < n_threads; ++t)
+    workers.emplace_back([&produced, t] {
+      produced[static_cast<std::size_t>(t)].reserve(per_thread);
+      for (int i = 0; i < per_thread; ++i)
+        produced[static_cast<std::size_t>(t)].push_back(
+          dtwc::detail::default_series_cache_path().string());
+    });
+  for (auto &worker : workers) worker.join();
+
+  std::set<std::string> unique;
+  for (const auto &batch : produced) unique.insert(batch.begin(), batch.end());
+  CHECK(unique.size()
+        == static_cast<std::size_t>(n_threads) * per_thread);
+
+  // Cross-process evidence. The former "unique" component was
+  // `reinterpret_cast<uintptr_t>(&counter)` — one static address, identical in
+  // every process of the same image, so two processes generated the same first
+  // temp path. This line is printed so two runs of this binary can be compared
+  // directly; nothing in-process can observe another process's counter.
+  std::cout << "DTWC_SERIES_CACHE_FIRST="
+            << dtwc::detail::default_series_cache_path().filename().string()
+            << '\n';
+}
+#endif // DTWC_HAS_MMAP
+
+namespace {
+
+/// RAII folder of N single-column CSV files with deterministic names.
+struct SeriesFolder
+{
+  std::filesystem::path root;
+
+  SeriesFolder(std::string_view name, int n_files)
+    : root(std::filesystem::temp_directory_path() / std::string(name))
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+    std::filesystem::create_directories(root);
+    for (int i = 0; i < n_files; ++i) {
+      std::ofstream out(root / ("s" + std::to_string(i) + ".csv"));
+      out << (i + 1) << "\n" << (i + 2) << "\n";
+    }
+  }
+  ~SeriesFolder()
+  {
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+  }
+};
+
+/// Capture everything written to std::cout while alive.
+struct CoutCapture
+{
+  std::ostringstream sink;
+  std::streambuf *previous{ std::cout.rdbuf(sink.rdbuf()) };
+  ~CoutCapture() { std::cout.rdbuf(previous); }
+};
+
+} // namespace
+
+TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
+          "[DataLoader][fileOperations][Ndata]")
+{
+  // Audit 2026-09-02 A11: for Ndata == 0 the three loaders disagreed --
+  // count() returned 1, the folder load returned ALL series, and the batch
+  // load returned 0. Ndata < -1 was never rejected anywhere. One predicate:
+  // a negative Ndata means "all", otherwise stop at exactly Ndata series.
+  SeriesFolder folder{ "dtwc_ndata_contract", 4 };
+
+  for (const int requested : { 0, 1, 3, 4, 7, -1 }) {
+    CAPTURE(requested);
+    const std::size_t expect = requested < 0
+      ? 4u : std::min<std::size_t>(static_cast<std::size_t>(requested), 4u);
+
+    DataLoader loader;
+    loader.path(folder.root).n_data(requested).verbosity(0);
+    CHECK(loader.count() == expect);
+    CHECK(loader.load().size() == expect);
+  }
+
+  DataLoader bad;
+  CHECK_THROWS_AS(bad.n_data(-2), std::runtime_error);
+}
+
+TEST_CASE("DataLoader extension matching is case-insensitive and keeps an "
+          "explicit delimiter", "[DataLoader][delimiter]")
+{
+  // Audit 2026-09-02 A13: the extension comparison was case-sensitive, so
+  // "data.TSV" silently kept the ',' default; and path() overwrote a delimiter
+  // the caller had just set explicitly.
+  CHECK(DataLoader{}.path("a.TSV").delimiter() == '\t');
+  CHECK(DataLoader{}.path("a.Csv").delimiter() == ',');
+  CHECK(DataLoader{}.path("a.TXT").delimiter() == '\t');
+
+  DataLoader explicit_delim;
+  explicit_delim.delimiter('|').path("a.csv");
+  CHECK(explicit_delim.delimiter() == '|');
+}
+
+TEST_CASE("Folder and batch loaders honour verbosity(0)",
+          "[DataLoader][verbosity]")
+{
+  // Audit 2026-09-02: fileOperations printed "Reading data:" and
+  // "N time-series data are read." unconditionally, so verbosity(0) (and
+  // api.cpp's verbosity(0)) could not silence the loader.
+  SeriesFolder folder{ "dtwc_verbosity_contract", 2 };
+  {
+    CoutCapture capture;
+    DataLoader loader;
+    loader.path(folder.root).verbosity(0).load();
+    CHECK(capture.sink.str().empty());
+  }
+
+  const auto batch = folder.root / "batch.csv";
+  {
+    std::ofstream out(batch);
+    out << "1,2,3\n4,5,6\n";
+  }
+  {
+    CoutCapture capture;
+    DataLoader loader;
+    loader.path(batch).verbosity(0).load();
+    CHECK(capture.sink.str().empty());
+  }
 }

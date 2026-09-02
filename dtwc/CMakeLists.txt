@@ -96,7 +96,6 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   PUBLIC
-  rapidcsv::rapidcsv
   Eigen3::Eigen
 )
 

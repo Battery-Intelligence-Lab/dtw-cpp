@@ -614,6 +614,30 @@ if(TARGET test_supply_chain_pinning)
             PASS_REGULAR_EXPRESSION "${_f16_focused_regex}")
 endif()
 
+# F6 (audit 2026-09-02): test_io_readers was the only Arrow-dependent target
+# with no skip guard, so CTest scored it green even when the whole file
+# degraded to its single SKIP case and asserted nothing. On a build that
+# publishes Arrow the subject must RUN: clear the repository-wide skip return
+# code, reject Catch2's skip line, and require an assertion FLOOR (the recorded
+# Arrow-ON run is 390 assertions in 11 test cases). The floor is one-sided on
+# purpose: an upper bound would pin the implementation, so adding a 100th test
+# case or merging assertions would fail the gate for a non-defect. In the
+# canonical DTWC_ENABLE_ARROW=OFF gate the single SKIP is the correct expected
+# outcome, so no guard is attached there.
+get_target_property(_dtwc_io_reader_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
+if(TARGET test_io_readers AND "DTWC_HAS_ARROW" IN_LIST _dtwc_io_reader_defs)
+    set_property(
+        TEST test_io_readers
+        PROPERTY SKIP_RETURN_CODE)
+    set_tests_properties(
+        test_io_readers
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION
+                "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)"
+            PASS_REGULAR_EXPRESSION
+                "All tests passed \\(([3-9][0-9][0-9]|[1-9][0-9][0-9][0-9]+) assertions in [0-9]+ test cases?\\)")
+endif()
+
 # The Arrow C Data ingest test synthesises ArrowSchema/ArrowArray structs with the
 # vendored nanoarrow builder (the symbols are linked in via dtwc++). nanoarrow is
 # a PRIVATE include of dtwc++, so grant this one test target the include path.

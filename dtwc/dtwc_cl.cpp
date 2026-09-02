@@ -225,6 +225,51 @@ static std::string resolve_cli_auto_method(std::string method, size_t series_cou
     "list-per-row Parquet file to stream them under the cap.");
 }
 
+/// Reject an input format whose reader this binary does not contain.
+///
+/// The rejection must exist in the build that LACKS the capability, so it sits
+/// under `#ifndef`, like the `.dtws`/`DTWC_HAS_MMAP` branch. Inside
+/// `#ifdef DTWC_HAS_PARQUET` it would be absent from the canonical
+/// `DTWC_ENABLE_ARROW=OFF` gate build and `-i x.parquet` would fall through to
+/// the CSV DataLoader, parsing Parquet bytes as text (LESSONS F9).
+static void require_input_format_is_built(
+  [[maybe_unused]] bool parquet_input, [[maybe_unused]] bool arrow_ipc_input)
+{
+#ifndef DTWC_HAS_PARQUET
+  if (parquet_input)
+    throw dtwc::InvalidInput(
+      "Parquet input (.parquet/.pq) requires a build with Arrow/Parquet "
+      "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Parquet "
+      "support; convert the input to CSV/TSV or use an Arrow-enabled build.");
+#endif
+#ifndef DTWC_HAS_ARROW
+  if (arrow_ipc_input)
+    throw dtwc::InvalidInput(
+      "Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow "
+      "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Arrow support; "
+      "convert the input to CSV/TSV or use an Arrow-enabled build.");
+#endif
+}
+
+/// Reject a parsing option the selected input format cannot honour.
+///
+/// `--column` is read only on Parquet routes; `--skip-rows`/`--skip-cols` only
+/// in the DataLoader branch. Accepting and then ignoring them elsewhere is the
+/// same silent deceit `require_ram_limit_is_applicable` exists to remove.
+static void require_format_options_are_applicable(
+  const std::string &parquet_column, int skip_rows, int skip_cols,
+  bool parquet_input, bool text_input)
+{
+  if (!parquet_column.empty() && !parquet_input)
+    throw dtwc::InvalidInput(
+      "--column selects a Parquet column and cannot be honoured for this "
+      "input; drop --column, or pass a .parquet/.pq file or directory.");
+  if ((skip_rows != 0 || skip_cols != 0) && !text_input)
+    throw dtwc::InvalidInput(
+      "--skip-rows/--skip-cols are CSV/TSV parsing options and cannot be "
+      "honoured for this input; drop them, or pass a text input.");
+}
+
 /// Decide from Parquet metadata alone whether reading the payload is legal.
 /// The cap applies to resident series storage. Only list-per-row data in one
 /// file has a valid row-group streaming implementation.
@@ -374,6 +419,35 @@ static std::string validate_cli_distance_configuration(
     return "--device cuda does not support --missing-strategy";
   if (is_cuda && mv_mode != "dependent")
     return "--device cuda does not support --mv-mode independent";
+  return "";
+}
+
+/// Validate the three route selectors that choose an algorithm, a MIP solver,
+/// and a linkage rule. Returns an empty string when OK.
+///
+/// `method`, `solver` and `linkage` reach their dispatch chains as raw strings,
+/// and a value that bypasses CLI11's CheckedTransformer (a YAML key, normalised
+/// by hand) used to select nothing at all: an unknown `method` left `result`
+/// default-constructed yet still wrote label files, an unknown `solver` stayed
+/// on HiGHS and an unknown `linkage` became Average. Reject before any data,
+/// cache, or filesystem side effect.
+static std::string validate_cli_route_selectors(
+  const std::string &method, const std::string &solver,
+  const std::string &linkage)
+{
+  const bool known_method = method == "auto" || method == "pam"
+    || method == "onebatch" || method == "clara" || method == "kmedoids"
+    || method == "mip" || method == "lrcore" || method == "hierarchical"
+    || method == "tadpole";
+  if (!known_method)
+    return "unsupported --method '" + method
+      + "'. Valid: auto, pam, onebatch, clara, kmedoids, mip, lrcore, "
+        "hierarchical, tadpole.";
+  if (solver != "highs" && solver != "gurobi")
+    return "unsupported --solver '" + solver + "'. Valid: highs, gurobi.";
+  if (linkage != "single" && linkage != "complete" && linkage != "average")
+    return "unsupported --linkage '" + linkage
+      + "'. Valid: single, complete, average.";
   return "";
 }
 
@@ -888,8 +962,18 @@ static int run_cli_main(int argc, char *argv[])
   app.add_option("--mip-focus", mip_focus, "Gurobi MIPFocus (0-3, default: 2)");
   app.add_flag("--verbose-solver", verbose_solver, "Show MIP solver log output");
 
+  // Without a transformer, `--benders ON`, `true` or the typo `of` all reach
+  // Problem::cluster_by_mip(), whose test is `benders == "on"`, and silently
+  // mean OFF on a large MIP job.
   std::string benders_mode = "auto";
-  app.add_option("--benders", benders_mode, "Benders decomposition: auto (N>200), on, off");
+  app.add_option("--benders", benders_mode, "Benders decomposition: auto (N>200), on, off")
+      ->transform(CLI::CheckedTransformer(
+          std::map<std::string, std::string>{
+              {"auto", "auto"}, {"on", "on"}, {"off", "off"},
+              {"true", "on"}, {"false", "off"},
+              {"yes", "on"}, {"no", "off"},
+              {"1", "on"}, {"0", "off"}},
+          CLI::ignore_case));
 
   // Compute device
   std::string device = "cpu";
@@ -1042,6 +1126,8 @@ static int run_cli_main(int argc, char *argv[])
 
   // Alias mappings (mirror the CheckedTransformer maps above)
   if (method == "hclust") method = "hierarchical";
+  if (method == "obp") method = "onebatch";
+  if (method == "lr") method = "lrcore";
   if (metric == "sqeuclidean" || metric == "l2sq") metric = "squared_euclidean";
   if (variant == "soft-dtw") variant = "softdtw";
   if (missing_strategy == "zero-cost" || missing_strategy == "zerocost")
@@ -1062,6 +1148,12 @@ static int run_cli_main(int argc, char *argv[])
   const DeviceSpec dev = parse_device(device);
   if (!dev.valid) {
     std::cerr << "Error: " << dev.error << "\n";
+    return EXIT_FAILURE;
+  }
+  if (const std::string route_error =
+        validate_cli_route_selectors(method, solver, linkage_str);
+      !route_error.empty()) {
+    std::cerr << "Error: " << route_error << "\n";
     return EXIT_FAILURE;
   }
   if (const std::string config_error = validate_cli_distance_configuration(
@@ -1266,8 +1358,18 @@ static int run_cli_main(int argc, char *argv[])
   [[maybe_unused]] const bool parquet_directory_input =
     !parquet_directory_files.empty();
 
+  const bool arrow_ipc_input = !is_dir
+    && (input_ext == ".arrow" || input_ext == ".ipc" || input_ext == ".feather");
+  const bool dtws_input = !is_dir && input_ext == ".dtws";
+  const bool parquet_input = parquet_file_input || parquet_directory_input;
+  // Anything the typed readers do not claim routes to the CSV/TSV DataLoader.
+  const bool text_input = !parquet_input && !arrow_ipc_input && !dtws_input;
+
+  require_input_format_is_built(parquet_input, arrow_ipc_input);
   require_ram_limit_is_applicable(
     ram_limit, parquet_file_input, parquet_directory_input);
+  require_format_options_are_applicable(
+    parquet_column, skip_rows, skip_cols, parquet_input, text_input);
 
 #ifdef DTWC_HAS_PARQUET
   // A non-zero cap changes the load decision, so inspect only Parquet metadata
@@ -1347,7 +1449,7 @@ static int run_cli_main(int argc, char *argv[])
   }
   else
 #endif
-  if (input_ext == ".dtws") {
+  if (dtws_input) {
 #ifndef DTWC_HAS_MMAP
     throw std::runtime_error(
       ".dtws memory-mapped input requires a build with llfio "
@@ -1381,7 +1483,7 @@ static int run_cli_main(int argc, char *argv[])
 #endif // DTWC_HAS_MMAP
   }
 #ifdef DTWC_HAS_ARROW
-  else if (input_ext == ".arrow" || input_ext == ".ipc" || input_ext == ".feather") {
+  else if (arrow_ipc_input) {
     // Arrow IPC — zero-copy memory-mapped load
     auto src = dtwc::io::ArrowIPCDataSource::open(input_file);
     const size_t n = src.size();
@@ -1401,7 +1503,7 @@ static int run_cli_main(int argc, char *argv[])
   }
 #endif
 #ifdef DTWC_HAS_PARQUET
-  else if (input_ext == ".parquet" || input_ext == ".pq") {
+  else if (parquet_file_input) {
     if (!stream_parquet_payload) {
       prob.set_data(dtwc::io::load_parquet_file(input_file, parquet_column));
       if (verbose)
@@ -1541,11 +1643,14 @@ static int run_cli_main(int argc, char *argv[])
       return EXIT_FAILURE;
     }
   }
-  // Set MIP solver (relevant for method=mip)
+  // Set MIP solver (relevant for method=mip). The terminal else keeps an
+  // unknown selector from silently leaving the default solver in place.
   if (solver == "highs")
     prob.set_solver(dtwc::Solver::HiGHS);
   else if (solver == "gurobi")
     prob.set_solver(dtwc::Solver::Gurobi);
+  else
+    throw dtwc::InvalidInput("unsupported --solver '" + solver + "'");
 
   // ---- Load precomputed distance matrix if provided ----
   if (!dist_mat_path.empty()) {
@@ -1561,7 +1666,7 @@ static int run_cli_main(int argc, char *argv[])
 
   // ---- Load checkpoint if available ----
   if (!checkpoint_dir.empty()) {
-    if (dtwc::load_checkpoint(prob, checkpoint_dir)) {
+    if (dtwc::load_checkpoint(prob, checkpoint_dir, cache_metric)) {
       if (verbose)
         std::cout << "Resumed from checkpoint: " << checkpoint_dir << "\n";
     } else if (verbose) {
@@ -1759,8 +1864,10 @@ static int run_cli_main(int argc, char *argv[])
       hier_opts.linkage = dtwc::algorithms::Linkage::Single;
     else if (linkage_str == "complete")
       hier_opts.linkage = dtwc::algorithms::Linkage::Complete;
-    else
+    else if (linkage_str == "average")
       hier_opts.linkage = dtwc::algorithms::Linkage::Average;
+    else
+      throw dtwc::InvalidInput("unsupported --linkage '" + linkage_str + "'");
 
     prob.fill_distance_matrix(); // hierarchical requires full pairwise distances
     auto dend = dtwc::algorithms::build_dendrogram(prob, hier_opts);
@@ -1771,6 +1878,11 @@ static int run_cli_main(int argc, char *argv[])
                 << ", cost=" << std::setprecision(6) << result.total_cost
                 << " [" << clk << "]\n";
     }
+  } else {
+    // No branch ran, so `result` is still default-constructed; without this the
+    // run would checkpoint and write an empty clustering as a success.
+    throw dtwc::InvalidInput(
+      "unsupported --method '" + method + "' reached clustering dispatch");
   }
 
   // ---- Save binary checkpoint of clustering result ----
@@ -1791,7 +1903,7 @@ static int run_cli_main(int argc, char *argv[])
   // ---- Save checkpoint ----
   if (!checkpoint_dir.empty()) {
     try {
-      dtwc::save_checkpoint(prob, checkpoint_dir);
+      dtwc::save_checkpoint(prob, checkpoint_dir, cache_metric);
       if (verbose)
         std::cout << "Checkpoint saved to " << checkpoint_dir << "\n";
     } catch (const std::exception &e) {

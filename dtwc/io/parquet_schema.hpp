@@ -9,6 +9,8 @@
 
 #include <arrow/api.h>
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <limits>
 #include <stdexcept>
@@ -91,6 +93,63 @@ inline ParquetSeriesColumn find_parquet_series_column(
   throw std::runtime_error(
     "No scalar/list Float32 or Float64 column found in Parquet schema. "
     "Use --column to specify one.");
+}
+
+/// Reject an Arrow array that carries nulls.
+///
+/// @details Audit 2026-09-02 A3: neither Parquet reader inspected nulls at all
+/// (`null_count`/`IsNull` appeared zero times in both). A null list cell
+/// produced a wrong series and a null element produced whatever bytes the
+/// values buffer happened to hold, straight into the DTW distances.
+/// `arrow_c_data.cpp` already rejects both; this matches its policy and its
+/// remedy wording. Exactly ONE `null_count()` read per array — i.e. per chunk,
+/// per values buffer — never a per-element probe inside a copy loop.
+inline void require_no_nulls(const arrow::Array &array, const char *what)
+{
+  const std::int64_t nulls = array.null_count();
+  if (nulls != 0)
+    throw std::runtime_error(
+      std::string("Parquet reader: ") + what + " contains "
+      + std::to_string(nulls)
+      + " null(s) (drop or fill nulls before clustering).");
+}
+
+/// Validate one list cell's [start, end) against the values buffer length.
+/// Offsets come from the file and are used to index a mapped buffer directly.
+inline void require_list_range(std::int64_t start, std::int64_t end,
+                               std::int64_t values_length)
+{
+  if (start < 0 || end < start || end > values_length)
+    throw std::runtime_error(
+      "Parquet reader: list offset [" + std::to_string(start) + ", "
+      + std::to_string(end) + ") is outside the values buffer [0, "
+      + std::to_string(values_length) + ")");
+}
+
+/// Copy `count` values starting at `start` from a Float64/Float32 Arrow array
+/// into `dst`, converting to the destination element type.
+///
+/// @details One type dispatch per array, never per element. This single
+/// definition replaces the six near-identical extractor bodies that each
+/// re-implemented the Float32/Float64 branch (audit 2026-09-02, section C).
+/// The caller has already validated the range and the null count.
+template <typename T>
+inline void copy_arrow_numeric(const arrow::Array &values, std::int64_t start,
+                               std::size_t count, T *dst)
+{
+  if (values.type_id() == arrow::Type::DOUBLE) {
+    const double *raw =
+      static_cast<const arrow::DoubleArray &>(values).raw_values() + start;
+    for (std::size_t j = 0; j < count; ++j) dst[j] = static_cast<T>(raw[j]);
+  } else if (values.type_id() == arrow::Type::FLOAT) {
+    const float *raw =
+      static_cast<const arrow::FloatArray &>(values).raw_values() + start;
+    for (std::size_t j = 0; j < count; ++j) dst[j] = static_cast<T>(raw[j]);
+  } else {
+    throw std::runtime_error(
+      "Parquet reader: value type must be Float64 or Float32, got "
+      + values.type()->ToString());
+  }
 }
 
 } // namespace dtwc::io::detail

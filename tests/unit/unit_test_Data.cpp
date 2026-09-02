@@ -267,3 +267,42 @@ TEST_CASE("Float32 DTW via Problem", "[Problem][float32]")
   REQUIRE(d_close < 1.0); // 5 * 0.1 = 0.5
   REQUIRE(d_far > 10.0);  // very different series
 }
+
+TEST_CASE("Data rejects a precision-mismatched accessor and ndim == 0",
+          "[Data][precision][validation]")
+{
+  // Audit 2026-09-02 A12: size() branches on precision but series() and
+  // series_f32() did not, so series() on Float32 data indexed the empty
+  // p_vec (UB), and ndim == 0 was never rejected although
+  // series_flat_size(i) % ndim divides by it.
+  SECTION("series() on Float32 storage")
+  {
+    Data f32{ std::vector<std::vector<float>>{ { 1.0f, 2.0f } },
+              std::vector<std::string>{ "a" } };
+    REQUIRE(f32.is_f32());
+    REQUIRE(f32.size() == 1);
+    REQUIRE_THROWS_AS(f32.series(0), std::runtime_error);
+    REQUIRE(f32.series_f32(0).size() == 2);
+  }
+
+  SECTION("series_f32() on Float64 storage")
+  {
+    Data f64{ std::vector<std::vector<data_t>>{ { 1.0, 2.0 } },
+              std::vector<std::string>{ "a" } };
+    REQUIRE_FALSE(f64.is_f32());
+    REQUIRE_THROWS_AS(f64.series_f32(0), std::runtime_error);
+    REQUIRE(f64.series(0).size() == 2);
+  }
+
+  SECTION("ndim == 0 is rejected at construction")
+  {
+    REQUIRE_THROWS_AS(
+      Data(std::vector<std::vector<data_t>>{ { 1.0, 2.0 } },
+           std::vector<std::string>{ "a" }, 0),
+      std::runtime_error);
+    REQUIRE_THROWS_AS(
+      Data::metadata_only(std::vector<std::string>{ "a" },
+                          std::vector<size_t>{ 4 }, 0),
+      std::runtime_error);
+  }
+}

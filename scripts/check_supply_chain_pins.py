@@ -19,7 +19,7 @@ USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
 BRACKET_OPEN = re.compile(r"\[(?P<equals>=*)\[")
 VERSION_REF = re.compile(r"v?\d+(?:[._-][0-9A-Za-z]+)*\Z", re.IGNORECASE)
-REGISTERED_CMAKE_MANIFEST_TOTAL = 27
+REGISTERED_CMAKE_MANIFEST_TOTAL = 28  # fb853eb added tests/integration/test_cli_resume_state.cmake (2026-07-24)
 CPM_PARSE_KEYWORDS = {
     "BITBUCKET_REPOSITORY",
     "CUSTOM_CACHE_KEY",

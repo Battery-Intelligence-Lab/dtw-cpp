@@ -403,3 +403,36 @@ TEST_CASE("Load folder", "[fileOperations]")
 
   fs::remove_all("CSV"); // Clean up the test files
 }
+
+TEST_CASE("Problem::read_distance_matrix propagates a failed read",
+          "[fileOperations][problem][io]")
+{
+  // A1 (2026-09-02 io/cli audit): the reader wrapped its whole body in
+  // `catch (...)` and only printed a message, so no caller could distinguish a
+  // failed load from a successful one. dtwc_cl then printed "Loaded distance
+  // matrix from <path>" straight after "Distance matrix could not be read!".
+  // The failure must reach the caller; the CLI already owns the handler that
+  // decides to continue without a precomputed matrix.
+  const auto tmp =
+    std::filesystem::temp_directory_path() / "dtwc_read_distmat_failure_test";
+  std::filesystem::create_directories(tmp);
+
+  SECTION("absent file")
+  {
+    dtwc::Problem prob("a1_absent");
+    REQUIRE_THROWS_AS(prob.read_distance_matrix(tmp / "definitely-missing.csv"),
+                      std::runtime_error);
+  }
+
+  SECTION("non-numeric field")
+  {
+    const auto bad = tmp / "not-a-matrix.csv";
+    {
+      std::ofstream file(bad);
+      file << "0,not-a-number\nnot-a-number,0\n";
+    }
+    dtwc::Problem prob("a1_malformed");
+    REQUIRE_THROWS(prob.read_distance_matrix(bad));
+    std::filesystem::remove(bad);
+  }
+}

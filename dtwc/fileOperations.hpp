@@ -17,9 +17,8 @@
 
 #include "settings.hpp" // for resultsPath
 
-#include <cassert>    // for assert
+#include <algorithm>  // for std::sort
 #include <charconv>   // for from_chars
-#include <chrono>     // for filesystem
 #include <cctype>     // for isspace, tolower
 #include <cmath>      // for isfinite
 #include <cstdlib>    // for size_t
@@ -31,13 +30,9 @@
 #include <utility>    // for pair
 #include <vector>     // for vector
 #include <fstream>
-#include <string>
-#include <sstream>
 #include <stdexcept> // for std::runtime_error
 #include <string_view>
 #include <type_traits>
-
-#include <rapidcsv.h>
 
 namespace dtwc {
 
@@ -267,6 +262,44 @@ auto readFile(const fs::path &name, int start_row = 0, int start_col = 0, char d
 }
 
 /**
+ * @brief Directory entries in one deterministic, filesystem-independent order.
+ *
+ * @details fs::directory_iterator order is filesystem-defined, so without this
+ * every name, label, medoid and distance-matrix index depends on the machine
+ * that ran the job. Non-regular entries are dropped rather than passed to
+ * readFile(). One O(n log n) pass per load, before any parallel work.
+ */
+inline std::vector<fs::path> sorted_directory_files(const fs::path &folder_path)
+{
+  std::vector<fs::path> files;
+  for (const auto &entry : fs::directory_iterator(folder_path))
+    if (entry.is_regular_file()) files.push_back(entry.path());
+  std::sort(files.begin(), files.end());
+  return files;
+}
+
+/**
+ * @brief One series-count contract for every loader.
+ *
+ * @details Contract, shared by count() and both loaders (which used to disagree
+ * for `Ndata == 0`): `Ndata == -1` means "all", otherwise stop at exactly
+ * `Ndata`. Anything below -1 is rejected.
+ */
+inline void validate_ndata(int Ndata, const char *ctx)
+{
+  if (Ndata < -1)
+    throw std::runtime_error(
+      std::string(ctx) + ": Ndata must be -1 (read all) or a non-negative "
+      "count; got " + std::to_string(Ndata));
+}
+
+/// True while another series may still be produced.
+inline bool ndata_wants_more(int Ndata, std::size_t produced)
+{
+  return Ndata < 0 || produced < static_cast<std::size_t>(Ndata);
+}
+
+/**
  * @brief Options for load_folder / load_batch_file.
  *
  * @details Bundles the five auxiliary parameters (Ndata, verbose, start_row,
@@ -302,27 +335,26 @@ struct LoadOptions {
 template <typename data_t, typename Tpath>
 auto load_folder(Tpath &folder_path, const LoadOptions &opts = {})
 {
-  std::cout << "Reading data:" << '\n';
+  validate_ndata(opts.Ndata, "load_folder");
+  if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
 
-  int i_data = 0;
-  for (const auto &entry : fs::directory_iterator(folder_path)) {
+  for (const auto &file : sorted_directory_files(folder_path)) {
+    if (!ndata_wants_more(opts.Ndata, p_vec.size())) break;
 
-    auto p = readFile<data_t>(entry.path(), opts.start_row, opts.start_col, opts.delimiter);
+    auto p = readFile<data_t>(file, opts.start_row, opts.start_col, opts.delimiter);
 
     if (opts.verbose >= 2 || (opts.verbose == 1 && p.empty()))
-      std::cout << entry.path() << "\tSize: " << p.size() << '\n';
+      std::cout << file << "\tSize: " << p.size() << '\n';
 
     p_vec.push_back(std::move(p));
-    p_names.push_back(entry.path().stem().string());
-
-    i_data++;
-    if (i_data == opts.Ndata) break;
+    p_names.push_back(file.stem().string());
   }
 
-  std::cout << p_vec.size() << " time-series data are read.\n";
+  if (opts.verbose > 0)
+    std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(p_vec, p_names);
 }
@@ -352,12 +384,11 @@ auto load_folder(Tpath &folder_path, int Ndata, int verbose = 1,
 template <typename data_t>
 auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
 {
-  std::cout << "Reading data:" << '\n';
+  validate_ndata(opts.Ndata, "load_batch_file");
+  if (opts.verbose > 0) std::cout << "Reading data:" << '\n';
 
   std::vector<std::vector<data_t>> p_vec;
   std::vector<std::string> p_names;
-
-  auto myAbsPath = fs::absolute(file_path);
 
   std::ifstream in(file_path, std::ios_base::in);
   if (!in.good()) // check if we could open the file
@@ -370,7 +401,8 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
   std::string line;
   int line_no{ 0 };
   int n_rows{ 0 };
-  while ((opts.Ndata == -1 || n_rows < opts.Ndata) && std::getline(in, line)) //!< Read file.
+  while (ndata_wants_more(opts.Ndata, static_cast<std::size_t>(n_rows))
+         && std::getline(in, line)) //!< Read file.
   {
     if (line_no++ < opts.start_row) // Skip first rows.
       continue;
@@ -391,7 +423,8 @@ auto load_batch_file(fs::path &file_path, const LoadOptions &opts = {})
     p_names.push_back(std::to_string(n_rows));
   }
 
-  std::cout << p_vec.size() << " time-series data are read.\n";
+  if (opts.verbose > 0)
+    std::cout << p_vec.size() << " time-series data are read.\n";
 
   return std::pair(p_vec, p_names);
 }
@@ -404,141 +437,6 @@ auto load_batch_file(fs::path &file_path, int Ndata, int verbose = 1,
 {
   return load_batch_file<data_t>(file_path,
     LoadOptions{Ndata, verbose, start_row, start_col, delimiter});
-}
-
-// ============================================================================
-// RapidCSV-based functions for robust multi-column CSV parsing
-// ============================================================================
-
-/**
- * @brief Reads a multi-column CSV file and returns data as a 2D vector using rapidcsv.
- *
- * @tparam data_t The data type of the elements to be read.
- * @param file_path Path of the CSV file to read.
- * @param has_header Whether the first row is a header (default is false).
- * @param has_row_names Whether the first column contains row names (default is false).
- * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::vector<std::vector<data_t>> A 2D vector where each inner vector is a row.
- */
-template <typename data_t>
-auto readCSV(const fs::path &file_path, bool has_header = false, bool has_row_names = false, char delimiter = ',')
-{
-  if (!fs::exists(file_path)) {
-    throw std::runtime_error("Error in readCSV: File " + file_path.string() + " does not exist.");
-  }
-
-  rapidcsv::LabelParams labels(
-    has_header ? 0 : -1,    // Row header index (-1 = no header)
-    has_row_names ? 0 : -1  // Column header index (-1 = no row names)
-  );
-  rapidcsv::SeparatorParams sep(delimiter);
-
-  rapidcsv::Document doc(file_path.string(), labels, sep);
-
-  std::vector<std::vector<data_t>> result;
-  const size_t numRows = doc.GetRowCount();
-  result.reserve(numRows);
-
-  for (size_t i = 0; i < numRows; ++i) {
-    result.push_back(doc.GetRow<data_t>(i));
-  }
-
-  return result;
-}
-
-/**
- * @brief Reads a multi-column CSV file where each row is a time series.
- *
- * @tparam data_t The data type of the elements to be read.
- * @param file_path Path of the CSV file to read.
- * @param max_rows Maximum number of rows to read (-1 = all rows).
- * @param has_header Whether the first row is a header (default is false).
- * @param label_col Column index containing labels (-1 = no labels, use row numbers).
- * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::pair<std::vector<std::vector<data_t>>, std::vector<std::string>> Data and names.
- */
-template <typename data_t>
-auto readTimeSeriesCSV(const fs::path &file_path, int max_rows = -1, bool has_header = false,
-                       int label_col = -1, char delimiter = ',')
-{
-  if (!fs::exists(file_path)) {
-    throw std::runtime_error("Error in readTimeSeriesCSV: File " + file_path.string() + " does not exist.");
-  }
-
-  rapidcsv::LabelParams labels(has_header ? 0 : -1, -1);
-  rapidcsv::SeparatorParams sep(delimiter);
-
-  rapidcsv::Document doc(file_path.string(), labels, sep);
-
-  std::vector<std::vector<data_t>> p_vec;
-  std::vector<std::string> p_names;
-
-  const size_t numRows = doc.GetRowCount();
-  const size_t rowsToRead = (max_rows < 0) ? numRows : std::min(static_cast<size_t>(max_rows), numRows);
-
-  p_vec.reserve(rowsToRead);
-  p_names.reserve(rowsToRead);
-
-  for (size_t i = 0; i < rowsToRead; ++i) {
-    auto row = doc.GetRow<std::string>(i);
-
-    // Extract name from label column or use row number
-    std::string name;
-    if (label_col >= 0 && static_cast<size_t>(label_col) < row.size()) {
-      name = row[label_col];
-    } else {
-      name = std::to_string(i + 1);
-    }
-    p_names.push_back(name);
-
-    // Convert remaining columns to data
-    std::vector<data_t> series;
-    series.reserve(row.size());
-    for (size_t j = 0; j < row.size(); ++j) {
-      if (static_cast<int>(j) == label_col) continue; // Skip label column
-      try {
-        if constexpr (std::is_same_v<data_t, double>) {
-          series.push_back(std::stod(row[j]));
-        } else if constexpr (std::is_same_v<data_t, float>) {
-          series.push_back(std::stof(row[j]));
-        } else if constexpr (std::is_same_v<data_t, int>) {
-          series.push_back(std::stoi(row[j]));
-        } else {
-          series.push_back(static_cast<data_t>(std::stod(row[j])));
-        }
-      } catch (const std::exception &) {
-        // Skip non-numeric values
-      }
-    }
-    p_vec.push_back(std::move(series));
-  }
-
-  return std::pair(std::move(p_vec), std::move(p_names));
-}
-
-/**
- * @brief Reads a single column from a CSV file.
- *
- * @tparam data_t The data type of the elements to be read.
- * @param file_path Path of the CSV file to read.
- * @param column Column index to read (0-based).
- * @param has_header Whether the first row is a header (default is false).
- * @param delimiter Delimiter character used in the file (default is ',').
- * @return std::vector<data_t> A vector containing the column data.
- */
-template <typename data_t>
-auto readCSVColumn(const fs::path &file_path, size_t column, bool has_header = false, char delimiter = ',')
-{
-  if (!fs::exists(file_path)) {
-    throw std::runtime_error("Error in readCSVColumn: File " + file_path.string() + " does not exist.");
-  }
-
-  rapidcsv::LabelParams labels(has_header ? 0 : -1, -1);
-  rapidcsv::SeparatorParams sep(delimiter);
-
-  rapidcsv::Document doc(file_path.string(), labels, sep);
-
-  return doc.GetColumn<data_t>(column);
 }
 
 } // namespace dtwc

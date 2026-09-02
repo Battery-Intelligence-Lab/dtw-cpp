@@ -15,15 +15,18 @@
 #include "core/storage.hpp"   //!< For core::StoragePolicy
 #include "env.hpp"            //!< For dtwc::env(), dtwc::Device (Task 1.3, built concurrently)
 
+#include <atomic>     //!< For std::atomic (lock-free temp-path sequence)
+#include <chrono>     //!< For std::chrono::system_clock (temp-path entropy)
 #include <cstddef>    //!< For size_t
-#include <cstdint>    //!< For uintptr_t
+#include <cstdint>    //!< For uint64_t
 #include <filesystem> //!< For filesystem objects like path
 #include <fstream>    //!< For std::ifstream (used in count())
 #include <iostream>   //!< For std::cerr (loud no-mmap warning)
 #include <limits>     //!< For std::numeric_limits
 #include <memory>     //!< For std::unique_ptr
+#include <random>     //!< For std::random_device (temp-path entropy)
 #include <span>       //!< For std::span (mmap-view construction)
-#include <sstream>    //!< For std::istringstream (metadata field counting)
+#include <sstream>    //!< For std::ostringstream (temp-path entropy tag)
 #include <string>     //!< For std::string
 #include <string_view>//!< For std::string_view (mmap-view names)
 #include <tuple>      //!< For std::tie(), std::tuple
@@ -122,12 +125,27 @@ inline std::size_t series_storage_threshold(std::size_t override_bytes)
 
 #ifdef DTWC_HAS_MMAP
 /// A unique temp-file path for a mapped series store when the caller sets none.
+///
+/// Unique across concurrent calls (one relaxed fetch_add per load, never per
+/// series) AND across live processes: a static address is identical in every
+/// process of the same image, so the prefix is drawn from real entropy instead.
 inline std::filesystem::path default_series_cache_path()
 {
-  static std::size_t counter = 0;
-  const auto unique =
-    std::to_string(reinterpret_cast<std::uintptr_t>(&counter))
-    + "_" + std::to_string(counter++);
+  static std::atomic<std::size_t> counter{ 0 };
+  // std::random_device may be deterministic on some platforms, so mix in the
+  // wall clock. Uniqueness is required here, not unpredictability.
+  static const std::string process_tag = [] {
+    std::random_device rd;
+    std::uint64_t tag = (static_cast<std::uint64_t>(rd()) << 32)
+      ^ static_cast<std::uint64_t>(rd());
+    tag ^= static_cast<std::uint64_t>(
+      std::chrono::system_clock::now().time_since_epoch().count());
+    std::ostringstream out;
+    out << std::hex << tag;
+    return out.str();
+  }();
+  const auto unique = process_tag + "_"
+    + std::to_string(counter.fetch_add(1, std::memory_order_relaxed));
   return std::filesystem::temp_directory_path()
        / ("dtwc_store_" + unique + ".dtws");
 }
@@ -243,6 +261,7 @@ class DataLoader
   int Ndata{ -1 };                        //!< Number of data rows to load
   int verbose{ 1 };                       //!< Verbosity level
   char delim{ ',' };                      //!< Column delimiter character
+  bool delim_explicit_{ false };          //!< True once delimiter() was called; path() must not override it.
   std::filesystem::path data_path{ "." }; //!< Path to data file or folder
 
   core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto }; //!< Routing policy for load_stored().
@@ -251,7 +270,8 @@ class DataLoader
 
   /// Count of bulk-reader (load_folder/load_batch_file) invocations — instrumentation
   /// for the metadata-only load test (proves the hpc path materialises no payload).
-  static inline std::size_t s_bulk_read_invocations = 0;
+  /// Atomic: one relaxed increment per load call, never per series.
+  static inline std::atomic<std::size_t> s_bulk_read_invocations{ 0 };
 
 public:
   // Constructors
@@ -276,9 +296,15 @@ public:
   auto mmap_cache_path() { return mmap_cache_path_; } //!< Get the mmap store file path (empty = temp file).
 
   /// Bulk-reader invocation count (test instrumentation).
-  static std::size_t bulk_read_count() { return s_bulk_read_invocations; }
+  static std::size_t bulk_read_count()
+  {
+    return s_bulk_read_invocations.load(std::memory_order_relaxed);
+  }
   /// Reset the bulk-reader invocation counter (test instrumentation).
-  static void reset_bulk_read_count() { s_bulk_read_invocations = 0; }
+  static void reset_bulk_read_count()
+  {
+    s_bulk_read_invocations.store(0, std::memory_order_relaxed);
+  }
 
 
   // Setters with chaining
@@ -305,9 +331,10 @@ public:
   [[deprecated("use start_row")]]
   DataLoader &startRow(int N) { return start_row(N); }
 
-  //!< Set number of data rows
+  //!< Set number of series to read (-1 = all). Rejects N < -1.
   DataLoader &n_data(int N)
   {
+    validate_ndata(N, "DataLoader::n_data");
     Ndata = N;
     return *this;
   }
@@ -315,6 +342,7 @@ public:
   DataLoader &delimiter(char delim_)
   {
     delim = delim_;
+    delim_explicit_ = true;
     return *this;
   }
 
@@ -329,9 +357,14 @@ public:
   DataLoader &path(const std::filesystem::path &data_path_)
   {
     data_path = data_path_;
-    if (data_path_.extension() == ".csv")
+    // An explicit delimiter() wins over extension inference; the extension
+    // match is case-insensitive so ".TSV" is not silently left on ','.
+    if (delim_explicit_) return *this;
+    const auto ext =
+      text_io_detail::lower_ascii(data_path_.extension().string());
+    if (ext == ".csv")
       delim = ',';
-    else if (data_path_.extension() == ".tsv" || data_path_.extension() == ".txt")
+    else if (ext == ".tsv" || ext == ".txt")
       delim = '\t';
     return *this;
   }
@@ -444,12 +477,12 @@ public:
   size_t count() const
   {
     if (fs::is_directory(data_path)) {
-      size_t n = 0;
-      for ([[maybe_unused]] const auto &entry : fs::directory_iterator(data_path)) {
-        ++n;
-        if (Ndata >= 0 && static_cast<int>(n) >= Ndata) break;
-      }
-      return n;
+      // Same sorted, regular-file-only listing the folder loaders use, so the
+      // count and the load agree on which entries are series.
+      const auto files = sorted_directory_files(data_path);
+      if (Ndata >= 0 && static_cast<size_t>(Ndata) < files.size())
+        return static_cast<size_t>(Ndata);
+      return files.size();
     }
     // Batch file: count lines after skipping start_row, respecting Ndata
     std::ifstream in(data_path, std::ios_base::in);
@@ -459,10 +492,9 @@ public:
     std::string line;
     int line_no = 0;
     size_t n_rows = 0;
-    while (std::getline(in, line)) {
+    while (ndata_wants_more(Ndata, n_rows) && std::getline(in, line)) {
       if (line_no++ < start_row_) continue;
       ++n_rows;
-      if (Ndata >= 0 && static_cast<int>(n_rows) >= Ndata) break;
     }
     return n_rows;
   }
@@ -474,7 +506,7 @@ private:
   {
     Data d;
     const LoadOptions opts{ Ndata, verbose, start_row_, start_col_, delim };
-    ++s_bulk_read_invocations;
+    s_bulk_read_invocations.fetch_add(1, std::memory_order_relaxed);
     if (fs::is_directory(data_path))
       std::tie(d.p_vec, d.p_names) = load_folder<data_t>(data_path, opts);
     else
@@ -498,7 +530,8 @@ private:
     std::string line;
     int line_no = 0;
     int n_rows = 0;
-    while ((Ndata == -1 || n_rows < Ndata) && std::getline(in, line)) {
+    while (ndata_wants_more(Ndata, static_cast<std::size_t>(n_rows))
+           && std::getline(in, line)) {
       if (line_no++ < start_row_) continue;
       ++n_rows;
       const std::size_t count = text_io_detail::parse_numeric_row<data_t>(
@@ -515,11 +548,10 @@ private:
   {
     std::vector<std::string> names;
     std::vector<std::size_t> flat_sizes;
-    int i_data = 0;
-    for (const auto &entry : fs::directory_iterator(data_path)) {
-      names.push_back(entry.path().stem().string());
-      flat_sizes.push_back(count_series_values(entry.path()));
-      if (++i_data == Ndata) break;
+    for (const auto &file : sorted_directory_files(data_path)) {
+      if (!ndata_wants_more(Ndata, names.size())) break;
+      names.push_back(file.stem().string());
+      flat_sizes.push_back(count_series_values(file));
     }
     return Data::metadata_only(std::move(names), std::move(flat_sizes), 1);
   }

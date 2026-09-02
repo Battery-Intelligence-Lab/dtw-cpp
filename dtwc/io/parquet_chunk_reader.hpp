@@ -30,7 +30,6 @@
 #include <limits>
 #include <memory>
 #include <numeric>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -46,38 +45,77 @@ inline void check_arrow_chunk(const arrow::Status &s, const char *ctx)
     throw std::runtime_error(std::string(ctx) + ": " + s.ToString());
 }
 
-/// Extract values from a list array element into a data_t vector.
-/// Handles both Float and Double value arrays.
-template<typename ListArrayT>
+/// Extract one list cell into `out`, converting Float32/Float64 to `T`.
+/// The null check is one `null_count()` read per array, hoisted by the caller.
+template <typename T, typename ListArrayT>
 inline void extract_list_element(const std::shared_ptr<ListArrayT> &list,
                                  int64_t i,
-                                 std::vector<data_t> &out)
+                                 std::vector<T> &out)
 {
-  auto start = list->value_offset(i);
-  auto end = list->value_offset(i + 1);
-  auto values = list->values();
-  if (start < 0 || end < start || end > values->length())
-    throw std::runtime_error(
-      "ParquetChunkReader: list offset [" + std::to_string(start) + ", " +
-      std::to_string(end) + ") is outside the values buffer [0, " +
-      std::to_string(values->length()) + ")");
-  auto sz = static_cast<size_t>(end - start);
-  if (values->type_id() == arrow::Type::DOUBLE) {
-    auto dbl = std::static_pointer_cast<arrow::DoubleArray>(values);
-    out.assign(dbl->raw_values() + start, dbl->raw_values() + start + sz);
-  } else if (values->type_id() == arrow::Type::FLOAT) {
-    auto flt = std::static_pointer_cast<arrow::FloatArray>(values);
-    out.resize(sz);
-    for (size_t j = 0; j < sz; ++j)
-      out[j] = static_cast<data_t>(flt->raw_values()[start + static_cast<int64_t>(j)]);
-  } else {
-    throw std::runtime_error("Unsupported list value type: " + values->type()->ToString());
-  }
+  const auto start = list->value_offset(i);
+  const auto end = list->value_offset(i + 1);
+  const auto &values = *list->values();
+  require_list_range(start, end, values.length());
+  const auto sz = static_cast<size_t>(end - start);
+  out.resize(sz);
+  copy_arrow_numeric<T>(values, start, sz, out.data());
 }
 
-/// Extract series from an Arrow table column into vectors.
-/// Handles scalar (one file = one series), list, and large-list columns.
-/// Supports both Float and Double value types.
+/// Extract series from an Arrow table column into vectors of `T`.
+/// Handles scalar (one column = one series), list, and large-list columns, for
+/// Float32 and Float64 source values alike. One definition serves the double
+/// and float destinations that previously had two hand-copied bodies each.
+template <typename T>
+inline void extract_series_from_column_as(
+  const std::shared_ptr<arrow::ChunkedArray> &col,
+  const std::shared_ptr<arrow::DataType> &col_type,
+  std::vector<std::vector<T>> &vecs,
+  std::vector<std::string> &names,
+  int64_t name_offset = 0)
+{
+  const bool is_list = col_type->id() == arrow::Type::LIST
+    || col_type->id() == arrow::Type::LARGE_LIST;
+
+  if (is_list) {
+    auto append_cells = [&](auto list) {
+      // Two null_count() reads per chunk: the list cells and their values.
+      require_no_nulls(*list, "list column cell");
+      require_no_nulls(*list->values(), "list column value");
+      const int64_t len = list->length();
+      for (int64_t i = 0; i < len; ++i) {
+        std::vector<T> series;
+        extract_list_element(list, i, series);
+        vecs.push_back(std::move(series));
+        names.push_back("series_" + std::to_string(
+          name_offset + static_cast<int64_t>(vecs.size()) - 1));
+      }
+    };
+
+    for (int c = 0; c < col->num_chunks(); ++c) {
+      auto chunk = col->chunk(c);
+      if (col_type->id() == arrow::Type::LIST)
+        append_cells(std::static_pointer_cast<arrow::ListArray>(chunk));
+      else
+        append_cells(std::static_pointer_cast<arrow::LargeListArray>(chunk));
+    }
+    return;
+  }
+
+  // Scalar column: the whole column is one series.
+  std::vector<T> series;
+  for (int c = 0; c < col->num_chunks(); ++c) {
+    const auto chunk = col->chunk(c);
+    require_no_nulls(*chunk, "scalar column value");
+    const auto n = static_cast<size_t>(chunk->length());
+    const size_t offset = series.size();
+    series.resize(offset + n);
+    copy_arrow_numeric<T>(*chunk, 0, n, series.data() + offset);
+  }
+  vecs.push_back(std::move(series));
+  names.push_back("series_" + std::to_string(name_offset));
+}
+
+/// Float64 destination (the default resident representation).
 inline void extract_series_from_column(
   const std::shared_ptr<arrow::ChunkedArray> &col,
   const std::shared_ptr<arrow::DataType> &col_type,
@@ -85,55 +123,10 @@ inline void extract_series_from_column(
   std::vector<std::string> &names,
   int64_t name_offset = 0)
 {
-  if (col_type->id() == arrow::Type::LIST || col_type->id() == arrow::Type::LARGE_LIST) {
-    for (int c = 0; c < col->num_chunks(); ++c) {
-      auto chunk = col->chunk(c);
-      int64_t len = chunk->length();
-
-      if (col_type->id() == arrow::Type::LIST) {
-        auto list = std::static_pointer_cast<arrow::ListArray>(chunk);
-        for (int64_t i = 0; i < len; ++i) {
-          std::vector<data_t> series;
-          extract_list_element(list, i, series);
-          vecs.push_back(std::move(series));
-          names.push_back("series_" + std::to_string(name_offset + static_cast<int64_t>(vecs.size()) - 1));
-        }
-      } else {
-        auto list = std::static_pointer_cast<arrow::LargeListArray>(chunk);
-        for (int64_t i = 0; i < len; ++i) {
-          std::vector<data_t> series;
-          extract_list_element(list, i, series);
-          vecs.push_back(std::move(series));
-          names.push_back("series_" + std::to_string(name_offset + static_cast<int64_t>(vecs.size()) - 1));
-        }
-      }
-    }
-  } else {
-    // Scalar column: entire column is one series (handles Float and Double)
-    std::vector<data_t> series;
-    for (int c = 0; c < col->num_chunks(); ++c) {
-      auto arr = col->chunk(c);
-      if (arr->type_id() == arrow::Type::DOUBLE) {
-        auto dbl = std::static_pointer_cast<arrow::DoubleArray>(arr);
-        const double *raw = dbl->raw_values();
-        for (int64_t i = 0; i < dbl->length(); ++i)
-          series.push_back(raw[i]);
-      } else if (arr->type_id() == arrow::Type::FLOAT) {
-        auto flt = std::static_pointer_cast<arrow::FloatArray>(arr);
-        const float *raw = flt->raw_values();
-        for (int64_t i = 0; i < flt->length(); ++i)
-          series.push_back(static_cast<data_t>(raw[i]));
-      } else {
-        throw std::runtime_error("Unsupported scalar column type: " + arr->type()->ToString());
-      }
-    }
-    vecs.push_back(std::move(series));
-    names.push_back("series_" + std::to_string(name_offset));
-  }
+  extract_series_from_column_as<data_t>(col, col_type, vecs, names, name_offset);
 }
 
-/// Float32 variant: extract series as float vectors (no widening to double).
-/// For Float Parquet columns, this avoids the 2x memory overhead of widening.
+/// Float32 destination: keeps a Float32 column at half the resident footprint.
 inline void extract_series_from_column_f32(
   const std::shared_ptr<arrow::ChunkedArray> &col,
   const std::shared_ptr<arrow::DataType> &col_type,
@@ -141,65 +134,7 @@ inline void extract_series_from_column_f32(
   std::vector<std::string> &names,
   int64_t name_offset = 0)
 {
-  if (col_type->id() == arrow::Type::LIST || col_type->id() == arrow::Type::LARGE_LIST) {
-    for (int c = 0; c < col->num_chunks(); ++c) {
-      auto chunk = col->chunk(c);
-      int64_t len = chunk->length();
-
-      auto extract_list = [&](auto list) {
-        auto values = list->values();
-        for (int64_t i = 0; i < len; ++i) {
-          auto start = list->value_offset(i);
-          auto end = list->value_offset(i + 1);
-          if (start < 0 || end < start || end > values->length())
-            throw std::runtime_error(
-              "ParquetChunkReader: list offset [" +
-              std::to_string(start) + ", " + std::to_string(end) +
-              ") is outside the values buffer [0, " +
-              std::to_string(values->length()) + ")");
-          const auto sz = static_cast<size_t>(end - start);
-          std::vector<float> series(sz);
-
-          if (values->type_id() == arrow::Type::FLOAT) {
-            auto flt = std::static_pointer_cast<arrow::FloatArray>(values);
-            std::copy_n(flt->raw_values() + start, sz, series.begin());
-          } else if (values->type_id() == arrow::Type::DOUBLE) {
-            auto dbl = std::static_pointer_cast<arrow::DoubleArray>(values);
-            for (size_t j = 0; j < sz; ++j)
-              series[j] = static_cast<float>(dbl->raw_values()[start + static_cast<int64_t>(j)]);
-          } else {
-            throw std::runtime_error("Unsupported list value type: " + values->type()->ToString());
-          }
-          vecs.push_back(std::move(series));
-          names.push_back("series_" + std::to_string(name_offset + static_cast<int64_t>(vecs.size()) - 1));
-        }
-      };
-
-      if (col_type->id() == arrow::Type::LIST)
-        extract_list(std::static_pointer_cast<arrow::ListArray>(chunk));
-      else
-        extract_list(std::static_pointer_cast<arrow::LargeListArray>(chunk));
-    }
-  } else {
-    std::vector<float> series;
-    for (int c = 0; c < col->num_chunks(); ++c) {
-      auto arr = col->chunk(c);
-      if (arr->type_id() == arrow::Type::FLOAT) {
-        auto flt = std::static_pointer_cast<arrow::FloatArray>(arr);
-        const float *raw = flt->raw_values();
-        for (int64_t i = 0; i < flt->length(); ++i)
-          series.push_back(raw[i]);
-      } else if (arr->type_id() == arrow::Type::DOUBLE) {
-        auto dbl = std::static_pointer_cast<arrow::DoubleArray>(arr);
-        for (int64_t i = 0; i < dbl->length(); ++i)
-          series.push_back(static_cast<float>(dbl->raw_values()[i]));
-      } else {
-        throw std::runtime_error("Unsupported scalar column type: " + arr->type()->ToString());
-      }
-    }
-    vecs.push_back(std::move(series));
-    names.push_back("series_" + std::to_string(name_offset));
-  }
+  extract_series_from_column_as<float>(col, col_type, vecs, names, name_offset);
 }
 
 } // namespace detail
@@ -281,10 +216,6 @@ public:
       throw std::runtime_error(
         "ParquetChunkReader: row-group counts do not match file metadata");
 
-    const auto n_series = logical_series_count();
-    if (n_series > 0)
-      estimated_bytes_per_series_ =
-        estimated_resident_bytes(false) / saturating_from_i64(n_series);
   }
 
   /// Number of row groups in the file.
@@ -305,9 +236,6 @@ public:
 
   /// Number of rows in a specific row group.
   int64_t row_group_rows(int rg) const { return rg_row_counts_[rg]; }
-
-  /// Estimated uncompressed bytes per series (from metadata, no data read).
-  size_t estimated_bytes_per_series() const { return estimated_bytes_per_series_; }
 
   /// Conservative estimate of resident `Data` bytes for the selected output
   /// precision. The selected Parquet column bytes are never scaled down; a
@@ -336,18 +264,6 @@ public:
     const size_t conversion_peak = saturating_add(
       f64, estimated_resident_bytes(true));
     return std::max(decode_peak, conversion_peak);
-  }
-
-  /// Float64-compatible legacy estimate used by existing callers.
-  size_t estimated_total_bytes() const { return estimated_resident_bytes(false); }
-
-  /// Read a single row group into a Data object.
-  ///
-  /// @param rg  Row group index [0, num_row_groups()).
-  /// @return Owning Data with series from that row group.
-  Data read_row_group(int rg) const
-  {
-    return read_row_groups(rg, 1);
   }
 
   /// Read a contiguous batch of row groups [rg_start, rg_start+count).
@@ -641,7 +557,6 @@ private:
   std::vector<size_t> rg_value_counts_;
   size_t column_encoded_bytes_ = 0;
   size_t total_value_count_ = 0;
-  size_t estimated_bytes_per_series_ = 0;
 };
 
 } // namespace dtwc::io

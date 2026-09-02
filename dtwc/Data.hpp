@@ -13,7 +13,6 @@
 #include "settings.hpp"
 #include "core/storage.hpp"
 
-#include <cassert>      // for assert
 #include <cstddef>      // for size_t
 #include <span>         // for span
 #include <stdexcept>    // for runtime_error
@@ -48,18 +47,22 @@ struct Data
   /// Returns the number of timesteps for series i.
   size_t series_length(size_t i) const { return series_flat_size(i) / ndim; }
 
-  /// Returns a float64 span view of series i (only valid when precision == Float64 or view mode).
+  /// Returns a float64 span view of series i. Requires precision == Float64.
+  /// @details size() already branches on precision; without the same branch
+  /// here, series() on Float32 data indexes the empty p_vec / p_spans_.
   std::span<const data_t> series(size_t i) const
   {
     if (is_metadata_only_) throw_not_resident();
+    if (is_f32()) throw_wrong_precision("series", "Float32", "series_f32");
     if (is_view_) return p_spans_[i];
     return std::span<const data_t>(p_vec[i]);
   }
 
-  /// Returns a float32 span view of series i (only valid when precision == Float32).
+  /// Returns a float32 span view of series i. Requires precision == Float32.
   std::span<const float> series_f32(size_t i) const
   {
     if (is_metadata_only_) throw_not_resident();
+    if (!is_f32()) throw_wrong_precision("series_f32", "Float64", "series");
     if (is_view_) return p_spans_f32_[i];
     return std::span<const float>(p_vec_f32[i]);
   }
@@ -93,6 +96,9 @@ struct Data
   /// Validates that all series have flat sizes divisible by ndim.
   void validate_ndim() const
   {
+    // series_length() and the modulo below both divide by ndim.
+    if (ndim == 0)
+      throw std::runtime_error("Data: ndim must be at least 1");
     const auto n = size();
     for (size_t i = 0; i < n; ++i) {
       if (series_flat_size(i) % ndim != 0) {
@@ -178,6 +184,16 @@ private:
 
   std::vector<size_t> meta_flat_sizes_; //!< Metadata-only: per-series flat sizes (no payload).
   bool is_metadata_only_ = false;       //!< Metadata-only mode (device='hpc'): no bulk data resident.
+
+  /// Common error for an accessor that does not match the active precision.
+  [[noreturn]] static void throw_wrong_precision(const char *accessor,
+                                                 const char *stored,
+                                                 const char *correct)
+  {
+    throw std::runtime_error(
+      std::string("Data::") + accessor + ": data is stored as " + stored
+      + "; use " + correct + "() instead.");
+  }
 
   /// Common error for local access to bulk data that is not resident (device='hpc').
   [[noreturn]] static void throw_not_resident()

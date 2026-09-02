@@ -87,7 +87,6 @@ if [[ -f "${DATA_DIR}/Coffee/Coffee_TRAIN.parquet" ]]; then
     if "${DTWC_BIN}" \
         --input "${PARQUET_FILE}" \
         -k2 \
-        --skip-cols 1 \
         --dtype float64 \
         --method pam \
         --verbose \
@@ -118,7 +117,6 @@ if [[ -f "${DATA_DIR}/Coffee/Coffee_TRAIN.dtws" ]]; then
     if "${DTWC_BIN}" \
         --input "${DTWS_FILE}" \
         -k2 \
-        --skip-cols 1 \
         --dtype float64 \
         --method pam \
         --verbose \

@@ -25,6 +25,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <utility>
 #include <filesystem>
 #include <limits>
 #include <memory>
@@ -449,6 +450,101 @@ TEST_CASE("Parquet series selection maps Arrow fields to physical leaf columns",
     CHECK(sparse.p_vec[0] == eager.p_vec[1]);
   }
   std::filesystem::remove(tmp);
+}
+
+TEST_CASE("Parquet: a null in a scalar column is rejected, not read as garbage",
+          "[io][parquet][security]")
+{
+  // Audit 2026-09-02 A3: neither Parquet reader looked at nulls. A null slot in
+  // a scalar column carries whatever the values buffer happens to hold, and
+  // that value went straight into the DTW distances. arrow_c_data.cpp already
+  // rejects nulls; the Parquet readers must match. PRE-FIX both calls below
+  // return successfully with a fabricated value.
+  auto pool = arrow::default_memory_pool();
+  arrow::DoubleBuilder db(pool);
+  REQUIRE(db.Append(1.0).ok());
+  REQUIRE(db.AppendNull().ok());
+  REQUIRE(db.Append(3.0).ok());
+  std::shared_ptr<arrow::Array> arr;
+  REQUIRE(db.Finish(&arr).ok());
+  auto schema = arrow::schema({ arrow::field("v", arrow::float64()) });
+  auto tmp = tmpdir() / "scalar_null.parquet";
+  write_parquet(tmp, arrow::Table::Make(schema, { arr }));
+
+  CHECK_THROWS_WITH(dtwc::io::load_parquet_file(tmp, "v"),
+                    Catch::Matchers::ContainsSubstring("null"));
+
+  auto column = std::make_shared<arrow::ChunkedArray>(arr);
+  std::vector<std::vector<dtwc::data_t>> f64;
+  std::vector<std::vector<float>> f32;
+  std::vector<std::string> names;
+  CHECK_THROWS_WITH(
+    dtwc::io::detail::extract_series_from_column(
+      column, arrow::float64(), f64, names),
+    Catch::Matchers::ContainsSubstring("null"));
+  names.clear();
+  CHECK_THROWS_WITH(
+    dtwc::io::detail::extract_series_from_column_f32(
+      column, arrow::float64(), f32, names),
+    Catch::Matchers::ContainsSubstring("null"));
+  std::filesystem::remove(tmp);
+}
+
+TEST_CASE("Parquet: a null list cell or null list element is rejected",
+          "[io][parquet][security]")
+{
+  // A null LIST cell used to yield a wrong (empty or shifted) series; a null
+  // element inside an otherwise valid cell used to yield raw buffer bytes.
+  auto pool = arrow::default_memory_pool();
+
+  auto null_cell = [&] {
+    auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
+    arrow::ListBuilder lb(pool, vb);
+    REQUIRE(lb.Append().ok());
+    REQUIRE(vb->AppendValues(std::vector<double>{ 1.0, 2.0 }).ok());
+    REQUIRE(lb.AppendNull().ok());
+    std::shared_ptr<arrow::Array> out;
+    REQUIRE(lb.Finish(&out).ok());
+    return out;
+  }();
+
+  auto null_element = [&] {
+    auto vb = std::make_shared<arrow::DoubleBuilder>(pool);
+    arrow::ListBuilder lb(pool, vb);
+    REQUIRE(lb.Append().ok());
+    REQUIRE(vb->Append(1.0).ok());
+    REQUIRE(vb->AppendNull().ok());
+    REQUIRE(vb->Append(3.0).ok());
+    std::shared_ptr<arrow::Array> out;
+    REQUIRE(lb.Finish(&out).ok());
+    return out;
+  }();
+
+  for (const auto &[label, arr] :
+       std::vector<std::pair<std::string, std::shared_ptr<arrow::Array>>>{
+         { "null cell", null_cell }, { "null element", null_element } }) {
+    CAPTURE(label);
+    auto schema = arrow::schema({ arrow::field("series", arr->type()) });
+    auto tmp = tmpdir() / ("list_" + label.substr(5) + ".parquet");
+    write_parquet(tmp, arrow::Table::Make(schema, { arr }));
+    CHECK_THROWS_WITH(dtwc::io::load_parquet_file(tmp, "series"),
+                      Catch::Matchers::ContainsSubstring("null"));
+
+    auto column = std::make_shared<arrow::ChunkedArray>(arr);
+    std::vector<std::vector<dtwc::data_t>> f64;
+    std::vector<std::vector<float>> f32;
+    std::vector<std::string> names;
+    CHECK_THROWS_WITH(
+      dtwc::io::detail::extract_series_from_column(
+        column, arr->type(), f64, names),
+      Catch::Matchers::ContainsSubstring("null"));
+    names.clear();
+    CHECK_THROWS_WITH(
+      dtwc::io::detail::extract_series_from_column_f32(
+        column, arr->type(), f32, names),
+      Catch::Matchers::ContainsSubstring("null"));
+    std::filesystem::remove(tmp);
+  }
 }
 
 #endif // DTWC_HAS_PARQUET

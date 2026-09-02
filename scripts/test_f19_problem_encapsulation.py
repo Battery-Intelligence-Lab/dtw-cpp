@@ -234,14 +234,6 @@ def parse_args() -> argparse.Namespace:
         help="C++20 compiler executable (defaults to CXX, clang++, then g++).",
     )
     parser.add_argument(
-        "--rapidcsv-include",
-        type=Path,
-        help=(
-            "Directory containing rapidcsv.h (defaults to a fetched copy "
-            "under build/)."
-        ),
-    )
-    parser.add_argument(
         "--self-test",
         action="store_true",
         help="Run non-mutating adversarial probes against the gate itself.",
@@ -482,40 +474,8 @@ def find_compiler(requested: str | None) -> str:
     )
 
 
-def find_rapidcsv_include(requested: Path | None) -> Path:
-    candidates = []
-    if requested:
-        candidates.append(requested)
-    candidates.append(
-        ROOT / "build" / "highs-1151" / "_deps" / "rapidcsv-src" / "src"
-    )
-    candidates.extend(
-        sorted(
-            (ROOT / "build").glob(
-                "cpm-cache/rapidcsv/*/src"
-            )
-        )
-    )
-    candidates.extend(
-        sorted(
-            (ROOT / "build").glob(
-                "*/_deps/rapidcsv-src/src"
-            )
-        )
-    )
-    for candidate in candidates:
-        resolved = candidate.resolve()
-        if (resolved / "rapidcsv.h").is_file():
-            return resolved
-    raise GateFailure(
-        "rapidcsv.h was not found under build/; configure a normal DTWC "
-        "build first or pass --rapidcsv-include"
-    )
-
-
 def compile_command(
     compiler: str,
-    rapidcsv_include: Path,
     source: str,
     *,
     defines: tuple[str, ...] = (),
@@ -532,8 +492,6 @@ def compile_command(
         "-fsyntax-only",
         "-I",
         str(ROOT),
-        "-I",
-        str(rapidcsv_include),
         *(f"-D{define}" for define in defines),
         source,
     ]
@@ -541,7 +499,6 @@ def compile_command(
 
 def run_compiler(
     compiler: str,
-    rapidcsv_include: Path,
     source: str,
     *,
     stdin: str | None = None,
@@ -549,7 +506,6 @@ def run_compiler(
 ) -> subprocess.CompletedProcess[str]:
     command = compile_command(
         compiler,
-        rapidcsv_include,
         source,
         defines=defines,
     )
@@ -629,12 +585,10 @@ def run_attribution_probes(
     *,
     profile: str,
     compiler: str,
-    rapidcsv_include: Path,
 ) -> tuple[int, int, int]:
     fixture_source = str(FIXTURE)
     compatibility = run_compiler(
         compiler,
-        rapidcsv_include,
         fixture_source,
         defines=(
             "DTWC_F19_SKIP_PRIVATE_ASSERTS",
@@ -650,7 +604,6 @@ def run_attribution_probes(
 
     private_probe = run_compiler(
         compiler,
-        rapidcsv_include,
         fixture_source,
         defines=(
             "DTWC_F19_SKIP_GETTER_ASSERTS",
@@ -659,7 +612,6 @@ def run_attribution_probes(
     )
     getter_probe = run_compiler(
         compiler,
-        rapidcsv_include,
         fixture_source,
         defines=(
             "DTWC_F19_SKIP_PRIVATE_ASSERTS",
@@ -668,7 +620,6 @@ def run_attribution_probes(
     )
     setter_probe = run_compiler(
         compiler,
-        rapidcsv_include,
         fixture_source,
         defines=(
             "DTWC_F19_SKIP_PRIVATE_ASSERTS",
@@ -1279,10 +1230,7 @@ def expect_gate_rejection(label: str, action) -> int:
     raise GateFailure(f"adversarial self-probe was not rejected: {label}")
 
 
-def run_fixture_concept_self_probe(
-    compiler: str,
-    rapidcsv_include: Path,
-) -> int:
+def run_fixture_concept_self_probe(compiler: str) -> int:
     source = r'''
 #define DTWC_F19_SKIP_PRIVATE_ASSERTS
 #define DTWC_F19_SKIP_GETTER_ASSERTS
@@ -1332,7 +1280,6 @@ static_assert(raw_retained_max_iter_assignable<RetainedExact>);
 '''
     result = run_compiler(
         compiler,
-        rapidcsv_include,
         "-",
         stdin=source,
     )
@@ -1842,13 +1789,9 @@ def main() -> int:
         )
 
         compiler = find_compiler(args.compiler)
-        rapidcsv_include = find_rapidcsv_include(args.rapidcsv_include)
         self_probes = 0
         if args.self_test:
-            self_probes += run_fixture_concept_self_probe(
-                compiler,
-                rapidcsv_include,
-            )
+            self_probes += run_fixture_concept_self_probe(compiler)
             self_probes += run_source_adversarial_self_probes(
                 authoritative_texts,
             )
@@ -1858,7 +1801,6 @@ def main() -> int:
             )
         smoke = run_compiler(
             compiler,
-            rapidcsv_include,
             "-",
             stdin='#include "dtwc/Problem.hpp"\n',
         )
@@ -1875,12 +1817,9 @@ def main() -> int:
         ) = run_attribution_probes(
             profile=args.expect,
             compiler=compiler,
-            rapidcsv_include=rapidcsv_include,
         )
 
-        contract = run_compiler(
-            compiler, rapidcsv_include, str(FIXTURE)
-        )
+        contract = run_compiler(compiler, str(FIXTURE))
         compile_success = contract.returncode == 0
         expected_compile_success = EXPECTED[args.expect]["compile_success"]
         if compile_success != expected_compile_success:

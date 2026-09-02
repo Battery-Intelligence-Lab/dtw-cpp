@@ -25,7 +25,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
-#include <span>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -84,39 +83,22 @@ inline Data load_parquet_file(const std::filesystem::path &path,
     vecs.reserve(static_cast<size_t>(N));
     names.reserve(static_cast<size_t>(N));
 
-    // Append every list element as one series, converting Float32 -> data_t and
-    // validating that offsets stay within the values buffer. find_column accepts
-    // Float32 columns, so the values array may be Float32 or Float64. (audit
-    // io-security: no Float64 check + no bounds on list offsets)
+    // Every list cell is one series. Value type, list offsets and null counts
+    // are all validated by the shared helpers in parquet_schema.hpp, so the
+    // eager and streaming readers cannot drift apart again (audit A3 / C).
     auto append_list_series = [&](auto list) {
-      auto values = list->values();
-      const int64_t vlen = values->length();
-      const bool is_double = values->type_id() == arrow::Type::DOUBLE;
-      const bool is_float = values->type_id() == arrow::Type::FLOAT;
-      if (!is_double && !is_float)
-        throw std::runtime_error(
-          "load_parquet_file: list value type must be Float64 or Float32, got " +
-          values->type()->ToString());
-      const double *draw = is_double
-        ? std::static_pointer_cast<arrow::DoubleArray>(values)->raw_values() : nullptr;
-      const float *fraw = is_float
-        ? std::static_pointer_cast<arrow::FloatArray>(values)->raw_values() : nullptr;
-
+      // Two null_count() reads per chunk, never one per element.
+      detail::require_no_nulls(*list, "list column cell");
+      detail::require_no_nulls(*list->values(), "list column value");
+      const auto &values = *list->values();
       const int64_t len = list->length();
       for (int64_t i = 0; i < len; ++i) {
         const int64_t start = list->value_offset(i);
         const int64_t end = list->value_offset(i + 1);
-        if (start < 0 || end < start || end > vlen)
-          throw std::runtime_error(
-            "load_parquet_file: list offset [" + std::to_string(start) + ", " +
-            std::to_string(end) + ") out of bounds [0, " + std::to_string(vlen) + "]");
+        detail::require_list_range(start, end, values.length());
         const auto sz = static_cast<size_t>(end - start);
         std::vector<data_t> series(sz);
-        if (is_double)
-          std::copy_n(draw + start, sz, series.begin());
-        else
-          for (size_t j = 0; j < sz; ++j)
-            series[j] = static_cast<data_t>(fraw[start + static_cast<int64_t>(j)]);
+        detail::copy_arrow_numeric<data_t>(values, start, sz, series.data());
         vecs.push_back(std::move(series));
         names.push_back("series_" + std::to_string(vecs.size() - 1));
       }
@@ -130,30 +112,17 @@ inline Data load_parquet_file(const std::filesystem::path &path,
         append_list_series(std::static_pointer_cast<arrow::LargeListArray>(chunk));
     }
   } else {
-    // Scalar column: entire column is one series (one file = one series).
-    // find_column accepts Float32 columns, so handle both value types rather than
-    // blindly casting to DoubleArray. (audit io-security: reader path lacked the
-    // FLOAT branch the chunk reader has -> latent garbage / OOB on f32 files)
+    // Scalar column: the entire column is one series (one file = one series).
     std::vector<data_t> series;
     series.reserve(static_cast<size_t>(N));
 
     for (int c = 0; c < col->num_chunks(); ++c) {
-      auto arr = col->chunk(c);
-      if (arr->type_id() == arrow::Type::DOUBLE) {
-        auto dbl = std::static_pointer_cast<arrow::DoubleArray>(arr);
-        const double *raw = dbl->raw_values();
-        for (int64_t i = 0; i < dbl->length(); ++i)
-          series.push_back(raw[i]);
-      } else if (arr->type_id() == arrow::Type::FLOAT) {
-        auto flt = std::static_pointer_cast<arrow::FloatArray>(arr);
-        const float *raw = flt->raw_values();
-        for (int64_t i = 0; i < flt->length(); ++i)
-          series.push_back(static_cast<data_t>(raw[i]));
-      } else {
-        throw std::runtime_error(
-          "load_parquet_file: scalar column type must be Float64 or Float32, got " +
-          arr->type()->ToString());
-      }
+      const auto chunk = col->chunk(c);
+      detail::require_no_nulls(*chunk, "scalar column value");
+      const auto n = static_cast<size_t>(chunk->length());
+      const size_t offset = series.size();
+      series.resize(offset + n);
+      detail::copy_arrow_numeric<data_t>(*chunk, 0, n, series.data() + offset);
     }
 
     std::string name = path.stem().string();
