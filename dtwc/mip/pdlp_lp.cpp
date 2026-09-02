@@ -10,6 +10,8 @@
  */
 
 #include "pdlp_lp.hpp"
+#include "highs_support.hpp"
+#include "index_guard.hpp"
 #include "../error.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
@@ -19,6 +21,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -65,6 +68,15 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
   const std::size_t n_link = Nz * (Nz - 1);
   const std::size_t nrow = 1 + Nz + n_link;
 
+  // HighsInt is int32 in a default HiGHS build: an N^2 model dimension above its
+  // range would truncate silently into a different, wrong LP.
+  const auto highs_index_max =
+    static_cast<std::size_t>(std::numeric_limits<HighsInt>::max());
+  const std::size_t nnz_total = Nz + nvar + 2 * n_link;
+  require_index_range(nvar, highs_index_max, "column count N*N", "pdlp_lp_bound");
+  require_index_range(nrow, highs_index_max, "row count", "pdlp_lp_bound");
+  require_index_range(nnz_total, highs_index_max, "nonzero count", "pdlp_lp_bound");
+
   HighsModel model;
   model.lp_.num_col_ = static_cast<HighsInt>(nvar);
   model.lp_.num_row_ = static_cast<HighsInt>(nrow);
@@ -93,13 +105,12 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
   A.format_ = MatrixFormat::kRowwise;
   A.num_col_ = static_cast<HighsInt>(nvar);
   A.num_row_ = static_cast<HighsInt>(nrow);
-  const std::size_t nnz = Nz + nvar + 2 * n_link; // cardinality + assignment + linking
   A.start_.clear();
   A.start_.reserve(nrow + 1);
   A.index_.clear();
-  A.index_.reserve(nnz);
+  A.index_.reserve(nnz_total); // cardinality + assignment + linking
   A.value_.clear();
-  A.value_.reserve(nnz);
+  A.value_.reserve(nnz_total);
 
   A.start_.push_back(0);
   // Row 0: cardinality — +1 on each diagonal x_ii.
@@ -141,11 +152,19 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
 
   // ---- Solve with PDLP -------------------------------------------------------
   Highs highs;
-  if (!params.verbose) highs.setOptionValue("output_flag", false);
-  highs.setOptionValue("solver", params.variant); // "pdlp" (cuPDLP-C) | "hipdlp" (HiGHS PDHG)
-  highs.setOptionValue("kkt_tolerance", params.tol);
+  // params.variant is an unvalidated caller string. A typo, or an option absent
+  // from the linked HiGHS, returns kError; ignoring it ran the DEFAULT simplex
+  // solver while the result was still reported as a PDLP arbiter value.
+  if (!params.verbose)
+    set_highs_option(highs, "output_flag", false, "pdlp_lp_bound");
+  set_highs_option(highs, "solver", params.variant, "pdlp_lp_bound"); // "pdlp" (cuPDLP-C) | "hipdlp" (HiGHS PDHG)
+  // Tuning only, and absent from HiGHS builds older than 1.8: a hard failure here
+  // meant a version skew produced NO bound at all, while the solver identity set
+  // above (which stays fatal) is what makes the reported value a PDLP value.
+  set_highs_option_best_effort(highs, "kkt_tolerance", params.tol, "pdlp_lp_bound");
   if (params.iteration_limit > 0)
-    highs.setOptionValue("pdlp_iteration_limit", static_cast<HighsInt>(params.iteration_limit));
+    set_highs_option(highs, "pdlp_iteration_limit",
+                     static_cast<HighsInt>(params.iteration_limit), "pdlp_lp_bound");
 
   // The compute device is a COMPILE-TIME property of the HiGHS build
   // (CUPDLP_GPU), not a per-solve toggle: on a CUPDLP_GPU build, solver="pdlp"

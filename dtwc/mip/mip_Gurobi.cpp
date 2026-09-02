@@ -7,6 +7,7 @@
  */
 
 #include "mip.hpp"
+#include "index_guard.hpp"
 #include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Problem.hpp"
@@ -15,13 +16,15 @@
 #include "../types/types.hpp" // for Range
 
 
-#include <vector>
-#include <string>
-#include <string_view>
+#include <algorithm> // for std::max
+#include <cstddef>   // for std::size_t
+#include <iostream>  // for std::cout
+#include <limits>    // for std::numeric_limits
 #include <memory>
-#include <limits>
 #include <stdexcept>
+#include <string>
 #include <utility>
+#include <vector>
 
 #ifdef DTWC_ENABLE_GUROBI
 #include "gurobi_c++.h"
@@ -41,8 +44,14 @@ void MIP_clustering_byGurobi(Problem &prob)
     GRBEnv env = GRBEnv();
     GRBModel model = GRBModel(env);
 
+    // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
+    // into a wrong-sized (or negative) model.
+    mip::require_index_range(Nb * Nb,
+                             static_cast<std::size_t>(std::numeric_limits<int>::max()),
+                             "column count N*N", "Gurobi");
+
     // Create variables
-    std::unique_ptr<GRBVar[]> w{ model.addVars(Nb * Nb, GRB_BINARY) };
+    std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(Nb * Nb), GRB_BINARY) };
 
     // Branch on medoid selection first — once A[i,i] is fixed,
     // assignment is a transportation problem (TU) and LP-integral.

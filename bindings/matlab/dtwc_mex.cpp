@@ -36,6 +36,7 @@
 #include "../../dtwc/error.hpp"        // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
+#include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
 
 #include <string>
 #include <vector>
@@ -251,8 +252,10 @@ static int get_cuda_precision(const mxArray *mx) {
   return static_cast<int>(value);
 }
 
-static int get_exact_int(const mxArray *mx, const char *arg_name) {
-  const double value = get_scalar(mx, arg_name);
+/// Convert one MATLAB double to int without ever invoking an out-of-range or
+/// non-integral float-to-int conversion (both are undefined behaviour, and a
+/// NaN/Inf label silently produced a garbage cluster id before this guard).
+static int exact_int_from_double(double value, const char *arg_name) {
   constexpr double int_min = static_cast<double>(
     std::numeric_limits<int>::min());
   constexpr double int_max = static_cast<double>(
@@ -263,6 +266,44 @@ static int get_exact_int(const mxArray *mx, const char *arg_name) {
       std::string(arg_name) + " must be a finite integer in the C++ int range.");
   }
   return static_cast<int>(value);
+}
+
+static int get_exact_int(const mxArray *mx, const char *arg_name) {
+  return exact_int_from_double(get_scalar(mx, arg_name), arg_name);
+}
+
+/// Shift a validated 1-based MATLAB index down to 0-based. INT_MIN is exactly
+/// representable as a double and therefore passes exact_int_from_double, so the
+/// callers' bare `- 1` was signed overflow (undefined behaviour) at exactly the
+/// boundary these helpers exist to make safe.
+static int to_0based(int value, const char *arg_name) {
+  if (value == std::numeric_limits<int>::min())
+    throw std::invalid_argument(
+      std::string(arg_name) + " = " + std::to_string(value)
+      + " has no 0-based representation in the C++ int range.");
+  return value - 1;
+}
+
+static int exact_int_1based_to_0based(double value, const char *arg_name) {
+  return to_0based(exact_int_from_double(value, arg_name), arg_name);
+}
+
+/// Decode a 1-based MATLAB label/index vector (int32 or double) to 0-based ints.
+/// Every double element goes through exact_int_from_double, so NaN/Inf/fractional
+/// entries are rejected instead of being cast with undefined behaviour.
+static std::vector<int> label_vector_to_0based(const mxArray *mx, const char *arg_name) {
+  require_label_vector(mx, arg_name);
+  const size_t n = mxGetNumberOfElements(mx);
+  std::vector<int> out(n);
+  if (mxIsInt32(mx)) {
+    const int32_t *p = static_cast<const int32_t *>(mxGetData(mx));
+    for (size_t i = 0; i < n; ++i) out[i] = to_0based(static_cast<int>(p[i]), arg_name);
+  } else {
+    const double *p = mxGetDoubles(mx);
+    for (size_t i = 0; i < n; ++i)
+      out[i] = exact_int_1based_to_0based(p[i], arg_name);
+  }
+  return out;
 }
 
 /// Decode a MATLAB double seed without invoking an out-of-range float-to-int
@@ -364,16 +405,28 @@ static dtwc::algorithms::Dendrogram mx_to_dendrogram(const mxArray *mx) {
   if (mxIsComplex(merges_mx) || mxIsSparse(merges_mx) || !mxIsDouble(merges_mx))
     throw std::invalid_argument("dendrogram.merges must be a real, full, double matrix.");
 
-  dend.n_points = static_cast<int>(get_scalar(np_mx, "dendrogram.n_points"));
+  // The loop below reads column 3 (data[i + 3 * n_merges]), so the column count
+  // is load-bearing: an Nx3 or transposed 'merges' over-reads the heap. Only the
+  // empty single-point dendrogram may have no columns.
+  const size_t n_merge_cols = mxGetN(merges_mx);
+  if (!mxIsEmpty(merges_mx) && n_merge_cols != 4)
+    throw std::invalid_argument("dendrogram.merges must have exactly 4 columns "
+      "[cluster_a, cluster_b, distance, new_size] (got "
+      + std::to_string(n_merge_cols) + ").");
 
-  size_t n_merges = mxGetM(merges_mx);
+  dend.n_points = get_exact_int(np_mx, "dendrogram.n_points");
+
+  size_t n_merges = mxIsEmpty(merges_mx) ? 0 : mxGetM(merges_mx);
   const double *data = mxGetDoubles(merges_mx);
   dend.merges.resize(n_merges);
   for (size_t i = 0; i < n_merges; ++i) {
-    dend.merges[i].cluster_a = static_cast<int>(data[i + 0 * n_merges]) - 1; // 1-based -> 0-based
-    dend.merges[i].cluster_b = static_cast<int>(data[i + 1 * n_merges]) - 1;
+    dend.merges[i].cluster_a = exact_int_1based_to_0based(
+      data[i + 0 * n_merges], "dendrogram.merges(:,1)"); // 1-based -> 0-based
+    dend.merges[i].cluster_b = exact_int_1based_to_0based(
+      data[i + 1 * n_merges], "dendrogram.merges(:,2)");
     dend.merges[i].distance = data[i + 2 * n_merges];
-    dend.merges[i].new_size = static_cast<int>(data[i + 3 * n_merges]);
+    dend.merges[i].new_size = exact_int_from_double(
+      data[i + 3 * n_merges], "dendrogram.merges(:,4)");
   }
 
   return dend;
@@ -917,23 +970,8 @@ static dtwc::core::ClusteringResult mx_to_clustering_result(const mxArray *mx) {
   const mxArray *med = mxGetField(mx, 0, "medoid_indices");
   if (!lab || !med)
     throw std::invalid_argument("result struct is missing 'labels' or 'medoid_indices'.");
-  require_label_vector(lab, "result.labels");
-  require_label_vector(med, "result.medoid_indices");
-
-  auto read_1based = [](const mxArray *v) {
-    const size_t n = mxGetNumberOfElements(v);
-    std::vector<int> out(n);
-    if (mxIsInt32(v)) {
-      const int32_t *p = static_cast<int32_t *>(mxGetData(v));
-      for (size_t i = 0; i < n; ++i) out[i] = static_cast<int>(p[i]) - 1; // 1-based -> 0-based
-    } else {
-      const double *p = mxGetDoubles(v);
-      for (size_t i = 0; i < n; ++i) out[i] = static_cast<int>(p[i]) - 1; // 1-based -> 0-based
-    }
-    return out;
-  };
-  r.labels = read_1based(lab);
-  r.medoid_indices = read_1based(med);
+  r.labels = label_vector_to_0based(lab, "result.labels");
+  r.medoid_indices = label_vector_to_0based(med, "result.medoid_indices");
   if (mxArray *f = mxGetField(mx, 0, "total_cost")) r.total_cost = get_scalar(f, "total_cost");
   if (mxArray *f = mxGetField(mx, 0, "iterations")) r.iterations = static_cast<int>(get_scalar(f, "iterations"));
   if (mxArray *f = mxGetField(mx, 0, "converged")) r.converged = (get_scalar(f, "converged") != 0.0);
@@ -1241,63 +1279,88 @@ static void cmd_calinski_harabasz_index(int nlhs, mxArray *plhs[], int nrhs, con
 
 static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("adjusted_rand_index requires two label vectors.");
-  auto mx1 = prhs[1];
-  auto mx2 = prhs[2];
-  require_label_vector(mx1, "labels_1");
-  require_label_vector(mx2, "labels_2");
-
-  size_t n1 = mxGetNumberOfElements(mx1);
-  size_t n2 = mxGetNumberOfElements(mx2);
-  if (n1 != n2) throw std::invalid_argument("Label vectors must have the same length.");
-
-  // Accept both double and int32, convert to 0-based C++ int
-  std::vector<int> labels1(n1), labels2(n2);
-  if (mxIsInt32(mx1)) {
-    int32_t *p = static_cast<int32_t *>(mxGetData(mx1));
-    for (size_t i = 0; i < n1; ++i) labels1[i] = static_cast<int>(p[i] - 1);
-  } else {
-    const double *p = mxGetDoubles(mx1);
-    for (size_t i = 0; i < n1; ++i) labels1[i] = static_cast<int>(p[i] - 1);
-  }
-  if (mxIsInt32(mx2)) {
-    int32_t *p = static_cast<int32_t *>(mxGetData(mx2));
-    for (size_t i = 0; i < n2; ++i) labels2[i] = static_cast<int>(p[i] - 1);
-  } else {
-    const double *p = mxGetDoubles(mx2);
-    for (size_t i = 0; i < n2; ++i) labels2[i] = static_cast<int>(p[i] - 1);
-  }
+  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  if (labels1.size() != labels2.size())
+    throw std::invalid_argument("Label vectors must have the same length.");
 
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::adjusted_rand(labels1, labels2));
 }
 
 static void cmd_normalized_mutual_information(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 3) throw std::invalid_argument("normalized_mutual_information requires two label vectors.");
-  auto mx1 = prhs[1];
-  auto mx2 = prhs[2];
-  require_label_vector(mx1, "labels_1");
-  require_label_vector(mx2, "labels_2");
-
-  size_t n1 = mxGetNumberOfElements(mx1);
-  size_t n2 = mxGetNumberOfElements(mx2);
-  if (n1 != n2) throw std::invalid_argument("Label vectors must have the same length.");
-
-  std::vector<int> labels1(n1), labels2(n2);
-  if (mxIsInt32(mx1)) {
-    int32_t *p = static_cast<int32_t *>(mxGetData(mx1));
-    for (size_t i = 0; i < n1; ++i) labels1[i] = static_cast<int>(p[i] - 1);
-  } else {
-    const double *p = mxGetDoubles(mx1);
-    for (size_t i = 0; i < n1; ++i) labels1[i] = static_cast<int>(p[i] - 1);
-  }
-  if (mxIsInt32(mx2)) {
-    int32_t *p = static_cast<int32_t *>(mxGetData(mx2));
-    for (size_t i = 0; i < n2; ++i) labels2[i] = static_cast<int>(p[i] - 1);
-  } else {
-    const double *p = mxGetDoubles(mx2);
-    for (size_t i = 0; i < n2; ++i) labels2[i] = static_cast<int>(p[i] - 1);
-  }
+  const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
+  const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
+  if (labels1.size() != labels2.size())
+    throw std::invalid_argument("Label vectors must have the same length.");
 
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::normalized_mutual_info(labels1, labels2));
+}
+
+// =========================================================================
+//  LP-relaxation bound (PDLP) — cross-language parity with the Python binding
+// =========================================================================
+
+static void cmd_pdlp_gpu_available(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  (void)nlhs; (void)nrhs; (void)prhs;
+  plhs[0] = mxCreateLogicalScalar(dtwc::mip::pdlp_gpu_available());
+}
+
+static void cmd_pdlp_lp_bound(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  (void)nlhs;
+  if (nrhs < 3)
+    throw std::invalid_argument("pdlp_lp_bound requires a square distance matrix and k.");
+  require_real_double(prhs[1], "D");
+  const size_t rows = mxGetM(prhs[1]);
+  const size_t cols = mxGetN(prhs[1]);
+  if (rows != cols)
+    throw std::invalid_argument("pdlp_lp_bound: D must be square (got "
+      + std::to_string(rows) + "x" + std::to_string(cols) + ").");
+  if (rows > static_cast<size_t>(std::numeric_limits<int>::max()))
+    throw std::invalid_argument("pdlp_lp_bound: D is larger than the int index range.");
+  const int N = static_cast<int>(rows);
+  const int k = get_exact_int(prhs[2], "k");
+
+  // MATLAB stores column-major; the C++ routine indexes D[i*N + j] row-major.
+  const double *src = mxGetDoubles(prhs[1]);
+  std::vector<double> D(rows * cols);
+  for (size_t i = 0; i < rows; ++i)
+    for (size_t j = 0; j < cols; ++j)
+      D[i * cols + j] = src[i + j * rows];
+
+  // Name/value options carry the C++ PdlpParams field names verbatim.
+  dtwc::mip::PdlpParams params;
+  if (((nrhs - 3) % 2) != 0)
+    throw std::invalid_argument("pdlp_lp_bound: options must be name/value pairs.");
+  for (int a = 3; a + 1 < nrhs; a += 2) {
+    require_char(prhs[a], "option name");
+    const std::string name = get_string(prhs[a]);
+    if (name == "variant") {
+      require_char(prhs[a + 1], "variant");
+      params.variant = get_string(prhs[a + 1]);
+    } else if (name == "tol") {
+      params.tol = get_scalar(prhs[a + 1], "tol");
+    } else if (name == "iteration_limit") {
+      params.iteration_limit = static_cast<long>(get_exact_int(prhs[a + 1], "iteration_limit"));
+    } else if (name == "use_gpu") {
+      params.use_gpu = (get_scalar(prhs[a + 1], "use_gpu") != 0.0);
+    } else if (name == "verbose") {
+      params.verbose = (get_scalar(prhs[a + 1], "verbose") != 0.0);
+    } else {
+      throw std::invalid_argument("pdlp_lp_bound: unknown option '" + name
+        + "'. Valid: variant, tol, iteration_limit, use_gpu, verbose.");
+    }
+  }
+
+  const dtwc::mip::PdlpResult result = dtwc::mip::pdlp_lp_bound(D.data(), N, k, params);
+
+  const char *fields[] = { "lp_bound", "solved", "iterations", "gpu_used" };
+  mxArray *out = mxCreateStructMatrix(1, 1, 4, fields);
+  mxSetField(out, 0, "lp_bound", mxCreateDoubleScalar(result.lp_bound));
+  mxSetField(out, 0, "solved", mxCreateLogicalScalar(result.solved));
+  mxSetField(out, 0, "iterations", mxCreateDoubleScalar(static_cast<double>(result.iterations)));
+  mxSetField(out, 0, "gpu_used", mxCreateLogicalScalar(result.gpu_used));
+  plhs[0] = out;
 }
 
 // =========================================================================
@@ -1454,6 +1517,9 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "calinski_harabasz_index") cmd_calinski_harabasz_index(nlhs, plhs, nrhs, prhs);
     else if (cmd == "adjusted_rand_index") cmd_adjusted_rand_index(nlhs, plhs, nrhs, prhs);
     else if (cmd == "normalized_mutual_information") cmd_normalized_mutual_information(nlhs, plhs, nrhs, prhs);
+    // LP-relaxation bound (PDLP)
+    else if (cmd == "pdlp_lp_bound") cmd_pdlp_lp_bound(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "pdlp_gpu_available") cmd_pdlp_gpu_available(nlhs, plhs, nrhs, prhs);
     // Legacy backward-compatible command
     else if (cmd == "cluster") cmd_cluster_legacy(nlhs, plhs, nrhs, prhs);
     // System capability check

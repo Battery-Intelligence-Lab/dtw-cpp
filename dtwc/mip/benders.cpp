@@ -26,11 +26,14 @@
 
 #include "benders.hpp"
 #include "mip.hpp"
+#include "highs_support.hpp"
+#include "nearest_medoid.hpp"
+#include "solution_transaction.hpp"
+#include "../core/clustering_result.hpp"
 #include "../Problem.hpp"
 #include "../error.hpp"
 #include "../settings.hpp"
 #include "../timing.hpp"
-#include "../types/types.hpp" // for Range
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>
@@ -38,12 +41,12 @@
 
 #include <vector>
 #include <algorithm>
-#include <cassert>
 #include <cmath>
 #include <cstddef>
 #include <iostream>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <utility>
 
 namespace dtwc {
@@ -111,6 +114,11 @@ void MIP_clustering_byBenders(Problem &prob)
     return;
   }
 
+  // Everything below decodes into private vectors and publishes atomically, the
+  // same contract the compact HiGHS/Gurobi backends use. Constructed AFTER the
+  // trivial-k branches so their direct writes are not rolled back.
+  mip::ExactClusteringTransaction result_transaction(prob);
+
   prob.fill_distance_matrix(); // Subproblem needs the full distance matrix.
 
   // --- Warm start from classic PAM ---
@@ -118,6 +126,9 @@ void MIP_clustering_byBenders(Problem &prob)
   double best_cost = std::numeric_limits<double>::max();
 
   if (prob.mip_settings.warm_start) {
+    // NOT mip::make_warm_start: this nested Lloyd must also restore method_,
+    // n_repetitions and last_iterations_, which the exact-clustering transaction
+    // does not own. The scoped restore below covers all five fields.
     {
       const Method caller_method = prob.method_;
       const int caller_n_repetitions = prob.n_repetitions();
@@ -207,63 +218,71 @@ void MIP_clustering_byBenders(Problem &prob)
   model.lp_.a_matrix_.index_.assign(Nb, 0);  // all y_i in row 0
   model.lp_.a_matrix_.value_.assign(Nb, 1.0);
 
-  // Solver settings
+  // Solver settings. A rejected option must never leave HiGHS on its defaults.
   if (!prob.mip_settings.verbose_solver)
-    highs.setOptionValue("output_flag", false);
+    mip::set_highs_option(highs, "output_flag", false, "Benders");
 
   if (prob.mip_settings.mip_gap > 0.0)
-    highs.setOptionValue("mip_rel_gap", prob.mip_settings.mip_gap);
+    mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "Benders");
 
   if (prob.mip_settings.time_limit_sec > 0)
-    highs.setOptionValue("time_limit", static_cast<double>(prob.mip_settings.time_limit_sec));
+    mip::set_highs_option(highs, "time_limit",
+                          static_cast<double>(prob.mip_settings.time_limit_sec), "Benders");
 
   HighsStatus hs = highs.passModel(model);
-  if (hs != HighsStatus::kOk) {
-    std::cout << "Benders: failed to pass model to HiGHS\n";
-    return;
-  }
+  if (hs != HighsStatus::kOk)
+    throw SolverError("Benders: HiGHS rejected the master model (passModel returned status "
+                      + std::to_string(static_cast<int>(hs)) + ").");
 
-  // Warm start master with PAM solution
+  // Warm start master with the PAM solution.
   if (!best_medoids.empty()) {
+    // Cardinality, not just range: a short medoid set otherwise runs the whole
+    // cut loop and only fails inside publish(), naming the wrong stage.
+    if (static_cast<int>(best_medoids.size()) != Nc)
+      throw SolverError("Benders: the warm start produced "
+                        + std::to_string(best_medoids.size())
+                        + " medoids but k = " + std::to_string(Nc) + ".");
     HighsSolution sol;
     sol.col_value.assign(Nvar, 0.0);
     sol.value_valid = true;
-    for (int med : best_medoids)
+    for (int med : best_medoids) {
+      if (med < 0 || med >= Nb)
+        throw SolverError("Benders: warm-start medoid index " + std::to_string(med)
+                          + " is outside [0, N).");
       sol.col_value[med] = 1.0;
-    // Set theta_j to the PAM assignment costs
-    for (int j = 0; j < Nb; ++j) {
-      double min_d = std::numeric_limits<double>::max();
-      for (int med : best_medoids) {
-        double d = prob.dist_by_ind(j, med);
-        if (d < min_d) min_d = d;
-      }
-      sol.col_value[theta_base + j] = min_d;
     }
+    // Set theta_j to the PAM assignment costs.
+    for (int j = 0; j < Nb; ++j)
+      sol.col_value[theta_base + j] =
+        mip::nearest_medoid(Nc, [&](int t) { return prob.dist_by_ind(j, best_medoids[static_cast<std::size_t>(t)]); })
+          .distance;
     highs.setSolution(sol);
   }
 
   // --- Benders iteration loop ---
   const int max_benders_iter = prob.mip_settings.max_benders_iter;
-  const double abs_eps = 1e-6;
+  // Tolerance for the two COST comparisons only (convergence and cut-skip); the
+  // cut coefficients use benders_cut_coefficient_threshold, which must stay tiny.
+  const double abs_eps = mip::benders_abs_eps(prob.max_distance());
 
-  for (int iter = 0; iter < max_benders_iter; ++iter) {
+  bool converged = false;
+  std::string failure_reason;
+  int iter = 0;
+
+  for (iter = 0; iter < max_benders_iter; ++iter) {
     highs.run();
 
     auto model_status = highs.getModelStatus();
-    if (model_status != HighsModelStatus::kOptimal &&
-        model_status != HighsModelStatus::kObjectiveBound &&
-        model_status != HighsModelStatus::kSolutionLimit) {
-      std::cout << "Benders: master not optimal at iteration " << iter
-                << " (status: " << static_cast<int>(model_status) << ")\n";
+    if (model_status != HighsModelStatus::kOptimal) {
+      failure_reason = "the master MIP did not solve to optimality at iteration "
+                     + std::to_string(iter) + " (model status: "
+                     + highs.modelStatusToString(model_status) + ")";
       break;
     }
 
     const auto &sol = highs.getSolution().col_value;
 
-    // Master objective = sum theta_j = lower bound
-    double theta_sum = 0.0;
-    for (int j = 0; j < Nb; ++j)
-      theta_sum += sol[theta_base + j];
+    const double master_lb = mip::benders_master_lower_bound(highs);
 
     // Extract medoid set
     std::vector<int> current_medoids;
@@ -274,8 +293,9 @@ void MIP_clustering_byBenders(Problem &prob)
     }
 
     if (static_cast<int>(current_medoids.size()) != Nc) {
-      std::cout << "Benders: master returned " << current_medoids.size()
-                << " medoids instead of " << Nc << " at iteration " << iter << "\n";
+      failure_reason = "the master returned " + std::to_string(current_medoids.size())
+                     + " medoids instead of " + std::to_string(Nc)
+                     + " at iteration " + std::to_string(iter);
       break;
     }
 
@@ -283,15 +303,10 @@ void MIP_clustering_byBenders(Problem &prob)
     const int K = static_cast<int>(current_medoids.size());
     std::vector<double> nearest_dist(Nb);
 
-    for (int p = 0; p < Nb; ++p) {
-      double best_d = std::numeric_limits<double>::max();
-      for (int m = 0; m < K; ++m) {
-        double d = prob.dist_by_ind(p, current_medoids[m]);
-        if (d < best_d)
-          best_d = d;
-      }
-      nearest_dist[p] = best_d;
-    }
+    for (int p = 0; p < Nb; ++p)
+      nearest_dist[p] =
+        mip::nearest_medoid(K, [&](int t) { return prob.dist_by_ind(p, current_medoids[static_cast<std::size_t>(t)]); })
+          .distance;
 
     double actual_cost = 0.0;
     for (int p = 0; p < Nb; ++p)
@@ -303,14 +318,15 @@ void MIP_clustering_byBenders(Problem &prob)
       best_medoids = current_medoids;
     }
 
-    // Convergence check: lower bound (theta_sum) vs upper bound (best_cost)
-    const double bound_gap = best_cost - theta_sum;
+    // Convergence check: master dual bound (LB) vs incumbent (UB).
+    const double bound_gap = best_cost - master_lb;
     const double rel_gap = (best_cost > abs_eps) ? (bound_gap / best_cost) : bound_gap;
 
     if (bound_gap <= abs_eps + prob.mip_settings.mip_gap * std::abs(best_cost)) {
+      converged = true;
       std::cout << "Benders converged at iteration " << iter
                 << ", cost = " << best_cost
-                << ", LB = " << theta_sum
+                << ", LB = " << master_lb
                 << ", gap = " << rel_gap << "\n";
       break;
     }
@@ -346,10 +362,13 @@ void MIP_clustering_byBenders(Problem &prob)
       cut_idx.reserve(Nb + 1);
       cut_val.reserve(Nb + 1);
 
+      // NOT abs_eps: every coeff is >= 0, so dropping a positive one makes the
+      // cut STRICTER than the valid Benders cut and can remove the optimum.
+      const double coeff_floor = mip::benders_cut_coefficient_threshold(d_nearest);
       for (int i = 0; i < Nb; ++i) {
         double d_ji = prob.dist_by_ind(j, i);
         double coeff = std::max(0.0, d_nearest - d_ji);
-        if (coeff > abs_eps) {
+        if (coeff > coeff_floor) {
           cut_idx.push_back(static_cast<HighsInt>(i));
           cut_val.push_back(coeff);
         }
@@ -365,34 +384,46 @@ void MIP_clustering_byBenders(Problem &prob)
 
     if (prob.mip_settings.verbose_solver)
       std::cout << "Benders iter " << iter
-                << ": LB=" << theta_sum
+                << ": LB=" << master_lb
                 << " actual=" << actual_cost
                 << " best=" << best_cost
                 << " gap=" << rel_gap
                 << " cuts=" << cuts_added << "\n";
   }
 
-  // --- Extract final solution ---
-  if (best_medoids.empty()) {
-    std::cout << "Benders: no feasible solution found.\n";
-    return;
+  // --- Convergence contract ---
+  // Method::MIP is the EXACT route. An answer produced by an exhausted cut loop
+  // (or by a master that stopped early) is a heuristic of unknown quality; the
+  // compact HiGHS and Gurobi backends both throw SolverError in the same
+  // situation, so this one must too rather than print "complete".
+  if (!converged) {
+    if (failure_reason.empty())
+      failure_reason = "the cut loop hit its iteration cap ("
+                     + std::to_string(max_benders_iter)
+                     + ") before the bound gap closed";
+    throw SolverError("Benders decomposition did not prove optimality: "
+                      + failure_reason
+                      + ". Raise Problem::mip_settings.max_benders_iter (currently "
+                      + std::to_string(max_benders_iter)
+                      + "), relax Problem::mip_settings.mip_gap (currently "
+                      + std::to_string(prob.mip_settings.mip_gap)
+                      + "), set Problem::mip_settings.benders = \"off\" for the compact "
+                        "MIP backend, or use Method::Kmedoids for a heuristic answer.");
   }
 
-  prob.centroids_ind = best_medoids;
-  prob.clusters_ind.resize(Nb);
+  if (best_medoids.empty())
+    throw SolverError("Benders decomposition converged without a feasible medoid set.");
 
-  for (int j = 0; j < Nb; ++j) {
-    double best_d = std::numeric_limits<double>::max();
-    int best_m = 0;
-    for (int mi = 0; mi < static_cast<int>(best_medoids.size()); ++mi) {
-      double d = prob.dist_by_ind(j, best_medoids[mi]);
-      if (d < best_d) {
-        best_d = d;
-        best_m = mi;
-      }
-    }
-    prob.clusters_ind[j] = best_m;
-  }
+  const int Kb = static_cast<int>(best_medoids.size());
+  core::ClusteringResult result;
+  result.medoid_indices = best_medoids;
+  result.labels.resize(static_cast<std::size_t>(Nb));
+  for (int j = 0; j < Nb; ++j)
+    result.labels[static_cast<std::size_t>(j)] =
+      mip::nearest_medoid(Kb, [&](int t) { return prob.dist_by_ind(j, best_medoids[static_cast<std::size_t>(t)]); })
+        .position;
+
+  result_transaction.publish(std::move(result), "Benders");
 
   std::cout << "Benders decomposition complete: cost = " << best_cost
             << " (" << clk << ")\n";

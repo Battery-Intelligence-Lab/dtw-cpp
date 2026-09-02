@@ -73,6 +73,8 @@ function res = cluster(data, k, varargin)
                 'Seed', dtwc.default_random_seed());
             labels = r.labels; medoids = r.medoid_indices; cost = r.total_cost;
         case 'mip'
+            prob.set_n_clusters(k);   % Problem::Nc defaults to 1: without this
+                                      % the exact backend solves for 1 medoid.
             prob.set_method('mip');
             prob.cluster();
             labels = prob.labels(); medoids = prob.medoids(); cost = prob.find_total_cost();

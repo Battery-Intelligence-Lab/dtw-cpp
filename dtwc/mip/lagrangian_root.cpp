@@ -17,8 +17,11 @@
 
 #include "lagrangian_root.hpp"
 
+#include "nearest_medoid.hpp"
 #include "reduced_cost_fixing.hpp"
+#include "solution_transaction.hpp"
 
+#include "../core/clustering_result.hpp"
 #include "../error.hpp"
 #include "../parallelisation.hpp"
 #include "../Problem.hpp"
@@ -33,6 +36,7 @@
 #include <cstdio>
 #include <limits>
 #include <numeric>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -57,21 +61,24 @@ double pmedian_local_search(const double *D, int N, int k,
   labels.assign(Nz, medoids[0]);
   double cost = 0.0;
 
-  for (int sweep = 0; sweep < max_sweeps; ++sweep) {
-    // Assignment: each point to its nearest current medoid.
+  // Assignment sweep: each point to its nearest current medoid. Fills cost,
+  // labels and cluster_of FROM the current @p medoids, so cost/labels always
+  // describe the medoid set the caller receives.
+  auto assign = [&]() {
     cost = 0.0;
     for (int j = 0; j < N; ++j) {
-      double bd = inf;
-      int bc = 0;
-      for (int c = 0; c < k; ++c) {
-        const double d = D[static_cast<std::size_t>(medoids[static_cast<std::size_t>(c)]) * Nz
-                           + static_cast<std::size_t>(j)];
-        if (d < bd) { bd = d; bc = c; }
-      }
-      cluster_of[static_cast<std::size_t>(j)] = bc;
-      labels[static_cast<std::size_t>(j)] = medoids[static_cast<std::size_t>(bc)];
-      cost += bd;
+      const auto nearest = mip::nearest_medoid(k, [&](int c) {
+        return D[static_cast<std::size_t>(medoids[static_cast<std::size_t>(c)]) * Nz
+                 + static_cast<std::size_t>(j)];
+      });
+      cluster_of[static_cast<std::size_t>(j)] = nearest.position;
+      labels[static_cast<std::size_t>(j)] = medoids[static_cast<std::size_t>(nearest.position)];
+      cost += nearest.distance;
     }
+  };
+
+  for (int sweep = 0; sweep < max_sweeps; ++sweep) {
+    assign();
     // Update: each cluster's medoid = member minimizing its intra-cluster sum.
     bool changed = false;
     for (int c = 0; c < k; ++c) {
@@ -92,7 +99,11 @@ double pmedian_local_search(const double *D, int N, int k,
     }
     if (!changed) break; // converged.
   }
+  // Sort FIRST, then assign once, so cost/labels/cluster_of describe the final,
+  // sorted medoid set even when the loop exits by exhausting max_sweeps. The
+  // extra O(N·k) sweep can only lower the cost — Lloyd is monotone.
   std::sort(medoids.begin(), medoids.end());
+  assign();
   return cost;
 }
 
@@ -153,18 +164,14 @@ void try_primal(const double *D, int N, std::size_t Nz, int k,
                 std::vector<int> &best_medoids, std::vector<int> &best_labels,
                 std::vector<int> &cheap_lab)
 {
-  const double inf = std::numeric_limits<double>::infinity();
   double cheap_cost = 0.0;
   for (int j = 0; j < N; ++j) {
-    double bd = inf;
-    int bm = idx[0];
-    for (int t = 0; t < k; ++t) {
-      const int m = idx[static_cast<std::size_t>(t)];
-      const double dd = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
-      if (dd < bd) { bd = dd; bm = m; }
-    }
-    cheap_lab[static_cast<std::size_t>(j)] = bm;
-    cheap_cost += bd;
+    const auto nearest = mip::nearest_medoid(k, [&](int t) {
+      return D[static_cast<std::size_t>(idx[static_cast<std::size_t>(t)]) * Nz
+               + static_cast<std::size_t>(j)];
+    });
+    cheap_lab[static_cast<std::size_t>(j)] = idx[static_cast<std::size_t>(nearest.position)];
+    cheap_cost += nearest.distance;
   }
   if (cheap_cost < best_primal) {
     best_primal = cheap_cost;
@@ -541,6 +548,14 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   });
   const int C = static_cast<int>(cand.size());
   const int need = k - static_cast<int>(forced.size());
+  // Reduced-cost fixing can only prove facilities open; proving MORE than k of
+  // them open contradicts the cardinality constraint, so the (LB, UB) pair it
+  // was given cannot both be valid. A negative `need` never reaches the leaf
+  // test `remaining_need == 0` and indexes csum past its end, so refuse here.
+  if (need < 0)
+    throw SolverError("lagrangian_root_exact: reduced-cost fixing proved "
+      + std::to_string(forced.size()) + " facilities open for k=" + std::to_string(k)
+      + "; the lower/upper bound pair driving the fixing is inconsistent.");
 
   double forced_rho = 0.0;
   for (int f : forced) forced_rho += rho[static_cast<std::size_t>(f)];
@@ -551,13 +566,13 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
 
   // Actual p-median cost of an open set S (O(N·|S|)).
   auto cost_of = [&](const std::vector<int> &S) {
+    const int n_open = static_cast<int>(S.size());
     double c = 0.0;
-    for (int j = 0; j < N; ++j) {
-      double best = inf;
-      for (int m : S)
-        best = std::min(best, D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)]);
-      c += best;
-    }
+    for (int j = 0; j < N; ++j)
+      c += nearest_medoid(n_open, [&](int t) {
+             return D[static_cast<std::size_t>(S[static_cast<std::size_t>(t)]) * Nz
+                      + static_cast<std::size_t>(j)];
+           }).distance;
     return c;
   };
 
@@ -611,15 +626,15 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   LagrangianResult r = root;                 // keep μ, iterations, core, n_core.
   r.medoids = best_medoids;
   r.labels.assign(Nz, best_medoids.empty() ? 0 : best_medoids[0]);
-  for (int j = 0; j < N; ++j) {
-    double bd = inf;
-    int bm = best_medoids.empty() ? 0 : best_medoids[0];
-    for (int m : best_medoids) {
-      const double d = D[static_cast<std::size_t>(m) * Nz + static_cast<std::size_t>(j)];
-      if (d < bd) { bd = d; bm = m; }
+  const int n_best = static_cast<int>(best_medoids.size());
+  if (n_best > 0)
+    for (int j = 0; j < N; ++j) {
+      const auto nearest = nearest_medoid(n_best, [&](int t) {
+        return D[static_cast<std::size_t>(best_medoids[static_cast<std::size_t>(t)]) * Nz
+                 + static_cast<std::size_t>(j)];
+      });
+      r.labels[static_cast<std::size_t>(j)] = best_medoids[static_cast<std::size_t>(nearest.position)];
     }
-    r.labels[static_cast<std::size_t>(j)] = bm;
-  }
   r.upper_bound = best_cost;
   r.nodes = nodes;
   if (capped) {
@@ -656,12 +671,18 @@ double prepare_dense_D(Problem &prob, int &N, int &k, std::vector<double> &D)
   if (!prob.is_distance_matrix_filled()) prob.fill_distance_matrix();
 
   double ub = -1.0;
-  prob.cluster_by_kmedoids_lloyd();
-  if (static_cast<int>(prob.centroids_ind.size()) == k
-      && static_cast<int>(prob.clusters_ind.size()) == N) {
-    double c = 0.0;
-    for (int j = 0; j < N; ++j) c += static_cast<double>(prob.dist_by_ind(j, prob.centroid_of(j)));
-    ub = c;
+  {
+    // The heuristic seed is invocation-local: an unpublished transaction restores
+    // centroids_ind / clusters_ind, so the bound-only entry point
+    // lagrangian_root(Problem&) has no visible side effect on the caller.
+    ExactClusteringTransaction seed_transaction(prob);
+    prob.cluster_by_kmedoids_lloyd();
+    if (static_cast<int>(prob.centroids_ind.size()) == k
+        && static_cast<int>(prob.clusters_ind.size()) == N) {
+      double c = 0.0;
+      for (int j = 0; j < N; ++j) c += static_cast<double>(prob.dist_by_ind(j, prob.centroid_of(j)));
+      ub = c;
+    }
   }
 
   D.assign(static_cast<std::size_t>(N) * static_cast<std::size_t>(N), 0.0);
@@ -687,29 +708,48 @@ namespace dtwc {
 
 void LR_core_clustering(Problem &prob)
 {
+  validate_mip_settings(prob.mip_settings); // lr_max_nodes is consumed below.
   int N = 0, k = 0;
   std::vector<double> D;
+  mip::ExactClusteringTransaction result_transaction(prob);
   const double ub = mip::prepare_dense_D(prob, N, k, D);
 
   // Trivial k handled by the exact solver directly (k==N ⇒ all medoids; k==1 ⇒
   // the 1-medoid) — no special-casing needed, the B&B certifies them at the root.
-  const mip::LagrangianResult r = mip::lagrangian_root_exact(D.data(), N, k, ub);
+  mip::LagrangianParams params;
+  params.max_nodes = prob.mip_settings.lr_max_nodes;
+  const mip::LagrangianResult r = mip::lagrangian_root_exact(D.data(), N, k, ub, params);
 
-  // Write the proven-optimal solution back in Problem's convention: centroids_ind
-  // holds the medoid POINT indices; clusters_ind[j] is the 0..k-1 index of j's
-  // medoid within centroids_ind (mirrors MIP_clustering_byBenders' final block).
-  prob.centroids_ind = r.medoids;
-  prob.clusters_ind.assign(static_cast<std::size_t>(N), 0);
-  for (int j = 0; j < N; ++j) {
-    double bd = std::numeric_limits<double>::infinity();
-    int bc = 0;
-    for (int c = 0; c < static_cast<int>(r.medoids.size()); ++c) {
-      const double d = D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
-                         * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
-      if (d < bd) { bd = d; bc = c; }
-    }
-    prob.clusters_ind[static_cast<std::size_t>(j)] = bc;
-  }
+  // Method::LRCore is an EXACT entry point. lagrangian_root_exact clears
+  // certified_optimal when the node cap stopped the tree, and publishing that
+  // incumbent as a proven optimum is exactly the silent-wrong-answer the other
+  // exact backends throw on.
+  if (!r.certified_optimal)
+    throw SolverError("LR-core did not prove optimality (gap "
+      + std::to_string(r.gap) + " after " + std::to_string(r.nodes)
+      + " branch-and-bound nodes). The incumbent is a heuristic, not a certificate; "
+        "raise Problem::mip_settings.lr_max_nodes (currently "
+      + std::to_string(prob.mip_settings.lr_max_nodes)
+      + "), use Method::MIP for an exact MIP backend, or Method::Kmedoids for a "
+        "heuristic answer.");
+
+  // Problem's convention: centroids_ind holds the medoid POINT indices;
+  // clusters_ind[j] is the 0..k-1 index of j's medoid within centroids_ind.
+  const int n_medoids = static_cast<int>(r.medoids.size());
+  core::ClusteringResult result;
+  result.medoid_indices = r.medoids;
+  result.labels.assign(static_cast<std::size_t>(N), 0);
+  if (n_medoids > 0)
+    for (int j = 0; j < N; ++j)
+      result.labels[static_cast<std::size_t>(j)] =
+        mip::nearest_medoid(n_medoids, [&](int c) {
+          return D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
+                   * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
+        }).position;
+
+  // Same validation the HiGHS/Gurobi backends run: exactly k unique medoids,
+  // one in-range label per point, and every medoid in its own cluster.
+  result_transaction.publish(std::move(result), "LR-core");
 }
 
 } // namespace dtwc

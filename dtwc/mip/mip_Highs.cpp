@@ -7,6 +7,8 @@
  */
 
 #include "mip.hpp"
+#include "highs_support.hpp"
+#include "index_guard.hpp"
 #include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Data.hpp"        // for Data
@@ -23,6 +25,7 @@
 #include <vector>
 #include <stdexcept> // for std::runtime_error
 #include <cstddef>   // for size_t
+#include <limits>    // for numeric_limits
 #include <algorithm> // for sort
 #include <iostream>  // for operator<<, basic_ostream, ost...
 #include <string>    // for operator<<, std::to_string
@@ -55,6 +58,16 @@ void MIP_clustering_byHiGHS(Problem &prob)
   const auto Nconstraints = Neq + Nineq;
 
   const auto Nvar = Nb * Nb;
+
+  // The binding index limit is the NARROWER of HighsInt and int: HighsInt is
+  // int32 in a default HiGHS build, and the matrix below is assembled through
+  // plain-`int` triplet fields, so on a HIGHSINT64 build a HighsInt-only bound
+  // would still let an N^2 dimension truncate in the triplets.
+  const auto index_max = std::min<std::size_t>(
+    static_cast<std::size_t>(std::numeric_limits<HighsInt>::max()),
+    static_cast<std::size_t>(std::numeric_limits<int>::max()));
+  mip::require_index_range(Nvar, index_max, "column count N*N", "HiGHS");
+  mip::require_index_range(Nconstraints, index_max, "row count", "HiGHS");
 
   HighsModel model;
   model.lp_.num_col_ = Nvar;
@@ -93,6 +106,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
   model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
 
   const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
+  mip::require_index_range(numel, index_max, "nonzero count", "HiGHS");
 
   model.lp_.a_matrix_.start_.clear();
   model.lp_.a_matrix_.index_.clear();
@@ -150,12 +164,14 @@ void MIP_clustering_byHiGHS(Problem &prob)
   // Create a Highs instance
   Highs highs;
 
-  // Solver tuning from MIPSettings
-  highs.setOptionValue("mip_rel_gap", prob.mip_settings.mip_gap);
+  // Solver tuning from MIPSettings. A rejected option must never be ignored:
+  // the solve would then silently run on HiGHS defaults.
+  mip::set_highs_option(highs, "mip_rel_gap", prob.mip_settings.mip_gap, "HiGHS");
   if (prob.mip_settings.time_limit_sec > 0)
-    highs.setOptionValue("time_limit", static_cast<double>(prob.mip_settings.time_limit_sec));
+    mip::set_highs_option(highs, "time_limit",
+                          static_cast<double>(prob.mip_settings.time_limit_sec), "HiGHS");
   if (!prob.mip_settings.verbose_solver)
-    highs.setOptionValue("output_flag", false);
+    mip::set_highs_option(highs, "output_flag", false, "HiGHS");
 
   HighsStatus return_status = highs.passModel(model); // Pass the model to HiGHS
   if (return_status != HighsStatus::kOk)

@@ -395,3 +395,90 @@ function test_valid_int32_labels_still_work(testCase)
     v = dtwc_mex('adjusted_rand_index', int32([1 2 1 2]), int32([1 2 1 2]));
     verifyEqual(testCase, v, 1, 'AbsTol', 1e-12);   % identical labelings -> ARI 1
 end
+
+% -------------------------------------------------------------------------
+%  A13: mx_to_dendrogram validated only the ROW count of 'merges'
+%  A14: label vectors were cast float->int without a finiteness check
+%  (.claude/reports/2026-09-02-review-backends-bindings.md)
+% -------------------------------------------------------------------------
+
+function test_dendrogram_three_column_merges_rejected(testCase)
+%   The reader indexes column 4 (data[i + 3*n_merges]). With only 3 columns the
+%   unfixed code read past the end of the mxArray's heap buffer and fed the
+%   garbage into Dendrogram::new_size.
+    h = dtwc_mex('Problem_new', 'dend_cols_test');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    dtwc_mex('Problem_set_data', h, [1 2 3; 4 5 6; 7 8 9]);
+    dend = struct('merges', [1 2 0.5; 3 4 1.5], 'n_points', int32(3));
+    verifyError(testCase, ...
+        @() dtwc_mex('cut_dendrogram', dend, h, 2), ...
+        'dtwc:invalidArgument');
+end
+
+function test_dendrogram_transposed_merges_rejected(testCase)
+%   A 4xM transposed 'merges' has the right element count but the wrong shape.
+    h = dtwc_mex('Problem_new', 'dend_transposed_test');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    dtwc_mex('Problem_set_data', h, [1 2 3; 4 5 6; 7 8 9]);
+    dend = struct('merges', [1 2 0.5 2; 3 4 1.5 3]', 'n_points', int32(3));
+    verifyError(testCase, ...
+        @() dtwc_mex('cut_dendrogram', dend, h, 2), ...
+        'dtwc:invalidArgument');
+end
+
+function test_dendrogram_nonfinite_merge_rejected(testCase)
+%   NaN in an index column: static_cast<int>(NaN) is undefined behaviour.
+    h = dtwc_mex('Problem_new', 'dend_nan_test');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    dtwc_mex('Problem_set_data', h, [1 2 3; 4 5 6; 7 8 9]);
+    dend = struct('merges', [1 2 0.5 2; NaN 4 1.5 3], 'n_points', int32(3));
+    verifyError(testCase, ...
+        @() dtwc_mex('cut_dendrogram', dend, h, 2), ...
+        'dtwc:invalidArgument');
+end
+
+function test_ari_nan_labels_rejected(testCase)
+%   require_label_vector accepted NaN; static_cast<int>(NaN - 1) is UB.
+    verifyError(testCase, ...
+        @() dtwc_mex('adjusted_rand_index', [1 NaN 2 1], [1 2 2 1]), ...
+        'dtwc:invalidArgument');
+end
+
+function test_nmi_inf_labels_rejected(testCase)
+    verifyError(testCase, ...
+        @() dtwc_mex('normalized_mutual_information', [1 2 1 2], [1 Inf 1 2]), ...
+        'dtwc:invalidArgument');
+end
+
+function test_ari_fractional_labels_rejected(testCase)
+%   A fractional label is not a cluster id; silently truncating it changed the
+%   score instead of reporting the caller's mistake.
+    verifyError(testCase, ...
+        @() dtwc_mex('adjusted_rand_index', [1 1.5 2 1], [1 2 2 1]), ...
+        'dtwc:invalidArgument');
+end
+
+function test_valid_double_dendrogram_still_cuts(testCase)
+%   Positive control: a well-formed Nx4 'merges' must still be accepted.
+    h = dtwc_mex('Problem_new', 'dend_positive_test');
+    guard = onCleanup(@() dtwc_mex('Problem_delete', h)); %#ok<NASGU>
+    dtwc_mex('Problem_set_data', h, [0 0; 0 1; 20 20]);
+    dtwc_mex('Problem_fill_distance_matrix', h);
+    dend = dtwc_mex('build_dendrogram', h, 'average', 100);
+    res = dtwc_mex('cut_dendrogram', dend, h, 2);
+    verifyNumElements(testCase, res.medoid_indices, 2);
+    verifyNumElements(testCase, res.labels, 3);
+end
+
+function test_int_min_label_rejected(testCase)
+%   exact_int_from_double accepts INT_MIN (it is exactly representable as a
+%   double), so the caller's 1-based `- 1` shift evaluated INT_MIN - 1: signed
+%   overflow, i.e. undefined behaviour, inside the helper added to remove UB.
+%   Both the double and the int32 element paths had it.
+    verifyError(testCase, ...
+        @() dtwc_mex('adjusted_rand_index', [1 -2147483648 2 1], [1 2 2 1]), ...
+        'dtwc:invalidArgument');
+    verifyError(testCase, ...
+        @() dtwc_mex('adjusted_rand_index', int32([1 -2147483648 2 1]), int32([1 2 2 1])), ...
+        'dtwc:invalidArgument');
+end

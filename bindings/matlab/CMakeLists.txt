@@ -36,6 +36,19 @@ matlab_add_mex(
 
 target_compile_features(dtwc_mex PRIVATE cxx_std_20)
 
+# FindMatlab (CMake 4.2) exports the MEX entry points only under `if(MSVC)`.
+# A GNU-frontend Clang build on Windows therefore links a .mexw64 with no
+# exported mexFunction, and MATLAB rejects it at load time with
+# "Invalid MEX-file ...: Gateway function is missing". Export them explicitly;
+# `LINKER:` lets CMake emit the right driver syntax for either frontend.
+if(WIN32 AND NOT MSVC)
+    target_link_options(
+        dtwc_mex
+        PRIVATE
+            "LINKER:/EXPORT:mexFunction"
+            "LINKER:/EXPORT:mexfilerequiredapiversion")
+endif()
+
 # Install MEX binary alongside the +dtwc package
 install(TARGETS dtwc_mex
     DESTINATION matlab

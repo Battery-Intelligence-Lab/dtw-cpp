@@ -14,6 +14,9 @@ target_sources(mip-solvers
     pdlp_lp.cpp
   PUBLIC
     mip.hpp
+    highs_support.hpp
+    index_guard.hpp
+    nearest_medoid.hpp
     solution_transaction.hpp
     warm_start.hpp
     benders.hpp
@@ -25,7 +28,6 @@ target_sources(mip-solvers
 target_include_directories(mip-solvers PUBLIC .)
 target_link_libraries(mip-solvers
   PRIVATE
-  rapidcsv::rapidcsv
   Eigen3::Eigen
   project_warnings
   project_options
