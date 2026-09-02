@@ -1,0 +1,92 @@
+# DTWC++ Configuration File (YAML)
+#
+# Usage: dtwc_cl --config examples/cpp/config.yaml
+# Requires a build with -DDTWC_ENABLE_YAML=ON (the default); otherwise use the
+# equivalent examples/cpp/config.toml.
+#
+# --config accepts TOML or YAML; the format is detected from the file content.
+# Keys are the canonical long flags without the leading "--", identical in both
+# formats. Command-line values always override file values.
+
+# Input CSV file or folder containing time series data.
+# Each row is one time series; columns are time steps.
+input: data/dummy
+
+# Output directory for results (labels, medoids, silhouettes, distance matrix).
+output: ./results
+
+# Problem name used in output filenames (e.g. "example_labels.csv").
+name: example
+
+# Number of clusters. (Deprecated key `clusters` is still accepted with a warning.)
+n-clusters: 5
+
+# Clustering method: pam, clara, kmedoids, mip, hierarchical
+method: pam
+
+# Sakoe-Chiba band width. -1 = full (unconstrained) DTW.
+band: -1
+
+# Distance metric: l1, squared_euclidean
+metric: l1
+
+# DTW variant: standard, ddtw, wdtw, adtw, softdtw
+variant: standard
+
+# Missing-data strategy: error, zero_cost, arow, interpolate
+missing-strategy: error
+
+# Maximum iterations for iterative algorithms.
+max-iter: 100
+
+# Number of random restarts (PAM/kMedoids Lloyd).
+n-init: 1
+
+# CSV parsing: rows and columns to skip (e.g. for headers or index columns).
+skip-rows: 0
+skip-cols: 0
+
+# Column to use as the time series values when loading from Parquet/Arrow IPC.
+# Only valid for a .parquet/.pq input; leave it commented out for the CSV
+# `input` above, which rejects --column rather than silently ignoring it.
+# column: Voltage
+
+# In-memory storage type: float64 (default) or float32.
+dtype: float64
+
+# Verbose output.
+verbose: true
+
+# --- DTW variant parameters ---
+wdtw-g: 0.05
+adtw-penalty: 1.0
+sdtw-gamma: 1.0
+
+# --- CLARA-specific options (only used when method is clara) ---
+sample-size: -1
+n-samples: 5
+seed: 42
+
+# --- Hierarchical linkage (only used when method is hierarchical) ---
+linkage: average
+
+# --- MIP solver (only used when method is mip) ---
+solver: highs
+mip-gap: 1.0e-5
+time-limit: -1
+numeric-focus: 1
+mip-focus: 2
+verbose-solver: false
+# no-warm-start: true   # uncomment to disable the FastPAM warm start
+
+# --- Compute device ---
+device: cpu
+
+# GPU kernel precision: auto, fp32, fp64.
+gpu-precision: auto
+
+# --- Checkpointing ---
+# checkpoint: ./checkpoints
+
+# --- Precomputed distance matrix ---
+# dist-matrix: path/to/distance_matrix.csv

@@ -80,6 +80,29 @@ function(dtwc_setup_dependencies)
     INTERFACE_INCLUDE_DIRECTORIES "${CLI11_SOURCE_DIR}/include")
   endif()
 
+  # fkYAML — single-header YAML 1.2 parser (MIT). OPTIONAL: it only feeds
+  # dtwc/cli/config_file.hpp, which turns a YAML `--config` file into CLI11
+  # ConfigItems. With DTWC_ENABLE_YAML=OFF the CLI still builds and rejects YAML
+  # config files with a typed error instead of parsing them.
+  if(DTWC_ENABLE_YAML AND NOT TARGET fkYAML::fkYAML)
+    CPMAddPackage(
+      NAME fkYAML
+      URL "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz"
+      # SHA256 pinned. Computed 2026-09-02 from two independent downloads of the
+      # immutable release tag v0.4.4 (`curl -sL … | sha256sum`, identical bytes).
+      URL_HASH SHA256=75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e
+      DOWNLOAD_ONLY YES
+    )
+    add_library(fkYAML::fkYAML INTERFACE IMPORTED)
+    set_target_properties(fkYAML::fkYAML PROPERTIES
+      INTERFACE_INCLUDE_DIRECTORIES "${fkYAML_SOURCE_DIR}/single_include")
+  endif()
+  if(TARGET fkYAML::fkYAML)
+    message(STATUS "  YAML:     YES (fkYAML — dtwc_cl --config accepts TOML or YAML)")
+  else()
+    message(STATUS "  YAML:     OFF (DTWC_ENABLE_YAML=OFF) — --config accepts TOML only.")
+  endif()
+
   # nanobind — Python bindings (BSD-3, by Wenzel Jakob)
   # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
   # to ensure scikit-build-core has configured paths first.

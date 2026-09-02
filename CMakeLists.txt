@@ -46,6 +46,7 @@ option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Silently ignored on non-Apple platforms.
 option(DTWC_ENABLE_METAL "Enable Metal GPU acceleration (Apple only)" ON)
 option(DTWC_ENABLE_ARROW "Enable Apache Arrow IPC for zero-copy data loading" OFF)
+option(DTWC_ENABLE_YAML "Accept YAML (as well as TOML) files for dtwc_cl --config" ON)
 
 # Parallelism is a hard requirement, not a silent-optional: if OpenMP is not
 # found the configure FAILS (dtwc/CMakeLists.txt) unless this explicit opt-out is
@@ -266,6 +267,11 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     project_warnings
     project_options
   )
+
+  if(TARGET fkYAML::fkYAML)
+    target_link_libraries(dtwc_cl PRIVATE fkYAML::fkYAML)
+    target_compile_definitions(dtwc_cl PRIVATE DTWC_HAS_YAML)
+  endif()
 
   install(TARGETS dtwc_cl
     RUNTIME DESTINATION bin

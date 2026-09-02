@@ -5,10 +5,20 @@ weight: 9
 
 # Configuration Files
 
-`dtwc_cl` supports native CLI11 TOML configuration.
+`dtwc_cl --config` reads a TOML or a YAML file. Both go through CLI11's own
+configuration interface, so the two formats are interchangeable and share one
+set of keys, defaults, validators, and deprecation warnings. The format is
+detected from the file content, not the extension.
 
 The [live CLI reference](../cli/) is the source of truth for option semantics,
 accepted values, defaults, and aliases.
+
+## Precedence
+
+**A value given on the command line always wins over the same key in a
+configuration file.** The file supplies only the options you did not pass
+explicitly. A key that matches no live option is an error, not a comment: the
+run stops instead of silently ignoring the setting.
 
 ## TOML
 
@@ -20,9 +30,28 @@ dtwc_cl --config examples/cpp/config.toml
 
 For ordinary options, the TOML key is the canonical long flag without the
 leading `--`; for example, `--n-clusters 5` becomes `n-clusters = 5`.
-Command-line values override TOML values. Deprecated keys `clusters` and
-`restart` remain accepted with warnings, but new files should use
-`n-clusters` and `resume`.
+Deprecated keys `clusters` and `restart` remain accepted with warnings, but new
+files should use `n-clusters` and `resume`.
+
+## YAML
+
+YAML needs the optional fkYAML dependency, enabled by default
+(`-DDTWC_ENABLE_YAML=ON`). In a build configured with `-DDTWC_ENABLE_YAML=OFF`,
+a YAML file is refused with `built without YAML support; use TOML` rather than
+being misread:
+
+```bash
+dtwc_cl --config examples/cpp/config.yaml
+```
+
+Keys are spelled exactly as in TOML; only the syntax differs
+(`n-clusters: 5` instead of `n-clusters = 5`). A YAML sequence supplies repeated
+values for one option, and a nested mapping is read the way a TOML table is.
+Anything with no CLI11 equivalent — a nested sequence, a non-mapping document,
+several documents in one file — is rejected with the offending key path. The
+example above mirrors
+[`examples/cpp/config.toml`](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/examples/cpp/config.toml)
+key for key.
 
 Canonical keys and aliases represented by the live CLI are:
 

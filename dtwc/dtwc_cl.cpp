@@ -1,14 +1,15 @@
 /**
  * @file dtwc_cl.cpp
- * @brief Command line interface for DTWC++ with TOML configuration support.
+ * @brief Command line interface for DTWC++ with TOML/YAML configuration support.
  *
- * @details Full CLI tool using CLI11 with TOML config file support. Supports
+ * @details Full CLI tool using CLI11 with TOML or YAML config file support. Supports
  * PAM, CLARA, MIP, and hierarchical clustering methods, all DTW variants,
  * checkpointing, and flexible output.
  *
  * Usage:
  *   dtwc_cl --input data.csv -k 5 --method pam -v
  *   dtwc_cl --config config.toml
+ *   dtwc_cl --config config.yaml
  *
  * @author Volkan Kumtepeli
  * @date 29 Mar 2026
@@ -38,6 +39,8 @@
 // without linking CLI11 (see tests/unit/unit_test_cli_args.cpp, Task 0.9).
 #ifndef DTWC_CL_NO_MAIN
 #include <CLI/CLI.hpp>
+
+#include "cli/config_file.hpp"
 #endif
 
 #include <algorithm>
@@ -50,6 +53,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <numeric>
 #include <optional>
 #include <stdexcept>
@@ -763,11 +767,17 @@ static int run_cli_main(int argc, char *argv[])
   app.set_version_flag("--version", DTWC_VERSION_STRING,
                        "Print the DTWC++ version and exit");
 
-  // TOML config file support (CLI11 built-in, processes before parsing).
-  // TOML keys are the canonical long-flag names without "--" (e.g. `n-clusters`,
-  // `max-iter`). Deprecated keys are accepted with a warning per cli_renames():
+  // Config file support (CLI11 built-in, processes before parsing). Keys are the
+  // canonical long-flag names without "--" (e.g. `n-clusters`, `max-iter`), in
+  // TOML or YAML; dtwc::cli::ConfigFile sniffs which. CLI11 owns precedence, so
+  // a value given on the command line always beats the file. Deprecated keys are
+  // accepted with a warning per cli_renames():
   //   clusters -> n-clusters,  restart -> resume.
-  app.set_config("--config", "", "Read TOML configuration file");
+  app.set_config("--config", "", "Read TOML or YAML configuration file");
+  app.config_formatter(std::make_shared<dtwc::cli::ConfigFile>(&app));
+  // A key CLI11 cannot map to an option is a typo, not a comment: fail loudly
+  // instead of running with a silently ignored setting.
+  app.allow_config_extras(CLI::config_extras_mode::error);
 
   // Input/output
   std::string input_file;
@@ -998,7 +1008,7 @@ static int run_cli_main(int argc, char *argv[])
   CLI11_PARSE(app, argc, argv);
 
   // ---- CLI/TOML flag deprecations (api-contract-2.0.md §4, §7 item 3) ----
-  // Old spellings are accepted from the command line AND from a --config TOML file
+  // Old spellings are accepted from the command line AND from a --config file
   // (CLI11 maps config keys onto these same options), but each emits one stderr
   // warning per use and yields precedence to the canonical spelling. See
   // cli_renames() for the SSOT table.
@@ -1013,7 +1023,7 @@ static int run_cli_main(int argc, char *argv[])
 
   // ---- Post-parse validation (catches both CLI and config-file values) ----
   if (input_file.empty()) {
-    std::cerr << "Error: --input is required via CLI or config file (TOML)\n";
+    std::cerr << "Error: --input is required via CLI or config file (TOML or YAML)\n";
     return EXIT_FAILURE;
   }
   if (n_clusters < 1) {

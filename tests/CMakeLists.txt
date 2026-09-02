@@ -765,6 +765,42 @@ if(TARGET dtwc_cl)
             TIMEOUT 60)
 endif()
 
+# --config takes TOML or YAML through CLI11's own config interface. Registered in
+# BOTH build flavours: with YAML off the same script asserts the typed refusal,
+# so the guard is exercised outside its own #ifdef. The expected check count is
+# pinned per flavour so a silently short-circuited script cannot pass.
+if(TARGET dtwc_cl)
+    get_target_property(_dtwc_cl_defs dtwc_cl COMPILE_DEFINITIONS)
+    if("DTWC_HAS_YAML" IN_LIST _dtwc_cl_defs)
+        set(_dtwc_cl_yaml 1)
+        set(_dtwc_cl_yaml_checks 23)
+    else()
+        set(_dtwc_cl_yaml 0)
+        set(_dtwc_cl_yaml_checks 7)
+    endif()
+
+    add_test(
+        NAME test_cli_config_formats
+        COMMAND
+            ${CMAKE_COMMAND}
+            "-DCLI=$<TARGET_FILE:dtwc_cl>"
+            "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+            "-DTOML=${CMAKE_CURRENT_SOURCE_DIR}/conformance/conformance.toml"
+            "-DHAS_YAML=${_dtwc_cl_yaml}"
+            "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-config-formats"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_config_formats.cmake"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+    set_tests_properties(
+        test_cli_config_formats
+        PROPERTIES
+            FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"
+            LABELS "integration;cli"
+            PASS_REGULAR_EXPRESSION
+                "CLI_CONFIG_FORMATS subject=real_dtwc_cl yaml=${_dtwc_cl_yaml} checks=${_dtwc_cl_yaml_checks} skips=0"
+            RUN_SERIAL TRUE
+            TIMEOUT 180)
+endif()
+
 # F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability
 # probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.

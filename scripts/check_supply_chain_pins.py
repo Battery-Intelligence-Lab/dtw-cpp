@@ -19,7 +19,7 @@ USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
 BRACKET_OPEN = re.compile(r"\[(?P<equals>=*)\[")
 VERSION_REF = re.compile(r"v?\d+(?:[._-][0-9A-Za-z]+)*\Z", re.IGNORECASE)
-REGISTERED_CMAKE_MANIFEST_TOTAL = 29  # added tests/integration/test_cli_rejects_unknown_option.cmake (2026-09-02)
+REGISTERED_CMAKE_MANIFEST_TOTAL = 30  # added tests/integration/test_cli_config_formats.cmake (2026-09-02)
 CPM_PARSE_KEYWORDS = {
     "BITBUCKET_REPOSITORY",
     "CUSTOM_CACHE_KEY",
@@ -87,6 +87,12 @@ REGISTERED_ARCHIVE_IDENTITIES = (
         "CLI11",
         "https://github.com/CLIUtils/CLI11/archive/refs/tags/v2.6.2.tar.gz",
         "c6ea6b2e5608b3ea8617999bd5f47420c71b2ebdb8dc4767c1034d1da5785711",
+    ),
+    (
+        "cmake/Dependencies.cmake",
+        "fkYAML",
+        "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz",
+        "75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e",
     ),
     (
         "cmake/Dependencies.cmake",

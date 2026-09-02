@@ -1230,7 +1230,7 @@ class TestLocalRoundTrip:
         )
         assert completed.returncode != 0
         assert completed.stderr == (
-            "Error: --input is required via CLI or config file (TOML)\n"
+            "Error: --input is required via CLI or config file (TOML or YAML)\n"
         )
 
     def test_two_groups_recovered(self, tmp_path):

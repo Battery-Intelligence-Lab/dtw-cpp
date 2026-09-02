@@ -204,6 +204,7 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_METAL` | ON | Enable the Metal backend on Apple platforms |
 | `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |
 | `DTWC_ENABLE_LLFIO` | ON | Enable llfio-backed memory-mapped distance matrices |
+| `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
 | `DTWC_HIGHS_GPU` | OFF | Build the optional HiGHS PDLP CUDA backend |

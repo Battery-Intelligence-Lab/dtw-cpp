@@ -848,7 +848,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
      mmap cache's safety-mandated v1/v2→v3 invalidation is the authorized
      exception: v1 cannot identify its data/configuration, while v2 does not
      protect mutable packed values.
-3. **CLI flag set + TOML keys** (kebab-case) are a de-facto API:
+3. **CLI flag set + TOML/YAML config keys** (kebab-case, identical in both formats) are a de-facto API:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:307-353`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
    deprecation path (§4) with those two callers updated in the same commit.

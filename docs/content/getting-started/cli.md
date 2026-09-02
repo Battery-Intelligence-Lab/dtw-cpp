@@ -23,8 +23,9 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 # Basic clustering with 5 clusters
 dtwc_cl -i data.csv -k 5
 
-# Use TOML configuration file
+# Use a TOML or YAML configuration file
 dtwc_cl --config config.toml
+dtwc_cl --config config.yaml
 
 # Matrix-free FastCLARA on a large dataset
 dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
@@ -240,7 +241,7 @@ remain independent distance-matrix mechanisms.
 
 | Flag | Description |
 |------|-------------|
-| `--config <path>` | TOML configuration file (CLI11 native) |
+| `--config <path>` | TOML or YAML configuration file (CLI11 native) |
 
 See [Configuration Files](configuration.md) for full details and examples.
 
@@ -315,10 +316,11 @@ dtwc_cl -i data.csv -k 3 --method mip --solver gurobi --mip-gap 1e-6 --time-limi
 dtwc_cl -i data.csv -k 5 --device cuda --gpu-precision fp32 -v
 ```
 
-### Using a TOML configuration file
+### Using a TOML or YAML configuration file
 
 ```bash
 dtwc_cl --config config.toml
+dtwc_cl --config config.yaml
 ```
 
 ### Distance checkpoint and completed-result replay
