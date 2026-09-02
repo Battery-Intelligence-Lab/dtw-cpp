@@ -120,7 +120,10 @@ output contract, §7 item 2): writes `<name>_labels.csv` (`"name,cluster"`),
 `<name>_medoids.csv` (`"cluster,medoid_index,medoid_name"`),
 `<name>_distance_matrix.csv`, and `<name>_silhouettes.csv`
 (`"name,cluster,silhouette"`) into `dir`. These are exactly the corresponding
-CLI outputs when present. A matrix-free CLI run emits labels and medoids without
+CLI outputs when present. When fewer than two clusters are realised (k = 1, or a
+collapsed partition) the silhouette is undefined: `save` writes the other files,
+warns on stderr, and skips `<name>_silhouettes.csv`; `score("silhouette")`
+still raises `UndefinedScore`. A matrix-free CLI run emits labels and medoids without
 forcing the matrix-only files; this approved exception is specified in §7 item
 2.
 

@@ -27,7 +27,6 @@ The following dependencies are installed by the CPM package manager:
 - [HiGHS](https://highs.dev/) as an open source MIP solver alternative to Gurobi.
 - [CLI11](https://github.com/CLIUtils/CLI11) (for command line interface)
 - [Catch2](https://github.com/catchorg/Catch2/) (for testing)
-- [RapidCSV](https://github.com/d99kris/rapidcsv) (for CSV/TSV parsing)
 
 ### CMake and compilers
 

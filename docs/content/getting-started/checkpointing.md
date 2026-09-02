@@ -6,10 +6,14 @@ weight: 8
 # Checkpointing
 
 Checkpointing allows you to save and resume distance-matrix computation. For
-large datasets, computing the full pairwise DTW matrix can take hours. If that
-work is interrupted, a directory checkpoint or validated mmap cache can avoid
-recomputing finished pairs. The separate binary mechanism replays a completed
-clustering result; it does not resume a method in mid-iteration.
+large datasets, computing the full pairwise DTW matrix can take hours. A
+directory checkpoint or a validated mmap cache lets a *later* run skip pairs a
+*previous* run already finished. The separate binary mechanism replays a
+completed clustering result; it does not resume a method in mid-iteration.
+
+Saving is explicit and happens between phases. Nothing checkpoints from inside
+`fill_distance_matrix()`, so a crash during one uninterrupted fill loses that
+fill; call `save_checkpoint` yourself if you want a partial matrix on disk.
 
 DTWC++ has three persistence mechanisms: the directory checkpoint documented
 below, a binary clustering-result checkpoint used by `--resume`, and the packed
@@ -98,7 +102,8 @@ opts.save_interval = 100;          // Save every N pairs computed (reserved)
 opts.enabled = false;              // Whether checkpointing is enabled
 ```
 
-No algorithm or save/load function currently consumes these fields. Call
+No algorithm or save/load function currently consumes these fields --
+`save_interval` in particular is inert, and there is no periodic save. Call
 `save_checkpoint` and `load_checkpoint` explicitly.
 
 ## Python directory API
@@ -111,13 +116,28 @@ import dtwcpp
 prob = dtwcpp.Problem("my_clustering")
 prob.set_data(series, names)
 
-# Save checkpoint
+# Save checkpoint (metric defaults to MetricType.L1)
 dtwcpp.save_checkpoint(prob, "./checkpoints/run1")
 
 # Load checkpoint (returns True/False)
 if dtwcpp.load_checkpoint(prob, "./checkpoints/run1"):
     print("Resumed from checkpoint")
 ```
+
+The optional `metric` argument mirrors the CLI's `--metric` and is part of the
+checkpoint identity fingerprint, so a matrix written under one pointwise metric
+is not accepted by a run using another:
+
+```python
+dtwcpp.save_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)
+
+dtwcpp.load_checkpoint(prob, "./ckpt_sq")                              # False
+dtwcpp.load_checkpoint(prob, "./ckpt_sq", dtwcpp.MetricType.SquaredL2)  # True
+```
+
+`load_checkpoint` holds the GIL for the whole call because it publishes a new
+distance matrix into `prob`; `save_checkpoint` is a read-only N^2 write and
+releases it.
 
 The `CheckpointOptions` class is also available:
 

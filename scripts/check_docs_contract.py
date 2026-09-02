@@ -1006,7 +1006,8 @@ def assert_lb_keogh_derivation_sync() -> None:
         ),
         "tadpole": (
             "const int env_band = (band < 0) ? static_cast<int>(s.size()) : band;",
-            "if (can_prune && si.size() == sj.size())",
+            "if (can_prune) {",
+            "if (si.size() == sj.size())",
             "if (lb >= dc)",
             "LB_Keogh + the diagonal L1",
             "permanent exactly representable regression",

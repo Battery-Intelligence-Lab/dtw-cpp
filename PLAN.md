@@ -1157,6 +1157,22 @@ colour system transfer verbatim**.
   and D17 ownership of public provenance, device arithmetic, and floating
   thresholds. Evidence:
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- 2026-09-02 (quality/correctness campaign, Claude orchestrating Opus agents):
+  four read-only reviews + four adversarial re-reviews + fixer rounds closed
+  silent-wrong-answer bugs (MATLAB MIP ignored k; Benders incumbent-as-LB and
+  heuristic-as-complete; MV+Interpolate/SoftDTW channel flattening; TADPole f32
+  UB; degenerate silhouette/DB; CUDA zeros with no device; read_distance_matrix
+  false success; metric-less checkpoint fingerprint) and lock-free violations
+  (unnamed `omp critical` ×4, per-call GPU-config mutex). New rule from Volkan:
+  design is always lock-free and high-performance. Python `Problem` is
+  single-thread-per-instance with the GIL released consistently. rapidcsv
+  dependency removed; dead `medoid_utils` helpers and `core::*Dist` functors
+  deleted with byte-identical objects. Serial gates: 128/128, 128/128, 130/130
+  (6/9/8 skips), CUDA 4/4 ran, Python 1045/0. PR #32 (Kasper Westman) ported
+  hunk-by-hunk with a Windows-correct adaptation of its path pin, then merged
+  for attribution. `[BLOCKED-ENV]`: HiGHS-enabled MEX crashes MATLAB on any MIP
+  solve. Evidence: `.claude/baselines/2026-09-02-quality-campaign.md`,
+  `.claude/reports/2026-09-02-*.md`.
 
 ## Progress log (append-only; older entries in the archive)
 
@@ -1185,3 +1201,5 @@ colour system transfer verbatim**.
   archives; exact line-for-line comparison against `d2e8834` passes for all
   six blocks. The live PLAN is again below its ~1,200-line threshold and keeps
   current status, attempt caps, record-retirement markers, and evidence links.
+- 2026-09-02: quality campaign landed (see Binding decisions); floors promoted
+  to 128/128, 128/128, 130/130. Cursor unchanged: GPU-LB CUDA cluster, then D4.

@@ -30,8 +30,12 @@ fixing, and exact branch-and-bound over medoid-open decisions. The root bound is
 matrix-free with respect to the compact MIP formulation, but it still streams a
 dense distance matrix: memory is Θ(N²) doubles. It is strongest on separated,
 clustered data where the LP root is tight. Uniform non-metric/adversarial data can
-leave a wide gap and grow the tree; a node cap reports `certified_optimal=false`
-rather than claiming an unproved optimum.
+leave a wide gap and grow the tree; `mip::lagrangian_root_exact` then reports
+`certified_optimal=false` rather than claiming an unproved optimum, and
+`Method::LRCore` — an exact route — turns that into a `dtwc::SolverError`
+instead of publishing the uncertified incumbent. Raise the cap with
+`problem.mip_settings.lr_max_nodes` (default 2,000,000), or use
+`Method::Kmedoids` when a heuristic answer is what you want.
 
 The recorded claims are intentionally not polished after the fact:
 

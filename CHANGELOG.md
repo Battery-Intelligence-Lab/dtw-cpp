@@ -8,6 +8,360 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Breaking:** Benders decomposition (`Method::MIP` with
+  `mip_settings.benders = "on"/"auto"`) now throws `dtwc::SolverError` when its
+  cut loop reaches `max_benders_iter`, or its master stops non-optimally,
+  without closing the bound gap. It used to print "Benders decomposition
+  complete" and publish the PAM-quality incumbent through the EXACT entry
+  point. The message names the knobs that exist
+  (`mip_settings.max_benders_iter`, `mip_settings.mip_gap`,
+  `mip_settings.benders = "off"`, or `Method::Kmedoids`). The shipped default
+  `max_benders_iter = 200` is unchanged and was verified sufficient on the
+  default route: a 250-point, 5-group separable instance on stock settings
+  (`benders = "auto"`, so Benders engages at N > 200) converges at Benders
+  iteration 4 (5 master solves), pinned by
+  `tests/unit/mip/test_mip_backend_guards.cpp`.
+- **Breaking:** the Benders lower bound is HiGHS's `mip_dual_bound` for the
+  master, not the master's incumbent objective. The old bound could exceed the
+  true master optimum and declare convergence while a strictly better medoid
+  set existed.
+- Benders publishes through `mip::ExactClusteringTransaction`, so a failed
+  solve leaves `centroids_ind` / `clusters_ind` untouched.
+- **Fix:** the Benders tolerances are now separated by what they compare. The
+  two COST comparisons (the UB/LB convergence test and the per-point cut-skip
+  test) use `mip::benders_abs_eps(max_distance)` =
+  `1e-6 * max(max_distance()/2, 1)`, the same conditioning factor the compact
+  HiGHS backend divides its objective by, so both backends accept the same
+  relative violation; the compact backend has no `1e-6` tolerance of its own.
+  That scaled tolerance was also filtering the coefficients of each
+  disaggregated Benders cut, which it must not: every coefficient
+  `c_i = max(0, d_nearest - d_ji)` is non-negative, so dropping a positive one
+  shrinks the cut's left-hand side and makes it STRICTER than the valid Benders
+  cut — the master's dual bound was inflated by up to
+  `N * 1e-6 * max_distance/2` and could cut off the true optimum while the loop
+  reported a proved optimum. The cut filter is now the unscaled
+  `mip::benders_cut_coefficient_threshold(d_nearest)` =
+  `1e-12 * max(1, d_nearest)`, relative to the cut's own right-hand side.
+- **Breaking:** `Method::LRCore` throws `dtwc::SolverError` when the
+  branch-and-bound node cap stops the tree before optimality is proven, and
+  publishes through the same validated transaction as the HiGHS/Gurobi backends
+  (exactly k unique medoids, in-range labels, every medoid in its own cluster).
+  It used to write an uncertified incumbent straight into `Problem` with no
+  validation.
+- New `MIPSettings::lr_max_nodes` (default 2,000,000, i.e. the previous
+  hard-wired `mip::LagrangianParams::max_nodes`) is forwarded to
+  `mip::lagrangian_root_exact` by `Method::LRCore`, and the SolverError above
+  names it. The message previously told callers to "raise the node cap" through
+  a knob that did not exist. C++ only for now: the Python and MATLAB
+  `MIPSettings` bindings still expose the pre-existing fields.
+- `mip::lagrangian_root(Problem&)` (bound-only) no longer overwrites the
+  caller's `centroids_ind` / `clusters_ind` with its internal k-medoids seed,
+  and `mip::lagrangian_root_exact` throws instead of reading out of bounds when
+  reduced-cost fixing proves more than k facilities open. The Lagrangian primal
+  repair (`pmedian_local_search`) now sorts its medoids BEFORE the final
+  assignment sweep, so the cost, the point-index `labels` AND the internal
+  `cluster_of` positions all describe the sorted medoid set it returns;
+  previously the sweep ran first and the sort then left `cluster_of` holding
+  pre-sort positions, contradicting the in-file invariant. It also fixes the
+  older case where exhausting `max_sweeps` left cost/labels describing the
+  previous sweep's medoids.
+- The exact MIP backends validate the FastPAM warm start before indexing the
+  solver's start vector with it (Benders additionally requires its own
+  nested-Lloyd warm start to hold exactly `k` medoids, instead of failing later
+  inside `publish`), and the `N*N` model-dimension guard is now backend-neutral
+  (`mip::require_index_range`, `dtwc/mip/index_guard.hpp`, no solver header)
+  and applied on all three exact routes. The compact HiGHS backend bounds by
+  `min(HighsInt, int)` because its triplets are plain `int`, so a `HIGHSINT64`
+  build no longer lets `N > 46340` through to truncate; Gurobi's
+  `addVars(N*N)` (an `int` count) is guarded too, where it previously had no
+  check at all.
+- HiGHS options: an option this repo relies on for solver IDENTITY still throws
+  when HiGHS rejects it (a mistyped `PdlpParams::variant` used to run dual
+  simplex while the result was still reported as a PDLP bound), but
+  `kkt_tolerance` — pure tuning, and absent from older HiGHS builds — is now
+  best-effort with a stderr note, so a version skew no longer means no PDLP
+  bound at all.
+- `MIPSettings` is validated where it is consumed (`Problem::cluster_by_mip`,
+  `LR_core_clustering`): `mip_gap >= 0`, `max_benders_iter >= 1`,
+  `lr_max_nodes >= 1` and an unrecognised `benders` selector all raise
+  `dtwc::InvalidInput` instead of being treated as off. A negative `mip_gap`
+  used to reach HiGHS as an out-of-domain `mip_rel_gap` and surface as a
+  solver-worded error. The CLI's `--benders` validates its value the same way
+  (`auto|on|off`, plus `true/false`, `yes/no`, `1/0`); `--benders ON` used to
+  mean *off*.
+- `Benders` and `LR-core` no longer write `core::ClusteringResult::total_cost`
+  before publishing: `ExactClusteringTransaction::publish` swaps only medoids
+  and labels (as it does for the HiGHS and Gurobi backends), so those stores
+  were dead. Recompute with `Problem::find_total_cost()`.
+- MATLAB: `dtwc.cluster(..., 'method','mip')` passes `k` to the solver. It
+  ignored `k` entirely, so the MIP route returned one cluster for every
+  request. **[BLOCKED-ENV] Not executable in this environment** (every recorded
+  MEX build here is HiGHS-OFF and a HiGHS-enabled MEX crashes MATLAB on this
+  machine — see `.claude/LESSONS.md`), so `tests/matlab/test_cluster_mip.m`
+  takes its `assumeTrue` skip and this fix has never been run.
+- MATLAB: `dtwc_mex` validates the `merges` column count before reading a
+  dendrogram, and rejects NaN/Inf/fractional entries in label and dendrogram
+  index vectors instead of casting them (undefined behaviour). `INT_MIN` is
+  exactly representable as a double and passed that check, so the 1-based `- 1`
+  shift was itself signed overflow; the shift now goes through a helper that
+  rejects it, on both the double and the `int32` element paths. Verified by
+  `tests/matlab/test_mex_input_validation.m::test_int_min_label_rejected`
+  against a rebuilt HiGHS-OFF MEX under MATLAB R2024b (42 passed / 0 failed /
+  0 skipped; it fails on the pre-fix MEX). These `.m` files are not registered
+  in CTest — they run only by hand under a MATLAB installation.
+- The PDLP LP-relaxation arbiter is reachable from the bindings, not only from
+  C++: new `dtwc.pdlp_lp_bound` / `dtwc.pdlp_gpu_available` in MATLAB, and
+  `pdlp_lp_bound`, `PdlpParams`, `PdlpResult`, `pdlp_gpu_available()` and
+  `PDLP_GPU_AVAILABLE` in `dtwcpp._dtwcpp_core`, mirroring the C++ names,
+  arguments and result fields.
+- Build: the MATLAB MEX exports `mexFunction` explicitly on Windows for
+  non-MSVC compilers. CMake 4.2's `FindMatlab` exports it only under
+  `if(MSVC)`, so a Clang MEX linked with no entry point and MATLAB refused it
+  ("Gateway function is missing").
+- **Breaking:** `scores::silhouette` now throws `dtwc::InvalidInput` when the
+  labels realise fewer than 2 non-empty clusters. It used to return ~ +1.0 for
+  every point (a "perfect" score) because b(i) was left at `DBL_MAX`; sklearn
+  raises for the same input, and `davies_bouldin`/`dunn` already did.
+- **Breaking:** `silhouette`, `davies_bouldin`, `dunn` and `calinski_harabasz`
+  are computed over the REALISED label set rather than the declared
+  `n_clusters`. Empty declared clusters are skipped and no longer contribute to
+  the 1/k normaliser; `dunn` with `n_clusters = 3` but only label 0 in use now
+  throws instead of returning ~1.8e308 as a finite number. All four also reject
+  a `clusters_ind` whose size or label range disagrees with the Problem.
+- **Breaking:** the score guards use the project taxonomy throughout.
+  `silhouette`, `davies_bouldin`, `dunn` and `calinski_harabasz` throw
+  `dtwc::InvalidInput` (which derives from `std::runtime_error`) for a
+  mismatched `clusters_ind` and for fewer than 2 clusters, where they
+  previously threw a mixture of `std::runtime_error` and
+  `std::invalid_argument` from the same function; so do the "cluster first"
+  guards of `davies_bouldin`, `dunn`, `inertia` and `calinski_harabasz` and the
+  Calinski-Harabasz "at least 2 clusters" / "more points than clusters" guards.
+  `catch (const std::invalid_argument &)` no longer matches these;
+  `catch (const std::exception &)` and `catch (const std::runtime_error &)` do.
+- New `dtwc::UndefinedScore : dtwc::InvalidInput`, thrown only when a score is
+  mathematically undefined for the labelling (fewer than two non-empty
+  clusters), and the output paths no longer abort on one:
+  `Problem::write_silhouettes()` (hence `Problem::cluster_and_process()`) and
+  `Result::save()` catch exactly that, warn on stderr and skip the silhouettes
+  file when fewer than 2 clusters are realised — `k = 1`, or a `k >= 2` request
+  that collapses on duplicate series. They used to write labels, medoids and
+  the distance matrix and only then throw, leaving a partially populated output
+  directory; the CLI already behaved this way. A corrupt `clusters_ind`, an
+  out-of-range label or bad data raise the plain `InvalidInput` of the other
+  guards and propagate as before instead of being swallowed as a warning.
+  `Result::score("silhouette")` and `scores::silhouette()` still throw: asking
+  for the number is a different contract from asking for the files.
+- `scores::silhouette` returns 0 instead of NaN when a(i) = b(i) = 0 (all
+  distances in and around the point's cluster are zero) — Rousseeuw's
+  convention.
+- **Breaking:** `scores::davies_bouldin` treats a zero medoid distance M_ij as
+  R_ij = +infinity (the worst pair) instead of skipping the pair, so two
+  clusters with coincident medoids and real internal spread no longer report
+  DBI = 0.0. M_ij = 0 with zero scatter on both sides stays 0 (Davies & Bouldin
+  axiom 3).
+- `algorithms::tadpole` no longer reads float64 storage on a Float32 Problem.
+  LB/UB pruning is disabled there (as `dtw_barycenter` already did) because it
+  would not be admissible: the bound path reads the float64 series while the
+  exact side routes through `Problem::dist_by_ind`, which branches on
+  `is_f32()`, so the two sides of the bound would come from different data.
+  (`Data::series()` now throws on Float32, so the unguarded read would be a
+  loud error rather than the historical out-of-range read.) `prune = true` on
+  Float32 therefore costs the same as `prune = false`; the new
+  `TADPoleStats::pruning_enabled` reports it so the fallback is not silent.
+- `algorithms::cut_dendrogram` validates the supplied `Dendrogram`
+  (`n_points == prob.size()`, exactly `n_points - 1` merge steps, every cluster
+  id in range, and a merge list that really reduces N points to k components)
+  instead of trusting it. A hand-built `Dendrogram` — reachable from Python —
+  previously read `merges` and the union-find parent array out of bounds.
+- **Breaking:** `algorithms::one_batch_pam`'s final assignment rejects a
+  non-finite distance with `dtwc::InvalidInput` (it used to leave every
+  affected point silently in cluster 0 with a non-finite `total_cost`), and its
+  `total_cost` is now accumulated in point order by `OrderedMedoidObjective`
+  instead of `std::accumulate`, which the build's `-fassociative-math` was free
+  to reassociate and vectorise; expect last-ulp differences from 2.0.x. An
+  objective that overflows to infinity while every individual point cost is
+  finite is now rejected rather than returned as `inf`.
+- **Breaking:** every CUDA entry point (`compute_distance_matrix_cuda`,
+  `compute_lb_keogh_cuda`, `compute_dtw_one_vs_all`, `compute_dtw_k_vs_all`)
+  now throws `dtwc::DeviceError` when no CUDA device is present instead of
+  returning an all-zero NxN matrix with `kernel_used == "none"`. Metal's
+  entry points do the same for an uninitialised backend.
+- **Breaking:** the same CUDA entry points reject a pair count above INT_MAX
+  with `dtwc::InvalidInput` before allocating anything. The LB_Keogh pre-pass
+  used to truncate `N*(N-1)/2` to `int` first (N >= 65537 gave an illegal
+  memory access on device), and `compute_lb_keogh_cuda` had no guard at all.
+- CUDA honours `max_length_hint` for kernel selection, as Metal already did;
+  it was declared, advertised and silently ignored.
+- CUDA raises a typed `dtwc::DeviceError` naming the shared-memory shortfall
+  instead of a bare CUDA "invalid argument" when a wavefront launch exceeds the
+  device's opt-in per-block shared memory.
+- `query_gpu_config` no longer takes a process-global mutex on cache hits (it
+  ran once per kernel launch, per host thread); the two `static bool logged`
+  warning latches in the CUDA launchers are atomic.
+- Python: the GIL policy is now *consistent release, no per-object lock*.
+  `Problem.fill_distance_matrix`, `distance_matrix`, `cluster`,
+  `assign_clusters`, `calculate_medoids`, `write_distance_matrix`,
+  `print_distance_matrix`, `DenseDistanceMatrix.to_numpy`, `save_checkpoint`,
+  `dist_by_ind`, `find_total_cost`, `write_clusters`, `write_silhouettes`,
+  `read_distance_matrix` and `load_checkpoint` all release it, matching their
+  `*_binary_*` siblings. A `Problem` instance must not be used concurrently
+  from multiple Python threads (the same contract as C++): the GIL is released
+  during C++ work so that other threads can run, but two threads calling
+  methods on the same `Problem` race on its lazily-filled distance cache. Use
+  one `Problem` per thread, or call `fill_distance_matrix()` first and only
+  read afterwards. (Holding the GIL in some bindings gave no mutual exclusion
+  against the many that released it, so it documented a safety property the
+  module did not have.) Relatedly, `Problem::mmap_cache_data_validated_`,
+  written from the `const` `validate_mmap_cache_identity()`, is a relaxed
+  `std::atomic<bool>`, so two threads holding one `const Problem &` no longer
+  race on it by the memory model.
+- Python: numpy results are handed over through an owning buffer instead of a
+  raw `new double[n*n]`, so a throw between the allocation and the capsule no
+  longer leaks the whole N^2 matrix; a GPU backend returning the wrong number
+  of distances is now a `DeviceError` rather than a zero-padded matrix.
+- Python: an exception thrown inside `compute_distance_matrix`'s OpenMP region
+  is captured per thread and rethrown after it, instead of escaping the region
+  (undefined behaviour: a hard interpreter crash).
+- Dense checkpoints fingerprint the pointwise metric, so a matrix computed with
+  `--metric squared_euclidean` is no longer accepted by a later `--metric l1`
+  run. `save_checkpoint` / `load_checkpoint` /
+  `Problem::distance_checkpoint_identity` take an optional `core::MetricType`
+  (defaulting to `L1`, so existing calls compile unchanged), and the Python
+  `save_checkpoint`/`load_checkpoint` take the matching optional `metric`
+  argument (`dtwcpp.MetricType`, default `L1`) mirroring the CLI's `--metric`.
+- **Breaking:** `Problem::read_distance_matrix` now throws when the CSV cannot
+  be opened or parsed instead of printing "Distance matrix could not be read!"
+  and returning normally. `dtwc_cl --dist-matrix <bad path>` no longer prints
+  "Loaded distance matrix from ..." straight after the failure message; it
+  warns on stderr and continues without a precomputed matrix.
+- **Breaking:** `dtwc_cl` rejects an unknown `--method`, `--solver` or
+  `--linkage` instead of running with an empty result / the default solver /
+  Average linkage. Only a config file could reach these (CLI11 already checked
+  the command line); an unknown method used to write a checkpoint and label
+  files for a default-constructed result and still exit 0. YAML `method:` also
+  accepts the same `obp` and `lr` aliases as the command line; its hand-written
+  normalisation only mapped `hclust`.
+- **Breaking:** `dtwc_cl` rejects `.parquet`/`.pq` and
+  `.arrow`/`.ipc`/`.feather` input on a build without Arrow/Parquet, naming the
+  missing build option. Those inputs previously fell through to the CSV reader
+  and failed with a numeric-parse error (or, worse, parsed).
+- **Breaking:** `dtwc_cl` rejects `--column` on a non-Parquet input and
+  `--skip-rows`/`--skip-cols` on a non-text input. Both were accepted and
+  silently ignored off their own format. (HPC job scripts that pass
+  `--skip-cols 1` alongside a `.parquet` or `.dtws` input must drop the flag.)
+- Parquet readers reject null values instead of reading uninitialised buffer
+  bytes as data: a null list cell, a null list element, and a null in a scalar
+  column are now errors ("drop or fill nulls before clustering"), matching the
+  Arrow C-Data ingest path.
+- Folder loads now iterate a sorted, regular-files-only directory listing, so
+  series order — and every name, label, medoid and distance-matrix index — is
+  the same on every machine. `DataLoader::count()` counts the same entries the
+  loader reads.
+- Made mapped-series temp-path collisions improbable (they are not impossible:
+  the file is still not created with exclusive `O_EXCL` semantics). Its
+  sequence counter was a non-atomic static (concurrent loads could collide on
+  one `.dtws` file) and its "unique" component was a static address, identical
+  in every process of the same image, so two processes generated byte-identical
+  paths; the name is now a `random_device` + clock process tag plus one atomic
+  counter per load.
+- **Breaking:** removed `readCSV`, `readTimeSeriesCSV` and `readCSVColumn` from
+  `dtwc/fileOperations.hpp` (no callers repo-wide) and, with them, the RapidCSV
+  dependency: the CPM package, the `rapidcsv::rapidcsv` links in
+  `dtwc++`/`mip-solvers` and the `--rapidcsv-include` plumbing in
+  `scripts/test_f19_problem_encapsulation.py` are gone. Those readers used
+  locale-dependent `std::stod` inside a silent `catch`, so under a
+  comma-decimal locale `"1.5"` parsed as `1` and a malformed field silently
+  shortened the series. One fewer fetched dependency at configure time; no
+  behaviour change on any live path.
+- Removed unused `ParquetChunkReader::estimated_total_bytes()`,
+  `estimated_bytes_per_series()` and `read_row_group(int)` (the per-series
+  estimate is no longer computed on every open) and the dead core cost functors
+  `core::L1Dist`, `core::SquaredL2Dist`, `core::MVL1Dist`,
+  `core::MVSquaredL2Dist`, `core::SpanSquaredL2Cost` and
+  `core::SpanMVSquaredL2Cost`, plus several unused includes.
+- `Data::series()` and `Data::series_f32()` now reject a precision mismatch
+  instead of indexing the empty vector for the other precision, and `ndim == 0`
+  is rejected at construction (`series_length()` divides by `ndim`).
+- One `Ndata` contract across every loader: a negative value means "read all",
+  otherwise exactly `Ndata` series. `Ndata == 0` used to give 1 from
+  `DataLoader::count()`, ALL series from the folder load and 0 from the batch
+  load; `Ndata < -1` is now rejected instead of silently meaning "all" or
+  "none" depending on the route.
+- `DataLoader::path()` matches extensions case-insensitively (`data.TSV` now
+  selects the tab delimiter) and no longer overwrites a delimiter the caller
+  set explicitly.
+- `load_folder` / `load_batch_file` honour `verbosity(0)`; "Reading data:" and
+  "N time-series data are read." were printed unconditionally, so the Tier-1
+  `dtwc::load` path could not be silenced.
+- `Problem::write_clusters`, `write_silhouettes`, `write_medoid_members` and
+  `writeBestRep` now report an unopenable or unwritable output file instead of
+  silently producing nothing. The mmap distance-matrix CSV is written through
+  the shared `core/matrix_io.hpp` formatter rather than a third copy of the
+  same loop (bytes unchanged; the non-finite preflight still runs before the
+  destination is truncated, and it runs exactly once -- the emitter is called
+  through the already-preflighted entry point, not through `operator<<`, so no
+  second O(N^2) scan is paid on precisely the matrices large enough to map).
+- Known limitation (documented, not changed): nothing checkpoints from inside
+  `fill_distance_matrix()`. `CheckpointOptions::save_interval` is inert and a
+  crash during one uninterrupted fill loses that fill. `checkpoint.hpp` used to
+  imply an automatic mid-fill checkpoint that has never existed.
+- Fixed multivariate dispatch silently flattening channels: `ndim > 1` with
+  `MissingStrategy::Interpolate` or `DTWVariant::SoftDTW` ran a *univariate*
+  recurrence over the interleaved channel stream (and counted `band` in flat
+  elements, not timesteps). Both are now rejected at bind time with
+  `InvalidInput`, mirroring MSM/TWE.
+- Missing-data handling is enforced at every entry point.
+  `MissingStrategy::Error` now applies to the pairwise API
+  (`dtwc::distance::dtw`, `dtwc::core::dtw_runtime`), where NaN input
+  previously returned NaN — which is also the distance matrix's "uncomputed"
+  sentinel, so a computed result was indistinguishable from an unfilled entry.
+  An all-NaN series under `MissingStrategy::Interpolate` is rejected by
+  `Problem::fill_distance_matrix` in the serial pre-scan, naming the offending
+  series and index, instead of surfacing as a bare `interpolate_linear` failure
+  thrown from inside the parallel per-pair fill.
+- Fixed `lb_enhanced` / `lb_webb` returning an inadmissible bound for
+  `band < 0`. A negative band means unbanded DTW, not radius 0; clamping it
+  pinned the elastic arms to the diagonal (counterexample `A=[0,5,0,0]`,
+  `B=[0,0,5,0]`: bound 10 against a true DTW of 0). They now return 0.
+- The `lb_keogh` / `lb_enhanced` / `lb_webb` envelope entry points now validate
+  every envelope array they index, not just `upper`; a ragged `Envelope` or
+  `WebbEnvelope` used to read `lower` / `ul` / `lu` out of bounds. `lb_keogh`
+  keeps its D2-derived semantics unchanged: it still includes the first
+  `n = min(query.size(), env.upper.size())` rows (the unequal-length prefix
+  theorem), and returns 0 only when an array it would index is shorter than
+  that prefix. `lb_enhanced` / `lb_webb` have no prefix theorem and keep exact
+  length equality.
+- The four weights-taking WDTW overloads now reject a weight array shorter than
+  `max(|x|, |y|)` instead of reading past its end.
+- The pruned distance-matrix fill no longer discards entries that are already
+  present, so a restored checkpoint survives. `Auto` resolves to `Pruned` only
+  for Standard/ADTW with `MissingStrategy::Error`, dense Float64 storage,
+  `band >= 0` and `N >= 64`; that exact configuration is now what the
+  regression test drives through `Problem::fill_distance_matrix()`, alongside
+  the direct `fill_distance_matrix_pruned()` contract test. The fill also
+  routes pair decoding through the shared `dtwc::detail::decode_pair` instead
+  of a local copy of the retired single-`if` correction.
+- Float32 and `Pruned` no longer interact silently: `Auto` never resolves to
+  `Pruned` for Float32 data, and an explicitly requested
+  `DistanceMatrixStrategy::Pruned` on a dense Float32 `Problem` is a typed
+  `dtwc::InvalidInput` raised at strategy resolution. The pruned summaries,
+  envelopes and kernels are f64-only and read through `Problem::series()`, so
+  the combination previously surfaced as a `Data::series` precision error
+  thrown from inside the parallel fill (and, before that guard existed, as
+  undefined behaviour indexing the empty Float64 vector). That rejection now
+  sits BELOW the `Pruned + mmap -> BruteForce` downgrade, so Float32 data with
+  an mmap-backed distance matrix — which the downgrade routes to the exact
+  generic row fill, which handles Float32 — fills again instead of being
+  rejected.
+- `dtwc::detail::decode_pair` hoists the row start so the two-way row
+  correction costs one comparison per pair instead of a fresh 64-bit multiply
+  and divide -- it is the on-device decoder, paid per pair per launch -- and
+  applies the low clamp last, so `N < 2` can no longer hand back a negative
+  row.
+- `dtwc::run` no longer mutates process-wide OpenMP state: the worker limit is
+  applied through a `num_threads(...)` clause, so one constrained call can no
+  longer pin every later distance fill (and pruning statistics stop depending
+  on call order).
 - Added the reproducible D3 derivation and fail-closed executable oracles for
   LB_Enhanced and the local LB_Webb_NoLR-plus-tail-cap implementation. The
   finite exact-arithmetic campaign covers 2,004 envelope cases, 35,982 path
@@ -496,6 +850,27 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - Strengthened the OneBatchPAM 50k release validation with warped length-64–128
   signals, an exact exhaustive profile oracle, a discriminating mutation check,
   and tight work/memory bands instead of the former scalar length-1 fixture.
+- Ported the cross-platform fixes from PR #32 (Kasper Westman, Apple Clang +
+  libc++ and GCC 14 HPC): `Problem` construction no longer diagnoses the
+  deprecated `maxIter`/`N_repetition` fields under GCC's constructor-NSDMI
+  check while caller access still warns; the F13 assignment oracle stores
+  exact-zero nearest/second distances as `+0.0` (GCC flushes `-0.0` under
+  `-fno-signed-zeros`); F8 Soft-DTW parity accepts a registered 2-ULP GCC
+  encoding of `total_cost` while still requiring byte-identical
+  resident/stream checkpoints and exact labels/medoids.
+- Registered the F15 `libcxx` deterministic-series fingerprint for Apple Clang
+  + libc++ (scalar/row hashes match libstdc++; the continuous accelerator
+  stream differs by a few ULPs and is now an accepted coherent profile).
+- Fixed the F22 C++ deprecation probe for Apple Clang: paired
+  `-Xpreprocessor -fopenmp` / `-Xclang -fopenmp` are copied from
+  `compile_commands.json` instead of a bare `-fopenmp`, and Unix absolute
+  paths are no longer parsed as MSVC `/U` flags. LLFIO's libc++
+  `char_traits<std::byte>` deprecation is ignored only inside
+  `llfio_include.hpp`.
+- Fixed the F14 distance-matrix CSV contract so its exact-path markers are
+  platform-neutral: the escaped Windows separator from `std::quoted` is
+  collapsed before comparison, so the same single-slash marker holds on
+  Windows and POSIX.
 
 # 2.0.0rc1 - 2026-07-10
 

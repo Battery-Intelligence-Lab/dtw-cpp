@@ -84,6 +84,9 @@ References used during development. Verify each citation independently before pu
 - Kaufman, L. & Rousseeuw, P. J. (1987). Clustering by Means of Medoids. In *Statistical Data Analysis Based on the L1-Norm*, North-Holland, 405-416. — Original PAM paper.
 - Kaufman, L. & Rousseeuw, P. J. (1990). *Finding Groups in Data: An Introduction to Cluster Analysis*. Wiley. — PAM (Ch. 2), CLARA (Ch. 3).
 - Rousseeuw, P. J. (1987). Silhouettes: A graphical aid to the interpretation and validation of cluster analysis. *J. Comput. Appl. Math.*, 20, 53-65.
+- Davies, D. L. & Bouldin, D. W. (1979). A Cluster Separation Measure. *IEEE TPAMI*, PAMI-1(2), 224-227. — DB index; M_ij = 0 limit follows from monotonicity in M plus axiom 3 (scores.cpp, 2026-09-02).
+- Caliński, T. & Harabasz, J. (1974). A dendrite method for cluster analysis. *Communications in Statistics*, 3(1), 1-27. — CH index with realised k in both (k-1) and (N-k).
+- Dunn, J. C. (1974). Well-Separated Clusters and Optimal Fuzzy Partitions. *J. Cybernetics*, 4(1), 95-104. — Dunn index (min inter / max intra).
 - Schubert, E. & Rousseeuw, P. J. (2021). Fast and eager k-medoids clustering: O(k) runtime improvement of the PAM, CLARA, and CLARANS algorithms. *Information Systems*, 101, 101804. https://doi.org/10.1016/j.is.2021.101804; arXiv:2008.05171 (https://arxiv.org/abs/2008.05171). — Canonical FasterPAM/FasterCLARA paper; the 2019 SISAP paper (arXiv:1810.05691) is its conference precursor.
 - Ng, R. T. & Han, J. (2002). CLARANS: A Method for Clustering Objects for Spatial Data Mining. *IEEE TKDE*, 14(5), 1003-1016.
 - Charikar, M., Guha, S., Tardos, E., & Shmoys, D. B. (2002). A constant-factor approximation algorithm for the k-median problem. *Journal of Computer and System Sciences*, 65(1), 129-149.

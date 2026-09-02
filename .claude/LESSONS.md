@@ -31,6 +31,19 @@ Critical knowledge to avoid repeating mistakes.
   make flawless LB_Keogh algebra inadmissible; truncating to the shortest
   vector merely hides the contract breach. Carry and validate provenance at
   the public boundary, then keep unchecked pointer kernels internal (F46).
+- **A derivation-pinned line is a contract; run `check_docs_contract` before
+  changing it.** `lb_keogh`'s `const auto n = std::min(query.size(),
+  env.upper.size());` is the live witness for D2's unequal-length prefix
+  theorem and its 17,712-case oracle, and
+  `scripts/check_docs_contract.py` pins it verbatim. Replacing it with an
+  equal-length reject while fixing a genuine ragged-envelope OOB read silently
+  invalidated the whole D2 campaign — the compiler and the unit tests were both
+  happy. The correct fix keeps the derived truncation and adds a coverage check
+  (`envelope_covers`: every array indexed over the prefix must reach it),
+  reserving exact equality for `lb_enhanced`/`lb_webb`, which have no prefix
+  theorem. Before editing any line inside a derivation's implementation, grep
+  `scripts/check_docs_contract.py` for it and run
+  `uv run python scripts/check_docs_contract.py`.
 - **Metric compatibility traits must test units, not family names.** Scalar L2
   is `|a-b|`, but unrooted squared L2 is `(a-b)^2`; advertising one raw
   absolute-value LB_Kim implementation for both makes `0.5` a claimed lower
@@ -154,6 +167,38 @@ Critical knowledge to avoid repeating mistakes.
   full/banded cases, while rolling `BM_dtwFull_L/4000` was effectively
   unchanged (1.006×). Do not attribute the result categorically to temporary
   creation; benchmark the actual kernel being changed.
+- **MV dispatch must branch on `ndim` for EVERY strategy, not just the ones
+  someone remembered.** `make_interpolate` and `make_soft_dtw` had no `ndim > 1`
+  branch, so a multivariate request ran the *univariate* recurrence over the
+  interleaved channel stream and `band` counted flat elements instead of
+  timesteps — a silently wrong number, no diagnostic, no test. MSM/TWE had
+  already established the pattern (reject at bind time, serial, before the
+  parallel fill) and the two strategies were simply never brought in line. When
+  a dispatcher grows a new axis, enumerate the FULL cross-product and give every
+  cell either an implementation or an explicit `InvalidInput`.
+- **A strategy enum that promises to throw must throw at every entry point.**
+  `MissingStrategy::Error` was enforced only in `Problem::fill_distance_matrix`;
+  `distance::dtw` and `dtw_runtime` ran the recurrence on NaN and returned NaN —
+  which is also the distance matrix's "uncomputed" sentinel, so the result was
+  indistinguishable from an unfilled entry and `all_computed()` never became
+  true. A contract implemented in one of three entry points is not implemented.
+- **A negative band means UNBANDED, never radius 0 — clamping it breaks
+  admissibility.** `lb_enhanced`/`lb_webb` used `max(band, 0)`, which pins the
+  elastic arms to the diagonal; an unbanded path may step around those cells,
+  so the "lower bound" exceeded the true DTW (`A=[0,5,0,0]`, `B=[0,0,5,0]`:
+  10 vs 0). Every bound derived under a window assumption must refuse, not
+  coerce, an out-of-domain window.
+- **Validate every array you will index, not just the first one.** `Envelope`
+  and `WebbEnvelope` are aggregates whose members can be resized independently;
+  the entry points checked `upper.size()` and then read `lower`/`ul`/`lu`.
+  Same class of bug as the unchecked WDTW weight span (`weights[|i-j|]` needs
+  `max(nx, ny)` entries). A size check on one member of an aggregate is not a
+  size check on the aggregate.
+- **Never bound a parallel region with `omp_set_num_threads`.** It mutates
+  process-wide state that nothing restores, so one constrained call (a
+  k-means++ init at 2 workers) pinned every later fill and made pruning
+  statistics depend on call order. Use a `num_threads(...)` clause, which is
+  scoped to the region.
 - **Lambda capture-by-value creates stale parameter bugs.** Capture `[this]` and read at invocation time, not `[b=band]`.
 - **NaN is the ONLY safe sentinel** for distance matrix uncomputed entries. Soft-DTW returns negatives — any fixed sentinel collides.
 - **The mmap numbers are one hot-cache experiment, not a default-policy proof.**
@@ -324,6 +369,72 @@ Critical knowledge to avoid repeating mistakes.
 - **Cell/Cost policy contracts are forward-extensible.** Adding `seed(cost, i, j)` to the Cell policy to support AROW's `C(0,0) = 0 on NaN` semantics did NOT require touching existing cells — `StandardCell::seed` defaulted to `return cost`, which is identical to the pre-refactor `col[0] = cost(0, 0)` assignment. Pattern: new contract methods with sensible defaults are additive, not breaking.
 
 ## Audit / Testing
+
+- **`catch (...)` without a rethrow is a false-success generator.**
+  `Problem::read_distance_matrix` wrapped its whole body in
+  `catch (...) { std::cout << "could not be read"; }`. The CLI's own
+  `try/catch` around the call was therefore dead code and it printed
+  `"Loaded distance matrix from <path>"` *immediately after* the failure line,
+  then silently recomputed the whole O(N^2) matrix (real-binary transcript,
+  2026-09-02). A swallowing catch also freezes the behaviour into tests: the
+  F22 compatibility gate asserted on the exact failure *stdout*, so the fix had
+  to move that assertion to the exception message. Rule: a reader reports
+  failure; only the caller decides whether to continue.
+- **An `if/else if` dispatch chain over a string needs a terminal `else` that
+  throws — the missing branch is not "do nothing", it is "publish a
+  default-constructed result as a success".** `dtwc_cl`'s method chain had no
+  terminal else, so a value that bypassed CLI11's `CheckedTransformer` (a YAML
+  key, whose hand-written normalisation had drifted from the transformer map)
+  left `ClusteringResult` default-constructed and the run went on to write a
+  binary checkpoint, `labels.csv` and `medoids.csv` for it and exit 0
+  (`method: obp`, real binary, exit 0, "Total cost: 0"). Same class: unknown
+  `solver` silently kept HiGHS, unknown `linkage` silently became Average.
+  Wherever a config file can reach a selector, validate the normalised value
+  once up front AND keep the terminal `else { throw }`.
+- **A "unique" identifier built from a static's address is a per-image
+  constant, not entropy.** `default_series_cache_path()` used
+  `reinterpret_cast<uintptr_t>(&counter)`, so two processes of the same binary
+  produced byte-identical temp `.dtws` paths — observed directly: two runs both
+  printed `dtwc_store_140698956918712_2047.dtws`. Its `counter++` was also
+  non-atomic, and 8 threads x 256 calls lost updates on 2 of 3 runs. Use a real
+  entropy source (random_device mixed with the clock) for the process tag and
+  one relaxed `fetch_add` for the sequence — one atomic per *load call* costs
+  nothing, one per series would.
+- **`null_count()` is the cheap null check; `IsNull()` per element is not.**
+  Both Parquet readers ignored nulls entirely, so a null list cell yielded a
+  wrong series and a null element yielded raw buffer bytes straight into the
+  DTW distances. One `null_count()` read per chunk (and per values buffer) is
+  O(1) metadata and keeps the copy loop branch-free.
+- **When one concept has three implementations, they will disagree at the
+  boundary.** `Ndata == 0` meant 1 series to `DataLoader::count()`, ALL series
+  to the folder loader and 0 to the batch loader, and `Ndata < -1` was accepted
+  everywhere. The three sites each open-coded the stopping rule
+  (`if (i_data == Ndata) break` vs `Ndata == -1 || n < Ndata` vs
+  `Ndata >= 0 && n >= Ndata`). One named predicate plus one validator removes
+  the whole class; a comment claiming a body "mirrors X EXACTLY" is not a
+  mechanism.
+- **An accessor that does not branch on the same discriminator as its `size()`
+  is undefined behaviour waiting for a caller.** `Data::size()` branched on
+  precision; `series()`/`series_f32()` did not, so `series()` on Float32 data
+  indexed an empty vector. One predictable branch in the accessor is the right
+  cost — the audit's own perf note demanded a branch, not a lock or a virtual.
+- **`fs::directory_iterator` order is a filesystem property, not a contract.**
+  Series order set names, labels, medoids and every distance-matrix index, so
+  results were not reproducible across machines, and non-regular entries went
+  to `readFile()`. Sort once, before the parallel load, filtering to regular
+  files — O(n log n) per load, never per series. NTFS happens to enumerate in
+  name order, which is exactly why this survived so long on Windows: the
+  ordering half of this fix is not falsifiable on the dev machine.
+- **A fingerprint that hardcodes one value of a semantic axis silently accepts
+  the wrong cache.** `distance_checkpoint_identity()` passed
+  `MetricType::L1` unconditionally although the CLI already computed the real
+  metric, so a SquaredL2 matrix and an L1 matrix over the same data shared a
+  digest. When a fingerprint enumerates axes, every axis the *caller* controls
+  must be a parameter, not a literal.
+- **Test gates must be one-sided.** A `PASS_REGULAR_EXPRESSION` pinning
+  "300-9999 assertions in 9-99 test cases" fails on a legitimate 100th case
+  and passes on any count inside the band even if the intended subject was
+  deleted. Assert a floor (or that a named tag ran); never an upper bound.
 
 - **A registered test-summary band must reconcile to the collected total before
   the decisive run.** F19 registered at least 1010 passed and 12 skipped over
@@ -497,7 +608,12 @@ Critical knowledge to avoid repeating mistakes.
   `/fp:precise`; Clang without those relaxations matched MSVC. Linux
   libstdc++ produced a third result because the standard does not prescribe
   `uniform_real_distribution`'s engine-to-real mapping; there even the scalar
-  `[-1,1]` bytes differ. A behavior-neutral extraction must compare raw
+  `[-1,1]` bytes differ. Apple Clang + libc++ is a fourth coherent row: the
+  scalar/row `[-1,1]` hashes match libstdc++, the continuous `[-10,10]` stream
+  differs by a few ULPs, and the 3x3 full/band-0 oracles still hash to the
+  libstdc++ matrices. Register that row as `libcxx` (PR #32, Kasper Westman,
+  evidence `.claude/baselines/2026-09-01-f15-libcxx-profile.md`); do not skip
+  F15 or replace the STL distribution. A behavior-neutral extraction must compare raw
   IEEE-754 bytes under each verified compiler-plus-standard-library profile,
   preserve the distribution type and draw schedule, and never relabel legacy
   STL-distribution fixtures as `portable-v1`.
@@ -807,6 +923,26 @@ Critical knowledge to avoid repeating mistakes.
   `PASS_REGULAR_EXPRESSION` property that couples marker to floor. Six
   in-memory mutants now reject. Evidence:
   `.claude/baselines/2026-07-30-d3-lb-enhanced-webb.md`.
+- **A last-bit pin is not portable across GCC vs Apple Clang under the Release
+  reassociation set.** An HPC (GCC 14) run on 2026-09-01 (PR #32) failed three
+  gates that were green on Apple Clang: F13 pinned `nearest[]` bits
+  `0x8000000000000000` (`-0.0`) while GCC flushed them to `+0.0` under
+  `-fno-signed-zeros`; F22's canonical probe treated GCC's constructor-NSDMI
+  use of deprecated `maxIter`/`N_repetition` as a canonical diagnostic; F8
+  Soft-DTW `total_cost` differed by 2 ULP (`CC..` vs `CE..`) after
+  resident==stream and labels/medoids already matched. Canonicalize signed
+  zeros in the F13 oracle the same way as the zero objective; pragma-silence
+  the *constructors* (not the fields) in `Problem.hpp`; register a second
+  Soft-DTW cost encoding and keep resident==stream byte-identity. Do not skip
+  the tests, loosen Standard DTW goldens, or remove `[[deprecated]]`.
+- **`std::filesystem::path`'s stream operator quotes and escapes, so CLI path
+  markers are not raw paths.** `operator<<` routes through `std::quoted`; on
+  Windows the separator `\` is emitted as `\\`, which a naive CMake
+  `string(REPLACE "\\" "/")` turns into `//`. Pinning that doubled form
+  passes on Windows and silently mis-asserts on POSIX (and PR #32's
+  single-slash pin did the reverse). Collapse the escaped pair first, then the
+  single separator, and compare against a single-separator path. Observed
+  2026-09-02 in `tests/integration/test_distance_matrix_csv_contract.cmake`.
 
 ## LR-core Solver (Phase 4)
 
@@ -838,3 +974,292 @@ Critical knowledge to avoid repeating mistakes.
 ## Research Process
 
 - **Always verify citations.** Author names, venues, volume numbers can be hallucinated.
+
+## GPU backends + Python bindings (audit 2026-09-02)
+
+- **A pair count must be guarded at the PUBLIC entry, not at the last
+  launcher — the pre-pass runs first.** `launch_dtw_kernel` guarded
+  `num_pairs > INT_MAX` correctly, but the LB_Keogh pre-pass in
+  `compute_distance_matrix_cuda` ran before it and narrowed `N*(N-1)/2` to
+  `int`; on the RTX 4000 Ada with N=65537 (the first N whose pair count exceeds
+  INT_MAX) that produced `CUDA error at cuda_dtw.cu:1353: an illegal memory
+  access was encountered`, not the intended throw. A guard on an internal
+  launcher is worthless when any earlier stage consumes the same quantity:
+  guard once, at the top of every public entry, before the first allocation.
+- **Build the smallest failing case for an INT_MAX pair count — it is cheap.**
+  N=65537 series of length 1 is a few MB of host memory, while the `N*N` result
+  matrix that follows is 34 GB; putting the guard before
+  `result.matrix.resize(N*N)` is what makes the case run in milliseconds. Test
+  the guard helper in a CUDA-OFF build too: the seam header
+  (`cuda/launch_prep.hpp`) must live OUTSIDE `#ifdef DTWC_HAS_CUDA` so the
+  canonical Arrow/CUDA-OFF gate executes it (18 assertions there — same F9
+  pattern as the `--ram-limit` guard under `#ifdef DTWC_HAS_PARQUET`).
+- **`CUDA_VISIBLE_DEVICES=-1` forces the "no device" branch on a GPU host; the
+  empty string does NOT.** `CUDA_VISIBLE_DEVICES=` still showed the device in
+  this environment, so the no-device case silently skipped. With `-1`,
+  `cuda_available()` is false and the pre-fix code returned an all-zero `N*N`
+  matrix with no exception ("no exception was thrown where one was expected") —
+  exactly the silent wrong answer the no-fallback rule forbids. Any backend
+  availability check needs a runtime way to force the negative branch, or that
+  branch is never tested.
+- **A double-checked cache whose payload holds a `std::string` cannot publish
+  without a lock.** `query_gpu_config` took a process-global mutex on every
+  call, including cache hits (once per kernel launch, per host thread). The
+  lock-free fix is an acquire-load fast path plus the SAME mutex for the
+  one-time fill — two threads racing to fill would both assign
+  `GPUConfig::device_name`, a real data race, not a benign duplicate write.
+  Warn-once latches (`static bool logged`) become `std::atomic<bool>::exchange`:
+  same effect, no UB.
+- **An exception must never escape an `omp parallel for`, and the fix is a
+  per-thread slot, never `omp critical`.** A shared error flag under `critical`
+  would serialise the hot loop; use one `std::exception_ptr` per
+  `omp_get_max_threads()` slot, written only by its owning thread, inspected
+  after the region, first non-null rethrown. NOTE: on the current core
+  `dtwBanded`/`dtwFull_L` do NOT throw on NaN (they propagate it into the
+  matrix), so the audit's trigger was inferred, not reproduced — this is
+  hardening against a future throwing kernel and no test can express it through
+  the public API today.
+- **Hand a numpy buffer over as an owned object, and build the capsule while a
+  `unique_ptr` still owns it.** `double *p = new double[n*n]; ...;
+  nb::capsule owner(p, deleter);` leaks the whole matrix if anything between the
+  two lines throws, including the capsule allocation itself; move a
+  `std::vector<double>` onto the heap, build the capsule, THEN `release()`. The
+  same helper removes the `nb::gil_scoped_acquire` nested inside a live
+  `gil_scoped_release` in the CUDA/Metal lambdas — build the array after the
+  release scope has closed, not inside a re-acquire.
+- **A per-binding GIL policy is not a lock; pick one policy for the class.**
+  Holding the GIL in five `Problem` bindings while ~ten siblings released it
+  gave no mutual exclusion — the released binding still resized `distMat` and
+  rebound `dtw_fn_` under a live reader — so the docstrings asserted a
+  thread-safety property the module did not have. The policy is now *consistent
+  release, no per-object lock*, with `Problem` documented as
+  single-thread-per-instance (the same contract as the C++ header); a "release
+  only when the cache is complete" gate was considered and rejected because the
+  only complete-cache query, `is_distance_matrix_filled()`, runs an O(N^2) NaN
+  scan and gating an O(1) lookup on it is quadratically worse than the GIL it
+  would avoid. If a class ever really needs concurrent Python use, the fix is a
+  lock acquired BEFORE `gil_scoped_release`, never a mixed hold/release policy
+  (`python/src/_dtwcpp_core.cpp`).
+- **A threaded Python test is a contract guard, not a race reproducer.**
+  Running `dist_by_ind` from 8 threads on an unfilled `Problem` passed against
+  the GIL-releasing build on this box: the `omp critical(distByInd_init)` around
+  the resize is a global named lock even outside a parallel region, so the
+  window is narrow. What DOES discriminate deterministically is a pure-Python
+  ticker thread — it can only advance while it holds the GIL, so a native call
+  that keeps the GIL freezes it. Calibrate against a call known to release
+  (`fill_distance_matrix`) and take the MINIMUM tick delta over a few repeats;
+  GIL hand-off convoying adds tens of milliseconds of noise, and that noise only
+  ever adds ticks.
+- **`std::atomic<T>` breaks a `= default` move.** `Problem::Problem(Problem &&)
+  = default;` is defined out-of-line, so an atomic member makes it ill-formed,
+  not merely deleted. The `mutable bool` written from a `const` method needed a
+  tiny value-moving `RelaxedFlag` wrapper (`Problem.hpp`), not a bare atomic.
+- **A per-pair decode is device code.** `dtwc::detail::decode_pair` is
+  `__host__ __device__` and runs once per pair per launch, so a defensive
+  correction loop that recomputes `row * (2N - row - 1) / 2` costs a 64-bit
+  multiply AND divide on every pair for a case that cannot occur with an FP64
+  seed; hoisting `row_start` (which the up-correction needs anyway) makes the
+  down-correction one comparison. Also order defensive clamps so the LAST one is
+  the one that must hold — clamping low then high re-introduced a negative row
+  for `N < 2`.
+
+## Clustering algorithms + score layer (audit 2026-09-02)
+
+- **An UNNAMED `#pragma omp critical` shares ONE implementation-defined name
+  across the entire program.** Four per-thread reductions (`fast_pam.cpp` x3,
+  `one_batch_pam.cpp` x1) were unnamed, so they serialised against each other
+  AND against any unnamed critical in any other linked TU — unbounded coupling
+  to code this layer does not own. The neighbouring failure-path criticals were
+  already named (`dtwc_medoid_candidate_failure`, `tadpole_density_reduce`), so
+  this was oversight, not design. Every `critical` in the codebase must carry a
+  distinct name; the fix is free.
+- **A precision guard on the DATA is not implied by a guard on the VARIANT.**
+  TADPole's `bounds_valid` checked variant + ndim + missing_strategy but not
+  `is_f32()`, so on a Float32 Problem the LB/UB path called `Data::series()` on
+  the EMPTY float64 `p_vec` (historically an out-of-range read, reproduced as a
+  segfault; `Data::series()` now throws, so the same code would be a loud error
+  today). The guard is still required for the other reason: `exact()` routes
+  through `Problem::dist_by_ind`, which DOES branch on `is_f32()`, so bound and
+  exact distance would come from different data and the prune is INADMISSIBLE
+  regardless of memory safety — `barycenter.cpp` had this right. Two follow-on
+  rules: whenever a fast path reads series directly, check `is_f32()` alongside
+  the variant and hoist the read INSIDE the guard rather than parking an
+  empty-span placeholder outside it; and a capability that switches itself off
+  must SAY so (`TADPoleStats::pruning_enabled` exists because the fix otherwise
+  turned a segfault into an unobservable 2-10x slowdown).
+- **A degenerate score's "no other cluster" branch must throw, not fall through
+  a sentinel.** `silhouette` left `min` at `numeric_limits<double>::max()` when
+  no second cluster existed, so `(MAX - a)/MAX` evaluated to ~ +1.0 — three
+  visibly different series in one cluster scored PERFECT; `dunn` likewise
+  returned `DBL_MAX / max_intra` ~ 1.8e308 as an ordinary finite number. A
+  `DBL_MAX`/`DBL_MIN` "not found yet" sentinel that survives into arithmetic
+  produces a plausible-looking extreme value, not an obvious error. Assert the
+  sentinel was replaced (`dtwc/scores.hpp`).
+- **Validity indices are defined on the REALISED partition, never the declared
+  `n_clusters`.** With `Nc = 3` but only label 0 in use, every "requires >= 2
+  clusters" guard passed vacuously. An empty declared cluster also has no medoid
+  and no scatter, yet it still divided Davies-Bouldin's `1/k` and set
+  Calinski-Harabasz's `(k-1)`/`(N-k)` degrees of freedom. Count the labels that
+  actually occur.
+- **`d == 0` in a ratio index is the WORST case, not a case to skip.**
+  Davies-Bouldin skipped pairs with `M_ij == 0`, so two clusters with coincident
+  medoids and real internal spread — the worst possible configuration — left
+  `max_ratio` at its `0.0` initialiser and DBI reported 0.0 = perfect. Davies &
+  Bouldin (1979) require R_ij strictly decreasing in M_ij with R_ij = 0 iff
+  S_i = S_j = 0, so the limit is +inf when there is any spread and 0 only in the
+  genuine 0/0 case. Skipping a degenerate term silently reports its OPPOSITE.
+- **The one distance read that skips the finiteness policy is the one the table
+  cannot cover.** `one_batch_pam`'s `exact()` is reached exactly when a selected
+  medoid is NOT in the fixed batch, i.e. the only distances the constructor's
+  finiteness sweep never saw. A non-finite `d` makes `d < best` false in every
+  slot, so the point keeps label 0 and the run publishes a wrong partition with
+  a non-finite cost, where every other algorithm throws. Audit finiteness guards
+  by asking which inputs each guard cannot see, not by counting guards.
+- **Loop-invariant work in a candidate loop hides as "per-candidate state".**
+  `one_batch_pam` rebuilt a `vector<double>(k)` removal-gain base and recomputed
+  an O(m) tolerance ONCE PER CANDIDATE (N heap allocations plus N O(m) passes
+  per sweep) although both depend only on state that changes when a swap is
+  ACCEPTED. Hoisting into a `refresh_swap_state()` called after each accepted
+  swap keeps the j-accumulation order, so the arithmetic stays digit-identical;
+  `fast_pam.cpp` already had the hoisted pattern — copy it.
+- **`dist_by_ind` ran its semantic preflight TWICE per element** — once
+  directly, once inside `ensure_dense_cache_configuration_current` — and the
+  SWAP kernel issues N^2 of them per iteration. The fix without any reordering
+  is a `..._preflighted()` sibling that omits the leading preflight, for callers
+  that already ran it. Do NOT "fix" it by dropping the outer call, which
+  silently reorders the mmap-identity and semantics errors.
+- **A dead template helper is worse than a duplicated loop: its unit tests
+  certify behaviour that ships nowhere.** `medoid_utils`' `assign_to_nearest` /
+  `compute_nearest_and_second` / `find_cluster_medoid` had no production caller
+  (only 20 of their own tests) while the header's `@details` named three callers
+  it did not have, and `dtwc.hpp` re-exported it publicly; their semantics had
+  also drifted from every shipping copy (no `require_finite_medoid_distance`,
+  plain `+=` instead of the ordered published objective, and a `DBL_MAX`
+  sentinel that mis-handles a legitimately maximal distance). They were deleted,
+  not adopted: the five shipping assignment scans differ in parallel-vs-serial
+  execution, index space (point index vs chunk index + global offset), distance
+  signature (`(int,int)` vs `(series,series)`) and per-element side effects (a
+  DTW counter), so one helper would need runtime policy switches in the hottest
+  loops of the library. Grep for production callers before trusting a helper's
+  unit tests as coverage.
+- **Digit-identity for a pure-deletion refactor is cheapest to prove at the
+  OBJECT level.** Deleting the three never-instantiated templates left all 19
+  `dtwc++` library objects BYTE-IDENTICAL after a real recompile — check the
+  `.obj` mtimes to prove the recompile actually happened, or the claim is
+  vacuous. Pair it with `catch2 -s --order decl` transcripts (which print every
+  assertion's expanded values) and a real-CLI artifact diff; the templated
+  `fast_clara` f32/f64 chunk merge was proven the same way against the 32
+  f32/f64 x stream/resident streaming artifacts of the Arrow-ON gates.
+- **The report finding D4 ("inverted `#ifndef DTWC_HAS_PARQUET` guard") is
+  FALSE — verified, do not "fix" it.** `unit_test_fast_clara.cpp`'s "the missing
+  capability is loud" SECTION asserts the error a build WITHOUT Parquet must
+  raise, so it correctly runs only there: 842 assertions in the Arrow-OFF
+  canonical build vs 841 in `build/arrow-pyarrow-23`. The genuine residual is
+  the opposite one — a Parquet build has no positive coverage of the same entry
+  point.
+- **`barycenter_kmeans` re-ran a full `N*k` DBA-DTW assignment after the loop
+  even on the converged-`break` path**, which had already stored the identical
+  labels and cost from the `assign()` at the top of that same iteration (centres
+  are not updated before the break). Guard the final assign with
+  `if (!result.converged)` — only the max_iter-exhausted path needs it. Verified
+  digit-identical on both `unit_test_barycenter` and the allocation-counting
+  `unit_test_barycenter_allocations`.
+- **Guard ORDER is behaviour.** A named "Pruned requires Float64" rejection
+  placed ABOVE the `Pruned + mmap -> BruteForce` downgrade broke a combination
+  that the downgrade already routed to an f32-capable exact fill. A rejection
+  must sit below every downgrade that would make it moot.
+- **Catch the narrowest type in a skip-and-warn path.**
+  `catch (const InvalidInput &)` around `scores::silhouette()` swallowed corrupt
+  labellings and bad data as warnings. `dtwc::UndefinedScore : InvalidInput` now
+  marks only the mathematically-undefined case, and only that is skipped.
+
+## Exact MIP backends (audit 2026-09-02)
+
+- **An incumbent is not a lower bound.** Benders read its master LB from
+  `sum(theta_j)` of the returned solution, which is the master's PRIMAL
+  objective; with `mip_rel_gap` set (and `kObjectiveBound` / `kSolutionLimit`
+  accepted as success) it sits ABOVE the master optimum, so
+  `best_cost - theta_sum` under-reported the gap and the loop stopped while a
+  strictly better medoid set existed. The dual bound is
+  `getInfo().mip_dual_bound`. Whenever a decomposition uses a solver's answer as
+  a bound, take the DUAL bound, and accept only `kOptimal` as master success.
+- **An exact entry point that runs out of iterations must throw.** Both Benders
+  and LR-core ended their loop/tree on a cap and then published the incumbent —
+  Benders printed "complete", LR-core ignored its own `certified_optimal =
+  false`. The compact HiGHS/Gurobi backends already threw `SolverError` on
+  non-optimality; a second exact backend that returns a heuristic instead is a
+  silent wrong answer on a documented API.
+- **A solver option setter returns a status, and identity options are not
+  tuning options.** `Highs::setOptionValue("solver", "not-a-solver")` returns
+  `kError` and HiGHS then runs its DEFAULT solver — verified: before the guard,
+  `pdlp_lp_bound(..., variant = "not-a-solver")` solved happily and reported a
+  "PDLP" bound produced by dual simplex. Check every setter's status, but split
+  the two cases first: failing hard on a rejected `solver` is right (the
+  reported value would not be a PDLP value), while failing hard on a rejected
+  `kkt_tolerance` just means an older HiGHS build produces no bound at all —
+  hence `set_highs_option` vs `set_highs_option_best_effort`.
+- **A tolerance is not one number.** Scaling the Benders `abs_eps` by
+  `max(max_distance()/2, 1)` was right for the two COST comparisons and
+  catastrophic for the third site that happened to read the same variable: the
+  cut-coefficient filter. Every `c_i = max(0, d_nearest - d_ji)` is `>= 0`, so
+  dropping a positive one makes the cut STRICTER than the valid Benders cut —
+  the master's dual bound is inflated and the optimum can be cut off under a
+  message claiming optimality was proved. Before rescaling a shared epsilon,
+  enumerate every consumer and ask what quantity each compares; naming the
+  value (`benders_abs_eps` vs `benders_cut_coefficient_threshold`) is what
+  forces that.
+- **A "be honest, throw" change is a default-path behaviour change.** Turning an
+  unconverged Benders incumbent into a `SolverError` is correct, but
+  `benders = "auto"` engages Benders at `N > 200` and no test exercised
+  `N > 200` on stock settings — the largest case was `N = 12`. Any new throw on
+  the documented default route needs a default-settings regression AT that size;
+  the measured floor (`N = 250`, `k = 5`, separable, converging at Benders
+  iteration 4) is what lets the shipped `max_benders_iter = 200` stand
+  (`tests/unit/mip/test_mip_backend_guards.cpp`).
+- **An error message must name a knob the caller actually has.** LR-core's
+  "raise the node cap" pointed at `LagrangianParams::max_nodes`, which
+  `Method::LRCore` default-constructed and never exposed;
+  `MIPSettings::lr_max_nodes` now exists and is forwarded. Same rule for the
+  Benders message: name the field, not the concept.
+- **An index guard must bound the NARROWEST integer on the path, and is
+  per-backend work.** The HiGHS model guard checked `HighsInt` while the
+  triplets were built with `static_cast<int>`, so a `HIGHSINT64` build would
+  have passed `N > 46340` straight into truncation — the exact failure the guard
+  was added to prevent. The same claim also covered Gurobi's `addVars(N*N)`,
+  which had no check at all (`dtwc/mip/index_guard.hpp`).
+- **`near` is a Windows macro.** `const auto near = ...` in `dtwc/mip/` fails to
+  compile on Windows (`windef.h`, pulled in via llfio/HiGHS, defines
+  `near`/`far`). Use `nearest`.
+
+## MATLAB / MEX (audit 2026-09-02)
+
+- **[BLOCKED-ENV] A HiGHS-enabled MEX crashes MATLAB on this box, and
+  `tests/matlab/*.m` are NOT registered in CTest.** Building `dtwc_mex` with
+  `-DDTWC_ENABLE_HIGHS=ON` and running any `Method::MIP` solve aborts MATLAB
+  R2024b with `Exit Status: 0xc0000005, Access violation` on a HiGHS worker
+  thread (`MSVCP140.dll ... Thrd_yield`), for BOTH toolchains (clang+Ninja
+  `build/mex-highs`, MSVC+VS `build/mex-highs-msvc`; re-confirmed 2026-09-02
+  inside `dtwc_mex.mexw64` on `test_cluster_mip.m`), so every recorded MEX build
+  in the repo is HiGHS-OFF and the MATLAB MIP route has never been executed
+  here. `tests/CMakeLists.txt` globs `*.cpp` only, so the `.m` files run solely
+  by hand and only against a HiGHS-OFF MEX:
+  `cmake --build build/mex-verify --target dtwc_mex`, then
+  `matlab -batch "addpath(<ABSOLUTE build/mex-verify/bin>); addpath(<ABSOLUTE
+  bindings/matlab>); runtests(<ABSOLUTE .m path>)"`. Two traps: the paths must
+  be WINDOWS absolute (an MSYS `/c/...` path makes
+  `exist(''dtwc_mex'',''file'')` return 0 and every case comes back "Filtered by
+  assumption" — Incomplete, which reads like a pass in the summary table, so
+  always print `sum([r.Passed])`); and anything on the MIP route, such as
+  `test_cluster_mip.m`, is capability-guarded and reports "no exact MIP solver
+  compiled into dtwc_mex" rather than a false green.
+- **CMake 4.2 `FindMatlab` only exports `mexFunction` under `if(MSVC)`.** A
+  Clang (GNU-frontend) MEX on Windows then links with no entry point and MATLAB
+  says "Invalid MEX-file ...: Gateway function is missing". `build/mex-verify`
+  was generated by an older CMake and still carries `-Wl,/EXPORT:mexFunction`;
+  `bindings/matlab/CMakeLists.txt` now adds it explicitly for
+  `WIN32 AND NOT MSVC`.
+- **A helper that eliminates UB can reintroduce it at its own boundary.**
+  `exact_int_from_double` accepted `INT_MIN` (exactly representable as a double)
+  and every caller then evaluated `INT_MIN - 1` — signed overflow, in the helper
+  added to remove signed overflow. Check the boundary the CALLER will cross, not
+  the one the helper converts (`bindings/matlab/dtwc_mex.cpp`).

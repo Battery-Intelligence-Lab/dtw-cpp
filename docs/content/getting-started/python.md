@@ -268,6 +268,14 @@ dend = build_dendrogram(prob, hier_opts)
 result = cut_dendrogram(dend, prob, n_clusters=3)
 ```
 
+## Threading
+
+A `Problem` instance must not be used concurrently from multiple Python
+threads. The GIL is released during C++ work so that other threads can run, but
+two threads calling methods on the same `Problem` race on its lazily-filled
+distance cache. Use one `Problem` per thread, or call `fill_distance_matrix()`
+first and only read afterwards.
+
 ## Quality scores
 
 All scoring functions operate on a `Problem` object that has been clustered (distance matrix computed and labels assigned).
