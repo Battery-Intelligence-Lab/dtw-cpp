@@ -228,7 +228,24 @@ class TestCanonicalDeviceName:
     )
     @pytest.mark.parametrize(
         ("requested", "canonical"),
-        [("cuda", "gpu"), ("cuda:0", "gpu"), ("gpu:0", "gpu"), ("GPU", "gpu")],
+        [
+            pytest.param(
+                "cuda", "gpu",
+                marks=pytest.mark.skipif(
+                    not (dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()),
+                    reason="explicit CUDA unavailable",
+                ),
+            ),
+            pytest.param(
+                "cuda:0", "gpu",
+                marks=pytest.mark.skipif(
+                    not (dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()),
+                    reason="explicit CUDA unavailable",
+                ),
+            ),
+            ("gpu:0", "gpu"),
+            ("GPU", "gpu"),
+        ],
     )
     def test_gpu_aliases_canonicalise(self, requested, canonical):
         try:

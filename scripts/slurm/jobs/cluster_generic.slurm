@@ -97,34 +97,35 @@ mkdir -p "${RESULTS_DIR}"
 
 T_START=$(date +%s.%N)
 DTWC_EXIT=0
-SEED_ARGS=()
+DTWC_ARGS=(
+    --input "${DTWC_INPUT}"
+    -k "${DTWC_K}"
+    --skip-cols "${DTWC_SKIP_COLS}"
+    --dtype "${DTWC_DTYPE}"
+    --method "${DTWC_METHOD}"
+    --band "${DTWC_BAND}"
+    --device "${DTWC_DEVICE}"
+    --max-iter "${DTWC_MAX_ITER}"
+    --variant "${DTWC_VARIANT}"
+    --wdtw-g "${DTWC_WDTW_G}"
+    --adtw-penalty "${DTWC_ADTW_PENALTY}"
+    --msm-c "${DTWC_MSM_C}"
+    --twe-nu "${DTWC_TWE_NU}"
+    --twe-lambda "${DTWC_TWE_LAMBDA}"
+    --mv-mode "${DTWC_MV_MODE}"
+    --missing-strategy "${DTWC_MISSING_STRATEGY}"
+    --metric "${DTWC_METRIC}"
+    --n-init "${DTWC_N_INIT}"
+)
 if [[ -n "${DTWC_SEED}" ]]; then
-    SEED_ARGS=(--seed "${DTWC_SEED}")
+    DTWC_ARGS+=(--seed "${DTWC_SEED}")
 fi
-"${DTWC_BIN}" \
-    --input "${DTWC_INPUT}" \
-    -k "${DTWC_K}" \
-    --skip-cols "${DTWC_SKIP_COLS}" \
-    --dtype "${DTWC_DTYPE}" \
-    --method "${DTWC_METHOD}" \
-    --band "${DTWC_BAND}" \
-    --device "${DTWC_DEVICE}" \
-    --max-iter "${DTWC_MAX_ITER}" \
-    --variant "${DTWC_VARIANT}" \
-    --wdtw-g "${DTWC_WDTW_G}" \
-    --adtw-penalty "${DTWC_ADTW_PENALTY}" \
-    --msm-c "${DTWC_MSM_C}" \
-    --twe-nu "${DTWC_TWE_NU}" \
-    --twe-lambda "${DTWC_TWE_LAMBDA}" \
-    --mv-mode "${DTWC_MV_MODE}" \
-    --missing-strategy "${DTWC_MISSING_STRATEGY}" \
-    --metric "${DTWC_METRIC}" \
-    --n-init "${DTWC_N_INIT}" \
-    "${SEED_ARGS[@]}" \
-    --name "${DTWC_NAME}" \
-    --output "${RESULTS_DIR}" \
-    --verbose \
-    || DTWC_EXIT=$?
+DTWC_ARGS+=(
+    --name "${DTWC_NAME}"
+    --output "${RESULTS_DIR}"
+    --verbose
+)
+"${DTWC_BIN}" "${DTWC_ARGS[@]}" || DTWC_EXIT=$?
 T_END=$(date +%s.%N)
 ELAPSED=$(echo "${T_END} - ${T_START}" | bc 2>/dev/null || echo "?")
 

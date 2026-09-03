@@ -8,6 +8,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- Fixed macOS Python source and editable installs by statically bundling HiGHS
+  into the native extension, eliminating the unresolved
+  `@rpath/libhighs.1.dylib` import dependency. Made the generic Slurm job's
+  optional seed arguments compatible with macOS Bash 3.2, restored
+  platform-independent CLI discovery in Python tests, and included Matplotlib
+  in the Python test dependencies.
 - **Fix (build, GCC + LTO):** `run_openmp`'s exception-capture region is an
   unnamed `#pragma omp critical` again. The named form made GCC emit a COMMON
   `.gomp_critical_user_dtwc_run_openmp_exception` symbol into every TU that

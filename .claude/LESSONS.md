@@ -110,6 +110,12 @@ Critical knowledge to avoid repeating mistakes.
 
 ## Python packaging / bindings
 
+- **A wheel repair tool does not protect local source/editable installs.**
+  HiGHS defaults to a shared library on Unix, leaving the installed Python
+  extension with `@rpath/libhighs.1.dylib` but no `LC_RPATH`; cibuildwheel can
+  repair release wheels, while `uv pip install -e .` cannot. Build HiGHS and
+  its extras as scoped PIC static libraries for Python packaging, and assert
+  the resulting CMake target type during configuration.
 - **Never infer Python import provenance from the checkout layout.** The
   2026-07-23 probe found a mixed environment: `dtwcpp` and `_api.py` resolve to
   `python/dtwcpp/` in the repository, while `_dtwcpp_core` resolves to the venv
@@ -327,6 +333,11 @@ Critical knowledge to avoid repeating mistakes.
 
 ## ARC SLURM Hardware
 
+- **macOS still ships Bash 3.2, where an empty array expansion fails under
+  `set -u`.** A Slurm script using `"${optional_args[@]}"` worked on newer
+  cluster Bash versions but exited with `optional_args[@]: unbound variable`
+  in local macOS tests. Build one always-nonempty command argument array and
+  conditionally append optional flags before expanding it.
 - **htc GPU compute capabilities (corrected from docs).** The ARC docs list CUDA toolkit version, not compute capability. Actual values: P100=6.0, V100=7.0, RTX8000/TitanRTX=7.5, A100=8.0, RTXA6000=8.6, L40S=8.9, H100/GH200=9.0.
 - **Rome (htc-g019) and Broadwell (htc-g045-049) lack AVX-512.** Use
   `DTWC_ARCH_LEVEL=v3` for a portable x86 htc build; there is no one x86-64-v4

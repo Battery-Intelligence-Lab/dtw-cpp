@@ -5,6 +5,7 @@ import os
 import subprocess
 
 import dtwcpp
+from dtwcpp._hpc import find_dtwc_binary
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -12,14 +13,12 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def _cli_path() -> Path:
     override = os.environ.get("DTWC_CL_PATH")
-    candidates = [
-        Path(override) if override else None,
-        ROOT / "build" / "cfg-gate-normal" / "dtwc_cl.exe",
-        ROOT / "build" / "cfg-gate-normal" / "bin" / "dtwc_cl.exe",
-    ]
-    for candidate in candidates:
-        if candidate is not None and candidate.exists():
-            return candidate
+    if override and Path(override).exists():
+        return Path(override)
+
+    candidate = find_dtwc_binary(str(ROOT))
+    if candidate is not None:
+        return Path(candidate)
     raise AssertionError("dtwc_cl executable not found; set DTWC_CL_PATH")
 
 
