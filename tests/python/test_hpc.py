@@ -845,7 +845,8 @@ class TestSlurmLastMile:
         assert "DTWC_SEED=${SEED}" in wrapper
         assert 'DTWC_N_INIT="${DTWC_N_INIT:-1}"' in job
         assert '--n-init "${DTWC_N_INIT}"' in job
-        assert 'SEED_ARGS=(--seed "${DTWC_SEED}")' in job
+        assert 'DTWC_ARGS+=(--seed "${DTWC_SEED}")' in job
+        assert '"${DTWC_BIN}" "${DTWC_ARGS[@]}"' in job
         for name in (
             "MAX_ITER", "VARIANT", "WDTW_G", "ADTW_PENALTY", "MSM_C",
             "TWE_NU", "TWE_LAMBDA", "MV_MODE", "MISSING_STRATEGY", "METRIC",

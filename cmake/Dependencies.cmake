@@ -39,22 +39,48 @@ function(dtwc_setup_dependencies)
   else()
     set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   endif()
-  CPMAddPackage(
-    NAME highs
-    URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
-    # SHA256 pinned (Task 0.12). Computed 2026-07-08 from the GitHub release
-    # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
-    URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
-    SYSTEM
-    EXCLUDE_FROM_ALL
-    OPTIONS
-      "CI OFF"
-      "ZLIB OFF"
-      "BUILD_CXX_EXE OFF"
-      "BUILD_EXAMPLES OFF"
-      "BUILD_TESTING OFF"
-      "FAST_BUILD ON"
-    )
+  # A Python extension cannot rely on HiGHS' Unix default of BUILD_SHARED_LIBS=ON:
+  # the resulting @rpath/libhighs dependency is outside site-packages in local
+  # source/editable installs. Keep these normal variables scoped to the HiGHS
+  # subproject so native DTWC++ builds retain their requested shared-library
+  # policy. HiGHS sets PIC on its static target, making it safe to fold into the
+  # extension. GPU HiGHS is exempt because its Windows CUDA build requires DLLs.
+  block(SCOPE_FOR VARIABLES)
+    if(DTWC_BUILD_PYTHON AND NOT DTWC_HIGHS_GPU)
+      set(BUILD_SHARED_LIBS OFF)
+      set(BUILD_SHARED_EXTRAS_LIB OFF)
+    endif()
+
+    CPMAddPackage(
+      NAME highs
+      URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"
+      # SHA256 pinned (Task 0.12). Computed 2026-07-08 from the GitHub release
+      # tarball for the immutable tag v1.15.1 (`curl -sL … | sha256sum`).
+      URL_HASH SHA256=a840d269dff2fafb371dd247df13ad5e026d7ce3b35ad3dc1eedd59bf0c2fb16
+      SYSTEM
+      EXCLUDE_FROM_ALL
+      OPTIONS
+        "CI OFF"
+        "ZLIB OFF"
+        "BUILD_CXX_EXE OFF"
+        "BUILD_EXAMPLES OFF"
+        "BUILD_TESTING OFF"
+        "FAST_BUILD ON"
+      )
+  endblock()
+
+    # Fail during configuration, rather than shipping another extension with an
+    # unresolved libhighs dependency, if HiGHS changes how it honours
+    # BUILD_SHARED_LIBS.
+    if(DTWC_BUILD_PYTHON AND NOT DTWC_HIGHS_GPU AND TARGET highs)
+      get_target_property(_dtwc_highs_library_type highs TYPE)
+      if(NOT _dtwc_highs_library_type STREQUAL "STATIC_LIBRARY")
+        message(FATAL_ERROR
+          "Python packages require statically bundled HiGHS; got "
+          "${_dtwc_highs_library_type}")
+      endif()
+    endif()
+
     # Historically HiGHS <=1.14.0 had a debug assertion (ub_consistent) that
     # fired on valid warm-start MIP solves (primal-dual integral bookkeeping
     # tolerance 1e-12 too tight after a presolve reset). Retained defensively:

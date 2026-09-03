@@ -46,7 +46,7 @@ Issues = "https://github.com/Battery-Intelligence-Lab/dtw-cpp/issues"
 Changelog = "https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
-test = ["pytest>=6.0"]
+test = ["pytest>=6.0", "matplotlib>=3.7"]
 sklearn = ["scikit-learn>=1.0"]
 hdf5 = ["h5py>=3.0"]
 parquet = ["pyarrow>=12.0"]
