@@ -67,6 +67,21 @@ foreach(_f22_probe_target
 endforeach()
 
 if(MSVC)
+    # MSVC's STL deprecates std::codecvt<char16_t, char8_t> (LWG-3767, warning
+    # STL4047) and llfio's path_view.ipp instantiates it, so /we4996 -- and
+    # clang-cl's -Werror=deprecated-declarations -- promote a third-party
+    # deprecation to a hard error and the probe dies before a single dtwc
+    # diagnostic is emitted (MSVC 19.50: legacy=0/33 canonical_silent=0/33).
+    # These probes account for dtwc's own [[deprecated]] messages; standard
+    # library deprecation noise is not theirs to report.
+    foreach(_f22_probe_target
+            f22_cpp_legacy_werror
+            f22_cpp_legacy_suppressed
+            f22_cpp_canonical_werror)
+        target_compile_definitions(
+            ${_f22_probe_target}
+            PRIVATE _SILENCE_ALL_CXX20_DEPRECATION_WARNINGS)
+    endforeach()
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         set(_f22_deprecation_error
             "/clang:-Werror=deprecated-declarations")

@@ -464,10 +464,13 @@ def invoke(
 
 def diagnostic_lines(output: str) -> list[str]:
     clean = ANSI_ESCAPE.sub("", output)
+    # GCC and Clang spell it "'X' is deprecated: use Y"; MSVC spells the same
+    # thing "error C4996: 'X': use Y" and never writes the word "deprecated",
+    # so matching on that word alone counted 0/33 on cl.
     return [
         line
         for line in clean.splitlines()
-        if "deprecated" in line.lower()
+        if ("deprecated" in line.lower() or "c4996" in line.lower())
         and ("warning" in line.lower() or "error" in line.lower())
     ]
 

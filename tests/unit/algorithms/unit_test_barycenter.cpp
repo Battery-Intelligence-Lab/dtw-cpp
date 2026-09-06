@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <numeric>
@@ -397,9 +398,12 @@ TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
 
   const auto result = algorithms::barycenter_kmeans(problem, options);
   // Re-recorded under the portable-v1 seeded schedule after the original
-  // serial/workspace oracle exposed vendor RNG drift. Exact equality now pins
-  // assignment order, cluster-local streams, centres, and final inertia on
-  // every standard library.
+  // serial/workspace oracle exposed vendor RNG drift. The centres and the
+  // inertia are compared to 1e-12 relative, NOT bitwise: nine SSG updates
+  // accumulate in an order the compiler may legally re-associate, and MSVC
+  // 19.50 lands one ULP from GCC/Clang on barycenters[0][1]. RNG or schedule
+  // drift moves these numbers by O(1), so the tolerance still pins the
+  // assignment order, the cluster-local streams, the centres and the inertia.
   const std::vector<int> expected_labels{0, 2, 1, 0, 2, 1, 0, 2, 1};
   const std::vector<std::vector<data_t>> expected_barycenters{
     {-7.0173908226487498, -6.10105517828847255, -5.73290735028454357,
@@ -411,8 +415,14 @@ TEST_CASE("barycenter k-means mixed-length no-op fingerprint",
   };
 
   REQUIRE(result.labels == expected_labels);
-  REQUIRE(result.barycenters == expected_barycenters);
-  REQUIRE(result.total_cost == 3.9239742509803337);
+  REQUIRE(result.barycenters.size() == expected_barycenters.size());
+  for (std::size_t k = 0; k < expected_barycenters.size(); ++k) {
+    REQUIRE(result.barycenters[k].size() == expected_barycenters[k].size());
+    for (std::size_t t = 0; t < expected_barycenters[k].size(); ++t)
+      REQUIRE_THAT(result.barycenters[k][t],
+                   WithinRel(expected_barycenters[k][t], 1e-12));
+  }
+  REQUIRE_THAT(result.total_cost, WithinRel(3.9239742509803337, 1e-12));
   REQUIRE(result.iterations == 1);
   REQUIRE(result.converged);
 }

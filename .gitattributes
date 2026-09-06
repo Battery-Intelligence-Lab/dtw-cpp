@@ -1,2 +1,11 @@
 *.sh text eol=lf
 *.slurm text eol=lf
+
+# Fixtures the tests read byte-for-byte. test_cli_resume_state pins the SHA-256
+# of tests/conformance/{data/conformance_series.csv,conformance.toml}, so any
+# end-of-line translation on checkout makes the test fail with "conformance
+# input hash drift". Git for Windows ships core.autocrlf=true in its system
+# config -- which is what the GitHub windows-latest runner uses -- so without
+# these rules the tracked LF blobs arrive as CRLF there and nowhere else.
+tests/conformance/** text eol=lf
+*.csv text eol=lf

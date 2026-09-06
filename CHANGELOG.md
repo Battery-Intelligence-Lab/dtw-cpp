@@ -8,6 +8,26 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fix (tests, Windows/MSVC):** the Windows unit job failed three tests, each
+  for its own reason. (1) The barycenter k-means fingerprint compared centres
+  and inertia bitwise; MSVC 19.50 lands 1 ULP from GCC/Clang on one coordinate,
+  so the comparison is now 1e-12 relative — RNG or schedule drift, which is
+  what the fingerprint guards, moves those numbers by O(1). (2) The F22
+  deprecation probes reported `legacy=0/33` on `cl`: MSVC diagnoses a
+  deprecated entity only where it is *used*, never on `&Class::member`, and its
+  `C4996` text does not contain the word "deprecated". The fixture now calls
+  every retained 1.x entity (one use per line — `cl` reports only the first
+  diagnostic on a line) alongside the pointer-to-member signature pins, and the
+  probe accounting accepts the `C4996` spelling. The probes also define
+  `_SILENCE_ALL_CXX20_DEPRECATION_WARNINGS`, because llfio instantiates
+  `std::codecvt<char16_t, char8_t>` (deprecated by LWG-3767) and `/we4996`
+  turned that third-party deprecation into a hard error before any dtwc
+  diagnostic was emitted. (3) `.gitattributes` pins the conformance fixtures
+  and every tracked `.csv` to LF: Git for Windows' system default
+  `core.autocrlf=true` — what the `windows-latest` runner uses — checked them
+  out as CRLF, and `test_cli_resume_state` pins their SHA-256, so it failed
+  with `F17 conformance input hash drift`. The tracked blobs are already LF, so
+  no content changes.
 - **Fix (build, GCC + LTO):** `run_openmp`'s exception-capture region is an
   unnamed `#pragma omp critical` again. The named form made GCC emit a COMMON
   `.gomp_critical_user_dtwc_run_openmp_exception` symbol into every TU that

@@ -109,4 +109,56 @@ using cstring_path_setter_t = void (*)(const char *);
 [[maybe_unused]] constexpr problem_int_member_t legacy_33 =
   &dtwc::Problem::N_repetition;
 
+
+// The pointer-to-member forms above pin each exact signature, but they only
+// *name* the entity. MSVC diagnoses a deprecated entity when it is USED: cl
+// 19.50 emits C4996 for a call or a field read and stays silent on
+// `&Class::member`, so the address-taking inventory alone reported 0/33 on
+// Windows while GCC and Clang reported 33/33. These call sites are what a 1.x
+// caller actually writes, so every toolchain now sees all 33 entities. Never
+// executed (the probes compile syntax-only) and one use per line, because MSVC
+// reports only the first diagnostic on a line.
+[[maybe_unused]] void legacy_use_sites(
+  dtwc::Problem &problem,
+  dtwc::DataLoader &loader,
+  const std::vector<int> &labels)
+{
+  problem.set_numberOfClusters(1);
+  problem.refreshDistanceMatrix();
+  problem.readDistanceMatrix(std::filesystem::path{});
+  (void)problem.maxDistance();
+  (void)problem.distByInd(0, 1);
+  (void)problem.isDistanceMatrixFilled();
+  problem.fillDistanceMatrix();
+  problem.printDistanceMatrix();
+  problem.writeDistanceMatrix(std::string{});
+  problem.writeDistanceMatrix();
+  problem.printClusters();
+  problem.writeClusters();
+  problem.writeMedoidMembers(0, 0);
+  problem.writeSilhouettes();
+  (void)problem.findTotalCost();
+  problem.assignClusters();
+  problem.calculateMedoids();
+  problem.cluster_by_MIP();
+  problem.cluster_by_kMedoidsLloyd();
+  (void)problem.cluster_size();
+
+  (void)dtwc::scores::daviesBouldinIndex(problem);
+  (void)dtwc::scores::dunnIndex(problem);
+  (void)dtwc::scores::calinskiHarabaszIndex(problem);
+  (void)dtwc::scores::adjustedRandIndex(labels, labels);
+  (void)dtwc::scores::normalizedMutualInformation(labels, labels);
+
+  (void)loader.startColumn(0);
+  (void)loader.startRow(0);
+  dtwc::settings::paths::setDataPath(dtwc::settings::fs::path{});
+  dtwc::settings::paths::setDataPath("f22-data-path");
+  dtwc::settings::paths::setResultsPath(dtwc::settings::fs::path{});
+  dtwc::settings::paths::setResultsPath("f22-results-path");
+
+  (void)problem.maxIter;
+  (void)problem.N_repetition;
+}
+
 } // namespace

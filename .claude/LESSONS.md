@@ -1350,3 +1350,27 @@ Critical knowledge to avoid repeating mistakes.
   worked; `-fuse-ld=gold` and `--whole-archive` worked; dropping the name fixed
   it. Named criticals are fine inside `.cpp` files; never put one in a header.
 
+- **MSVC only diagnoses a deprecated entity when it is *used*, and never
+  writes the word "deprecated".** `cl` 19.50 emits `C4996` for a call or a
+  field read but stays silent on `&Class::member`, so the F22 inventory — which
+  pinned each 1.x signature with `static_cast<T>(&Problem::legacyName)` —
+  reported `legacy=0/33` on Windows and 33/33 on GCC/Clang. Two more traps in
+  the same family: the message reads `error C4996: 'X': use Y` (a filter
+  keyed on "deprecated" drops every one of them), and `cl` reports only the
+  first diagnostic on a line, so probe fixtures need one use per line. GCC and
+  Clang warn on address-taking, so a pointer-only fixture looks complete
+  everywhere else.
+- **A tracked fixture whose SHA-256 a test pins needs an explicit
+  `.gitattributes` eol rule.** Git for Windows ships `core.autocrlf=true` in
+  its *system* config — that is what the `windows-latest` runner uses — so LF
+  blobs arrive as CRLF and the hash no longer matches: `test_cli_resume_state`
+  died with `F17 conformance input hash drift` on CI while passing on a Windows
+  working tree that happened to hold LF. `git -c core.autocrlf=true
+  checkout-index -a --prefix=<tmp>/` reproduces a runner checkout locally
+  without cloning.
+- **Bitwise equality of doubles is not portable across compilers, even with a
+  fixed RNG and a fixed schedule.** The barycenter k-means fingerprint pinned
+  `result.barycenters == expected` exactly; MSVC 19.50 landed 1 ULP from
+  GCC/Clang on one coordinate after nine SSG updates. A 1e-12 relative
+  tolerance still catches what the fingerprint is for — RNG or schedule drift
+  moves those numbers by O(1).
