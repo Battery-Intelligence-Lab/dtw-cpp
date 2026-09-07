@@ -1,0 +1,19 @@
+# 213 repeated 6-line shingles (normalised, comments stripped); top by fan-out
+
+ 10x  dtwc/warping.hpp:61  |  dtwc/warping.hpp:89  |  dtwc/warping.hpp:118  |  dtwc/warping.hpp:138  |  dtwc/warping.hpp:187  |  dtwc/warping_adtw.hpp:50
+  4x  dtwc/cuda/cuda_dtw.cu:265  |  dtwc/cuda/cuda_dtw.cu:305  |  dtwc/cuda/cuda_dtw.cu:1720  |  dtwc/cuda/cuda_dtw.cu:1756
+  4x  dtwc/warping.hpp:65  |  dtwc/warping.hpp:92  |  dtwc/warping.hpp:121  |  dtwc/warping.hpp:141
+  3x  dtwc/core/dtw_cost.hpp:147  |  dtwc/core/dtw_cost.hpp:165  |  dtwc/core/dtw_cost.hpp:183
+  3x  dtwc/dtwc_cl.cpp:1753  |  dtwc/dtwc_cl.cpp:1767  |  dtwc/dtwc_cl.cpp:1782
+  3x  dtwc/warping_missing.hpp:110  |  dtwc/warping_missing.hpp:136  |  dtwc/warping_missing.hpp:165
+  2x  dtwc/Problem.cpp:138  |  dtwc/Problem.hpp:329
+  2x  dtwc/algorithms/clarans.cpp:100  |  dtwc/algorithms/clarans.cpp:207
+  2x  dtwc/algorithms/fast_clara.cpp:406  |  dtwc/algorithms/fast_clara.cpp:554
+  2x  dtwc/algorithms/fast_pam.cpp:187  |  dtwc/algorithms/fast_pam.cpp:324
+  2x  dtwc/core/dtw_options.hpp:64  |  dtwc/dtwc_cl.cpp:856
+  2x  dtwc/core/lower_bound_impl.hpp:182  |  dtwc/core/lower_bound_impl.hpp:571
+  2x  dtwc/cuda/cuda_dtw.cu:45  |  dtwc/cuda/cuda_memory.cuh:19
+  2x  dtwc/mip/lagrangian_root.cpp:122  |  dtwc/mip/lagrangian_root.cpp:511
+  2x  dtwc/warping_adtw.hpp:53  |  dtwc/warping_wdtw.hpp:93
+  2x  dtwc/warping_ddtw.hpp:240  |  dtwc/warping_ddtw.hpp:256
+  2x  dtwc/warping_wdtw.hpp:89  |  dtwc/warping_wdtw.hpp:118
