@@ -296,7 +296,7 @@ endif()
 # Adding the tests:
 include(CTest)
 if(DTWC_BUILD_TESTING)
-  include(cmake/Coverage.cmake)
+  include(cmake/DtwcTest.cmake)
   add_subdirectory(tests)
 endif()
 

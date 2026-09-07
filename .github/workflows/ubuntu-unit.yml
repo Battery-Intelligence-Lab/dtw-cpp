@@ -144,7 +144,7 @@ jobs:
         working-directory: build_dir
 
       # THE F9 GATE. `cmake test` above cannot close F9 on its own: a CTest skip is not
-      # a failure (SKIP_RETURN_CODE 4, cmake/Coverage.cmake:10), so a build where Arrow
+      # a failure (SKIP_RETURN_CODE 4, cmake/DtwcTest.cmake), so a build where Arrow
       # failed to link goes green with test_io_readers never executing — the F9 failure
       # mode reproducing itself inside its own fix.
       #

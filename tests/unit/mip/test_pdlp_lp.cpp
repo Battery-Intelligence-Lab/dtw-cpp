@@ -23,7 +23,8 @@
  *             pdlp.lp_bound == integer optimum to 1e-4 (the same regime where the
  *             Lagrangian root certifies, prediction P1).
  *
- * Skips loudly (WARN + return) if HiGHS is not compiled in — PDLP needs it.
+ * Every case SKIPs (Catch2 SKIP, exit 4) when HiGHS is not compiled in — PDLP
+ * needs it — so an absent solver is reported, never a vacuous pass.
  *
  * @author Volkan Kumtepeli
  * @date 08 Jul 2026
@@ -141,8 +142,7 @@ bool highs_present()
 TEST_CASE("PDLP LP relaxation agrees with the LR-core Lagrangian bound", "[pdlp][arbiter]")
 {
   if (!highs_present()) {
-    WARN("HiGHS not compiled in; skipping PDLP arbiter.");
-    return;
+    SKIP("HiGHS is not compiled into this build.");
   }
 
   int checked = 0;
@@ -182,8 +182,7 @@ TEST_CASE("PDLP LP relaxation agrees with the LR-core Lagrangian bound", "[pdlp]
 TEST_CASE("PDLP LP relaxation is tight on clustered data", "[pdlp][tight]")
 {
   if (!highs_present()) {
-    WARN("HiGHS not compiled in; skipping PDLP tightness test.");
-    return;
+    SKIP("HiGHS is not compiled into this build.");
   }
 
   int tight = 0;
@@ -212,8 +211,7 @@ TEST_CASE("PDLP LP relaxation is tight on clustered data", "[pdlp][tight]")
 TEST_CASE("PDLP gpu_used reflects the build, never silently wrong", "[pdlp][gpu]")
 {
   if (!highs_present()) {
-    WARN("HiGHS not compiled in; skipping PDLP GPU test.");
-    return;
+    SKIP("HiGHS is not compiled into this build.");
   }
 
   const int N = 12, k = 3;
@@ -247,8 +245,7 @@ TEST_CASE("PDLP gpu_used reflects the build, never silently wrong", "[pdlp][gpu]
 TEST_CASE("BENCH PDLP vs Kelley vs MIP on the p-median LP", "[.][pdlp][bench]")
 {
   if (!highs_present()) {
-    WARN("HiGHS not compiled in; skipping PDLP bench.");
-    return;
+    SKIP("HiGHS is not compiled into this build.");
   }
   // Device is a COMPILE-TIME property of the HiGHS build (CUPDLP_GPU) — one PDLP
   // column, self-labelled by the build. Cross-build (CPU vs GPU) comparison is

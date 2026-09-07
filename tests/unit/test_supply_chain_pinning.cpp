@@ -16,7 +16,7 @@
  * actually executed to prove the behaviour.
  *
  * How the files are located: every test target is compiled with
- * `-DDTWC_TEST_DATA_DIR="<repo>/data"` (cmake/Coverage.cmake) and ctest runs it
+ * `-DDTWC_TEST_DATA_DIR="<repo>/data"` (cmake/DtwcTest.cmake) and ctest runs it
  * with WORKING_DIRECTORY = <repo>. The repo root is therefore the parent of
  * DTWC_TEST_DATA_DIR — a compile-time absolute path, not a runtime
  * repo-relative dependency. A "./data" fallback keeps the file self-contained.
