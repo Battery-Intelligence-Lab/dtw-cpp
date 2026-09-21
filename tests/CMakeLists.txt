@@ -102,11 +102,11 @@ endforeach()
 include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
 include("${CMAKE_CURRENT_SOURCE_DIR}/floors.cmake")
 
-add_test(NAME cmake_regex_at_least
-         COMMAND ${CMAKE_COMMAND} -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test_regex_at_least.cmake")
-set_tests_properties(cmake_regex_at_least PROPERTIES
-  PASS_REGULAR_EXPRESSION "CMAKE_REGEX_AT_LEAST cases=32 failures=0"
-  LABELS "tooling")
+# The floor-regex generator gates every other entry in this file, so it gets a
+# CTest entry of its own, registered through the same helper as the rest.
+dtwc_add_script_test(NAME cmake_regex_at_least
+    SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test_regex_at_least.cmake"
+    MARKER "CMAKE_REGEX_AT_LEAST cases=32 failures=0" LABELS tooling)
 
 # Capability flags, queried once (they select markers, floors and skip tolerance).
 get_target_property(_dtwc_public_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
@@ -231,10 +231,16 @@ dtwc_add_test(NAME test_io_readers SOURCE ${_dtwc_test_source_test_io_readers}
 
 # unit_test_mpi owns main() (MPI_Init/MPI_Finalize cannot bracket Catch2's main),
 # so it prints no Catch2 summary in ANY configuration and cannot be floored; its
-# own line is the gate instead. Every W0 matrix is DTWC_ENABLE_MPI=OFF, so only
-# that branch is measured — an MPI-ON build must re-pin this marker.
+# own line is the gate instead. The two branches of its #ifdef DTWC_HAS_MPI print
+# different lines, so the marker follows the same definition the source does.
+# Only the OFF branch is measured (every W0 matrix is DTWC_ENABLE_MPI=OFF); the
+# ON marker is transcribed from unit_test_mpi.cpp:200-203 and unverified here.
+set(_dtwc_mpi_marker "MPI not enabled \\(DTWC_ENABLE_MPI=OFF\\)[.] Skipping MPI tests[.]")
+if("DTWC_HAS_MPI" IN_LIST _dtwc_public_defs)
+    set(_dtwc_mpi_marker "=== MPI Tests: [0-9]+/[0-9]+ passed, 0 failed ===")
+endif()
 dtwc_add_test(NAME unit_test_mpi SOURCE ${_dtwc_test_source_unit_test_mpi}
-    MARKER_ONLY MARKER "MPI not enabled \\(DTWC_ENABLE_MPI=OFF\\)[.] Skipping MPI tests[.]")
+    MARKER_ONLY MARKER "${_dtwc_mpi_marker}")
 
 # Capability-dependent tests: skip tolerance only in the build that lacks the
 # capability; strict and floored everywhere else.
