@@ -27,6 +27,12 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   release workflow met every condition for it to apply. The Python wheels were never affected —
   they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
   extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Changed (internal headers):** `dtwc::randGenerator` now lives in `dtwc/random_engine.hpp`
+  rather than `settings.hpp`, and `settings.hpp` no longer includes `<random>` or `<iostream>`. It
+  is reached by around forty translation units and was pulling both in for things almost none of
+  them use. The public name is unchanged — `dtwc/dtwc.hpp` includes the new header — so only code
+  that included `settings.hpp` directly and relied on it transitively needs the new include. The
+  engine, its seed and its behaviour are untouched.
 - **Removed (dependencies):** Eigen. It was the project's only copyleft dependency (MPL-2.0) and the
   only MPL obligation in the Python wheel, and it was carried for two uses: `ScratchMatrix`'s base
   class, now a grow-only uninitialised buffer with the same semantics, and a `to_full_matrix` return

@@ -13,6 +13,7 @@
 #include <utility>
 #include <filesystem>
 #include <stdexcept>
+#include <iostream> // was reaching this TU through settings.hpp (C-21a)
 
 using namespace dtwc;
 

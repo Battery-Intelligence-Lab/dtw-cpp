@@ -1526,3 +1526,12 @@ Critical knowledge to avoid repeating mistakes.
   "256 today"; the tree held 259. Counts written into prose drift silently from
   the thing they describe — which is the argument for the script, and also the
   reason to measure rather than transcribe when writing one.
+- **When a header records why something could not be removed, the note is a
+  work item with its evidence already written down.** `settings.hpp` carried a
+  comment saying `<iostream>` could not be dropped because five named TUs relied
+  on it transitively, two of them in `benchmarks/` and `examples/` — off in every
+  configured gate, so "the build is green" would have proven nothing. The fix was
+  to add the include to those files and rebuild with
+  `-DDTWC_BUILD_BENCHMARK=ON -DDTWC_BUILD_EXAMPLES=ON`, which is exactly the
+  evidence the note asked for. Read such comments as instructions rather than as
+  reasons to leave things alone; whoever wrote it had already done the analysis.

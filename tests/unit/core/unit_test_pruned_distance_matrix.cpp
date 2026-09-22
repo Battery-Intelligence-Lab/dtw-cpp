@@ -31,6 +31,7 @@
 
 #ifdef _OPENMP
 #include <omp.h>
+#include <iostream> // was reaching this TU through settings.hpp (C-21a)
 #endif
 
 using Catch::Matchers::WithinAbs;

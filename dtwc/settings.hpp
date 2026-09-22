@@ -20,14 +20,14 @@
 // without including it, so removal cannot be build-proven from here.
 #include <string>
 #include <filesystem>
-// <iostream> is unused here but reaches consumers transitively; removing it
-// needs benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp,
+// <iostream> removed (C-21a). The five translation units that were relying on it
+// transitively -- benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp,
 // dtwc/mip/mip_Gurobi.cpp, tests/unit/core/unit_test_pruned_distance_matrix.cpp
-// and tests/unit/test_storage_policy.cpp to include it themselves first
-// (benchmarks and examples are OFF in the canonical gate, so a green build
-// here would not prove it safe).
-#include <iostream>
-#include <random>
+// and tests/unit/test_storage_policy.cpp -- now include it themselves, and the
+// removal was proven by a build with DTWC_BUILD_BENCHMARK=ON and
+// DTWC_BUILD_EXAMPLES=ON, since benchmarks and examples are off in the
+// canonical gate and a green build without them would prove nothing.
+// <random> left with dtwc::randGenerator for dtwc/random_engine.hpp (X-12).
 
 namespace dtwc {
 // Data type settings:
@@ -46,13 +46,8 @@ using default_data_t = double;
 ///       default template argument on public distance helpers.
 using data_t = double;
 
-// Random number settings:
-
-/// @brief Legacy mutable Mersenne Twister engine for unseeded Tier-2 calls.
-/// @details Its initial seed remains 29 for compatibility. Deterministic Tier-1
-///          entry points instead construct invocation-local engines from
-///          `settings::DEFAULT_RANDOM_SEED`; they never consume this state.
-inline std::mt19937 randGenerator(29); // NOLINT(cert-msc51-cpp): fixed seed is the documented reproducibility contract.
+// Random number settings: dtwc::randGenerator moved to dtwc/random_engine.hpp
+// (X-12), which dtwc/dtwc.hpp includes, so the public name is unaffected.
 } // namespace dtwc
 
 
@@ -118,7 +113,8 @@ constexpr bool isDebug = false;
 
 /// Invocation-local default seed for deterministic Tier-1 sampling algorithms.
 ///
-/// The mutable `dtwc::randGenerator` above is a legacy Tier-2 facility whose
+/// The mutable `dtwc::randGenerator` (now in random_engine.hpp) is a legacy
+/// Tier-2 facility whose
 /// seed remains 29 for source/behaviour compatibility.  Tier-1 entry points do
 /// not read, reseed, or otherwise consume that process-global engine.
 inline constexpr std::uint64_t DEFAULT_RANDOM_SEED = 42;

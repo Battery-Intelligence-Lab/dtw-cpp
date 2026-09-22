@@ -9,6 +9,7 @@
 #pragma once
 
 #include "settings.hpp"
+#include "random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp (X-12)
 #include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"

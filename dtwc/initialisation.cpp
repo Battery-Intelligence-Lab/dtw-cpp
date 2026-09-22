@@ -27,7 +27,8 @@
 #include "initialisation.hpp"
 #include "core/portable_random.hpp"
 #include "core/distance_sampling_weights.hpp"
-#include "settings.hpp"        // for randGenerator
+#include "random_engine.hpp"   // for randGenerator (X-12)
+#include "settings.hpp"
 #include "parallelisation.hpp" // for run
 #include "Problem.hpp"
 #include "types/Range.hpp" // for Range
