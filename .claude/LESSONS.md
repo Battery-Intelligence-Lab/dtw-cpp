@@ -1535,3 +1535,29 @@ Critical knowledge to avoid repeating mistakes.
   `-DDTWC_BUILD_BENCHMARK=ON -DDTWC_BUILD_EXAMPLES=ON`, which is exactly the
   evidence the note asked for. Read such comments as instructions rather than as
   reasons to leave things alone; whoever wrote it had already done the analysis.
+- **A deprecation forwarder that warns is also a completeness check on the
+  migration that created it.** C-11 moved ten foundation headers into
+  `dtwc/base/` and left `#pragma message` forwarders at the old paths. The
+  rewrite of internal includes looked complete and the build was green — but the
+  build *log* carried 48 deprecation messages, i.e. 48 internal sites still
+  routing through the forwarders. The pattern had matched `#include "..."` and
+  missed `#include <parallelisation.hpp>` in the tests. Silent forwarders would
+  have hidden this until the old paths were deleted a release later. So: make
+  the forwarder warn, then grep your own build log for its warning and require
+  zero, which is the only evidence that "every internal include was repointed".
+- **`ninja -t deps` answers "how many translation units compile this header"
+  in one line, so a claim about header blast radius never has to be an
+  estimate.** C-12's premise was that the solver types were "pulled into every
+  TU via `utility.hpp`". The measurement said 97 of 297 — substantial, not
+  universal — and 1 of 297 afterwards. Grepping for `#include` finds direct
+  includers only; the dependency log is transitive and is what the compiler
+  actually did. Take the before-number in the same configuration as the after,
+  since turning benchmarks and examples on changes the denominator.
+- **Moving a file down the layer graph rules out a compatibility forwarder;
+  moving it sideways or up does not.** C-11 could leave forwarding headers
+  because base-layer files were moving within the base layer. C-12 moved files
+  from `types/` (rank 0) to `mip/` (rank 4), where a forwarder at the old path
+  would itself be a `base` -> `mip` include — reinstating exactly the coupling
+  the row existed to remove, and failing the upward-edge ratchet. When the
+  layer model forbids the forwarder, the choice is a recorded break, not a
+  cleverer forwarder; check the ranks before promising one.

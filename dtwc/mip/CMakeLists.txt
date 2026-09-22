@@ -17,6 +17,7 @@ target_sources(mip-solvers
     highs_support.hpp
     index_guard.hpp
     nearest_medoid.hpp
+    solver_types.hpp
     solution_transaction.hpp
     warm_start.hpp
     benders.hpp

@@ -32,6 +32,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   `system_memory.hpp` and `random_engine.hpp`. The old paths still work for one release and now emit
   a compile-time message naming the new one; they will be removed in the next release. Every include
   inside this repository was updated, so the message only reaches code outside it.
+- **Changed (internal headers):** the MIP solvers' sparse-matrix helpers and tolerances —
+  `dtwc::solver::{Element, Coordinate, Triplet, RowMajor, ColumnMajor, epsilon, isAround,
+  isFractional}` and the two comparators — moved from `dtwc/types/{element_types,types_util}.hpp`
+  into a single `dtwc/mip/solver_types.hpp`. They were in the base layer and reached by
+  `utility.hpp`, so 97 of 297 translation units compiled them; their only consumer in the library is
+  `mip_Highs.cpp`, which is now the only one that sees them. `dtwc/types/` keeps `Range` and
+  `Index`. Because these names arrived through `<dtwc/dtwc.hpp>` transitively, code that used them
+  without including a solver header must now include `<dtwc/mip/solver_types.hpp>`; the umbrella
+  header has never included anything from `mip/`, and no forwarding header is left behind, because
+  one at the old path would be a `base` → `mip` include — the coupling this removes. Also adds the
+  `<cmath>` that `isAround` and `isFractional` always needed and had been getting by accident.
 - **Changed (internal headers):** `dtwc::randGenerator` now lives in `dtwc/random_engine.hpp`
   rather than `settings.hpp`, and `settings.hpp` no longer includes `<random>` or `<iostream>`. It
   is reached by around forty translation units and was pulling both in for things almost none of

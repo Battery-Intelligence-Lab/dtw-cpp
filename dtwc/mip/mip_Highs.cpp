@@ -13,7 +13,7 @@
 #include "warm_start.hpp"
 #include "../Data.hpp"        // for Data
 #include "../base/error.hpp"       // for SolverError
-#include "../types/types.hpp" // for Triplet, RowMajor
+#include "solver_types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
 #include "../base/settings.hpp"
 #include "../base/timing.hpp"

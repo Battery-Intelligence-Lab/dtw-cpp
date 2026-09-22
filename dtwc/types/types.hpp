@@ -9,4 +9,6 @@
 #pragma once
 
 #include "Range.hpp"
-#include "element_types.hpp"
+// element_types.hpp / types_util.hpp used to be included here. They only ever
+// held `dtwc::solver` sparse-matrix helpers, whose sole consumer is mip_Highs.cpp,
+// so they moved to mip/solver_types.hpp (C-12).
