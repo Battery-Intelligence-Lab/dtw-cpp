@@ -156,11 +156,19 @@ function(dtwc_setup_dependencies)
       GITHUB_REPOSITORY ned14/llfio
       # PINNED to a specific commit (Task 0.12): previously tracked the moving
       # `develop` branch tip — a supply-chain risk (upstream force-push / hijack
-      # changes what we build). SHA below is that branch HEAD read from checkout
-      # build/_deps/llfio-src on 2026-07-07 (commit b17613fb, authored
-      # 2026-06-01). OPEN: needs maintainer blessing of this exact SHA — offline
-      # here, so no tagged release could be selected. `git describe` reported
-      # 20260506-5-gb17613fb (5 commits past tag 20260506).
+      # changes what we build).
+      #
+      # RESOLVED 2026-09-22 (X-25), was "OPEN: needs maintainer blessing". The
+      # pin is 5 commits past llfio's newest release tag, `20260506`
+      # (`git describe` → 20260506-5-gb17613fb), and we KEEP it rather than move
+      # back to that tag, because those 5 commits contain 284ba8d9 / PR #178,
+      # "path_view: guard char8_t->wchar_t locale codecvt for libc++" — and
+      # libc++ is exactly what AppleClang gives us on macOS. The newest tag
+      # predates that fix, so pinning to it would regress our primary dev
+      # platform. The remaining four commits are a CI addition, a README unit
+      # fix and their two merges. b17613fb is itself the merge commit of an
+      # upstream-reviewed PR, which is the blessing in substance.
+      # Revisit when upstream tags a release at or after 284ba8d9.
       GIT_TAG b17613fb2149a93b0cc7022c8e649dbf5a015b90
       DOWNLOAD_ONLY YES
     )
@@ -186,22 +194,44 @@ function(dtwc_setup_dependencies)
       # llfio's bootstrap will then see the pre-existing repo and skip its
       # own git clone, and subsequently `include(QuickCppLibUtils)` picks up
       # the patched version.
+      #
+      # Scope note (X-25, 2026-09-22): the file rewritten below is the clone in
+      # OUR build tree, not a shared cache or anything of the user's — each build
+      # directory gets its own. And the justification above may now be spent:
+      # the ephemeral-ninja-path problem only arises in wheel sandboxes, and
+      # every artefact build sets DTWC_ENABLE_LLFIO=OFF (`python-wheels.yml:67`,
+      # `release-artifacts.yml:36`). llfio is only ever built where ninja sits at
+      # a stable path — developer machines and the macos/windows/ubuntu/cuda unit
+      # jobs, which take the default ON. Deleting the patch is therefore the
+      # likely end state, but it wants a real wheel build with llfio forced ON to
+      # confirm, which no runner currently performs. Left in place, now loud.
       # ---------------------------------------------------------------------
       set(_dtwc_qcl_root "${CMAKE_BINARY_DIR}/quickcpplib")
       set(_dtwc_qcl_repo "${_dtwc_qcl_root}/repo")
+      # PINNED (Task 0.12): the previous `git clone --depth 1` checked out
+      # whatever the default branch HEAD was at configure time — a moving
+      # target and supply-chain risk. Pin to a reviewed commit.
+      #   SHA read from the local checkout build/quickcpplib/repo on 2026-07-07
+      #   (commit 3c1d8cb5, authored 2026-03-10).
+      #
+      #   RESOLVED 2026-09-22 (X-25), was "OPEN: maintainer to bless". There is
+      #   nothing to bless: quickcpplib publishes NO tags at all —
+      #   `git ls-remote --tags --refs https://github.com/ned14/quickcpplib.git`
+      #   returned 0 refs on 2026-09-22 (llfio, by contrast, has 104). A pinned
+      #   SHA is therefore the only mechanism upstream offers, not a stopgap
+      #   until a release appears. Do not reopen this expecting a version
+      #   number; re-check the ls-remote before changing the pin.
+      #
+      # Set outside the clone guard below: the patch diagnostics name this SHA,
+      # and they run on every configure, not only the one that clones.
+      set(_dtwc_qcl_sha "3c1d8cb5e94722447e4f17e87b5a9e3a0c66fb39")
       if(NOT EXISTS "${_dtwc_qcl_repo}/cmakelib/QuickCppLibUtils.cmake")
         find_package(Git REQUIRED)
         file(MAKE_DIRECTORY "${_dtwc_qcl_root}")
-        # PINNED (Task 0.12): the previous `git clone --depth 1` checked out
-        # whatever the default branch HEAD was at configure time — a moving
-        # target and supply-chain risk. Pin to a reviewed commit. A full (non
-        # shallow) clone is used because an arbitrary historical SHA is not
-        # reachable from a depth-1 tip; we then detach onto the SHA and sync
-        # submodules (also full — pinned gitlink commits may predate any shallow
-        # tip) to reproduce that exact tree.
-        #   SHA read from the local checkout build/quickcpplib/repo on 2026-07-07
-        #   (commit 3c1d8cb5, authored 2026-03-10). OPEN: maintainer to bless.
-        set(_dtwc_qcl_sha "3c1d8cb5e94722447e4f17e87b5a9e3a0c66fb39")
+        # A full (non-shallow) clone is used because an arbitrary historical SHA
+        # is not reachable from a depth-1 tip; we then detach onto the SHA and
+        # sync submodules (also full — pinned gitlink commits may predate any
+        # shallow tip) to reproduce that exact tree.
         message(STATUS
           "Pre-cloning quickcpplib into ${_dtwc_qcl_repo} @ ${_dtwc_qcl_sha} ...")
         execute_process(
@@ -268,13 +298,25 @@ function(dtwc_setup_dependencies)
         file(WRITE "${_dtwc_qcl_utils}" "${_dtwc_qcl_current}")
         message(STATUS "Patched QuickCppLibUtils.cmake "
           "(forward -G + -DCMAKE_MAKE_PROGRAM to child + grandchild CMake)")
-      elseif(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH")
-        message(WARNING
-          "Could not apply QuickCppLibUtils ninja-propagation patches — the "
-          "upstream pattern may have changed. Python wheel builds in "
-          "sandboxed environments may fail at llfio configure. File: "
-          "${_dtwc_qcl_utils}")
       endif()
+      # Both markers must now be present, whether this run applied them or an
+      # earlier one did. A `string(REPLACE)` whose pattern is absent succeeds and
+      # changes nothing, so the old `message(WARNING)` here meant an upstream
+      # text change downgraded to a line of build noise and then a confusing
+      # failure much later inside the nested llfio superbuild. That is precisely
+      # the silent fallback the project forbids: fail at configure instead.
+      foreach(_dtwc_qcl_marker child grandchild)
+        if(NOT _dtwc_qcl_current MATCHES "DTWC_NINJA_PROPAGATION_PATCH .${_dtwc_qcl_marker}.")
+          message(FATAL_ERROR
+            "Could not apply the QuickCppLibUtils ninja-propagation patch "
+            "(${_dtwc_qcl_marker}) — the upstream text at pinned quickcpplib "
+            "${_dtwc_qcl_sha} no longer matches what we replace. Re-derive the "
+            "patterns against that file, or configure with "
+            "-DDTWC_ENABLE_LLFIO=OFF to build without memory-mapped I/O. File: "
+            "${_dtwc_qcl_utils}")
+        endif()
+      endforeach()
+      unset(_dtwc_qcl_marker)
       unset(_dtwc_qcl_orig)
       unset(_dtwc_qcl_current)
       unset(_dtwc_qcl_from_A)

@@ -70,8 +70,12 @@ jobs:
             cmake.args=-DCMAKE_BUILD_TYPE=Release
 
           # macOS arm64 was introduced in 11.0; do not emit an invalid 10.15 tag.
+          # OpenMP_ROOT: libomp is keg-only, so `brew install` leaves it outside
+          # every prefix CMake searches; without the hint find_package(OpenMP)
+          # fails and Task 3.1 turns that into a configure FATAL_ERROR.
           CIBW_ENVIRONMENT_MACOS: >-
             MACOSX_DEPLOYMENT_TARGET=11.0
+            OpenMP_ROOT=$(brew --prefix libomp)
           CIBW_BEFORE_BUILD_MACOS: "brew install libomp"
           CIBW_BUILD_VERBOSITY: 1
 

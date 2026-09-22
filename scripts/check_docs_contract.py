@@ -49,6 +49,52 @@ def compact(text: str) -> str:
     return " ".join(text.split())
 
 
+def dtwc_add_test_call(ctest_text: str, target: str, label: str) -> str:
+    """The single `dtwc_add_test(NAME <target> …)` registration, compacted.
+
+    `d21ffee` replaced the hand-written `if(TARGET …)` policy blocks these gates
+    used to read with this one macro, which synthesises the pass/fail regexes
+    from ASSERT_FLOOR/CASE_FLOOR. Callers pin their own arguments here and the
+    shared guarantee via `assert_test_harness_proves_execution`.
+    """
+    calls = re.findall(
+        rf"dtwc_add_test\(NAME {re.escape(target)}\b[^)]*\)", ctest_text
+    )
+    if len(calls) != 1:
+        raise AssertionError(
+            f"{label} CTest drift: expected one dtwc_add_test(NAME {target} …) "
+            f"registration in tests/CMakeLists.txt, found {len(calls)}"
+        )
+    call = compact(calls[0])
+    # MAY_SKIP lets a fully skipped run score as a pass — the one thing a gate
+    # over an exhaustive proof must forbid.
+    if "MAY_SKIP" in call:
+        raise AssertionError(
+            f"{label} CTest drift: {target} must not be registered MAY_SKIP"
+        )
+    return call
+
+
+def assert_test_harness_proves_execution(harness_text: str, label: str) -> None:
+    """`dtwc_add_test` must still make a non-MAY_SKIP test prove that it ran."""
+    harness = compact(harness_text)
+    required = (
+        # A skip word anywhere in the output is a failure, and the pass regex is
+        # the subject's marker followed by Catch2's floored summary line.
+        'FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}" PASS_REGULAR_EXPRESSION "${_pass}"',
+        'set(_pass "${ARG_MARKER}(.|[\\r\\n])*${_summary}")',
+        "All tests passed \\\\(${a} assertions? in ${c} test cases?\\\\)",
+        # A missing floor is a hard error, never a silently unfloored test.
+        "no floor. Pass ASSERT_FLOOR/CASE_FLOOR",
+    )
+    missing = [marker for marker in required if marker not in harness]
+    if missing:
+        raise AssertionError(
+            f"{label} CTest drift: cmake/DtwcTest.cmake no longer guarantees that "
+            f"a non-MAY_SKIP test proves it ran {missing}"
+        )
+
+
 def braced_body(source: str, signature: str, label: str) -> str:
     """Return one source body so implementation guards cannot match comments."""
     start = source.find(signature)
@@ -823,6 +869,7 @@ def assert_lb_keogh_derivation_sync() -> None:
             ROOT / "tests/unit/adversarial/test_lb_keogh_derivation.cpp"
         ),
         "ctest": ROOT / "tests/CMakeLists.txt",
+        "harness": ROOT / "cmake/DtwcTest.cmake",
         "baseline": ROOT / ".claude/baselines/2026-07-30-d2-lb-keogh.md",
     }
     missing_paths = [
@@ -1192,24 +1239,19 @@ def assert_lb_keogh_derivation_sync() -> None:
             f"missing code markers {implementation_drift}"
         )
 
-    ctest_subjects = re.findall(
-        r"if\(TARGET test_lb_keogh_derivation\)(.*?)endif\(\)",
-        text["ctest"],
-        flags=re.DOTALL,
+    # The guarantee pinned here is unchanged — this gate must prove it RAN — but
+    # since d21ffee it lives in two places: the call site's own arguments, and
+    # the macro that turns them into CTest properties.
+    ctest_subject = dtwc_add_test_call(
+        text["ctest"], "test_lb_keogh_derivation", "D2"
     )
-    if len(ctest_subjects) != 1:
-        raise AssertionError(
-            "D2 CTest drift: expected one test_lb_keogh_derivation policy block"
-        )
-    ctest_subject = compact(ctest_subjects[0])
+    assert_test_harness_proves_execution(text["harness"], "D2")
     ctest_markers = (
-        "PROPERTY SKIP_RETURN_CODE)",
         'ENVIRONMENT "OMP_NUM_THREADS=1"',
-        'FAIL_REGULAR_EXPRESSION "[Ss][Kk][Ii][Pp]([Pp]|[ :])"',
-        "PASS_REGULAR_EXPRESSION",
         "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
-        r"All tests passed \\((6[5-9]|[7-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case\\)",
-        "RUN_SERIAL TRUE",
+        "ASSERT_FLOOR 65",
+        "CASE_FLOOR 1",
+        "SERIAL",
     )
     missing_ctest = [
         marker for marker in ctest_markers if marker not in ctest_subject
@@ -1361,6 +1403,7 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             ROOT / "tests/unit/adversarial/test_lb_webb_intmax.cpp"
         ),
         "ctest": ROOT / "tests/CMakeLists.txt",
+        "harness": ROOT / "cmake/DtwcTest.cmake",
         "baseline": (
             ROOT / ".claude/baselines/2026-07-30-d3-lb-enhanced-webb.md"
         ),
@@ -1818,53 +1861,31 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
     ctest_specs = {
         "test_lb_enhanced_webb_derivation": (
             d3_marker,
-            "(4[0-9]|[5-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case",
+            "ASSERT_FLOOR 40",
+            "CASE_FLOOR 1",
             'ENVIRONMENT "OMP_NUM_THREADS=1"',
-            "RUN_SERIAL TRUE",
+            "SERIAL",
             "TIMEOUT 60",
         ),
         "test_lb_webb_intmax": (
             f57_marker,
-            "(1[2-9]|[2-9][0-9]|[1-9][0-9][0-9]+) assertions in 1 test case",
-            "RUN_SERIAL TRUE",
+            "ASSERT_FLOOR 12",
+            "CASE_FLOOR 1",
+            "SERIAL",
             "TIMEOUT 30",
         ),
     }
     ctest_code = cmake_projection(text["ctest"])
+    assert_test_harness_proves_execution(text["harness"], "D3")
     for target, target_markers in ctest_specs.items():
-        target_marker, assertion_floor, *execution_markers = target_markers
-        policy_blocks = re.findall(
-            rf"if\(TARGET {re.escape(target)}\)(.*?)endif\(\)",
-            ctest_code,
-            flags=re.DOTALL,
-        )
-        if len(policy_blocks) != 1:
-            raise AssertionError(
-                f"D3 CTest drift: expected one {target} policy block"
-            )
-        policy = compact(policy_blocks[0])
-        composite_pass = (
-            f"{target_marker}(.|[\\r\\n])*All tests passed "
-            f"\\\\({assertion_floor}\\\\)"
-        )
-        policy_required = (
-            "PROPERTY SKIP_RETURN_CODE)",
-            "FAIL_REGULAR_EXPRESSION",
-            r'"(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]',
-            f'PASS_REGULAR_EXPRESSION "{composite_pass}"',
-            *execution_markers,
-        )
+        policy = dtwc_add_test_call(ctest_code, target, "D3")
         missing_policy = [
-            marker for marker in policy_required if marker not in policy
+            marker for marker in target_markers if marker not in policy
         ]
         if missing_policy:
             raise AssertionError(
                 f"D3 CTest drift for {target}: missing markers "
                 f"{missing_policy}"
-            )
-        if re.search(r"SKIP_RETURN_CODE\s+[0-9]", policy):
-            raise AssertionError(
-                f"D3 CTest drift: {target} restores a numeric skip code"
             )
 
     unsupported_math = [

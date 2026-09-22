@@ -8,6 +8,64 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (build, llfio):** a failed patch of quickcpplib's `QuickCppLibUtils.cmake` no longer
+  passes silently. CMake's `string(REPLACE)` succeeds and changes nothing when its pattern is
+  absent, so an upstream text change downgraded to one line of build noise and then a confusing
+  failure deep inside llfio's nested superbuild. Configure now fails outright, checks both patch
+  sites on every run rather than only the one that clones, names the pinned quickcpplib commit and
+  points at `-DDTWC_ENABLE_LLFIO=OFF` as the way past it.
+- **Changed (build, dependency pins):** the two llfio-related pins marked "needs maintainer
+  blessing" are resolved and documented in place. The llfio pin stays where it is: it is five
+  commits past release tag `20260506`, and those commits include the upstream fix guarding a
+  `char8_t`→`wchar_t` locale codecvt for libc++, so moving back to the tag would regress macOS.
+  quickcpplib publishes no tags at all, so pinning a reviewed commit is the only mechanism
+  available rather than a placeholder for a future version number.
+- **Fixed (gates):** `scripts/check_docs_contract.py` was failing on `design-2.0` for a reason
+  unrelated to the documentation it checks. The D2 and D3 lower-bound derivation gates read
+  `tests/CMakeLists.txt` for hand-written `if(TARGET …)` CTest policy blocks, which the move to
+  `dtwc_add_test(...)` had replaced; because the script aborts on its first failure, the D3 gate was
+  invisible behind the D2 one. Both now read the `dtwc_add_test` registration for their own floors,
+  environment, serial and timeout settings, and reject a `MAY_SKIP` registration. The skip hardening
+  those blocks used to assert inline moved into `cmake/DtwcTest.cmake`, which no gate referenced at
+  all — it is now checked directly, so "this test proved it ran" is pinned where it is implemented.
+- **Fixed (packaging, macOS and Linux):** the native CLI release archive could not start on any
+  machine but the one that built it. `cmake --install` never set an `INSTALL_RPATH`, so the packed
+  `dtwc_cl` carried **no `LC_RPATH` at all** and `dyld` aborted on `@rpath/libhighs.1.dylib`
+  (HiGHS builds shared by default). The rpath is now set unconditionally — `@loader_path/../lib` on
+  macOS, `$ORIGIN/../lib` on Linux, which previously had no rule at all. On macOS the LLVM OpenMP
+  runtime is also bundled under `lib/` and the CLI's load command repointed at `@rpath`, so the
+  archive no longer depends on a Homebrew prefix existing. The block that was supposed to do this
+  had been unreachable: it guarded on `OpenMP_omp_LIBRARY`, which is only ever written by the
+  Windows-Clang branch, while AppleClang gives `OpenMP_libomp_LIBRARY`.
+- **Fixed (CI):** the release-archive and Python-wheel workflows install keg-only `libomp` on macOS
+  but never told CMake where it is, unlike `macos-unit.yml`, which `brew link --force`s it. The
+  release workflow's exact configure line fails locally for that reason — `find_package(OpenMP)` is
+  a configure `FATAL_ERROR` since the OpenMP requirement was made hard. Both jobs now export
+  `OpenMP_ROOT`.
+- **Changed (release gate):** `scripts/smoke_release_archive.py` now also asserts that the archive
+  is self-contained (no dependency resolving to an absolute path outside it) and carries the
+  notices redistribution requires. Running the CLI proves nothing about portability on the machine
+  that linked it, which is why the previous gate passed over a broken archive.
+- **Fixed (licences):** third-party notices now match what is actually shipped. nanoarrow's
+  `LICENSE.txt` and `NOTICE.txt` are vendored beside the amalgamation, installed to
+  `share/doc/dtwc/nanoarrow/` and included in the wheel's `license-files`, satisfying Apache-2.0
+  §4(a) and §4(d) for a dependency that is compiled into every artefact. `THIRD_PARTY_LICENSES.md`
+  is now a per-artefact inventory covering Eigen (with the MPL-2.0 §3.2 source offer), nanoarrow,
+  HiGHS, CLI11, fkYAML, nanobind, the bundled macOS libomp and optional llfio, instead of naming
+  HiGHS alone.
+- **Changed (tooling):** `scripts/machine_facts.py` now prints the compiler flags CMake recorded
+  in its markdown record, not only in `--json`, so a benchmark record says what was compiled.
+  The row is labelled as the cache-level flags alone: `-march=native` and the floating-point
+  settings are attached to the `project_options`/`dtwc++` targets and never reach
+  `CMakeCache.txt`, so it must be read together with the `DTWC_*` option list.
+- **Added (tooling):** `scripts/machine_facts.py` describes the machine and the build a measurement
+  ran on — CPU model, physical/logical cores, memory, GPU (CUDA name and compute capability, or the
+  Metal device), OS, compiler, generator and every resolved `DTWC_*` option read from the CMake
+  cache — as a markdown table or JSON, on macOS, Linux and Windows. Stdlib only. Optional
+  `--with-dtwcpp` adds the `test.parallelisation()` and `test.gpu()` engagement probes. Three
+  skills use it: `dtwc-run-benchmarks` (benchmark with its hardware recorded), `dtwc-verify` (build,
+  serial ctest and the gate scripts) and `dtwcpp` (a user-facing entry point to the library that
+  routes to the `.claude/commands/` procedures).
 - **Change (repository, records):** the development plan moved into `.claude/`.
   The root `PLAN.md` is archived as
   `.claude/PLAN-archive-2026-09-21-research-release-campaign.md`; the live

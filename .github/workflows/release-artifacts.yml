@@ -19,7 +19,14 @@ jobs:
 
       - name: Install macOS OpenMP runtime
         if: runner.os == 'macOS'
-        run: brew install libomp
+        # libomp is keg-only, so `brew install` alone leaves nothing in a prefix
+        # CMake searches and find_package(OpenMP) fails — which dtwc/CMakeLists.txt
+        # turns into a configure FATAL_ERROR. Other workflows use
+        # `brew link --force libomp`; OpenMP_ROOT does the same job without
+        # writing into the Homebrew prefix (CMP0074, CMake >= 3.26 here).
+        run: |
+          brew install libomp
+          echo "OpenMP_ROOT=$(brew --prefix libomp)" >> "$GITHUB_ENV"
 
       - name: Configure release CLI
         run: >-

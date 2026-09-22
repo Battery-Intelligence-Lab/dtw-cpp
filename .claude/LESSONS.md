@@ -1374,3 +1374,63 @@ Critical knowledge to avoid repeating mistakes.
   GCC/Clang on one coordinate after nine SSG updates. A 1e-12 relative
   tolerance still catches what the fingerprint is for — RNG or schedule drift
   moves those numbers by O(1).
+- **A release smoke test that merely runs the binary cannot detect
+  non-portability.** `scripts/smoke_release_archive.py` unpacked the archive
+  "outside the checkout" and ran the CLI, and passed over an archive whose
+  `dtwc_cl` loaded `/opt/homebrew/opt/libomp/lib/libomp.dylib` — a path that
+  exists on every builder and no user machine. The build machine satisfies
+  every absolute path it linked against, so running is the one thing that
+  proves nothing. The check that has teeth is structural: `otool -L` / `ldd`
+  must yield no absolute dependency outside the archive and outside `/usr/lib`,
+  `/System`, `/lib`.
+- **`find_package` results are subdirectory-scoped; only the cache entries
+  reach the parent.** `find_package(OpenMP)` runs in `dtwc/CMakeLists.txt`, so
+  `OpenMP_CXX_FOUND` is empty in the top-level `CMakeLists.txt` — an
+  `if(APPLE AND OpenMP_CXX_FOUND)` there is simply never taken. The
+  configuration summary in the same file already worked around this by reading
+  `INTERFACE_COMPILE_DEFINITIONS` off the `dtwc++` target. Cache entries
+  (`OpenMP_CXX_LIB_NAMES`, `OpenMP_<name>_LIBRARY`) do cross the boundary.
+- **CMake names the OpenMP library variable after the entry in
+  `OpenMP_CXX_LIB_NAMES`, which is compiler-dependent.** AppleClang yields
+  `libomp` and therefore `OpenMP_libomp_LIBRARY`; the `WIN32` Clang branch in
+  `dtwc/CMakeLists.txt` sets `omp` and therefore `OpenMP_omp_LIBRARY`. Code
+  that hard-codes one name is dead on the other platform — silently, because a
+  false `if()` looks identical to a deliberate skip. Iterate the list.
+- **`install_name_tool` re-signs the executable it edits, but not a dylib, and
+  an invalid signature on Apple Silicon is `SIGKILL`, not a load error.**
+  Rewriting `LC_ID_DYLIB` on a copy of Homebrew's `libomp.dylib` left
+  "invalid signature (code or signature have been modified)" and the CLI died
+  with exit 137 and no dyld message — unlike the missing-library case, which
+  prints a diagnostic. The rewrite was also unnecessary: dyld resolves the
+  *client's* load command, so only `-change` on the executable is needed and
+  the dylib stays byte-identical.
+- **A gate script that aborts on its first failure hides every stale assertion
+  behind it.** `check_docs_contract.py` raised on the D2 lower-bound gate;
+  fixing that one immediately exposed D3, broken by the same commit and in the
+  same way. A red gate is therefore not one bug until it runs to completion —
+  and the count is not knowable in advance, so budget for "fix, re-run, repeat"
+  rather than for a single edit.
+- **When a guarantee moves from call sites into a shared macro, the gate that
+  pinned it does not follow.** The D2/D3 gates asserted `SKIP_RETURN_CODE`
+  unset, a skip-word `FAIL_REGULAR_EXPRESSION` and a composite
+  `PASS_REGULAR_EXPRESSION` by grepping each test's inline CTest block. Moving
+  registration to `dtwc_add_test` left those properties correct but
+  **unasserted** — no gate referenced `cmake/DtwcTest.cmake` at all. The
+  refactor looked clean precisely because the assertion it broke was about
+  text that no longer existed anywhere.
+- **`string(REPLACE)` with an absent pattern succeeds and changes nothing, so a
+  CMake patch step fails open.** The quickcpplib ninja-propagation patch checked
+  only whether the text differed afterwards and downgraded a miss to
+  `message(WARNING)`; an upstream edit would have produced a line of build noise
+  and then an unrelated-looking failure inside llfio's nested superbuild. Any
+  patch-an-upstream-file step needs a post-condition assertion that the marker is
+  present, on every configure rather than only the one that clones, and it should
+  be fatal.
+- **A pin that looks like an arbitrary tip can be load-bearing — check before
+  "tidying" it to the nearest tag.** llfio is pinned five commits past release
+  tag `20260506`, which reads like drift. Those five commits contain PR #178,
+  guarding a `char8_t`→`wchar_t` locale codecvt for **libc++** — the standard
+  library AppleClang gives us. Moving to the tag would have silently regressed
+  macOS. Conversely, quickcpplib has **zero** tags in its entire history, so
+  "pin a release instead of a SHA" is not deferred work there, it is impossible;
+  `git ls-remote --tags` answers both questions in seconds.

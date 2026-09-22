@@ -286,10 +286,63 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     DESTINATION share/doc/dtwc
     COMPONENT runtime
     OPTIONAL)
+  # Apache-2.0 §4(a)/(d) for the vendored nanoarrow, referenced by
+  # THIRD_PARTY_LICENSES.md as `nanoarrow/LICENSE.txt` and `nanoarrow/NOTICE.txt`.
+  install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/nanoarrow/LICENSE.txt"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/nanoarrow/NOTICE.txt"
+    DESTINATION share/doc/dtwc/nanoarrow
+    COMPONENT runtime)
 
-  if(APPLE AND OpenMP_CXX_FOUND AND OpenMP_omp_LIBRARY)
-    install(FILES "${OpenMP_omp_LIBRARY}" DESTINATION lib COMPONENT runtime)
+  # The archive is unpacked anywhere, so the CLI must resolve its bundled shared
+  # libraries relative to its own location. HiGHS builds SHARED by default (it
+  # sets BUILD_SHARED_LIBS itself), so `dtwc_cl` records @rpath/libhighs.*; with
+  # no INSTALL_RPATH the packed binary carries NO LC_RPATH and dyld/ld.so cannot
+  # find it at all. This must not be conditional on OpenMP.
+  if(APPLE)
     set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "@loader_path/../lib")
+  elseif(UNIX)
+    set_target_properties(dtwc_cl PROPERTIES INSTALL_RPATH "$ORIGIN/../lib")
+  endif()
+
+  # macOS: bundle LLVM's OpenMP runtime beside the CLI. Two traps here, both of
+  # which previously made this branch dead code:
+  #   1. CMake names the cache variable after the entry in OpenMP_CXX_LIB_NAMES
+  #      — `libomp` for AppleClang, `omp` only for the WIN32 branch in
+  #      dtwc/CMakeLists.txt — so the name must be looked up, not assumed.
+  #   2. find_package(OpenMP) runs in dtwc/CMakeLists.txt, so OpenMP_CXX_FOUND
+  #      is a subdirectory-scope variable and is EMPTY here. Only the cache
+  #      entries reach this scope; the summary block below reads the target
+  #      property for the same reason.
+  if(APPLE)
+    set(_dtwc_omp_lib "")
+    foreach(_dtwc_omp_name IN LISTS OpenMP_CXX_LIB_NAMES)
+      if(OpenMP_${_dtwc_omp_name}_LIBRARY)
+        set(_dtwc_omp_lib "${OpenMP_${_dtwc_omp_name}_LIBRARY}")
+        break()
+      endif()
+    endforeach()
+    if(_dtwc_omp_lib)
+      get_filename_component(_dtwc_omp_file "${_dtwc_omp_lib}" NAME)
+      install(FILES "${_dtwc_omp_lib}" DESTINATION lib COMPONENT runtime)
+      # libomp records an absolute install name, which dtwc_cl copies verbatim
+      # into its own load command; repoint that at @rpath so the bundled copy is
+      # the one that loads on a machine without Homebrew.
+      #
+      # Only dtwc_cl is rewritten. dyld resolves the CLIENT's load command, so
+      # the dylib's own LC_ID_DYLIB is irrelevant at load time — and rewriting it
+      # would invalidate Homebrew's signature, which on Apple Silicon gets the
+      # process SIGKILLed. install_name_tool re-signs the executable it edits
+      # (adhoc, linker-signed); it does not re-sign a dylib copied by install().
+      install(CODE "
+        execute_process(COMMAND install_name_tool -change \"${_dtwc_omp_lib}\"
+          \"@rpath/${_dtwc_omp_file}\" \"\${CMAKE_INSTALL_PREFIX}/bin/dtwc_cl\"
+          COMMAND_ERROR_IS_FATAL ANY)
+      " COMPONENT runtime)
+    endif()
+    unset(_dtwc_omp_lib)
+    unset(_dtwc_omp_file)
+    unset(_dtwc_omp_name)
   endif()
 endif()
 

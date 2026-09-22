@@ -37,6 +37,32 @@ k-medoids best and DTW ≈ Euclidean for clustering; ShapeDTW (Zhao & Itti 2018)
 reproducible by preprocessing; fixed parallelograms lose to learned bands (Ratanamahatana & Keogh 2004).
 The library already has the two distances the review ranks first; lead with them.
 
+**Libraries considered and not adopted (dependency review 2026-09-22, standing rule 14 — reopen only with a
+measurement or a portability failure).** In every case the repository already solves the problem, usually
+deliberately:
+
+| Candidate | Licence | Why not |
+| --- | --- | --- |
+| fast_float | Apache-2.0 / MIT / BSL-1.0 | every loader already uses `std::from_chars` (`fileOperations.hpp:197`, `core/matrix_io.hpp:139`); `std::stod` was removed after an `LC_NUMERIC=de_DE` bug (regression test `unit_test_distance_matrix_csv.cpp:558`) |
+| xxHash / any hash library | BSD-2 | `core/sha256.hpp` is dependency-free, NIST-vector tested, chosen *because* `std::hash` is implementation-defined and salted (`sha256.hpp:6`); CRC32 and the avalanche64 row digest are in-tree and on disk |
+| PCG / xoshiro | Apache-2.0 / CC0 | `core/portable_random.hpp` already has Lemire bounded, Fisher-Yates, weighted index and selection sampling over `std::mt19937_64`. The residue is legacy `init::` on `std::shuffle` / `uniform_int_distribution` (`initialisation.cpp:140,170,182`) — X-12 / A-21 finish it, no library needed |
+| mio (mmap) | MIT | does not cover `barrier` granularity or `try_lock_file`; only relevant as part of D-18, not as an addition |
+| magic_enum | MIT | the string↔enum tables *are* the cross-language contract (aliases, kebab keys, stability); compiler-hack reflection cannot express them |
+| toml++ / nlohmann-json / glaze | MIT | CLI11 `from_config` + fkYAML already read the config; `Config` needs an alias table and `schema`, not a second parser |
+| {fmt} | MIT | C++20 + `std::format`; error text is not a bottleneck |
+| kokkos-mdspan | Apache-2.0 WITH LLVM-exception | `tri_index` exists; a packed triangle is not an mdspan layout |
+| Highway / xsimd | Apache-2.0 / BSD-3 | hand-written SIMD is killed; parked behind R2-D17 and the X-04 codegen report |
+| rapidcheck | BSD-2 | Catch2's `GENERATE` covers invariant tests (symmetry, zero diagonal, band ⊆ full, LB ≤ exact) |
+| Taskflow / TBB | MIT / Apache-2.0 | OpenMP + `PairRange` is the scheduling seam; `dtwc/` has no `std::thread` fan-out to unify |
+| ankerl::unordered_dense | MIT | only if S-13 proves the MSVC `unordered_map` move-assign hazard is real |
+| faiss / hnswlib | MIT / Apache-2.0 | ANN indexes assume a metric; DTW is not one (same reason Elkan is killed) |
+| scikit-learn `check_estimator` | BSD-3 | already a dev extra and already run (`tests/python/test_sklearn_estimator.py:76`) |
+
+**Adopted:** libpfm4 (MIT) through Google Benchmark's `BENCHMARK_ENABLE_LIBPFM`, benchmark-only, Linux-only
+(X-24, D-17). **Conditional, tied to a row that does not exist yet:** PocketFFT (BSD-3, header-only) *only* if
+TS01 k-Shape outgrows the naive O(n²) cross-correlation — it is the licence-clean alternative to FFTW (GPL);
+CORE-MATH (MIT) *only* if D-19 chooses to pin exp/log.
+
 **Conventions that stay (v1.0.0 / JOSS surface):** local cost L1, band in integer cells, no final square
 root, Σd (not Σd²) medoid objectives with k-medoids++ seeding. Interoperability is handled by additive
 tokens and a documented conversion table, never by flipping a default.
@@ -70,6 +96,13 @@ tokens and a documented conversion table, never by flipping a default.
 16. **`.claude/MISSING.md` and `READ.md` were retired by `0449f7c`; do not recreate them.**
 17. **Agents never push, tag, publish, SSH out, submit to ARC, rewrite history, or delete an untracked
     `build*/`.** Those are Volkan's actions.
+18. **Avoid copyleft** (Volkan, 2026-09-22). We ship BSD-3-Clause; prefer MIT / BSD / Apache-2.0 /
+    BSL-1.0 dependencies. Weak copyleft (MPL-2.0, and Eigen is the only one we have) needs a recorded
+    reason and its §3.2 notice in every binary artefact; strong copyleft (GPL/LGPL) is never linked —
+    which is also why FFTW is not an option if k-Shape ever wants an FFT (PocketFFT, BSD-3, is).
+    Prefer a **mature portable library over an in-tree rewrite** (Volkan, 2026-09-22): this is not a
+    monolith, and platform corners — mapping growth, durable flush, file locks over network
+    filesystems — are what such libraries exist to have already got right (D-18).
 
 ## 3. Design 2.0 decisions of 2026-09-07 (Volkan: "Go" — every III.10 recommendation adopted)
 
@@ -113,6 +146,26 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   `Problem` wrapper with 1.x names — those keep shims), "MSM/TWE not exported" (reachable through Tier-2
   `variant_params`; missing only from the pairwise surface), "`dtwc.test.parallelisation()` missing"
   (it exists).
+- **2026-09-22 — PROPOSED, awaiting Volkan.** Dependency review (Volkan's question: is a lightweight,
+  well-licensed library missing?). Answer: essentially no — §1's candidate table records thirteen rejections
+  with the in-tree facility that already covers each. Outcome: rows X-23 (third-party notices) and X-24
+  (libpfm4 counters), decisions D-17 / D-18 / D-19. Two agent claims were re-opened and **corrected**: Eigen
+  5.0.1 has no LGPL modules and upstream removed `EIGEN_MPL2_ONLY` (the ILUT note at
+  `IncompleteLUT.h:88-96` records Saad's relicensing to MPL2), so there is nothing to fence — the real Eigen
+  obligation is MPL-2.0 §3.2 in the wheel; and `third_party.txt` *is* built for CLI release archives
+  (`release-artifacts.yml:34`), it is only the wheel job that omits it.
+- **2026-09-22 — done.** X-23 (third-party notices) implemented, closing ledger row B-16, and it
+  surfaced a release blocker recorded as X-29: the macOS CLI archive could not start on any machine
+  but its builder (no `LC_RPATH`, absolute libomp path), because the block meant to fix that guarded
+  on a variable only the Windows branch ever sets. Evidence, reproduction and the post-fix run are in
+  `.claude/baselines/2026-09-22-x29-release-archive-not-portable.md`. Three notes worth keeping:
+  nanoarrow's upstream `LICENSE.txt` has an appended flatcc section, so a generic Apache-2.0 text
+  would have been the wrong file; `CPACK_COMPONENTS_ALL runtime` is **load-bearing while inert** —
+  enabling `CPACK_ARCHIVE_COMPONENT_INSTALL` would drop `libhighs.*` from the archive, because HiGHS
+  installs into its own unnamed component; and `scripts/check_docs_contract.py` is **red on HEAD**
+  (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
+  worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
+  still greps for the old `if(TARGET …)` block. Unowned; needs a row.
 - **2026-09-21 — done (housekeeping, no product change).** Root `PLAN.md` archived into `.claude/`;
   new `.claude/PLAN.md`, `MAP.md`, `CHARTER.md`, this file; 105 superseded records, four unloadable
   skill files, twelve one-off evidence scripts, generated plots and unused figures removed (all

@@ -8,7 +8,14 @@ dynamic = ["version"]
 description = "DTWC++ — Fast Dynamic Time Warping and Clustering"
 readme = "README.md"
 license = "BSD-3-Clause"
-license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
+# nanoarrow is vendored and compiled unconditionally into the extension module,
+# so Apache-2.0 §4(a)/(d) apply to every wheel: ship its LICENSE and NOTICE too.
+license-files = [
+    "LICENSE",
+    "THIRD_PARTY_LICENSES.md",
+    "dtwc/extern/nanoarrow/LICENSE.txt",
+    "dtwc/extern/nanoarrow/NOTICE.txt",
+]
 authors = [
     { name = "Volkan Kumtepeli" },
     { name = "Rebecca Perriment" },
