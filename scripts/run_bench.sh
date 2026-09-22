@@ -81,3 +81,60 @@ if [[ -f "$out_file" ]]; then
 else
   echo "[run_bench] warning: expected output file '$out_file' not found" >&2
 fi
+
+# PMU counters (X-24): a record asked for counters must actually carry them.
+#
+# Google Benchmark accepts --benchmark_perf_counters on a binary built without
+# libpfm4: PerfCounters::Create logs one line to the error log, returns no
+# counters, and the run still writes a well-formed JSON and exits 0. Its own
+# guard does not help — the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is
+# inverted (it aborts when the counters *were* set up) and only runs for
+# benchmarks that set an aggregation report mode. So the JSON is indistinguishable
+# from a wall-clock record except by the absence of the counter fields, which is
+# exactly what nobody checks six months later. Configure with
+# -DDTWC_BENCHMARK_PMU=ON on bare-metal Linux to get real counters.
+requested_counters=""
+prev=""
+for a in "${args[@]}"; do
+  case "$a" in
+    --benchmark_perf_counters=*) requested_counters="${a#--benchmark_perf_counters=}" ;;
+  esac
+  if [[ "$prev" == "--benchmark_perf_counters" ]]; then
+    requested_counters="$a"
+  fi
+  prev="$a"
+done
+
+if [[ -n "$requested_counters" ]]; then
+  if [[ ! -f "$out_file" ]]; then
+    echo "[run_bench] error: counters were requested ($requested_counters) but no" >&2
+    echo "  JSON was written, so there is nothing to verify them in." >&2
+    exit 65
+  fi
+  if ! grep -q '"name":' "$out_file"; then
+    echo "[run_bench] error: '$out_file' has no benchmark entries — check" >&2
+    echo "  --benchmark_filter. Counters ($requested_counters) cannot be verified." >&2
+    exit 65
+  fi
+
+  missing=()
+  IFS=',' read -r -a counter_list <<< "$requested_counters"
+  for c in "${counter_list[@]}"; do
+    [[ -z "$c" ]] && continue
+    grep -qF -- "\"$c\":" "$out_file" || missing+=("$c")
+  done
+
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    labelled="${out_file%.json}.no-counters.json"
+    mv "$out_file" "$labelled"
+    echo "[run_bench] error: asked for PMU counters but the run produced none." >&2
+    echo "  missing: ${missing[*]}" >&2
+    echo "  This build has no libpfm4, so '$bin' ignored the request and timed the" >&2
+    echo "  benchmark as usual. The result is a wall-clock record, not a PMU one," >&2
+    echo "  and has been renamed to make that plain:" >&2
+    echo "    $labelled" >&2
+    echo "  Counters need bare-metal Linux and -DDTWC_BENCHMARK_PMU=ON (X-24)." >&2
+    exit 65
+  fi
+  echo "[run_bench] PMU counters present: $requested_counters"
+fi

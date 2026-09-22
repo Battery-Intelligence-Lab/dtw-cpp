@@ -1434,3 +1434,22 @@ Critical knowledge to avoid repeating mistakes.
   macOS. Conversely, quickcpplib has **zero** tags in its entire history, so
   "pin a release instead of a SHA" is not deferred work there, it is impossible;
   `git ls-remote --tags` answers both questions in seconds.
+- **An "unsupported" message on stderr is not a guard — check what the saved
+  artefact says.** Google Benchmark accepts `--benchmark_perf_counters` on a
+  build without libpfm4: it prints `Performance counters not supported.` once,
+  then writes a complete, ordinary-looking JSON with no counter fields and exits
+  **0** (verified on macOS, `bench_dtw_baseline`, v1.9.5). The one stderr line is
+  gone the moment output is redirected, and the file on disk carries no trace of
+  it at all, so a wall-clock record becomes a "PMU record" simply by being filed
+  under that name. Where a request can be dropped, assert the *evidence* is
+  present in the output, not that a warning was absent.
+- **Read an upstream guard before trusting it; a `CHECK` can test the inverse of
+  its own message.** `benchmark_runner.cc:323` (v1.9.5) reads
+  `BM_CHECK(FLAGS_benchmark_perf_counters.empty() || (perf_counters_measurement_ptr->num_counters() == 0)) << "Perf counters were requested but could not be set up."`.
+  `BM_CHECK(b)` fires when `b` is false, so the condition is false exactly when
+  counters *were* requested and *were* set up — it aborts on success and is silent
+  on failure. It is also inside an `aggregation_report_mode() != ARM_Unspecified`
+  branch, so an ordinary benchmark never reaches it; none of ours sets a report
+  mode, which is why nothing fired here. Adding `->Repetitions(n)` to a benchmark
+  would arm it on a real PMU host. Inversion read from source, not executed —
+  proving it needs libpfm4 (V-5).

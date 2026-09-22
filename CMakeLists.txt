@@ -28,6 +28,13 @@ include(CMakeDependentOption)
 option(DTWC_BUILD_EXAMPLES "Build example programs" OFF)
 option(DTWC_BUILD_TESTING "Build unit tests" OFF)
 option(DTWC_BUILD_BENCHMARK "Build benchmarks" OFF)
+# PMU counters for the benchmarks, via Google Benchmark's BENCHMARK_ENABLE_LIBPFM
+# and libpfm4 (MIT, benchmark-only, never redistributed). Linux on bare metal
+# only: it needs perf_event_open, which macOS does not have at all and which
+# virtualised hosts (GitHub runners, and usually WSL2) do not expose. Requesting
+# it anywhere else is a hard error, not a quiet downgrade to wall-clock —
+# see cmake/Dependencies.cmake.
+option(DTWC_BENCHMARK_PMU "Benchmark PMU counters via libpfm4 (bare-metal Linux only)" OFF)
 option(DTWC_BUILD_PYTHON "Build Python bindings (nanobind)" OFF)
 option(DTWC_BUILD_MATLAB "Build MATLAB MEX bindings" OFF)
 option(DTWC_DEV_MODE "Enable developer-only warnings, analyzers, and sanitizer options" OFF)

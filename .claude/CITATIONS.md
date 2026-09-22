@@ -266,3 +266,29 @@ References used during development. Verify each citation independently before pu
   — Dependency-free C reader/builder vendored as the namespaced amalgamation
   `dtwc/extern/nanoarrow/nanoarrow.{h,c}`
   (`NANOARROW_NAMESPACE=DtwcNanoarrow`).
+
+## PMU counters for benchmarks (X-24 · D-17)
+
+- libpfm4 (MIT), perfmon2 project: http://perfmon2.sourceforge.net/ — helper
+  library that translates symbolic event names into `perf_event_open`
+  configurations. Linux-only by construction: `perf_event_open(2)` is a Linux
+  system call, so macOS (use `xctrace`/Instruments) and hosts that do not expose
+  the PMU to guests cannot serve it.
+- Google Benchmark v1.9.5, `BENCHMARK_ENABLE_LIBPFM`:
+  https://github.com/google/benchmark/blob/v1.9.5/CMakeLists.txt#L43 — the option;
+  `CMakeLists.txt:338` runs `find_package(PFM REQUIRED)`, so a missing libpfm4
+  stops the configure rather than dropping the feature. `cmake/Modules/FindPFM.cmake`
+  searches for `libpfm` and `perfmon/pfmlib.h`. `src/CMakeLists.txt` links
+  `PFM::libpfm` and defines `HAVE_LIBPFM` only when `PFM_FOUND`.
+- Google Benchmark v1.9.5, `src/perf_counters.cc:245-263` — the no-`HAVE_LIBPFM`
+  stub: `kSupported = false`, `Initialize()` returns false, and `Create()` logs
+  `"Performance counters not supported."` for a non-empty request, then returns
+  `NoCounters()`. The benchmark still runs, still writes JSON, and still exits 0.
+- Google Benchmark v1.9.5, `src/benchmark_runner.cc:323-325` — the only runtime
+  guard, and it does not work: `BM_CHECK` (`src/check.h:85`) fires when its
+  argument is **false**, and the argument is
+  `FLAGS_benchmark_perf_counters.empty() || (num_counters() == 0)`, which is false
+  precisely when counters were requested *and* successfully created. The attached
+  message, "Perf counters were requested but could not be set up.", describes the
+  opposite case. It is additionally unreachable for benchmarks that leave
+  `aggregation_report_mode()` at `ARM_Unspecified`.

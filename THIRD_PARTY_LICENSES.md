@@ -26,10 +26,11 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | llfio, quickcpplib | pinned commits | Apache-2.0 **OR** BSL-1.0 | only if built with `DTWC_ENABLE_LLFIO=ON`; **OFF** in released artefacts | no |
 
 **Not redistributed**, and therefore not covered here: Catch2 (BSL-1.0) and google/benchmark
-(Apache-2.0), which are test- and benchmark-only; CPM.cmake and CPMLicenses.cmake (MIT), which are
-build-time CMake helpers; Apache Arrow C++ (Apache-2.0), which is opt-in and linked only if a user
-builds against their own installation; and Gurobi, which is proprietary, supplied by the user under
-their own licence, and never bundled.
+(Apache-2.0), which are test- and benchmark-only; libpfm4 (MIT), which google/benchmark links only
+when `DTWC_BENCHMARK_PMU=ON` — a bare-metal Linux benchmarking build, never a released artefact;
+CPM.cmake and CPMLicenses.cmake (MIT), which are build-time CMake helpers; Apache Arrow C++
+(Apache-2.0), which is opt-in and linked only if a user builds against their own installation; and
+Gurobi, which is proprietary, supplied by the user under their own licence, and never bundled.
 
 **Note on the OpenMP runtime.** On Linux and Windows the OpenMP runtime is the one belonging to the
 user's toolchain and is not redistributed by us. On macOS we bundle LLVM's `libomp`, which is

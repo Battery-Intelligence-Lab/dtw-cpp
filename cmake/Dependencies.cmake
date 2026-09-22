@@ -125,6 +125,39 @@ function(dtwc_setup_dependencies)
       INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}")
   endif()
 
+  # PMU counters (X-24, D-17). Every route by which this could fail to deliver
+  # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
+  # be relied on: the BM_CHECK at v1.9.5 benchmark_runner.cc:323 is inverted (it
+  # aborts when the counters *were* set up and stays silent when they were not),
+  # and it sits inside an `aggregation_report_mode() != ARM_Unspecified` branch
+  # that an ordinary benchmark never enters. A build without libpfm therefore
+  # accepts --benchmark_perf_counters, writes a normal-looking JSON with no counter
+  # fields, and exits 0. scripts/run_bench.sh catches that at run time; the checks
+  # below catch the configurations that cannot work at all.
+  if(DTWC_BENCHMARK_PMU)
+    if(NOT DTWC_BUILD_BENCHMARK)
+      message(FATAL_ERROR
+        "DTWC_BENCHMARK_PMU=ON does nothing with DTWC_BUILD_BENCHMARK=OFF: the "
+        "counters come from Google Benchmark, and no benchmark target is being "
+        "built. Add -DDTWC_BUILD_BENCHMARK=ON, or drop -DDTWC_BENCHMARK_PMU.")
+    endif()
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      message(FATAL_ERROR
+        "DTWC_BENCHMARK_PMU=ON needs Linux on bare metal; this is "
+        "${CMAKE_SYSTEM_NAME}. libpfm4 reads the PMU through perf_event_open, "
+        "which macOS does not have (xctrace/Instruments is the nearest equivalent) "
+        "and which virtualised hosts — GitHub runners, and usually WSL2 — do not "
+        "expose. Configure without -DDTWC_BENCHMARK_PMU and report wall-clock as "
+        "advisory, or run on a bare-metal Linux node.")
+    endif()
+    if(TARGET benchmark::benchmark)
+      message(FATAL_ERROR
+        "DTWC_BENCHMARK_PMU=ON cannot be honoured: benchmark::benchmark was "
+        "already defined by an enclosing project, so BENCHMARK_ENABLE_LIBPFM is "
+        "whatever that project chose. Enable libpfm4 there instead.")
+    endif()
+  endif()
+
   if(DTWC_BUILD_BENCHMARK)
     if(NOT TARGET benchmark::benchmark)
       CPMAddPackage(
@@ -135,6 +168,9 @@ function(dtwc_setup_dependencies)
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
           "BENCHMARK_ENABLE_WERROR OFF"
+          # ON ⇒ upstream runs find_package(PFM REQUIRED), so missing libpfm4
+          # headers or library stop the configure instead of dropping the counters.
+          "BENCHMARK_ENABLE_LIBPFM ${DTWC_BENCHMARK_PMU}"
       )
     endif()
   endif()

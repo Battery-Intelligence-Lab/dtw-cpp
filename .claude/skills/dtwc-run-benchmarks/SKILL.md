@@ -52,8 +52,22 @@ Records are **per machine**. Never put two machines in one table and call the ra
 
 5. **Make the number mean something.** Check `cpu_scaling_enabled` and `load_avg` in the JSON
    `context` block; on a laptop, run on mains power. Repeat at least three times and report the
-   median with the spread. One run is an anecdote. On bare-metal Linux prefer counters over
-   wall-clock (X-24: `BENCHMARK_ENABLE_LIBPFM`); GitHub runners and macOS cannot provide them.
+   median with the spread. One run is an anecdote.
+
+   On **bare-metal Linux** prefer counters over wall-clock (X-24):
+
+   ```sh
+   cmake -S . -B build -DDTWC_BUILD_BENCHMARK=ON -DDTWC_BENCHMARK_PMU=ON
+   scripts/run_bench.sh build/bin/bench_dtw_baseline \
+       --benchmark_perf_counters=CYCLES,INSTRUCTIONS
+   ```
+
+   Anywhere else the configure stops with a message saying why — macOS has no `perf_event_open`
+   (that is `xctrace`'s job), and GitHub runners and usually WSL2 do not expose the PMU. Do not work
+   around it by asking a non-PMU build for counters: Google Benchmark accepts the flag, prints one
+   line to stderr and writes a normal JSON with no counter fields, exit 0. `run_bench.sh` catches
+   that, renames the file `*.no-counters.json` and exits 65 — if you see that, the record is
+   wall-clock and must be reported as wall-clock.
 
 6. **Write the record** to `.claude/baselines/YYYY-MM-DD-<machine>-<subject>.md`:
    - the machine table from step 1, first, verbatim;

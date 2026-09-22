@@ -8,6 +8,20 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Added (benchmarks):** `DTWC_BENCHMARK_PMU` builds the benchmarks against libpfm4 through Google
+  Benchmark's `BENCHMARK_ENABLE_LIBPFM`, so hardware counters can be read instead of wall-clock.
+  libpfm4 is MIT, benchmark-only and never redistributed. It needs `perf_event_open`, so it is
+  bare-metal Linux only, and every configuration that cannot deliver counters — a non-Linux host,
+  `DTWC_BUILD_BENCHMARK=OFF`, or a `benchmark::benchmark` supplied by an enclosing project — is a
+  `FATAL_ERROR` naming the reason rather than a quiet downgrade.
+- **Fixed (benchmarks):** `scripts/run_bench.sh` no longer returns a counters record with no
+  counters in it. A binary built without libpfm4 accepts `--benchmark_perf_counters`, prints one
+  line to stderr, and then writes a complete, ordinary-looking JSON and exits 0 — the saved file
+  carries no trace that the request was dropped. Google Benchmark's own guard does not catch this:
+  in v1.9.5 the `BM_CHECK` at `benchmark_runner.cc:323` tests the inverse of its message, and it
+  only runs for benchmarks that set an aggregation report mode, which none of ours do. The driver
+  now verifies each requested counter is present in the JSON, and on failure renames the file to
+  `*.no-counters.json` and exits 65, so a wall-clock record cannot be filed as a PMU one.
 - **Fixed (build, llfio):** a failed patch of quickcpplib's `QuickCppLibUtils.cmake` no longer
   passes silently. CMake's `string(REPLACE)` succeeds and changes nothing when its pattern is
   absent, so an upstream text change downgraded to one line of build noise and then a confusing

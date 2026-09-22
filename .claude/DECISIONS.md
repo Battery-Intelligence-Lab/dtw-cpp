@@ -166,6 +166,18 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
   worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
   still greps for the old `if(TARGET …)` block. Unowned; needs a row.
+- **2026-09-22 — done.** X-24's W0 half: `DTWC_BENCHMARK_PMU` → `BENCHMARK_ENABLE_LIBPFM` (libpfm4,
+  MIT, benchmark-only, never redistributed — D-17). The row was filed as plumbing; the finding is
+  that google/benchmark **has no working runtime guard** for a counters request it cannot serve. A
+  build without libpfm4 accepts `--benchmark_perf_counters`, prints one stderr line, and writes a
+  complete JSON with no counter fields at exit 0 — confirmed by running it here. Its own
+  `BM_CHECK` (`benchmark_runner.cc:323`, v1.9.5) tests the inverse of its message and lives in a
+  branch ordinary benchmarks never enter. `scripts/run_bench.sh` now verifies the counters are
+  actually in the JSON and renames a counter-less file to `*.no-counters.json` at exit 65, which is
+  the part that keeps rule 3 (no silent fallback) true for the O-22 artefact. Evidence, including
+  the guard-discrimination pair, in `.claude/baselines/2026-09-22-x24-benchmark-pmu-counters.md`.
+  The success path is unproven anywhere here and is queued as V-5, together with a probe that would
+  settle the upstream inversion by execution rather than by reading.
 - **2026-09-21 — done (housekeeping, no product change).** Root `PLAN.md` archived into `.claude/`;
   new `.claude/PLAN.md`, `MAP.md`, `CHARTER.md`, this file; 105 superseded records, four unloadable
   skill files, twelve one-off evidence scripts, generated plots and unused figures removed (all
