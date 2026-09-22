@@ -120,7 +120,6 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   PUBLIC
-  Eigen3::Eigen
 )
 
 # ── OpenMP detection ──────────────────────────────────────────────────────────

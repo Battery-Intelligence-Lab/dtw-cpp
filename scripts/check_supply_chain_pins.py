@@ -98,12 +98,10 @@ REGISTERED_ARCHIVE_IDENTITIES = (
         "https://github.com/fktn-k/fkYAML/archive/refs/tags/v0.4.4.tar.gz",
         "75fa1ce37480ac2ef47b820bfdba04894d4f19ac122ad59d892601553aa45c4e",
     ),
-    (
-        "cmake/Dependencies.cmake",
-        "Eigen",
-        "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2",
-        "e4de6b08f33fd8b8985d2f204381408c660bffa6170ac65b68ae1bd3cd575c0a",
-    ),
+    # Eigen deregistered 2026-09-22 (X-27): the dependency was removed, not
+    # unpinned. It was the only MPL-2.0 obligation in the wheel. This gate
+    # noticing its absence is the gate working -- a pinned archive must never
+    # vanish silently, in either direction.
     (
         "cmake/Dependencies.cmake",
         "Arrow",

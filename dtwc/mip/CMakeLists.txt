@@ -28,7 +28,6 @@ target_sources(mip-solvers
 target_include_directories(mip-solvers PUBLIC .)
 target_link_libraries(mip-solvers
   PRIVATE
-  Eigen3::Eigen
   project_warnings
   project_options
 )

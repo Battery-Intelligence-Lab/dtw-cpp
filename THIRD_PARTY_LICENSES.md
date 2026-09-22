@@ -16,7 +16,6 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 
 | Component | Version | Licence | CLI archive | Python wheel |
 | --- | --- | --- | --- | --- |
-| Eigen | 5.0.1 | MPL-2.0 (plus MPL2-compatible third-party files) | yes — headers compiled in | yes |
 | Apache Arrow nanoarrow | 0.8.0 | Apache-2.0 | yes — vendored, compiled in | yes |
 | HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | yes — linked in |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
@@ -38,21 +37,6 @@ Apache-2.0 WITH LLVM-exception; its terms are reproduced below. We deliberately 
 GCC's `libgomp`, which is GPL-3.0 WITH GCC-exception.
 
 ---
-
-## Eigen 5.0.1 — MPL-2.0
-
-Eigen is primarily licensed under the Mozilla Public License 2.0. Some files within it carry
-third-party code under BSD or other MPL2-compatible licences (upstream `COPYING.BSD`,
-`COPYING.APACHE`, `COPYING.MINPACK`). No part of the Eigen we use is LGPL-licensed.
-
-The full MPL-2.0 text is at <https://www.mozilla.org/MPL/2.0/>.
-
-**MPL-2.0 §3.2 — availability of Source Code Form.** DTWC++ binaries include Eigen in Executable
-Form. The corresponding Source Form is the unmodified upstream release, which we do not patch, and
-is available at:
-
-> <https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2>
-> SHA-256 `e4de6b08f33fd8b8985d2f204381408c660bffa6170ac65b68ae1bd3cd575c0a`
 
 ## Apache Arrow nanoarrow 0.8.0 — Apache-2.0
 

@@ -8,7 +8,7 @@
  * including Soft-DTW which can return negative values).
  * No synchronization needed: parallel fills use disjoint (i,j) pairs by design.
  *
- * I/O (CSV, stream, Eigen export) is in core/matrix_io.hpp.
+ * I/O (CSV, stream, full-matrix export) is in core/matrix_io.hpp.
  *
  * @author Volkan Kumtepeli
  * @date 28 Mar 2026

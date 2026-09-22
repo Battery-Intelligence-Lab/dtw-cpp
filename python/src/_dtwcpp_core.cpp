@@ -52,7 +52,6 @@
 #include <mip/mip.hpp>
 #include <mip/pdlp_lp.hpp>
 
-#include <Eigen/Core>
 
 #include <algorithm>
 #include <cstring>
@@ -623,14 +622,12 @@ NB_MODULE(_dtwcpp_core, m) {
       // G4: the packed->dense expansion and the memcpy are O(N^2) and would
       // block every other Python thread. `dm` is const here, so releasing is safe.
       const size_t n = dm.size();
-      std::vector<double> values(n * n);
+      std::vector<double> values;
       {
         nb::gil_scoped_release release;
-        const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
-        // Eigen is column-major; numpy expects row-major. The matrix is
-        // symmetric, so the byte layout is identical and memcpy is correct.
-        if (n > 0)
-          std::memcpy(values.data(), full.data(), n * n * sizeof(double));
+        // to_full_matrix already returns row-major std::vector<double> (X-27),
+        // so the N*N copy this used to memcpy through is simply gone.
+        values = dtwc::io::to_full_matrix(dm);
       }
       return adopt_as_ndarray(std::move(values), {n, n});
     }, "Return an independent copy of the full N*N distance matrix.\n\n"
@@ -863,11 +860,8 @@ NB_MODULE(_dtwcpp_core, m) {
       prob.fill_distance_matrix();
       const auto &dm = prob.dense_distance_matrix();
       n = dm.size();
-      const Eigen::MatrixXd full = dtwc::io::to_full_matrix(dm);
-      values.resize(n * n);
-      // Symmetric matrix: col-major == row-major, safe to memcpy.
-      if (n > 0)
-        std::memcpy(values.data(), full.data(), n * n * sizeof(double));
+      // Row-major std::vector<double> straight from to_full_matrix (X-27).
+      values = dtwc::io::to_full_matrix(dm);
     }
     return adopt_as_ndarray(std::move(values), {n, n});
   };

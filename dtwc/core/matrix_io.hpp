@@ -1,6 +1,6 @@
 /**
  * @file matrix_io.hpp
- * @brief CSV I/O and Eigen expansion for DenseDistanceMatrix.
+ * @brief CSV I/O and full-matrix expansion for DenseDistanceMatrix.
  *
  * @details Free functions in dtwc::io operating on DenseDistanceMatrix
  *          by (const) reference. Separated from distance_matrix.hpp to satisfy
@@ -26,7 +26,6 @@
 #include "distance_matrix.hpp"
 #include "mmap_distance_matrix.hpp"
 
-#include <Eigen/Core>
 
 #include <array>
 #include <bit>
@@ -177,18 +176,22 @@ inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path 
   }
 }
 
-/// Expand packed triangular storage to a full N×N Eigen matrix.
+/// Expand packed triangular storage to a full N×N matrix, in row-major order.
 /// Useful for numpy/MATLAB export from the binding layer.
-inline Eigen::MatrixXd to_full_matrix(const core::DenseDistanceMatrix &dm)
+///
+/// Returned as a flat `std::vector<double>` rather than an Eigen matrix (X-27).
+/// The matrix is symmetric, so row- and column-major layouts are byte-identical
+/// and every caller already copied it straight into a `std::vector<double>` —
+/// returning one removes an N×N copy instead of adding one.
+inline std::vector<double> to_full_matrix(const core::DenseDistanceMatrix &dm)
 {
   const size_t n = dm.size();
-  Eigen::MatrixXd full = Eigen::MatrixXd::Zero(
-    static_cast<Eigen::Index>(n), static_cast<Eigen::Index>(n));
+  std::vector<double> full(n * n, 0.0);
   for (size_t i = 0; i < n; ++i)
     for (size_t j = 0; j <= i; ++j) {
       const double v = dm.get(i, j);
-      full(static_cast<Eigen::Index>(i), static_cast<Eigen::Index>(j)) = v;
-      full(static_cast<Eigen::Index>(j), static_cast<Eigen::Index>(i)) = v;
+      full[i * n + j] = v;
+      full[j * n + i] = v;
     }
   return full;
 }

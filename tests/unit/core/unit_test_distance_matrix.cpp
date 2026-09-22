@@ -157,15 +157,24 @@ TEST_CASE("DenseDistanceMatrix to_full_matrix", "[DistanceMatrix]")
   dm.set(0, 2, 3.0);
   dm.set(1, 2, 7.0);
 
+  // Flat row-major std::vector<double> since X-27 dropped Eigen; the matrix is
+  // symmetric, so element (i, j) is at i * n + j and the layout question is moot.
   const auto full = dtwc::io::to_full_matrix(dm);
-  REQUIRE(full.rows() == 3);
-  REQUIRE(full.cols() == 3);
-  REQUIRE_THAT(full(0, 1), WithinAbs(5.0, 1e-12));
-  REQUIRE_THAT(full(1, 0), WithinAbs(5.0, 1e-12));
-  REQUIRE_THAT(full(0, 2), WithinAbs(3.0, 1e-12));
-  REQUIRE_THAT(full(2, 0), WithinAbs(3.0, 1e-12));
-  REQUIRE_THAT(full(1, 2), WithinAbs(7.0, 1e-12));
-  REQUIRE_THAT(full(2, 1), WithinAbs(7.0, 1e-12));
+  REQUIRE(full.size() == 3 * 3);
+  const auto at = [&full](size_t i, size_t j) { return full[i * 3 + j]; };
+  REQUIRE_THAT(at(0, 1), WithinAbs(5.0, 1e-12));
+  REQUIRE_THAT(at(1, 0), WithinAbs(5.0, 1e-12));
+  REQUIRE_THAT(at(0, 2), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(at(2, 0), WithinAbs(3.0, 1e-12));
+  REQUIRE_THAT(at(1, 2), WithinAbs(7.0, 1e-12));
+  REQUIRE_THAT(at(2, 1), WithinAbs(7.0, 1e-12));
+  // Symmetry is the property that makes the row-major/column-major choice safe,
+  // so assert it rather than assume it. Off-diagonal only: the diagonal is
+  // whatever get(i, i) returns, which is NaN while unset — unchanged from the
+  // Eigen version, which copied the same value, and NaN is not equal to itself.
+  for (size_t i = 0; i < 3; ++i)
+    for (size_t j = 0; j < 3; ++j)
+      if (i != j) REQUIRE_THAT(at(i, j), WithinAbs(at(j, i), 1e-12));
 }
 
 TEST_CASE("DenseDistanceMatrix uncomputed entries are not computed", "[DistanceMatrix]")

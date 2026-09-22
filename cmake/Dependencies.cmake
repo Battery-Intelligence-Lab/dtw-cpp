@@ -107,23 +107,13 @@ function(dtwc_setup_dependencies)
   # find_package(Python) and nanobind discovery are handled in python/CMakeLists.txt
   # to ensure scikit-build-core has configured paths first.
 
-  # Eigen3 — header-only linear algebra (MPL2 / Apache-2.0 / BSD-3)
-  # Used for scratch matrices (aligned SIMD-ready allocation, zero-copy Map),
-  # replacing custom ScratchMatrix and DenseDistanceMatrix internals.
-  if(NOT TARGET Eigen3::Eigen)
-    CPMAddPackage(
-      NAME Eigen
-      URL "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.bz2"
-      # SHA256 pinned (Task 0.12). Computed 2026-07-07 from cached tarball
-      # build/_deps/eigen-subbuild/.../eigen-5.0.1.tar.bz2. Immutable release tag.
-      URL_HASH SHA256=e4de6b08f33fd8b8985d2f204381408c660bffa6170ac65b68ae1bd3cd575c0a
-      DOWNLOAD_ONLY YES
-    )
-    add_library(Eigen3::Eigen INTERFACE IMPORTED)
-    set_target_properties(Eigen3::Eigen PROPERTIES
-      INTERFACE_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}"
-      INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${Eigen_SOURCE_DIR}")
-  endif()
+  # Eigen was removed in X-27. It was the project's only copyleft dependency
+  # (MPL-2.0) and the only MPL obligation in the Python wheel, and it was carried
+  # for exactly two uses: ScratchMatrix's base class and a to_full_matrix return
+  # type that every caller immediately copied into a std::vector. Both are now
+  # plain standard library. The CMake rationale here had also gone stale — it
+  # claimed "zero-copy Map" and "DenseDistanceMatrix internals", and there was no
+  # Eigen::Map anywhere and DenseDistanceMatrix was already std::vector<double>.
 
   # PMU counters (X-24, D-17). Every route by which this could fail to deliver
   # counters is a FATAL_ERROR, because Google Benchmark's own runtime guard cannot
