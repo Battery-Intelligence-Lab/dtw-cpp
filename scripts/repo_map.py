@@ -49,6 +49,7 @@ ROOT_FILE_LAYER = {
     # foundation that lives at dtwc/ root until C-11 moves it to dtwc/base/
     "error.hpp": "base", "settings.hpp": "base", "missing_utils.hpp": "base",
     "parallelisation.hpp": "base", "timing.hpp": "base", "system_memory.cpp": "base",
+    "system_memory.hpp": "base",  # X-05: gives system_memory.cpp a base-layer declaration
     "env.hpp": "base", "env.cpp": "base",
     # the DTW wrapper family and the series container are core value/kernels code
     "warping.hpp": "core", "warping_adtw.hpp": "core", "warping_ddtw.hpp": "core",

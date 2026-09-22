@@ -143,6 +143,18 @@ dtwc_add_script_test(NAME cmake_regex_at_least
     SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test_regex_at_least.cmake"
     MARKER "CMAKE_REGEX_AT_LEAST cases=32 failures=0" LABELS tooling)
 
+# X-16: the count of bare `throw std::` in dtwc/ may only fall. Pure Python over
+# the source tree, so unlike the codegen report it runs on every toolchain and is
+# a real gate rather than a report.
+add_test(NAME check_typed_throws
+         COMMAND "${Python3_EXECUTABLE}"
+                 "${CMAKE_SOURCE_DIR}/scripts/check_typed_throws.py"
+         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+set_tests_properties(check_typed_throws PROPERTIES
+    PASS_REGULAR_EXPRESSION
+        "TYPED_THROW_RATCHET files=[1-9][0-9]* untyped=[0-9]+ ceiling=[0-9]+ verdict=PASS"
+    LABELS "tooling;x16")
+
 # A-06 / core-map Q10 evidence: does IPO inline Problem::dist_by_ind into the
 # FastPAM SWAP kernels? Report-only — the marker is the evidence and W4 decides.
 # Needs an ELF/Mach-O binary with symbols and an objdump, so it is not registered

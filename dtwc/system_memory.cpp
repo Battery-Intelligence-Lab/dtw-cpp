@@ -8,7 +8,7 @@
  * consumer TU.
  */
 
-#include "DataLoader.hpp" //!< For the dtwc::detail::available_ram_bytes() declaration
+#include "system_memory.hpp" //!< For the dtwc::detail::available_ram_bytes() declaration
 
 #include <cstddef>
 #include <cstdint>

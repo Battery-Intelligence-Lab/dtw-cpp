@@ -27,6 +27,14 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   release workflow met every condition for it to apply. The Python wheels were never affected —
   they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
   extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Added (gates):** `scripts/check_typed_throws.py` holds the number of bare `throw std::` sites in
+  `dtwc/` to its current 259 and lets it only fall, so the conversion to typed errors — which
+  callers in three language bindings depend on to tell failures apart — cannot quietly regress. It
+  is registered as the `check_typed_throws` test and runs on every toolchain.
+- **Changed (internal headers):** `dtwc::detail::available_ram_bytes()` is declared in a new
+  `dtwc/system_memory.hpp` instead of `DataLoader.hpp`. `DataLoader.hpp` includes the new header and
+  re-exports the name, so no consumer changes. This removes the last include edge from a foundation
+  file to a higher layer that did not point at `Problem.hpp`.
 - **Added (tooling, evidence):** two report-only codegen tools. `scripts/check_ipo_inlining.py`
   disassembles the built CLI and counts surviving out-of-line calls to `Problem::dist_by_ind` inside
   the FastPAM SWAP kernels; it is registered as the `check_ipo_inlining` test everywhere except

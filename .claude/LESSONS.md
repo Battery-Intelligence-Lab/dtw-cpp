@@ -1512,3 +1512,17 @@ Critical knowledge to avoid repeating mistakes.
   code. Any "what did the compiler do to the hot loop?" tool therefore needs a
   probe TU that instantiates it on purpose. Worth checking *first*: the obvious
   target file can look like the kernel and contain none of it.
+- **A comment/string stripper under-counts silently — check it against a naive
+  grep before trusting the number it produces.** The typed-throw ratchet's first
+  reading was 240 against grep's 260. The gap was not noise: `metal_dtw.mm`
+  embeds its Metal shader as a raw string `R"(...)"`, which the scanner did not
+  understand, and the apostrophes in that shader's own comments (`thread's`,
+  `row's`) were read as opening character literals that swallowed the rest of the
+  file — hiding **all 18** of its throw sites. A quote should open a character
+  literal only when what follows looks like one (`'x'`, `'\n'`), and raw strings
+  need their delimiter parsed. Had the buggy 240 been recorded as the ceiling,
+  fixing the stripper later would have looked like 20 new violations.
+- **Check a ledger row's number before building a ratchet on it.** X-16 said
+  "256 today"; the tree held 259. Counts written into prose drift silently from
+  the thing they describe — which is the argument for the script, and also the
+  reason to measure rather than transcribe when writing one.

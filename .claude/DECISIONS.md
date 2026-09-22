@@ -166,6 +166,15 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
   worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
   still greps for the old `if(TARGET …)` block. Unowned; needs a row.
+- **2026-09-22 — done.** W1 opened with its two gate-shaped rows. **X-16**: the typed-throw ratchet
+  is a script rather than a number in prose, and measuring it showed why — the row said 256, the
+  tree holds 259. **X-05**: `available_ram_bytes()` moved to a new base-layer header, which removes
+  the last upward include edge not pointing at `Problem.hpp` and takes the count 18 → 17, the W1
+  gate's own number, reached at the start of the wave instead of the end. Worth carrying forward:
+  the ratchet's comment/string stripper first read 240 against grep's 260, because `metal_dtw.mm`
+  embeds its shader as a raw string and the apostrophes in that shader's comments were parsed as
+  character literals that swallowed all 18 of its throw sites. Recording the buggy 240 as the
+  ceiling would have made a later fix look like 20 new violations.
 - **2026-09-22 — done.** X-04, which closes W0. Two report-only tools, and both questions now have
   numbers instead of opinions. **A-06 Q10:** IPO does *not* inline `Problem::dist_by_ind` — ThinLTO
   takes the surviving out-of-line call sites from 20 to 18, leaving it called in
