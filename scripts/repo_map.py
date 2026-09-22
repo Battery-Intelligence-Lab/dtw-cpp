@@ -46,11 +46,12 @@ DIR_LAYER = {
     "algorithms": "algorithms", "mip": "mip", "cli": "surface", "extern": "vendored",
 }
 ROOT_FILE_LAYER = {
-    # foundation that lives at dtwc/ root until C-11 moves it to dtwc/base/
+    # C-11 moved the foundation into dtwc/base/, which DIR_LAYER already ranks
+    # "base". What is left at these paths is a one-release forwarding header that
+    # includes the real one; it is still foundation, so it still ranks base.
     "error.hpp": "base", "settings.hpp": "base", "missing_utils.hpp": "base",
-    "parallelisation.hpp": "base", "timing.hpp": "base", "system_memory.cpp": "base",
-    "system_memory.hpp": "base",  # X-05: gives system_memory.cpp a base-layer declaration
-    "env.hpp": "base", "env.cpp": "base",
+    "parallelisation.hpp": "base", "timing.hpp": "base",
+    "system_memory.hpp": "base", "env.hpp": "base", "random_engine.hpp": "base",
     # the DTW wrapper family and the series container are core value/kernels code
     "warping.hpp": "core", "warping_adtw.hpp": "core", "warping_ddtw.hpp": "core",
     "warping_missing.hpp": "core", "warping_missing_arow.hpp": "core",

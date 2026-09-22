@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include "../dtwc/settings.hpp"
+#include "base/settings.hpp"
 
 #include <vector>
 #include <string>

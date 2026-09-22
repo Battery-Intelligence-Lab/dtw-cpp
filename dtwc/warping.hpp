@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include "settings.hpp"           // for DEFAULT_BAND
+#include "base/settings.hpp"           // for DEFAULT_BAND
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"    // for core::MetricType
 #include "core/selector_validation.hpp"

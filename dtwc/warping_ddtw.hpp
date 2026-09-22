@@ -24,7 +24,7 @@
 #pragma once
 
 #include "warping.hpp"
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "core/selector_validation.hpp"
 
 #include <vector>

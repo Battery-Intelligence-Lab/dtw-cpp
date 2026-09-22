@@ -29,7 +29,7 @@
 #include <dtwc.hpp>
 #include <algorithms/detail/fast_pam_plan.hpp>
 #include <algorithms/fast_pam.hpp>
-#include <timing.hpp> // dtwc::Clock
+#include <base/timing.hpp> // dtwc::Clock
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>

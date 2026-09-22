@@ -27,8 +27,8 @@
  */
 
 #include <dtwc.hpp>
-#include <env.hpp>
-#include <parallelisation.hpp>
+#include <base/env.hpp>
+#include <base/parallelisation.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 

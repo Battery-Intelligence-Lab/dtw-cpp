@@ -14,8 +14,8 @@
 
 #include "scores.hpp"
 #include "Problem.hpp"
-#include "error.hpp"
-#include "parallelisation.hpp"
+#include "base/error.hpp"
+#include "base/parallelisation.hpp"
 
 #include <algorithm>      // for std::max, std::count_if
 #include <cmath>          // for std::log

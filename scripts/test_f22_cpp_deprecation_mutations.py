@@ -74,7 +74,7 @@ TARGETS = (
     "dtwc/Problem.cpp",
     "dtwc/scores.hpp",
     "dtwc/DataLoader.hpp",
-    "dtwc/settings.hpp",
+    "dtwc/base/settings.hpp",
 )
 
 
@@ -155,13 +155,13 @@ MUTATIONS = (
             "use start_column"),
     removal("diag-loader-start-row", "dtwc/DataLoader.hpp",
             "use start_row"),
-    removal("diag-set-data-path-fs", "dtwc/settings.hpp",
+    removal("diag-set-data-path-fs", "dtwc/base/settings.hpp",
             "use set_data_path", occurrence=1, expected_count=2),
-    removal("diag-set-data-path-cstring", "dtwc/settings.hpp",
+    removal("diag-set-data-path-cstring", "dtwc/base/settings.hpp",
             "use set_data_path", occurrence=2, expected_count=2),
-    removal("diag-set-results-path-fs", "dtwc/settings.hpp",
+    removal("diag-set-results-path-fs", "dtwc/base/settings.hpp",
             "use set_results_path", occurrence=1, expected_count=2),
-    removal("diag-set-results-path-cstring", "dtwc/settings.hpp",
+    removal("diag-set-results-path-cstring", "dtwc/base/settings.hpp",
             "use set_results_path", occurrence=2, expected_count=2),
     Mutation(
         "io-read-forwarding",
@@ -306,7 +306,7 @@ MUTATIONS = (
                  '[[deprecated("prefer ', 5),
             Edit("dtwc/DataLoader.hpp", '[[deprecated("use ',
                  '[[deprecated("prefer ', 2),
-            Edit("dtwc/settings.hpp", '[[deprecated("use ',
+            Edit("dtwc/base/settings.hpp", '[[deprecated("use ',
                  '[[deprecated("prefer ', 4),
         ),
     ),

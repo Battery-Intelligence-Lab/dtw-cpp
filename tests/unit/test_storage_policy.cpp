@@ -22,7 +22,7 @@
 
 #include <dtwc.hpp>
 #include <core/pruned_distance_matrix.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 

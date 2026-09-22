@@ -12,11 +12,11 @@
 #include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Data.hpp"        // for Data
-#include "../error.hpp"       // for SolverError
+#include "../base/error.hpp"       // for SolverError
 #include "../types/types.hpp" // for Triplet, RowMajor
 #include "../Problem.hpp"
-#include "../settings.hpp"
-#include "../timing.hpp"
+#include "../base/settings.hpp"
+#include "../base/timing.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>

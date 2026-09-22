@@ -35,7 +35,7 @@
 
 #pragma once
 
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 #include "variant_validation.hpp"
 
 #include <algorithm>

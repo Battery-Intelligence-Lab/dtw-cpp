@@ -15,7 +15,7 @@
 
 #ifdef DTWC_HAS_ARROW
 
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 
 #include <arrow/api.h>
 #include <arrow/io/api.h>

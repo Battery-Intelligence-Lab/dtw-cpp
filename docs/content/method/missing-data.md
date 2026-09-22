@@ -105,7 +105,7 @@ The `interpolate_linear()` function fills NaN gaps before DTW computation:
 - **All-NaN input:** throws `std::runtime_error`.
 
 ```cpp
-#include <dtwc/missing_utils.hpp>
+#include <dtwc/base/missing_utils.hpp>
 
 std::vector<double> v = {NAN, 1.0, NAN, NAN, 4.0, NAN};
 auto filled = dtwc::interpolate_linear(v);
@@ -121,7 +121,7 @@ When `MissingStrategy::Interpolate` is set on a `Problem`, interpolation is appl
 The `is_missing()` function uses raw bit inspection to detect NaN values, making it safe under aggressive floating-point optimization flags (`-ffast-math`, `/fp:fast`) where `std::isnan()` may be optimized away by the compiler.
 
 ```cpp
-#include <dtwc/missing_utils.hpp>
+#include <dtwc/base/missing_utils.hpp>
 
 double val = NAN;
 bool m = dtwc::is_missing(val);  // true (safe under -ffast-math)

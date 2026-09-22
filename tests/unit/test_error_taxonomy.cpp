@@ -24,7 +24,7 @@
  * @date 07 Jul 2026
  */
 
-#include <error.hpp>
+#include <base/error.hpp>
 #include <soft_dtw.hpp>
 
 #include <catch2/catch_test_macros.hpp>

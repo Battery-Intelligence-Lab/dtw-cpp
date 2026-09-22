@@ -8,7 +8,7 @@
 #include "../Problem.hpp"
 #include "../core/medoid_assignment_policy.hpp"
 #include "../core/portable_random.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #include <algorithm>
 #include <cmath>

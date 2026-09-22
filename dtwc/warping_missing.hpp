@@ -24,9 +24,9 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "warping.hpp"           // transitive dtwFull_L visibility for callers
-#include "missing_utils.hpp"     // is_missing
+#include "base/missing_utils.hpp"     // is_missing
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "core/dtw_options.hpp"

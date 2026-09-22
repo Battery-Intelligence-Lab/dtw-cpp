@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 namespace dtwc {
 

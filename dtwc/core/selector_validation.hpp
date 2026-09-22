@@ -6,7 +6,7 @@
 #pragma once
 
 #include "dtw_options.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 namespace dtwc::core {
 

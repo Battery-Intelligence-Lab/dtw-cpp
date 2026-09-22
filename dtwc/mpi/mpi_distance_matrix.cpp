@@ -15,7 +15,7 @@
  */
 
 #include "mpi_distance_matrix.hpp"
-#include "../parallelisation.hpp"
+#include "../base/parallelisation.hpp"
 
 #ifdef DTWC_HAS_MPI
 

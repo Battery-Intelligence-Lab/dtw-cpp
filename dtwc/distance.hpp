@@ -11,13 +11,13 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "core/distance_semantics.hpp"
 #include "core/dtw_options.hpp"
 #include "core/variant_validation.hpp"
 #include "core/msm.hpp"
 #include "core/twe.hpp"
-#include "missing_utils.hpp"
+#include "base/missing_utils.hpp"
 #include "soft_dtw.hpp"
 #include "warping.hpp"
 #include "warping_adtw.hpp"

@@ -13,10 +13,10 @@ target_sources(dtwc++
   Problem_IO.cpp
   api.cpp
   checkpoint.cpp
-  env.cpp
+  base/env.cpp
   initialisation.cpp
   scores.cpp
-  system_memory.cpp
+  base/system_memory.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp

@@ -12,7 +12,7 @@
 #include <dtwc.hpp>
 #include <algorithms/detail/fast_clara_plan.hpp>
 #include <algorithms/fast_clara.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>

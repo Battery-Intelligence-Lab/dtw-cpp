@@ -9,7 +9,7 @@
  * dependent. The limit belongs in a num_threads(...) clause on the pragma.
  */
 
-#include <parallelisation.hpp>
+#include <base/parallelisation.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 

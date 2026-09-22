@@ -24,8 +24,8 @@
 #endif
 
 #include <dtwc.hpp>
-#include <env.hpp>
-#include <error.hpp>
+#include <base/env.hpp>
+#include <base/error.hpp>
 #include <io/arrow_c_data.hpp>
 #include <checkpoint.hpp>
 #include <warping.hpp>

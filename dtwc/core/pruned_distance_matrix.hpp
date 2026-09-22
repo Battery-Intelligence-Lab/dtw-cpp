@@ -39,7 +39,7 @@
 #include "../enums/LowerBoundStrategy.hpp"
 #include "lower_bounds.hpp"
 #include "lower_bound_impl.hpp"
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 
 #include <cstddef>
 #include <vector>

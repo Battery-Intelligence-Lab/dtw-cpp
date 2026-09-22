@@ -6,8 +6,8 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
-#include "../error.hpp"
-#include "../settings.hpp"
+#include "../base/error.hpp"
+#include "../base/settings.hpp"
 
 #include <cstddef>
 #include <cstdint>

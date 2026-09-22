@@ -18,8 +18,8 @@
  */
 
 #include "dtwc.hpp"
-#include "env.hpp"
-#include "error.hpp"
+#include "base/env.hpp"
+#include "base/error.hpp"
 #include "core/variant_validation.hpp"
 #ifdef DTWC_HAS_MMAP
 #include "core/mmap_data_store.hpp"

@@ -17,8 +17,8 @@
 
 #pragma once
 
-#include "error.hpp"
-#include "settings.hpp"
+#include "base/error.hpp"
+#include "base/settings.hpp"
 
 #include <vector>
 #include <span>

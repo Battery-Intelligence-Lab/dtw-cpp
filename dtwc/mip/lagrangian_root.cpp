@@ -23,8 +23,8 @@
 #include "solution_transaction.hpp"
 
 #include "../core/clustering_result.hpp"
-#include "../error.hpp"
-#include "../parallelisation.hpp"
+#include "../base/error.hpp"
+#include "../base/parallelisation.hpp"
 #include "../Problem.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS

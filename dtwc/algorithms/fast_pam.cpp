@@ -38,7 +38,7 @@
 #include "../core/portable_random.hpp"
 #include "../core/distance_sampling_weights.hpp"
 #include "../initialisation.hpp"
-#include "../parallelisation.hpp"
+#include "../base/parallelisation.hpp"
 
 #include <algorithm>
 #include <cstdint>

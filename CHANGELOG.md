@@ -27,6 +27,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   release workflow met every condition for it to apply. The Python wheels were never affected —
   they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
   extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Changed (headers):** the foundation headers moved into `dtwc/base/` — `error.hpp`,
+  `settings.hpp`, `missing_utils.hpp`, `parallelisation.hpp`, `timing.hpp`, `env.hpp`,
+  `system_memory.hpp` and `random_engine.hpp`. The old paths still work for one release and now emit
+  a compile-time message naming the new one; they will be removed in the next release. Every include
+  inside this repository was updated, so the message only reaches code outside it.
 - **Changed (internal headers):** `dtwc::randGenerator` now lives in `dtwc/random_engine.hpp`
   rather than `settings.hpp`, and `settings.hpp` no longer includes `<random>` or `<iostream>`. It
   is reached by around forty translation units and was pulling both in for things almost none of

@@ -17,7 +17,7 @@
 #ifdef DTWC_HAS_CUDA
 
 #include "../enums/KernelOverride.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 #include "../core/gpu_dtw_common.hpp"
 
 #include <cstddef>

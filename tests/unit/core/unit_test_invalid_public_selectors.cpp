@@ -27,7 +27,7 @@
 #include <algorithms/fast_pam.hpp>
 #include <algorithms/hierarchical.hpp>
 #include <algorithms/one_batch_pam.hpp>
-#include <env.hpp>
+#include <base/env.hpp>
 #include <mip/solution_transaction.hpp>
 
 #include <catch2/catch_test_macros.hpp>

@@ -13,10 +13,10 @@
 #include "algorithms/one_batch_pam.hpp"
 #include "core/matrix_io.hpp"
 #include "detail/tier1_method_resolution.hpp"
-#include "env.hpp"
-#include "error.hpp"
+#include "base/env.hpp"
+#include "base/error.hpp"
 #include "scores.hpp"
-#include "settings.hpp"
+#include "base/settings.hpp"
 
 #include <algorithm>
 #include <cctype>

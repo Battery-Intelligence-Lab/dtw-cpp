@@ -15,7 +15,7 @@
 
 #include "reduced_cost_fixing.hpp"
 
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -15,7 +15,7 @@
 #ifdef DTWC_HAS_PARQUET
 
 #include "../Data.hpp"
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 #include "parquet_schema.hpp"
 
 #include <arrow/api.h>

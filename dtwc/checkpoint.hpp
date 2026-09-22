@@ -35,7 +35,7 @@
 
 #include "core/clustering_result.hpp"
 #include "core/dtw_options.hpp"
-#include "error.hpp"
+#include "base/error.hpp"
 
 #include <string>
 #include <filesystem>

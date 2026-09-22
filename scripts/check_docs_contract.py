@@ -28,7 +28,7 @@ def cpp_string_literals(function_name: str, source: str) -> list[str]:
 
 
 def assert_env_messages() -> None:
-    source = (ROOT / "dtwc/env.cpp").read_text(encoding="utf-8")
+    source = (ROOT / "dtwc/base/env.cpp").read_text(encoding="utf-8")
     docs = (ROOT / "docs/content/guides/devices.md").read_text(encoding="utf-8")
 
     no_env = "".join(cpp_string_literals("msg_no_env_file", source))

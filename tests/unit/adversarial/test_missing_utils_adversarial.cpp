@@ -22,7 +22,7 @@
  * @date 02 Apr 2026
  */
 
-#include <missing_utils.hpp>
+#include <base/missing_utils.hpp>
 #include <warping_missing.hpp>
 
 #include <catch2/catch_test_macros.hpp>

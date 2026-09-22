@@ -38,7 +38,7 @@
 
 #include <warping.hpp>
 #include <Problem.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 #include <core/dtw_options.hpp>
 
 #include <catch2/catch_test_macros.hpp>

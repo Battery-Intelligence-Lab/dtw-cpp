@@ -8,8 +8,8 @@
 #include "dtw_options.hpp"
 #include "selector_validation.hpp"
 #include "variant_validation.hpp"
-#include "../error.hpp"
-#include "../missing_utils.hpp"
+#include "../base/error.hpp"
+#include "../base/missing_utils.hpp"
 
 #include <cstddef>
 #include <span>

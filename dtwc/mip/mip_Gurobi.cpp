@@ -11,8 +11,8 @@
 #include "solution_transaction.hpp"
 #include "warm_start.hpp"
 #include "../Problem.hpp"
-#include "../error.hpp" // for SolverError
-#include "../settings.hpp"
+#include "../base/error.hpp" // for SolverError
+#include "../base/settings.hpp"
 #include "../types/types.hpp" // for Range
 
 

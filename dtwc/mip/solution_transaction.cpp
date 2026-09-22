@@ -1,7 +1,7 @@
 #include "solution_transaction.hpp"
 
 #include "../Problem.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #include <algorithm>
 #include <cmath>

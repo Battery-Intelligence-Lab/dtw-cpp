@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 
 #include <limits>
 #include <array>

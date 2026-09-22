@@ -3,8 +3,8 @@
 
 #include "../Problem.hpp"
 #include "../algorithms/fast_pam.hpp"
-#include "../error.hpp"
-#include "../settings.hpp"
+#include "../base/error.hpp"
+#include "../base/settings.hpp"
 
 #include <cstddef>
 #include <string>

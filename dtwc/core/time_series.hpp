@@ -12,7 +12,7 @@
 
 #pragma once
 
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 
 #include <vector>
 #include <string>

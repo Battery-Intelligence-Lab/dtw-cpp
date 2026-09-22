@@ -14,7 +14,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #include <vector>
 

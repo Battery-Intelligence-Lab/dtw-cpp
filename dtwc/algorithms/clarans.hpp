@@ -22,7 +22,7 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 #include <cstdint>
 
 namespace dtwc {

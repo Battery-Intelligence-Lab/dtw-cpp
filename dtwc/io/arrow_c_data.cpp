@@ -8,7 +8,7 @@
 
 #include "arrow_c_data.hpp"
 
-#include "../error.hpp"
+#include "../base/error.hpp"
 #include "nanoarrow/nanoarrow.h"
 
 #include <string>

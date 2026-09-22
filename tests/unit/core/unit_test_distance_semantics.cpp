@@ -11,7 +11,7 @@
 #include <core/dtw.hpp>
 #include <core/dtw_dispatch.hpp>
 #include <distance.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 #include <warping_adtw.hpp>
 #include <warping_missing.hpp>
 #include <warping_missing_arow.hpp>

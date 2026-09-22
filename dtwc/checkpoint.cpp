@@ -9,7 +9,7 @@
 #include "checkpoint.hpp"
 #include "Problem.hpp"
 #include "core/sha256.hpp"
-#include "error.hpp"
+#include "base/error.hpp"
 
 #include <array>
 #include <atomic>

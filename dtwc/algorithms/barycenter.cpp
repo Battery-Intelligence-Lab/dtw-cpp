@@ -7,8 +7,8 @@
 
 #include "../Problem.hpp"
 #include "../core/portable_random.hpp"
-#include "../error.hpp"
-#include "../parallelisation.hpp"
+#include "../base/error.hpp"
+#include "../base/parallelisation.hpp"
 
 #include <algorithm>
 #include <cmath>

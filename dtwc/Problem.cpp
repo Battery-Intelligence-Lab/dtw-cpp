@@ -11,11 +11,11 @@
  */
 
 #include "Problem.hpp"
-#include "error.hpp"           // for DeviceError
+#include "base/error.hpp"           // for DeviceError
 #include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byBenders
-#include "parallelisation.hpp" // for run
+#include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
-#include "settings.hpp"        // for data_t, randGenerator, band, isDebug
+#include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
 #include "core/matrix_io.hpp"  // for operator<<(ostream, DenseDistanceMatrix)
 #include "core/medoid_assignment_policy.hpp" // finite assignment contract
 
@@ -33,7 +33,7 @@
 #include "core/variant_validation.hpp"     // validate_variant_params
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
-#include "missing_utils.hpp"               // for has_missing
+#include "base/missing_utils.hpp"               // for has_missing
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 

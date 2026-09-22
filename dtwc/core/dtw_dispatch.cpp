@@ -6,7 +6,7 @@
 #include "dtw_dispatch.hpp"
 
 #include "../Problem.hpp"
-#include "../missing_utils.hpp"      // has_missing, interpolate_linear
+#include "../base/missing_utils.hpp"      // has_missing, interpolate_linear
 #include "../warping.hpp"            // dtwBanded, dtwBanded_mv
 #include "../warping_adtw.hpp"       // adtwBanded, adtwBanded_mv
 #include "../warping_ddtw.hpp"       // ddtwBanded, derivative_transform_mv_inplace
@@ -19,7 +19,7 @@
 #include "msm.hpp"                   // msm_distance
 #include "public_distance.hpp"       // normalize_public_distance
 #include "twe.hpp"                   // twe_distance
-#include "../error.hpp"              // InvalidInput
+#include "../base/error.hpp"              // InvalidInput
 
 #include <stdexcept>
 

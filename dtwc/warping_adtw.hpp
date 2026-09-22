@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "warping.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"

@@ -20,7 +20,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <dtwc.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 
 #if __has_include(<cuda/launch_prep.hpp>)
 #include <cuda/launch_prep.hpp>

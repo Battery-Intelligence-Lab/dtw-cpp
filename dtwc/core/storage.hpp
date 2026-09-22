@@ -5,7 +5,7 @@
 /// @date 08 Apr 2026
 #pragma once
 
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 namespace dtwc::core {
 

@@ -1,91 +1,17 @@
 /**
  * @file error.hpp
- * @brief DTWC++ exception taxonomy.
+ * @brief Compatibility forwarder — this header moved to dtwc/base/error.hpp.
  *
- * A small, header-only hierarchy rooted at dtwc::Error, which derives from
- * std::runtime_error. Every DTWC++ library error derives from Error, so a
- * caller can:
- *   - catch dtwc::Error         -> handle any DTWC++ failure, or
- *   - catch std::runtime_error  -> handle it alongside the standard library,
- *   - catch std::exception      -> handle everything.
+ * @details The foundation layer now lives in its own directory (ledger C-11), so
+ * that the folder a header sits in matches the layer the dependency checker
+ * assigns it. This forwarder keeps the old path working for one release.
  *
- * The message carried by what() is the entire payload: no error codes, no
- * macros, no extra machinery. Constructors are inherited from
- * std::runtime_error, so every type is constructed from a message string and
- * preserves it verbatim through what().
- *
- * Categories:
- *   - InvalidInput : the caller supplied bad arguments or data (a validation
- *                    failure at a public API boundary).
- *   - UndefinedScore : (an InvalidInput) a quality score is undefined for the
- *                    labelling supplied, e.g. fewer than two non-empty clusters.
- *   - SolverError  : an optimisation solver (HiGHS/Gurobi) rejected the model,
- *                    failed to run, or returned a non-optimal status.
- *   - DeviceError  : a compute-device (CPU/CUDA/...) selection or operation
- *                    failed.
- *   - IOError      : a file or data-source read/write failed.
- *
- * @author Volkan Kumtepeli
- * @author Becky Perriment
- * @date 07 Jul 2026
+ * Every include inside this repository was updated to the new path when the move
+ * happened, so the message below can only be reached by code outside it.
  */
 
 #pragma once
 
-#include <stdexcept>
+#pragma message("dtwc/error.hpp has moved to dtwc/base/error.hpp. The old path still works in this release and will be removed in the next one; please include \"base/error.hpp\" instead.")
 
-namespace dtwc {
-
-/**
- * @brief Base class for all DTWC++ exceptions.
- *
- * Derives from std::runtime_error so that pre-existing
- * `catch (const std::runtime_error &)` / `catch (const std::exception &)`
- * handlers keep working unchanged.
- */
-class Error : public std::runtime_error
-{
-public:
-  using std::runtime_error::runtime_error; // message-preserving constructors
-};
-
-/// The caller supplied invalid input (bad arguments, empty/mismatched data, ...).
-class InvalidInput : public Error
-{
-public:
-  using Error::Error;
-};
-
-/// A clustering-quality score is mathematically undefined for the labelling it
-/// was asked to score (fewer than two non-empty clusters). It is a kind of
-/// InvalidInput, but a caller that only wants to skip an unwritable score file
-/// must be able to distinguish it from a corrupt labelling or bad data, which
-/// must still propagate.
-class UndefinedScore : public InvalidInput
-{
-public:
-  using InvalidInput::InvalidInput;
-};
-
-/// An optimisation solver rejected/failed the model or returned a non-optimal status.
-class SolverError : public Error
-{
-public:
-  using Error::Error;
-};
-
-/// A compute-device selection or operation failed.
-class DeviceError : public Error
-{
-public:
-  using Error::Error;
-};
-
-/// A file or data-source I/O operation failed.
-class IOError : public Error
-{
-public:
-  using Error::Error;
-};
-
-} // namespace dtwc
+#include "base/error.hpp"

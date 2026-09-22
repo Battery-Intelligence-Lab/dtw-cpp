@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "../settings.hpp" // data_t
+#include "../base/settings.hpp" // data_t
 
 #include <functional>
 #include <span>

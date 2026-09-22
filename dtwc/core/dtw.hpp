@@ -15,7 +15,7 @@
 
 #pragma once
 
-#include "../settings.hpp"
+#include "../base/settings.hpp"
 #include "../warping.hpp"        // existing DTW implementations
 #include "dtw_options.hpp"
 #include "distance_metric.hpp"

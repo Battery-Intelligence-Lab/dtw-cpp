@@ -12,7 +12,7 @@
 #include "pdlp_lp.hpp"
 #include "highs_support.hpp"
 #include "index_guard.hpp"
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>

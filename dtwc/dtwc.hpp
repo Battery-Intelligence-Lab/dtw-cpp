@@ -8,8 +8,8 @@
 
 #pragma once
 
-#include "settings.hpp"
-#include "random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp (X-12)
+#include "base/settings.hpp"
+#include "base/random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp (X-12)
 #include "api.hpp"
 #include "fileOperations.hpp"
 #include "Problem.hpp"
@@ -24,7 +24,7 @@
 #include "warping_adtw.hpp"
 #include "warping_missing.hpp"
 #include "warping_missing_arow.hpp"
-#include "missing_utils.hpp"
+#include "base/missing_utils.hpp"
 #include "soft_dtw.hpp"
 #include "algorithms/fast_pam.hpp"
 #include "algorithms/fast_clara.hpp"

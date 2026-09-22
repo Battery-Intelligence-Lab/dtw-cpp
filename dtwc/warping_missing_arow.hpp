@@ -39,7 +39,7 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full / _linear / _banded, AROWCell
 #include "core/dtw_cost.hpp"     // SpanAROWL1Cost / SpanAROWSquaredL2Cost
 #include "core/dtw_options.hpp"  // core::MetricType

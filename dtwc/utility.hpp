@@ -13,10 +13,10 @@
 
 #pragma once
 
-#include "settings.hpp"        //!< Include project settings.
+#include "base/settings.hpp"        //!< Include project settings.
 #include "types/types.hpp"     //!< Include custom types used across the project.
 #include "fileOperations.hpp"  //!< Include file operation utilities.
-#include "parallelisation.hpp" //!< Include parallelization utilities.
-#include "timing.hpp"          //!< Include timing utilities.
+#include "base/parallelisation.hpp" //!< Include parallelization utilities.
+#include "base/timing.hpp"          //!< Include timing utilities.
 
 // The rest of the file would contain declarations or implementations of utility functions.

@@ -11,9 +11,9 @@
 
 #include "Data.hpp"           //!< For Data class
 #include "fileOperations.hpp" //!< For load_batch_file(), load_folder(), ignoreBOM()
-#include "settings.hpp"       //!< For data_t type
+#include "base/settings.hpp"       //!< For data_t type
 #include "core/storage.hpp"   //!< For core::StoragePolicy
-#include "env.hpp"            //!< For dtwc::env(), dtwc::Device (Task 1.3, built concurrently)
+#include "base/env.hpp"            //!< For dtwc::env(), dtwc::Device (Task 1.3, built concurrently)
 
 #include <atomic>     //!< For std::atomic (lock-free temp-path sequence)
 #include <chrono>     //!< For std::chrono::system_clock (temp-path entropy)
@@ -40,7 +40,7 @@
 // system_memory.cpp — deliberately NO <windows.h> in this widely-included header
 // (it reaches every consumer through <dtwc/dtwc.hpp> and would leak ERROR,
 // GetMessage and the min/max macros).
-#include "system_memory.hpp" //!< For dtwc::detail::available_ram_bytes()
+#include "base/system_memory.hpp" //!< For dtwc::detail::available_ram_bytes()
 
 namespace dtwc {
 

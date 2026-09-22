@@ -31,9 +31,9 @@
 #include "solution_transaction.hpp"
 #include "../core/clustering_result.hpp"
 #include "../Problem.hpp"
-#include "../error.hpp"
-#include "../settings.hpp"
-#include "../timing.hpp"
+#include "../base/error.hpp"
+#include "../base/settings.hpp"
+#include "../base/timing.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>

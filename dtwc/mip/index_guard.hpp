@@ -17,7 +17,7 @@
 
 #pragma once
 
-#include "../error.hpp"
+#include "../base/error.hpp"
 
 #include <cstddef>
 #include <string>

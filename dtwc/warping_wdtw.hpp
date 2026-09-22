@@ -27,12 +27,12 @@
 
 #pragma once
 
-#include "settings.hpp"
+#include "base/settings.hpp"
 #include "warping.hpp"
 #include "core/dtw_kernel.hpp"
 #include "core/dtw_cost.hpp"
 #include "core/variant_validation.hpp"
-#include "error.hpp"
+#include "base/error.hpp"
 
 #include <algorithm>      // std::max
 #include <cmath>          // std::exp

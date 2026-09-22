@@ -14,7 +14,7 @@
 #include <core/msm.hpp>
 #include <core/twe.hpp>
 #include <distance.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 #include <soft_dtw.hpp>
 #include <warping_adtw.hpp>
 #include <warping_wdtw.hpp>

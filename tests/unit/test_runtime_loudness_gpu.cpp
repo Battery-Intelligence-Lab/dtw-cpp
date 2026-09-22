@@ -5,7 +5,7 @@
 
 #include <Data.hpp>
 #include <Problem.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 

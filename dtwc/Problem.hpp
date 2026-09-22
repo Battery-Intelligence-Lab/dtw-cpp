@@ -14,8 +14,8 @@
 
 #include "Data.hpp"           // for Data
 #include "DataLoader.hpp"     // for DataLoader
-#include "settings.hpp"       // for data_t, resultsPath
-#include "error.hpp"          // for InvalidInput
+#include "base/settings.hpp"       // for data_t, resultsPath
+#include "base/error.hpp"          // for InvalidInput
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant

@@ -11,7 +11,7 @@
 #include <algorithms/clarans.hpp>
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/fast_pam.hpp>
-#include <error.hpp>
+#include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>

@@ -18,9 +18,9 @@
 #include "selector_validation.hpp"
 #include "../warping.hpp"
 #include "../warping_adtw.hpp"
-#include "../settings.hpp"
-#include "../parallelisation.hpp"
-#include "../error.hpp"
+#include "../base/settings.hpp"
+#include "../base/parallelisation.hpp"
+#include "../base/error.hpp"
 
 #include <vector>
 #include <algorithm>
