@@ -1495,3 +1495,20 @@ Critical knowledge to avoid repeating mistakes.
   only case where honouring it changes anything), then `unset(... CACHE)` so the
   notice fires once per place that actually sets it. Cache state is not user
   intent.
+- **`-Rpass` remarks are silent under ThinLTO, because the passes have not run
+  yet.** With `-flto=thin` the `-c` step emits bitcode and optimisation happens
+  at link time, so a probe compiled with the project's real flags reported
+  **zero** loop-vectorize remarks and looked like a tool bug. Strip `-flto*` when
+  asking the compiler what it did to a loop, and say plainly that the answer is
+  per-TU codegen, not the final post-link code. Two smaller traps in the same
+  family: an explicit instantiation whose template argument has internal linkage
+  (a functor in an anonymous namespace) is unreferenced and dead-stripped at
+  `-O3` before the vectoriser sees it, so the probe must export `extern "C"`
+  wrappers; and `-fcolor-diagnostics`, which this project sets, wraps every
+  remark in ANSI escapes and defeats naive parsing.
+- **When a kernel lives in a header template, no library TU can report on its
+  codegen.** `dtwc/core/dtw.cpp` contains zero loops — the DTW kernels are
+  templates in `warping.hpp`, and a template nobody instantiates generates no
+  code. Any "what did the compiler do to the hot loop?" tool therefore needs a
+  probe TU that instantiates it on purpose. Worth checking *first*: the obvious
+  target file can look like the kernel and contain none of it.

@@ -166,6 +166,20 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
   worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
   still greps for the old `if(TARGET …)` block. Unowned; needs a row.
+- **2026-09-22 — done.** X-04, which closes W0. Two report-only tools, and both questions now have
+  numbers instead of opinions. **A-06 Q10:** IPO does *not* inline `Problem::dist_by_ind` — ThinLTO
+  takes the surviving out-of-line call sites from 20 to 18, leaving it called in
+  `compute_nearest_and_second`, `fast_pam_swap`, `fastpam1_swap_impl`, `tadpole` and
+  `assign_clusters`, so the double preflight per pair is paid every time. **X-04 / D-17:** none of
+  the six DTW kernel loops vectorise, and the reasons are structural — the recurrence reads
+  `C(i-1,j-1)`, `C(i-1,j)` and `C(i,j-1)`, which clang reports as *unsafe dependent memory
+  operations*, and the early-abandon variants are *early exit loops with writes to memory*. So the
+  SIMD question is not "why isn't the compiler doing it" but "is an anti-diagonal restructure worth
+  giving up early abandon for", which is a measurement D-17 should answer with the PMU artefact and
+  not an argument. Evidence in `.claude/baselines/2026-09-22-x04-codegen-report.md`. The codegen
+  report is deliberately **not** a CTest gate: GCC has no `-Rpass` and the expectation table is
+  AppleClang/arm64-specific, so registering it would have manufactured precisely the unowned red
+  gate X-33 had just finished clearing.
 - **2026-09-22 — done.** S-09 and B-14. S-09 turned out to be half non-defect: the Python 3.9 floor
   matches `requires-python` in `pyproject.toml`, so it is correct rather than stale, and the
   interpreter is needed by exactly one gate (`test_problem_api_2_0`). Making it optional would mean

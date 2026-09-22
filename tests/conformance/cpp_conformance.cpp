@@ -220,8 +220,18 @@ TEST_CASE("Cross-language conformance: C++ route matches recorded reference",
                      && std::string(std::getenv("DTWC_CONFORMANCE_REGEN")) == "1";
 
   if (regen) {
+    // A regeneration run records; it does not verify. Reporting success here
+    // would let a genuine regression be laundered into a new baseline by
+    // re-running with the env var until the test goes green, so this run fails
+    // on purpose. The planned end state is a separate regen program that shares
+    // the pipeline header, leaving this binary with no way to write the
+    // reference at all (tooling plan Task 2).
     write_reference(live);
-    WARN("Recorded conformance reference -> " << reference_file().string());
+    FAIL("Recorded conformance reference -> "
+         << reference_file().string()
+         << "\nThis run rewrote the pinned oracle and verified nothing. Review "
+            "the diff, commit it deliberately, then re-run without "
+            "DTWC_CONFORMANCE_REGEN to verify against it.");
   } else {
     INFO("Missing reference means nothing is pinned. Restore it from git, or "
          "re-record deliberately with DTWC_CONFORMANCE_REGEN=1: "

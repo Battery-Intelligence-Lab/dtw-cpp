@@ -143,6 +143,30 @@ dtwc_add_script_test(NAME cmake_regex_at_least
     SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/cmake/test_regex_at_least.cmake"
     MARKER "CMAKE_REGEX_AT_LEAST cases=32 failures=0" LABELS tooling)
 
+# A-06 / core-map Q10 evidence: does IPO inline Problem::dist_by_ind into the
+# FastPAM SWAP kernels? Report-only — the marker is the evidence and W4 decides.
+# Needs an ELF/Mach-O binary with symbols and an objdump, so it is not registered
+# on Windows. DTWC_ENABLE_IPO is the project switch; CMAKE_INTERPROCEDURAL_OPTIMIZATION
+# is what dtwc_enable_ipo() actually sets once check_ipo_supported() agrees, so
+# the label follows the latter and cannot claim IPO that was silently unavailable.
+if(NOT WIN32 AND TARGET dtwc_cl)
+    if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+        set(_dtwc_ipo_state on)
+    else()
+        set(_dtwc_ipo_state off)
+    endif()
+    add_test(NAME check_ipo_inlining
+             COMMAND "${Python3_EXECUTABLE}"
+                     "${CMAKE_SOURCE_DIR}/scripts/check_ipo_inlining.py"
+                     "$<TARGET_FILE:dtwc_cl>" --ipo ${_dtwc_ipo_state}
+             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_tests_properties(check_ipo_inlining PROPERTIES
+        PASS_REGULAR_EXPRESSION
+            "IPO_INLINING binary=dtwc_cl tool=(llvm-objdump|objdump) ipo=${_dtwc_ipo_state} callers=[1-9][0-9]* dist_by_ind_calls=[0-9]+ symbol_present=[01]"
+        LABELS "tooling;a06")
+    unset(_dtwc_ipo_state)
+endif()
+
 # Capability flags, queried once (they select markers, floors and skip tolerance).
 get_target_property(_dtwc_public_defs dtwc++ INTERFACE_COMPILE_DEFINITIONS)
 if("DTWC_HAS_MMAP" IN_LIST _dtwc_public_defs)

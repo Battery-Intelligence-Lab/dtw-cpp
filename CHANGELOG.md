@@ -27,6 +27,15 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   release workflow met every condition for it to apply. The Python wheels were never affected —
   they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
   extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Added (tooling, evidence):** two report-only codegen tools. `scripts/check_ipo_inlining.py`
+  disassembles the built CLI and counts surviving out-of-line calls to `Problem::dist_by_ind` inside
+  the FastPAM SWAP kernels; it is registered as the `check_ipo_inlining` test everywhere except
+  Windows. `scripts/codegen_report.py`, with `scripts/codegen_probe.cpp` and
+  `tests/codegen_expectations.json`, replays a real compile command with clang's vectorisation
+  remarks enabled and reports which hot-path loops vectorise, failing on drift in either direction
+  against the recorded table. Findings: ThinLTO does not inline `dist_by_ind` (18 of 20 call sites
+  survive), and none of the six DTW kernel loops vectorise, because the recurrence carries a genuine
+  dependency and the early-abandon variants exit early while writing memory.
 - **Changed (build options, deprecation):** the thirteen maintainer CMake options are now spelled
   `DTWC_*` like every other cache variable in the project — `DTWC_ENABLE_SANITIZER_ADDRESS`,
   `DTWC_WARNINGS_AS_ERRORS`, `DTWC_ENABLE_PCH` and so on. The old lowercase `dtwc_*` names are still

@@ -1,0 +1,11 @@
+{
+  "_comment": "Seeded by scripts/codegen_report.py --record. Each key is file:line:col of a loop; the value says whether clang vectorised it. Regenerate deliberately and review the diff: a loop flipping to false is a possible hot-path regression.",
+  "loops": {
+    "dtwc/core/dtw_kernel.hpp:224:3": false,
+    "dtwc/core/dtw_kernel.hpp:227:3": false,
+    "dtwc/core/dtw_kernel.hpp:232:5": false,
+    "dtwc/core/dtw_kernel.hpp:260:3": false,
+    "dtwc/core/dtw_kernel.hpp:266:3": false,
+    "dtwc/core/dtw_kernel.hpp:275:5": false
+  }
+}
