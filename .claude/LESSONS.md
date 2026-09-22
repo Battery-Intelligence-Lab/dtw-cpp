@@ -1453,3 +1453,35 @@ Critical knowledge to avoid repeating mistakes.
   mode, which is why nothing fired here. Adding `->Repetitions(n)` to a benchmark
   would arm it on a real PMU host. Inversion read from source, not executed —
   proving it needs libpfm4 (V-5).
+- **`add_compile_options()` is directory-scope and reaches every dependency you
+  fetch afterwards.** The Release floating-point relaxations were set at the top
+  of the root `CMakeLists.txt`; CPM's `add_subdirectory()` calls happen later, so
+  146 dependency TUs inherited them — 31 HiGHS (a solver, where reassociating a
+  sum can move a pivot or trip a tolerance) and 107 Catch2 (so the framework's
+  own float matchers were built relaxed). Flags that change *numerics* belong on
+  an interface target created after the dependencies exist, never at directory
+  scope. `compile_commands.json` answers "who actually got this flag?" in one
+  query and should be the evidence, not the CMake source.
+- **"Disabled for X to keep binaries portable" is a policy, and policies have to
+  be applied to every artefact — check the ones nobody mentioned.**
+  `-march=native` was correctly excluded from the Python wheels with exactly that
+  comment, and the identical reasoning was never extended to the native CLI
+  archives, which shipped tuned to an ephemeral CI runner's CPU. When a guard
+  names one artefact, enumerate the others before assuming they were considered.
+- **A test that regenerates its own expected output when the expected output is
+  missing proves nothing, and passes.** `cpp_conformance` re-recorded its pinned
+  reference on `!exists(reference_file())`, then compared the fresh values with
+  themselves; the only signal was `WARN`, which does not fail Catch2. Bootstrap
+  and verify must never share a trigger: regeneration is explicit-only, and an
+  absent oracle is a failure. Same family as the CTest-scores-a-skip-as-a-pass
+  rule already in the runbook — ask of every gate "what does it do when its
+  subject is absent?"
+- **Count the gates before trusting "gates green".** The runbook's build-and-gates
+  block ran three check scripts; the repo has four. `check_supply_chain_pins.py`
+  was red on `design-2.0` and nobody saw it, carrying two independent faults: a
+  manifest ratchet stale since `d21ffee`, and a `${}` expansion inside a
+  `CPMAddPackage` that the scanner rightly refuses to audit. `d21ffee` had
+  already stranded the documentation-contract gate (X-30) — **one refactor, two
+  stale gates, neither noticed**, because the incomplete command was the thing
+  everyone ran. When a gate is discovered red, check whether the list that should
+  have run it is itself complete; that omission is the defect, not the constant.

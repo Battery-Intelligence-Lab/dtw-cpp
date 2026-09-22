@@ -209,14 +209,24 @@ TEST_CASE("Cross-language conformance: C++ route matches recorded reference",
 
   const CanonicalResult live = run_pipeline();
 
-  const bool regen =
-    !fs::exists(reference_file())
-    || (std::getenv("DTWC_CONFORMANCE_REGEN") != nullptr
-        && std::string(std::getenv("DTWC_CONFORMANCE_REGEN")) == "1");
+  // Regeneration is explicit-only. It used to also trigger on a missing
+  // reference file, which made this test certify itself: it wrote what it had
+  // just computed, read it straight back, and compared it to itself, so every
+  // assertion below passed trivially and the only signal was a WARN — which
+  // does not fail a Catch2 test. This is the gate the "a no-op must be
+  // digit-identical" rule rests on, so a missing reference is a failure, not an
+  // invitation to invent one.
+  const bool regen = std::getenv("DTWC_CONFORMANCE_REGEN") != nullptr
+                     && std::string(std::getenv("DTWC_CONFORMANCE_REGEN")) == "1";
 
   if (regen) {
     write_reference(live);
     WARN("Recorded conformance reference -> " << reference_file().string());
+  } else {
+    INFO("Missing reference means nothing is pinned. Restore it from git, or "
+         "re-record deliberately with DTWC_CONFORMANCE_REGEN=1: "
+         << reference_file().string());
+    REQUIRE(fs::exists(reference_file()));
   }
 
   const CanonicalResult ref = read_reference();

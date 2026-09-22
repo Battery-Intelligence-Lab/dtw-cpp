@@ -160,6 +160,15 @@ function(dtwc_setup_dependencies)
 
   if(DTWC_BUILD_BENCHMARK)
     if(NOT TARGET benchmark::benchmark)
+      # Set outside the CPMAddPackage() call on purpose. scripts/check_supply_chain_pins.py
+      # refuses to audit a CPMAddPackage whose arguments contain a ${} expansion,
+      # and it is right to: a pin nobody can read statically is not a pin. This is
+      # the same mechanism CPM's own OPTIONS use, and google/benchmark's
+      # option(BENCHMARK_ENABLE_LIBPFM ...) leaves an existing cache entry alone.
+      # ON ⇒ upstream runs find_package(PFM REQUIRED), so missing libpfm4 headers
+      # or library stop the configure instead of quietly dropping the counters.
+      set(BENCHMARK_ENABLE_LIBPFM ${DTWC_BENCHMARK_PMU} CACHE INTERNAL
+          "Google Benchmark libpfm4 support; driven by DTWC_BENCHMARK_PMU")
       CPMAddPackage(
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
@@ -168,9 +177,6 @@ function(dtwc_setup_dependencies)
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"
           "BENCHMARK_ENABLE_WERROR OFF"
-          # ON ⇒ upstream runs find_package(PFM REQUIRED), so missing libpfm4
-          # headers or library stop the configure instead of dropping the counters.
-          "BENCHMARK_ENABLE_LIBPFM ${DTWC_BENCHMARK_PMU}"
       )
     endif()
   endif()

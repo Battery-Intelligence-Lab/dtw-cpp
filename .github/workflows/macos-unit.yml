@@ -30,3 +30,35 @@ jobs:
       - name: CMake test
         run: |
           ctest --test-dir build -j -C Release --output-on-failure
+
+  # X-15: the conformance reference must not depend on the floating-point model.
+  # This is the only Release job in the repo — every other test job is Debug,
+  # where the FP flags do not apply at all — so without this leg DTWC_FP_MODEL
+  # is exercised in exactly one configuration and `strict` in none.
+  # Conformance only: the point is the pinned digits, not a second full suite.
+  conformance-strict:
+    name: macOS conformance (FP strict)
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+
+      - name: Install dependencies
+        run: |
+          brew install ninja libomp
+          brew link --force libomp
+
+      - name: CMake configure (Release, strict FP)
+        run: >-
+          cmake --preset clang-macos
+          -DDTWC_BUILD_TESTING=ON
+          -DDTWC_ENABLE_HIGHS=ON
+          -DDTWC_FP_MODEL=strict
+
+      - name: CMake build
+        run: cmake --build build --config Release --target cpp_conformance --parallel
+
+      - name: Conformance must match the recorded reference
+        run: >-
+          ctest --test-dir build -C Release --output-on-failure
+          -R '^cpp_conformance$'

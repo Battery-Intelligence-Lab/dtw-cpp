@@ -29,12 +29,25 @@ jobs:
           echo "OpenMP_ROOT=$(brew --prefix libomp)" >> "$GITHUB_ENV"
 
       - name: Configure release CLI
+        # DTWC_ENABLE_NATIVE_ARCH=OFF is required, not tidiness. It defaults ON,
+        # and this is a top-level non-Python configure, so without it
+        # StandardProjectSettings.cmake applies -march=native — tuning the
+        # *published* binary for whichever CPU this ephemeral runner happened to
+        # have. A user on an older machine then gets SIGILL on an instruction
+        # their CPU does not implement. The wheels already opt out via the
+        # DTWC_BUILD_PYTHON guard "to keep wheel binaries portable"; the same
+        # reasoning applies here and was simply never extended to the archives.
+        # smoke_release_archive.py cannot catch it: it runs the binary on the
+        # machine that built it, where every instruction is of course supported.
+        # Set -DDTWC_ARCH_LEVEL=v3 instead if a vectorised release baseline
+        # (AVX2+FMA, Haswell and later) is ever wanted deliberately.
         run: >-
           cmake -S . -B build/release
           -DDTWC_ENABLE_GUROBI=OFF
           -DDTWC_ENABLE_HIGHS=ON
           -DDTWC_ENABLE_LLFIO=OFF
           -DDTWC_BUILD_TESTING=OFF
+          -DDTWC_ENABLE_NATIVE_ARCH=OFF
           -DCMAKE_BUILD_TYPE=Release
 
       - name: Build CLI and dependency notices

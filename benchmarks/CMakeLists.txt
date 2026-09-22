@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.26)
 add_executable(bench_dtw_baseline bench_dtw_baseline.cpp)
 target_link_libraries(bench_dtw_baseline
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
     benchmark::benchmark_main
 )
@@ -13,7 +13,7 @@ target_link_libraries(bench_dtw_baseline
 add_executable(bench_mmap_access bench_mmap_access.cpp)
 target_link_libraries(bench_mmap_access
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
     benchmark::benchmark_main
 )
@@ -23,7 +23,7 @@ target_link_libraries(bench_mmap_access
 add_executable(bench_cuda_dtw bench_cuda_dtw.cpp)
 target_link_libraries(bench_cuda_dtw
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
 )
 
@@ -33,19 +33,19 @@ target_link_libraries(bench_cuda_dtw
 add_executable(bench_metal_dtw bench_metal_dtw.cpp)
 target_link_libraries(bench_metal_dtw
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
 )
 
 # MPI benchmarks (standalone, requires MPI)
 add_executable(bench_mpi_dtw bench_mpi_dtw.cpp)
-target_link_libraries(bench_mpi_dtw PRIVATE dtwc++)
+target_link_libraries(bench_mpi_dtw PRIVATE dtwc++ project_options)
 
 # float32 vs float64 DTW speed benchmark
 add_executable(bench_f32_vs_f64 bench_f32_vs_f64.cpp)
 target_link_libraries(bench_f32_vs_f64
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
     benchmark::benchmark_main
 )
@@ -54,10 +54,10 @@ target_link_libraries(bench_f32_vs_f64
 add_executable(bench_openmp_schedule bench_openmp_schedule.cpp)
 target_link_libraries(bench_openmp_schedule
   PRIVATE
-    dtwc++
+    dtwc++ project_options
     benchmark::benchmark
 )
 
 # Legacy UCR benchmark
 add_executable(benchmark_UCR UCR_dtwc.cpp)
-target_link_libraries(benchmark_UCR PRIVATE dtwc++)
+target_link_libraries(benchmark_UCR PRIVATE dtwc++ project_options)

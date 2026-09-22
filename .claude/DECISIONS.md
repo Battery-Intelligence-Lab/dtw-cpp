@@ -166,6 +166,23 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
   worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
   still greps for the old `if(TARGET …)` block. Unowned; needs a row.
+- **2026-09-22 — done.** X-15 and S-03 together, and two defects they uncovered. The Release
+  floating-point relaxations were directory-scope, so **146 dependency translation units** were
+  compiled with them — 31 HiGHS, where reassociating a sum can move a simplex pivot, and 107 Catch2,
+  so the framework's own float matchers were relaxed. They now ride on `dtwc_options`; our own TUs
+  are unchanged at 161 and dependencies are at 0, and the full suite with HiGHS rebuilt strictly is
+  unchanged. `DTWC_FP_MODEL` (`fast` default, `strict`) is a cache variable so machine records pick
+  it up. X-15's "conformance pinned under `strict`" turned out to be cheap: the reference, recorded
+  under `fast`, is digit-identical at 17 significant figures under `strict`, so it needed a CI leg,
+  which `macos-unit.yml` now has. Found on the way: **X-31**, every published CLI archive was
+  compiled `-march=native` and so tuned to an ephemeral runner's CPU (SIGILL risk for users on older
+  hardware; wheels were never exposed, and `smoke_release_archive.py` is blind to it for the same
+  reason it was blind to X-29 — it runs the binary where it was built); and **X-32**, the
+  conformance test regenerated its own pinned reference whenever the file was absent and then
+  compared it against itself, so it passed while pinning nothing. Both fixed. Evidence in
+  `.claude/baselines/2026-09-22-x15-s03-fp-flag-scope.md`. One scope limit worth carrying: the
+  GCC and MSVC floating-point branches are exercised by no CI job at all, because `macos-unit.yml`
+  is the only Release job that runs `ctest` — recorded as V-7.
 - **2026-09-22 — done.** X-24's W0 half: `DTWC_BENCHMARK_PMU` → `BENCHMARK_ENABLE_LIBPFM` (libpfm4,
   MIT, benchmark-only, never redistributed — D-17). The row was filed as plumbing; the finding is
   that google/benchmark **has no working runtime guard** for a counters request it cannot serve. A

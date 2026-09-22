@@ -55,6 +55,7 @@ cmake --build --preset clang-macos
 ctest --test-dir build -C Release -j1 --output-on-failure
 uv run --no-project python scripts/repo_map.py layers     # upward-edge ratchet
 python3 scripts/check_record_hygiene.py; python3 scripts/check_repo_hygiene.py; python3 scripts/check_docs_contract.py
+python3 scripts/check_supply_chain_pins.py   # the fourth gate — omitting it here left it red for weeks (X-33)
 ```
 
 ## Key files

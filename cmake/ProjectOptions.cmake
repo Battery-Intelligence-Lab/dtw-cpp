@@ -62,6 +62,20 @@ macro(dtwc_local_options)
   add_library(dtwc_options INTERFACE)
   target_compile_features(dtwc_options INTERFACE cxx_std_20)
 
+  # Floating-point policy (X-15, closes S-03). DTWC_FP_FLAGS is computed in
+  # cmake/StandardProjectSettings.cmake from DTWC_FP_MODEL. Applying it here
+  # rather than with a directory-scope add_compile_options() is the whole point:
+  # this target is reached only by things that link it, so the flags cannot leak
+  # into fetched dependencies — HiGHS, Catch2 and llfio were all picking them up.
+  # Optimised configurations only, matching the previous CONFIG generator
+  # expressions; Debug is unaffected.
+  foreach(_dtwc_fp_flag IN LISTS DTWC_FP_FLAGS)
+    target_compile_options(dtwc_options INTERFACE
+      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_dtwc_fp_flag}>>
+      $<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_dtwc_fp_flag}>>)
+  endforeach()
+  unset(_dtwc_fp_flag)
+
   if(dtwc_ENABLE_COMPILER_WARNINGS)
     include(cmake/CompilerWarnings.cmake)
     dtwc_set_project_warnings(

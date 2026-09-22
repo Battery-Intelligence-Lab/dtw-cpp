@@ -8,6 +8,38 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (build, numerics):** the Release floating-point relaxations no longer reach third-party
+  dependencies. They were applied with a directory-scope `add_compile_options()`, which every
+  subdirectory added afterwards inherits — including the ones CPM creates for fetched projects — so
+  146 dependency translation units were being compiled with `-fassociative-math` and friends. 31 of
+  them were HiGHS, whose simplex and interior-point code is precisely where reassociating a
+  floating-point sum can move a pivot or a tolerance comparison, and 107 were Catch2, meaning the
+  test framework's own floating-point matchers were built relaxed. The flags now ride on the
+  `dtwc_options` interface target, which is created after the dependencies are added and is linked
+  only by our own targets. Flags on our own translation units are unchanged.
+- **Added (build, numerics):** `DTWC_FP_MODEL` selects `fast` (the existing relaxations, and still
+  the default) or `strict` (none of them, `/fp:strict` on MSVC). It is a cache variable, so it is
+  recorded in machine and benchmark records rather than being invisible to them. An unrecognised
+  value is a configure error.
+- **Fixed (packaging, all platforms):** the published CLI archives were compiled `-march=native`,
+  tuning each released binary for whichever ephemeral CI runner produced it; a user whose CPU lacks
+  an instruction the runner had would get SIGILL. `DTWC_ENABLE_NATIVE_ARCH` defaults on, and the
+  release workflow met every condition for it to apply. The Python wheels were never affected —
+  they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
+  extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Fixed (gates):** `scripts/check_supply_chain_pins.py` was failing and unnoticed, because the
+  runbook's gate command lists three check scripts and there are four. Its tracked-CMake-manifest
+  ratchet still expected 30 files against 33, stale since the commit that moved test registration
+  into `dtwc_add_test` — the same commit that had also left the documentation-contract gate stale.
+  The constant is reconciled and now names the four added and one removed manifest. Separately, the
+  scanner correctly refused to audit a `CPMAddPackage` argument containing a variable expansion;
+  that option is now set outside the call so the pins remain statically readable.
+- **Fixed (tests, conformance):** the cross-language conformance test could certify itself. It
+  regenerated its pinned reference whenever the reference file was absent — not only when asked —
+  and then compared the freshly written values against themselves, so every assertion passed
+  trivially and the only signal was a `WARN`, which does not fail a test. Regeneration is now
+  explicit (`DTWC_CONFORMANCE_REGEN=1`) and a missing reference fails, naming how to restore or
+  deliberately re-record it.
 - **Added (benchmarks):** `DTWC_BENCHMARK_PMU` builds the benchmarks against libpfm4 through Google
   Benchmark's `BENCHMARK_ENABLE_LIBPFM`, so hardware counters can be read instead of wall-clock.
   libpfm4 is MIT, benchmark-only and never redistributed. It needs `perf_event_open`, so it is

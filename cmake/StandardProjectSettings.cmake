@@ -42,34 +42,65 @@ else()
 endif()
 
 
-# Selected floating-point relaxations for Release builds.
-# GCC/Clang use explicit flags rather than -ffast-math and deliberately omit
-# -ffinite-math-only so std::isnan() remains valid.
-# See missing_utils.hpp for NaN handling design notes.
+# Selected floating-point relaxations for optimised builds (X-15).
+#
+# These are computed here but NOT applied here. `add_compile_options()` is
+# directory-scope and is inherited by every subdirectory added afterwards —
+# including the ones CPM creates for fetched dependencies. That is ledger row
+# S-03, and it was real: before this change 146 dependency translation units
+# were compiled with -fassociative-math, 31 of them HiGHS, whose simplex and
+# interior-point code is exactly where reassociating a floating-point sum can
+# change a pivot or a tolerance comparison. Catch2 was affected too, so the
+# framework's own float matchers were built relaxed.
+#
+# The flags now ride on the dtwc_options INTERFACE target, which only our own
+# targets link (cmake/ProjectOptions.cmake). dtwc_options is created *after*
+# dtwc_setup_dependencies() has added the fetched projects, so a dependency
+# cannot pick these up even by accident.
+#
+# DTWC_FP_MODEL selects the policy. It is a CACHE variable so that it appears in
+# CMakeCache.txt and is harvested into machine records by scripts/machine_facts.py
+# (X-26) — a plain set() would be invisible to them.
+set(DTWC_FP_MODEL "fast" CACHE STRING
+    "Floating-point policy for optimised builds: 'fast' (selected relaxations) or 'strict' (none)")
+set_property(CACHE DTWC_FP_MODEL PROPERTY STRINGS "fast" "strict")
+if(NOT DTWC_FP_MODEL STREQUAL "fast" AND NOT DTWC_FP_MODEL STREQUAL "strict")
+  message(FATAL_ERROR
+    "DTWC_FP_MODEL must be 'fast' or 'strict', not '${DTWC_FP_MODEL}'. "
+    "'fast' applies the selected relaxations documented in "
+    "cmake/StandardProjectSettings.cmake; 'strict' applies none of them and is "
+    "what conformance output is pinned against.")
+endif()
+
+# DTWC_FP_FLAGS is consumed by dtwc_local_options() in cmake/ProjectOptions.cmake.
+set(DTWC_FP_FLAGS "")
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
-  # /fp:precise preserves std::isnan() semantics (required by missing_utils.hpp).
-  # /fp:contract enables FMA contraction for performance.
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:precise>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/fp:contract>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:precise>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/fp:contract>>)
+  if(DTWC_FP_MODEL STREQUAL "fast")
+    # /fp:precise preserves std::isnan() semantics (required by missing_utils.hpp).
+    # /fp:contract enables FMA contraction for performance.
+    list(APPEND DTWC_FP_FLAGS /fp:precise /fp:contract)
+  else()
+    # /fp:strict also disables FMA contraction, so the two are not independent.
+    list(APPEND DTWC_FP_FLAGS /fp:strict)
+  endif()
   # /Gy: function-level linking — lets the linker eliminate/fold unused COMDATs.
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:/Gy>>)
-  add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:/Gy>>)
+  # Not a floating-point flag; unaffected by DTWC_FP_MODEL.
+  list(APPEND DTWC_FP_FLAGS /Gy)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  # The selected relaxations cover no errno/trapping, reciprocal and associative
-  # transformations, no signed-zero distinction, a fixed rounding mode, and no
-  # signalling NaNs.
-  # `-ffinite-math-only` is deliberately omitted — it breaks std::isnan() under GCC/Clang.
-  # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
-  # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
-  foreach(_flag
+  if(DTWC_FP_MODEL STREQUAL "fast")
+    # The selected relaxations cover no errno/trapping, reciprocal and associative
+    # transformations, no signed-zero distinction, a fixed rounding mode, and no
+    # signalling NaNs. GCC/Clang use explicit flags rather than -ffast-math.
+    # `-ffinite-math-only` is deliberately omitted — it breaks std::isnan() under GCC/Clang.
+    # See missing_utils.hpp for NaN handling design notes.
+    # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
+    # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
+    list(APPEND DTWC_FP_FLAGS
       -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math
       -fno-signed-zeros -fno-rounding-math -fno-signaling-nans)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:Release>:${_flag}>>)
-    add_compile_options($<$<COMPILE_LANGUAGE:C,CXX>:$<$<CONFIG:RelWithDebInfo>:${_flag}>>)
-  endforeach()
+  endif()
 endif()
+message(STATUS "Floating-point model: ${DTWC_FP_MODEL}")
 
 # Architecture tuning — unlocks AVX2/AVX-512/NEON auto-vectorization.
 # Disabled for Python wheels (DTWC_BUILD_PYTHON) to keep wheel binaries portable.
