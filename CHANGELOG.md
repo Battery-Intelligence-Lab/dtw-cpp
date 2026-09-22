@@ -27,6 +27,20 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   release workflow met every condition for it to apply. The Python wheels were never affected —
   they opt out through the `DTWC_BUILD_PYTHON` guard, and the same reasoning had simply never been
   extended to the native archives. The release configure now sets `-DDTWC_ENABLE_NATIVE_ARCH=OFF`.
+- **Changed (build options, deprecation):** the thirteen maintainer CMake options are now spelled
+  `DTWC_*` like every other cache variable in the project — `DTWC_ENABLE_SANITIZER_ADDRESS`,
+  `DTWC_WARNINGS_AS_ERRORS`, `DTWC_ENABLE_PCH` and so on. The old lowercase `dtwc_*` names are still
+  accepted for one release: the value is honoured and a warning names the replacement. Passing a
+  legacy name whose value matches the new default is accepted silently, so an existing build
+  directory does not report options its owner never chose.
+- **Fixed (build, tests):** an unusable repo `.venv` no longer breaks the test configure. The
+  interpreter was adopted as a `FindPython3` hint on existence alone, and that hint is exclusive —
+  CMake uses exactly that interpreter and does not search on — so a `.venv` left dangling by a
+  Python upgrade, or built on a version below the floor, failed the whole configure on machines
+  with a perfectly good system Python, reporting it as a `FindPackageHandleStandardArgs` error. The
+  candidate is now checked for being runnable and at least 3.9 before it is used, the choice is
+  reported either way, and a genuine miss explains which gate needs Python and how to supply it.
+  An interpreter passed explicitly with `-DPython3_EXECUTABLE` is still honoured as given.
 - **Fixed (gates):** `scripts/check_supply_chain_pins.py` was failing and unnoticed, because the
   runbook's gate command lists three check scripts and there are four. Its tracked-CMake-manifest
   ratchet still expected 30 files against 33, stale since the commit that moved test registration

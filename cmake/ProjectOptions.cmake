@@ -15,43 +15,68 @@ macro(dtwc_supports_sanitizers)
   endif()
 endmacro()
 
+# B-14 (adopted 2026-09-07): the maintainer options carry the same `DTWC_` prefix
+# as every other cache variable in the project. The lowercase `dtwc_` spellings
+# are still accepted for one release.
+#
+# A legacy value seeds the new option, and the stale cache entry is then removed,
+# so the notice appears once for each place that actually sets one rather than on
+# every configure for the rest of the build directory's life. The warning is
+# raised only when the legacy value differs from the new default: an existing
+# build tree carries all thirteen legacy entries left by `option()` itself, and
+# warning about those would be noise about something the user never chose.
+macro(_dtwc_maintainer_option name docstring default)
+  set(_dtwc_opt_default "${default}")
+  if(DEFINED dtwc_${name})
+    if(NOT "${dtwc_${name}}" STREQUAL "${default}")
+      message(WARNING
+        "dtwc_${name} is deprecated and will be removed after the next release; "
+        "use DTWC_${name}. Honouring dtwc_${name}=${dtwc_${name}} for now.")
+      set(_dtwc_opt_default "${dtwc_${name}}")
+    endif()
+    unset(dtwc_${name} CACHE)
+  endif()
+  option(DTWC_${name} "${docstring}" ${_dtwc_opt_default})
+  unset(_dtwc_opt_default)
+endmacro()
+
 macro(dtwc_setup_options)
   dtwc_supports_sanitizers()
 
-  option(dtwc_ENABLE_IPO "Enable IPO/LTO for dtwc targets" ${PROJECT_IS_TOP_LEVEL})
-  option(dtwc_ENABLE_COMPILER_WARNINGS "Enable maintainer warning set for dtwc targets" ${DTWC_DEV_MODE})
-  option(dtwc_WARNINGS_AS_ERRORS "Treat maintainer warnings as errors" ${DTWC_DEV_MODE})
-  option(dtwc_ENABLE_SANITIZER_ADDRESS "Enable address sanitizer" OFF)
-  option(dtwc_ENABLE_SANITIZER_LEAK "Enable leak sanitizer" OFF)
-  option(dtwc_ENABLE_SANITIZER_UNDEFINED "Enable undefined sanitizer" OFF)
-  option(dtwc_ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
-  option(dtwc_ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
-  option(dtwc_ENABLE_UNITY_BUILD "Enable unity builds" OFF)
-  option(dtwc_ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ${DTWC_DEV_MODE})
-  option(dtwc_ENABLE_CPPCHECK "Enable cppcheck analysis" ${DTWC_DEV_MODE})
-  option(dtwc_ENABLE_PCH "Enable precompiled headers" OFF)
-  option(dtwc_ENABLE_CACHE "Enable ccache" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(ENABLE_IPO "Enable IPO/LTO for dtwc targets" ${PROJECT_IS_TOP_LEVEL})
+  _dtwc_maintainer_option(ENABLE_COMPILER_WARNINGS "Enable maintainer warning set for dtwc targets" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(WARNINGS_AS_ERRORS "Treat maintainer warnings as errors" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(ENABLE_SANITIZER_ADDRESS "Enable address sanitizer" OFF)
+  _dtwc_maintainer_option(ENABLE_SANITIZER_LEAK "Enable leak sanitizer" OFF)
+  _dtwc_maintainer_option(ENABLE_SANITIZER_UNDEFINED "Enable undefined sanitizer" OFF)
+  _dtwc_maintainer_option(ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
+  _dtwc_maintainer_option(ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
+  _dtwc_maintainer_option(ENABLE_UNITY_BUILD "Enable unity builds" OFF)
+  _dtwc_maintainer_option(ENABLE_CLANG_TIDY "Enable clang-tidy analysis" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(ENABLE_CPPCHECK "Enable cppcheck analysis" ${DTWC_DEV_MODE})
+  _dtwc_maintainer_option(ENABLE_PCH "Enable precompiled headers" OFF)
+  _dtwc_maintainer_option(ENABLE_CACHE "Enable ccache" ${DTWC_DEV_MODE})
 
   if(NOT PROJECT_IS_TOP_LEVEL OR NOT DTWC_DEV_MODE)
     mark_as_advanced(
-      dtwc_ENABLE_IPO
-      dtwc_ENABLE_COMPILER_WARNINGS
-      dtwc_WARNINGS_AS_ERRORS
-      dtwc_ENABLE_SANITIZER_ADDRESS
-      dtwc_ENABLE_SANITIZER_LEAK
-      dtwc_ENABLE_SANITIZER_UNDEFINED
-      dtwc_ENABLE_SANITIZER_THREAD
-      dtwc_ENABLE_SANITIZER_MEMORY
-      dtwc_ENABLE_UNITY_BUILD
-      dtwc_ENABLE_CLANG_TIDY
-      dtwc_ENABLE_CPPCHECK
-      dtwc_ENABLE_PCH
-      dtwc_ENABLE_CACHE)
+      DTWC_ENABLE_IPO
+      DTWC_ENABLE_COMPILER_WARNINGS
+      DTWC_WARNINGS_AS_ERRORS
+      DTWC_ENABLE_SANITIZER_ADDRESS
+      DTWC_ENABLE_SANITIZER_LEAK
+      DTWC_ENABLE_SANITIZER_UNDEFINED
+      DTWC_ENABLE_SANITIZER_THREAD
+      DTWC_ENABLE_SANITIZER_MEMORY
+      DTWC_ENABLE_UNITY_BUILD
+      DTWC_ENABLE_CLANG_TIDY
+      DTWC_ENABLE_CPPCHECK
+      DTWC_ENABLE_PCH
+      DTWC_ENABLE_CACHE)
   endif()
 endmacro()
 
 macro(dtwc_global_options)
-  if(dtwc_ENABLE_IPO)
+  if(DTWC_ENABLE_IPO)
     include(cmake/InterproceduralOptimization.cmake)
     dtwc_enable_ipo()
   endif()
@@ -76,11 +101,11 @@ macro(dtwc_local_options)
   endforeach()
   unset(_dtwc_fp_flag)
 
-  if(dtwc_ENABLE_COMPILER_WARNINGS)
+  if(DTWC_ENABLE_COMPILER_WARNINGS)
     include(cmake/CompilerWarnings.cmake)
     dtwc_set_project_warnings(
       dtwc_warnings
-      ${dtwc_WARNINGS_AS_ERRORS}
+      ${DTWC_WARNINGS_AS_ERRORS}
       ""
       ""
       ""
@@ -90,15 +115,15 @@ macro(dtwc_local_options)
   include(cmake/Sanitizers.cmake)
   dtwc_enable_sanitizers(
     dtwc_options
-    ${dtwc_ENABLE_SANITIZER_ADDRESS}
-    ${dtwc_ENABLE_SANITIZER_LEAK}
-    ${dtwc_ENABLE_SANITIZER_UNDEFINED}
-    ${dtwc_ENABLE_SANITIZER_THREAD}
-    ${dtwc_ENABLE_SANITIZER_MEMORY})
+    ${DTWC_ENABLE_SANITIZER_ADDRESS}
+    ${DTWC_ENABLE_SANITIZER_LEAK}
+    ${DTWC_ENABLE_SANITIZER_UNDEFINED}
+    ${DTWC_ENABLE_SANITIZER_THREAD}
+    ${DTWC_ENABLE_SANITIZER_MEMORY})
 
-  set_target_properties(dtwc_options PROPERTIES UNITY_BUILD ${dtwc_ENABLE_UNITY_BUILD})
+  set_target_properties(dtwc_options PROPERTIES UNITY_BUILD ${DTWC_ENABLE_UNITY_BUILD})
 
-  if(dtwc_ENABLE_PCH)
+  if(DTWC_ENABLE_PCH)
     target_precompile_headers(
       dtwc_options
       INTERFACE
@@ -107,22 +132,22 @@ macro(dtwc_local_options)
       <utility>)
   endif()
 
-  if(dtwc_ENABLE_CACHE)
+  if(DTWC_ENABLE_CACHE)
     include(cmake/Cache.cmake)
     dtwc_enable_cache()
   endif()
 
   include(cmake/StaticAnalyzers.cmake)
-  if(dtwc_ENABLE_CLANG_TIDY)
-    dtwc_enable_clang_tidy(dtwc_options ${dtwc_WARNINGS_AS_ERRORS})
+  if(DTWC_ENABLE_CLANG_TIDY)
+    dtwc_enable_clang_tidy(dtwc_options ${DTWC_WARNINGS_AS_ERRORS})
   endif()
 
-  if(dtwc_ENABLE_CPPCHECK)
-    dtwc_enable_cppcheck(${dtwc_WARNINGS_AS_ERRORS} "" # override cppcheck options
+  if(DTWC_ENABLE_CPPCHECK)
+    dtwc_enable_cppcheck(${DTWC_WARNINGS_AS_ERRORS} "" # override cppcheck options
     )
   endif()
 
-  if(dtwc_WARNINGS_AS_ERRORS)
+  if(DTWC_WARNINGS_AS_ERRORS)
     check_cxx_compiler_flag("-Wl,--fatal-warnings" LINKER_FATAL_WARNINGS)
     if(LINKER_FATAL_WARNINGS)
       # This is not working consistently, so disabling for now

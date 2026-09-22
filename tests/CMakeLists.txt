@@ -2,6 +2,15 @@ file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE
 
 # F22's existing CTest entry also drives a real-compiler diagnostic gate.
 # This tests-only requirement does not add Python to core/test-off builds.
+#
+# A repo .venv is the project convention (`uv venv`), so prefer it — but only
+# after checking that it runs and meets the floor. Setting Python3_EXECUTABLE is
+# *exclusive*: FindPython3 then uses exactly that interpreter and does not search
+# on when it turns out to be unusable. Verified by pointing it at a non-executable
+# — find_package fails rather than falling back. So an abandoned .venv (a dangling
+# interpreter after a Python upgrade) or one built on an older Python would fail
+# the whole test configure on a machine with a perfectly good system interpreter,
+# and the error would name FindPackageHandleStandardArgs rather than the .venv.
 if(NOT DEFINED Python3_EXECUTABLE)
     if(WIN32)
         set(_dtwc_repo_python
@@ -11,11 +20,37 @@ if(NOT DEFINED Python3_EXECUTABLE)
             "${CMAKE_SOURCE_DIR}/.venv/bin/python")
     endif()
     if(EXISTS "${_dtwc_repo_python}")
-        # A normal variable is a FindPython3 hint, not a forced cache choice.
-        set(Python3_EXECUTABLE "${_dtwc_repo_python}")
+        execute_process(
+            COMMAND "${_dtwc_repo_python}" -c
+                    "import sys; sys.exit(0 if sys.version_info[:2] >= (3, 9) else 1)"
+            RESULT_VARIABLE _dtwc_repo_python_usable
+            OUTPUT_QUIET ERROR_QUIET)
+        if(_dtwc_repo_python_usable EQUAL 0)
+            # A normal variable is a FindPython3 hint, not a forced cache choice.
+            set(Python3_EXECUTABLE "${_dtwc_repo_python}")
+        else()
+            message(STATUS
+                "Tests: ignoring ${_dtwc_repo_python} (does not run, or is older "
+                "than 3.9) and searching for a system interpreter instead")
+        endif()
+        unset(_dtwc_repo_python_usable)
     endif()
+    unset(_dtwc_repo_python)
 endif()
-find_package(Python3 3.9 COMPONENTS Interpreter REQUIRED)
+
+find_package(Python3 3.9 COMPONENTS Interpreter QUIET)
+if(NOT Python3_Interpreter_FOUND)
+    message(FATAL_ERROR
+        "DTWC_BUILD_TESTING=ON requires a Python 3.9 or newer interpreter. It is "
+        "used by exactly one gate — test_problem_api_2_0, which drives a real "
+        "compiler through scripts/test_f22_cpp_deprecations.py — but that gate is "
+        "not allowed to disappear quietly, so a missing interpreter stops the "
+        "configure rather than silently dropping it. Create one with `uv venv` in "
+        "the repo root, point at an existing one with "
+        "-DPython3_EXECUTABLE=/path/to/python, or configure with "
+        "-DDTWC_BUILD_TESTING=OFF.")
+endif()
+message(STATUS "Tests: Python ${Python3_VERSION} at ${Python3_EXECUTABLE}")
 
 # Multi-config generators do not provide compile_commands.json. These
 # EXCLUDE_FROM_ALL object probes reuse the configured target usage requirements

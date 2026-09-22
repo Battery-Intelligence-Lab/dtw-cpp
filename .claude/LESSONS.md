@@ -1485,3 +1485,13 @@ Critical knowledge to avoid repeating mistakes.
   stale gates, neither noticed**, because the incomplete command was the thing
   everyone ran. When a gate is discovered red, check whether the list that should
   have run it is itself complete; that omission is the defect, not the constant.
+- **A deprecation shim must distinguish "the user chose this" from "the old code
+  wrote this".** Renaming the 13 `dtwc_*` maintainer options to `DTWC_*`, the
+  obvious shim warns whenever the legacy name `if(DEFINED ...)`. But every
+  existing build directory already holds all 13 legacy entries, written by the
+  old `option()` calls themselves — so that shim greets returning developers with
+  13 warnings about choices they never made, and real deprecation notices drown
+  in it. Warn only where the legacy value **differs from the new default** (the
+  only case where honouring it changes anything), then `unset(... CACHE)` so the
+  notice fires once per place that actually sets it. Cache state is not user
+  intent.

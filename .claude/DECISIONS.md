@@ -166,6 +166,17 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   (`D2 CTest drift: expected one test_lb_keogh_derivation policy block`), reproduced in a clean
   worktree at `ddbc7b6` — `d21ffee` moved test registration to `dtwc_add_test(...)` and the checker
   still greps for the old `if(TARGET …)` block. Unowned; needs a row.
+- **2026-09-22 — done.** S-09 and B-14. S-09 turned out to be half non-defect: the Python 3.9 floor
+  matches `requires-python` in `pyproject.toml`, so it is correct rather than stale, and the
+  interpreter is needed by exactly one gate (`test_problem_api_2_0`). Making it optional would mean
+  silently dropping that gate, which this project's own rules forbid, so it stays required and now
+  explains itself. The genuine defect was the repo `.venv` hint: `Python3_EXECUTABLE` is an
+  exclusive choice, not a preference, so an abandoned or too-old `.venv` failed the whole test
+  configure on a machine with a working system Python. The candidate is now probed before adoption.
+  B-14 renamed the 13 maintainer options to `DTWC_*` behind one macro, honouring the old spellings
+  for a release. The judgement worth keeping: the shim warns only when a legacy value *differs from
+  the new default*, because every pre-existing build tree already holds all 13 legacy entries
+  written by the old `option()` calls — warning on presence would nag about choices nobody made.
 - **2026-09-22 — done.** X-15 and S-03 together, and two defects they uncovered. The Release
   floating-point relaxations were directory-scope, so **146 dependency translation units** were
   compiled with them — 31 HiGHS, where reassociating a sum can move a simplex pivot, and 107 Catch2,

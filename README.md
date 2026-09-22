@@ -63,7 +63,7 @@ cmake --build build-dev --config Debug -j
 ctest --test-dir build-dev -C Debug
 ```
 
-To add sanitizer instrumentation in a developer build, pass the specific maintainer option you want, for example `-Ddtwc_ENABLE_SANITIZER_ADDRESS=ON`.
+To add sanitizer instrumentation in a developer build, pass the specific maintainer option you want, for example `-DDTWC_ENABLE_SANITIZER_ADDRESS=ON`. These options were spelled `dtwc_*` before 2.0; the old names still work for one release and warn.
 
 #### macOS (Apple Clang + Homebrew libomp)
 
