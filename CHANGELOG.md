@@ -8,6 +8,17 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Change (repository, records):** the development plan moved into `.claude/`.
+  The root `PLAN.md` is archived as
+  `.claude/PLAN-archive-2026-09-21-research-release-campaign.md`; the live
+  documents are `.claude/{CHARTER,MAP,design,PLAN,DECISIONS}.md`. 105 superseded
+  session records, twelve one-off evidence scripts of closed findings, generated
+  benchmark plots, unused figures and a boilerplate `.cmake-format.yaml` were
+  removed (all recoverable at `9c08074`). `scripts/check_docs_contract.py` and
+  `scripts/check_record_hygiene.py` read the archived plan at its new path; their
+  assertions are unchanged. New `scripts/repo_map.py` reports the include graph
+  against the target layer model (18 upward includes today, 17 of them into
+  `Problem.hpp`). No library code changed.
 - **Change (tests, build):** every CTest entry is now gated by an execution
   floor or an explicit skip. `cmake/Coverage.cmake` (whose
   `add_executable_with_coverage_and_test` registered every test with

@@ -265,7 +265,7 @@ def check_citations() -> None:
 
 
 def check_plan() -> None:
-    text = read("PLAN.md")
+    text = read(".claude/PLAN-archive-2026-09-21-research-release-campaign.md")
     require_markers(
         "PLAN",
         text,

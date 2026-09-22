@@ -695,7 +695,7 @@ def assert_dtw_derivation_sync() -> None:
         "index": ROOT / "docs/derivations/README.md",
         "site": ROOT / "docs/content/method/dtw.md",
         "citations": ROOT / ".claude/CITATIONS.md",
-        "plan": ROOT / "PLAN.md",
+        "plan": ROOT / ".claude/PLAN-archive-2026-09-21-research-release-campaign.md",
         "kernel": ROOT / "dtwc/core/dtw_kernel.hpp",
         "wrapper": ROOT / "dtwc/warping.hpp",
     }
@@ -1371,7 +1371,7 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             ROOT
             / ".claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md"
         ),
-        "plan": ROOT / "PLAN.md",
+        "plan": ROOT / ".claude/PLAN-archive-2026-09-21-research-release-campaign.md",
     }
     missing_paths = [
         str(path.relative_to(ROOT))
@@ -2068,8 +2068,6 @@ def assert_f22_ordinary_call_hygiene() -> None:
         ".claude/commands/visualize.md",
         ".claude/openmp-crashcourse.md",
         ".claude/reports/test_kasper_analysis/REPORT.md",
-        ".claude/skills/python-wrapper-skill.md",
-        ".claude/skills/matlab-wrapper-skill.md",
         "docs/content/api/interface-parity.md",
         "docs/content/method/gpu-backends.md",
         ".claude/reports/test_kasper_analysis/rerun_znorm.py",
