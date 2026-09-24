@@ -25,6 +25,7 @@
  */
 
 #include "initialisation.hpp"
+#include "base/error.hpp"
 #include "core/portable_random.hpp"
 #include "core/distance_sampling_weights.hpp"
 #include "base/random_engine.hpp"   // for randGenerator (X-12)
@@ -52,6 +53,7 @@ int first_unselected(std::size_t size, const std::vector<int> &selected)
                   static_cast<int>(candidate)) == selected.end())
       return static_cast<int>(candidate);
   }
+  // Programming error: callers select at most Nc <= N indices, validated first.
   throw std::logic_error("initialization exhausted all candidate indices");
 }
 
@@ -61,9 +63,9 @@ void random_with(Problem &prob, Shuffle &shuffle)
   const auto Nc = prob.n_clusters();
 
   if (Nc <= 0)
-    throw std::runtime_error("init::random has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
+    throw InvalidInput("init::random has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
   if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
-    throw std::runtime_error("init::random requires 1 <= number of clusters <= number of series");
+    throw InvalidInput("init::random requires 1 <= number of clusters <= number of series");
 
   std::vector<int> candidate_centroids(prob.size());
   std::iota(candidate_centroids.begin(), candidate_centroids.end(), 0);
@@ -81,9 +83,9 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
   const auto Nc = prob.n_clusters();
 
   if (Nc <= 0)
-    throw std::runtime_error("init::Kmeanspp has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
+    throw InvalidInput("init::Kmeanspp has failed. Number of clusters is " + std::to_string(Nc) + ", but it should be greater than zero.\n");
   if (prob.size() == 0 || static_cast<std::size_t>(Nc) > prob.size())
-    throw std::runtime_error("init::Kmeanspp requires 1 <= number of clusters <= number of series");
+    throw InvalidInput("init::Kmeanspp requires 1 <= number of clusters <= number of series");
 
   prob.centroids_ind.clear();
 
@@ -127,7 +129,7 @@ void kmeanspp_with(Problem &prob, FirstIndex &first_index,
  *
  * @param prob Reference to the Problem object whose clusters are to be initialized.
  *
- * @exception std::runtime_error if the number of clusters (Nc) is non-positive.
+ * @exception InvalidInput if the number of clusters (Nc) is not in [1, number of series].
  *
  * @details
  * This function randomly selects cluster centroids from the range of data indices.
@@ -157,7 +159,7 @@ void random_seeded(Problem &prob, std::uint64_t random_seed)
  *
  * @param prob Reference to the Problem object whose clusters are to be initialized.
  *
- * @exception std::runtime_error if the number of clusters (Nc) is non-positive.
+ * @exception InvalidInput if the number of clusters (Nc) is not in [1, number of series].
  *
  * @details
  * Implements the K-means++ algorithm for initializing clusters. The first centroid

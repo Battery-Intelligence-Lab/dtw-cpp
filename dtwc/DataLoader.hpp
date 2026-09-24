@@ -467,8 +467,9 @@ public:
 
   /**
    * @brief Count series without loading data.
-   * @details Directory mode: counts entries via directory_iterator.
-   *          Batch file mode: counts lines (skips start_row headers).
+   * @details Directory mode: counts the files the folder loader reads.
+   *          Batch file mode: counts data lines (skips start_row headers and
+   *          trailing blank lines; an interior blank line throws, as in load()).
    *          Respects Ndata limit in both modes.
    * @return Number of series that would be loaded.
    */
@@ -482,19 +483,10 @@ public:
         return static_cast<size_t>(Ndata);
       return files.size();
     }
-    // Batch file: count lines after skipping start_row, respecting Ndata
-    std::ifstream in(data_path, std::ios_base::in);
-    if (!in.good())
-      throw std::runtime_error("DataLoader::count: cannot open " + data_path.string());
-
-    std::string line;
-    int line_no = 0;
-    size_t n_rows = 0;
-    while (ndata_wants_more(Ndata, n_rows) && std::getline(in, line)) {
-      if (line_no++ < start_row_) continue;
-      ++n_rows;
-    }
-    return n_rows;
+    // Batch file: the data lines the loader would read, respecting Ndata.
+    auto in = text_io_detail::open_text_file(data_path, "DataLoader::count");
+    return text_io_detail::for_each_data_line(
+      in, data_path, start_row_, Ndata, [](std::string_view, std::size_t) {});
   }
 
 private:
@@ -518,26 +510,16 @@ private:
   /// numbers are counted, never stored (no payload materialised, bulk reader untouched).
   Data load_metadata_file()
   {
-    std::ifstream in(data_path, std::ios_base::in);
-    if (!in.good())
-      throw std::runtime_error("DataLoader::load_metadata: cannot open " + data_path.string());
-    ignoreBOM(in);
+    auto in = text_io_detail::open_text_file(data_path, "DataLoader::load_metadata");
 
     std::vector<std::string> names;
     std::vector<std::size_t> flat_sizes;
-    std::string line;
-    int line_no = 0;
-    int n_rows = 0;
-    while (ndata_wants_more(Ndata, static_cast<std::size_t>(n_rows))
-           && std::getline(in, line)) {
-      if (line_no++ < start_row_) continue;
-      ++n_rows;
-      const std::size_t count = text_io_detail::parse_numeric_row<data_t>(
-        line, data_path, static_cast<std::size_t>(line_no), start_col_, delim,
-        [](data_t) {});
-      names.push_back(std::to_string(n_rows));
-      flat_sizes.push_back(count);
-    }
+    text_io_detail::for_each_data_line(in, data_path, start_row_, Ndata,
+      [&](std::string_view line, std::size_t row) {
+        flat_sizes.push_back(text_io_detail::parse_numeric_row<data_t>(
+          line, data_path, row, start_col_, delim, [](data_t) {}));
+        names.push_back(std::to_string(flat_sizes.size()));
+      });
     return Data::metadata_only(std::move(names), std::move(flat_sizes), 1);
   }
 
@@ -558,22 +540,16 @@ private:
   /// data line after skipping start_row rows / start_col columns) — without storing.
   std::size_t count_series_values(const fs::path &file) const
   {
-    std::ifstream in(file, std::ios_base::in);
-    if (!in.good())
-      throw std::runtime_error("DataLoader::load_metadata: cannot open " + file.string());
-    ignoreBOM(in);
-    std::string line;
-    for (int i = 0; i < start_row_; ++i) std::getline(in, line);
+    auto in = text_io_detail::open_text_file(file, "DataLoader::load_metadata");
     std::size_t count = 0;
-    std::size_t row = static_cast<std::size_t>(start_row_);
-    bool first_data_line = true;
-    while (std::getline(in, line)) {
-      ++row;
-      const auto value = text_io_detail::parse_series_value_row<data_t>(
-        line, file, row, start_col_, delim, first_data_line);
-      first_data_line = false;
-      if (value) ++count;
-    }
+    bool legacy_header = start_row_ == 0; // exactly as readFile
+    text_io_detail::for_each_data_line(in, file, start_row_, -1,
+      [&](std::string_view line, std::size_t row) {
+        if (text_io_detail::parse_series_value_row<data_t>(
+              line, file, row, start_col_, delim, legacy_header))
+          ++count;
+        legacy_header = false;
+      });
     return count;
   }
 

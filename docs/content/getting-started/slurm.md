@@ -73,6 +73,18 @@ uv run benchmarks/verify_results.py \
     --predicted results/coffee_k2/coffee_labels.csv -k 2
 ```
 
+## From Python: `device="hpc"`
+
+`DTWClustering(device="hpc")` and `dtwcpp.cluster(..., device="hpc")` send the whole
+clustering job through the same wrapper, which ships inside the `dtwcpp` package, so an
+installed wheel needs no source checkout. Put `.env` in the directory you run Python from,
+or set `DTWC_REPO_ROOT` to the directory that holds it; the labels are downloaded to
+`results/slurm/` there. `DTWC_REPO_ROOT` steers only this Python route:
+`bash scripts/slurm/slurm_remote.sh` always reads the `.env` of, and uploads, its own
+checkout. The cluster still needs a `dtwc_cl` build, made once from a source checkout with
+`upload` and `build` as above — from the same release as the installed package, because
+the job script comes from the package and passes that release's flags.
+
 ## Build Profiles
 
 The `scripts/slurm/build-arc.sh` script supports multiple hardware targets:

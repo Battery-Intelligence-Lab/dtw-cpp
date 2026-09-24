@@ -59,6 +59,22 @@ static Problem make_problem_from_dummy(int Ndata_max, int band_val = -1)
   DataLoader dl{ data_dir, Ndata_max };
   dl.start_column(1).start_row(1);
   Problem prob("test_pruned_dummy", dl);
+  if (band_val >= 0) {
+    // The dummy series differ in length by thousands of samples, far more than
+    // these bands: no warping path fits, which fill_distance_matrix rejects
+    // (FX-1). A common length keeps the banded comparison meaningful.
+    std::size_t len = prob.series(0).size();
+    for (std::size_t i = 1; i < prob.size(); ++i)
+      len = std::min(len, prob.series(i).size());
+    std::vector<std::vector<double>> cut;
+    std::vector<std::string> names;
+    for (std::size_t i = 0; i < prob.size(); ++i) {
+      const auto s = prob.series(i);
+      cut.emplace_back(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(len));
+      names.emplace_back(prob.series_name(i));
+    }
+    prob.set_data(Data(std::move(cut), std::move(names)));
+  }
   prob.band = band_val;
   return prob;
 }

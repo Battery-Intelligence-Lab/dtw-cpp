@@ -10,6 +10,7 @@
 #include "Problem.hpp"
 #include "core/sha256.hpp"
 #include "base/error.hpp"
+#include "io/parse_number.hpp"
 
 #include <array>
 #include <atomic>
@@ -84,12 +85,14 @@ std::string current_timestamp()
   const auto now = std::chrono::system_clock::now();
   const std::time_t time_t_now = std::chrono::system_clock::to_time_t(now);
   std::tm tm_buf{};
+  // Programming errors: now() falls in years 0000-9999, which gmtime and the
+  // 20-character format below always take.
 #ifdef _WIN32
   if (gmtime_s(&tm_buf, &time_t_now) != 0)
-    throw std::runtime_error("Cannot convert checkpoint timestamp to UTC.");
+    throw std::logic_error("Cannot convert checkpoint timestamp to UTC.");
 #else
   if (gmtime_r(&time_t_now, &tm_buf) == nullptr)
-    throw std::runtime_error("Cannot convert checkpoint timestamp to UTC.");
+    throw std::logic_error("Cannot convert checkpoint timestamp to UTC.");
 #endif
   std::array<char, 21> text{};
   const int written = std::snprintf(
@@ -97,7 +100,7 @@ std::string current_timestamp()
     tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday,
     tm_buf.tm_hour, tm_buf.tm_min, tm_buf.tm_sec);
   if (written != 20)
-    throw std::runtime_error("Cannot format checkpoint timestamp.");
+    throw std::logic_error("Cannot format checkpoint timestamp.");
   return std::string(text.data(), 20);
 }
 
@@ -176,6 +179,19 @@ bool is_directory_without_symlink(const fs::path &path)
   std::error_code error;
   const fs::file_status status = fs::symlink_status(path, error);
   return !error && status.type() == fs::file_type::directory;
+}
+
+/// fs::create_directories, with a failure as IOError naming the path: the
+/// throwing overload's filesystem_error is no dtwc::Error, so the bindings
+/// passed it on untyped (Python RuntimeError, MATLAB dtwc:runtime).
+bool create_checkpoint_directory(const fs::path &path)
+{
+  std::error_code error;
+  const bool created = fs::create_directories(path, error);
+  if (error)
+    throw IOError("Cannot create checkpoint directory: " + path.string() + ": "
+                  + error.message());
+  return created;
 }
 
 bool read_small_file(const fs::path &path, std::size_t maximum,
@@ -296,9 +312,8 @@ bool read_bounded_line(std::istream &input, std::size_t maximum,
 bool parse_finite_double(std::string_view token, double &value)
 {
   if (token.empty() || token.size() > MAX_NUMERIC_TOKEN_SIZE) return false;
-  const auto parsed = std::from_chars(
-    token.data(), token.data() + token.size(), value,
-    std::chars_format::general);
+  const auto parsed =
+    io::parse_number(token.data(), token.data() + token.size(), value);
   return parsed.ec == std::errc{}
       && parsed.ptr == token.data() + token.size() && std::isfinite(value);
 }
@@ -417,17 +432,18 @@ struct GenerationCleanup
 
 void write_file(const fs::path &path, std::string_view bytes)
 {
+  // Programming error: the only payloads are the manifest and the CURRENT line.
   if (bytes.size()
       > static_cast<std::size_t>(std::numeric_limits<std::streamsize>::max()))
-    throw std::runtime_error("Checkpoint file exceeds stream limits.");
+    throw std::logic_error("Checkpoint file exceeds stream limits.");
   std::ofstream output(path, std::ios::binary | std::ios::trunc);
   if (!output.is_open())
-    throw std::runtime_error("Cannot open checkpoint file for writing: "
-                             + path.string());
+    throw IOError("Cannot open checkpoint file for writing: "
+                  + path.string());
   output.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
   output.close();
   if (!output)
-    throw std::runtime_error("Write error on checkpoint file: " + path.string());
+    throw IOError("Write error on checkpoint file: " + path.string());
 }
 
 void replace_current(const fs::path &temporary, const fs::path &current)
@@ -435,20 +451,25 @@ void replace_current(const fs::path &temporary, const fs::path &current)
 #ifdef _WIN32
   if (!MoveFileExW(temporary.native().c_str(), current.native().c_str(),
                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-    throw std::system_error(
-      static_cast<int>(GetLastError()), std::system_category(),
-      "Cannot atomically publish checkpoint CURRENT");
+    throw IOError(
+      "Cannot atomically publish checkpoint CURRENT: "
+      + std::error_code(static_cast<int>(GetLastError()), std::system_category()).message());
   }
 #else
   if (::rename(temporary.c_str(), current.c_str()) != 0)
-    throw std::system_error(
-      errno, std::generic_category(),
-      "Cannot atomically publish checkpoint CURRENT");
+    throw IOError(
+      "Cannot atomically publish checkpoint CURRENT: "
+      + std::error_code(errno, std::generic_category()).message());
 #endif
 }
 
 } // anonymous namespace
 
+
+void save_checkpoint(const Problem &prob, const std::string &path)
+{
+  save_checkpoint(prob, path, prob.metric());
+}
 
 void save_checkpoint(const Problem &prob, const std::string &path,
                      core::MetricType metric)
@@ -459,23 +480,23 @@ void save_checkpoint(const Problem &prob, const std::string &path,
   const core::DenseDistanceMatrix &matrix = prob.dense_distance_matrix();
   const std::size_t n = prob.size();
   if (n == 0)
-    throw std::runtime_error("Dense checkpoint requires at least one series.");
+    throw InvalidInput("Dense checkpoint requires at least one series.");
   if (matrix.size() != 0 && matrix.size() != n)
-    throw std::runtime_error(
+    throw InvalidInput(
       "Dense checkpoint matrix dimension does not match resident data.");
   std::size_t packed = 0;
   if (!checked_packed_count(n, packed))
-    throw std::runtime_error("Dense checkpoint dimension overflows packed size.");
+    throw InvalidInput("Dense checkpoint dimension overflows packed size.");
 
   const std::size_t pairs_computed = matrix.size() == 0
     ? 0 : matrix.count_computed();
-  if (pairs_computed > packed)
-    throw std::runtime_error("Dense checkpoint computed-pair count is invalid.");
+  if (pairs_computed > packed) // programming error: an n-series matrix holds at most `packed`
+    throw std::logic_error("Dense checkpoint computed-pair count is invalid.");
   if (matrix.size() != 0) {
     for (std::size_t i = 0; i < matrix.packed_count(); ++i) {
       const double value = matrix.raw()[i];
       if (!std::isnan(value) && !std::isfinite(value))
-        throw std::runtime_error(
+        throw InvalidInput(
           "Dense checkpoint contains a computed non-finite distance.");
     }
   }
@@ -488,17 +509,17 @@ void save_checkpoint(const Problem &prob, const std::string &path,
       || maximum_row_size
            > static_cast<std::size_t>(
                std::numeric_limits<std::streamsize>::max()))
-    throw std::runtime_error("Dense checkpoint row size overflows.");
+    throw InvalidInput("Dense checkpoint row size overflows.");
 
   const fs::path root(path);
   const fs::path generations = root / "generations";
   GenerationCleanup cleanup{root, generations};
-  cleanup.root_created = fs::create_directories(root);
+  cleanup.root_created = create_checkpoint_directory(root);
   if (!is_directory_without_symlink(root))
-    throw std::runtime_error("Checkpoint root is not a directory: " + root.string());
-  cleanup.generations_created = fs::create_directories(generations);
+    throw IOError("Checkpoint root is not a directory: " + root.string());
+  cleanup.generations_created = create_checkpoint_directory(generations);
   if (!is_directory_without_symlink(generations))
-    throw std::runtime_error(
+    throw IOError(
       "Checkpoint generations path is not a directory: " + generations.string());
 
   std::string id;
@@ -511,15 +532,15 @@ void save_checkpoint(const Problem &prob, const std::string &path,
       break;
     }
     if (error)
-      throw std::system_error(error, "Cannot create checkpoint generation");
+      throw IOError("Cannot create checkpoint generation: " + error.message());
   }
   if (cleanup.generation.empty())
-    throw std::runtime_error("Cannot allocate a unique checkpoint generation.");
+    throw IOError("Cannot allocate a unique checkpoint generation.");
 
   const fs::path csv_path = cleanup.generation / "distances.csv";
   std::ofstream csv(csv_path, std::ios::binary | std::ios::trunc);
   if (!csv.is_open())
-    throw std::runtime_error(
+    throw IOError(
       "Cannot open checkpoint distances for writing: " + csv_path.string());
   core::detail::Sha256 payload_hash;
   payload_hash.update(PAYLOAD_HASH_DOMAIN.data(), PAYLOAD_HASH_DOMAIN.size());
@@ -535,8 +556,8 @@ void save_checkpoint(const Problem &prob, const std::string &path,
         const auto formatted = std::to_chars(
           number.data(), number.data() + number.size(), matrix.get(i, j),
           std::chars_format::general, std::numeric_limits<double>::max_digits10);
-        if (formatted.ec != std::errc{})
-          throw std::runtime_error("Cannot format checkpoint distance.");
+        if (formatted.ec != std::errc{}) // programming error: 64 bytes fit any double
+          throw std::logic_error("Cannot format checkpoint distance.");
         row.append(number.data(), formatted.ptr);
       }
     }
@@ -544,12 +565,12 @@ void save_checkpoint(const Problem &prob, const std::string &path,
     payload_hash.update(row.data(), row.size());
     csv.write(row.data(), static_cast<std::streamsize>(row.size()));
     if (!csv)
-      throw std::runtime_error(
+      throw IOError(
         "Write error on checkpoint distances: " + csv_path.string());
   }
   csv.close();
   if (!csv)
-    throw std::runtime_error(
+    throw IOError(
       "Write error on checkpoint distances: " + csv_path.string());
 
   std::string manifest;
@@ -570,8 +591,13 @@ void save_checkpoint(const Problem &prob, const std::string &path,
   write_file(cleanup.generation / "metadata.txt", manifest);
 
   cleanup.current_temporary = root / (".CURRENT." + id + ".tmp");
-  if (fs::exists(cleanup.current_temporary))
-    throw std::runtime_error("Checkpoint CURRENT staging path already exists.");
+  std::error_code staging_error;
+  const bool staged = fs::exists(cleanup.current_temporary, staging_error);
+  if (staging_error)
+    throw IOError("Cannot inspect checkpoint CURRENT staging path: "
+                  + cleanup.current_temporary.string() + ": " + staging_error.message());
+  if (staged)
+    throw IOError("Checkpoint CURRENT staging path already exists.");
   write_file(cleanup.current_temporary, id + "\n");
   replace_current(cleanup.current_temporary, root / "CURRENT");
   cleanup.published = true;
@@ -591,6 +617,11 @@ void save_checkpoint(const Problem &prob, const std::string &path,
   for (const auto &stale : superseded) fs::remove_all(stale, ignored);
 }
 
+
+bool load_checkpoint(Problem &prob, const std::string &path)
+{
+  return load_checkpoint(prob, path, prob.metric());
+}
 
 bool load_checkpoint(Problem &prob, const std::string &path,
                      core::MetricType metric)
@@ -628,6 +659,7 @@ bool load_checkpoint(Problem &prob, const std::string &path,
       std::is_nothrow_move_assignable_v<core::DenseDistanceMatrix>,
       "Dense checkpoint publication must preserve the strong guarantee");
     *destination = std::move(candidate);
+    prob.fill_request_validated_ = false; // other pairs known: re-check lazily
     return true;
   } catch (...) {
     return false;

@@ -12,21 +12,29 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          # Without an explicit target the archive inherits the runner's macOS
+          # and runs on nothing older. 13.3 is the first libc++ with the
+          # floating-point std::to_chars the CSV writers use (the wheels use the
+          # same target, python-wheels.yml; smoke_release_archive.py enforces it).
+          - os: macos-latest
+            macos_target: -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3
     runs-on: ${{ matrix.os }}
 
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
 
-      - name: Install macOS OpenMP runtime
+      - name: Build macOS OpenMP runtime for 13.3
         if: runner.os == 'macOS'
-        # libomp is keg-only, so `brew install` alone leaves nothing in a prefix
-        # CMake searches and find_package(OpenMP) fails — which dtwc/CMakeLists.txt
-        # turns into a configure FATAL_ERROR. Other workflows use
-        # `brew link --force libomp`; OpenMP_ROOT does the same job without
-        # writing into the Homebrew prefix (CMP0074, CMake >= 3.26 here).
+        # The archive bundles the libomp it links (lib/), and Homebrew's is built
+        # for the runner's macOS (minos 26.0), so the archive would not start
+        # below 26 whatever the deployment target above. The script builds the
+        # same LLVM release for 13.3; OpenMP_ROOT points find_package(OpenMP) at
+        # it (CMP0074, CMake >= 3.26 here), and the smoke step checks every
+        # Mach-O in the archive.
         run: |
-          brew install libomp
-          echo "OpenMP_ROOT=$(brew --prefix libomp)" >> "$GITHUB_ENV"
+          bash scripts/build_libomp_macos.sh "$RUNNER_TEMP/libomp"
+          echo "OpenMP_ROOT=$RUNNER_TEMP/libomp" >> "$GITHUB_ENV"
 
       - name: Configure release CLI
         # DTWC_ENABLE_NATIVE_ARCH=OFF is required, not tidiness. It defaults ON,
@@ -49,6 +57,7 @@ jobs:
           -DDTWC_BUILD_TESTING=OFF
           -DDTWC_ENABLE_NATIVE_ARCH=OFF
           -DCMAKE_BUILD_TYPE=Release
+          ${{ matrix.macos_target }}
 
       - name: Build CLI and dependency notices
         run: cmake --build build/release --config Release --target dtwc_cl write-licenses --parallel 2

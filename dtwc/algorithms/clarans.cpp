@@ -15,8 +15,9 @@
  *   - After accepting a swap the full assignment is recomputed. The extra
  *     O(N*k) lookups hit the lazy distance cache (dist_by_ind), so repeated
  *     lookups are free after the first evaluation.
- *   - Auto max_neighbor = max(250, (int)(0.0125 * k * (N - k))), matching
- *     the original CLARANS paper's recommended parameterization.
+ *   - Auto max_neighbor = max(250, floor(0.0125 * k * (N - k))), a 64-bit
+ *     count, matching the original CLARANS paper's recommended
+ *     parameterization.
  *
  * @warning Experimental. Not exposed in CLI. Use FastCLARA for large N.
  *
@@ -49,18 +50,26 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
   const int64_t N = static_cast<int64_t>(prob.size());
   static_assert(sizeof(N) >= 8, "N must stay 64-bit so static_cast<int>(size()) cannot truncate (audit R4).");
   if (N <= 0)
-    throw std::runtime_error("clarans: no data points in problem");
+    throw InvalidInput("clarans: no data points in problem");
   if (opts.n_clusters <= 0 || opts.n_clusters > N)
-    throw std::runtime_error(
+    throw InvalidInput(
       "clarans: n_clusters must be in [1, N]. Got n_clusters="
       + std::to_string(opts.n_clusters) + ", N=" + std::to_string(N));
+  // Validated before the Problem is touched (A-05): with num_local <= 0 no
+  // restart ran and an EMPTY clustering of cost DBL_MAX was published.
+  if (opts.num_local <= 0)
+    throw InvalidInput(
+      "clarans: num_local (the number of restarts) must be positive, got "
+      + std::to_string(opts.num_local) + ".");
 
   const int k = opts.n_clusters;
 
-  // Auto max_neighbor: matches CLARANS paper heuristic.
-  const int max_nb = (opts.max_neighbor < 0)
-                       ? std::max(250, static_cast<int>(0.0125 * k * (N - k)))
-                       : opts.max_neighbor;
+  // Auto max_neighbor: matches CLARANS paper heuristic. A product of counts,
+  // so 64-bit by type (PLAN §1.1): 0.0125·k·(N−k) passes INT_MAX at k = 2000,
+  // N = 10^8, where the old static_cast<int> of the double was UB.
+  const int64_t max_nb = (opts.max_neighbor < 0)
+    ? std::max<int64_t>(250, static_cast<int64_t>(0.0125 * k * (N - k)))
+    : opts.max_neighbor;
 
   int64_t dtw_evals = 0;
   const bool has_budget = (opts.max_dtw_evals > 0);
@@ -121,14 +130,14 @@ core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
     // 3. CLARANS swap loop.
     // -----------------------------------------------------------------------
     std::unordered_set<int> medoid_set(medoids.begin(), medoids.end());
-    int neighbor_count = 0;
+    int64_t neighbor_count = 0;
 
     // When k == N every point is already a medoid — no swap is possible.
     // Skip the swap loop entirely; the result is optimal by definition.
     const bool all_medoids = (k == N);
 
-    int total_swaps = 0;
-    const int max_total_swaps = max_nb * 10; // hard upper bound on total iterations
+    int64_t total_swaps = 0;
+    const int64_t max_total_swaps = max_nb * 10; // hard upper bound on total iterations
     while (!all_medoids && neighbor_count < max_nb && total_swaps < max_total_swaps) {
       ++total_swaps;
       if (has_budget && dtw_evals >= opts.max_dtw_evals) break;

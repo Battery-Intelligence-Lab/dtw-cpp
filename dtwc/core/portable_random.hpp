@@ -1,6 +1,10 @@
 /**
  * @file portable_random.hpp
  * @brief Implementation-independent sampling from std::mt19937_64.
+ *
+ * @details Every caller validates what reaches these functions first (cluster
+ * counts, sample plans, finite distance weights), so each std::logic_error below
+ * marks a programming error, not bad user input.
  */
 
 #pragma once
@@ -44,7 +48,7 @@ namespace detail {
   std::mt19937_64 &engine, std::uint64_t upper_exclusive)
 {
   if (upper_exclusive == 0)
-    throw std::invalid_argument("portable_bounded: upper bound must be positive.");
+    throw std::logic_error("portable_bounded: upper bound must be positive.");
   // A singleton domain contains no entropy.  Besides avoiding useless work,
   // this makes selection scans consume exactly one draw per genuine choice.
   if (upper_exclusive == 1) return 0;
@@ -76,7 +80,7 @@ namespace detail {
   std::mt19937_64 &engine, double upper_exclusive)
 {
   if (!std::isfinite(upper_exclusive) || upper_exclusive <= 0.0)
-    throw std::invalid_argument(
+    throw std::logic_error(
       "portable_real_below: upper bound must be finite and positive.");
   const double value = portable_unit_interval(engine) * upper_exclusive;
   // Correct the possible round-to-upper-endpoint case without another draw.
@@ -92,7 +96,7 @@ template <typename ForwardIterator>
   std::mt19937_64 &engine)
 {
   if (!std::isfinite(total) || total <= 0.0)
-    throw std::invalid_argument(
+    throw std::logic_error(
       "portable_weighted_index: total must be finite and positive.");
 
   const double threshold = portable_real_below(engine, total);
@@ -105,7 +109,7 @@ template <typename ForwardIterator>
   for (; first != last; ++first, ++index) {
     const double weight = static_cast<double>(*first);
     if (!std::isfinite(weight) || weight < 0.0)
-      throw std::invalid_argument(
+      throw std::logic_error(
         "portable_weighted_index: weights must be finite and non-negative.");
     if (weight > 0.0) {
       last_positive = index;
@@ -118,7 +122,7 @@ template <typename ForwardIterator>
     }
   }
   if (!has_positive_weight)
-    throw std::invalid_argument(
+    throw std::logic_error(
       "portable_weighted_index: at least one weight must be positive.");
   // Summation can finish one ulp below the independently accumulated `total`.
   return selected ? selected_index : last_positive;
@@ -132,11 +136,11 @@ template <typename Index>
   static_assert(std::is_integral_v<Index>);
   if constexpr (std::is_signed_v<Index>) {
     if (population_size < 0 || sample_size < 0)
-      throw std::invalid_argument(
+      throw std::logic_error(
         "portable_sample_indices: sizes must be non-negative.");
   }
   if (sample_size > population_size)
-    throw std::invalid_argument(
+    throw std::logic_error(
       "portable_sample_indices: sample exceeds population.");
 
   using unsigned_index = std::make_unsigned_t<Index>;
@@ -145,7 +149,7 @@ template <typename Index>
   if constexpr (sizeof(unsigned_index) > sizeof(std::size_t)) {
     if (needed > static_cast<unsigned_index>(
           std::numeric_limits<std::size_t>::max()))
-      throw std::length_error(
+      throw std::logic_error(
         "portable_sample_indices: sample does not fit address space.");
   }
   std::vector<Index> sample;

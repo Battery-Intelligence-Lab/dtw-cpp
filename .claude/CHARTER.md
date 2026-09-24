@@ -4,6 +4,54 @@ Volkan's instructions, verbatim. Agents do not edit the quoted text; new instruc
 with a date. How they are turned into a design is in `design.md` §1; how they are scheduled is in
 `PLAN.md`.
 
+## 2026-09-23 — YAGNI pass
+
+> Recently I have found out that the plan was adding unnecessary complications to our library for
+> example having complicate integer checking for overflow where we definitely cannot store more time
+> series than the largest integer on the system, like in 32-bit integer system it is nearly impossible
+> to store more than 2 billion time series right? and we have no issues especially for the 64-bit
+> systems. Therefore, I told the previous agent to select just the largest integer and only check once
+> while data is being loaded which is not even necessary. The person dealing with billions of time
+> series would know what to do right? Then the agent changed it a bit, now I would like you to go over
+> the plan once again for YAGNI principle. We don't need lots of useless abstractions, only the ones
+> that keep the user interface stable, and keep the performance like SIMD-creation memory management
+> etc. first class. Some helper functions for repeated functions. Then use a library where a
+> compatible library with a compatible license (with BSD-3) exists and does the job portably. We don't
+> need to rediscover the wheel. We need to write a decent library with top speed and compatible with
+> CPU/GPUs/HPC. I really like
+>
+> device=cpu,   device=hpc,  device=gpu. type of setting at the beginning. So we set the problem
+> nicely then it is decided what to do with the data, how to load it etc.
+>
+> I am just skeptical about file reading that is why I kept Arma for robust csv reading etc. Let's see
+> the latest commits and the plan and also discuss Fable so we make a decent work.
+
+Later the same day, on the proposed decisions:
+
+> We previously tried highway it wasn't worth the effort.
+> macOS wheel thing is which year?
+> Eigen removal need to dig a little bit in why it w/o eigen is a bit slower all the time? Maybe there is
+> something we can do.
+> output names as it is fine.
+> Let's continue
+
+## 2026-09-22 — fragments
+
+The full messages of that day were not recorded; these are the fragments the day's records quoted —
+rows A-10 and D-22 of the plan draft left uncommitted on 2026-09-22, and row D-19 of `e784e5c` — copied
+here so they outlive those rows.
+
+> number of series should be checked only once when loading the data ... don't try to safeguard
+> every little bit of the detail.
+
+> the default types should be defined for machine like 64 bit or 32 bit ... once types are fixed then
+> assume there is no overflow here. Less is more.
+
+> not having bit-by-bit identicality is fine as long as it is correct
+
+Recorded as paraphrase only (`DECISIONS.md` rule 18, `PLAN.md` D-18): avoid copyleft; prefer a mature
+portable library over an in-tree rewrite.
+
 ## 2026-09-21 — Design 2.0 branch
 
 > This is a branch for Design 2.0, so see the existing design, see good design principles, and see

@@ -33,6 +33,9 @@
  *            "Estimating DTW Distance Between Time Series with Missing Data."
  *            ECML-PKDD 2023, LNCS 14173.
  *
+ * Unchecked per-pair layer (see warping.hpp): ±inf is not rejected here;
+ * dtwc::distance::arow is the checked entry point.
+ *
  * @author Volkan Kumtepeli
  * @date 02 Apr 2026
  */

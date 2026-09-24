@@ -44,9 +44,9 @@
   do {                                                                       \
     cudaError_t err = (call);                                                \
     if (err != cudaSuccess) {                                                \
-      throw std::runtime_error(std::string("CUDA error at ") + __FILE__ +   \
-                               ":" + std::to_string(__LINE__) + ": " +      \
-                               cudaGetErrorString(err));                     \
+      throw dtwc::DeviceError(std::string("CUDA error at ") + __FILE__ +    \
+                              ":" + std::to_string(__LINE__) + ": " +       \
+                              cudaGetErrorString(err));                      \
     }                                                                        \
   } while (0)
 
@@ -742,7 +742,9 @@ __global__ void compute_envelopes_kernel(
   T *upper = upper_envelopes + static_cast<long long>(series_idx) * max_L;
   T *lower = lower_envelopes + static_cast<long long>(series_idx) * max_L;
 
-  const int w = (band >= 0) ? band : 0;
+  // A negative radius is full DTW, whose window is the whole series; the
+  // clamp to L also keeps k + w + 1 from overflowing at INT_MAX (FX-13).
+  const int w = (band >= 0 && band < L) ? band : L;
 
   for (int k = tid; k < L; k += nthreads) {
     const int lo = (k >= w) ? k - w : 0;
@@ -781,7 +783,7 @@ __global__ void compute_lb_keogh_kernel(
     const T *__restrict__ upper_envelopes,  // [N * max_L]
     const T *__restrict__ lower_envelopes,  // [N * max_L]
     T *__restrict__ lb_values,              // [num_pairs] output
-    int max_L, int N, int num_pairs)
+    int max_L, int N, int num_pairs, int use_sq_l2)
 {
   const int pid = blockIdx.x * blockDim.x + threadIdx.x;
   if (pid >= num_pairs) return;
@@ -801,6 +803,8 @@ __global__ void compute_lb_keogh_kernel(
   const T *upper_j  = upper_envelopes + static_cast<long long>(sj) * max_L;
   const T *lower_j  = lower_envelopes + static_cast<long long>(sj) * max_L;
 
+  // Squared-L2 DTW sums squared costs, so its bound squares each excess: an
+  // unsquared excess below 1 exceeds the cost it bounds (FX-13).
   // LB_Keogh(query=j, envelope=i)
   T lb1 = T(0);
   for (int k = 0; k < n; ++k) {
@@ -808,7 +812,7 @@ __global__ void compute_lb_keogh_kernel(
     T excess_upper = val - upper_i[k];
     T excess_lower = lower_i[k] - val;
     T contrib = fmax(T(0), fmax(excess_upper, excess_lower));
-    lb1 += contrib;
+    lb1 += use_sq_l2 ? contrib * contrib : contrib;
   }
 
   // LB_Keogh(query=i, envelope=j)
@@ -818,7 +822,7 @@ __global__ void compute_lb_keogh_kernel(
     T excess_upper = val - upper_j[k];
     T excess_lower = lower_j[k] - val;
     T contrib = fmax(T(0), fmax(excess_upper, excess_lower));
-    lb2 += contrib;
+    lb2 += use_sq_l2 ? contrib * contrib : contrib;
   }
 
   lb_values[pid] = fmax(lb1, lb2);
@@ -842,14 +846,15 @@ __global__ void compact_active_pairs_kernel(
     return;
   }
 
-  const T INF = (sizeof(T) == 4)
-      ? static_cast<T>(3.402823466e+38f)
-      : static_cast<T>(1.7976931348623157e+308);
+  // A pruned pair was never computed: NaN, the only "not a distance" value
+  // outside a kernel, never a finite maximum that reads as a distance.
+  const T NOT_COMPUTED =
+      static_cast<T>(__longlong_as_double(0x7ff8000000000000LL));
 
   std::int64_t si, sj;
   decode_pair(pid, N, si, sj);
-  result_matrix[si * N + sj] = INF;
-  result_matrix[sj * N + si] = INF;
+  result_matrix[si * N + sj] = NOT_COMPUTED;
+  result_matrix[sj * N + si] = NOT_COMPUTED;
 }
 
 // =========================================================================
@@ -1317,7 +1322,7 @@ template <typename T>
 void launch_lb_keogh_kernel(
     DTWLaunchWorkspace<T> &workspace,
     size_t N, size_t max_L, size_t num_pairs,
-    int band, double &lb_time_sec)
+    int band, bool use_squared_l2, double &lb_time_sec)
 {
   auto evt_start = dtwc::cuda::make_cuda_event();
   auto evt_end   = dtwc::cuda::make_cuda_event();
@@ -1347,7 +1352,7 @@ void launch_lb_keogh_kernel(
         workspace.d_upper.get(), workspace.d_lower.get(),
         workspace.d_lb.get(),
         static_cast<int>(max_L), static_cast<int>(N),
-        static_cast<int>(num_pairs));
+        static_cast<int>(num_pairs), use_squared_l2 ? 1 : 0);
   }
 
   CUDA_CHECK(cudaGetLastError());
@@ -1427,7 +1432,8 @@ std::vector<double> launch_lb_keogh_standalone(
 {
   auto &workspace = get_dtw_launch_workspace<T>(device_id);
   upload_series_to_workspace(workspace, series, lengths, max_L);
-  launch_lb_keogh_kernel<T>(workspace, N, max_L, num_pairs, band, lb_time_sec);
+  // This entry point returns L1 bounds.
+  launch_lb_keogh_kernel<T>(workspace, N, max_L, num_pairs, band, false, lb_time_sec);
   return download_lb_values(workspace, num_pairs);
 }
 
@@ -1483,7 +1489,7 @@ CUDADistMatResult compute_distance_matrix_cuda(
   // ---------------------------------------------------------------------------
   // When use_lb_keogh is enabled and band >= 0, compute LB_Keogh for all
   // pairs on GPU. If lb_threshold > 0, pairs with LB > threshold are set
-  // to INF and excluded from full DTW computation.
+  // to NaN (not computed) and excluded from full DTW computation.
   const bool do_lb_pruning = opts.use_lb_keogh && (opts.band >= 0);
   const bool has_threshold = do_lb_pruning && (opts.lb_threshold > 0);
 
@@ -1491,7 +1497,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
     if (do_lb_pruning) {
       auto &workspace = get_dtw_launch_workspace<float>(opts.device_id);
       upload_series_to_workspace(workspace, series, lengths, max_L);
-      launch_lb_keogh_kernel<float>(workspace, N, max_L, num_pairs, opts.band, result.lb_time_sec);
+      launch_lb_keogh_kernel<float>(workspace, N, max_L, num_pairs, opts.band,
+                                    opts.use_squared_l2, result.lb_time_sec);
 
       if (has_threshold) {
         const size_t active_pairs = compact_active_pairs<float>(
@@ -1530,7 +1537,8 @@ CUDADistMatResult compute_distance_matrix_cuda(
     if (do_lb_pruning) {
       auto &workspace = get_dtw_launch_workspace<double>(opts.device_id);
       upload_series_to_workspace(workspace, series, lengths, max_L);
-      launch_lb_keogh_kernel<double>(workspace, N, max_L, num_pairs, opts.band, result.lb_time_sec);
+      launch_lb_keogh_kernel<double>(workspace, N, max_L, num_pairs, opts.band,
+                                     opts.use_squared_l2, result.lb_time_sec);
 
       if (has_threshold) {
         const size_t active_pairs = compact_active_pairs<double>(
@@ -2287,7 +2295,7 @@ CUDAOneVsNResult compute_dtw_one_vs_all(
 
   if (N == 0) return result;
   if (query_index >= N) {
-    throw std::runtime_error("query_index " + std::to_string(query_index) +
+    throw dtwc::InvalidInput("compute_dtw_one_vs_all: query_index " + std::to_string(query_index) +
                              " out of range [0, " + std::to_string(N) + ")");
   }
 
@@ -2420,7 +2428,7 @@ CUDAKVsNResult compute_dtw_k_vs_all(
 
   for (size_t qi = 0; qi < K; ++qi) {
     if (query_indices[qi] >= N) {
-      throw std::runtime_error("query_indices[" + std::to_string(qi) + "] = " +
+      throw dtwc::InvalidInput("compute_dtw_k_vs_all: query_indices[" + std::to_string(qi) + "] = " +
                                std::to_string(query_indices[qi]) +
                                " out of range [0, " + std::to_string(N) + ")");
     }

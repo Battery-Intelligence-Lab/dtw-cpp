@@ -6,7 +6,9 @@
 # Command line flags override values from this file.
 
 # Input CSV file or folder containing time series data.
-# Each row is one time series; columns are time steps.
+# A file holds one series per row; a folder holds one series per file, one value
+# per line. data/dummy is a folder of pandas `index,value` files, hence the
+# skip-rows / skip-cols below.
 input = "data/dummy"
 
 # Output directory for results (labels, medoids, silhouettes, distance matrix).
@@ -40,8 +42,9 @@ max-iter = 100
 n-init = 1
 
 # CSV parsing: rows and columns to skip (e.g., for headers or index columns).
-skip-rows = 0
-skip-cols = 0
+# data/dummy: skip the `,0` header row and the index column.
+skip-rows = 1
+skip-cols = 1
 
 # Column to use as the time series values when loading from Parquet/Arrow IPC.
 # Leave unset (or empty) to use all numeric columns. Only valid for a

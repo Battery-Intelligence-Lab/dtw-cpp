@@ -82,6 +82,47 @@ class TestLoad:
         with pytest.raises(dtwcpp.InvalidInput, match="skip_rows"):
             dtwcpp.cluster(ds, k=1, device="hpc")
 
+    def test_delimiter_is_not_silently_dropped_on_hpc(self, monkeypatch):
+        """FX-17: the HPC transport has no delimiter slot, so the remote reader
+        took the delimiter from the extension; refuse before submitting."""
+        from dtwcpp import _hpc
+        submitted = []
+        monkeypatch.setattr(_hpc, "cluster_on_hpc",
+                            lambda *args, **kwargs: submitted.append(args) or [0])
+        ds = dtwcpp.Dataset("/remote/staged.txt", delimiter=";")
+        with pytest.raises(dtwcpp.InvalidInput, match="delimiter"):
+            dtwcpp.cluster(ds, k=1, device="hpc")
+        assert submitted == []
+
+    def test_in_memory_skip_cols_is_applied_once_on_hpc(self, monkeypatch):
+        """as_series() already dropped the columns, so the remote CLI must not
+        drop them again from the staged file."""
+        from dtwcpp import _hpc
+        captured = {}
+
+        def fake(source, k, **kwargs):
+            captured.update(source=source, **kwargs)
+            return np.zeros(len(source), dtype=int)
+
+        monkeypatch.setattr(_hpc, "cluster_on_hpc", fake)
+        ds = dtwcpp.load([[9.0, 1.0, 2.0], [9.0, 3.0, 4.0]], skip_cols=1)
+        dtwcpp.cluster(ds, k=2, device="hpc")
+        assert captured["source"] == [[1.0, 2.0], [3.0, 4.0]]
+        assert captured["skip_cols"] == 0
+
+    @pytest.mark.parametrize("content", [None, "1,2,x\n4,5,6\n"])
+    def test_reader_errors_name_the_load_and_keep_their_type(self, tmp_path,
+                                                             content):
+        """§1.2 / §5: a file load() cannot read raises IOError prefixed
+        ``load: failed to read '<path>':``, as C++ dtwc::load does."""
+        path = tmp_path / ("missing.csv" if content is None else "bad.csv")
+        if content is not None:
+            path.write_text(content, encoding="utf-8")
+        with pytest.raises(dtwcpp.IOError) as caught:
+            dtwcpp.cluster(dtwcpp.load(path), k=1, device="cpu")
+        assert type(caught.value) is dtwcpp.IOError
+        assert str(caught.value).startswith(f"load: failed to read '{path}': ")
+
     def test_path_source_parses_a_non_numeric_id_column(self, tmp_path):
         """§1.2: skip_cols drops FIELDS before numeric parsing, as C++ does."""
         csv = tmp_path / "named.csv"
@@ -649,10 +690,12 @@ class TestSeriesNames:
         assert dtwcpp.load(csv).series_names() == ["1", "2", "3"]
 
     def test_folder_names_are_file_stems(self, tmp_path):
+        # A folder holds one series per file, one value per line: the reader
+        # rejects a multi-field line there (FX-6).
         folder = tmp_path / "folder"
         folder.mkdir()
-        (folder / "alpha.csv").write_text("0,1,2\n", encoding="utf-8")
-        (folder / "beta.csv").write_text("9,8,7\n", encoding="utf-8")
+        (folder / "alpha.csv").write_text("0\n1\n2\n", encoding="utf-8")
+        (folder / "beta.csv").write_text("9\n8\n7\n", encoding="utf-8")
         assert dtwcpp.load(folder).series_names() == ["alpha", "beta"]
 
     def test_in_memory_names_are_the_zero_based_ordinals(self):
@@ -691,11 +734,14 @@ class TestNonAsciiSeriesNames:
 
     @staticmethod
     def _folder(tmp_path):
+        # One series per file, one value per line (a multi-field line in a
+        # one-series file is rejected by the reader, FX-6).
         folder = tmp_path / "uni"
         folder.mkdir()
-        for stem, row in (("caf\u00e9", "0,0.1"), ("beta", "0.2,0.1"),
-                          ("gamma", "9,9.1"), ("delta", "9.2,9.0")):
-            (folder / f"{stem}.csv").write_text(row + "\n", encoding="utf-8")
+        for stem, values in (("caf\u00e9", ("0", "0.1")), ("beta", ("0.2", "0.1")),
+                             ("gamma", ("9", "9.1")), ("delta", ("9.2", "9.0"))):
+            (folder / f"{stem}.csv").write_text(
+                "".join(v + "\n" for v in values), encoding="utf-8")
         return folder
 
     def test_load_decodes_a_non_ascii_file_stem(self, tmp_path):

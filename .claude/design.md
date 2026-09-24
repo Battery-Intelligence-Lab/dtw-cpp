@@ -1,6 +1,7 @@
 # DTWC++ — Design 2.0 (target architecture)
 
-Status: **proposed 2026-09-21**, written against `MAP.md` (as-is) and the charter (`CHARTER.md`).
+Status: **proposed 2026-09-21, revised 2026-09-23 by the YAGNI pass (§12)**, written against `MAP.md`
+(as-is) and the charter (`CHARTER.md`).
 It keeps the approved spec `specs/2026-09-07-design-2.0-campaign.md` as the row-level record and
 amends it where §11 says so. Signatures below are indicative: a wave plan fixes them against the
 code. Anything marked *exists* was verified in the tree on 2026-09-21.
@@ -25,7 +26,7 @@ Goals, in priority order:
 4. **Runs where the user points it.** `device = cpu | gpu | hpc` is a setting, not a code path the
    user assembles. No silent fallback, ever.
 5. **Easy to parallelise and to fit to a GPU.** One unit of work for every executor.
-6. **A joy to develop.** Layers checked at configure time, small units, a handful of helpers,
+6. **A joy to develop.** Layers reported by one script, small units, a handful of helpers,
    tests that each pin a named contract.
 7. **Optional dependencies stay optional**; the core builds and tests with all of them OFF.
 
@@ -54,7 +55,7 @@ to change **before the tag**; PLAN marks those rows `pre-tag`.
 
 ```text
  source ──io readers──▶ Data ──┐                         ┌──▶ scores(oracle, result)
- (csv dir/file, parquet,       │ SeriesSource            │
+ (csv dir/file, parquet,       │                         │
   arrow ipc, .dtws, arrays,    ▼                         │
   views, or NONE)        DistanceConfig ─bind once─▶ DistanceFn
                                │                         │
@@ -73,11 +74,11 @@ over `Problem`. Six seams carry everything:
 
 | Seam | Kind | Carries | Today |
 | --- | --- | --- | --- |
-| `SeriesSource` | `Data` itself, templated on the element type so the f32/f64 twins (`dtw_fn_`/`dtw_fn_f32_`, `series`/`series_f32`, the `is_f32()` forks) collapse; a separate concept is introduced **only if** it deletes those twins — one model deletes nothing | series as views, never copies | `Data` (four modes: heap f64, heap f32, view — also over an mmap store — and metadata-only) *exists*; `core/` names `Problem`/`Data` |
+| `Data` | `Data` as it is — no template and no concept (2026-09-23: a template would push the element type into the frozen `Problem`, so the 24 `is_f32()` branches stay) | series as views, never copies | `Data` (four modes: heap f64, heap f32, view — also over an mmap store — and metadata-only) *exists*; `core/` names `Problem`/`Data` |
 | `DistanceConfig` | value with a fingerprint: variant params, band, missing strategy, ndim, metric, precision — **semantics only, never the execution target** | *what distance means* | five public `Problem` fields read live through `*this` by the bound closure (C-01, C-22); `DistanceCacheConfiguration` is already this value but private; `distance_strategy` and the CUDA device index are hashed into the cache identity, so changing device discards an O(N²) matrix |
 | `DistanceFn` | `std::function<double(span, span)>`, bound **once**; an overload with an early-abandon threshold for nearest-medoid searches | the chosen kernel, type-erased outside the hot loop | *exists* (`resolve_dtw_fn`); keep; the kernels already take `early_abandon` |
 | `PairRange` | `{first, count}` over the linear pair index `[0, N(N−1)/2)`, decoded by the one `decode_pair`; a filler writes the **packed slice** for its range | the unit of work | pruned fill, CUDA, Metal and MPI already use it; the CPU brute-force fill goes by row (C-07); GPU results come back N×N and are copied element-wise into the packed store |
-| `DistanceOracle` | one concrete **`PackedOracle{span<const double>, n}`** — dense and mmap both read `data_[tri_index(i,j)]`, so a 16-byte value with `noexcept d(i,j)` serves every filled-matrix algorithm with zero dispatch and no template in a header. The *concept* (`size()`, `d(i,j)`, `row(i, out)` gather — a packed triangle has no contiguous row) remains for the two lazy consumers (TADPole, CLARANS: compute on miss through the session) and the tests' reference oracle, with explicit instantiations, never `std::function` or a virtual per lookup | distances by index | does not exist: algorithms and MIP take `Problem&` and touch 33 of its members; every lookup pays three preflights and a `std::visit` |
+| `DistanceOracle` | one concrete **`PackedOracle{span<const double>, n}`** — dense and mmap both read `data_[tri_index(i,j)]`, so a 16-byte value with `noexcept d(i,j)` serves every filled-matrix algorithm with zero dispatch and no template in a header; tests build one over a vector. **No oracle concept** (2026-09-23): the matrix-free algorithms — CLARA, CLARANS, OneBatchPAM, TADPole, barycenter k-means — compute from the series and keep `Problem&` as documented exceptions | distances by index | does not exist: algorithms and MIP take `Problem&` and touch 33 of its members; every lookup pays three preflights and a `std::visit` |
 | `ClusteringResult` | value: labels, medoids, cost (+ bound/gap, stats) | the single output of every algorithm | *exists*, but six algorithms also write `Problem` members as a side channel (A-02) |
 
 Two rules follow. **Series never cross the oracle seam** — every matrix-based algorithm must run on
@@ -99,7 +100,7 @@ need no new format.
 | 4 | `mip` | one Balinski model, solver adapters, Benders, LR-core, PDLP arbiter | + algorithms (warm start) |
 | 5 | `session` | `Problem` façade = `Data` + `DistanceCache{config, fn, matrix, identity}` + `ClusterState` + execution target; checkpoint | all below |
 | 6 | `surface` | Tier-1 `api`, `Config`, CLI, `capabilities`, umbrella header | all below |
-| — | bindings | Python, MATLAB (later: a C ABI, WASM) | surface + the frozen Tier-2 names |
+| — | bindings | Python, MATLAB (later: WASM) | surface + the frozen Tier-2 names |
 
 Measured today against this table (`scripts/repo_map.py layers`): **18 upward edges, 17 of them
 `→ Problem.hpp`** from `core/` (2), `algorithms/` (9) and `mip/` (6); the last is
@@ -114,8 +115,10 @@ constructor `Problem(name, DataLoader&)` and `Problem::write_*` both need it the
 they are unless a move deletes a problem: only the stdlib-only foundation headers move (to
 `dtwc/base/`, C-11), with forwarding headers at the old paths for one release.
 
-The layer table is a manifest checked at configure time (W0 Task 9), report-only until a layer is
-clean, then strict for that layer. The upward-edge count is a ratchet: it may only go down.
+The layer table is checked by `scripts/repo_map.py layers` as a **report**: the upward-edge count
+should only go down, and the target is the matrix-free algorithms (CLARA, CLARANS, OneBatchPAM, TADPole,
+barycenter k-means → `Problem.hpp`), which compute from the series, and nothing else. No configure-time manifest, no strict mode, no analysis of types in signatures
+(2026-09-23).
 
 ## 5. Execution targets: `device = cpu | gpu | hpc`
 
@@ -125,38 +128,42 @@ and `detail::Tier1ExecutionTarget`. `Problem` never consults `Env`; `api.cpp::co
 translates one vocabulary into the other. Precision is likewise said three times (`core::Precision`,
 `CUDAPrecision`, `MetalPrecision`).
 
-Target — additive, nothing removed:
+Target — additive, and nothing beyond one setter, one validator and one fill unit (2026-09-23):
 
-- `ExecutionTarget{Device device; int index; int threads}` is a value in `base`.
-  `Problem::set_device("gpu:1")` / `set_device(Device)` lifts the Tier-1 translation into the
-  session, so `Problem(device=…)`-style settings work identically in C++, Python and MATLAB. A
-  `Problem` that is never told a device behaves exactly as today; Tier-1 keeps passing the process
-  default explicitly.
+- **Declare once; the library decides.** `Problem::set_device(Device, index = 0)` is today's
+  `api.cpp::configure_device` moved into the session, so `Problem(device=…)` works identically in
+  C++, Python and MATLAB; `Env` stays the process default, and a `Problem` never told a device
+  behaves exactly as today. What follows from the device is already in the tree: Tier-1 `load()`
+  returns a lazy path-or-memory handle; under `hpc` a path source is never read locally (metadata-only
+  `Data` — the path travels), and Python writes in-memory series to a file and uploads it; on `cpu`, `StoragePolicy::Auto` keeps series in RAM or maps a `.dtws` store
+  once their footprint passes half the free RAM (`DataLoader.hpp:95-117`); `gpu` uploads contiguous
+  buffers. A text file is read onto the heap before any spill (`DataLoader.hpp:460`), so data larger
+  than RAM enters as Parquet or `.dtws`, whose planning is metadata-first — no streaming CSV reader
+  is planned.
 - `DistanceMatrixStrategy` stays. `Auto | BruteForce | Pruned` are CPU schedules; `CUDA` and `Metal`
   remain as spellings of `device = gpu`.
-- **One resolver** `resolve_execution(config, target, data, capabilities)` returns a fill plan or
-  throws a typed error naming the axis. It is the only place that knows, for example, that the GPU
-  kernels implement Standard DTW on univariate data without a missing-data strategy (today those
-  four settings are silently ignored on the GPU route, G-04), that GPU upload rejects an mmap
-  series store, and that **a band narrower than a pair's length difference has no feasible path**
-  — today `dtwBanded` returns a *finite* `numeric_limits::max()` for that case, the assignment
-  guards test only `isfinite`, and banded clustering of variable-length data silently sums 1.8e308
-  (`warping.hpp:403`, `medoid_assignment_policy.hpp:43`).
-- **Fillers are a Strategy owned by `core`**: `fill(const Data&, PairRange, const DistanceConfig&,
-  packed slice) → FillStats`, with one factory `switch` in an always-compiled TU under `backends/`
-  (static-initialisation registries are dropped by a static-library linker). `capabilities` queries
-  the same factory. One virtual call per *fill*, none per pair; `Problem.cpp` and `api.cpp` carry no
-  backend `#ifdef`.
+- **One validator**, `validate_fill_request()`, runs before every fill and throws a typed error
+  naming the axis. It is the only place that knows the GPU kernels implement Standard DTW on
+  univariate data without a missing-data strategy (today those settings are silently ignored on the
+  GPU route, G-04), that GPU upload rejects an mmap series store, and that **a band narrower than a
+  pair's length difference has no feasible path** — today `dtwBanded` returns a *finite*
+  `numeric_limits::max()` for that case, the assignment guards test only `isfinite`, and banded
+  clustering of variable-length data silently sums 1.8e308 (`warping.hpp:403`,
+  `medoid_assignment_policy.hpp:43`).
+- **One `fill()` translation unit** under `backends/`, always compiled, holds the backend `#ifdef`s
+  that `Problem.cpp` and `api.cpp` carry today and writes the packed slice of a `PairRange`. No
+  virtual Strategy, no factory, no fill-plan value, no new `ExecutionTarget` vocabulary.
 - `hpc` means two different things, both built from the same parts:
-  1. *Submit*: ship a run description and a data path to a scheduler, run `dtwc_cl` there, fetch
-     the artefacts. *Exists* in Python (`python/dtwcpp/_hpc.py`, `scripts/slurm/`); C++ Tier-1
-     throws "beta". The design rule that makes this cheap: **every setting of a run is a `Config`
-     field** (§6; in-memory data and callables such as `init_fun` are not, and a run that uses them
-     is not submittable), so submission is "serialise the Config, run the CLI".
-     Credentials stay in `.env` with the three frozen error messages (contract §6.2).
-  2. *Scale out inside a job*: the MPI filler becomes a strategy (it is unreachable from `Problem`
-     today), and a sharded fill — `--shard i/n` computes one `PairRange`, `--merge` unions the
-     shards — turns a SLURM array job into the simplest executor of all.
+  1. *Submit*: ship the `Config` and a data path to a scheduler, run `dtwc_cl` there, fetch the
+     artefacts. *Exists* in Python (`python/dtwcpp/_hpc.py` driving `python/dtwcpp/_slurm/slurm_remote.sh`,
+     which ships inside the wheel — FX-5); C++ Tier-1 stays CLI / Python only (D-10). The
+     rule that makes this cheap: **every setting of a run is a `Config` field** (§6; a callable such as
+     `init_fun` is not, and a run that uses one is not submittable), so submission is "serialise the
+     Config, run the CLI". Credentials stay in `.env` with the three
+     frozen error messages (contract §6.2).
+  2. *Scale out inside a job* (2.1): the MPI filler behind the same `fill()`, and a sharded fill —
+     `--shard i/n` computes one `PairRange`, `--merge` unions the shards — which turns a SLURM array
+     job into the simplest executor of all.
 
 ## 6. One interface for every language
 
@@ -171,10 +178,10 @@ Principle: **C++ is the contract, bindings are mirrors, a run is data.**
   validated struct, and `hpc` submission gets its wire format for free. No second schema. Rules that
   keep it from becoming the next god object: it is a C++20 **aggregate composed of the existing
   per-concern structs** (`DistanceConfig`, fill/strategy options, a new `ClusterOptions{method, k,
-  seed, max_iter, …}`, IO options, `ExecutionTarget`), each with one `validate()` (A-04); defaults
-  live once, as member initialisers, and the CLI reads them from a default-constructed `Config`;
-  keys are the snake_case C++ identifiers with the CLI's kebab spelling (`n-clusters`) as an alias
-  table; a `schema = 1` key; applied through the existing setters (`apply(Config, Problem&)`).
+  seed, max_iter, …}`, IO options, the device and its index); defaults live once, as member
+  initialisers, and the CLI reads them from a default-constructed `Config`; keys are the CLI's own
+  names, with no separate alias table and no `schema` key until a second schema exists
+  (2026-09-23); applied through the existing setters (`apply(Config, Problem&)`).
   Suffix convention: `Options` for user knobs, `Params` for mathematics, no new `Settings`; one seed
   type (`uint64_t`) and one spelling of `max_iter`.
 - **Python is the proof.** `_api.py` re-implements Tier-1 today (method resolution, dispatch,
@@ -202,17 +209,16 @@ Principle: **C++ is the contract, bindings are mirrors, a run is data.**
   prunes, swaps evaluated, iterations, the device actually used) following the existing
   `PruningStats` / `TADPoleStats` pattern, and may take a progress/cancel callback that is polled
   per pair block or per iteration — never inside a kernel.
-- **C++ consumers get a package.** `dtwc++` and its headers are not installed or exported today
-  (only `dtwc_cl` is); `find_package(dtwc)` is part of the interface.
-- **More languages later.** A C ABI (opaque handle + `Config` text + array pointers) is a thin layer
-  over `Config` and `Problem` and serves Julia/R/Rust alike. R/Julia bindings are a recorded killed
-  idea, so nothing is scheduled; the seam simply must not preclude it.
+- **C++ consumers get a package — in 2.1.** `dtwc++` and its headers are not installed or exported
+  today (only `dtwc_cl` is); `find_package(dtwc)` is additive and comes after the tag.
+- **No C ABI.** It has no consumer, and R/Julia bindings are a recorded killed idea (2026-09-23).
 
 ## 7. Performance design, and how it is verified
 
-Kept as is: the DO-NOT-BREAK mechanisms in §9. Changed: the CPU brute-force fill adopts balanced
-pair blocks (C-07); `dist_by_ind` becomes an O(1) snapshot compare → packed lookup → compute on miss,
-with the full validation moved to gateways (O-01, O-02); `filled` becomes a counter (O-13).
+Kept as is: the DO-NOT-BREAK mechanisms in §9. Changed: the CPU brute-force fill runs SIMD lanes
+across pairs (below), and balanced pair blocks (C-07) come only with that change; `dist_by_ind`
+becomes an O(1) snapshot compare → packed lookup → compute on miss, with the full validation moved to
+gateways (O-01, O-02); `filled` becomes a counter (O-13).
 
 Every hot function is held by three instruments — the FFmpeg `checkasm` mindset:
 
@@ -227,9 +233,9 @@ Every hot function is held by three instruments — the FFmpeg `checkasm` mindse
    `lb_keogh` and the three `z_normalize` passes **vectorise**; `compute_envelopes` does not
    (early-exit deque loop); the DTW row recurrence **cannot** — it reads the cell it wrote one
    iteration earlier. The table therefore records three states: *must vectorise*, *known not to*,
-   *structurally cannot*. A function leaving *must vectorise* fails the pinned-compiler leg. This is
-   the same tool W0 Task 12 plans to create (`check_ipo_inlining.py`, a disassembly report — not yet
-   written); build one script for both.
+   *structurally cannot*. It is a manual tool (`scripts/codegen_report.py`, X-04), not a CTest gate:
+   GCC has no `-Rpass` and the table is compiler-specific. X-04's answer: none of the six DTW kernel
+   loops vectorise, and IPO does not inline `dist_by_ind`.
 
 **The floating-point model must be named before any "digit-identical" claim.** Release builds
 apply `-fassociative-math`, `-freciprocal-math` and `-march=native` at directory scope (MSVC:
@@ -241,18 +247,25 @@ option (`strict` = `-ffp-contract=off`, no associative math), the conformance re
 `PRIVATE` to `dtwc++` so fetched HiGHS/llfio are untouched. Cost and Cell policies get `concept`s;
 their contract is prose today.
 
-Hand-written SIMD stays killed (`DECISIONS.md`). What this adds is the measurement the kill-note
-asks for. A SIMD win on the recurrence has to come from another axis — several equal-length pairs in
-lockstep, or anti-diagonals — and enters only through R2-D17 (error model + roofline) as a registered
-measure-first prototype. Note that "a batch of pairs" is exactly what the GPU executors consume, so
-the `PairRange` seam serves both.
+**SIMD is first-class, across pairs** (2026-09-23; reopens the kill in `DECISIONS.md` §1). The
+recurrence cannot vectorise within a pair, so the lanes are *pairs*: series *i* against W series in
+lockstep, lanes drawn from a length-sorted block of its `PairRange`, leftovers to the scalar kernel.
+Each lane performs the scalar `min(diag, up, left) + cost` in the same order, so a lane result is
+digit-identical to the scalar one under `strict` (and under `fast` for L1) — correctness needs no
+error model, only the scalar kernel as the oracle. It pays because the fill is latency-bound: a pair
+does L² dependent cells against 2L reads. It is a plain C++ lane loop with `#pragma omp simd` on the lane index — no library and no runtime
+dispatch: Highway was tried in March–April 2026 and removed as not worth the effort (its route
+gathered pairs and ignored bands; its equal-length SoA batch measured ~2.8×). Each build uses its
+baseline ISA, and the item has a kill criterion (PLAN PF-5). The lane row is `[n_short][W]`: tile columns or prefer f32 lanes where that leaves
+L1. The same batch of pairs is what the GPU executors consume, so the `PairRange` seam serves both.
 
 ## 8. Verification — tests that earn their place
 
 A test exists to pin a **named contract** against an **independent oracle**. Count is not a goal.
 
-- **It ran.** Every test has a floor; a skip is opt-in and printed (W0, done). Case floors are
-  portable; assertion floors are the minimum over every supported platform.
+- **It ran.** A test passes when it ran at least one case, failed none and did not skip; a skip is
+  opt-in (`MAY_SKIP`) and printed. No per-test assertion floors (2026-09-23): they differ across
+  standard libraries and failed on macOS for reasons unrelated to correctness.
 - **It took the path.** Tests assert `RunStats` counters, so "the GPU route really launched
   kernels", "the pruned fill really pruned" and "no silent fallback" are checked, not assumed.
 - **It got the answer.** Oracles: the full-matrix reference DTW; brute-force p-median on small N;
@@ -266,21 +279,25 @@ A test exists to pin a **named contract** against an **independent oracle**. Cou
   O(N·k) medoid silhouette (Van der Laan, Pollard & Bryan 2003; Lenssen & Schubert 2024) and
   inertia work from the assignment; the full silhouette on a matrix-free result is a typed error
   naming `distance_matrix()`.
-- **Ratchets, not memory.** Three counts may only go down, checked by script: upward includes
-  (18), untyped `throw std::…` in `dtwc/` (256 against 227 typed — `Data::validate_ndim` and
-  `dist_by_ind` throw untyped for user input, so Python sees a bare `RuntimeError`), and `env()` /
-  `settings::paths` reads outside `api`, the CLI and the bindings.
-- **It survives the platform.** Floors, fingerprints and tolerances are derived (R2-D17 gives the
-  f32/f64 band), not copied from one machine.
+- **One report, no ratchet scripts.** The upward-include count is reported by `repo_map.py layers`.
+  User-input errors are typed in one sweep (`Data::validate_ndim` and `dist_by_ind` throw untyped
+  today, so Python sees a bare `RuntimeError`), after which the throw counter goes; the
+  `settings::paths` globals disappear into `Config` rather than being guarded by a grep.
+- **It survives the platform.** Tolerances across platforms are documented (D-19), not pinned to a
+  correctly rounded libm; "digit-identical" is a claim about one machine.
 
 Whatever compares a wrapper with the function it calls, asserts only structure, or duplicates a
 sibling is merged or deleted with the covering test named in the commit (ledger T-rows).
 
 ## 9. Invariants — deliberate, do not "clean up"
 
-The spec (I.2) lists 66 with their evidence; W8 promotes that list into this section. The ones most
-likely to be broken by a well-meaning refactor:
+The spec (I.2) lists 66 with their evidence and stays the reference. The ones most likely to be broken
+by a well-meaning refactor:
 
+- **Types, not checks.** Counts of series and labels are `int` (the v1.0.0 surface) with no runtime
+  guard; products of counts — pair index, packed offset, N·L, N², cells, bytes — are `size_t` /
+  `int64_t` by type. A check exists only where a third-party API forces a narrower type
+  (`mip/index_guard.hpp`), and where we own the loop we chunk instead of refusing.
 - Cost and Cell stay **template parameters**; never a `std::function` or a virtual per cell.
 - Orient so `n_short ≤ n_long` before every kernel call; buffers are sized on that.
 - `thread_local` scratch grows and never shrinks; a Cost must not re-enter its kernel.
@@ -331,8 +348,10 @@ likely to be broken by a well-meaning refactor:
 - **MIP.** Balinski p-median; HiGHS or Gurobi; FastPAM warm start; Benders above N = 200; once
   medoids are fixed the assignment is totally unimodular; LR-core with matrix-free Kelley cuts is
   the large-N exact route and PDLP is a cross-check only.
-- **Regimes.** One pair's recurrence is latency-bound (~10 cycles per cell, rolling buffers in L1);
-  a large-N fill is memory-bound. Neither has a PMU artefact yet.
+- **Regimes.** One pair's recurrence is latency-bound (~10 cycles per cell, rolling buffers in L1),
+  and so is a large-N fill: a pair does L² dependent cells against 2L reads (corrected 2026-09-23 —
+  the earlier "memory-bound" line had the arithmetic the wrong way round; [inferred], no PMU
+  artefact). The memory-bound regime is the matrix scans of the PAM swap loops.
 
 ## 11. Amendments to the 2026-09-07 spec
 
@@ -356,3 +375,23 @@ likely to be broken by a well-meaning refactor:
 | A16 | Scores take the oracle; O(N·k) medoid silhouette; typed error for the full silhouette on a matrix-free result | scores allocate N² today |
 | A17 | `dtw_path` and the `euclidean` / `window_fraction` interop tokens are 2.0; MSM/TWE reach the pairwise surface in all three languages; nothing on the not-planned list (ERP, LCSS, EDR, ShapeDTW, Itakura) is added without clustering evidence | time-series review 2026-09-22 |
 | A18 | PRE-TAG class in §2: the MATLAB surface and 2.0-only Python names are fixable at no user cost until the tag | `git ls-tree v1.0.0` |
+
+## 12. The YAGNI pass of 2026-09-23
+
+`CHARTER.md`, entry of that date: keep an abstraction only if it holds the user interface stable or
+makes performance first-class; prefer a permissive portable library to in-house code; types, not
+checks. A Fable review and this session agreed on the changes below; `PLAN.md` §5 lists what was
+dropped from the plan.
+
+| # | Change | Why |
+| --- | --- | --- |
+| A19 | Integers: counts `int` with no guard; products `size_t` / `int64_t`; checks only at 32-bit third-party APIs (§9) | 2³¹ series is unreachable; N² passes 2³¹ at N = 46,341 |
+| A20 | No oracle concept, no `SeriesSource`, no `Data<T>` (§3) | one implementation each |
+| A21 | Device: `set_device` + one validator + one `fill()` unit; no Strategy, factory, fill plan or `ExecutionTarget` (§5) | the smallest design that delivers `device = cpu \| gpu \| hpc` |
+| A22 | `Config` has no `schema` key and no alias table; no C ABI; `find_package` in 2.1 (§6) | no second schema, no consumer |
+| A23 | SIMD across pairs, as a plain C++ lane loop with a kill criterion; no Highway (§7) | per-lane arithmetic is the scalar arithmetic; Highway was tried and removed in 2026-04 |
+| A24 | Layers are a report; no ratchet scripts; no assertion floors (§4, §8) | upkeep exceeded the defects they caught |
+| A25 | The large-N fill is latency-bound (§10) | L² dependent cells against 2L reads per pair |
+
+Amendments A3, A4 and A13 are superseded where they name the resolver, the Strategy or the factory;
+A5's "SIMD stays killed" is superseded by A23; A10 by A24.

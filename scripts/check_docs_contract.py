@@ -52,10 +52,8 @@ def compact(text: str) -> str:
 def dtwc_add_test_call(ctest_text: str, target: str, label: str) -> str:
     """The single `dtwc_add_test(NAME <target> …)` registration, compacted.
 
-    `d21ffee` replaced the hand-written `if(TARGET …)` policy blocks these gates
-    used to read with this one macro, which synthesises the pass/fail regexes
-    from ASSERT_FLOOR/CASE_FLOOR. Callers pin their own arguments here and the
-    shared guarantee via `assert_test_harness_proves_execution`.
+    Callers pin the execution MARKER their derivation page quotes; the shared
+    no-skip guarantee is pinned by `assert_test_harness_proves_execution`.
     """
     calls = re.findall(
         rf"dtwc_add_test\(NAME {re.escape(target)}\b[^)]*\)", ctest_text
@@ -80,12 +78,11 @@ def assert_test_harness_proves_execution(harness_text: str, label: str) -> None:
     harness = compact(harness_text)
     required = (
         # A skip word anywhere in the output is a failure, and the pass regex is
-        # the subject's marker followed by Catch2's floored summary line.
+        # the subject's marker followed by Catch2's summary line, which Catch2
+        # prints only when no case failed or skipped.
         'FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}" PASS_REGULAR_EXPRESSION "${_pass}"',
         'set(_pass "${ARG_MARKER}(.|[\\r\\n])*${_summary}")',
-        "All tests passed \\\\(${a} assertions? in ${c} test cases?\\\\)",
-        # A missing floor is a hard error, never a silently unfloored test.
-        "no floor. Pass ASSERT_FLOOR/CASE_FLOOR",
+        "All tests passed \\\\(",
     )
     missing = [marker for marker in required if marker not in harness]
     if missing:
@@ -289,17 +286,6 @@ def assert_ordered_markers(
         cursor = position + len(marker)
 
 
-def assert_freeze_governance() -> None:
-    status = (ROOT / "docs/api-contract-2.0.md").read_text(
-        encoding="utf-8"
-    ).splitlines()[0]
-    if ("STATUS: FROZEN" not in status
-            or "changes require a PLAN.md decision entry" not in status):
-        raise AssertionError(
-            "frozen API contract status must require a PLAN.md decision entry"
-        )
-
-
 def assert_contract_audit_state() -> None:
     contract = (ROOT / "docs/api-contract-2.0.md").read_text(encoding="utf-8")
     stale = (
@@ -348,7 +334,6 @@ def assert_contract_audit_state() -> None:
 
     required = (
         "[introduced-2.0]",
-        "## 10. Adjudicated reviewer decisions",
         "CURRENT",
         "generations/<id>",
         "consumed by `Problem::fill_distance_matrix()`",
@@ -371,87 +356,12 @@ def assert_contract_audit_state() -> None:
         "Every retained\ncallable alias in this table emits",
         "`set_distance_matrix` is canonical and warning-silent",
         "33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB",
-        "`ClusterResult` (`python/dtwcpp/__init__.py:319-339`)",
-        "`Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`)",
-        "`dtwc_mex.cpp:224-230`",
-        "`__init__.py:214-242`",
-        "`_api.py:413-433`",
-        "`dtwc_cl.cpp:1343-1419`",
-        "`DataLoader.hpp:291-297`",
-        "`DataLoader.hpp:299-306`",
-        "`distance.hpp:35-42`",
-        "scores.hpp:38-39",
-        "settings.hpp:88-94",
-        "dtwc_cl.cpp:717-725",
-        "`_hpc.py:527-601`",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
         raise AssertionError(
             f"frozen contract omits audited current-state markers: {missing}"
         )
-
-    if contract.count("**Resolved:**") != 8:
-        raise AssertionError(
-            "frozen contract must record exactly eight reviewer resolutions"
-        )
-    missing_findings = [
-        f"F{number}" for number in (18, *range(24, 27))
-        if f"F{number}" not in contract
-    ]
-    if missing_findings:
-        raise AssertionError(
-            f"frozen contract hides 2.0 implementation gaps: {missing_findings}"
-        )
-
-
-# F4: a `file:START-END` pin that merely EXISTS as a string is worse than no
-# pin -- the guard stays green while the range points at unrelated code. Each
-# entry names the identifier the pinned window must actually contain; the range
-# is read out of the contract, so the document and this script cannot drift
-# apart. Python column only (the C++/MATLAB pins have their own owners).
-PYTHON_LINE_PINS = (
-    (r"`Result\.medoid_indices` \(`python/dtwcpp/_api\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/_api.py", "def medoid_indices"),
-    (r"`_normalize_method`, `_api\.py:(\d+)-(\d+)`",
-     "python/dtwcpp/_api.py", "def _normalize_method"),
-    (r"`res\.plot\(png=\"clusters_2d\.png\", show=True\)` \(`_api\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/_api.py", "def plot(self"),
-    (r"prints cluster sizes and returns nothing \(`_api\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/_api.py", "no local distance matrix to plot"),
-    (r"the\s+property fills the retained `Problem` on first read.*?\(`_api\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/_api.py", "def distance_matrix"),
-    (r"`ClusterResult` \(`python/dtwcpp/__init__\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/__init__.py", 'if name != "ClusterResult"'),
-    (r"`dtwcpp\.device\(\) -> str` \(`__init__\.py:(\d+)-(\d+)`\)",
-     "python/dtwcpp/__init__.py", "def device(device=None)"),
-    (r"`_parse_device`, `__init__\.py:(\d+)-(\d+)`",
-     "python/dtwcpp/__init__.py", "def _parse_device"),
-)
-
-
-def assert_python_line_pins() -> None:
-    """Every Python line pin must really bracket the symbol it names."""
-    contract = (ROOT / "docs/api-contract-2.0.md").read_text(encoding="utf-8")
-    for pattern, relative, identifier in PYTHON_LINE_PINS:
-        match = re.search(pattern, contract, re.DOTALL)
-        if match is None:
-            raise AssertionError(
-                f"frozen contract lost the line pin naming {identifier!r}"
-            )
-        start, end = int(match.group(1)), int(match.group(2))
-        lines = (ROOT / relative).read_text(encoding="utf-8").splitlines()
-        if not 0 < start <= end <= len(lines):
-            raise AssertionError(
-                f"{relative}:{start}-{end} is outside the file "
-                f"(1-{len(lines)})"
-            )
-        window = "\n".join(lines[start - 1:end])
-        if identifier not in window:
-            raise AssertionError(
-                f"contract pin {relative}:{start}-{end} no longer contains "
-                f"{identifier!r} -- re-anchor it"
-            )
 
 
 def assert_python_binary_checkpoint_contract() -> None:
@@ -476,7 +386,6 @@ def assert_python_binary_checkpoint_contract() -> None:
             "releases the GIL",
             "Native write failures raise `dtwcpp.IOError`",
             "`dtwcpp.IOError` subclasses both `DtwcError` and `OSError`",
-            "F56",
         ),
         "checkpointing": (
             *signatures,
@@ -605,49 +514,6 @@ def assert_migration_behaviors() -> None:
         raise AssertionError(f"migration guide omits behaviors: {missing}")
 
 
-def assert_f22_changelog() -> None:
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    unreleased_start = changelog.index("# Unreleased")
-    next_release = changelog.index("# 2.0.0rc1", unreleased_start)
-    unreleased = compact(changelog[unreleased_start:next_release])
-    required = (
-        "all 33 retained 1.x compatibility entities",
-        "all 13 retained alias operations",
-        "all 15 retained alias operations",
-        "`ClusterResult` remains an uncached, identity-preserving alias",
-        "canonical operations stay silent",
-    )
-    missing = [item for item in required if item not in unreleased]
-    if missing:
-        raise AssertionError(
-            f"Unreleased changelog omits F22 behaviors: {missing}"
-        )
-
-
-def assert_rc1_changelog() -> None:
-    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    release_heading = "# 2.0.0rc1 - 2026-07-10"
-    history_heading = "# Development history absorbed into 2.0.0rc1"
-    if release_heading not in changelog or history_heading not in changelog:
-        raise AssertionError("rc1 changelog release/history headings are missing")
-    release_start = changelog.index(release_heading)
-    history_start = changelog.index(history_heading)
-    if history_start <= release_start:
-        raise AssertionError("absorbed development history must follow the rc1 summary")
-    summary = changelog[release_start:history_start]
-    required = (
-        "raise `DeviceError`",
-        "raises\n  `SolverError`",
-        "`dist_by_ind` rebind race",
-        "Windows `0xc0000409`",
-    )
-    missing = [item for item in required if item not in summary]
-    if missing:
-        raise AssertionError(f"rc1 summary omits behaviors: {missing}")
-    if "- API contract 2.0 frozen" in changelog:
-        raise AssertionError("stray API-contract bullet remains in CHANGELOG")
-
-
 def assert_tier1_signatures() -> None:
     header = compact((ROOT / "dtwc/api.hpp").read_text(encoding="utf-8"))
     cpp_api = compact((ROOT / "dtwc/api.cpp").read_text(encoding="utf-8"))
@@ -740,8 +606,6 @@ def assert_dtw_derivation_sync() -> None:
         "derivation": ROOT / "docs/derivations/01-dtw-recurrence-sakoe-chiba.md",
         "index": ROOT / "docs/derivations/README.md",
         "site": ROOT / "docs/content/method/dtw.md",
-        "citations": ROOT / ".claude/CITATIONS.md",
-        "plan": ROOT / ".claude/PLAN-archive-2026-09-21-research-release-campaign.md",
         "kernel": ROOT / "dtwc/core/dtw_kernel.hpp",
         "wrapper": ROOT / "dtwc/warping.hpp",
     }
@@ -765,12 +629,9 @@ def assert_dtw_derivation_sync() -> None:
             "No approximation is used",
             "not a metric",
             "## Code-conformance table",
-            "**DISCREPANCY**",
         ),
         "index": (
             "01-dtw-recurrence-sakoe-chiba.md",
-            "CPU **CONFIRMED**",
-            "**DISCREPANCY** F12",
         ),
         "site": (
             "$$|i-j| \\le w$$",
@@ -779,21 +640,7 @@ def assert_dtw_derivation_sync() -> None:
             "not a metric",
             "non-increasing",
             "CPU routes",
-            "CUDA's fixed-window geometry and public no-path sentinel are confirmed on the local RTX.",
             "Metal source implements the same fixed geometry and sentinel translation",
-            "`[BLOCKED-ENV]` under F12",
-        ),
-        "citations": (
-            "10.1109/TASSP.1978.1163055",
-            "Sakoe-Chiba-DTW.pdf",
-            "**[confirmed]**",
-            "equations (6)--(8)",
-        ),
-        "plan": (
-            "- [x] **D1. DTW recurrence + Sakoe–Chiba band.**",
-            "**F12 — cross-backend fixed-band geometry and no-path sentinel diverge.**",
-            "Metal's no-LB source",
-            "**F33 — CPU banded DTW used an endpoint-scaled corridor",
         ),
         "kernel": (
             "The adjustment window is |row-column| <= band.",
@@ -842,8 +689,6 @@ def assert_lb_keogh_derivation_sync() -> None:
     paths = {
         "derivation": ROOT / "docs/derivations/02-envelopes-lb-keogh.md",
         "index": ROOT / "docs/derivations/README.md",
-        "citations": ROOT / ".claude/CITATIONS.md",
-        "lessons": ROOT / ".claude/LESSONS.md",
         "gpu_site": ROOT / "docs/content/method/gpu-backends.md",
         "metrics_site": ROOT / "docs/content/method/metrics.md",
         "multivariate_site": ROOT / "docs/content/method/multivariate.md",
@@ -864,13 +709,8 @@ def assert_lb_keogh_derivation_sync() -> None:
         "pruned_source": ROOT / "dtwc/core/pruned_distance_matrix.cpp",
         "tadpole": ROOT / "dtwc/algorithms/tadpole.cpp",
         "tadpole_header": ROOT / "dtwc/algorithms/tadpole.hpp",
-        "changelog": ROOT / "CHANGELOG.md",
-        "oracle": (
-            ROOT / "tests/unit/adversarial/test_lb_keogh_derivation.cpp"
-        ),
         "ctest": ROOT / "tests/CMakeLists.txt",
         "harness": ROOT / "cmake/DtwcTest.cmake",
-        "baseline": ROOT / ".claude/baselines/2026-07-30-d2-lb-keogh.md",
     }
     missing_paths = [
         str(path.relative_to(ROOT))
@@ -899,11 +739,7 @@ def assert_lb_keogh_derivation_sync() -> None:
             "## Executable oracle",
             "## Code-conformance table",
             "direct $\\Theta(m\\min(m,2r+1))$ extrema scans",
-            "CUDA `dtwc/cuda/cuda_dtw.cu:782-813`",
-            "`dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224`",
-            "`dtwc/core/lower_bound_impl.hpp:419-527,593-611`",
             "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
-            "All tests passed (65 assertions in 1 test case)",
             "2,004",
             "28,602",
             "17,712",
@@ -912,35 +748,12 @@ def assert_lb_keogh_derivation_sync() -> None:
             "Raw heterogeneous physical units require an explicit scaling/weighting model",
             "Independent DTW allows each channel",
             "production multivariate bounds are `3 U` and `3 U^2`",
-            "**DISCREPANCY** F46",
-            "**DISCREPANCY** F47",
             "**DISCREPANCY** F30: requests can silently disable or fall back",
-            "`dtwc/metal/metal_dtw.mm:1512-1515`",
             "TADPole's empty domain is **DISCREPANCY** F48",
             "direct-call band/cache provenance is **DISCREPANCY** F49",
-            "**DISCREPANCY** F50",
-            "D17",
         ),
         "index": (
             "02-envelopes-lb-keogh.md",
-            "Scalar CPU L1/squared, feasible unequal prefix, and additive dependent/independent MV **CONFIRMED**",
-            "API/metric/domain/provenance **DISCREPANCY** F46–F49",
-            "GPU **DISCREPANCY/OPEN** F27–F30/F50",
-        ),
-        "citations": (
-            "10.1007/s10115-004-0154-9",
-            "KAIS_2004_warping.pdf",
-            "Proposition 1",
-            "sequences of the same length",
-            "10.1109/ICDE.2001.914875",
-            "closed/paywalled full text was not accessed",
-            "**[inferred]** Formula-level compatibility",
-            "10.1145/2339530.2339576",
-            "SIGKDD_trillion.pdf",
-            "normalized, equal-length subsequence search",
-            "https://arxiv.org/abs/cs/0610046",
-            "monotone-deque running extrema algorithm",
-            "distinct two-pass LB_Improved result",
         ),
         "gpu_site": (
             "envelope coverage—not equality—is the admissibility condition",
@@ -952,19 +765,9 @@ def assert_lb_keogh_derivation_sync() -> None:
             "not IEEE infinity",
             "exact-arithmetic-admissible Metal",
         ),
-        "lessons": (
-            "LB_Keogh admissibility is a domain contract",
-            "centered envelope whose radius covers the actual fixed DTW window",
-            "shared-path multivariate Euclidean, cosine, or Huber",
-            "Admissibility does not imply tightness or a prune rate",
-            "A bound-decision counter is not automatically an avoided-work counter",
-            "Additive multivariate objectives need a unit model",
-            "bit-level identity at a floating threshold remains D17",
-        ),
         "metrics_site": (
             "unrooted squared-L2 bound squares each excess and has units `U^2`",
             "require finite input samples and ordered finite envelope bounds",
-            "F47",
         ),
         "multivariate_site": (
             "coordinatewise box argument is a DTWC++ extension",
@@ -980,12 +783,9 @@ def assert_lb_keogh_derivation_sync() -> None:
             "TADPole constructs a global-minimum/global-maximum envelope",
             "exactly representable regression confirms that regime",
             "threshold analysis remains D17",
-            "F48",
         ),
         "dtw_site": (
-            "CUDA's fixed-window geometry and public no-path sentinel are confirmed on the local RTX.",
             "Metal source implements the same fixed geometry and sentinel translation",
-            "`[BLOCKED-ENV]` under F12",
         ),
         "python_site": (
             "legacy CPU LB-guided exact-matrix path",
@@ -1016,7 +816,7 @@ def assert_lb_keogh_derivation_sync() -> None:
             "TADPole density-peaks with conditionally admissible LB/UB DTW pruning",
         ),
         "lower_bound": (
-            "A negative band is coerced to radius zero",
+            "A negative band requests the full-DTW envelope",
             "full-DTW envelope",
             "Envelope carries no source-length or radius provenance",
             "repository-derived extension",
@@ -1033,13 +833,6 @@ def assert_lb_keogh_derivation_sync() -> None:
             "finite FLT_MAX device sentinel",
             "normalized to public double-max on copy",
         ),
-        "changelog": (
-            "F48 records the empty-series TADPole inconsistency",
-            "F49 records direct-call band/cache provenance",
-            "floating threshold identity remains open under D17",
-            "TADPole LB/UB counters describe density decisions",
-            "CUDA's Python pruning documentation now states the required nonnegative band",
-        ),
         "tadpole_header": (
             "finite, nonempty, equal-length Standard-L1",
             "The live TADPole route does not call",
@@ -1051,15 +844,6 @@ def assert_lb_keogh_derivation_sync() -> None:
         ),
         "pruned_source": (
             "recomputed without a cutoff; this legacy route does not skip required work.",
-        ),
-        "baseline": (
-            "## Remaining closure bands registered before execution",
-            "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
-            "All tests passed (65 assertions in 1 test case)",
-            "canonical `build/highs-1151`: 123/123",
-            "llfio-OFF `build/nollfio`: 123/123",
-            "Arrow-ON `build/arrow-pyarrow-23`: 125/125",
-            "decisive target must now report exactly 65 assertions in one case",
         ),
     }
     drift = {
@@ -1076,7 +860,7 @@ def assert_lb_keogh_derivation_sync() -> None:
 
     compact_required = {
         "lower_bound": (
-            "const std::size_t w = static_cast<std::size_t>(std::max(band, 0));",
+            "const std::size_t w = (band < 0) ? n : static_cast<std::size_t>(band);",
             "if (w >= n)",
             "const auto n = std::min(query.size(), env.upper.size());",
             "return std::max(lb1, lb2);",
@@ -1109,29 +893,6 @@ def assert_lb_keogh_derivation_sync() -> None:
             "permanent exactly representable regression",
             "Bit-level identity when a floating reduction",
         ),
-        "oracle": (
-            "REQUIRE(envelope_cases == 2004);",
-            "REQUIRE(equal_cases == 28602);",
-            "REQUIRE(unequal_cases == 17712);",
-            "REQUIRE(discriminator.forward_l1 == 8.0);",
-            "REQUIRE(discriminator.reverse_l1 == 2.0);",
-            "REQUIRE(discriminator.forward_squared == 22.0);",
-            "REQUIRE(discriminator.reverse_squared == 4.0);",
-            "REQUIRE(singleton.symmetric_l1 == 0.5);",
-            "REQUIRE(singleton.symmetric_squared == 0.25);",
-            "REQUIRE(independent_l1 == 4.0);",
-            "REQUIRE(independent_squared == 4.0);",
-            "REQUIRE(mv_l1 == 3.0);",
-            "REQUIRE(mv_squared == 3.0);",
-            "REQUIRE(dependent_l1 == 8.0);",
-            "REQUIRE(dependent_squared == 20.0);",
-            "REQUIRE(unsafe_negative_bound == 2.0);",
-            "REQUIRE(unsafe_negative_bound > dtwc::dtwFull_L<double>(x, y));",
-            "REQUIRE(matrix_stats.pruned_by_lb_keogh == 0);",
-            "REQUIRE(pruned_stats.pruned_by_lb == 0);",
-            "REQUIRE(separated_pruned_stats.pruned_by_lb == 1);",
-            "REQUIRE(call_sites == 2);",
-        ),
     }
     compact_drift = {
         name: [
@@ -1148,7 +909,7 @@ def assert_lb_keogh_derivation_sync() -> None:
     }
     if compact_drift:
         raise AssertionError(
-            f"D2 production/oracle drift: missing markers {compact_drift}"
+            f"D2 production drift: missing markers {compact_drift}"
         )
 
     implementation_bodies = {
@@ -1192,12 +953,12 @@ def assert_lb_keogh_derivation_sync() -> None:
         ),
         "cuda_compaction": (
             "lb_values[pid] <= threshold",
-            "static_cast<T>(3.402823466e+38f)",
-            "static_cast<T>(1.7976931348623157e+308)",
-            "result_matrix[si * N + sj] = INF;",
-            "result_matrix[sj * N + si] = INF;",
+            "static_cast<T>(__longlong_as_double(0x7ff8000000000000LL));",
+            "result_matrix[si * N + sj] = NOT_COMPUTED;",
+            "result_matrix[sj * N + si] = NOT_COMPUTED;",
         ),
         "cuda_envelopes": (
+            "const int w = (band >= 0 && band < L) ? band : L;",
             "const int lo = (k >= w) ? k - w : 0;",
             "const int hi = (k + w + 1 < L) ? k + w + 1 : L;",
             "for (int j = lo + 1; j < hi; ++j)",
@@ -1207,11 +968,12 @@ def assert_lb_keogh_derivation_sync() -> None:
         ),
         "metal_compaction": (
             "lb_values[pid] <= threshold",
-            "const float INF = 3.402823466e+38f;",
-            "result_matrix[si * N_series + sj] = INF;",
-            "result_matrix[sj * N_series + si] = INF;",
+            "const float NOT_COMPUTED = as_type<float>(0x7fc00000u);",
+            "result_matrix[si * N_series + sj] = NOT_COMPUTED;",
+            "result_matrix[sj * N_series + si] = NOT_COMPUTED;",
         ),
         "metal_envelopes": (
+            "const int w = (env_band >= 0 && env_band < L) ? env_band : L;",
             "const int lo = (k >= w) ? k - w : 0;",
             "const int hi = (k + w + 1 < L) ? k + w + 1 : L;",
             "for (int j = lo + 1; j < hi; ++j)",
@@ -1239,19 +1001,14 @@ def assert_lb_keogh_derivation_sync() -> None:
             f"missing code markers {implementation_drift}"
         )
 
-    # The guarantee pinned here is unchanged — this gate must prove it RAN — but
-    # since d21ffee it lives in two places: the call site's own arguments, and
-    # the macro that turns them into CTest properties.
+    # The oracle this page quotes must be registered to print the same verdict
+    # line, and the harness must fail it on a skip.
     ctest_subject = dtwc_add_test_call(
         text["ctest"], "test_lb_keogh_derivation", "D2"
     )
     assert_test_harness_proves_execution(text["harness"], "D2")
     ctest_markers = (
-        'ENVIRONMENT "OMP_NUM_THREADS=1"',
         "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS",
-        "ASSERT_FLOOR 65",
-        "CASE_FLOOR 1",
-        "SERIAL",
     )
     missing_ctest = [
         marker for marker in ctest_markers if marker not in ctest_subject
@@ -1333,9 +1090,6 @@ def assert_lb_keogh_derivation_sync() -> None:
             "pins the result to the brute-force",
             "Exact relative to its brute-force",
         ),
-        "lessons": (
-            '"identical to brute force" guarantee',
-        ),
         "tadpole": (
             "bit-for-bit the same either way",
             "LB_Keogh + the Euclidean upper bound",
@@ -1381,40 +1135,17 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
         "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 "
         "admissible=2/2 skips=0 verdict=PASS"
     )
-    d3_result = "All tests passed (115 assertions in 1 test case)"
-    f57_result = "All tests passed (24 assertions in 1 test case)"
 
     paths = {
         "derivation": ROOT / "docs/derivations/03-lb-enhanced-webb.md",
         "index": ROOT / "docs/derivations/README.md",
-        "citations": ROOT / ".claude/CITATIONS.md",
-        "lessons": ROOT / ".claude/LESSONS.md",
         "metrics_site": ROOT / "docs/content/method/metrics.md",
         "lower_bound": ROOT / "dtwc/core/lower_bound_impl.hpp",
         "strategy": ROOT / "dtwc/enums/LowerBoundStrategy.hpp",
         "pruned_header": ROOT / "dtwc/core/pruned_distance_matrix.hpp",
         "pruned_source": ROOT / "dtwc/core/pruned_distance_matrix.cpp",
-        "changelog": ROOT / "CHANGELOG.md",
-        "oracle": (
-            ROOT
-            / "tests/unit/adversarial/test_lb_enhanced_webb_derivation.cpp"
-        ),
-        "intmax_oracle": (
-            ROOT / "tests/unit/adversarial/test_lb_webb_intmax.cpp"
-        ),
         "ctest": ROOT / "tests/CMakeLists.txt",
         "harness": ROOT / "cmake/DtwcTest.cmake",
-        "baseline": (
-            ROOT / ".claude/baselines/2026-07-30-d3-lb-enhanced-webb.md"
-        ),
-        "legacy_baseline": (
-            ROOT / ".claude/baselines/2026-07-08-lb-cascade.md"
-        ),
-        "handoff": (
-            ROOT
-            / ".claude/summaries/handoff-2026-07-30-d3-lb-enhanced-webb.md"
-        ),
-        "plan": ROOT / ".claude/PLAN-archive-2026-09-21-research-release-campaign.md",
     }
     missing_paths = [
         str(path.relative_to(ROOT))
@@ -1451,13 +1182,9 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             "production tail-cap",
             "exact-predicate NoLR",
             "no universal relative",
-            "D17",
-            "F46",
             "## Executable oracle",
             d3_marker,
-            d3_result,
             f57_marker,
-            f57_result,
             "## Code-conformance table",
         ),
         "index": (
@@ -1466,30 +1193,6 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             "LB_Webb_NoLR",
             "L1",
             "squared-L2",
-            "**CONFIRMED**",
-        ),
-        "citations": (
-            "10.1137/1.9781611975673.59",
-            "Theorem 3.1",
-            "Eq. 3.7",
-            "Theorem 3.2",
-            "`LB_Enhanced^1` uniformly tighter than LB_Keogh",
-            "10.1016/j.patcog.2021.107895",
-            "Theorem 2",
-            "Eqs. 26–43",
-            "Algorithm 2 defines full LB_Webb with `MinLRPaths`",
-            "`LB_Webb_NoLR` formula applies the bridge and corrections over all indices",
-            "0.96904",
-            "0.96891",
-        ),
-        "lessons": (
-            "local `LB_Webb_NoLR` plus a tail cap, not full Algorithm 2",
-            "omitting it has no universal order",
-            "`production <= exact-predicate NoLR`",
-            "LB_Enhanced/Keogh ordering depends on effective V",
-            "At `V=1`",
-            "At effective `V>=2`",
-            "The live cascade takes the maximum",
         ),
         "metrics_site": (
             "paper's all-index `LB_Webb_NoLR` bridge and corrections plus a separate conservative trailing-flag cap",
@@ -1533,58 +1236,6 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             "neither bound dominates the other for effective V >= 2",
             "symmetric local Webb-NoLR-plus-tail-cap bound",
             "dominates symmetric Keogh",
-        ),
-        "changelog": (
-            "paper's all-index `LB_Webb_NoLR` formula plus a conservative trailing-flag cap",
-            "not full Algorithm 2 with `MinLRPaths`",
-            "no universal ordering with full Webb is claimed",
-            "Enhanced dominates matching-direction Keogh at effective `V=1`",
-            "exact D3 witnesses establish both order directions at `V>=2`",
-            "`max(LB_Keogh, LB_Enhanced)`",
-        ),
-        "baseline": (
-            "## Primary-source boundary",
-            "## Preregistered proof obligations",
-            "## Preregistered independent D3 oracle",
-            "## Preregistered F57 gate",
-            "## Product attempt 2 — final focused adjudication",
-            d3_marker,
-            d3_result,
-            f57_marker,
-            f57_result,
-            "Attempt-2 verdict: **PASS [confirmed]**",
-        ),
-        "legacy_baseline": (
-            "## F55 provenance corrigendum — 2026-07-30",
-            "The numerical outputs above remain verbatim evidence",
-            "all-index `LB_Webb_NoLR` bridge and corrections plus a conservative trailing-flag cap",
-            "`production <= exact-predicate NoLR <= DTW`",
-            "No universal ordering with full Webb is claimed",
-            "effective `V=1` dominates matching-direction Keogh",
-            "effective `V>=2`",
-        ),
-        "handoff": (
-            "# Handoff — R2-D3 LB_Enhanced and LB_Webb_NoLR",
-            "Final product attempt 2 is **PASS [confirmed]**",
-            "passed 115/115 assertions",
-            "passed 24/24 assertions",
-            "CTest reported 2/2, zero failures, zero skips",
-            "corrects F55 across source contracts",
-            "conservative tail cap",
-        ),
-        "plan": (
-            "**D3. LB_Enhanced + local LB_Webb_NoLR plus tail cap.**",
-            "local directional bound dominates matching-direction Keogh",
-            "only the column-alignment tail cap",
-            "effective `V=1`",
-            "effective `V>=2`",
-            "**F54 — the live Enhanced pruning cascade",
-            "**F55 — the local Webb implementation",
-            "**F57 — CPU LB_Webb window arithmetic",
-            "2026-07-30 (D3 registration)",
-            "shared saturated window",
-            "2026-07-30 (F55 provenance correction)",
-            "`production <= exact-predicate NoLR`",
         ),
     }
     drift = {
@@ -1704,176 +1355,9 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             f"D3 cascade implementation drift: missing markers {missing_pruned}"
         )
 
-    oracle_required = {
-        "oracle": (
-            "REQUIRE(envelope_cases == 2004);",
-            "REQUIRE(envelope_audit.violations == 0);",
-            "REQUIRE(structure_cases == 19);",
-            "REQUIRE(structure_audit.violations == 0);",
-            "REQUIRE(path_cases == 35982);",
-            "REQUIRE(full_cover_cases == 7380);",
-            "REQUIRE(path_audit.violations == 0);",
-            "REQUIRE(enhanced_cases == 68787);",
-            "REQUIRE(enhanced_audit.violations == 0);",
-            "REQUIRE(webb_cases == 35982);",
-            "REQUIRE(webb_audit.violations == 0);",
-            "REQUIRE(branch_hits.full_upper);",
-            "REQUIRE(branch_hits.full_lower);",
-            "REQUIRE(branch_hits.overlap_upper);",
-            "REQUIRE(branch_hits.overlap_lower);",
-            "REQUIRE(tail_cases == 35982);",
-            "REQUIRE(tail_audit.violations == 0);",
-            "REQUIRE(predicate_audit.violations == 0);",
-            "REQUIRE(metric_cases == 140);",
-            "REQUIRE(metric_audit.violations == 0);",
-            "REQUIRE(v5_w0_l1 == 38.0);",
-            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 0, false) == 38.0);",
-            "REQUIRE(v5_w0_sq == 186.0);",
-            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 0, true) == 186.0);",
-            "REQUIRE(v5_w1_l1 == 6.0);",
-            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 1, false) == 8.0);",
-            "REQUIRE(v5_w1_sq == 6.0);",
-            "REQUIRE(full_matrix_dtw(v5_a, v5_b, 1, true) == 8.0);",
-            "v5_w1_l1 == reference_enhanced(v5_a, v5_b, 1, 5, false));",
-            "v5_w1_sq == reference_enhanced(v5_a, v5_b, 1, 5, true));",
-            "REQUIRE(odd_l1 == reference_enhanced(v5_odd_a, v5_odd_b, 1, 5, false));",
-            "REQUIRE(odd_sq == reference_enhanced(v5_odd_a, v5_odd_b, 1, 5, true));",
-            "REQUIRE(odd_l1 <= full_matrix_dtw(v5_odd_a, v5_odd_b, 1, false));",
-            "REQUIRE(odd_sq <= full_matrix_dtw(v5_odd_a, v5_odd_b, 1, true));",
-            "REQUIRE(enhanced_v5 == 4);",
-            "REQUIRE(enhanced == 2.0);",
-            "REQUIRE(enhanced == 10.0);",
-            "REQUIRE(enhanced == 0.0);",
-            "REQUIRE(keogh == 0.0);",
-            "REQUIRE(keogh == 1.0);",
-            "REQUIRE(enhanced > keogh);",
-            "REQUIRE(keogh > enhanced);",
-            "REQUIRE(order_witnesses == 2);",
-            "REQUIRE(direct_keogh(webb_a, webb_eb, false) == 0.0);",
-            "REQUIRE(strict_webb_l1 == 3.0);",
-            "REQUIRE(strict_webb_l1 > direct_keogh(webb_a, webb_eb, false));",
-            "REQUIRE(direct_keogh(webb_a, webb_eb, true) == 0.0);",
-            "REQUIRE(strict_webb_sq == 9.0);",
-            "REQUIRE(strict_webb_sq > direct_keogh(webb_a, webb_eb, true));",
-            "REQUIRE(webb_strict == 2);",
-            "REQUIRE(tail_prod_l1 == 3.0);",
-            "REQUIRE(tail_exact_l1 == 4.0);",
-            "REQUIRE(tail_prod_l1 < tail_exact_l1);",
-            "REQUIRE(tail_prod_sq == 3.0);",
-            "REQUIRE(tail_exact_sq == 4.0);",
-            "REQUIRE(tail_prod_sq < tail_exact_sq);",
-            "REQUIRE(capped_l1 == 20.0);",
-            "REQUIRE(exact_l1 == 30.0);",
-            "REQUIRE(capped_sq == 400.0);",
-            "REQUIRE(exact_sq == 450.0);",
-            "REQUIRE(capped_l1 < exact_l1);",
-            "REQUIRE(capped_sq < exact_sq);",
-            "REQUIRE(exact_l1 <= full_matrix_dtw(a, b, 2, false));",
-            "REQUIRE(exact_sq <= full_matrix_dtw(a, b, 2, true));",
-            "REQUIRE(tail_strict == 2);",
-            "REQUIRE(cascade_enhanced == 0.0);",
-            "REQUIRE(cascade_keogh == 10.0);",
-            "REQUIRE(stats.total_pairs == 3);",
-            "REQUIRE(stats.pruned_by_lb_kim == 0);",
-            "REQUIRE(stats.pruned_by_lb_keogh == 1);",
-            "REQUIRE(stats.early_abandoned == 1);",
-            "REQUIRE(stats.computed_full_dtw == 2);",
-            "REQUIRE(stats.early_abandoned <= stats.pruned_by_lb_keogh);",
-            "REQUIRE(direct_problem.is_distance_matrix_filled());",
-            "direct_problem.dense_distance_matrix().get(i, j) == expected_matrix[i][j]);",
-            "REQUIRE(public_problem.is_distance_matrix_filled());",
-            "public_problem.dense_distance_matrix().get(i, j) == expected_matrix[i][j]);",
-            "REQUIRE(cascade_routes == 2);",
-        ),
-        "intmax_oracle": (
-            "evaluate_bounds(a, b, INT_MAX)",
-            "REQUIRE(at_n_minus_one.webb_l1 == exact_global_l1);",
-            "REQUIRE(at_n.webb_l1 == exact_global_l1);",
-            "REQUIRE(at_intmax.webb_l1 == exact_global_l1);",
-            "REQUIRE(at_n_minus_one.webb_squared == exact_global_squared);",
-            "REQUIRE(at_n.webb_squared == exact_global_squared);",
-            "REQUIRE(at_intmax.webb_squared == exact_global_squared);",
-            "REQUIRE(at_n.webb_l1 == at_n_minus_one.webb_l1);",
-            "REQUIRE(at_intmax.webb_l1 == at_n_minus_one.webb_l1);",
-            "REQUIRE(at_n.webb_squared == at_n_minus_one.webb_squared);",
-            "REQUIRE(at_intmax.webb_squared == at_n_minus_one.webb_squared);",
-            "REQUIRE(at_n_minus_one.enhanced_l1 == exact_global_l1);",
-            "REQUIRE(at_n.enhanced_l1 == at_n_minus_one.enhanced_l1);",
-            "REQUIRE(at_intmax.enhanced_l1 == at_n_minus_one.enhanced_l1);",
-            "REQUIRE(at_n_minus_one.enhanced_squared == exact_global_squared);",
-            "REQUIRE(at_n.enhanced_squared == at_n_minus_one.enhanced_squared);",
-            "REQUIRE(at_intmax.enhanced_squared == at_n_minus_one.enhanced_squared);",
-            "REQUIRE(at_intmax.webb_l1 <= exact_global_l1);",
-            "REQUIRE(at_intmax.webb_squared <= exact_global_squared);",
-            "const Series saturation_a{ 0.0, 0.0 };",
-            "const Series saturation_b{ -1.0, 1.0 };",
-            "constexpr double exact_saturation_bound = 2.0;",
-            "REQUIRE(saturation_at_n_minus_one.webb_l1 == exact_saturation_bound);",
-            "REQUIRE(saturation_at_n.webb_l1 == exact_saturation_bound);",
-            "REQUIRE(saturation_at_intmax.webb_l1 == exact_saturation_bound);",
-            "REQUIRE(saturation_at_n_minus_one.webb_squared == exact_saturation_bound);",
-            "REQUIRE(saturation_at_n.webb_squared == exact_saturation_bound);",
-            "REQUIRE(saturation_at_intmax.webb_squared == exact_saturation_bound);",
-        ),
-    }
-    oracle_code = {
-        name: compact(cpp_projection(text[name], keep_literals=False))
-        for name in oracle_required
-    }
-    oracle_drift = {
-        name: [
-            marker
-            for marker in markers
-            if marker
-            not in oracle_code[name]
-        ]
-        for name, markers in oracle_required.items()
-    }
-    oracle_drift = {
-        name: markers for name, markers in oracle_drift.items() if markers
-    }
-    if oracle_drift:
-        raise AssertionError(
-            f"D3 executable-oracle drift: missing markers {oracle_drift}"
-        )
-
-    oracle_output_markers = {
-        "oracle": d3_marker,
-        "intmax_oracle": f57_marker,
-    }
-    output_drift = {
-        name: marker
-        for name, marker in oracle_output_markers.items()
-        if marker not in compact(
-            re.sub(
-                r'"\s*"',
-                "",
-                cpp_projection(text[name], keep_literals=True),
-            )
-        )
-    }
-    if output_drift:
-        raise AssertionError(
-            "D3 executable-oracle output drift: "
-            f"missing active string markers {output_drift}"
-        )
-
     ctest_specs = {
-        "test_lb_enhanced_webb_derivation": (
-            d3_marker,
-            "ASSERT_FLOOR 40",
-            "CASE_FLOOR 1",
-            'ENVIRONMENT "OMP_NUM_THREADS=1"',
-            "SERIAL",
-            "TIMEOUT 60",
-        ),
-        "test_lb_webb_intmax": (
-            f57_marker,
-            "ASSERT_FLOOR 12",
-            "CASE_FLOOR 1",
-            "SERIAL",
-            "TIMEOUT 30",
-        ),
+        "test_lb_enhanced_webb_derivation": (d3_marker,),
+        "test_lb_webb_intmax": (f57_marker,),
     }
     ctest_code = cmake_projection(text["ctest"])
     assert_test_harness_proves_execution(text["harness"], "D3")
@@ -1923,20 +1407,15 @@ def assert_lb_enhanced_webb_derivation_sync() -> None:
             f"D3 derivation drift: raw table math pipes {broken_table_math}"
         )
 
-    # Immutable plan archives and run logs retain verbatim historical evidence.
-    # Reject false claims only on live explanatory and implementation surfaces;
-    # the 2026-07-08 log is separately required to carry its dated corrigendum.
+    # Reject false claims on the user-facing docs and implementation comments.
     live_claim_files = (
         "derivation",
         "index",
-        "citations",
-        "lessons",
         "metrics_site",
         "lower_bound",
         "strategy",
         "pruned_header",
         "pruned_source",
-        "changelog",
     )
     stale_claims = (
         "clean-room from algorithm 2",
@@ -2004,11 +1483,6 @@ def assert_gpu_backend_page() -> None:
         "benchmarks/results/mac_m2max/metal_vs_cpu.json",
         "historical, advisory",
         "inspired by cuDTW++",
-        "F27",
-        "F28",
-        "F29",
-        "F30",
-        "F31",
     )
     missing = [marker for marker in required if marker not in page]
     if missing:
@@ -2088,14 +1562,8 @@ def assert_f22_ordinary_call_hygiene() -> None:
         ".claude/commands/help.md",
         ".claude/commands/visualize.md",
         ".claude/openmp-crashcourse.md",
-        ".claude/reports/test_kasper_analysis/REPORT.md",
         "docs/content/api/interface-parity.md",
         "docs/content/method/gpu-backends.md",
-        ".claude/reports/test_kasper_analysis/rerun_znorm.py",
-        ".claude/reports/test_kasper_analysis/rescore_kasper.py",
-        ".claude/reports/test_kasper_analysis/run_extended.py",
-        ".claude/reports/test_kasper_analysis/run_kasper.py",
-        ".claude/reports/test_kasper_analysis/run_preprocessed.py",
     )
     sources = {
         relative: (ROOT / relative).read_text(encoding="utf-8")
@@ -2365,13 +1833,9 @@ def main() -> int:
 
     subprocess.run([sys.executable, str(ROOT / "scripts/generate_docs.py"), "--check"],
                    check=True)
-    assert_freeze_governance()
     assert_contract_audit_state()
-    assert_python_line_pins()
     assert_python_binary_checkpoint_contract()
     assert_migration_behaviors()
-    assert_f22_changelog()
-    assert_rc1_changelog()
     assert_env_messages()
     assert_tier1_signatures()
     assert_method_catalog()

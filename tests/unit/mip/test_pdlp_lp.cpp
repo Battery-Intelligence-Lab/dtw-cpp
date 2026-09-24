@@ -35,7 +35,9 @@
 #include <mip/lagrangian_root.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <base/timing.hpp> // dtwc::Clock
 
@@ -206,7 +208,8 @@ TEST_CASE("PDLP LP relaxation is tight on clustered data", "[pdlp][tight]")
 // build decides the device, NOT the per-call use_gpu flag (HiGHS has no per-solve
 // CPU path on a GPU build). So gpu_used must equal pdlp_gpu_available() for the
 // default "pdlp" variant, whether or not the caller requested the GPU; and a GPU
-// request on a CPU-only build still returns the correct bound (warns to stderr).
+// request on a CPU-only build is a DeviceError naming the option and the fix —
+// it warned and ran on the CPU, a silent fallback (CLAUDE.md non-negotiable 3).
 // ===========================================================================
 TEST_CASE("PDLP gpu_used reflects the build, never silently wrong", "[pdlp][gpu]")
 {
@@ -219,14 +222,22 @@ TEST_CASE("PDLP gpu_used reflects the build, never silently wrong", "[pdlp][gpu]
   const double opt = brute_force_opt(D, N, k);
   const bool built_gpu = dtwc::mip::pdlp_gpu_available(); // this build's OWN capability
 
-  // Requesting the GPU: correct bound on either build; gpu_used == build capability.
+  // Requesting the GPU: the correct bound on a GPU build, a typed error otherwise.
   PdlpParams req;
-  req.use_gpu = true; // on a CPU build this warns and runs CPU (see stderr).
-  const PdlpResult on = pdlp_lp_bound(D.data(), N, k, req);
-  REQUIRE(on.solved);
-  REQUIRE(on.lp_bound <= opt + 1e-6 * std::max(1.0, std::abs(opt)));
-  REQUIRE_THAT(on.lp_bound, WithinAbs(opt, 1e-4 * std::max(1.0, std::abs(opt)))); // tight (clustered)
-  REQUIRE(on.gpu_used == built_gpu);
+  req.use_gpu = true;
+  if (!built_gpu) {
+    using Catch::Matchers::ContainsSubstring;
+    REQUIRE_THROWS_MATCHES(
+      pdlp_lp_bound(D.data(), N, k, req), dtwc::DeviceError,
+      Catch::Matchers::MessageMatches(ContainsSubstring("use_gpu")
+                                      && ContainsSubstring("-DDTWC_HIGHS_GPU=ON")));
+  } else {
+    const PdlpResult on = pdlp_lp_bound(D.data(), N, k, req);
+    REQUIRE(on.solved);
+    REQUIRE(on.lp_bound <= opt + 1e-6 * std::max(1.0, std::abs(opt)));
+    REQUIRE_THAT(on.lp_bound, WithinAbs(opt, 1e-4 * std::max(1.0, std::abs(opt)))); // tight (clustered)
+    REQUIRE(on.gpu_used);
+  }
 
   // NOT requesting the GPU: on a GPU build solver="pdlp" STILL runs on the GPU
   // (compile-time switch), so gpu_used must NOT depend on the request flag.

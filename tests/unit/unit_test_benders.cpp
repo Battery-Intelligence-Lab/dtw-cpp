@@ -15,6 +15,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <vector>
 #include <string>
@@ -286,4 +287,30 @@ TEST_CASE("Benders auto mode selects correctly by size", "[benders]")
   double cost = compute_cost(prob);
   REQUIRE(cost >= 0.0);
   REQUIRE(cost < 1e10);
+}
+
+
+// A-07: an invalid problem size used to print to stderr and RETURN, leaving the
+// medoids and labels untouched and the caller believing Benders had run -- the
+// last silent-success path in the MIP layer. It is now InvalidInput naming N
+// and k, like every sibling solver.
+TEST_CASE("Benders rejects k outside [1, N] with InvalidInput", "[benders][errors]")
+{
+  require_highs_solver();
+
+  SECTION("k > N")
+  {
+    auto prob = make_problem({ 1.0, 5.0, 10.0 }, 5);
+    REQUIRE_THROWS_AS(MIP_clustering_byBenders(prob), InvalidInput);
+    REQUIRE_THROWS_WITH(MIP_clustering_byBenders(prob),
+                        Catch::Matchers::ContainsSubstring("N=3")
+                          && Catch::Matchers::ContainsSubstring("k=5"));
+  }
+
+  SECTION("no data")
+  {
+    Problem prob("benders_empty");
+    prob.set_n_clusters(2);
+    REQUIRE_THROWS_AS(MIP_clustering_byBenders(prob), InvalidInput);
+  }
 }

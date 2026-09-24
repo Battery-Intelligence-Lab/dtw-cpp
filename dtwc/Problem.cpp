@@ -25,6 +25,7 @@
 #ifdef DTWC_HAS_METAL
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
+#include "warping.hpp"         // for detail::require_finite
 #include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
@@ -33,7 +34,7 @@
 #include "core/variant_validation.hpp"     // validate_variant_params
 #include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
-#include "base/missing_utils.hpp"               // for has_missing
+#include "base/missing_utils.hpp"               // for all_missing
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
 
 
@@ -109,6 +110,54 @@ bool variant_params_equal(
       && a.mv_mode == b.mv_mode;
 }
 
+// Enum spellings for validate_fill_request's messages: the C++ and Python
+// enumerator names.
+const char *variant_name(core::DTWVariant v)
+{
+  switch (v) {
+  case core::DTWVariant::Standard: return "Standard";
+  case core::DTWVariant::DDTW: return "DDTW";
+  case core::DTWVariant::WDTW: return "WDTW";
+  case core::DTWVariant::ADTW: return "ADTW";
+  case core::DTWVariant::SoftDTW: return "SoftDTW";
+  case core::DTWVariant::MSM: return "MSM";
+  case core::DTWVariant::TWE: return "TWE";
+  }
+  return "?";
+}
+
+const char *missing_strategy_name(core::MissingStrategy m)
+{
+  switch (m) {
+  case core::MissingStrategy::Error: return "Error";
+  case core::MissingStrategy::ZeroCost: return "ZeroCost";
+  case core::MissingStrategy::AROW: return "AROW";
+  case core::MissingStrategy::Interpolate: return "Interpolate";
+  }
+  return "?";
+}
+
+const char *metric_name(core::MetricType m)
+{
+  switch (m) {
+  case core::MetricType::L1: return "L1";
+  case core::MetricType::L2: return "L2";
+  case core::MetricType::SquaredL2: return "SquaredL2";
+  }
+  return "?";
+}
+
+#ifdef DTWC_HAS_METAL
+/// CUDASettings::precision (0 Auto, 1 FP32, 2 FP64) as the Metal selector;
+/// validate_metal_precision() then rejects FP64, which Metal cannot run.
+metal::MetalPrecision metal_precision(int precision)
+{
+  return precision == 1 ? metal::MetalPrecision::FP32
+       : precision == 2 ? metal::MetalPrecision::FP64
+                        : metal::MetalPrecision::Auto;
+}
+#endif
+
 } // namespace
 
 /**
@@ -127,12 +176,31 @@ void Problem::resize()
  * @brief Sets the number of clusters for the problem.
  *
  * @param Nc_ The number of clusters to set.
- * @throws std::runtime_error if the size of candidate_centroids is not equal to Nc.
  */
 void Problem::set_n_clusters(int Nc_)
 {
   Nc = Nc_;
   resize();
+}
+
+void Problem::require_owned_storage(std::string_view accessor, bool float64_values) const
+{
+  const std::string at(accessor);
+  if (data_.is_view())
+    throw InvalidInput(
+      at + ": this Problem's series are a non-owning view (set_view_data, or a "
+           "memory-mapped series store), so there is no owned "
+      + (float64_values ? "series to return. Use series(i) (data().series_f32(i) "
+                          "for Float32), which reads every storage mode."
+                        : "name to return. Use series_name(i), which reads every "
+                          "storage mode."));
+  if (!float64_values) return;
+  if (data_.is_metadata_only())
+    throw InvalidInput(at + ": this Problem's series are not resident (a "
+                            "metadata-only load); there are no values to return.");
+  if (data_.is_f32())
+    throw InvalidInput(at + ": this Problem holds Float32 series, and p_vec "
+                            "returns the Float64 store. Use data().series_f32(i).");
 }
 
 #if defined(__clang__)
@@ -148,10 +216,15 @@ void Problem::set_n_clusters(int Nc_)
 
 Problem::Problem(Problem &&) = default;
 
-Problem &Problem::operator=(Problem &&) noexcept = default;
+Problem &Problem::operator=(Problem &&) = default;
 
 void Problem::set_max_iter(int n)
 {
+  if (n < 1)
+    throw InvalidInput(
+      "Problem::set_max_iter: max_iter must be at least 1; got " + std::to_string(n)
+      + ". With no iteration the initial medoids' cost would be reported as the "
+        "clustering result.");
   maxIter = n;
 }
 
@@ -162,6 +235,11 @@ int Problem::max_iter() const
 
 void Problem::set_n_repetitions(int n)
 {
+  if (n < 1)
+    throw InvalidInput(
+      "Problem::set_n_repetitions: n_repetitions must be at least 1; got "
+      + std::to_string(n) + ". It counts the random restarts, and one run is the "
+        "minimum.");
   N_repetition = n;
 }
 
@@ -182,11 +260,12 @@ int Problem::n_repetitions() const
  * @brief Sets the initial centroids for clustering.
  *
  * @param candidate_centroids A vector containing the indices of candidate centroids.
+ * @throws InvalidInput if the size of candidate_centroids is not equal to Nc.
  */
 void Problem::set_clusters(std::vector<int> &candidate_centroids)
 {
   if (candidate_centroids.size() != static_cast<size_t>(Nc))
-    throw std::runtime_error("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
+    throw InvalidInput("Set cluster has failed as number of centroids is not same as the number of indices in candidate centroids vector.\n");
 
   centroids_ind = candidate_centroids;
 }
@@ -256,6 +335,7 @@ void Problem::refresh_distance_matrix()
     if (m.size() != 0)
       m.resize(0); // Release old data; re-allocation deferred to fill_distance_matrix().
   }
+  fill_request_validated_ = false; // new data or semantics: a new request
   rebind_dtw_fn();
 }
 
@@ -314,7 +394,7 @@ void Problem::rebind_dtw_fn() const
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
   else
     dtw_fn_f32_ = {};
-  dense_cache_configuration_ = distance_cache_configuration(core::MetricType::L1);
+  dense_cache_configuration_ = distance_cache_configuration(metric_);
   dense_cache_configuration_bound_ = true;
   dtw_binding_owner_ = this;
 }
@@ -324,7 +404,7 @@ void Problem::set_variant(core::DTWVariant v)
   auto candidate = variant_params;
   candidate.variant = v;
   preflight_distance_semantics(
-    candidate, missing_strategy, data_, distance_strategy, cuda_settings);
+    candidate, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
   if (variant_params.variant == v) return;
   variant_params.variant = v;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
@@ -333,10 +413,47 @@ void Problem::set_variant(core::DTWVariant v)
 void Problem::set_variant(core::DTWVariantParams params)
 {
   preflight_distance_semantics(
-    params, missing_strategy, data_, distance_strategy, cuda_settings);
+    params, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
   if (variant_params_equal(variant_params, params)) return;
   variant_params = params;
   refresh_distance_matrix(); // calls rebind_dtw_fn() internally
+}
+
+void Problem::set_device(Device device, int index)
+{
+  validate_device(device);
+  if (index < 0)
+    throw InvalidInput("Problem::set_device: the GPU index must be >= 0; got "
+                       + std::to_string(index) + ".");
+  switch (device) {
+  case Device::CPU:
+    // Auto is a CPU schedule (brute force or admissible pruning), never a GPU.
+    if (distance_strategy == DistanceMatrixStrategy::CUDA
+        || distance_strategy == DistanceMatrixStrategy::Metal)
+      set_distance_strategy(DistanceMatrixStrategy::Auto);
+    return;
+  case Device::GPU: {
+#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
+    auto settings = cuda_settings;
+    settings.device_id = index;
+    set_cuda_settings(settings);
+#  if defined(DTWC_HAS_CUDA)
+    set_distance_strategy(DistanceMatrixStrategy::CUDA);
+#  else
+    set_distance_strategy(DistanceMatrixStrategy::Metal);
+#  endif
+    return;
+#else
+    throw DeviceError(detail::gpu_not_built_message());
+#endif
+  }
+  case Device::HPC:
+    throw InvalidInput(
+      "Problem::set_device: hpc is not a Problem device. It submits a whole run "
+      "to a SLURM cluster, which Python's dtwcpp.cluster(..., device='hpc') does "
+      "by running dtwc_cl there; a Problem computes locally. Use device cpu or "
+      "gpu.");
+  }
 }
 
 Problem::cache_fingerprint_t
@@ -391,7 +508,8 @@ Problem::distance_cache_configuration(core::MetricType metric) const
 bool Problem::distance_cache_configuration_matches(
   const DistanceCacheConfiguration &expected) const
 {
-  return expected.band == band
+  return expected.metric == metric_
+      && expected.band == band
       && variant_params_equal(expected.variant_params, variant_params)
       && expected.missing_strategy == missing_strategy
       && expected.distance_strategy == distance_strategy
@@ -408,29 +526,43 @@ bool Problem::dense_cache_configuration_is_current() const
 void Problem::preflight_distance_semantics(
   const core::DTWVariantParams &params,
   core::MissingStrategy missing,
+  core::MetricType metric,
   const Data &candidate_data,
   DistanceMatrixStrategy candidate_distance_strategy,
   const CUDASettings &candidate_cuda_settings,
   bool force_float32)
 {
   core::validate_precision(candidate_data.precision);
+  core::validate_metric_type(metric);
   validate_distance_matrix_strategy(candidate_distance_strategy);
   validate_cuda_settings_precision(candidate_cuda_settings.precision);
   core::validate_problem_distance_semantics(
     params, missing, candidate_data.ndim,
     force_float32 || candidate_data.is_f32());
+  // resolve_dtw_fn passes the metric to the Standard kernels only; every other
+  // variant and missing-data strategy would silently compute L1.
+  if (metric != core::MetricType::L1
+      && (params.variant != core::DTWVariant::Standard
+          || missing != core::MissingStrategy::Error))
+    throw InvalidInput(
+      std::string("Problem: metric ") + metric_name(metric)
+      + " is implemented for Standard DTW with MissingStrategy::Error only, but "
+        "variant = " + variant_name(params.variant) + " and missing_strategy = "
+      + missing_strategy_name(missing) + " were requested. Use metric L1 for "
+        "this configuration.");
 }
 
 void Problem::preflight_current_distance_semantics() const
 {
   preflight_distance_semantics(
-    variant_params, missing_strategy, data_, distance_strategy, cuda_settings);
+    variant_params, missing_strategy, metric_, data_, distance_strategy, cuda_settings);
 }
 
 void Problem::preflight_float32_distance_semantics() const
 {
   preflight_distance_semantics(
-    variant_params, missing_strategy, data_, distance_strategy, cuda_settings, true);
+    variant_params, missing_strategy, metric_, data_, distance_strategy, cuda_settings,
+    true);
 }
 
 const Problem::dtw_fn_f32_t &Problem::validated_dtw_function_f32() const
@@ -485,7 +617,7 @@ void Problem::validate_dense_cache_configuration() const
       || dense_cache_configuration_is_current())
     return;
 
-  throw std::runtime_error(
+  throw InvalidInput(
     "DenseDistanceMatrix: cached distance configuration changed through a raw "
     "or nested mutation. Use a semantic setter or a non-const compute path to "
     "refresh the matrix before reading cached values.");
@@ -519,7 +651,7 @@ void Problem::validate_dtw_function_configuration() const
   }
   if (dense_cache_configuration_is_current()) return;
 
-  throw std::runtime_error(
+  throw InvalidInput(
     "Problem: bound DTW function configuration changed through a raw or nested "
     "mutation. Use a semantic setter or a mutable dtw_function accessor to "
     "refresh the dispatcher before const access.");
@@ -530,13 +662,13 @@ Problem::distance_cache_identity(core::MetricType metric) const
 {
   core::validate_metric_type(metric);
   if (data_.is_metadata_only()) {
-    throw std::runtime_error(
+    throw InvalidInput(
       "use_mmap_distance_matrix: cannot fingerprint metadata-only data; "
       "time-series values must be resident before a distance cache can be bound");
   }
   if (distance_strategy == DistanceMatrixStrategy::CUDA
       && cuda_settings.precision == 0) {
-    throw std::runtime_error(
+    throw InvalidInput(
       "use_mmap_distance_matrix: CUDA precision=Auto is not safe for persistent "
       "warm-start caches because its resolved FP32/FP64 semantics depend on the "
       "runtime GPU. Select explicit FP32 or FP64 before binding the cache.");
@@ -577,6 +709,12 @@ Problem::distance_cache_identity(core::MetricType metric) const
 }
 
 core::MmapDistanceMatrix::fingerprint_type
+Problem::distance_checkpoint_identity() const
+{
+  return distance_checkpoint_identity(metric_);
+}
+
+core::MmapDistanceMatrix::fingerprint_type
 Problem::distance_checkpoint_identity(core::MetricType metric) const
 {
   preflight_current_distance_semantics();
@@ -598,7 +736,7 @@ void Problem::validate_mmap_cache_identity() const
   preflight_current_distance_semantics();
   if (!std::holds_alternative<core::MmapDistanceMatrix>(distMat)) return;
   if (!mmap_cache_identity_bound_) {
-    throw std::runtime_error(
+    throw InvalidInput(
       "MmapDistanceMatrix: mapped storage has no bound Problem cache identity");
   }
 
@@ -609,7 +747,7 @@ void Problem::validate_mmap_cache_identity() const
       || data_.precision != mmap_cache_identity_.precision
       || !distance_cache_configuration_matches(
         mmap_cache_identity_.configuration_values)) {
-    throw std::runtime_error(
+    throw InvalidInput(
       "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
       "or distance configuration changed. Call refresh_distance_matrix(), then "
       "bind a cache created for the new semantics.");
@@ -625,7 +763,7 @@ void Problem::validate_mmap_cache_identity() const
     const DistanceCacheIdentity current = distance_cache_identity(
       mmap_cache_identity_.configuration_values.metric);
     if (current.full != mmap_cache_identity_.full) {
-      throw std::runtime_error(
+      throw InvalidInput(
         "MmapDistanceMatrix: bound cache fingerprint mismatch after Problem data "
         "changed before first use. Call refresh_distance_matrix(), then bind a "
         "cache created for the new data.");
@@ -634,11 +772,18 @@ void Problem::validate_mmap_cache_identity() const
   }
 }
 
+void Problem::use_mmap_distance_matrix(const std::filesystem::path &cache_path)
+{
+  use_mmap_distance_matrix(cache_path, metric_);
+}
+
 void Problem::use_mmap_distance_matrix(
   const std::filesystem::path &cache_path, core::MetricType metric)
 {
-  core::validate_metric_type(metric);
-  preflight_current_distance_semantics();
+  // Every check, the identity and the mapping come before any change: a bind
+  // that fails leaves this Problem's metric and matrix as they were.
+  preflight_distance_semantics(
+    variant_params, missing_strategy, metric, data_, distance_strategy, cuda_settings);
   // Reconcile dispatcher semantics before publishing a new mapped identity.
   // Without this generic guard, replacing an already-bound mmap after a raw
   // configuration mutation could label Standard-DTW writes with an ADTW (or
@@ -646,17 +791,20 @@ void Problem::use_mmap_distance_matrix(
   ensure_dtw_function_configuration_current();
   const size_t N = data_.size();
   DistanceCacheIdentity identity = distance_cache_identity(metric);
-  if (std::filesystem::exists(cache_path)) {
-    // open(path, expected) validates version, header integrity, length, and the
-    // full semantic fingerprint before exposing the mapped computed-bit region.
-    distMat = core::MmapDistanceMatrix::open(cache_path, identity.full);
-    auto &m = std::get<core::MmapDistanceMatrix>(distMat);
-    if (m.size() != N)
-      throw std::runtime_error("Mmap cache N=" + std::to_string(m.size())
-                               + " != data N=" + std::to_string(N));
-  } else {
-    distMat = core::MmapDistanceMatrix(cache_path, N, identity.full);
+  // open(path, expected) validates version, header integrity, length, and the
+  // full semantic fingerprint before exposing the mapped computed-bit region.
+  auto mapped = std::filesystem::exists(cache_path)
+    ? core::MmapDistanceMatrix::open(cache_path, identity.full)
+    : core::MmapDistanceMatrix(cache_path, N, identity.full);
+  if (mapped.size() != N)
+    throw IOError("Mmap cache N=" + std::to_string(mapped.size())
+                  + " != data N=" + std::to_string(N));
+  if (metric_ != metric) { // new semantics, as in set_metric
+    metric_ = metric;
+    fill_request_validated_ = false;
+    rebind_dtw_fn();
   }
+  distMat = std::move(mapped);
   mmap_cache_identity_ = identity;
   mmap_cache_identity_bound_ = true;
   mmap_cache_data_validated_ = false;
@@ -683,6 +831,24 @@ double Problem::dist_by_ind(int i, int j)
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current_preflighted();
   if (i == j) return 0.0;
+
+  // The lazy path starts at the first off-diagonal call after a
+  // (re)configuration, cached pair or not, so a caller's serial prime (see
+  // below) validates before any parallel region. Once per configuration, never
+  // per pair; a fill or dtw_function accessor that validated sets the flag. A
+  // dense matrix with every pair known (a loaded file or checkpoint, one
+  // written through the matrix accessors) computes nothing, so nothing in it
+  // can be infeasible; installing or editing a matrix re-arms the check. A
+  // mapped cache is always checked: its identity binds the band, so only this
+  // library's kernels under the same request filled it, and proving it
+  // complete would read the whole mapped file.
+  if (!fill_request_validated_) {
+    const auto *dense = std::get_if<core::DenseDistanceMatrix>(&distMat);
+    const bool complete =
+      dense && dense->size() == data_.size() && dense->all_computed();
+    if (!complete) validate_fill_request("Problem::dist_by_ind");
+    fill_request_validated_ = true;
+  }
 
   const size_t N = data_.size();
 
@@ -714,14 +880,6 @@ double Problem::dist_by_ind(int i, int j)
   if (computed)
     return visit_distmat([&](const auto &m) { return m.get(i, j); });
 
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)
-      && mmap_cache_identity_.configuration_values.metric != core::MetricType::L1) {
-    throw std::runtime_error(
-      "MmapDistanceMatrix: a non-L1 cache is external-fill-only; lazy CPU "
-      "dist_by_ind computes L1 and cannot populate this cache. Fill it through "
-      "the matching GPU/backend producer before reading the pair.");
-  }
-
   const double d = data_.is_f32()
                      ? validated_dtw_function_f32()(data_.series_f32(i), data_.series_f32(j))
                      : dtw_fn_(series(i), series(j));
@@ -735,7 +893,9 @@ double Problem::dist_by_ind(int i, int j)
  *          (raw lower-bound kernels cannot implement a missing-data dispatcher)
  *          and Float64 storage: the lower-bound summaries, envelopes and
  *          kernels are all f64-only and reach the data through
- *          Problem::series(), which rejects a Float32 store.
+ *          Problem::series(), which rejects a Float32 store. They are also
+ *          univariate L1: multivariate series would be read as one interleaved
+ *          stream, and another metric would be computed as L1.
  * @return true if pruned strategy can be used.
  */
 static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_storage)
@@ -746,6 +906,8 @@ static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_stora
                                || prob.variant_params.variant == core::DTWVariant::ADTW;
   return supported_variant
       && prob.missing_strategy == core::MissingStrategy::Error
+      && prob.metric() == core::MetricType::L1
+      && prob.data().ndim == 1
       && has_dense_storage
       && !prob.data().is_f32()
       && prob.band >= 0
@@ -771,6 +933,124 @@ void Problem::validate_checkpoint_settings() const
       "Problem::fill_distance_matrix: automatic checkpointing requires dense "
       "distance storage. Mapped storage is already durable on disk; the dense "
       "checkpoint format is for heap matrices.");
+}
+
+void Problem::validate_fill_request(std::string_view where) const
+{
+  const std::string at(where);
+
+  // A band narrower than a pair's length difference leaves that pair no warping
+  // path: the banded kernels return the finite max() sentinel, which passes every
+  // isfinite() guard, so clustering would silently sum 1.8e308 (design §9,
+  // D-12). The widest gap is shortest vs longest. Soft-DTW, MSM and TWE ignore
+  // the band. Lengths are timesteps, as the multivariate kernels count them.
+  const auto variant = variant_params.variant;
+  if (band >= 0 && data_.size() > 1 && variant != core::DTWVariant::SoftDTW
+      && variant != core::DTWVariant::MSM && variant != core::DTWVariant::TWE) {
+    std::size_t shortest = 0, longest = 0;
+    for (std::size_t i = 1; i < data_.size(); ++i) {
+      if (data_.series_length(i) < data_.series_length(shortest)) shortest = i;
+      if (data_.series_length(i) > data_.series_length(longest)) longest = i;
+    }
+    const std::size_t gap =
+      data_.series_length(longest) - data_.series_length(shortest);
+    if (gap > static_cast<std::size_t>(band)) {
+      const auto describe = [&](std::size_t i) {
+        return "series '" + std::string(series_name(i)) + "' (index "
+             + std::to_string(i) + ", length "
+             + std::to_string(data_.series_length(i)) + ")";
+      };
+      throw InvalidInput(
+        at + ": band = " + std::to_string(band) + " is narrower than the length "
+        "difference between " + describe(shortest) + " and " + describe(longest)
+        + ", so no warping path fits that pair. The smallest feasible band is "
+        + std::to_string(gap) + "; pass band >= " + std::to_string(gap)
+        + ", or band = -1 for full DTW.");
+    }
+  }
+
+  // FX-15: the kernels take NaN and ±inf as numbers. ±inf gives inf, or
+  // inf − inf = NaN, under any strategy; NaN is a missing value only to a
+  // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
+  // an uncomputed matrix entry). One check through the raw entry points' own
+  // boundary test, serial so the message names the series and its (flat)
+  // position. A metadata-only store holds no values here to scan.
+  if (!data_.is_metadata_only()) {
+    const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
+    std::string name;
+    for (std::size_t i = 0; i < data_.size(); ++i) {
+      name.assign("series '").append(series_name(i)).append("' (index ")
+        .append(std::to_string(i)).append(")");
+      if (data_.is_f32())
+        detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
+      else
+        detail::require_finite(series(i), name, at, nan_is_missing);
+    }
+  }
+  if (!data_.is_metadata_only()
+      && missing_strategy == core::MissingStrategy::Interpolate) {
+    // interpolate_linear() has no observed value to interpolate from when a
+    // series is entirely NaN, and used to throw from inside the per-pair lambda.
+    for (std::size_t i = 0; i < data_.size(); ++i) {
+      const bool all_nan = data_.is_f32() ? all_missing(data_.series_f32(i))
+                                          : all_missing(series(i));
+      if (all_nan)
+        throw InvalidInput(
+          at + ": series '" + std::string(series_name(i)) + "' (index "
+          + std::to_string(i) + ") is entirely NaN, so MissingStrategy::Interpolate "
+            "has nothing to interpolate from. Use ZeroCost or AROW, or drop the "
+            "series.");
+    }
+  }
+
+  // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
+  // DTW on univariate data with no missing-data strategy, in L1 or squared L2.
+  const bool cuda = distance_strategy == DistanceMatrixStrategy::CUDA;
+  if (!cuda && distance_strategy != DistanceMatrixStrategy::Metal) return;
+  const std::string backend = cuda ? "CUDA" : "Metal";
+  const auto reject = [&](const std::string &request, const std::string &fix) {
+    throw DeviceError(at + ": " + backend + " " + request
+                      + "; no backend call or CPU fallback was attempted. " + fix);
+  };
+  if (has_mmap_series_storage())
+    reject("does not support mmap-backed series data",
+           "Select StoragePolicy::Heap before set_data.");
+  if (data_.is_view() || data_.is_metadata_only())
+    reject(std::string("needs owned series in RAM, but this Problem's series are ")
+             + (data_.is_view() ? "a non-owning view (set_view_data, as "
+                                  "FastCLARA's in-memory subsamples are)"
+                                : "not resident (metadata-only)"),
+           "Install owning series with set_data, or use device cpu.");
+  if (data_.is_f32())
+    reject("computes from Float64 series, but this Problem holds precision = "
+           "Float32",
+           "Load the series as Float64, or use device cpu.");
+  if (variant != core::DTWVariant::Standard)
+    reject(std::string("implements Standard DTW only, but variant = ")
+             + variant_name(variant) + " was requested",
+           "Use device cpu for this variant.");
+  if (missing_strategy != core::MissingStrategy::Error)
+    reject(std::string("has no missing-data strategy, but missing_strategy = ")
+             + missing_strategy_name(missing_strategy) + " was requested",
+           "Use device cpu, or missing_strategy Error for data without NaN.");
+  if (data_.ndim > 1)
+    reject("is univariate only, but ndim = " + std::to_string(data_.ndim)
+             + " was requested",
+           "Use device cpu for multivariate series.");
+  if (!cuda && cuda_settings.device_id != 0)
+    reject("runs on the system default GPU, but GPU index = "
+             + std::to_string(cuda_settings.device_id) + " was requested",
+           "Use gpu (index 0).");
+#ifdef DTWC_HAS_METAL
+  if (!cuda) metal::validate_metal_precision(metal_precision(cuda_settings.precision));
+#endif
+}
+
+void Problem::validate_fill_request_once(std::string_view where) const
+{
+  if (fill_request_validated_) return;
+  validate_fill_request(where);
+  fill_request_validated_ = true;
 }
 
 /**
@@ -838,9 +1118,8 @@ void Problem::fillDistanceMatrix_BruteForce()
   for (; block_begin < N; block_begin += stride) {
     const size_t end = std::min(block_begin + stride, N);
     run_openmp(fill_block, end - block_begin, true, 8);
-    // The tag must be the metric this fill computed; both autosave sites read
-    // it from the bound dense cache configuration, never from a literal.
-    save_checkpoint(*this, checkpoint.directory, dense_cache_metric());
+    // Tagged with metric(), the metric this fill computed (both autosave sites).
+    save_checkpoint(*this, checkpoint.directory);
   }
 }
 
@@ -861,13 +1140,8 @@ void Problem::fill_distance_matrix()
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;
-
-  if (std::holds_alternative<core::MmapDistanceMatrix>(distMat)
-      && mmap_cache_identity_.configuration_values.metric != core::MetricType::L1) {
-    throw std::runtime_error(
-      "MmapDistanceMatrix: a non-L1 cache is external-fill-only; the Problem CPU "
-      "fill path computes L1. Fill it through the matching GPU/backend producer.");
-  }
+  validate_fill_request("Problem::fill_distance_matrix");
+  fill_request_validated_ = true; // the same request needs no lazy re-check
 
   // Allocate the dense N×N matrix on first call (deferred from set_data / refresh_distance_matrix).
   // MmapDistanceMatrix is pre-allocated at creation, so only Dense needs this.
@@ -885,37 +1159,8 @@ void Problem::fill_distance_matrix()
   if (verbose_)
     std::cout << "Distance matrix is being filled!" << '\n';
 
-  // Serial missing-data pre-scan. Both branches run BEFORE the parallel fill so
-  // the diagnostic can name the offending series (a per-pair lambda sees two
-  // anonymous spans) and no per-pair path has to throw.
-  if (missing_strategy == core::MissingStrategy::Error) {
-    for (size_t i = 0; i < data_.size(); ++i) {
-      const bool has_nan = data_.is_f32()
-                             ? has_missing(data_.series_f32(i))
-                             : has_missing(series(i));
-      if (has_nan) {
-        throw std::runtime_error(
-          "fill_distance_matrix: NaN detected in series '" + std::string(series_name(i))
-          + "' (index " + std::to_string(i)
-          + "). Set missing_strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
-      }
-    }
-  } else if (missing_strategy == core::MissingStrategy::Interpolate) {
-    // interpolate_linear() has no observed value to interpolate from when a
-    // series is entirely NaN, and used to throw from inside the per-pair lambda.
-    for (size_t i = 0; i < data_.size(); ++i) {
-      const bool all_nan = data_.is_f32()
-                             ? all_missing(data_.series_f32(i))
-                             : all_missing(series(i));
-      if (all_nan) {
-        throw InvalidInput(
-          "fill_distance_matrix: series '" + std::string(series_name(i))
-          + "' (index " + std::to_string(i)
-          + ") is entirely NaN, so MissingStrategy::Interpolate has nothing to "
-            "interpolate from. Use ZeroCost or AROW, or drop the series.");
-      }
-    }
-  }
+  // The serial missing-data pre-scan is part of validate_fill_request (FX-15),
+  // above: it runs before any pair, here and on every other entry point.
 
   // Resolve Auto strategy
   const bool has_mmap_storage =
@@ -926,17 +1171,6 @@ void Problem::fill_distance_matrix()
       effective = DistanceMatrixStrategy::Pruned;
     else
       effective = DistanceMatrixStrategy::BruteForce;
-  }
-
-  if (has_mmap_series_storage()
-      && (effective == DistanceMatrixStrategy::CUDA
-          || effective == DistanceMatrixStrategy::Metal)) {
-    const char *backend =
-      effective == DistanceMatrixStrategy::CUDA ? "CUDA" : "Metal";
-    throw DeviceError(
-      std::string("Problem::fill_distance_matrix: ") + backend
-      + " does not support mmap-backed series data; no backend call or CPU "
-        "fallback was attempted. Select StoragePolicy::Heap before set_data.");
   }
 
   // The pruned builder calls raw Standard/ADTW kernels; it cannot implement a
@@ -987,6 +1221,18 @@ void Problem::fill_distance_matrix()
       "Float64 series storage; this Problem holds Float32 data. Use "
       "DistanceMatrixStrategy::Auto or BruteForce, or load the data as "
       "Float64.");
+  }
+
+  // The pruned builder and its bounds are univariate L1 (see
+  // pruned_strategy_applicable); the exact row fill computes this metric on
+  // these series. Below the Float32 check, which keeps its error.
+  if (effective == DistanceMatrixStrategy::Pruned
+      && (metric_ != core::MetricType::L1 || data_.ndim > 1)) {
+    if (verbose_) {
+      std::cout << "Pruned lower bounds are univariate L1; using exact "
+                   "BruteForce for this metric and ndim.\n";
+    }
+    effective = DistanceMatrixStrategy::BruteForce;
   }
 
   // Shared post-GPU handler. Templated on the backend's result type (both
@@ -1054,7 +1300,8 @@ void Problem::fill_distance_matrix()
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP32;
     else if (cuda_settings.precision == 2)
       cuda_opts.precision = dtwc::cuda::CUDAPrecision::FP64;
-    cuda_opts.use_squared_l2 = false;
+    // L2 is L1 on the univariate series the GPU routes take.
+    cuda_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
     cuda_opts.verbose = verbose_;
 
     auto cuda_result = dtwc::cuda::compute_distance_matrix_cuda(
@@ -1078,7 +1325,8 @@ void Problem::fill_distance_matrix()
 
     dtwc::metal::MetalDistMatOptions metal_opts;
     metal_opts.band = band;
-    metal_opts.use_squared_l2 = false;
+    metal_opts.precision = metal_precision(cuda_settings.precision);
+    metal_opts.use_squared_l2 = metric_ == core::MetricType::SquaredL2;
     metal_opts.verbose = verbose_;
 
     auto metal_result = dtwc::metal::compute_distance_matrix_metal(
@@ -1106,7 +1354,7 @@ void Problem::fill_distance_matrix()
   // BruteForce already saved after its last row block; every other backend fills
   // in one call, so its only automatic save is here.
   if (checkpoint.enabled && effective != DistanceMatrixStrategy::BruteForce)
-    save_checkpoint(*this, checkpoint.directory, dense_cache_metric());
+    save_checkpoint(*this, checkpoint.directory);
 
   if (verbose_)
     std::cout << "Distance matrix has been filled!" << '\n';
@@ -1178,7 +1426,7 @@ void Problem::cluster_by_mip()
   const bool use_benders = (mip_settings.benders == "on") || (mip_settings.benders == "auto" && data_.size() > 200);
 
   if (use_benders) {
-    MIP_clustering_byBenders(*this);
+    MIP_clustering_byBenders(*this); // guards n_repetitions for its warm start
     return;
   }
 
@@ -1310,9 +1558,12 @@ void Problem::cluster_by_kmedoids_lloyd()
 
 void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
 {
+  // The setters reject both; the deprecated public fields bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)
     throw InvalidInput("Lloyd k-medoids requires n_repetitions >= 1.");
+  if (max_iter() <= 0)
+    throw InvalidInput("Lloyd k-medoids requires max_iter >= 1.");
   const auto restart_offset = static_cast<std::uint64_t>(repetitions - 1);
   if (restart_offset
       > std::numeric_limits<std::uint64_t>::max() - random_seed_)
@@ -1392,7 +1643,7 @@ std::tuple<int, double, int> Problem::cluster_by_kMedoidsLloyd_single(
     if (verbose_) {
       std::cout << "Medoids: ";
       for (auto medoid : centroids_ind)
-        std::cout << get_name(medoid) << ' ';
+        std::cout << series_name(medoid) << ' ';
     }
 
     centroids_all.push_back(centroids_ind);

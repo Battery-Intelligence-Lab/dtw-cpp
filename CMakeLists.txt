@@ -300,6 +300,14 @@ if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
     "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/nanoarrow/NOTICE.txt"
     DESTINATION share/doc/dtwc/nanoarrow
     COMPONENT runtime)
+  # The vendored fast_float is Apache-2.0 OR MIT OR BSL-1.0; THIRD_PARTY_LICENSES.md
+  # names the election and refers to these three upstream texts.
+  install(FILES
+    "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/fast_float/LICENSE-APACHE"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/fast_float/LICENSE-BOOST"
+    "${CMAKE_CURRENT_SOURCE_DIR}/dtwc/extern/fast_float/LICENSE-MIT"
+    DESTINATION share/doc/dtwc/fast_float
+    COMPONENT runtime)
 
   # The archive is unpacked anywhere, so the CLI must resolve its bundled shared
   # libraries relative to its own location. HiGHS builds SHARED by default (it

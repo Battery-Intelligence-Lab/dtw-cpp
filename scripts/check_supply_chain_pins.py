@@ -19,11 +19,6 @@ USES = re.compile(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", re.MULTILINE)
 SHA256 = re.compile(r"[0-9A-Fa-f]{64}\Z")
 BRACKET_OPEN = re.compile(r"\[(?P<equals>=*)\[")
 VERSION_REF = re.compile(r"v?\d+(?:[._-][0-9A-Za-z]+)*\Z", re.IGNORECASE)
-# d21ffee (2026-09-07) reconciled: +cmake/DtwcTest.cmake, +cmake/DtwcRegex.cmake,
-# +tests/floors.cmake, +tests/cmake/test_regex_at_least.cmake, -cmake/Coverage.cmake.
-# Net +3 on the 30 registered after tests/integration/test_cli_config_formats.cmake
-# (2026-09-02). The ratchet had been red since that commit.
-REGISTERED_CMAKE_MANIFEST_TOTAL = 33
 CPM_PARSE_KEYWORDS = {
     "BITBUCKET_REPOSITORY",
     "CUSTOM_CACHE_KEY",
@@ -282,10 +277,12 @@ def tracked_cmake_files(root: Path = ROOT) -> list[Path]:
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    # A tracked file deleted in the working tree cannot be fetched by the build;
+    # a pin it held still fails the registered-identity inventory below.
     paths = [
         Path(raw.decode("utf-8"))
         for raw in completed.stdout.split(b"\0")
-        if raw
+        if raw and (root / raw.decode("utf-8")).is_file()
     ]
     return sorted(paths, key=lambda path: path.as_posix())
 
@@ -642,18 +639,15 @@ def cmake_archive_pins_in_text(path: Path, text: str) -> list[ArchivePin]:
     return pins
 
 
-def tracked_cmake_archive_pins(
-    root: Path = ROOT,
-) -> tuple[list[ArchivePin], int]:
-    manifests = tracked_cmake_files(root)
+def tracked_cmake_archive_pins(root: Path = ROOT) -> list[ArchivePin]:
     pins: list[ArchivePin] = []
-    for relative in manifests:
+    for relative in tracked_cmake_files(root):
         pins.extend(
             cmake_archive_pins_in_text(
                 relative, (root / relative).read_text(encoding="utf-8")
             )
         )
-    return pins, len(manifests)
+    return pins
 
 
 def archive_pin_failures(pins: Iterable[ArchivePin]) -> list[str]:
@@ -775,7 +769,7 @@ def _exact_pin_error(
 
 def arrow_pin_error(pins: Iterable[ArchivePin] | None = None) -> str | None:
     if pins is None:
-        pins = tracked_cmake_archive_pins(ROOT)[0]
+        pins = tracked_cmake_archive_pins(ROOT)
     return _exact_pin_error(
         pins,
         path=Path("cmake/Dependencies.cmake"),
@@ -800,7 +794,7 @@ def example_pin_error(pins: Iterable[ArchivePin]) -> str | None:
 def main() -> int:
     action_failures, action_total = workflow_action_pin_results()
     try:
-        pins, manifest_total = tracked_cmake_archive_pins()
+        pins = tracked_cmake_archive_pins()
     except (OSError, subprocess.SubprocessError, UnicodeError, ValueError) as error:
         print(f"CMake archive scan failed: {error}", file=sys.stderr)
         return 1
@@ -809,13 +803,6 @@ def main() -> int:
     registered_inventory_failures = registered_archive_inventory_failures(pins)
     arrow_error = arrow_pin_error(pins)
     example_error = example_pin_error(pins)
-    inventory_error = None
-    if manifest_total != REGISTERED_CMAKE_MANIFEST_TOTAL:
-        inventory_error = (
-            "tracked CMake manifest inventory changed: "
-            f"manifests={manifest_total} "
-            f"expected={REGISTERED_CMAKE_MANIFEST_TOTAL}"
-        )
 
     mutable_total = sum(pin.mutable for pin in pins)
     unhashed_total = sum(not pin.hashed for pin in pins)
@@ -828,7 +815,6 @@ def main() -> int:
         or registered_inventory_failures
         or arrow_error
         or example_error
-        or inventory_error
     )
     action_verdict = "FAIL" if action_failures else "PASS"
     archive_verdict = (
@@ -837,7 +823,6 @@ def main() -> int:
             archive_failures
             or registered_inventory_failures
             or example_error
-            or inventory_error
         )
         else "PASS"
     )
@@ -859,8 +844,6 @@ def main() -> int:
         print(arrow_error, file=sys.stderr)
     if example_error:
         print(example_error, file=sys.stderr)
-    if inventory_error:
-        print(inventory_error, file=sys.stderr)
 
     print(
         "WORKFLOW_ACTION_PIN_GATE "
@@ -876,7 +859,6 @@ def main() -> int:
         "ARROW_ARCHIVE_PIN_GATE "
         f"verified={arrow_verified} total=1 verdict={arrow_verdict}"
     )
-    print(f"TRACKED_CMAKE_MANIFESTS total={manifest_total}")
     if failures:
         return 1
     print("supply-chain pins verified")

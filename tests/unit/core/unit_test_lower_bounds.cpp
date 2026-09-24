@@ -15,10 +15,15 @@
 #include <core/lower_bound_impl.hpp>
 #include <warping.hpp>
 
+#include "../gpu_fixed_band_oracle.hpp"
+#include "../../support/deterministic_series.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <algorithm>
 #include <span>
+#include <sstream>
 #include <vector>
 #include <random>
 
@@ -354,4 +359,93 @@ TEST_CASE("lower-bound entry points reject a ragged envelope",
   CHECK(dtwc::core::lb_webb(
           std::span<const double>(A), ea, std::span<const double>(B), eb, 1)
         == 0.0);
+}
+
+// ---------------------------------------------------------------------------
+// FX-13: every LB_Keogh is admissible for its cost and band.
+//
+// Oracle: the plain full-matrix DP of gpu_fixed_band_oracle.hpp under the
+// literal |i-j| <= band predicate (every cell for band < 0); it shares no
+// production DTW or envelope code. Both directions over the min(n, m) prefix
+// (D2) and their maximum, for L1 and unrooted squared L2, full DTW and fixed
+// bands. Values in [-1, 1) make excesses below 1 common, where an unsquared
+// excess exceeds the squared cost it claims to bound (F27); full DTW is where a
+// radius-zero envelope overshoots (F46). The witness counts prove the inputs
+// can see each defect, so a green run is not vacuous.
+// ---------------------------------------------------------------------------
+TEST_CASE("FX-13 LB_Keogh <= exact DTW for L1 and squared L2 (full and banded)",
+          "[lower_bounds][lb_keogh][property][FX-13]")
+{
+  namespace oracle = dtwc::test::gpu_fixed_band;
+  using dtwc::test_support::benchmark_series;
+
+  std::size_t checked = 0, violations = 0;
+  std::size_t radius_zero_witnesses = 0, l1_unit_witnesses = 0;
+  std::ostringstream first_violation;
+  for (const bool squared : { false, true }) {
+    for (const int band : { -1, 0, 2 }) {
+      for (unsigned seed = 1; seed <= 200; ++seed) {
+        const auto x = benchmark_series(1 + seed % 9, seed);
+        const auto y = benchmark_series(1 + (seed / 9) % 9, seed + 7919U);
+        const double exact = oracle::full_matrix_oracle(x, y, band, squared);
+
+        std::vector<data_t> ux, lx, uy, ly, ux0, lx0, uy0, ly0;
+        dtwc::core::compute_envelopes(x, band, ux, lx);
+        dtwc::core::compute_envelopes(y, band, uy, ly);
+        dtwc::core::compute_envelopes(x, 0, ux0, lx0); // pre-FX-13 band < 0
+        dtwc::core::compute_envelopes(y, 0, uy0, ly0);
+
+        const std::size_t n = std::min(x.size(), y.size());
+        const auto l1 = [n](const auto &q, const auto &u, const auto &l) {
+          return dtwc::core::lb_keogh(q.data(), n, u.data(), l.data());
+        };
+        const auto sq = [n](const auto &q, const auto &u, const auto &l) {
+          return dtwc::core::lb_keogh_squared(q.data(), n, u.data(), l.data());
+        };
+        const auto bound_of = [&](const auto &f, const auto &ex, const auto &ey,
+                                  const auto &fx, const auto &fy) {
+          return std::max(f(x, ey, fy), f(y, ex, fx));
+        };
+        const double l1_bound = bound_of(l1, ux, uy, lx, ly);
+        const double bound = squared ? bound_of(sq, ux, uy, lx, ly) : l1_bound;
+
+        ++checked;
+        if (!(bound <= exact * (1.0 + 1e-12) + 1e-12) && violations++ == 0)
+          first_violation << "squared=" << squared << " band=" << band
+                          << " seed=" << seed << " bound=" << bound
+                          << " exact=" << exact;
+        if (band < 0) {
+          const double radius_zero = squared ? bound_of(sq, ux0, uy0, lx0, ly0)
+                                             : bound_of(l1, ux0, uy0, lx0, ly0);
+          if (radius_zero > exact) ++radius_zero_witnesses;
+        }
+        if (squared && l1_bound > exact) ++l1_unit_witnesses;
+      }
+    }
+  }
+  INFO("first violation: " << first_violation.str());
+  CHECK(violations == 0);
+  REQUIRE(checked == 1200);
+  REQUIRE(radius_zero_witnesses > 0);
+  REQUIRE(l1_unit_witnesses > 0);
+}
+
+TEST_CASE("FX-13 a negative band builds the global envelope (scalar and multivariate)",
+          "[lower_bounds][envelopes][FX-13]")
+{
+  const std::vector<data_t> scalar = { 3.0, 1.0, 4.0, 1.0, 5.0 };
+  const auto env = dtwc::core::compute_envelope(scalar, -1);
+  CHECK(env.upper == std::vector<data_t>(5, 5.0));
+  CHECK(env.lower == std::vector<data_t>(5, 1.0));
+
+  // Channel 0 = {3, 1, 4, 1, 5}, channel 1 = {-2, 7, 0, -9, 6}, interleaved.
+  const std::vector<data_t> mv = { 3, -2, 1, 7, 4, 0, 1, -9, 5, 6 };
+  std::vector<data_t> upper(mv.size()), lower(mv.size());
+  dtwc::core::compute_envelopes_mv(mv.data(), 5, 2, -1, upper.data(), lower.data());
+  for (std::size_t t = 0; t < 5; ++t) {
+    CHECK(upper[2 * t] == 5.0);
+    CHECK(lower[2 * t] == 1.0);
+    CHECK(upper[2 * t + 1] == 7.0);
+    CHECK(lower[2 * t + 1] == -9.0);
+  }
 }

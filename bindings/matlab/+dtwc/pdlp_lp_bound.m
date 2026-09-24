@@ -20,7 +20,8 @@ function result = pdlp_lp_bound(D, k, varargin)
 %   tol : PDLP KKT tolerance. Default 1e-8.
 %   iteration_limit : PDLP iteration cap; 0 keeps the HiGHS default.
 %   use_gpu : ask for the GPU backend (a compile-time property of HiGHS;
-%             never a silent downgrade -- warns when unavailable).
+%             never a silent downgrade -- raises dtwc:deviceError when this
+%             build lacks it).
 %   verbose : let HiGHS print its solver log.
 %
 %   Returns

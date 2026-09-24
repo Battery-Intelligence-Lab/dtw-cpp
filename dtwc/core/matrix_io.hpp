@@ -11,7 +11,8 @@
  *          exactly one LF per row on every host.
  *          Uncomputed entries are written as an empty field (not "nan"),
  *          so the file is clean and easy to inspect in spreadsheet tools.
- *          An empty field on read is treated as uncomputed.
+ *          An empty field on read is treated as uncomputed; a file that is
+ *          not square and symmetric is rejected with InvalidInput.
  *
  *          operator<< lives in dtwc::core (not dtwc::io) so that
  *          ADL resolves it for DenseDistanceMatrix arguments.
@@ -23,6 +24,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../io/parse_number.hpp" // exact, locale-free floating-point parsing
 #include "distance_matrix.hpp"
 #include "mmap_distance_matrix.hpp"
 
@@ -30,6 +32,7 @@
 #include <array>
 #include <bit>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -81,8 +84,8 @@ inline std::string_view distance_matrix_csv_token(
   const auto formatted = std::to_chars(
     buffer.data(), buffer.data() + buffer.size(), value,
     std::chars_format::general, std::numeric_limits<double>::max_digits10);
-  if (formatted.ec != std::errc{})
-    throw std::runtime_error("Cannot format distance-matrix CSV value.");
+  if (formatted.ec != std::errc{}) // programming error: the 64-byte buffer fits any double
+    throw std::logic_error("Cannot format distance-matrix CSV value.");
   return {buffer.data(),
           static_cast<size_t>(formatted.ptr - buffer.data())};
 }
@@ -99,7 +102,7 @@ inline void write_csv(const core::DenseDistanceMatrix &dm, const std::filesystem
   std::ofstream file(
     path, std::ios::out | std::ios::binary | std::ios::trunc);
   if (!file.good())
-    throw std::runtime_error("Cannot open file for writing: " + path.string());
+    throw IOError("Cannot open file for writing: " + path.string());
   const size_t n = dm.size();
   std::array<char, 64> number{};
   for (size_t i = 0; i < n; ++i) {
@@ -115,16 +118,20 @@ inline void write_csv(const core::DenseDistanceMatrix &dm, const std::filesystem
   }
   file.close();
   if (!file.good())
-    throw std::runtime_error("Write error on file: " + path.string());
+    throw IOError("Write error on file: " + path.string());
 }
 
 /// Read a full N×N CSV file into the matrix.
-/// Empty fields are treated as uncomputed; numeric fields are set.
+/// Empty fields are treated as uncomputed; numeric fields are set. The file
+/// must be square and symmetric, or InvalidInput names the row: it used to
+/// read a 2×3 file as 2×2, let the later of two different values of a pair
+/// win, and leave a short row's missing cells silently uncomputed. One cell of
+/// a pair may be empty (an upper- or lower-triangle file).
 inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path &path)
 {
   std::ifstream file(path);
   if (!file.good())
-    throw std::runtime_error("Cannot open file for reading: " + path.string());
+    throw IOError("Cannot open file for reading: " + path.string());
 
   struct Cell { double value; bool valid; };
   std::vector<std::vector<Cell>> rows;
@@ -134,46 +141,68 @@ inline void read_csv(core::DenseDistanceMatrix &dm, const std::filesystem::path 
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.empty()) continue;
     std::vector<Cell> row;
-    // std::from_chars, not std::stod: the writer emits locale-independent
-    // binary64 (see the file header), and std::stod honours LC_NUMERIC, so a
-    // de_DE locale read "1.5" back as 1. A partial parse is an error, not a
-    // truncation.
-    // Loop shape matches the previous std::getline(ss, cell, ',') exactly,
-    // including dropping a trailing empty field after a final comma.
-    std::string_view rest{ line };
-    while (!rest.empty()) {
-      const auto comma = rest.find(',');
-      const std::string_view cell =
-        comma == std::string_view::npos ? rest : rest.substr(0, comma);
+    // Locale-independent like the writer (std::stod honours LC_NUMERIC, so a
+    // de_DE locale read "1.5" back as 1); a partial parse is an error. Every
+    // comma separates two fields, so the writer's trailing uncomputed cells
+    // ("0,,") count as cells.
+    const std::string_view text{ line };
+    std::size_t start = 0;
+    while (true) {
+      const auto comma = text.find(',', start);
+      const auto cell = text.substr(
+        start, comma == std::string_view::npos ? comma : comma - start);
       if (cell.empty()) {
         row.push_back({ 0.0, false }); // empty field → uncomputed
       } else {
         double value{};
-        const auto parsed = std::from_chars(
-          cell.data(), cell.data() + cell.size(), value,
-          std::chars_format::general);
+        const auto parsed =
+          parse_number(cell.data(), cell.data() + cell.size(), value);
         if (parsed.ec != std::errc{} || parsed.ptr != cell.data() + cell.size())
-          throw std::runtime_error(
+          throw IOError(
             "Invalid numeric field '" + std::string(cell) + "' in "
             + path.string());
-        row.push_back({ value, true });
+        row.push_back({ value, !std::isnan(value) }); // "nan" → uncomputed, as stored
       }
-      if (comma == std::string_view::npos)
-        rest = {};
-      else
-        rest.remove_prefix(comma + 1);
+      if (comma == std::string_view::npos) break;
+      start = comma + 1;
     }
     rows.push_back(std::move(row));
   }
 
-  if (!rows.empty()) {
-    const size_t N = rows.size();
-    dm.resize(N);
-    for (size_t i = 0; i < N; ++i)
-      for (size_t j = 0; j < N && j < rows[i].size(); ++j)
-        if (rows[i][j].valid)
-          dm.set(i, j, rows[i][j].value);
+  const size_t N = rows.size();
+  const auto where = [&](size_t i, size_t j) {
+    return "row " + std::to_string(i + 1) + ", column " + std::to_string(j + 1);
+  };
+  for (size_t i = 0; i < N; ++i) {
+    // One trailing comma after N fields is tolerated, as before.
+    if (rows[i].size() == N + 1 && !rows[i].back().valid) rows[i].pop_back();
+    if (rows[i].size() != N)
+      throw InvalidInput(
+        "distance-matrix CSV '" + path.string() + "': row " + std::to_string(i + 1)
+        + " has " + std::to_string(rows[i].size()) + " fields but the file has "
+        + std::to_string(N) + " rows; a distance matrix is square (write an "
+          "uncomputed entry as an empty field).");
   }
+  std::array<char, 64> a_text{}, b_text{};
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = 0; j < i; ++j) {
+      const Cell a = rows[i][j], b = rows[j][i];
+      if (a.valid && b.valid && a.value != b.value)
+        throw InvalidInput(
+          "distance-matrix CSV '" + path.string() + "': " + where(i, j) + " is "
+          + std::string(core::detail::distance_matrix_csv_token(a.value, a_text))
+          + " but " + where(j, i) + " is "
+          + std::string(core::detail::distance_matrix_csv_token(b.value, b_text))
+          + "; a distance matrix is symmetric.");
+    }
+
+  if (N == 0) return;
+  dm.resize(N);
+  for (size_t i = 0; i < N; ++i)
+    for (size_t j = 0; j <= i; ++j) {
+      const Cell &cell = rows[i][j].valid ? rows[i][j] : rows[j][i];
+      if (cell.valid) dm.set(i, j, cell.value);
+    }
 }
 
 /// Expand packed triangular storage to a full N×N matrix, in row-major order.

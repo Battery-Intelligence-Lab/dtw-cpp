@@ -85,6 +85,20 @@ class TestCSV:
         loaded, _ = load_dataset_csv(str(p))
         np.testing.assert_allclose(loaded, sample_data, atol=1e-10)
 
+    def test_byte_order_mark_is_not_a_header(self, tmp_path):
+        """FX-10: a UTF-8 BOM (Excel's "CSV UTF-8") made the first data row
+        look like a header, so the first series was dropped."""
+        p = tmp_path / "bom.csv"
+        p.write_bytes(b"\xef\xbb\xbf1,2,3\n4,5,6\n")
+        loaded, names = load_dataset_csv(p)
+        np.testing.assert_array_equal(loaded, [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        assert names == []
+
+        p.write_bytes(b"\xef\xbb\xbfa,b,c\n1,2,3\n")
+        loaded, names = load_dataset_csv(p)
+        np.testing.assert_array_equal(loaded, [[1.0, 2.0, 3.0]])
+        assert names == ["a", "b", "c"]
+
 
 # ---------------------------------------------------------------------------
 # HDF5 (skip if h5py is not installed)

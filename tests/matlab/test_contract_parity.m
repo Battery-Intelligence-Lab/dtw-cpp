@@ -357,16 +357,28 @@ function test_tier1_dtwclustering_device_param(testCase)
     verifyNumElements(testCase, c.Labels, 6);
 end
 
-function test_dtwclustering_gpu_index_is_parsed_from_the_canonical_name(testCase)
-%   S3: the resolver behind Device='gpu:N'. Env::set_device parses the suffix
-%   into device_index() and reports it back in the canonical name, so the
-%   estimator's resolver must read the same ordinal out of that name.
-    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('cpu'), 0);
-    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('gpu'), 0);
-    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('gpu:1'), 1);
-    verifyEqual(testCase, dtwc.DTWClustering.gpu_index('cuda:3'), 3);
-    verifyError(testCase, @() dtwc.DTWClustering.gpu_index('gpu:x'), ...
-        'dtwc:deviceError');
+function test_device_names_are_read_by_the_cpp_grammar(testCase)
+%   FX-17: MATLAB has no device grammar of its own. dtwc.device and
+%   Problem.set_device read a name with C++ dtwc::detail::parse_device (it
+%   trims and ignores case) and report it as C++ dtwc::device() does, so a
+%   malformed ordinal is the §6.1 DeviceError, verbatim, on every build.
+%   DTWClustering's str2double ordinal parser (gpu_index) is gone.
+    previous = dtwc.device();
+    restore = onCleanup(@() dtwc.device(previous)); %#ok<NASGU>
+    verifyEqual(testCase, dtwc.device(' CPU '), 'cpu');
+    unknown = ['[dtwc] unknown device ''gpu:x''. Valid devices: cpu, gpu, ' ...
+               'gpu:N (aliases cuda, cuda:N), hpc.'];
+    prob = dtwc.Problem('grammar');
+    for request = {@() dtwc.device('gpu:x'), @() prob.set_device('gpu:x')}
+        verifyError(testCase, request{1}, 'dtwc:deviceError');
+        try
+            request{1}();
+        catch err
+            verifyEqual(testCase, err.message, unknown);
+        end
+    end
+    mc = meta.class.fromName('dtwc.DTWClustering');
+    verifyFalse(testCase, any(strcmp({mc.MethodList.Name}, 'gpu_index')));
 end
 
 function test_dtwclustering_forwards_the_gpu_ordinal_to_cuda_settings(testCase)
@@ -432,6 +444,25 @@ function test_problem_setters_all_callable(testCase)
     prob.set_verbose(false);
     prob.set_cuda_settings(0, 0);
     verifyEqual(testCase, prob.size(), 6);
+end
+
+function test_problem_set_method_refuses_pam_and_auto(testCase)
+%   FX-17: set_method('pam'|'auto') selected Lloyd k-medoids, so a request for
+%   PAM silently ran another algorithm. A Problem runs 'kmedoids' or 'mip'; the
+%   error names the routes that run PAM and auto.
+    prob = dtwc.Problem('set_method');
+    for m = {'pam', 'auto'}
+        verifyError(testCase, @() prob.set_method(m{1}), 'dtwc:invalidArgument');
+        try
+            prob.set_method(m{1});
+        catch err
+            verifySubstring(testCase, err.message, 'dtwc.fast_pam(prob, k)');
+            verifySubstring(testCase, err.message, ...
+                ['dtwc.cluster(data, k, ''method'', ''' m{1} ''')']);
+        end
+    end
+    prob.set_method('kmedoids');
+    prob.set_method('mip');
 end
 
 function test_problem_enhanced_webb_lb_strategies(testCase)

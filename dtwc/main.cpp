@@ -26,8 +26,9 @@ int main()
   prob.set_n_clusters(Nc); // Nc = number of clusters.
   prob.set_n_repetitions(5);         // Repeat the iterative algorithm
 
-  prob.set_solver(dtwc::Solver::Gurobi); // MIP solver type.
-  prob.band = -1;                        // Sakoe chiba band length.
+  if (!prob.set_solver(dtwc::Solver::Gurobi)) // MIP solver type; false without Gurobi.
+    std::cout << "Gurobi is not built in: the MIP is solved with HiGHS.\n";
+  prob.band = -1; // Sakoe chiba band length.
 
   prob.cluster_by_mip();
 

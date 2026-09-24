@@ -20,15 +20,17 @@
 
 namespace dtwc::test_util {
 
+/// N_data series of random length in [min_length, L_data] with values in [0, L_data].
 template <typename data_t>
-std::vector<std::vector<data_t>> get_random_data(int N_data, int L_data)
+std::vector<std::vector<data_t>> get_random_data(int N_data, int L_data, int min_length = 0)
 {
   std::vector<std::vector<double>> random_data;
   std::uniform_int_distribution<> dis(0, L_data);
+  std::uniform_int_distribution<> length(min_length, L_data);
 
 
   for (int i = 0; i < N_data; ++i) {
-    int innerSize = dis(randGenerator); // Random size for the inner vector
+    int innerSize = length(randGenerator); // Random size for the inner vector
     std::vector<double> innerVector;
 
     for (int j = 0; j < innerSize; ++j)

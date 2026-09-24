@@ -39,6 +39,14 @@ function(dtwc_setup_dependencies)
   else()
     set(CUPDLP_GPU OFF CACHE BOOL "Enable HiGHS cuPDLP GPU support" FORCE)
   endif()
+  # HiGHS defaults to a shared libhighs on Linux and macOS. The CLI archive ships
+  # it under lib/ (X-29); a wheel cannot: wheel.exclude drops lib/ and the
+  # extension records no rpath, so delocate and auditwheel stop at the missing
+  # library (FX-16). Link it into the extension instead. A plain variable of this
+  # function: HiGHS's option() yields to it (CMP0077) and it goes no further.
+  if(DTWC_BUILD_PYTHON)
+    set(BUILD_SHARED_LIBS OFF)
+  endif()
   CPMAddPackage(
     NAME highs
     URL "https://github.com/ERGO-Code/HiGHS/archive/refs/tags/v1.15.1.tar.gz"

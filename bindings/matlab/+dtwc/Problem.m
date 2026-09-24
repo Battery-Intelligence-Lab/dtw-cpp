@@ -41,12 +41,21 @@ classdef Problem < handle
     end
 
     methods
-        function obj = Problem(name)
+        function obj = Problem(name, varargin)
         %PROBLEM Create a new DTWC++ Problem object.
         %   prob = dtwc.Problem()
         %   prob = dtwc.Problem('my_problem')
+        %   prob = dtwc.Problem('my_problem', 'Device', 'gpu')
+        %
+        %   Device: 'cpu' (default), 'gpu', 'gpu:N', 'cuda' or 'cuda:N' -- the
+        %   names dtwc.device() accepts. A Problem does not follow the
+        %   process-wide dtwc.device(). 'gpu' without a GPU backend raises
+        %   dtwc:deviceError; 'hpc' raises dtwc:invalidArgument.
             if nargin < 1, name = ''; end
-            obj.Handle = dtwc_mex('Problem_new', name);
+            p = inputParser;
+            addParameter(p, 'Device', 'cpu', @(v) ischar(v) || isstring(v));
+            parse(p, varargin{:});
+            obj.Handle = dtwc_mex('Problem_new', name, char(p.Results.Device));
         end
 
         function delete(obj)
@@ -184,6 +193,17 @@ classdef Problem < handle
             dtwc_mex('Problem_set_distance_strategy', obj.Handle, strategy);
         end
 
+        function set_device(obj, device)
+        %SET_DEVICE Compute on a device: 'cpu', 'gpu', 'gpu:N', 'cuda', 'cuda:N'.
+        %   prob.set_device('gpu')
+        %   'cpu' keeps a CPU distance strategy you chose and moves a GPU one to
+        %   'auto'; 'gpu' selects this build's GPU backend (CUDA, else Metal).
+        %   A request the device cannot honour (a variant, missing-data
+        %   strategy, multivariate data or precision its kernels lack) raises
+        %   dtwc:deviceError when distances are computed.
+            dtwc_mex('Problem_set_device', obj.Handle, char(device));
+        end
+
         function cost = find_total_cost(obj)
         %FIND_TOTAL_COST Compute total cost of current clustering.
         %   cost = prob.find_total_cost()
@@ -316,8 +336,8 @@ classdef Problem < handle
         function set_cuda_settings(obj, device_id, precision)
         %SET_CUDA_SETTINGS Configure CUDA dispatch (device_id, precision).
         %   precision: 0 = Auto, 1 = FP32, 2 = FP64. Omitting precision keeps
-        %   the Problem's current value, as C++ configure_device does when it
-        %   sets only cuda_settings.device_id.
+        %   the Problem's current value, as set_device does when it sets only
+        %   cuda_settings.device_id.
             if nargin < 3
                 dtwc_mex('Problem_set_cuda_settings', obj.Handle, double(device_id));
             else

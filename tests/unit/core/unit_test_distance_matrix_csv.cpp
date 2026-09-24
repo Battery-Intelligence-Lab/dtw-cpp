@@ -608,6 +608,56 @@ TEST_CASE("F14 CSV read is independent of the C numeric locale",
   CHECK(loaded.get(0, 1) == 1.5);
 }
 
+TEST_CASE("FX-11 the matrix reader rejects a non-square, asymmetric or short file",
+          "[fx11][csv][dense][read]")
+{
+  const auto read = [](std::string_view name, std::string_view bytes) {
+    const auto path = fresh_path(name);
+    seed_binary(path, bytes);
+    dtwc::core::DenseDistanceMatrix loaded;
+    dtwc::io::read_csv(loaded, path);
+    return loaded;
+  };
+  const auto message = [&](std::string_view name, std::string_view bytes) {
+    try {
+      read(name, bytes);
+    } catch (const dtwc::InvalidInput &error) {
+      return std::string(error.what());
+    }
+    return std::string("no InvalidInput");
+  };
+
+  // Two rows of three fields read as 2x2, the third column dropped.
+  const std::string wide = message("fx11-wide.csv", "0,1,5\n1,0,6\n");
+  CHECK(wide.find("row 1 has 3 fields but the file has 2 rows") != std::string::npos);
+  // (0,1) = 1 and (1,0) = 2: the later write won.
+  const std::string asymmetric = message("fx11-asymmetric.csv", "0,1\n2,0\n");
+  CHECK(asymmetric.find("row 2, column 1 is 2 but row 1, column 2 is 1")
+        != std::string::npos);
+  // A short row's missing cells stayed silently uncomputed.
+  const std::string short_row = message("fx11-short.csv", "0,1,2\n1,0\n2,3,0\n");
+  CHECK(short_row.find("row 2 has 2 fields but the file has 3 rows") != std::string::npos);
+
+  // Still read: an upper triangle, the writer's trailing uncomputed cells, one
+  // trailing comma with CRLF, and a "nan" cell as uncomputed.
+  const auto upper = read("fx11-upper.csv", "0,1.5,2.5\n,0,3.5\n,,0\n");
+  REQUIRE(upper.size() == 3);
+  CHECK(upper.get(1, 0) == 1.5);
+  CHECK(upper.get(2, 0) == 2.5);
+  CHECK(upper.get(2, 1) == 3.5);
+  const auto trailing = read("fx11-trailing.csv", "0,1,\n1,0,\n,,\n");
+  REQUIRE(trailing.size() == 3);
+  CHECK(trailing.get(0, 1) == 1.0);
+  CHECK_FALSE(trailing.is_computed(0, 2));
+  CHECK_FALSE(trailing.is_computed(2, 2));
+  const auto comma = read("fx11-comma.csv", "0,4,\r\n4,0,\r\n");
+  REQUIRE(comma.size() == 2);
+  CHECK(comma.get(1, 0) == 4.0);
+  const auto nan_cell = read("fx11-nan.csv", "0,nan\n7,0\n");
+  REQUIRE(nan_cell.size() == 2);
+  CHECK(nan_cell.get(0, 1) == 7.0);
+}
+
 TEST_CASE("F14 focused route marker", "[f14][csv][marker]")
 {
   CHECK(true);

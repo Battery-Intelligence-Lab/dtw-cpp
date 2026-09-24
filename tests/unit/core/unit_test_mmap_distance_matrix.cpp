@@ -9,9 +9,19 @@
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#ifdef DTWC_HAS_MMAP
+#include <core/mmap_data_store.hpp>
+#endif
+#ifndef _WIN32
+#include <csignal>
+#include <sys/resource.h>
+#endif
+
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <barrier>
@@ -1117,16 +1127,112 @@ TEST_CASE("MmapDistanceMatrix rejects a well-formed unexpected fingerprint",
     dm.sync();
   }
 
-  REQUIRE_THROWS_WITH(
-    MmapDistanceMatrix::open(tmp.path, expected),
-    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+  // A well-formed cache the request cannot use is InvalidInput (contract §5),
+  // like a CSV matrix of another size; IOError is for a file that cannot be read.
+  REQUIRE_THROWS_MATCHES(
+    MmapDistanceMatrix::open(tmp.path, expected), dtwc::InvalidInput,
+    Catch::Matchers::MessageMatches(
+      Catch::Matchers::ContainsSubstring("fingerprint mismatch")));
 
   // The convenience overload is not an unchecked escape hatch: it explicitly
   // expects the all-zero identity used by low-level unbound matrices.
-  REQUIRE_THROWS_WITH(
-    MmapDistanceMatrix::open(tmp.path),
-    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+  REQUIRE_THROWS_MATCHES(
+    MmapDistanceMatrix::open(tmp.path), dtwc::InvalidInput,
+    Catch::Matchers::MessageMatches(
+      Catch::Matchers::ContainsSubstring("fingerprint mismatch")));
 }
+
+TEST_CASE("A distance matrix stored for other data is InvalidInput, CSV and cache alike",
+          "[MmapDistanceMatrix][mmap][fingerprint][error][gt4b]")
+{
+  // The oracle is read_distance_matrix: a CSV matrix computed for other series
+  // is InvalidInput. A cache computed for other series is the same request.
+  const auto problem = [](std::vector<std::vector<double>> series) {
+    std::vector<std::string> names;
+    for (std::size_t i = 0; i < series.size(); ++i) names.push_back("s" + std::to_string(i));
+    dtwc::Problem prob("gt4b_other_data");
+    prob.set_data(dtwc::Data(std::move(series), std::move(names)));
+    prob.set_verbose(false);
+    return prob;
+  };
+  const std::vector<std::vector<double>> four{ { 0, 1 }, { 1, 2 }, { 2, 4 }, { 9, 9 } };
+  const std::vector<std::vector<double>> three{ { 0, 1, 2 }, { 1, 2, 3 }, { 5, 6, 7 } };
+  TempFile cache;
+  TempFile csv;
+  {
+    auto writer = problem(four);
+    writer.use_mmap_distance_matrix(cache.path);
+    writer.fill_distance_matrix();
+  } // releases the cache's session lease
+  std::ofstream(csv.path) << "0,1,2,3\n1,0,1,2\n2,1,0,1\n3,2,1,0\n";
+
+  auto reader = problem(three);
+  REQUIRE_THROWS_AS(reader.read_distance_matrix(csv.path), dtwc::InvalidInput);
+  REQUIRE_THROWS_MATCHES(
+    reader.use_mmap_distance_matrix(cache.path), dtwc::InvalidInput,
+    Catch::Matchers::MessageMatches(
+      Catch::Matchers::ContainsSubstring("fingerprint mismatch")));
+}
+
+#ifndef _WIN32
+namespace {
+/// Lowers RLIMIT_FSIZE's soft limit, as `ulimit -f` or a batch scheduler does,
+/// and ignores SIGXFSZ so an oversized file fails with EFBIG rather than killing
+/// the test; both are restored on scope exit, and a failed setrlimit changes
+/// nothing. (test_problem_loud_contracts.cpp has the same class.)
+class FileSizeLimit
+{
+  rlimit previous_{};
+  void (*previous_handler_)(int) = SIG_DFL;
+
+public:
+  explicit FileSizeLimit(rlim_t bytes)
+  {
+    REQUIRE(getrlimit(RLIMIT_FSIZE, &previous_) == 0);
+    previous_handler_ = std::signal(SIGXFSZ, SIG_IGN);
+    rlimit lowered = previous_;
+    lowered.rlim_cur = std::min(bytes, previous_.rlim_max);
+    const int lowered_status = setrlimit(RLIMIT_FSIZE, &lowered);
+    if (lowered_status != 0) std::signal(SIGXFSZ, previous_handler_);
+    REQUIRE(lowered_status == 0);
+  }
+  ~FileSizeLimit()
+  {
+    setrlimit(RLIMIT_FSIZE, &previous_);
+    std::signal(SIGXFSZ, previous_handler_);
+  }
+  FileSizeLimit(const FileSizeLimit &) = delete;
+  FileSizeLimit &operator=(const FileSizeLimit &) = delete;
+};
+} // namespace
+
+TEST_CASE("Creating a cache over a file-size quota is IOError naming the path",
+          "[MmapDistanceMatrix][mmap][error][gt4b]")
+{
+  // llfio's result.value() threw llfio's own error, which is no dtwc::Error:
+  // Python saw RuntimeError and MATLAB dtwc:runtime (contract §5: IOError).
+  using Catch::Matchers::ContainsSubstring;
+  using Catch::Matchers::MessageMatches;
+  constexpr rlim_t limit_bytes = 64 * 1024;
+  TempFile tmp;
+
+  SECTION("MmapDistanceMatrix, N = 200 (about 160 KB)")
+  {
+    const FileSizeLimit limit(limit_bytes);
+    CHECK_THROWS_MATCHES(MmapDistanceMatrix(tmp.path, 200), dtwc::IOError,
+                         MessageMatches(ContainsSubstring(tmp.path.string())));
+  }
+
+  SECTION("MmapDataStore, 64 series of 256 values (about 130 KB)")
+  {
+    const dtwc::Data data(std::vector<std::vector<double>>(64, std::vector<double>(256, 1.0)),
+                          std::vector<std::string>(64, "s"));
+    const FileSizeLimit limit(limit_bytes);
+    CHECK_THROWS_MATCHES(MmapDataStore::create(tmp.path, data), dtwc::IOError,
+                         MessageMatches(ContainsSubstring(tmp.path.string())));
+  }
+}
+#endif // _WIN32
 
 TEST_CASE("MmapDistanceMatrix rejects legacy version-1 cache headers loudly",
           "[MmapDistanceMatrix][mmap][version]")

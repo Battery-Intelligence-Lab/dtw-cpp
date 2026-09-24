@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../base/names.hpp"
 
 namespace dtwc {
 
@@ -26,4 +27,9 @@ inline void validate_solver(Solver value)
   }
   throw InvalidInput("Invalid Solver value.");
 }
+
+inline constexpr Name<Solver> solver_names[]{
+  { "highs", Solver::HiGHS },
+  { "gurobi", Solver::Gurobi },
+};
 }

@@ -8,6 +8,11 @@
  *
  * Note: Soft-DTW can be NEGATIVE for identical series when gamma > 0.
  *
+ * Input checks (warping.hpp explains the layering): soft_dtw() is the
+ * unchecked per-pair value, reached checked through distance::soft_dtw and
+ * core::dtw_runtime. soft_dtw_gradient() has no such twin and no per-pair
+ * caller, so it checks its own input and rejects NaN and ±inf.
+ *
  * Reference: Cuturi & Blondel (2017), "Soft-DTW: a Differentiable Loss
  *            Function for Time-Series"
  *
@@ -33,6 +38,7 @@
 #include "core/dtw_kernel.hpp"   // dtw_kernel_full, SoftCell
 #include "core/dtw_cost.hpp"     // SpanL1Cost
 #include "core/variant_validation.hpp"
+#include "warping.hpp"           // detail::require_finite
 
 namespace dtwc {
 
@@ -167,6 +173,7 @@ std::vector<T> soft_dtw_gradient(std::span<const T> x, std::span<const T> y, T g
   // let an empty span fall through to x[0]/y[0] below -> out-of-bounds read).
   if (mx <= 0 || my <= 0)
     throw InvalidInput("soft_dtw_gradient: input series must be non-empty");
+  detail::require_finite<T>(x, y, "soft_dtw_gradient");
 
   // Forward pass: compute cost matrix C
   thread_local core::ScratchMatrix<T> C;

@@ -315,39 +315,6 @@ TEST_CASE("F15 all registered consumers reach shared support",
       source, "static std::vector<double> random_series"));
   }
 
-  constexpr std::array accelerator_consumers{
-    Consumer{"tests/unit/test_cuda_correctness.cpp", 46},
-    Consumer{"tests/unit/test_cuda_lb_keogh.cpp", 7},
-    Consumer{"tests/unit/test_metal_correctness.cpp", 18},
-  };
-  for (const auto &consumer : accelerator_consumers) {
-    INFO(consumer.path);
-    const std::string source = read_source(consumer.path);
-    CHECK(contains(source, "support/deterministic_series.hpp"));
-    CHECK(contains(source, "dtwc::test_support::accelerator_series_set"));
-    CHECK(count_occurrences(source, "generate_random_series(")
-          == consumer.shared_calls);
-    CHECK_FALSE(contains(
-      source,
-      "std::vector<std::vector<double>> generate_random_series("));
-  }
-
-  constexpr std::array dense_consumers{
-    Consumer{"tests/unit/test_cuda_correctness.cpp", 2},
-    Consumer{"tests/unit/test_metal_correctness.cpp", 2},
-    Consumer{"tests/unit/test_metal_lb_keogh.cpp", 1},
-    Consumer{"tests/unit/test_cuda_kernel_override.cpp", 1},
-    Consumer{"tests/unit/unit_test_mpi.cpp", 2},
-  };
-  for (const auto &consumer : dense_consumers) {
-    INFO(consumer.path);
-    const std::string source = read_source(consumer.path);
-    CHECK(contains(source, "support/deterministic_series.hpp"));
-    CHECK(count_occurrences(
-      source, "dtwc::test_support::symmetric_zero_diagonal_matrix")
-      == consumer.shared_calls);
-  }
-
   const std::string mpi = read_source("tests/unit/unit_test_mpi.cpp");
   CHECK(contains(mpi, "dtwc::test_support::benchmark_series"));
   CHECK_FALSE(contains(

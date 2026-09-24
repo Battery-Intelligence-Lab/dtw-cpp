@@ -1,5 +1,4 @@
 include_guard(GLOBAL)
-include("${CMAKE_CURRENT_LIST_DIR}/DtwcRegex.cmake")
 
 option(DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 
@@ -9,43 +8,36 @@ option(DTWC_ENABLE_COVERAGE "Enable coverage reporting for GCC or Clang" OFF)
 set(DTWC_TEST_SKIP_REGEX
     "(^|[\r\n])[ \t]*[Ss][Kk][Ii][Pp]([Pp][Ee][Dd]|[Pp][Ii][Nn][Gg])?([ :]|$)")
 
-# _dtwc_test_summary_regex(<assert-floor> <case-floor> <out-var>)
-# Catch2's own summary line, floored on both dimensions.
-function(_dtwc_test_summary_regex assert_floor case_floor out_var)
-  _dtwc_regex_at_least(${assert_floor} a)
-  _dtwc_regex_at_least(${case_floor} c)
-  set(${out_var} "All tests passed \\(${a} assertions? in ${c} test cases?\\)" PARENT_SCOPE)
-endfunction()
-
 # dtwc_add_test(NAME <target> SOURCE <file>
-#   [MARKER <regex>] [ASSERT_FLOOR <n>] [CASE_FLOOR <n>] [MAY_SKIP] [MARKER_ONLY]
+#   [MARKER <regex>] [MAY_SKIP] [MARKER_ONLY]
 #   [REQUIRES <compile-definition>...] [LAUNCHER <command>...]
 #   [ENVIRONMENT <k=v>...] [SERIAL] [PROCESSORS <n>] [TIMEOUT <s>] [LABELS <l>...]
 #   [FIXTURE_ROOT <absolute-path> FIXTURE_DEFINE <MACRO>]
 #   [COMPILE_DEFINITIONS <d>...])
 #
-# One Catch2 test executable + one CTest entry. Defaults are the strict ones:
-#   * the binary must print Catch2's summary with at least ASSERT_FLOOR
-#     assertions in at least CASE_FLOOR cases. Floors default to the entry in
-#     tests/floors.cmake (DTWC_TEST_FLOOR_<target>); a test with no floor at all
-#     is a configure error, never a green stub. That summary is also what makes
-#     a skip fail by default: Catch2 prints "All tests passed (...)" only when
-#     nothing skipped or failed, so a skipped case simply removes the PASS
-#     match. (DTWC_TEST_SKIP_REGEX is line-anchored and does NOT match Catch2's
-#     own mid-line "<file>(145): SKIPPED:"; it earns its keep on script-test
-#     output, which has no summary to withhold.) MAY_SKIP opts into Catch2's
-#     exit-4 skip, accepting the "N skipped" summary instead;
+# One Catch2 test executable + one CTest entry. A test passes when it ran at
+# least one case, failed none and did not skip:
+#   * the binary must print Catch2's summary "All tests passed (A assertions in
+#     C test cases)" with A >= 1 and C >= 1. Catch2 prints that line only when
+#     no case failed or skipped, so a skipped case simply removes the PASS match;
+#     zero cases print "No tests ran" and zero assertions print the column
+#     summary instead, so neither passes. (DTWC_TEST_SKIP_REGEX is line-anchored
+#     and does NOT match Catch2's own mid-line "<file>(145): SKIPPED:"; it earns
+#     its keep on script-test output, which has no summary to withhold.)
+#   * MAY_SKIP opts into Catch2's skip, whose SKIP("<reason>") prints why: a run
+#     in which every case skipped exits 4 and is reported Skipped, never Passed;
+#     a partial skip passes only when a case passed and an assertion ran;
 #   * MARKER, when given, must precede the summary (subject ran, not just
-#     "many assertions ran");
+#     "some assertion ran");
 #   * MARKER_ONLY: the subject owns main() and is not a Catch2 binary, so no
-#     Catch2 summary exists to floor in ANY configuration. MARKER alone is the
-#     gate then, and it is mandatory: the subject must still print its own
-#     execution evidence, so this is never a green stub;
+#     Catch2 summary exists in ANY configuration. MARKER alone is the gate then,
+#     and it is mandatory: the subject must still print its own execution
+#     evidence, so this is never a green stub;
 #   * REQUIRES <def>: register only when dtwc++ publishes that definition;
 #     otherwise the subject is absent by construction and nothing is added.
 function(dtwc_add_test)
   set(options MAY_SKIP MARKER_ONLY SERIAL)
-  set(one NAME SOURCE MARKER ASSERT_FLOOR CASE_FLOOR PROCESSORS TIMEOUT FIXTURE_ROOT FIXTURE_DEFINE)
+  set(one NAME SOURCE MARKER PROCESSORS TIMEOUT FIXTURE_ROOT FIXTURE_DEFINE)
   set(multi REQUIRES LAUNCHER ENVIRONMENT LABELS COMPILE_DEFINITIONS)
   cmake_parse_arguments(ARG "${options}" "${one}" "${multi}" ${ARGN})
   if(ARG_UNPARSED_ARGUMENTS)
@@ -107,9 +99,6 @@ function(dtwc_add_test)
     if(NOT ARG_MARKER)
       message(FATAL_ERROR "dtwc_add_test(${ARG_NAME}): MARKER_ONLY requires MARKER")
     endif()
-    if(ARG_ASSERT_FLOOR OR ARG_CASE_FLOOR)
-      message(FATAL_ERROR "dtwc_add_test(${ARG_NAME}): MARKER_ONLY has no Catch2 summary to floor")
-    endif()
     if(ARG_MAY_SKIP)
       message(FATAL_ERROR
         "dtwc_add_test(${ARG_NAME}): MARKER_ONLY with MAY_SKIP has no Catch2 summary to "
@@ -118,22 +107,7 @@ function(dtwc_add_test)
     endif()
     set(_pass "${ARG_MARKER}")
   else()
-    if(DEFINED DTWC_TEST_FLOOR_${ARG_NAME})
-      # Each dimension falls back on its own, so an explicit CASE_FLOOR given
-      # without ASSERT_FLOOR is honoured instead of overwritten from the table.
-      if(NOT ARG_ASSERT_FLOOR)
-        list(GET DTWC_TEST_FLOOR_${ARG_NAME} 0 ARG_ASSERT_FLOOR)
-      endif()
-      if(NOT ARG_CASE_FLOOR)
-        list(GET DTWC_TEST_FLOOR_${ARG_NAME} 1 ARG_CASE_FLOOR)
-      endif()
-    endif()
-    if(NOT ARG_ASSERT_FLOOR OR NOT ARG_CASE_FLOOR)
-      message(FATAL_ERROR
-        "dtwc_add_test(${ARG_NAME}): no floor. Pass ASSERT_FLOOR/CASE_FLOOR or regenerate "
-        "tests/floors.cmake with scripts/measure_test_floors.py.")
-    endif()
-    _dtwc_test_summary_regex(${ARG_ASSERT_FLOOR} ${ARG_CASE_FLOOR} _summary)
+    set(_summary "All tests passed \\([1-9][0-9]* assertions? in [1-9][0-9]* test cases?\\)")
     if(ARG_MARKER)
       set(_pass "${ARG_MARKER}(.|[\r\n])*${_summary}")
     else()
@@ -141,20 +115,20 @@ function(dtwc_add_test)
     endif()
   endif()
   if(ARG_MAY_SKIP)
-    # Catch2 exits 4 and prints "test cases: N | N skipped" when everything
-    # skipped; a partial skip prints "... | K skipped" with exit 0.
+    # Catch2 v3 exits 4 only when every case skipped ("test cases: N | N
+    # skipped"); a failure exits 42. A partial skip exits 0 and prints
+    # "test cases: N | P passed | K skipped" then "assertions: A | A passed".
     #
-    # The FAIL regex is MANDATORY here, not belt-and-braces: setting
-    # PASS_REGULAR_EXPRESSION makes CTest ignore the exit code entirely, and the
-    # skip alternative also matches a MIXED summary such as
-    # "test cases: 3 | 1 passed | 1 failed | 1 skipped", so a genuinely failing
-    # run would otherwise be reported Passed. Match Catch2's summary column
+    # PASS_REGULAR_EXPRESSION makes CTest ignore the exit code entirely, so the
+    # FAIL regex is what turns a MIXED summary such as "test cases: 3 | 1 passed
+    # | 1 failed | 1 skipped" into a failure. Match Catch2's summary column
     # ("| <n> failed") rather than a bare "[0-9]+ failed", which would trip on a
     # subject printing its own "0 failed" prose.
     set_tests_properties(${ARG_NAME} PROPERTIES
       SKIP_RETURN_CODE 4
       FAIL_REGULAR_EXPRESSION "\\| *[1-9][0-9]* failed"
-      PASS_REGULAR_EXPRESSION "${_pass}|test cases: *[0-9]+ \\|.*[0-9]+ skipped")
+      PASS_REGULAR_EXPRESSION
+        "${_pass}|test cases: *[0-9]+ \\| *[1-9][0-9]* passed \\| *[1-9][0-9]* skipped[\r\n]+assertions: *[1-9]")
   else()
     set_tests_properties(${ARG_NAME} PROPERTIES
       FAIL_REGULAR_EXPRESSION "${DTWC_TEST_SKIP_REGEX}"

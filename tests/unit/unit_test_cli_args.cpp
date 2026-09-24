@@ -432,8 +432,28 @@ TEST_CASE("CLI PAM n_init retains the best deterministic restart",
     CHECK(result.converged == improving.converged);
   }
 
+  // set_n_repetitions(0) throws (O-06); only the deprecated field still reaches
+  // run_cli_pam's own check.
   auto invalid_problem = seed_sensitive_pam_problem();
-  invalid_problem.set_n_repetitions(0);
+  REQUIRE_THROWS_AS(invalid_problem.set_n_repetitions(0), dtwc::InvalidInput);
+#if defined(__clang__)
+#  pragma clang diagnostic push
+#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#  pragma warning(push)
+#  pragma warning(disable : 4996)
+#endif
+  invalid_problem.N_repetition = 0;
+#if defined(__clang__)
+#  pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#  pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#  pragma warning(pop)
+#endif
   REQUIRE_THROWS_WITH(
     run_cli_pam(invalid_problem, 3, 100),
     "run_cli_pam: n_init must be at least 1.");
@@ -526,6 +546,14 @@ TEST_CASE("CLI non-full FastCLARA does not open an unused parent matrix",
       /*legacy_distance_matrix_requested=*/false,
       /*clara_uses_full_sample=*/false),
     Catch::Matchers::ContainsSubstring("unused O(N^2) state"));
+  // GT-4: conflicting options are bad input, not a bare runtime_error.
+  CHECK_THROWS_AS(
+    configure_cli_distance_storage(
+      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
+      /*legacy_checkpoint_requested=*/true,
+      /*legacy_distance_matrix_requested=*/false,
+      /*clara_uses_full_sample=*/false),
+    dtwc::InvalidInput);
   CHECK_THROWS_WITH(
     configure_cli_distance_storage(
       prob, "clara", 0, cache, dtwc::core::MetricType::L1,

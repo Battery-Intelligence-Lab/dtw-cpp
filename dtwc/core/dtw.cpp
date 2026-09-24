@@ -31,6 +31,9 @@ double dtw_runtime(const double* x, std::size_t nx,
     opts.variant_params, opts.missing_strategy);
   validate_metric_type(opts.metric);
   validate_constraint_type(opts.constraint);
+  // WDTW, ADTW, Soft-DTW, MSM and TWE compute L1: refuse another metric.
+  dtwc::detail::require_metric_supported(
+    opts.variant_params.variant, opts.metric, "dtw_runtime");
   const int band = opts.band;
   const bool banded = (opts.constraint == ConstraintType::SakoeChibaBand) && (band >= 0);
 
@@ -44,10 +47,10 @@ double dtw_runtime(const double* x, std::size_t nx,
       opts.missing_strategy);
   }
 
-  // MissingStrategy::Error reached here: enforce its "throw on NaN" contract
-  // before the recurrence, which would otherwise return NaN — the same value
-  // the distance matrix uses for "uncomputed".
-  reject_missing_under_error_strategy<double>(
+  // MissingStrategy::Error reached here: reject NaN and ±inf once, before the
+  // unchecked wrappers below, which would return NaN (the distance matrix's
+  // "uncomputed"), the unreachable max() or an ordinary-looking number.
+  dtwc::detail::require_finite<double>(
     std::span<const double>{x, nx}, std::span<const double>{y, ny},
     "dtw_runtime");
 
@@ -86,16 +89,16 @@ double dtw_runtime(const double* x, std::size_t nx,
       // was skipped (NaN poison for gamma<=0). Route to the dedicated soft_dtw()
       // kernel, which computes the real Soft-DTW and throws std::invalid_argument
       // for gamma<=0. soft_dtw() uses an L1 pointwise cost and is unbanded, so
-      // opts.band / opts.metric do not apply on this path (SoftDTW support is
-      // L1/full-matrix only) — consistent with ADTW/WDTW above ignoring metric.
+      // opts.band does not apply on this path, and a metric other than L1 was
+      // refused above (FX-19b).
       const double gamma = opts.variant_params.sdtw_gamma;
       return dtwc::soft_dtw<double>(std::span<const double>{x, nx},
                                     std::span<const double>{y, ny}, gamma);
     }
 
     case DTWVariant::MSM:
-      // MSM/TWE are univariate + unbanded (v1); opts.band/metric do not apply
-      // (same as ADTW/WDTW/SoftDTW above ignoring some axes).
+      // MSM/TWE are univariate + unbanded (v1); opts.band does not apply, and
+      // a metric other than L1 was refused above.
       return dtwc::core::msm_distance<double>(x, nx, y, ny,
                                               opts.variant_params.msm_c);
 

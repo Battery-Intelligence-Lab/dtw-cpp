@@ -74,14 +74,21 @@ struct CheckpointOptions {
 /// holds exactly one generation after a successful save. Unverifiable legacy
 /// direct-file directories are upgraded only by a successful save.
 ///
+/// The identity fingerprint includes prob.metric(): an L1 and a SquaredL2
+/// matrix over the same data are different numbers.
+///
 /// @param prob   The Problem whose distance matrix to save.
 /// @param path   Directory path for checkpoint files.
-/// @param metric Pointwise metric the stored distances were computed with. It is
-///        part of the identity fingerprint: an L1 and a SquaredL2 matrix over
-///        the same data are different numbers.
-/// @throws std::runtime_error if files cannot be written.
+/// @throws IOError if the directory cannot be created or a file cannot be
+///         written; InvalidInput if the Problem holds no series, or a matrix of
+///         another size or with a non-finite distance.
+void save_checkpoint(const Problem &prob, const std::string &path);
+
+/// As above, but tagged with `metric`, the pointwise metric the stored
+/// distances were computed with. It may differ from prob.metric() only for a
+/// matrix a producer outside this Problem filled; prefer the two-argument form.
 void save_checkpoint(const Problem &prob, const std::string &path,
-                     core::MetricType metric = core::MetricType::L1);
+                     core::MetricType metric);
 
 /// Load a checkpoint and restore the distance matrix into the Problem.
 ///
@@ -92,14 +99,21 @@ void save_checkpoint(const Problem &prob, const std::string &path,
 /// Legacy direct-file directories are rejected because their data identity is
 /// unverifiable.
 ///
+/// The expected identity includes prob.metric(): a checkpoint written under a
+/// different metric no longer matches it.
+///
 /// @param prob   The Problem to restore the distance matrix into.
 /// @param path   Directory path containing checkpoint files.
-/// @param metric Pointwise metric this run computes with; a checkpoint written
-///        under a different metric no longer matches the identity fingerprint.
 /// @return true if checkpoint was loaded successfully; false without changing
-///         Problem state if it is absent, incompatible, or malformed.
-bool load_checkpoint(Problem &prob, const std::string &path,
-                     core::MetricType metric = core::MetricType::L1);
+///         Problem state if it is absent, incompatible, or malformed. A caller
+///         that ignores false recomputes every distance without knowing it.
+[[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path);
+
+/// As above, but expecting distances computed with `metric`, which may differ
+/// from prob.metric() only for a matrix a producer outside this Problem fills;
+/// prefer the two-argument form.
+[[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path,
+                                   core::MetricType metric);
 
 // ---- Binary checkpoint for ClusteringResult --------------------------------
 

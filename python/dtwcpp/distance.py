@@ -88,6 +88,9 @@ def dtw(
     This is a convenience layer for interactive use and examples. For tight
     loops, prefer the explicit `distance.ddtw`, `distance.wdtw`, etc. entry
     points to avoid repeated dispatch and argument normalization.
+
+    `metric` applies to variant='standard' and its missing-data strategies;
+    the other variants compute L1 and raise ValueError for another metric.
     """
     metric = _normalize_metric(metric)
     variant_key = variant.strip().lower().replace("-", "_")
@@ -112,6 +115,15 @@ def dtw(
 
     if variant_key in {"standard", "dtw"}:
         return standard(x, y, band=band, metric=metric)
+    # The ddtw binding takes no metric and wdtw, adtw and soft_dtw compute L1:
+    # refuse another metric rather than return the L1 distance (FX-19b).
+    l1_only = {"ddtw", "wdtw", "adtw", "softdtw", "soft_dtw"}
+    if metric != "l1" and variant_key in l1_only:
+        raise ValueError(
+            f"distance.dtw: metric='{metric}' is implemented for "
+            f"variant='standard' only, but variant='{variant}' was requested. "
+            "Use metric='l1' for this configuration."
+        )
     if variant_key == "ddtw":
         return ddtw(x, y, band=band)
     if variant_key == "wdtw":

@@ -123,9 +123,10 @@ VARIANTS=(standard ddtw wdtw adtw softdtw)
 for method in "${METHODS[@]}"; do
     for variant in "${VARIANTS[@]}"; do
         name="p1_${method}_${variant}"
-        # Skip SoftDTW on dummy data with CLARA/kmedoids (5000-point series too slow)
+        # SoftDTW x {CLARA, kmedoids} on the 5000-point dummy series is too slow for
+        # a smoke test, so the pair is outside the matrix: never attempted, not a skip.
         if [[ "$variant" == "softdtw" && ("$method" == "clara" || "$method" == "kmedoids") ]]; then
-            record_skip "$name (softdtw+${method} on dummy too slow)"
+            echo "  EXCLUDED: $name (softdtw+${method} on dummy data is too slow)"
             continue
         fi
 
@@ -141,7 +142,7 @@ for method in "${METHODS[@]}"; do
             --method "$method" --variant "$variant" \
             --metric l1 --band -1 \
             --skip-rows 1 --skip-cols 1 \
-            "${extra[@]}")
+            ${extra[@]+"${extra[@]}"})
         validate "$name" "$ec" 25 3 "$variant"
     done
 done
@@ -199,7 +200,7 @@ else
         ec=$(run_test "$name" \
             --input "$COFFEE_TRAIN" --clusters 2 --method pam \
             --variant "$variant" --skip-cols 1 \
-            "${extra[@]}")
+            ${extra[@]+"${extra[@]}"})
         validate "$name" "$ec" 28 2 "$variant"
     done
 
@@ -348,6 +349,7 @@ if [[ -f "$COFFEE_TRAIN" ]]; then
     done
 else
     echo "  Coffee dataset not found — skipping Phase 3"
+    record_skip "p3 (Coffee dataset not found)"
 fi
 
 echo ""
@@ -366,6 +368,13 @@ if [[ "$FAIL" -gt 0 ]]; then
     echo ""
     echo "FAILURES:"
     echo -e "$FAILURES"
+    exit 1
+fi
+
+# A skip is not a pass (T-20): a check that did not run proves nothing.
+if [[ "$SKIP" -gt 0 ]]; then
+    echo ""
+    echo "SKIPPED: $SKIP check(s) did not run, so the stress test did not pass."
     exit 1
 fi
 

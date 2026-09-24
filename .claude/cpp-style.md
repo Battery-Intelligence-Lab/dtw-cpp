@@ -47,6 +47,8 @@
 
 ## Error Handling
 
-- `std::runtime_error` for runtime errors
+- Typed errors from `dtwc/base/error.hpp` for every failure a caller can cause — `InvalidInput`, `IOError`,
+  `DeviceError`, `SolverError` — as `docs/api-contract-2.0.md` §5 assigns them; `std::logic_error` only for a
+  programming error (an unreachable branch, a broken invariant). No bare `std::runtime_error`.
 - Validate at public API boundaries
 - OpenMP must be optional (`#ifdef _OPENMP` + serial fallback)

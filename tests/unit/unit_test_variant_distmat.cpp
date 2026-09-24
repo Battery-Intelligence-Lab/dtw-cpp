@@ -31,6 +31,15 @@ namespace fs = std::filesystem;
 namespace {
 fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
 
+/// data/dummy holds pandas `index,value` files: skip the `,0` header and the
+/// index column, which a default read now rejects rather than clusters (FX-6).
+DataLoader dummy_loader()
+{
+  DataLoader dl(dummy_data_path());
+  dl.start_column(1).start_row(1);
+  return dl;
+}
+
 struct ScratchCache
 {
   fs::path directory;
@@ -73,7 +82,7 @@ Data make_data_f32(std::vector<std::vector<float>> series, size_t ndim = 1)
 
 TEST_CASE("Problem uses DenseDistanceMatrix by default for small N", "[variant][distmat]")
 {
-  DataLoader dl(dummy_data_path());
+  DataLoader dl = dummy_loader();
   Problem prob("test_variant", dl);
   REQUIRE(prob.size() == 25);
 
@@ -251,7 +260,7 @@ TEST_CASE("Problem uses MmapDistanceMatrix when forced", "[variant][distmat][mma
   fs::create_directories(cache_path.parent_path());
   if (fs::exists(cache_path)) fs::remove(cache_path);
 
-  DataLoader dl(dummy_data_path());
+  DataLoader dl = dummy_loader();
   Problem prob("test_mmap", dl);
 
   // Force mmap mode
@@ -285,7 +294,7 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
 
   // First run: fill distance matrix
   {
-    DataLoader dl(dummy_data_path());
+    DataLoader dl = dummy_loader();
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
     prob.fill_distance_matrix();
@@ -294,7 +303,7 @@ TEST_CASE("MmapDistanceMatrix warmstart via Problem", "[variant][distmat][mmap]"
 
   // Second run: reopen - distances should persist
   {
-    DataLoader dl(dummy_data_path());
+    DataLoader dl = dummy_loader();
     Problem prob("test_warmstart", dl);
     prob.use_mmap_distance_matrix(cache_path);
     REQUIRE(prob.is_distance_matrix_filled());
@@ -595,23 +604,27 @@ TEST_CASE("Warm mmap cached lookups remain O(1) in series length",
 #endif
 }
 
-TEST_CASE("Problem non-L1 mmap identity cannot be lazily filled by the L1 CPU path",
+TEST_CASE("Problem non-L1 mmap identity is lazily filled by the CPU in that metric",
           "[variant][distmat][mmap][fingerprint][metric]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
+  // IF-2 S2: binding a squared-L2 cache sets the Problem's metric, which the
+  // CPU kernels take, so the lazy path fills it (it was refused as
+  // external-fill-only while the CPU computed L1 only).
   ScratchCache cache{"dtwc_mmap_external_metric"};
   Problem prob{"cache_metric"};
-  prob.set_data(make_data({{0.0, 1.0, 2.0}, {0.0, 2.0, 3.0}}));
+  const std::vector<data_t> x{0.0, 1.0, 2.0}, y{0.0, 3.0, 5.0}; // L1 5, squared L2 11
+  prob.set_data(make_data({x, y}));
   prob.use_mmap_distance_matrix(cache.path, core::MetricType::SquaredL2);
+  REQUIRE(prob.metric() == core::MetricType::SquaredL2);
 
-  REQUIRE_THROWS_WITH(
-    prob.dist_by_ind(0, 1),
-    Catch::Matchers::ContainsSubstring("external-fill-only")
-      && Catch::Matchers::ContainsSubstring("lazy CPU"));
+  REQUIRE(prob.dist_by_ind(0, 1)
+          == distance::dtw<data_t>(x, y, -1, core::MetricType::SquaredL2));
+  REQUIRE(prob.dist_by_ind(0, 1) != distance::dtw<data_t>(x, y));
   REQUIRE(std::get<core::MmapDistanceMatrix>(prob.distance_matrix())
-            .count_computed() == 0);
+            .count_computed() == 1);
 #endif
 }
 

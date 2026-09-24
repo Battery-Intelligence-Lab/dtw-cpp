@@ -82,7 +82,7 @@ TEST_CASE("portable bounded sampling rejects an empty domain",
   REQUIRE(dtwc::core::portable_bounded(engine, 1) == 0);
   REQUIRE(engine() == 2947667278772165694ULL);
   REQUIRE_THROWS_AS(dtwc::core::portable_bounded(engine, 0),
-                    std::invalid_argument);
+                    std::logic_error);
 
   std::mt19937_64 real_engine(0);
   const double value = dtwc::core::portable_real_below(real_engine, 3.0);
@@ -90,10 +90,10 @@ TEST_CASE("portable bounded sampling rejects an empty domain",
   REQUIRE(value >= 0.0);
   REQUIRE(value < 3.0);
   REQUIRE_THROWS_AS(dtwc::core::portable_real_below(real_engine, 0.0),
-                    std::invalid_argument);
+                    std::logic_error);
   REQUIRE_THROWS_AS(dtwc::core::portable_real_below(
                       real_engine, std::numeric_limits<double>::infinity()),
-                    std::invalid_argument);
+                    std::logic_error);
 }
 
 TEST_CASE("portable weighted and selection sampling have fixed boundaries",
@@ -111,7 +111,7 @@ TEST_CASE("portable weighted and selection sampling have fixed boundaries",
   const std::array<double, 3> all_zero{ 0.0, 0.0, 0.0 };
   REQUIRE_THROWS_AS(dtwc::core::portable_weighted_index(
                       all_zero.begin(), all_zero.end(), 0.0, all_zero_engine),
-                    std::invalid_argument);
+                    std::logic_error);
   REQUIRE(all_zero_engine == untouched);
 
   std::mt19937_64 sample_engine(42);
@@ -146,13 +146,13 @@ TEST_CASE("portable weighted and selection sampling have fixed boundaries",
   REQUIRE(empty_sample_engine == empty_untouched);
   REQUIRE_THROWS_AS(dtwc::core::portable_sample_indices<int>(
                       3, 4, empty_sample_engine),
-                    std::invalid_argument);
+                    std::logic_error);
   REQUIRE_THROWS_AS(dtwc::core::portable_sample_indices<int>(
                       -1, 0, empty_sample_engine),
-                    std::invalid_argument);
+                    std::logic_error);
   REQUIRE_THROWS_AS(dtwc::core::portable_sample_indices<int>(
                       3, -1, empty_sample_engine),
-                    std::invalid_argument);
+                    std::logic_error);
 
   std::mt19937_64 full_sample_engine(7);
   std::mt19937_64 full_sample_reference(7);

@@ -21,15 +21,17 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 | Aspect | C++ `[live]` | Python `[live]` | MATLAB `[live]` |
 |---|---|---|---|
 | Set | `std::string dtwc::device(std::string_view name)` | `dtwcpp.device(name: str) -> str` | `dtwc.device(name)` |
-| Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py:214-242`) | `name = dtwc.device()` |
-| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same (`_parse_device`, `__init__.py:140-168`) | same |
+| Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py`) | `name = dtwc.device()` |
+| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same, parsed by the C++ grammar through its binding (`_dtwcpp_core.parse_device`) | same |
 | Returns | canonical name from `to_string(Device)` (+`:N` for a non-zero GPU ordinal) | same: `device()` returns what `dtwc::device()` returns, so `"cuda:0"` comes back as `"gpu"` | same |
 | Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
 | Delegates to | `dtwc::env().set_device(name)` | `dtwc::device(name)` after local validation, so `Env` is the only store; HPC credentials deferred to the wrapper (Python keeps only the deferred `hpc` selection) | MEX `set_device` → `Env` |
 
 C++ and MATLAB delegate local-device validation directly to `dtwc::Env`; Python
-keeps its public default and mirrors validated CPU/GPU selections into Env. The
-friendly name `"gpu"` resolves to CUDA (or Metal on macOS) at call time. C++
+parses with the same grammar (`dtwc::detail::parse_device`), checks that the GPU
+is live, and stores a CPU/GPU selection in Env through `dtwc::device(name)`; it
+keeps only a deferred `hpc` selection of its own. The friendly name `"gpu"`, and
+its alias `"cuda"`, resolves to CUDA (or Metal on macOS) at call time. C++
 Tier-1 HPC submission remains the approved 2.1 transport defer. Python owns the
 SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
 (F24).

@@ -7,6 +7,8 @@
 
 #ifdef DTWC_HAS_PARQUET
 
+#include "../base/error.hpp"
+
 #include <arrow/api.h>
 
 #include <cstddef>
@@ -33,7 +35,7 @@ inline int parquet_leaf_count(const std::shared_ptr<arrow::DataType> &type)
   for (const auto &field : fields) {
     const int child_count = parquet_leaf_count(field->type());
     if (child_count > std::numeric_limits<int>::max() - count)
-      throw std::runtime_error("Parquet schema has too many physical leaf columns");
+      throw dtwc::IOError("Parquet schema has too many physical leaf columns");
     count += child_count;
   }
   return count;
@@ -66,17 +68,17 @@ inline ParquetSeriesColumn find_parquet_series_column(
   if (!column_name.empty()) {
     const int index = schema->GetFieldIndex(column_name);
     if (index < 0)
-      throw std::runtime_error(
+      throw dtwc::InvalidInput(
         "Column '" + column_name + "' not found in Parquet schema");
     if (!is_parquet_series_column(schema->field(index)->type()))
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "Parquet column '" + column_name +
         "' must be Float32, Float64, List<Float32/Float64>, or "
         "LargeList<Float32/Float64>");
     for (int preceding = 0; preceding < index; ++preceding) {
       const int leaves = parquet_leaf_count(schema->field(preceding)->type());
       if (leaves > std::numeric_limits<int>::max() - leaf_index)
-        throw std::runtime_error("Parquet schema has too many physical leaf columns");
+        throw dtwc::IOError("Parquet schema has too many physical leaf columns");
       leaf_index += leaves;
     }
     return { index, leaf_index, schema->field(index)->type() };
@@ -87,10 +89,10 @@ inline ParquetSeriesColumn find_parquet_series_column(
       return { index, leaf_index, schema->field(index)->type() };
     const int leaves = parquet_leaf_count(schema->field(index)->type());
     if (leaves > std::numeric_limits<int>::max() - leaf_index)
-      throw std::runtime_error("Parquet schema has too many physical leaf columns");
+      throw dtwc::IOError("Parquet schema has too many physical leaf columns");
     leaf_index += leaves;
   }
-  throw std::runtime_error(
+  throw dtwc::IOError(
     "No scalar/list Float32 or Float64 column found in Parquet schema. "
     "Use --column to specify one.");
 }
@@ -108,7 +110,7 @@ inline void require_no_nulls(const arrow::Array &array, const char *what)
 {
   const std::int64_t nulls = array.null_count();
   if (nulls != 0)
-    throw std::runtime_error(
+    throw dtwc::InvalidInput(
       std::string("Parquet reader: ") + what + " contains "
       + std::to_string(nulls)
       + " null(s) (drop or fill nulls before clustering).");
@@ -120,7 +122,7 @@ inline void require_list_range(std::int64_t start, std::int64_t end,
                                std::int64_t values_length)
 {
   if (start < 0 || end < start || end > values_length)
-    throw std::runtime_error(
+    throw dtwc::IOError(
       "Parquet reader: list offset [" + std::to_string(start) + ", "
       + std::to_string(end) + ") is outside the values buffer [0, "
       + std::to_string(values_length) + ")");
@@ -146,7 +148,7 @@ inline void copy_arrow_numeric(const arrow::Array &values, std::int64_t start,
       static_cast<const arrow::FloatArray &>(values).raw_values() + start;
     for (std::size_t j = 0; j < count; ++j) dst[j] = static_cast<T>(raw[j]);
   } else {
-    throw std::runtime_error(
+    throw dtwc::IOError(
       "Parquet reader: value type must be Float64 or Float32, got "
       + values.type()->ToString());
   }

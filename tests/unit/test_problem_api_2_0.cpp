@@ -388,10 +388,6 @@ enum class f22_entity : std::size_t {
   normalized_mutual_info,
   loader_start_column,
   loader_start_row,
-  set_data_path_path,
-  set_data_path_cstring,
-  set_results_path_path,
-  set_results_path_cstring,
   max_iter_field,
   n_repetition_field,
   count
@@ -399,7 +395,7 @@ enum class f22_entity : std::size_t {
 
 constexpr std::size_t f22_entity_count =
   static_cast<std::size_t>(f22_entity::count);
-static_assert(f22_entity_count == 33);
+static_assert(f22_entity_count == 29);
 
 enum class f22_field_route : std::size_t {
   max_iter_canonical_write,
@@ -519,25 +515,6 @@ private:
   f22_keyed_ledger<
     f22_stdout_route,
     static_cast<std::size_t>(f22_stdout_route::count)> stdout_;
-};
-
-class f22_path_settings_guard
-{
-public:
-  f22_path_settings_guard()
-    : data_(settings::paths::data), results_(settings::paths::results)
-  {}
-  f22_path_settings_guard(const f22_path_settings_guard &) = delete;
-  f22_path_settings_guard &operator=(const f22_path_settings_guard &) = delete;
-  ~f22_path_settings_guard()
-  {
-    settings::paths::data = std::move(data_);
-    settings::paths::results = std::move(results_);
-  }
-
-private:
-  settings::fs::path data_;
-  settings::fs::path results_;
 };
 
 } // namespace
@@ -1181,8 +1158,8 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     canonical.mip_settings.mip_gap = 0.0;
     legacy.mip_settings.verbose_solver = false;
     canonical.mip_settings.verbose_solver = false;
-    legacy.set_solver(Solver::HiGHS);
-    canonical.set_solver(Solver::HiGHS);
+    REQUIRE(legacy.set_solver(Solver::HiGHS));
+    REQUIRE(canonical.set_solver(Solver::HiGHS));
     f22_exception_outcome legacy_outcome;
     DTWC_PUSH_NO_DEPRECATED
     legacy_outcome = f22_capture_exception([&] {
@@ -1232,8 +1209,12 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
       "Lloyd k-medoids requires n_repetitions >= 1.";
     Problem legacy = make_f22_problem();
     Problem canonical = make_f22_problem();
-    legacy.set_n_repetitions(0);
-    canonical.set_n_repetitions(0);
+    // set_n_repetitions(0) throws (O-06); only the deprecated field still
+    // reaches Lloyd's own check.
+    DTWC_PUSH_NO_DEPRECATED
+    legacy.N_repetition = 0;
+    canonical.N_repetition = 0;
+    DTWC_POP_NO_DEPRECATED
     const auto legacy_labels_before = legacy.labels();
     const auto legacy_medoids_before = legacy.medoids();
     const auto canonical_labels_before = canonical.labels();
@@ -1409,101 +1390,7 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
         && canonical.startColumn() == 23);
   }
 
-  f22_path_settings_guard restore_paths;
-  const auto poison_paths = [](
-                              const settings::fs::path &data,
-                              const settings::fs::path &results) {
-    settings::paths::data = data;
-    settings::paths::results = results;
-  };
-
-  // 28. settings::paths::setDataPath(const fs::path&)
-  {
-    poison_paths("poison-data-28", "poison-results-28");
-    settings::paths::set_data_path(settings::fs::path{ "f22-data-path" });
-    const auto canonical_data = settings::paths::data;
-    const auto canonical_results = settings::paths::results;
-    poison_paths("poison-data-28", "poison-results-28");
-    DTWC_PUSH_NO_DEPRECATED
-    settings::paths::setDataPath(settings::fs::path{ "f22-data-path" });
-    DTWC_POP_NO_DEPRECATED
-    ledger.behavior(
-      f22_entity::set_data_path_path,
-      settings::paths::data == canonical_data
-        && settings::paths::results == canonical_results
-        && settings::paths::data == "f22-data-path"
-        && settings::paths::results == "poison-results-28");
-  }
-
-  // 29. settings::paths::setDataPath(const char*)
-  {
-    poison_paths("poison-data-29", "poison-results-29");
-    {
-      const std::string candidate = "f22-cstring-data";
-      settings::paths::set_data_path(candidate.c_str());
-    }
-    const auto canonical_data = settings::paths::data;
-    const auto canonical_results = settings::paths::results;
-    poison_paths("poison-data-29", "poison-results-29");
-    {
-      const std::string candidate = "f22-cstring-data";
-      DTWC_PUSH_NO_DEPRECATED
-      settings::paths::setDataPath(candidate.c_str());
-      DTWC_POP_NO_DEPRECATED
-    }
-    ledger.behavior(
-      f22_entity::set_data_path_cstring,
-      settings::paths::data == canonical_data
-        && settings::paths::results == canonical_results
-        && settings::paths::data == "f22-cstring-data"
-        && settings::paths::results == "poison-results-29");
-  }
-
-  // 30. settings::paths::setResultsPath(const fs::path&)
-  {
-    poison_paths("poison-data-30", "poison-results-30");
-    settings::paths::set_results_path(
-      settings::fs::path{ "f22-results-path" });
-    const auto canonical_data = settings::paths::data;
-    const auto canonical_results = settings::paths::results;
-    poison_paths("poison-data-30", "poison-results-30");
-    DTWC_PUSH_NO_DEPRECATED
-    settings::paths::setResultsPath(
-      settings::fs::path{ "f22-results-path" });
-    DTWC_POP_NO_DEPRECATED
-    ledger.behavior(
-      f22_entity::set_results_path_path,
-      settings::paths::data == canonical_data
-        && settings::paths::results == canonical_results
-        && settings::paths::data == "poison-data-30"
-        && settings::paths::results == "f22-results-path");
-  }
-
-  // 31. settings::paths::setResultsPath(const char*)
-  {
-    poison_paths("poison-data-31", "poison-results-31");
-    {
-      const std::string candidate = "f22-cstring-results";
-      settings::paths::set_results_path(candidate.c_str());
-    }
-    const auto canonical_data = settings::paths::data;
-    const auto canonical_results = settings::paths::results;
-    poison_paths("poison-data-31", "poison-results-31");
-    {
-      const std::string candidate = "f22-cstring-results";
-      DTWC_PUSH_NO_DEPRECATED
-      settings::paths::setResultsPath(candidate.c_str());
-      DTWC_POP_NO_DEPRECATED
-    }
-    ledger.behavior(
-      f22_entity::set_results_path_cstring,
-      settings::paths::data == canonical_data
-        && settings::paths::results == canonical_results
-        && settings::paths::data == "poison-data-31"
-        && settings::paths::results == "f22-cstring-results");
-  }
-
-  // 32. Problem::maxIter
+  // 28. Problem::maxIter
   {
     Problem canonical_write = make_f22_problem();
     canonical_write.set_n_repetitions(41);
@@ -1535,7 +1422,7 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
       canonical_write_legacy_read && legacy_write_canonical_read);
   }
 
-  // 33. Problem::N_repetition
+  // 29. Problem::N_repetition
   {
     Problem canonical_write = make_f22_problem();
     canonical_write.set_max_iter(47);
@@ -1582,8 +1469,8 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
   const int stdout_identity = ledger.stdout_identity_count();
   const bool all_pass =
     ledger.all()
-    && inventory == 33
-    && behavior == 33
+    && inventory == 29
+    && behavior == 29
     && field_routes == 4
     && io_routes == 7
     && file_identity == 6
@@ -1592,15 +1479,15 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
   const char *verdict = all_pass ? "PASS" : "FAIL";
 
   std::cout
-    << "F22_CPP_COMPAT inventory=" << inventory << "/33"
-    << " behavior=" << behavior << "/33"
+    << "F22_CPP_COMPAT inventory=" << inventory << "/29"
+    << " behavior=" << behavior << "/29"
     << " field_routes=" << field_routes << "/4"
     << " io_routes=" << io_routes << "/7"
     << " file_identity=" << file_identity << "/6"
     << " stdout_identity=" << stdout_identity << "/2"
     << " skips=0 verdict=" << verdict << '\n';
-  CHECK(inventory == 33);
-  CHECK(behavior == 33);
+  CHECK(inventory == 29);
+  CHECK(behavior == 29);
   CHECK(field_routes == 4);
   CHECK(io_routes == 7);
   CHECK(file_identity == 6);

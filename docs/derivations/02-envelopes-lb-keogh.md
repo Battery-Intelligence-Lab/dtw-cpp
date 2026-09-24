@@ -412,15 +412,16 @@ to receive a band that disagrees with `Problem::band`.
 
 ## The negative-band discrepancy
 
-The low-level helper currently normalizes its integer argument as
+Resolved by FX-13 (2026-09-23). The low-level helper used to normalize its
+integer argument as
 
 ```cpp
 const std::size_t w =
   static_cast<std::size_t>(std::max(band, 0));
 ```
 
-Consequently `compute_envelopes(series,-1,...)` constructs the radius-zero
-identity envelope, not (5). For
+so `compute_envelopes(series,-1,...)` constructed the radius-zero identity
+envelope, not (5). For
 
 ```text
 x = [0,0,0,0,1,1,1,1,1,1]
@@ -428,13 +429,14 @@ y = [0,0,0,0,0,0,1,1,1,1]
 ```
 
 full L1 DTW is zero, while the symmetric L1 bounds are 2 at radius zero, 1 at
-radius one, and 0 for the global envelope. Passing `-1` to the helper returns
-the invalid value 2 against full DTW 0.
+radius one, and 0 for the global envelope. Passing `-1` to the helper returned
+the invalid value 2 against full DTW 0. The helper now reads a negative band as
+full DTW and builds (5), as do both GPU envelope kernels; the D2 gate pins `-1`
+to the global envelope and the bound 0.
 
-The two audited production callers avoid that exact misuse, but the installed
-helper and mutable `Envelope` type do not encode the distinction. Valid-shaped
-arrays can also come from an unrelated or too-narrow window. F46 owns an
-explicit full/radius descriptor, shape/coverage validation, and alias safety.
+The mutable `Envelope` type still does not record its window: valid-shaped
+arrays can come from an unrelated or too-narrow window. F46 keeps an explicit
+full/radius descriptor, shape/coverage validation, and alias safety.
 
 ## Executable oracle
 
@@ -481,7 +483,7 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 |---|---|---|
 | Scalar L1 and squared point costs, equation (1) | `dtwc/core/distance_metric.hpp:20-43` | **CONFIRMED** |
 | Fixed CPU cell geometry and feasibility | `dtwc/core/dtw_kernel.hpp:190-205,420-436` | **CONFIRMED** by D1 |
-| Centered scalar envelope, equations (2)–(5) | `dtwc/core/lower_bound_impl.hpp:58-126` | **CONFIRMED** for `band>=0`; negative coercion is **DISCREPANCY** F46 |
+| Centered scalar envelope, equations (2)–(5) | `dtwc/core/lower_bound_impl.hpp:58-126` | **CONFIRMED**; a negative band builds the global envelope (5) since FX-13 |
 | L1 projection sum, equations (6)–(12) | `dtwc/core/lower_bound_impl.hpp:181-203` | **CONFIRMED** |
 | Squared projection sum | `dtwc/core/lower_bound_impl.hpp:551-570` | **CONFIRMED** |
 | Symmetric maximum, equation (14) | `dtwc/core/lower_bound_impl.hpp:371-388` | **CONFIRMED** for its L1 wrapper; no public squared symmetric wrapper |
@@ -492,10 +494,10 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 | Exhaustive independent oracle | `tests/unit/adversarial/test_lb_keogh_derivation.cpp:127-526`; `tests/CMakeLists.txt:128-144` | **CONFIRMED**, non-skippable |
 | Public envelope shape/window contract | `dtwc/core/lower_bound_impl.hpp:214-223,326-388` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
 | Squared LB_Kim compatibility | `dtwc/core/lower_bounds.hpp:42-52`; `dtwc/core/lower_bound_impl.hpp:225-324` | **DISCREPANCY** F47: L1-unit result advertised for squared DTW |
-| CUDA/Metal squared pruning | CUDA `dtwc/cuda/cuda_dtw.cu:792-810`; Metal `dtwc/metal/metal_dtw.mm:946-954` | **DISCREPANCY** F27: both sum L1 excess |
-| Metal full-DTW envelope choice | `dtwc/metal/metal_dtw.mm:1512-1515` | **DISCREPANCY** F28: default/explicit radius may be too narrow |
+| CUDA/Metal squared pruning | CUDA `compute_lb_keogh_kernel`; Metal `compute_lb_keogh` | **CONFIRMED** since FX-13: both square each excess under squared L2; executed on Metal, CUDA `[BLOCKED-ENV]` |
+| Metal full-DTW envelope choice | `dtwc/metal/metal_dtw.mm`, `compute_distance_matrix_metal` | **CONFIRMED** since FX-13: the default is the DTW window; a narrower explicit radius is `InvalidInput` |
 | Explicit GPU LB requests | CUDA `dtwc/cuda/cuda_dtw.cu:1476-1480`; Metal `dtwc/metal/metal_dtw.mm:1493-1503,1536-1550` | **DISCREPANCY** F30: requests can silently disable or fall back |
-| Extreme GPU radius arithmetic | CUDA `dtwc/cuda/cuda_dtw.cu:733-744`; Metal `dtwc/metal/metal_dtw.mm:890-901` | **DISCREPANCY** F50 by source; numeric device result still inferred |
+| Extreme GPU radius arithmetic | CUDA `compute_envelopes_kernel`; Metal `compute_envelopes` | **CONFIRMED** since FX-13: the radius is clamped to the length; executed at `INT_MAX` on Metal, CUDA `[BLOCKED-ENV]` |
 
 ## Scope verdicts
 
@@ -510,8 +512,9 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 - **FALSIFIED:** the old F29 claim that prefix truncation itself is
   inadmissible under the current fixed window. Real device conformance is
   still an open F29 gate.
-- **DISCREPANCY:** F46–F50 and the pre-existing F27–F30 subjects named in the
-  table. None is hidden by the green scalar oracle.
+- **DISCREPANCY:** F46–F49, F29, and F30 subjects named in the table. None is
+  hidden by the green scalar oracle. FX-13 closed F27, F28, F50, and F46's
+  negative-band coercion.
 - **OPEN:** floating-point threshold safety, GPU FP32 reduction/casting,
   multivariate Euclidean bounds, and all non-Standard objectives.
 

@@ -16,16 +16,15 @@
 
 #include "../test_util.hpp"
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 #ifndef DTWC_TEST_DATA_DIR
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
-
-static struct TestDataInit2 {
-  TestDataInit2() { dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR); }
-} test_data_init2_;
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
@@ -37,9 +36,29 @@ namespace {
  */
 Problem make_problem(int N_data)
 {
-  dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
+  dtwc::DataLoader dl{ std::filesystem::path{ DTWC_TEST_DATA_DIR } / "dummy", N_data };
   dl.start_column(1).start_row(1);
   dtwc::Problem prob{ "dist_mat_test", dl };
+  return prob;
+}
+
+/// The dummy series cut to their shortest length: a band narrower than their
+/// length differences has no warping path, which the fill rejects (FX-1).
+Problem make_equal_length_problem(int N_data)
+{
+  const auto loaded = make_problem(N_data);
+  std::size_t len = loaded.series(0).size();
+  for (std::size_t i = 1; i < loaded.size(); ++i)
+    len = std::min(len, loaded.series(i).size());
+  std::vector<std::vector<double>> cut;
+  std::vector<std::string> names;
+  for (std::size_t i = 0; i < loaded.size(); ++i) {
+    const auto s = loaded.series(i);
+    cut.emplace_back(s.begin(), s.begin() + static_cast<std::ptrdiff_t>(len));
+    names.emplace_back(loaded.series_name(i));
+  }
+  dtwc::Problem prob{ "dist_mat_test" };
+  prob.set_data(dtwc::Data(std::move(cut), std::move(names)));
   return prob;
 }
 
@@ -196,7 +215,7 @@ TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][dista
     LowerBoundStrategy::KimKeogh,
   };
 
-  auto prob_ref = make_problem(N);
+  auto prob_ref = make_equal_length_problem(N);
   const int actual_N = static_cast<int>(prob_ref.size());
   prob_ref.band = 3;
   prob_ref.distance_strategy = DistanceMatrixStrategy::Pruned;
@@ -204,7 +223,7 @@ TEST_CASE("LowerBoundStrategy variants yield identical results", "[Phase1][dista
   prob_ref.fill_distance_matrix();
 
   for (auto strat : strategies) {
-    auto prob = make_problem(N);
+    auto prob = make_equal_length_problem(N);
     prob.band = 3;
     prob.distance_strategy = DistanceMatrixStrategy::Pruned;
     prob.set_lb_strategy(strat);

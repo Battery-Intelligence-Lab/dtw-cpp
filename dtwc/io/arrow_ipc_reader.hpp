@@ -2,7 +2,7 @@
 ///
 /// Reads Arrow IPC files (Feather v2) via memory-mapped I/O.
 /// The file must contain a "data" column of type List<Float64> or
-/// LargeList<Float64>, and optionally a "name" column of type Utf8.
+/// LargeList<Float64>, and optionally a "name" column of type Utf8 or LargeUtf8.
 /// Schema metadata key "ndim" specifies features per timestep (default 1).
 ///
 /// Requires DTWC_HAS_ARROW (Apache Arrow, Apache-2.0 license).
@@ -15,6 +15,7 @@
 
 #ifdef DTWC_HAS_ARROW
 
+#include "../base/error.hpp"
 #include "../base/settings.hpp"
 
 #include <arrow/api.h>
@@ -22,6 +23,7 @@
 #include <arrow/ipc/api.h>
 
 #include <cassert>
+#include <charconv>
 #include <cstddef>
 #include <filesystem>
 #include <span>
@@ -40,7 +42,9 @@ class ArrowIPCDataSource {
   const arrow::ListArray *list_{ nullptr };           // List<Float64> (int32 offsets)
   const arrow::LargeListArray *large_list_{ nullptr }; // LargeList<Float64> (int64 offsets)
   const double *flat_values_{ nullptr };               // raw pointer into mmap'd values buffer
-  const arrow::StringArray *names_{ nullptr };
+  // Optional names — at most one of these is non-null.
+  const arrow::StringArray *names_{ nullptr };            // Utf8 (int32 offsets)
+  const arrow::LargeStringArray *large_names_{ nullptr }; // LargeUtf8 (int64 offsets)
   size_t n_{ 0 };
   size_t ndim_{ 1 };
 
@@ -49,7 +53,7 @@ class ArrowIPCDataSource {
   static void check_status(const arrow::Status &s, const char *context)
   {
     if (!s.ok())
-      throw std::runtime_error(std::string(context) + ": " + s.ToString());
+      throw dtwc::IOError(std::string(context) + ": " + s.ToString());
   }
 
   /// Get offset range for series i (works for both List and LargeList).
@@ -85,10 +89,10 @@ public:
     // Find the data column
     auto data_col = src.table_->GetColumnByName("data");
     if (!data_col)
-      throw std::runtime_error("ArrowIPCDataSource: missing 'data' column");
+      throw dtwc::IOError("ArrowIPCDataSource: missing 'data' column");
 
     if (data_col->num_chunks() != 1)
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "ArrowIPCDataSource: 'data' column has " +
         std::to_string(data_col->num_chunks()) + " chunks (expected 1). "
         "Re-convert the file to produce a single record batch.");
@@ -107,7 +111,7 @@ public:
       value_array = src.large_list_->values();
       src.n_ = static_cast<size_t>(src.large_list_->length());
     } else {
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "ArrowIPCDataSource: 'data' column must be List<Float64> or LargeList<Float64>, got " +
         chunk->type()->ToString());
     }
@@ -117,7 +121,7 @@ public:
     // reinterpreted as double without reading garbage / out of bounds. Reject it
     // by name instead of silently misreading. (audit io-security: no Float64 check)
     if (value_array->type_id() != arrow::Type::DOUBLE)
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "ArrowIPCDataSource: 'data' values must be Float64, got " +
         value_array->type()->ToString());
     values = static_cast<const arrow::DoubleArray *>(value_array.get());
@@ -135,31 +139,48 @@ public:
           ? src.list_->value_offset(static_cast<int64_t>(i))
           : src.large_list_->value_offset(static_cast<int64_t>(i));
         if (off < prev || off > values_len)
-          throw std::runtime_error(
+          throw dtwc::IOError(
             "ArrowIPCDataSource: 'data' list offset " + std::to_string(off) +
             " out of bounds [0, " + std::to_string(values_len) + "] or non-monotone");
         prev = off;
       }
     }
 
-    // Find optional name column
+    // Find optional name column. Dispatched by type like the data column: a
+    // cast of any other type to StringArray is undefined behaviour (B-08).
+    // LargeUtf8 is Polars' default string type.
     auto name_col = src.table_->GetColumnByName("name");
     if (name_col && name_col->num_chunks() == 1) {
-      src.names_ = static_cast<const arrow::StringArray *>(name_col->chunk(0).get());
+      const auto &names = name_col->chunk(0);
+      if (names->type_id() == arrow::Type::STRING)
+        src.names_ = static_cast<const arrow::StringArray *>(names.get());
+      else if (names->type_id() == arrow::Type::LARGE_STRING)
+        src.large_names_ = static_cast<const arrow::LargeStringArray *>(names.get());
+      else
+        throw dtwc::IOError("ArrowIPCDataSource: '" + path.string()
+                      + "': the 'name' column must be Utf8 or LargeUtf8, got "
+                      + names->type()->ToString()
+                      + ". Write the names as strings, or drop the column.");
     }
 
-    // Read ndim from schema metadata
+    // Read ndim from schema metadata: a whole positive integer, nothing else.
+    // std::stoul read "2x" as 2, wrapped "-1" to 2^64 - 1 and threw a
+    // context-free std::invalid_argument on "abc" (B-08); ndim == 0 would make
+    // series_length() divide by zero.
     auto metadata = src.table_->schema()->metadata();
     if (metadata) {
       auto idx = metadata->FindKey("ndim");
-      if (idx >= 0)
-        src.ndim_ = static_cast<size_t>(std::stoul(metadata->value(idx)));
+      if (idx >= 0) {
+        const std::string &text = metadata->value(idx);
+        const auto [end, ec] =
+          std::from_chars(text.data(), text.data() + text.size(), src.ndim_);
+        if (ec != std::errc{} || end != text.data() + text.size() || src.ndim_ == 0)
+          throw dtwc::IOError("ArrowIPCDataSource: '" + path.string()
+                        + "': schema metadata 'ndim' must be a positive "
+                          "integer, got '" + text + "'. Set it to the number "
+                          "of features per timestep (1 for univariate data).");
+      }
     }
-
-    // ndim must be >= 1: series_length() divides the flat size by ndim_, so
-    // ndim == 0 is a division by zero. (audit io-security: ndim=0 div-by-zero)
-    if (src.ndim_ == 0)
-      throw std::runtime_error("ArrowIPCDataSource: 'ndim' metadata must be >= 1, got 0");
 
     return src;
   }
@@ -188,6 +209,7 @@ public:
   std::string name(size_t i) const
   {
     if (names_) return names_->GetString(static_cast<int64_t>(i));
+    if (large_names_) return large_names_->GetString(static_cast<int64_t>(i));
     return "series_" + std::to_string(i);
   }
 

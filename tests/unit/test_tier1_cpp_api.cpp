@@ -240,12 +240,6 @@ TEST_CASE("Tier-1 C++ Lloyd is invocation-local and independent of legacy RNG",
           "[api][tier1][seed][lloyd]")
 {
   const auto legacy_rng_original = dtwc::randGenerator;
-  const auto results_path_original = dtwc::settings::paths::results;
-  const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-  const fs::path out = fs::temp_directory_path()
-                     / ("dtwc_lloyd_seed_" + std::to_string(nonce));
-  fs::create_directories(out);
-  dtwc::settings::paths::results = out;
 
   dtwc::randGenerator.seed(17); // NOLINT(cert-msc51-cpp) fixed seed: the test asserts Tier-1 never touches this engine
   const auto legacy_rng_before_first = dtwc::randGenerator;
@@ -264,9 +258,6 @@ TEST_CASE("Tier-1 C++ Lloyd is invocation-local and independent of legacy RNG",
   CHECK(first.cost() == second.cost());
 
   dtwc::randGenerator = legacy_rng_original;
-  dtwc::settings::paths::results = results_path_original;
-  std::error_code ec;
-  fs::remove_all(out, ec);
 }
 
 TEST_CASE("Lloyd repetitions restore the best result when the best is not last",
@@ -325,8 +316,8 @@ TEST_CASE("Lloyd uses a checked seed schedule and preserves custom initializers"
 
   auto no_restarts = seed_sensitive_problem();
   no_restarts.set_n_clusters(3);
-  no_restarts.set_n_repetitions(0);
-  REQUIRE_THROWS_AS(no_restarts.cluster_by_kmedoids_lloyd(), dtwc::InvalidInput);
+  REQUIRE_THROWS_AS(no_restarts.set_n_repetitions(0), dtwc::InvalidInput);
+  CHECK(no_restarts.n_repetitions() == 1);
 
   auto overflow = seed_sensitive_problem();
   overflow.set_n_clusters(3);
@@ -506,7 +497,7 @@ dtwc::Dataset::series_type two_cluster_series()
 TEST_CASE("Tier-1 C++ cluster() leaves the working directory untouched",
           "[api][tier1][sideeffects]")
 {
-  // Problem::output_folder_ defaults to the CWD-relative settings::paths::results,
+  // Problem::output_folder_ defaults to the CWD-relative "./results/",
   // so a Tier-1 route that wrote run artifacts failed (or littered) whenever the
   // caller ran from a directory without ./results/.
   const auto sandbox = make_sandbox("dtwc_tier1_cwd_");

@@ -36,6 +36,7 @@
 
 #pragma once
 
+#include "../base/error.hpp"
 #include "crc32.hpp"           // detail::crc32_naive
 #include "distance_matrix.hpp" // tri_index, packed_size
 
@@ -138,34 +139,35 @@ private:
     constexpr size_t max_sz = std::numeric_limits<size_t>::max();
     // Guard n+1 (n == SIZE_MAX would wrap to 0 and hide the overflow below).
     if (n == max_sz)
-      throw std::runtime_error("MmapDistanceMatrix: N too large (overflow)");
+      throw IOError("MmapDistanceMatrix: N too large (overflow)");
     const size_t np1 = n + 1;
     // Guard n*(n+1); one of the two factors is even, so packed = n*(n+1)/2 is exact.
     if (n != 0 && np1 > max_sz / n)
-      throw std::runtime_error("MmapDistanceMatrix: N too large (packed size overflows size_t)");
+      throw IOError("MmapDistanceMatrix: N too large (packed size overflows size_t)");
     const size_t packed = n * np1 / 2; // == packed_size(n)
     if (packed > max_sz / sizeof(double))
-      throw std::runtime_error("MmapDistanceMatrix: file size overflows size_t");
+      throw IOError("MmapDistanceMatrix: file size overflows size_t");
     const size_t data_bytes = packed * sizeof(double);
     if (data_bytes > max_sz - header_size)
-      throw std::runtime_error("MmapDistanceMatrix: data offset overflows size_t");
+      throw IOError("MmapDistanceMatrix: data offset overflows size_t");
     const size_t digest_offset = header_size + data_bytes;
 
     if (n > max_sz / payload_digest_lanes)
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: digest word count overflows size_t");
     const size_t digest_word_count = n * payload_digest_lanes;
     if (digest_word_count > max_sz / payload_digest_word_size)
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: digest byte count overflows size_t");
     const size_t digest_bytes = digest_word_count * payload_digest_word_size;
     if (digest_bytes > max_sz - digest_offset)
-      throw std::runtime_error("MmapDistanceMatrix: total file size overflows size_t");
+      throw IOError("MmapDistanceMatrix: total file size overflows size_t");
     const size_t total_bytes = digest_offset + digest_bytes;
 
     if (header_size % alignof(double) != 0
         || digest_offset % std::atomic_ref<std::uint64_t>::required_alignment != 0) {
-      throw std::runtime_error(
+      // Programming error: a 64-byte header plus whole doubles keeps 8-byte steps.
+      throw std::logic_error(
         "MmapDistanceMatrix: v3 payload layout does not meet 8-byte alignment");
     }
     return {packed, data_bytes, digest_offset, digest_word_count,
@@ -223,7 +225,7 @@ private:
     if (data_address % alignof(double) != 0
         || digest_address
              % std::atomic_ref<std::uint64_t>::required_alignment != 0) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: mapped v3 payload is not 8-byte aligned");
     }
   }
@@ -267,12 +269,12 @@ private:
       for (std::size_t lane = 0; lane < payload_digest_lanes; ++lane) {
         std::atomic_ref<std::uint64_t> stored(
           row_digests[row * payload_digest_lanes + lane]);
-        if (!stored.is_lock_free()) {
-          throw std::runtime_error(
+        if (!stored.is_lock_free()) { // unreachable: the class static_asserts is_always_lock_free
+          throw std::logic_error(
             "MmapDistanceMatrix: platform lacks lock-free 64-bit payload digest atomics");
         }
         if (stored.load(std::memory_order_relaxed) != expected[lane]) {
-          throw std::runtime_error(
+          throw IOError(
             "MmapDistanceMatrix: payload integrity mismatch at row "
             + std::to_string(row)
             + "; the cache may be corrupt or incompletely persisted. "
@@ -338,13 +340,13 @@ private:
   static HeaderMetadata validate_header(const uint8_t *base, size_t file_len)
   {
     if (file_len < 4)
-      throw std::runtime_error("MmapDistanceMatrix: file too small for magic bytes");
+      throw IOError("MmapDistanceMatrix: file too small for magic bytes");
 
     if (std::memcmp(base, magic, 4) != 0)
-      throw std::runtime_error("MmapDistanceMatrix: bad magic bytes");
+      throw IOError("MmapDistanceMatrix: bad magic bytes");
 
     if (file_len < 6)
-      throw std::runtime_error("MmapDistanceMatrix: file too small for version field");
+      throw IOError("MmapDistanceMatrix: file too small for version field");
 
     uint16_t ver{};
     std::memcpy(&ver, base + 4, 2);
@@ -358,77 +360,77 @@ private:
                    "mutable packed distances; delete or rename the cache and "
                    "recompute it as payload-authenticated v3)";
       }
-      throw std::runtime_error(message);
+      throw IOError(message);
     }
 
     if (file_len < header_size)
-      throw std::runtime_error("MmapDistanceMatrix: file too small for v3 header");
+      throw IOError("MmapDistanceMatrix: file too small for v3 header");
 
     uint32_t em{};
     std::memcpy(&em, base + 6, 4);
     if (em != endian_marker)
-      throw std::runtime_error("MmapDistanceMatrix: endian mismatch");
+      throw IOError("MmapDistanceMatrix: endian mismatch");
 
     uint8_t es = base[10];
     if (es != elem_size)
-      throw std::runtime_error("MmapDistanceMatrix: unexpected elem_size " + std::to_string(es));
+      throw IOError("MmapDistanceMatrix: unexpected elem_size " + std::to_string(es));
 
     const uint8_t algorithm = base[11];
     if (algorithm != fingerprint_algorithm)
-      throw std::runtime_error("MmapDistanceMatrix: unsupported fingerprint algorithm "
-                               + std::to_string(algorithm));
+      throw IOError("MmapDistanceMatrix: unsupported fingerprint algorithm "
+                    + std::to_string(algorithm));
 
     uint32_t stored_crc{};
     std::memcpy(&stored_crc, base + 60, 4);
     const uint32_t computed_crc = detail::crc32_naive(base, 60);
     if (stored_crc != computed_crc)
-      throw std::runtime_error("MmapDistanceMatrix: header CRC mismatch");
+      throw IOError("MmapDistanceMatrix: header CRC mismatch");
 
     const uint8_t publication_state = base[publication_state_offset];
     if (publication_state == publication_state_initializing) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: cache initialization incomplete; its ready header "
         "was never durably published. Delete or rename the cache and recompute it.");
     }
     if (publication_state != publication_state_ready) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: unsupported publication state "
         + std::to_string(publication_state));
     }
 
     const uint8_t payload_algorithm = base[payload_integrity_algorithm_offset];
     if (payload_algorithm != payload_integrity_algorithm) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: unsupported payload integrity algorithm "
         + std::to_string(payload_algorithm));
     }
     const uint8_t digest_lanes = base[payload_digest_lanes_offset];
     if (digest_lanes != payload_digest_lanes) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: unexpected payload digest lane count "
         + std::to_string(digest_lanes));
     }
     const uint8_t digest_word_size = base[payload_digest_word_size_offset];
     if (digest_word_size != payload_digest_word_size) {
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: unexpected payload digest word size "
         + std::to_string(digest_word_size));
     }
     if (std::any_of(base + payload_digest_word_size_offset + 1, base + 60,
                     [](std::uint8_t byte) { return byte != 0; }))
-      throw std::runtime_error("MmapDistanceMatrix: reserved header bytes are nonzero");
+      throw IOError("MmapDistanceMatrix: reserved header bytes are nonzero");
 
     uint64_t n64{};
     std::memcpy(&n64, base + 12, 8);
     if (n64 > static_cast<std::uint64_t>(std::numeric_limits<size_t>::max()))
-      throw std::runtime_error("MmapDistanceMatrix: N cannot be represented by size_t");
+      throw IOError("MmapDistanceMatrix: N cannot be represented by size_t");
     const auto n = static_cast<size_t>(n64);
 
     const Layout layout = checked_layout(n);
     if (file_len != layout.total_bytes)
-      throw std::runtime_error("MmapDistanceMatrix: file length mismatch (expected " +
-                               std::to_string(layout.total_bytes) + " bytes, got "
-                               + std::to_string(file_len) + ")");
+      throw IOError("MmapDistanceMatrix: file length mismatch (expected " +
+                    std::to_string(layout.total_bytes) + " bytes, got "
+                    + std::to_string(file_len) + ")");
 
     fingerprint_type fingerprint{};
     std::memcpy(fingerprint.data(), base + 20, fingerprint.size());
@@ -436,6 +438,19 @@ private:
   }
 
 #ifdef DTWC_HAS_MMAP
+  /// The value of an llfio result, or IOError naming the step and the cache.
+  /// result.value() throws llfio's own error, which is no dtwc::Error, so a
+  /// file-size quota reached Python as RuntimeError and MATLAB as dtwc:runtime.
+  template <typename Result>
+  static auto checked(Result &&result, const char *step,
+                      const std::filesystem::path &cache_path)
+  {
+    if (!result)
+      throw IOError(std::string("MmapDistanceMatrix: cannot ") + step + " '"
+                    + cache_path.string() + "': " + result.error().message());
+    return std::forward<Result>(result).value();
+  }
+
   static void acquire_session_lease(llfio::mapped_file_handle &mfh,
                                     const char *operation)
   {
@@ -443,7 +458,7 @@ private:
     // on Windows in LLFIO. The zero-wait try is intentional: cache contention
     // is a typed configuration/runtime failure, never an unbounded wait.
     if (!mfh.try_lock_file()) {
-      throw std::runtime_error(
+      throw IOError(
         std::string("MmapDistanceMatrix::") + operation
         + ": exclusive session lease unavailable; another live matrix or "
           "process may already own this cache, or the filesystem may not "
@@ -465,14 +480,15 @@ private:
   static void persist_range(
     llfio::mapped_file_handle &mfh, const uint8_t *base,
     size_t offset, size_t length,
-    llfio::mapped_file_handle::barrier_kind kind)
+    llfio::mapped_file_handle::barrier_kind kind,
+    const std::filesystem::path &cache_path)
   {
     llfio::mapped_file_handle::const_buffer_type buffer(
       reinterpret_cast<const llfio::byte *>(base + offset), length);
     const llfio::mapped_file_handle::const_buffers_type buffers(&buffer, 1);
     const llfio::mapped_file_handle::io_request<
       llfio::mapped_file_handle::const_buffers_type> request(buffers, offset);
-    mfh.barrier(request, kind).value();
+    checked(mfh.barrier(request, kind), "flush", cache_path);
   }
 
   static MmapDistanceMatrix open_impl(
@@ -487,26 +503,28 @@ private:
       llfio::file_handle::flag::none);
 
     if (!result)
-      throw std::runtime_error(std::string("MmapDistanceMatrix::open: failed to open file: ") +
-                               result.error().message());
+      throw IOError(std::string("MmapDistanceMatrix::open: failed to open file: ") +
+                    result.error().message());
 
     auto mfh = std::move(result.value());
     acquire_session_lease(mfh, "open");
-    mfh.update_map().value();
+    checked(mfh.update_map(), "map", cache_path);
 
     auto *base = reinterpret_cast<uint8_t *>(mfh.address());
     if (!base)
-      throw std::runtime_error("MmapDistanceMatrix::open: null address after mapping");
+      throw IOError("MmapDistanceMatrix::open: null address after mapping");
 
-    const auto extent = mfh.maximum_extent().value();
+    const auto extent = checked(mfh.maximum_extent(), "measure", cache_path);
     if (extent > std::numeric_limits<size_t>::max())
-      throw std::runtime_error(
+      throw IOError(
         "MmapDistanceMatrix: mapped file length cannot be represented by size_t");
     const auto file_len = static_cast<size_t>(extent);
     const HeaderMetadata metadata = validate_header(base, file_len);
 
+    // A well-formed cache made for other data is a request it cannot serve,
+    // as a CSV matrix of another size is (contract §5): InvalidInput.
     if (metadata.fingerprint != expected_fingerprint) {
-      throw std::runtime_error(
+      throw InvalidInput(
         "MmapDistanceMatrix: distance-cache fingerprint mismatch; this cache was "
         "created for different data or DTW configuration. Delete or rename the "
         "cache to recompute it, or use the original data, band, variant parameters, "
@@ -570,14 +588,14 @@ public:
   [[noreturn]] explicit MmapDistanceMatrix(const std::filesystem::path &, size_t,
                                            const fingerprint_type & = {})
   {
-    throw std::runtime_error(
+    throw IOError(
       "MmapDistanceMatrix: this build has no memory-mapped support "
       "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
   }
 
   [[noreturn]] static MmapDistanceMatrix open(const std::filesystem::path &)
   {
-    throw std::runtime_error(
+    throw IOError(
       "MmapDistanceMatrix::open: this build has no memory-mapped support "
       "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
   }
@@ -585,14 +603,14 @@ public:
   [[noreturn]] static MmapDistanceMatrix open(const std::filesystem::path &,
                                               const fingerprint_type &)
   {
-    throw std::runtime_error(
+    throw IOError(
       "MmapDistanceMatrix::open: this build has no memory-mapped support "
       "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
   }
 
   [[noreturn]] void sync()
   {
-    throw std::runtime_error("MmapDistanceMatrix::sync: no memory-mapped support in this build.");
+    throw IOError("MmapDistanceMatrix::sync: no memory-mapped support in this build.");
   }
 #else
   /// Create a new memory-mapped distance matrix at cache_path.
@@ -610,7 +628,7 @@ public:
       llfio::file_handle::flag::none);
 
     if (!result)
-      throw std::runtime_error(
+      throw IOError(
         std::string("MmapDistanceMatrix: failed to create cache exclusively; "
                     "the path must not already exist and another creator may "
                     "have won the race: ")
@@ -619,12 +637,12 @@ public:
     mfh_ = std::move(result.value());
     acquire_session_lease(mfh_, "create");
     owns_session_lease_ = true;
-    mfh_.truncate(total).value();
-    mfh_.update_map().value();
+    checked(mfh_.truncate(total), "size", cache_path);
+    checked(mfh_.update_map(), "map", cache_path);
 
     auto *base = reinterpret_cast<uint8_t *>(mfh_.address());
     if (!base)
-      throw std::runtime_error("MmapDistanceMatrix: null address after mapping");
+      throw IOError("MmapDistanceMatrix: null address after mapping");
 
     validate_mapping_alignment(base, layout);
     write_header(base, n, fingerprint, publication_state_initializing);
@@ -635,8 +653,8 @@ public:
 
     if (layout.digest_word_count != 0) {
       std::atomic_ref<std::uint64_t> first_digest(row_digests_[0]);
-      if (!first_digest.is_lock_free()) {
-        throw std::runtime_error(
+      if (!first_digest.is_lock_free()) { // unreachable: the class static_asserts is_always_lock_free
+        throw std::logic_error(
           "MmapDistanceMatrix: platform lacks lock-free 64-bit payload digest atomics");
       }
     }
@@ -647,10 +665,11 @@ public:
     // durable while the CRC-valid header still says "initializing". Only then
     // may a ready header be published. A crash before/during the second barrier
     // yields either initializing, a CRC mismatch, or a payload mismatch.
-    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_all).value();
+    checked(mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_all),
+            "flush", cache_path);
     publish_ready_header(base);
     persist_range(mfh_, base, 0, header_size,
-                  llfio::mapped_file_handle::barrier_kind::wait_all);
+                  llfio::mapped_file_handle::barrier_kind::wait_all, cache_path);
   }
 
   /// Open an existing memory-mapped distance matrix (warm-start).
@@ -752,7 +771,11 @@ public:
   /// Flush mapped memory to disk.
   void sync()
   {
-    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_data_only).value();
+    const auto flushed =
+      mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::wait_data_only);
+    if (!flushed) // the matrix keeps no path to name
+      throw IOError("MmapDistanceMatrix::sync: cannot flush the cache: "
+                    + flushed.error().message());
   }
 #endif
 };

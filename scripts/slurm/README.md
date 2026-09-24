@@ -7,7 +7,8 @@ General-purpose scripts for building and testing DTWC++ on SLURM-managed HPC clu
 | File | Purpose |
 |------|---------|
 | `env.example` | Configuration template -- copy to `.env` at project root |
-| `slurm_remote.sh` | SSH/rsync remote helper: upload, build, submit, download |
+| `slurm_remote.sh` | SSH/rsync remote helper: upload, build, submit, download. Forwards to `python/dtwcpp/_slurm/slurm_remote.sh` with this checkout as the project |
+| `../../python/dtwcpp/_slurm/` | The wrapper and `cluster_generic.slurm`, shipped in the wheel so `device="hpc"` needs no checkout |
 | `build-arc.sh` | Multi-profile CMake build script (6 hardware targets) |
 | `../../benchmarks/verify_results.py` | Compare clustering output against UCR ground truth (in benchmarks/) |
 | `../../benchmarks/convert_ucr.py` | Convert UCR TSV files to Parquet format (in benchmarks/) |

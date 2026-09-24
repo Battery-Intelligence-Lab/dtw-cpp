@@ -39,7 +39,7 @@ namespace dtwc::metal {
 enum class MetalPrecision {
   Auto, ///< Always FP32 on Apple GPUs (FP64 is emulated).
   FP32, ///< Single precision.
-  FP64  ///< Not implemented yet — falls back to FP32 with a warning.
+  FP64  ///< Not implemented: every Metal entry point throws DeviceError.
 };
 
 inline void validate_metal_precision(MetalPrecision value)
@@ -47,8 +47,12 @@ inline void validate_metal_precision(MetalPrecision value)
   switch (value) {
   case MetalPrecision::Auto:
   case MetalPrecision::FP32:
-  case MetalPrecision::FP64:
     return;
+  case MetalPrecision::FP64:
+    throw DeviceError(
+      "Metal: precision FP64 is not implemented (the Metal kernels compute in "
+      "FP32); no backend call or CPU fallback was attempted. Use precision Auto "
+      "or FP32, or device cpu for Float64 distances.");
   }
   throw InvalidInput("Invalid MetalPrecision value.");
 }
@@ -57,15 +61,19 @@ struct MetalDistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   MetalPrecision precision = MetalPrecision::Auto;
 
   /// Pruning threshold applied to max(LB(i→j), LB(j→i)). Pairs with lower
-  /// bound > threshold are pruned. 0 means "prune everything that isn't an
-  /// exact envelope match"; +∞ means "compute all pairs anyway".
+  /// bound > threshold are pruned and read NaN (not computed). 0 means "prune
+  /// everything that isn't an exact envelope match"; +∞ means "compute all
+  /// pairs anyway". The bound squares each excess under use_squared_l2.
   ///
   /// Note: Metal uses 0.0 as the default (always-applied threshold), while
   /// CUDA uses -1.0 (threshold-off sentinel). Kept per-backend for backward
   /// compatibility.
   double lb_threshold = 0.0;
 
-  /// Envelope window for LB_Keogh. Negative means "use L/10 (min 1)".
+  /// Envelope radius for LB_Keogh. Negative (default) means the DTW window:
+  /// `band`, or the whole series for full DTW. A radius narrower than that
+  /// window would make the bound inadmissible and throws InvalidInput; a wider
+  /// one is accepted (a looser bound).
   int lb_envelope_band = -1;
 
   // Inherited from DistMatOptionsBase:

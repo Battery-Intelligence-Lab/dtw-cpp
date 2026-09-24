@@ -29,17 +29,18 @@ out-of-line and warning-silent.
 | k | `set_n_clusters(int)` | `set_n_clusters(n)` | `set_n_clusters(k)` | canonical setters own behavior; retained C++ `set_numberOfClusters` and Python `set_number_of_clusters` are deprecated warning aliases |
 | method (enum) | `method()` / `set_method(Method)` | `set_method(Method)` / `method` prop | `set_method(str)` `[introduced-2.0]` | live in all three routes |
 | band | `set_band(int)` | `band` prop / `set_band` | `set_band(b)` | retained field `band` (`Problem.hpp`); MEX `set_band` |
-| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`) |
-| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`) |
+| max iterations | `set_max_iter(int)` | `max_iter` prop | `set_max_iter(n)` | deprecated public `int maxIter` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
+| repetitions | `set_n_repetitions(int)` | `n_repetitions` prop | `set_n_repetitions(n)` | deprecated public `int N_repetition` field plus warning-silent canonical accessor (`Problem.hpp`/`Problem.cpp`); `n < 1` raises `InvalidInput` |
 | random seed | `random_seed()` / `set_random_seed(uint64_t)` | `random_seed` prop / `set_random_seed` | Tier-1 default via `dtwc.default_random_seed()`; method-specific `Seed` where exposed | private state, default `DEFAULT_RANDOM_SEED` |
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
+| device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
 | storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
-| solver | `set_solver(Solver) -> bool` | `set_solver(Solver)` `[introduced-2.0]` | `set_solver(str)` `[introduced-2.0]` | live in all three routes |
+| solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes |
@@ -87,6 +88,16 @@ independent copy. The language-specific semantics are retained.
 `set_distance_matrix()` are canonical and live. The old
 `distance_matrix_numpy()`/`set_distance_matrix_from_numpy()` spellings remain
 compatibility aliases; each emits one caller-attributed `DeprecationWarning`.
+
+**Reading and writing files (2026-09-24).** `read_distance_matrix(path)` takes
+only a matrix of this `Problem`'s size: a file whose row count is not the series
+count, an empty file included, raises `InvalidInput` and leaves the matrix
+untouched (a `Problem` without series takes any matrix); a non-square or
+asymmetric file raises `InvalidInput` naming the row. `write_clusters`,
+`write_silhouettes`, `write_medoid_members`, `write_distance_matrix` and Tier-1
+`Result::save` check each file after closing as well as after opening, so a
+write lost after a successful open (a full disk, a file-size quota) raises
+`IOError` instead of leaving a truncated file behind a success.
 
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
@@ -210,6 +221,20 @@ accepted rather than unified because C++ overloading and the Python/MATLAB
 keyword-dispatch idiom cannot share one signature; unifying would force an
 un-idiomatic name on one side. Section 10 item 8 adjudicates this carve-out.
 
+**Input domain (2026-09-24, FX-15).** Every `dtwc::distance::*` function,
+`core::dtw_runtime` and `soft_dtw_gradient` checks `x` and `y` once per call,
+before any distance work, and raises `InvalidInput` naming the series, the
+position and the fix for a NaN or ±inf value. `missing`, `arow` and the
+dispatcher under a ZeroCost, AROW or Interpolate missing strategy read NaN as a
+missing value and reject only ±inf. Python's distance functions and
+`compute_distance_matrix`, and MATLAB's `dtwc.distance.*`, apply the same
+check. The per-pair wrappers in `warping*.hpp` (with `soft_dtw()` and
+`core::msm_distance` / `twe_distance`) are the documented unchecked layer the
+matrix fills call: they require finite input (the missing-data wrappers also
+take NaN) and return NaN, the unreachable `max()` or an ordinary-looking number
+otherwise, so their caller checks first, once per call or per fill. A `Problem`
+checks its series the same way before it computes (§6.4).
+
 **Precision default.** All `dtwc::distance::*` templates default to
 `T = settings::default_data_t`, which is `double`. An explicit `<float>`
 instantiation computes and returns `float`; `Problem`/`Result`/matrix routes
@@ -225,7 +250,7 @@ are snake_case; current availability and gaps are explicit below.
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
 | save dir checkpoint | `save_checkpoint(const Problem&, path, core::MetricType metric = L1)` | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `load_checkpoint(Problem&, path, core::MetricType metric = L1) -> bool` | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path, core::MetricType metric = L1) -> bool`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
 | save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
 | load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 

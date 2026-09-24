@@ -35,8 +35,9 @@ namespace dtwc::core {
 
 /// Build the per-pair DTW distance function for Problem `p`, templated on
 /// element type (T = data_t or float). The returned std::function reads
-/// `p.band`, `p.variant_params`, `p.missing_strategy`, `p.data().ndim`, and —
-/// for WDTW with T = data_t — `p.wdtw_weights_cache_` at call time.
+/// `p.band`, `p.variant_params`, `p.missing_strategy`, `p.data().ndim`,
+/// `p.metric()` (Standard only), and — for WDTW with T = data_t —
+/// `p.wdtw_weights_cache_` at call time.
 ///
 /// The referenced Problem must outlive the returned function.
 template <typename T>

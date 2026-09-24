@@ -64,10 +64,11 @@ inline int get_max_threads()
 /// For 168 threads with N=8926: chunk=13. For 16 threads with N=28: chunk=1.
 inline int omp_chunk_size_for(int n_iterations, int chunks_per_thread, int nthreads)
 {
+  // Programming errors: callers pass a literal chunk count and an OpenMP thread count.
   if (chunks_per_thread <= 0)
-    throw std::invalid_argument("omp_chunk_size: chunks_per_thread must be positive");
+    throw std::logic_error("omp_chunk_size: chunks_per_thread must be positive");
   if (nthreads <= 0)
-    throw std::invalid_argument("omp_chunk_size: nthreads must be positive");
+    throw std::logic_error("omp_chunk_size: nthreads must be positive");
   return std::max(1, n_iterations / (nthreads * chunks_per_thread));
 }
 
@@ -98,11 +99,13 @@ void run_openmp(Tfun &task_indv, size_t i_end,
                 [[maybe_unused]] int chunks_per_thread = 4,
                 [[maybe_unused]] int max_workers = 0)
 {
+  // Programming errors: callers pass a literal chunk count, and a loop bound that
+  // is a series count or a block count, both int-sized.
   if (chunks_per_thread <= 0)
-    throw std::invalid_argument("run_openmp: chunks_per_thread must be positive");
+    throw std::logic_error("run_openmp: chunks_per_thread must be positive");
   // OpenMP requires signed loop variables for compatibility with older compilers
   if (i_end > static_cast<size_t>(std::numeric_limits<int>::max())) {
-    throw std::runtime_error("Loop bound exceeds maximum int value for OpenMP loop");
+    throw std::logic_error("Loop bound exceeds maximum int value for OpenMP loop");
   }
   const int end = static_cast<int>(i_end);
 

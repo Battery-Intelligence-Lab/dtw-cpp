@@ -28,7 +28,7 @@ namespace dtwc {
 namespace {
 
 /// Create the destination directory before writing into it. output_folder_
-/// defaults to the CWD-relative settings::paths::results, which need not exist:
+/// defaults to the CWD-relative "./results/", which need not exist:
 /// an ofstream on a missing directory just fails, so the writers created a
 /// runtime error out of a perfectly ordinary first run.
 void ensure_output_directory(const std::filesystem::path &path)
@@ -38,8 +38,8 @@ void ensure_output_directory(const std::filesystem::path &path)
   std::error_code ec;
   std::filesystem::create_directories(directory, ec);
   if (ec && !std::filesystem::is_directory(directory))
-    throw std::runtime_error("Cannot create output directory: "
-                             + directory.string() + ": " + ec.message());
+    throw IOError("Cannot create output directory: "
+                  + directory.string() + ": " + ec.message());
 }
 
 /// Open an output file, failing loudly: an unchecked ofstream silently produces
@@ -49,16 +49,18 @@ std::ofstream open_output(const std::filesystem::path &path)
   ensure_output_directory(path);
   std::ofstream file(path, std::ios_base::out);
   if (!file.good())
-    throw std::runtime_error("Cannot open file for writing: " + path.string());
+    throw IOError("Cannot open file for writing: " + path.string());
   return file;
 }
 
-/// Close an output file and report a write error instead of losing it.
+/// Close an output file and report a write error instead of losing it: a full
+/// disk or a file-size quota fails the writes after a successful open (B-05).
 void close_output(std::ofstream &file, const std::filesystem::path &path)
 {
   file.close();
   if (!file.good())
-    throw std::runtime_error("Write error on file: " + path.string());
+    throw IOError("Write error on file: " + path.string()
+                  + " (the file is incomplete: disk full or file-size quota?)");
 }
 
 } // namespace
@@ -73,25 +75,17 @@ void Problem::writeMedoids(std::vector<std::vector<int>> &centroids_all, int rep
 {
   const auto outPath = output_folder_
     / utf8_to_path(name_ + "medoids_rep_" + std::to_string(rep) + ".csv");
-  ensure_output_directory(outPath);
-  std::ofstream medoidsFile(outPath, std::ios_base::out);
-
-  if (!medoidsFile.good()) {
-    std::cout << "Failed to open file in path: " << outPath << '\n'
-              << "Program is exiting." << '\n';
-
-    throw std::runtime_error("Failed to open medoids output file: " + outPath.string());
-  }
+  std::ofstream medoidsFile = open_output(outPath);
 
   for (auto &c_ind : centroids_all) {
     for (auto medoid : c_ind)
-      medoidsFile << get_name(medoid) << ',';
+      medoidsFile << series_name(medoid) << ',';
 
     medoidsFile << '\n';
   }
 
   medoidsFile << "Procedure is completed with cost: " << total_cost << '\n';
-  medoidsFile.close();
+  close_output(medoidsFile, outPath);
 }
 
 /**
@@ -102,16 +96,16 @@ void Problem::print_clusters() const
 {
   std::cout << "Clusters centroids: ";
   for (auto ind : centroids_ind)
-    std::cout << get_name(ind) << ' ';
+    std::cout << series_name(ind) << ' ';
 
   std::cout << '\n';
 
   for (const auto i_c : Range(Nc)) {
-    std::cout << "The cluster with centroid " << get_name(centroids_ind[i_c]) << " has following members: ";
+    std::cout << "The cluster with centroid " << series_name(centroids_ind[i_c]) << " has following members: ";
 
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
-        std::cout << get_name(i_p) << " ";
+        std::cout << series_name(i_p) << " ";
 
     std::cout << '\n';
   }
@@ -132,14 +126,14 @@ void Problem::write_clusters()
   for (int i{ 0 }; i < Nc; i++) {
     if (i != 0) myFile << ',';
 
-    myFile << get_name(centroids_ind[i]);
+    myFile << series_name(centroids_ind[i]);
   }
 
   myFile << "\n\n"
          << "Data" << ',' << "its cluster\n";
 
   for (const auto i : Range(size()))
-    myFile << get_name(i) << ',' << get_name(centroid_of(static_cast<int>(i))) << '\n';
+    myFile << series_name(i) << ',' << series_name(centroid_of(static_cast<int>(i))) << '\n';
 
   myFile << "Procedure is completed with cost: " << find_total_cost() << '\n';
 
@@ -174,7 +168,7 @@ void Problem::write_silhouettes()
 
   myFile << "Silhouettes:\n";
   for (auto i : Range(size()))
-    myFile << get_name(i) << ',' << silhouettes[i] << '\n';
+    myFile << series_name(i) << ',' << silhouettes[i] << '\n';
 
   close_output(myFile, path);
 }
@@ -194,7 +188,7 @@ void Problem::write_medoid_members(int iter, int rep) const
   for (const auto i_c : Range(n_clusters())) {
     for (const auto i_p : Range(size()))
       if (clusters_ind[i_p] == i_c)
-        medoidMembers << get_name(i_p) << ',';
+        medoidMembers << series_name(i_p) << ',';
 
     medoidMembers << '\n';
   }
@@ -226,11 +220,11 @@ void Problem::write_distance_matrix(const std::string &name_) const
       std::ofstream file(
         path, std::ios::out | std::ios::binary | std::ios::trunc);
       if (!file.good())
-        throw std::runtime_error("Cannot open file for writing: " + path.string());
+        throw IOError("Cannot open file for writing: " + path.string());
       core::detail::write_distance_matrix_csv_preflighted(file, m);
       file.close();
       if (!file.good())
-        throw std::runtime_error("Write error on file: " + path.string());
+        throw IOError("Write error on file: " + path.string());
     }
   });
 }
@@ -256,17 +250,34 @@ void Problem::writeBestRep(int best_rep)
  *  continue without a precomputed matrix belongs to the caller, not the reader.
  *  Swallowing it made a failed load indistinguishable from a successful one.
  *  @param distMat_path The file path of the distance matrix.
- *  @throws std::exception if the file cannot be opened or parsed.
+ *  @throws IOError if the file cannot be opened or holds a non-numeric field;
+ *          InvalidInput if it is not square and symmetric, if its size is not
+ *          this Problem's series count, or if the matrix is memory-mapped.
  */
 void Problem::read_distance_matrix(const fs::path &distMat_path)
 {
   ensure_dense_cache_configuration_current();
   visit_distmat([&](auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
-      io::read_csv(m, distMat_path);
+      // Parsed into a local so a rejected file leaves the matrix untouched. A
+      // matrix of another size describes other series: it used to be kept, then
+      // discarded silently at the first lookup and every distance recomputed.
+      // An empty file loaded nothing, equally silently. A Problem without
+      // series takes any matrix, as before.
+      core::DenseDistanceMatrix loaded;
+      io::read_csv(loaded, distMat_path);
+      if (size() != 0 && loaded.size() != size())
+        throw InvalidInput(
+          "Problem::read_distance_matrix: '" + distMat_path.string() + "' has "
+          + std::to_string(loaded.size()) + " rows, but this Problem holds "
+          + std::to_string(size()) + " series; a distance matrix has one row and "
+            "one column per series, in input order. Load the matrix computed for "
+            "these series, or omit it to compute the distances.");
+      if (loaded.size() != 0) m = std::move(loaded);
+      fill_request_validated_ = false; // other pairs known: re-check lazily
     } else {
-      throw std::runtime_error("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
-                               "(use warm-start via use_mmap_distance_matrix instead).");
+      throw InvalidInput("read_distance_matrix: CSV read not supported for MmapDistanceMatrix "
+                         "(use warm-start via use_mmap_distance_matrix instead).");
     }
   });
 }

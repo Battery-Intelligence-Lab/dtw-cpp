@@ -9,6 +9,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../base/names.hpp"
 
 namespace dtwc {
 
@@ -36,5 +37,14 @@ inline void validate_method(Method value)
   }
   throw InvalidInput("Invalid Method value.");
 }
+
+/// No aliases: MATLAB's 'pam' and 'auto' selected Lloyd k-medoids, so they are
+/// not names of Kmedoids (config.hpp's ClusterMethod spells the CLI's methods).
+inline constexpr Name<Method> method_names[]{
+  { "kmedoids", Method::Kmedoids },
+  { "mip", Method::MIP },
+  { "lrcore", Method::LRCore },
+  { "tadpole", Method::TADPole },
+};
 
 }

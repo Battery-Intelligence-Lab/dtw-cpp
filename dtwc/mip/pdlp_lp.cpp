@@ -20,7 +20,6 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <cstdio>
 #include <limits>
 #include <string>
 #include <vector>
@@ -50,6 +49,13 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
   if (k < 1 || k > N)
     throw InvalidInput("pdlp_lp_bound: require 1 <= k <= N (k=" + std::to_string(k)
                        + ", N=" + std::to_string(N) + ")");
+  // A GPU request this build cannot honour is an error, never a CPU run
+  // (a GPU backend this build lacks is DeviceError, as for CUDA or Metal).
+  if (params.use_gpu && !pdlp_gpu_available())
+    throw DeviceError(
+      "pdlp_lp_bound: use_gpu requests GPU PDLP, but HiGHS was built without CUPDLP_GPU. "
+      "Rebuild with -DDTWC_HIGHS_GPU=ON to enable the GPU backend, or leave use_gpu false "
+      "to run PDLP on the CPU.");
 
   const std::size_t Nz = static_cast<std::size_t>(N);
 
@@ -172,12 +178,8 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
   // "hipdlp" (HiGHS's own PDHG) stays on the CPU. So gpu_used reflects the build
   // and the chosen variant, NOT the request flag: reporting gpu_used=false for a
   // solve that actually ran on the GPU would be a false report (CLAUDE.md §1).
-  // use_gpu only governs the warning when the GPU is asked for but not built in.
+  // use_gpu only decides whether a build without the GPU backend refuses (above).
   const bool gpu_used = pdlp_gpu_available() && (params.variant == "pdlp");
-  if (params.use_gpu && !pdlp_gpu_available())
-    std::fprintf(stderr,
-      "pdlp_lp_bound: GPU PDLP requested but HiGHS was built without CUPDLP_GPU; "
-      "running on CPU. Rebuild with -DDTWC_HIGHS_GPU=ON to enable the GPU backend.\n");
 
   if (highs.passModel(model) == HighsStatus::kError)
     throw SolverError("pdlp_lp_bound: HiGHS rejected the LP model (passModel returned error).");

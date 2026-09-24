@@ -46,8 +46,8 @@ struct PdlpParams
   long iteration_limit = 0;    ///< PDLP iteration cap; 0 ⇒ leave the HiGHS default.
   bool use_gpu = false;        ///< Ask for the GPU backend. The device is a COMPILE-TIME property of the HiGHS
                                ///< build (CUPDLP_GPU), not a per-call toggle: on a GPU build solver="pdlp" always
-                               ///< runs on the GPU regardless of this flag; on a CPU build this flag=true only
-                               ///< WARNS to stderr (never a silent downgrade). See gpu_used / pdlp_gpu_available().
+                               ///< runs on the GPU regardless of this flag; on a CPU build this flag=true raises
+                               ///< DeviceError (never a CPU run in its place). See gpu_used / pdlp_gpu_available().
   bool verbose = false;        ///< Let HiGHS print its solver log.
 };
 
@@ -71,6 +71,8 @@ struct PdlpResult
  * @param params  PDLP tuning.
  * @return LP-relaxation optimum (raw units), solve status, iterations, GPU flag.
  * @throws dtwc::InvalidInput if N ≤ 0 or k ∉ [1, N].
+ * @throws dtwc::DeviceError if `params.use_gpu` is set on a build without the GPU
+ *         backend (pdlp_gpu_available() is false).
  * @throws dtwc::SolverError if HiGHS is not compiled in, or the solve fails.
  */
 PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params = {});
@@ -81,7 +83,7 @@ PdlpResult pdlp_lp_bound(const double *D, int N, int k, const PdlpParams &params
  *
  * A runtime capability query — the library reports its own build, since the
  * compile-time define does not propagate to consumer translation units. When
- * false, `pdlp_lp_bound` with `use_gpu=true` warns and runs on CPU; when true it
+ * false, `pdlp_lp_bound` with `use_gpu=true` raises DeviceError; when true it
  * runs on the GPU and reports `gpu_used=true`.
  */
 bool pdlp_gpu_available();

@@ -32,10 +32,6 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-static struct TestDataInitCheckpoint {
-  TestDataInitCheckpoint() { dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR); }
-} test_data_init_checkpoint_;
-
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 namespace fs = std::filesystem;
@@ -45,7 +41,7 @@ namespace {
 /// Build a Problem from the dummy dataset with N series.
 Problem make_problem(int N_data)
 {
-  dtwc::DataLoader dl{ settings::paths::data / "dummy", N_data };
+  dtwc::DataLoader dl{ fs::path{ DTWC_TEST_DATA_DIR } / "dummy", N_data };
   dl.start_column(1).start_row(1);
   dtwc::Problem prob{ "checkpoint_test", dl };
   return prob;

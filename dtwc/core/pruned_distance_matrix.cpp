@@ -29,6 +29,7 @@
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <string>
 
 namespace dtwc::core {
 
@@ -54,6 +55,14 @@ PruningStats fill_distance_matrix_pruned(
     dtwc::Problem &prob, int band, dtwc::LowerBoundStrategy lb_strat)
 {
   dtwc::validate_lower_bound_strategy(lb_strat);
+  // The bounds and kernels below are univariate L1: interleaved multivariate
+  // series would be read as one stream, and another metric computed as L1.
+  if (prob.data().ndim > 1 || prob.metric() != MetricType::L1)
+    throw dtwc::InvalidInput(
+      "fill_distance_matrix_pruned: the pruned fill is univariate L1, but this "
+      "Problem has ndim = " + std::to_string(prob.data().ndim) + " and a "
+      + (prob.metric() == MetricType::L1 ? "L1" : "non-L1") + " metric. Call "
+      "Problem::fill_distance_matrix(), which fills it exactly.");
   // Pruned fill only operates on DenseDistanceMatrix (resize required). Keep
   // the low-level entry point typed/actionable; Problem::fill_distance_matrix
   // routes mapped storage through its exact generic fill instead.
@@ -133,8 +142,8 @@ PruningStats fill_distance_matrix_pruned(
   }
 
   // Step 2: Precompute envelopes for LB_Keogh / LB_Enhanced (band >= 0) — parallel.
-  // Full DTW (band == -1) deliberately disables every envelope bound rather
-  // than interpreting the helper's negative-band coercion as a valid envelope.
+  // Full DTW (band == -1) keeps every envelope bound off: LB_Enhanced and
+  // LB_Webb have no full-DTW form, and this exact fill computes every pair.
   // Lock-free by design: each iteration writes only to its own index.
   // LB_Enhanced reuses the same (upper,lower) Envelope as LB_Keogh; LB_Webb needs
   // the extended envelope set (adds the secondary L(U), U(L) arrays).
@@ -351,7 +360,7 @@ PruningStats compute_distance_matrix_pruned(
   }
 
   // Step 2: Precompute envelopes for LB_Keogh only if band >= 0. Full DTW
-  // deliberately disables Keogh rather than using a radius-zero envelope.
+  // keeps Keogh off; this exact fill computes every pair either way.
   const bool use_lb_keogh = use_lb && (band >= 0);
   std::vector<Envelope> envelopes;
   if (use_lb_keogh) {

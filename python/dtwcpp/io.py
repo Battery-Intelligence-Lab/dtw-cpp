@@ -68,7 +68,9 @@ def load_dataset_csv(path: str | Path) -> tuple[np.ndarray, list[str]]:
         Column names from the header (empty list if no header).
     """
     path = Path(path)
-    with open(path, newline="") as f:
+    # utf-8-sig drops a byte-order mark (Excel's "CSV UTF-8"), which otherwise
+    # made the first data row look like a header and dropped the first series.
+    with open(path, newline="", encoding="utf-8-sig") as f:
         first_row = next(csv.reader(f), [])
 
     try:

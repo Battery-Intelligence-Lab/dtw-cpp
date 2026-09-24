@@ -79,7 +79,8 @@ def _cpp_gpu_alias_result(name):
 class TestGpuAlias:
     @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES)
     def test_python_gpu_alias_grammar_matches_live_cpp(self, name):
-        """Python accepts/rejects the same GPU spellings as Env::set_device."""
+        """Python accepts/rejects the same GPU spellings as Env::set_device and
+        names each accepted one ``gpu``: ``cuda`` is an alias of ``gpu`` (§6.1)."""
         cpp_accepts, cpp_error, cpp_ordinal = _cpp_gpu_alias_result(name)
 
         if not cpp_accepts:
@@ -90,7 +91,7 @@ class TestGpuAlias:
 
         backend, ordinal = dtwcpp._parse_device(name)
         normalized = name.strip(" \t\r\n").lower()
-        assert backend == normalized.partition(":")[0]
+        assert backend == "gpu"
         assert ordinal == (int(normalized.partition(":")[2]) if ":" in normalized else 0)
         if cpp_ordinal is not None:
             assert ordinal == cpp_ordinal
@@ -110,13 +111,18 @@ class TestGpuAlias:
 
         assert dtwcpp._resolve_device("gpu:7") == (expected_backend, 7)
 
-    def test_explicit_cuda_never_falls_back_to_metal(self, monkeypatch):
+    def test_cuda_is_gpu_and_never_falls_back_to_cpu(self, monkeypatch):
+        """§6.1: ``cuda`` is an alias of ``gpu`` — Metal on a Metal-only build,
+        and with no GPU the same loud DeviceError, never the CPU."""
         monkeypatch.setattr(dtwcpp, "CUDA_AVAILABLE", False)
         monkeypatch.setattr(dtwcpp, "cuda_available", lambda: False)
         monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", True)
         monkeypatch.setattr(dtwcpp, "metal_available", lambda: True)
 
-        with pytest.raises(dtwcpp.DeviceError, match="CUDA was not compiled in"):
+        assert dtwcpp._resolve_device("cuda:7") == ("metal", 7)
+
+        monkeypatch.setattr(dtwcpp, "METAL_AVAILABLE", False)
+        with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
             dtwcpp._resolve_device("cuda:7")
 
     def test_gpu_alias_resolves_like_cuda(self):
@@ -252,3 +258,104 @@ class TestHpcDevice:
         """'hpc' is an execution location, not a local compute backend."""
         with pytest.raises(ValueError, match="hpc"):
             dtwcpp.compute_distance_matrix(_series(), device="hpc")
+
+
+# ---------------------------------------------------------------------------
+# IF-1 / FX-1: Problem(device=...) and Problem.set_device(name)
+# ---------------------------------------------------------------------------
+
+_GPU_BACKEND = dtwcpp.CUDA_AVAILABLE or dtwcpp.METAL_AVAILABLE
+_GPU_STRATEGY = (dtwcpp.DistanceMatrixStrategy.CUDA if dtwcpp.CUDA_AVAILABLE
+                 else dtwcpp.DistanceMatrixStrategy.Metal)
+_METAL_LIVE = dtwcpp.METAL_AVAILABLE and dtwcpp.metal_available()
+
+
+def _problem(device="cpu", series=None):
+    series = _series(6, 40, seed=3) if series is None else series
+    prob = dtwcpp.Problem("device_test", device=device)
+    prob.set_data(series, [f"s{i}" for i in range(len(series))])
+    return prob
+
+
+def _float32_exact(matrix):
+    return bool(np.all(matrix.astype(np.float32).astype(np.float64) == matrix))
+
+
+class TestProblemDevice:
+    def test_a_problem_computes_on_the_cpu_and_ignores_the_global_device(self):
+        if (dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available()) or _METAL_LIVE:
+            dtwcpp.device("gpu")
+        assert dtwcpp.Problem().distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+        assert dtwcpp.Problem("named").distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+
+    @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES + ("cpu", " CPU ", "tpu", ""))
+    def test_set_device_accepts_exactly_the_env_grammar(self, name):
+        """Problem.set_device parses with the one C++ grammar Env uses."""
+        if name.strip(" \t\r\n").lower() == "cpu":
+            cpp_accepts, cpp_error, cpp_ordinal = True, None, None
+        else:
+            cpp_accepts, cpp_error, cpp_ordinal = _cpp_gpu_alias_result(name)
+        prob = dtwcpp.Problem()
+        if not cpp_accepts or cpp_error is not None:
+            with pytest.raises(dtwcpp.DeviceError) as caught:
+                prob.set_device(name)
+            assert str(caught.value) == cpp_error
+            assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+            return
+        prob.set_device(name)
+        if cpp_ordinal is None:
+            assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+        else:
+            assert prob.distance_strategy == _GPU_STRATEGY
+            assert prob.cuda_settings.device_id == cpp_ordinal
+
+    def test_device_keyword_selects_this_builds_gpu_backend(self):
+        if not _GPU_BACKEND:
+            with pytest.raises(dtwcpp.DeviceError, match="no GPU backend compiled in"):
+                dtwcpp.Problem("p", device="gpu")
+            return
+        prob = dtwcpp.Problem("p", device="gpu:2")
+        assert prob.distance_strategy == _GPU_STRATEGY
+        assert prob.cuda_settings.device_id == 2
+
+    def test_cpu_keeps_a_chosen_cpu_strategy_and_leaves_a_gpu_one(self):
+        prob = dtwcpp.Problem()
+        prob.distance_strategy = dtwcpp.DistanceMatrixStrategy.BruteForce
+        prob.set_device("cpu")
+        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.BruteForce
+        prob.distance_strategy = dtwcpp.DistanceMatrixStrategy.Metal
+        prob.set_device("cpu")
+        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+
+    def test_hpc_is_a_run_option_not_a_problem_device(self):
+        with pytest.raises(dtwcpp.InvalidInput, match="hpc is not a Problem device"):
+            dtwcpp.Problem(device="hpc")
+        prob = dtwcpp.Problem()
+        with pytest.raises(ValueError, match="hpc is not a Problem device"):
+            prob.set_device("hpc")
+        assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
+
+    @pytest.mark.skipif(not _METAL_LIVE, reason="needs a live Metal device")
+    def test_gpu_problem_fills_through_metal(self):
+        gpu = _problem("gpu").distance_matrix()
+        cpu = _problem("cpu").distance_matrix()
+        np.testing.assert_allclose(gpu, cpu, rtol=1e-4, atol=1e-3)
+        # Metal computes in FP32, so each of its distances is a float32 value;
+        # the CPU's FP64 distances are not. Proof the Metal route ran.
+        assert _float32_exact(gpu)
+        assert not _float32_exact(cpu)
+
+    @pytest.mark.skipif(not _GPU_BACKEND, reason="needs a GPU backend compiled in")
+    def test_wdtw_problem_on_gpu_raises_device_error(self):
+        prob = _problem("gpu")
+        prob.set_variant(dtwcpp.DTWVariant.WDTW)
+        with pytest.raises(dtwcpp.DeviceError, match="variant = WDTW") as caught:
+            prob.fill_distance_matrix()
+        assert isinstance(caught.value, RuntimeError)
+        assert not prob.is_distance_matrix_filled()
+
+    def test_infeasible_band_raises_invalid_input(self):
+        prob = _problem("cpu", series=[[0.0, 1.0, 2.0, 3.0], [0.0] * 10, [1.0] * 6])
+        prob.band = 2
+        with pytest.raises(dtwcpp.InvalidInput, match="smallest feasible band is 6"):
+            prob.fill_distance_matrix()

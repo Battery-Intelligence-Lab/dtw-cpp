@@ -18,6 +18,12 @@ points to were removed on 2026-09-21 and live in git history at `9c08074`.
   PMU artefact proves a universal memory-bound ceiling. R2-D17 is the only door — see `PLAN.md` R5.
   *2026-09-21 addition:* the compiler itself reports the row recurrence as non-vectorisable
   (loop-carried dependency); see `baselines/2026-09-21-macos-first-baseline.md`.
+  *2026-09-23: reopened for lanes across pairs* (`PLAN.md` PF-5, `design.md` §7, Volkan: SIMD is
+  first-class). The evidence above concerns a route that ignored bands and variants and a within-pair
+  estimate. Lanes run the scalar `min + cost` per pair in the same order, so each lane is checked
+  against the scalar kernel digit for digit and needs no error model; PF-5 is the measurement, in plain C++
+  with no library (Highway: see the table below).
+  SIMD *within* a pair (anti-diagonals) stays unscheduled.
 - **"≥ 25 % fewer full DTW calls on an exact matrix" via lower bounds:** unachievable — an exact matrix
   needs every DTW; LB early-abandon recomputes abandoned pairs (`Pruned` is a pessimisation for exact
   matrices). Exact-matrix work reduction = EAP cell pruning / TADPole pair-skip only.
@@ -43,15 +49,15 @@ deliberately:
 
 | Candidate | Licence | Why not |
 | --- | --- | --- |
-| fast_float | Apache-2.0 / MIT / BSL-1.0 | every loader already uses `std::from_chars` (`fileOperations.hpp:197`, `core/matrix_io.hpp:139`); `std::stod` was removed after an `LC_NUMERIC=de_DE` bug (regression test `unit_test_distance_matrix_csv.cpp:558`) |
+| fast_float | Apache-2.0 / MIT / BSL-1.0 | every loader already uses `std::from_chars` (`fileOperations.hpp:197`, `core/matrix_io.hpp:139`); `std::stod` was removed after an `LC_NUMERIC=de_DE` bug (regression test `unit_test_distance_matrix_csv.cpp:558`). *2026-09-23: reopened on the portability failure this row's own rule asks for* — floating-point `std::from_chars` compiles only at a macOS 26.0 deployment target with the current SDK, so the wheel target 11.0 cannot build; proposed for adoption in `PLAN.md` FX-6 (D-B) |
 | xxHash / any hash library | BSD-2 | `core/sha256.hpp` is dependency-free, NIST-vector tested, chosen *because* `std::hash` is implementation-defined and salted (`sha256.hpp:6`); CRC32 and the avalanche64 row digest are in-tree and on disk |
 | PCG / xoshiro | Apache-2.0 / CC0 | `core/portable_random.hpp` already has Lemire bounded, Fisher-Yates, weighted index and selection sampling over `std::mt19937_64`. The residue is legacy `init::` on `std::shuffle` / `uniform_int_distribution` (`initialisation.cpp:140,170,182`) — X-12 / A-21 finish it, no library needed |
 | mio (mmap) | MIT | does not cover `barrier` granularity or `try_lock_file`; only relevant as part of D-18, not as an addition |
 | magic_enum | MIT | the string↔enum tables *are* the cross-language contract (aliases, kebab keys, stability); compiler-hack reflection cannot express them |
-| toml++ / nlohmann-json / glaze | MIT | CLI11 `from_config` + fkYAML already read the config; `Config` needs an alias table and `schema`, not a second parser |
+| toml++ / nlohmann-json / glaze | MIT | CLI11 `from_config` + fkYAML already read the config; `Config` needs no second parser (*2026-09-23:* nor an alias table or a `schema` key — `PLAN.md` IF-2) |
 | {fmt} | MIT | C++20 + `std::format`; error text is not a bottleneck |
 | kokkos-mdspan | Apache-2.0 WITH LLVM-exception | `tri_index` exists; a packed triangle is not an mdspan layout |
-| Highway / xsimd | Apache-2.0 / BSD-3 | hand-written SIMD is killed; parked behind R2-D17 and the X-04 codegen report |
+| Highway / xsimd | Apache-2.0 / BSD-3 | *2026-09-23 (Volkan): not adopted* — Highway was tried in March–April 2026 (`416acbd`…`d670143`) and "wasn't worth the effort"; any SIMD lanes are plain C++ (`PLAN.md` PF-5) |
 | rapidcheck | BSD-2 | Catch2's `GENERATE` covers invariant tests (symmetry, zero diagonal, band ⊆ full, LB ≤ exact) |
 | Taskflow / TBB | MIT / Apache-2.0 | OpenMP + `PairRange` is the scheduling seam; `dtwc/` has no `std::thread` fan-out to unify |
 | ankerl::unordered_dense | MIT | only if S-13 proves the MSVC `unordered_map` move-assign hazard is real |
@@ -89,6 +95,8 @@ tokens and a documented conversion table, never by flipping a default.
 13. **Tier-1 routes are side-effect-free** (no CWD-relative writes). Names are UTF-8 end to end.
 14. **Dependencies:** rapidcsv removed; YAML config through CLI11 `from_config` + fkYAML (flags beat
     the file, unknown keys are errors); no further ancillary library without ledger evidence.
+    *2026-09-23: the last clause is superseded by rule 18* — prefer a mature, portable, permissively
+    licensed library, and name the in-tree code each addition deletes.
 15. **Lower bounds:** the public `Webb` name is kept for compatibility but the implementation is
     all-index `LB_Webb_NoLR` plus a separately proved tail cap; only `production ≤ exact-predicate NoLR`
     has a loosening direction; Enhanced dominates matching-direction Keogh at effective `V = 1`, and no
@@ -125,7 +133,7 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
 | --- | --- | --- | --- |
 | 1 | simplify only after R3, with zero behaviour change | refactor now, with deliberate behaviour changes (C-05, O-06, O-09, B-14, G-04, A-07) | superseded by the 2026-09-07 approval |
 | 2 | "never ask" (Codex rule) | DECIDE items go to Volkan | superseded |
-| 3 | **"1.x shims STAY"** | O-09 (adopted 09-07) drops the 1.x artefact filenames | **re-opened by A6 — see `PLAN.md` §7, D-2** |
+| 3 | **"1.x shims STAY"** | O-09 (adopted 09-07) drops the 1.x artefact filenames | **re-opened by A6 — see `PLAN.md` §6, D-D (was D-2)** |
 | 4 | F13: medoid-scan consolidation is R4-owned | A-18: the seven scans stay separate | A-18 (measured rationale) |
 | 5 | F22: "do not rerun" | B-19 collapses its apparatus | superseded by B-19 |
 | 6 | contract changes need a decision entry | "break other public API freely" | `design.md` §2 (proposed) |
@@ -233,3 +241,52 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   new `.claude/PLAN.md`, `MAP.md`, `CHARTER.md`, this file; 105 superseded records, four unloadable
   skill files, twelve one-off evidence scripts, generated plots and unused figures removed (all
   recoverable at `9c08074`); two gate scripts repointed, assertions unchanged.
+- **2026-09-23 — YAGNI pass (Volkan's charter entry of that date; a Fable review and this session
+  agreed).** `PLAN.md` rewritten from 491 to ~200 lines around one test: keep an item only if it holds
+  the interface stable in every language, makes performance first-class, fixes a silently wrong
+  answer, or is a helper that deletes two copies. Decided by his instruction: **integers** — counts
+  stay `int` with no guard (the uncommitted A-10 guard was reverted; D-22's widening is not done),
+  products are `size_t` / `int64_t` by type, and a check survives only at a 32-bit third-party API
+  (`mip/index_guard.hpp`); **SIMD** is first-class as lanes across pairs (§1 reopened); rule 14's "no
+  further library" clause is superseded by rule 18. Dropped from the plan: the oracle concept,
+  `SeriesSource`, `Data<T>`, the filler Strategy / factory / fill plan / `ExecutionTarget`, `Config`'s
+  `schema` key and alias table, the C ABI, derivations as gates (D7 stays), the review-lens rounds, the
+  W7 test campaign (X-07 and X-08 stay), assertion floors, the ratchet scripts, the per-row evidence
+  ritual (`PLAN.md` §5 has the list and the reasons). Found and added: `device="hpc"` cannot work from
+  an installed wheel (FX-5); CUDA refuses N ≥ 65,537 where Metal chunks (PF-4). Open for Volkan:
+  `PLAN.md` §6.
+- **2026-09-23 — Volkan on the proposed decisions** (verbatim in `CHARTER.md`): no Highway — it was
+  tried in March–April 2026 and was not worth the effort, so `PLAN.md` PF-5 is a plain C++ lane loop
+  with a kill criterion; the 1.x output filenames stay; the Eigen-removal gap is to be investigated,
+  not accepted (PF-6). The macOS question: the wheel targets macOS 11 (2020), the readers' floating-point
+  `from_chars` needs macOS 26 (2025) and `to_chars` 13.3 (2023) — hence FX-6's fast_float and a 13.3
+  wheel target.
+- **2026-09-23 — test floors removed (GT-1).** §4 row 7 ("floors are recorded in `AGENTS.md`" →
+  `tests/floors.cmake`) is obsolete: per-test assertion and case floors are gone, and a test passes
+  when it ran at least one assertion in at least one case, failed none and did not skip unless it is
+  `MAY_SKIP`. The F22 mutation apparatus is replaced by one compile probe, as B-19 decided on
+  2026-09-07.
+- **2026-09-24 — device on a Problem, and which error (IF-1, FX-1).** `docs/api-contract-2.0.md` gains a `device` row in §2.1
+  and a §6.4: `Problem::set_device(Device, index = 0)` (Python `Problem(device=…)`, MATLAB `'Device'`) is additive; a Problem
+  never reads the process-wide `dtwc::device()`, which stays Tier-1's default. `DeviceError` is for a request the selected device
+  cannot run (variant, missing strategy, ndim, Float32 / view / mmap series, Metal FP64 or index ≠ 0); `InvalidInput` is for an
+  infeasible band and for `hpc` on a Problem. No band-widening option: the error names the smallest feasible band, and per-pair
+  widening (dtaidistance's behaviour) could be added later without a break.
+- **2026-09-24 — IF-2 design adopted by the main session** (`plans/2026-09-24-if2-config-design.md`; Volkan may overturn any
+  point). `Config` is keyed by the CLI long names and reuses `DTWVariantParams`, `CUDASettings`, `MIPSettings` whole; one
+  `Name<E>` table per enum is the only string↔enum mapping (CLI11, config files, MEX, Python); `cli::bind` is the only key table,
+  and Python / MATLAB keywords are rendered to config text and parsed by it; `run(Config)` is the one pipeline and `cluster()`
+  wraps it with its signature unchanged; a new `ClusterMethod` type rather than extending `Method`; `Problem::set_metric`; the
+  CLI's series storage follows the device; `dtwc_cl` does not submit to hpc (D-10); `settings::paths` goes pre-tag (D-3); an old
+  `dtwc_cl` on a cluster rejecting new keys is accepted. Rejected alternatives: extending `Method` (a runtime refusal where a type
+  serves), hpc by argv (keeps three validation layers), a `--storage` flag.
+- **2026-09-24 — `cuda` is `gpu` in Python too (IF-3); the contract records the 2026-09-24 batch (RL-2).** §6.1 already made
+  `cuda` an alias of `gpu`; only Python read it as CUDA-only, and it now parses with `detail::parse_device` through one binding.
+  `docs/api-contract-2.0.md` gains: `set_max_iter` / `set_n_repetitions` n < 1 → `InvalidInput`; `[[nodiscard]]` `set_solver`
+  (false for Gurobi on a build without it) and `load_checkpoint`; the `read_distance_matrix` size rule; writers checked after
+  close (`IOError`); the `dtw_function()` validation; FX-15's input domain and the unchecked `warping*.hpp` layer; F25 closed.
+- **2026-09-24 — a feature this build lacks takes its subsystem's error type.** A GPU request on a build without a GPU backend is
+  `DeviceError`, Gurobi without Gurobi is `SolverError`, and a file format or mmap store this build cannot read (Parquet, Arrow,
+  `.dtws` without llfio) is `IOError`. A reviewer proposed `InvalidInput` for the I/O cases, since Python then sees an `OSError`
+  for a build limitation; rejected for one rule across subsystems — the message names the build option to enable.
+

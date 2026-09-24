@@ -89,11 +89,16 @@ struct FixedBatchDistances {
     for (std::size_t j = 0; j < m; ++j)
       sample_position[static_cast<std::size_t>(sample[j])] = static_cast<int>(j);
 
-    // Resolve both getters serially before entering OpenMP: a legacy raw
-    // semantic mutation may require the mutable getter to rebind once. Each
-    // worker then reads stable function objects and writes a disjoint row.
-    const auto &dtw_f32 = prob.dtw_function_f32();
-    const auto &dtw_f64 = prob.dtw_function();
+    // Resolve the getter serially before entering OpenMP: a legacy raw
+    // semantic mutation may require the mutable getter to rebind once, and its
+    // first call validates the request (band feasibility, non-finite values)
+    // with a typed error that must not be thrown inside the parallel region.
+    // Only the getter for the stored precision: the Float32 one also rejects
+    // variant parameters Float64 data never narrows. Each worker then reads a
+    // stable function object and writes a disjoint row.
+    const bool f32 = prob.data().is_f32();
+    const Problem::dtw_fn_f32_t *dtw_f32 = f32 ? &prob.dtw_function_f32() : nullptr;
+    const Problem::dtw_fn_t *dtw_f64 = f32 ? nullptr : &prob.dtw_function();
     std::vector<std::uint64_t> row_evaluations(n, 0);
     std::vector<double> row_maxima(n, 0.0);
     std::exception_ptr failure;
@@ -105,14 +110,14 @@ struct FixedBatchDistances {
         for (std::size_t j = 0; j < m; ++j) {
           double d = 0.0;
           if (i != sample[j]) {
-            if (prob.data().is_f32())
-              d = dtw_f32(
+            if (f32)
+              d = (*dtw_f32)(
                 prob.data().series_f32(static_cast<std::size_t>(i)),
                 prob.data().series_f32(
                   static_cast<std::size_t>(sample[j])));
             else
-              d = dtw_f64(prob.series(static_cast<std::size_t>(i)),
-                          prob.series(static_cast<std::size_t>(sample[j])));
+              d = (*dtw_f64)(prob.series(static_cast<std::size_t>(i)),
+                             prob.series(static_cast<std::size_t>(sample[j])));
             ++calls;
           }
           if (!std::isfinite(d) || d < 0.0)

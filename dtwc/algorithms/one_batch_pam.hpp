@@ -10,6 +10,7 @@
 
 #include "../core/clustering_result.hpp"
 #include "../base/error.hpp"
+#include "../base/names.hpp"
 #include "../base/settings.hpp"
 
 #include <cstddef>
@@ -26,6 +27,13 @@ enum class OneBatchWeighting {
   Uniform,          ///< Plain uniform sample (the theorem's baseline).
   Debiased,         ///< Finite-max diagonal correction from the obpam experiments.
   NearestNeighbor  ///< Count/mean NNIW plus the same finite-max correction.
+};
+
+inline constexpr Name<OneBatchWeighting> one_batch_weighting_names[]{
+  { "uniform", OneBatchWeighting::Uniform },
+  { "debiased", OneBatchWeighting::Debiased },
+  { "debias", OneBatchWeighting::Debiased },
+  { "nniw", OneBatchWeighting::NearestNeighbor },
 };
 
 inline void validate_one_batch_weighting(OneBatchWeighting value)

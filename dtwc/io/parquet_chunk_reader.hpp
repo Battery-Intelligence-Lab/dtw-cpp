@@ -15,6 +15,7 @@
 #ifdef DTWC_HAS_PARQUET
 
 #include "../Data.hpp"
+#include "../base/error.hpp"
 #include "../base/settings.hpp"
 #include "parquet_schema.hpp"
 
@@ -42,7 +43,7 @@ namespace detail {
 inline void check_arrow_chunk(const arrow::Status &s, const char *ctx)
 {
   if (!s.ok())
-    throw std::runtime_error(std::string(ctx) + ": " + s.ToString());
+    throw dtwc::IOError(std::string(ctx) + ": " + s.ToString());
 }
 
 /// Extract one list cell into `out`, converting Float32/Float64 to `T`.
@@ -179,7 +180,7 @@ public:
     else if (value_type->id() == arrow::Type::DOUBLE)
       source_value_bytes_ = sizeof(double);
     else
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "ParquetChunkReader: selected column values must be Float32 or Float64, got "
         + value_type->ToString());
 
@@ -188,7 +189,7 @@ public:
     num_row_groups_ = pq_meta->num_row_groups();
     total_rows_ = pq_meta->num_rows();
     if (num_row_groups_ < 0 || total_rows_ < 0)
-      throw std::runtime_error("ParquetChunkReader: invalid negative file metadata");
+      throw dtwc::IOError("ParquetChunkReader: invalid negative file metadata");
 
     rg_row_counts_.resize(num_row_groups_);
     rg_row_offsets_.resize(num_row_groups_);
@@ -202,7 +203,7 @@ public:
       const auto value_count = column->num_values();
       if (rg_row_counts_[rg] < 0 || encoded_bytes < 0 || value_count < 0
           || rg_row_counts_[rg] > std::numeric_limits<int64_t>::max() - offset)
-        throw std::runtime_error("ParquetChunkReader: invalid row-group metadata");
+        throw dtwc::IOError("ParquetChunkReader: invalid row-group metadata");
       rg_row_offsets_[rg] = offset;
       rg_encoded_bytes_[rg] = saturating_from_i64(encoded_bytes);
       rg_value_counts_[rg] = saturating_from_i64(value_count);
@@ -213,7 +214,7 @@ public:
         total_value_count_, rg_value_counts_[rg]);
     }
     if (offset != total_rows_)
-      throw std::runtime_error(
+      throw dtwc::IOError(
         "ParquetChunkReader: row-group counts do not match file metadata");
 
   }
@@ -273,9 +274,10 @@ public:
   /// @return Owning Data with all series from the batch.
   Data read_row_groups(int rg_start, int count) const
   {
+    // Programming error: fast_clara walks [0, num_row_groups()) in batches.
     if (rg_start < 0 || count < 0 || count > num_row_groups_
         || rg_start > num_row_groups_ - count)
-      throw std::runtime_error("ParquetChunkReader::read_row_groups: range out of bounds");
+      throw std::logic_error("ParquetChunkReader::read_row_groups: range out of bounds");
 
     std::vector<int> rg_indices(count);
     std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
@@ -299,8 +301,8 @@ public:
   Data read_row_groups_f32(int rg_start, int count) const
   {
     if (rg_start < 0 || count < 0 || count > num_row_groups_
-        || rg_start > num_row_groups_ - count)
-      throw std::runtime_error("ParquetChunkReader::read_row_groups_f32: range out of bounds");
+        || rg_start > num_row_groups_ - count) // programming error, as in read_row_groups
+      throw std::logic_error("ParquetChunkReader::read_row_groups_f32: range out of bounds");
 
     std::vector<int> rg_indices(count);
     std::iota(rg_indices.begin(), rg_indices.end(), rg_start);
@@ -365,7 +367,7 @@ public:
     }
 
     if (largest_group > ram_budget) {
-      throw std::runtime_error(
+      throw dtwc::InvalidInput(
         "ParquetChunkReader: --ram-limit leaves " +
         std::to_string(ram_budget) +
         " bytes for chunks, but one row group needs approximately " +
@@ -393,14 +395,16 @@ private:
   {
     static_assert(std::is_same_v<T, data_t> || std::is_same_v<T, float>);
     if (indices.empty()) return Data{};
+    // Programming errors: fast_clara rejects a scalar column before streaming and
+    // samples indices from [0, rows).
     if (!list_layout_)
-      throw std::runtime_error(
+      throw std::logic_error(
         "ParquetChunkReader::read_rows requires list-per-row Parquet; "
         "a scalar column is one time series");
 
     for (const auto index : indices) {
       if (index < 0 || index >= total_rows_)
-        throw std::runtime_error(
+        throw std::logic_error(
           "ParquetChunkReader::read_rows: index " + std::to_string(index) +
           " out of range [0, " + std::to_string(total_rows_) + ")");
     }
@@ -409,7 +413,7 @@ private:
     size_t retained_bytes = saturating_multiply(
       indices.size(), result_object_bytes);
     if (retained_bytes > ram_budget)
-      throw std::runtime_error(
+      throw dtwc::InvalidInput(
         "ParquetChunkReader::read_rows: --ram-limit is too small for sparse "
         "sample metadata");
 
@@ -442,7 +446,7 @@ private:
       const size_t group_peak = row_group_materialization_peak_bytes(
         rg, std::is_same_v<T, float>, result_object_bytes);
       if (group_peak > ram_budget - retained_bytes)
-        throw std::runtime_error(
+        throw dtwc::InvalidInput(
           "ParquetChunkReader::read_rows: selected row group needs " +
           std::to_string(group_peak) + " bytes in addition to " +
           std::to_string(retained_bytes) +
@@ -478,7 +482,7 @@ private:
       }
       const size_t copy_budget = ram_budget - retained_bytes - group_peak;
       if (selected_payload > copy_budget)
-        throw std::runtime_error(
+        throw dtwc::InvalidInput(
           "ParquetChunkReader::read_rows: copying selected series needs " +
           std::to_string(selected_payload) +
           " additional bytes, exceeding --ram-limit=" +

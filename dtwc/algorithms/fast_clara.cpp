@@ -368,7 +368,11 @@ namespace {
         sub_prob.band = prob_template.band;
         sub_prob.variant_params = prob_template.variant_params;
         sub_prob.missing_strategy = prob_template.missing_strategy;
+        sub_prob.set_metric(prob_template.metric());
+        // Device, GPU index and precision: the sample fill honours them, or
+        // validate_fill_request refuses them (e.g. a Float32 sample on a GPU).
         sub_prob.distance_strategy = prob_template.distance_strategy;
+        sub_prob.cuda_settings = prob_template.cuda_settings;
         sub_prob.set_verbose(false);
         sub_prob.set_data(std::move(sample_data));
         sub_result = fast_pam_seeded(
@@ -442,8 +446,8 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
       "fast_clara: force_parquet_streaming requires a settings-only Problem "
       "without resident series.");
 #ifndef DTWC_HAS_PARQUET
-  if (opts.force_parquet_streaming)
-    throw InvalidInput(
+  if (opts.force_parquet_streaming) // this build cannot read the format
+    throw IOError(
       "fast_clara: force_parquet_streaming requires a build with Parquet support.");
 #endif
 #ifdef DTWC_HAS_PARQUET
@@ -517,7 +521,11 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
     sub_prob.band = prob.band;
     sub_prob.variant_params = prob.variant_params;
     sub_prob.missing_strategy = prob.missing_strategy;
+    sub_prob.set_metric(prob.metric());
+    // The sample is a view, so a GPU device is refused by the sample fill
+    // (validate_fill_request) rather than computed on the CPU.
     sub_prob.distance_strategy = prob.distance_strategy;
+    sub_prob.cuda_settings = prob.cuda_settings;
     sub_prob.set_verbose(prob.verbose());
 
     if (prob.data().is_f32()) {

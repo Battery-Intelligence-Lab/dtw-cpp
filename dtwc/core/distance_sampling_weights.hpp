@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "../base/error.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -36,7 +38,7 @@ DistanceSamplingWeights distance_sampling_weights(
 {
   std::vector<bool> is_selected(distances.size(), false);
   for (const int index : selected) {
-    if (index < 0 || static_cast<size_t>(index) >= distances.size())
+    if (index < 0 || static_cast<size_t>(index) >= distances.size()) // chosen by the caller's own seeding
       throw std::logic_error(caller + ": selected index is out of range");
     is_selected[static_cast<size_t>(index)] = true;
   }
@@ -45,7 +47,7 @@ DistanceSamplingWeights distance_sampling_weights(
   for (size_t i = 0; i < distances.size(); ++i) {
     const double distance = static_cast<double>(distances[i]);
     if (!std::isfinite(distance))
-      throw std::runtime_error(
+      throw InvalidInput(
         caller + ": initialization distance must be finite");
     if (is_selected[i]) continue;
     minimum = std::min(minimum, distance);
@@ -58,13 +60,13 @@ DistanceSamplingWeights distance_sampling_weights(
     if (is_selected[i]) continue;
     const double weight = static_cast<double>(distances[i]) - shift;
     if (!std::isfinite(weight) || weight < 0.0)
-      throw std::runtime_error(
+      throw InvalidInput(
         caller + ": translated initialization weight is invalid");
     result.values[i] = weight;
     result.total += weight;
   }
   if (!std::isfinite(result.total))
-    throw std::runtime_error(
+    throw InvalidInput(
       caller + ": initialization weight total is non-finite");
   return result;
 }

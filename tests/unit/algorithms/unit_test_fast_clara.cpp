@@ -32,20 +32,6 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-static struct TestDataInitCLARA
-{
-  TestDataInitCLARA()
-  {
-    dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR);
-    // Route CSV output to a per-run temp dir so the test doesn't pollute the
-    // repo root or build tree (CWD-dependent otherwise).
-    const auto out = std::filesystem::temp_directory_path() / "dtwc_fast_clara_test";
-    std::error_code ec;
-    std::filesystem::create_directories(out, ec);
-    dtwc::settings::paths::set_results_path(out);
-  }
-} test_data_init_clara_;
-
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 
@@ -450,9 +436,12 @@ TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",
   }
 
 #ifndef DTWC_HAS_PARQUET
-  SECTION("the missing capability is loud")
+  SECTION("the missing capability is loud, as an IOError")
   {
+    // A build that cannot read the format raises IOError (IF-2 S2); it was
+    // InvalidInput, which names a bad argument.
     Problem settings_only{"clara_missing_parquet"};
+    REQUIRE_THROWS_AS(algorithms::fast_clara(settings_only, opts), dtwc::IOError);
     REQUIRE_THROWS_WITH(
       algorithms::fast_clara(settings_only, opts),
       "fast_clara: force_parquet_streaming requires a build with Parquet "

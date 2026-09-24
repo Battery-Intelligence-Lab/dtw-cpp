@@ -52,13 +52,13 @@ dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-m, --method <string>` | Clustering method | `pam` |
-| `--max-iter <int>` | Maximum iterations | 100 |
-| `--n-init <int>` | Number of random restarts (PAM/kMedoids) | 1 |
+| `-m, --method <string>` | Clustering method | `auto` |
+| `--max-iter <int>` | Maximum iterations (at least 1; `0` exits 1 before the data is read) | 100 |
+| `--n-init <int>` | Number of random restarts (PAM/kMedoids; at least 1) | 1 |
 
 Available methods: `auto`, `pam`, `onebatch` (alias `obp`), `clara`,
 `kmedoids`, `mip`, `lrcore` (alias `lr`), `hierarchical` (alias `hclust`),
-and `tadpole`.
+and `tadpole`. `auto` runs `pam` for up to 5,000 series and `clara` above that.
 
 ### DTW Options
 
@@ -158,7 +158,7 @@ file to stream them under the cap.
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--solver <string>` | MIP solver: `highs`, `gurobi` | `highs` |
+| `--solver <string>` | MIP solver: `highs`, `gurobi`. On a build without Gurobi, `gurobi` exits 1 naming the flag rather than solving with HiGHS | `highs` |
 | `--mip-gap <float>` | Optimality gap tolerance | 1e-5 |
 | `--time-limit <int>` | Solver time limit in seconds (-1 = unlimited) | -1 |
 | `--no-warm-start` | Disable FastPAM warm start | off |
@@ -185,6 +185,8 @@ file to stream them under the cap.
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 Without `--checkpoint-interval` the dense checkpoint is written once, after clustering. With it, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; the flag requires `--checkpoint <dir>` and exits 1 without it. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
+
+A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, or with a row count other than the number of input series) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
 
 TADPole's pruning schedule avoids eagerly filling all pairs, but every
 exact/fallback distance still uses the packed cache. It therefore follows
@@ -256,6 +258,11 @@ The CLI writes the following files to the output directory:
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
 | `<name>_checkpoint.bin` | Automatic binary clustering-result checkpoint |
+
+If an output file cannot be written in full (an unwritable directory, a full
+disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
+that message is incomplete. A silhouette score that cannot be computed is only a
+warning.
 
 RAM-limited Parquet streaming writes labels, medoids, and the binary result
 checkpoint, but deliberately does not materialise the dense matrix merely to

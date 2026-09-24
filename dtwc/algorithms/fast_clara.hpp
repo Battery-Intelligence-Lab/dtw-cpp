@@ -64,7 +64,13 @@ namespace algorithms {
    * an existing parent distance cache is ignored and left unchanged.
    * With force_parquet_streaming=true, `prob` must contain settings only (no
    * resident series); this prevents a hidden resident-plus-chunk memory peak.
- * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX.
+   * Each sample Problem takes `prob`'s distance settings, metric and device
+   * (strategy, GPU index, precision). An in-memory sample is a view of `prob`'s
+   * series, which a GPU fill refuses: on a GPU device, clara with a sample
+   * smaller than N raises DeviceError.
+ * @throws InvalidInput for invalid dimensions/options, including N > INT_MAX;
+ *         IOError for force_parquet_streaming on a build without Parquet;
+ *         DeviceError as above.
  */
   core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts);
 

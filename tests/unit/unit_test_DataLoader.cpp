@@ -61,8 +61,6 @@ namespace {
 fs::path dummy_data_path() { return fs::path{DTWC_TEST_DATA_DIR} / "dummy"; }
 
 using loader_setter_t = DataLoader &(DataLoader::*)(int);
-using path_setter_t = void (*)(const settings::fs::path &);
-using cstring_path_setter_t = void (*)(const char *);
 
 static_assert(std::same_as<
               decltype(static_cast<loader_setter_t>(&DataLoader::start_column)),
@@ -80,57 +78,6 @@ static_assert(std::same_as<
               loader_setter_t>);
 DTWC_POP_NO_DEPRECATED
 
-static_assert(std::same_as<
-              decltype(static_cast<path_setter_t>(
-                &settings::paths::set_data_path)),
-              path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<cstring_path_setter_t>(
-                &settings::paths::set_data_path)),
-              cstring_path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<path_setter_t>(
-                &settings::paths::set_results_path)),
-              path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<cstring_path_setter_t>(
-                &settings::paths::set_results_path)),
-              cstring_path_setter_t>);
-
-DTWC_PUSH_NO_DEPRECATED
-static_assert(std::same_as<
-              decltype(static_cast<path_setter_t>(
-                &settings::paths::setDataPath)),
-              path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<cstring_path_setter_t>(
-                &settings::paths::setDataPath)),
-              cstring_path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<path_setter_t>(
-                &settings::paths::setResultsPath)),
-              path_setter_t>);
-static_assert(std::same_as<
-              decltype(static_cast<cstring_path_setter_t>(
-                &settings::paths::setResultsPath)),
-              cstring_path_setter_t>);
-DTWC_POP_NO_DEPRECATED
-
-class PathSettingsGuard
-{
-  settings::fs::path data_{ settings::paths::data };
-  settings::fs::path results_{ settings::paths::results };
-
-public:
-  PathSettingsGuard() = default;
-  PathSettingsGuard(const PathSettingsGuard &) = delete;
-  PathSettingsGuard &operator=(const PathSettingsGuard &) = delete;
-  ~PathSettingsGuard()
-  {
-    settings::paths::data = std::move(data_);
-    settings::paths::results = std::move(results_);
-  }
-};
 }
 
 TEST_CASE("DataLoader class functionality", "[DataLoader]")
@@ -212,17 +159,41 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
 
   SECTION("Count matches load for directory")
   {
+    // data/dummy holds pandas `index,value` files: skip the `,0` header row
+    // and the index column.
     DataLoader loader(dummy_data_path());
-    loader.verbosity(0);
+    loader.start_column(1).start_row(1).verbosity(0);
+    REQUIRE(loader.count() == 25);
     REQUIRE(loader.count() == loader.load().size());
   }
 
   SECTION("Count matches load with Ndata limit")
   {
     DataLoader loader(dummy_data_path(), 10);
-    loader.verbosity(0);
+    loader.start_column(1).start_row(1).verbosity(0);
     REQUIRE(loader.count() == 10);
     REQUIRE(loader.count() == loader.load().size());
+  }
+
+  SECTION("The index column of a two-column folder is not a series")
+  {
+    // Read with the defaults, every data/dummy series used to be its index
+    // column 0, 1, 2, ... (FX-6); now the extra field is an error naming the fix.
+    DataLoader defaults(dummy_data_path(), 1);
+    defaults.verbosity(0);
+    REQUIRE_THROWS_WITH(defaults.load(),
+                        Catch::Matchers::ContainsSubstring("--skip-cols"));
+
+    DataLoader loader(dummy_data_path(), 1);
+    loader.start_column(1).start_row(1).verbosity(0);
+    const Data loaded = loader.load();
+    REQUIRE(loaded.size() == 1);
+    REQUIRE(loaded.p_names[0] == "data_1");
+    // data_1.csv: 5247 values after the header; lines "1998,3.447141326" and
+    // "5245,0.04294559".
+    REQUIRE(loaded.p_vec[0].size() == 5247);
+    REQUIRE(loaded.p_vec[0][1998] == 3.447141326);
+    REQUIRE(loaded.p_vec[0][5245] == 0.04294559);
   }
 
   SECTION("Count throws on non-existent file")
@@ -232,7 +203,7 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
   }
 }
 
-TEST_CASE("F21 canonical C++ loader and path names preserve legacy state",
+TEST_CASE("F21 canonical C++ loader names preserve legacy state",
           "[DataLoader][f21][public-api]")
 {
   DataLoader canonical;
@@ -274,87 +245,9 @@ TEST_CASE("F21 canonical C++ loader and path names preserve legacy state",
   REQUIRE(canonical.startColumn() == legacy.startColumn());
   REQUIRE(canonical.startRow() == legacy.startRow());
 
-  const auto original_data = settings::paths::data;
-  const auto original_results = settings::paths::results;
-  {
-    PathSettingsGuard restore_paths;
-    const auto poison = [](const settings::fs::path &data,
-                           const settings::fs::path &results) {
-      settings::paths::data = data;
-      settings::paths::results = results;
-    };
-    const auto require_paths = [](const settings::fs::path &data,
-                                  const settings::fs::path &results) {
-      REQUIRE(settings::paths::data == data);
-      REQUIRE(settings::paths::results == results);
-    };
-
-    poison("poison-data-1", "poison-results-1");
-    settings::paths::set_data_path(settings::fs::path{ "canonical-data-path" });
-    require_paths("canonical-data-path", "poison-results-1");
-
-    poison("poison-data-2", "poison-results-2");
-    settings::paths::set_results_path(
-      settings::fs::path{ "canonical-results-path" });
-    require_paths("poison-data-2", "canonical-results-path");
-
-    poison("poison-data-3", "poison-results-3");
-    DTWC_PUSH_NO_DEPRECATED
-    settings::paths::setDataPath(settings::fs::path{ "legacy-data-path" });
-    DTWC_POP_NO_DEPRECATED
-    require_paths("legacy-data-path", "poison-results-3");
-
-    poison("poison-data-4", "poison-results-4");
-    DTWC_PUSH_NO_DEPRECATED
-    settings::paths::setResultsPath(
-      settings::fs::path{ "legacy-results-path" });
-    DTWC_POP_NO_DEPRECATED
-    require_paths("poison-data-4", "legacy-results-path");
-
-    poison("poison-data-5", "poison-results-5");
-    {
-      const std::string path = "canonical-cstring-data";
-      settings::paths::set_data_path(path.c_str());
-      require_paths("canonical-cstring-data", "poison-results-5");
-    }
-    REQUIRE(settings::paths::data == "canonical-cstring-data");
-
-    poison("poison-data-6", "poison-results-6");
-    {
-      const std::string path = "canonical-cstring-results";
-      settings::paths::set_results_path(path.c_str());
-      require_paths("poison-data-6", "canonical-cstring-results");
-    }
-    REQUIRE(settings::paths::results == "canonical-cstring-results");
-
-    poison("poison-data-7", "poison-results-7");
-    {
-      const std::string path = "legacy-cstring-data";
-      DTWC_PUSH_NO_DEPRECATED
-      settings::paths::setDataPath(path.c_str());
-      DTWC_POP_NO_DEPRECATED
-      require_paths("legacy-cstring-data", "poison-results-7");
-    }
-    REQUIRE(settings::paths::data == "legacy-cstring-data");
-
-    poison("poison-data-8", "poison-results-8");
-    {
-      const std::string path = "legacy-cstring-results";
-      DTWC_PUSH_NO_DEPRECATED
-      settings::paths::setResultsPath(path.c_str());
-      DTWC_POP_NO_DEPRECATED
-      require_paths("poison-data-8", "legacy-cstring-results");
-    }
-    REQUIRE(settings::paths::results == "legacy-cstring-results");
-  }
-
-  REQUIRE(settings::paths::data == original_data);
-  REQUIRE(settings::paths::results == original_results);
-
   std::cout
-    << "F21_CPP_NAMES canonical=4/4 legacy=4/4 overloads=12/12 "
-       "loader_state=22/22 path_state=16/16 cstring_copy=4/4 "
-       "skips=0 verdict=PASS\n";
+    << "F21_CPP_NAMES canonical=2/2 legacy=2/2 overloads=4/4 "
+       "loader_state=22/22 skips=0 verdict=PASS\n";
 }
 
 #ifdef DTWC_HAS_MMAP

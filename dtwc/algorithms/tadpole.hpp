@@ -86,7 +86,8 @@ struct TADPoleStats {
  * @param prune       true  → apply LB/UB pruning where the live predicate permits;
  *                    false → compute every DTW (independent brute-force oracle).
  *                    The predicate rejects anything but Standard, univariate,
- *                    float64, MissingStrategy::Error — in particular there is NO
+ *                    float64, MissingStrategy::Error with Problem::metric() L1
+ *                    (the bounds are L1) — in particular there is NO
  *                    PRUNING ON FLOAT32 DATA (bounds from float64 storage against
  *                    an exact side that branches on is_f32() are inadmissible),
  *                    where prune=true costs the same as prune=false and
@@ -98,7 +99,7 @@ struct TADPoleStats {
  * @param stats       If non-null, receives the pruning ledger.
  * @return core::ClusteringResult: labels[i] ∈ [0,k), medoid_indices = the k
  *         density-peak centers, total_cost = Σ_i d(i, its center).
- * @throws std::runtime_error on n_clusters ∉ [1, N] or dc ≤ 0.
+ * @throws InvalidInput on n_clusters ∉ [1, N] or dc ≤ 0.
  *
  * @note Writes the result back into `prob` (clusters_ind / centroids_ind /
  *       n_clusters), matching fast_pam's Task-1.6 write-back contract.

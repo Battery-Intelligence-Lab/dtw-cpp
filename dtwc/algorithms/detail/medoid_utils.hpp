@@ -17,28 +17,29 @@
 
 #pragma once
 
+#include "../../base/error.hpp"
+
 #include <algorithm>
-#include <stdexcept>
 #include <string>
 #include <vector>
 
 namespace dtwc::algorithms::detail {
 
 /// Validate medoid indices: must be non-empty, unique, and in range [0, N).
-/// @throws std::runtime_error on any violation.
+/// @throws InvalidInput on any violation.
 inline void validate_medoids(const std::vector<int>& medoids, int N)
 {
     if (medoids.empty())
-        throw std::runtime_error("validate_medoids: empty medoid list");
+        throw InvalidInput("validate_medoids: empty medoid list");
     for (int m : medoids) {
         if (m < 0 || m >= N)
-            throw std::runtime_error("validate_medoids: medoid index " + std::to_string(m)
-                                     + " out of range [0, " + std::to_string(N) + ")");
+            throw InvalidInput("validate_medoids: medoid index " + std::to_string(m)
+                               + " out of range [0, " + std::to_string(N) + ")");
     }
     auto sorted = medoids;
     std::sort(sorted.begin(), sorted.end());
     if (std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end())
-        throw std::runtime_error("validate_medoids: duplicate medoid indices");
+        throw InvalidInput("validate_medoids: duplicate medoid indices");
 }
 
 } // namespace dtwc::algorithms::detail

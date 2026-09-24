@@ -739,7 +739,7 @@ tree. LR-core is not the bound engine for `benders.cpp`.
 - **P2 (fixing power): FALSIFIED as a universal floor.** Across 36 qualifying
   clustered instances, mean elimination was **80.3%**, minimum **73.3%**, and
   **77.8%** reached 80%
-  (`.claude/PLAN-archive-2026-07-20-phases0-9.md:428-434`).
+  (`git show e784e5c:.claude/PLAN-archive-2026-07-20-phases0-9.md`, lines 428–434).
   The failed band was retained without rescue-tuning.
 - **P3 remains unmeasured.** The bytes/STREAM and N=10⁴ throughput prediction
   requires a quiet-machine benchmark and is not evidence for current runtime.

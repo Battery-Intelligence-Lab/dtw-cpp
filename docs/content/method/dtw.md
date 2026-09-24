@@ -48,6 +48,8 @@ The three predecessors correspond to a diagonal match, advancing only in $$x$$, 
 
 > **Cost convention:** The formula above uses the absolute difference (L1 local cost), which is the default in DTW-C++. The alternative squared-L2 local cost is $$(x_i-y_j)^2$$. If amplitudes have unit $$U$$, the accumulated results have units $$U$$ and $$U^2$$ respectively; DTWC++ does not take a final square root. Warping means that both accumulated forms are dissimilarities, not a metric: distinct repeated-value sequences can have zero cost, and the triangle inequality can fail.
 
+> **Input values:** the recurrence is defined on finite values. NaN or ±inf passed to `dtwc::distance::*`, `core::dtw_runtime`, `soft_dtw_gradient`, the Python single-pair distance functions and `compute_distance_matrix`, or MATLAB's `dtwc.distance.*` raises `InvalidInput` naming the series and the 0-based position, for example `distance::dtw: y[3] is NaN`. NaN is accepted only as a missing value, by the [missing-data](../missing-data/) distances; ±inf never is. The C++ per-pair wrappers in `warping*.hpp` (`dtwBanded`, `dtwFull_L`, …) do not check: they are what the matrix fill calls for every pair, so their caller must pass finite values (and NaN only to the missing-data wrappers).
+
 The final element $$C_{n,m}$$ is the DTW dissimilarity between the two series. Below is an example of the cost matrix $$C$$ and the warping path through it.
 
 As an example, below are two time series with DTW pairwise alignment between elements. On the right is the cost matrix $$C$$ for the two time series, showing the warping path and final DTW cost at element $$C_{14,13}$$.
@@ -112,9 +114,8 @@ local RTX. Its registered real-device gate covers pairwise and one/K-vs-N
 kernel families, both singleton orientations, infeasible windows, and
 `INT_MAX`.
 
-Metal source implements the same fixed geometry and sentinel translation, but
-real-device execution remains `[BLOCKED-ENV]` under F12. The permanent Metal
-gate contains the independent oracle, but this Windows host cannot compile or
-execute the Objective-C++/Metal path. Thus the contract above is executable
-evidence for CPU and CUDA, source-confirmed for Metal, and still awaiting an
-Apple-device parity result.
+Metal source implements the same fixed geometry and sentinel translation, and
+the permanent Metal gate, which holds the independent oracle and compares each
+Metal value with the CPU kernel on the same inputs, passed on an Apple M5 Pro
+on 2026-09-23 (FX-13). The contract above is executable evidence for CPU, CUDA,
+and Metal.

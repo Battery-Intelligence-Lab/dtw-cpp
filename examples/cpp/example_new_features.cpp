@@ -3,10 +3,8 @@
  * @brief Demonstrates new DTWC++ features: DTW variants, missing data,
  *        FastCLARA, checkpointing, and distance metrics.
  *
- * Build:
+ * Build (configure with -DDTWC_BUILD_EXAMPLES=ON):
  *   cmake --build . --target example_new_features
- * or:
- *   g++ -std=c++17 -O2 -I../dtwc example_new_features.cpp -o example_new_features
  *
  * @date 29 Mar 2026
  */
@@ -14,8 +12,10 @@
 #include <dtwc.hpp>
 
 #include <cmath>
+#include <cstdlib>
+#include <filesystem>
 #include <iostream>
-#include <numeric>
+#include <numbers>
 #include <random>
 #include <string>
 #include <vector>
@@ -32,7 +32,7 @@ int main()
   const int L = 200;
   std::vector<data_t> x(L), y(L);
   for (int i = 0; i < L; ++i) {
-    double t = 4.0 * M_PI * i / (L - 1);
+    double t = 4.0 * std::numbers::pi * i / (L - 1);
     x[i] = std::sin(t);
     y[i] = std::sin(t + 0.5);  // phase-shifted
   }
@@ -89,9 +89,11 @@ int main()
   }
 
   // Use FastCLARA (avoids O(N^2) distance matrix)
+  // Braces, not parentheses: `Data data(std::vector<...>(all_series), ...)`
+  // declares a function. The copies keep all_series and names for section 4.
   dtwc::Problem prob("clara_demo");
-  dtwc::Data data(std::vector<std::vector<data_t>>(all_series),
-                   std::vector<std::string>(names));
+  dtwc::Data data{ std::vector<std::vector<data_t>>(all_series),
+                   std::vector<std::string>(names) };
   prob.set_data(std::move(data));
 
   dtwc::algorithms::CLARAOptions opts;
@@ -158,8 +160,6 @@ int main()
   // Clean up checkpoint directory
   std::filesystem::remove_all(ckpt_path);
   std::cout << "  Cleaned up checkpoint.\n\n";
-
-  std::cout << "All examples completed successfully.\n";
 
   // -------------------------------------------------------------------------
   // 5. Float32 data — halved memory, identical clustering results

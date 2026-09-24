@@ -198,6 +198,29 @@ class TestBandProperty:
         # Banded should be >= full (or equal for trivial cases)
         assert d_banded >= d_full - 1e-10
 
+    def test_a_complete_matrix_needs_no_feasible_band(self):
+        """Every pair known: nothing is computed, so no band can be infeasible.
+
+        Lengths 4, 10, 5, 10 under band 2 leave pairs no warping path fits.
+        The oracle is the matrix's own numbers: k=2 costs 1 + 2 = 3.
+        """
+        p = dtwcpp.Problem("known")
+        p.set_data([[0.0] * 4, [1.0] * 10, [2.0] * 5, [3.0] * 10],
+                   ["a", "b", "c", "d"])
+        p.band = 2
+        known = np.array([[0.0, 1.0, 9.0, 9.0], [1.0, 0.0, 9.0, 9.0],
+                          [9.0, 9.0, 0.0, 2.0], [9.0, 9.0, 2.0, 0.0]])
+        p.set_distance_matrix(known)
+        assert p.dist_by_ind(0, 1) == 1.0
+        assert dtwcpp.fast_pam(p, 2).total_cost == 3.0
+
+        # A pair left to compute brings the band check back, cached pair or not.
+        holes = known.copy()
+        holes[0, 1] = holes[1, 0] = np.nan
+        p.set_distance_matrix(holes)
+        with pytest.raises(ValueError, match="band = 2"):
+            p.dist_by_ind(2, 3)
+
 
 class TestVariant:
     """Tests for DTW variant selection on Problem."""

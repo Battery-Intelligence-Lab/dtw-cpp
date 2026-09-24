@@ -9,7 +9,7 @@ DTW-C++ can be used as a C++ library, from the command line, or via its Python b
 
 - Edit `main.cpp` in the `dtwc` folder and use the `dtwc_main` executable after compilation using the examples in `examples` folder. 
 - Use DTW-C++ from the command line interface, by using the `dtwc_cl` executable after compilation. 
-- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. However, it should be noted that including DTWC++ may make the predefined path variables such as `dtwc::settings::paths::data` invalid. Therefore, you may manually define the required paths depending on the structure of your folders. 
+- Use DTW-C++ as an external library in your C++ project by linking the `dtwc++` target in your project. Download the source code to your folder of preference, include the line `add_subdirectory(dtw-cpp)` in your `CMakeLists.txt` file. Then link your library. Alternatively, you may also use [CPM](https://github.com/cpm-cmake/) to interactively download and include DTW-C++. DTW-C++ has no built-in data or results folder: pass your data paths to the loaders, and set a `Problem`'s output folder with `set_output_folder` (the default is `./results/`, relative to the working directory).
 
 ## Dependencies
 
@@ -95,6 +95,12 @@ brew install libomp llvm && brew link --force libomp
 > **Note:** Apple Clang does not include OpenMP support. Install it via Homebrew:
 > `brew install libomp && brew link --force libomp`
 > This applies to both Intel and Apple Silicon Macs.
+
+> **Building for other Macs:** Homebrew installs the `libomp` bottle built for your macOS
+> release, and that release is its minimum, so a binary that bundles it will not start on an
+> older macOS. The released wheels and CLI archives (macOS 13.3 or later) instead bundle a runtime
+> built by `bash scripts/build_libomp_macos.sh <prefix>`; configure with
+> `-DOpenMP_ROOT=<prefix> -DCMAKE_OSX_DEPLOYMENT_TARGET=13.3` to do the same.
 
 3. Clone the repository using the following command or download it as a [*.zip file](https://github.com/battery-intelligence-lab/dtw-cpp/archive/refs/heads/main.zip): 
     ```bash

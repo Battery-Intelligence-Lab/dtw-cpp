@@ -19,6 +19,7 @@
  * @date 2026-07-07
  */
 
+#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -29,6 +30,7 @@
 #include <filesystem>
 #include <limits>
 #include <memory>
+#include <string>
 #include <vector>
 
 #if !defined(DTWC_HAS_ARROW)
@@ -45,6 +47,7 @@ TEST_CASE("I/O reader hardening tests skipped", "[io]")
 #include <arrow/ipc/api.h>
 #include <arrow/util/key_value_metadata.h>
 
+#include <base/error.hpp>
 #include <io/arrow_ipc_reader.hpp>
 
 #if defined(DTWC_HAS_PARQUET)
@@ -103,17 +106,25 @@ std::shared_ptr<arrow::Array> make_list_f64(const std::vector<std::vector<double
   return out;
 }
 
-// Write a single-column Arrow IPC (Feather v2) file.
-void write_ipc(const std::filesystem::path &path,
-               const std::shared_ptr<arrow::Schema> &schema,
-               const std::shared_ptr<arrow::Array> &arr)
+// Write an Arrow IPC (Feather v2) file holding one record batch.
+void write_ipc_columns(const std::filesystem::path &path,
+                       const std::shared_ptr<arrow::Schema> &schema,
+                       const std::vector<std::shared_ptr<arrow::Array>> &columns)
 {
-  auto batch = arrow::RecordBatch::Make(schema, arr->length(), { arr });
+  auto batch = arrow::RecordBatch::Make(schema, columns.front()->length(), columns);
   auto out = unwrap(arrow::io::FileOutputStream::Open(path.string()));
   auto writer = unwrap(arrow::ipc::MakeFileWriter(out, schema));
   REQUIRE(writer->WriteRecordBatch(*batch).ok());
   REQUIRE(writer->Close().ok());
   REQUIRE(out->Close().ok());
+}
+
+// Write a single-column Arrow IPC (Feather v2) file.
+void write_ipc(const std::filesystem::path &path,
+               const std::shared_ptr<arrow::Schema> &schema,
+               const std::shared_ptr<arrow::Array> &arr)
+{
+  write_ipc_columns(path, schema, { arr });
 }
 
 } // namespace
@@ -202,6 +213,73 @@ TEST_CASE("ArrowIPC: out-of-bounds list offset rejected", "[io][arrow]")
 
   REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), std::runtime_error);
   std::filesystem::remove(tmp);
+}
+
+TEMPLATE_TEST_CASE("ArrowIPC: a Utf8 or LargeUtf8 name column is read", "[io][arrow]",
+                   arrow::StringBuilder, arrow::LargeStringBuilder)
+{
+  // Positive control for the name-column type check below. LargeUtf8 is
+  // Polars' default string type: it must be read, with its 64-bit offsets.
+  auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
+  TestType sb;
+  REQUIRE(sb.AppendValues(std::vector<std::string>{ "first", "second" }).ok());
+  std::shared_ptr<arrow::Array> names;
+  REQUIRE(sb.Finish(&names).ok());
+  auto schema = arrow::schema(
+    { arrow::field("data", data->type()), arrow::field("name", names->type()) });
+  auto tmp = tmpdir() / (names->type()->ToString() + "_names.arrow");
+  write_ipc_columns(tmp, schema, { data, names });
+
+  {
+    auto src = dtwc::io::ArrowIPCDataSource::open(tmp);
+    REQUIRE(src.size() == 2);
+    REQUIRE(src.name(0) == "first");
+    REQUIRE(src.name(1) == "second");
+  } // Windows cannot unlink an Arrow file while the reader still owns its mmap.
+  std::filesystem::remove(tmp);
+}
+
+TEST_CASE("ArrowIPC: a non-string name column is rejected by type", "[io][arrow]")
+{
+  // B-08: the 'name' column was static_cast to StringArray with no type check,
+  // so an Int64 name column was undefined behaviour. It is now an IOError (a
+  // bad Arrow type, contract §5) naming the file and the column.
+  auto data = make_list_f64({ { 1.0, 2.0 }, { 3.0, 4.0 } });
+  arrow::Int64Builder nb;
+  REQUIRE(nb.AppendValues(std::vector<int64_t>{ 7, 8 }).ok());
+  std::shared_ptr<arrow::Array> names;
+  REQUIRE(nb.Finish(&names).ok());
+  auto schema = arrow::schema(
+    { arrow::field("data", data->type()), arrow::field("name", names->type()) });
+  auto tmp = tmpdir() / "int64_names.arrow";
+  write_ipc_columns(tmp, schema, { data, names });
+
+  REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), dtwc::IOError);
+  REQUIRE_THROWS_WITH(dtwc::io::ArrowIPCDataSource::open(tmp),
+                      Catch::Matchers::ContainsSubstring("'name'")
+                        && Catch::Matchers::ContainsSubstring("int64_names.arrow"));
+  std::filesystem::remove(tmp);
+}
+
+TEST_CASE("ArrowIPC: ndim metadata must be a whole positive integer", "[io][arrow]")
+{
+  // B-08: ndim was parsed with an unguarded std::stoul, so "abc" escaped as a
+  // context-free std::invalid_argument, "-1" wrapped to 2^64 - 1 and "2x" read
+  // as 2. Each is now an IOError naming the file and the value.
+  for (const std::string text : { "abc", "-1", "2x", "", "99999999999999999999999" }) {
+    INFO("ndim metadata '" << text << "'");
+    auto arr = make_list_f64({ { 1.0, 2.0, 3.0, 4.0 } });
+    auto meta = arrow::key_value_metadata({ "ndim" }, { text });
+    auto schema = arrow::schema({ arrow::field("data", arr->type()) }, meta);
+    auto tmp = tmpdir() / "ndim_text.arrow";
+    write_ipc(tmp, schema, arr);
+
+    REQUIRE_THROWS_AS(dtwc::io::ArrowIPCDataSource::open(tmp), dtwc::IOError);
+    REQUIRE_THROWS_WITH(dtwc::io::ArrowIPCDataSource::open(tmp),
+                        Catch::Matchers::ContainsSubstring("ndim")
+                          && Catch::Matchers::ContainsSubstring("ndim_text.arrow"));
+    std::filesystem::remove(tmp);
+  }
 }
 
 // -------------------------- Parquet reader ----------------------------

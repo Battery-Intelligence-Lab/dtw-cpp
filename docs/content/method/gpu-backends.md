@@ -12,9 +12,34 @@ DTW is embarrassingly parallel across pairs but **sequential within** each pair 
 
 Both inherit a shared option/result base, then add backend-specific fields and
 defaults. Through `Problem`, an unavailable or uncompiled requested backend
-raises `DeviceError` rather than changing to CPU. Some lower-level operational
-Metal failures still escape as `std::runtime_error` (F31), and several explicit
-GPU options currently degrade without a universally visible signal (F30).
+raises `DeviceError` rather than changing to CPU. A Metal buffer allocation or
+kernel that fails raises `DeviceError` too, and some explicit GPU options — a
+kernel override or an LB stage the chosen kernel lacks — currently degrade
+without a universally visible signal (F30).
+
+## What a `Problem` can run on a GPU
+
+`Problem::set_device(Device::GPU)` (Python `Problem(device="gpu")`, MATLAB
+`dtwc.Problem(name, 'Device', 'gpu')`) selects the build's backend, CUDA else
+Metal; `DistanceMatrixStrategy::CUDA` and `Metal` are the same request spelled
+per backend. Before any pair is computed, one validator checks the request
+against what the kernels implement — Standard DTW on univariate Float64 series
+held in RAM, L1 or squared L2, `MissingStrategy::Error` — and anything else
+raises `DeviceError` naming the setting and its value:
+
+| Request | GPU result |
+|---|---|
+| a variant other than Standard, a missing-data strategy, `ndim > 1` | `DeviceError` |
+| Float32, mmap-backed or view-mode series | `DeviceError` |
+| squared L2 (`Problem::set_metric(MetricType::SquaredL2)`, dense or mapped) | computed with `use_squared_l2` |
+| Metal: precision FP64, or a GPU index other than 0 | `DeviceError` |
+| CUDA: precision Auto, FP32 or FP64; any device index | honoured |
+| a band narrower than the longest-minus-shortest series length (every device) | `InvalidInput` naming both series and the smallest feasible band |
+
+The same validator runs where the lazy `dist_by_ind` path starts. Known gap:
+that path, like the matrix-free schedules, still computes on the CPU when the
+device is a GPU, and OneBatchPAM and FastCLARA's assignment compute through
+`Problem::dtw_function()`, which the validator does not see.
 
 > **Compile-time flags.** CUDA defaults OFF and is enabled with
 > `-DDTWC_ENABLE_CUDA=ON`. `DTWC_ENABLE_METAL` defaults ON but is built only on
@@ -82,7 +107,8 @@ cuda_opts.kernel_override = dtwc::KernelOverride::RegTile;
   flag. That violates the explicit-option rule and is tracked as F30.
 - CUDA adds `device_id`, `CUDAPrecision`, and a `-1.0` threshold-off default.
   Metal adds `MetalPrecision`, `lb_envelope_band`, and a `0.0` threshold
-  default. Metal FP64 currently becomes FP32, another F30 path.
+  default. Metal's kernels are FP32: `MetalPrecision::FP64` raises
+  `DeviceError` at every Metal entry point.
 
 ## Lower-bound pruning (LB_Keogh)
 
@@ -113,9 +139,9 @@ $$\min(n,m)$$ rows used by the GPU prefix, radius $$m-1$$ covers a candidate of
 length $$m$$; the CPU candidate-envelope helper's explicit global fast path
 also accepts radius $$m$$. A caller that evaluates later rows of a longer query
 must materialise the global extrema for those rows rather than assume
-$$m-1$$ reaches them. A negative radius is not a full-envelope request: the
-current low-level CPU helper coerces it to radius zero, a public-contract
-discrepancy tracked as F46.
+$$m-1$$ reaches them. A negative radius is a full-envelope request: the CPU
+helper and both GPU envelope kernels build the global envelope for it (FX-13;
+the CPU helper used to coerce it to radius zero).
 
 ```
    ^ value
@@ -172,23 +198,26 @@ costs and a final square root. The L1, unrooted-squared, symmetric-maximum, and
 unequal-prefix extensions used here are derived in DTWC++'s
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
 
-The current GPU implementation has distinct open qualifications:
+The GPU implementation follows the same contract since FX-13 (2026-09-23):
 
-- **F27:** CUDA and Metal always accumulate the L1 expression, even when their
-  DTW kernel uses squared local costs. That value is in the wrong units and can
-  exceed squared DTW.
-- **F28:** Metal can choose or accept a narrow envelope while DTW is unbanded.
-  Full DTW instead requires the global envelope above.
+- **F27 (fixed):** CUDA and Metal square each excess when their DTW kernel
+  uses squared local costs, so the bound has the units of the distance.
+- **F28 (fixed):** Metal's default envelope is the DTW window, `band` or the
+  whole series for full DTW. An explicit `lb_envelope_band` narrower than that
+  window raises `InvalidInput`; a wider one is accepted (a looser bound).
 - **F29:** the `min(Li,Lj)` prefix now has the fixed-window proof above.
   F29 remains an executable CUDA/Metal conformance gate, not a mathematical
   repair request.
-- **F50:** both device envelope kernels still contain signed `k+w+1`
-  arithmetic at an `INT_MAX` radius. Source-level overflow remains open.
+- **F50 (fixed):** both device envelope kernels clamp the radius to the series
+  length, so an `INT_MAX` band builds the global envelope instead of
+  overflowing the signed `k+w+1`.
 
-The conservative currently exercised configuration is equal-length L1 data
+Before FX-13 the conservative exercised configuration was equal-length L1 data
 with a nonnegative fixed DTW band and an envelope radius covering that band.
-Do not infer `LB <= DTW` from shape alone; metric, coverage, finiteness, and
-device arithmetic are all part of the contract.
+FX-13's property test adds squared L2, full DTW, and feasible unequal lengths
+on a real Metal device; its CUDA twin awaits the RTX machine. Do not infer
+`LB <= DTW` from shape alone; metric, coverage, finiteness, and device
+arithmetic are all part of the contract.
 
 The kernels use the symmetric form—the tighter of the two directions:
 
@@ -215,23 +244,24 @@ $$
              │
              ▼
     ┌─────────────────────────┐   kernel 3: compact_active_pairs
-    │ active_pairs[]          │   atomic append; stamp finite MAX into result
+    │ active_pairs[]          │   atomic append; stamp NaN into result
     │ active_count            │   matrix for pruned pairs
     └────────┬────────────────┘
              │
              ▼
     ┌─────────────────────────┐   supported survivor DTW kernel
     │ thresholded matrix      │   supported kernels run survivors;
-    │                         │   pruned pairs retain the public MAX sentinel
+    │                         │   pruned pairs stay NaN (not computed)
     └─────────────────────────┘
 ```
 
 This is a threshold-query result, not an exact all-pairs distance matrix.
 Only when the bound is admissible does `LB > threshold` certify that the
-omitted DTW value is also above the threshold. Such pairs are represented by
-the finite public no-result sentinel `numeric_limits<double>::max()`; only
-survivors contain selected-precision DTW results. This is the same value used
-for a no-path result, not IEEE infinity. Metal currently executes this
+omitted DTW value is also above the threshold. Such pairs are NaN, the only
+"not a distance" value outside a kernel; only survivors contain
+selected-precision DTW results. A survivor with no warping path under the band
+is the finite no-path sentinel `numeric_limits<double>::max()`,
+not IEEE infinity. Metal currently executes this
 compaction only on its wavefront and wavefront-global paths. A requested LB stage on
 regtile/banded-row, an LB-buffer allocation failure, or several other
 explicit-option conflicts can silently degrade (F30).
@@ -251,8 +281,8 @@ dtwc::metal::MetalDistMatOptions opts;
 opts.band = 50;
 opts.use_squared_l2 = false;
 opts.use_lb_keogh = true;
-opts.lb_threshold = 0.5;       // finite double-max sentinel when LB > 0.5
-opts.lb_envelope_band = 50;    // must cover opts.band
+opts.lb_threshold = 0.5;       // NaN when LB > 0.5
+opts.lb_envelope_band = 50;    // must cover opts.band (else InvalidInput)
 opts.kernel_override = dtwc::KernelOverride::Wavefront;
 ```
 
@@ -279,8 +309,8 @@ threads; the workload is unbanded DTW over random series.
 
 ## When to pick which backend
 
-Select a GPU explicitly through Tier 1 (`device="gpu"`) or set
-`Problem::distance_strategy` to CUDA/Metal. Apple unified memory reduces
+Select a GPU explicitly through Tier 1 (`device="gpu"`) or on a `Problem`
+with `set_device(Device::GPU)`. Apple unified memory reduces
 transfer overhead, but the implementation still converts input into padded
 Metal buffers and copies the result back to host storage.
 

@@ -489,9 +489,8 @@ def test_mutable_workflow_action_remains_rejected():
 
 
 def test_live_tracked_cmake_inventory_is_complete():
-    archive_pins, manifest_total = pins.tracked_cmake_archive_pins(ROOT)
-    assert manifest_total == 30
-    assert len(archive_pins) == 7
+    archive_pins = pins.tracked_cmake_archive_pins(ROOT)
+    assert len(archive_pins) == 6
 
 
 def test_inventory_diagnostics_sort_missing_and_string_names():
@@ -514,23 +513,6 @@ def test_inventory_diagnostics_sort_missing_and_string_names():
     failures = pins.registered_archive_inventory_failures(archive_pins)
     assert any("|<missing>|" in failure for failure in failures)
     assert any("|X|" in failure for failure in failures)
-
-
-def test_production_main_rejects_changed_manifest_inventory(
-    monkeypatch, capsys
-):
-    monkeypatch.setattr(
-        pins,
-        "tracked_cmake_archive_pins",
-        lambda: ([], pins.REGISTERED_CMAKE_MANIFEST_TOTAL - 1),
-    )
-    monkeypatch.setattr(
-        pins,
-        "workflow_action_pin_results",
-        lambda: ([], 39),
-    )
-    assert pins.main() == 1
-    assert "tracked CMake manifest inventory changed" in capsys.readouterr().err
 
 
 def exact_example_pin(

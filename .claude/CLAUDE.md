@@ -24,8 +24,8 @@ grep them for the symbol or row you need. `DECISIONS.md` holds the killed ideas 
    its own context. When two or more return, consolidate: agreements, conflicts, key numbers
    (500–1500 tokens). Run them in parallel where possible; use a separate adversarial agent to check
    quality. An agent's finding is a hypothesis until the cited line has been opened.
-5. Lessons go to `.claude/LESSONS.md`, citations to `.claude/CITATIONS.md`. Both are pinned by gate
-   scripts: append, do not reword existing entries.
+5. Lessons go to `.claude/LESSONS.md`, citations to `.claude/CITATIONS.md`. Append; no gate pins their
+   text any more (GT-2, 2026-09-23), so they may be compacted.
 6. **Always `uv`** for Python — never pip. Stdlib-only scripts: `uv run --no-project python <script>`.
 7. C++20 minimum. No naked `new` / `delete` in core.
 8. **Write state to disk before the session ends**: run the `session-handoff` skill
@@ -53,16 +53,25 @@ grep them for the symbol or row you need. `DECISIONS.md` holds the killed ideas 
 cmake --preset clang-macos -DOpenMP_ROOT=/opt/homebrew/opt/libomp
 cmake --build --preset clang-macos
 ctest --test-dir build -C Release -j1 --output-on-failure
-uv run --no-project python scripts/repo_map.py layers     # upward-edge ratchet
-python3 scripts/check_record_hygiene.py; python3 scripts/check_repo_hygiene.py; python3 scripts/check_docs_contract.py
-python3 scripts/check_supply_chain_pins.py   # the fourth gate — omitting it here left it red for weeks (X-33)
+uv run --no-project python scripts/repo_map.py layers     # upward-edge report
+python3 scripts/check_repo_hygiene.py; python3 scripts/check_docs_contract.py; python3 scripts/check_supply_chain_pins.py
+```
+
+ctest does not run `tests/python`. Any change that reaches a binding, a reader or a user-visible default also runs
+the Python suite from a fresh venv outside the repo (`$V` a scratch directory):
+
+```sh
+uv venv $V/venv --python 3.12
+CMAKE_ARGS="-DOpenMP_ROOT=/opt/homebrew/opt/libomp" uv pip install --python $V/venv/bin/python ".[test,dev,io]" matplotlib
+cd $V && DTWC_CL_PATH=<repo>/build/bin/dtwc_cl $V/venv/bin/python -m pytest <repo>/tests/python -q -p no:cacheprovider
 ```
 
 ## Key files
 
 - `.claude/cpp-style.md`, `.claude/python-style.md` — coding conventions.
 - `docs/api-contract-2.0.md` — the frozen 2.0 surface; a change needs a dated entry in `DECISIONS.md`.
-- `tests/floors.cmake` — generated pass floors (`scripts/measure_test_floors.py`).
+- `cmake/DtwcTest.cmake` — `dtwc_add_test`: a test passes on Catch2's summary with ≥ 1 assertion in ≥ 1 case,
+  no failure, and no skip unless registered `MAY_SKIP`.
 - `.claude/commands/` — the user-facing slash commands shipped with the repo.
 
 ## PR checklist

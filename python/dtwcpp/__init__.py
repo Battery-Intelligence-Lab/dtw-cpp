@@ -106,6 +106,9 @@ if _F22_DEPRECATION_POLICY is not True:
     )
 
 from dtwcpp._dtwcpp_core import device as _core_device
+# The one device grammar, dtwc::detail::parse_device (§6.1): a name becomes
+# (canonical name, GPU ordinal), so "CUDA:3" -> ("gpu", 3).
+from dtwcpp._dtwcpp_core import parse_device as _parse_device
 
 from dtwcpp._dtwcpp_core import (
     CUDA_AVAILABLE,
@@ -125,51 +128,16 @@ from dtwcpp._dtwcpp_core import (
     __version__,
 )
 
-_CXX_INT_MAX = (1 << 31) - 1
-_CXX_TRIM_CHARS = " \t\r\n"
-
-
-def _unknown_device(name):
-    """Raise the frozen §6 device-name error used by ``dtwc::Env``."""
-    raise DeviceError(
-        f"[dtwc] unknown device '{name}'. Valid devices: "
-        "cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc."
-    )
-
-
-def _parse_device(device):
-    """Parse the C++ ``Env`` device grammar into ``(backend, ordinal)``."""
-    if not isinstance(device, str):
-        raise InvalidInput(f"device must be a string, got {type(device).__name__}")
-
-    raw = device.strip(_CXX_TRIM_CHARS)
-    normalized = raw.lower()
-    if normalized == "cpu":
-        return ("cpu", 0)
-
-    backend, separator, ordinal_text = normalized.partition(":")
-    if backend in ("gpu", "cuda"):
-        if not separator:
-            return (backend, 0)
-        # Match Env::set_device exactly: ASCII decimal digits only, with the
-        # value representable by its C++ ``int`` device_index_ field.  Python's
-        # int() is deliberately not the grammar oracle because it also accepts
-        # whitespace, signs, underscores, and arbitrary-size integers.
-        if (not ordinal_text or not ordinal_text.isascii()
-                or not ordinal_text.isdigit()):
-            _unknown_device(raw)
-        device_id = int(ordinal_text)
-        if device_id > _CXX_INT_MAX:
-            _unknown_device(raw)
-        return (backend, device_id)
-
-    if normalized == "hpc":
-        return ("hpc", 0)           # execution location, not a local compute backend
-    _unknown_device(raw)
-
 
 def _resolve_device(device):
-    """Resolve a requested device, failing loudly when it cannot be used."""
+    """Resolve a requested device to ``(backend, ordinal)``, failing loudly.
+
+    ``backend`` is ``"cpu"``, ``"cuda"``, ``"metal"`` or ``"hpc"``. The name is
+    parsed by the C++ grammar, where ``cuda`` is a spelling of ``gpu`` (§6.1):
+    either selects this build's live GPU, and raises ``DeviceError`` without one.
+    """
+    if not isinstance(device, str):
+        raise InvalidInput(f"device must be a string, got {type(device).__name__}")
     backend, device_id = _parse_device(device)
     if backend == "gpu":
         if CUDA_AVAILABLE and cuda_available():
@@ -183,18 +151,6 @@ def _resolve_device(device):
             f"[dtwc] device='gpu' requested but {detail}. "
             "This request will not silently fall back to CPU."
         )
-    if backend == "cuda":
-        if not CUDA_AVAILABLE:
-            raise DeviceError(
-                "[dtwc] device='cuda' requested but CUDA was not compiled in. "
-                "Rebuild with -DDTWC_ENABLE_CUDA=ON. This request will not "
-                "silently fall back to CPU."
-            )
-        if not cuda_available():
-            raise DeviceError(
-                "[dtwc] device='cuda' requested but no CUDA GPU was detected. "
-                "This request will not silently fall back to CPU."
-            )
     return (backend, device_id)
 
 
@@ -231,13 +187,11 @@ def device(device=None):
     global _HPC_SELECTED
     if device is None:
         return _current_device()
-    backend, _ = _parse_device(device)     # type + syntax validation
-    normalized = device.strip().lower()
+    backend, _ = _resolve_device(device)   # the C++ grammar, then the GPU; no fallback
     if backend == "hpc":
         _HPC_SELECTED = True               # credentials checked at submit time
         return "hpc"
-    _resolve_device(normalized)            # operational validation; no fallback
-    canonical = _core_device(normalized)   # dtwc::device(): sets Env, canonicalises
+    canonical = _core_device(device)       # dtwc::device(): sets Env, canonicalises
     _HPC_SELECTED = False                  # update only after successful validation
     return canonical
 

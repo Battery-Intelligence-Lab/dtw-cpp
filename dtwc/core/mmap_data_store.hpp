@@ -31,6 +31,7 @@
 
 #include "crc32.hpp"
 #include "../Data.hpp"
+#include "../base/error.hpp"
 
 #include <cassert>
 #include <cstddef>
@@ -41,6 +42,7 @@
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 // llfio is OPTIONAL (DTWC_HAS_MMAP). MmapDataStore is a pure memory-mapping
 // wrapper with no non-mmap fallback, so — unlike MmapDistanceMatrix — the whole
@@ -101,30 +103,43 @@ class MmapDataStore {
   static void validate_header(const uint8_t *base, size_t file_len)
   {
     if (file_len < HEADER_SIZE)
-      throw std::runtime_error("MmapDataStore: file too small for header");
+      throw IOError("MmapDataStore: file too small for header");
 
     if (std::memcmp(base, MAGIC, 4) != 0)
-      throw std::runtime_error("MmapDataStore: bad magic bytes");
+      throw IOError("MmapDataStore: bad magic bytes");
 
     uint16_t ver{};
     std::memcpy(&ver, base + 4, 2);
     if (ver != VERSION)
-      throw std::runtime_error("MmapDataStore: unsupported version " + std::to_string(ver));
+      throw IOError("MmapDataStore: unsupported version " + std::to_string(ver));
 
     uint32_t em{};
     std::memcpy(&em, base + 6, 4);
     if (em != ENDIAN_MARKER)
-      throw std::runtime_error("MmapDataStore: endian mismatch");
+      throw IOError("MmapDataStore: endian mismatch");
 
     uint8_t es = base[10];
     if (es != ELEM_SIZE)
-      throw std::runtime_error("MmapDataStore: unexpected elem_size " + std::to_string(es));
+      throw IOError("MmapDataStore: unexpected elem_size " + std::to_string(es));
 
     uint32_t stored_crc{};
     std::memcpy(&stored_crc, base + 28, 4);
     const uint32_t computed_crc = detail::crc32_naive(base, 28);
     if (stored_crc != computed_crc)
-      throw std::runtime_error("MmapDataStore: header CRC mismatch");
+      throw IOError("MmapDataStore: header CRC mismatch");
+  }
+
+  /// The value of an llfio result, or IOError naming the step and the file.
+  /// result.value() throws llfio's own error, which is no dtwc::Error, so a
+  /// file-size quota reached Python as RuntimeError and MATLAB as dtwc:runtime.
+  template <typename Result>
+  static auto checked(Result &&result, const char *step,
+                      const std::filesystem::path &path)
+  {
+    if (!result)
+      throw IOError(std::string("MmapDataStore: cannot ") + step + " '"
+                    + path.string() + "': " + result.error().message());
+    return std::forward<Result>(result).value();
   }
 
   /// Set up internal pointers from the mapped base address.
@@ -163,16 +178,16 @@ public:
       llfio::file_handle::flag::none);
 
     if (!result)
-      throw std::runtime_error(std::string("MmapDataStore::create: ") +
-                               result.error().message().c_str());
+      throw IOError(std::string("MmapDataStore::create: ") +
+                    result.error().message().c_str());
 
     store.mfh_ = std::move(result.value());
-    store.mfh_.truncate(file_sz).value();
-    store.mfh_.update_map().value();
+    checked(store.mfh_.truncate(file_sz), "size", path);
+    checked(store.mfh_.update_map(), "map", path);
 
     auto *base = reinterpret_cast<uint8_t *>(store.mfh_.address());
     if (!base)
-      throw std::runtime_error("MmapDataStore::create: null address after mapping");
+      throw IOError("MmapDataStore::create: null address after mapping");
 
     // Write header
     write_header(base, store.n_, store.ndim_);
@@ -200,36 +215,46 @@ public:
     return store;
   }
 
-  /// Open an existing mmap cache file (warm-start).
+  /// Open an existing mmap cache file (warm-start). The file is only read, so
+  /// it is opened read-only: a cache on a read-only mount or with read-only
+  /// permissions must open (S-07).
   static MmapDataStore open(const std::filesystem::path &path)
   {
     MmapDataStore store;
 
     auto result = llfio::mapped_file_handle::mapped_file(
       0, {}, path,
-      llfio::file_handle::mode::write,
+      llfio::file_handle::mode::read,
       llfio::file_handle::creation::open_existing,
       llfio::file_handle::caching::all,
       llfio::file_handle::flag::none);
 
     if (!result)
-      throw std::runtime_error(std::string("MmapDataStore::open: ") +
-                               result.error().message().c_str());
+      throw IOError(std::string("MmapDataStore::open: ") +
+                    result.error().message().c_str());
 
     store.mfh_ = std::move(result.value());
-    store.mfh_.update_map().value();
+    checked(store.mfh_.update_map(), "map", path);
 
     auto *base = reinterpret_cast<const uint8_t *>(store.mfh_.address());
     if (!base)
-      throw std::runtime_error("MmapDataStore::open: null address after mapping");
+      throw IOError("MmapDataStore::open: null address after mapping");
 
-    const auto file_len = static_cast<size_t>(store.mfh_.maximum_extent().value());
+    const auto file_len =
+      static_cast<size_t>(checked(store.mfh_.maximum_extent(), "measure", path));
     validate_header(base, file_len);
 
     // Read N and ndim from header
     uint64_t n64{}, ndim64{};
     std::memcpy(&n64, base + 12, 8);
     std::memcpy(&ndim64, base + 20, 8);
+    // series_length() divides by ndim, and the header CRC cannot tell a
+    // written 0 from a valid count (S-06).
+    if (ndim64 == 0)
+      throw IOError("MmapDataStore::open: '" + path.string()
+                    + "' declares ndim = 0 features per timestep, so the file "
+                      "is corrupt. Re-create the .dtws cache from the source "
+                      "data.");
     store.n_ = static_cast<size_t>(n64);
     store.ndim_ = static_cast<size_t>(ndim64);
 
@@ -237,10 +262,10 @@ public:
     // otherwise wrap offset_table_end to a small value and pass the truncation check.
     constexpr size_t max_sz = std::numeric_limits<size_t>::max();
     if (store.n_ > (max_sz - HEADER_SIZE) / sizeof(uint64_t) - 1)
-      throw std::runtime_error("MmapDataStore::open: N too large (offset table overflows size_t)");
+      throw IOError("MmapDataStore::open: N too large (offset table overflows size_t)");
     const size_t offset_table_end = HEADER_SIZE + (store.n_ + 1) * sizeof(uint64_t);
     if (file_len < offset_table_end)
-      throw std::runtime_error("MmapDataStore::open: file truncated (offset table)");
+      throw IOError("MmapDataStore::open: file truncated (offset table)");
 
     store.setup_pointers(base);
 
@@ -253,16 +278,16 @@ public:
     if (store.n_ > 0) {
       const size_t data_bytes_avail = file_len - offset_table_end;
       if (store.offsets_[0] != 0)
-        throw std::runtime_error("MmapDataStore::open: offset table corrupt (first offset must be 0)");
+        throw IOError("MmapDataStore::open: offset table corrupt (first offset must be 0)");
       uint64_t prev = 0;
       for (size_t i = 0; i <= store.n_; ++i) {
         const uint64_t off = store.offsets_[i];
         if (off < prev)
-          throw std::runtime_error("MmapDataStore::open: offset table not monotone (corrupt or malicious file)");
+          throw IOError("MmapDataStore::open: offset table not monotone (corrupt or malicious file)");
         if ((off % sizeof(double)) != 0)
-          throw std::runtime_error("MmapDataStore::open: offset table misaligned (not a multiple of 8)");
+          throw IOError("MmapDataStore::open: offset table misaligned (not a multiple of 8)");
         if (off > data_bytes_avail)
-          throw std::runtime_error("MmapDataStore::open: offset out of bounds (corrupt or malicious file)");
+          throw IOError("MmapDataStore::open: offset out of bounds (corrupt or malicious file)");
         prev = off;
       }
     }
@@ -305,7 +330,13 @@ public:
   /// Flush mapped memory to disk.
   void sync()
   {
-    mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::nowait_data_only).value();
+    // open() maps read-only: nothing to flush, and Windows fails a barrier on a read handle.
+    if (!mfh_.is_writable()) return;
+    const auto flushed =
+      mfh_.barrier({}, llfio::mapped_file_handle::barrier_kind::nowait_data_only);
+    if (!flushed) // the store keeps no path to name
+      throw IOError("MmapDataStore::sync: cannot flush the store: "
+                    + flushed.error().message());
   }
 };
 

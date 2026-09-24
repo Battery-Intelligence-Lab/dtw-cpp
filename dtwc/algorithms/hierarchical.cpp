@@ -32,12 +32,12 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts)
   const int N = static_cast<int>(prob.size());
 
   if (N > opts.max_points)
-    throw std::runtime_error(
+    throw InvalidInput(
       "build_dendrogram: N=" + std::to_string(N) +
       " exceeds max_points=" + std::to_string(opts.max_points));
 
   if (!prob.is_distance_matrix_filled())
-    throw std::runtime_error(
+    throw InvalidInput(
       "build_dendrogram: distance matrix is not fully computed. "
       "Call prob.fill_distance_matrix() first.");
 
@@ -176,27 +176,27 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   // Python, so a hand-built one must be validated, not trusted: otherwise it
   // reads dend.merges out of bounds and indexes UF::parent with arbitrary ids.
   if (N != static_cast<int>(prob.size()))
-    throw std::runtime_error(
+    throw InvalidInput(
       "cut_dendrogram: dendrogram n_points=" + std::to_string(N) +
       " does not match Problem size=" + std::to_string(prob.size()) + ".");
   if (N < 1)
-    throw std::runtime_error("cut_dendrogram: dendrogram n_points must be >= 1.");
+    throw InvalidInput("cut_dendrogram: dendrogram n_points must be >= 1.");
   if (dend.merges.size() != static_cast<size_t>(N - 1))
-    throw std::runtime_error(
+    throw InvalidInput(
       "cut_dendrogram: dendrogram has " + std::to_string(dend.merges.size()) +
       " merge steps; a dendrogram over " + std::to_string(N) + " points needs exactly "
       + std::to_string(N - 1) + ".");
   for (size_t i = 0; i < dend.merges.size(); ++i) {
     const auto &step = dend.merges[i];
     if (step.cluster_a < 0 || step.cluster_a >= N || step.cluster_b < 0 || step.cluster_b >= N)
-      throw std::runtime_error(
+      throw InvalidInput(
         "cut_dendrogram: merge step " + std::to_string(i) + " references cluster ids ("
         + std::to_string(step.cluster_a) + ", " + std::to_string(step.cluster_b)
         + ") outside [0, " + std::to_string(N) + ").");
   }
 
   if (k < 1 || k > N)
-    throw std::runtime_error(
+    throw InvalidInput(
       "cut_dendrogram: k=" + std::to_string(k) +
       " out of range [1, " + std::to_string(N) + "]");
 
@@ -226,7 +226,7 @@ core::ClusteringResult cut_dendrogram(const Dendrogram &dend, Problem &prob, int
   // A degenerate merge list (repeated or self-merges) unites fewer than N-k
   // distinct pairs and leaves more than k components — guard before sizing.
   if (next_label != k)
-    throw std::runtime_error(
+    throw InvalidInput(
       "cut_dendrogram: replaying the first " + std::to_string(n_merges_to_apply) +
       " merges left " + std::to_string(next_label) + " components, expected "
       + std::to_string(k) + "; the merge list is not a valid dendrogram.");

@@ -14,8 +14,9 @@
 
 #pragma once
 
+#include "error.hpp"
+
 #include <cmath>
-#include <stdexcept>
 #include <type_traits>
 #include <vector>
 #include <span>
@@ -82,7 +83,7 @@ double missing_rate(const std::vector<T> &v)
 /// Interior NaN: linearly interpolated between nearest observed neighbors.
 /// Leading NaN: filled with first observed value (NOCB).
 /// Trailing NaN: filled with last observed value (LOCF).
-/// Throws std::runtime_error if ALL values are NaN.
+/// Throws InvalidInput if ALL values are NaN.
 template <typename T>
 std::vector<T> interpolate_linear(std::span<const T> v)
 {
@@ -100,7 +101,7 @@ std::vector<T> interpolate_linear(std::span<const T> v)
     }
   }
   if (first_valid == v.size())
-    throw std::runtime_error("interpolate_linear: all values are NaN");
+    throw InvalidInput("interpolate_linear: all values are NaN");
 
   std::vector<T> result(v.size());
 

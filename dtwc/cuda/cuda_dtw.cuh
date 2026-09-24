@@ -48,8 +48,10 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
 
-  /// When positive, pairs with LB > threshold get the finite public
-  /// double-max no-result sentinel (no DTW), not IEEE infinity.
+  /// When positive (and band >= 0), pairs with LB > threshold are not
+  /// computed and read NaN. A pair without a warping path reads the finite public
+  /// double-max no-result sentinel, not IEEE infinity. The bound squares each
+  /// excess under use_squared_l2.
   /// CUDA default is -1.0 (threshold-off sentinel); Metal uses 0.0 with
   /// different semantics. Kept per-backend for backward compatibility.
   double lb_threshold = -1.0;

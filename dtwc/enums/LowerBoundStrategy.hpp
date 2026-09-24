@@ -32,6 +32,7 @@
 #pragma once
 
 #include "../base/error.hpp"
+#include "../base/names.hpp"
 
 namespace dtwc {
 
@@ -59,5 +60,17 @@ inline void validate_lower_bound_strategy(LowerBoundStrategy value)
   }
   throw InvalidInput("Invalid LowerBoundStrategy value.");
 }
+
+/// `kimkeogh` is the alias MATLAB's set_lb_strategy accepts today.
+inline constexpr Name<LowerBoundStrategy> lower_bound_strategy_names[]{
+  { "auto", LowerBoundStrategy::Auto },
+  { "none", LowerBoundStrategy::None },
+  { "kim", LowerBoundStrategy::Kim },
+  { "keogh", LowerBoundStrategy::Keogh },
+  { "kim_keogh", LowerBoundStrategy::KimKeogh },
+  { "kimkeogh", LowerBoundStrategy::KimKeogh },
+  { "enhanced", LowerBoundStrategy::Enhanced },
+  { "webb", LowerBoundStrategy::Webb },
+};
 
 } // namespace dtwc

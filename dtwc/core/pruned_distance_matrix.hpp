@@ -18,8 +18,7 @@
  * This route does not skip an exact matrix entry or a required full result.
  * An abandoned attempt adds work before recomputation, so its counters are
  * branch-accounting diagnostics rather than evidence of work saved. With
- * band=-1, LB_Keogh is disabled; constructing its current radius-zero envelope
- * would not be admissible for full DTW.
+ * band=-1, LB_Keogh is disabled.
  *
  * References:
  *   - E. Keogh, C.A. Ratanamahatana, "Exact indexing of dynamic time warping",

@@ -47,7 +47,7 @@ jobs:
 
           # macOS: arm64 ONLY (x86_64 DROPPED — Task 3.4, build-state 2026-07-06 hole 4).
           # The GitHub `macos-latest` runner is Apple Silicon (arm64); the
-          # `brew install libomp` step below installs an arm64-only libomp, so a
+          # libomp that CIBW_BEFORE_ALL_MACOS builds below is arm64-only, so a
           # cross-compiled x86_64 wheel's find_package(OpenMP) finds nothing and
           # would ship SERIAL. Three reasons this is a hard drop, not a "fix later":
           #   1. no-silent-fallback global constraint forbids shipping a serial wheel;
@@ -69,20 +69,30 @@ jobs:
             cmake.args=-DDTWC_BUILD_BENCHMARK=OFF
             cmake.args=-DCMAKE_BUILD_TYPE=Release
 
-          # macOS arm64 was introduced in 11.0; do not emit an invalid 10.15 tag.
-          # OpenMP_ROOT: libomp is keg-only, so `brew install` leaves it outside
-          # every prefix CMake searches; without the hint find_package(OpenMP)
-          # fails and Task 3.1 turns that into a configure FATAL_ERROR.
+          # 13.3 (Ventura, March 2023) is the first macOS whose libc++ has the
+          # floating-point std::to_chars the CSV writers use; floating-point
+          # from_chars would need 26.0, which is why text parsing goes through
+          # the vendored fast_float (dtwc/io/parse_number.cpp) instead. The
+          # release CLI archive uses the same target (release-artifacts.yml).
+          # The target also binds the wheel: delocate-wheel reads
+          # MACOSX_DEPLOYMENT_TARGET and fails the repair if any Mach-O it
+          # bundles needs a newer macOS. Homebrew's libomp is built for the
+          # runner's macOS (minos 26.0) and would fail it, so CIBW_BEFORE_ALL_MACOS
+          # builds the same LLVM release for this target; OpenMP_ROOT points
+          # find_package(OpenMP) at it (without it Task 3.1's configure
+          # FATAL_ERROR fires).
           CIBW_ENVIRONMENT_MACOS: >-
-            MACOSX_DEPLOYMENT_TARGET=11.0
-            OpenMP_ROOT=$(brew --prefix libomp)
-          CIBW_BEFORE_BUILD_MACOS: "brew install libomp"
+            MACOSX_DEPLOYMENT_TARGET=13.3
+            OpenMP_ROOT=$RUNNER_TEMP/libomp
+          CIBW_BEFORE_ALL_MACOS: bash scripts/build_libomp_macos.sh "$OpenMP_ROOT"
           CIBW_BUILD_VERBOSITY: 1
 
           # Execute a real OpenMP region and solve a compact conformance subset
-          # through the bundled HiGHS MIP path in every produced wheel.
+          # through the bundled HiGHS MIP path in every produced wheel, and
+          # check the wheel carries the SLURM wrapper device='hpc' runs (FX-5).
           CIBW_TEST_COMMAND: >-
-            python -c "from dtwcpp._wheel_smoke import run; run()"
+            python -c "from dtwcpp._wheel_smoke import run; run()" &&
+            python -c "import os, dtwcpp._hpc as h; d = os.path.dirname(h.slurm_wrapper_path()); assert all(os.path.isfile(os.path.join(d, f)) for f in ('slurm_remote.sh', 'cluster_generic.slurm')), d"
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:

@@ -108,7 +108,7 @@ FastPAMResult fast_pam_seeded(Problem& prob, int n_clusters,
  * @return ClusteringResult; also written back into prob (see fast_pam note).
  * @throws InvalidInput if the problem is empty, has more than `INT_MAX`
  *         points, or `variant` is invalid.
- * @throws std::runtime_error on invalid initial_medoids (empty/dup/out-of-range).
+ * @throws InvalidInput on invalid initial_medoids (empty/dup/out-of-range).
  */
 FastPAMResult fast_pam_swap(Problem& prob, const std::vector<int>& initial_medoids,
                             int max_iter = 100, PAMVariant variant = PAMVariant::FasterPAM);

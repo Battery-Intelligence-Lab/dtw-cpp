@@ -75,7 +75,7 @@ dtwc::save_checkpoint(prob, "./checkpoints/run1");
 
 ### load_checkpoint
 
-Load a checkpoint and restore the distance matrix into the Problem. Returns `true` on success, `false` if no valid checkpoint was found or the dimensions do not match.
+Load a checkpoint and restore the distance matrix into the Problem. Returns `true` on success, `false` if no valid checkpoint was found or the dimensions do not match. The C++ result is `[[nodiscard]]`: ignoring a `false` would recompute every distance without saying so.
 
 ```cpp
 dtwc::Problem prob("my_problem", loader);
@@ -92,6 +92,12 @@ Load validates `CURRENT`, the exact manifest, full data/configuration identity,
 payload digest, CSV shape, finite full-token values, bit-identical symmetry, and
 computed-pair count before publishing any matrix state. Missing, incompatible,
 legacy, or malformed state returns `false` without changing `Problem`.
+
+The identity includes the Problem's pointwise metric (`prob.set_metric(...)`,
+L1 by default), so a checkpoint saved under one metric is not accepted by a
+`Problem` using another. `save_checkpoint(prob, path, metric)` and
+`load_checkpoint(prob, path, metric)` tag or expect an explicit metric instead,
+for a matrix that something other than the `Problem` computed.
 
 ### CheckpointOptions
 
@@ -167,8 +173,8 @@ dtwc_cl --input data.csv -k 5 --method pam --checkpoint ./checkpoints
 
 When `--checkpoint` is specified, the CLI will:
 
-1. **On startup**: attempt to load a checkpoint from the given directory. If a valid checkpoint is found and the dimensions match, the saved distance matrix is restored.
-2. **On completion**: save the current state to the checkpoint directory, so it can be resumed if run again.
+1. **On startup**: create the directory if it is missing, and stop with exit status 1 if the path is not a directory, before any data is read. Then attempt to load a checkpoint from it. If a valid checkpoint is found and the dimensions match, the saved distance matrix is restored.
+2. **On completion**: after the result files are written, save the current state to the checkpoint directory, so it can be resumed if run again. A save that fails (for example, the disk is full) stops the run with exit status 1 and a message naming the directory; it is not a warning, and the results already written stay on disk.
 
 ### Memory-mapped cache safety and migration
 

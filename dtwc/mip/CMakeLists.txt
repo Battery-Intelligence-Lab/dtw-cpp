@@ -67,7 +67,7 @@ if(DTWC_ENABLE_HIGHS AND TARGET highs::highs)
   target_compile_definitions(mip-solvers PUBLIC DTWC_ENABLE_HIGHS)
   target_link_libraries(mip-solvers PRIVATE highs::highs)
   # PDLP GPU backend compiled into HiGHS (CUPDLP_GPU). Drives pdlp_lp_bound's
-  # honest gpu_used reporting: without this define, use_gpu warns + runs CPU.
+  # honest gpu_used reporting: without this define, use_gpu raises DeviceError.
   if(DTWC_HIGHS_GPU)
     target_compile_definitions(mip-solvers PUBLIC DTWC_HIGHS_GPU)
   endif()

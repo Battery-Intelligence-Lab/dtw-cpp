@@ -15,6 +15,7 @@
 #ifdef DTWC_HAS_PARQUET
 
 #include "../Data.hpp"
+#include "../base/error.hpp"
 #include "../base/settings.hpp"
 #include "parquet_schema.hpp"
 
@@ -36,7 +37,7 @@ namespace detail {
 inline void check_arrow(const arrow::Status &s, const char *ctx)
 {
   if (!s.ok())
-    throw std::runtime_error(std::string(ctx) + ": " + s.ToString());
+    throw dtwc::IOError(std::string(ctx) + ": " + s.ToString());
 }
 
 } // namespace detail
@@ -154,7 +155,7 @@ inline Data load_parquet_directory(const std::filesystem::path &dir,
   std::sort(paths.begin(), paths.end());
 
   if (paths.empty())
-    throw std::runtime_error("No .parquet files found in " + dir.string());
+    throw dtwc::IOError("No .parquet files found in " + dir.string());
 
   std::vector<std::vector<data_t>> all_vecs;
   std::vector<std::string> all_names;

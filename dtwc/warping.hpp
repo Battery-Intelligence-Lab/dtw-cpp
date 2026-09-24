@@ -10,6 +10,17 @@
  * Metric dispatch happens once outside the inner loop via a template lambda
  * passed to an _impl helper, preserving the existing inlining structure.
  *
+ * Unchecked input. These wrappers, those in warping_*.hpp, soft_dtw() and
+ * core::msm_distance / twe_distance are the per-pair layer: the matrix fill
+ * calls them once per pair, so they do not scan their input. They require
+ * finite values (the missing-data wrappers in warping_missing*.hpp also take
+ * NaN, as a missing value); NaN or ±inf here comes back as NaN, as the
+ * unreachable max() or as an ordinary-looking number, so a caller must check
+ * first — once per call or once per fill, never per pair. The checked boundary
+ * is dtwc::distance::* (distance.hpp), core::dtw_runtime and
+ * soft_dtw_gradient(): each runs detail::require_finite() below once per call.
+ * The Python and MATLAB single-pair distance functions call that boundary.
+ *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
  * @date 08 Dec 2022
@@ -17,6 +28,7 @@
 
 #pragma once
 
+#include "base/error.hpp"              // for InvalidInput
 #include "base/settings.hpp"           // for DEFAULT_BAND
 #include "core/scratch_matrix.hpp"
 #include "core/dtw_options.hpp"    // for core::MetricType
@@ -31,9 +43,55 @@
 #include <vector>    // for vector
 #include <span>      // for span
 #include <stdexcept> // for logic_error
+#include <string>    // for string, to_string
+#include <string_view>
 #include <utility>   // for pair
 
 namespace dtwc {
+
+namespace detail {
+
+/// The checked boundary's input test (see the file comment): throws
+/// InvalidInput at the first value of `series` that no distance is defined for,
+/// naming the series, the position and the fix. NaN passes only when
+/// `nan_is_missing` (the missing-data distances); ±inf never does. O(n): run
+/// once per public call, never per cell, nor per pair of a fill.
+template <typename data_t>
+void require_finite(std::span<const data_t> series, std::string_view name,
+                    std::string_view where, bool nan_is_missing = false)
+{
+  for (std::size_t i = 0; i < series.size(); ++i) {
+    const data_t value = series[i];
+    if (std::isfinite(value) || (nan_is_missing && std::isnan(value))) continue;
+
+    std::string message(where);
+    message += ": ";
+    message += name;
+    message += "[" + std::to_string(i) + "] is ";
+    if (std::isnan(value)) {
+      message += "NaN. NaN is a missing value only to the missing-data distances "
+                 "(missing, arow, or a ZeroCost, AROW or Interpolate missing "
+                 "strategy): use one of those, or remove it.";
+    } else {
+      message += value > 0 ? "+inf" : "-inf";
+      message += ". Distances are defined on finite values only: replace or "
+                 "remove it (NaN marks a missing value for the missing-data "
+                 "distances).";
+    }
+    throw InvalidInput(message);
+  }
+}
+
+/// Both series of a pair, x first.
+template <typename data_t>
+void require_finite(std::span<const data_t> x, std::span<const data_t> y,
+                    std::string_view where, bool nan_is_missing = false)
+{
+  require_finite(x, "x", where, nan_is_missing);
+  require_finite(y, "y", where, nan_is_missing);
+}
+
+} // namespace detail
 
 // =========================================================================
 //  Implementation helpers â€” THIN shims over the unified core::dtw_kernel_*.

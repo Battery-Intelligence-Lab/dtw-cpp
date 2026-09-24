@@ -182,8 +182,8 @@ last pair prevents a dependent computation from posing as the independent
 arbiter.
 
 The envelope radius must cover the fixed DTW radius. Full DTW needs the
-per-channel global minima and maxima at every row; passing a negative band to
-`compute_envelopes_mv` instead produces radius-zero envelopes. Mathematically,
+per-channel global minima and maxima at every row, which is what a negative
+band passed to `compute_envelopes_mv` builds (FX-13). Mathematically,
 the row-charging proof also permits the first `min(n,m)` rows of a feasible
 unequal-length fixed-window problem. The current raw-pointer API does not carry
 candidate length, envelope length, or radius provenance, however, so it cannot

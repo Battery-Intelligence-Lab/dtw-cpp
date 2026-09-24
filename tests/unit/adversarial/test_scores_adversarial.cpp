@@ -582,7 +582,7 @@ TEST_CASE("ARI: mismatched label-vector sizes throw",
   std::vector<int> labels = {0, 1, 0};
   std::vector<int> pred   = {0, 1};
   REQUIRE_THROWS_AS(dtwc::scores::adjusted_rand(labels, pred),
-                    std::invalid_argument);
+                    dtwc::InvalidInput);
 }
 
 TEST_CASE("ARI: single element — degenerate, must not crash",
@@ -755,7 +755,7 @@ TEST_CASE("NMI: mismatched sizes throw",
   std::vector<int> a = {0, 1};
   std::vector<int> b = {0, 1, 0};
   REQUIRE_THROWS_AS(dtwc::scores::normalized_mutual_info(a, b),
-                    std::invalid_argument);
+                    dtwc::InvalidInput);
 }
 
 TEST_CASE("NMI: single element — degenerate, must not crash",

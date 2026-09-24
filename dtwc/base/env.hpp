@@ -85,6 +85,18 @@ SeqCause sequential_cause(int effective_max_threads, unsigned hw_concurrency,
 ///          tests/unit/test_runtime_loudness.cpp. Each ends with a trailing '\n'.
 std::string sequential_warning_text(SeqCause cause);
 
+/// @brief Parse a device name: the one grammar behind Env::set_device,
+///        dtwc::device() and the bindings' Problem device setters.
+/// @details "cpu", "gpu", "gpu:N", "cuda", "cuda:N", "hpc"; case-insensitive,
+///          surrounding whitespace ignored, `cuda` ≡ `gpu`, N a non-negative
+///          `int` GPU ordinal (0 when absent). Grammar only: the build and the
+///          hpc `.env` file are checked by the caller.
+/// @throws DeviceError listing the valid names (api-contract-2.0.md §6.1).
+std::pair<Device, int> parse_device(std::string_view name);
+
+/// @brief The frozen §6.1 message for `gpu` on a build with no GPU backend.
+std::string gpu_not_built_message();
+
 } // namespace detail
 
 /**

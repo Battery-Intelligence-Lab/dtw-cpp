@@ -1,0 +1,54 @@
+# Golden text of dtwc::to_config_text: every Config key at a value that is not
+# its default, in cli::bind() order. tests/unit/test_config_spellings.cpp reads
+# this file, config_all_fields.yaml, a command line and parse_config() pairs,
+# and each must render to exactly the lines below (comments aside). The values
+# exercise spellings only; together they are not one runnable configuration.
+input = "series.csv"
+output = "out"
+name = "golden"
+column = "values"
+dtype = "float32"
+ram-limit = 1073741824
+n-clusters = 5
+method = "clara"
+band = 7
+metric = "squared_euclidean"
+variant = "wdtw"
+max-iter = 25
+n-init = 4
+dc = 0.25
+wdtw-g = 0.125
+adtw-penalty = 2.5
+sdtw-gamma = 0.5
+msm-c = 3
+twe-nu = 0.01
+twe-lambda = 0.75
+mv-mode = "independent"
+missing-strategy = "arow"
+sample-size = 40
+n-samples = 3
+seed = 7
+batch-size = 64
+batch-weighting = "debiased"
+linkage = "complete"
+skip-rows = 1
+skip-cols = 2
+delimiter = ';'
+dist-matrix = "dist.csv"
+checkpoint = "ckpt"
+checkpoint-interval = 10
+resume = true
+mmap-threshold = 1000
+solver = "gurobi"
+mip-gap = 0.001
+time-limit = 60
+no-warm-start = true
+numeric-focus = 3
+mip-focus = 1
+verbose-solver = true
+benders = "on"
+max-benders-iter = 50
+lr-max-nodes = 5000
+device = "gpu:2"
+gpu-precision = "fp64"
+verbose = true

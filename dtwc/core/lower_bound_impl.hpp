@@ -41,9 +41,9 @@ namespace dtwc::core {
  *          position i, the upper envelope is the max and the lower envelope is
  *          the min of the series values within the Sakoe-Chiba band [i-band, i+band].
  *
- *          A negative band is coerced to radius zero; it does not request a
- *          full-DTW envelope. For full DTW, an admissible Keogh construction
- *          needs the global envelope (radius at least n-1). The input and two
+ *          A negative band requests the full-DTW envelope: full DTW may align
+ *          any two indices, so every position holds the global min and max,
+ *          the only admissible Keogh envelope for it (FX-13). The input and two
  *          output ranges must not overlap; this unchecked pointer routine does
  *          not detect destructive aliasing (F46).
  *
@@ -59,7 +59,7 @@ void compute_envelopes(const T *series, std::size_t n, int band,
                        T *upper_out, T *lower_out)
 {
   if (n == 0) return;
-  const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
+  const std::size_t w = (band < 0) ? n : static_cast<std::size_t>(band);
 
   // Fast path: band covers entire series → envelopes are global min/max.
   if (w >= n) {
@@ -130,8 +130,8 @@ void compute_envelopes(const T *series, std::size_t n, int band,
  *
  * @tparam T Numeric data type.
  * @param series Input time series.
- * @param band Sakoe-Chiba band width. Negative values are coerced to radius
- *             zero, not interpreted as full DTW.
+ * @param band Sakoe-Chiba band width; negative means full DTW (the global
+ *             envelope).
  * @param upper_out Output upper envelope vector (resized to match series).
  * @param lower_out Output lower envelope vector (resized to match series).
  *
@@ -348,7 +348,7 @@ inline bool envelope_sizes_ok(const Envelope &env, std::size_t n) noexcept
   return env.upper.size() == n && env.lower.size() == n;
 }
 
-/// Compute envelope from a span; a negative band remains radius zero (F46).
+/// Compute envelope from a span; a negative band builds the global envelope.
 /// The returned Envelope does not record the source length or resolved radius.
 inline Envelope compute_envelope(std::span<const double> series, int band)
 {
@@ -429,8 +429,8 @@ inline double lb_keogh_symmetric(
  * @param series Input multivariate series, interleaved layout, n_steps * ndim elements.
  * @param n_steps Number of timesteps.
  * @param ndim Number of channels (dimensions).
- * @param band Sakoe-Chiba band width (half-window radius). Negative values
- *             are coerced to radius zero, not interpreted as full DTW.
+ * @param band Sakoe-Chiba band width (half-window radius); negative means
+ *             full DTW (the per-channel global envelope).
  * @param upper_out Output: upper envelope, same interleaved layout (pre-allocated).
  * @param lower_out Output: lower envelope, same interleaved layout (pre-allocated).
  */
@@ -444,7 +444,7 @@ void compute_envelopes_mv(const T *series, std::size_t n_steps, std::size_t ndim
     return;
   }
 
-  const std::size_t w = static_cast<std::size_t>(std::max(band, 0));
+  const std::size_t w = (band < 0) ? n_steps : static_cast<std::size_t>(band);
 
   // O(n) Lemire sliding-window per channel. Interleaved layout: series[t*ndim+d].
   // Deque indices store timesteps (not flat offsets). Same ring-buffer approach as

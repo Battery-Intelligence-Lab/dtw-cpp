@@ -13,7 +13,9 @@
 #include <algorithms/clarans.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <set>
 #include <string>
@@ -146,20 +148,43 @@ TEST_CASE("CLARANS: invalid inputs throw", "[clarans][errors]")
   SECTION("k=0 throws")
   {
     auto prob = make_clustered_problem(5, 1);
-    REQUIRE_THROWS_AS(clarans(prob, { 0 }), std::runtime_error);
+    REQUIRE_THROWS_AS(clarans(prob, { 0 }), InvalidInput);
   }
 
   SECTION("k > N throws")
   {
     auto prob = make_clustered_problem(5, 1); // N=5
-    REQUIRE_THROWS_AS(clarans(prob, { 10 }), std::runtime_error);
+    REQUIRE_THROWS_AS(clarans(prob, { 10 }), InvalidInput);
   }
 
   SECTION("empty problem throws")
   {
     Problem empty("empty");
-    REQUIRE_THROWS_AS(clarans(empty, { 1 }), std::runtime_error);
+    REQUIRE_THROWS_AS(clarans(empty, { 1 }), InvalidInput);
   }
+}
+
+
+// ===========================================================================
+// Test 5b (A-05): num_local <= 0 used to run no restart and publish an EMPTY
+// clustering of cost DBL_MAX into the Problem. It is InvalidInput naming the
+// option, raised before the Problem is touched.
+// ===========================================================================
+TEST_CASE("CLARANS: num_local below 1 throws InvalidInput", "[clarans][errors]")
+{
+  auto prob = make_clustered_problem(5, 2); // N = 10
+  const std::vector<int> medoids_before{ 3, 8 };
+  const std::vector<int> labels_before(10, 1);
+  prob.centroids_ind = medoids_before;
+  prob.clusters_ind = labels_before;
+
+  CLARANSOptions opts;
+  opts.n_clusters = 2;
+  opts.num_local = GENERATE(0, -1);
+  REQUIRE_THROWS_AS(clarans(prob, opts), InvalidInput);
+  REQUIRE_THROWS_WITH(clarans(prob, opts), Catch::Matchers::ContainsSubstring("num_local"));
+  CHECK(prob.centroids_ind == medoids_before);
+  CHECK(prob.clusters_ind == labels_before);
 }
 
 

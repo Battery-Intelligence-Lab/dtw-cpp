@@ -36,6 +36,33 @@ matlab_add_mex(
 
 target_compile_features(dtwc_mex PRIVATE cxx_std_20)
 
+# macOS: one OpenMP runtime per process. MATLAB ships libomp beside libmex and has
+# it loaded at start-up (its BLAS links it); a second copy aborts MATLAB at the
+# MEX's first parallel region ("OMP: Error #15"), and with KMP_DUPLICATE_LIB_OK
+# it segfaults instead, since dyld coalesces the copies' weak symbols (R2026a,
+# 2026-09-24). So the MEX's libomp load command is repointed at @rpath/libomp.dylib,
+# the install name of MATLAB's copy, which dyld finds already loaded. The old name
+# is the install name the linker copied (line 2 of `otool -D`), which need not be
+# the path CMake found: install_name_tool ignores a name that does not match.
+# DTWC_MEX_MATLAB_LIBOMP: see dtwc_mex.cpp.
+get_filename_component(_dtwc_matlab_bin "${Matlab_MEX_LIBRARY}" DIRECTORY)
+if(APPLE AND EXISTS "${_dtwc_matlab_bin}/libomp.dylib")
+  foreach(_dtwc_omp_name IN LISTS OpenMP_CXX_LIB_NAMES)
+    if(OpenMP_${_dtwc_omp_name}_LIBRARY MATCHES "libomp\\.dylib$")
+      execute_process(COMMAND otool -D "${OpenMP_${_dtwc_omp_name}_LIBRARY}"
+                      OUTPUT_VARIABLE _dtwc_omp_id OUTPUT_STRIP_TRAILING_WHITESPACE
+                      COMMAND_ERROR_IS_FATAL ANY)
+      string(REGEX REPLACE "^[^\n]*\n" "" _dtwc_omp_id "${_dtwc_omp_id}")
+      target_compile_definitions(dtwc_mex PRIVATE DTWC_MEX_MATLAB_LIBOMP)
+      add_custom_command(TARGET dtwc_mex POST_BUILD
+        COMMAND install_name_tool -change "${_dtwc_omp_id}" "@rpath/libomp.dylib"
+                "$<TARGET_FILE:dtwc_mex>"
+        VERBATIM)
+      break()
+    endif()
+  endforeach()
+endif()
+
 # FindMatlab (CMake 4.2) exports the MEX entry points only under `if(MSVC)`.
 # A GNU-frontend Clang build on Windows therefore links a .mexw64 with no
 # exported mexFunction, and MATLAB rejects it at load time with

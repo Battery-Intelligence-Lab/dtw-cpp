@@ -83,10 +83,18 @@ void MIP_clustering_byBenders(Problem &prob)
   const int Nb = static_cast<int>(prob.size());
   const int Nc = prob.n_clusters();
 
-  if (Nb <= 0 || Nc <= 0 || Nc > Nb) {
-    std::cerr << "Benders: invalid problem size (N=" << Nb << ", k=" << Nc << ")\n";
-    return;
-  }
+  // Printing and returning here left the medoids and labels untouched while
+  // the caller carried on as if Benders had run (A-07).
+  if (Nb <= 0 || Nc <= 0 || Nc > Nb)
+    throw InvalidInput("Benders: invalid problem size (N=" + std::to_string(Nb)
+                       + ", k=" + std::to_string(Nc) + "): k must be in [1, N]. "
+                       "Load the data, then call set_n_clusters(k) with 1 <= k <= N.");
+  // The warm start restores the caller's n_repetitions through the validating
+  // setter inside a noexcept guard, so a value it would refuse (only the
+  // deprecated N_repetition field can hold one) must be refused here, first.
+  if (prob.mip_settings.warm_start && prob.n_repetitions() < 1)
+    throw InvalidInput("MIP_clustering_byBenders: n_repetitions must be at least 1; got "
+                       + std::to_string(prob.n_repetitions()) + ".");
 
   // Trivial case: k == N, every point is its own medoid
   if (Nc == Nb) {

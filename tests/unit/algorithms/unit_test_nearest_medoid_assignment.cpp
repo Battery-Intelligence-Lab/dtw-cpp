@@ -11,6 +11,7 @@
 #include <algorithms/clarans.hpp>
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/fast_pam.hpp>
+#include <algorithms/one_batch_pam.hpp>
 #include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -536,57 +537,78 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
     "kmedoids_lloyd: nearest-medoid objective became non-finite after point 2.");
 }
 
-TEST_CASE("F13 finite no-path objectives publish in both precisions",
+TEST_CASE("F13 no-path requests are rejected on every route in both precisions",
           "[F13][medoid-assignment][sentinel][presence]")
 {
-  const double sentinel = std::numeric_limits<double>::max();
+  // FX-1: a band narrower than a length difference is rejected before any pair
+  // is computed: on the fill, the lazy dist_by_ind path and the dtw_function
+  // accessors. The kernels' finite max() sentinel never becomes an objective.
+  const std::string no_path =
+    ": band = 0 is narrower than the length difference between series 'short' "
+    "(index 0, length 1) and series 'long' (index 1, length 3), so no warping "
+    "path fits that pair. The smallest feasible band is 2; pass band >= 2, or "
+    "band = -1 for full DTW.";
 
   SECTION("FastPAM")
   {
     auto f64 = no_path_problem<double>("f13_pam_no_path_f64");
-    require_result(
-      dtwc::fast_pam_swap(
-        f64, {0}, 0, dtwc::PAMVariant::FastPAM1),
-      {0}, {0, 0}, sentinel);
+    require_invalid_input(
+      [&] { (void)dtwc::fast_pam_swap(f64, {0}, 0, dtwc::PAMVariant::FastPAM1); },
+      "Problem::fill_distance_matrix" + no_path);
 
     auto f32 = no_path_problem<float>("f13_pam_no_path_f32");
-    require_result(
-      dtwc::fast_pam_swap(
-        f32, {0}, 0, dtwc::PAMVariant::FastPAM1),
-      {0}, {0, 0}, sentinel);
+    require_invalid_input(
+      [&] { (void)dtwc::fast_pam_swap(f32, {0}, 0, dtwc::PAMVariant::FastPAM1); },
+      "Problem::fill_distance_matrix" + no_path);
   }
 
   SECTION("CLARANS")
   {
     auto f64 = no_path_problem<double>("f13_clarans_no_path_f64");
-    const auto result_f64 = dtwc::algorithms::clarans(
-      f64, clarans_options(1, 0));
-    CHECK(result_f64.medoid_indices.size() == 1);
-    CHECK(result_f64.labels == std::vector<int>{0, 0});
-    CHECK(bits(result_f64.total_cost) == bits(sentinel));
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::clarans(f64, clarans_options(1, 0)); },
+      "Problem::dist_by_ind" + no_path);
 
     auto f32 = no_path_problem<float>("f13_clarans_no_path_f32");
-    const auto result_f32 = dtwc::algorithms::clarans(
-      f32, clarans_options(1, 0));
-    CHECK(result_f32.medoid_indices.size() == 1);
-    CHECK(result_f32.labels == std::vector<int>{0, 0});
-    CHECK(bits(result_f32.total_cost) == bits(sentinel));
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::clarans(f32, clarans_options(1, 0)); },
+      "Problem::dist_by_ind" + no_path);
   }
+
+  // FastCLARA's assignment and OneBatchPAM compute through the dtw_function
+  // accessors, which validate the same request once, serially, before their
+  // parallel loops. FastCLARA published the finite no-path objective here
+  // (total_cost bits == DBL_MAX) until the accessors did.
 
   SECTION("FastCLARA")
   {
     auto f64 = no_path_problem<double>("f13_clara_no_path_f64");
-    const auto result_f64 = dtwc::algorithms::fast_clara(
-      f64, clara_options(1, 1, 0));
-    CHECK(result_f64.medoid_indices.size() == 1);
-    CHECK(result_f64.labels == std::vector<int>{0, 0});
-    CHECK(bits(result_f64.total_cost) == bits(sentinel));
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::fast_clara(f64, clara_options(1, 1, 0)); },
+      "Problem::dtw_function" + no_path);
+    CHECK(f64.labels().empty());
 
     auto f32 = no_path_problem<float>("f13_clara_no_path_f32");
-    const auto result_f32 = dtwc::algorithms::fast_clara(
-      f32, clara_options(1, 1, 0));
-    CHECK(result_f32.medoid_indices.size() == 1);
-    CHECK(result_f32.labels == std::vector<int>{0, 0});
-    CHECK(bits(result_f32.total_cost) == bits(sentinel));
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::fast_clara(f32, clara_options(1, 1, 0)); },
+      "Problem::dtw_function_f32" + no_path);
+    CHECK(f32.labels().empty());
+  }
+
+  SECTION("OneBatchPAM")
+  {
+    dtwc::algorithms::OneBatchPAMOptions options;
+    options.n_clusters = 1;
+    options.random_seed = 0;
+
+    auto f64 = no_path_problem<double>("f13_onebatch_no_path_f64");
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::one_batch_pam(f64, options); },
+      "Problem::dtw_function" + no_path);
+
+    auto f32 = no_path_problem<float>("f13_onebatch_no_path_f32");
+    require_invalid_input(
+      [&] { (void)dtwc::algorithms::one_batch_pam(f32, options); },
+      "Problem::dtw_function_f32" + no_path);
   }
 }

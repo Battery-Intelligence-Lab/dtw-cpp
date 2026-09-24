@@ -11,8 +11,10 @@ call/branch instructions whose text names the callee. Prints
 Report-only: this script does not decide anything, it produces the marker that
 W4 reads. Exit 0 when a disassembler produced inspectable caller blocks, 2 when
 no disassembler is available or the binary carries no matching symbols (a
-stripped binary cannot be inspected, which is why the CTest registration is
-Linux/macOS only).
+stripped binary cannot be inspected, so it is a Linux/macOS tool). A manual tool,
+not a CTest entry, since it accepts any count:
+
+  python3 scripts/check_ipo_inlining.py build/bin/dtwc_cl --ipo on
 """
 
 from __future__ import annotations

@@ -16,17 +16,17 @@
 #include <iostream>   // for operator<<, ostream, basic_ostream, cout
 #include <string>     // for allocator, string, char_traits
 
-int main()
+int main(int argc, char **argv)
 {
   dtwc::Clock clk; // Create a clock object
 
   int Ndata_max = 300; // Load 300 data maximum.
   auto Nc = 6;         // Number of clusters
 
-  // Optional: Set data path if not running from project root
-  // dtwc::settings::paths::set_data_path("/path/to/your/data");
+  // The data folder: the first argument, else ./data (run from the project root).
+  const std::filesystem::path data_dir = argc > 1 ? argv[1] : "./data";
 
-  dtwc::DataLoader dl{ dtwc::settings::paths::data / "dummy", Ndata_max };
+  dtwc::DataLoader dl{ data_dir / "dummy", Ndata_max };
   dl.start_column(1).start_row(1); // Since dummy files are in Pandas format skip first row/column.
 
   dtwc::Problem prob("DTW_MILP_results", dl); // Create a problem.

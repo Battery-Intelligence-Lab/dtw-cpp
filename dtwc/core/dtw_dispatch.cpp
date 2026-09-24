@@ -115,6 +115,8 @@ auto make_arow(const Problem &p)
 // Variant lambdas (for MissingStrategy::Error or unsupported strategies).
 // ----------------------------------------------------------------------------
 
+// The Standard kernels are the only ones that take Problem::metric(); the
+// Problem refuses another metric for every other variant and missing strategy.
 template <typename T>
 auto make_standard(const Problem &p)
   -> std::function<double(std::span<const T>, std::span<const T>)>
@@ -123,7 +125,8 @@ auto make_standard(const Problem &p)
     return [&p](std::span<const T> x, std::span<const T> y) -> double {
       const auto ndim = p.data().ndim;
       return normalize_public_distance(dtwBanded_mv<T>(
-        x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
+        x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band,
+        T(-1), p.metric()));
     };
   }
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
@@ -134,8 +137,8 @@ auto make_standard(const Problem &p)
     // for the k-medoids / MIP consumers. Banded builds keep dtwBanded — the
     // band already excises the region EAP would prune.
     if (p.band < 0)
-      return normalize_public_distance(dtwFull_eap<T>(x, y));
-    return normalize_public_distance(dtwBanded<T>(x, y, p.band));
+      return normalize_public_distance(dtwFull_eap<T>(x, y, p.metric()));
+    return normalize_public_distance(dtwBanded<T>(x, y, p.band, T(-1), p.metric()));
   };
 }
 
@@ -324,7 +327,8 @@ auto make_independent(const Problem &p)
   return [&p](std::span<const T> x, std::span<const T> y) -> double {
     const auto ndim = p.data().ndim;
     return normalize_public_distance(dtw_independent_mv<T>(
-      x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band));
+      x.data(), x.size() / ndim, y.data(), y.size() / ndim, ndim, p.band,
+      p.metric()));
   };
 }
 

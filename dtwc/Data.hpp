@@ -10,12 +10,12 @@
 
 #pragma once
 
+#include "base/error.hpp"
 #include "base/settings.hpp"
 #include "core/storage.hpp"
 
 #include <cstddef>      // for size_t
 #include <span>         // for span
-#include <stdexcept>    // for runtime_error
 #include <string>       // for string
 #include <string_view>  // for string_view
 #include <utility>      // for move
@@ -98,11 +98,11 @@ struct Data
   {
     // series_length() and the modulo below both divide by ndim.
     if (ndim == 0)
-      throw std::runtime_error("Data: ndim must be at least 1");
+      throw InvalidInput("Data: ndim must be at least 1");
     const auto n = size();
     for (size_t i = 0; i < n; ++i) {
       if (series_flat_size(i) % ndim != 0) {
-        throw std::runtime_error(
+        throw InvalidInput(
           "Series " + std::to_string(i) + " has flat size " +
           std::to_string(series_flat_size(i)) + " which is not divisible by ndim=" +
           std::to_string(ndim));
@@ -118,7 +118,7 @@ struct Data
     : ndim{ ndim_ }, precision{ core::Precision::Float64 }
   {
     if (p_vec_new.size() != p_names_new.size())
-      throw std::runtime_error("Data and name vectors should be of the same size");
+      throw InvalidInput("Data and name vectors should be of the same size");
     p_vec = std::move(p_vec_new);
     p_names = std::move(p_names_new);
     validate_ndim();
@@ -130,7 +130,7 @@ struct Data
     : ndim{ ndim_ }, precision{ core::Precision::Float32 }
   {
     if (p_vec_new.size() != p_names_new.size())
-      throw std::runtime_error("Data and name vectors should be of the same size");
+      throw InvalidInput("Data and name vectors should be of the same size");
     p_vec_f32 = std::move(p_vec_new);
     p_names = std::move(p_names_new);
     validate_ndim();
@@ -143,7 +143,7 @@ struct Data
       p_name_views_(std::move(name_views)), is_view_(true)
   {
     if (p_spans_.size() != p_name_views_.size())
-      throw std::runtime_error("Data view: span and name vectors should be of the same size");
+      throw InvalidInput("Data view: span and name vectors should be of the same size");
     validate_ndim();
   }
 
@@ -155,7 +155,7 @@ struct Data
       p_name_views_(std::move(name_views)), is_view_(true)
   {
     if (p_spans_f32_.size() != p_name_views_.size())
-      throw std::runtime_error("Data view: span and name vectors should be of the same size");
+      throw InvalidInput("Data view: span and name vectors should be of the same size");
     validate_ndim();
   }
 
@@ -166,7 +166,7 @@ struct Data
                             std::vector<size_t> &&flat_sizes, size_t ndim_ = 1)
   {
     if (names.size() != flat_sizes.size())
-      throw std::runtime_error("Data::metadata_only: names and flat_sizes must be the same size");
+      throw InvalidInput("Data::metadata_only: names and flat_sizes must be the same size");
     Data d;
     d.p_names = std::move(names);
     d.meta_flat_sizes_ = std::move(flat_sizes);
@@ -190,7 +190,7 @@ private:
                                                  const char *stored,
                                                  const char *correct)
   {
-    throw std::runtime_error(
+    throw InvalidInput(
       std::string("Data::") + accessor + ": data is stored as " + stored
       + "; use " + correct + "() instead.");
   }
@@ -198,7 +198,7 @@ private:
   /// Common error for local access to bulk data that is not resident (device='hpc').
   [[noreturn]] static void throw_not_resident()
   {
-    throw std::runtime_error(
+    throw InvalidInput(
       "Data::series: bulk time-series data is not resident locally (device='hpc'). "
       "Only shapes/counts/names are loaded on the client; the payload is streamed to "
       "the SLURM cluster at submit. Select device 'cpu' or 'gpu' for local data access.");

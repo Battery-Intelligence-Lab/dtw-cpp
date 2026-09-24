@@ -8,6 +8,13 @@
 
 #pragma once
 
+// NaN marks missing values and pruned or uncomputed distances (design §9).
+// Under -ffinite-math-only (implied by -ffast-math) the compiler may assume no
+// NaN exists and fold every such test away, so answers would be silently wrong.
+#if defined(__FINITE_MATH_ONLY__) && __FINITE_MATH_ONLY__
+#error "DTWC++ cannot be compiled with -ffinite-math-only (implied by -ffast-math): NaN marks missing values and pruned distances. Add -fno-finite-math-only after -ffast-math."
+#endif
+
 #include "base/settings.hpp"
 #include "base/random_engine.hpp" //!< dtwc::randGenerator, split out of settings.hpp (X-12)
 #include "api.hpp"

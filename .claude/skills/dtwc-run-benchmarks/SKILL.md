@@ -86,6 +86,11 @@ Records are **per machine**. Never put two machines in one table and call the ra
 - `docs/content/benchmarks/ucr.md` is generated and carries **release evidence only**. A local or
   advisory measurement never goes there, and `scripts/generate_docs.py` owns the file.
 - Wall-clock is advisory; counters decide. Say which one you have.
+- Compare two builds **interleaved** (A, B, A, B …), never one after the other, and check the power state
+  before and after (`pmset -g | grep -i powermode` on macOS): Low Power Mode cut the clock from 4.5 to 2.9 GHz
+  mid-run on 2026-09-23. A gap between two builds can also be code placement alone (the DTW loop has a
+  ~30 % cliff when its `fcmp`/`fcsel` pair straddles a 64-byte boundary) — look at the assembly before
+  blaming the code (`.claude/baselines/2026-09-23-x27-eigen-gap.md`).
 - If you cannot capture the machine, say so in the record rather than leaving the table out.
 - Comparing against dtaidistance / tslearn / aeon goes through `benchmarks/bench_cross_library.py`
   so the competitors' conventions (L2 local cost, sqrt, window fraction) are converted, not assumed.

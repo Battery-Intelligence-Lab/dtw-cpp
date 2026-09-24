@@ -91,36 +91,24 @@ std::string normalize_method(std::string_view value)
   return method;
 }
 
-void configure_device(Problem &prob, Device selected, int index)
+std::ofstream open_output(const std::filesystem::path &path,
+                          std::ios::openmode mode = std::ios::out)
 {
-  validate_device(selected);
-  if (selected == Device::CPU) {
-    // Auto is a CPU policy (brute-force vs admissible pruning), never a GPU
-    // selector, so it is safe and usually faster than forcing BruteForce.
-    prob.distance_strategy = DistanceMatrixStrategy::Auto;
-    return;
-  }
-  if (selected == Device::GPU) {
-    prob.cuda_settings.device_id = index;
-#if defined(DTWC_HAS_CUDA)
-    prob.distance_strategy = DistanceMatrixStrategy::CUDA;
-#elif defined(DTWC_HAS_METAL)
-    prob.distance_strategy = DistanceMatrixStrategy::Metal;
-#else
-    throw DeviceError(
-      "cluster: GPU was selected but this build has no GPU backend. Rebuild with "
-      "-DDTWC_ENABLE_CUDA=ON or use a macOS Metal build.");
-#endif
-    return;
-  }
-  if (selected == Device::HPC)
-    throw std::logic_error("configure_device: HPC handled before local setup");
-  throw std::logic_error("configure_device: unreachable Device");
+  std::ofstream stream(path, mode);
+  if (!stream.is_open()) throw IOError("Result::save: cannot open " + path.string());
+  return stream;
 }
 
-void ensure_output(std::ofstream &stream, const std::filesystem::path &path)
+/// A full disk or a file-size quota fails the writes after a successful open,
+/// so the stream is checked after closing too: an open-only check left a
+/// truncated file behind a save that reported success (B-05).
+void close_output(std::ofstream &stream, const std::filesystem::path &path)
 {
-  if (!stream.is_open()) throw IOError("Result::save: cannot open " + path.string());
+  stream.close();
+  if (!stream)
+    throw IOError("Result::save: cannot write " + path.string()
+                  + "; the file is incomplete (disk full or file-size quota?). "
+                    "Free space or save to another directory.");
 }
 
 } // namespace
@@ -154,8 +142,11 @@ Data Dataset::materialize_local() const
     DataLoader loader(path());
     loader.start_column(skip_cols_).start_row(skip_rows_).verbosity(0);
     if (delimiter_ != 0) loader.delimiter(delimiter_);
+    // A read failure is IOError naming the file; other typed errors pass unchanged.
     try {
       return loader.load_local();
+    } catch (const IOError &e) {
+      throw IOError("load: failed to read '" + path().string() + "': " + e.what());
     } catch (const Error &) {
       throw;
     } catch (const std::exception &e) {
@@ -266,21 +257,21 @@ void Result::save(const std::filesystem::path &directory) const
   const auto silhouettes_path = directory / utf8_to_path(base + "_silhouettes.csv");
 
   {
-    std::ofstream out(labels_path);
-    ensure_output(out, labels_path);
+    auto out = open_output(labels_path);
     out << "name,cluster\n";
     for (std::size_t i = 0; i < labels().size(); ++i)
       out << problem_->series_name(i) << ',' << labels()[i] << '\n';
+    close_output(out, labels_path);
   }
   {
-    std::ofstream out(medoids_path);
-    ensure_output(out, medoids_path);
+    auto out = open_output(medoids_path);
     out << "cluster,medoid_index,medoid_name\n";
     for (std::size_t c = 0; c < medoids().size(); ++c) {
       const int idx = medoids()[c];
       out << c << ',' << idx << ','
           << problem_->series_name(static_cast<std::size_t>(idx)) << '\n';
     }
+    close_output(out, medoids_path);
   }
 
   // save() promises the complete matrix and silhouettes. Matrix-free methods
@@ -288,13 +279,10 @@ void Result::save(const std::filesystem::path &directory) const
   problem_->fill_distance_matrix();
   std::visit([&](const auto &matrix) {
     core::detail::preflight_distance_matrix_csv(matrix);
-    std::ofstream out(
+    auto out = open_output(
       matrix_path, std::ios::out | std::ios::binary | std::ios::trunc);
-    ensure_output(out, matrix_path);
     out << matrix;
-    out.close();
-    if (!out)
-      throw IOError("Result::save: cannot write " + matrix_path.string());
+    close_output(out, matrix_path);
   }, problem_->distance_matrix());
 
   // s(i) is undefined with fewer than two realised clusters, where
@@ -310,12 +298,12 @@ void Result::save(const std::filesystem::path &directory) const
     return;
   }
   {
-    std::ofstream out(silhouettes_path);
-    ensure_output(out, silhouettes_path);
+    auto out = open_output(silhouettes_path);
     out << "name,cluster,silhouette\n";
     for (std::size_t i = 0; i < silhouette_values.size(); ++i)
       out << problem_->series_name(i) << ',' << labels()[i] << ','
           << std::setprecision(8) << silhouette_values[i] << '\n';
+    close_output(out, silhouettes_path);
   }
 }
 
@@ -361,7 +349,7 @@ Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
     throw InvalidInput("cluster: k must not exceed the number of series.");
   problem->set_band(band);
   problem->set_max_iter(max_iter);
-  configure_device(*problem, selected, device_index);
+  problem->set_device(selected, device_index);
 
   method = detail::resolve_tier1_method(method, problem->size(), execution_target);
 

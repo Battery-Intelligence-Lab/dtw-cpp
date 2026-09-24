@@ -55,13 +55,18 @@ class TestDeviceParsing:
         with pytest.raises(dtwcpp.DeviceError, match="unknown device"):
             dtwcpp.compute_distance_matrix(series, device="tpu")
 
-    def test_cuda_request_fails_loudly_when_unavailable(self):
-        """An explicit CUDA request never silently computes on CPU."""
-        if getattr(dtwcpp, "CUDA_AVAILABLE", False) and dtwcpp.cuda_available():
-            pytest.skip("CUDA is available; unavailable-device path not exercised")
+    def test_cuda_request_is_a_gpu_request(self):
+        """'cuda' is a spelling of 'gpu' (§6.1): the same GPU result, or the same
+        loud DeviceError; an explicit request never silently computes on CPU."""
         series = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-        with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
-            dtwcpp.compute_distance_matrix(series, device="cuda")
+        try:
+            expected = dtwcpp.compute_distance_matrix(series, device="gpu")
+        except dtwcpp.DeviceError:
+            with pytest.raises(dtwcpp.DeviceError, match="not silently fall back"):
+                dtwcpp.compute_distance_matrix(series, device="cuda")
+        else:
+            np.testing.assert_array_equal(
+                dtwcpp.compute_distance_matrix(series, device="cuda"), expected)
 
 
 # ---------------------------------------------------------------------------

@@ -224,7 +224,8 @@ static std::string resolve_cli_auto_method(std::string method, size_t series_cou
     "list-per-row Parquet file to stream them under the cap.");
 }
 
-/// Reject an input format whose reader this binary does not contain.
+/// Reject an input format whose reader this binary does not contain: IOError, as
+/// for `.dtws` without llfio (api-contract-2.0.md §5).
 ///
 /// The rejection must exist in the build that LACKS the capability, so it sits
 /// under `#ifndef`, like the `.dtws`/`DTWC_HAS_MMAP` branch. Inside
@@ -236,14 +237,14 @@ static void require_input_format_is_built(
 {
 #ifndef DTWC_HAS_PARQUET
   if (parquet_input)
-    throw dtwc::InvalidInput(
+    throw dtwc::IOError(
       "Parquet input (.parquet/.pq) requires a build with Arrow/Parquet "
       "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Parquet "
       "support; convert the input to CSV/TSV or use an Arrow-enabled build.");
 #endif
 #ifndef DTWC_HAS_ARROW
   if (arrow_ipc_input)
-    throw dtwc::InvalidInput(
+    throw dtwc::IOError(
       "Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow "
       "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Arrow support; "
       "convert the input to CSV/TSV or use an Arrow-enabled build.");
@@ -502,7 +503,7 @@ static std::optional<fs::path> configure_cli_distance_storage(
   (void)cache_metric;
   if (method == "clara" && !clara_uses_full_sample) {
     if (legacy_checkpoint_requested || legacy_distance_matrix_requested)
-      throw std::runtime_error(
+      throw dtwc::InvalidInput(
         "Non-full FastCLARA does not consume a parent distance matrix; "
         "--checkpoint and --dist-matrix would load or save unused O(N^2) "
         "state. Omit those options, or request a full sample deliberately.");
@@ -512,14 +513,14 @@ static std::optional<fs::path> configure_cli_distance_storage(
     return std::nullopt;
   if (mmap_threshold != 0 && prob.size() < mmap_threshold) return std::nullopt;
   if (legacy_checkpoint_requested) {
-    throw std::runtime_error(
+    throw dtwc::InvalidInput(
       "--checkpoint uses the legacy dense CSV checkpoint format and cannot be "
       "combined with memory-mapped distance storage. The mmap cache already "
       "resumes automatically; omit --checkpoint, or raise --mmap-threshold if "
       "the dense matrix and CSV checkpoint fit in RAM.");
   }
   if (legacy_distance_matrix_requested) {
-    throw std::runtime_error(
+    throw dtwc::InvalidInput(
       "--dist-matrix uses a legacy dense CSV matrix and cannot be combined "
       "with memory-mapped distance storage. Omit --dist-matrix to resume the "
       "fingerprinted mmap cache, or raise --mmap-threshold if importing the "
@@ -530,7 +531,7 @@ static std::optional<fs::path> configure_cli_distance_storage(
   prob.use_mmap_distance_matrix(cache_path, cache_metric);
   return cache_path;
 #else
-  throw std::runtime_error(
+  throw dtwc::IOError(
     "method='" + std::string(method) + "' at N=" + std::to_string(prob.size())
     + " requires memory-mapped distance storage because --mmap-threshold="
     + std::to_string(mmap_threshold)
@@ -614,9 +615,12 @@ static std::string output_series_name(
   size_t index,
   std::optional<size_t> streamed_series_count)
 {
+  // The result writers' checks are programming errors: a result comes from an
+  // algorithm run on this input or from --resume, which
+  // validate_cli_resume_result checked against it.
   if (streamed_series_count) {
     if (index >= *streamed_series_count) {
-      throw std::runtime_error(
+      throw std::logic_error(
         "Result index " + std::to_string(index) + " is outside the " +
         std::to_string(*streamed_series_count) + "-series input.");
     }
@@ -624,11 +628,35 @@ static std::string output_series_name(
     return "series_" + std::to_string(index);
   }
   if (index >= prob.size()) {
-    throw std::runtime_error(
+    throw std::logic_error(
       "Result index " + std::to_string(index) + " is outside the " +
       std::to_string(prob.size()) + "-series input.");
   }
   return std::string(prob.get_name(index));
+}
+
+/// Open an output artefact, failing loudly if it cannot be created.
+static std::ofstream open_output(const fs::path &path)
+{
+  std::ofstream out(path);
+  if (!out.is_open())
+    throw dtwc::IOError("Cannot open output file '" + path.string()
+                        + "' for writing; check that the --output directory "
+                          "is writable.");
+  return out;
+}
+
+/// Close an output artefact and fail if any write was lost. A full disk or a
+/// file-size quota fails the writes AFTER a successful open, so checking only
+/// is_open() left a truncated file behind a zero exit status (B-05).
+static void close_output(std::ofstream &out, const fs::path &path)
+{
+  out.close();
+  if (!out)
+    throw dtwc::IOError("Write error on output file '" + path.string()
+                        + "': the file is incomplete (disk full or file-size "
+                          "quota?). Free space or choose another --output "
+                          "directory, then rerun.");
 }
 
 static void write_labels_csv(const fs::path &path,
@@ -637,20 +665,18 @@ static void write_labels_csv(const fs::path &path,
                              std::optional<size_t> streamed_series_count = std::nullopt)
 {
   const size_t expected = streamed_series_count.value_or(prob.size());
-  if (result.labels.size() != expected) {
-    throw std::runtime_error(
+  if (result.labels.size() != expected) { // programming error, as in output_series_name
+    throw std::logic_error(
       "Clustering result has " + std::to_string(result.labels.size()) +
       " labels for a " + std::to_string(expected) + "-series input.");
   }
-  std::ofstream out(path);
-  if (!out.is_open())
-    throw std::runtime_error("Cannot open output file: " + path.string());
-
+  std::ofstream out = open_output(path);
   out << "name,cluster\n";
   for (size_t i = 0; i < result.labels.size(); ++i) {
     out << output_series_name(prob, i, streamed_series_count)
         << "," << result.labels[i] << "\n";
   }
+  close_output(out, path);
 }
 
 /// Write medoid information to CSV.
@@ -660,16 +686,13 @@ static void write_medoids_csv(const fs::path &path,
                               std::optional<size_t> streamed_series_count = std::nullopt)
 {
   for (const int idx : result.medoid_indices) {
-    if (idx < 0)
-      throw std::runtime_error(
+    if (idx < 0) // programming error, as in output_series_name
+      throw std::logic_error(
         "Result medoid index " + std::to_string(idx) + " is negative.");
     (void)output_series_name(
       prob, static_cast<size_t>(idx), streamed_series_count);
   }
-  std::ofstream out(path);
-  if (!out.is_open())
-    throw std::runtime_error("Cannot open output file: " + path.string());
-
+  std::ofstream out = open_output(path);
   out << "cluster,medoid_index,medoid_name\n";
   for (int c = 0; c < result.n_clusters(); ++c) {
     int idx = result.medoid_indices[c];
@@ -678,6 +701,7 @@ static void write_medoids_csv(const fs::path &path,
              prob, static_cast<size_t>(idx), streamed_series_count)
         << "\n";
   }
+  close_output(out, path);
 }
 
 /// Write silhouette scores to CSV.
@@ -686,22 +710,20 @@ static void write_silhouettes_csv(const fs::path &path,
                                   const dtwc::Problem &prob,
                                   const dtwc::core::ClusteringResult &result)
 {
-  std::ofstream out(path);
-  if (!out.is_open())
-    throw std::runtime_error("Cannot open output file: " + path.string());
-
+  std::ofstream out = open_output(path);
   out << "name,cluster,silhouette\n";
   for (size_t i = 0; i < sil.size(); ++i) {
     out << prob.get_name(i) << "," << result.labels[i] << ","
         << std::setprecision(8) << sil[i] << "\n";
   }
+  close_output(out, path);
 }
 
 // ---------------------------------------------------------------------------
 // CLI / TOML flag deprecation registry (api-contract-2.0.md §4, §7 item 3)
 // ---------------------------------------------------------------------------
 // The CLI flag set and the TOML config keys are a de-facto API (they are
-// composed by `scripts/slurm/jobs/cluster_generic.slurm` and
+// composed by `python/dtwcpp/_slurm/cluster_generic.slurm` and
 // `python/dtwcpp/_hpc.py::build_dtwc_command`). When a flag/key is renamed to the
 // 2.0 contract vocabulary the OLD spelling stays ACCEPTED but emits a one-line
 // deprecation warning to stderr pointing at the new spelling (one warning per
@@ -1027,11 +1049,18 @@ static int run_cli_main(int argc, char *argv[])
     return EXIT_FAILURE;
   }
   if (n_clusters < 1) {
-    std::cerr << "Error: --clusters must be a positive integer\n";
+    std::cerr << "Error: -k/--n-clusters must be a positive integer, got "
+              << n_clusters << "\n";
     return EXIT_FAILURE;
   }
   if (n_init < 1) {
     std::cerr << "Error: --n-init must be a positive integer\n";
+    return EXIT_FAILURE;
+  }
+  // Problem::set_max_iter rejects it too, but only after the data is read.
+  if (max_iter < 1) {
+    std::cerr << "Error: --max-iter must be a positive integer, got " << max_iter
+              << "\n";
     return EXIT_FAILURE;
   }
 
@@ -1230,6 +1259,19 @@ static int run_cli_main(int argc, char *argv[])
     std::cout << "==========================\n\n" << std::flush;
   }
 
+  // A --checkpoint that cannot hold a checkpoint stops the run here, before
+  // any work: the save comes after clustering, so a typo cost the whole run.
+  if (!checkpoint_dir.empty()) {
+    std::error_code ec;
+    fs::create_directories(checkpoint_dir, ec);
+    if (ec || !fs::is_directory(checkpoint_dir, ec))
+      throw dtwc::IOError(
+        "--checkpoint '" + checkpoint_dir + "' is not a usable directory ("
+        + (ec ? ec.message() : std::string("not a directory"))
+        + "); pass a directory path (it is created if missing), or omit "
+          "--checkpoint.");
+  }
+
   // Create output directory
   fs::create_directories(output_dir);
 
@@ -1374,7 +1416,7 @@ static int run_cli_main(int argc, char *argv[])
 #endif
   if (dtws_input) {
 #ifndef DTWC_HAS_MMAP
-    throw std::runtime_error(
+    throw dtwc::IOError(
       ".dtws memory-mapped input requires a build with llfio "
       "(-DDTWC_ENABLE_LLFIO=ON). This binary was built without mmap support.");
 #else
@@ -1538,6 +1580,19 @@ static int run_cli_main(int argc, char *argv[])
   // Set the already validated DTW variant value object.
   prob.set_variant(vparams);
 
+  // Set MIP solver (relevant for method=mip). The first check keeps an unknown
+  // selector from silently leaving the default solver in place; the second
+  // keeps --solver gurobi on a build without Gurobi from silently solving with
+  // HiGHS, which is what a false set_solver means. Both precede any cache file.
+  if (solver != "highs" && solver != "gurobi")
+    throw dtwc::InvalidInput("unsupported --solver '" + solver + "'");
+  if (!prob.set_solver(solver == "gurobi" ? dtwc::Solver::Gurobi
+                                          : dtwc::Solver::HiGHS))
+    throw dtwc::SolverError(
+      "--solver " + solver + " is not available: this dtwc_cl was built without "
+      "Gurobi. Use --solver highs, or rebuild with -DDTWC_ENABLE_GUROBI=ON and "
+      "GUROBI_HOME set.");
+
   // Bind persistent distance storage only after every distance-affecting CLI
   // option has reached Problem. Opening earlier made the cache identity observe
   // the default band/variant/backend rather than the user's configuration.
@@ -1566,25 +1621,21 @@ static int run_cli_main(int argc, char *argv[])
       return EXIT_FAILURE;
     }
   }
-  // Set MIP solver (relevant for method=mip). The terminal else keeps an
-  // unknown selector from silently leaving the default solver in place.
-  if (solver == "highs")
-    prob.set_solver(dtwc::Solver::HiGHS);
-  else if (solver == "gurobi")
-    prob.set_solver(dtwc::Solver::Gurobi);
-  else
-    throw dtwc::InvalidInput("unsupported --solver '" + solver + "'");
 
   // ---- Load precomputed distance matrix if provided ----
+  // A matrix the user supplied but that cannot be loaded is an error: going on
+  // without it silently recomputed every distance and exited 0 (S-04).
   if (!dist_mat_path.empty()) {
     try {
       prob.read_distance_matrix(dist_mat_path);
-      if (verbose)
-        std::cout << "Loaded distance matrix from " << dist_mat_path << "\n";
     } catch (const std::exception &e) {
-      std::cerr << "Warning: Could not load distance matrix: " << e.what()
-                << "\nContinuing without precomputed matrix.\n";
+      throw dtwc::IOError("--dist-matrix '" + dist_mat_path
+                          + "' cannot be loaded; fix the file, or omit "
+                            "--dist-matrix to compute the distances. Cause: "
+                          + e.what());
     }
+    if (verbose)
+      std::cout << "Loaded distance matrix from " << dist_mat_path << "\n";
   }
 
   // ---- Automatic mid-fill checkpointing ----
@@ -1619,6 +1670,13 @@ static int run_cli_main(int argc, char *argv[])
   }
   if (!replaying_result && dev.is_cuda && !prob.is_distance_matrix_filled()) {
 #ifdef DTWC_HAS_CUDA
+    // The CUDA fill uploads p_vec, which Float32 data leave empty. Same text as
+    // Problem::validate_fill_request, whose fill replaces this block in IF-2.
+    if (prob.data().is_f32())
+      throw dtwc::DeviceError(
+        "--dtype float32 --device cuda: CUDA computes from Float64 series, but this "
+        "Problem holds precision = Float32; no backend call or CPU fallback was "
+        "attempted. Load the series as Float64, or use device cpu.");
     if (!dtwc::cuda::cuda_available()) {
       std::cerr << "Error: --device cuda requested but no CUDA GPU detected.\n";
       return EXIT_FAILURE;
@@ -1653,8 +1711,8 @@ static int run_cli_main(int argc, char *argv[])
       using Matrix = std::decay_t<decltype(dm)>;
       if constexpr (std::is_same_v<Matrix, dtwc::core::DenseDistanceMatrix>) {
         dm.resize(cuda_result.n);
-      } else if (dm.size() != cuda_result.n) {
-        throw std::runtime_error("CUDA result size does not match mmap distance cache");
+      } else if (dm.size() != cuda_result.n) { // programming error: the cache was bound for these series
+        throw std::logic_error("CUDA result size does not match mmap distance cache");
       }
       for (size_t i = 0; i < cuda_result.n; ++i)
         for (size_t j = i; j < cuda_result.n; ++j)
@@ -1837,13 +1895,18 @@ static int run_cli_main(int argc, char *argv[])
   }
 
   // ---- Save checkpoint ----
+  // Before the results, in fresh and replay runs alike, so a result write that
+  // fails (a blocked path, a full disk) cannot lose the distance matrix. A save
+  // that fails is kept and raised once the results are on disk, so it cannot
+  // lose them either; it is an error, not a warning behind exit 0 (S-04).
+  std::optional<std::string> checkpoint_failure;
   if (!checkpoint_dir.empty()) {
     try {
       dtwc::save_checkpoint(prob, checkpoint_dir, cache_metric);
       if (verbose)
         std::cout << "Checkpoint saved to " << checkpoint_dir << "\n";
     } catch (const std::exception &e) {
-      std::cerr << "Warning: Could not save checkpoint: " << e.what() << "\n";
+      checkpoint_failure = e.what();
     }
   }
 
@@ -1872,24 +1935,36 @@ static int run_cli_main(int argc, char *argv[])
       std::cout << "Distance matrix written to " << dm_path << "\n";
   }
 
-  // Silhouette scores (requires filled distance matrix)
+  // Silhouette scores (requires filled distance matrix). A score that cannot
+  // be computed is a warning; a computed score that cannot be written is an
+  // error like any other artefact, so the write stays outside the try (B-05).
   if (prob.is_distance_matrix_filled() && n_clusters > 1) {
+    std::optional<std::vector<double>> sil;
     try {
-      auto sil = dtwc::scores::silhouette(prob);
+      sil = dtwc::scores::silhouette(prob);
+    } catch (const std::exception &e) {
+      std::cerr << "Warning: Could not compute silhouette scores: " << e.what() << "\n";
+    }
+    if (sil) {
       const auto sil_path = out_dir / (prob_name + "_silhouettes.csv");
-      write_silhouettes_csv(sil_path, sil, prob, result);
+      write_silhouettes_csv(sil_path, *sil, prob, result);
 
       double mean_sil = 0.0;
-      if (!sil.empty()) {
-        mean_sil = std::accumulate(sil.begin(), sil.end(), 0.0) / static_cast<double>(sil.size());
+      if (!sil->empty()) {
+        mean_sil = std::accumulate(sil->begin(), sil->end(), 0.0) / static_cast<double>(sil->size());
       }
 
       if (verbose)
         std::cout << "Silhouette scores written, mean=" << std::setprecision(4) << mean_sil << "\n";
-    } catch (const std::exception &e) {
-      std::cerr << "Warning: Could not compute silhouette scores: " << e.what() << "\n";
     }
   }
+
+  if (checkpoint_failure)
+    throw dtwc::IOError("--checkpoint '" + checkpoint_dir
+                        + "': the distance checkpoint cannot be saved (the "
+                          "results are written to '" + output_dir + "'); "
+                          "free space or pass another directory to "
+                          "--checkpoint, or omit it. Cause: " + *checkpoint_failure);
 
   // Summary
   std::cout << "\n=== Results ===\n"

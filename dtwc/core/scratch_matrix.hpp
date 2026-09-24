@@ -95,11 +95,11 @@ public:
 private:
   std::unique_ptr<T[]> buffer_;
   /// Signed throughout, like Eigen's Index, so indices the kernels cast to `int`
-  /// need no zero-extend. This was tried as a fix for the ~5% BM_dtwFull
-  /// regression this class carries against the Eigen original and **did not
-  /// help** — the cause is still unidentified. Kept because it is the closer
-  /// match to what it replaces, not because it bought anything.
-  /// See .claude/baselines/2026-09-22-x27-drop-eigen-band.md.
+  /// need no zero-extend. Kept because it is the closer match to what it
+  /// replaces, not because it bought anything. The ~5% BM_dtwFull gap once
+  /// charged to this class does not reproduce: the hot loop compiles to the same
+  /// 17 instructions per cell as the Eigen original, and interleaved A/B runs
+  /// agree within noise. See .claude/baselines/2026-09-23-x27-eigen-gap.md.
   Index capacity_{ 0 };
   Index rows_{ 0 };
   Index cols_{ 0 };

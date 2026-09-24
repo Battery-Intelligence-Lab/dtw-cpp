@@ -122,8 +122,11 @@ CLARANS uses budget controls to limit computation:
 
 | Parameter | Description |
 |-----------|-------------|
-| `max_dtw_evals` | Maximum total DTW distance evaluations |
-| `max_neighbor` | Maximum neighbors to explore per iteration |
+| `num_local` | Number of random restarts (at least 1; default 2) |
+| `max_dtw_evals` | Maximum total DTW distance evaluations (`-1` = no limit) |
+| `max_neighbor` | Maximum consecutive non-improving swaps per restart (`-1` = automatic, `0` = keep the seeded initial medoids) |
+
+`num_local` below 1 raises `InvalidInput` before the Problem is touched.
 
 ```warning
 CLARANS is currently experimental and not exposed in the CLI. It requires benchmark evidence before promotion to a production algorithm. Use FastCLARA for scalable clustering.
@@ -148,7 +151,7 @@ By default, FastPAM is run first and its solution is fed to the MIP solver as a 
 
 ### Benders Decomposition
 
-For large datasets ($$N > 200$$), Benders decomposition splits the problem into a master problem (medoid selection, $$N$$ binary variables) and an assignment subproblem. This is enabled automatically or can be controlled with `--benders auto|on|off`.
+For large datasets ($$N > 200$$), Benders decomposition splits the problem into a master problem (medoid selection, $$N$$ binary variables) and an assignment subproblem. This is enabled automatically or can be controlled with `--benders auto|on|off`. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
 
 ### MIP Solver Settings
 

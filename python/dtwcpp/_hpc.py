@@ -3,7 +3,9 @@
 @brief Offload a clustering job to a SLURM cluster (e.g. Oxford ARC) and bring labels back.
 @details
     The transport (ssh / rsync / sbatch) is delegated to the tested shell wrapper
-    scripts/slurm/slurm_remote.sh. This module owns the Python side:
+    _slurm/slurm_remote.sh, which ships inside this package (package data, found
+    with importlib.resources) so an installed wheel needs no source checkout.
+    This module owns the Python side:
       1. serialize the series to a TSV the cluster's dtwc_cl reads,
       2. drive the wrapper (submit -> poll -> download),
       3. parse the downloaded NAME_labels.csv back into per-series cluster labels.
@@ -16,6 +18,7 @@
 """
 import csv
 import glob
+import importlib.resources
 import os
 import re
 import shutil
@@ -271,12 +274,14 @@ def write_series_tsv(series, path):
     """Write a list of 1-D series to a tab-delimited file, one series per row.
 
     Pure data — no header, no id column — matching ``dtwc_cl --skip-cols 0``.
-    Ragged series are allowed (rows may differ in length).
+    Ragged series are allowed (rows may differ in length). Values are written
+    with ``repr``, the shortest text that reads back to the same double, so an
+    HPC run clusters the same numbers as a local one (``:.10g`` rounded them).
     """
     path = str(path)
     with open(path, "w", newline="") as f:
         for s in series:
-            f.write("\t".join(f"{float(v):.10g}" for v in s))
+            f.write("\t".join(repr(float(v)) for v in s))
             f.write("\n")
     return path
 
@@ -383,14 +388,23 @@ def find_dtwc_binary(root):
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# Remote orchestration (drives scripts/slurm/slurm_remote.sh — NOT laptop-testable)
+# Remote orchestration (drives _slurm/slurm_remote.sh — NOT laptop-testable)
 # ─────────────────────────────────────────────────────────────────────────
+def slurm_wrapper_path():
+    """The SLURM wrapper shipped in this package; ``cluster_generic.slurm`` is beside it."""
+    return str(importlib.resources.files("dtwcpp") / "_slurm" / "slurm_remote.sh")
+
+
 class SlurmRemoteRunner:
-    """Thin wrapper around scripts/slurm/slurm_remote.sh (ssh + rsync + sbatch)."""
+    """Thin wrapper around the packaged slurm_remote.sh (ssh + rsync + sbatch).
+
+    ``repo_root`` is the project directory: it holds ``.env`` and receives
+    ``results/``. It need not be a source checkout.
+    """
 
     def __init__(self, repo_root):
-        self.repo_root = str(repo_root)
-        self.wrapper = os.path.join(self.repo_root, "scripts", "slurm", "slurm_remote.sh")
+        self.repo_root = os.path.abspath(str(repo_root))
+        self.wrapper = slurm_wrapper_path()
 
     def preflight(self):
         if shutil.which("bash") is None:
@@ -398,16 +412,24 @@ class SlurmRemoteRunner:
                 "bash not found. On Windows install Git Bash (ships ssh + rsync)."
             )
         if not os.path.isfile(self.wrapper):
-            raise RuntimeError(f"SLURM wrapper not found: {self.wrapper}")
+            raise RuntimeError(
+                f"SLURM wrapper not found: {self.wrapper}. The dtwcpp install is "
+                "incomplete; reinstall the package."
+            )
         if not os.path.isfile(os.path.join(self.repo_root, ".env")):
             raise RuntimeError(
-                "Missing .env at repo root. Copy scripts/slurm/env.example -> .env "
-                "and set SLURM_USER / SLURM_HOST / SLURM_REMOTE_BASE."
+                f"Missing .env in {self.repo_root} (the working directory, or "
+                "DTWC_REPO_ROOT). Create it with SLURM_USER, SLURM_HOST and "
+                "SLURM_REMOTE_BASE; scripts/slurm/env.example in a source "
+                "checkout is a template."
             )
 
     def _run(self, *args, timeout=None):
+        # The wrapper resolves its project directory from DTWC_REPO_ROOT; pass
+        # ours so an ambient value cannot point it at another .env.
         return subprocess.run(["bash", self.wrapper, *args],
                               cwd=self.repo_root, capture_output=True, text=True,
+                              env={**os.environ, "DTWC_REPO_ROOT": self.repo_root},
                               timeout=timeout)
 
     def submit_cluster(self, input_tsv, k, *, method="pam", device="cpu",
@@ -540,9 +562,11 @@ def cluster_on_hpc(source, n_clusters, *, method="pam", device="cpu", band=-1,
     ``n_init`` and ``seed`` are carried unchanged to the remote CLI. When seed is
     omitted, the remote CLI's own default supplies the first restart seed.
 
-    Requires a configured ``.env`` at the repo root and ssh + rsync (Git Bash on
-    Windows). The build must already exist on the cluster — run
-    ``bash scripts/slurm/slurm_remote.sh build htc-cpu`` once beforehand.
+    Requires a configured ``.env`` in the project directory (``repo_root``, else
+    ``$DTWC_REPO_ROOT``, else the working directory) and ssh + rsync (Git Bash on
+    Windows); the wrapper ships inside this package. The build must already
+    exist on the cluster — once, from a source checkout,
+    ``bash scripts/slurm/slurm_remote.sh upload`` then ``build htc-cpu``.
 
     NOTE: the remote submission cannot be verified on a dev laptop; run on ARC.
     """

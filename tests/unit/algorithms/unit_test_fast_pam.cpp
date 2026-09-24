@@ -27,19 +27,6 @@
 #define DTWC_TEST_DATA_DIR "./data"
 #endif
 
-static struct TestDataInitFP {
-  TestDataInitFP() {
-    dtwc::settings::paths::set_data_path(DTWC_TEST_DATA_DIR);
-    // Route Lloyd/FastPAM CSV output to a per-run temp dir so the test never
-    // pollutes the repo root or the build tree (previously `.`, which was
-    // CWD-dependent and leaked files when run from the repo root).
-    const auto out = std::filesystem::temp_directory_path() / "dtwc_fast_pam_test";
-    std::error_code ec;
-    std::filesystem::create_directories(out, ec);
-    dtwc::settings::paths::set_results_path(out);
-  }
-} test_data_init_fp_;
-
 using Catch::Matchers::WithinAbs;
 using namespace dtwc;
 

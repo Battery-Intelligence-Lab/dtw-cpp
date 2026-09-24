@@ -31,7 +31,7 @@ facts with their evidence and never inflates them.
    cites (`grep -rn "summaries/handoff-" scripts tests dtwc docs`). Delete the rest with `git rm`;
    history keeps them.
 5. **Lessons**: if the session taught something durable, append one entry to `.claude/LESSONS.md`
-   (headline, rule, one pointer). Do not reword existing entries — gate scripts pin their text.
+   (headline, rule, one pointer). Keep it short; no gate pins the text.
 
 ## Rules
 

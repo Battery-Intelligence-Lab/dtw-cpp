@@ -11,6 +11,8 @@
 
 #pragma once
 
+#include "../base/names.hpp"
+
 namespace dtwc::core {
 
 /// Warping-path constraint type.
@@ -28,6 +30,14 @@ enum class MetricType
   SquaredL2   ///< (a - b)^2
 };
 
+/// L2 has no name: no front end offers it.
+inline constexpr Name<MetricType> metric_names[]{
+  { "l1", MetricType::L1 },
+  { "squared_euclidean", MetricType::SquaredL2 },
+  { "sqeuclidean", MetricType::SquaredL2 },
+  { "l2sq", MetricType::SquaredL2 },
+};
+
 /// DTW algorithm variant.
 enum class DTWVariant
 {
@@ -40,12 +50,28 @@ enum class DTWVariant
   TWE        ///< Time Warp Edit (Marteau 2009): stiffness ν + edit penalty λ, univariate/unbanded
 };
 
+inline constexpr Name<DTWVariant> variant_names[]{
+  { "standard", DTWVariant::Standard },
+  { "ddtw", DTWVariant::DDTW },
+  { "wdtw", DTWVariant::WDTW },
+  { "adtw", DTWVariant::ADTW },
+  { "softdtw", DTWVariant::SoftDTW },
+  { "soft-dtw", DTWVariant::SoftDTW },
+  { "msm", DTWVariant::MSM },
+  { "twe", DTWVariant::TWE },
+};
+
 /// Multivariate combination mode (Shokoohi-Yekta et al., DMKD 2017).
 /// Only meaningful when Data::ndim > 1; ignored for univariate series.
 enum class MVMode
 {
   Dependent,   ///< DTW_D: one warping path, per-cell cost summed over channels (default; existing behaviour)
   Independent  ///< DTW_I: independent per-channel univariate DTW, distances summed
+};
+
+inline constexpr Name<MVMode> mv_mode_names[]{
+  { "dependent", MVMode::Dependent },
+  { "independent", MVMode::Independent },
 };
 
 /// Strategy for handling missing data (NaN values) in time series.
@@ -55,6 +81,15 @@ enum class MissingStrategy
   ZeroCost,     ///< Zero local cost for NaN pairs (existing warping_missing.hpp behavior)
   AROW,         ///< DTW-AROW: one-to-one diagonal-only alignment for missing positions
   Interpolate   ///< Linear interpolation preprocessing, then standard DTW
+};
+
+inline constexpr Name<MissingStrategy> missing_strategy_names[]{
+  { "error", MissingStrategy::Error },
+  { "zero_cost", MissingStrategy::ZeroCost },
+  { "zero-cost", MissingStrategy::ZeroCost },
+  { "zerocost", MissingStrategy::ZeroCost },
+  { "arow", MissingStrategy::AROW },
+  { "interpolate", MissingStrategy::Interpolate },
 };
 
 /// Variant-specific parameters.

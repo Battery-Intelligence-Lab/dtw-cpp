@@ -445,7 +445,7 @@ TEST_CASE("Unavailable direct HiGHS leaves caller clustering state unchanged",
   problem.centroids_ind = {0, 2};
   problem.clusters_ind = {0, 0, 1, 1};
   problem.mip_settings.benders = "off";
-  problem.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(problem.set_solver(dtwc::Solver::HiGHS));
   problem.set_method(dtwc::Method::MIP);
   const auto medoids_before = problem.centroids_ind;
   const auto labels_before = problem.clusters_ind;
@@ -465,7 +465,7 @@ TEST_CASE("MIP HiGHS: warm start produces valid result", "[mip][highs]")
   prob.set_n_clusters(2);
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
   prob.centroids_ind = {0, 7};
   prob.clusters_ind = {0, 0, 0, 0, 1, 1, 1, 1};
@@ -487,7 +487,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   prob1.set_n_clusters(2);
   prob1.mip_settings.warm_start = false;
   prob1.mip_settings.verbose_solver = false;
-  prob1.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob1.set_solver(dtwc::Solver::HiGHS));
   prob1.set_method(dtwc::Method::MIP);
   prob1.cluster();
 
@@ -500,7 +500,7 @@ TEST_CASE("MIP HiGHS: cold start matches warm start cost", "[mip][highs]")
   prob2.set_n_clusters(2);
   prob2.mip_settings.warm_start = true;
   prob2.mip_settings.verbose_solver = false;
-  prob2.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob2.set_solver(dtwc::Solver::HiGHS));
   prob2.set_method(dtwc::Method::MIP);
   prob2.cluster();
   double warm_cost = prob2.find_total_cost();
@@ -517,7 +517,7 @@ TEST_CASE("MIP HiGHS: settings propagate without crash", "[mip][highs]")
   prob.mip_settings.mip_gap = 0.01;
   prob.mip_settings.time_limit_sec = 30;
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_NOTHROW(prob.cluster());
@@ -530,7 +530,7 @@ TEST_CASE("MIP HiGHS: k=1 trivial case", "[mip][highs]")
   prob.set_n_clusters(1);
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
   prob.cluster();
 
@@ -563,7 +563,7 @@ TEST_CASE("MIP Benders: forced on produces valid clustering", "[mip][highs][bend
   prob.mip_settings.benders = "on";
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS); // Benders uses HiGHS as the master/subproblem solver
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS)); // Benders uses HiGHS as the master/subproblem solver
   prob.set_method(dtwc::Method::MIP);
   prob.cluster();
 
@@ -588,7 +588,7 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   prob_direct.set_n_clusters(3);
   prob_direct.mip_settings.benders = "off";
   prob_direct.mip_settings.verbose_solver = false;
-  prob_direct.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob_direct.set_solver(dtwc::Solver::HiGHS));
   prob_direct.set_method(dtwc::Method::MIP);
   prob_direct.cluster();
 
@@ -600,7 +600,7 @@ TEST_CASE("MIP Benders: cost matches direct HiGHS on small instance", "[mip][hig
   prob_benders.set_n_clusters(3);
   prob_benders.mip_settings.benders = "on";
   prob_benders.mip_settings.verbose_solver = false;
-  prob_benders.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob_benders.set_solver(dtwc::Solver::HiGHS));
   prob_benders.set_method(dtwc::Method::MIP);
   prob_benders.cluster();
 
@@ -830,7 +830,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
     probe.set_n_clusters(2);
     probe.mip_settings.warm_start = false;
     probe.mip_settings.verbose_solver = false;
-    probe.set_solver(dtwc::Solver::HiGHS);
+    REQUIRE(probe.set_solver(dtwc::Solver::HiGHS));
     probe.set_method(dtwc::Method::MIP);
     probe.cluster();
     if (probe.centroids_ind.empty())
@@ -845,7 +845,7 @@ TEST_CASE("MIP HiGHS: non-optimal (infeasible) solve throws, not silent empty re
   prob.set_n_clusters(5);
   prob.mip_settings.warm_start = false;
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_THROWS_AS(prob.cluster(), std::runtime_error);
@@ -864,7 +864,7 @@ TEST_CASE("MIP Benders: auto dispatches based on N threshold", "[mip][highs][ben
   prob.set_n_clusters(2);
   prob.mip_settings.benders = "auto";
   prob.mip_settings.verbose_solver = false;
-  prob.set_solver(dtwc::Solver::HiGHS);
+  REQUIRE(prob.set_solver(dtwc::Solver::HiGHS));
   prob.set_method(dtwc::Method::MIP);
 
   REQUIRE_NOTHROW(prob.cluster());

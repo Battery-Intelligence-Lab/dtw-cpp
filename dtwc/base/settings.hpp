@@ -2,7 +2,7 @@
  * @file settings.hpp
  * @brief This file contains settings and configurations for DTWC++ library.
  *
- * @details It includes settings for data types, random number generation, filesystem paths,
+ * @details It includes settings for data types, the std::filesystem alias,
  * debugging options, and default algorithmic settings.
  *
  * @date 21 Jan 2022
@@ -57,55 +57,9 @@ namespace dtwc::settings {
 /// @brief Namespace alias for std::filesystem.
 namespace fs = std::filesystem;
 
-/// @brief Runtime-configurable paths for data and results directories.
-/// @details Use these paths throughout the library. They can be set at runtime
-///          via the setter functions or by direct assignment, enabling Python/MATLAB
-///          bindings to configure paths before use.
-namespace paths {
-
-/// @brief Path to the data directory.
-/// @details Defaults to "./data" relative to current working directory.
-///          Can be set at runtime via set_data_path() or direct assignment.
-inline fs::path data = fs::path{ "." } / "data";
-
-/// @brief Path to the results/output directory.
-/// @details Defaults to "./results/" relative to current working directory.
-///          Can be set at runtime via set_results_path() or direct assignment.
-inline fs::path results = fs::path{ "." } / "results/";
-
-/// @brief Set the data directory path.
-/// @param path New path (as fs::path).
-inline void set_data_path(const fs::path &path) { data = path; }
-
-/// @brief Set the data directory path from C-string.
-/// @param path New path (as C-string).
-inline void set_data_path(const char *path) { data = fs::path(path); }
-
-/// @brief Set the results directory path.
-/// @param path New path (as fs::path).
-inline void set_results_path(const fs::path &path) { results = path; }
-
-/// @brief Set the results directory path from C-string.
-/// @param path New path (as C-string).
-inline void set_results_path(const char *path) { results = fs::path(path); }
-
-/// @brief Deprecated 1.x alias for set_data_path().
-[[deprecated("use set_data_path")]]
-inline void setDataPath(const fs::path &path) { set_data_path(path); }
-
-/// @brief Deprecated 1.x C-string alias for set_data_path().
-[[deprecated("use set_data_path")]]
-inline void setDataPath(const char *path) { set_data_path(path); }
-
-/// @brief Deprecated 1.x alias for set_results_path().
-[[deprecated("use set_results_path")]]
-inline void setResultsPath(const fs::path &path) { set_results_path(path); }
-
-/// @brief Deprecated 1.x C-string alias for set_results_path().
-[[deprecated("use set_results_path")]]
-inline void setResultsPath(const char *path) { set_results_path(path); }
-
-} // namespace paths
+// No process-wide data or results path: a Problem writes to its own
+// output_folder() (default "./results/", set_output_folder), and every loader
+// takes its data path as an argument.
 
 /// @brief Flag for debug mode for developers.
 /// @details When set to true, the program may output additional debug information.

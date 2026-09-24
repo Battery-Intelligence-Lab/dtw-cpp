@@ -1,8 +1,8 @@
 # D1 — DTW recurrence and the Sakoe–Chiba adjustment window
 
 **Verdict:** CPU and real-CUDA **CONFIRMED**; Metal source conformance
-**CONFIRMED**, while real-Metal execution remains **DISCREPANCY** F12
-(`[BLOCKED-ENV]` on the Windows host).
+**CONFIRMED**, and real-Metal execution **CONFIRMED** on an Apple M5 Pro
+(2026-09-23, FX-13; the F12 Metal half).
 
 This note derives the scalar DTW objective implemented by DTWC++ and then
 checks it against the live code. Sakoe and Chiba are the primary source for
@@ -358,5 +358,7 @@ oracle, real-RTX outputs, and Metal environment probe are recorded in
 cost semantics, fixed Sakoe–Chiba window, feasibility rule, and monotonicity
 claim are **CONFIRMED**. CUDA geometry and exact public no-path translation are
 also **CONFIRMED** on the local RTX. Metal source implements the same contract,
-but its real-device executable gate remains **DISCREPANCY** F12 and cannot be
-closed by Windows source inspection.
+and its real-device executable gate passed on an Apple M5 Pro on 2026-09-23
+(FX-13): 408/408 assertions in the two `[F12]` cases, which also compare every
+Metal value, including the no-path sentinel, with the CPU kernel on the same
+inputs.

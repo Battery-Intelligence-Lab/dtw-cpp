@@ -74,13 +74,6 @@ std::string msg_unknown_device(const std::string &name)
        + "'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc.";
 }
 
-std::string msg_gpu_not_built()
-{
-  return "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
-         "Rebuild with -DDTWC_ENABLE_CUDA=ON (NVIDIA) or, on macOS, -DDTWC_ENABLE_METAL=ON.\n"
-         "This build will not silently fall back to CPU.";
-}
-
 std::string msg_no_env_file()
 {
   return "[dtwc] device='hpc' requires a .env file at the repository root, but none was found.\n"
@@ -218,6 +211,34 @@ std::string sequential_warning_text(SeqCause cause)
   return {};
 }
 
+std::pair<Device, int> parse_device(std::string_view name)
+{
+  const std::string raw = trim(name);
+  const std::string lname = to_lower_copy(raw);
+
+  if (lname == "cpu") return { Device::CPU, 0 };
+  if (lname == "hpc") return { Device::HPC, 0 };
+  if (lname == "gpu" || lname == "cuda") return { Device::GPU, 0 };
+  if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0) {
+    const std::string id = lname.substr(lname.find(':') + 1);
+    if (!id.empty() && id.find_first_not_of("0123456789") == std::string::npos) {
+      try {
+        return { Device::GPU, std::stoi(id) };
+      } catch (const std::out_of_range &) {
+        // An absurdly large ordinal is an unknown name.
+      }
+    }
+  }
+  throw DeviceError(msg_unknown_device(raw));
+}
+
+std::string gpu_not_built_message()
+{
+  return "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
+         "Rebuild with -DDTWC_ENABLE_CUDA=ON (NVIDIA) or, on macOS, -DDTWC_ENABLE_METAL=ON.\n"
+         "This build will not silently fall back to CPU.";
+}
+
 } // namespace detail
 
 // ---------------------------------------------------------------------------
@@ -284,48 +305,24 @@ void Env::warn_if_sequential() const
 
 void Env::set_device(std::string_view name)
 {
-  const std::string raw = trim(name);
-  const std::string lname = to_lower_copy(raw);
-
-  if (lname == "cpu") {
+  const auto [selected, index] = detail::parse_device(name);
+  switch (selected) {
+  case Device::CPU:
     device_ = Device::CPU;
     device_index_ = 0;
     return;
-  }
-
-  if (lname == "hpc") {
+  case Device::HPC:
     select_hpc(); // sets device_ = HPC only on full success
     return;
-  }
-
-  // GPU family: "gpu", "cuda", "gpu:N", "cuda:N".
-  bool is_gpu = false;
-  int gpu_id = 0;
-  if (lname == "gpu" || lname == "cuda") {
-    is_gpu = true;
-  } else if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0) {
-    const std::string id = lname.substr(lname.find(':') + 1);
-    if (!id.empty() && id.find_first_not_of("0123456789") == std::string::npos) {
-      try {
-        gpu_id = std::stoi(id);
-        is_gpu = true;
-      } catch (const std::out_of_range &) {
-        is_gpu = false; // absurdly large ordinal → treat name as unknown
-      }
-    }
-  }
-
-  if (is_gpu) {
+  case Device::GPU:
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
     device_ = Device::GPU;
-    device_index_ = gpu_id;
+    device_index_ = index;
     return;
 #else
-    throw DeviceError(msg_gpu_not_built());
+    throw DeviceError(detail::gpu_not_built_message());
 #endif
   }
-
-  throw DeviceError(msg_unknown_device(raw));
 }
 
 void Env::select_hpc()

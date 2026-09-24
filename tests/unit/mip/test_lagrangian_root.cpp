@@ -290,7 +290,7 @@ TEST_CASE("Lagrangian root agrees with the exact MIP solver", "[lagrangian][comp
 
     // Exact MIP on the SAME instance (1-D series ⇒ DTW distance = |Δ|).
     Problem prob = make_problem_1d(pos, k);
-    prob.set_solver(Solver::HiGHS);
+    REQUIRE(prob.set_solver(Solver::HiGHS));
     prob.cluster();
     if (!has_solution(prob)) {
       WARN("HiGHS/Gurobi not available; skipping MIP comparison for seed " << seed);
@@ -429,7 +429,7 @@ TEST_CASE("BENCH LR-core vs compact MIP", "[.][lagrangian][bench]")
 
     // --- Compact MIP through the production Problem path ---
     Problem prob = make_problem_1d(pos, k);
-    prob.set_solver(Solver::HiGHS);
+    REQUIRE(prob.set_solver(Solver::HiGHS));
     dtwc::Clock mip_clk;
     prob.cluster();
     const double mip_ms = mip_clk.duration() * 1000.0;
@@ -464,7 +464,7 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
     const double ex_ms = ex_clk.duration() * 1000.0;
 
     Problem prob = make_problem_1d(pos, k);
-    prob.set_solver(Solver::HiGHS);
+    REQUIRE(prob.set_solver(Solver::HiGHS));
     dtwc::Clock mip_clk;
     prob.cluster();
     const double mip_ms = mip_clk.duration() * 1000.0;

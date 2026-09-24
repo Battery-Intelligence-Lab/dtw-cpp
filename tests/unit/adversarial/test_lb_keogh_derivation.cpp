@@ -407,7 +407,8 @@ TEST_CASE(
   REQUIRE(independent_l1 < dependent_l1);
   REQUIRE(independent_squared < dependent_squared);
 
-  // Full-DTW gotcha: negative radius is currently coerced to radius zero.
+  // Full DTW: a negative radius builds the global envelope (FX-13). It was
+  // coerced to radius zero, whose bound 2 exceeded the true distance 0.
   const Series x = { 0, 0, 0, 0, 1, 1, 1, 1, 1, 1 };
   const Series y = { 0, 0, 0, 0, 0, 0, 1, 1, 1, 1 };
   REQUIRE(dtwc::dtwFull_L<double>(x, y) == 0.0);
@@ -422,27 +423,24 @@ TEST_CASE(
   std::vector<double> lower_x_negative;
   std::vector<double> upper_y_negative;
   std::vector<double> lower_y_negative;
-  std::vector<double> upper_x_zero;
-  std::vector<double> lower_x_zero;
-  std::vector<double> upper_y_zero;
-  std::vector<double> lower_y_zero;
   dtwc::core::compute_envelopes(
     x, -1, upper_x_negative, lower_x_negative);
   dtwc::core::compute_envelopes(
     y, -1, upper_y_negative, lower_y_negative);
-  dtwc::core::compute_envelopes(x, 0, upper_x_zero, lower_x_zero);
-  dtwc::core::compute_envelopes(y, 0, upper_y_zero, lower_y_zero);
-  REQUIRE(upper_x_negative == upper_x_zero);
-  REQUIRE(lower_x_negative == lower_x_zero);
-  REQUIRE(upper_y_negative == upper_y_zero);
-  REQUIRE(lower_y_negative == lower_y_zero);
-  const double unsafe_negative_bound = std::max(
+  // Both series span [0, 1], so the global envelope is 1 above and 0 below.
+  const std::vector<double> global_upper(x.size(), 1.0);
+  const std::vector<double> global_lower(x.size(), 0.0);
+  REQUIRE(upper_x_negative == global_upper);
+  REQUIRE(lower_x_negative == global_lower);
+  REQUIRE(upper_y_negative == global_upper);
+  REQUIRE(lower_y_negative == global_lower);
+  const double negative_bound = std::max(
     dtwc::core::lb_keogh(
       x.data(), x.size(), upper_y_negative.data(), lower_y_negative.data()),
     dtwc::core::lb_keogh(
       y.data(), y.size(), upper_x_negative.data(), lower_x_negative.data()));
-  REQUIRE(unsafe_negative_bound == 2.0);
-  REQUIRE(unsafe_negative_bound > dtwc::dtwFull_L<double>(x, y));
+  REQUIRE(negative_bound == 0.0);
+  REQUIRE(negative_bound <= dtwc::dtwFull_L<double>(x, y));
 
   std::size_t call_sites = 0;
 

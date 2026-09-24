@@ -83,6 +83,7 @@ template <typename MasterSolver>
  * Requires HiGHS: throws dtwc::SolverError if HiGHS is not compiled in, and
  * also if the cut loop reaches its iteration cap without closing the bound gap
  * (Method::MIP is exact — an unconverged incumbent is never published).
+ * Throws dtwc::InvalidInput if the Problem has no data or k is outside [1, N].
  *
  * @param prob Problem instance with filled or fillable distance matrix.
  */

@@ -32,9 +32,9 @@ namespace algorithms {
   /// Configuration options for the CLARANS algorithm.
   struct CLARANSOptions
   {
-    int n_clusters = 3;                                   ///< Number of clusters (k).
-    int num_local = 2;                                    ///< Number of random restarts.
-    int max_neighbor = -1;                                ///< Max non-improving swaps per restart (-1 = auto).
+    int n_clusters = 3;                                   ///< Number of clusters (k), in [1, N].
+    int num_local = 2;                                    ///< Number of random restarts (>= 1).
+    int max_neighbor = -1;                                ///< Max non-improving swaps per restart (-1 = auto; 0 = no swap search).
     int64_t max_dtw_evals = -1;                           ///< Hard budget on total DTW computations (-1 = no limit).
     unsigned random_seed = settings::DEFAULT_RANDOM_SEED; ///< Portable-v1 seed.
   };
@@ -48,14 +48,15 @@ namespace algorithms {
    * consecutive non-improving swaps are seen or the DTW evaluation budget is
    * exhausted. Best result across all restarts is returned.
    *
-   * Auto max_neighbor formula: max(250, (int)(0.0125 * k * (N - k)))
+   * Auto max_neighbor formula: max(250, floor(0.0125 * k * (N - k))), a 64-bit count.
    *
    * @param prob  Problem instance with data loaded.
    * @param opts  CLARANS configuration options.
    * @return core::ClusteringResult with the best labels, medoid indices, and
    *         total cost found across all restarts.
    *
-   * @throws std::runtime_error if prob has no data or n_clusters is invalid.
+   * @throws InvalidInput if prob has no data, n_clusters is outside [1, N] or
+   *         num_local < 1. Nothing is written into prob in that case.
    *
    * @warning Use FastCLARA for large N. CLARANS is O(N) per swap evaluation,
    *          which is acceptable for moderate datasets.

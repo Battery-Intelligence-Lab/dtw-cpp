@@ -257,41 +257,14 @@ classdef DTWClustering
     end
 
     methods (Static, Hidden)
-        function index = gpu_index(deviceName)
-        %GPU_INDEX Ordinal N of a canonical 'gpu:N'/'cuda:N' name (0 otherwise).
-        %   Mirrors dtwc::Env::set_device, which parses the suffix into
-        %   device_index() and reports it back through the canonical name.
-            index = 0;
-            name = char(deviceName);
-            colon = strfind(name, ':');
-            if isempty(colon), return; end
-            index = str2double(name((colon(1) + 1):end));
-            if ~isfinite(index) || index ~= fix(index) || index < 0
-                error('dtwc:deviceError', ...
-                    'DTWClustering: unknown device ''%s''.', name);
-            end
-        end
-
         function apply_device_strategy(prob, activeDevice)
         %APPLY_DEVICE_STRATEGY Make the Problem execute on the selected device.
-        %   Mirrors C++ detail::configure_device (dtwc/api.cpp): the GPU ordinal
-        %   of a 'gpu:N' selection reaches Problem::cuda_settings.device_id
-        %   before the strategy is chosen, so 'gpu:1' does not run on GPU 0.
-        %   Without this the Problem kept its CPU default and a 'gpu' request was
+        %   Problem::set_device (C++): the GPU ordinal of a 'gpu:N' selection
+        %   reaches cuda_settings.device_id, so 'gpu:1' does not run on GPU 0,
+        %   and a build without a GPU backend raises dtwc:deviceError. Without
+        %   this the Problem kept its CPU default and a 'gpu' request was
         %   silently honoured on the CPU (gap F40).
-            if strcmp(activeDevice, 'cpu'), return; end
-            info = dtwc_mex('system_check');
-            if ~info.cuda && ~info.metal
-                error('dtwc:deviceError', ...
-                    ['DTWClustering: device ''%s'' was selected but this build ' ...
-                     'has no GPU backend.'], activeDevice);
-            end
-            prob.set_cuda_settings(dtwc.DTWClustering.gpu_index(activeDevice));
-            if info.cuda
-                prob.set_distance_strategy('cuda');
-            else
-                prob.set_distance_strategy('metal');
-            end
+            prob.set_device(activeDevice);
         end
     end
 end

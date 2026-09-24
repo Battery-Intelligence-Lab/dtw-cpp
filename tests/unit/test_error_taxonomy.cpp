@@ -20,15 +20,42 @@
  * mip_Gurobi.cpp — also throw dtwc::SolverError, but they require an optional
  * solver dependency, so the core path is exercised here instead.)
  *
+ * GT-4 (the typed-throw sweep) adds one table: for every file whose bare
+ * `throw std::` sites became typed errors, a live, user-reachable site in it must
+ * raise the type api-contract-2.0.md §5 names. Arrow/Parquet rows run only in a
+ * build with those readers; CUDA is pinned in test_cuda_correctness.cpp.
+ *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
  */
 
+#include <DataLoader.hpp>
+#include <Problem.hpp>
+#include <algorithms/fast_pam.hpp>
+#include <algorithms/hierarchical.hpp>
+#include <algorithms/tadpole.hpp>
 #include <base/error.hpp>
+#include <base/missing_utils.hpp>
+#include <checkpoint.hpp>
+#include <core/distance_sampling_weights.hpp>
+#include <core/matrix_io.hpp>
+#include <core/mmap_data_store.hpp>
+#include <core/mmap_distance_matrix.hpp>
+#include <initialisation.hpp>
+#include <io/arrow_ipc_reader.hpp>
+#include <io/parquet_reader.hpp>
+#include <metal/metal_dtw.hpp>
+#include <scores.hpp>
 #include <soft_dtw.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+#include <exception>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -122,5 +149,162 @@ TEST_CASE("soft_dtw_gradient: empty series throws dtwc::InvalidInput (live path)
     const std::string what = e.what();
     REQUIRE(what.find("soft_dtw_gradient") != std::string::npos);
     REQUIRE(what.find("non-empty") != std::string::npos);
+  }
+}
+
+// ===========================================================================
+// GT-4: one live site per converted file raises its contract type. The oracle
+// is api-contract-2.0.md §5 — bad input or configuration is InvalidInput, a
+// file, stream or filesystem failure is IOError — not the old bare std:: type.
+// ===========================================================================
+
+namespace {
+
+namespace fs = std::filesystem;
+
+/// Name the most specific contract type `call` raised; anything else is named
+/// with its message, so a failing row says what came out instead.
+std::string raised(const std::function<void()> &call)
+{
+  try {
+    call();
+  } catch (const dtwc::InvalidInput &) {
+    return "InvalidInput";
+  } catch (const dtwc::IOError &) {
+    return "IOError";
+  } catch (const dtwc::DeviceError &) {
+    return "DeviceError";
+  } catch (const dtwc::SolverError &) {
+    return "SolverError";
+  } catch (const std::exception &e) {
+    return std::string("untyped: ") + e.what();
+  }
+  return "no exception";
+}
+
+dtwc::Problem three_series()
+{
+  dtwc::Problem prob("gt4_typed_throws");
+  prob.set_data(dtwc::Data(std::vector<std::vector<double>>{ { 0, 1, 2 }, { 1, 2, 3 }, { 5, 6, 7 } },
+                           std::vector<std::string>{ "a", "b", "c" }));
+  prob.set_verbose(false);
+  return prob;
+}
+
+struct GT4Scratch
+{
+  fs::path path = fs::temp_directory_path()
+    / ("dtwc_gt4_typed_throws_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)));
+  GT4Scratch() { fs::remove_all(path); fs::create_directories(path); }
+  ~GT4Scratch() { std::error_code ec; fs::remove_all(path, ec); }
+  fs::path write(const std::string &name, const std::string &text) const
+  {
+    std::ofstream(path / name, std::ios::binary) << text;
+    return path / name;
+  }
+};
+
+} // namespace
+
+TEST_CASE("GT-4: each converted file raises its contract type from a live site", "[error][gt4]")
+{
+  const GT4Scratch dir;
+  const fs::path bad_csv = dir.write("bad.csv", "1,2,3\n4,abc,6\n");
+  const fs::path garbage = dir.write("garbage.bin", "not a cache");
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  struct Row
+  {
+    const char *site;
+    const char *expected;
+    std::function<void()> call;
+  };
+  const std::vector<Row> rows{
+    { "Data.hpp: series and names differ in count", "InvalidInput",
+      [] { (void)dtwc::Data(std::vector<std::vector<double>>{ { 1.0 } }, std::vector<std::string>{}); } },
+    { "Problem.cpp: set_clusters with the wrong count", "InvalidInput",
+      [] {
+        auto prob = three_series();
+        prob.set_n_clusters(2);
+        std::vector<int> one{ 0 };
+        prob.set_clusters(one);
+      } },
+    { "medoid_utils.hpp: duplicate initial medoids", "InvalidInput",
+      [] {
+        auto prob = three_series();
+        (void)dtwc::fast_pam_swap(prob, { 0, 0 });
+      } },
+    { "hierarchical.cpp: dendrogram over another point count", "InvalidInput",
+      [] {
+        auto prob = three_series();
+        (void)dtwc::algorithms::cut_dendrogram(dtwc::algorithms::Dendrogram{}, prob, 1);
+      } },
+    { "tadpole.cpp: zero clusters", "InvalidInput",
+      [] {
+        auto prob = three_series();
+        (void)dtwc::algorithms::tadpole(prob, 0, 1.0);
+      } },
+    { "missing_utils.hpp: interpolate an all-NaN series", "InvalidInput",
+      [nan] { (void)dtwc::interpolate_linear(std::vector<double>{ nan, nan }); } },
+    { "distance_sampling_weights.hpp: a non-finite distance", "InvalidInput",
+      [inf] { (void)dtwc::core::distance_sampling_weights(std::vector<double>{ inf, 1.0 }, {}, "gt4"); } },
+    { "initialisation.cpp: more clusters than series", "InvalidInput",
+      [] {
+        dtwc::Problem empty("gt4_empty");
+        dtwc::init::random(empty);
+      } },
+    { "scores.cpp: label vectors of different length", "InvalidInput",
+      [] { (void)dtwc::scores::adjusted_rand({ 0, 1 }, { 0 }); } },
+    { "checkpoint.cpp: a checkpoint of no series", "InvalidInput",
+      [&dir] { dtwc::save_checkpoint(dtwc::Problem("gt4_empty"), (dir.path / "ckpt").string()); } },
+    { "matrix_io.hpp: a distance matrix that does not exist", "IOError",
+      [&dir] {
+        dtwc::core::DenseDistanceMatrix matrix;
+        dtwc::io::read_csv(matrix, dir.path / "missing.csv");
+      } },
+    { "fileOperations.hpp: a non-numeric field", "IOError",
+      [&bad_csv] { (void)dtwc::DataLoader(bad_csv).load(); } },
+    // Without llfio the file-backed constructors are stubs, which are IOError too.
+    { "mmap_distance_matrix.hpp: a file that is not a cache", "IOError",
+      [&garbage] { (void)dtwc::core::MmapDistanceMatrix::open(garbage); } },
+#ifdef DTWC_HAS_MMAP
+    { "mmap_data_store.hpp: a file that is not a .dtws cache", "IOError",
+      [&garbage] { (void)dtwc::core::MmapDataStore::open(garbage); } },
+    { "Problem_IO.cpp: a CSV read into a mapped cache", "InvalidInput",
+      [&dir] {
+        auto prob = three_series();
+        prob.use_mmap_distance_matrix(dir.path / "cache.dtwcm");
+        prob.read_distance_matrix(dir.path / "matrix.csv");
+      } },
+#endif
+#ifndef _WIN32 // a directory symlink needs privileges on Windows
+    { "checkpoint.cpp: a checkpoint root that is a symlink", "IOError",
+      [&dir] {
+        fs::create_directories(dir.path / "real");
+        fs::create_directory_symlink(dir.path / "real", dir.path / "link");
+        dtwc::save_checkpoint(three_series(), (dir.path / "link").string());
+      } },
+#endif
+#ifdef DTWC_HAS_METAL
+    { "metal_dtw.mm: a query index past the last series", "InvalidInput",
+      [] {
+        (void)dtwc::metal::compute_dtw_one_vs_all_metal(
+          std::vector<std::vector<double>>{ { 1.0, 2.0 } }, 5);
+      } },
+#endif
+#ifdef DTWC_HAS_ARROW
+    { "arrow_ipc_reader.hpp: a file that does not exist", "IOError",
+      [&dir] { (void)dtwc::io::ArrowIPCDataSource::open(dir.path / "missing.arrow"); } },
+#endif
+#ifdef DTWC_HAS_PARQUET
+    { "parquet_reader.hpp: a directory without Parquet files", "IOError",
+      [&dir] { (void)dtwc::io::load_parquet_directory(dir.path); } },
+#endif
+  };
+
+  for (const auto &row : rows) {
+    INFO(row.site);
+    CHECK(raised(row.call) == row.expected);
   }
 }

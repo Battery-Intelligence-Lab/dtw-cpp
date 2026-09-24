@@ -207,6 +207,22 @@ def test_error_hierarchy():
     assert issubclass(dtwcpp.IOError, OSError)
 
 
+# GT-4: a live C++ site raises the §5 leaf. Both used to be bare
+# std::runtime_error, so Python saw RuntimeError: `except ValueError` missed
+# the bad dendrogram and `except OSError` missed the missing file.
+def test_cpp_bad_input_raises_invalid_input():
+    prob = dtwcpp.Problem("gt4")
+    prob.set_data([[0.0, 1.0], [1.0, 2.0], [5.0, 6.0]], ["a", "b", "c"])
+    with pytest.raises(dtwcpp.InvalidInput, match="does not match Problem size"):
+        dtwcpp.cut_dendrogram(dtwcpp.Dendrogram(), prob, 1)
+
+
+def test_cpp_file_failure_raises_io_error(tmp_path):
+    prob = dtwcpp.Problem("gt4")
+    with pytest.raises(dtwcpp.IOError, match="Cannot open file for reading"):
+        prob.read_distance_matrix(tmp_path / "missing.csv")
+
+
 # ===========================================================================
 # §1.4 Result members
 # ===========================================================================

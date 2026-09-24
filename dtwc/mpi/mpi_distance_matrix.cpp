@@ -93,7 +93,8 @@ MPIDistMatResult compute_distance_matrix_mpi(
 
   // Divide pairs among ranks: contiguous blocks with remainder distributed.
   //
-  // TODO(perf — archived plan `.claude/PLAN-archive-2026-07-20-phases0-9.md`
+  // TODO(perf — archived plan
+  // `git show e784e5c:.claude/PLAN-archive-2026-07-20-phases0-9.md`
   // "Phase 5 — Speed & algorithms program"; reopen under PLAN.md R5):
   // Contiguous linear-index blocks give each rank an equal *count* of pairs,
   // but not an equal amount of *work*. A contiguous block clusters around

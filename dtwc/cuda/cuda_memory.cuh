@@ -7,20 +7,21 @@
 
 #ifdef DTWC_HAS_CUDA
 
+#include "../base/error.hpp"
+
 #include <cuda_runtime.h>
 
 #include <cstddef>
 #include <memory>
-#include <stdexcept>
 #include <string>
 
 #define CUDA_CHECK_ALLOC(call)                                               \
   do {                                                                       \
     cudaError_t err = (call);                                                \
     if (err != cudaSuccess) {                                                \
-      throw std::runtime_error(std::string("CUDA error at ") + __FILE__ +   \
-                               ":" + std::to_string(__LINE__) + ": " +      \
-                               cudaGetErrorString(err));                     \
+      throw dtwc::DeviceError(std::string("CUDA error at ") + __FILE__ +    \
+                              ":" + std::to_string(__LINE__) + ": " +       \
+                              cudaGetErrorString(err));                      \
     }                                                                        \
   } while (0)
 

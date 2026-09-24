@@ -18,6 +18,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <cmath>
 #include <filesystem>
@@ -437,11 +438,13 @@ TEST_CASE("Adversarial: Empty matrix write/read", "[adversarial][DistanceMatrix]
   }
 }
 
-TEST_CASE("Adversarial: read_csv of asymmetric CSV enforces symmetry",
+TEST_CASE("Adversarial: read_csv of asymmetric CSV is rejected, not overwritten",
   "[adversarial][DistanceMatrix][IO]")
 {
-  // The CSV has asymmetric values. read_csv uses set() which enforces symmetry.
-  // The last write wins (row-major order means later rows overwrite earlier symmetric pairs).
+  // The storage is symmetric, so an asymmetric file cannot be represented. The
+  // reader used to let the later of the two values win (0,1) = 10, (0,2) = 20,
+  // (1,2) = 30, silently discarding 1, 2 and 3 (FX-11). It now throws before
+  // touching the destination.
   TempFile tmp("asymmetric_csv");
   {
     std::ofstream f(tmp.path);
@@ -451,13 +454,20 @@ TEST_CASE("Adversarial: read_csv of asymmetric CSV enforces symmetry",
   }
 
   DenseDistanceMatrix dm;
-  dtwc::io::read_csv(dm,tmp.path);
+  REQUIRE_THROWS_AS(dtwc::io::read_csv(dm, tmp.path), dtwc::InvalidInput);
+  REQUIRE_THROWS_WITH(dtwc::io::read_csv(dm, tmp.path),
+    Catch::Matchers::ContainsSubstring("row 2, column 1 is 10 but row 1, column 2 is 1"));
+  REQUIRE(dm.size() == 0);
 
+  // The same file made symmetric reads every pair.
+  {
+    std::ofstream f(tmp.path);
+    f << "0.0,10.0,20.0\n"
+      << "10.0,0.0,30.0\n"
+      << "20.0,30.0,0.0\n";
+  }
+  dtwc::io::read_csv(dm, tmp.path);
   REQUIRE(dm.size() == 3);
-  // set() enforces symmetry, so the last set wins.
-  // Row 0: set(0,0,0), set(0,1,1), set(0,2,2)
-  // Row 1: set(1,0,10) -> overwrites (0,1) to 10, set(1,1,0), set(1,2,3)
-  // Row 2: set(2,0,20) -> overwrites (0,2) to 20, set(2,1,30) -> overwrites (1,2) to 30, set(2,2,0)
   REQUIRE_THAT(dm.get(0, 1), WithinAbs(10.0, 1e-12));
   REQUIRE_THAT(dm.get(1, 0), WithinAbs(10.0, 1e-12));
   REQUIRE_THAT(dm.get(0, 2), WithinAbs(20.0, 1e-12));

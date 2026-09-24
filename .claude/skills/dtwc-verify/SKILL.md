@@ -24,23 +24,23 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
    ```
 
 3. **Read the skips.** CTest scores a skipped test as a pass. Every test goes through
-   `dtwc_add_test`, which carries a pass floor from `tests/floors.cmake`; a test whose subject did
-   not run fails its floor rather than passing quietly. When a floor fails but the binary prints
-   "All tests passed", the floor is the finding — usually a count measured on another platform.
+   `dtwc_add_test`, which passes a test only when Catch2 printed "All tests passed" with at least one
+   assertion in at least one case — a failure, a skip or an empty run fails. Only a `MAY_SKIP`
+   test (a device or capability the build lacks) may show as Skipped; read its SKIP message.
 
 4. **Gates**, all three, plus the ratchet:
 
    ```sh
-   python3 scripts/check_record_hygiene.py
    python3 scripts/check_repo_hygiene.py
    python3 scripts/check_docs_contract.py
+   python3 scripts/check_supply_chain_pins.py
    uv run --no-project python scripts/repo_map.py layers     # upward edges may only fall
    ```
 
 5. **Before calling anything "pre-existing", stash and re-run it.** `git stash -u`, run the failing
    subject, restore. A failure you inherited and a failure you caused look identical in the log.
 
-6. **Report** with the command and the counts: "126/131 pass, 2 CUDA skips, 5 floor failures" —
+6. **Report** with the command and the counts: "129/131 pass, 2 CUDA skips" —
    never "tests pass". If a suite was not run, name it as not run. If two runs disagree, that is a
    third computation, not a coin toss.
 

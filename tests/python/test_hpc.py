@@ -37,6 +37,16 @@ class TestWriteSeriesTSV:
         back = np.loadtxt(p, delimiter="\t")
         np.testing.assert_array_almost_equal(back, np.array(series), decimal=5)
 
+    def test_values_keep_full_precision(self, tmp_path):
+        """FX-10: ``:.10g`` rounded every value, so an HPC run clustered
+        different numbers from a local one."""
+        series = [[0.1 + 0.2, 1.0 / 3.0, 5e-324, -2.5e300], [123456.78901234567]]
+        p = tmp_path / "data.tsv"
+        _hpc.write_series_tsv(series, p)
+        back = [[float(v) for v in line.split("\t")]
+                for line in p.read_text().splitlines()]
+        assert back == series
+
 
 # ---------------------------------------------------------------------------
 # Label parsing: dtwc_cl's NAME_labels.csv -> labels in input order
@@ -190,16 +200,27 @@ def _bash_path(path):
     return f"/mnt/{drive}{suffix}" if uname.startswith("linux") else f"/{drive}{suffix}"
 
 
+def _packaged_job():
+    """The job script the packaged wrapper uploads (it ships beside it)."""
+    return Path(_hpc.slurm_wrapper_path()).with_name("cluster_generic.slurm")
+
+
 def _isolated_slurm_wrapper(tmp_path):
-    """Copy the real wrapper behind local SSH/transfer/sbatch executables."""
+    """A checkout-shaped sandbox behind local SSH/transfer/sbatch executables.
+
+    ``project`` holds the real scripts/slurm/ (forwarder and job files), a copy
+    of the packaged python/dtwcpp/_slurm/ and a dtwc/ tree, so the forwarder
+    runs as in a clone; ``wrapper.parents[2]`` is that checkout, whose .env and
+    results/ the wrapper uses.
+    """
     root = Path(__file__).resolve().parents[2]
     project = tmp_path / "project"
+    shutil.copytree(root / "scripts/slurm", project / "scripts/slurm")
+    shutil.copytree(
+        Path(_hpc.slurm_wrapper_path()).parent, project / "python/dtwcpp/_slurm",
+    )
+    (project / "dtwc").mkdir()
     wrapper = project / "scripts/slurm/slurm_remote.sh"
-    wrapper.parent.mkdir(parents=True)
-    shutil.copy2(root / "scripts/slurm/slurm_remote.sh", wrapper)
-    job = project / "scripts/slurm/jobs/cluster_generic.slurm"
-    job.parent.mkdir(parents=True)
-    shutil.copy2(root / "scripts/slurm/jobs/cluster_generic.slurm", job)
 
     remote = tmp_path / "remote"
     remote_binary = remote / "src/build-test/bin/dtwc_cl"
@@ -833,13 +854,8 @@ class TestSlurmLastMile:
         assert not injected.exists()
 
     def test_restart_schedule_reaches_dtwc_cl(self):
-        root = Path(__file__).resolve().parents[2]
-        wrapper = (root / "scripts/slurm/slurm_remote.sh").read_text(
-            encoding="utf-8",
-        )
-        job = (root / "scripts/slurm/jobs/cluster_generic.slurm").read_text(
-            encoding="utf-8",
-        )
+        wrapper = Path(_hpc.slurm_wrapper_path()).read_text(encoding="utf-8")
+        job = _packaged_job().read_text(encoding="utf-8")
 
         assert "DTWC_N_INIT=${N_INIT}" in wrapper
         assert "DTWC_SEED=${SEED}" in wrapper
@@ -1154,8 +1170,7 @@ class TestSlurmLastMile:
     def test_job_executes_final_restart_arguments(
         self, tmp_path, seed, expect_seed, overrides,
     ):
-        root = Path(__file__).resolve().parents[2]
-        job = root / "scripts/slurm/jobs/cluster_generic.slurm"
+        job = _packaged_job()
         fake_bin = tmp_path / "build-fake/bin/dtwc_cl"
         fake_bin.parent.mkdir(parents=True)
         fake_bin.write_bytes(
@@ -1219,6 +1234,147 @@ class TestSlurmLastMile:
         }
         for flag, variable in expected.items():
             assert args[args.index(flag) + 1] == job_env[variable]
+
+
+class TestPackagedWrapper:
+    """device='hpc' needs no source checkout: the wrapper is package data (FX-5)."""
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="Git Bash started from Python puts its own ssh/scp ahead of the "
+        "fakes on PATH; the bash -c tests below cover the wrapper there",
+    )
+    def test_cluster_on_hpc_runs_outside_a_checkout(self, tmp_path, monkeypatch):
+        """Submit -> poll -> download through the real wrapper; only the
+        network tools are local fakes, and neither the working directory nor
+        the project directory holds a scripts/ tree."""
+        project, remote, fake_bin = (
+            tmp_path / "project", tmp_path / "remote", tmp_path / "bin",
+        )
+        for directory in (project, remote / "src/build-x/bin", fake_bin):
+            directory.mkdir(parents=True)
+        (remote / "src/build-x/bin/dtwc_cl").write_text("", encoding="utf-8")
+        (project / ".env").write_text(
+            "SLURM_USER=u\nSLURM_HOST=h\n"
+            f"SLURM_REMOTE_BASE={_bash_path(remote)}\n",
+            encoding="utf-8",
+        )
+        tools = {
+            "ssh": 'exec sh -c "$2"',  # run the "remote" command right here
+            "scp": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/scp"',
+            "rsync": 'last="${!#}"; case "$last" in *_labels.csv) '
+                     'printf "name,cluster\\n2,1\\n1,0\\n" > "$last" ;; esac',
+            "sbatch": 'printf "%s\\n" "$@" > "$CAPTURE_DIR/sbatch"; echo 12345',
+            "squeue": "echo JOBID",
+        }
+        for name, body in tools.items():
+            tool = fake_bin / name
+            tool.write_text(
+                f"#!/usr/bin/env bash\n{body}\n", encoding="utf-8", newline="\n",
+            )
+            tool.chmod(0o755)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.delenv("DTWC_REPO_ROOT", raising=False)
+        monkeypatch.setenv("PATH", f"{fake_bin}{os.pathsep}{os.environ['PATH']}")
+        monkeypatch.setenv("CAPTURE_DIR", str(tmp_path))
+
+        labels = _hpc.cluster_on_hpc(
+            [[0.0, 1.0], [5.0, 6.0]], 2, name="e2e", repo_root=project,
+            poll_seconds=0.01, timeout_seconds=60,
+        )
+
+        assert labels.tolist() == [0, 1]
+        assert (project / "results/slurm/e2e_12345/e2e_labels.csv").is_file()
+        import dtwcpp
+        package = Path(dtwcpp.__file__).resolve().parent
+        scp = (tmp_path / "scp").read_text(encoding="utf-8").splitlines()
+        assert Path(scp[-2]).resolve() == package / "_slurm/cluster_generic.slurm"
+        sbatch = (tmp_path / "sbatch").read_text(encoding="utf-8").splitlines()
+        assert sbatch[-1] == scp[-1].split(":", 1)[1]
+        assert any(a.startswith("--export=") and ",DTWC_K=2," in a for a in sbatch)
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize("command", ["upload", "submit-benchmark-cpu"])
+    def test_checkout_run_ignores_an_ambient_repo_root(self, tmp_path, command):
+        """scripts/slurm/slurm_remote.sh (the benchmark skill's entry point)
+        reads .env from, and sends files of, its own checkout: a DTWC_REPO_ROOT
+        left in the shell for device='hpc' must not redirect it."""
+        wrapper, fake_bin, capture = _isolated_slurm_wrapper(tmp_path)
+        checkout = wrapper.parents[2]
+        elsewhere = tmp_path / "elsewhere"
+        shutil.copytree(checkout / "scripts", elsewhere / "scripts")
+        (elsewhere / "dtwc").mkdir()
+        (elsewhere / ".env").write_text(
+            "SLURM_USER=other_user\nSLURM_HOST=other_host\n"
+            f"SLURM_REMOTE_BASE={_bash_path(tmp_path / 'other-remote')}\n",
+            encoding="utf-8",
+        )
+        sent = tmp_path / "sent.txt"
+        for tool in ("scp", "rsync"):
+            (fake_bin / tool).write_text(
+                "#!/usr/bin/env bash\nprintf '%s\\n' \"$@\" >> \"$CAPTURE_SENT\"\n",
+                encoding="utf-8", newline="\n",
+            )
+        command_line = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CAPTURE_SBATCH={shlex.quote(_bash_path(capture))}; "
+            f"export CAPTURE_SENT={shlex.quote(_bash_path(sent))}; "
+            f"export DTWC_REPO_ROOT={shlex.quote(_bash_path(elsewhere))}; "
+            f"exec bash {shlex.quote(_bash_path(wrapper))} {command}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command_line], cwd=tmp_path, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        args = sent.read_text(encoding="utf-8").splitlines()
+        local = [arg for arg in args if arg.startswith("/")]
+        remote = [arg for arg in args if ":" in arg and not arg.startswith("/")]
+        assert local and all(
+            arg.startswith(_bash_path(checkout) + "/") for arg in local
+        ), args
+        assert remote and all(
+            arg.startswith("test_user@test_host:") for arg in remote
+        ), args
+        if command.startswith("submit-"):
+            assert capture.read_text(encoding="utf-8").splitlines()[-1] == (
+                "scripts/slurm/jobs/ucr_benchmark_cpu.slurm"
+            )
+
+    @pytest.mark.skipif(shutil.which("bash") is None, reason="bash unavailable")
+    @pytest.mark.parametrize(
+        "command", ["upload", "submit-cpu", "submit-benchmark-gpu"],
+    )
+    def test_source_commands_refuse_to_run_outside_a_checkout(
+        self, tmp_path, command,
+    ):
+        """An installed wrapper has no source tree to send. It says so before
+        any SSH or transfer, even when DTWC_REPO_ROOT names a checkout."""
+        wrapper, fake_bin, _ = _isolated_slurm_wrapper(tmp_path)
+        checkout = wrapper.parents[2]
+        installed = tmp_path / "venv/lib/python3.12/site-packages/dtwcpp/_slurm"
+        shutil.copytree(checkout / "python/dtwcpp/_slurm", installed)
+        called = tmp_path / "called.txt"
+        for tool in ("ssh", "scp", "rsync"):
+            (fake_bin / tool).write_text(
+                "#!/usr/bin/env bash\nprintf called > \"$CALLED\"\nexit 97\n",
+                encoding="utf-8", newline="\n",
+            )
+        command_line = (
+            f"export PATH={shlex.quote(_bash_path(fake_bin))}:\"$PATH\"; "
+            f"export CALLED={shlex.quote(_bash_path(called))}; "
+            f"export DTWC_REPO_ROOT={shlex.quote(_bash_path(checkout))}; "
+            f"exec bash {shlex.quote(_bash_path(installed / 'slurm_remote.sh'))} "
+            f"{command}"
+        )
+        completed = subprocess.run(
+            ["bash", "-c", command_line], cwd=tmp_path, check=False,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        assert completed.returncode != 0
+        assert "source checkout" in completed.stderr, completed.stderr
+        assert not called.exists()
 
 
 @pytest.mark.skipif(_local_binary() is None, reason="no local dtwc_cl binary built")

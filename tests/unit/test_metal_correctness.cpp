@@ -123,6 +123,13 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
         }
         const double expected =
             row.has_path ? registered : fixed_band::public_no_path_sentinel;
+        // The CPU kernel on the same inputs is the reference for Metal's
+        // geometry and for its unreachable-value sentinel (F12, Metal half).
+        const double cpu = dtwc::dtwBanded<double>(
+            series[0], series[1], row.band, -1.0,
+            squared ? dtwc::core::MetricType::SquaredL2
+                    : dtwc::core::MetricType::L1);
+        REQUIRE(cpu == expected);
 
         dtwc::metal::MetalDistMatOptions opts;
         opts.band = row.band;
@@ -138,8 +145,22 @@ TEST_CASE("Metal pairwise fixed-band routes match the independent F12 oracle",
         REQUIRE(gpu.matrix.size() == 4);
         REQUIRE(gpu.matrix[0] == 0.0);
         REQUIRE(gpu.matrix[3] == 0.0);
-        REQUIRE(gpu.matrix[1] == expected);
-        REQUIRE(gpu.matrix[2] == expected);
+        REQUIRE(gpu.matrix[1] == cpu);
+        REQUIRE(gpu.matrix[2] == cpu);
+
+        // FX-13: the LB stage in front of the wavefront routes, at a threshold
+        // equal to the pair's own distance, keeps the pair and its value. No
+        // slack is needed: this fixture's values and costs are exact in FP32.
+        if (route.kernel_override == dtwc::KernelOverride::BandedRow) continue;
+        opts.use_lb_keogh = true;
+        opts.lb_threshold = row.has_path
+            ? registered : std::numeric_limits<double>::infinity();
+        const auto pruned =
+            dtwc::metal::compute_distance_matrix_metal(series, opts);
+        REQUIRE(pruned.kernel_used == route.kernel_name);
+        REQUIRE(pruned.pairs_pruned == 0);
+        REQUIRE(pruned.matrix[1] == cpu);
+        REQUIRE(pruned.matrix[2] == cpu);
       }
     }
   }

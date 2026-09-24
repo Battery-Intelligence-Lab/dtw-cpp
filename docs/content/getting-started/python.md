@@ -76,13 +76,12 @@ Parameters:
 | `band` | int | `-1` | Sakoe-Chiba band width (`-1` = full DTW) |
 | `metric` | str | `"l1"` | `"l1"` or `"squared_euclidean"` |
 | `use_pruning` | bool | `True` | Select the legacy CPU LB-guided exact-matrix path (L1 only) |
-| `device` | str | `"cpu"` | `"cpu"`, `"cuda"`, or `"cuda:N"` |
+| `device` | str | `None` | `"cpu"`, `"gpu"`, `"gpu:N"` (`"cuda"` / `"cuda:N"` are aliases); `None` uses `dtwcpp.device()` |
 
 `use_pruning=True` is an execution-strategy switch, not a speed guarantee.
 On the CPU L1 route, LB_Kim and (for `band >= 0`) LB_Keogh can select an
 early-abandon cutoff. An abandoned pair is then recomputed without a cutoff
-because every exact matrix entry is required. `band=-1` disables LB_Keogh
-rather than constructing an inadmissible radius-zero envelope for full DTW;
+because every exact matrix entry is required. `band=-1` disables LB_Keogh;
 LB_Kim can still select the cutoff path. Squared Euclidean uses the direct
 exact route, and this high-level switch does not enable either GPU backend's
 separate lower-bound option.
@@ -330,12 +329,31 @@ clf = dtwcpp.DTWClustering(n_clusters=3, band=10, device="cuda")
 labels = clf.fit_predict(X)
 ```
 
-If CUDA is not compiled or no CUDA device is present, the request raises
-`dtwcpp.DeviceError`. Select `device="cpu"` explicitly if CPU execution is wanted.
+`cuda` is a spelling of `gpu`: it runs on this build's GPU (CUDA, else Metal),
+and with no GPU the request raises `dtwcpp.DeviceError`. Select `device="cpu"`
+explicitly if CPU execution is wanted.
 
 **Note:** GPU clustering supports Standard, dependent DTW with
 `missing_strategy="error"`; both L1 and squared-Euclidean metrics are available.
 Other variants and missing-data recurrences require CPU computation.
+
+A `Problem` takes the device once and does not follow the process-wide
+`dtwcpp.device()`. It reads the name with the same C++ grammar as
+`dtwcpp.device()` and the per-call `device=` arguments above — `cpu`, `gpu`,
+`gpu:N`, with `cuda` / `cuda:N` as aliases of `gpu` / `gpu:N`, so on a Metal
+build `device="cuda"` selects Metal. `hpc` is a `cluster()` option, not a
+`Problem` device (`InvalidInput`):
+
+```python
+prob = dtwcpp.Problem("my_clustering", device="gpu")   # CUDA, else Metal
+prob.set_data(series, names)
+prob.fill_distance_matrix()        # on the GPU
+prob.set_device("cpu")             # back to the CPU
+```
+
+On a GPU, a request its kernels do not implement — for example
+`prob.set_variant(dtwcpp.DTWVariant.WDTW)` — raises `dtwcpp.DeviceError` naming
+the setting when distances are computed; it never runs on the CPU instead.
 
 ## I/O utilities
 

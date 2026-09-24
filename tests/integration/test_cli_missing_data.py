@@ -49,8 +49,9 @@ def main() -> int:
                                "--missing-strategy", "error"], threads)
             combined = result.stdout + result.stderr
             assert result.returncode == 1, (threads, result.returncode, combined)
-            assert "Error: fill_distance_matrix: NaN detected" in result.stderr, combined
-            assert "Set missing_strategy to ZeroCost, AROW, or Interpolate" in result.stderr
+            assert ("Error: Problem::fill_distance_matrix: series '1' (index 0)[2] is NaN"
+                    in result.stderr), combined
+            assert "ZeroCost, AROW or Interpolate missing strategy" in result.stderr
             assert "terminate" not in combined.lower(), combined
             assert "abort" not in combined.lower(), combined
             assert not (root / "results" / f"{name}_labels.csv").exists()

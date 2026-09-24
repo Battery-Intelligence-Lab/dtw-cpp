@@ -60,11 +60,12 @@ TEST_CASE("Problem: MissingStrategy::Error throws on the caller thread",
       prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
       prob.set_verbose(false);
 
+      REQUIRE_THROWS_AS(prob.fill_distance_matrix(), dtwc::InvalidInput);
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
-        ContainsSubstring("NaN detected in series 'b' (index 1)"));
+        ContainsSubstring("series 'b' (index 1)[1] is NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
-      CHECK(prob.dense_distance_matrix().count_computed()
-            < prob.dense_distance_matrix().packed_count());
+      // Rejected before the matrix is allocated (FX-15): no pair was computed.
+      CHECK(prob.dense_distance_matrix().count_computed() == 0);
     }
   }
 }
@@ -107,8 +108,8 @@ TEST_CASE("Problem: a rejected fill does not publish a full cache",
       REQUIRE_THROWS_WITH(prob.fill_distance_matrix(),
         ContainsSubstring("'all-missing' (index 1) is entirely NaN"));
       CHECK_FALSE(prob.is_distance_matrix_filled());
-      CHECK(prob.dense_distance_matrix().count_computed()
-            < prob.dense_distance_matrix().packed_count());
+      // Rejected before the matrix is allocated: no pair was computed.
+      CHECK(prob.dense_distance_matrix().count_computed() == 0);
     }
   }
 }

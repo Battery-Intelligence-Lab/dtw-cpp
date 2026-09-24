@@ -17,6 +17,7 @@ target_sources(dtwc++
   initialisation.cpp
   scores.cpp
   base/system_memory.cpp
+  cli/config.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp
@@ -29,9 +30,11 @@ target_sources(dtwc++
   algorithms/detail/fast_clara_plan.hpp
   core/pruned_distance_matrix.cpp
   io/arrow_c_data.cpp
+  io/parse_number.cpp
   extern/nanoarrow/nanoarrow.c
   PUBLIC
   io/arrow_c_data.hpp
+  io/parse_number.hpp
   # Top-level headers
   Data.hpp
   DataLoader.hpp
@@ -89,6 +92,8 @@ target_include_directories(dtwc++ PUBLIC .)
 # forward-declared pointers in io/arrow_c_data.hpp, so nanoarrow never leaks to
 # consumers. The Python binding reaches it only through data_from_arrow /
 # release_arrow (see python/CMakeLists.txt, which does not add this path).
+# Vendored fast_float (dtwc/extern/fast_float, header only) likewise: only
+# io/parse_number.cpp includes it, behind a header that names no fast_float type.
 target_include_directories(dtwc++ PRIVATE extern)
 
 # A NAMED `#pragma omp critical(x)` in a header makes GCC emit a COMMON symbol
@@ -120,7 +125,19 @@ target_link_libraries(dtwc++
   project_warnings
   project_options
   PUBLIC
+  # Header-only. cli/config.cpp is the only dtwc++ TU that includes it, and no
+  # public header does (cli/config.hpp forward-declares CLI::App). PUBLIC because
+  # cli::bind(CLI::App &, Config &) is public: whoever calls it builds the App.
+  CLI11::CLI11
 )
+
+# cli/config.cpp reads --config files through cli/config_file.hpp, which takes
+# YAML only with fkYAML. The definition is PUBLIC, as every capability is, so a
+# consumer (and the tests) can tell whether a YAML config file will be read.
+if(TARGET fkYAML::fkYAML)
+  target_link_libraries(dtwc++ PRIVATE fkYAML::fkYAML)
+  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_YAML)
+endif()
 
 # ── OpenMP detection ──────────────────────────────────────────────────────────
 # Only request the CXX component — if CUDA is enabled as a language, a bare

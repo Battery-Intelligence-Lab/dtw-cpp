@@ -15,6 +15,7 @@
 
 #include "../core/clustering_result.hpp"
 #include "../base/error.hpp"
+#include "../base/names.hpp"
 
 #include <vector>
 
@@ -29,6 +30,12 @@ enum class Linkage {
   Single,   ///< d(A∪B, C) = min(d(A,C), d(B,C))
   Complete, ///< d(A∪B, C) = max(d(A,C), d(B,C))
   Average   ///< d(A∪B, C) = (|A|*d(A,C) + |B|*d(B,C)) / (|A|+|B|)  [UPGMA]
+};
+
+inline constexpr Name<Linkage> linkage_names[]{
+  { "single", Linkage::Single },
+  { "complete", Linkage::Complete },
+  { "average", Linkage::Average },
 };
 
 inline void validate_linkage(Linkage value)
@@ -59,7 +66,7 @@ struct Dendrogram {
 /// Options for build_dendrogram().
 struct HierarchicalOptions {
   Linkage linkage = Linkage::Average;
-  int max_points = 2000; ///< Hard guard — throws std::runtime_error if N exceeds this
+  int max_points = 2000; ///< Hard guard — throws InvalidInput if N exceeds this
 };
 
 /**
@@ -69,8 +76,8 @@ struct HierarchicalOptions {
  * @param opts  Linkage criterion and max_points guard.
  * @return Dendrogram containing N-1 merge steps.
  *
- * @throws std::runtime_error if N > opts.max_points.
- * @throws std::runtime_error if prob.is_distance_matrix_filled() is false.
+ * @throws InvalidInput if N > opts.max_points.
+ * @throws InvalidInput if prob.is_distance_matrix_filled() is false.
  */
 Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {});
 
@@ -87,7 +94,7 @@ Dendrogram build_dendrogram(Problem &prob, const HierarchicalOptions &opts = {})
  * @param k     Number of clusters (1 <= k <= dend.n_points).
  * @return core::ClusteringResult with labels, medoid_indices, and total_cost.
  *
- * @throws std::runtime_error if `dend` is not a well-formed dendrogram over
+ * @throws InvalidInput if `dend` is not a well-formed dendrogram over
  *         `prob` — n_points != prob.size(), merges.size() != n_points - 1, a
  *         cluster id outside [0, n_points), or a merge list that does not
  *         reduce N points to k components (A2).

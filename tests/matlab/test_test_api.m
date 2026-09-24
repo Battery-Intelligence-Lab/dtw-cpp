@@ -13,8 +13,10 @@ function tests = test_test_api
 %     sequential MEX -> available=false, pass=false and a non-empty reason
 %                       naming the explicit sequential build. The flavour-
 %                       specific test for the other build is skipped;
-%     test_gpu             -> available=false, validated=false, pass=false,
-%                             reason non-empty naming the missing GPU backend.
+%     test_gpu, GPU backend and device (Metal on macOS) -> available, validated
+%                  and pass true, reason empty: the probe matched the CPU oracle;
+%     test_gpu, none -> available=false, validated=false, pass=false and a
+%                  non-empty reason naming what is missing.
 %
 %   Run with: results = runtests('test_test_api');
 %   (Requires the compiled dtwc_mex on the path; otherwise every test is SKIPPED
@@ -114,21 +116,32 @@ function test_gpu_schema(testCase)
     verifyTrue(testCase, islogical(r.pass));
 end
 
-function test_gpu_unavailable_is_honest(testCase)
-%TEST_GPU_UNAVAILABLE_IS_HONEST Registered: CUDA-OFF build -> available=false.
-%   Pins dtwc_mex('test_gpu'). No throw, no silent degrade — a non-empty reason
-%   naming the missing GPU backend.
+function test_gpu_validates_or_names_what_is_missing(testCase)
+%TEST_GPU_VALIDATES_OR_NAMES_WHAT_IS_MISSING Pins dtwc_mex('test_gpu').
+%   The C++ and Python suites branch the same way. The branch is chosen by
+%   system_check, not by the report itself, so a present GPU the probe calls
+%   unavailable fails. With a GPU the probe kernel must match the CPU oracle;
+%   without one, no throw and no silent degrade -- a reason naming what is missing.
+    info = dtwc_mex('system_check');
     r = dtwc_mex('test_gpu');
-    verifyFalse(testCase, r.available);
-    verifyFalse(testCase, r.validated);
-    verifyFalse(testCase, r.pass);
-    verifyNotEmpty(testCase, r.reason);
+    verifyEqual(testCase, r.available, info.cuda || info.metal);
+    if r.available
+        verifyTrue(testCase, any(strcmp(r.backend, {'cuda', 'metal'})));
+        verifyNotEmpty(testCase, r.device_name);
+        verifyTrue(testCase, r.validated);
+        verifyTrue(testCase, r.pass);
+        verifyEmpty(testCase, r.reason);
+    else
+        verifyFalse(testCase, r.validated);
+        verifyFalse(testCase, r.pass);
+        verifyNotEmpty(testCase, r.reason);
+    end
 end
 
 function test_gpu_wrapper_matches_mex(testCase)
 %TEST_GPU_WRAPPER_MATCHES_MEX Pins dtwc.test.gpu().
-    r = dtwc.test.gpu();
-    verifyTrue(testCase, isstruct(r));
-    verifyFalse(testCase, r.available);
-    verifyNotEmpty(testCase, r.reason);
+    mexReport = dtwc_mex('test_gpu');
+    wrapperReport = dtwc.test.gpu();
+    verifyTrue(testCase, isstruct(wrapperReport));
+    verifyEqual(testCase, wrapperReport, mexReport);
 end

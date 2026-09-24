@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <limits>
 #include <numeric>  // std::iota (MSVC STL does not include it transitively)
 #include <random>
@@ -1839,7 +1840,7 @@ TEST_CASE("test_gpu_one_vs_all_out_of_range", "[cuda][one_vs_n]")
   dtwc::cuda::CUDADistMatOptions opts;
   REQUIRE_THROWS_AS(
       dtwc::cuda::compute_dtw_one_vs_all(series, N, opts),
-      std::runtime_error);
+      dtwc::InvalidInput);
 }
 
 TEST_CASE("test_gpu_k_vs_all_out_of_range", "[cuda][k_vs_n]")
@@ -1854,7 +1855,78 @@ TEST_CASE("test_gpu_k_vs_all_out_of_range", "[cuda][k_vs_n]")
   dtwc::cuda::CUDADistMatOptions opts;
   REQUIRE_THROWS_AS(
       dtwc::cuda::compute_dtw_k_vs_all(series, query_indices, opts),
-      std::runtime_error);
+      dtwc::InvalidInput);
+}
+
+// FX-1: a squared-L2 cache is filled by the Problem's CUDA route with the
+// squared-L2 kernel (it used to be refused as external-fill-only) and matches
+// the CPU squared-L2 kernels. FP64 is explicit: a persistent cache refuses Auto.
+TEST_CASE("FX-1 CUDA squared-L2 cache via Problem::fill_distance_matrix",
+          "[cuda][mmap][fx1]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+#ifndef DTWC_HAS_MMAP
+  SKIP("mmap support not compiled in");
+#else
+  const auto series = generate_random_series(6, 40, /*seed=*/7);
+  const auto cache =
+    std::filesystem::temp_directory_path() / "dtwc_fx1_cuda_sql2.bin";
+  for (const int band : { -1, 6 }) {
+    CAPTURE(band);
+    std::filesystem::remove(cache);
+    dtwc::Problem prob("cuda_sql2");
+    prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
+                              { "s0", "s1", "s2", "s3", "s4", "s5" } });
+    prob.set_band(band);
+    prob.set_cuda_settings(dtwc::CUDASettings{ 0, 2 });
+    prob.set_distance_strategy(dtwc::DistanceMatrixStrategy::CUDA);
+    prob.use_mmap_distance_matrix(cache, dtwc::core::MetricType::SquaredL2);
+    prob.fill_distance_matrix();
+    for (size_t i = 0; i < series.size(); ++i)
+      for (size_t j = i + 1; j < series.size(); ++j) {
+        const double oracle = band < 0
+          ? dtwc::dtwFull_L<double>(series[i], series[j], -1.0,
+                                    dtwc::core::MetricType::SquaredL2)
+          : dtwc::dtwBanded<double>(series[i], series[j], band, -1.0,
+                                    dtwc::core::MetricType::SquaredL2);
+        REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
+      }
+  }
+  std::filesystem::remove(cache);
+#endif
+}
+
+// IF-2 S2: the metric is the Problem's (set_metric), so a dense CUDA fill
+// computes squared L2 without a cache; FP64 matches the CPU kernels to 1e-9,
+// FP32 to the Metal tests' FP32 band.
+TEST_CASE("IF-2 CUDA dense squared-L2 via Problem::set_metric",
+          "[cuda][metric][if2]")
+{
+  if (!dtwc::cuda::cuda_available()) { SKIP("No CUDA device"); return; }
+  const auto series = generate_random_series(6, 40, /*seed=*/9);
+  for (const int precision : { 1, 2 })
+    for (const int band : { -1, 6 }) {
+      CAPTURE(precision, band);
+      dtwc::Problem prob("cuda_dense_sql2");
+      prob.set_data(dtwc::Data{ std::vector<std::vector<double>>(series),
+                                { "s0", "s1", "s2", "s3", "s4", "s5" } });
+      prob.set_band(band);
+      prob.set_cuda_settings(dtwc::CUDASettings{ 0, precision });
+      prob.set_device(dtwc::Device::GPU);
+      prob.set_metric(dtwc::core::MetricType::SquaredL2);
+      prob.fill_distance_matrix();
+      for (size_t i = 0; i < series.size(); ++i)
+        for (size_t j = i + 1; j < series.size(); ++j) {
+          const double oracle = dtwc::distance::dtw<double>(
+            series[i], series[j], band, dtwc::core::MetricType::SquaredL2);
+          if (precision == 2)
+            REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)), WithinRel(oracle, 1e-9));
+          else
+            REQUIRE_THAT(prob.dist_by_ind(int(i), int(j)),
+                         WithinRel(oracle, 1e-4)
+                           || Catch::Matchers::WithinAbs(oracle, 1e-3));
+        }
+    }
 }
 
 #endif // DTWC_HAS_CUDA

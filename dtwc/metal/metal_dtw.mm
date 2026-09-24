@@ -95,8 +95,8 @@ kernel void dtw_wavefront(
   const long work_idx  = (long)pid + pair_offset;
   if (work_idx >= num_pairs) return;
   // Pruning path: resolve the work index through the compacted pair list so
-  // we only touch active pairs (pruned pairs already carry the
-  // finite FLT_MAX device sentinel written by compact_active_pairs).
+  // we only touch active pairs (pruned pairs already carry the NaN written by
+  // compact_active_pairs).
   const long real_pid = has_pair_indices ? pair_indices[work_idx] : work_idx;
 
   long a_idx, b_idx;
@@ -852,7 +852,7 @@ kernel void dtw_regtile_w8(
 // LB_Keogh pipeline — three cooperating kernels:
 //   1. compute_envelopes      — sliding min/max per series
 //   2. compute_lb_keogh       — symmetric LB per pair
-//   3. compact_active_pairs   — threshold filter, stamp INF for pruned pairs
+//   3. compact_active_pairs   — threshold filter, stamp NaN for pruned pairs
 //
 // Algorithm: Keogh & Ratanamahatana (2005), "Exact Indexing of Dynamic Time
 // Warping", Knowledge and Information Systems 7(3), 358-386. Symmetric
@@ -887,7 +887,9 @@ kernel void compute_envelopes(
   device float *upper = upper_envelopes + series_idx * max_L;
   device float *lower = lower_envelopes + series_idx * max_L;
 
-  const int w = (env_band >= 0) ? env_band : 0;
+  // A negative radius is full DTW, whose window is the whole series; the
+  // clamp to L also keeps k + w + 1 from overflowing at INT_MAX (FX-13).
+  const int w = (env_band >= 0 && env_band < L) ? env_band : L;
 
   for (int k = (int)tid; k < L; k += (int)ntids) {
     const int lo = (k >= w) ? k - w : 0;
@@ -922,6 +924,7 @@ kernel void compute_lb_keogh(
     constant int&         N_series        [[buffer(5)]],
     constant int&         max_L           [[buffer(6)]],
     constant long&        num_pairs       [[buffer(7)]],
+    constant int&         use_sq_l2       [[buffer(8)]],
     uint gid [[thread_position_in_grid]])
 {
   // 64-bit pair index (Task R2): num_pairs = N*(N-1)/2 overflows int32 for
@@ -948,15 +951,19 @@ kernel void compute_lb_keogh(
   for (int k = 0; k < n; ++k) {
     const float vj = series_j[k];
     const float vi = series_i[k];
-    lb1 += max(0.0f, max(vj - upper_i[k], lower_i[k] - vj));
-    lb2 += max(0.0f, max(vi - upper_j[k], lower_j[k] - vi));
+    const float e1 = max(0.0f, max(vj - upper_i[k], lower_i[k] - vj));
+    const float e2 = max(0.0f, max(vi - upper_j[k], lower_j[k] - vi));
+    // Squared-L2 DTW sums squared costs, so its bound squares each excess: an
+    // unsquared excess below 1 exceeds the cost it bounds (FX-13).
+    lb1 += use_sq_l2 ? e1 * e1 : e1;
+    lb2 += use_sq_l2 ? e2 * e2 : e2;
   }
   lb_values[pid] = max(lb1, lb2);
 }
 
 // One thread per pair. Partitions pairs into active (lb <= threshold, appended
-// to active_pairs via atomic counter) and pruned (the finite FLT_MAX device
-// sentinel is written to result_matrix at both (si, sj) and (sj, si)).
+// to active_pairs via atomic counter) and pruned (NaN is written to
+// result_matrix at both (si, sj) and (sj, si)).
 kernel void compact_active_pairs(
     device const float*   lb_values     [[buffer(0)]],
     device int*           active_pairs  [[buffer(1)]],
@@ -983,11 +990,14 @@ kernel void compact_active_pairs(
     return;
   }
 
-  const float INF = 3.402823466e+38f;
+  // A pruned pair was never computed: NaN, the only "not a distance" value
+  // outside a kernel, never a finite maximum that reads as a distance. Stored
+  // as a bit pattern: these shaders compile with Metal's default fast math.
+  const float NOT_COMPUTED = as_type<float>(0x7fc00000u);
   long si, sj;
   decode_pair(pid, N_series, si, sj);
-  result_matrix[si * N_series + sj] = INF;
-  result_matrix[sj * N_series + si] = INF;
+  result_matrix[si * N_series + sj] = NOT_COMPUTED;
+  result_matrix[sj * N_series + si] = NOT_COMPUTED;
 }
 )METAL";
 
@@ -1260,8 +1270,17 @@ MetalDistMatResult compute_distance_matrix_metal(
   const size_t num_pairs = N * (N - 1) / 2;
   result.pairs_computed = num_pairs;
 
-  if (opts.precision == MetalPrecision::FP64 && opts.verbose) {
-    std::cerr << "[Metal] FP64 not implemented; using FP32.\n";
+  // An envelope narrower than the DTW window lets LB_Keogh exceed the distance
+  // it bounds, pruning pairs within the threshold (FX-13). Full DTW, or a band
+  // reaching every offset, has window max_L - 1.
+  if (opts.use_lb_keogh && opts.lb_envelope_band >= 0) {
+    const int window =
+        (opts.band < 0 || opts.band >= max_L - 1) ? max_L - 1 : opts.band;
+    if (opts.lb_envelope_band < window)
+      throw dtwc::InvalidInput(
+          "Metal LB_Keogh: lb_envelope_band=" + std::to_string(opts.lb_envelope_band)
+          + " is narrower than the DTW window " + std::to_string(window)
+          + ", so the bound would not be admissible; pass -1 to use the window.");
   }
 
   @autoreleasepool {
@@ -1272,7 +1291,7 @@ MetalDistMatResult compute_distance_matrix_metal(
     id<MTLBuffer> buf_series = [ctx.device
         newBufferWithLength:series_bytes
                     options:MTLResourceStorageModeShared];
-    if (!buf_series) throw std::runtime_error("Metal: series buffer allocation failed");
+    if (!buf_series) throw dtwc::DeviceError("Metal: series buffer allocation failed");
     float *series_ptr = static_cast<float *>([buf_series contents]);
     std::memset(series_ptr, 0, series_bytes);
     for (size_t s = 0; s < N; ++s) {
@@ -1286,13 +1305,13 @@ MetalDistMatResult compute_distance_matrix_metal(
         newBufferWithBytes:lengths.data()
                     length:N * sizeof(int)
                    options:MTLResourceStorageModeShared];
-    if (!buf_lengths) throw std::runtime_error("Metal: lengths buffer allocation failed");
+    if (!buf_lengths) throw dtwc::DeviceError("Metal: lengths buffer allocation failed");
 
     // Output matrix (FP32 on device; promoted to double on host).
     id<MTLBuffer> buf_out = [ctx.device
         newBufferWithLength:N * N * sizeof(float)
                     options:MTLResourceStorageModeShared];
-    if (!buf_out) throw std::runtime_error("Metal: output buffer allocation failed");
+    if (!buf_out) throw dtwc::DeviceError("Metal: output buffer allocation failed");
     std::memset([buf_out contents], 0, N * N * sizeof(float));
 
     // Scalar args
@@ -1486,9 +1505,10 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     // -----------------------------------------------------------------------
     // Optional LB_Keogh pre-pass: compute envelopes, pairwise lower bounds,
-    // and compact pairs whose LB <= threshold. Pruned pairs get the
-    // finite FLT_MAX device sentinel here; normalized to public double-max on copy.
-    // the DTW dispatch below then runs only on the survivor list.
+    // and compact pairs whose LB <= threshold. Pruned pairs get NaN here (not
+    // computed); a survivor with no path keeps the
+    // finite FLT_MAX device sentinel, normalized to public double-max on copy.
+    // The DTW dispatch below then runs only on the survivor list.
     //
     // Only wavefront / wavefront_global kernels support pair_indices in this
     // pass. If user requested LB but selected banded_row/regtile, we silently
@@ -1509,10 +1529,10 @@ MetalDistMatResult compute_distance_matrix_metal(
 
     if (lb_active) {
       const auto lb_t0 = std::chrono::steady_clock::now();
-      int env_band = opts.lb_envelope_band;
-      if (env_band < 0) {
-        env_band = (opts.band > 0) ? opts.band : std::max(1, max_L / 10);
-      }
+      // Default envelope = the DTW window: the band, or (negative) the whole
+      // series. A wider explicit radius was validated above.
+      const int env_band =
+          (opts.lb_envelope_band >= 0) ? opts.lb_envelope_band : band;
       // 64-bit (Task R2): N*(N-1)/2 overflows int32 for N >~ 65536. Passed to
       // compute_lb_keogh (buffer 7) and compact_active_pairs (buffer 5), whose
       // MSL `num_pairs` params are now `long`.
@@ -1576,7 +1596,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           [cmd waitUntilCompleted];
           if (cmd.error) {
             NSString *desc = [cmd.error localizedDescription];
-            throw std::runtime_error(
+            throw dtwc::DeviceError(
                 std::string("Metal envelopes kernel failed: ") +
                 (desc ? [desc UTF8String] : "unknown"));
           }
@@ -1595,6 +1615,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           [enc setBytes:&N_int          length:sizeof(int) atIndex:5];
           [enc setBytes:&max_L          length:sizeof(int) atIndex:6];
           [enc setBytes:&num_pairs_i64  length:sizeof(std::int64_t) atIndex:7];
+          [enc setBytes:&use_sq_l2      length:sizeof(int) atIndex:8];
           const NSUInteger lb_max =
               ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
           const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
@@ -1606,13 +1627,13 @@ MetalDistMatResult compute_distance_matrix_metal(
           [cmd waitUntilCompleted];
           if (cmd.error) {
             NSString *desc = [cmd.error localizedDescription];
-            throw std::runtime_error(
+            throw dtwc::DeviceError(
                 std::string("Metal LB_Keogh kernel failed: ") +
                 (desc ? [desc UTF8String] : "unknown"));
           }
         }
 
-        // 3. Compact (stamp FLT_MAX for pruned, atomic-append active pids).
+        // 3. Compact (stamp NaN for pruned, atomic-append active pids).
         {
           id<MTLCommandBuffer> cmd = [ctx.queue commandBuffer];
           id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
@@ -1635,7 +1656,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           [cmd waitUntilCompleted];
           if (cmd.error) {
             NSString *desc = [cmd.error localizedDescription];
-            throw std::runtime_error(
+            throw dtwc::DeviceError(
                 std::string("Metal compact kernel failed: ") +
                 (desc ? [desc UTF8String] : "unknown"));
           }
@@ -1667,7 +1688,7 @@ MetalDistMatResult compute_distance_matrix_metal(
           newBufferWithLength:sizeof(int)
                       options:MTLResourceStorageModePrivate];
       if (!buf_pair_indices) {
-        throw std::runtime_error(
+        throw dtwc::DeviceError(
             "Metal: pair_indices dummy buffer allocation failed");
       }
     }
@@ -1737,8 +1758,8 @@ MetalDistMatResult compute_distance_matrix_metal(
         [cmd waitUntilCompleted];
         if (cmd.error) {
           NSString *desc = [cmd.error localizedDescription];
-          throw std::runtime_error(std::string("Metal kernel failed: ") +
-                                   (desc ? [desc UTF8String] : "unknown"));
+          throw dtwc::DeviceError(std::string("Metal kernel failed: ") +
+                                  (desc ? [desc UTF8String] : "unknown"));
         }
       }
     }
@@ -1746,8 +1767,8 @@ MetalDistMatResult compute_distance_matrix_metal(
       [last_cmd waitUntilCompleted];
       if (last_cmd.error) {
         NSString *desc = [last_cmd.error localizedDescription];
-        throw std::runtime_error(std::string("Metal kernel failed: ") +
-                                 (desc ? [desc UTF8String] : "unknown"));
+        throw dtwc::DeviceError(std::string("Metal kernel failed: ") +
+                                (desc ? [desc UTF8String] : "unknown"));
       }
     }
 
@@ -1884,7 +1905,7 @@ MetalLBResult compute_lb_keogh_metal(
       if (cmd.error) {
         [buf_series release]; [buf_lengths release];
         [buf_upper release]; [buf_lower release]; [buf_lb release];
-        throw std::runtime_error(
+        throw dtwc::DeviceError(
             std::string("Metal envelopes kernel failed: ") +
             (cmd.error.localizedDescription
                  ? [cmd.error.localizedDescription UTF8String]
@@ -1905,6 +1926,8 @@ MetalLBResult compute_lb_keogh_metal(
       [enc setBytes:&N_int         length:sizeof(int) atIndex:5];
       [enc setBytes:&max_L         length:sizeof(int) atIndex:6];
       [enc setBytes:&num_pairs_i64 length:sizeof(std::int64_t) atIndex:7];
+      const int use_sq_l2 = 0; // this entry point returns L1 bounds
+      [enc setBytes:&use_sq_l2     length:sizeof(int) atIndex:8];
       const NSUInteger lb_max =
           ctx.pipeline_lb_keogh.maxTotalThreadsPerThreadgroup;
       const NSUInteger lb_tg = std::min<NSUInteger>(256, lb_max);
@@ -1917,7 +1940,7 @@ MetalLBResult compute_lb_keogh_metal(
       if (cmd.error) {
         [buf_series release]; [buf_lengths release];
         [buf_upper release]; [buf_lower release]; [buf_lb release];
-        throw std::runtime_error(
+        throw dtwc::DeviceError(
             std::string("Metal LB_Keogh kernel failed: ") +
             (cmd.error.localizedDescription
                  ? [cmd.error.localizedDescription UTF8String]
@@ -1991,10 +2014,6 @@ MetalKVsNResult compute_kvn_impl(
 
   const size_t num_pairs = Kq * N;
 
-  if (opts.precision == MetalPrecision::FP64 && opts.verbose) {
-    std::cerr << "[Metal] FP64 not implemented; using FP32.\n";
-  }
-
   @autoreleasepool {
     auto t0 = std::chrono::steady_clock::now();
 
@@ -2017,7 +2036,7 @@ MetalKVsNResult compute_kvn_impl(
     id<MTLBuffer> buf_queries = upload_series(queries, Kq);
     id<MTLBuffer> buf_targets = upload_series(targets, N);
     if (!buf_queries || !buf_targets) {
-      throw std::runtime_error("Metal: K-vs-N series buffer allocation failed");
+      throw dtwc::DeviceError("Metal: K-vs-N series buffer allocation failed");
     }
 
     id<MTLBuffer> buf_qlen = [ctx.device newBufferWithBytes:q_len.data()
@@ -2027,12 +2046,12 @@ MetalKVsNResult compute_kvn_impl(
                                                      length:N * sizeof(int)
                                                     options:MTLResourceStorageModeShared];
     if (!buf_qlen || !buf_tlen) {
-      throw std::runtime_error("Metal: K-vs-N lengths buffer allocation failed");
+      throw dtwc::DeviceError("Metal: K-vs-N lengths buffer allocation failed");
     }
 
     id<MTLBuffer> buf_out = [ctx.device newBufferWithLength:Kq * N * sizeof(float)
                                                     options:MTLResourceStorageModeShared];
-    if (!buf_out) throw std::runtime_error("Metal: K-vs-N output buffer allocation failed");
+    if (!buf_out) throw dtwc::DeviceError("Metal: K-vs-N output buffer allocation failed");
     std::memset([buf_out contents], 0, Kq * N * sizeof(float));
 
     struct KVNParams {
@@ -2124,8 +2143,8 @@ MetalKVsNResult compute_kvn_impl(
         [cmd waitUntilCompleted];
         if (cmd.error) {
           NSString *desc = [cmd.error localizedDescription];
-          throw std::runtime_error(std::string("Metal K-vs-N kernel failed: ") +
-                                   (desc ? [desc UTF8String] : "unknown"));
+          throw dtwc::DeviceError(std::string("Metal K-vs-N kernel failed: ") +
+                                  (desc ? [desc UTF8String] : "unknown"));
         }
       }
     }
@@ -2133,8 +2152,8 @@ MetalKVsNResult compute_kvn_impl(
       [last_cmd waitUntilCompleted];
       if (last_cmd.error) {
         NSString *desc = [last_cmd.error localizedDescription];
-        throw std::runtime_error(std::string("Metal K-vs-N kernel failed: ") +
-                                 (desc ? [desc UTF8String] : "unknown"));
+        throw dtwc::DeviceError(std::string("Metal K-vs-N kernel failed: ") +
+                                (desc ? [desc UTF8String] : "unknown"));
       }
     }
 
@@ -2180,7 +2199,7 @@ MetalKVsNResult compute_dtw_k_vs_all_metal(
   queries.reserve(query_indices.size());
   for (size_t qi : query_indices) {
     if (qi >= series.size()) {
-      throw std::out_of_range("compute_dtw_k_vs_all_metal: query_indices out of range");
+      throw dtwc::InvalidInput("compute_dtw_k_vs_all_metal: query_indices out of range");
     }
     queries.push_back(series[qi]);
   }
@@ -2205,7 +2224,7 @@ MetalOneVsNResult compute_dtw_one_vs_all_metal(
   validate_kernel_override(opts.kernel_override);
   validate_metal_precision(opts.precision);
   if (query_index >= series.size()) {
-    throw std::out_of_range("compute_dtw_one_vs_all_metal: query_index out of range");
+    throw dtwc::InvalidInput("compute_dtw_one_vs_all_metal: query_index out of range");
   }
   auto kvn = compute_kvn_impl({series[query_index]}, series, opts);
   MetalOneVsNResult out;

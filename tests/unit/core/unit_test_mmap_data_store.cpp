@@ -10,8 +10,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <array>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -210,6 +213,84 @@ TEST_CASE("MmapDataStore open rejects out-of-bounds interior offset", "[mmap][da
 
   REQUIRE_THROWS_AS(MmapDataStore::open(path), std::runtime_error);
 
+  if (fs::exists(path)) fs::remove(path);
+}
+
+// S-06: open() took ndim from the header and series_length() divided by it,
+// with nothing rejecting 0. The header CRC is recomputed below, so only an
+// ndim check can catch the file; a corrupt file is an IOError (contract §5)
+// naming the file.
+TEST_CASE("MmapDataStore open rejects ndim = 0 naming the file", "[mmap][data][security]")
+{
+  auto path = temp_store("data_ndim0.cache");
+  std::vector<std::vector<double>> vecs = { { 1, 2, 3 }, { 4, 5 } };
+  std::vector<std::string> names = { "a", "b" };
+  {
+    auto store = MmapDataStore::create(path, Data(std::move(vecs), std::move(names)));
+    store.sync();
+  }
+
+  // Header: bytes 20-27 hold ndim (uint64), bytes 28-31 the CRC32 of bytes 0-27.
+  std::array<std::uint8_t, 28> header{};
+  {
+    std::ifstream in(path, std::ios::binary);
+    in.read(reinterpret_cast<char *>(header.data()), static_cast<std::streamsize>(header.size()));
+    REQUIRE(in.good());
+  }
+  std::memset(header.data() + 20, 0, 8);
+  const std::uint32_t crc = dtwc::core::detail::crc32_naive(header.data(), header.size());
+  {
+    std::fstream f(path, std::ios::binary | std::ios::in | std::ios::out);
+    f.write(reinterpret_cast<const char *>(header.data()), static_cast<std::streamsize>(header.size()));
+    f.write(reinterpret_cast<const char *>(&crc), sizeof(crc));
+    REQUIRE(f.good());
+  }
+
+  REQUIRE_THROWS_AS(MmapDataStore::open(path), IOError);
+  REQUIRE_THROWS_WITH(MmapDataStore::open(path),
+                      Catch::Matchers::ContainsSubstring("ndim")
+                        && Catch::Matchers::ContainsSubstring(path.filename().string()));
+
+  if (fs::exists(path)) fs::remove(path);
+}
+
+// S-07: open() only reads the cache, yet asked for write access, so a cache on
+// a read-only mount or with read-only permissions could not be opened at all.
+// (Run as root the permission is not enforced, so there this only confirms the
+// read.)
+TEST_CASE("MmapDataStore open reads a read-only file", "[mmap][data]")
+{
+  auto path = temp_store("data_readonly.cache");
+  std::vector<std::vector<double>> vecs = { { 1.5, 2.5, 3.5 }, { 4.5, 5.5 } };
+  std::vector<std::string> names = { "a", "b" };
+  {
+    auto store = MmapDataStore::create(path, Data(std::move(vecs), std::move(names)));
+    store.sync();
+  }
+
+  struct RestoreWrite {
+    fs::path p;
+    ~RestoreWrite()
+    {
+      std::error_code ignored;
+      fs::permissions(p, fs::perms::owner_write, fs::perm_options::add, ignored);
+    }
+  } restore{ path };
+  fs::permissions(path, fs::perms::owner_read | fs::perms::group_read | fs::perms::others_read,
+                  fs::perm_options::replace);
+
+  {
+    auto store = MmapDataStore::open(path);
+    REQUIRE(store.size() == 2);
+    REQUIRE(store.ndim() == 1);
+    REQUIRE(store.series_length(0) == 3);
+    REQUIRE(store.series_length(1) == 2);
+    CHECK(store.series(1)[1] == 5.5);
+    // Nothing to flush on a read-only map; Windows fails a barrier on a read handle.
+    REQUIRE_NOTHROW(store.sync());
+  }
+
+  fs::permissions(path, fs::perms::owner_write, fs::perm_options::add);
   if (fs::exists(path)) fs::remove(path);
 }
 

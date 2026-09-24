@@ -14,8 +14,8 @@ Algorithm 2.
 F54's live Enhanced/Keogh take-maximum route and F57's extreme-radius CPU
 arithmetic are **CONFIRMED** by the focused executable evidence below. The
 public envelope shape/provenance contract remains **DISCREPANCY** F46, GPU
-extreme-radius arithmetic remains F50, and floating threshold identity
-remains D17.
+extreme-radius arithmetic (F50) is clamped since FX-13, and floating threshold
+identity remains D17.
 
 ## Primary-source scope and implementation identity
 
@@ -83,8 +83,10 @@ w=\min\!\left(\max(\mathrm{band},0),n-1\right).
 \tag{4}
 $$
 
-Thus a negative helper radius means radius zero, not full DTW. Every radius
-at least $n-1$ has identical global-window geometry.
+A negative band means full DTW: the envelope helpers build the global
+envelope for it (FX-13), and LB_Enhanced and LB_Webb return the trivial bound
+0 before (4) is formed. Every radius at least $n-1$ has identical
+global-window geometry.
 
 The proofs use these assumptions where they first become necessary:
 
@@ -642,7 +644,7 @@ without normalizing the geometry.
 
 The `2*n` scratch-size boundary, unrepresentable Enhanced length narrowing,
 and mutable secondary-envelope shapes remain F46. Device-side signed window
-arithmetic remains F50.
+arithmetic (F50) is clamped to the series length since FX-13.
 
 ## Live cascade consequence
 
@@ -736,7 +738,7 @@ and have finite timeouts. D3 also fixes `OMP_NUM_THREADS=1`.
 | Extreme-radius arithmetic | `lb_webb` effective `w`, `two_w`, saturated counters | **CONFIRMED** by F57 focused target |
 | Non-skippable execution contracts | `tests/CMakeLists.txt` | **CONFIRMED** for D3 and F57 |
 | Public envelope shape, source, radius, and alias validation | `Envelope`, `WebbEnvelope`, span wrappers | **DISCREPANCY** F46 |
-| GPU extreme-radius envelope arithmetic | CUDA and Metal envelope kernels | **DISCREPANCY/OPEN** F50 |
+| GPU extreme-radius envelope arithmetic | CUDA and Metal envelope kernels | **CONFIRMED** since FX-13: radius clamped to the length; executed on Metal, CUDA `[BLOCKED-ENV]` |
 | Floating overlap subtraction and cutoff equality | lower bounds and pruned matrix route | **OPEN** D17 |
 
 ## Scope verdicts

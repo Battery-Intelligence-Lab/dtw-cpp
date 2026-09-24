@@ -109,6 +109,16 @@ std::vector<double> checked_square_matrix(
   return std::move(matrix);
 }
 
+/// The matrix bindings' input check: every series once, before any pair is
+/// computed, since the per-pair kernels do not check (warping.hpp). NaN or
+/// ±inf raises InvalidInput naming the series index and the position.
+void require_finite_series(const std::vector<std::vector<double>> &series,
+                           const char *where) {
+  for (size_t i = 0; i < series.size(); ++i)
+    dtwc::detail::require_finite<double>(
+      series[i], "series[" + std::to_string(i) + "]", where);
+}
+
 std::string utf8_path_text(const std::filesystem::path &path) {
   const std::u8string encoded = path.u8string();
   return std::string(
@@ -212,6 +222,14 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
         "Canonical lower-case name of a Device ('cpu'/'gpu'/'hpc').");
 
+  m.def("parse_device", [](const std::string &name) {
+        const auto [device, index] = dtwc::detail::parse_device(name);
+        return std::make_pair(dtwc::to_string(device), index);
+      }, "name"_a,
+        "Parse a device name with the one C++ grammar (dtwc::detail::parse_device)\n"
+        "and return (canonical name, GPU ordinal): 'CUDA:3' -> ('gpu', 3). Grammar\n"
+        "only, the build is not checked; an unknown name raises DeviceError.");
+
   m.def("device", [](const std::string &name) {
         // Env::set_device probes GPU/HPC availability (device query, .env read,
         // sinfo) without touching Python; hold no GIL across it.
@@ -241,8 +259,11 @@ NB_MODULE(_dtwcpp_core, m) {
     dtwc::DataLoader loader(source);
     loader.start_column(skip_cols).start_row(skip_rows).verbosity(0);
     if (!delimiter.empty()) loader.delimiter(delimiter[0]);
+    // A read failure names the file, as C++ dtwc::load does (api.cpp).
     try {
       return loader.load_local();
+    } catch (const dtwc::IOError &e) {
+      throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
     } catch (const dtwc::Error &) {
       throw;
     } catch (const std::exception &e) {
@@ -650,16 +671,22 @@ NB_MODULE(_dtwcpp_core, m) {
   // DTW distance functions
   // =========================================================================
 
+  // Every function here calls the checked dtwc::distance::* boundary (or
+  // soft_dtw_gradient, which checks itself), never an unchecked wrapper: NaN or
+  // ±inf raises InvalidInput naming x or y and the position. The missing-data
+  // functions read NaN as missing and reject only ±inf.
   m.def("dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                             nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                             int band, const std::string &metric) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    return dtwc::dtwBanded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
+    return dtwc::distance::dtw<double>(std::span<const double>(x.data(), x.size()),
+                                       std::span<const double>(y.data(), y.size()), band, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "Compute DTW distance (zero-copy from numpy).\n\n"
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
-     "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
+     "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   // Arg-type parity (api-contract-2.0.md §2.6): every distance fn takes a
   // zero-copy c-contiguous float64 ndarray (previously ddtw/wdtw/adtw/soft took
@@ -668,36 +695,41 @@ NB_MODULE(_dtwcpp_core, m) {
                               nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                               int band) {
     nb::gil_scoped_release release;
-    return dtwc::ddtwBanded<double>(x.data(), x.size(), y.data(), y.size(), band);
+    return dtwc::distance::ddtw<double>(std::span<const double>(x.data(), x.size()),
+                                        std::span<const double>(y.data(), y.size()), band);
   }, "x"_a, "y"_a, "band"_a = -1,
-     "Compute Derivative DTW distance (zero-copy from numpy).");
+     "Compute Derivative DTW distance (zero-copy from numpy).\n\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   m.def("wdtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                               nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                               int band, double g) {
     nb::gil_scoped_release release;
-    return dtwc::wdtwBanded<double>(std::span<const double>(x.data(), x.size()),
-                                    std::span<const double>(y.data(), y.size()), band, g);
+    return dtwc::distance::wdtw<double>(std::span<const double>(x.data(), x.size()),
+                                        std::span<const double>(y.data(), y.size()), band, g);
   }, "x"_a, "y"_a, "band"_a = -1, "g"_a = 0.05,
-     "Compute Weighted DTW distance with logistic weight steepness g (zero-copy).");
+     "Compute Weighted DTW distance with logistic weight steepness g (zero-copy).\n\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   m.def("adtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                               nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                               int band, double penalty) {
     nb::gil_scoped_release release;
-    return dtwc::adtwBanded<double>(std::span<const double>(x.data(), x.size()),
-                                    std::span<const double>(y.data(), y.size()), band, penalty);
+    return dtwc::distance::adtw<double>(std::span<const double>(x.data(), x.size()),
+                                        std::span<const double>(y.data(), y.size()), band, penalty);
   }, "x"_a, "y"_a, "band"_a = -1, "penalty"_a = 1.0,
-     "Compute Amerced DTW distance with non-diagonal step penalty (zero-copy).");
+     "Compute Amerced DTW distance with non-diagonal step penalty (zero-copy).\n\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   m.def("soft_dtw_distance", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                  double gamma) {
     nb::gil_scoped_release release;
-    return dtwc::soft_dtw<double>(std::span<const double>(x.data(), x.size()),
-                                  std::span<const double>(y.data(), y.size()), gamma);
+    return dtwc::distance::soft_dtw<double>(std::span<const double>(x.data(), x.size()),
+                                            std::span<const double>(y.data(), y.size()), gamma);
   }, "x"_a, "y"_a, "gamma"_a = 1.0,
-     "Compute Soft-DTW distance (differentiable, zero-copy from numpy).");
+     "Compute Soft-DTW distance (differentiable, zero-copy from numpy).\n\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   m.def("soft_dtw_gradient", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                  nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
@@ -706,18 +738,20 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::soft_dtw_gradient<double>(std::span<const double>(x.data(), x.size()),
                                            std::span<const double>(y.data(), y.size()), gamma);
   }, "x"_a, "y"_a, "gamma"_a = 1.0,
-     "Compute Soft-DTW gradient w.r.t. first series x (zero-copy from numpy).");
+     "Compute Soft-DTW gradient w.r.t. first series x (zero-copy from numpy).\n\n"
+     "NaN or +-inf in x or y raises InvalidInput.");
 
   m.def("dtw_distance_missing", [](nb::ndarray<const double, nb::ndim<1>, nb::c_contig> x,
                                     nb::ndarray<const double, nb::ndim<1>, nb::c_contig> y,
                                     int band, const std::string &metric) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    return dtwc::dtwMissing_banded<double>(x.data(), x.size(), y.data(), y.size(), band, -1.0, mt);
+    return dtwc::distance::missing<double>(std::span<const double>(x.data(), x.size()),
+                                           std::span<const double>(y.data(), y.size()), band, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "DTW distance with missing data support (NaN = missing).\n\n"
      "NaN values in either series are treated as missing; pairs where\n"
-     "one or both values are NaN contribute zero cost.\n"
+     "one or both values are NaN contribute zero cost. +-inf raises InvalidInput.\n"
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
      "band=-1 for full DTW, band>0 for Sakoe-Chiba banded DTW.");
 
@@ -726,15 +760,13 @@ NB_MODULE(_dtwcpp_core, m) {
                                   int band, const std::string &metric) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     nb::gil_scoped_release release;
-    if (band >= 0)
-      return dtwc::dtwAROW_banded<double>(x.data(), x.size(), y.data(), y.size(), band, mt);
-    else
-      return dtwc::dtwAROW_L<double>(x.data(), x.size(), y.data(), y.size(), mt);
+    return dtwc::distance::arow<double>(std::span<const double>(x.data(), x.size()),
+                                        std::span<const double>(y.data(), y.size()), band, mt);
   }, "x"_a, "y"_a, "band"_a = -1, "metric"_a = "l1",
      "DTW-AROW distance with diagonal-only alignment for missing values.\n\n"
      "When x[i] or y[j] is NaN, the warping path is restricted to the\n"
      "diagonal direction only (one-to-one alignment), preventing free\n"
-     "stretching through missing regions.\n"
+     "stretching through missing regions. +-inf raises InvalidInput.\n"
      "Reference: Yurtman et al. (ECML-PKDD 2023).\n"
      "metric: 'l1' (default) or 'squared_euclidean'.\n"
      "band=-1 for full DTW-AROW, band>0 for Sakoe-Chiba banded DTW-AROW.");
@@ -784,7 +816,7 @@ NB_MODULE(_dtwcpp_core, m) {
          "Return the number of timesteps for series i (flat size / ndim).")
     .def("validate_ndim", &dtwc::Data::validate_ndim,
          "Validate that all series flat sizes are divisible by ndim.\n\n"
-         "Raises RuntimeError if any series has incompatible size.");
+         "Raises InvalidInput (a ValueError) if any series has incompatible size.");
 
   // Zero-copy Arrow C Data interface ingest (Task 5.7). Consumes the PyCapsule
   // protocol `__arrow_c_array__` (polars / DuckDB / pyarrow / pandas) via the
@@ -888,10 +920,28 @@ NB_MODULE(_dtwcpp_core, m) {
     "can run, but two threads calling methods on the same Problem race on its\n"
     "lazily-filled distance cache. Use one Problem per thread, or call\n"
     "fill_distance_matrix() first and only read afterwards.")
-    .def(nb::init<>())
-    .def("__init__", [](dtwc::Problem *p, const std::string &name) {
-      new (p) dtwc::Problem(name);
-    }, "name"_a)
+    .def("__init__", [](dtwc::Problem *p, const std::string &name,
+                        const std::string &device) {
+      // Select the device before constructing in place, so a rejected name
+      // never leaves nanobind holding a half-built Problem.
+      const auto [selected, index] = dtwc::detail::parse_device(device);
+      dtwc::Problem prob(name);
+      prob.set_device(selected, index);
+      new (p) dtwc::Problem(std::move(prob));
+    }, "name"_a = std::string(), nb::kw_only(), "device"_a = "cpu",
+       "Create a Problem that computes on `device`: 'cpu' (default), 'gpu',\n"
+       "'gpu:N', 'cuda' or 'cuda:N', as for dtwcpp.device(). A Problem does not\n"
+       "follow the process-wide dtwcpp.device(). 'gpu' without a GPU backend\n"
+       "raises DeviceError; 'hpc' raises InvalidInput (it is a cluster() option).")
+    .def("set_device", [](dtwc::Problem &p, const std::string &device) {
+      const auto [selected, index] = dtwc::detail::parse_device(device);
+      p.set_device(selected, index);
+    }, "device"_a,
+       "Compute on `device` (the names dtwcpp.device() accepts). 'cpu' keeps a\n"
+       "CPU distance_strategy you chose and moves a GPU one to Auto; 'gpu' selects\n"
+       "this build's GPU backend (CUDA, else Metal). A request the device cannot\n"
+       "honour (a variant, missing-data strategy, multivariate data or precision\n"
+       "its kernels lack) raises DeviceError when distances are computed.")
     // ---- config properties (canonical names) ----
     .def_prop_rw("method", &dtwc::Problem::method, &dtwc::Problem::set_method)
     .def_prop_rw("max_iter", &dtwc::Problem::max_iter,
@@ -951,7 +1001,8 @@ NB_MODULE(_dtwcpp_core, m) {
                  [](dtwc::Problem &p, dtwc::CUDASettings value) {
                    p.set_cuda_settings(value);
                  },
-                 "GPU compute options (used when distance_strategy == CUDA).")
+                 "GPU compute options (device_id, precision), read by the CUDA and\n"
+                 "Metal routes; set_device('gpu:N') sets device_id.")
     .def_rw("mip_settings", &dtwc::Problem::mip_settings,
             "MIP solver tuning parameters.")
     .def_rw("checkpoint", &dtwc::Problem::checkpoint,
@@ -1120,6 +1171,7 @@ NB_MODULE(_dtwcpp_core, m) {
                                         int band, const std::string &metric,
                                         bool use_pruning) {
     const auto mt = dtwc::core::parse_metric_token(metric);
+    require_finite_series(series, "compute_distance_matrix");
 
     // Task 3.6 (review H1): this high-level Python compute path never constructs
     // dtwc::env(), so its OpenMP warning would otherwise be silent under
@@ -1168,9 +1220,10 @@ NB_MODULE(_dtwcpp_core, m) {
 #else
             const size_t slot = 0;
 #endif
-            // dtwBanded/dtwFull_L throw on NaN input. An exception escaping an
-            // OpenMP region is undefined behaviour and terminates the process,
-            // i.e. a hard interpreter crash instead of a Python InvalidInput.
+            // The input was checked above and the kernels do not check it, but
+            // an exception escaping an OpenMP region is undefined behaviour and
+            // terminates the process — a hard interpreter crash instead of a
+            // Python exception — so any that does throw is carried out per thread.
             if (errors[slot]) continue;
             try {
               for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
@@ -1199,7 +1252,8 @@ NB_MODULE(_dtwcpp_core, m) {
      "band=-1 disables LB_Keogh. Every early-abandoned pair is\n"
      "recomputed without a cutoff; this option is not a speed guarantee.\n"
      "Squared Euclidean uses the direct exact path.\n"
-     "This avoids a Python-level pair loop.");
+     "This avoids a Python-level pair loop.\n"
+     "NaN or +-inf in a series raises InvalidInput.");
 
   // =========================================================================
   // FastPAM
@@ -1499,7 +1553,7 @@ NB_MODULE(_dtwcpp_core, m) {
      "Build a hierarchical dendrogram from a Problem.\n\n"
      "Requires distance matrix to be filled (call fill_distance_matrix() first).\n"
      "Returns a Dendrogram containing N-1 merge steps in merge order.\n"
-     "Throws RuntimeError if N > opts.max_points (default 2000).");
+     "Raises InvalidInput (a ValueError) if N > opts.max_points (default 2000).");
 
   m.def("cut_dendrogram", [](const dtwc::algorithms::Dendrogram &dend,
                                dtwc::Problem &prob, int k) {
@@ -1598,6 +1652,7 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.verbose = verbose;
           opts.use_lb_keogh = use_lb_keogh;
           opts.lb_threshold = lb_threshold;
+          require_finite_series(series, "compute_distance_matrix_cuda");
           std::vector<double> matrix;
           size_t n = 0;
           {
@@ -1614,12 +1669,16 @@ NB_MODULE(_dtwcpp_core, m) {
         "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
         "Returns NxN numpy array of DTW distances.\n"
         "When `use_lb_keogh=True`, `band >= 0`, and `lb_threshold > 0`, pairs\n"
-        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned (finite\n"
-        "double-max sentinel in result, not IEEE infinity).");
+        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned and read\n"
+        "NaN (not computed); the bound squares each excess under\n"
+        "`use_squared_l2`. A pair with no warping path under `band` reads the\n"
+        "finite double-max sentinel, not IEEE infinity.\n"
+        "NaN or +-inf in a series raises InvalidInput.");
 
   m.def("compute_lb_keogh_cuda",
         [](const std::vector<std::vector<double>> &series,
            int band, int device_id) {
+          require_finite_series(series, "compute_lb_keogh_cuda");
           std::vector<double> lb_values;
           {
             nb::gil_scoped_release release;
@@ -1632,7 +1691,8 @@ NB_MODULE(_dtwcpp_core, m) {
         "series"_a, "band"_a, "device_id"_a = 0,
         "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
         "Returns flat array of symmetric LB_Keogh values (upper triangle).\n"
-        "Requires band >= 0 (Sakoe-Chiba constraint).");
+        "Requires band >= 0 (Sakoe-Chiba constraint).\n"
+        "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("CUDA_AVAILABLE") = true;
 #else
@@ -1685,6 +1745,7 @@ NB_MODULE(_dtwcpp_core, m) {
           opts.use_lb_keogh = use_lb_keogh;
           opts.lb_threshold = lb_threshold;
           opts.lb_envelope_band = lb_envelope_band;
+          require_finite_series(series, "compute_distance_matrix_metal");
           std::vector<double> matrix;
           size_t n = 0;
           {
@@ -1700,10 +1761,13 @@ NB_MODULE(_dtwcpp_core, m) {
         "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
         "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances. Pairs whose LB_Keogh lower\n"
-        "bound exceeds `lb_threshold` are pruned (finite double-max result\n"
-        "sentinel, not IEEE infinity) when\n"
-        "`use_lb_keogh=True` on a wavefront dispatch path.");
+        "Returns NxN numpy array of DTW distances. When `use_lb_keogh=True`\n"
+        "on a wavefront dispatch path, pairs whose LB_Keogh lower bound exceeds\n"
+        "`lb_threshold` are pruned and read NaN (not computed). The bound\n"
+        "squares each excess under `use_squared_l2`; its envelope is the DTW\n"
+        "window (`band`, or the whole series for `band=-1`), and an\n"
+        "`lb_envelope_band` narrower than that window raises InvalidInput.\n"
+        "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("METAL_AVAILABLE") = true;
 #else

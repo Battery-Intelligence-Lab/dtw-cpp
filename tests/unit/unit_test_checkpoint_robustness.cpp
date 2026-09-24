@@ -10,6 +10,8 @@
 #include <core/sha256.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
 #include <array>
@@ -1037,4 +1039,42 @@ TEST_CASE("failed overwrite preserves the previous checkpoint generation",
   CHECK(load.loaded);
   CHECK(matrix_bits_equal(original.dense_distance_matrix(),
                           target.dense_distance_matrix()));
+}
+
+TEST_CASE("a checkpoint directory that cannot be created is IOError naming it",
+          "[checkpoint][save][error][gt4b]")
+{
+  // api-contract-2.0.md §5: a filesystem failure is IOError. The throwing
+  // std::filesystem calls raised filesystem_error instead, which no binding
+  // translates: Python saw RuntimeError and MATLAB dtwc:runtime.
+  using Catch::Matchers::ContainsSubstring;
+  using Catch::Matchers::MessageMatches;
+  ScratchDirectory scratch{"dtwc_gt4b_save_path"};
+  Problem problem{"gt4b_save_path"};
+  problem.set_data(make_f64_data());
+  install_full_source_cache(problem);
+  const fs::path plain = scratch.root / "plain";
+  write_text(plain, "x");
+
+  const auto require_io_error = [&problem](const fs::path &checkpoint) {
+    CHECK_THROWS_MATCHES(save_checkpoint(problem, checkpoint.string()), IOError,
+                         MessageMatches(ContainsSubstring(checkpoint.string())));
+  };
+
+  SECTION("the checkpoint path is a regular file") { require_io_error(plain); }
+  SECTION("its parent is a regular file") { require_io_error(plain / "checkpoint"); }
+#ifndef _WIN32 // POSIX permission bits
+  SECTION("its parent is read-only")
+  {
+    const fs::path locked = scratch.root / "locked";
+    fs::create_directories(locked);
+    fs::permissions(locked, fs::perms::owner_read | fs::perms::owner_exec);
+    // A privileged user writes through the bits; there is nothing to fail then.
+    if (!std::ofstream(locked / "probe").is_open())
+      require_io_error(locked / "checkpoint");
+    else
+      WARN("permission bits do not bind this user: the read-only case did not run");
+    fs::permissions(locked, fs::perms::owner_all);
+  }
+#endif
 }

@@ -13,10 +13,12 @@ The handling of NaN values is controlled by the `MissingStrategy` enum (defined 
 
 | Strategy | Behavior | Use case |
 |----------|----------|----------|
-| `Error` | Throws `std::runtime_error` if NaN is encountered (default) | Strict mode; data should be clean |
+| `Error` | Throws a `std::runtime_error` if NaN is encountered (default); the distance functions throw its subclass `InvalidInput`, naming the series and position | Strict mode; data should be clean |
 | `ZeroCost` | NaN pairs contribute zero cost to the warping path | Tolerant alignment through gaps |
 | `AROW` | Diagonal-only alignment when NaN is encountered | Prevents free stretching through gaps |
 | `Interpolate` | Linear interpolation preprocessing, then standard DTW | Smooth gap filling before comparison |
+
+NaN is the only missing-value marker; ±inf never is. The checked entry points — `dtwc::distance::*` (including `distance::missing` and `distance::arow`), `core::dtw_runtime`, the Python single-pair distance functions and MATLAB's `dtwc.distance.*` — reject ±inf under every strategy, raising `InvalidInput` naming the series and the 0-based position, for example `distance::missing: x[2] is +inf`. The `dtwMissing_*` and `dtwAROW_*` wrappers below are the unchecked per-pair layer (see [DTW](../dtw/)): pass them finite values and NaN only.
 
 ## ZeroCost DTW
 
@@ -37,6 +39,9 @@ $$\text{cost}(a, b) = \begin{cases} 0 & \text{if } a \text{ or } b \text{ is NaN
 
 std::vector<double> x = {1.0, NAN, 3.0, 4.0};
 std::vector<double> y = {1.0, 2.0, 3.0, 4.0};
+
+// Checked: ±inf raises InvalidInput (dtwc/distance.hpp)
+double dist_checked = dtwc::distance::missing(x, y, /*band=*/-1);
 
 // Linear-space (O(min(m,n)) memory)
 double dist = dtwc::dtwMissing_L(x, y);
@@ -80,6 +85,9 @@ $$C(i,j) = \begin{cases} C(i-1,j-1) & \text{if } x[i] \text{ or } y[j] \text{ is
 std::vector<double> x = {1.0, NAN, NAN, 4.0, 5.0};
 std::vector<double> y = {1.0, 2.0, 3.0, 4.0, 5.0};
 
+// Checked: ±inf raises InvalidInput (dtwc/distance.hpp)
+double dist_checked = dtwc::distance::arow(x, y, /*band=*/-1);
+
 // Linear-space (O(min(m,n)) memory)
 double dist = dtwc::dtwAROW_L(x, y);
 
@@ -102,7 +110,7 @@ The `interpolate_linear()` function fills NaN gaps before DTW computation:
 - **Interior NaN:** linearly interpolated between the nearest observed neighbors on each side.
 - **Leading NaN:** filled with the first observed value (Next Observation Carried Backward, NOCB).
 - **Trailing NaN:** filled with the last observed value (Last Observation Carried Forward, LOCF).
-- **All-NaN input:** throws `std::runtime_error`.
+- **All-NaN input:** throws `dtwc::InvalidInput` (Python `dtwcpp.InvalidInput`, a `ValueError`).
 
 ```cpp
 #include <dtwc/base/missing_utils.hpp>

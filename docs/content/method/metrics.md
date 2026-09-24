@@ -17,7 +17,15 @@ implemented.
 | L2 | $$\sqrt{(x_i-y_j)^2}$$ | $$\sqrt{\sum_c (x_{i,c}-y_{j,c})^2}$$ | For one channel this equals L1; it differs for multivariate input. |
 | Squared L2 | $$(x_i-y_j)^2$$ | $$\sum_c (x_{i,c}-y_{j,c})^2$$ | Emphasizes large pointwise deviations; the accumulated result is not itself a metric distance. |
 
-The C++ runtime API selects among all three. The 2.0 CLI surface is narrower:
+The C++ runtime API selects among all three. `Problem::set_metric` makes the
+metric part of a `Problem`'s distance semantics — its CPU and GPU fills, lazy
+lookups, mmap cache and checkpoint identities, and FastCLARA's samples. A metric
+other than L1 is implemented for Standard DTW with `MissingStrategy::Error`
+(univariate or multivariate); with another variant or a missing-data strategy
+it raises `InvalidInput`, because the `Problem` passes the metric to the
+Standard kernels only. The
+lower-bound-pruned fill is univariate L1, so another metric (or multivariate
+data) takes the exact row fill. The 2.0 CLI surface is narrower:
 CPU accepts `--metric l1`; CUDA accepts `l1` or `squared_euclidean`. Unsupported
 device/metric combinations fail before computation rather than silently using
 another metric.
@@ -40,10 +48,9 @@ extra partial-plus-full work to be a pessimization on its fixture.
 LB_Keogh constructs an envelope around one series and measures how far the
 other lies outside it. For a fixed DTW radius `w`, the envelope radius `r`
 must satisfy `r >= w`; a wider envelope is valid but weaker. Full DTW requires
-an envelope that repeats the candidate's global minimum and maximum. Passing a
-negative band directly to the current low-level envelope helper instead
-constructs a radius-zero envelope, which is not generally admissible for full
-DTW (F46).
+an envelope that repeats the candidate's global minimum and maximum; a
+negative band passed to the low-level envelope helpers requests exactly that
+envelope (FX-13).
 
 The admissibility statements in this section require finite input samples and
 ordered finite envelope bounds. Missing-value policies and non-finite data are

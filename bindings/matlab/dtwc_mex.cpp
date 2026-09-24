@@ -19,6 +19,15 @@
 #include <omp.h>
 #endif
 
+#ifdef DTWC_MEX_MATLAB_LIBOMP
+// On macOS this MEX runs on the libomp MATLAB ships (bindings/matlab/CMakeLists.txt).
+// R2026a's copy predates __kmpc_dispatch_deinit, which Clang (AppleClang 21 here)
+// calls after every dynamic or guided loop, so dyld refused to load the MEX. LLVM's
+// host runtime gives it an empty body in every release that has it (19.1.0 to
+// 23.1.1, openmp/runtime/src/kmp_dispatch.cpp), so this is the same behaviour.
+extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
+#endif
+
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
@@ -32,8 +41,8 @@
 #include "../../dtwc/warping_missing.hpp"
 #include "../../dtwc/warping_missing_arow.hpp"
 #include "../../dtwc/soft_dtw.hpp"
-#include "../../dtwc/env.hpp"          // dtwc::Env / device() (contract §1.1, §6)
-#include "../../dtwc/error.hpp"        // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
+#include "../../dtwc/base/env.hpp"     // dtwc::Env / device() (contract §1.1, §6)
+#include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
 #include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
@@ -495,9 +504,15 @@ static dtwc::algorithms::Linkage parse_linkage(const std::string &s) {
 }
 
 /// Parse clustering method string -> enum (contract §2.1 set_method).
+/// 'pam' and 'auto' are not Problem methods: they used to run Lloyd k-medoids.
 static dtwc::Method parse_method(const std::string &s) {
-  if (s == "kmedoids" || s == "pam" || s == "auto") return dtwc::Method::Kmedoids;
+  if (s == "kmedoids") return dtwc::Method::Kmedoids;
   if (s == "mip") return dtwc::Method::MIP;
+  if (s == "pam" || s == "auto")
+    throw dtwc::InvalidInput(
+      "set_method('" + s + "'): a Problem runs 'kmedoids' (Lloyd) or 'mip' only. "
+      "Use dtwc.fast_pam(prob, k) for PAM, or dtwc.cluster(data, k, 'method', '"
+      + s + "').");
   throw std::invalid_argument("Unknown method: '" + s + "'. Valid: 'kmedoids', 'mip'.");
 }
 
@@ -534,6 +549,13 @@ static dtwc::core::StoragePolicy parse_storage_policy(const std::string &s) {
 //  Problem lifecycle commands
 // =========================================================================
 
+/// Problem::set_device from a device name, parsed by the grammar dtwc::Env uses.
+static void set_problem_device(dtwc::Problem &prob, const mxArray *device) {
+  require_char(device, "device");
+  const auto [selected, index] = dtwc::detail::parse_device(get_string(device));
+  prob.set_device(selected, index);
+}
+
 static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   std::string name;
   if (nrhs > 1 && mxIsChar(prhs[1])) {
@@ -541,6 +563,8 @@ static void cmd_Problem_new(int nlhs, mxArray *plhs[], int nrhs, const mxArray *
   }
   auto prob = std::make_shared<dtwc::Problem>(name);
   prob->set_verbose(false);
+  // Select the device before the handle exists: a rejected name leaks nothing.
+  if (nrhs > 2) set_problem_device(*prob, prhs[2]);
   uint64_t h = HandleManager<dtwc::Problem>::create(prob);
 
   plhs[0] = mxCreateNumericMatrix(1, 1, mxUINT64_CLASS, mxREAL);
@@ -664,6 +688,11 @@ static void cmd_Problem_set_distance_strategy(int nlhs, mxArray *plhs[], int nrh
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   std::string s = get_string(prhs[2]);
   prob.set_distance_strategy(parse_distance_strategy(s));
+}
+
+static void cmd_Problem_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("Problem_set_device requires handle and device name.");
+  set_problem_device(*HandleManager<dtwc::Problem>::get(get_handle(prhs[1])), prhs[2]);
 }
 
 static void cmd_Problem_set_variant(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -804,29 +833,19 @@ static void cmd_Problem_set_distance_matrix(int nlhs, mxArray *plhs[], int nrhs,
 //  Device / Env commands (contract §1.1, §6 — delegate to dtwc::Env)
 // =========================================================================
 
-/// Normalised device name string ("cpu"/"gpu"/"gpu:N"/"hpc") from the singleton Env.
-static std::string current_device_string() {
-  std::string s = dtwc::to_string(dtwc::env().device());
-  const int idx = dtwc::env().device_index();
-  if (dtwc::env().device() == dtwc::Device::GPU && idx > 0)
-    s += ":" + std::to_string(idx);
-  return s;
-}
-
-/// set_device(name) -> normalised name. Delegates to dtwc::env().set_device(),
-/// which throws dtwc::DeviceError (mapped to dtwc:deviceError) on any unknown
-/// name / gpu-without-backend / hpc .env failure — NEVER a silent fallback.
+/// set_device(name) -> canonical name ("cpu"/"gpu"/"gpu:N"/"hpc"), exactly as
+/// C++ dtwc::device(name) returns it. Env::set_device throws dtwc::DeviceError
+/// (mapped to dtwc:deviceError) on any unknown name / gpu-without-backend / hpc
+/// .env failure — NEVER a silent fallback.
 static void cmd_set_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("set_device requires a device-name string.");
   require_char(prhs[1], "device");   // validate BEFORE mxArrayToString deref
-  const std::string name = get_string(prhs[1]);
-  dtwc::env().set_device(name);
-  plhs[0] = mxCreateString(current_device_string().c_str());
+  plhs[0] = mxCreateString(dtwc::device(get_string(prhs[1])).c_str());
 }
 
-/// get_device() -> normalised name of the currently selected device.
+/// get_device() -> canonical name of the currently selected device (dtwc::device()).
 static void cmd_get_device(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  plhs[0] = mxCreateString(current_device_string().c_str());
+  plhs[0] = mxCreateString(dtwc::device().c_str());
 }
 
 // =========================================================================
@@ -1103,6 +1122,12 @@ static void cmd_load_binary_checkpoint(int nlhs, mxArray *plhs[], int nrhs, cons
 
 // =========================================================================
 //  Stateless DTW distance functions
+//
+//  The single-pair commands call the checked dtwc::distance::* boundary
+//  (soft_dtw_gradient checks itself), never an unchecked wrapper: NaN or ±inf
+//  raises InvalidInput (dtwc:invalidArgument) naming x or y and the 0-based
+//  position; missing and arow read NaN as missing and reject only ±inf.
+//  compute_distance_matrix goes through Problem's fill and its checks.
 // =========================================================================
 
 static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1115,7 +1140,8 @@ static void cmd_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray 
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::dtwBanded<double>(x, nx, y, ny, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::dtw<double>(
+    std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
 
 static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1128,7 +1154,8 @@ static void cmd_ddtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   size_t ny = mxGetNumberOfElements(prhs[2]);
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::ddtwBanded<double>(x, nx, y, ny, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::ddtw<double>(
+    std::span<const double>(x, nx), std::span<const double>(y, ny), band));
 }
 
 static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1143,7 +1170,8 @@ static void cmd_wdtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double g = 0.05;
   if (nrhs > 4) g = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::wdtwBanded<double>(x, nx, y, ny, band, g));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::wdtw<double>(
+    std::span<const double>(x, nx), std::span<const double>(y, ny), band, g));
 }
 
 static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1158,7 +1186,8 @@ static void cmd_adtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
   double penalty = 1.0;
   if (nrhs > 4) penalty = get_scalar(prhs[4]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::adtwBanded<double>(x, nx, y, ny, band, penalty));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::adtw<double>(
+    std::span<const double>(x, nx), std::span<const double>(y, ny), band, penalty));
 }
 
 static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1167,7 +1196,7 @@ static void cmd_soft_dtw_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
   auto y = to_std_vector(prhs[2], "y");
   double gamma = 1.0;
   if (nrhs > 3) gamma = get_scalar(prhs[3]);
-  plhs[0] = mxCreateDoubleScalar(dtwc::soft_dtw<double>(x, y, gamma));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::soft_dtw<double>(x, y, gamma));
 }
 
 static void cmd_soft_dtw_gradient(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1190,7 +1219,7 @@ static void cmd_dtw_distance_missing(int nlhs, mxArray *plhs[], int nrhs, const 
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::dtwMissing_banded<double>(x, y, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::missing<double>(x, y, band));
 }
 
 static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1199,7 +1228,7 @@ static void cmd_dtw_arow_distance(int nlhs, mxArray *plhs[], int nrhs, const mxA
   auto y = to_std_vector(prhs[2], "y");
   int band = dtwc::settings::DEFAULT_BAND;
   if (nrhs > 3) band = static_cast<int>(get_scalar(prhs[3]));
-  plhs[0] = mxCreateDoubleScalar(dtwc::dtwAROW_banded<double>(x, y, band));
+  plhs[0] = mxCreateDoubleScalar(dtwc::distance::arow<double>(x, y, band));
 }
 
 static void cmd_compute_distance_matrix(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1651,6 +1680,7 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "Problem_set_n_clusters") cmd_Problem_set_n_clusters(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_missing_strategy") cmd_Problem_set_missing_strategy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_distance_strategy") cmd_Problem_set_distance_strategy(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "Problem_set_device") cmd_Problem_set_device(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_variant") cmd_Problem_set_variant(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_size") cmd_Problem_get_size(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_get_cluster_size") cmd_Problem_get_cluster_size(nlhs, plhs, nrhs, prhs);

@@ -234,7 +234,7 @@ TEST_CASE("ARI: throws on size mismatch", "[scores][ari]")
 {
   std::vector<int> a = { 0, 0, 1 };
   std::vector<int> b = { 0, 1 };
-  REQUIRE_THROWS_AS(scores::adjusted_rand(a, b), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::adjusted_rand(a, b), InvalidInput);
 }
 
 TEST_CASE("ARI: 6-point two-cluster known result", "[scores][ari]")
@@ -277,7 +277,7 @@ TEST_CASE("NMI: throws on size mismatch", "[scores][nmi]")
 {
   std::vector<int> a = { 0, 0, 1 };
   std::vector<int> b = { 0, 1 };
-  REQUIRE_THROWS_AS(scores::normalized_mutual_info(a, b), std::invalid_argument);
+  REQUIRE_THROWS_AS(scores::normalized_mutual_info(a, b), InvalidInput);
 }
 
 TEST_CASE("NMI: value is in [0, 1] for all test cases", "[scores][nmi]")

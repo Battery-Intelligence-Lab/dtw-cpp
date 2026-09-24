@@ -22,11 +22,22 @@
 #include <iomanip>
 #include <random>
 #include <algorithm>
+#include <bit>
+#include <cctype>
+#include <clocale>
 #include <cmath>
 #include <iterator>
 #include <set>
 #include <map>
 #include <cstdint>
+#include <span>
+#include <streambuf>
+#include <string_view>
+#include <system_error>
+
+#ifndef DTWC_TEST_DATA_DIR
+#define DTWC_TEST_DATA_DIR "./data"
+#endif
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::ContainsSubstring;
@@ -49,6 +60,36 @@ struct TemporaryBatchFile {
 
   ~TemporaryBatchFile() { std::error_code ec; fs::remove(path, ec); }
 };
+
+/// The FX-6 reader fixtures in <repo>/tests/data/reader (DTWC_TEST_DATA_DIR is <repo>/data).
+fs::path reader_fixture(std::string_view name)
+{
+  return fs::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "data" / "reader"
+       / std::string(name);
+}
+
+/// A file or folder through DataLoader, the route the CLI and Python take.
+Data load_path(const fs::path &path, int start_row = 0, int start_col = 0)
+{
+  DataLoader loader(path);
+  loader.start_row(start_row).start_column(start_col).verbosity(0);
+  return loader.load_local();
+}
+
+/// A read-only stream buffer that cannot seek, like a pipe or FIFO: the
+/// std::streambuf seekoff / seekpos defaults fail.
+class PipeBuffer : public std::streambuf
+{
+  std::string bytes_;
+
+public:
+  explicit PipeBuffer(std::string bytes) : bytes_(std::move(bytes))
+  {
+    setg(bytes_.data(), bytes_.data(), bytes_.data() + bytes_.size());
+  }
+};
+
+using Series = std::vector<std::vector<double>>;
 } // namespace
 
 TEST_CASE("ignoreBOM test", "[file_operations]")
@@ -229,7 +270,9 @@ TEST_CASE("Load batch file", "[fileOperations]")
   const int N_data = GENERATE(1, 2, 10, 1000); // Size of the outer vector
   const int L_data = GENERATE(1, 2, 10, 1000); // Maximum size of the inner vectors
 
-  const auto random_data = test_util::get_random_data<double>(N_data, L_data);
+  // At least one value per series: a blank line is no longer the on-disk form
+  // of an empty series (FX-6). The last section pins what a blank line is now.
+  const auto random_data = test_util::get_random_data<double>(N_data, L_data, 1);
 
   // write the files
   test_util::write_data_to_file(tempFileName + ".csv", random_data, ',');
@@ -258,6 +301,25 @@ TEST_CASE("Load batch file", "[fileOperations]")
       REQUIRE(p_names[i] == std::to_string(i + 1));
 
     REQUIRE(p_vec == random_data);
+  }
+
+  SECTION("a blank line is not an empty series")
+  {
+    fs::path pth = tempFileName + ".csv";
+    {
+      std::ofstream out(pth, std::ios::app);
+      out << "\n\n"; // trailing blank lines: ignored
+    }
+    auto [p_vec, p_names] = load_batch_file<double>(pth, -1, false, 0, 0, ',');
+    REQUIRE(p_vec == random_data);
+
+    // An empty series written first, as a blank line followed by data: an
+    // error naming the row, where it used to load as an empty series.
+    auto with_empty = random_data;
+    with_empty.insert(with_empty.begin(), std::vector<double>{});
+    test_util::write_data_to_file(pth.string(), with_empty, ',');
+    REQUIRE_THROWS_WITH(load_batch_file<double>(pth, -1, false, 0, 0, ','),
+                        ContainsSubstring("row 1 is empty"));
   }
 
   fs::remove(tempFileName + ".csv"); // Clean up the test files
@@ -483,5 +545,324 @@ TEST_CASE("Directory-source series names are UTF-8 on every platform",
   CHECK(utf8_to_path(native_ansi).string() == native_ansi);
 
   std::error_code ec;
+  fs::remove_all(folder, ec);
+}
+
+// ---------------------------------------------------------------------------
+// FX-6: one case per reader defect, each against a hand-written expected value.
+// The fixtures are the 2026-09-23 reader audit's input matrix.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("FX-6 trailing blank lines are ignored, not read as an empty series",
+          "[fileOperations][fx6][blank]")
+{
+  // "1,2,3\n4,5,6\n\n": the last line became an empty series that clustered
+  // with DBL_MAX distances, exit 0.
+  DataLoader loader(reader_fixture("trailing_blank.csv"));
+  loader.verbosity(0);
+  const Data loaded = loader.load_local();
+  CHECK(loaded.p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
+  CHECK(loaded.p_names == std::vector<std::string>{ "1", "2" });
+  CHECK(loader.count() == 2);
+  const Data metadata = loader.load_metadata();
+  REQUIRE(metadata.size() == 2);
+  CHECK(metadata.series_flat_size(1) == 3);
+}
+
+TEST_CASE("FX-6 a blank line followed by data is an error naming its row",
+          "[fileOperations][fx6][blank]")
+{
+  // "1,2,3\n\n4,5,6\n" and "1,2\n   \n3,4\n" loaded three series, the middle one empty.
+  for (const char *name : { "interior_blank.csv", "ws_line.csv" }) {
+    CAPTURE(name);
+    DataLoader loader(reader_fixture(name));
+    loader.verbosity(0);
+    CHECK_THROWS_WITH(loader.load_local(), ContainsSubstring("row 2 is empty"));
+    CHECK_THROWS_WITH(loader.load_metadata(), ContainsSubstring("row 2 is empty"));
+    CHECK_THROWS_WITH(loader.count(), ContainsSubstring("row 2 is empty"));
+  }
+  // A folder file "0.5\n\n0.7\n" read as {0.5, 0.7}: the missing value vanished
+  // and every later value shifted by one.
+  DataLoader folder(reader_fixture("folder_blank_line"));
+  folder.verbosity(0);
+  CHECK_THROWS_WITH(folder.load_local(), ContainsSubstring("row 2 is empty"));
+  CHECK_THROWS_WITH(folder.load_metadata(), ContainsSubstring("row 2 is empty"));
+}
+
+TEST_CASE("FX-6 a file in a series folder holds one value per line",
+          "[fileOperations][fx6][folder]")
+{
+  // "0,0.5\n1,0.6\n2,0.9\n" read with defaults clustered the index {0, 1, 2}.
+  const auto two_column = reader_fixture("folder_two_column");
+  CHECK_THROWS_WITH(load_path(two_column), ContainsSubstring("row 1 has 2 fields"));
+  CHECK_THROWS_WITH(load_path(two_column), ContainsSubstring("--skip-cols"));
+  const Data values = load_path(two_column, 0, 1);
+  CHECK(values.p_vec == Series{ { 0.5, 0.6, 0.9 } });
+  CHECK(values.p_names == std::vector<std::string>{ "a" });
+
+  DataLoader metadata(two_column);
+  metadata.verbosity(0);
+  CHECK_THROWS_WITH(metadata.load_metadata(), ContainsSubstring("row 1 has 2 fields"));
+  CHECK(metadata.start_column(1).load_metadata().series_flat_size(0) == 3);
+
+  // Decimal commas "1,5\n2,5\n3,75\n" read as {1, 2, 3}.
+  CHECK_THROWS_WITH(load_path(reader_fixture("folder_decimal_comma")),
+                    ContainsSubstring("row 1 has 2 fields"));
+}
+
+TEST_CASE("FX-6 the legacy ,0 header is skipped only when no row is skipped",
+          "[fileOperations][fx6][folder]")
+{
+  // ",0\n0,\n1,2.5\n2,3.5\n" with the documented pandas settings (skip one row
+  // and one column): the first value is missing, and the legacy-header rule
+  // dropped it, reading {2.5, 3.5}.
+  CHECK_THROWS_WITH(load_path(reader_fixture("folder_leading_missing"), 1, 1),
+                    ContainsSubstring("row 2, column 2: empty numeric field"));
+
+  // A present first value is read as before.
+  TemporaryBatchFile pandas(".csv", ",0\n0,0.25\n1,0.5\n");
+  CHECK(readFile<double>(pandas.path, 1, 1, ',') == std::vector<double>{ 0.25, 0.5 });
+}
+
+TEST_CASE("FX-6 dot-files in a series folder are not series",
+          "[fileOperations][fx6][folder]")
+{
+  const auto folder = fs::temp_directory_path() / "dtwc_fx6_dot_files";
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+  fs::create_directories(folder);
+  std::ofstream(folder / "a.csv") << "1\n2\n3\n";
+  std::ofstream(folder / "b.csv") << "4\n5\n6\n";
+  std::ofstream(folder / ".gitkeep").close(); // was an empty series named ".gitkeep"
+  std::ofstream(folder / "._a.csv") << "9\n"; // an AppleDouble companion was a series
+
+  const Data loaded = load_path(folder);
+  CHECK(loaded.p_names == std::vector<std::string>{ "a", "b" });
+  CHECK(loaded.p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
+  DataLoader counter(folder);
+  counter.verbosity(0);
+  CHECK(counter.count() == 2);
+  CHECK(counter.load_metadata().size() == 2);
+  fs::remove_all(folder, ec);
+}
+
+TEST_CASE("FX-6 ignoreBOM never seeks, so a pipe keeps its first row",
+          "[fileOperations][fx6][bom]")
+{
+  const auto first_line = [](std::string bytes) {
+    PipeBuffer buffer(std::move(bytes));
+    std::istream in(&buffer);
+    ignoreBOM(in);
+    std::string line;
+    std::getline(in, line);
+    return line;
+  };
+  // tellg/seekg on a non-seekable stream failed it: this read no row at all.
+  CHECK(first_line("1,2,3\n4,5,6\n") == "1,2,3");
+  CHECK(first_line("\xEF\xBB\xBF" "1,2\n") == "1,2");
+  // U+FF54 (EF BD 94) and a truncated mark are not a BOM: their bytes stay.
+  CHECK(first_line("\xEF\xBD\x94" "1\n") == "\xEF\xBD\x94" "1");
+  CHECK(first_line("\xEF\xBB" "x\n") == "\xEF\xBB" "x");
+
+  CHECK(load_path(reader_fixture("bom.csv")).p_vec == Series{ { 1, 2, 3 }, { 4, 5, 6 } });
+  TemporaryBatchFile header(".csv", "\xEF\xBD\x94" "1,\xEF\xBD\x94" "2\n1,2\n");
+  CHECK(load_path(header.path, 1).p_vec == Series{ { 1, 2 } });
+}
+
+TEST_CASE("FX-6 '+-1' is not a number", "[fileOperations][fx6][number]")
+{
+  // "1,+-1,3": the '+' was stripped and "-1" parsed.
+  CHECK_THROWS_WITH(load_path(reader_fixture("plusminus.csv")),
+                    ContainsSubstring("row 1, column 2: invalid numeric field '+-1'"));
+  TemporaryBatchFile plus(".csv", "+7,-2,+.5\n");
+  CHECK(load_path(plus.path).p_vec == Series{ { 7, -2, 0.5 } });
+}
+
+TEST_CASE("FX-6 field whitespace is ASCII under every C locale",
+          "[fileOperations][fx6][locale]")
+{
+  struct CtypeGuard
+  {
+    std::string saved;
+    CtypeGuard()
+    {
+      const char *const current = std::setlocale(LC_CTYPE, nullptr);
+      saved = current != nullptr ? current : "C";
+    }
+    ~CtypeGuard() { std::setlocale(LC_CTYPE, saved.c_str()); }
+  } guard;
+
+  // "1,2,3\xA0": std::isspace trimmed the Latin-1 no-break space under a UTF-8
+  // LC_CTYPE, so Python (which sets the user's locale) read 3 and the CLI failed.
+  const auto nbsp = reader_fixture("nbsp_latin1.csv");
+  std::setlocale(LC_CTYPE, "C");
+  CHECK_THROWS_WITH(load_path(nbsp), ContainsSubstring("row 1, column 3: invalid numeric field"));
+
+  const char *applied = nullptr;
+  for (const char *name : { "en_US.UTF-8", "C.UTF-8", "en_US.utf8" })
+    if (std::setlocale(LC_CTYPE, name) != nullptr) {
+      applied = name;
+      break;
+    }
+  const bool bites = applied != nullptr && std::isspace(0xA0) != 0;
+  std::cout << "FX6_CTYPE locale=" << (applied ? applied : "unavailable")
+            << " isspace_0xA0=" << (bites ? "yes" : "no") << '\n';
+  CHECK_THROWS_WITH(load_path(nbsp), ContainsSubstring("row 1, column 3: invalid numeric field"));
+
+  // ASCII blanks around a field are still trimmed: "1, 2 ,\t3 ".
+  CHECK(load_path(reader_fixture("spaces.csv")).p_vec == Series{ { 1, 2, 3 } });
+}
+
+TEST_CASE("FX-6 parse_number keeps the std::from_chars contract",
+          "[fileOperations][fx6][number]")
+{
+  // Expected bits written by hand as hexadecimal literals; each equals what
+  // libc++'s std::from_chars(general) returned on macOS 26 (2026-09-23).
+  struct Case
+  {
+    std::string_view text;
+    std::size_t used;
+    double value;
+  };
+  const Case parsed[] = {
+    { "1e-3", 4, 0x1.0624dd2f1a9fcp-10 },
+    { "2E+2", 4, 0x1.9p+7 },
+    { ".5", 2, 0x1p-1 },
+    { "5.", 2, 0x1.4p+2 },
+    { "-0", 2, -0.0 },
+    { "0.30000000000000004", 19, 0x1.3333333333334p-2 },
+    { "4.9e-324", 8, 0x1p-1074 },
+    { "2.4703282292062328e-324", 23, 0x1p-1074 },
+    { "1.7976931348623157e308", 22, 0x1.fffffffffffffp+1023 },
+    { "123456789012345678901234567890", 30, 0x1.8ee90ff6c373ep+96 },
+    { "0x1p3", 1, 0.0 }, // general format: "0", then 'x' is not consumed
+    { "1e", 1, 1.0 },
+  };
+  for (const auto &c : parsed) {
+    CAPTURE(c.text);
+    double value = 42.0;
+    const auto r = io::parse_number(c.text.data(), c.text.data() + c.text.size(), value);
+    CHECK(r.ec == std::errc{});
+    CHECK(static_cast<std::size_t>(r.ptr - c.text.data()) == c.used);
+    CHECK(std::bit_cast<std::uint64_t>(value) == std::bit_cast<std::uint64_t>(c.value));
+  }
+
+  double nan_value = 42.0;
+  const std::string_view nan_text = "nan";
+  CHECK(io::parse_number(nan_text.data(), nan_text.data() + 3, nan_value).ec == std::errc{});
+  CHECK(std::isnan(nan_value));
+
+  // Errors leave the value untouched.
+  for (const std::string_view text :
+       { "1e400", "-1e400", "1e-400", "2.4703282292062327e-324", "1.7976931348623159e308" }) {
+    CAPTURE(text);
+    double value = 42.0;
+    const auto r = io::parse_number(text.data(), text.data() + text.size(), value);
+    CHECK(r.ec == std::errc::result_out_of_range);
+    CHECK(value == 42.0);
+  }
+  for (const std::string_view text : { "+7", "", "-", ".", "e5", " 1" }) {
+    CAPTURE(text);
+    double value = 42.0;
+    const auto r = io::parse_number(text.data(), text.data() + text.size(), value);
+    CHECK(r.ec == std::errc::invalid_argument);
+    CHECK(r.ptr == text.data());
+    CHECK(value == 42.0);
+  }
+
+  float single = 42.0f;
+  const std::string_view tenth = "0.1", huge = "3.4028236e38", tiny = "1.4e-45";
+  CHECK(io::parse_number(tenth.data(), tenth.data() + tenth.size(), single).ec == std::errc{});
+  CHECK(std::bit_cast<std::uint32_t>(single) == std::bit_cast<std::uint32_t>(0x1.99999ap-4f));
+  CHECK(io::parse_number(huge.data(), huge.data() + huge.size(), single).ec
+        == std::errc::result_out_of_range);
+  CHECK(std::bit_cast<std::uint32_t>(single) == std::bit_cast<std::uint32_t>(0x1.99999ap-4f));
+  CHECK(io::parse_number(tiny.data(), tiny.data() + tiny.size(), single).ec == std::errc{});
+  CHECK(single == 0x1p-149f);
+}
+
+TEST_CASE("FX-6 the text reader parses through parse_number",
+          "[fileOperations][fx6][number]")
+{
+  // "1e-3,2E+2,.5,5.,-0,+7"
+  const Data sci = load_path(reader_fixture("sci.csv"));
+  REQUIRE(sci.size() == 1);
+  const std::vector<double> expected{ 0x1.0624dd2f1a9fcp-10, 200.0, 0.5, 5.0, -0.0, 7.0 };
+  REQUIRE(sci.p_vec[0].size() == expected.size());
+  for (std::size_t i = 0; i < expected.size(); ++i)
+    CHECK(std::bit_cast<std::uint64_t>(sci.p_vec[0][i])
+          == std::bit_cast<std::uint64_t>(expected[i]));
+
+  CHECK(load_path(reader_fixture("denorm.csv")).p_vec == Series{ { 0x1p-1074, 1.0 } });
+  CHECK_THROWS_WITH(load_path(reader_fixture("overflow.csv")),
+                    ContainsSubstring("numeric field is out of range '1e400'"));
+  CHECK_THROWS_WITH(load_path(reader_fixture("underflow.csv")),
+                    ContainsSubstring("numeric field is out of range '1e-400'"));
+  CHECK_THROWS_WITH(load_path(reader_fixture("hexfloat.csv")),
+                    ContainsSubstring("invalid numeric field '0x1p3'"));
+}
+
+TEST_CASE("FX-6 Problem rejects an empty series from any source",
+          "[fileOperations][fx6][problem]")
+{
+  Problem problem("fx6_empty_series");
+  problem.set_verbose(false);
+
+  Data owned(Series{ { 1.0, 2.0 }, {}, { 3.0 } }, std::vector<std::string>{ "a", "b", "c" });
+  CHECK_THROWS_AS(problem.set_data(owned), InvalidInput);
+  CHECK_THROWS_WITH(problem.set_data(owned), ContainsSubstring("series 1 ('b') is empty"));
+
+  Data single(std::vector<std::vector<float>>{ { 1.0f }, {} },
+              std::vector<std::string>{ "p", "q" });
+  CHECK_THROWS_WITH(problem.set_data(single), ContainsSubstring("series 1 ('q') is empty"));
+
+  const std::vector<double> one{ 1.0 }, none{};
+  Data view(std::vector<std::span<const double>>{ one, none },
+            std::vector<std::string_view>{ "x", "y" }, 1);
+  CHECK_THROWS_AS(problem.set_view_data(view), InvalidInput);
+  CHECK_THROWS_WITH(problem.set_view_data(view), ContainsSubstring("series 1 ('y') is empty"));
+
+  // A zero-byte (non-dot) file in a folder is an empty series too.
+  const auto folder = fs::temp_directory_path() / "dtwc_fx6_empty_file";
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+  fs::create_directories(folder);
+  std::ofstream(folder / "a.csv") << "1\n2\n";
+  std::ofstream(folder / "b.csv").close();
+  DataLoader loader(folder);
+  loader.verbosity(0);
+  CHECK_THROWS_WITH((Problem{ "fx6_loader", loader }),
+                    ContainsSubstring("series 1 ('b') is empty"));
+  CHECK_THROWS_AS(problem.set_data(loader.load_local()), InvalidInput);
+  fs::remove_all(folder, ec);
+
+  // Non-empty data is still accepted.
+  problem.set_data(Data(Series{ { 1.0 }, { 2.0, 3.0 } }, std::vector<std::string>{ "u", "v" }));
+  CHECK(problem.size() == 2);
+}
+
+TEST_CASE("GT-4b skip_cols wider than a row is InvalidInput, from a file as from memory",
+          "[fileOperations][error][gt4b]")
+{
+  // The oracle is the in-memory source, whose InvalidInput contract §1.2 names:
+  // the same request against a file is the same mistake, not a failed read.
+  REQUIRE_THROWS_AS(dtwc::cluster(dtwc::load(Series{ { 1, 2, 3 }, { 4, 5, 6 } }, 5), 1),
+                    InvalidInput);
+
+  TemporaryBatchFile batch(".csv", "1,2,3\n4,5,6\n");
+  CHECK_THROWS_AS(dtwc::cluster(dtwc::load(batch.path, 5), 1), InvalidInput);
+  CHECK_THROWS_AS(load_path(batch.path, 0, 5), InvalidInput);
+  DataLoader metadata(batch.path);
+  metadata.start_column(5).verbosity(0);
+  CHECK_THROWS_AS(metadata.load_metadata(), InvalidInput);
+
+  // A one-series-per-file folder reads one value per line from column skip_cols + 1.
+  const auto folder = fs::temp_directory_path() / "dtwc_gt4b_skip_cols_folder";
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+  fs::create_directories(folder);
+  std::ofstream(folder / "a.csv") << "1\n2\n";
+  CHECK_THROWS_AS(load_path(folder, 0, 1), InvalidInput);
+  CHECK_THROWS_AS(readFile<double>(folder / "a.csv", 0, 1), InvalidInput);
   fs::remove_all(folder, ec);
 }

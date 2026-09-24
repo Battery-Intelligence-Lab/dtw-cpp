@@ -20,6 +20,53 @@ cannot be honoured raises a device error; DTWC++ does not silently run the same
 request on CPU. Matrix-free schedules (`onebatch`, `clara`, and `tadpole`) are
 currently CPU-only and reject a GPU request.
 
+## A Problem's device
+
+A Tier-2 `Problem` takes the same names, set once on the object. It does not
+follow the process-wide `device(...)`: a `Problem` computes on the CPU until
+told otherwise.
+
+```python
+prob = dtwc.Problem("run", device="gpu")   # or prob.set_device("gpu:1")
+```
+
+```cpp
+dtwc::Problem prob("run");
+prob.set_device(dtwc::Device::GPU);        // index: prob.set_device(dtwc::Device::GPU, 1)
+```
+
+```matlab
+prob = dtwc.Problem('run', 'Device', 'gpu');   % or prob.set_device('gpu')
+```
+
+`cpu` keeps a CPU `distance_strategy` you chose (`BruteForce`, `Pruned`) and
+moves a GPU one back to `Auto`; `gpu` selects this build's GPU backend (CUDA,
+else Metal) and records the index. `gpu` on a build without a GPU backend
+raises a device error at the call; `hpc` raises an invalid-argument error,
+because it submits a whole run (`dtwc.cluster(..., device="hpc")` in Python)
+rather than computing a `Problem` locally.
+
+Before a `Problem` fills its distance matrix, or computes its first pair on
+demand (`dist_by_ind`), one check decides whether the request can be honoured.
+The GPU kernels compute Standard DTW on univariate Float64 series held in RAM,
+in L1 or squared L2, with no missing-data strategy; anything else on a GPU raises
+a device error that names the setting and its value (`variant = WDTW`,
+`missing_strategy = ZeroCost`, `ndim = 3`, `precision = Float32`, mmap-backed or
+view-mode series). Metal also rejects precision FP64 (its kernels are FP32) and
+a GPU index other than 0 (it runs on the system default GPU). On every device, a
+Sakoe-Chiba band narrower than the length difference between the shortest and
+longest series is an invalid-argument error naming both series and the smallest
+feasible band: such a pair has no warping path, and its distance would otherwise
+be the finite `1.8e308` sentinel.
+
+Not yet covered by that check: OneBatchPAM and FastCLARA's assignment step,
+which compute through `Problem::dtw_function()`. On-demand distances and the
+matrix-free schedules (`onebatch`, `clara`, `tadpole`, `clarans`) compute on the
+CPU even when a `Problem`'s device is a GPU; Tier-1 `cluster(...)` rejects that
+combination instead.
+
+### GPU and mmap-backed series
+
 GPU distance kernels cannot read mmap-backed series. `StoragePolicy::Auto`
 spills a dataset above half the free physical RAM into the mapped store, so a
 large GPU run through the Tier-2 `Problem` API must select

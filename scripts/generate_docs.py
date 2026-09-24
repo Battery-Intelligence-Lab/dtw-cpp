@@ -188,33 +188,20 @@ def generated_outputs() -> dict[Path, str]:
         body = body.replace("](develop/", "](")
         outputs[CONTENT / "contributing" / filename] = page(title, weight, body)
 
-    # The derivation is a required tracked documentation source.  Reading it
-    # unconditionally makes a missing source fail locally and in CI instead of
-    # silently reducing the drift check to output-file existence.
-    derivation_source = ROOT / "docs/sources/lr-core-derivation.md"
-    if not derivation_source.is_file():
-        raise RuntimeError(
-            "missing canonical LR-core derivation source: "
-            f"{derivation_source.relative_to(ROOT)}"
-        )
-    derivation = derivation_source.read_text(encoding="utf-8")
-    plan_archive = ROOT / ".claude/PLAN-archive-2026-07-20-phases0-9.md"
-    if not plan_archive.is_file():
-        raise RuntimeError(
-            "missing archived Phase 4 implementation record: "
-            f"{plan_archive.relative_to(ROOT)}"
-        )
-    plan_text = plan_archive.read_text(encoding="utf-8")
-    outcome = re.search(
-        r"^## Phase 4 .*?(?=^## Phase 5 )",
-        plan_text,
-        flags=re.MULTILINE | re.DOTALL,
-    )
-    if outcome is None:
-        raise RuntimeError(
-            "missing Phase 4 implementation outcome in "
-            f"{plan_archive.relative_to(ROOT)}"
-        )
+    # Both halves of the LR-core page are required tracked documentation
+    # sources.  Reading them unconditionally makes a missing source fail locally
+    # and in CI instead of silently reducing the drift check to output-file
+    # existence.
+    lr_core_sources = {}
+    for name in ("derivation", "outcome"):
+        source = ROOT / f"docs/sources/lr-core-{name}.md"
+        if not source.is_file():
+            raise RuntimeError(
+                f"missing LR-core {name} source: {source.relative_to(ROOT)}"
+            )
+        lr_core_sources[name] = source.read_text(encoding="utf-8")
+    derivation = lr_core_sources["derivation"]
+    outcome = lr_core_sources["outcome"].strip()
     outputs[CONTENT / "math/lr-core.md"] = page(
         "LR-core exact solver derivation", 10,
         """This is the complete, re-derivable solver investigation promoted
@@ -223,7 +210,7 @@ registered prediction bands, and falsified claims are retained rather than
 rewritten after the implementation outcome.
 
 """ + derivation + "\n\n## Implementation outcome and registered-band verdicts\n\n"
-        + outcome.group(0).strip() + "\n",
+        + outcome + "\n",
         "Full total-unimodularity, Lagrangian, and LR-core derivation.",
     )
     return outputs

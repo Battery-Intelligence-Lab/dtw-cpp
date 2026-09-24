@@ -17,11 +17,12 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | Component | Version | Licence | CLI archive | Python wheel |
 | --- | --- | --- | --- | --- |
 | Apache Arrow nanoarrow | 0.8.0 | Apache-2.0 | yes — vendored, compiled in | yes |
-| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | yes — linked in |
+| fast_float | 8.3.0 | Apache-2.0 **OR** MIT **OR** BSL-1.0 | yes — vendored, compiled in | yes |
+| HiGHS | 1.15.1 | MIT | yes — `lib/libhighs.*` | yes — statically linked into the extension |
 | CLI11 | 2.6.2 | BSD-3-Clause | yes — headers compiled in | no |
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
-| LLVM OpenMP runtime (`libomp`) | as installed | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate` |
+| LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate` |
 | llfio, quickcpplib | pinned commits | Apache-2.0 **OR** BSL-1.0 | only if built with `DTWC_ENABLE_LLFIO=ON`; **OFF** in released artefacts | no |
 
 **Not redistributed**, and therefore not covered here: Catch2 (BSL-1.0) and google/benchmark
@@ -33,8 +34,10 @@ Gurobi, which is proprietary, supplied by the user under their own licence, and 
 
 **Note on the OpenMP runtime.** On Linux and Windows the OpenMP runtime is the one belonging to the
 user's toolchain and is not redistributed by us. On macOS we bundle LLVM's `libomp`, which is
-Apache-2.0 WITH LLVM-exception; its terms are reproduced below. We deliberately never redistribute
-GCC's `libgomp`, which is GPL-3.0 WITH GCC-exception.
+Apache-2.0 WITH LLVM-exception; its terms are reproduced below. The release workflows build it
+unmodified from the LLVM 23.1.1 source release (`scripts/build_libomp_macos.sh`, SHA-256-pinned)
+for the artefacts' minimum macOS. We deliberately never redistribute GCC's `libgomp`, which is
+GPL-3.0 WITH GCC-exception.
 
 ---
 
@@ -55,6 +58,18 @@ Copyright 2023 The Apache Software Foundation
 This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 ```
+
+## fast_float 8.3.0 — Apache-2.0 OR MIT OR BSL-1.0
+
+The single-header release `fast_float.h` of fast_float 8.3.0 (tag commit
+`b0ab987b3dfdde13fa1915f65ef2a5c068d9208c`, SHA-256
+`f23d93a4d1adf052e7b50e2a55ac54feeef91e188b71d35ae3038597e2659b90`) is vendored at
+`dtwc/extern/fast_float/` and compiled unconditionally into `dtwc++`, through
+`dtwc/io/parse_number.cpp` only. Copyright (c) 2021 The fast_float authors. It is offered under
+your choice of three licences; DTWC++ elects the **Boost Software License 1.0**, whose text is
+reproduced in full in the llfio section below. The three upstream licence texts ship alongside this
+file — in the CLI archive at `share/doc/dtwc/fast_float/`, and in the wheel under
+`dtwcpp-<version>.dist-info/licenses/dtwc/extern/fast_float/`.
 
 ## HiGHS 1.15.1 — MIT
 

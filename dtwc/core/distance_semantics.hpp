@@ -9,10 +9,8 @@
 #include "selector_validation.hpp"
 #include "variant_validation.hpp"
 #include "../base/error.hpp"
-#include "../base/missing_utils.hpp"
 
 #include <cstddef>
-#include <span>
 #include <string>
 #include <string_view>
 
@@ -47,25 +45,6 @@ inline void validate_variant_missing_semantics(
   const DTWVariantParams &params, MissingStrategy missing_strategy)
 {
   validate_variant_missing_semantics(params.variant, missing_strategy);
-}
-
-/**
- * Enforce the MissingStrategy::Error contract ("throw if NaN") on a pairwise
- * call. Without it the recurrence returns NaN — also DenseDistanceMatrix's
- * "uncomputed" sentinel — so a computed result would be indistinguishable from
- * an unfilled entry and all_computed() could never become true. The per-pair
- * counterpart of Problem::fill_distance_matrix's scan: O(n + m) against an
- * O(n·m) recurrence.
- */
-template <typename T>
-inline void reject_missing_under_error_strategy(
-  std::span<const T> x, std::span<const T> y, std::string_view where)
-{
-  if (has_missing(x) || has_missing(y))
-    throw InvalidInput(
-      std::string(where)
-      + ": NaN detected in input under MissingStrategy::Error. Set the missing "
-        "strategy to ZeroCost, AROW, or Interpolate to handle missing data.");
 }
 
 /// Reject a multivariate call on a feature that is univariate in this release.

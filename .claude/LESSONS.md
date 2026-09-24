@@ -1561,3 +1561,47 @@ Critical knowledge to avoid repeating mistakes.
   the row existed to remove, and failing the upward-edge ratchet. When the
   layer model forbids the forwarder, the choice is a recorded break, not a
   cleverer forwarder; check the ranks before promising one.
+- **An unreachable limit needs no check — not seven, and not one.** A-10 went
+  from a shared `checked_point_count()` at seven call sites, to a single
+  load-time guard in `Problem::set_data`, to nothing (Volkan, 2026-09-23):
+  nobody stores 2^31 series, and whoever tries knows what to do. What *is*
+  reachable is a product of counts — pair indices, packed offsets, N·L, N²
+  model columns — which wraps 32 bits at N ≈ 46k. So the rule is types, not
+  checks: counts stay `int` (the v1.0.0 surface), products are
+  `size_t`/`int64_t`, and a check survives only where a third-party API forces
+  a narrower type than ours (HiGHS/Gurobi column counts). Even there, chunking
+  beats refusing: Metal splits a launch by a 64-bit `pair_offset`, while CUDA
+  still refuses N ≥ 65,537 (`cuda/launch_prep.hpp:47`).
+- **Before blaming a code change for a timing gap between two builds, pin where
+  the hot loop sits.** X-27 recorded Eigen's removal as ~5 % slower. Interleaved
+  A/B on fresh builds with identical flags showed no gap, and both builds had
+  the same 17 instructions per DTW cell. What *does* move `BM_dtwFull` is code
+  placement: when an `fcmp`/`fcsel` pair straddles a 64-byte boundary the loop
+  is ~30 % slower (8/8 such placements, 0/56 others), and a 4-byte relink shift
+  reproduces it. Measure builds interleaved (A, B, A, B), not one after another,
+  and treat any cross-build delta as placement until the assembly says
+  otherwise (`baselines/2026-09-23-x27-eigen-gap.md`, PLAN PF-6 / PF-7).
+- **Aligning a loop does not cure a fusion cliff; removing the fused pair
+  might.** PF-7 found the DTW recurrence ~30 % slower whenever its
+  `fcmp`/`fcsel` pair straddles a 64-byte fetch boundary, and tried to pin it
+  with 64-byte loop alignment — targeted and build-wide. Both failed the band:
+  alignment fixes where a loop *starts*, but the pair's offset *inside* each
+  template instantiation decides, so aligning everything made some
+  instantiations permanently slow. The lever is instruction selection, not
+  placement (a one-instruction `fminnm` min), and the check is a scan of the
+  linked binary, since placement is decided at link time under ThinLTO.
+- **Check the power state around every timing run.** On 2026-09-23 the Mac
+  switched to Low Power Mode mid-benchmark (`powermode 1`): a 1-cycle
+  calibration chain fell from 4.496 to 2.875 GHz and every later run was ~1.56×
+  slower, unchanged code included. Interleaving A and B kept the comparison
+  pairable within rounds; a one-after-the-other design would have reported the
+  clock switch as a code regression. `pmset -g` before and after, and a
+  calibration chain, cost seconds.
+- **A reader or binding change is not verified until the Python suite has run.**
+  FX-6 (2026-09-23) made one-series-per-file folders reject multi-field lines —
+  correct, since v1.0.0 silently kept only the first field — and three
+  `tests/python/test_api.py` cases whose fixtures wrote `0,1,2` into such files
+  failed from then on. The evidence run was `ctest` alone, so nobody saw it
+  until a full pytest a day later (1188 pass / 5 fail, all five present before
+  that batch). ctest does not run `tests/python`; any change that reaches the
+  bindings, the readers or a user-visible default needs both.

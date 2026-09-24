@@ -539,9 +539,19 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
                 "cluster: skip_rows is not carried by the HPC transport; strip "
                 "the header rows before staging, or use device='cpu'/'gpu'."
             )
+        # Nor is delimiter: the remote reader takes it from the file extension.
+        if data.is_path and data.delimiter:
+            raise InvalidInput(
+                "cluster: delimiter is not carried by the HPC transport; the "
+                "remote reader takes it from the file extension (.csv comma, "
+                ".tsv/.txt tab). Drop delimiter= for a file whose extension "
+                "matches, or use device='cpu'/'gpu'."
+            )
         source = data.source if data.is_path else data.as_series()
+        # as_series() has already dropped an in-memory source's skip_cols.
         labels = _hpc.cluster_on_hpc(source, k, method=method, band=band,
-                                     skip_cols=skip_cols, name=f"dtwc_{data.name}",
+                                     skip_cols=skip_cols if data.is_path else 0,
+                                     name=f"dtwc_{data.name}",
                                      max_iter=max_iter)
         return Result(labels, device="hpc", elapsed_s=time.perf_counter() - t0,
                       k=k, n_series=len(labels), name=data.name)

@@ -17,13 +17,13 @@
 
 using namespace dtwc;
 
-inline auto get_UCR_2018_files()
+inline auto get_UCR_2018_files(const fs::path &data_dir)
 {
   std::vector<fs::path> UCR_list{};
   std::map<std::string, int> Nc_list{};
 
 
-  const auto summary_path = settings::paths::data / "benchmark/UCR_DataSummary.csv";
+  const auto summary_path = data_dir / "benchmark/UCR_DataSummary.csv";
   std::ifstream summary_file(summary_path, std::ios_base::in);
 
   if (!summary_file.is_open()) {
@@ -58,7 +58,7 @@ inline auto get_UCR_2018_files()
   }
 
 
-  auto directories = fs::recursive_directory_iterator(settings::paths::data / "benchmark/UCRArchive_2018");
+  auto directories = fs::recursive_directory_iterator(data_dir / "benchmark/UCRArchive_2018");
   for (const auto &entry : directories) {
     if (entry.is_regular_file()) {                   // Check if the entry is a regular file
       std::string file_path = entry.path().string(); // Get the file path as a string
@@ -74,14 +74,14 @@ inline auto get_UCR_2018_files()
 }
 
 
-inline void UCR_2018()
+inline void UCR_2018(const fs::path &data_dir, const fs::path &results_dir)
 {
-  auto [UCR_list, Nc_list] = get_UCR_2018_files();
+  auto [UCR_list, Nc_list] = get_UCR_2018_files(data_dir);
 
   dtwc::DataLoader dl;
   dl.start_column(1); // For not reading first column of *.tsv files;
 
-  fs::path out_folder = settings::paths::results / "benchmark";
+  fs::path out_folder = results_dir / "benchmark";
 
   std::ofstream timing_file(out_folder / "timing_all.csv", std::ios_base::out);
 
@@ -89,12 +89,12 @@ inline void UCR_2018()
   std::string reportName = "MILP_results";
   // UCR_list
   std::vector<fs::path> dataofInterest{
-    //(settings::paths::data / "benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
-    // (settings::paths::data / "benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
-    //(settings::paths::data / "benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
-    //(settings::paths::data / "benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
-    (settings::paths::data / "benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
-    //(settings::paths::data / "benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
+    //(data_dir / "benchmark/UCRArchive_2018/UMD/UMD_TEST.tsv"),
+    // (data_dir / "benchmark/UCRArchive_2018/TwoPatterns/TwoPatterns_TEST.tsv")
+    //(data_dir / "benchmark/UCRArchive_2018/Coffee/Coffee_TEST.tsv"),
+    //(data_dir / "benchmark/UCRArchive_2018/FaceFour/FaceFour_TEST.tsv"),
+    (data_dir / "benchmark/UCRArchive_2018/AllGestureWiimoteX/AllGestureWiimoteX_TEST.tsv"),
+    //(data_dir / "benchmark/UCRArchive_2018/AllGestureWiimoteZ/AllGestureWiimoteZ_TEST.tsv")
 
   };
 
@@ -146,9 +146,12 @@ inline void UCR_2018()
 }
 
 
-int main()
+int main(int argc, char **argv)
 {
+  // Data and results folders: the first two arguments, else ./data and ./results.
+  const fs::path data_dir = argc > 1 ? argv[1] : "./data";
+  const fs::path results_dir = argc > 2 ? argv[2] : "./results";
   dtwc::Clock clk; // Create a clock object
-  UCR_2018();
+  UCR_2018(data_dir, results_dir);
   std::cout << "Finished benchmarking " << clk << "\n";
 }

@@ -1,0 +1,136 @@
+/**
+ * @file config.hpp
+ * @brief dtwc::Config — every setting of one clustering run, keyed by the CLI long names.
+ *
+ * @details The command line, a TOML or YAML config file, Python keywords and
+ * MATLAB name-value pairs are four spellings of one Config. Its member
+ * initialisers are dtwc_cl's defaults. cli::bind() is the one key table: each key
+ * is the CLI long name without "--", nested fields keep flat keys (`wdtw-g` sets
+ * `variant.wdtw_g`), and enums are read through the Name tables beside them.
+ * to_config_text() and parse_config() are built on bind(), so no second field
+ * list exists. Settings are only read here; run-time checks belong to the run.
+ *
+ * @date 24 Sep 2026
+ */
+
+#pragma once
+
+#include "../Problem.hpp" // CUDASettings, MIPSettings
+#include "../algorithms/hierarchical.hpp"
+#include "../algorithms/one_batch_pam.hpp"
+#include "../base/env.hpp"
+#include "../base/names.hpp"
+#include "../base/settings.hpp"
+#include "../core/dtw_options.hpp"
+#include "../core/storage.hpp"
+#include "../enums/Solver.hpp"
+
+#include <cstddef>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace CLI {
+class App;
+}
+
+namespace dtwc {
+
+/// The algorithm `--method` selects. Method keeps the four values Problem::cluster()
+/// dispatches; this enum spells what a run can be asked for.
+enum class ClusterMethod { Auto, PAM, OneBatch, CLARA, Kmedoids, MIP, LRCore, TADPole, Hierarchical };
+
+inline constexpr Name<ClusterMethod> cluster_method_names[]{
+  { "auto", ClusterMethod::Auto },
+  { "pam", ClusterMethod::PAM },
+  { "onebatch", ClusterMethod::OneBatch },
+  { "obp", ClusterMethod::OneBatch },
+  { "clara", ClusterMethod::CLARA },
+  { "kmedoids", ClusterMethod::Kmedoids },
+  { "mip", ClusterMethod::MIP },
+  { "lrcore", ClusterMethod::LRCore },
+  { "lr", ClusterMethod::LRCore },
+  { "tadpole", ClusterMethod::TADPole },
+  { "hierarchical", ClusterMethod::Hierarchical },
+  { "hclust", ClusterMethod::Hierarchical },
+};
+
+/// The spellings of `--gpu-precision`, onto CUDASettings::precision (0 Auto, 1 FP32, 2 FP64).
+inline constexpr Name<int> gpu_precision_names[]{
+  { "auto", 0 },
+  { "fp32", 1 }, { "float32", 1 }, { "f32", 1 }, { "float", 1 },
+  { "fp64", 2 }, { "float64", 2 }, { "f64", 2 }, { "double", 2 },
+};
+
+struct Config
+{
+  // Input and storage
+  std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, .dtws, or a folder.
+  std::string column;                    ///< `--column`: Parquet column holding the series.
+  int skip_rows = 0;                     ///< `--skip-rows`
+  int skip_cols = 0;                     ///< `--skip-cols`
+  char delimiter = '\0';                 ///< `--delimiter`; '\0' infers it from the extension.
+  core::Precision dtype = core::Precision::Float64; ///< `--dtype`
+  std::size_t ram_limit = 0;             ///< `--ram-limit` in bytes; 0 = no limit.
+  std::size_t mmap_threshold = 50000;    ///< `--mmap-threshold`
+  std::string dist_matrix;               ///< `--dist-matrix`: precomputed distance-matrix CSV.
+  // Method
+  ClusterMethod method = ClusterMethod::Auto; ///< `--method`
+  int k = 3;                             ///< `--n-clusters`
+  int max_iter = 100;                    ///< `--max-iter`
+  int n_init = 1;                        ///< `--n-init`
+  unsigned seed = settings::DEFAULT_RANDOM_SEED; ///< `--seed`
+  int sample_size = -1;                  ///< `--sample-size` (CLARA; -1 = auto)
+  int n_samples = 5;                     ///< `--n-samples` (CLARA)
+  int batch_size = -1;                   ///< `--batch-size` (OneBatchPAM; -1 = auto)
+  algorithms::OneBatchWeighting batch_weighting = algorithms::OneBatchWeighting::NearestNeighbor; ///< `--batch-weighting`
+  algorithms::Linkage linkage = algorithms::Linkage::Average; ///< `--linkage`
+  double tadpole_dc = -1.0;              ///< `--dc` (TADPole; -1 = auto)
+  // Distance
+  int band = -1;                         ///< `--band` (-1 = full DTW)
+  core::MetricType metric = core::MetricType::L1; ///< `--metric`
+  core::DTWVariantParams variant;        ///< `--variant`, `--mv-mode` and the variant parameters
+  core::MissingStrategy missing = core::MissingStrategy::Error; ///< `--missing-strategy`
+  // Device
+  Device device = Device::CPU;           ///< `--device`
+  CUDASettings gpu;                      ///< device_id from `--device gpu:N`; `--gpu-precision`
+  // Solver
+  Solver solver = Solver::HiGHS;         ///< `--solver`
+  MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--benders`, ...
+  // Checkpoint
+  std::string checkpoint;                ///< `--checkpoint` directory
+  int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
+  bool resume = false;                   ///< `--resume`
+  // Output
+  std::string output = "./results";      ///< `--output` ("" = write nothing)
+  std::string name = "dtwc";             ///< `--name`
+  bool verbose = false;                  ///< `--verbose`
+};
+
+namespace cli {
+
+/// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
+/// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
+/// `--help` shows `config`'s values as the defaults. `--clusters` and `--restart`
+/// stay hidden spellings that warn on stderr and yield to `--n-clusters` / `--resume`.
+/// A value no spelling reads raises during the parse: CLI11's error for a bad
+/// choice or number, InvalidInput for `--ram-limit` / `--delimiter`, DeviceError
+/// for `--device`.
+void bind(CLI::App &app, Config &config);
+
+} // namespace cli
+
+/// Every key of `config`, one `key = value` line each in bind() order: enums by
+/// canonical name, doubles in shortest round-trip form. parse_config() and
+/// `--config` read it back to an equal Config.
+/// @throws InvalidInput when a field holds a value no name spells (MetricType::L2).
+std::string to_config_text(const Config &config);
+
+/// A Config from (key, value) pairs, as Python keywords and MATLAB name-value
+/// pairs give them: `_` in a key reads as `-` (`max_iter` is `max-iter`), a
+/// one-letter key is the short flag (`k` is `n-clusters`); the pairs are read as
+/// a config file, so the keys, spellings and precedence are bind()'s.
+/// @throws InvalidInput for an unknown key or a value CLI11 rejects.
+Config parse_config(const std::vector<std::pair<std::string, std::string>> &pairs);
+
+} // namespace dtwc

@@ -23,7 +23,7 @@
 #include <cstdint>        // for int64_t
 #include <iostream>
 #include <limits>         // for std::numeric_limits
-#include <stdexcept>      // for std::invalid_argument
+#include <stdexcept>
 #include <string>         // for std::to_string
 #include <unordered_map>
 #include <utility>        // for pair
@@ -382,13 +382,13 @@ double calinski_harabasz(Problem &prob)
  * @param labels_true Ground-truth cluster labels.
  * @param labels_pred Predicted cluster labels.
  * @return double ARI value.
- * @throws std::invalid_argument if label vectors have different sizes.
+ * @throws InvalidInput if label vectors have different sizes.
  */
 double adjusted_rand(const std::vector<int> &labels_true,
                      const std::vector<int> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
-    throw std::invalid_argument("adjusted_rand: label vectors must have the same length");
+    throw InvalidInput("adjusted_rand: label vectors must have the same length");
 
   const auto n = static_cast<int64_t>(labels_true.size());
 
@@ -442,13 +442,13 @@ double adjusted_rand(const std::vector<int> &labels_true,
  * @param labels_true Ground-truth cluster labels.
  * @param labels_pred Predicted cluster labels.
  * @return double NMI in [0, 1]. Returns 1.0 if both labelings are constant.
- * @throws std::invalid_argument if label vectors have different sizes.
+ * @throws InvalidInput if label vectors have different sizes.
  */
 double normalized_mutual_info(const std::vector<int> &labels_true,
                               const std::vector<int> &labels_pred)
 {
   if (labels_true.size() != labels_pred.size())
-    throw std::invalid_argument("normalized_mutual_info: label vectors must have the same length");
+    throw InvalidInput("normalized_mutual_info: label vectors must have the same length");
 
   const auto n = static_cast<int>(labels_true.size());
   if (n == 0) return 0.0;

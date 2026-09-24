@@ -95,9 +95,13 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL
     # See missing_utils.hpp for NaN handling design notes.
     # -fno-rounding-math: assume default round-to-nearest (code never calls fesetround).
     # -fno-signaling-nans: treat SNaNs as quiet NaNs (only quiet NaN is used in this project).
+    #   GCC only: Clang does not implement it and warns once per translation unit (GT-7).
     list(APPEND DTWC_FP_FLAGS
       -fno-math-errno -fno-trapping-math -freciprocal-math -fassociative-math
-      -fno-signed-zeros -fno-rounding-math -fno-signaling-nans)
+      -fno-signed-zeros -fno-rounding-math)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+      list(APPEND DTWC_FP_FLAGS -fno-signaling-nans)
+    endif()
   endif()
 endif()
 message(STATUS "Floating-point model: ${DTWC_FP_MODEL}")

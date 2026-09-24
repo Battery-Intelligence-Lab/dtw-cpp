@@ -32,6 +32,7 @@
 
 #include "tadpole.hpp"
 #include "../Problem.hpp"
+#include "../base/error.hpp"
 #include "../core/lower_bound_impl.hpp" // Envelope, compute_envelope, lb_keogh_symmetric
 #include "../core/distance_matrix.hpp"  // tri_index, packed_size
 #include "../core/dtw_options.hpp"      // DTWVariant, MissingStrategy
@@ -64,7 +65,10 @@ namespace {
 /// everywhere, a slowdown TADPoleStats::pruning_enabled reports.
 bool bounds_valid(const Problem &prob)
 {
+  // The bounds are L1: under Problem::set_metric(SquaredL2) the LB can exceed
+  // the exact distance, so another metric takes the exact path too.
   return prob.variant_params.variant == core::DTWVariant::Standard
+         && prob.metric() == core::MetricType::L1
          && prob.data().ndim == 1
          && !prob.data().is_f32()
          && prob.missing_strategy == core::MissingStrategy::Error;
@@ -96,7 +100,7 @@ double tadpole_auto_dc(Problem &prob, double percentile)
   const int N = static_cast<int>(prob.size());
   if (N < 2) return 1.0; // degenerate: any positive dc
   if (percentile <= 0.0 || percentile >= 100.0)
-    throw std::runtime_error("tadpole_auto_dc: percentile must be in (0, 100).");
+    throw InvalidInput("tadpole_auto_dc: percentile must be in (0, 100).");
 
   // Deterministic subsample: all pairs among the first min(N, cap) series (no
   // RNG → reproducible). Rodriguez & Laio pick dc so avg neighbours ≈ 1–2% of N.
@@ -126,11 +130,11 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
 {
   const int N = static_cast<int>(prob.size());
   const int k = n_clusters;
-  if (N <= 0) throw std::runtime_error("tadpole: Problem has no data points.");
+  if (N <= 0) throw InvalidInput("tadpole: Problem has no data points.");
   if (k <= 0 || k > N)
-    throw std::runtime_error("tadpole: n_clusters must be in [1, N]. Got k="
-                             + std::to_string(k) + ", N=" + std::to_string(N) + ".");
-  if (!(dc > 0.0)) throw std::runtime_error("tadpole: dc must be > 0.");
+    throw InvalidInput("tadpole: n_clusters must be in [1, N]. Got k="
+                       + std::to_string(k) + ", N=" + std::to_string(N) + ".");
+  if (!(dc > 0.0)) throw InvalidInput("tadpole: dc must be > 0.");
 
   const int band = prob.band;
   const bool can_prune = prune && bounds_valid(prob);
