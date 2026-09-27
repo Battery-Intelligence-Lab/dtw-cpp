@@ -12,8 +12,8 @@ DTW-C++ provides a full-featured CLI tool for time series clustering. After comp
 - **Multiple clustering methods**: FastPAM, OneBatchPAM, FastCLARA, Lloyd's k-medoids, MIP, LR-core, hierarchical, and TADPole
 - **DTW variants**: Standard, DDTW, WDTW, ADTW, Soft-DTW, MSM, and TWE
 - **Distance metrics**: L1 (default) and squared Euclidean
-- **GPU acceleration**: CUDA support for distance matrix computation
-- **Configuration files**: TOML configuration support (CLI11 native)
+- **GPU acceleration**: the distance matrix on CUDA (NVIDIA) or Metal (macOS), with `--device gpu`
+- **Configuration files**: TOML or YAML (CLI11 native); `--print-config` writes the settings as a file `--config` reads
 - **Checkpointing**: Save and resume distance matrix computation
 - **Flexible I/O**: CSV/TSV plus optional Arrow/Parquet input, configurable row/column skipping, and stable CSV outputs
 
@@ -29,7 +29,15 @@ dtwc_cl --config config.yaml
 
 # Matrix-free FastCLARA on a large dataset
 dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
+
+# Write the settings to a file, and run that file later (flags still beat it)
+dtwc_cl -i data.csv -k 10 --method clara --print-config > job.toml
+dtwc_cl --config job.toml
 ```
+
+`dtwc_cl` reads its flags and any `--config` file into one `dtwc::Config` and runs
+it with `dtwc::run`, the pipeline the C++ Tier-1 `dtwc::cluster` also runs, so the
+two agree on every default, check and method choice.
 
 ## Command Reference
 
@@ -40,7 +48,7 @@ dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
 | `-h, --help` | Print the live command reference | — |
 | `--version` | Print the version from the repository `VERSION` source of truth | — |
 | `-i, --input <path>` | Input file or folder. CSV/TSV and `.dtws` are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
-| `-o, --output <path>` | Output directory | `./results` |
+| `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | `dtwc` |
 | `-k, --n-clusters <int>` | Number of clusters | 3 |
 | `-v, --verbose` | Verbose output | off |
@@ -58,7 +66,9 @@ dtwc_cl -i data.csv -k 10 --method clara --device cpu -v
 
 Available methods: `auto`, `pam`, `onebatch` (alias `obp`), `clara`,
 `kmedoids`, `mip`, `lrcore` (alias `lr`), `hierarchical` (alias `hclust`),
-and `tadpole`. `auto` runs `pam` for up to 5,000 series and `clara` above that.
+and `tadpole`. On `--device cpu`, `auto` runs `pam` for up to 5,000 series and
+`clara` above that; on `--device gpu` it runs `pam` at any size, since the GPU
+fills the matrix PAM reads.
 
 ### DTW Options
 
@@ -119,7 +129,7 @@ The cap is fail-closed:
   groups or raise the limit;
 - a CLARA sample size that resolves to all N series is rejected while the file
   is over budget, because its full-data PAM fallback cannot stream;
-- non-full FastCLARA is a CPU matrix-free schedule, so `--device cuda` is
+- non-full FastCLARA is a CPU matrix-free schedule, so `--device gpu` is
   rejected before the Parquet payload is read; and
 - `--dtype f32` keeps the sample, medoid, and assignment chunks in Float32;
   DTW recurrence arithmetic is Float32, while returned distances and the
@@ -166,6 +176,8 @@ file to stream them under the cap.
 | `--mip-focus <int>` | Gurobi MIPFocus (0-3) | 2 |
 | `--verbose-solver` | Show MIP solver log output | off |
 | `--benders <string>` | Benders decomposition: `auto`, `on`, `off` | `auto` |
+| `--max-benders-iter <int>` | Benders iteration cap; a MIP that reaches it fails with `SolverError` | 200 |
+| `--lr-max-nodes <int>` | Branch-and-bound node cap of `--method lrcore` | 2000000 |
 
 ### CSV Parsing
 
@@ -173,6 +185,10 @@ file to stream them under the cap.
 |------|-------------|---------|
 | `--skip-rows <int>` | Number of header rows to skip | 0 |
 | `--skip-cols <int>` | Number of leading columns to skip | 0 |
+| `--delimiter <char>` | Field delimiter, one character | inferred: tab for `.tsv`/`.txt`, else `,` |
+
+These three apply to CSV/TSV input only; any of them on Parquet, Arrow IPC or
+`.dtws` input is an error rather than an option silently ignored.
 
 ### Distance Matrix and Checkpointing
 
@@ -180,11 +196,11 @@ file to stream them under the cap.
 |------|-------------|---------|
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
-| `--checkpoint-interval <rows>` | Publish a checkpoint generation every N completed distance-matrix rows (requires `--checkpoint`) | off (save once, at the end) |
+| `--checkpoint-interval <rows>` | Publish a checkpoint generation every N completed distance-matrix rows (a non-zero N requires `--checkpoint`) | 0 (save once, at the end) |
 | `--resume` | Replay the completed automatic binary result at `<output>/<name>_checkpoint.bin` | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
-Without `--checkpoint-interval` the dense checkpoint is written once, after clustering. With it, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; the flag requires `--checkpoint <dir>` and exits 1 without it. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
+Without `--checkpoint-interval` (or with `0`) the dense checkpoint is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
 
 A `--dist-matrix` file that cannot be loaded (missing, unreadable, empty, not square, not symmetric, or with a row count other than the number of input series) and a checkpoint that cannot be saved are errors: `dtwc_cl` exits 1 with a message naming the option and the path, rather than warning and carrying on. The `--checkpoint` directory is created, or found not to be a directory, before any data is read; the end-of-run save comes after the result files, so a save that fails there (a full disk) leaves the results written.
 
@@ -236,14 +252,26 @@ remain independent distance-matrix mechanisms.
 
 | Flag                       | Description                                  | Default |
 |----------------------------|----------------------------------------------|---------|
-| `-d, --device <string>`    | Compute device: `cpu`, `cuda`, `cuda:N`      | `cpu`   |
+| `-d, --device <string>`    | Compute device: `cpu`, `gpu`, `gpu:N` (`cuda`, `cuda:N` are the same; CUDA on NVIDIA, Metal on macOS) | `cpu`   |
 | `--gpu-precision <string>` | GPU kernel precision. Alias: `--gpu-dtype`. Values: `auto`, `fp32`/`f32`/`float32`, `fp64`/`f64`/`float64`/`double` | `auto` |
+
+On `--device gpu` the GPU fills the distance matrix, so the methods that read one
+run there: `pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its
+sample covers every series. `onebatch`, `tadpole` and a `clara` sample smaller
+than N compute on the CPU as they go, so they exit 1 on `gpu` naming the methods
+that use it. A variant other than `standard`, a missing-data strategy, `--dtype
+float32`, and on Metal a GPU index other than 0 or `--gpu-precision fp64`, exit 1
+before the input is read; a build without a GPU backend refuses `gpu` naming the
+build flag. `--device hpc` exits 1: `dtwc_cl` computes where it runs, and a SLURM
+job is submitted with `bash scripts/slurm/slurm_remote.sh submit-cluster` or
+Python's `dtwcpp.cluster(..., device="hpc")` ([SLURM](slurm.md)).
 
 ### Configuration Files
 
 | Flag | Description |
 |------|-------------|
 | `--config <path>` | TOML or YAML configuration file (CLI11 native) |
+| `--print-config` | Write every setting, one `key = value` line each, as a TOML file `--config` reads back, and exit |
 
 See [Configuration Files](configuration.md) for full details and examples.
 
@@ -320,7 +348,7 @@ dtwc_cl -i data.csv -k 3 --method mip --solver gurobi --mip-gap 1e-6 --time-limi
 ### GPU-accelerated distance matrix
 
 ```bash
-dtwc_cl -i data.csv -k 5 --device cuda --gpu-precision fp32 -v
+dtwc_cl -i data.csv -k 5 --device gpu --gpu-precision fp32 -v
 ```
 
 ### Using a TOML or YAML configuration file

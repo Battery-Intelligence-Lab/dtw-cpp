@@ -8,6 +8,18 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (CLI):** `dtwc_cl` is `cli::bind` + `dtwc::run(Config)` (1,996 → 133 lines), with byte-identical outputs on every
+  configuration compared. `--device` reads the one device grammar (`gpu`, `gpu:N`, Metal on macOS; `cuda` is `gpu`); `hpc` raises
+  `DeviceError` (submission is `slurm_remote.sh submit-cluster` / Python's `device="hpc"`). On `gpu`, `auto` runs pam at any N;
+  onebatch, tadpole, a CLARA sample smaller than N, or a setting the GPU cannot honour raise `DeviceError` before the input is
+  read. Squared L2 runs on the CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP
+  settings included, runs before any I/O; the loader's progress lines print only with `-v`.
+- **Added (CLI):** `--print-config` writes the parsed settings as a TOML config file; the binary now reads `--delimiter`,
+  `--max-benders-iter` and `--lr-max-nodes`.
+- **Changed (C++ Tier-1):** `cluster()` wraps `run`, with results unchanged; path datasets read Parquet, Arrow and `.dtws`; the
+  aliases `obp` and `lr` are accepted; `device="hpc"` raises without reading `.env`; `Result` reports `method()`, `iterations()`
+  and `converged()`. `detail/tier1_method_resolution.hpp` is removed. An unreadable mmap-cache parent, an output directory that
+  cannot be created, and a YAML config on a build without YAML each raise `IOError`.
 - **Fixed (errors):** `save_checkpoint` to a path it cannot create, and an mmap matrix or series store that llfio cannot size, map or
   flush (a full disk, a file-size quota), raise `IOError` naming the path; Python saw `RuntimeError`, MATLAB `dtwc:runtime`. An mmap
   cache made for other data or configuration, and `skip_cols` wider than a file's rows, raise `InvalidInput` (was `IOError`), as a

@@ -25,10 +25,10 @@ other than L1 is implemented for Standard DTW with `MissingStrategy::Error`
 it raises `InvalidInput`, because the `Problem` passes the metric to the
 Standard kernels only. The
 lower-bound-pruned fill is univariate L1, so another metric (or multivariate
-data) takes the exact row fill. The 2.0 CLI surface is narrower:
-CPU accepts `--metric l1`; CUDA accepts `l1` or `squared_euclidean`. Unsupported
-device/metric combinations fail before computation rather than silently using
-another metric.
+data) takes the exact row fill. The CLI's `--metric` is the same `Problem`
+setting: `l1` or `squared_euclidean` on `--device cpu` and `--device gpu` alike.
+A combination the kernels do not implement fails before computation rather than
+silently using another metric.
 
 ## Lower bounds and pruning
 

@@ -113,6 +113,16 @@ inline void validate_distance_matrix_strategy(DistanceMatrixStrategy value)
   throw InvalidInput("Invalid DistanceMatrixStrategy value.");
 }
 
+/// FX-1's GPU rules that need no series: Float32 values, a variant or a
+/// missing-data strategy the GPU kernels do not implement, and a GPU index or
+/// precision Metal cannot honour. A fill applies them to its Problem
+/// (validate_fill_request); dtwc::run applies them to a configuration before
+/// it reads a series. A CPU strategy passes.
+/// @throws DeviceError naming `where`, the backend and the axis.
+void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strategy,
+                          const core::DTWVariantParams &variant, core::MissingStrategy missing,
+                          core::Precision precision, const CUDASettings &gpu);
+
 /**
  * @class Problem
  * @brief Class representing a problem in DTWC.

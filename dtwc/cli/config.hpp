@@ -126,6 +126,10 @@ void bind(CLI::App &app, Config &config);
 /// @throws InvalidInput when a field holds a value no name spells (MetricType::L2).
 std::string to_config_text(const Config &config);
 
+/// `device` as to_config_text() writes it and detail::parse_device() reads it
+/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0), hpc.
+std::string device_text(const Config &config);
+
 /// A Config from (key, value) pairs, as Python keywords and MATLAB name-value
 /// pairs give them: `_` in a key reads as `-` (`max_iter` is `max-iter`), a
 /// one-letter key is the short flag (`k` is `n-clusters`); the pairs are read as

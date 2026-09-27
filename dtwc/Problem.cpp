@@ -158,7 +158,46 @@ metal::MetalPrecision metal_precision(int precision)
 }
 #endif
 
+/// A GPU request its backend cannot honour: every FX-1 rule words it so.
+[[noreturn]] void reject_gpu_request(std::string_view where, bool cuda, const std::string &request,
+                                     const std::string &fix)
+{
+  throw DeviceError(std::string(where) + (cuda ? ": CUDA " : ": Metal ") + request
+                    + "; no backend call or CPU fallback was attempted. " + fix);
+}
+
 } // namespace
+
+void validate_gpu_request(std::string_view where, DistanceMatrixStrategy strategy,
+                          const core::DTWVariantParams &variant, core::MissingStrategy missing,
+                          core::Precision precision, const CUDASettings &gpu)
+{
+  // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
+  // DTW with no missing-data strategy, in L1 or squared L2.
+  const bool cuda = strategy == DistanceMatrixStrategy::CUDA;
+  if (!cuda && strategy != DistanceMatrixStrategy::Metal) return;
+  if (precision == core::Precision::Float32)
+    reject_gpu_request(where, cuda, "computes from Float64 series, but precision = Float32 was requested",
+                       "Load the series as Float64, or use device cpu.");
+  if (variant.variant != core::DTWVariant::Standard)
+    reject_gpu_request(where, cuda,
+                       std::string("implements Standard DTW only, but variant = ")
+                         + variant_name(variant.variant) + " was requested",
+                       "Use device cpu for this variant.");
+  if (missing != core::MissingStrategy::Error)
+    reject_gpu_request(where, cuda,
+                       std::string("has no missing-data strategy, but missing_strategy = ")
+                         + missing_strategy_name(missing) + " was requested",
+                       "Use device cpu, or missing_strategy Error for data without NaN.");
+  if (!cuda && gpu.device_id != 0)
+    reject_gpu_request(where, cuda,
+                       "runs on the system default GPU, but GPU index = " + std::to_string(gpu.device_id)
+                         + " was requested",
+                       "Use gpu (index 0).");
+#ifdef DTWC_HAS_METAL
+  if (!cuda) metal::validate_metal_precision(metal_precision(gpu.precision));
+#endif
+}
 
 /**
  * @brief Resizes data structures based on the current number of clusters.
@@ -793,12 +832,16 @@ void Problem::use_mmap_distance_matrix(
   DistanceCacheIdentity identity = distance_cache_identity(metric);
   // open(path, expected) validates version, header integrity, length, and the
   // full semantic fingerprint before exposing the mapped computed-bit region.
-  auto mapped = std::filesystem::exists(cache_path)
-    ? core::MmapDistanceMatrix::open(cache_path, identity.full)
-    : core::MmapDistanceMatrix(cache_path, N, identity.full);
-  if (mapped.size() != N)
-    throw IOError("Mmap cache N=" + std::to_string(mapped.size())
-                  + " != data N=" + std::to_string(N));
+  std::error_code ec; // an unreadable parent is an IOError, not a bare filesystem_error
+  const bool cached = std::filesystem::exists(cache_path, ec);
+  if (ec)
+    throw IOError("Problem::use_mmap_distance_matrix: cannot inspect '" + cache_path.string()
+                  + "': " + ec.message());
+  auto mapped = cached ? core::MmapDistanceMatrix::open(cache_path, identity.full)
+                       : core::MmapDistanceMatrix(cache_path, N, identity.full);
+  if (mapped.size() != N) // the fingerprint that open() checked covers N
+    throw std::logic_error("Problem::use_mmap_distance_matrix: a cache whose fingerprint matched holds N="
+                           + std::to_string(mapped.size()) + ", not " + std::to_string(N));
   if (metric_ != metric) { // new semantics, as in set_metric
     metric_ = metric;
     fill_request_validated_ = false;
@@ -1003,47 +1046,24 @@ void Problem::validate_fill_request(std::string_view where) const
     }
   }
 
-  // The GPU routes upload owned Float64 series (data_.p_vec) and run Standard
-  // DTW on univariate data with no missing-data strategy, in L1 or squared L2.
+  // The GPU routes also need owned, resident, univariate series.
   const bool cuda = distance_strategy == DistanceMatrixStrategy::CUDA;
   if (!cuda && distance_strategy != DistanceMatrixStrategy::Metal) return;
-  const std::string backend = cuda ? "CUDA" : "Metal";
-  const auto reject = [&](const std::string &request, const std::string &fix) {
-    throw DeviceError(at + ": " + backend + " " + request
-                      + "; no backend call or CPU fallback was attempted. " + fix);
-  };
   if (has_mmap_series_storage())
-    reject("does not support mmap-backed series data",
-           "Select StoragePolicy::Heap before set_data.");
+    reject_gpu_request(at, cuda, "does not support mmap-backed series data",
+                       "Select StoragePolicy::Heap before set_data.");
   if (data_.is_view() || data_.is_metadata_only())
-    reject(std::string("needs owned series in RAM, but this Problem's series are ")
-             + (data_.is_view() ? "a non-owning view (set_view_data, as "
-                                  "FastCLARA's in-memory subsamples are)"
-                                : "not resident (metadata-only)"),
-           "Install owning series with set_data, or use device cpu.");
-  if (data_.is_f32())
-    reject("computes from Float64 series, but this Problem holds precision = "
-           "Float32",
-           "Load the series as Float64, or use device cpu.");
-  if (variant != core::DTWVariant::Standard)
-    reject(std::string("implements Standard DTW only, but variant = ")
-             + variant_name(variant) + " was requested",
-           "Use device cpu for this variant.");
-  if (missing_strategy != core::MissingStrategy::Error)
-    reject(std::string("has no missing-data strategy, but missing_strategy = ")
-             + missing_strategy_name(missing_strategy) + " was requested",
-           "Use device cpu, or missing_strategy Error for data without NaN.");
+    reject_gpu_request(at, cuda,
+                       std::string("needs owned series in RAM, but this Problem's series are ")
+                         + (data_.is_view() ? "a non-owning view (set_view_data, as "
+                                              "FastCLARA's in-memory subsamples are)"
+                                            : "not resident (metadata-only)"),
+                       "Install owning series with set_data, or use device cpu.");
+  validate_gpu_request(at, distance_strategy, variant_params, missing_strategy, data_.precision,
+                       cuda_settings);
   if (data_.ndim > 1)
-    reject("is univariate only, but ndim = " + std::to_string(data_.ndim)
-             + " was requested",
-           "Use device cpu for multivariate series.");
-  if (!cuda && cuda_settings.device_id != 0)
-    reject("runs on the system default GPU, but GPU index = "
-             + std::to_string(cuda_settings.device_id) + " was requested",
-           "Use gpu (index 0).");
-#ifdef DTWC_HAS_METAL
-  if (!cuda) metal::validate_metal_precision(metal_precision(cuda_settings.precision));
-#endif
+    reject_gpu_request(at, cuda, "is univariate only, but ndim = " + std::to_string(data_.ndim) + " was requested",
+                       "Use device cpu for multivariate series.");
 }
 
 void Problem::validate_fill_request_once(std::string_view where) const

@@ -3,7 +3,7 @@
  */
 
 #include <dtwc.hpp>
-#include <detail/tier1_method_resolution.hpp>
+#include <cli/config.hpp> // ClusterMethod, which Result::method() reports
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -356,40 +356,17 @@ TEST_CASE("Tier-1 C++ rejects invalid method, k, and matrix-free GPU mismatch", 
 TEST_CASE("Tier-1 auto method resolution is compatible with its execution target",
           "[api][tier1][device]")
 {
-  using dtwc::detail::Tier1ExecutionTarget;
-  using dtwc::detail::resolve_tier1_method;
-
-  // N=5001 is the first non-degenerate case that selects CLARA on CPU. GPU
-  // matrix-free schedules are unsupported, so auto must retain the compatible
-  // PAM path there. The remote HPC process owns its eventual size decision.
-  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::CPU) == "clara");
-  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::GPU) == "pam");
-  CHECK(resolve_tier1_method("auto", 5001, Tier1ExecutionTarget::HPC) == "auto");
-
-  CHECK(resolve_tier1_method("auto", 5000, Tier1ExecutionTarget::CPU) == "pam");
-  CHECK(resolve_tier1_method("auto", 5000, Tier1ExecutionTarget::GPU) == "pam");
-
-  // Explicit incompatibilities stay explicit so the existing DeviceError path
-  // remains loud rather than silently substituting a different algorithm.
-  CHECK(resolve_tier1_method("clara", 5001, Tier1ExecutionTarget::GPU) == "clara");
-}
-
-TEST_CASE("Tier-1 pins heap series storage for a GPU execution target",
-          "[api][tier1][device][storage]")
-{
-  using dtwc::detail::Tier1ExecutionTarget;
-  using dtwc::detail::tier1_storage_policy;
-
-  // fill_distance_matrix throws DeviceError on mmap-backed series, and
-  // StoragePolicy::Auto spills above the free-RAM threshold (now measured on
-  // Windows too), so the Tier-1 GPU route must install Heap before set_data.
-  CHECK(tier1_storage_policy(Tier1ExecutionTarget::GPU)
-        == dtwc::core::StoragePolicy::Heap);
-  // CPU and HPC keep the caller-visible default; Tier-2 mmap use is untouched.
-  CHECK(tier1_storage_policy(Tier1ExecutionTarget::CPU)
-        == dtwc::core::StoragePolicy::Auto);
-  CHECK(tier1_storage_policy(Tier1ExecutionTarget::HPC)
-        == dtwc::core::StoragePolicy::Auto);
+  // cluster() resolves `auto` in dtwc::run, with the device: on the CPU pam up
+  // to N = 5000 and clara from 5001 (the boundary itself, and the GPU cells
+  // where auto is pam at any N, are test_run_resolution.cpp's). hpc is refused
+  // before any series is read, so no local size decision is taken for it.
+  dtwc::Dataset::series_type many;
+  for (int i = 0; i < 5001; ++i)
+    many.push_back({ static_cast<double>(i % 97), static_cast<double>(i % 89) });
+  CHECK(dtwc::cluster(dtwc::load(many), 2, "auto", -1, "cpu").method() == dtwc::ClusterMethod::CLARA);
+  const auto few = dtwc::load(dtwc::Dataset::series_type{ { 0.0, 0.0 }, { 0.0, 1.0 }, { 9.0, 9.0 } });
+  CHECK(dtwc::cluster(few, 2, "auto", -1, "cpu").method() == dtwc::ClusterMethod::PAM);
+  CHECK_THROWS_AS(dtwc::cluster(few, 2, "auto", -1, "hpc"), dtwc::DeviceError);
 }
 
 TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")

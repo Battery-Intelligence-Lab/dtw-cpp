@@ -20,6 +20,9 @@ BANNED_TRACKED_PATHS = (
 
 INTENTIONAL_ZERO_BYTE_PATHS = {
     "python/dtwcpp/py.typed",
+    # FX-6 reader prototype's input matrix: an empty file and a dot-file case.
+    ".claude/plans/2026-09-23-fx6-reader-prototype/cases/empty_file.csv",
+    ".claude/plans/2026-09-23-fx6-reader-prototype/folder_cases/f6/.gitkeep",
 }
 
 TARGETED_DUPLICATE_PAIRS = (

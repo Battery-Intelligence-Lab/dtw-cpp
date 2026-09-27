@@ -147,14 +147,14 @@ for method in "${METHODS[@]}"; do
     done
 done
 
-# Metric variation: SquaredL2 on the CPU path is unsupported and MUST error
-# (Task 0.9). Before the fix --metric was consumed only by the CUDA path, so on
-# CPU this silently computed L1 and exited 0.
-name="p1_pam_standard_sqeucl_cpu_rejected"
+# Metric variation: squared L2 on the CPU. It was refused (Task 0.9: --metric
+# once reached only the CUDA path, so the CPU silently computed L1); since IF-2
+# the Problem's CPU fill computes it (Problem::set_metric).
+name="p1_pam_standard_sqeucl_cpu"
 ec=$(run_test "$name" \
     --input "$DUMMY_DIR" --clusters 3 --method pam --variant standard \
     --metric squared_euclidean --band -1 --skip-rows 1 --skip-cols 1)
-expect_error "$name" "$ec" "unsupported on the cpu"
+validate "$name" "$ec" 25 3
 
 # --- CLI argument-handling regressions (Task 0.9 / audit cli-ux) ---
 # These are build-independent: parse_device runs before any CUDA guard.
@@ -165,14 +165,14 @@ name="p1_device_cuda_bad_id"
 ec=$(run_test "$name" \
     --input "$DUMMY_DIR" --clusters 3 --method pam \
     --skip-rows 1 --skip-cols 1 --device "cuda:abc")
-expect_error "$name" "$ec" "Invalid CUDA device id"
+expect_error "$name" "$ec" "unknown device 'cuda:abc'"
 
 # An unknown device must error, never silently fall back to CPU.
 name="p1_device_unknown"
 ec=$(run_test "$name" \
     --input "$DUMMY_DIR" --clusters 3 --method pam \
     --skip-rows 1 --skip-cols 1 --device "foo")
-expect_error "$name" "$ec" "Unknown --device"
+expect_error "$name" "$ec" "unknown device 'foo'"
 
 # Band variation: band=5
 name="p1_pam_standard_band5"

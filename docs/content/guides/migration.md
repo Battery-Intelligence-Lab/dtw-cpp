@@ -63,8 +63,8 @@ falsified; that does not change the implemented public policy.
 | 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
-| 37 | set data path | `settings::paths::setDataPath` (settings.hpp:88-94) | `set_data_path` | C++ `[[deprecated]]` |
-| 38 | set results path | `settings::paths::setResultsPath` (settings.hpp:96-102) | `set_results_path` | C++ `[[deprecated]]` |
+| 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
+| 38 | set results path | `settings::paths::setResultsPath` (2.0-born) | `Problem::set_output_folder` | removed pre-tag with `set_results_path` (D-3); a `Problem`'s default output folder is `./results/` |
 | 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:319-339`) | `Result` | uncached identity-preserving warning alias 1 cycle |
 | 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`) | `Result.medoids` | warning alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
@@ -121,7 +121,7 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
+29 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
 operations. PLAN.md retains F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.

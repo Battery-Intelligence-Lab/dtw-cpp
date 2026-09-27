@@ -7,6 +7,7 @@
 # --config accepts TOML or YAML; the format is detected from the file content.
 # Keys are the canonical long flags without the leading "--", identical in both
 # formats. Command-line values always override file values.
+# `dtwc_cl ... --print-config` writes every key of a command line (as TOML).
 
 # Input CSV file or folder containing time series data.
 # A file holds one series per row; a folder holds one series per file, one value
@@ -23,7 +24,8 @@ name: example
 # Number of clusters. (Deprecated key `clusters` is still accepted with a warning.)
 n-clusters: 5
 
-# Clustering method: pam, clara, kmedoids, mip, hierarchical
+# Clustering method: auto, pam, onebatch, clara, kmedoids, mip, lrcore,
+# hierarchical, tadpole
 method: pam
 
 # Sakoe-Chiba band width. -1 = full (unconstrained) DTW.
@@ -32,7 +34,7 @@ band: -1
 # Distance metric: l1, squared_euclidean
 metric: l1
 
-# DTW variant: standard, ddtw, wdtw, adtw, softdtw
+# DTW variant: standard, ddtw, wdtw, adtw, softdtw, msm, twe
 variant: standard
 
 # Missing-data strategy: error, zero_cost, arow, interpolate
@@ -48,6 +50,8 @@ n-init: 1
 # data/dummy: skip the `,0` header row and the index column.
 skip-rows: 1
 skip-cols: 1
+# Field delimiter, one character; unset infers tab for .tsv/.txt, else ",".
+# delimiter: ","
 
 # Column to use as the time series values when loading from Parquet/Arrow IPC.
 # Only valid for a .parquet/.pq input; leave it commented out for the CSV
@@ -83,6 +87,8 @@ verbose-solver: false
 # no-warm-start: true   # uncomment to disable the FastPAM warm start
 
 # --- Compute device ---
+# cpu (default), gpu or gpu:N (cuda, cuda:N are the same): CUDA on NVIDIA, Metal
+# on macOS, for the methods that read a distance matrix (see config.toml).
 device: cpu
 
 # GPU kernel precision: auto, fp32, fp64.
@@ -90,6 +96,7 @@ gpu-precision: auto
 
 # --- Checkpointing ---
 # checkpoint: ./checkpoints
+# checkpoint-interval: 0   # rows between saves; 0 = once, at the end
 
 # --- Precomputed distance matrix ---
 # dist-matrix: path/to/distance_matrix.csv

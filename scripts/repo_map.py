@@ -71,7 +71,6 @@ FILE_OVERRIDE = {
     "core/gpu_dtw_common.hpp": "backends",
     "core/portable_random.hpp": "base", "core/crc32.hpp": "base",
     "core/sha256.hpp": "base", "core/llfio_include.hpp": "base",
-    "detail/tier1_method_resolution.hpp": "surface",
 }
 PROBES = ["core/dtw_kernel.hpp", "core/dtw_dispatch.hpp", "core/pruned_distance_matrix.hpp",
           "warping.hpp", "distance.hpp", "settings.hpp", "Data.hpp", "Problem.hpp",

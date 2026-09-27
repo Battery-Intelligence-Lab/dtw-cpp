@@ -12,7 +12,7 @@
  *   CUDASettings::precision, cuda::CUDAPrecision, and metal::MetalPrecision.
  *
  * Derived/internal enum inventory (not caller selectors): detail::SeqCause,
- * detail::Tier1ExecutionTarget, cuda::detail::KernelPath, and cuda::FP64Rate.
+ * cuda::detail::KernelPath, and cuda::FP64Rate.
  * Their values are produced by validated policy/hardware paths rather than
  * accepted at a public operation boundary.
  *

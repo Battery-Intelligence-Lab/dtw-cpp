@@ -355,7 +355,7 @@ def assert_contract_audit_state() -> None:
         "dedicated `+dtwc/*.m` compatibility wrappers",
         "Every retained\ncallable alias in this table emits",
         "`set_distance_matrix` is canonical and warning-silent",
-        "33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB",
+        "29 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB",
     )
     missing = [marker for marker in required if marker not in contract]
     if missing:
@@ -506,7 +506,7 @@ def assert_migration_behaviors() -> None:
         "Every retained callable alias in this table emits its required C++ compile "
         "diagnostic or Python/MATLAB runtime warning",
         "`set_distance_matrix` is canonical and warning-silent",
-        "33 C++ diagnostic entities, 13 Python alias operations, and 15 "
+        "29 C++ diagnostic entities, 13 Python alias operations, and 15 "
         "MATLAB alias operations",
     )
     missing = [item for item in required if item not in migration]
@@ -516,7 +516,8 @@ def assert_migration_behaviors() -> None:
 
 def assert_tier1_signatures() -> None:
     header = compact((ROOT / "dtwc/api.hpp").read_text(encoding="utf-8"))
-    cpp_api = compact((ROOT / "dtwc/api.cpp").read_text(encoding="utf-8"))
+    # The method names cluster() reads are the ClusterMethod table (IF-2 S3).
+    cpp_methods = compact((ROOT / "dtwc/cli/config.hpp").read_text(encoding="utf-8"))
     python = compact((ROOT / "python/dtwcpp/_api.py").read_text(encoding="utf-8"))
     matlab = compact((ROOT / "bindings/matlab/+dtwc/cluster.m").read_text(encoding="utf-8"))
     contract = compact((ROOT / "docs/api-contract-2.0.md").read_text(encoding="utf-8"))
@@ -559,7 +560,7 @@ def assert_tier1_signatures() -> None:
     if py_methods != required:
         raise AssertionError(f"Python method registry drift: {sorted(py_methods)}")
     for method in required:
-        if f'"{method}"' not in cpp_api or f'"{method}"' not in contract:
+        if f'"{method}"' not in cpp_methods or f'"{method}"' not in contract:
             raise AssertionError(f"method {method!r} is not aligned across code/contract")
 
 
@@ -698,7 +699,7 @@ def assert_lb_keogh_derivation_sync() -> None:
         "python_api": ROOT / "python/dtwcpp/__init__.py",
         "python_binding": ROOT / "python/src/_dtwcpp_core.cpp",
         "method_enum": ROOT / "dtwc/enums/Method.hpp",
-        "cli_source": ROOT / "dtwc/dtwc_cl.cpp",
+        "cli_source": ROOT / "dtwc/cli/run.cpp",  # dtwc_cl's pipeline (IF-2 S3)
         "lower_bound_api": ROOT / "dtwc/core/lower_bounds.hpp",
         "lower_bound": ROOT / "dtwc/core/lower_bound_impl.hpp",
         "cuda_header": ROOT / "dtwc/cuda/cuda_dtw.cuh",
@@ -1593,8 +1594,6 @@ def assert_f22_ordinary_call_hygiene() -> None:
         "calinskiHarabaszIndex",
         "adjustedRandIndex",
         "normalizedMutualInformation",
-        "setDataPath",
-        "setResultsPath",
     )
     score_aliases = (
         "davies_bouldin_index",
@@ -1624,12 +1623,12 @@ def assert_f22_ordinary_call_hygiene() -> None:
     }
     inventory_shape = (
         len(cxx_unique),
-        33,  # three overloads make 33 diagnostic entities from 30 names.
+        29,  # one overload makes 29 diagnostic entities from 28 names.
         len(python_unique),
         13,  # n_repetition has independently warned read/write operations.
         4 + 5 + 1 + len(score_aliases),
     )
-    if inventory_shape != (30, 33, 12, 13, 15):
+    if inventory_shape != (28, 29, 12, 13, 15):
         raise AssertionError(
             f"F22 ordinary-call checker inventory drift: {inventory_shape}"
         )

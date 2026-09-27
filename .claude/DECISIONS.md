@@ -289,4 +289,10 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   `DeviceError`, Gurobi without Gurobi is `SolverError`, and a file format or mmap store this build cannot read (Parquet, Arrow,
   `.dtws` without llfio) is `IOError`. A reviewer proposed `InvalidInput` for the I/O cases, since Python then sees an `OSError`
   for a build limitation; rejected for one rule across subsystems — the message names the build option to enable.
+- **2026-09-24 — contract text for IF-2 S1–S3 and GT-4b (DOC-1).** `docs/api-contract-2.0.md` records: `dtwc::Config`, `cli::bind`,
+  `run(Config)` and `--print-config` as the one description of a run (the FROZEN CLI row now names `cli::bind` over `Config`,
+  pinned on the binary by `--print-config`); `Problem::set_metric` and the metric in every distance identity; `settings::paths`
+  removed pre-tag (rows 37–38); the method × device table and its errors; §5's rows moved as GT-4b classified them (a cache or
+  matrix made for other data and a too-wide `skip_cols` are `InvalidInput`; unwritable paths and quotas `IOError`; a GPU backend
+  a build lacks, PDLP's included, `DeviceError`). 29 `[[deprecated]]` C++ shims (33 before S2).
 

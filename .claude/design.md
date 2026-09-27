@@ -34,7 +34,7 @@ Goals, in priority order:
 
 Facts: the last release is **v1.0.0**; `VERSION` is `2.0.0rc1` and untagged. Users are on the 1.x
 shape. `docs/api-contract-2.0.md` (frozen 2026-07-07) fixes the 2.0 Tier-1 and Tier-2 surface and
-maps every 1.x name to its 2.0 name through 33 `[[deprecated]]` shims.
+maps every 1.x name to its 2.0 name through 29 `[[deprecated]]` shims (33 until IF-2 S2 removed the 2.0-born `settings::paths` setters).
 
 | Class | What | Rule |
 | --- | --- | --- |

@@ -24,7 +24,10 @@ never two on the same files: a test that pins the item's contract against an ind
 the §2 gates → one commit. An item's record is its status and commit hash on its line here; `baselines/` gets
 a file only for a performance claim.
 
-## 1. Where we are (2026-09-23)
+## 1. Where we are (2026-09-23; updated 2026-09-24)
+
+- 2026-09-24: Volkan committed `899bb65` ("test improvement", 302 files) — the GT, FX, IF-1 and IF-2 S1 / S2 work of 09-23 and 09-24.
+  On top, uncommitted: IF-2 S3. Tests on this Mac: ctest 142 / 142 (2 CUDA skips), pytest 1,245 / 0, `matlab_suite` green.
 
 - Released: **v1.0.0**. `VERSION` = `2.0.0rc1`, untagged. Users are on the 1.x shape.
 - 2026-09-22, eleven commits (`9c08074..e784e5c`): two release blockers fixed — CLI archives had no rpath
@@ -86,7 +89,7 @@ artefacts (`check_repo_hygiene.py` — it scans for credentials, which matters w
 
 - ☑ ★ **GT-1** *(done 2026-09-23, uncommitted: 129 / 131 pass, 2 CUDA skips; five harness mutations — a failure, a partial
   skip, a full skip, zero cases, zero assertions — each rejected. Left: the same rule for
-  `.github/scripts/assert-arrow-suite.sh`'s 348-assertion floor and `DTWC_MATLAB_SUITE_MIN_PASSED 121`, both on
+  `.github/scripts/assert-arrow-suite.sh`'s 348-assertion floor (the MATLAB floor went with IF-2 S3, 2026-09-24), on
   machines with Arrow / MATLAB; the stress script's `bc … || echo 1` passes when `bc` is missing)* A test passes when it ran at least one case, failed none and did not skip; a skip fails unless
   the test is registered `MAY_SKIP`, which prints why. The per-test assertion floors, their numbers in
   `tests/floors.cmake` and the four-platform re-measure go. Fixes the five macOS failures. `tests/integration/stress_test_cli.sh` records skips
@@ -292,7 +295,7 @@ artefacts (`check_repo_hygiene.py` — it scans for credentials, which matters w
   so a caller asking for squared L2 silently gets L1 → `InvalidInput`, the rule `Problem::set_metric` already applies. Also open from
   S2: `examples/cpp/example_new_features.cpp` ~93 does not compile and no target builds it (D-6); `examples/example_project/main.cpp` ~24
   discards a `[[nodiscard]]` result.
-- ☐ ★ **DOC-1** Contract and docs-gate text for IF-2 S1 / S2: `docs/api-contract-2.0.md` rows 37 / 38 (`settings::paths` removed pre-tag;
+- ☑ ★ **DOC-1** *(done with IF-2 S3, 2026-09-24, merged; GT-4b's §5 rows included)* Contract and docs-gate text for IF-2 S1 / S2: `docs/api-contract-2.0.md` rows 37 / 38 (`settings::paths` removed pre-tag;
   `Problem::set_output_folder`, default `./results/`), §2.3 (the path-setter sentence goes), §2.1 (a `metric` row; the output folder's default),
   §2.2 ~315 and §2.7 ~498 (the one- and two-argument mmap / checkpoint forms), ~696 ("33 C++ diagnostic entities" → 29, and the pinned counts in
   `scripts/check_docs_contract.py` ~358, 509, 1596-1597, 1627, 1632 → `(28, 29, 12, 13, 15)`), `design.md` §2; regenerate `tier-2.md` and
@@ -305,7 +308,11 @@ artefacts (`check_repo_hygiene.py` — it scans for credentials, which matters w
   `DTWClustering` use it — MATLAB passed here, V-12 ☑)* `Problem::set_device(Device, index = 0)`: `api.cpp::configure_device` (`:94-118`) moves into the
   session; `Env` stays the process default; Python and MATLAB gain `Problem(device=…)`. Nothing else is added:
   `DistanceMatrixStrategy` stays, and `CUDA` / `Metal` remain spellings of `gpu` (X-01).
-- ◐ ★ **IF-2** *(S2 done 2026-09-24, merged, uncommitted: `Problem::set_metric` in the CPU fill (the kernels' own metric argument), the
+- ◐ ★ **IF-2** *(S3 done 2026-09-24, merged, uncommitted: `run(Config)` / `run(Config, Data)` in `cli/run.*`; `dtwc_cl.cpp` 1,996 → 133 lines;
+  Tier-1 `cluster()` a 20-line wrapper; `validate_gpu_request()` holds the data-free GPU rules the fill also calls; `Result` gains `method()`,
+  `iterations()`, `converged()`; DOC-1 done; `test_run_resolution` and `test_cli_device_matrix` (25 cells, `--print-config` against the golden
+  file); old vs new CLI byte-identical on 56 / 56 runs; mutations of six rules each caught. Blind → V-17. Left: S4 (bindings, hpc by config
+  file). S2 done 2026-09-24, merged, uncommitted: `Problem::set_metric` in the CPU fill (the kernels' own metric argument), the
   GPU routes, the dense / mmap / checkpoint identities and autosave; `settings::paths` out (examples take folders from argv; the shim probe
   samples v1.0.0's `fillDistanceMatrix`); CLARA copies metric and GPU settings; one Benders guard; `test_problem_metric` (12 cases, CPU squared
   L2 equal to `distance::dtw` exactly). S3 needs: `set_metric`, `use_mmap_distance_matrix(path)`, the two-argument checkpoint forms; the
@@ -473,6 +480,9 @@ into the migration guide.
 | FX-19 | `distance::dtw` with WDTW / ADTW / Soft-DTW / MSM / TWE and a metric other than L1 raises `InvalidInput` | R1: it returned the L1 distance | pass `MetricType::L1`, which they compute |
 | FX-18 | multivariate Auto / Pruned fills are now correct; a direct pruned fill refuses multivariate or non-L1 data | R1 | — |
 | IF-2 | CLARA sub-samples inherit metric, GPU index and precision (in-memory samples on a GPU raise `DeviceError`); TADPole under a non-L1 metric no longer prunes | R1 | `device="cpu"` for CLARA's in-memory samples |
+| IF-2 | CLI `--device gpu` / `gpu:N` accepted, `cuda` runs on Metal, `hpc` raises `DeviceError`; on `gpu` `auto` runs pam above 5,000; onebatch, tadpole and a smaller CLARA sample on `gpu` raise `DeviceError` (CLARA was `InvalidInput`); CPU squared L2 runs | R3: the CLI contradicted §6.1 and Tier-1 | `--device cpu`; `slurm_remote.sh submit-cluster` |
+| IF-2 | CLI: MIP settings checked for every method; Tier-1's texts for k > N and reader errors; `--checkpoint-interval 0` saves at the end; series storage Auto on `cpu`; loader lines only with `-v`; YAML without fkYAML is `IOError` | R3; PRE-TAG | — |
+| IF-2 | C++ `cluster(device="hpc")` raises D-10's error without reading `.env`; `detail/tier1_method_resolution.hpp` is gone | PRE-TAG | `dtwc::run` |
 | IF-3 | Python `device="cuda"` / `"cuda:N"` runs on Metal on a Metal build and `device()` returns `"gpu"`, where it raised `DeviceError`; with no GPU it still raises | R3: Python contradicted §6.1, which C++, MATLAB and Python's `Problem(device=)` follow; PRE-TAG (v1.0.0 Python had no device argument) | `device="cpu"`; test `dtwcpp.CUDA_AVAILABLE` to require CUDA |
 | GT-4b | checkpoint-path and mmap-creation failures are `IOError`, not `RuntimeError` / `dtwc:runtime`; a cache for other data and a too-wide file `skip_cols` are `InvalidInput`, not `IOError`; PDLP `use_gpu` without the GPU backend raises `DeviceError` | R3 (§5); non-negotiable 3 | `except dtwcpp.DtwcError`; `use_gpu=False` |
 | GT-4 | ~190 failures raise their §5 type, not `std::runtime_error` / `invalid_argument`; Python `except RuntimeError` misses them (they are `ValueError` / `OSError` subclasses), MATLAB sees `dtwc:invalidArgument` / `dtwc:ioError` | R3: the contract's §5 taxonomy, which the bindings translate | messages kept; `except dtwcpp.DtwcError` and `catch (const std::runtime_error &)` still catch all |
@@ -498,6 +508,7 @@ into the migration guide.
 | V-15 ☑ | FX-17, IF-1, FX-15 | *(passed 2026-09-24: `test_contract_parity` 35 / 35; `matlab_suite` 125 run, 124 passed, 0 failed, 1 allowed; it first
   needed the MEX to share MATLAB's libomp — two runtimes aborted MATLAB, "OMP: Error #15", since before today)* MATLAB: `/Applications/MATLAB_R2026a.app/bin/matlab -batch "addpath('bindings/matlab','build/bin','build/bindings/matlab'); r=runtests('tests/matlab/test_contract_parity.m'); assertSuccess(r)"` after a `-DDTWC_BUILD_MATLAB=ON` build, then `ctest -R matlab_suite` (V-12 and V-14's commands too) |
 | V-16 | FX-17 | CUDA: with `four.csv` rows `0,1,2,3` / `1,2,3,4` / `5,6,7,8` / `6,7,8,9`, `dtwc_cl -i four.csv -k 2 -o o1 --dtype float32 --device cuda` exits 1 naming `precision = Float32`; the same with `--mmap-threshold 0 -o o2` too; `--dtype float64 --device cuda -o o3` exits 0 |
+| V-17 | IF-2 S3 | CUDA: `ctest --test-dir build/cuda-verify -j1 -R "test_run_resolution|test_cli_device_matrix"` → `gpu=cuda device=present cells=24/24`; Arrow: `ctest -R "fast_clara_parquet|fast_clara_assignment|io_readers"` markers unchanged; a build with `-DDTWC_ENABLE_METAL=OFF -DDTWC_ENABLE_YAML=OFF`: `ctest -R "device_matrix|config_formats|config_spellings|run_resolution"`; Windows: `test_tier1_cpp_api "[unicode]"` |
 | V-9 | F42, F43 | two crashes recorded on the Windows box and never re-run: the default `CUDAPrecision::Auto` through the public `Problem` + CUDA route access-violates (F42); an llfio-ON MEX under MATLAB R2024b crashes in `std::mutex` (F43). Reproduce each; a reproduction becomes an `FX` item `[inferred — from the 2026-09-21 archive]` |
 
 ## 5. Dropped on 2026-09-23 — reopen only with a user-visible reason

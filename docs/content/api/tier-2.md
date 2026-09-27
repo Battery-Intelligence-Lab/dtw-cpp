@@ -35,6 +35,7 @@ out-of-line and warning-silent.
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
+| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
@@ -43,7 +44,7 @@ out-of-line and warning-silent.
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
-| output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes |
+| output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
@@ -66,7 +67,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
-| `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
+| `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
@@ -125,8 +126,8 @@ The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
 covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
-the CLI (`dtwc_cl.cpp:1343-1419`) is the other path. Chained setters return
-`DataLoader&`.
+`dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
+other path. Chained setters return `DataLoader&`.
 
 | C++ live (DataLoader.hpp) | C++ 2.0 canonical |
 |---|---|
@@ -138,11 +139,9 @@ the CLI (`dtwc_cl.cpp:1343-1419`) is the other path. Chained setters return
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
 
-The four canonical setter/path names in this section are implemented.
-`start_column(int)` and `start_row(int)` own the loader mutations;
-`set_data_path` and `set_results_path` each preserve both the `fs::path` and
-C-string overloads. The four camelCase spellings remain deprecated inline
-forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
+The canonical setter names in this section are implemented.
+`start_column(int)` and `start_row(int)` own the loader mutations. The camelCase
+spellings remain deprecated inline forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
 getters were not renamed by the frozen table and remain unchanged.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
@@ -249,8 +248,8 @@ are snake_case; current availability and gaps are explicit below.
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path, core::MetricType metric = L1)` | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path, core::MetricType metric = L1) -> bool`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
 | save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
 | load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
@@ -271,8 +270,9 @@ to `false`, in which case the fill is unchanged. Each save writes the whole
 fraction of a block (a block costs about `save_interval * N` DTWs, a save about
 `N^2` number formats). Explicit persistence through
 `save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
-remains the only way to save outside a fill. The CLI opts in with
-`--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`.
+remains the only way to save outside a fill. The CLI opts in with a non-zero
+`--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`; the default
+`0` saves once, at the end.
 
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
@@ -326,8 +326,8 @@ access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`
 can still change in place. Before such an edit, call
 `refresh_distance_matrix()`, or replace the data through `set_data()`. CUDA
-mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`), and
-non-L1 identities are external/GPU-fill-only because the CPU lazy path computes
-L1.
+mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`). The
+metric in the identity is the `Problem`'s `metric()`, which the CPU fill, the lazy
+lookups and the GPU routes all compute.
 
 ---

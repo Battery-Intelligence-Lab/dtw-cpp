@@ -18,6 +18,7 @@ target_sources(dtwc++
   scores.cpp
   base/system_memory.cpp
   cli/config.cpp
+  cli/run.cpp
   core/dtw.cpp
   core/dtw_dispatch.cpp
   algorithms/fast_pam.cpp

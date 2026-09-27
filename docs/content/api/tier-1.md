@@ -58,8 +58,8 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | signature | `dtwc::Result dtwc::cluster(const Dataset& data, int k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix/cell of numeric vectors (ragged) |
 | `k` | `int` clusters; `k > N` → `InvalidInput("cluster: k must not exceed the number of series.")`, empty dataset → `InvalidInput("cluster: dataset is empty.")` | same guards, same messages | same guards, same messages, raised by C++ as `dtwc:invalidArgument` |
-| `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (alias `"hclust"`) | same set | same set, routed by the same C++ code |
-| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam`; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `detail::resolve_tier1_method` call) |
+| `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
+| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam` at any N; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `dtwc::run`) |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
 | `device` | `""` = global default; else per-call override | `None` = global | `''` reads the process device (`dtwc.device()`); a non-empty value is a per-call override that configures the local `Problem`'s distance strategy (GPU ordinal included) and never mutates the process device |
 | `max_iter` | `100` | `100` | `100` |
@@ -74,6 +74,19 @@ the `skip_cols`/`skip_rows`/`delimiter`/`name` source semantics therefore have
 exactly one implementation. `dtwc.Result` holds the returned `dtwc::Result`, so
 `score()` and `save()` are the C++ members and the four CSVs carry the
 dataset's series names. This closes F40.
+
+**C++ `cluster()` is a `dtwc::run` call (IF-2 S3, `dtwc/cli/run.hpp`).** It builds
+a `dtwc::Config` holding `dtwc_cl`'s default for every setting its signature does
+not name, with `output` empty (nothing is written; `save()` writes), the dataset's
+name, and the device `device` names (grammar only) or else the process device,
+and calls `run(config)` for a path or `run(config, data)` for in-memory series.
+`dtwc_cl` is the same `run` of the `Config` its flags and `--config` file build,
+so the two share one method x device resolution: on `gpu` the matrix methods
+(`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its sample
+covers every series) run with the GPU filling the matrix, while `onebatch`,
+`tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
+raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
+a folder, Parquet, Arrow IPC, `.dtws`).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -117,6 +130,7 @@ Canonical class name is **`Result`** in all three languages. Python keeps
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
+| (aux) run statistics | `ClusterMethod method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
 functions in §2.4): `"silhouette"` (returns the **mean** silhouette),

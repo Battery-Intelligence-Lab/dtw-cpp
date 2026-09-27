@@ -93,13 +93,13 @@ The CLI is already config-first. The library APIs are currently Problem-first.
 
 | Concern | CLI | C++ | Python | MATLAB |
 |---------|-----|-----|--------|--------|
-| Config file input | TOML | not first-class yet | not first-class yet | not first-class yet |
-| Stateful clustering object | implicit CLI config -> `Problem` | `dtwc::Problem` | `dtwcpp.Problem` and `dtwcpp.DTWClustering` | `dtwc.Problem` and `dtwc.DTWClustering` |
+| Config file input | TOML or YAML (`--config`; `--print-config` writes one) | `dtwc::Config` read by `cli::bind` / `parse_config`, run by `dtwc::run` | not first-class yet | not first-class yet |
+| Stateful clustering object | `dtwc::Config` -> `dtwc::run` -> `Problem` | `dtwc::Problem` | `dtwcpp.Problem` and `dtwcpp.DTWClustering` | `dtwc.Problem` and `dtwc.DTWClustering` |
 | Pairwise distance namespace | flags only | `dtwc::distance::*` | `dtwcpp.distance.*` | `dtwc.distance.*` |
 | FastPAM entry point | `--method pam` | `dtwc::fast_pam(prob, ...)` | `dtwcpp.fast_pam(prob, ...)` or `DTWClustering.fit()` | `dtwc.fast_pam(prob, ...)` or `DTWClustering.fit()` |
 | Hierarchical clustering | `--method hierarchical` | `build_dendrogram` / `cut_dendrogram` | same names | same names |
 | Missing-data strategy | `--missing-strategy` | `Problem.missing_strategy` | `Problem.missing_strategy`, `DTWClustering(missing_strategy=...)` | `Problem.set_missing_strategy(...)`, `DTWClustering('MissingStrategy', ...)` |
-| A `Problem`'s device | `--device` (`cpu`, `cuda`, `cuda:N`) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
+| A `Problem`'s device | `--device` (`cpu`, `gpu`, `gpu:N`; `cuda`, `cuda:N` alike) | `Problem::set_device(Device, index)` | `Problem(..., device=...)`, `Problem.set_device(name)` | `dtwc.Problem(name, 'Device', d)`, `Problem.set_device(name)` |
 
 ## Recommended usage split
 
@@ -177,7 +177,7 @@ sil = dtwc.silhouette(prob);
 
 These are real API differences today, not just documentation differences:
 
-1. The CLI is the only surface with first-class TOML configuration loading.
+1. The CLI and C++ (`dtwc::Config`, `dtwc::run`) are the surfaces with first-class configuration files; Python and MATLAB take their typed APIs until IF-2 S4.
 2. Python `Problem` is extension-backed, so Doxygen does not emit a standalone `dtwcpp.Problem` page the way it can for pure-Python classes.
 3. MATLAB still implements the `dtwc.distance.*` surface as package functions over `dtwc_mex`, while Python uses a pure-Python namespace module and C++ uses headers/templates.
 4. C++ examples in older docs historically used `DataLoader` + legacy Lloyd clustering more than the newer `Problem` + algorithm function flow.
@@ -185,6 +185,6 @@ These are real API differences today, not just documentation differences:
 ## Present guidance
 
 Use `distance.*` for pairwise calculations and `Problem` for stateful
-clustering in each language. Configuration-file input is currently a CLI-only
-surface; the library bindings take configuration through their typed APIs.
+clustering in each language. Configuration-file input is currently the CLI's
+and C++'s (`dtwc::run`); the bindings take configuration through their typed APIs.
 

@@ -2,9 +2,10 @@
 
 ## Base
 
-Branch `design-2.0`, HEAD `e784e5c`; **nothing committed** (Volkan commits). Working tree: 70 modified, 12 deleted,
-10 untracked paths (+2,232 / −8,468). Two agent worktrees remain under `.claude/worktrees/` (gitignored, merged,
-removable with `git worktree remove`). Scratch evidence: the session scratchpad (`eigen/`, patches) — not durable.
+Branch `design-2.0`. **Volkan committed `899bb65` "test improvement" on 2026-09-24 16:58** (302 files: everything merged before IF-2
+S3). Uncommitted on top of it: IF-2 S3 (`run(Config)`, the CLI rewired, Tier-1 as a wrapper, DOC-1), the hygiene allowlist for the
+FX-6 prototype's two zero-byte fixtures (they went into `899bb65`), and record updates. Agent worktrees must now sync from `899bb65`
+(`git diff --binary HEAD`), not `e784e5c`. Agent worktrees under `.claude/worktrees/` are merged and removable.
 
 ## Done (all uncommitted)
 
@@ -47,20 +48,15 @@ removable with `git worktree remove`). Scratch evidence: the session scratchpad 
 
 ## Next steps
 
-1. **Merged and verified 2026-09-24 16:00 (uncommitted):** FX-1 (◐), FX-3, FX-4, FX-5, FX-14, FX-15, FX-16, FX-17, FX-18 ☑; GT-4 (◐, GT-4b
-   left); IF-1 ☑; IF-2 S1 + S2 ☑ (◐ overall); IF-3 and RL-2 half. Main tree: build 0 warnings; **ctest -j1 140 / 140** (2 CUDA skips);
-   **pytest 1,231 pass, 0 fail**, 11 skip (fresh venv, no `DYLD_*`); gates PASS; upward edges 17.
-2. **MATLAB R2026a is installed** (`/Applications/MATLAB_R2026a.app`, not on `PATH`) — PLAN §2.1 corrected; V-12 / V-14 / V-15 can run here.
-3. **Running (snapshots `scratchpad/sync5/`, `sync6/`):** matlab (build the MEX, run `matlab_suite`, fix the MATLAB layer →
-   `sync5/matlab.patch`); S3 (`run(Config)`, the CLI rewired onto `bind` + `run`, `cluster()` as a wrapper, `--print-config`, the method ×
-   device table, DOC-1's contract text → `sync6/s3.patch`); GT-4b (untyped filesystem / llfio leaks, one type for "made for other data",
-   `skip_cols`, PDLP's GPU fallback → `sync6/gt4b.patch`); FX-19 (`distance::dtw` drops `metric` for five variants; two broken examples →
-   `sync6/fx19.patch`). Then S4 (bindings + hpc by config file), FX-2, IF-3's `run` half, IF-4…IF-8.
-4. Timing (GT-6, PF-7 with plain `fmin` now that FX-15 landed) waits for Low Power Mode off — still `powermode 1` on AC.
-5. Volkan: review and commit (suggested groups in PLAN order: docs/plan; GT-1…4; FX-13; FX-6/10/11 + GT-7; FX-3/4; FX-5/14/16; IF-1 / FX-1 /
-   FX-15; IF-3 grammar + RL-2; FX-17; IF-2 S1 + S2 + FX-18). Commit `.claude/plans/2026-09-23-fx6-reader-prototype/` without its two
-   zero-byte fixtures or `check_repo_hygiene` fails. Agent worktrees under `.claude/worktrees/` are removable. GT-5 needs a push. The IF-2
-   design's decisions (§10) and today's DECISIONS entries are the main session's — overturnable.
+1. **Verified 2026-09-24 ~18:00 on `899bb65` + S3:** build 0 warnings; **ctest -j1 142 / 142** (2 CUDA skips); **pytest 1,245 pass, 0 fail**,
+   11 skip; **`matlab_suite` passes** (run with the default `TMPDIR` — see LESSONS); gates PASS; upward edges 17. IF-2 S1–S3 done;
+   FX-1…FX-19 mostly ☑ (see PLAN); GT-4 / GT-4b ◐ (small residue); V-12 / V-14 / V-15 ☑ (MATLAB R2026a runs here).
+2. **Running (snapshot `scratchpad/sync7/`, base `899bb65`):** S4a (Python: one `run(Config)` call — IF-3's deletion of `_api.py`'s dispatch — hpc submitting a config file,
+   `Problem.metric`, checkpoint defaults from the Problem's metric, DDTW's `metric` argument); S4b (MATLAB: the same through the MEX, its
+   seven parsers → the `Name<E>` tables); FX-2 (Soft-DTW self-distance with derivation D7).
+3. Timing (GT-6, PF-7 with plain `fmin` now that FX-15 landed) waits for Low Power Mode off — still `powermode 1` on AC.
+4. Volkan: commit S3 and the record updates when ready; 35 `~/matlab_crash_dump.*` files (all from 2026-09-24 agent runs) can be
+   deleted; D-15 (MATLAB's thread setting governs the MEX) and the IF-2 §10 decisions are the main session's, overturnable. GT-5 needs a push.
 
 ## Open questions
 

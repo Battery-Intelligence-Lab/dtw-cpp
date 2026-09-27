@@ -220,15 +220,14 @@ void warn_deprecated(std::string_view old_flag, std::string_view new_flag)
   std::cerr << "[dtwc] warning: '" << old_flag << "' is deprecated, use '" << new_flag << "' instead\n";
 }
 
-/// `--device` as detail::parse_device() reads it: cpu, gpu, gpu:N, hpc.
+} // namespace
+
 std::string device_text(const Config &config)
 {
   std::string text = to_string(config.device);
   if (config.device == Device::GPU && config.gpu.device_id != 0) text += ':' + std::to_string(config.gpu.device_id);
   return text;
 }
-
-} // namespace
 
 namespace cli {
 

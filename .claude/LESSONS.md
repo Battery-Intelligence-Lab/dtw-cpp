@@ -1605,3 +1605,9 @@ Critical knowledge to avoid repeating mistakes.
   until a full pytest a day later (1188 pass / 5 fail, all five present before
   that batch). ctest does not run `tests/python`; any change that reaches the
   bindings, the readers or a user-visible default needs both.
+- **MATLAB dies at start-up under a long `TMPDIR`.** `ctest -R matlab_suite` with
+  `TMPDIR` set to a scratch path of ~110 characters crashed MATLAB R2026a in its
+  web-window (CEF) start-up plugin before any test ran ("Subprocess killed", a
+  `~/matlab_crash_dump.*` per run); the same command with the default `TMPDIR`
+  passed. macOS limits a Unix-socket path to 104 bytes [inferred cause]. Run the
+  MATLAB suite without the per-run `TMPDIR` the other suites use.

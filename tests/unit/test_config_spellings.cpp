@@ -9,11 +9,11 @@
  * twin and parse_config() pairs must each render to it, and Config{} must differ
  * from it on every line, so a key the golden leaves at its default fails.
  *
- * The second half drives the real dtwc_cl, whose own CLI11 setup bind() replaces
- * in step S3: every option, alias and choice its --help lists must read the same
- * through bind(), and the defaults it reports must be Config{}'s. Its --help shows
- * no defaults (CLI11 prints one only once captured), so its --verbose echo of the
- * settings in use is the binary's report of them.
+ * The second half drives the real dtwc_cl, whose options are bind()'s since step
+ * S3: every option, alias and choice its --help lists must read the same through
+ * bind(), and the defaults its --verbose echo reports must be Config{}'s (its
+ * --print-config, against tests/conformance/config_defaults.toml and the golden
+ * file, is test_cli_device_matrix's).
  *
  * @date 24 Sep 2026
  */
@@ -422,7 +422,8 @@ TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[
     const std::string first_long = *std::find_if(option.names.begin(), option.names.end(),
                                                  [](const std::string &name) { return name.rfind("--", 0) == 0; });
     INFO("dtwc_cl option " << first_long);
-    if (first_long == "--help" || first_long == "--version") continue; // dtwc_cl's own, not Config keys
+    if (first_long == "--help" || first_long == "--version" || first_long == "--print-config")
+      continue; // dtwc_cl's own, not Config keys
 
     const CLI::Option *bound = app.get_option_no_throw(first_long);
     REQUIRE(bound != nullptr);
@@ -445,11 +446,11 @@ TEST_CASE("bind() reads every option, alias and choice dtwc_cl --help lists", "[
   }
   CHECK(choices >= 100);
 
-  // bind() has exactly the keys dtwc_cl has, plus the three the design adds.
-  std::set<std::string> added;
+  // dtwc_cl lists every key bind() has: since IF-2 S3 its options are bind()'s.
+  std::set<std::string> unlisted;
   for (const auto &entry : values_of(dtwc::to_config_text(dtwc::Config{})))
-    if (keys_listed.count(entry.first) == 0) added.insert(entry.first);
-  CHECK(added == std::set<std::string>{ "delimiter", "lr-max-nodes", "max-benders-iter" });
+    if (keys_listed.count(entry.first) == 0) unlisted.insert(entry.first);
+  CHECK(unlisted.empty());
   fs::remove_all(scratch);
 }
 

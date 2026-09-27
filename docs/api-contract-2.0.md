@@ -39,10 +39,12 @@ The following post-freeze scope decisions are approved:
    Tier 1 rather than silently substituting another method. No previously
    accepted MATLAB method was removed. Adding the three post-freeze methods to
    MATLAB Tier 1 is owned by the 2.1 parity milestone.
-2. C++ continues to accept `device="hpc"` as a valid device name, but Tier-1
-   `cluster()` raises the documented `DeviceError` because the C++ API has no
-   authenticated remote-transport implementation. Python remains the tested
-   SLURM transport. A local CPU fallback would violate the no-silent-fallback
+2. C++ continues to accept `device="hpc"` as a valid device name, but
+   `dtwc::run` (`dtwc_cl` and Tier-1 `cluster()`) raises the documented
+   `DeviceError`, without reading `.env`: a run computes where it starts, and
+   the C++ API has no authenticated remote-transport implementation. Python
+   (`dtwcpp.cluster(..., device="hpc")`) and `slurm_remote.sh submit-cluster`
+   remain the tested SLURM transport. A local CPU fallback would violate the no-silent-fallback
    rule; enabling C++ submission is owned by the Oxford ARC / 2.1 HPC gate.
 3. The 2026-07-12 F7 decision corrects two CLI-specific invariants. First,
    `--ram-limit` is the Parquet series decode/materialisation cap; it does not
@@ -143,8 +145,8 @@ to the cluster and never read locally (preserves the 100M-series scaling story).
 | signature | `dtwc::Result dtwc::cluster(const Dataset& data, int k, std::string_view method="pam", int band=-1, std::string_view device="", int max_iter=100)` | `cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100) -> Result` | `res = dtwc.cluster(data, k, 'method','pam', 'band',-1, 'device','', 'max_iter',100)` |
 | `data` | `Dataset` (or path/array via `load`) | `Dataset`/path/array | `Dataset`/path/matrix/cell of numeric vectors (ragged) |
 | `k` | `int` clusters; `k > N` → `InvalidInput("cluster: k must not exceed the number of series.")`, empty dataset → `InvalidInput("cluster: dataset is empty.")` | same guards, same messages | same guards, same messages, raised by C++ as `dtwc:invalidArgument` |
-| `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (alias `"hclust"`) | same set | same set, routed by the same C++ code |
-| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam`; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `detail::resolve_tier1_method` call) |
+| `method` | `"auto"·"pam"·"onebatch"·"clara"·"kmedoids"·"mip"·"lrcore"·"tadpole"·"hierarchical"` (aliases `"hclust"`, `"obp"`, `"lr"`, as `dtwc_cl` reads them; ASCII case-insensitive) | same set | same set, routed by the same C++ code |
+| `auto` resolution | local CPU: `pam` for N≤5000, else `clara`; local GPU: `pam` at any N; C++ HPC reaches the documented transport error before local resolution | same local rule; HPC forwards `auto` for resolution after remote materialisation | same local rule (the same `dtwc::run`) |
 | `band` | Sakoe-Chiba band, `-1` = full | `-1` | `-1` |
 | `device` | `""` = global default; else per-call override | `None` = global | `''` reads the process device (`dtwc.device()`); a non-empty value is a per-call override that configures the local `Problem`'s distance strategy (GPU ordinal included) and never mutates the process device |
 | `max_iter` | `100` | `100` | `100` |
@@ -159,6 +161,19 @@ the `skip_cols`/`skip_rows`/`delimiter`/`name` source semantics therefore have
 exactly one implementation. `dtwc.Result` holds the returned `dtwc::Result`, so
 `score()` and `save()` are the C++ members and the four CSVs carry the
 dataset's series names. This closes F40.
+
+**C++ `cluster()` is a `dtwc::run` call (IF-2 S3, `dtwc/cli/run.hpp`).** It builds
+a `dtwc::Config` holding `dtwc_cl`'s default for every setting its signature does
+not name, with `output` empty (nothing is written; `save()` writes), the dataset's
+name, and the device `device` names (grammar only) or else the process device,
+and calls `run(config)` for a path or `run(config, data)` for in-memory series.
+`dtwc_cl` is the same `run` of the `Config` its flags and `--config` file build,
+so the two share one method x device resolution: on `gpu` the matrix methods
+(`pam`, `kmedoids`, `mip`, `lrcore`, `hierarchical`, and `clara` when its sample
+covers every series) run with the GPU filling the matrix, while `onebatch`,
+`tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
+raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
+a folder, Parquet, Arrow IPC, `.dtws`).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -202,6 +217,7 @@ Canonical class name is **`Result`** in all three languages. Python keeps
 | `plot()` | **not provided** — C++ writes plottable CSV via `save()` | `res.plot(png="clusters_2d.png", show=True)` (`_api.py:330-367`) | `res.plot()` |
 | (aux) `cost` | `double cost() const` | `res.cost` (`_api.py:153`) | `res.cost` |
 | (aux) `device` | `std::string device() const` | `res.device` | `res.device` |
+| (aux) run statistics | `ClusterMethod method() const` (`auto` resolved), `int iterations() const`, `bool converged() const` `[introduced-2.0]` (IF-2 S3; the first `RunStats` fields, IF-4) | — | — |
 
 *`score(name)` names* (accepted in every language; resolve to the Tier-2 `scores::*`
 functions in §2.4): `"silhouette"` (returns the **mean** silhouette),
@@ -281,6 +297,7 @@ out-of-line and warning-silent.
 | variant (enum) | `set_variant(core::DTWVariant)` | `set_variant(DTWVariant)` | `set_variant(name[,param])` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | variant (params) | `set_variant(core::DTWVariantParams)` — **rebinds `dtw_fn_`** | `set_variant_params(DTWVariantParams)` | `set_variant(name, param)` | `Problem.hpp`; `_dtwcpp_core.cpp` |
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
+| metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
@@ -289,7 +306,7 @@ out-of-line and warning-silent.
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
-| output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes |
+| output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
 | problem name | `name()` / `set_name(std::string)` | `name` prop | `name()` / `Name` (read-only) | private C++ state with live binding reads |
 | data (owning) | `data() const` / `set_data(Data)` | `set_data(series, names)` | `set_data(X)` | read-only C++ accessor plus live setters |
@@ -312,7 +329,7 @@ storage before calling C++; it is not a non-owning ndarray view (F26).
 | `writeDistanceMatrix([name])` | `write_distance_matrix([name])` | `write_distance_matrix()` (live) | — |
 | `dense_distance_matrix()` | `dense_distance_matrix()` (unchanged) † | `distance_matrix()` ‡ (independent NumPy copy) | `get_distance_matrix()` → **rename** `distance_matrix()` |
 | — (writer) | `set_distance_matrix(...)` | `set_distance_matrix(...)` (was live `set_distance_matrix_from_numpy()` in `_dtwcpp_core.cpp`, used by `_api.py`) | `set_distance_matrix(D)` (live in `Problem.m`) |
-| `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
+| `use_mmap_distance_matrix(path)` | `use_mmap_distance_matrix(path)`, for the `Problem`'s `metric()`; `use_mmap_distance_matrix(path, metric)` binds a cache for `metric`, which becomes the `Problem`'s metric (a bind that throws changes neither) | `use_mmap_distance_matrix(path)` `[introduced-2.0]` | — |
 | `findTotalCost()` | `find_total_cost()` | `find_total_cost()` (live) | `find_total_cost()` (live) |
 | `assignClusters()` | `assign_clusters()` | `assign_clusters()` (live) | — |
 | `calculateMedoids()` | `calculate_medoids()` | `calculate_medoids()` (live) | — |
@@ -371,8 +388,8 @@ The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
 covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
-the CLI (`dtwc_cl.cpp:1343-1419`) is the other path. Chained setters return
-`DataLoader&`.
+`dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
+other path. Chained setters return `DataLoader&`.
 
 | C++ live (DataLoader.hpp) | C++ 2.0 canonical |
 |---|---|
@@ -384,11 +401,9 @@ the CLI (`dtwc_cl.cpp:1343-1419`) is the other path. Chained setters return
 | `verbosity(int)` | `verbosity(int)` (unchanged) |
 | `load() -> Data` / `count()` | `load()` / `count()` (unchanged) |
 
-The four canonical setter/path names in this section are implemented.
-`start_column(int)` and `start_row(int)` own the loader mutations;
-`set_data_path` and `set_results_path` each preserve both the `fs::path` and
-C-string overloads. The four camelCase spellings remain deprecated inline
-forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
+The canonical setter names in this section are implemented.
+`start_column(int)` and `start_row(int)` own the loader mutations. The camelCase
+spellings remain deprecated inline forwarders for the 2.x transition. The no-argument `startColumn()`/`startRow()`
 getters were not renamed by the frozen table and remain unchanged.
 
 ### 2.4 `scores::*` free functions `[rename: camelCase → snake_case]`
@@ -495,8 +510,8 @@ are snake_case; current availability and gaps are explicit below.
 | Concept | C++ live (`checkpoint.hpp`) | Python | MATLAB 2.0 |
 |---|---|---|---|
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
-| save dir checkpoint | `save_checkpoint(const Problem&, path, core::MetricType metric = L1)` | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
-| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path, core::MetricType metric = L1) -> bool`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
+| save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
+| load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
 | save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
 | load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
@@ -517,8 +532,9 @@ to `false`, in which case the fill is unchanged. Each save writes the whole
 fraction of a block (a block costs about `save_interval * N` DTWs, a save about
 `N^2` number formats). Explicit persistence through
 `save_checkpoint(prob, path)` and `load_checkpoint(prob, path)` is unchanged and
-remains the only way to save outside a fill. The CLI opts in with
-`--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`.
+remains the only way to save outside a fill. The CLI opts in with a non-zero
+`--checkpoint-interval <rows>`, which requires `--checkpoint <dir>`; the default
+`0` saves once, at the end.
 
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
@@ -572,9 +588,9 @@ access remains O(1). `Problem::data()` is read-only, but heap values exposed by
 `p_vec()` and caller-owned backing storage supplied through `set_view_data()`
 can still change in place. Before such an edit, call
 `refresh_distance_matrix()`, or replace the data through `set_data()`. CUDA
-mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`), and
-non-L1 identities are external/GPU-fill-only because the CPU lazy path computes
-L1.
+mmap caches require explicit FP32 or FP64 (not hardware-dependent `Auto`). The
+metric in the identity is the `Problem`'s `metric()`, which the CPU fill, the lazy
+lookups and the GPU routes all compute.
 
 ---
 
@@ -635,8 +651,8 @@ falsified; that does not change the implemented public policy.
 | 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
-| 37 | set data path | `settings::paths::setDataPath` (settings.hpp:88-94) | `set_data_path` | C++ `[[deprecated]]` |
-| 38 | set results path | `settings::paths::setResultsPath` (settings.hpp:96-102) | `set_results_path` | C++ `[[deprecated]]` |
+| 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
+| 38 | set results path | `settings::paths::setResultsPath` (2.0-born) | `Problem::set_output_folder` | removed pre-tag with `set_results_path` (D-3); a `Problem`'s default output folder is `./results/` |
 | 39 | Result class (Python) | `ClusterResult` (`python/dtwcpp/__init__.py:319-339`) | `Result` | uncached identity-preserving warning alias 1 cycle |
 | 40 | medoids field (Result) | `Result.medoid_indices` (`python/dtwcpp/_api.py:174-180`) | `Result.medoids` | warning alias 1 cycle |
 | 41 | default template scalar | `settings::default_data_t = float` (settings.hpp:30) | `= double` | behaviour change (§8), no name change |
@@ -693,7 +709,7 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-33 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
+29 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
 operations. PLAN.md retains F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.
@@ -716,18 +732,19 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | C++ type | Covers | Python class | MATLAB identifier |
 |---|---|---|---|
 | `dtwc::Error` (base) | anything DTWC-thrown not more specific | `dtwcpp.DtwcError(Exception)` | `dtwc:error` |
-| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
+| `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, an mmap cache of other data or configuration; `load_checkpoint` returns `false`) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
-| `dtwc::DeviceError` | device/backend problem: unknown device name, `gpu` on non-GPU build, `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
-| `dtwc::IOError` | file/format failure: file not found, unreadable, bad Parquet/Arrow type, OOB offsets, checkpoint mismatch | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
+| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build, or PDLP `use_gpu` without CUPDLP_GPU; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
+| `dtwc::IOError` | file/format failure: file not found, unreadable or unwritable (a directory that cannot be created, a quota), bad Parquet/Arrow type, OOB offsets | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
 throws `std::logic_error` (Python `RuntimeError`, MATLAB `dtwc:internal`). Every other throw raises a type above. A file that
 cannot be parsed (a bad field or row, a bad `.dtws` or cache header, a Parquet / Arrow type or offset) is `IOError`; a
-well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column) is `InvalidInput`. A
-format this build cannot read (Parquet or Arrow IPC without Arrow, `.dtws` or a memory-mapped store without llfio) is
-`IOError` too.
+well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
+other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
+Arrow, `.dtws` or a memory-mapped store without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
+backend it lacks (`gpu`, PDLP `use_gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
 
@@ -766,7 +783,8 @@ Canonical: `cpu`, `gpu`, `hpc`. Aliases accepted: `gpu:N`, `cuda`, `cuda:N`
 One grammar, `dtwc::detail::parse_device`, reads the device names of the C++,
 Python and MATLAB APIs, so `cuda` is a spelling of `gpu` in each: on a Metal
 build it selects Metal (Python, until 2026-09-24, read it as CUDA-only and
-raised). The CLI's `--device` keeps its own `cpu` / `cuda` parser until IF-2.
+raised). `dtwc_cl --device` reads the same grammar since IF-2 S3; its own `cpu` /
+`cuda` / `cuda:N` parser, which refused `gpu` and ran nothing on Metal, is gone.
 
 - **Unknown device name → `DeviceError`** listing valid names, verbatim:
   ```
@@ -847,8 +865,10 @@ block are constant text.
   without llfio. `Auto` keeps its best-effort threshold behavior, including a
   loud in-memory fallback when the mapped route is unavailable.
 - Series storage is independent of distance-matrix storage and both CLI RAM
-  controls. The CLI controls distance storage separately with
-  `--mmap-threshold` and currently keeps its series Heap-backed. Its
+  controls. `dtwc::run` (the CLI and Tier-1 `cluster()`) loads series `Heap` on
+  `gpu`, whose kernels upload owned series, and `Auto` on `cpu`; it controls
+  distance storage separately with `--mmap-threshold`, and maps the matrix only
+  into an output directory it writes (`output` non-empty). Its
   `--ram-limit` is a conservative cap on Parquet selected-series
   decoding/materialisation, applied before payload I/O; it is not a
   whole-process RSS limit or a library series-storage threshold. Only a single
@@ -859,7 +879,7 @@ block are constant text.
 ### 6.4 A `Problem`'s device (added 2026-09-24, IF-1 / FX-1)
 
 - `Problem::set_device(Device, int index = 0)` is the Tier-1 device choice
-  moved onto the session: Tier-1 `cluster()` calls it. `cpu` keeps a CPU
+  moved onto the session: `dtwc::run` (`dtwc_cl`, Tier-1 `cluster()`) calls it. `cpu` keeps a CPU
   `distance_strategy` the caller chose (`BruteForce`, `Pruned`) and moves a GPU
   one to `Auto`; `gpu` selects the build's backend (CUDA, else Metal — the
   `CUDA` / `Metal` strategies remain spellings of `gpu`) and records `index` in
@@ -887,8 +907,11 @@ block are constant text.
   ±inf series value, or a NaN under `MissingStrategy::Error`, raises
   `InvalidInput` naming the series and position (§2.6), as does an
   entirely-NaN series under `Interpolate`. The lazy path and the matrix-free
-  schedules compute on the CPU under a GPU device; Tier-1 `cluster()` rejects
-  that combination.
+  schedules compute on the CPU under a GPU device, so `dtwc::run` rejects that
+  combination: on `gpu`, `onebatch`, `tadpole` and a `clara` sample smaller than
+  N raise `DeviceError`, and the rules that need no series (variant, missing-data
+  strategy, Float32, Metal index and precision: `validate_gpu_request`, which the
+  fill shares) are raised before a series is read.
 
 ---
 
@@ -900,7 +923,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 1. **File formats read.** CSV/TSV (start_row/start_col/delimiter/Ndata,
    folder-of-files), Parquet file+dir with optional `--column`, Arrow IPC
    (`.arrow/.ipc/.feather`), `.dtws` mmap + `.names` sidecar
-   (`dtwc_cl.cpp:1343-1419`), Python Polars `large_list<float>` ragged ingest.
+   (`cli/run.cpp`, `dtwc::run`), Python Polars `large_list<float>` ragged ingest.
 2. **Output contract (bit-identical).** Two distinct sets, and the equal-bytes
    guarantee applies to the **first set only**:
    - *Human-readable results (2 unconditional + 2 matrix-dependent files) —
@@ -929,6 +952,9 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
    `cluster_generic.slurm` and `_hpc.build_dtwc_command` (`_hpc.py:307-353`)
    compose `dtwc_cl` command lines. Renames go through the accept-old-name
    deprecation path (§4) with those two callers updated in the same commit.
+   The keys are `dtwc::Config`'s: `cli::bind` is the one key table, and
+   `dtwc_cl --print-config` writes every key back as a file `--config` reads
+   (tests/conformance/`config_all_fields.toml`, `config_defaults.toml`).
 4. **Checkpoint/resume triple.** Directory checkpoint v2 (`CURRENT` plus
    `generations/<id>/{distances.csv,metadata.txt}`), binary result checkpoint,
    and mmap distance-matrix cache form the frozen triple. Directory checkpoints
@@ -975,7 +1001,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
   fingerprint established that explicitly double-typed calls were
   digit-identical.
 - **CLI default (changed in Task 1.5).** `--dtype` now defaults to `float64`
-  (`dtwc_cl.cpp`, `dtype_str`). `float32`/`f32`/`fp32` remain accepted opt-ins.
+  (`Config::dtype`). `float32`/`f32`/`fp32` remain accepted opt-ins.
 - **`float32` is an explicit opt-in only.** C++: build `Data` from
   `vector<vector<float>>` or set `Precision::Float32`; CLI: `--dtype f32`.
   Series storage halves, but inputs are rounded to Float32 and results may

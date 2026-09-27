@@ -1,9 +1,10 @@
 # DTWC++ Configuration File
 #
-# Usage: dtwc_cl --config examples/config.toml
+# Usage: dtwc_cl --config examples/cpp/config.toml
 #
 # All options can also be set via command line flags.
 # Command line flags override values from this file.
+# `dtwc_cl ... --print-config` writes every key of a command line as such a file.
 
 # Input CSV file or folder containing time series data.
 # A file holds one series per row; a folder holds one series per file, one value
@@ -20,7 +21,8 @@ name = "example"
 # Number of clusters. (Deprecated key `clusters` is still accepted with a warning.)
 n-clusters = 5
 
-# Clustering method: "pam", "clara", "kmedoids", "mip"
+# Clustering method: "auto", "pam", "onebatch", "clara", "kmedoids", "mip",
+# "lrcore", "hierarchical", "tadpole"
 method = "pam"
 
 # Sakoe-Chiba band width. -1 = full (unconstrained) DTW.
@@ -29,7 +31,7 @@ band = -1
 # Distance metric: "l1", "squared_euclidean"
 metric = "l1"
 
-# DTW variant: "standard", "ddtw", "wdtw", "adtw", "softdtw"
+# DTW variant: "standard", "ddtw", "wdtw", "adtw", "softdtw", "msm", "twe"
 variant = "standard"
 
 # Missing-data strategy: "error", "zero_cost", "arow", "interpolate"
@@ -45,6 +47,8 @@ n-init = 1
 # data/dummy: skip the `,0` header row and the index column.
 skip-rows = 1
 skip-cols = 1
+# Field delimiter, one character; unset infers tab for .tsv/.txt, else ",".
+# delimiter = ","
 
 # Column to use as the time series values when loading from Parquet/Arrow IPC.
 # Leave unset (or empty) to use all numeric columns. Only valid for a
@@ -70,18 +74,20 @@ adtw-penalty = 1.0
 sdtw-gamma = 1.0
 
 # --- CLARA-specific options (only used when method = "clara") ---
-# Subsample size. -1 = auto (40 + 2*k).
+# Subsample size. -1 = auto (the larger of 40 + 2k and 10k + 100, at most N).
 sample-size = -1
 
 # Number of subsamples to try.
 n-samples = 5
 
-# Random seed for CLARA reproducibility.
+# Random seed: PAM, OneBatchPAM, CLARA and the MIP warm start.
 seed = 42
 
 # --- Checkpointing ---
 # Uncomment to enable checkpoint save/resume:
 # checkpoint = "./checkpoints"
+# Save every N filled distance-matrix rows as well; 0 = once, at the end.
+# checkpoint-interval = 0
 
 # --- MIP solver (only used when method = "mip") ---
 # Solver: "highs", "gurobi"
@@ -106,9 +112,12 @@ verbose-solver = false
 # no-warm-start = true
 
 # --- Compute device ---
-# "cpu" (default), "cuda" (GPU), or "cuda:N" for specific GPU device.
-# GPU mode computes the distance matrix on the GPU before clustering.
-# Only works with variant = "standard". Requires CUDA build.
+# "cpu" (default), "gpu", or "gpu:N" for a specific GPU ("cuda", "cuda:N" are
+# the same): CUDA on NVIDIA, Metal on macOS. The GPU fills the distance matrix
+# of pam, kmedoids, mip, lrcore, hierarchical, and clara when its sample covers
+# every series; onebatch, tadpole and a smaller clara sample are refused. It
+# takes variant = "standard", missing-strategy = "error" and dtype = "float64".
+# A run computes where it starts: to submit to SLURM use slurm_remote.sh.
 device = "cpu"
 
 # GPU kernel precision: "auto" (FP32 on consumer GPUs, FP64 on HPC GPUs),

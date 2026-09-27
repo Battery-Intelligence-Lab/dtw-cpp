@@ -1,0 +1,54 @@
+# Golden text of `dtwc_cl --print-config` with no other argument: every Config key
+# at its default, in cli::bind() order. Each value is dtwc_cl's default before IF-2
+# S3 (its option block, checked key by key); delimiter, max-benders-iter and
+# lr-max-nodes are new keys at the loader's and MIPSettings' own defaults.
+# tests/integration/test_cli_device_matrix.cmake compares the binary against it.
+input = ""
+output = "./results"
+name = "dtwc"
+column = ""
+dtype = "float64"
+ram-limit = 0
+n-clusters = 3
+method = "auto"
+band = -1
+metric = "l1"
+variant = "standard"
+max-iter = 100
+n-init = 1
+dc = -1
+wdtw-g = 0.05
+adtw-penalty = 1
+sdtw-gamma = 1
+msm-c = 1
+twe-nu = 0.001
+twe-lambda = 1
+mv-mode = "dependent"
+missing-strategy = "error"
+sample-size = -1
+n-samples = 5
+seed = 42
+batch-size = -1
+batch-weighting = "nniw"
+linkage = "average"
+skip-rows = 0
+skip-cols = 0
+delimiter = ""
+dist-matrix = ""
+checkpoint = ""
+checkpoint-interval = 0
+resume = false
+mmap-threshold = 50000
+solver = "highs"
+mip-gap = 1e-05
+time-limit = -1
+no-warm-start = false
+numeric-focus = 1
+mip-focus = 2
+verbose-solver = false
+benders = "auto"
+max-benders-iter = 200
+lr-max-nodes = 2000000
+device = "cpu"
+gpu-precision = "auto"
+verbose = false

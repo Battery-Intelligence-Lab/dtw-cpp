@@ -524,6 +524,34 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 180)
 endif()
 
+# IF-2 S3: dtwc::run's method x device table on the real binary, per build
+# flavour, and --print-config against the golden files (49 keys: every value
+# and every default). A GPU build on a machine without the device must refuse.
+if(TARGET dtwc_cl)
+    if("DTWC_HAS_CUDA" IN_LIST _dtwc_public_defs)
+        set(_dtwc_cl_gpu cuda)
+    elseif("DTWC_HAS_METAL" IN_LIST _dtwc_public_defs)
+        set(_dtwc_cl_gpu metal)
+    else()
+        set(_dtwc_cl_gpu none)
+    endif()
+    if(DTWC_ENABLE_HIGHS AND TARGET highs::highs)
+        set(_dtwc_cl_highs 1)
+    else()
+        set(_dtwc_cl_highs 0)
+    endif()
+    dtwc_add_script_test(NAME test_cli_device_matrix
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_device_matrix.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
+             "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DGOLDEN=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_all_fields.toml"
+             "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
+             "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
+             "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=49 skips=0"
+        LABELS integration cli SERIAL TIMEOUT 300)
+endif()
+
 # F8 is a real-CLI Parquet integration contract, not an Arrow-OFF capability
 # probe. Add no CTest target at all unless the linked library actually publishes
 # Parquet support; a passing stub or SKIP_RETURN_CODE would hide the subject.
@@ -597,18 +625,11 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
 endif()
 
 # ── MATLAB .m suites ───────────────────────────────────────────────────────
-# One CTest entry drives tests/matlab through the freshly built MEX. Incomplete
-# means "filtered by assumption" — a silent skip that reads as green in MATLAB's
-# summary — so it fails the gate. The sole exclusion is the parallelisation
-# capability PAIR: BOTH names are allow-listed, so at most these two may be
-# Incomplete (an OpenMP-ON build filters the serial case, an OpenMP-OFF build the
-# runtime case; the allow-list does not itself pin which, nor that only one is).
-# The passed-count floor proves the suite actually ran rather than being filtered
-# out. DTWC_MATLAB_SUITE_MIN_PASSED is pinned two below the measured run (123
-# passed on R2024b and R2025b, 2026-09-02); re-pin it and the AGENTS.md MATLAB
-# inventory whenever the suite grows.
-set(DTWC_MATLAB_SUITE_MIN_PASSED 121 CACHE STRING
-    "Minimum MATLAB test cases that must PASS for matlab_suite to be green")
+# One CTest entry drives tests/matlab through the freshly built MEX and passes as
+# a dtwc_add_test does (GT-1): at least one case passed, none failed and none was
+# Incomplete (MATLAB's "filtered by assumption", green in its own summary). The
+# registered skip is the parallelisation pair, which prints its reason: an OpenMP
+# MEX filters the serial case, a sequential MEX the runtime case.
 
 # find_program(matlab) is PATH-only, so a normal install (MATLAB not on PATH)
 # made this test vanish with no diagnostic. find_package caches the same
@@ -622,7 +643,7 @@ if(DTWC_BUILD_MATLAB)
         add_test(
             NAME matlab_suite
             COMMAND "${Matlab_MAIN_PROGRAM}" -batch
-                "addpath('${CMAKE_SOURCE_DIR}/bindings/matlab'); addpath('$<TARGET_FILE_DIR:dtwc_mex>'); r = runtests('${CMAKE_CURRENT_SOURCE_DIR}/matlab'); allowed = {'test_test_api/test_parallelisation_runtime_engages', 'test_test_api/test_parallelisation_serial_is_honest'}; bad = setdiff({r([r.Incomplete]).Name}, allowed); fprintf('matlab_suite: %d run, %d passed, %d failed, %d incomplete%s', numel(r), sum([r.Passed]), sum([r.Failed]), sum([r.Incomplete]), newline); assert(sum([r.Failed]) == 0 && isempty(bad) && sum([r.Passed]) >= ${DTWC_MATLAB_SUITE_MIN_PASSED}, 'matlab_suite gate failed');"
+                "addpath('${CMAKE_SOURCE_DIR}/bindings/matlab'); addpath('$<TARGET_FILE_DIR:dtwc_mex>'); r = runtests('${CMAKE_CURRENT_SOURCE_DIR}/matlab'); allowed = {'test_test_api/test_parallelisation_runtime_engages', 'test_test_api/test_parallelisation_serial_is_honest'}; bad = setdiff({r([r.Incomplete]).Name}, allowed); fprintf('matlab_suite: %d run, %d passed, %d failed, %d incomplete%s', numel(r), sum([r.Passed]), sum([r.Failed]), sum([r.Incomplete]), newline); assert(sum([r.Passed]) >= 1 && sum([r.Failed]) == 0 && isempty(bad), 'matlab_suite gate failed');"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
         set_tests_properties(matlab_suite PROPERTIES
             LABELS "matlab" RUN_SERIAL TRUE TIMEOUT 1800)

@@ -5,18 +5,12 @@
 
 #include "api.hpp"
 
-#include "DataLoader.hpp"
 #include "Problem.hpp"
-#include "algorithms/fast_clara.hpp"
-#include "algorithms/fast_pam.hpp"
-#include "algorithms/hierarchical.hpp"
-#include "algorithms/one_batch_pam.hpp"
+#include "cli/run.hpp"
 #include "core/matrix_io.hpp"
-#include "detail/tier1_method_resolution.hpp"
 #include "base/env.hpp"
 #include "base/error.hpp"
 #include "scores.hpp"
-#include "base/settings.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -24,8 +18,8 @@
 #include <iomanip>
 #include <iostream>
 #include <numeric>
-#include <stdexcept>
 #include <system_error>
+#include <tuple>
 #include <utility>
 
 namespace dtwc {
@@ -63,32 +57,6 @@ void validate_skips(int skip_cols, int skip_rows)
 {
   if (skip_cols < 0) throw InvalidInput("load: skip_cols must be non-negative.");
   if (skip_rows < 0) throw InvalidInput("load: skip_rows must be non-negative.");
-}
-
-/// Dataset itself needs no check here: both load() overloads reject a negative
-/// skip_cols/skip_rows and Dataset's constructors are private.
-void validate_common(int k, int max_iter)
-{
-  if (k <= 0) throw InvalidInput("cluster: k must be positive.");
-  if (max_iter <= 0) throw InvalidInput("cluster: max_iter must be positive.");
-}
-
-std::string normalize_method(std::string_view value)
-{
-  std::string method = lower(value);
-  std::replace(method.begin(), method.end(), '-', '_');
-  if (method == "hclust") return "hierarchical";
-  static constexpr std::string_view valid[] = {
-    "auto", "pam", "onebatch", "clara", "kmedoids", "mip",
-    "lrcore", "tadpole", "hierarchical"
-  };
-  if (std::find(std::begin(valid), std::end(valid), method) == std::end(valid)) {
-    throw InvalidInput(
-      "cluster: unknown method '" + std::string(value)
-      + "'. Valid methods: auto, pam, onebatch, clara, kmedoids, mip, "
-        "lrcore, tadpole, hierarchical (hclust).");
-  }
-  return method;
 }
 
 std::ofstream open_output(const std::filesystem::path &path,
@@ -138,22 +106,6 @@ const std::filesystem::path &Dataset::path() const
 
 Data Dataset::materialize_local() const
 {
-  if (is_path()) {
-    DataLoader loader(path());
-    loader.start_column(skip_cols_).start_row(skip_rows_).verbosity(0);
-    if (delimiter_ != 0) loader.delimiter(delimiter_);
-    // A read failure is IOError naming the file; other typed errors pass unchanged.
-    try {
-      return loader.load_local();
-    } catch (const IOError &e) {
-      throw IOError("load: failed to read '" + path().string() + "': " + e.what());
-    } catch (const Error &) {
-      throw;
-    } catch (const std::exception &e) {
-      throw IOError("load: failed to read '" + path().string() + "': " + e.what());
-    }
-  }
-
   auto series = std::get<series_type>(source_);
   // One memory row is one file line, so skip_rows drops leading series exactly
   // as it drops leading lines of a batch file.
@@ -197,8 +149,10 @@ std::string device(std::string_view name)
 
 std::string device() { return canonical_device_name(env()); }
 
-Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name)
-  : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name))
+Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
+               ClusterMethod method, int iterations, bool converged)
+  : problem_(std::move(problem)), cost_(cost), device_(std::move(device_name)), method_(method),
+    iterations_(iterations), converged_(converged)
 {}
 
 const std::vector<int> &Result::labels() const noexcept { return problem_->labels(); }
@@ -307,94 +261,26 @@ void Result::save(const std::filesystem::path &directory) const
   }
 }
 
-Result cluster(const Dataset &dataset, int k, std::string_view requested_method,
-               int band, std::string_view requested_device, int max_iter)
+Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
+               std::string_view device, int max_iter)
 {
-  validate_common(k, max_iter);
-  std::string method = normalize_method(requested_method);
-
-  // A per-call override is validated with a local Env so it neither changes nor
-  // depends on the process default. The local Env shares the configured .env
-  // location and keeps the no-silent-fallback device checks.
-  Device selected = env().device();
-  int device_index = env().device_index();
-  std::string selected_name = canonical_device_name(env());
-  if (!requested_device.empty()) {
-    Env local;
-    local.set_env_file_dir(env().env_file_dir());
-    local.set_device(requested_device);
-    selected = local.device();
-    device_index = local.device_index();
-    selected_name = canonical_device_name(local);
-  }
-
-  if (selected == Device::HPC) {
-    throw DeviceError(
-      "cluster: C++ Tier-1 HPC submission is beta and requires the repository "
-      "SLURM transport wrapper; use dtwcpp.cluster(..., device='hpc') or "
-      "scripts/slurm/slurm_remote.sh. No local fallback was attempted.");
-  }
-
-  const auto execution_target = selected == Device::GPU
-    ? detail::Tier1ExecutionTarget::GPU
-    : detail::Tier1ExecutionTarget::CPU;
-
-  auto problem = std::make_shared<Problem>(dataset.name());
-  // Must precede set_data: StoragePolicy::Auto can spill a large dataset to the
-  // mmap store, which the CUDA/Metal upload paths reject outright.
-  problem->set_storage_policy(detail::tier1_storage_policy(execution_target));
-  problem->set_data(dataset.materialize_local());
-  if (problem->size() == 0) throw InvalidInput("cluster: dataset is empty.");
-  if (static_cast<std::size_t>(k) > problem->size())
-    throw InvalidInput("cluster: k must not exceed the number of series.");
-  problem->set_band(band);
-  problem->set_max_iter(max_iter);
-  problem->set_device(selected, device_index);
-
-  method = detail::resolve_tier1_method(method, problem->size(), execution_target);
-
-  core::ClusteringResult result;
-  const bool matrix_free = method == "onebatch" || method == "clara"
-                        || method == "tadpole";
-  if (matrix_free && selected == Device::GPU) {
-    throw DeviceError(
-      "cluster: method='" + method
-      + "' uses a matrix-free CPU distance schedule; GPU execution is not "
-        "implemented for that schedule. Use device='cpu'.");
-  }
-  if (!matrix_free) problem->fill_distance_matrix();
-
-  if (method == "pam") {
-    result = fast_pam_seeded(
-      *problem, k, settings::DEFAULT_RANDOM_SEED, max_iter);
-  } else if (method == "onebatch") {
-    algorithms::OneBatchPAMOptions options;
-    options.n_clusters = k;
-    options.max_iter = max_iter;
-    options.random_seed = settings::DEFAULT_RANDOM_SEED;
-    result = algorithms::one_batch_pam(*problem, options);
-  } else if (method == "clara") {
-    algorithms::CLARAOptions options;
-    options.n_clusters = k;
-    options.max_iter = max_iter;
-    options.random_seed = settings::DEFAULT_RANDOM_SEED;
-    result = algorithms::fast_clara(*problem, options);
-  } else if (method == "hierarchical") {
-    const auto dendrogram = algorithms::build_dendrogram(*problem);
-    result = algorithms::cut_dendrogram(dendrogram, *problem, k);
-  } else {
-    problem->set_n_clusters(k);
-    if (method == "mip") problem->set_method(Method::MIP);
-    else if (method == "lrcore") problem->set_method(Method::LRCore);
-    else if (method == "tadpole") problem->set_method(Method::TADPole);
-    else problem->set_method(Method::Kmedoids);
-    problem->cluster();
-    result.labels = problem->labels();
-    result.medoid_indices = problem->medoids();
-    result.total_cost = problem->find_total_cost();
-  }
-
-  return Result(std::move(problem), result.total_cost, std::move(selected_name));
+  Config config; // dtwc_cl's defaults for everything this signature does not name
+  config.k = k;
+  config.method = parse_name(cluster_method_names, method, "method");
+  config.band = band;
+  config.max_iter = max_iter;
+  config.output.clear(); // Result::save writes; cluster() does not
+  config.name = dataset.name();
+  // The grammar only: an `hpc` .env is Python's to read, so run() refuses hpc
+  // without opening one.
+  std::tie(config.device, config.gpu.device_id) =
+    device.empty() ? std::pair{ env().device(), env().device_index() } : detail::parse_device(device);
+  if (!dataset.is_path()) return run(config, dataset.materialize_local());
+  config.input = path_to_utf8(dataset.path());
+  config.skip_cols = dataset.skip_cols();
+  config.skip_rows = dataset.skip_rows();
+  config.delimiter = dataset.delimiter();
+  return run(config);
 }
 
 } // namespace dtwc

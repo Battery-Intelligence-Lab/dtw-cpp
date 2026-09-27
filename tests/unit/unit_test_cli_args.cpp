@@ -1,782 +1,334 @@
 /**
  * @file unit_test_cli_args.cpp
- * @brief Regression tests for dtwc_cl CLI argument parsing (Task 0.9).
+ * @brief dtwc_cl's run-time contracts, pinned where they now live: cli::bind()
+ *        (through parse_config), dtwc::run() and its Parquet metadata planner.
  *
- * @details These pin the audit "cli-ux" findings
- * (handoff-2026-06-01-adversarial-audit.md, line 26):
- *
- *   1. `--metric` was consumed ONLY by the CUDA path; on the CPU path
- *      resolve_dtw_fn() always binds MetricType::L1, so a non-L1 metric was
- *      silently ignored (computed L1). Now rejected (no-silent-fallback).
- *   2. `std::stoi(device.substr(5))` on a bad "cuda:N" (e.g. "cuda:abc")
- *      threw std::invalid_argument uncaught -> propagated out of main() ->
- *      std::terminate. Now a clean validation error.
- *   3. `device.rfind("cuda", 0)` was case-sensitive, so "CUDA:0" silently fell
- *      back to CPU; and any unknown device likewise silently ran on CPU. Now
- *      case-insensitive, and unknown devices are a hard error.
- *
- * We compile the CLI translation unit with DTWC_CL_NO_MAIN so that main() and
- * its CLI11 dependency are excluded and the pure parse helpers
- * (parse_device / validate_metric_for_device) become directly callable. This
- * exercises the REAL production code, not a copy.
- *
- * Why the UNFIXED code fails these tests: before the fix, parse_device and
- * validate_metric_for_device did not exist (device handling was inline raw
- * rfind + unchecked std::stoi in main), so this translation unit would not even
- * compile against the old dtwc_cl.cpp — and the buggy behaviours above are
- * exactly what the assertions below forbid.
+ * @details Until IF-2 S3 this file compiled dtwc_cl.cpp with DTWC_CL_NO_MAIN to
+ * reach its file-local helpers. Those helpers are gone: the device grammar is
+ * detail::parse_device, the selectors are types, and the pipeline is run(). The
+ * contracts they carried are asserted here through the production entry points;
+ * the device matrix is test_run_resolution.cpp's, the resume rejections
+ * test_cli_resume_state's (real binary), and the streamed Parquet names F8 /
+ * F13's (real binary, Arrow builds).
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
  */
 
-#define DTWC_CL_NO_MAIN
-#include "../../dtwc/dtwc_cl.cpp" // pulls in parse_device / validate_metric_for_device
-#include "../../dtwc/algorithms/tadpole.hpp"
+#include "cli/config.hpp"
+#include "cli/run.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <limits>
 #include <string>
-#include <variant>
+#include <string_view>
+#include <vector>
 
-// ---------------------------------------------------------------------------
-// parse_device
-// ---------------------------------------------------------------------------
-
-TEST_CASE("parse_device accepts cpu", "[cli][device]")
-{
-  const DeviceSpec d = parse_device("cpu");
-  REQUIRE(d.valid);
-  REQUIRE_FALSE(d.is_cuda);
-}
-
-TEST_CASE("parse_device accepts cuda and cuda:N", "[cli][device]")
-{
-  const DeviceSpec bare = parse_device("cuda");
-  REQUIRE(bare.valid);
-  REQUIRE(bare.is_cuda);
-  REQUIRE(bare.cuda_id == 0);
-
-  const DeviceSpec three = parse_device("cuda:3");
-  REQUIRE(three.valid);
-  REQUIRE(three.is_cuda);
-  REQUIRE(three.cuda_id == 3);
-}
-
-// Bug #3: case-sensitive rfind meant "CUDA:0" silently fell back to CPU.
-TEST_CASE("parse_device is case-insensitive (CUDA:0 is a CUDA request)", "[cli][device]")
-{
-  const DeviceSpec upper = parse_device("CUDA:0");
-  REQUIRE(upper.valid);
-  REQUIRE(upper.is_cuda); // was FALSE (silent CPU) before the fix
-  REQUIRE(upper.cuda_id == 0);
-
-  REQUIRE(parse_device("Cuda").is_cuda);
-  REQUIRE(parse_device("CUDA:2").cuda_id == 2);
-}
-
-// Bug #2: std::stoi("abc") threw uncaught -> std::terminate.
-TEST_CASE("parse_device rejects a non-numeric cuda id without crashing", "[cli][device]")
-{
-  const DeviceSpec bad = parse_device("cuda:abc");
-  REQUIRE_FALSE(bad.valid);
-  REQUIRE_FALSE(bad.error.empty());
-  REQUIRE_FALSE(bad.is_cuda);
-
-  // "cuda:" with an empty id must also be rejected (not accepted as cuda:0).
-  REQUIRE_FALSE(parse_device("cuda:").valid);
-  // A negative / signed id is non-numeric under our digit check -> rejected.
-  REQUIRE_FALSE(parse_device("cuda:-1").valid);
-}
-
-// Bug #3: unknown device silently fell back to CPU (no validation).
-TEST_CASE("parse_device rejects unknown devices (no silent CPU fallback)", "[cli][device]")
-{
-  const DeviceSpec gpu = parse_device("gpu"); // CLI surface is cpu/cuda only
-  REQUIRE_FALSE(gpu.valid);
-  REQUIRE_FALSE(gpu.error.empty());
-
-  REQUIRE_FALSE(parse_device("foo").valid);
-  REQUIRE_FALSE(parse_device("").valid);
-}
-
-// ---------------------------------------------------------------------------
-// validate_metric_for_device
-// ---------------------------------------------------------------------------
-
-// Bug #1: --metric was a no-op on the CPU path (silently computed L1).
-TEST_CASE("validate_metric_for_device rejects a non-L1 metric on the CPU path", "[cli][metric]")
-{
-  // Non-L1 on CPU is unsupported and must error (was silently ignored before).
-  REQUIRE_FALSE(validate_metric_for_device("squared_euclidean", /*is_cuda=*/false).empty());
-
-  // The default L1 metric is fine on CPU.
-  REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/false).empty());
-
-  // Any metric is fine on the CUDA path (that path consumes it).
-  REQUIRE(validate_metric_for_device("squared_euclidean", /*is_cuda=*/true).empty());
-  REQUIRE(validate_metric_for_device("l1", /*is_cuda=*/true).empty());
-}
-
-TEST_CASE("CLI distance config rejects transformer bypasses before work",
-          "[cli][config][distance]")
-{
-  CHECK(validate_cli_distance_configuration(
-          "standard", "l1", "dependent", "error", false).empty());
-  CHECK(validate_cli_distance_configuration(
-          "standard", "squared_euclidean", "dependent", "error", true).empty());
-
-  CHECK(validate_cli_distance_configuration(
-          "unknown", "l1", "dependent", "error", false)
-        == "unsupported --variant 'unknown'");
-  CHECK(validate_cli_distance_configuration(
-          "standard", "unknown", "dependent", "error", true)
-        == "unsupported --metric 'unknown'");
-  CHECK(validate_cli_distance_configuration(
-          "standard", "l1", "unknown", "error", false)
-        == "unsupported --mv-mode 'unknown'");
-  CHECK(validate_cli_distance_configuration(
-          "standard", "l1", "dependent", "unknown", false)
-        == "unsupported --missing-strategy 'unknown'");
-  CHECK(validate_cli_distance_configuration(
-          "twe", "l1", "dependent", "zero_cost", false)
-        == "non-standard --variant cannot be combined with a non-error "
-           "--missing-strategy");
-  CHECK(validate_cli_distance_configuration(
-          "twe", "l1", "independent", "error", false)
-        == "--mv-mode independent requires --variant standard and "
-           "--missing-strategy error");
-  CHECK(validate_cli_distance_configuration(
-          "standard", "squared_euclidean", "dependent", "error", false)
-        == "metric 'squared_euclidean' is unsupported on the cpu path "
-           "(only 'l1' is implemented on CPU; use --device cuda for "
-           "'squared_euclidean').");
-  CHECK(validate_cli_distance_configuration(
-          "twe", "l1", "dependent", "error", true)
-        == "--device cuda supports --variant standard only");
-}
-
-TEST_CASE("CLI route selectors reject values that bypass CLI11 transformers",
-          "[cli][config][method][solver][linkage]")
-{
-  // Audit 2026-09-02 A7: method/solver/linkage dispatch chains had no terminal
-  // else, so a selector that reached them unvalidated (bypassing the
-  // CheckedTransformer maps) silently produced an empty result / the default
-  // solver / Average linkage.
-  CHECK(validate_cli_route_selectors("auto", "highs", "average").empty());
-  CHECK(validate_cli_route_selectors("tadpole", "gurobi", "single").empty());
-  CHECK(validate_cli_route_selectors("onebatch", "highs", "complete").empty());
-
-  CHECK_THAT(validate_cli_route_selectors("obp", "highs", "average"),
-             Catch::Matchers::ContainsSubstring("unsupported --method 'obp'"));
-  CHECK_THAT(validate_cli_route_selectors("kmedoid", "highs", "average"),
-             Catch::Matchers::ContainsSubstring("unsupported --method 'kmedoid'"));
-  CHECK_THAT(validate_cli_route_selectors("pam", "cplex", "average"),
-             Catch::Matchers::ContainsSubstring("unsupported --solver 'cplex'"));
-  CHECK_THAT(validate_cli_route_selectors("pam", "highs", "ward"),
-             Catch::Matchers::ContainsSubstring("unsupported --linkage 'ward'"));
-}
-
-// ---------------------------------------------------------------------------
-// Parquet RAM-limit planning (Task 8.2 F7)
-// ---------------------------------------------------------------------------
+namespace fs = std::filesystem;
+using Catch::Matchers::ContainsSubstring;
+using dtwc::ClusterMethod;
+using dtwc::Device;
+using dtwc::detail::ParquetLayout;
+using dtwc::detail::plan_parquet_load;
 
 namespace {
 
 struct ScratchDirectory
 {
-  std::filesystem::path path;
+  fs::path path;
 
-  explicit ScratchDirectory(std::string_view name)
-    : path(std::filesystem::temp_directory_path() / std::string(name))
+  explicit ScratchDirectory(std::string_view name) : path(fs::temp_directory_path() / std::string(name))
   {
     std::error_code ec;
-    std::filesystem::remove_all(path, ec);
-    std::filesystem::create_directories(path);
+    fs::remove_all(path, ec);
+    fs::create_directories(path);
   }
 
   ~ScratchDirectory()
   {
     std::error_code ec;
-    std::filesystem::remove_all(path, ec);
+    fs::remove_all(path, ec);
   }
 };
 
+std::size_t ram_limit(const std::string &text) { return dtwc::parse_config({ { "ram_limit", text } }).ram_limit; }
+
+/// A run that writes nothing unless a test names an output directory.
+dtwc::Config quiet_config(int k, ClusterMethod method)
+{
+  dtwc::Config config;
+  config.k = k;
+  config.method = method;
+  config.output.clear();
+  return config;
+}
+
+dtwc::Data tiny_series()
+{
+  return dtwc::Data(std::vector<std::vector<double>>{ { 0.0, 1.0, 2.0 }, { 0.0, 2.0, 3.0 }, { 1.0, 2.0, 4.0 } },
+                    std::vector<std::string>{ "a", "b", "c" });
+}
+
+/// Eight translated waveforms: PAM's BUILD seed changes its local optimum.
+dtwc::Data seed_sensitive_series()
+{
+  const std::vector<double> base{ 0.0, 0.01, -0.02, 0.03 };
+  std::vector<std::vector<double>> series;
+  std::vector<std::string> names;
+  for (int offset = 0; offset < 8; ++offset) {
+    auto waveform = base;
+    for (auto &value : waveform) value += static_cast<double>(offset);
+    series.push_back(std::move(waveform));
+    names.push_back(std::to_string(offset));
+  }
+  return dtwc::Data(std::move(series), std::move(names));
+}
+
 } // namespace
 
-TEST_CASE("parse_ram_limit is exact and fail-closed", "[cli][parquet][ram]")
-{
-  CHECK(parse_ram_limit("") == 0);
-  CHECK(parse_ram_limit("0") == 0);
-  CHECK(parse_ram_limit("1") == 1);
-  CHECK(parse_ram_limit("2K") == 2ULL * 1024ULL);
-  CHECK(parse_ram_limit("1.5MiB") == 1572864ULL);
-  CHECK(parse_ram_limit("3gb") == 3ULL * 1024ULL * 1024ULL * 1024ULL);
-  if constexpr (std::numeric_limits<size_t>::digits > 53)
-    CHECK(parse_ram_limit("9007199254740993") == 9007199254740993ULL);
-  CHECK(parse_ram_limit(std::to_string(std::numeric_limits<size_t>::max()))
-        == std::numeric_limits<size_t>::max());
+// ---------------------------------------------------------------------------
+// --ram-limit (Task 8.2 F7): exact and fail-closed, read by cli::bind()
+// ---------------------------------------------------------------------------
 
-  for (const std::string malformed : {
-         "-1G", "nan", "inf", "1GBjunk", "G", "0.1B" }) {
+TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
+{
+  CHECK(ram_limit("") == 0);
+  CHECK(ram_limit("0") == 0);
+  CHECK(ram_limit("1") == 1);
+  CHECK(ram_limit("2K") == 2ULL * 1024ULL);
+  CHECK(ram_limit("1.5MiB") == 1572864ULL);
+  CHECK(ram_limit("3gb") == 3ULL * 1024ULL * 1024ULL * 1024ULL);
+  if constexpr (std::numeric_limits<std::size_t>::digits > 53)
+    CHECK(ram_limit("9007199254740993") == 9007199254740993ULL);
+  CHECK(ram_limit(std::to_string(std::numeric_limits<std::size_t>::max())) == std::numeric_limits<std::size_t>::max());
+
+  for (const std::string malformed : { "-1G", "nan", "inf", "1GBjunk", "G", "0.1B" }) {
     CAPTURE(malformed);
-    CHECK_THROWS_AS(parse_ram_limit(malformed), dtwc::InvalidInput);
+    CHECK_THROWS_AS(ram_limit(malformed), dtwc::InvalidInput);
   }
-
-  CHECK_THROWS_WITH(
-    parse_ram_limit("999999999999999999999999T"),
-    Catch::Matchers::ContainsSubstring("exceeds this platform's size limit"));
+  CHECK_THROWS_WITH(ram_limit("999999999999999999999999T"), ContainsSubstring("exceeds this platform's size limit"));
 }
 
-// Registered band: a non-zero cap on any non-Parquet input must throw
-// InvalidInput; a zero cap, or any Parquet input, must be a no-op. Before this
-// gate the CLI accepted `--ram-limit` for CSV/HDF5/Arrow/.dtws, printed the cap
-// when verbose, and then loaded the whole file anyway — the same "advertised but
-// unapplied cap" that F7 removed from the Parquet path.
-TEST_CASE("--ram-limit is rejected where no reader can honour it",
-          "[cli][parquet][ram]")
+// A cap on an input no reader can apply it to must fail: the CLI once accepted
+// --ram-limit for CSV / Arrow / .dtws, printed the cap and loaded everything.
+TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
 {
-  // Cap set, input is not Parquet -> loud rejection, never a silent full load.
-  CHECK_THROWS_AS(
-    require_ram_limit_is_applicable(1ULL << 30, false, false),
-    dtwc::InvalidInput);
-  CHECK_THROWS_WITH(
-    require_ram_limit_is_applicable(1, false, false),
-    Catch::Matchers::ContainsSubstring("cannot be honoured for this input"));
+  auto config = quiet_config(2, ClusterMethod::PAM);
+  config.ram_limit = 1ULL << 30;
+  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput,
+                       Catch::Matchers::MessageMatches(ContainsSubstring("cannot be honoured for this input")));
+  config.input = "never_read.csv"; // refused before the file is opened
+  CHECK_THROWS_WITH(dtwc::run(config), ContainsSubstring("cannot be honoured for this input"));
 
-  // Cap set and Parquet: the metadata planner owns the decision, not this gate.
-  CHECK_NOTHROW(require_ram_limit_is_applicable(1ULL << 30, true, false));
-  CHECK_NOTHROW(require_ram_limit_is_applicable(1ULL << 30, false, true));
-
-  // No cap requested: every input stays legal.
-  CHECK_NOTHROW(require_ram_limit_is_applicable(0, false, false));
-  CHECK_NOTHROW(require_ram_limit_is_applicable(0, true, false));
-}
-
-TEST_CASE("Parquet CLI plan selects streaming before payload materialization",
-          "[cli][parquet][ram][streaming]")
-{
-  const auto plan = resolve_parquet_cli_plan(
-    "clara", /*series_count=*/6001, /*estimated_resident_bytes=*/4097,
-    /*ram_limit=*/4096, ParquetCliLayout::ListColumn);
-
-  CHECK(plan.method == "clara");
-  CHECK(plan.series_count == 6001);
-  CHECK(plan.stream_payload);
-  CHECK_FALSE(plan.materialize_payload());
-
-  const auto boundary = resolve_parquet_cli_plan(
-    "clara", 6001, /*estimated_resident_bytes=*/4096,
-    /*ram_limit=*/4096, ParquetCliLayout::ListColumn);
-  CHECK_FALSE(boundary.stream_payload);
-  CHECK(boundary.materialize_payload());
-}
-
-TEST_CASE("Parquet CLI plan resolves auto from metadata without loading data",
-          "[cli][parquet][ram][auto]")
-{
-  const auto pam = resolve_parquet_cli_plan(
-    "auto", 5000, 100, 1000, ParquetCliLayout::ListColumn);
-  CHECK(pam.method == "pam");
-  CHECK_FALSE(pam.stream_payload);
-
-  const auto clara = resolve_parquet_cli_plan(
-    "auto", 5001, 1001, 1000, ParquetCliLayout::ListColumn);
-  CHECK(clara.method == "clara");
-  CHECK(clara.stream_payload);
-}
-
-TEST_CASE("Parquet RAM limit rejects every route that cannot honor it",
-          "[cli][parquet][ram][loudness]")
-{
-  CHECK_THROWS_WITH(
-    resolve_parquet_cli_plan(
-      "pam", 20, 1001, 1000, ParquetCliLayout::ListColumn),
-    Catch::Matchers::ContainsSubstring("method 'pam' cannot stream"));
-
-  CHECK_THROWS_WITH(
-    resolve_parquet_cli_plan(
-      "clara", 1, 1001, 1000, ParquetCliLayout::ScalarColumn),
-    Catch::Matchers::ContainsSubstring("list-per-row"));
-
-  CHECK_THROWS_WITH(
-    resolve_parquet_cli_plan(
-      "clara", 100, 1001, 1000, ParquetCliLayout::Directory),
-    Catch::Matchers::ContainsSubstring("single Parquet file"));
-
-  CHECK_THROWS_AS(
-    resolve_parquet_cli_plan(
-      "clara", 0, 1001, 1000, ParquetCliLayout::ListColumn),
-    dtwc::InvalidInput);
-}
-
-TEST_CASE("streamed Parquet outputs retain deterministic synthetic names",
-          "[cli][parquet][output]")
-{
-  ScratchDirectory scratch{"dtwc_cli_streamed_names"};
-  dtwc::Problem settings_only{"streamed"};
-  dtwc::core::ClusteringResult result;
-  result.labels = {1, 0, 1};
-  result.medoid_indices = {1, 2};
-
-  const auto labels = scratch.path / "labels.csv";
-  const auto medoids = scratch.path / "medoids.csv";
-  write_labels_csv(labels, settings_only, result, /*streamed_series_count=*/3);
-  write_medoids_csv(medoids, settings_only, result, /*streamed_series_count=*/3);
-
-  std::ifstream labels_in(labels);
-  const std::string labels_text(
-    std::istreambuf_iterator<char>{labels_in}, std::istreambuf_iterator<char>{});
-  CHECK(labels_text ==
-        "name,cluster\nseries_0,1\nseries_1,0\nseries_2,1\n");
-
-  std::ifstream medoids_in(medoids);
-  const std::string medoids_text(
-    std::istreambuf_iterator<char>{medoids_in}, std::istreambuf_iterator<char>{});
-  CHECK(medoids_text ==
-        "cluster,medoid_index,medoid_name\n0,1,series_1\n1,2,series_2\n");
-
-  result.medoid_indices[1] = 3;
-  CHECK_THROWS_WITH(
-    write_medoids_csv(medoids, settings_only, result,
-                      /*streamed_series_count=*/3),
-    Catch::Matchers::ContainsSubstring("outside the 3-series input"));
+  config.ram_limit = 0;
+  config.input.clear();
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
 }
 
 // ---------------------------------------------------------------------------
-// CLI distance-matrix storage routing (Task 8.1 M11)
+// Parquet metadata planning: decided before any payload is read
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Parquet plan selects streaming before payload materialization", "[cli][parquet][ram][streaming]")
+{
+  const auto plan = plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, /*bytes=*/4097, /*cap=*/4096,
+                                      ParquetLayout::ListColumn);
+  CHECK(plan.method == ClusterMethod::CLARA);
+  CHECK(plan.stream_payload);
+
+  const auto boundary =
+    plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, 4096, 4096, ParquetLayout::ListColumn);
+  CHECK_FALSE(boundary.stream_payload);
+}
+
+TEST_CASE("Parquet plan resolves auto from metadata, for the device", "[cli][parquet][ram][auto]")
+{
+  const auto pam = plan_parquet_load(ClusterMethod::Auto, Device::CPU, 5000, 100, 1000, ParquetLayout::ListColumn);
+  CHECK(pam.method == ClusterMethod::PAM);
+  CHECK_FALSE(pam.stream_payload);
+
+  const auto clara = plan_parquet_load(ClusterMethod::Auto, Device::CPU, 5001, 1001, 1000, ParquetLayout::ListColumn);
+  CHECK(clara.method == ClusterMethod::CLARA);
+  CHECK(clara.stream_payload);
+
+  // On a GPU `auto` is pam, whose matrix the GPU fills, at any N: over the cap
+  // that is the loud "cannot stream", never a CPU-only CLARA.
+  CHECK(plan_parquet_load(ClusterMethod::Auto, Device::GPU, 5001, 100, 1000, ParquetLayout::ListColumn).method
+        == ClusterMethod::PAM);
+  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::Auto, Device::GPU, 5001, 1001, 1000, ParquetLayout::ListColumn),
+                    ContainsSubstring("method 'pam' cannot stream"));
+}
+
+TEST_CASE("Parquet RAM limit rejects every route that cannot honor it", "[cli][parquet][ram][loudness]")
+{
+  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::PAM, Device::CPU, 20, 1001, 1000, ParquetLayout::ListColumn),
+                    ContainsSubstring("method 'pam' cannot stream"));
+  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 1, 1001, 1000, ParquetLayout::ScalarColumn),
+                    ContainsSubstring("list-per-row"));
+  CHECK_THROWS_WITH(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 100, 1001, 1000, ParquetLayout::Directory),
+                    ContainsSubstring("single Parquet file"));
+  CHECK_THROWS_AS(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 0, 1001, 1000, ParquetLayout::ListColumn),
+                  dtwc::InvalidInput);
+}
+
+TEST_CASE("Parquet plan treats a zero RAM limit as uncapped", "[cli][parquet][ram][streaming]")
+{
+  // `ram_limit == 0` means "no cap", never "a cap of zero bytes"; it returns
+  // before the method and layout rejections.
+  constexpr auto huge = std::numeric_limits<std::size_t>::max();
+  CHECK_FALSE(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 6001, huge, 0, ParquetLayout::ListColumn)
+                .stream_payload);
+  CHECK_NOTHROW(plan_parquet_load(ClusterMethod::PAM, Device::CPU, 20, huge, 0, ParquetLayout::ScalarColumn));
+  CHECK_NOTHROW(plan_parquet_load(ClusterMethod::CLARA, Device::CPU, 20, huge, 0, ParquetLayout::Directory));
+}
+
+// ---------------------------------------------------------------------------
+// PAM seeds and restarts (--seed, --n-init)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("run's PAM honors default seed 42 and explicit seed override 29", "[cli][seed][pam]")
+{
+  REQUIRE(dtwc::Config{}.seed == 42);
+  const auto default_result = dtwc::run(quiet_config(3, ClusterMethod::PAM), seed_sensitive_series());
+  CHECK(default_result.medoids() == std::vector<int>{ 6, 2, 5 });
+  CHECK(default_result.labels() == std::vector<int>{ 1, 1, 1, 1, 2, 2, 0, 0 });
+  CHECK(default_result.cost() == 24.0);
+
+  auto seed_29 = quiet_config(3, ClusterMethod::PAM);
+  seed_29.seed = 29;
+  const auto override_result = dtwc::run(seed_29, seed_sensitive_series());
+  CHECK(override_result.medoids() == std::vector<int>{ 4, 1, 7 });
+  CHECK(override_result.labels() == std::vector<int>{ 1, 1, 1, 0, 0, 0, 2, 2 });
+  CHECK(override_result.cost() == 20.0);
+}
+
+TEST_CASE("run's PAM n_init retains the best deterministic restart", "[cli][seed][pam][n_init]")
+{
+  auto improving_config = quiet_config(3, ClusterMethod::PAM);
+  improving_config.seed = 43;
+  const auto improving = dtwc::run(improving_config, seed_sensitive_series());
+  CHECK(improving.cost() == 20.0);
+
+  // --n-init 2 tries seeds 42 and 43 and keeps the lower cost, not the first or
+  // the last restart (the Problem holds the last one's labels until run() sets
+  // the kept result).
+  auto config = quiet_config(3, ClusterMethod::PAM);
+  config.n_init = 2;
+  for (int repetition = 0; repetition < 3; ++repetition) {
+    const auto result = dtwc::run(config, seed_sensitive_series());
+    CAPTURE(repetition);
+    CHECK(result.medoids() == improving.medoids());
+    CHECK(result.labels() == improving.labels());
+    CHECK(result.cost() == improving.cost());
+    CHECK(result.iterations() == improving.iterations());
+    CHECK(result.converged() == improving.converged());
+  }
+
+  config.n_init = 0;
+  CHECK_THROWS_WITH(dtwc::run(config, seed_sensitive_series()), "--n-init must be a positive integer");
+}
+
+// ---------------------------------------------------------------------------
+// Distance-matrix storage routing (Task 8.1 M11): --mmap-threshold 0 always maps
 // ---------------------------------------------------------------------------
 
 namespace {
 
-dtwc::Problem tiny_storage_problem()
+dtwc::Config mapped_config(ClusterMethod method, const ScratchDirectory &scratch, const std::string &name)
 {
-  dtwc::Problem prob{"cli_storage"};
-  std::vector<std::vector<dtwc::data_t>> series{
-    { 0.0, 1.0, 2.0 },
-    { 0.0, 2.0, 3.0 },
-    { 1.0, 2.0, 4.0 },
-  };
-  std::vector<std::string> names{ "a", "b", "c" };
-  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
-  return prob;
+  auto config = quiet_config(2, method);
+  config.output = scratch.path.string();
+  config.name = name;
+  config.mmap_threshold = 0;
+  return config;
 }
 
-dtwc::Problem seed_sensitive_pam_problem()
+bool cache_exists(const ScratchDirectory &scratch, const std::string &name)
 {
-  const std::vector<dtwc::data_t> base{0.0, 0.01, -0.02, 0.03};
-  std::vector<std::vector<dtwc::data_t>> series;
-  std::vector<std::string> names;
-  for (int offset = 0; offset < 8; ++offset) {
-    auto waveform = base;
-    for (auto &value : waveform) value += static_cast<dtwc::data_t>(offset);
-    series.push_back(std::move(waveform));
-    names.push_back(std::to_string(offset));
-  }
-  dtwc::Problem prob{"cli_seed_fixture"};
-  prob.set_data(dtwc::Data(std::move(series), std::move(names)));
-  return prob;
+  return fs::exists(scratch.path / (name + "_distmat.cache"));
 }
 
 } // namespace
 
-TEST_CASE("CLI PAM honors default seed 42 and explicit seed override 29",
-          "[cli][seed][pam]")
+TEST_CASE("run's TADPole threshold uses mmap or fails before dense allocation", "[cli][storage][mmap][tadpole]")
 {
-  REQUIRE(dtwc::settings::DEFAULT_RANDOM_SEED == 42);
-
-  auto default_problem = seed_sensitive_pam_problem();
-  const auto default_result = run_cli_pam(default_problem, 3, 100);
-  CHECK(default_result.medoid_indices == std::vector<int>{6, 2, 5});
-  CHECK(default_result.labels == std::vector<int>{1, 1, 1, 1, 2, 2, 0, 0});
-  CHECK(default_result.total_cost == 24.0);
-
-  auto override_problem = seed_sensitive_pam_problem();
-  override_problem.set_random_seed(/* --seed */ 29);
-  const auto override_result = run_cli_pam(override_problem, 3, 100);
-  CHECK(override_result.medoid_indices == std::vector<int>{4, 1, 7});
-  CHECK(override_result.labels == std::vector<int>{1, 1, 1, 0, 0, 0, 2, 2});
-  CHECK(override_result.total_cost == 20.0);
-}
-
-TEST_CASE("CLI PAM n_init retains the best deterministic restart",
-          "[cli][seed][pam][n_init]")
-{
-  constexpr auto base_seed = dtwc::settings::DEFAULT_RANDOM_SEED;
-
-  auto one_problem = seed_sensitive_pam_problem();
-  const auto one = run_cli_pam(one_problem, 3, 100);
-  CHECK(one.total_cost == 24.0);
-
-  auto improving_problem = seed_sensitive_pam_problem();
-  improving_problem.set_random_seed(base_seed + 1);
-  const auto improving = run_cli_pam(improving_problem, 3, 100);
-  CHECK(improving.total_cost == 20.0);
-
-  // --n-init=2 must try base_seed and base_seed+1, then retain the lower-cost
-  // result rather than merely returning the final or the first restart.
-  for (int repetition = 0; repetition < 3; ++repetition) {
-    auto problem = seed_sensitive_pam_problem();
-    problem.set_n_repetitions(2); // mirrors main()'s parsed CLI state
-    const auto result = run_cli_pam(problem, 3, 100);
-
-    CAPTURE(repetition);
-    CHECK(result.medoid_indices == improving.medoid_indices);
-    CHECK(result.labels == improving.labels);
-    CHECK(result.total_cost == improving.total_cost);
-    CHECK(result.iterations == improving.iterations);
-    CHECK(result.converged == improving.converged);
-  }
-
-  // set_n_repetitions(0) throws (O-06); only the deprecated field still reaches
-  // run_cli_pam's own check.
-  auto invalid_problem = seed_sensitive_pam_problem();
-  REQUIRE_THROWS_AS(invalid_problem.set_n_repetitions(0), dtwc::InvalidInput);
-#if defined(__clang__)
-#  pragma clang diagnostic push
-#  pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic push
-#  pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#  pragma warning(push)
-#  pragma warning(disable : 4996)
-#endif
-  invalid_problem.N_repetition = 0;
-#if defined(__clang__)
-#  pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#  pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#  pragma warning(pop)
-#endif
-  REQUIRE_THROWS_WITH(
-    run_cli_pam(invalid_problem, 3, 100),
-    "run_cli_pam: n_init must be at least 1.");
-
-  auto overflow_problem = seed_sensitive_pam_problem();
-  overflow_problem.set_n_repetitions(2);
-  overflow_problem.set_random_seed(std::numeric_limits<std::uint64_t>::max());
-  REQUIRE_THROWS_WITH(
-    run_cli_pam(overflow_problem, 3, 100),
-    "run_cli_pam: random_seed + n_init - 1 overflows uint64.");
-}
-
-TEST_CASE("CLI TADPole threshold uses mmap or fails before dense allocation",
-          "[cli][storage][mmap][tadpole]")
-{
-  ScratchDirectory scratch{"dtwc_cli_tadpole_storage"};
-  auto prob = tiny_storage_problem();
-  const auto cache = scratch.path / "tadpole_distmat.cache";
-
+  const ScratchDirectory scratch{ "dtwc_cli_tadpole_storage" };
+  auto config = mapped_config(ClusterMethod::TADPole, scratch, "tadpole");
+  config.tadpole_dc = 3.0;
 #ifdef DTWC_HAS_MMAP
-  const auto selected = configure_cli_distance_storage(
-    prob, "tadpole", /*mmap_threshold=*/0, cache);
-
-  REQUIRE(selected == cache);
-  REQUIRE(std::holds_alternative<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix()));
-  REQUIRE(std::filesystem::exists(cache));
-
-  // Exercise the real TADPole exact/fallback schedule. Its lazy cache writes
-  // must populate the mapped matrix rather than replacing it with dense storage.
-  const auto result = dtwc::algorithms::tadpole(
-    prob, /*n_clusters=*/2, /*dc=*/3.0, /*prune=*/false);
-  REQUIRE(result.labels.size() == prob.size());
-  REQUIRE(std::holds_alternative<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix()));
-  REQUIRE(std::get<dtwc::core::MmapDistanceMatrix>(prob.distance_matrix())
-            .is_computed(0, 1));
+  // TADPole's exact distances go through dist_by_ind(), so it is NOT exempt.
+  const auto result = dtwc::run(config, tiny_series());
+  CHECK(result.labels().size() == 3);
+  CHECK(cache_exists(scratch, "tadpole"));
 #else
-  REQUIRE_THROWS_WITH(
-    configure_cli_distance_storage(prob, "tadpole", /*mmap_threshold=*/0, cache),
-    Catch::Matchers::ContainsSubstring("requires memory-mapped distance storage")
-      && Catch::Matchers::ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
-
-  // The capability error must happen before dist_by_ind can lazily allocate N^2
-  // packed doubles on the heap.
-  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(prob.distance_matrix()));
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
-  REQUIRE_FALSE(std::filesystem::exists(cache));
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
+                    ContainsSubstring("requires memory-mapped distance storage")
+                      && ContainsSubstring("DTWC_ENABLE_LLFIO=ON"));
+  CHECK_FALSE(cache_exists(scratch, "tadpole"));
 #endif
 }
 
-TEST_CASE("CLI OneBatch keeps its own O(Nm) storage when mmap threshold fires",
-          "[cli][storage][onebatch]")
+TEST_CASE("run's OneBatch keeps its own O(Nm) storage when the mmap threshold fires", "[cli][storage][onebatch]")
 {
-  ScratchDirectory scratch{"dtwc_cli_onebatch_storage"};
-  auto prob = tiny_storage_problem();
-  const auto cache = scratch.path / "onebatch_distmat.cache";
-
-  const auto selected = configure_cli_distance_storage(
-    prob, "onebatch", /*mmap_threshold=*/0, cache);
-
-  REQUIRE_FALSE(selected.has_value());
-  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(prob.distance_matrix()));
-  REQUIRE(prob.dense_distance_matrix().size() == 0);
-  REQUIRE_FALSE(std::filesystem::exists(cache));
+  const ScratchDirectory scratch{ "dtwc_cli_onebatch_storage" };
+  CHECK(dtwc::run(mapped_config(ClusterMethod::OneBatch, scratch, "onebatch"), tiny_series()).labels().size() == 3);
+  CHECK_FALSE(cache_exists(scratch, "onebatch"));
 }
 
-TEST_CASE("CLI non-full FastCLARA does not open an unused parent matrix",
-          "[cli][storage][clara]")
+TEST_CASE("run's non-full FastCLARA does not open an unused parent matrix", "[cli][storage][clara]")
 {
-  ScratchDirectory scratch{"dtwc_cli_clara_storage"};
-  auto prob = tiny_storage_problem();
-  const auto cache = scratch.path / "clara_distmat.cache";
+  const ScratchDirectory scratch{ "dtwc_cli_clara_storage" };
+  auto config = mapped_config(ClusterMethod::CLARA, scratch, "clara");
+  config.sample_size = 2; // < N = 3
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  CHECK_FALSE(cache_exists(scratch, "clara"));
 
-  const auto selected = configure_cli_distance_storage(
-    prob, "clara", /*mmap_threshold=*/0, cache,
-    dtwc::core::MetricType::L1,
-    /*legacy_checkpoint_requested=*/false,
-    /*legacy_distance_matrix_requested=*/false,
-    /*clara_uses_full_sample=*/false);
-
-  CHECK_FALSE(selected.has_value());
-  CHECK(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
-    prob.distance_matrix()));
-  CHECK(prob.dense_distance_matrix().size() == 0);
-  CHECK_FALSE(std::filesystem::exists(cache));
-
-  CHECK_THROWS_WITH(
-    configure_cli_distance_storage(
-      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
-      /*legacy_checkpoint_requested=*/true,
-      /*legacy_distance_matrix_requested=*/false,
-      /*clara_uses_full_sample=*/false),
-    Catch::Matchers::ContainsSubstring("unused O(N^2) state"));
-  // GT-4: conflicting options are bad input, not a bare runtime_error.
-  CHECK_THROWS_AS(
-    configure_cli_distance_storage(
-      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
-      /*legacy_checkpoint_requested=*/true,
-      /*legacy_distance_matrix_requested=*/false,
-      /*clara_uses_full_sample=*/false),
-    dtwc::InvalidInput);
-  CHECK_THROWS_WITH(
-    configure_cli_distance_storage(
-      prob, "clara", 0, cache, dtwc::core::MetricType::L1,
-      /*legacy_checkpoint_requested=*/false,
-      /*legacy_distance_matrix_requested=*/true,
-      /*clara_uses_full_sample=*/false),
-    Catch::Matchers::ContainsSubstring("unused O(N^2) state"));
+  config.checkpoint = (scratch.path / "ckpt").string();
+  CHECK_THROWS_MATCHES(dtwc::run(config, tiny_series()), dtwc::InvalidInput, // bad input, not a runtime_error (GT-4)
+                       Catch::Matchers::MessageMatches(ContainsSubstring("unused O(N^2) state")));
+  config.checkpoint.clear();
+  config.dist_matrix = (scratch.path / "never_read.csv").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("unused O(N^2) state"));
 }
 
-TEST_CASE("CLI mmap storage binds the selected pointwise metric",
-          "[cli][storage][mmap][fingerprint]")
+TEST_CASE("run's mmap storage binds the pointwise metric", "[cli][storage][mmap][fingerprint]")
 {
 #ifndef DTWC_HAS_MMAP
   SKIP("mmap support not compiled in (DTWC_ENABLE_LLFIO=OFF)");
 #else
-  ScratchDirectory scratch{"dtwc_cli_metric_fingerprint"};
-  const auto cache = scratch.path / "metric_distmat.cache";
+  const ScratchDirectory scratch{ "dtwc_cli_metric_fingerprint" };
+  auto config = mapped_config(ClusterMethod::PAM, scratch, "metric");
+  config.metric = dtwc::core::MetricType::SquaredL2;
+  CHECK(dtwc::run(config, tiny_series()).labels().size() == 3);
+  REQUIRE(cache_exists(scratch, "metric"));
 
-  {
-    auto squared = tiny_storage_problem();
-    REQUIRE(configure_cli_distance_storage(
-              squared, "pam", /*mmap_threshold=*/0, cache,
-              dtwc::core::MetricType::SquaredL2) == cache);
-    // Simulate an externally produced GPU entry; the cache identity, not CPU
-    // dispatch, is what this CLI helper owns.
-    std::get<dtwc::core::MmapDistanceMatrix>(squared.distance_matrix())
-      .set(0, 1, 7.0);
-  }
-
-  auto l1 = tiny_storage_problem();
-  REQUIRE_THROWS_WITH(
-    configure_cli_distance_storage(
-      l1, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1),
-    Catch::Matchers::ContainsSubstring("fingerprint mismatch"));
+  config.metric = dtwc::core::MetricType::L1; // the same cache file, other distances
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()), ContainsSubstring("fingerprint mismatch"));
 #endif
 }
 
-TEST_CASE("CLI rejects legacy CSV checkpoint plus mmap before either is opened",
-          "[cli][storage][mmap][checkpoint]")
+TEST_CASE("run rejects a legacy CSV checkpoint plus mmap before either is opened", "[cli][storage][mmap][checkpoint]")
 {
-  ScratchDirectory scratch{"dtwc_cli_checkpoint_mmap"};
-  auto prob = tiny_storage_problem();
-  const auto cache = scratch.path / "checkpoint_distmat.cache";
-
-  REQUIRE_THROWS_WITH(
-    configure_cli_distance_storage(
-      prob, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1,
-      /*legacy_checkpoint_requested=*/true),
-    Catch::Matchers::ContainsSubstring("cannot be combined")
-      && Catch::Matchers::ContainsSubstring("resumes automatically"));
-  REQUIRE_FALSE(std::filesystem::exists(cache));
-  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
-    prob.distance_matrix()));
+  const ScratchDirectory scratch{ "dtwc_cli_checkpoint_mmap" };
+  auto config = mapped_config(ClusterMethod::PAM, scratch, "checkpoint");
+  config.checkpoint = (scratch.path / "ckpt").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
+                    ContainsSubstring("cannot be combined") && ContainsSubstring("resumes automatically"));
+  CHECK_FALSE(cache_exists(scratch, "checkpoint"));
 }
 
-TEST_CASE("CLI rejects legacy precomputed CSV plus mmap before false success",
-          "[cli][storage][mmap][dist-matrix]")
+TEST_CASE("run rejects a legacy precomputed CSV plus mmap before false success", "[cli][storage][mmap][dist-matrix]")
 {
-  ScratchDirectory scratch{"dtwc_cli_precomputed_mmap"};
-  auto prob = tiny_storage_problem();
-  const auto cache = scratch.path / "precomputed_distmat.cache";
-
-  REQUIRE_THROWS_WITH(
-    configure_cli_distance_storage(
-      prob, "pam", /*mmap_threshold=*/0, cache, dtwc::core::MetricType::L1,
-      /*legacy_checkpoint_requested=*/false,
-      /*legacy_distance_matrix_requested=*/true),
-    Catch::Matchers::ContainsSubstring("--dist-matrix")
-      && Catch::Matchers::ContainsSubstring("cannot be combined")
-      && Catch::Matchers::ContainsSubstring("importing"));
-  REQUIRE_FALSE(std::filesystem::exists(cache));
-  REQUIRE(std::holds_alternative<dtwc::core::DenseDistanceMatrix>(
-    prob.distance_matrix()));
-}
-
-// ---------------------------------------------------------------------------
-// CLI / TOML flag deprecation registry (Task 2.3, api-contract-2.0.md §4/§7)
-//
-// These pin the SSOT table (cli_renames) and the warning formatter that
-// dtwc_cl main() iterates in its post-parse handler to (a) accept an old flag /
-// old TOML key, (b) emit exactly one stderr warning per use, and (c)
-// yield precedence to the canonical spelling. The unit test cannot link CLI11
-// (DTWC_CL_NO_MAIN excludes it), so it drives the CLI11-free mechanism directly;
-// the live CLI11 routing + stderr emission is exercised end-to-end against the
-// built dtwc_cl binary (Task 2.3 verification).
-// ---------------------------------------------------------------------------
-
-// "new canonical flag works": the canonical spellings are NOT flagged as
-// deprecated, and the two renamed concepts map old -> new correctly.
-TEST_CASE("cli_renames maps deprecated flags to contract-canonical names", "[cli][deprecation]")
-{
-  // Deprecated CLI flag spellings resolve to the 2.0 canonical flag.
-  REQUIRE(canonical_flag_for("--clusters") == "--n-clusters"); // §1.5/§2.1 n_clusters
-  REQUIRE(canonical_flag_for("--restart") == "--resume");      // §2.7
-
-  // TOML "old key acceptance": the bare-key form (no leading dashes, i.e. how
-  // it appears in a --config TOML file) resolves the same.
-  REQUIRE(canonical_flag_for("clusters") == "--n-clusters");
-  REQUIRE(canonical_flag_for("restart") == "--resume");
-
-  // Canonical / unknown spellings are NOT deprecated (no false warning).
-  REQUIRE(canonical_flag_for("--n-clusters").empty());
-  REQUIRE(canonical_flag_for("n-clusters").empty());
-  REQUIRE(canonical_flag_for("--resume").empty());
-  REQUIRE(canonical_flag_for("--method").empty());
-  REQUIRE(canonical_flag_for("--skip-cols").empty()); // caller flag stays canonical
-}
-
-// "old flag works AND emits the deprecation warning" — pins the exact one-line
-// stderr message the post-parse handler prints (the warning mechanism).
-TEST_CASE("format_deprecation_warning is the exact one-line stderr message", "[cli][deprecation]")
-{
-  REQUIRE(format_deprecation_warning("--clusters", "--n-clusters")
-          == "[dtwc] warning: '--clusters' is deprecated, use '--n-clusters' instead");
-  REQUIRE(format_deprecation_warning("--restart", "--resume")
-          == "[dtwc] warning: '--restart' is deprecated, use '--resume' instead");
-}
-
-// The rename table is the de-facto CLI API surface: complete + internally
-// consistent (both spellings are long flags, they differ, and the lookup
-// round-trips for every entry).
-TEST_CASE("cli_renames table is complete and internally consistent", "[cli][deprecation]")
-{
-  const auto &t = cli_renames();
-  REQUIRE(t.size() == 2);
-  for (const auto &r : t) {
-    REQUIRE(r.old_flag.rfind("--", 0) == 0);
-    REQUIRE(r.new_flag.rfind("--", 0) == 0);
-    REQUIRE(r.old_flag != r.new_flag);
-    REQUIRE(canonical_flag_for(r.old_flag) == r.new_flag);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// F7 planner and FastCLARA guard coverage (Arrow-OFF)
-//
-// `resolve_parquet_cli_plan` (dtwc_cl.cpp) is a file-local CLI metadata planner
-// included into this test translation unit. It sits outside
-// `#ifdef DTWC_HAS_PARQUET`, so its arithmetic compiles and runs in the
-// canonical Arrow-OFF gate. This is direct production-seam coverage, not proof
-// that the real CLI reaches its Arrow-ON invocation site.
-//
-// The `<=` side of the planner's `ram_limit == 0 || bytes <= ram_limit` test is
-// already pinned above ("Parquet CLI plan selects streaming before payload
-// materialization", at 4096/4097). What no test covered until now is the
-// `ram_limit == 0` disjunct.
-//
-// The byte-identity half of F8 (resident vs forced-stream labels/medoids/
-// checkpoint SHA-256) needs a Parquet reader and is NOT in this case.
-// ---------------------------------------------------------------------------
-
-TEST_CASE("Parquet CLI plan treats a zero RAM limit as uncapped",
-          "[cli][parquet][ram][streaming]")
-{
-  // `ram_limit == 0` means "no cap", never "a cap of zero bytes": no resident
-  // estimate, however large, may select streaming.
-  constexpr auto huge = std::numeric_limits<size_t>::max();
-
-  const auto uncapped = resolve_parquet_cli_plan(
-    "clara", /*series_count=*/6001, /*estimated_resident_bytes=*/huge,
-    /*ram_limit=*/0, ParquetCliLayout::ListColumn);
-  CHECK_FALSE(uncapped.stream_payload);
-  CHECK(uncapped.materialize_payload());
-  CHECK(uncapped.estimated_resident_bytes == huge);
-
-  // A zero cap returns before the method and layout rejections, so the routes
-  // that a cap forbids stay legal when nothing is capped.
-  CHECK_NOTHROW(resolve_parquet_cli_plan(
-    "pam", 20, huge, 0, ParquetCliLayout::ScalarColumn));
-  CHECK_NOTHROW(resolve_parquet_cli_plan(
-    "clara", 20, huge, 0, ParquetCliLayout::Directory));
-}
-
-TEST_CASE("CLI validates a binary result before replay",
-          "[cli][resume][checkpoint]")
-{
-  dtwc::core::ClusteringResult valid;
-  valid.labels = {0, 0, 1, 1};
-  valid.medoid_indices = {0, 2};
-  valid.total_cost = 4.5;
-  valid.iterations = 7;
-  valid.converged = false;
-  CHECK(validate_cli_resume_result(valid, 4, 2).empty());
-
-  auto candidate = valid;
-  candidate.labels.pop_back();
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("current input has 4 series"));
-
-  candidate = valid;
-  candidate.medoid_indices.pop_back();
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("--n-clusters requests 2"));
-
-  candidate = valid;
-  candidate.labels[0] = 2;
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("label[0]=2 is outside [0,2)"));
-
-  candidate = valid;
-  candidate.medoid_indices[0] = 4;
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("medoid[0]=4 is outside [0,4)"));
-
-  candidate = valid;
-  candidate.medoid_indices[1] = candidate.medoid_indices[0];
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("medoid index 0 is duplicated"));
-
-  candidate = valid;
-  candidate.iterations = -1;
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("iteration count -1 is negative"));
-
-  candidate = valid;
-  candidate.total_cost = std::numeric_limits<double>::infinity();
-  CHECK_THAT(
-    validate_cli_resume_result(candidate, 4, 2),
-    Catch::Matchers::ContainsSubstring("total cost is not finite"));
+  const ScratchDirectory scratch{ "dtwc_cli_precomputed_mmap" };
+  auto config = mapped_config(ClusterMethod::PAM, scratch, "precomputed");
+  config.dist_matrix = (scratch.path / "never_read.csv").string();
+  CHECK_THROWS_WITH(dtwc::run(config, tiny_series()),
+                    ContainsSubstring("--dist-matrix") && ContainsSubstring("cannot be combined")
+                      && ContainsSubstring("importing"));
+  CHECK_FALSE(cache_exists(scratch, "precomputed"));
 }

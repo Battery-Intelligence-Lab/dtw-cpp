@@ -11,14 +11,13 @@
  *    `InvalidInput`, while `.dtws` without llfio is `IOError`. A format this build
  *    cannot read is `IOError`.
  *
- * The CLI translation unit is compiled with DTWC_CL_NO_MAIN, as in
- * unit_test_cli_args.cpp, so its helpers are the production code.
+ * dtwc_cl's pipeline is dtwc::run (IF-2 S3), which the third case drives.
  *
  * @date 24 Sep 2026
  */
 
-#define DTWC_CL_NO_MAIN
-#include "../../dtwc/dtwc_cl.cpp" // require_input_format_is_built
+#include "cli/run.hpp"
+#include "dtwc.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
@@ -35,6 +34,7 @@
 using Catch::Matchers::ContainsSubstring;
 using Catch::Matchers::MessageMatches;
 using Catch::Matchers::StartsWith;
+namespace fs = std::filesystem;
 
 namespace {
 
@@ -99,18 +99,23 @@ TEST_CASE("ignoreBOM: a partial mark that cannot be handed back names the file",
 TEST_CASE("dtwc_cl: an input format this build cannot read is IOError",
           "[cli][io][error]")
 {
-  CHECK_NOTHROW(require_input_format_is_built(false, false));
-#ifdef DTWC_HAS_PARQUET
-  CHECK_NOTHROW(require_input_format_is_built(true, false));
-#else
-  CHECK_THROWS_MATCHES(require_input_format_is_built(true, false), dtwc::IOError,
+  // The format is judged by the name alone, before any file is opened: none exists.
+  const auto run_on = [](const char *input) {
+    dtwc::Config config;
+    config.input = input;
+    config.output.clear();
+    (void)dtwc::run(config);
+  };
+  // Control: a format every build reads fails in its reader, naming the file.
+  CHECK_THROWS_MATCHES(run_on("missing.csv"), dtwc::IOError,
+                       MessageMatches(StartsWith("load: failed to read 'missing.csv': ")));
+#ifndef DTWC_HAS_PARQUET
+  CHECK_THROWS_MATCHES(run_on("missing.parquet"), dtwc::IOError,
                        MessageMatches(ContainsSubstring("Parquet input")
                                       && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
 #endif
-#ifdef DTWC_HAS_ARROW
-  CHECK_NOTHROW(require_input_format_is_built(false, true));
-#else
-  CHECK_THROWS_MATCHES(require_input_format_is_built(false, true), dtwc::IOError,
+#ifndef DTWC_HAS_ARROW
+  CHECK_THROWS_MATCHES(run_on("missing.arrow"), dtwc::IOError,
                        MessageMatches(ContainsSubstring("Arrow IPC input")
                                       && ContainsSubstring("-DDTWC_ENABLE_ARROW=ON")));
 #endif

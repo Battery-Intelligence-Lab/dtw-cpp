@@ -5,13 +5,15 @@
  * @details YAML is translated into CLI11 `ConfigItem`s, so CLI11 alone owns
  * precedence (command-line values beat file values), option validation,
  * deprecated-key warnings and --help. Without DTWC_HAS_YAML a YAML file is
- * refused with a typed error rather than misread as TOML.
+ * refused with IOError rather than misread as TOML.
  *
  * @author Volkan Kumtepeli
  * @date 02 Sep 2026
  */
 
 #pragma once
+
+#include "../base/error.hpp"
 
 #include <CLI/CLI.hpp>
 #ifdef DTWC_HAS_YAML
@@ -141,7 +143,8 @@ private:
     collect(docs.front(), {}, items);
     return items;
 #else
-    throw CLI::ConfigError(source() + ": built without YAML support; use TOML");
+    // A format this build cannot read is an IOError (DECISIONS 2026-09-24).
+    throw IOError(source() + ": built without YAML support; use TOML, or rebuild with -DDTWC_ENABLE_YAML=ON");
 #endif
   }
 
