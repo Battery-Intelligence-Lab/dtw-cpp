@@ -802,6 +802,75 @@ TEST_CASE("FX-6 the text reader parses through parse_number",
                     ContainsSubstring("invalid numeric field '0x1p3'"));
 }
 
+TEST_CASE("FX-6 the rest of the reader audit's input matrix",
+          "[fileOperations][fx6][matrix]")
+{
+  // Written in binary so that no line ending is translated on any platform.
+  struct Loads
+  {
+    std::string_view ext, bytes;
+    int skip_rows, skip_cols;
+    Series expected;
+  };
+  const Loads loads[] = {
+    { ".csv", "1,2,3\r\n4,5,6\r\n", 0, 0, { { 1, 2, 3 }, { 4, 5, 6 } } },
+    { ".txt", "1\t2\t3\r\n4\t5\t6\r\n", 0, 0, { { 1, 2, 3 }, { 4, 5, 6 } } },
+    { ".csv", "1,2,3\n4,5,6", 0, 0, { { 1, 2, 3 }, { 4, 5, 6 } } },
+    { ".csv", "1,2,3\n4,5\n6\n", 0, 0, { { 1, 2, 3 }, { 4, 5 }, { 6 } } },
+    { ".csv", "t1,t2,t3\n1,2,3\n", 1, 0, { { 1, 2, 3 } } },
+    { ".csv", ",0,1,2\n0,0.5,0.6,0.7\n1,0.1,0.2,0.3\n", 1, 1, { { 0.5, 0.6, 0.7 }, { 0.1, 0.2, 0.3 } } },
+    { ".csv", "t1,t2\n", 1, 0, {} },
+    { ".csv", "", 0, 0, {} },
+  };
+  for (const auto &c : loads) {
+    CAPTURE(c.bytes);
+    TemporaryBatchFile file(c.ext, c.bytes);
+    CHECK(load_path(file.path, c.skip_rows, c.skip_cols).p_vec == c.expected);
+  }
+
+  TemporaryBatchFile mixed_case_nan(".csv", "1,NaN,3\n");
+  const Data nan = load_path(mixed_case_nan.path);
+  REQUIRE(nan.p_vec.size() == 1);
+  CHECK(std::isnan(nan.p_vec[0][1]));
+
+  struct Fails
+  {
+    std::string_view ext, bytes, message;
+  };
+  const Fails fails[] = {
+    { ".csv", "t1,t2,t3\n1,2,3\n", "row 1, column 1: invalid numeric field 't1'" },
+    { ".csv", "1,-nan,3\n", "row 1, column 2: unapproved non-finite numeric field '-nan'" },
+    { ".csv", "1,NA,3\n", "row 1, column 2: invalid numeric field 'NA'" },
+    { ".csv", "\"1\",\"2\",\"3\"\n", "row 1, column 1: invalid numeric field '\"1\"'" },
+    { ".csv", "1;2;3\n4;5;6\n", "row 1, column 1: invalid numeric field '1;2;3'" },
+    { ".csv", "1,5;2,5;3,5\n", "row 1, column 2: invalid numeric field '5;2'" },
+    { ".tsv", "1,2,3\r\n", "row 1, column 1: invalid numeric field '1,2,3'" },
+    { ".txt", "1.0e+00  -2.5e+00\r\n", "row 1, column 1: invalid numeric field" },
+    { ".csv", "1,2,3,\n", "row 1, column 4: empty numeric field" },
+    { ".csv", "1,2,3\xC2\xA0\n", "row 1, column 3: invalid numeric field" },
+    { ".csv", "1,2,3\r4,5,6\r", "row 1, column 3" }, // a lone CR does not end a line
+    { ".csv", std::string_view{ "\xFF\xFE" "1\0,\0" "2\0\n\0", 10 }, "row 1, column 1: invalid numeric field" },
+  };
+  for (const auto &c : fails) {
+    CAPTURE(c.bytes);
+    TemporaryBatchFile file(c.ext, c.bytes);
+    CHECK_THROWS_WITH(load_path(file.path), ContainsSubstring(std::string(c.message)));
+  }
+
+  // A series folder: a missing value mid-file is an error, and so is a file that is not data.
+  const auto folder = fs::temp_directory_path() / "dtwc_fx6_matrix_folder";
+  std::error_code ec;
+  fs::remove_all(folder, ec);
+  fs::create_directories(folder);
+  std::ofstream(folder / "a.csv", std::ios::binary) << ",0\n0,0.5\n1,\n2,0.7\n";
+  CHECK_THROWS_WITH(load_path(folder, 1, 1), ContainsSubstring("row 3, column 2: empty numeric field"));
+  fs::remove(folder / "a.csv", ec);
+  std::ofstream(folder / "a.csv", std::ios::binary) << "1\n2\n3\n";
+  std::ofstream(folder / "README.md", std::ios::binary) << "# notes\r\nsee a.csv\r\n";
+  CHECK_THROWS_WITH(load_path(folder), ContainsSubstring("README.md' row 1, column 1: invalid numeric field"));
+  fs::remove_all(folder, ec);
+}
+
 TEST_CASE("FX-6 Problem rejects an empty series from any source",
           "[fileOperations][fx6][problem]")
 {

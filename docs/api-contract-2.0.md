@@ -16,8 +16,7 @@ STATUS: FROZEN 2026-07-07; implementation re-audited on 2026-07-29 — changes r
 > `python/src/_dtwcpp_core.cpp`, `python/dtwcpp/_api.py`,
 > `python/dtwcpp/__init__.py`, `python/dtwcpp/_hpc.py`,
 > `bindings/matlab/dtwc_mex.cpp`, `bindings/matlab/+dtwc/Problem.m`,
-> `bindings/matlab/+dtwc/DTWClustering.m`, and the API-surface inventory
-> `.claude/reports/api-surface-2026-07-06.md`.
+> and `bindings/matlab/+dtwc/DTWClustering.m`.
 >
 > **Implementation anchors.** Tier 1 lives in `dtwc/api.hpp`,
 > `python/dtwcpp/_api.py`, and `bindings/matlab/+dtwc/`; the permanent live

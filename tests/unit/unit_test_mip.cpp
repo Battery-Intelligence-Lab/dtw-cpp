@@ -799,7 +799,6 @@ TEST_CASE("MIP Benders warm start does not persist nested Lloyd artifacts",
 // ---------------------------------------------------------------------------
 // Task 0.5 regression: MIP status handling — assert() → real error path.
 //
-// Targets audit finding #7 (handoff-2026-06-01-adversarial-audit.md:17):
 // mip_Highs.cpp guarded the HiGHS model status with
 //     assert(model_status == HighsModelStatus::kOptimal);
 // which is a NO-OP under NDEBUG (release builds). A non-optimal solve therefore

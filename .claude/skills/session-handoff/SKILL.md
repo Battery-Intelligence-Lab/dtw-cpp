@@ -27,9 +27,8 @@ facts with their evidence and never inflates them.
    - `Status honesty` — what was built, run and tested, and what was not.
 3. **Update `PLAN.md`**: the wave status marks in §1 and §3, and nothing else. New decisions go to
    the log at the end of `DECISIONS.md`; measurements go to `.claude/baselines/`.
-4. **Prune**: keep the five most recent handoffs plus any that a gate script or a source comment
-   cites (`grep -rn "summaries/handoff-" scripts tests dtwc docs`). Delete the rest with `git rm`;
-   history keeps them.
+4. **Prune**: keep the newest two handoffs and delete the rest with `git rm`; history keeps them.
+   Code, tests and docs never cite a handoff: a comment states its reason itself.
 5. **Lessons**: if the session taught something durable, append one entry to `.claude/LESSONS.md`
    (headline, rule, one pointer). Keep it short; no gate pins the text.
 

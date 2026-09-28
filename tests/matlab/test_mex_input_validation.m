@@ -1,7 +1,7 @@
 function tests = test_mex_input_validation
 %TEST_MEX_INPUT_VALIDATION Regression tests for dtwc_mex entry-point guards.
 %
-%   Targets audit CRITICAL #6 (handoff-2026-06-01-adversarial-audit.md):
+%   Why these guards exist:
 %   dtwc_mex.cpp had NO mxIsDouble / mxIsComplex / dimension guard on any
 %   entry point. In the R2018a+ interleaved-complex API, mxGetDoubles()
 %   returns NULL for a non-double or complex array; the old code fed that
@@ -399,7 +399,6 @@ end
 % -------------------------------------------------------------------------
 %  A13: mx_to_dendrogram validated only the ROW count of 'merges'
 %  A14: label vectors were cast float->int without a finiteness check
-%  (.claude/reports/2026-09-02-review-backends-bindings.md)
 % -------------------------------------------------------------------------
 
 function test_dendrogram_three_column_merges_rejected(testCase)

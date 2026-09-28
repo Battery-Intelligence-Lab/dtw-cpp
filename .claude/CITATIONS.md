@@ -150,7 +150,7 @@ References used during development. Verify each citation independently before pu
   carveout, and dynamic shared-memory opt-in work.
 - NVIDIA. *Hopper Tuning Guide*. https://docs.nvidia.com/cuda/archive/12.1.0/hopper-tuning-guide/index.html - Informed DPX, TMA, distributed shared memory, and Hopper-specific performance ceilings.
 
-## Literature survey 2026-07-06 (see .claude/reports/literature-2026-07-06.md)
+## Literature survey 2026-07-06
 
 ### k-medoids and scalable clustering
 

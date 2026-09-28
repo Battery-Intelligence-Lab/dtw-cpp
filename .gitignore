@@ -84,7 +84,7 @@ uv.lock
 # Claude Code worktrees and session artifacts (not for version control)
 .claude/worktrees/
 /.claude/scheduled_tasks.lock
-# .claude/reports/
+.claude/reports/
 # .claude/summaries/
 # .claude/superpowers/
 

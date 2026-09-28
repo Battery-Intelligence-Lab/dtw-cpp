@@ -44,7 +44,7 @@ namespace dtwc::algorithms {
 core::ClusteringResult clarans(Problem &prob, const CLARANSOptions &opts)
 {
   // 64-bit size: the old `int N = static_cast<int>(prob.size())` silently
-  // truncated for size() > INT_MAX (audit handoff-2026-06-01:24). Loop
+  // truncated for size() > INT_MAX. Loop
   // counters stay `int` (signed-vs-signed against N -> no signed/unsigned
   // warning); the one int-typed RNG boundary below narrows N explicitly.
   const int64_t N = static_cast<int64_t>(prob.size());

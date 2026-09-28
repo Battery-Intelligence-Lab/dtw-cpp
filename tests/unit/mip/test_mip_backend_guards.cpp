@@ -1,8 +1,6 @@
 /**
  * @file test_mip_backend_guards.cpp
- * @brief Regression gate for the exact-MIP honesty guards added on 2026-09-02
- *        (.claude/reports/2026-09-02-review-backends-bindings.md, findings
- *        A1-A5, A9, B1).
+ * @brief Regression gate for the exact-MIP honesty guards added on 2026-09-02.
  *
  * Each case pins one guard that did not exist before:
  *

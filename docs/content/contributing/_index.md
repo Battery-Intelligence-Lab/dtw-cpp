@@ -10,5 +10,3 @@ Here you may find the documentation how to contribute!
 [Coding conventions](conventions/)
 
 [The list of contributors](contributors/)
-
-[TODO list](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/.claude/TODO.md)

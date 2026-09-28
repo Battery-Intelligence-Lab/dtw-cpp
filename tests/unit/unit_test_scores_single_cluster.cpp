@@ -2,8 +2,7 @@
  * @file unit_test_scores_single_cluster.cpp
  * @brief R4(a): Nc<2 guard for the Davies-Bouldin and Dunn indices.
  *
- * The adversarial audit (handoff-2026-06-01:25) found that davies_bouldin
- * and dunn lacked an Nc<2 guard. With a single cluster the results are
+ * davies_bouldin and dunn lacked an Nc<2 guard. With a single cluster the results are
  * mathematically undefined and silently wrong rather than erroring:
  *   - DBI: the max_{j!=i} loop finds no second cluster, so the index collapses
  *          to 0 (looks like a "perfect" clustering).

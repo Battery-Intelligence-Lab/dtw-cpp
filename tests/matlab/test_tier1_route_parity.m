@@ -2,8 +2,7 @@ function tests = test_tier1_route_parity
 %TEST_TIER1_ROUTE_PARITY MATLAB Tier-1 must delegate every decision to C++.
 %
 %   The MATLAB Tier-1 layer used to re-implement dtwc::cluster()'s routing in
-%   .m and drifted from it (report .claude/reports/2026-09-02-parity.md,
-%   "Drift list"). These tests pin the CasADi rule: the same names, signatures
+%   .m and drifted from it. These tests pin the CasADi rule: the same names, signatures
 %   AND behaviour in C++, Python and MATLAB, with C++ as the reference.
 %
 %   Each test names the drift item it closes. Oracles are the Tier-2 entry

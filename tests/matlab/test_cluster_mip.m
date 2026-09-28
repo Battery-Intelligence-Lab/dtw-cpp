@@ -1,7 +1,7 @@
 function tests = test_cluster_mip
 %TEST_CLUSTER_MIP Regression test for dtwc.cluster(..., 'method','mip').
 %
-%   Targets audit finding A12 (.claude/reports/2026-09-02-review-backends-bindings.md):
+%   Why:
 %   the 'mip' branch of +dtwc/cluster.m called prob.set_method('mip') and
 %   prob.cluster() WITHOUT ever calling prob.set_n_clusters(k). Problem::Nc
 %   defaults to 1, so the exact MIP backend solved a 1-medoid problem and

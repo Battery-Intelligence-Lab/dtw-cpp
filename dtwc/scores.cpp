@@ -183,7 +183,7 @@ double davies_bouldin(Problem &prob)
   // The Davies-Bouldin index is undefined for a single cluster: R_ij needs a
   // second cluster (j != i) to form any similarity ratio, so the max_{j!=i}
   // loop below finds nothing and the index silently collapses to 0. Reject
-  // Nc < 2 with a clear error instead (audit handoff-2026-06-01:25).
+  // Nc < 2 with a clear error instead.
   if (Nc < 2)
     throw InvalidInput(
       "davies_bouldin requires at least 2 clusters; the Davies-Bouldin index "

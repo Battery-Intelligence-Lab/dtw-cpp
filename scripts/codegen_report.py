@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codegen report for the DTW hot paths (ledger X-04).
+"""Codegen report for the DTW hot paths (X-04).
 
 Answers one question with evidence instead of opinion: *which loops does the
 compiler actually vectorise, and which does it refuse to?* That is the input
@@ -13,20 +13,14 @@ the report describes the code that actually ships -- same flags, same floating
 point model, same architecture tuning. The object goes to a temporary file and
 is discarded; nothing in the build tree is touched.
 
-Two modes:
-
-  --record    write the expectation table from what the compiler does today
-  (default)   compare today against the recorded table and report drift
-
 Prints
 
-  CODEGEN_REPORT tool=<cc> tus=<n> vectorized=<n> missed=<n> expected=<n> drift=<n> verdict=<PASS|FAIL>
+  CODEGEN_REPORT tool=<cc> tus=<n> vectorized=<n> missed=<n>
 
-Drift is a loop whose vectorisation state changed in either direction. A loop
-that stopped vectorising is a possible performance regression; one that started
-is good news that still has to be recorded deliberately, so both fail until a
-human looks. Exit 0 on PASS, 1 on drift, 2 when the report could not be produced
-(no clang, no compile_commands.json, no matching TU) -- never silently green.
+then one line per loop: file:line:col and whether it was vectorised. A manual
+tool, not a gate: the answer depends on the compiler and the host. Exit 0 when a
+report was produced, 2 when it could not be (no clang, no compile_commands.json,
+no matching TU) -- never silently green.
 """
 
 from __future__ import annotations
@@ -41,7 +35,6 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TABLE = ROOT / "tests" / "codegen_expectations.json"
 
 # clang remark lines look like:
 #   path/file.cpp:123:45: remark: vectorized loop (vectorization width: 2, ...) [-Rpass=loop-vectorize]
@@ -157,21 +150,19 @@ def main() -> int:
         default=ROOT / "scripts" / "codegen_probe.cpp",
         help="the probe TU that instantiates the kernels (see its header comment)",
     )
-    ap.add_argument("--table", type=Path, default=DEFAULT_TABLE)
-    ap.add_argument("--record", action="store_true", help="write the table instead of checking it")
     args = ap.parse_args()
 
     try:
         db = compile_commands(args.build_dir)
     except FileNotFoundError as exc:
-        print(f"CODEGEN_REPORT tool=none tus=0 vectorized=0 missed=0 expected=0 drift=0 verdict=FAIL")
+        print(f"CODEGEN_REPORT tool=none tus=0 vectorized=0 missed=0 verdict=FAIL")
         print(f"  no compile_commands.json at {exc}", file=sys.stderr)
         return 2
 
     pattern = re.compile(args.match)
     entries = [e for e in db if pattern.search(e["file"]) and "_deps" not in e["file"]]
     if not entries:
-        print("CODEGEN_REPORT tool=none tus=0 vectorized=0 missed=0 expected=0 drift=0 verdict=FAIL")
+        print("CODEGEN_REPORT tool=none tus=0 vectorized=0 missed=0 verdict=FAIL")
         print(f"  no translation unit matched {args.match!r}", file=sys.stderr)
         return 2
 
@@ -186,7 +177,7 @@ def main() -> int:
     if not records:
         print(
             f"CODEGEN_REPORT tool={tool} tus={len(entries)} vectorized=0 missed=0 "
-            f"expected=0 drift=0 verdict=FAIL"
+            f"verdict=FAIL"
         )
         print(
             "  the compile produced no loop-vectorize remarks at all. Either the\n"
@@ -200,62 +191,13 @@ def main() -> int:
     records.sort(key=key)
     today = {key(r): r["vectorized"] for r in records}
     vectorized = sum(1 for v in today.values() if v)
-    missed = len(today) - vectorized
-
-    if args.record:
-        args.table.write_text(
-            json.dumps(
-                {
-                    "_comment": (
-                        "Seeded by scripts/codegen_report.py --record. Each key is "
-                        "file:line:col of a loop; the value says whether clang "
-                        "vectorised it. Regenerate deliberately and review the diff: "
-                        "a loop flipping to false is a possible hot-path regression."
-                    ),
-                    "loops": today,
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-        print(
-            f"CODEGEN_REPORT tool={tool} tus={len(entries)} vectorized={vectorized} "
-            f"missed={missed} expected={len(today)} drift=0 verdict=PASS"
-        )
-        print(f"  recorded {len(today)} loops -> {args.table.relative_to(ROOT)}")
-        return 0
-
-    if not args.table.is_file():
-        print(
-            f"CODEGEN_REPORT tool={tool} tus={len(entries)} vectorized={vectorized} "
-            f"missed={missed} expected=0 drift={len(today)} verdict=FAIL"
-        )
-        print(
-            f"  no expectation table at {args.table}. Seed it with --record and "
-            f"commit it; an absent table pins nothing.",
-            file=sys.stderr,
-        )
-        return 2
-
-    expected = json.loads(args.table.read_text(encoding="utf-8"))["loops"]
-    drift = []
-    for k in sorted(set(expected) | set(today)):
-        was, now = expected.get(k), today.get(k)
-        if was != now:
-            drift.append((k, was, now))
-
-    verdict = "PASS" if not drift else "FAIL"
     print(
         f"CODEGEN_REPORT tool={tool} tus={len(entries)} vectorized={vectorized} "
-        f"missed={missed} expected={len(expected)} drift={len(drift)} verdict={verdict}"
+        f"missed={len(today) - vectorized}"
     )
-    for k, was, now in drift:
-        def state(v: object) -> str:
-            return "absent" if v is None else ("vectorized" if v else "not vectorized")
-        print(f"  {k}: {state(was)} -> {state(now)}", file=sys.stderr)
-    return 0 if not drift else 1
+    for k, v in today.items():
+        print(f"  {k}: {'vectorized' if v else 'not vectorized'}")
+    return 0
 
 
 if __name__ == "__main__":
