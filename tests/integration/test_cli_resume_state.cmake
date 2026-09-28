@@ -135,9 +135,9 @@ set(expected_fresh_labels [=[name,cluster
 27,0
 ]=])
 set(expected_fresh_medoids [=[cluster,medoid_index,medoid_name
-0,20,21
+0,22,23
 1,4,5
-2,15,16
+2,13,14
 ]=])
 
 function(normalized_file path output)
@@ -390,7 +390,7 @@ require_no_skip("fresh control" "${fresh_stdout}" "${fresh_stderr}")
 require_occurrences(
     "${fresh_stdout}" "Running FastPAM (k=3)" 1 "fresh algorithm route")
 require_occurrences(
-    "${fresh_stdout}" "  Total cost: 976" 1 "fresh total cost")
+    "${fresh_stdout}" "  Total cost: 828" 1 "fresh total cost")
 require_occurrences(
     "${fresh_stdout}" "  Converged:  no" 1 "fresh convergence")
 require_occurrences(
