@@ -116,3 +116,14 @@ diagnostic) and D-22 (no widening: counts become `index_t = std::int64_t`). The 
 decision record for integers, compatibility, labels per language, `hpc`, `Method`, device vocabulary, `auto`,
 PAM swap, exact solvers, the pruned fill, persistence, backends, diagnostics, Python I/O, records, gates and the
 CHANGELOG rule.
+- **2026-09-28 — OneBatchPAM and CLARA both stay.** Measured (exact costs and DTW-evaluation counts, deterministic;
+  wall-clock advisory because COMSOL and builds shared the machine): a trade-off — OneBatchPAM 1.4–4.7 % lower cost in 8
+  of 10 cells, CLARA fewer DTW evaluations for k ≤ 20, OneBatchPAM fewer at k = 100. Volkan's rule: trade-offs → both.
+  Evidence: `plans/2026-09-27-audit/phaseA_measurements.md`. OneBatchPAM's swap loop and final assignment are serial.
+- **2026-09-28 — mmap library: one that takes updates; not mio.** Volkan: "If you think mio is fine as it is, if not I
+  would prefer a library that takes updates." mio is not fine as it is: no commit since 2023-03, `CreateFileMapping`
+  failure checked against the wrong sentinel (issue #102), a destructor that syncs and drops errors, no exclusive
+  create. Access speed is not the reason: mio equals llfio when the file is created the same way. llfio stays (D-18),
+  pulled in header-only without the quickcpplib superbuild if the spike proves it builds in wheels; otherwise
+  Boost.Interprocess. New files are created non-sparse (`win_disable_sparse_file_creation`): a sparse mapped file cost
+  1.8× on random reads on Windows.

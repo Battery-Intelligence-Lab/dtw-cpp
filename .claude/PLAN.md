@@ -29,11 +29,21 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ W0.3 gitleaks in CI; Arrow-without-Parquet is a SKIP case in `test_io_readers`; literal-count markers cut
   (the D2, D3, F57 markers wait for W6d) — `0e47d37`
 - ☑ W1.1 records floor: reports, specs, archive, old handoffs, uncited baselines, −31k lines — `80c4dcb`
-- ☑ W1.2 PLAN, MAP, DECISIONS, LESSONS, runbook rewritten; the design document folded into MAP and DECISIONS
+- ☑ W1.2 PLAN, MAP, DECISIONS, LESSONS, runbook rewritten; the design document folded into MAP and DECISIONS — `dac62a7`
 - ☑ CHARTER carries the 09-27 instructions verbatim — `0068386`
-- ◐ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/`
-- ◐ CUDA build dir proven (nvcc 13.0 vs MSVC 14.50: `-allow-unsupported-compiler`, else the v143 toolset)
-- ◐ Q2 mio performance vs llfio, and Q3 OneBatchPAM vs CLARA at N ≈ 20k: measured, then decided
+- ◐ HEAD baseline: conformance digits and three benchmarks (CPU fill, GPU fill, PAM swap) → `baselines/` — waits for a
+  quiet machine (COMSOL runs on this box; no timing under load)
+- ☑ CUDA build proven in `build/cuda-verify-0928`: vcvars64 + explicit `CMAKE_CUDA_COMPILER` + `-allow-unsupported-compiler`
+  (recipe in `plans/2026-09-27-audit/phaseA_measurements.md`); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
+  CPU on the fixture. MSVC findings: 9 squared-L2 cross-path `==` checks differ in the last bit
+  (`test_problem_metric:109,322`, `test_run_resolution:148`) → compare with a tight relative tolerance;
+  `bench_openmp_schedule` needs the OpenMP 3.0 API that `/openmp:experimental` lacks → delete it (W4)
+- ☑ Q2 not mio (DECISIONS §3, 2026-09-28): llfio stays, header-only without the superbuild if the spike proves it
+  builds in wheels, else Boost.Interprocess; files created non-sparse (1.8× random reads on Windows)
+- ☑ Q3 OneBatchPAM and CLARA both stay: a measured trade-off (DECISIONS §3, 2026-09-28)
+- ◐ llfio header-only spike (worktree): pinned header downloads, no quickcpplib bootstrap; wheel build with llfio ON
+- ☐ `build/` reports Arrow ON but builds without it (Arrow not found with clang on Windows): Parquet tests run only in
+  `build/arrow-pyarrow-23` until W14b makes an unhonoured `ON` a configure error
 
 ## B — deletions (W2, W3, W5, W6)
 
@@ -43,7 +53,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W2d derivation 03 and the GPU LB docs follow
 - ☐ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46)
 - ☐ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU`
-- ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only
+- ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
+  `OneBatchWeighting` goes (NNIW stays the one weighting)
 - ☐ W3d `decode_assignment` + `Problem::set_result` replace `solution_transaction` and `warm_start`
 - ☐ W3e `Method::MIP` uses the selected solver at every N
 - ☐ W3f unclustered `silhouette()` and `batch_size < k` → `InvalidInput`; score aliases go
@@ -120,6 +131,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## After G (each behind a registered benchmark band)
 
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
+- ☐ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel; it is serial today
+- ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
 - ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5×
 
 ## Blocked on another machine
