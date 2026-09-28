@@ -115,15 +115,6 @@ dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_uni
 dtwc_add_test(NAME test_io_readers SOURCE ${_dtwc_test_source_test_io_readers}
     REQUIRES DTWC_HAS_ARROW)
 
-# unit_test_mpi owns main() (MPI_Init/MPI_Finalize cannot bracket Catch2's main),
-# so it prints no Catch2 summary in ANY configuration; its own line is the gate
-# instead. Without MPI its main() only prints that it skipped, and a skip is not
-# a pass, so it is registered only when dtwc++ publishes DTWC_HAS_MPI. The marker
-# is transcribed from unit_test_mpi.cpp:200-203 and unverified on this machine.
-dtwc_add_test(NAME unit_test_mpi SOURCE ${_dtwc_test_source_unit_test_mpi}
-    REQUIRES DTWC_HAS_MPI
-    MARKER_ONLY MARKER "=== MPI Tests: [0-9]+/[0-9]+ passed, 0 failed ===")
-
 # Capability-dependent tests: skip tolerance only in the build that lacks the
 # capability; strict everywhere else.
 foreach(_dtwc_mmap_test IN ITEMS
@@ -144,7 +135,7 @@ dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_tes
 # SKIP message names the missing device.
 foreach(_dtwc_device_test IN ITEMS
         test_cuda_correctness test_cuda_kernel_override test_cuda_launch_guards
-        test_cuda_lb_keogh test_metal_correctness test_metal_lb_keogh test_metal_mmap)
+        test_metal_correctness test_metal_mmap)
     dtwc_add_test(NAME ${_dtwc_device_test} SOURCE ${_dtwc_test_source_${_dtwc_device_test}} MAY_SKIP)
 endforeach()
 

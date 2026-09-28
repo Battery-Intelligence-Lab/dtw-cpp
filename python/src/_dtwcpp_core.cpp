@@ -1612,15 +1612,12 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, int device_id, bool verbose,
-           bool use_lb_keogh, double lb_threshold) {
+           int band, bool use_squared_l2, int device_id, bool verbose) {
           dtwc::cuda::CUDADistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.device_id = device_id;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
           require_finite_series(series, "compute_distance_matrix_cuda");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1634,33 +1631,10 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
-        "Returns NxN numpy array of DTW distances.\n"
-        "When `use_lb_keogh=True`, `band >= 0`, and `lb_threshold > 0`, pairs\n"
-        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned and read\n"
-        "NaN (not computed); the bound squares each excess under\n"
-        "`use_squared_l2`. A pair with no warping path under `band` reads the\n"
-        "finite double-max sentinel, not IEEE infinity.\n"
-        "NaN or +-inf in a series raises InvalidInput.");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &series,
-           int band, int device_id) {
-          require_finite_series(series, "compute_lb_keogh_cuda");
-          std::vector<double> lb_values;
-          {
-            nb::gil_scoped_release release;
-            auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
-            lb_values = std::move(result.lb_values);
-          }
-          const size_t np = lb_values.size();
-          return adopt_as_ndarray(std::move(lb_values), {np});
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
-        "Returns flat array of symmetric LB_Keogh values (upper triangle).\n"
-        "Requires band >= 0 (Sakoe-Chiba constraint).\n"
+        "Returns NxN numpy array of DTW distances. A pair with no warping\n"
+        "path under `band` reads the finite double-max sentinel, not IEEE\n"
+        "infinity.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("CUDA_AVAILABLE") = true;
@@ -1673,21 +1647,12 @@ NB_MODULE(_dtwcpp_core, m) {
         "Get CUDA device info string.");
 
   m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &, int, bool, int, bool,
-           bool, double) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
           throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &, int, int) -> nb::object {
-          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds on GPU (requires CUDA build).");
 
   m.attr("CUDA_AVAILABLE") = false;
 #endif
@@ -1705,15 +1670,11 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, bool verbose,
-           bool use_lb_keogh, double lb_threshold, int lb_envelope_band) {
+           int band, bool use_squared_l2, bool verbose) {
           dtwc::metal::MetalDistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
-          opts.lb_envelope_band = lb_envelope_band;
           require_finite_series(series, "compute_distance_matrix_metal");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1727,15 +1688,8 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances. When `use_lb_keogh=True`\n"
-        "on a wavefront dispatch path, pairs whose LB_Keogh lower bound exceeds\n"
-        "`lb_threshold` are pruned and read NaN (not computed). The bound\n"
-        "squares each excess under `use_squared_l2`; its envelope is the DTW\n"
-        "window (`band`, or the whole series for `band=-1`), and an\n"
-        "`lb_envelope_band` narrower than that window raises InvalidInput.\n"
+        "Returns NxN numpy array of DTW distances.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("METAL_AVAILABLE") = true;
@@ -1745,20 +1699,17 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
         "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &, int, bool, bool,
-           bool, double, int) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
           throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
   m.attr("METAL_AVAILABLE") = false;
 #endif
 
   // =========================================================================
-  // Capability detection: OpenMP, MPI
+  // Capability detection: OpenMP
   // =========================================================================
 
 #ifdef _OPENMP
@@ -1770,12 +1721,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("OPENMP_AVAILABLE") = false;
   m.def("openmp_max_threads", []() { return 1; },
         "Return 1 (OpenMP not compiled in).");
-#endif
-
-#ifdef DTWC_HAS_MPI
-  m.attr("MPI_AVAILABLE") = true;
-#else
-  m.attr("MPI_AVAILABLE") = false;
 #endif
 
   m.def("system_info", []() {
@@ -1801,11 +1746,6 @@ NB_MODULE(_dtwcpp_core, m) {
       info += "  Metal:  compiled but no GPU detected\n";
 #else
     info += "  Metal:  not compiled (macOS only)\n";
-#endif
-#ifdef DTWC_HAS_MPI
-    info += "  MPI:    available\n";
-#else
-    info += "  MPI:    not compiled (rebuild with -DDTWC_ENABLE_MPI=ON)\n";
 #endif
     return info;
   }, "Return a string summarizing available backends and capabilities.");

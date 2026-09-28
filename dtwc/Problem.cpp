@@ -1174,12 +1174,7 @@ void Problem::fill_distance_matrix()
     if (verbose_) {
       std::cout << backend << " distance matrix: " << result.pairs_computed
                 << " pairs in " << std::setprecision(3)
-                << result.gpu_time_sec * 1000 << " ms";
-      if (result.lb_time_sec > 0) {
-        std::cout << " (LB_Keogh: " << result.lb_time_sec * 1000 << " ms"
-                  << ", pruned " << result.pairs_pruned << ")";
-      }
-      std::cout << "\n";
+                << result.gpu_time_sec * 1000 << " ms\n";
     }
     return true;
   };

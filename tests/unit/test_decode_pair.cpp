@@ -12,8 +12,8 @@
  *
  * The shared dtwc::detail::decode_pair (FP64 seed + int64 correction) must
  * decode correctly at N = 8192 and N = 50000 and match the audited-correct MPI
- * reference formula bit-for-bit. Pure host C++ — buildable with no CUDA / Metal
- * / MPI toolchain, so it runs everywhere.
+ * reference formula bit-for-bit. Pure host C++ — buildable with no CUDA or Metal
+ * toolchain, so it runs everywhere.
  *
  * WHY THE UNFIXED CODE FAILS THESE:
  *   - old_metal_fp32_decode() (a verbatim copy of the retired Metal decode) is
@@ -310,7 +310,7 @@ TEST_CASE("kDecodePairMSL integer-isqrt algorithm matches SSOT decode_pair",
           "[decode_pair][metal]")
 {
   // LIVE code path exercised: dtwc::detail::decode_pair — the single source of
-  // truth compiled into this build and consumed by the host / CUDA / MPI
+  // truth compiled into this build and consumed by the host and CUDA
   // backends. The Metal backend uses a hand-transliterated copy of the SAME
   // algorithm (kDecodePairMSL, an MSL string in metal_dtw.mm); msl_isqrt_decode
   // above is a verbatim host copy of that string's body. This test compares the

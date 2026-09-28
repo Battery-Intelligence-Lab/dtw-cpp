@@ -103,19 +103,15 @@ TEST_CASE("A15 CUDA entry points reject an over-large N before allocating",
   }
 
   // 65537 length-1 series: a few MB of host memory. Before the guard the first
-  // act of these entry points was to size an N*N matrix (34 GB) or to narrow
-  // the pair count to a negative int inside the LB_Keogh pre-pass.
+  // act of the entry point was to size an N*N matrix (34 GB).
   const std::vector<std::vector<double>> series(65537, std::vector<double>{ 1.0 });
   REQUIRE(dtwc::cuda::detail::upper_triangle_pairs(series.size())
           > dtwc::cuda::detail::kMaxPairsPerLaunch);
 
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = 4;
-  opts.use_lb_keogh = true; // the pre-pass is what used to truncate first
 
   REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, opts),
-                    dtwc::InvalidInput);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_lb_keogh_cuda(series, 4),
                     dtwc::InvalidInput);
 }
 
@@ -132,17 +128,8 @@ TEST_CASE("A16 CUDA entry points refuse to answer without a device",
 
   const std::vector<std::vector<double>> series{ { 1.0, 2.0, 3.0 },
                                                  { 2.0, 3.0, 4.0 } };
-  const std::vector<double> query{ 1.0, 2.0, 3.0 };
 
   REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_lb_keogh_cuda(series, 1),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_one_vs_all(series, 0, {}),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_one_vs_all(query, series, {}),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_k_vs_all(series, { 0 }, {}),
                     dtwc::DeviceError);
 }
 

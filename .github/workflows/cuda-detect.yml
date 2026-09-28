@@ -1,0 +1,42 @@
+name: CUDA detection smoke test
+
+on:
+  push:
+    branches: [main, develop, Claude]
+  pull_request:
+    branches: [main]
+
+jobs:
+  linux-cuda-configure:
+    name: Linux CUDA configure (no GPU needed)
+    runs-on: ubuntu-latest
+    container: nvidia/cuda:12.6.0-devel-ubuntu22.04
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install CMake and build tools
+        run: |
+          apt-get update && apt-get install -y build-essential git python3-pip
+          pip3 install cmake>=3.26
+      - name: CMake configure with CUDA
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_CUDA=ON \
+            -DDTWC_BUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CUDA_ARCHITECTURES=80
+      - name: Build CUDA sources
+        run: cmake --build build --parallel 2
+
+  macos-cuda-graceful-rejection:
+    name: macOS CUDA graceful rejection
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Install dependencies
+        run: brew install libomp llvm && brew link --force libomp
+      - name: CMake configure with CUDA (should warn and disable)
+        run: |
+          cmake -S . -B build \
+            -DDTWC_ENABLE_CUDA=ON \
+            -DDTWC_BUILD_TESTING=OFF 2>&1 | tee cmake_output.txt
+          grep -q "not supported on macOS" cmake_output.txt

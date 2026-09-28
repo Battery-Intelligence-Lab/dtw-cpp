@@ -114,14 +114,12 @@ from dtwcpp._dtwcpp_core import (
     cuda_available,
     cuda_device_info,
     compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
-    compute_lb_keogh_cuda,
     METAL_AVAILABLE,
     metal_available,
     metal_device_info,
     compute_distance_matrix_metal as _compute_distance_matrix_metal,
     OPENMP_AVAILABLE,
     openmp_max_threads,
-    MPI_AVAILABLE,
     HIGHS_AVAILABLE,
     system_info as _system_info_raw,
     __version__,
@@ -345,14 +343,6 @@ def check_system():
     else:
         print(f"  {_no} Metal:  not compiled (macOS only)")
 
-    # MPI
-    if MPI_AVAILABLE:
-        print(f"  {_ok} MPI:    available")
-    else:
-        print(f"  {_no} MPI:    not compiled")
-        print("     Rebuild with: cmake -DDTWC_ENABLE_MPI=ON ...")
-        print("     Windows: install MS-MPI SDK from microsoft.com/mpi")
-
     print("=" * 40)
 
 
@@ -386,10 +376,9 @@ __all__ = [
     "device", "get_device",
     "Dataset", "load", "cluster", "Result", "ClusterResult", "plot",
     "distance",
-    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
+    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
     "METAL_AVAILABLE", "metal_available", "metal_device_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
-    "MPI_AVAILABLE",
     "check_system",
     "save_checkpoint", "load_checkpoint",
     "save_binary_checkpoint", "load_binary_checkpoint", "CheckpointOptions",

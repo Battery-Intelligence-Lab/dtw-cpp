@@ -1,115 +1,18 @@
 ---
-title: MPI and CUDA Setup
+title: CUDA Setup
 weight: 4
 ---
 
-# MPI and CUDA Setup
+# CUDA Setup
 
-DTWC++ supports optional MPI (for distributed-memory parallelism) and CUDA (for GPU acceleration) backends. Both are **optional** -- the core library builds and runs without them. This guide covers installation and CMake configuration for each.
+DTWC++ supports an optional CUDA backend for GPU acceleration. It is **optional** -- the core library builds and runs without it. This guide covers installation and CMake configuration.
 
 ## Requirements
 
 | Feature | Minimum Version | Notes |
 |---------|----------------|-------|
-| MPI | MPI-3.0 (any implementation) | MS-MPI on Windows, OpenMPI or MPICH on Linux/macOS |
 | CUDA | 11.0+ | Requires NVIDIA GPU with compute capability 6.0 or newer |
 | GPU | NVIDIA Kepler or newer | AMD ROCm support is planned for future releases |
-
----
-
-## MPI Installation
-
-### Windows (Microsoft MPI)
-
-MS-MPI is the standard MPI implementation on Windows.
-
-1. Download from [https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi](https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi).
-2. Install **both** components:
-   - `msmpisetup.exe` -- the runtime (needed to run MPI programs)
-   - `msmpisdk.msi` -- the SDK (headers and import libraries, needed to build MPI programs)
-3. Verify the installation in a Command Prompt or PowerShell:
-   ```
-   mpiexec --version
-   ```
-   This should print the MS-MPI version (e.g. `Microsoft MPI Version 10.x`).
-4. The installer automatically sets the following environment variables:
-   - `MSMPI_INC` -- path to MPI headers
-   - `MSMPI_LIB32` -- path to 32-bit import libraries
-   - `MSMPI_LIB64` -- path to 64-bit import libraries
-
-   CMake finds MS-MPI via `find_package(MPI)` using these variables. If CMake cannot find MPI, ensure these environment variables are set (you may need to restart your terminal after installation).
-
-### Linux (Ubuntu / Debian)
-
-Install either OpenMPI or MPICH -- both work. Pick one, not both.
-
-```bash
-# OpenMPI (most common)
-sudo apt update
-sudo apt install -y libopenmpi-dev openmpi-bin
-
-# OR MPICH
-sudo apt update
-sudo apt install -y libmpich-dev mpich
-```
-
-Verify:
-```bash
-mpirun --version
-# or
-mpiexec --version
-```
-
-### Linux (RHEL / CentOS / Fedora)
-
-```bash
-sudo dnf install openmpi-devel
-```
-
-On RHEL-family systems, MPI is installed as a module. You must load it before use:
-
-```bash
-module load mpi/openmpi-x86_64
-```
-
-To make this permanent, add the `module load` line to your `~/.bashrc`.
-
-Verify:
-```bash
-mpirun --version
-```
-
-### macOS
-
-Install via [Homebrew](https://brew.sh/):
-
-```bash
-# OpenMPI (recommended)
-brew install open-mpi
-
-# OR MPICH
-brew install mpich
-```
-
-Verify:
-```bash
-mpirun --version
-```
-
-### Verify CMake Detection
-
-After installing MPI, confirm that CMake can find it:
-
-```bash
-cmake -S . -B build -DDTWC_ENABLE_MPI=ON
-```
-
-Look for output like:
-```
--- Found MPI_CXX: /usr/lib/x86_64-linux-gnu/openmpi/lib/libmpi_cxx.so
-```
-
-If CMake reports `Could NOT find MPI`, check that the MPI compiler wrappers (`mpicxx`, `mpic++`) are on your `PATH`.
 
 ---
 
@@ -203,43 +106,16 @@ Look for output like:
 
 ---
 
-## Building DTWC++ with MPI and/or CUDA
+## Building DTWC++ with CUDA
 
 ```bash
-# MPI only
-cmake -S . -B build -DDTWC_ENABLE_MPI=ON
-cmake --build build --config Release
-
-# CUDA only
 cmake -S . -B build -DDTWC_ENABLE_CUDA=ON
 cmake --build build --config Release
-
-# Both MPI and CUDA
-cmake -S . -B build -DDTWC_ENABLE_MPI=ON -DDTWC_ENABLE_CUDA=ON
-cmake --build build --config Release
 ```
-
-To run an MPI-enabled test or binary:
-
-```bash
-mpiexec -n 4 ./build/bin/test_mpi_distmat
-```
-
-Replace `-n 4` with the number of MPI processes you want to launch.
 
 ---
 
 ## Troubleshooting
-
-### MPI
-
-| Problem | Cause | Fix |
-|---------|-------|-----|
-| `Could NOT find MPI` in CMake | MPI compiler wrappers not on PATH | Ensure `mpicxx` is on your PATH. On RHEL, run `module load mpi/openmpi-x86_64` first. |
-| `mpiexec: command not found` | Runtime not installed or not on PATH | On Windows, install `msmpisetup.exe` (runtime). On Linux, install the `-bin` package (e.g. `openmpi-bin`). |
-| Linker errors referencing `MPI_Init` | SDK/headers installed but not the library, or architecture mismatch | On Windows, ensure `msmpisdk.msi` is installed. Check 32-bit vs 64-bit consistency. |
-| `There are not enough slots available` | Requesting more MPI ranks than cores | Use `mpiexec --oversubscribe -n 8 ...` (OpenMPI) or reduce `-n`. |
-| Crash at `MPI_Init` on WSL | MS-MPI is a Windows binary, not usable under WSL | Install OpenMPI or MPICH natively inside WSL: `sudo apt install libopenmpi-dev`. |
 
 ### CUDA
 

@@ -212,16 +212,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GN
   target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
 endif()
 
-# MPI (optional) — check for the imported target rather than the variable,
-# because find_package(MPI) runs inside dtwc_setup_dependencies() (a function)
-# and MPI_CXX_FOUND doesn't propagate to this scope.
-if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
-  target_sources(dtwc++ PRIVATE mpi/mpi_distance_matrix.cpp)
-  target_link_libraries(dtwc++ PUBLIC MPI::MPI_CXX)
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MPI)
-  message(STATUS "MPI enabled for distributed distance matrix computation")
-endif()
-
 # llfio (required) — memory-mapped distance matrices
 if(TARGET llfio_hl)
   target_link_libraries(dtwc++ PUBLIC llfio_hl)
