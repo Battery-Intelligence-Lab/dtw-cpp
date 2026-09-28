@@ -161,35 +161,6 @@ TEST_CASE("M50 CUDA no-launch paths report no kernel or fallback",
   }
 }
 
-TEST_CASE("M50 fully pruned CUDA work reports no DTW kernel launch",
-          "[cuda][kernel_override][device][no_launch][m50]")
-{
-  if (!dtwc::cuda::cuda_available()) {
-    SKIP("No CUDA device");
-    return;
-  }
-
-  constexpr std::size_t n = 4;
-  constexpr std::size_t length = 16;
-  std::vector<std::vector<double>> series(n, std::vector<double>(length));
-  for (std::size_t i = 0; i < n; ++i)
-    for (double &value : series[i]) value = 10.0 * static_cast<double>(i);
-
-  dtwc::cuda::CUDADistMatOptions options;
-  options.precision = dtwc::cuda::CUDAPrecision::FP64;
-  options.kernel_override = dtwc::KernelOverride::BandedRow;
-  options.use_lb_keogh = true;
-  options.band = 0;
-  options.lb_threshold = 0.5;
-
-  const auto result = dtwc::cuda::compute_distance_matrix_cuda(series, options);
-  CHECK(result.pairs_pruned == n * (n - 1) / 2);
-  CHECK(result.pairs_computed == 0);
-  CHECK(result.gpu_time_sec == 0.0);
-  CHECK(result.kernel_used == "none");
-  CHECK_FALSE(result.kernel_override_fell_back);
-}
-
 TEST_CASE("M50 CUDA override executes or reports the real Auto fallback",
           "[cuda][kernel_override][device][m50]")
 {

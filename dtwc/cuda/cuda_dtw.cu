@@ -122,8 +122,7 @@ __global__ void dtw_wavefront_kernel(
     const int *__restrict__ lengths,       // [N] actual lengths
     T *__restrict__ result_matrix,    // [N_series * N_series] output (symmetric)
     int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
-    int *__restrict__ work_counter,   // persistent mode when non-null
-    const int *__restrict__ pair_indices)   // optional active-pair list
+    int *__restrict__ work_counter)   // persistent mode when non-null
 {
   const int tid = threadIdx.x;
   const int nthreads = blockDim.x;
@@ -203,10 +202,8 @@ __global__ void dtw_wavefront_kernel(
       if (pid >= num_pairs) return;
     }
 
-    const int pair_idx = pair_indices ? pair_indices[pid] : pid;
-
     std::int64_t si, sj;
-    decode_pair(pair_idx, N_series, si, sj);
+    decode_pair(pid, N_series, si, sj);
     // Task 0.7: si/sj are int64 so the result_matrix[si*N_series+sj] writes
     // below are evaluated in 64-bit (the int32 index wrapped for N >= 46341).
     static_assert(sizeof(decltype(si * N_series + sj)) >= 8,
@@ -372,8 +369,7 @@ __global__ void dtw_warp_kernel(
     const T *__restrict__ all_series,
     const int *__restrict__ lengths,
     T *__restrict__ result_matrix,
-    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
-    const int *__restrict__ pair_indices)
+    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band)
 {
   const int warp_id = threadIdx.x / 32;       // which warp within block [0..7]
   const int lane    = threadIdx.x % 32;       // lane within warp [0..31]
@@ -385,10 +381,8 @@ __global__ void dtw_warp_kernel(
 
   if (work_idx >= num_pairs) return;
 
-  const int pid = pair_indices ? pair_indices[work_idx] : work_idx;
-
   std::int64_t si, sj;
-  decode_pair(pid, N_series, si, sj);
+  decode_pair(work_idx, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
 
@@ -519,8 +513,7 @@ __global__ void dtw_regtile_kernel(
     const T *__restrict__ all_series,
     const int *__restrict__ lengths,
     T *__restrict__ result_matrix,
-    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band,
-    const int *__restrict__ pair_indices)
+    int N_series, int max_L, int num_pairs, bool use_squared_l2, int band)
 {
   constexpr int WARP_SIZE = 32;
   constexpr unsigned FULL_MASK = 0xFFFFFFFF;
@@ -535,11 +528,9 @@ __global__ void dtw_regtile_kernel(
 
   if (work_idx >= num_pairs) return;
 
-  const int pid = pair_indices ? pair_indices[work_idx] : work_idx;
-
   // Decode pair from flat upper-triangle index
   std::int64_t si, sj;
-  decode_pair(pid, N_series, si, sj);
+  decode_pair(work_idx, N_series, si, sj);
   const int ni = lengths[si];
   const int nj = lengths[sj];
   const T *x = all_series + static_cast<long long>(si) * max_L;
@@ -715,148 +706,6 @@ __global__ void dtw_regtile_kernel(
 }
 
 // =========================================================================
-// Device kernel: compute upper/lower envelopes for all N series
-// =========================================================================
-//
-// Each block handles one series. Each thread computes one element's envelope
-// by scanning at most min(L, 2*band+1) values; radius zero still costs O(1)
-// per element.
-// Output: upper_envelopes[i * max_L + k] and lower_envelopes[i * max_L + k].
-
-template <typename T>
-__global__ void compute_envelopes_kernel(
-    const T *__restrict__ all_series,    // [N * max_L] padded
-    const int *__restrict__ lengths,     // [N]
-    T *__restrict__ upper_envelopes,     // [N * max_L] output
-    T *__restrict__ lower_envelopes,     // [N * max_L] output
-    int max_L, int N, int band)
-{
-  const int series_idx = blockIdx.x;
-  if (series_idx >= N) return;
-
-  const int tid = threadIdx.x;
-  const int nthreads = blockDim.x;
-  const int L = lengths[series_idx];
-  const T *series = all_series + static_cast<long long>(series_idx) * max_L;
-  T *upper = upper_envelopes + static_cast<long long>(series_idx) * max_L;
-  T *lower = lower_envelopes + static_cast<long long>(series_idx) * max_L;
-
-  // A negative radius is full DTW, whose window is the whole series; the
-  // clamp to L also keeps k + w + 1 from overflowing at INT_MAX (FX-13).
-  const int w = (band >= 0 && band < L) ? band : L;
-
-  for (int k = tid; k < L; k += nthreads) {
-    const int lo = (k >= w) ? k - w : 0;
-    const int hi = (k + w + 1 < L) ? k + w + 1 : L;
-
-    T max_val = series[lo];
-    T min_val = series[lo];
-    for (int j = lo + 1; j < hi; ++j) {
-      T val = series[j];
-      if (val > max_val) max_val = val;
-      if (val < min_val) min_val = val;
-    }
-    upper[k] = max_val;
-    lower[k] = min_val;
-  }
-
-  // Zero-fill padding beyond series length
-  for (int k = L + tid; k < max_L; k += nthreads) {
-    upper[k] = T(0);
-    lower[k] = T(0);
-  }
-}
-
-// =========================================================================
-// Device kernel: compute LB_Keogh for all N*(N-1)/2 pairs
-// =========================================================================
-//
-// Each thread handles one pair. Computes symmetric LB_Keogh:
-//   max(LB_Keogh(query=j, env=i), LB_Keogh(query=i, env=j))
-// This is embarrassingly parallel — no dependencies between pairs.
-
-template <typename T>
-__global__ void compute_lb_keogh_kernel(
-    const T *__restrict__ all_series,       // [N * max_L]
-    const int *__restrict__ lengths,        // [N]
-    const T *__restrict__ upper_envelopes,  // [N * max_L]
-    const T *__restrict__ lower_envelopes,  // [N * max_L]
-    T *__restrict__ lb_values,              // [num_pairs] output
-    int max_L, int N, int num_pairs, int use_sq_l2)
-{
-  const int pid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (pid >= num_pairs) return;
-
-  // Decode flat pair index to (i, j) using the same upper-triangle encoding
-  std::int64_t si, sj;
-  decode_pair(pid, N, si, sj);
-
-  const int Li = lengths[si];
-  const int Lj = lengths[sj];
-  const int n = min(Li, Lj);  // compare up to shorter length
-
-  const T *series_i = all_series + static_cast<long long>(si) * max_L;
-  const T *series_j = all_series + static_cast<long long>(sj) * max_L;
-  const T *upper_i  = upper_envelopes + static_cast<long long>(si) * max_L;
-  const T *lower_i  = lower_envelopes + static_cast<long long>(si) * max_L;
-  const T *upper_j  = upper_envelopes + static_cast<long long>(sj) * max_L;
-  const T *lower_j  = lower_envelopes + static_cast<long long>(sj) * max_L;
-
-  // Squared-L2 DTW sums squared costs, so its bound squares each excess: an
-  // unsquared excess below 1 exceeds the cost it bounds (FX-13).
-  // LB_Keogh(query=j, envelope=i)
-  T lb1 = T(0);
-  for (int k = 0; k < n; ++k) {
-    T val = series_j[k];
-    T excess_upper = val - upper_i[k];
-    T excess_lower = lower_i[k] - val;
-    T contrib = fmax(T(0), fmax(excess_upper, excess_lower));
-    lb1 += use_sq_l2 ? contrib * contrib : contrib;
-  }
-
-  // LB_Keogh(query=i, envelope=j)
-  T lb2 = T(0);
-  for (int k = 0; k < n; ++k) {
-    T val = series_i[k];
-    T excess_upper = val - upper_j[k];
-    T excess_lower = lower_j[k] - val;
-    T contrib = fmax(T(0), fmax(excess_upper, excess_lower));
-    lb2 += use_sq_l2 ? contrib * contrib : contrib;
-  }
-
-  lb_values[pid] = fmax(lb1, lb2);
-}
-
-template <typename T>
-__global__ void compact_active_pairs_kernel(
-    const T *__restrict__ lb_values,
-    int *__restrict__ active_pairs,
-    int *__restrict__ active_count,
-    T *__restrict__ result_matrix,
-    int N, int num_pairs, T threshold)
-{
-  const int pid = blockIdx.x * blockDim.x + threadIdx.x;
-  if (pid >= num_pairs) return;
-
-  const bool active = (lb_values[pid] <= threshold);
-  if (active) {
-    const int out_idx = atomicAdd(active_count, 1);
-    active_pairs[out_idx] = pid;
-    return;
-  }
-
-  // A pruned pair was never computed: NaN, the only "not a distance" value
-  // outside a kernel, never a finite maximum that reads as a distance.
-  const T NOT_COMPUTED =
-      static_cast<T>(__longlong_as_double(0x7ff8000000000000LL));
-
-  std::int64_t si, sj;
-  decode_pair(pid, N, si, sj);
-  result_matrix[si * N + sj] = NOT_COMPUTED;
-  result_matrix[sj * N + si] = NOT_COMPUTED;
-}
-
-// =========================================================================
 // Host functions
 // =========================================================================
 
@@ -921,22 +770,12 @@ struct DTWLaunchWorkspace {
   size_t length_capacity = 0;
   size_t matrix_capacity = 0;
   size_t counter_capacity = 0;
-  size_t envelope_capacity = 0;
-  size_t lb_capacity = 0;
-  size_t active_pair_capacity = 0;
   CachedHostBuffer<T> host_series;
   CachedHostBuffer<T> host_matrix;
-  CachedHostBuffer<T> host_lb;
-  CachedHostBuffer<int> host_count;
   CudaPtr<T> d_series;
   CudaPtr<int> d_lengths;
   CudaPtr<T> d_result_matrix;
   CudaPtr<int> d_counter;
-  CudaPtr<T> d_upper;
-  CudaPtr<T> d_lower;
-  CudaPtr<T> d_lb;
-  CudaPtr<int> d_active_pairs;
-  CudaPtr<int> d_active_count;
   CudaStream stream;
   CudaEvent evt_start;
   CudaEvent evt_end;
@@ -948,11 +787,6 @@ struct DTWLaunchWorkspace {
       d_lengths.reset();
       d_result_matrix.reset();
       d_counter.reset();
-      d_upper.reset();
-      d_lower.reset();
-      d_lb.reset();
-      d_active_pairs.reset();
-      d_active_count.reset();
       stream.reset();
       evt_start.reset();
       evt_end.reset();
@@ -960,9 +794,6 @@ struct DTWLaunchWorkspace {
       length_capacity = 0;
       matrix_capacity = 0;
       counter_capacity = 0;
-      envelope_capacity = 0;
-      lb_capacity = 0;
-      active_pair_capacity = 0;
       device_id = new_device_id;
     }
 
@@ -1005,30 +836,6 @@ void ensure_dtw_device_capacity(
 }
 
 template <typename T>
-void ensure_dtw_pruning_capacity(
-    DTWLaunchWorkspace<T> &workspace,
-    size_t envelope_elems,
-    size_t num_pairs)
-{
-  if (workspace.envelope_capacity < envelope_elems) {
-    workspace.d_upper = cuda_alloc<T>(envelope_elems);
-    workspace.d_lower = cuda_alloc<T>(envelope_elems);
-    workspace.envelope_capacity = envelope_elems;
-  }
-  if (workspace.lb_capacity < num_pairs) {
-    workspace.d_lb = cuda_alloc<T>(num_pairs);
-    workspace.lb_capacity = num_pairs;
-  }
-  if (workspace.active_pair_capacity < num_pairs) {
-    workspace.d_active_pairs = cuda_alloc<int>(num_pairs);
-    workspace.active_pair_capacity = num_pairs;
-  }
-  if (!workspace.d_active_count) {
-    workspace.d_active_count = cuda_alloc<int>(1);
-  }
-}
-
-template <typename T>
 void flatten_series_buffer(
     T *dst,
     const std::vector<std::vector<double>> &series,
@@ -1050,31 +857,6 @@ void flatten_series_buffer(
     if (len < max_L)
       std::fill(row_dst + len, row_dst + max_L, T(0));
   }
-}
-
-template <typename T>
-void upload_series_to_workspace(
-    DTWLaunchWorkspace<T> &workspace,
-    const std::vector<std::vector<double>> &series,
-    const std::vector<int> &lengths,
-    size_t max_L)
-{
-  const size_t N = series.size();
-  const size_t series_elems = N * max_L;
-  const size_t series_bytes = series_elems * sizeof(T);
-  const size_t matrix_elems = N * N;
-  constexpr size_t PINNED_THRESHOLD = 256 * 1024;
-
-  T *h_flat_series = workspace.host_series.ensure(
-      series_elems, series_bytes >= PINNED_THRESHOLD);
-  flatten_series_buffer(h_flat_series, series, max_L);
-  ensure_dtw_device_capacity(workspace, series_elems, N, matrix_elems);
-
-  auto stream = workspace.stream.get();
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_series.get(), h_flat_series,
-                              series_bytes, cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(workspace.d_lengths.get(), lengths.data(),
-                              N * sizeof(int), cudaMemcpyHostToDevice, stream));
 }
 
 template <typename T>
@@ -1109,24 +891,6 @@ std::vector<double> convert_result_matrix(
   return result;
 }
 
-template <typename T>
-std::vector<double> download_result_matrix(
-    DTWLaunchWorkspace<T> &workspace,
-    size_t N)
-{
-  const size_t matrix_elems = N * N;
-  const size_t matrix_bytes = matrix_elems * sizeof(T);
-  constexpr size_t PINNED_THRESHOLD = 256 * 1024;
-
-  T *h_result_matrix = workspace.host_matrix.ensure(
-      matrix_elems, matrix_bytes >= PINNED_THRESHOLD);
-  auto stream = workspace.stream.get();
-  CUDA_CHECK(cudaMemcpyAsync(h_result_matrix, workspace.d_result_matrix.get(),
-                              matrix_bytes, cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaStreamSynchronize(stream));
-  return convert_result_matrix(h_result_matrix, N, matrix_elems);
-}
-
 /// Launch the DTW kernel for a given compute type T (float or double).
 /// Returns the NxN distance matrix as a flat vector<double> (row-major).
 ///
@@ -1144,11 +908,10 @@ std::vector<double> launch_dtw_kernel(
     const std::vector<int> &lengths,
     size_t N, size_t max_L, size_t num_pairs,
     bool use_squared_l2, int band, int device_id, double &gpu_time_sec,
-    detail::KernelPath kernel_path,
-    const int *pair_indices = nullptr)
+    detail::KernelPath kernel_path)
 {
-  // Last line of defence. Every public entry point applies the same guard
-  // before it allocates the NxN result or runs the LB_Keogh pre-pass.
+  // Last line of defence. The public entry point applies the same guard
+  // before it allocates the NxN result.
   detail::require_pair_count_fits(num_pairs, "launch_dtw_kernel");
 
   const size_t series_bytes = N * max_L * sizeof(T);
@@ -1199,7 +962,7 @@ std::vector<double> launch_dtw_kernel(
     dtw_warp_kernel<T><<<grid_size, block_size, shared_mem, stream>>>(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
+        static_cast<int>(num_pairs), use_squared_l2, band);
   } else if (kernel_path == detail::KernelPath::RegTileW4) {
     // Register-tiled kernel with TILE_W=4: 32 threads * 4 = 128 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
@@ -1212,7 +975,7 @@ std::vector<double> launch_dtw_kernel(
     dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
+        static_cast<int>(num_pairs), use_squared_l2, band);
   } else if (kernel_path == detail::KernelPath::RegTileW8) {
     // Register-tiled kernel with TILE_W=8: 32 threads * 8 = 256 columns max
     constexpr int pairs_per_block = PAIRS_PER_BLOCK;
@@ -1225,7 +988,7 @@ std::vector<double> launch_dtw_kernel(
     dtw_regtile_kernel<T, TILE_W><<<grid_size, block_size, shared_mem, stream>>>(
         workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
         N_series, static_cast<int>(max_L),
-        static_cast<int>(num_pairs), use_squared_l2, band, pair_indices);
+        static_cast<int>(num_pairs), use_squared_l2, band);
   } else if (kernel_path == detail::KernelPath::Wavefront) {
     // Wavefront kernel: shared memory and block size configuration
     // Buffer-count policy (incl. the Task 0.1 cap at L>2048) lives in
@@ -1274,14 +1037,14 @@ std::vector<double> launch_dtw_kernel(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
-          workspace.d_counter.get(), pair_indices);
+          workspace.d_counter.get());
     } else {
       // Non-persistent: one block per pair (original behavior)
       dtw_wavefront_kernel<T><<<static_cast<int>(num_pairs), block_size, shared_mem, stream>>>(
           workspace.d_series.get(), workspace.d_lengths.get(), workspace.d_result_matrix.get(),
           N_series, static_cast<int>(max_L),
           static_cast<int>(num_pairs), use_squared_l2, band,
-          nullptr, pair_indices);
+          nullptr);
     }
   } else {
     throw std::logic_error("launch_dtw_kernel: unknown KernelPath");
@@ -1310,132 +1073,6 @@ std::vector<double> launch_dtw_kernel(
   return convert_result_matrix(h_result_matrix, N, matrix_elems);
 }
 
-// =========================================================================
-// Templated LB_Keogh launch helper
-// =========================================================================
-
-/// Launch envelope + LB_Keogh kernels for a given compute type T.
-/// Returns flat array of N*(N-1)/2 lower bounds as double.
-/// d_series and d_lengths must already be uploaded; stream must be provided.
-template <typename T>
-void launch_lb_keogh_kernel(
-    DTWLaunchWorkspace<T> &workspace,
-    size_t N, size_t max_L, size_t num_pairs,
-    int band, bool use_squared_l2, double &lb_time_sec)
-{
-  auto evt_start = dtwc::cuda::make_cuda_event();
-  auto evt_end   = dtwc::cuda::make_cuda_event();
-  const size_t env_elems = N * max_L;
-  auto stream = workspace.stream.get();
-  ensure_dtw_pruning_capacity(workspace, env_elems, num_pairs);
-
-  CUDA_CHECK(cudaEventRecord(evt_start.get(), stream));
-
-  // Launch envelope computation: one block per series
-  {
-    const int block_size = 256;
-    const int grid_size = static_cast<int>(N);
-    compute_envelopes_kernel<T><<<grid_size, block_size, 0, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(),
-        workspace.d_upper.get(), workspace.d_lower.get(),
-        static_cast<int>(max_L), static_cast<int>(N), band);
-  }
-
-  // Launch LB_Keogh computation: one thread per pair
-  {
-    const int block_size = 256;
-    const int grid_size = static_cast<int>(
-        (num_pairs + block_size - 1) / block_size);
-    compute_lb_keogh_kernel<T><<<grid_size, block_size, 0, stream>>>(
-        workspace.d_series.get(), workspace.d_lengths.get(),
-        workspace.d_upper.get(), workspace.d_lower.get(),
-        workspace.d_lb.get(),
-        static_cast<int>(max_L), static_cast<int>(N),
-        static_cast<int>(num_pairs), use_squared_l2 ? 1 : 0);
-  }
-
-  CUDA_CHECK(cudaGetLastError());
-
-  CUDA_CHECK(cudaEventRecord(evt_end.get(), stream));
-  CUDA_CHECK(cudaStreamSynchronize(stream));
-
-  float elapsed_ms = 0.0f;
-  CUDA_CHECK(cudaEventElapsedTime(&elapsed_ms, evt_start.get(), evt_end.get()));
-  lb_time_sec = static_cast<double>(elapsed_ms) / 1000.0;
-}
-
-template <typename T>
-std::vector<double> download_lb_values(
-    DTWLaunchWorkspace<T> &workspace,
-    size_t num_pairs)
-{
-  constexpr size_t PINNED_THRESHOLD = 256 * 1024;
-  T *h_lb = workspace.host_lb.ensure(
-      num_pairs, num_pairs * sizeof(T) >= PINNED_THRESHOLD);
-
-  auto stream = workspace.stream.get();
-  CUDA_CHECK(cudaMemcpyAsync(h_lb, workspace.d_lb.get(),
-                              num_pairs * sizeof(T), cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaStreamSynchronize(stream));
-
-  std::vector<double> result(num_pairs);
-  if constexpr (std::is_same_v<T, double>) {
-    if (num_pairs > 0) {
-      std::memcpy(result.data(), h_lb, num_pairs * sizeof(double));
-    }
-  } else {
-    for (size_t i = 0; i < num_pairs; ++i)
-      result[i] = static_cast<double>(h_lb[i]);
-  }
-  return result;
-}
-
-template <typename T>
-size_t compact_active_pairs(
-    DTWLaunchWorkspace<T> &workspace,
-    size_t N, size_t num_pairs, T threshold)
-{
-  if (num_pairs == 0) return 0;
-
-  auto stream = workspace.stream.get();
-  const int block_size = 256;
-  const int grid_size = static_cast<int>((num_pairs + block_size - 1) / block_size);
-
-  CUDA_CHECK(cudaMemsetAsync(workspace.d_active_count.get(), 0, sizeof(int), stream));
-
-  compact_active_pairs_kernel<T><<<grid_size, block_size, 0, stream>>>(
-      workspace.d_lb.get(),
-      workspace.d_active_pairs.get(),
-      workspace.d_active_count.get(),
-      workspace.d_result_matrix.get(),
-      static_cast<int>(N),
-      static_cast<int>(num_pairs),
-      threshold);
-  CUDA_CHECK(cudaGetLastError());
-
-  int *h_count = workspace.host_count.ensure(1, false);
-  CUDA_CHECK(cudaMemcpyAsync(h_count, workspace.d_active_count.get(),
-                              sizeof(int), cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaStreamSynchronize(stream));
-  return static_cast<size_t>(*h_count < 0 ? 0 : *h_count);
-}
-
-/// Launch envelope + LB_Keogh kernels, handling series upload internally.
-/// Standalone version that allocates and uploads series data.
-template <typename T>
-std::vector<double> launch_lb_keogh_standalone(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<int> &lengths,
-    size_t N, size_t max_L, size_t num_pairs,
-    int band, int device_id, double &lb_time_sec)
-{
-  auto &workspace = get_dtw_launch_workspace<T>(device_id);
-  upload_series_to_workspace(workspace, series, lengths, max_L);
-  // This entry point returns L1 bounds.
-  launch_lb_keogh_kernel<T>(workspace, N, max_L, num_pairs, band, false, lb_time_sec);
-  return download_lb_values(workspace, num_pairs);
-}
-
 } // anonymous namespace
 
 CUDADistMatResult compute_distance_matrix_cuda(
@@ -1445,10 +1082,9 @@ CUDADistMatResult compute_distance_matrix_cuda(
   validate_cuda_precision(opts.precision);
   validate_kernel_override(opts.kernel_override);
   const size_t N = series.size();
-  // Both guards run before the N*N allocation and before the LB_Keogh
-  // pre-pass: a missing device must not answer with a zero matrix (A16),
-  // and a pair count that does not fit the launch geometry must not be
-  // narrowed to int by the pre-pass (A15).
+  // Both guards run before the N*N allocation: a missing device must not
+  // answer with a zero matrix, and a pair count that does not fit the launch
+  // geometry must not be narrowed to int.
   detail::require_cuda_device(cuda_available(), "compute_distance_matrix_cuda");
   detail::require_pair_count_fits(detail::upper_triangle_pairs(N),
                                   "compute_distance_matrix_cuda");
@@ -1482,140 +1118,20 @@ CUDADistMatResult compute_distance_matrix_cuda(
 
   // Determine compute precision
   const bool use_fp32 = resolve_fp32(opts.precision, opts.device_id);
-
-  // ---------------------------------------------------------------------------
-  // Phase 1 (optional): LB_Keogh pruning
-  // ---------------------------------------------------------------------------
-  // When use_lb_keogh is enabled and band >= 0, compute LB_Keogh for all
-  // pairs on GPU. If lb_threshold > 0, pairs with LB > threshold are set
-  // to NaN (not computed) and excluded from full DTW computation.
-  const bool do_lb_pruning = opts.use_lb_keogh && (opts.band >= 0);
-  const bool has_threshold = do_lb_pruning && (opts.lb_threshold > 0);
-
-  if (use_fp32) {
-    if (do_lb_pruning) {
-      auto &workspace = get_dtw_launch_workspace<float>(opts.device_id);
-      upload_series_to_workspace(workspace, series, lengths, max_L);
-      launch_lb_keogh_kernel<float>(workspace, N, max_L, num_pairs, opts.band,
-                                    opts.use_squared_l2, result.lb_time_sec);
-
-      if (has_threshold) {
-        const size_t active_pairs = compact_active_pairs<float>(
-            workspace, N, num_pairs, static_cast<float>(opts.lb_threshold));
-        result.pairs_pruned = num_pairs - active_pairs;
-        result.pairs_computed = active_pairs;
-
-        if (active_pairs == 0) {
-          result.gpu_time_sec = 0.0;
-          result.kernel_used = "none";
-          result.kernel_override_fell_back = false;
-          result.matrix = download_result_matrix(workspace, N);
-        } else {
-          result.matrix = launch_dtw_kernel<float>(
-              series, lengths,
-              N, max_L, active_pairs,
-              opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-              kernel_selection.path,
-              workspace.d_active_pairs.get());
-        }
-      } else {
-        result.matrix = launch_dtw_kernel<float>(
-            series, lengths,
-            N, max_L, num_pairs,
-            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-            kernel_selection.path);
-      }
-    } else {
-      result.matrix = launch_dtw_kernel<float>(
-          series, lengths,
-          N, max_L, num_pairs,
-          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-          kernel_selection.path);
-    }
-  } else {
-    if (do_lb_pruning) {
-      auto &workspace = get_dtw_launch_workspace<double>(opts.device_id);
-      upload_series_to_workspace(workspace, series, lengths, max_L);
-      launch_lb_keogh_kernel<double>(workspace, N, max_L, num_pairs, opts.band,
-                                     opts.use_squared_l2, result.lb_time_sec);
-
-      if (has_threshold) {
-        const size_t active_pairs = compact_active_pairs<double>(
-            workspace, N, num_pairs, opts.lb_threshold);
-        result.pairs_pruned = num_pairs - active_pairs;
-        result.pairs_computed = active_pairs;
-
-        if (active_pairs == 0) {
-          result.gpu_time_sec = 0.0;
-          result.kernel_used = "none";
-          result.kernel_override_fell_back = false;
-          result.matrix = download_result_matrix(workspace, N);
-        } else {
-          result.matrix = launch_dtw_kernel<double>(
-              series, lengths,
-              N, max_L, active_pairs,
-              opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-              kernel_selection.path,
-              workspace.d_active_pairs.get());
-        }
-      } else {
-        result.matrix = launch_dtw_kernel<double>(
-            series, lengths,
-            N, max_L, num_pairs,
-            opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-            kernel_selection.path);
-      }
-    } else {
-      result.matrix = launch_dtw_kernel<double>(
-          series, lengths,
-          N, max_L, num_pairs,
-          opts.use_squared_l2, opts.band, opts.device_id, result.gpu_time_sec,
-          kernel_selection.path);
-    }
-  }
+  result.matrix = use_fp32
+      ? launch_dtw_kernel<float>(series, lengths, N, max_L, num_pairs,
+                                 opts.use_squared_l2, opts.band, opts.device_id,
+                                 result.gpu_time_sec, kernel_selection.path)
+      : launch_dtw_kernel<double>(series, lengths, N, max_L, num_pairs,
+                                  opts.use_squared_l2, opts.band, opts.device_id,
+                                  result.gpu_time_sec, kernel_selection.path);
 
   if (opts.verbose) {
     std::cout << "CUDA DTW: " << num_pairs << " pairs"
               << (use_fp32 ? " [FP32]" : " [FP64]")
-              << " in " << result.gpu_time_sec * 1000 << "ms";
-    if (do_lb_pruning) {
-      std::cout << " (LB_Keogh: " << result.lb_time_sec * 1000 << "ms";
-      if (has_threshold) {
-        std::cout << ", pruned " << result.pairs_pruned << "/" << num_pairs;
-      }
-      std::cout << ")";
-    }
-    std::cout << " on " << cuda_device_info(opts.device_id) << std::endl;
+              << " in " << result.gpu_time_sec * 1000 << "ms"
+              << " on " << cuda_device_info(opts.device_id) << std::endl;
   }
-
-  return result;
-}
-
-CUDALBResult compute_lb_keogh_cuda(
-    const std::vector<std::vector<double>> &series,
-    int band, int device_id)
-{
-  const size_t N = series.size();
-  detail::require_cuda_device(cuda_available(), "compute_lb_keogh_cuda");
-  detail::require_pair_count_fits(detail::upper_triangle_pairs(N),
-                                  "compute_lb_keogh_cuda");
-
-  CUDALBResult result;
-  result.n = N;
-
-  if (N <= 1 || band < 0) return result;
-
-  CUDA_CHECK(cudaSetDevice(device_id));
-
-  std::vector<int> lengths;
-  const size_t max_L = detail::scan_series_lengths(series, lengths);
-  if (max_L == 0) return result;
-
-  const size_t num_pairs = detail::upper_triangle_pairs(N);
-
-  // Use FP64 for standalone LB computation (accuracy matters for pruning decisions)
-  result.lb_values = launch_lb_keogh_standalone<double>(
-      series, lengths, N, max_L, num_pairs, band, device_id, result.gpu_time_sec);
 
   return result;
 }

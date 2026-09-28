@@ -3,9 +3,7 @@
  * @brief LowerBoundStrategy enum — selects which lower bound(s) feed the
  *        pruned distance matrix path.
  *
- * @details Only the pruned CPU path honours this setting. GPU backends
- *          (CUDA/Metal) carry their own `use_lb_keogh` switch on the options
- *          struct. Semantics:
+ * @details Only the pruned CPU path honours this setting. Semantics:
  *            - Auto:     Kim+Keogh cascade when applicable (current default).
  *            - None:     Disable both; behaves like BruteForce within Pruned.
  *            - Kim:      LB_Kim only (O(1), currently L1-valued; F47).

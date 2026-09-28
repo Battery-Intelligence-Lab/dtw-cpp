@@ -6,8 +6,8 @@ the `min(n,m)` prefix construction for feasible unequal-length paths under the
 current fixed window. The public envelope representation is
 **DISCREPANCY** F46, squared LB_Kim is **DISCREPANCY** F47, TADPole's empty
 domain is **DISCREPANCY** F48, direct-call band/cache provenance is
-**DISCREPANCY** F49, and GPU execution still has the F27–F30/F50
-qualifications mapped below.
+**DISCREPANCY** F49. The CUDA and Metal LB_Keogh kernels that the
+F27–F30/F50 qualifications concerned were deleted in 2.0.
 
 ## Primary-source scope
 
@@ -23,7 +23,7 @@ DTWC++ differs in four relevant ways:
 1. its default point cost is absolute difference;
 2. its squared-L2 result is the unrooted sum;
 3. its symmetric bound is the maximum of two directional bounds;
-4. its GPU kernels compare only the first `min(n,m)` rows for unequal lengths.
+4. it compares only the first `min(n,m)` rows for unequal lengths.
 
 The paper is therefore the source for the equal-length envelope idea and its
 original proposition, not a verbatim source for those four extensions. They
@@ -291,8 +291,8 @@ its own cell geometry.
 The original F29 fixture used series of lengths two and three at band zero.
 Under the repaired fixed geometry it has no path, so its claimed zero DTW is
 not a valid counterexample. At the minimally feasible band one, the path
-$(0,0),(0,1),(1,2)$ has zero cost and both prefixes have zero bound. F29 now
-owns executable CUDA/Metal confirmation rather than a mathematical repair.
+$(0,0),(0,1),(1,2)$ has zero cost and both prefixes have zero bound. The CUDA/Metal
+kernels F29 was to confirm executably were deleted in 2.0.
 
 ## Multivariate dependent and independent extensions
 
@@ -431,7 +431,7 @@ y = [0,0,0,0,0,0,1,1,1,1]
 full L1 DTW is zero, while the symmetric L1 bounds are 2 at radius zero, 1 at
 radius one, and 0 for the global envelope. Passing `-1` to the helper returned
 the invalid value 2 against full DTW 0. The helper now reads a negative band as
-full DTW and builds (5), as do both GPU envelope kernels; the D2 gate pins `-1`
+full DTW and builds (5); the D2 gate pins `-1`
 to the global envelope and the bound 0.
 
 The mutable `Envelope` type still does not record its window: valid-shaped
@@ -487,17 +487,13 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 | L1 projection sum, equations (6)–(12) | `dtwc/core/lower_bound_impl.hpp:181-203` | **CONFIRMED** |
 | Squared projection sum | `dtwc/core/lower_bound_impl.hpp:551-570` | **CONFIRMED** |
 | Symmetric maximum, equation (14) | `dtwc/core/lower_bound_impl.hpp:371-388` | **CONFIRMED** for its L1 wrapper; no public squared symmetric wrapper |
-| Prefix truncation, equation (15) | `dtwc/core/lower_bound_impl.hpp:356-368`; CUDA `dtwc/cuda/cuda_dtw.cu:782-813`; Metal `dtwc/metal/metal_dtw.mm:932-954` | Math **CONFIRMED** for feasible fixed windows; real backends remain F29 |
+| Prefix truncation, equation (15) | `dtwc/core/lower_bound_impl.hpp:356-368` | Math **CONFIRMED** for feasible fixed windows |
 | Per-channel dependent/independent MV extensions, equations (16)–(17) | `dtwc/core/lower_bound_impl.hpp:419-527,593-611`; `tests/unit/adversarial/test_lb_keogh_derivation.cpp:364-408` | **CONFIRMED** for additive L1/squared costs; low-level only |
 | Exact-matrix full-window guard | `dtwc/core/pruned_distance_matrix.cpp:128-150,216-238,339-378` | **CONFIRMED**; Keogh disabled for negative bands and unequal lengths |
 | TADPole global-envelope conversion | `dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
 | Exhaustive independent oracle | `tests/unit/adversarial/test_lb_keogh_derivation.cpp:127-526`; `tests/CMakeLists.txt:128-144` | **CONFIRMED**, non-skippable |
 | Public envelope shape/window contract | `dtwc/core/lower_bound_impl.hpp:214-223,326-388` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
 | Squared LB_Kim compatibility | `dtwc/core/lower_bounds.hpp:42-52`; `dtwc/core/lower_bound_impl.hpp:225-324` | **DISCREPANCY** F47: L1-unit result advertised for squared DTW |
-| CUDA/Metal squared pruning | CUDA `compute_lb_keogh_kernel`; Metal `compute_lb_keogh` | **CONFIRMED** since FX-13: both square each excess under squared L2; executed on Metal, CUDA `[BLOCKED-ENV]` |
-| Metal full-DTW envelope choice | `dtwc/metal/metal_dtw.mm`, `compute_distance_matrix_metal` | **CONFIRMED** since FX-13: the default is the DTW window; a narrower explicit radius is `InvalidInput` |
-| Explicit GPU LB requests | CUDA `dtwc/cuda/cuda_dtw.cu:1476-1480`; Metal `dtwc/metal/metal_dtw.mm:1493-1503,1536-1550` | **DISCREPANCY** F30: requests can silently disable or fall back |
-| Extreme GPU radius arithmetic | CUDA `compute_envelopes_kernel`; Metal `compute_envelopes` | **CONFIRMED** since FX-13: the radius is clamped to the length; executed at `INT_MAX` on Metal, CUDA `[BLOCKED-ENV]` |
 
 ## Scope verdicts
 
@@ -512,10 +508,10 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 - **FALSIFIED:** the old F29 claim that prefix truncation itself is
   inadmissible under the current fixed window. Real device conformance is
   still an open F29 gate.
-- **DISCREPANCY:** F46–F49, F29, and F30 subjects named in the table. None is
+- **DISCREPANCY:** F46–F49 subjects named in the table. None is
   hidden by the green scalar oracle. FX-13 closed F27, F28, F50, and F46's
   negative-band coercion.
-- **OPEN:** floating-point threshold safety, GPU FP32 reduction/casting,
+- **OPEN:** floating-point threshold safety,
   multivariate Euclidean bounds, and all non-Standard objectives.
 
 The claim most expected to need refinement is bit-level threshold

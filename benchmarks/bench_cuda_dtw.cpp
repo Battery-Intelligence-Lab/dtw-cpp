@@ -240,46 +240,6 @@ BENCHMARK(BM_cuda_structuredDistanceMatrix)
   ->Args({100, 1000})
   ->Unit(benchmark::kMillisecond);
 
-// ---------------------------------------------------------------------------
-// BM_cuda_prunedDistanceMatrix — full matrix with real device-side pruning
-// Args: (N_series, series_length)
-// ---------------------------------------------------------------------------
-static void BM_cuda_prunedDistanceMatrix(benchmark::State &state)
-{
-  const int N = static_cast<int>(state.range(0));
-  const int L = static_cast<int>(state.range(1));
-  auto series = make_pruning_friendly_series_set(N, L);
-  const int64_t num_pairs = static_cast<int64_t>(N) * (N - 1) / 2;
-
-  dtwc::cuda::CUDADistMatOptions opts;
-  opts.band = 10;
-  opts.use_lb_keogh = true;
-  opts.lb_threshold = 50.0;
-  opts.verbose = false;
-
-  dtwc::cuda::CUDADistMatResult last;
-  { last = dtwc::cuda::compute_distance_matrix_cuda(series, opts); }
-
-  for (auto _ : state) {
-    last = dtwc::cuda::compute_distance_matrix_cuda(series, opts);
-    benchmark::DoNotOptimize(last.matrix.data());
-  }
-
-  state.SetItemsProcessed(static_cast<int64_t>(state.iterations()) * num_pairs);
-  state.counters["pairs"] = benchmark::Counter(
-      static_cast<double>(num_pairs), benchmark::Counter::kDefaults);
-  state.counters["active_pairs"] = benchmark::Counter(
-      static_cast<double>(last.pairs_computed), benchmark::Counter::kDefaults);
-  state.counters["pruned_pairs"] = benchmark::Counter(
-      static_cast<double>(last.pairs_pruned), benchmark::Counter::kDefaults);
-}
-
-BENCHMARK(BM_cuda_prunedDistanceMatrix)
-  ->Args({50, 500})
-  ->Args({100, 500})
-  ->Args({100, 1000})
-  ->Unit(benchmark::kMillisecond);
-
 #endif // DTWC_HAS_CUDA
 
 // If CUDA is not available, provide a placeholder so the binary still links

@@ -314,15 +314,6 @@ TEST_CASE("F15 all registered consumers reach shared support",
       source, "static std::vector<double> random_series"));
   }
 
-  const std::string metal_lb =
-    read_source("tests/unit/test_metal_lb_keogh.cpp");
-  CHECK(contains(
-    metal_lb,
-    "std::uniform_real_distribution<double> dist(-5.0, 5.0)"));
-  CHECK(contains(
-    metal_lb,
-    "std::vector<std::vector<double>> random_series("));
-
   const std::string fixed_band =
     read_source("tests/unit/gpu_fixed_band_oracle.hpp");
   CHECK(contains(fixed_band, "full_matrix_oracle"));

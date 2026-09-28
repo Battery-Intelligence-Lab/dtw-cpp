@@ -110,7 +110,6 @@ dtwc::cuda::CUDADistMatOptions f12_cuda_options(
   dtwc::cuda::CUDADistMatOptions opts;
   opts.band = row.band;
   opts.use_squared_l2 = squared;
-  opts.use_lb_keogh = false;
   opts.precision = precision;
   opts.kernel_override = route.requested;
   return opts;
