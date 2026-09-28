@@ -47,10 +47,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## B — deletions (W2, W3, W5, W6)
 
-- ☐ W2a A/B `lb_webb_symmetric` vs Keogh in TADPole at N = 200; Webb stays only if it prunes ≥ 83 %
-- ☐ W2b delete the Pruned fill, `LowerBoundStrategy`, the bindings' pruning options; Auto = brute force
-- ☐ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged
-- ☐ W2d derivation 03 and the GPU LB docs follow
+- ☑ W2a A/B `lb_webb_symmetric` vs Keogh in TADPole at N = 200; Webb stays only if it prunes ≥ 83 %
+  (X1 `ba5546f`: FALSIFIED, both prune 78.0 %; Webb deleted)
+- ☑ W2b delete the Pruned fill, `LowerBoundStrategy`, the bindings' pruning options; Auto = brute force
+  (X1 `872349d`, `fe06efd`)
+- ☑ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged (X1 `b1d6514`)
+- ☑ W2d derivation 03 and the GPU LB docs follow (X1 `afdfc50`, `5aff090`; merged `227c956`)
 - ☐ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46)
 - ☐ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU`
 - ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
