@@ -28,7 +28,7 @@ Source: `docs/sources/lr-core-derivation.md` (tracked canonical derivation; prom
 
 ### Task 4.3: Core Benders with y-only branching [DONE 2026-07-08]
 
-**Files:** Created `dtwc::mip::lagrangian_root_exact` in `dtwc/mip/lagrangian_root.{hpp,cpp}` + `[exact]` tests. Consumes 4.1 bound + 4.2 core. **Design note (deviation from "modify benders.cpp"):** the LR dual already equals the LP/Benders master bound (Geoffrion), so there is no N²-column master to re-solve — a lazy-cut tree over a compact master is the wrong tool. Instead the exact solver is an LR-bounded B&B that branches on y over the core, matrix-free. The legacy `benders.cpp` (re-solve-master-per-round) is left intact under `benders="on"`; LR-core supersedes it as the modern exact path.
+**Files:** Created `dtwc::mip::lagrangian_root_exact` in `dtwc/mip/lagrangian_root.{hpp,cpp}` + `[exact]` tests. Consumes 4.1 bound + 4.2 core. **Design note (deviation from "modify benders.cpp"):** the LR dual already equals the LP/Benders master bound (Geoffrion), so there is no N²-column master to re-solve — a lazy-cut tree over a compact master is the wrong tool. Instead the exact solver is an LR-bounded B&B that branches on y over the core, matrix-free. LR-core superseded the legacy `benders.cpp` (re-solve-master-per-round), which was deleted before 2.0.
 
 - [x] Single tree, NOT a per-round master re-solve. Root dual solved once (Kelley when HiGHS present → certifies the LP gap to machine precision; subgradient otherwise). Reduced-cost fixing → core + proven-open set. Branch on one candidate's open/close (y) decision; node bound = fixed-root-dual `Σμ*+Σ_S ρ*_i ≤ cost(S)` (O(N) per node, no LP). Node cap → best incumbent with `certified_optimal=false` + loud stderr (no silent wrong answer).
 - [x] Gate **MET (correctness):** matches the brute-force IP optimum 1e-6 on ALL instances — 8 clustered (0 nodes, root certifies) + 24 adversarial uniform-D (B&B engages, thousands of nodes, still exact). Kelley closes the LP gap; the B&B closes the integrality gap.
@@ -40,6 +40,8 @@ Source: `docs/sources/lr-core-derivation.md` (tracked canonical derivation; prom
 - [x] CHANGELOG done; LESSONS.md entry (killed 2023 ideas + falsified claims) — see `.claude/LESSONS.md`.
 
 ### Task 4.5: PDLP first-order LP arbiter [DONE 2026-07-08]
+
+*PDLP, its bindings and `DTWC_HIGHS_GPU` were deleted before 2.0; this record is historical.*
 
 Scope decision (user-directed): the "third solver" is NOT the resurrected 2023 custom OSLP (killed `3a87ea3`: 3× slower than OSQP, cannot certify — reviving it would violate the prefer-libraries rule). Instead, integrate HiGHS's maintained, GPU-capable PDLP as an **LP solver in the LR-core LP machinery** (explicitly "not the MIP path"). Custom OSLP stays retired.
 

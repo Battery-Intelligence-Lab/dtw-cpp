@@ -49,7 +49,6 @@
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
-#include <mip/pdlp_lp.hpp>
 
 
 #include <algorithm>
@@ -131,7 +130,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("_F22_DEPRECATION_POLICY") = true;
   m.attr("DEFAULT_RANDOM_SEED") = dtwc::settings::DEFAULT_RANDOM_SEED;
   m.attr("HIGHS_AVAILABLE") = dtwc::highs_solver_available();
-  m.attr("PDLP_GPU_AVAILABLE") = dtwc::mip::pdlp_gpu_available();
   m.doc() = "DTWC++ — Fast Dynamic Time Warping and Clustering (C++ core)";
 
   // =========================================================================
@@ -491,10 +489,6 @@ NB_MODULE(_dtwcpp_core, m) {
             "Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).")
     .def_rw("verbose_solver", &dtwc::MIPSettings::verbose_solver,
             "Show solver log output (default False).")
-    .def_rw("max_benders_iter", &dtwc::MIPSettings::max_benders_iter,
-            "Maximum Benders iterations (default 200).")
-    .def_rw("benders", &dtwc::MIPSettings::benders,
-            "Benders decomposition mode: 'auto' (N>200), 'on', or 'off'.")
     .def_rw("lr_max_nodes", &dtwc::MIPSettings::lr_max_nodes,
             "Method.LRCore branch-and-bound node cap (>= 1, default 2000000).")
     .def("__repr__", [](const dtwc::MIPSettings &s) {
@@ -503,8 +497,6 @@ NB_MODULE(_dtwcpp_core, m) {
              + ", warm_start=" + (s.warm_start ? "True" : "False")
              + ", numeric_focus=" + std::to_string(s.numeric_focus)
              + ", mip_focus=" + std::to_string(s.mip_focus)
-             + ", benders=" + s.benders
-             + ", max_benders_iter=" + std::to_string(s.max_benders_iter)
              + ", lr_max_nodes=" + std::to_string(s.lr_max_nodes)
              + ", verbose=" + (s.verbose_solver ? "True" : "False") + ")";
     });
@@ -1549,54 +1541,6 @@ NB_MODULE(_dtwcpp_core, m) {
      "scoring functions work after this call (§2.5).\n\n"
      "Reference: Ng & Han (2002), IEEE TKDE 14(5).");
 
-
-  // =========================================================================
-  // PDLP LP-relaxation arbiter (E2: was C++-only)
-  // =========================================================================
-
-  m.def("pdlp_gpu_available", &dtwc::mip::pdlp_gpu_available,
-        "True if this build's HiGHS carries the cuPDLP GPU backend.\n\n"
-        "The GPU-LP counterpart of HIGHS_AVAILABLE: the device is a property\n"
-        "of the linked HiGHS build, not a per-call toggle.");
-
-  nb::class_<dtwc::mip::PdlpParams>(m, "PdlpParams")
-    .def(nb::init<>())
-    .def_rw("variant", &dtwc::mip::PdlpParams::variant)
-    .def_rw("tol", &dtwc::mip::PdlpParams::tol)
-    .def_rw("iteration_limit", &dtwc::mip::PdlpParams::iteration_limit)
-    .def_rw("use_gpu", &dtwc::mip::PdlpParams::use_gpu)
-    .def_rw("verbose", &dtwc::mip::PdlpParams::verbose);
-
-  nb::class_<dtwc::mip::PdlpResult>(m, "PdlpResult")
-    .def_ro("lp_bound", &dtwc::mip::PdlpResult::lp_bound)
-    .def_ro("solved", &dtwc::mip::PdlpResult::solved)
-    .def_ro("iterations", &dtwc::mip::PdlpResult::iterations)
-    .def_ro("gpu_used", &dtwc::mip::PdlpResult::gpu_used)
-    .def("__repr__", [](const dtwc::mip::PdlpResult &r) {
-      return "PdlpResult(lp_bound=" + std::to_string(r.lp_bound)
-             + ", solved=" + (r.solved ? "True" : "False")
-             + ", iterations=" + std::to_string(r.iterations)
-             + ", gpu_used=" + (r.gpu_used ? "True" : "False") + ")";
-    });
-
-  m.def("pdlp_lp_bound",
-        [](nb::ndarray<const double, nb::ndim<2>, nb::c_contig> D, int k,
-           const dtwc::mip::PdlpParams &params) {
-          if (D.shape(0) != D.shape(1))
-            throw dtwc::InvalidInput("pdlp_lp_bound: D must be square.");
-          if (D.shape(0) > static_cast<size_t>(std::numeric_limits<int>::max()))
-            throw dtwc::InvalidInput("pdlp_lp_bound: N exceeds INT_MAX.");
-          const int n = static_cast<int>(D.shape(0));
-          const double *data = D.data();
-          nb::gil_scoped_release release;
-          return dtwc::mip::pdlp_lp_bound(data, n, k, params);
-        },
-        "D"_a, "k"_a, "params"_a = dtwc::mip::PdlpParams{},
-        "Solve the p-median LP relaxation with HiGHS PDLP.\n\n"
-        "Returns the LP-relaxation optimum in RAW distance units - a valid\n"
-        "lower bound on the integer k-medoids cost, NOT a clustering. It is\n"
-        "the independent arbiter for the matrix-free LR-core bound.\n"
-        "Requires a HiGHS build; raises SolverError otherwise.");
 
   // =========================================================================
   // CUDA (optional)

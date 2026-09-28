@@ -134,8 +134,7 @@ foreach(_dtwc_mmap_test IN ITEMS
     dtwc_add_test(NAME ${_dtwc_mmap_test} SOURCE ${_dtwc_test_source_${_dtwc_mmap_test}} ${_dtwc_mmap_skip})
 endforeach()
 foreach(_dtwc_highs_test IN ITEMS
-        test_lagrangian_root test_mip_backend_guards test_pdlp_lp
-        unit_test_benders unit_test_mip)
+        test_lagrangian_root test_mip_backend_guards unit_test_mip)
     dtwc_add_test(NAME ${_dtwc_highs_test} SOURCE ${_dtwc_test_source_${_dtwc_highs_test}} ${_dtwc_highs_skip})
 endforeach()
 dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_test_parallelisation} ${_dtwc_seq_skip})

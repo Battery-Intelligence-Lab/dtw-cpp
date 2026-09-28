@@ -247,7 +247,6 @@ TEST_CASE("F1 invalid Solver rejects before any backend call",
 {
   for_each_invalid_enum<Solver, Solver::HiGHS>([](Solver invalid) {
     auto problem = make_problem();
-    problem.mip_settings.benders = "off";
     problem.mip_settings.warm_start = false;
     REQUIRE_NOTHROW(problem.set_solver(Solver::HiGHS));
     const auto before = snapshot(problem);

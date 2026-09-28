@@ -8,10 +8,8 @@ target_sources(mip-solvers
     mip_Highs.cpp
     solution_transaction.cpp
     warm_start.cpp
-    benders.cpp
     lagrangian_root.cpp
     reduced_cost_fixing.cpp
-    pdlp_lp.cpp
   PUBLIC
     mip.hpp
     highs_support.hpp
@@ -20,10 +18,8 @@ target_sources(mip-solvers
     solver_types.hpp
     solution_transaction.hpp
     warm_start.hpp
-    benders.hpp
     lagrangian_root.hpp
     reduced_cost_fixing.hpp
-    pdlp_lp.hpp
   )
 
 target_include_directories(mip-solvers PUBLIC .)
@@ -40,7 +36,7 @@ target_link_libraries(mip-solvers
 # on the target, exactly as dtwc/CMakeLists.txt does for dtwc++.
 #
 # Why mip-solvers needs llfio at all: it does NOT use llfio directly (grep of
-# mip_Gurobi.cpp / mip_Highs.cpp / benders.cpp finds no llfio symbol). It needs
+# mip_Gurobi.cpp / mip_Highs.cpp / lagrangian_root.cpp finds no llfio symbol). It needs
 # it TRANSITIVELY — every mip source includes ../Problem.hpp, which includes
 # core/mmap_distance_matrix.hpp (pulls <llfio/v2.0/llfio.hpp>) and declares
 # `distMat_t = std::variant<DenseDistanceMatrix, MmapDistanceMatrix>` as a member
@@ -66,9 +62,4 @@ endif()
 if(DTWC_ENABLE_HIGHS AND TARGET highs::highs)
   target_compile_definitions(mip-solvers PUBLIC DTWC_ENABLE_HIGHS)
   target_link_libraries(mip-solvers PRIVATE highs::highs)
-  # PDLP GPU backend compiled into HiGHS (CUPDLP_GPU). Drives pdlp_lp_bound's
-  # honest gpu_used reporting: without this define, use_gpu raises DeviceError.
-  if(DTWC_HIGHS_GPU)
-    target_compile_definitions(mip-solvers PUBLIC DTWC_HIGHS_GPU)
-  endif()
 endif()

@@ -236,12 +236,12 @@ def test_result_is_clusterresult_alias():
 
 
 # ===========================================================================
-# MIPSettings — §2.1 benders / max_benders_iter [new bind]
+# MIPSettings — §2.1 fields
 # ===========================================================================
 @pytest.mark.parametrize(
     "name",
     ["mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
-     "verbose_solver", "benders", "max_benders_iter", "lr_max_nodes"],
+     "verbose_solver", "lr_max_nodes"],
 )
 def test_mip_settings_field_exists(name):
     assert hasattr(dtwcpp.MIPSettings(), name), f"MIPSettings.{name} missing (§2.1)"

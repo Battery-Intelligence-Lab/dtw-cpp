@@ -19,7 +19,7 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   read. Squared L2 runs on the CPU; `--checkpoint-interval 0` saves once at the end; every check that needs no data, the MIP
   settings included, runs before any I/O; the loader's progress lines print only with `-v`.
 - **Added (CLI):** `--print-config` writes the parsed settings as a TOML config file; the binary now reads `--delimiter`,
-  `--max-benders-iter` and `--lr-max-nodes`.
+  and `--lr-max-nodes`.
 - **Changed (C++ Tier-1):** `cluster()` wraps `run`, with results unchanged; path datasets read Parquet, Arrow and `.dtws`; the
   aliases `obp` and `lr` are accepted; `device="hpc"` raises without reading `.env`; `Result` reports `method()`, `iterations()`
   and `converged()`. `detail/tier1_method_resolution.hpp` is removed. An unreadable mmap-cache parent, an output directory that

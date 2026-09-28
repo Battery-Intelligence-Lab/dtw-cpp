@@ -12,7 +12,7 @@
 
 #include "Problem.hpp"
 #include "base/error.hpp"           // for DeviceError
-#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byBenders
+#include "mip.hpp"             // for MIP_clustering_byGurobi, MIP_clustering_byHiGHS
 #include "base/parallelisation.hpp" // for run
 #include "scores.hpp"          // for silhouette
 #include "base/settings.hpp"        // for data_t, randGenerator, band, isDebug
@@ -1317,21 +1317,13 @@ void Problem::cluster_and_process()
  */
 void Problem::cluster_by_mip()
 {
-  // Validate before Benders policy: an invalid stored selector must not bypass
-  // membership checks merely because the large-N route ignores mipSolver.
   validate_solver(mipSolver);
-  // Validate every consumed MIPSettings field before any solver sees it: an
-  // unrecognised `benders` selector otherwise tests false below and silently
-  // means "off", and a negative `mip_gap` reaches HiGHS as an out-of-domain
-  // option value, reported as a solver failure rather than as bad input.
+  // A negative `mip_gap` would otherwise reach HiGHS as an out-of-domain option
+  // value, reported as a solver failure rather than as bad input.
   validate_mip_settings(mip_settings);
-  const bool use_benders = (mip_settings.benders == "on") || (mip_settings.benders == "auto" && data_.size() > 200);
 
-  if (use_benders) {
-    MIP_clustering_byBenders(*this); // guards n_repetitions for its warm start
-    return;
-  }
-
+  // The compact model on the selected solver at every N, as in v1.0.0; large N
+  // belongs to Method::LRCore, never to a silent reroute.
   switch (mipSolver) {
   case Solver::Gurobi:
     MIP_clustering_byGurobi(*this);
@@ -1455,11 +1447,7 @@ void Problem::init_with_seed(std::uint64_t seed)
  */
 void Problem::cluster_by_kmedoids_lloyd()
 {
-  cluster_by_kmedoids_lloyd_impl(persist_run_artifacts_);
-}
-
-void Problem::cluster_by_kmedoids_lloyd_impl(bool persist_artifacts)
-{
+  const bool persist_artifacts = persist_run_artifacts_;
   // The setters reject both; the deprecated public fields bypass them.
   const int repetitions = n_repetitions();
   if (repetitions <= 0)

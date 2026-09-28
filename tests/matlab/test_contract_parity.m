@@ -465,15 +465,14 @@ function test_problem_set_method_refuses_pam_and_auto(testCase)
 end
 
 function test_problem_set_mip_settings_roundtrip(testCase)
-%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings + benders).
+%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings).
     prob = dtwc.Problem('mip');
-    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', true, ...
-               'max_benders_iter', 150, 'benders', 'on');
+    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', false);
     prob.set_mip_settings(s);
     got = prob.get_mip_settings();
     verifyEqual(testCase, got.mip_gap, 1e-4, 'AbsTol', 1e-12);
-    verifyEqual(testCase, got.max_benders_iter, 150);
-    verifyEqual(testCase, char(got.benders), 'on');
+    verifyEqual(testCase, got.time_limit_sec, 30);
+    verifyEqual(testCase, got.warm_start, false);
 end
 
 function test_problem_set_mip_settings_lr_max_nodes(testCase)

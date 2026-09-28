@@ -297,8 +297,7 @@ classdef Problem < handle
         function set_mip_settings(obj, s)
         %SET_MIP_SETTINGS Configure MIP solver tuning from a struct.
         %   Recognised fields: mip_gap, time_limit_sec, warm_start, numeric_focus,
-        %   mip_focus, verbose_solver, max_benders_iter, lr_max_nodes,
-        %   benders ('auto'|'on'|'off').
+        %   mip_focus, verbose_solver, lr_max_nodes.
             dtwc_mex('Problem_set_mip_settings', obj.Handle, s);
         end
 

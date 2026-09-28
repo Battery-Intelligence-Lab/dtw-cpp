@@ -302,7 +302,7 @@ out-of-line and warning-silent.
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
@@ -732,7 +732,7 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, an mmap cache of other data or configuration; `load_checkpoint` returns `false`) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
-| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build, or PDLP `use_gpu` without CUPDLP_GPU; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
+| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
 | `dtwc::IOError` | file/format failure: file not found, unreadable or unwritable (a directory that cannot be created, a quota), bad Parquet/Arrow type, OOB offsets | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
@@ -741,7 +741,7 @@ cannot be parsed (a bad field or row, a bad `.dtws` or cache header, a Parquet /
 well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
 other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
 Arrow, `.dtws` or a memory-mapped store without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
-backend it lacks (`gpu`, PDLP `use_gpu`) is `DeviceError`.
+backend it lacks (`gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
 

@@ -149,9 +149,9 @@ DTW-C++ supports solving the k-medoids problem exactly via mixed-integer program
 
 By default, FastPAM is run first and its solution is fed to the MIP solver as a warm start. This dramatically reduces branch-and-bound solve time. Disable with `--no-warm-start`.
 
-### Benders Decomposition
+### Large N
 
-For large datasets ($$N > 200$$), Benders decomposition splits the problem into a master problem (medoid selection, $$N$$ binary variables) and an assignment subproblem. This is enabled automatically. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
+The MIP is the compact $$N^2$$-variable model on the selected solver at every $$N$$. For large $$N$$ use [LR-core](#lr-core) (`--method lrcore`), which is exact without forming that model. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
 
 ### MIP Solver Settings
 

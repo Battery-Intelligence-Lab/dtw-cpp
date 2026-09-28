@@ -15,7 +15,7 @@ namespace dtwc {
 
 enum class Method {
   Kmedoids, //<! Kmedoids (Lloyd/PAM) heuristic classification
-  MIP,      //<! Mixed integer programming — solver-backed exact (Gurobi/HiGHS, optional Benders)
+  MIP,      //<! Mixed integer programming — solver-backed exact (Gurobi/HiGHS)
   LRCore,   //<! LR-core exact: Lagrangian-dual bound + reduced-cost fixing + y-branching (Phase 4). Regime: dense D held in RAM (N·N doubles is the memory budget).
   /**
    * Density peaks with conditionally admissible LB/UB pruning.

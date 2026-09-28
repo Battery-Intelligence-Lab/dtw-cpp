@@ -207,7 +207,6 @@ export OMP_PLACES=cores
 | `DTWC_ENABLE_YAML` | ON | Accept YAML as well as TOML in `--config` (fkYAML, header-only) |
 | `DTWC_ENABLE_GUROBI` | ON | Enable Gurobi MIP solver (optional) |
 | `DTWC_ENABLE_HIGHS` | ON | Enable HiGHS MIP solver (optional) |
-| `DTWC_HIGHS_GPU` | OFF | Build the optional HiGHS PDLP CUDA backend |
 | `DTWC_ENABLE_NATIVE_ARCH` | ON | Tune for host CPU (`-march=native`); disable for portable binaries |
 | `DTWC_REPRODUCIBLE_BUILD` | OFF | Strip source/build paths from supported compiler outputs |
 | `DTWC_ARCH_LEVEL` | `""` | Override native arch: `v3` (AVX2+FMA, all modern HPC CPUs), `v4` (AVX-512) |

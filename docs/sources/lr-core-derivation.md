@@ -22,7 +22,7 @@ Verified line-by-line:
 
 - **Gurobi** (`dtwc/mip/mip_Gurobi.cpp`): flat index x[i,j] = w[i + j·Nb] (column j = point). Assignment at lines 47–53 (`lhs += w[j + i*Nb]` summed over the block of point i), linking at 56–58, cardinality at 60–66, objective 71–76 with scaling at 69. Branch priority 100 on diagonals already set (44–45); FastPAM MIP start (88–102). **Note:** the linking loop includes i = j, adding N trivial rows `x_ii ≤ x_ii` (presolve removes them; harmless, mildly wasteful) [confirmed: lines 56–58 loop over all (i,j)].
 - **HiGHS** (`dtwc/mip/mip_Highs.cpp`): flat index x[i,j] = i·Nb + j (row i = medoid). Rows: 0 = cardinality, 1..Nb = assignment, then Nb(Nb−1) linking rows built via triplets (114–132). Linking `row_lower_ = −1` instead of −∞ (line 88) — valid since x_ij − x_ii ≥ −1 under the variable bounds, so the extra side never binds [confirmed by inspection]. FastPAM warm start (172–189). Nonzeros ≈ N + N² + 2N(N−1) ≈ 3N².
-- **Dispatch** (`dtwc/Problem.cpp:538–547`): `benders == "on"`, or `"auto"` with N > 200 → `MIP_clustering_byBenders`; otherwise compact MIP.
+- **Dispatch** (`Problem::cluster_by_mip`): the compact MIP on the selected solver at every N. (The Benders route this investigation describes, with its N > 200 auto-dispatch, was deleted before 2.0; `Method::LRCore` is the large-N exact route.)
 
 Size at the user's targets: N = 10⁴ ⇒ 10⁸ binaries, ~3·10⁸ nonzeros (≥ 12–24 GB matrix storage alone). **The compact form is not a viable vehicle at N = 10⁴ regardless of solver** [confirmed by arithmetic above]. This is why the question "can we exploit near-unimodularity?" is the right one — but the answer must avoid ever *forming* the N²-column LP.
 

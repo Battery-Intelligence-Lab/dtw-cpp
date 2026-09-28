@@ -144,7 +144,7 @@ std::vector<double> uniform_D(int N, unsigned seed)
   return D;
 }
 
-// ---- HiGHS comparison plumbing (mirrors unit_test_benders.cpp) ----
+// ---- HiGHS comparison plumbing ----
 
 Problem make_problem_1d(const std::vector<double> &values, int k)
 {
@@ -159,7 +159,6 @@ Problem make_problem_1d(const std::vector<double> &values, int k)
   prob.set_data(Data(std::move(p_vec), std::move(names)));
   prob.set_n_clusters(k);
   prob.set_method(Method::MIP);
-  prob.mip_settings.benders = "off"; // compact HiGHS/Gurobi
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.band = -1;

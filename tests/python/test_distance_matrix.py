@@ -139,43 +139,6 @@ class TestOwnedBufferHandover:
         assert dm.to_numpy().shape == (0, 0)
 
 
-class TestPdlpBinding:
-    """E2: the PDLP LP-relaxation arbiter was reachable only from C++."""
-
-    def test_gpu_capability_query_exists(self):
-        from dtwcpp import _dtwcpp_core as core
-
-        assert isinstance(core.PDLP_GPU_AVAILABLE, bool)
-        assert core.pdlp_gpu_available() == core.PDLP_GPU_AVAILABLE
-
-    def test_lp_bound_rejects_a_non_square_matrix(self):
-        from dtwcpp import _dtwcpp_core as core
-
-        D = np.zeros((3, 4), dtype=np.float64)
-        with pytest.raises(dtwcpp.InvalidInput):
-            core.pdlp_lp_bound(D, 2)
-
-    def test_lp_bound_is_a_lower_bound_or_reports_no_solver(self):
-        from dtwcpp import _dtwcpp_core as core
-
-        D = np.array(
-            [[0.0, 1.0, 5.0, 6.0],
-             [1.0, 0.0, 6.0, 5.0],
-             [5.0, 6.0, 0.0, 1.0],
-             [6.0, 5.0, 1.0, 0.0]],
-            dtype=np.float64,
-        )
-        if not dtwcpp.HIGHS_AVAILABLE:
-            with pytest.raises(dtwcpp.SolverError):
-                core.pdlp_lp_bound(D, 2)
-            return
-        result = core.pdlp_lp_bound(D, 2)
-        # Optimal 2-medoid cost of this instance is 1 + 1 = 2; the LP
-        # relaxation can only be at or below it.
-        assert result.lp_bound <= 2.0 + 1e-6
-        assert result.lp_bound >= -1e-9
-
-
 class TestProblemThreadSafety:
     """Threading policy (audit 2026-09-02, D1).
 
