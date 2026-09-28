@@ -64,12 +64,12 @@ the loop, we chunk instead of refusing (PF-4).
 ```sh
 cmake --preset clang-macos -DOpenMP_ROOT=/opt/homebrew/opt/libomp && cmake --build --preset clang-macos
 ctest --test-dir build -C Release -j1 --output-on-failure      # serial is the evidence run
-python3 scripts/check_docs_contract.py && python3 scripts/check_supply_chain_pins.py
+python3 scripts/check_docs_contract.py && python3 scripts/check_pins.py
 ```
 
 A gate exists for five things only: a no-op's conformance output is digit-identical on one machine; a test
 cannot pass by skipping; the docs name only what the code has (`check_docs_contract.py`); every fetched
-dependency is pinned (`check_supply_chain_pins.py`); the tracked tree holds no secrets, banned paths or stray
+dependency is pinned (`check_pins.py`); the tracked tree holds no secrets, banned paths or stray
 artefacts (`check_repo_hygiene.py` — it scans for credentials, which matters with `.env` in play).
 
 ### 2.1 What a machine needs

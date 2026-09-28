@@ -13,6 +13,7 @@ function(dtwc_setup_dependencies)
     NAME CPMLicenses.cmake
     GITHUB_REPOSITORY cpm-cmake/CPMLicenses.cmake
     VERSION 0.0.7
+    GIT_TAG ca42334d561b83e499b11cf55fe05d97a0767fb9 # v0.0.7
   )
 
   if(DTWC_BUILD_TESTING AND NOT TARGET Catch2::Catch2WithMain) # Catch2 library:
@@ -158,8 +159,8 @@ function(dtwc_setup_dependencies)
 
   if(DTWC_BUILD_BENCHMARK)
     if(NOT TARGET benchmark::benchmark)
-      # Set outside the CPMAddPackage() call on purpose. scripts/check_supply_chain_pins.py
-      # refuses to audit a CPMAddPackage whose arguments contain a ${} expansion,
+      # Set outside the CPMAddPackage() call on purpose. scripts/check_pins.py
+      # refuses a CPMAddPackage whose arguments expand a ${} that is not a literal,
       # and it is right to: a pin nobody can read statically is not a pin. This is
       # the same mechanism CPM's own OPTIONS use, and google/benchmark's
       # option(BENCHMARK_ENABLE_LIBPFM ...) leaves an existing cache entry alone.
@@ -171,6 +172,7 @@ function(dtwc_setup_dependencies)
         NAME benchmark
         GITHUB_REPOSITORY google/benchmark
         VERSION 1.9.5
+        GIT_TAG 192ef10025eb2c4cdd392bc502f0c852196baa48 # v1.9.5
         OPTIONS
           "BENCHMARK_ENABLE_TESTING OFF"
           "BENCHMARK_ENABLE_GTEST_TESTS OFF"

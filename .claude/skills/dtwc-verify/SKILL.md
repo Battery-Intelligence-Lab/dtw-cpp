@@ -33,7 +33,7 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
    ```sh
    python3 scripts/check_repo_hygiene.py
    python3 scripts/check_docs_contract.py
-   python3 scripts/check_supply_chain_pins.py
+   python3 scripts/check_pins.py
    uv run --no-project python scripts/repo_map.py layers     # upward edges may only fall
    ```
 

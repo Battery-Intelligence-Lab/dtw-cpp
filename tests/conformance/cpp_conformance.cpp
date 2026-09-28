@@ -62,8 +62,7 @@ constexpr int kMaxIter = 100;
 constexpr unsigned kSeed = 29; // dtwc::randGenerator default; reset for a literal fixed seed.
 
 /// Repo-root/tests/conformance — located from the compile-time DTWC_TEST_DATA_DIR
-/// (== "<repo>/data"), never a runtime-relative path (Global Constraint #1; same
-/// pattern as tests/unit/test_supply_chain_pinning.cpp).
+/// (== "<repo>/data"), never a runtime-relative path (Global Constraint #1).
 fs::path conformance_dir()
 {
   return fs::path{ DTWC_TEST_DATA_DIR }.parent_path() / "tests" / "conformance";

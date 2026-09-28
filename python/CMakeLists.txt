@@ -19,6 +19,7 @@ if(NOT nanobind_FOUND)
     NAME nanobind
     GITHUB_REPOSITORY wjakob/nanobind
     VERSION 2.4.0
+    GIT_TAG 0f9ce749b257fdfe701edb3cf6f7027ba029434a # v2.4.0
     OPTIONS "NB_TEST OFF"
   )
 endif()
