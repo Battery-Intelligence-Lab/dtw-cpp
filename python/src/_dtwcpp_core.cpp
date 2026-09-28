@@ -39,7 +39,6 @@
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/one_batch_pam.hpp>
 #include <algorithms/barycenter.hpp>
-#include <algorithms/clarans.hpp>
 #include <algorithms/hierarchical.hpp>
 #include <scores.hpp>
 #include <core/z_normalize.hpp>
@@ -358,11 +357,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Complete", dtwc::algorithms::Linkage::Complete)
     .value("Average", dtwc::algorithms::Linkage::Average);
 
-  nb::enum_<dtwc::algorithms::OneBatchWeighting>(m, "OneBatchWeighting")
-    .value("Uniform", dtwc::algorithms::OneBatchWeighting::Uniform)
-    .value("Debiased", dtwc::algorithms::OneBatchWeighting::Debiased)
-    .value("NearestNeighbor", dtwc::algorithms::OneBatchWeighting::NearestNeighbor);
-
   nb::enum_<dtwc::algorithms::BarycenterMethod>(m, "BarycenterMethod")
     .value("SSG", dtwc::algorithms::BarycenterMethod::SSG)
     .value("DBA", dtwc::algorithms::BarycenterMethod::DBA)
@@ -374,7 +368,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("batch_size", &dtwc::algorithms::OneBatchPAMOptions::batch_size)
     .def_rw("max_iter", &dtwc::algorithms::OneBatchPAMOptions::max_iter)
     .def_rw("random_seed", &dtwc::algorithms::OneBatchPAMOptions::random_seed)
-    .def_rw("weighting", &dtwc::algorithms::OneBatchPAMOptions::weighting)
     .def_rw("relative_tolerance", &dtwc::algorithms::OneBatchPAMOptions::relative_tolerance);
 
   nb::class_<dtwc::algorithms::OneBatchPAMStats>(m, "OneBatchPAMStats")
@@ -556,30 +549,6 @@ NB_MODULE(_dtwcpp_core, m) {
       }
       return "HierarchicalOptions(linkage=" + linkage_str
              + ", max_points=" + std::to_string(o.max_points) + ")";
-    });
-
-  // =========================================================================
-  // CLARANSOptions
-  // =========================================================================
-
-  nb::class_<dtwc::algorithms::CLARANSOptions>(m, "CLARANSOptions")
-    .def(nb::init<>())
-    .def_rw("n_clusters", &dtwc::algorithms::CLARANSOptions::n_clusters,
-            "Number of clusters (k).")
-    .def_rw("num_local", &dtwc::algorithms::CLARANSOptions::num_local,
-            "Number of random restarts (default 2).")
-    .def_rw("max_neighbor", &dtwc::algorithms::CLARANSOptions::max_neighbor,
-            "Max non-improving swaps per restart (-1 = auto).")
-    .def_rw("max_dtw_evals", &dtwc::algorithms::CLARANSOptions::max_dtw_evals,
-            "Hard budget on total DTW computations (-1 = no limit).")
-    .def_rw("random_seed", &dtwc::algorithms::CLARANSOptions::random_seed,
-            "RNG seed for determinism (default 42).")
-    .def("__repr__", [](const dtwc::algorithms::CLARANSOptions &o) {
-      return "CLARANSOptions(k=" + std::to_string(o.n_clusters)
-             + ", num_local=" + std::to_string(o.num_local)
-             + ", max_neighbor=" + std::to_string(o.max_neighbor)
-             + ", max_dtw_evals=" + std::to_string(o.max_dtw_evals)
-             + ", seed=" + std::to_string(o.random_seed) + ")";
     });
 
   // =========================================================================
@@ -1287,19 +1256,16 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("one_batch_pam", [](dtwc::Problem &prob, int n_clusters, int batch_size,
-                              int max_iter, std::uint64_t seed,
-                              dtwc::algorithms::OneBatchWeighting weighting) {
+                              int max_iter, std::uint64_t seed) {
     dtwc::algorithms::OneBatchPAMOptions options;
     options.n_clusters = n_clusters;
     options.batch_size = batch_size;
     options.max_iter = max_iter;
     options.random_seed = seed;
-    options.weighting = weighting;
     nb::gil_scoped_release release;
     return dtwc::algorithms::one_batch_pam(prob, options);
   }, "prob"_a, "n_clusters"_a, "batch_size"_a = -1, "max_iter"_a = 100,
      "seed"_a = dtwc::settings::DEFAULT_RANDOM_SEED,
-     "weighting"_a = dtwc::algorithms::OneBatchWeighting::NearestNeighbor,
      "Run OneBatchPAM using one fixed N-by-m distance table (AAAI 2025).");
 
   m.def("one_batch_pam_with_stats",
@@ -1525,21 +1491,6 @@ NB_MODULE(_dtwcpp_core, m) {
      "Returns a ClusteringResult with labels, medoid_indices, and total_cost.\n"
      "The C++ core also writes labels/medoids/k back into prob (since 1.6), so\n"
      "silhouette(prob) etc. work after this call with no wrapper wiring (§2.5).");
-
-  // =========================================================================
-  // CLARANS
-  // =========================================================================
-
-  m.def("clarans", [](dtwc::Problem &prob, const dtwc::algorithms::CLARANSOptions &opts) {
-    nb::gil_scoped_release release;
-    return dtwc::algorithms::clarans(prob, opts);
-  }, "prob"_a, "opts"_a,
-     "Run CLARANS randomized k-medoids clustering.\n\n"
-     "Experimental bounded mid-ground algorithm. Tests random\n"
-     "(medoid_out, x_in) swaps, accepting only strictly improving ones.\n"
-     "The C++ core writes labels/medoids/k back into prob (since 1.6) so\n"
-     "scoring functions work after this call (§2.5).\n\n"
-     "Reference: Ng & Han (2002), IEEE TKDE 14(5).");
 
 
   // =========================================================================

@@ -16,7 +16,6 @@
 #include <exception>
 #include <iostream>
 #include <limits>
-#include <mutex>
 #include <numeric>
 #include <random>
 #include <string>
@@ -33,28 +32,10 @@ std::size_t automatic_batch_size(std::size_t n)
   return std::min(n, std::max<std::size_t>(64, logarithmic));
 }
 
-void warn_batch_size_adjustment(int requested, std::size_t effective)
-{
-  // This is intentionally per invocation, not process-once: each call can
-  // request a different invalid value, and hiding later corrections would
-  // make the effective configuration silent again. Serialize the complete
-  // line so concurrent OneBatchPAM calls cannot interleave their diagnostics.
-  static std::mutex warning_mutex;
-  const std::lock_guard<std::mutex> lock(warning_mutex);
-  std::cerr
-    << "[dtwc] warning: one_batch_pam requested batch_size=" << requested
-    << ", but n_clusters=" << effective
-    << " requires batch_size >= " << effective
-    << "; using effective batch_size=" << effective
-    << ". Set batch_size to at least n_clusters to avoid this adjustment.\n";
-}
-
 void validate_options(std::size_t n, const OneBatchPAMOptions& options)
 {
   if (n == 0)
     throw InvalidInput("one_batch_pam: Problem has no data points.");
-  if (n > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw InvalidInput("one_batch_pam: N exceeds the int-indexed result API limit.");
   if (options.n_clusters <= 0 || static_cast<std::size_t>(options.n_clusters) > n) {
     throw InvalidInput(
       "one_batch_pam: n_clusters must be in [1, N]. Got n_clusters="
@@ -62,6 +43,12 @@ void validate_options(std::size_t n, const OneBatchPAMOptions& options)
   }
   if (options.batch_size == 0 || options.batch_size < -1)
     throw InvalidInput("one_batch_pam: batch_size must be -1 or a positive integer.");
+  // The O(Nm) promise assumes m >= k; an explicit batch below k is refused, not
+  // silently raised.
+  if (options.batch_size > 0 && options.batch_size < options.n_clusters)
+    throw InvalidInput("one_batch_pam: batch_size must be at least n_clusters. Got batch_size="
+                       + std::to_string(options.batch_size) + ", n_clusters="
+                       + std::to_string(options.n_clusters) + ".");
   if (options.max_iter <= 0)
     throw InvalidInput("one_batch_pam: max_iter must be positive.");
   if (!std::isfinite(options.relative_tolerance) || options.relative_tolerance < 0.0)
@@ -77,14 +64,11 @@ struct FixedBatchDistances {
   std::vector<double> raw;
   std::vector<double> weights;
   double scale = 1.0;
-  OneBatchWeighting weighting;
   std::uint64_t evaluations = 0;
 
-  FixedBatchDistances(Problem& problem, std::vector<int> batch,
-                      OneBatchWeighting weighting_)
+  FixedBatchDistances(Problem& problem, std::vector<int> batch)
     : prob(problem), n(problem.size()), m(batch.size()), sample(std::move(batch)),
-      sample_position(n, -1), raw(n * m, 0.0), weights(m, 1.0),
-      weighting(weighting_)
+      sample_position(n, -1), raw(n * m, 0.0), weights(m, 0.0)
   {
     for (std::size_t j = 0; j < m; ++j)
       sample_position[static_cast<std::size_t>(sample[j])] = static_cast<int>(j);
@@ -140,53 +124,32 @@ struct FixedBatchDistances {
     evaluations = std::accumulate(row_evaluations.begin(), row_evaluations.end(),
                                   std::uint64_t{0});
 
-    switch (weighting) {
-    case OneBatchWeighting::Uniform:
-    case OneBatchWeighting::Debiased:
-      break;
-    case OneBatchWeighting::NearestNeighbor: {
-      // Count/mean NNIW (Loog 2012): the fixed table already contains
-      // everything needed to estimate each sampled point's Voronoi-cell mass.
-      // This is deliberately combined with the obpam experiment code's
-      // finite-table-maximum diagonal correction in estimate().  The paper's
-      // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe
-      // this exact hybrid estimator.
-      std::fill(weights.begin(), weights.end(), 0.0);
-      for (std::size_t i = 0; i < n; ++i) {
-        std::size_t nearest = 0;
-        double best = raw[i * m];
-        for (std::size_t j = 1; j < m; ++j) {
-          const double d = raw[i * m + j];
-          if (d < best) { best = d; nearest = j; }
-        }
-        weights[nearest] += 1.0;
+    // Count/mean NNIW (Loog 2012): the fixed table already contains everything
+    // needed to estimate each sampled point's Voronoi-cell mass. This is
+    // deliberately combined with the obpam experiment code's
+    // finite-table-maximum diagonal correction in estimate(). The paper's
+    // literal +infinity and maintained OneBatchPAM v0.1.0 do not describe this
+    // exact hybrid estimator.
+    for (std::size_t i = 0; i < n; ++i) {
+      std::size_t nearest = 0;
+      double best = raw[i * m];
+      for (std::size_t j = 1; j < m; ++j) {
+        const double d = raw[i * m + j];
+        if (d < best) { best = d; nearest = j; }
       }
-      const double mean = static_cast<double>(n) / static_cast<double>(m);
-      for (double& weight : weights) weight /= mean;
-      break;
+      weights[nearest] += 1.0;
     }
-    default:
-      throw std::logic_error(
-        "FixedBatchDistances: unreachable OneBatchWeighting");
-    }
+    const double mean = static_cast<double>(n) / static_cast<double>(m);
+    for (double& weight : weights) weight /= mean;
   }
 
   double estimate(std::size_t candidate, std::size_t batch_column) const
   {
-    switch (weighting) {
-    case OneBatchWeighting::Uniform:
-      break;
-    case OneBatchWeighting::Debiased:
-    case OneBatchWeighting::NearestNeighbor:
-      if (candidate != static_cast<std::size_t>(sample[batch_column])) break;
-      // The authors' obpam experiment code replaces d(x,x)=0 by the actual
-      // finite table maximum, i.e. exactly 1 after normalization.  Do not use
-      // the zero-table fallback scale as an unnormalized replacement value.
+    // The authors' obpam experiment code replaces d(x,x)=0 by the actual finite
+    // table maximum, i.e. exactly 1 after normalization. Do not use the
+    // zero-table fallback scale as an unnormalized replacement value.
+    if (candidate == static_cast<std::size_t>(sample[batch_column]))
       return weights[batch_column];
-    default:
-      throw std::logic_error(
-        "FixedBatchDistances::estimate: unreachable OneBatchWeighting");
-    }
     return (raw[candidate * m + batch_column] / scale) * weights[batch_column];
   }
 
@@ -242,7 +205,6 @@ core::ClusteringResult one_batch_pam(Problem& prob,
                                      const OneBatchPAMOptions& options,
                                      OneBatchPAMStats* stats)
 {
-  validate_one_batch_weighting(options.weighting);
   const std::size_t n = prob.size();
   validate_options(n, options);
   const int k = options.n_clusters;
@@ -264,12 +226,8 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   std::size_t m = options.batch_size < 0
                     ? automatic_batch_size(n)
                     : std::min(n, static_cast<std::size_t>(options.batch_size));
-  // The O(Nm) promise assumes m >= k. Explicitly requesting fewer evaluation
-  // points than clusters is statistically weak and usually accidental, so the
-  // correction must be visible. Automatic selection remains an internal policy
-  // and intentionally stays silent.
-  if (options.batch_size > 0 && m < static_cast<std::size_t>(k))
-    warn_batch_size_adjustment(options.batch_size, static_cast<std::size_t>(k));
+  // The automatic size is an internal policy: it rises to k silently (an
+  // explicit batch below k was refused above).
   m = std::max(m, static_cast<std::size_t>(k));
 
   std::mt19937_64 rng(options.random_seed);
@@ -282,7 +240,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   core::portable_shuffle(permutation.begin(), permutation.end(), rng);
   std::vector<int> medoids(permutation.begin(), permutation.begin() + k);
 
-  FixedBatchDistances distances(prob, std::move(sample), options.weighting);
+  FixedBatchDistances distances(prob, std::move(sample));
   std::vector<bool> is_medoid(n, false);
   for (int medoid : medoids) is_medoid[static_cast<std::size_t>(medoid)] = true;
 
@@ -379,7 +337,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   // finiteness check cannot cover: it is reached precisely when a selected
   // medoid is NOT in the batch. Unguarded, a non-finite d makes `d < best` false
   // in every slot, the point silently keeps label 0, and the run publishes a
-  // wrong partition where fast_pam / clarans / fast_clara all throw.
+  // wrong partition where fast_pam and fast_clara throw.
   for (std::size_t point = 0; point < n; ++point) {
     double best = std::numeric_limits<double>::infinity();
     int label = 0;
@@ -392,8 +350,8 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     point_cost[point] = best;
   }
   // Point-ordered accumulation: the published objective is a cross-route byte
-  // contract, so it uses the same reassociation-proof accumulator as fast_pam,
-  // clarans and fast_clara rather than a plain std::accumulate.
+  // contract, so it uses the same reassociation-proof accumulator as fast_pam
+  // and fast_clara rather than a plain std::accumulate.
   result.total_cost = core::detail::ordered_medoid_objective(point_cost, "one_batch_pam");
   result.iterations = sweeps;
   result.converged = converged;

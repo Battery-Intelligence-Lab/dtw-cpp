@@ -154,7 +154,7 @@ file to stream them under the cap.
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--batch-size <int>` | OneBatchPAM objective batch size (-1 = logarithmic auto) | -1 |
+| `--batch-size <int>` | OneBatchPAM objective batch size (-1 = logarithmic auto, raised to k); an explicit size below k is an error | -1 |
 | `--dc <float>` | TADPole density cutoff (omitted/negative = deterministic auto-selection) | auto |
 
 ### Hierarchical Clustering Options

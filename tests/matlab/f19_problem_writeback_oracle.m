@@ -3,7 +3,7 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
 %
 %   SUMMARY = F19_PROBLEM_WRITEBACK_ORACLE(ROUTE, PROFILE, VERSION) drives
 %   the public MATLAB wrappers against a caller-selected MEX. ROUTE is one
-%   of "all", "fast_pam", "fast_clara", "clarans", or "cut_dendrogram".
+%   of "all", "fast_pam", "fast_clara", or "cut_dendrogram".
 %
 %   Every selected route starts from a fresh Problem whose labels, medoids,
 %   and k are first poisoned by a deterministic k=3 FastPAM result. The
@@ -26,7 +26,7 @@ function summary = f19_problem_writeback_oracle(route, profile, version)
     route = lower(strtrim(char(route)));
     profile = char(profile);
     version = char(version);
-    validRoutes = {'fast_pam', 'fast_clara', 'clarans', 'cut_dendrogram'};
+    validRoutes = {'fast_pam', 'fast_clara', 'cut_dendrogram'};
     if strcmp(route, 'all')
         selectedRoutes = validRoutes;
     elseif any(strcmp(route, validRoutes))
@@ -102,7 +102,7 @@ function routeSummary = run_route(route, X, profile, version)
             expectedLabels = int32([2 2 2 2 1 1 1 1]);
             expectedMedoids = int32([7 4]);
             expectedCost = 98;
-        case {'clarans', 'cut_dendrogram'}
+        case 'cut_dendrogram'
             expectedLabels = int32([1 1 1 1 2 2 2 2]);
             expectedMedoids = int32([2 7]);
             expectedCost = 87;
@@ -144,10 +144,6 @@ function routeSummary = run_route(route, X, profile, version)
             target = dtwc.fast_clara( ...
                 prob, 2, 'SampleSize', 4, 'NSamples', 3, ...
                 'MaxIter', 100, 'Seed', 42);
-        case 'clarans'
-            target = dtwc.clarans( ...
-                prob, 2, 'NumLocal', 3, 'MaxNeighbor', 50, ...
-                'MaxDtwEvals', -1, 'Seed', 42);
         case 'cut_dendrogram'
             prob.fill_distance_matrix();
             dend = dtwc.build_dendrogram( ...

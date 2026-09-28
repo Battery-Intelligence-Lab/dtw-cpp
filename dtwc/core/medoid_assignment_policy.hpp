@@ -9,7 +9,7 @@
  * The scans are NOT candidates for a single shared loop: they differ in
  * parallel-vs-serial execution, index space, distance signature and per-element
  * side effects, so folding them together needs runtime policy switches in the
- * library's hottest loops. See medoid_utils.hpp (D1).
+ * library's hottest loops.
  */
 
 #pragma once

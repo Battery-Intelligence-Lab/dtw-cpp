@@ -1,6 +1,6 @@
 /**
  * @file unit_test_fast_pam.cpp
- * @brief Unit tests for FastPAM1 k-medoids clustering algorithm.
+ * @brief Unit tests for FasterPAM k-medoids clustering.
  *
  * @details Tests verify correctness, convergence, and quality of FastPAM
  * against basic invariants and compared to Lloyd-style k-medoids.

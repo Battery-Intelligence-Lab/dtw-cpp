@@ -132,11 +132,6 @@ TEST_CASE("storage, dtype, linkage and OneBatchPAM weighting tables", "[names]")
   check_table(dtwc::algorithms::linkage_names,
               { { "single", Linkage::Single }, { "complete", Linkage::Complete }, { "average", Linkage::Average } },
               {});
-  using dtwc::algorithms::OneBatchWeighting;
-  check_table(dtwc::algorithms::one_batch_weighting_names,
-              { { "uniform", OneBatchWeighting::Uniform }, { "debiased", OneBatchWeighting::Debiased },
-                { "nniw", OneBatchWeighting::NearestNeighbor } },
-              { { "debias", "debiased" } });
 }
 
 TEST_CASE("config tables: cluster method and GPU precision", "[names]")

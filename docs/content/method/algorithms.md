@@ -19,11 +19,12 @@ PAM consists of two phases:
 1. **BUILD phase:** Select initial medoids (either randomly or via k++ initialization).
 2. **SWAP phase:** Iteratively improve the clustering by considering swapping each medoid with each non-medoid and accepting swaps that reduce total cost.
 
-### FastPAM1 Optimization
+### FasterPAM
 
-DTWC++ uses the FastPAM1 decomposition, which evaluates swap candidates with
-nearest/second-nearest medoid tracking. Production SWAP work is
-$$O(N^2)$$ per iteration rather than the direct-sum $$O(N^2k)$$ reference path.
+DTWC++ runs the eager FasterPAM SWAP: nearest/second-nearest medoid tracking
+evaluates one candidate against every medoid in $$O(N)$$, so a sweep costs
+$$O(N^2)$$, and each improving swap is taken as soon as it is found, so few
+sweeps are needed even at large $$k$$.
 
 **CLI:** `dtwc_cl -k 5 --method pam`
 
@@ -110,26 +111,6 @@ auto result = dtwc::algorithms::cut_dendrogram(dendrogram, k);
 
 ```note
 Hierarchical clustering requires the full distance matrix and has $$O(N^2)$$ memory complexity. A hard guard of `max_points = 2000` prevents accidental out-of-memory errors on large datasets. For larger datasets, use FastCLARA instead.
-```
-
-## CLARANS (Experimental)
-
-CLARANS (Clustering Large Applications based on RANdomized Search) is a randomized variant of k-medoids that explores random neighbors instead of evaluating all possible swaps. It is more scalable than PAM for very large datasets but may not find the global optimum.
-
-### Budget Controls
-
-CLARANS uses budget controls to limit computation:
-
-| Parameter | Description |
-|-----------|-------------|
-| `num_local` | Number of random restarts (at least 1; default 2) |
-| `max_dtw_evals` | Maximum total DTW distance evaluations (`-1` = no limit) |
-| `max_neighbor` | Maximum consecutive non-improving swaps per restart (`-1` = automatic, `0` = keep the seeded initial medoids) |
-
-`num_local` below 1 raises `InvalidInput` before the Problem is touched.
-
-```warning
-CLARANS is currently experimental and not exposed in the CLI. It requires benchmark evidence before promotion to a production algorithm. Use FastCLARA for scalable clustering.
 ```
 
 ## Lloyd's Algorithm (k-Means Style)

@@ -31,7 +31,6 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
-#include "../../dtwc/algorithms/clarans.hpp"
 #include "../../dtwc/algorithms/hierarchical.hpp"
 #include "../../dtwc/scores.hpp"
 #include "../../dtwc/core/z_normalize.hpp"
@@ -1284,23 +1283,6 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = clustering_result_to_mx(result);
 }
 
-static void cmd_clarans(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("clarans requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-
-  dtwc::algorithms::CLARANSOptions opts;
-  opts.n_clusters = static_cast<int>(get_scalar(prhs[2]));
-  if (nrhs > 3) opts.num_local = static_cast<int>(get_scalar(prhs[3]));
-  if (nrhs > 4) opts.max_neighbor = static_cast<int>(get_scalar(prhs[4]));
-  if (nrhs > 5) opts.max_dtw_evals = static_cast<int64_t>(get_scalar(prhs[5]));
-  if (nrhs > 6)
-    opts.random_seed = static_cast<unsigned>(
-      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
-
-  auto result = dtwc::algorithms::clarans(prob, opts);
-  plhs[0] = clustering_result_to_mx(result);
-}
-
 static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("build_dendrogram requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
@@ -1637,7 +1619,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Algorithms
     else if (cmd == "fast_pam") cmd_fast_pam(nlhs, plhs, nrhs, prhs);
     else if (cmd == "fast_clara") cmd_fast_clara(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "clarans") cmd_clarans(nlhs, plhs, nrhs, prhs);
     else if (cmd == "build_dendrogram") cmd_build_dendrogram(nlhs, plhs, nrhs, prhs);
     else if (cmd == "cut_dendrogram") cmd_cut_dendrogram(nlhs, plhs, nrhs, prhs);
     // Scoring

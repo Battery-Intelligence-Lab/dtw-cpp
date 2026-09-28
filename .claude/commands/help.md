@@ -18,15 +18,15 @@ Match the question to one of these sections. If no match, read source files (`py
 
 | When | Use | Why |
 |------|-----|-----|
-| N ≤ 5000 | **FastPAM1** | Optimal k-medoids via swap; fast and exact for small N |
+| N ≤ 5000 | **FasterPAM** | Local-optimum k-medoids via eager swap; fast for small N |
 | 5000 < N ≤ 50000 | **FastCLARA** | Samples subsets; scales linearly; near-optimal |
 | Need dendrogram | **Hierarchical** | Agglomerative; produces full tree |
 | Need provable optimum | **MIP** (Gurobi/HiGHS) | Integer programming; expensive but exact |
-| N > 50000 | **CLARANS** | Randomized k-medoids; best scaling |
+| N > 50000 | **OneBatchPAM** | One fixed N×m distance batch; O(Nm) distances |
 | Very large, fits memory | **FastCLARA with chunking** | Use `--ram-limit` |
 
-Python: `fast_pam()`, `fast_clara()`, `build_dendrogram()` + `cut_dendrogram()`, `clarans()`.
-CLI: `--method pam|clara|hierarchical|mip|clarans`.
+Python: `fast_pam()`, `fast_clara()`, `one_batch_pam()`, `build_dendrogram()` + `cut_dendrogram()`.
+CLI: `--method pam|clara|onebatch|hierarchical|mip|lrcore`.
 
 ## DTW variants
 

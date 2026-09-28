@@ -57,14 +57,14 @@ _ENUMS = [
 _STRUCTS = [
     "DTWVariantParams", "MIPSettings", "CUDASettings", "DenseDistanceMatrix",
     "Data", "DendrogramStep", "Dendrogram", "HierarchicalOptions",
-    "CLARANSOptions", "CLARAOptions", "ClusteringResult", "Problem",
+    "CLARAOptions", "ClusteringResult", "Problem",
     "CheckpointOptions",
 ]
 
 # ---------------------------------------------------------------------------
 # §2.5 algorithm free functions + checkpoint + utils
 # ---------------------------------------------------------------------------
-_ALGOS = ["fast_pam", "fast_clara", "clarans", "build_dendrogram", "cut_dendrogram"]
+_ALGOS = ["fast_pam", "fast_clara", "build_dendrogram", "cut_dendrogram"]
 _CHECKPOINT = [
     "save_checkpoint",
     "load_checkpoint",

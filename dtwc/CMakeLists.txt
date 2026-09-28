@@ -26,7 +26,6 @@ target_sources(dtwc++
   algorithms/one_batch_pam.cpp
   algorithms/barycenter.cpp
   algorithms/hierarchical.cpp
-  algorithms/clarans.cpp
   algorithms/tadpole.cpp
   algorithms/detail/fast_clara_plan.hpp
   io/arrow_c_data.cpp
@@ -76,9 +75,7 @@ target_sources(dtwc++
   algorithms/one_batch_pam.hpp
   algorithms/barycenter.hpp
   algorithms/hierarchical.hpp
-  algorithms/clarans.hpp
   algorithms/tadpole.hpp
-  algorithms/detail/medoid_utils.hpp
 )
 
 target_include_directories(dtwc++ PUBLIC .)

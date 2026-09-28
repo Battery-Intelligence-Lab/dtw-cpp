@@ -147,7 +147,7 @@ end
 
 function test_pam_and_auto_match_seeded_fast_pam(testCase)
 %   C++ routes 'pam' (and 'auto' below the CLARA threshold) to the seeded
-%   FastPAM1 with settings::DEFAULT_RANDOM_SEED.
+%   FasterPAM with settings::DEFAULT_RANDOM_SEED.
     X = testCase.TestData.X;
     k = testCase.TestData.k;
     oracle = dtwc.fast_pam(problem_with(X, 'dataset'), k, ...

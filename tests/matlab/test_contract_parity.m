@@ -598,7 +598,7 @@ end
 % =========================================================================
 
 function test_algorithms_all_callable(testCase)
-%   §2.5 fast_pam / fast_clara / clarans / build_dendrogram / cut_dendrogram.
+%   §2.5 fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
     prob = dtwc.Problem('algos');
     prob.set_data(testCase.TestData.X);
     prob.fill_distance_matrix();
@@ -607,8 +607,6 @@ function test_algorithms_all_callable(testCase)
     verifyNumElements(testCase, r1.labels, 6);
     r2 = dtwc.fast_clara(prob, 2, 'NSamples', 2, 'Seed', 42);
     verifyNumElements(testCase, r2.labels, 6);
-    r3 = dtwc.clarans(prob, 2, 'NumLocal', 2, 'Seed', 42);
-    verifyNumElements(testCase, r3.labels, 6);
 
     dend = dtwc.build_dendrogram(prob, 'Linkage', 'average');
     verifyTrue(testCase, isstruct(dend) && isfield(dend, 'merges'));

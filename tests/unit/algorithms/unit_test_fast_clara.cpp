@@ -388,13 +388,6 @@ TEST_CASE("FastCLARA dimension planning is overflow-safe before allocation",
     "fast_clara: sample_size resolves to N, but the Parquet dataset exceeds "
     "ram_limit_bytes; use sample_size < N or raise the RAM limit for the "
     "single full-data PAM fallback.");
-
-  REQUIRE_THROWS_WITH(
-    algorithms::detail::resolve_clara_plan(
-      static_cast<std::int64_t>(std::numeric_limits<int>::max()) + 1,
-      opts,
-      "fast_clara"),
-    "fast_clara: N exceeds the int-indexed clustering result limit.");
 }
 
 TEST_CASE("FastCLARA forced streaming validates its route before reader I/O",

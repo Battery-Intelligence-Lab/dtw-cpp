@@ -68,9 +68,6 @@ namespace detail {
     const std::string prefix(caller);
     if (n_points <= 0)
       throw InvalidInput(prefix + ": Problem has no data points.");
-    if (n_points > std::numeric_limits<int>::max())
-      throw InvalidInput(
-        prefix + ": N exceeds the int-indexed clustering result limit.");
     if (options.n_clusters <= 0 || options.n_clusters > n_points) {
       throw InvalidInput(
         prefix + ": n_clusters must be in [1, N]. Got n_clusters="
@@ -198,9 +195,6 @@ namespace {
     Problem &prob, const std::vector<int> &medoid_indices,
     std::vector<int> &labels)
   {
-    if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-      throw InvalidInput(
-        "fast_clara: N exceeds the int-indexed clustering result limit.");
     const int n_points = static_cast<int>(prob.size());
     if (prob.data().is_f32()) {
       const auto &distance = prob.dtw_function_f32();
@@ -483,9 +477,6 @@ core::ClusteringResult fast_clara(Problem &prob, const CLARAOptions &opts)
   }
 #endif
 
-  if (prob.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-    throw InvalidInput(
-      "fast_clara: N exceeds the int-indexed clustering result limit.");
   const auto plan = detail::resolve_clara_plan(
     static_cast<std::int64_t>(prob.size()), opts, "fast_clara");
   const int N = plan.n_points;

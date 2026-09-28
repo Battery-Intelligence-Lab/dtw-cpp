@@ -230,11 +230,6 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
         std::vector<int> one{ 0 };
         prob.set_clusters(one);
       } },
-    { "medoid_utils.hpp: duplicate initial medoids", "InvalidInput",
-      [] {
-        auto prob = three_series();
-        (void)dtwc::fast_pam_swap(prob, { 0, 0 });
-      } },
     { "hierarchical.cpp: dendrogram over another point count", "InvalidInput",
       [] {
         auto prob = three_series();

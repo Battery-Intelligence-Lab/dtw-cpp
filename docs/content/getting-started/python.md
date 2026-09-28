@@ -235,15 +235,6 @@ from dtwcpp import fast_clara
 result = fast_clara(prob, n_clusters=3, sample_size=-1, n_samples=5, seed=42)
 ```
 
-### CLARANS
-
-```python
-from dtwcpp import clarans, CLARANSOptions
-
-opts = CLARANSOptions()
-result = clarans(prob, opts)
-```
-
 ### Hierarchical clustering
 
 Build a dendrogram, then cut it at the desired number of clusters:
