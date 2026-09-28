@@ -49,10 +49,8 @@ The admissibility statements in this section require finite input samples and
 ordered finite envelope bounds. Missing-value policies and non-finite data are
 outside the D2 proof.
 
-The L1 (and scalar L2) bound has amplitude units `U`; the unrooted squared-L2
-bound squares each excess and has units `U^2`. The implementation provides
-separate L1 and squared-excess primitives. The scalar L2 selector has the same
-point cost as L1; this statement does not extend to multivariate Euclidean L2.
+The bound is L1 and has amplitude units `U`; TADPole applies it only to
+univariate L1 Standard DTW.
 
 For a feasible fixed window (`w >= |n-m|`), a directional bound may sum only
 the first `min(n,m)` rows and remains admissible: every included row can be
@@ -60,41 +58,6 @@ charged to one distinct path cell. The symmetric bound is the maximum of the
 two directional bounds, not their sum. The complete proof and executable
 oracle are in the
 [D2 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/02-envelopes-lb-keogh.md).
-
-### LB_Kim
-
-LB_Kim is an O(1) bound derived from endpoint and range summaries. It is valid
-for the current scalar L1 cost (and scalar L2, which is identical to L1).
-Although the public trait currently advertises squared-L2 compatibility, the
-implementation still returns raw absolute feature differences. That result is
-not an admissible squared-L2 bound; the mismatch is tracked as F47. LB_Kim is
-generally looser than LB_Keogh in its valid regime.
-
-### LB_Enhanced and LB_Webb
-
-The C++ lower-bound library implements LB_Enhanced and retains `lb_webb` and
-the `Webb` strategy as historical public names. The local Webb implementation
-is the paper's all-index `LB_Webb_NoLR` bridge and corrections plus a separate
-conservative trailing-flag cap. It is not full Algorithm 2, which includes
-`MinLRPaths`, and no universal ordering between the local variant and full
-Webb is claimed.
-
-Inside the confirmed finite, nonempty, equal-length scalar L1 or unrooted
-squared-L2 domain, the envelope, lower bound, and DTW must use the same
-saturated window. The local directional Webb result is at least the
-matching-direction LB_Keogh; taking the maximum of both directions therefore
-dominates symmetric Keogh. The tail-cap proof is a different statement:
-the production result is no greater than exact-predicate NoLR and remains
-admissible.
-
-For effective `V=1`, directional LB_Enhanced dominates matching-direction
-Keogh. For effective `V>=2`, neither dominates: the D3 exact oracle contains
-strict witnesses in both directions, so the `Enhanced` cascade evaluates
-their maximum. Custom point costs, nonfinite inputs, mutable envelope
-shape/provenance, and last-ULP threshold decisions are outside this confirmed
-contract. The complete assumptions, proofs, witnesses, and code-conformance
-map are in the
-[D3 derivation](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/docs/derivations/03-lb-enhanced-webb.md).
 
 ## Choosing a metric
 

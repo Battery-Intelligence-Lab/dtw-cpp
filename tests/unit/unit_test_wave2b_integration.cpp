@@ -6,14 +6,10 @@
  *   - MV WDTW: wdtwFull_mv, wdtwBanded_mv
  *   - MV ADTW: adtwFull_L_mv, adtwBanded_mv
  *   - MV DDTW: derivative_transform_mv + dtwBanded_mv
- *   - Per-channel LB_Keogh: compute_envelopes_mv, lb_keogh_mv
- *   - SquaredL2 LB: lb_keogh_squared, lb_keogh_mv_squared
  *   - MV missing-data DTW: dtwMissing_L_mv, dtwMissing_banded_mv
  *
  * Tests:
  *   1. Cross-variant consistency for ndim=1 (MV variants match scalar counterparts)
- *   2. LB_Keogh is valid lower bound on MV DTW (50 random pairs, ndim=2,3)
- *   3. LB_Keogh SquaredL2 is valid lower bound (same setup)
  *   4. MV missing + MV variants: non-negative, finite, symmetric (ndim=2, with NaN)
  *   5. Full Problem pipeline with ndim=3: WDTW, distance matrix, cluster, all metrics finite
  *   6. Performance comparison ndim=1 vs ndim=3: timing sanity check
@@ -217,120 +213,6 @@ TEST_CASE("Wave2B cross-variant ndim=1: derivative_transform_mv matches derivati
     REQUIRE(dx_scalar.size() == dx_mv.size());
     for (std::size_t i = 0; i < dx_scalar.size(); ++i)
       REQUIRE_THAT(dx_mv[i], WithinAbs(dx_scalar[i], 1e-12));
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Test 2: LB_Keogh (L1) is valid lower bound on MV DTW for ndim=2,3
-// ---------------------------------------------------------------------------
-
-TEST_CASE("Wave2B LB_Keogh MV is valid lower bound on dtwBanded_mv (ndim=2)",
-          "[wave2b][integration][lb][ndim2]")
-{
-  std::mt19937_64 rng(1001);
-  const std::size_t n_steps = 20;
-  const std::size_t ndim = 2;
-  const int band = 4;
-  const int N_pairs = 50;
-
-  for (int trial = 0; trial < N_pairs; ++trial) {
-    auto xv = make_mv_series(n_steps, ndim, 0.0, 2.0, rng);
-    auto yv = make_mv_series(n_steps, ndim, 1.0, 2.0, rng);
-
-    // Compute envelopes of y, then LB_Keogh of x vs y_envelopes
-    std::vector<double> upper(n_steps * ndim), lower(n_steps * ndim);
-    dtwc::core::compute_envelopes_mv(yv.data(), n_steps, ndim, band, upper.data(), lower.data());
-
-    double lb = dtwc::core::lb_keogh_mv(xv.data(), n_steps, ndim, upper.data(), lower.data());
-    double dtw_d = dtwc::dtwBanded_mv(xv.data(), n_steps, yv.data(), n_steps, ndim, band);
-
-    // LB must be non-negative
-    REQUIRE(lb >= 0.0);
-    // LB must be finite
-    REQUIRE(std::isfinite(lb));
-    // LB must be a valid lower bound (lb <= dtw)
-    REQUIRE(lb <= dtw_d + 1e-9);
-  }
-}
-
-TEST_CASE("Wave2B LB_Keogh MV is valid lower bound on dtwBanded_mv (ndim=3)",
-          "[wave2b][integration][lb][ndim3]")
-{
-  std::mt19937_64 rng(1002);
-  const std::size_t n_steps = 20;
-  const std::size_t ndim = 3;
-  const int band = 4;
-  const int N_pairs = 50;
-
-  for (int trial = 0; trial < N_pairs; ++trial) {
-    auto xv = make_mv_series(n_steps, ndim, 0.0, 2.0, rng);
-    auto yv = make_mv_series(n_steps, ndim, 1.0, 2.0, rng);
-
-    std::vector<double> upper(n_steps * ndim), lower(n_steps * ndim);
-    dtwc::core::compute_envelopes_mv(yv.data(), n_steps, ndim, band, upper.data(), lower.data());
-
-    double lb    = dtwc::core::lb_keogh_mv(xv.data(), n_steps, ndim, upper.data(), lower.data());
-    double dtw_d = dtwc::dtwBanded_mv(xv.data(), n_steps, yv.data(), n_steps, ndim, band);
-
-    REQUIRE(lb >= 0.0);
-    REQUIRE(std::isfinite(lb));
-    REQUIRE(lb <= dtw_d + 1e-9);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Test 3: LB_Keogh SquaredL2 is valid lower bound on MV SquaredL2 DTW
-// ---------------------------------------------------------------------------
-
-TEST_CASE("Wave2B LB_Keogh SquaredL2 is valid lower bound on MV SquaredL2 DTW (ndim=2)",
-          "[wave2b][integration][lb][squared][ndim2]")
-{
-  std::mt19937_64 rng(2001);
-  const std::size_t n_steps = 20;
-  const std::size_t ndim = 2;
-  const int band = 4;
-  const int N_pairs = 50;
-
-  for (int trial = 0; trial < N_pairs; ++trial) {
-    auto xv = make_mv_series(n_steps, ndim, 0.0, 2.0, rng);
-    auto yv = make_mv_series(n_steps, ndim, 1.0, 2.0, rng);
-
-    std::vector<double> upper(n_steps * ndim), lower(n_steps * ndim);
-    dtwc::core::compute_envelopes_mv(yv.data(), n_steps, ndim, band, upper.data(), lower.data());
-
-    double lb    = dtwc::core::lb_keogh_mv_squared(xv.data(), n_steps, ndim, upper.data(), lower.data());
-    double dtw_d = dtwc::dtwBanded_mv(xv.data(), n_steps, yv.data(), n_steps, ndim, band,
-                                       -1.0, dtwc::core::MetricType::SquaredL2);
-
-    REQUIRE(lb >= 0.0);
-    REQUIRE(std::isfinite(lb));
-    REQUIRE(lb <= dtw_d + 1e-9);
-  }
-}
-
-TEST_CASE("Wave2B LB_Keogh SquaredL2 is valid lower bound on MV SquaredL2 DTW (ndim=3)",
-          "[wave2b][integration][lb][squared][ndim3]")
-{
-  std::mt19937_64 rng(2002);
-  const std::size_t n_steps = 20;
-  const std::size_t ndim = 3;
-  const int band = 4;
-  const int N_pairs = 50;
-
-  for (int trial = 0; trial < N_pairs; ++trial) {
-    auto xv = make_mv_series(n_steps, ndim, 0.0, 2.0, rng);
-    auto yv = make_mv_series(n_steps, ndim, 1.0, 2.0, rng);
-
-    std::vector<double> upper(n_steps * ndim), lower(n_steps * ndim);
-    dtwc::core::compute_envelopes_mv(yv.data(), n_steps, ndim, band, upper.data(), lower.data());
-
-    double lb    = dtwc::core::lb_keogh_mv_squared(xv.data(), n_steps, ndim, upper.data(), lower.data());
-    double dtw_d = dtwc::dtwBanded_mv(xv.data(), n_steps, yv.data(), n_steps, ndim, band,
-                                       -1.0, dtwc::core::MetricType::SquaredL2);
-
-    REQUIRE(lb >= 0.0);
-    REQUIRE(std::isfinite(lb));
-    REQUIRE(lb <= dtw_d + 1e-9);
   }
 }
 
