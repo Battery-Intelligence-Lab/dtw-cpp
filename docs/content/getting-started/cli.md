@@ -197,7 +197,6 @@ These three apply to CSV/TSV input only; any of them on Parquet, Arrow IPC or
 | `--dist-matrix <path>` | Path to precomputed distance matrix CSV | — |
 | `--checkpoint <path>` | Checkpoint directory for save/resume | — |
 | `--checkpoint-interval <rows>` | Publish a checkpoint generation every N completed distance-matrix rows (a non-zero N requires `--checkpoint`) | 0 (save once, at the end) |
-| `--resume` | Replay the completed automatic binary result at `<output>/<name>_checkpoint.bin` | off |
 | `--mmap-threshold <int>` | N above which to use memory-mapped distance matrix (0=always) | 50000 |
 
 Without `--checkpoint-interval` (or with `0`) the dense checkpoint is written once, after clustering. With a non-zero interval, `fill_distance_matrix` saves a generation after every `<rows>` completed matrix rows, so an interrupted run resumes from the last block instead of recomputing the whole matrix; it requires `--checkpoint <dir>` and exits 1 without it, before any data is read. Each save rewrites the whole N-by-N CSV, so choose an interval whose block (about `<rows>` * N DTW computations) costs much more than one save (about N^2 number formats).
@@ -218,8 +217,7 @@ distances directly. It therefore rejects `--checkpoint` and `--dist-matrix`,
 which would otherwise load or save unused O(N²) state. If `--sample-size`
 resolves to N, FastCLARA deliberately becomes one full-data PAM run and the
 ordinary distance-storage/checkpoint rules apply. RAM-limited streaming always
-uses a non-full sample and still writes the automatic binary clustering-result
-checkpoint.
+uses a non-full sample.
 
 The mmap cache resumes automatically only when its version-3 semantic
 fingerprint, payload row digests, and exact file layout validate under an
@@ -234,19 +232,6 @@ incompatible because they require a dense CSV matrix; the CLI rejects the
 combination before opening either path. CUDA mmap runs must select explicit
 `--gpu-precision fp32` or `fp64`; the hardware-dependent `auto` setting is not a
 stable cache identity.
-
-`--resume` is a separate completed-result replay path. It loads
-`<output>/<name>_checkpoint.bin`, validates N, k, labels, medoids, iterations,
-and cost, restores all five result fields, and skips clustering. It preserves
-the binary source file; `converged=false` remains an iteration-capped completed
-result, and `--max-iter` is not an extra budget. Missing or incompatible
-requested state is an error rather than a fresh fallback.
-
-Binary result format v1 does not store the producing method or a data/config
-fingerprint. Replay therefore assumes the same input order and clustering
-configuration at the explicitly selected output/name. It is not
-mid-algorithm continuation. The dense `--checkpoint` path and the mmap cache
-remain independent distance-matrix mechanisms.
 
 ### GPU Options
 
@@ -285,19 +270,17 @@ The CLI writes the following files to the output directory:
 | `<name>_medoids.csv` | Cluster ID, medoid index, and medoid name |
 | `<name>_silhouettes.csv` | Point name, cluster, and silhouette score (only when a full distance matrix is materialised) |
 | `<name>_distance_matrix.csv` | Full pairwise distance matrix (only when materialised) |
-| `<name>_checkpoint.bin` | Automatic binary clustering-result checkpoint |
 
 If an output file cannot be written in full (an unwritable directory, a full
 disk, a file-size quota), `dtwc_cl` exits 1 and names the file; a file named in
 that message is incomplete. A silhouette score that cannot be computed is only a
 warning.
 
-RAM-limited Parquet streaming writes labels, medoids, and the binary result
-checkpoint, but deliberately does not materialise the dense matrix merely to
-produce distance or silhouette CSVs. List rows use the stable names
-`series_0`, `series_1`, and so on. For the same seed/configuration, streamed and
-resident list-column runs produce byte-identical label, medoid, and binary
-checkpoint files.
+RAM-limited Parquet streaming writes labels and medoids, but deliberately does
+not materialise the dense matrix merely to produce distance or silhouette CSVs.
+List rows use the stable names `series_0`, `series_1`, and so on. For the same
+seed/configuration, streamed and resident list-column runs produce
+byte-identical label and medoid files.
 
 ## Examples
 
@@ -358,16 +341,12 @@ dtwc_cl --config config.toml
 dtwc_cl --config config.yaml
 ```
 
-### Distance checkpoint and completed-result replay
+### Distance checkpoint
 
 ```bash
-# Save/load dense distance state; a restart uses the same command, without --resume
+# Save/load dense distance state; a restart uses the same command
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
 dtwc_cl -i data.csv -k 5 --checkpoint ./checkpoints
-
-# Replay a completed result from the same output/name without rerunning clustering
-dtwc_cl -i data.csv -k 5 --output ./results --name run1
-dtwc_cl -i data.csv -k 5 --output ./results --name run1 --resume
 ```
 
 All flags are case-insensitive for enum values (e.g., `--method PAM` works the same as `--method pam`).

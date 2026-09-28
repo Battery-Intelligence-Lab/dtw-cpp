@@ -7,9 +7,8 @@
  * reach its file-local helpers. Those helpers are gone: the device grammar is
  * detail::parse_device, the selectors are types, and the pipeline is run(). The
  * contracts they carried are asserted here through the production entry points;
- * the device matrix is test_run_resolution.cpp's, the resume rejections
- * test_cli_resume_state's (real binary), and the streamed Parquet names F8 /
- * F13's (real binary, Arrow builds).
+ * the device matrix is test_run_resolution.cpp's, and the streamed Parquet
+ * names F8 / F13's (real binary, Arrow builds).
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026

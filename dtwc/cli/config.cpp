@@ -314,15 +314,6 @@ void bind(CLI::App &app, Config &config)
   key(app, "--checkpoint", config.checkpoint, "Checkpoint directory for save/resume");
   key(app, "--checkpoint-interval", config.checkpoint_interval,
       "Save a checkpoint generation every N filled distance-matrix rows (requires --checkpoint)");
-  key(app, "--resume", config.resume, "Replay the completed binary result at <output>/<name>_checkpoint.bin");
-  app.add_flag_function(
-       "--restart",
-       [&config](std::int64_t count) {
-         warn_deprecated("--restart", "--resume");
-         if (count > 0) config.resume = true;
-       },
-       "DEPRECATED alias of --resume")
-    ->group("");
   key(app, "--mmap-threshold", config.mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)");
 
   // MIP solver

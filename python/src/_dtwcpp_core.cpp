@@ -119,12 +119,6 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
       series[i], "series[" + std::to_string(i) + "]", where);
 }
 
-std::string utf8_path_text(const std::filesystem::path &path) {
-  const std::u8string encoded = path.u8string();
-  return std::string(
-    reinterpret_cast<const char *>(encoded.data()), encoded.size());
-}
-
 } // namespace
 
 NB_MODULE(_dtwcpp_core, m) {
@@ -1403,8 +1397,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
                               dtwc::core::MetricType metric) {
-        // N^2 CSV write; released for consistency with save_binary_checkpoint.
-        // `prob` is const here and the writer only reads it.
+        // N^2 CSV write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
         dtwc::save_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
@@ -1432,37 +1425,6 @@ NB_MODULE(_dtwcpp_core, m) {
         "L1 for backward compatibility.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
-
-  m.def("save_binary_checkpoint",
-        [](const dtwc::core::ClusteringResult &result,
-           const std::filesystem::path &path) {
-    // A Python thread may mutate the bound result after the GIL is released.
-    // Snapshot it first so the native writer always observes one coherent value.
-    const dtwc::core::ClusteringResult snapshot = result;
-    nb::gil_scoped_release release;
-    dtwc::save_binary_checkpoint(snapshot, path);
-  }, "result"_a, "path"_a,
-     "Save a ClusteringResult to a binary version-1 checkpoint.");
-
-  m.def("load_binary_checkpoint", [](const std::filesystem::path &path) {
-    // Prepare all Python-facing text while the GIL is held. The release scope
-    // contains only native state and filesystem work.
-    const std::string path_text = utf8_path_text(path);
-    dtwc::core::ClusteringResult result;
-    bool loaded = false;
-    {
-      nb::gil_scoped_release release;
-      loaded = dtwc::load_binary_checkpoint(result, path);
-    }
-    if (!loaded) {
-      throw dtwc::IOError(
-        "load_binary_checkpoint: cannot read a valid binary result "
-        "checkpoint from '" + path_text + "'.");
-    }
-    return result;
-  }, "path"_a,
-     "Load a ClusteringResult from a binary version-1 checkpoint.\n\n"
-     "Raises IOError if the checkpoint is absent, inaccessible, or invalid.");
 
   // =========================================================================
   // Scores

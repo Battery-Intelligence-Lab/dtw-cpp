@@ -72,11 +72,6 @@ dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT
     SERIAL)
 
-# F51: binary-v1 wire-format gate, fixture writes confined to the build tree.
-dtwc_add_test(NAME unit_test_checkpoint_binary SOURCE ${_dtwc_test_source_unit_test_checkpoint_binary}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f51-binary-checkpoint" FIXTURE_DEFINE DTWC_F51_TEST_ROOT
-    SERIAL)
-
 # D2: exhaustive LB_Keogh proof; serial OpenMP for deterministic pair order.
 dtwc_add_test(NAME test_lb_keogh_derivation SOURCE ${_dtwc_test_source_test_lb_keogh_derivation}
     ENVIRONMENT "OMP_NUM_THREADS=1"
@@ -217,29 +212,6 @@ if(TARGET dtwc_cl)
         MARKER "${_f14_public_regex}" LABELS integration f14 SERIAL TIMEOUT 120)
 endif()
 
-# F17 must drive the real CLI from a binary result written by the production
-# serializer. The .cc suffix keeps the fixture writer out of the recursive
-# Catch2 *.cpp test-target glob.
-if(TARGET dtwc_cl)
-    add_executable(
-        f17_checkpoint_writer
-        integration/f17_checkpoint_writer.cc)
-    target_link_libraries(
-        f17_checkpoint_writer
-        PRIVATE
-            dtwc++
-            project_options)
-
-    dtwc_add_script_test(NAME test_cli_resume_state
-        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_resume_state.cmake"
-        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DFIXTURE_WRITER=$<TARGET_FILE:f17_checkpoint_writer>"
-             "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
-             "-DCONFIG=${CMAKE_CURRENT_SOURCE_DIR}/conformance/conformance.toml"
-             "-DBINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/f17-cli-resume"
-        MARKER "F17_CLI_RESUME subject=real_dtwc_cl writer=production_serializer runs=12/12 replay_fields=10/10 markers=2/2 algorithm_skipped=1/1 fresh_discriminator=4/4 checkpoint_preserved=10/10 rejection_cases=9/9 sources_preserved=2/2 skips=0"
-        LABELS integration f17 SERIAL TIMEOUT 120)
-endif()
-
 # The hand-rolled --yaml-config loader was removed (TOML via --config is the one
 # CLI config mechanism). Pin the real binary rejecting the flag: a stale build or
 # a re-added option would make this rejection disappear. The script asserts a
@@ -282,9 +254,9 @@ endif()
 # so the expected case count is pinned per platform.
 if(TARGET dtwc_cl)
     if(WIN32)
-        set(_dtwc_cl_loud_marker "cases=14/14 efbig=unavailable")
+        set(_dtwc_cl_loud_marker "cases=12/12 efbig=unavailable")
     else()
-        set(_dtwc_cl_loud_marker "cases=15/15 efbig=ran")
+        set(_dtwc_cl_loud_marker "cases=13/13 efbig=ran")
     endif()
     dtwc_add_script_test(NAME test_cli_loud_failures
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_loud_failures.cmake"
@@ -294,7 +266,7 @@ if(TARGET dtwc_cl)
 endif()
 
 # IF-2 S3: dtwc::run's method x device table on the real binary, per build
-# flavour, and --print-config against the golden files (49 keys: every value
+# flavour, and --print-config against the golden files (48 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.
 if(TARGET dtwc_cl)
     if("DTWC_HAS_CUDA" IN_LIST _dtwc_public_defs)
@@ -317,7 +289,7 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=49 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=48 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

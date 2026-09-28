@@ -250,8 +250,6 @@ are snake_case; current availability and gaps are explicit below.
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
 | save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
 | load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
 `CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
 the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
@@ -277,34 +275,8 @@ remains the only way to save outside a fill. The CLI opts in with a non-zero
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
 exactly one generation after a successful save: the old generation is removed
-only after `CURRENT` points at the new one. A binary result
-checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
-`<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
-fields of the completed binary result, restores them into `Problem`, skips
-clustering, and does not rewrite the source checkpoint. A `converged=false`
-snapshot is a completed iteration-capped result; `--max-iter` is not an
-additional continuation budget. Missing, unreadable-header/payload, wrong-N/k,
-out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
-fails loudly.
-Binary v1 has no data, input-order, configuration, or producing-method identity,
-so the caller must select the same `<output>/<name>`, input order, and
-configuration. It is result replay, not mid-algorithm continuation.
-
-Python accepts valid-Unicode `str | os.PathLike[str]` values for both binary
-paths and releases the GIL while the native filesystem operation runs. A
-successful save returns `None`; a successful load returns a new
-`ClusteringResult`. Native write failures raise `dtwcpp.IOError`. A missing,
-inaccessible, or structurally invalid binary read raises `dtwcpp.IOError` with
-the exact message below, where `<path>` is the supplied path:
-
-```text
-load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
-```
-
-As specified in §5, `dtwcpp.IOError` subclasses both `DtwcError` and `OSError`.
-F56 tracks the remaining error-formatting boundary for surrogateescaped
-non-UTF-8 filenames and lone-surrogate path values; the live guarantee above
-does not claim those representations.
+only after `CURRENT` points at the new one. The mmap distance cache is
+`<name>_distmat.cache`.
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,

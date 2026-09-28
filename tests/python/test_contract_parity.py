@@ -69,8 +69,6 @@ _ALGOS = ["fast_pam", "fast_clara", "clarans", "build_dendrogram", "cut_dendrogr
 _CHECKPOINT = [
     "save_checkpoint",
     "load_checkpoint",
-    "save_binary_checkpoint",
-    "load_binary_checkpoint",
     "CheckpointOptions",
 ]
 _UTILS = ["derivative_transform", "z_normalize", "soft_dtw_gradient"]

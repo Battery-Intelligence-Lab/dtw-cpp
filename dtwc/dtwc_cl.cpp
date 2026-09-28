@@ -112,11 +112,8 @@ int main(int argc, char *argv[])
     if (config.verbose) print_settings(config);
     const dtwc::Result result = dtwc::run(config);
 
-    // A --resume run replays the result it read, whatever the method.
-    const auto method = dtwc::name_of(dtwc::cluster_method_names, result.method());
     std::cout << "\n=== Results ===\n"
-              << "  Method:     " << (config.resume ? "checkpoint replay" : method) << "\n";
-    if (config.resume) std::cout << "  Requested:  " << method << "\n";
+              << "  Method:     " << dtwc::name_of(dtwc::cluster_method_names, result.method()) << "\n";
     std::cout << "  Clusters:   " << config.k << "\n"
               << "  Total cost: " << std::setprecision(6) << result.cost() << "\n"
               << "  Converged:  " << (result.converged() ? "yes" : "no") << "\n"

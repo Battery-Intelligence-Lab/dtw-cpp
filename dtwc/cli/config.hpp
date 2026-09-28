@@ -100,7 +100,6 @@ struct Config
   // Checkpoint
   std::string checkpoint;                ///< `--checkpoint` directory
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)
-  bool resume = false;                   ///< `--resume`
   // Output
   std::string output = "./results";      ///< `--output` ("" = write nothing)
   std::string name = "dtwc";             ///< `--name`
@@ -111,8 +110,8 @@ namespace cli {
 
 /// Adds every Config key to `app`, bound to `config`, plus `--config <file>`
 /// (TOML or YAML, the same keys; flags beat the file; an unknown key is an error).
-/// `--help` shows `config`'s values as the defaults. `--clusters` and `--restart`
-/// stay hidden spellings that warn on stderr and yield to `--n-clusters` / `--resume`.
+/// `--help` shows `config`'s values as the defaults. `--clusters` stays a hidden
+/// spelling that warns on stderr and yields to `--n-clusters`.
 /// A value no spelling reads raises during the parse: CLI11's error for a bad
 /// choice or number, InvalidInput for `--ram-limit` / `--delimiter`, DeviceError
 /// for `--device`.

@@ -77,7 +77,6 @@ materialisation. If the conservative selected-column estimate exceeds the cap,
 only non-full FastCLARA over a single list-per-row file can stream row groups;
 scalar columns, directories, and other methods fail before loading the payload.
 Row groups are indivisible, and the cap covers series decoding/materialisation
-rather than all process memory. The streaming route emits labels, medoids, and
-its binary result checkpoint without constructing dense distance or silhouette
-CSVs; storage requested with `--dtype f32` remains Float32 throughout the
+rather than all process memory. The streaming route emits labels and medoids
+without constructing dense distance or silhouette CSVs; storage requested with `--dtype f32` remains Float32 throughout the
 sample, medoid, and assignment payloads.

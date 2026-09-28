@@ -776,7 +776,7 @@ case "${CMD}" in
         echo "                    Profiles: arc, htc-cpu, htc-gpu, htc-v4, h100, grace"
         echo "  submit-cpu        Submit CPU test job"
         echo "  submit-gpu        Submit GPU test job"
-        echo "  submit-checkpoint Submit checkpoint/resume test"
+        echo "  submit-checkpoint Submit distance-checkpoint test"
         echo "  submit-parquet    Submit Parquet I/O test"
         echo "  submit-benchmark-cpu  Submit full UCR benchmark (CPU, ~12h)"
         echo "  submit-benchmark-gpu [type]  GPU type: a100, l40s, or h100"
