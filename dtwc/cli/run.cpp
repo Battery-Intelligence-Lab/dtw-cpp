@@ -33,6 +33,7 @@
 #endif
 
 #include <algorithm>
+#include <cassert>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -290,11 +291,8 @@ std::optional<fs::path> configure_distance_storage(Problem &prob, const Config &
 /// its names are the readers' own synthetic `series_<i>`.
 std::string output_series_name(const Problem &prob, std::size_t index, std::optional<std::size_t> streamed_count)
 {
-  // Programming error: a result comes from an algorithm run on this input.
-  const std::size_t n = streamed_count.value_or(prob.size());
-  if (index >= n)
-    throw std::logic_error("Result index " + std::to_string(index) + " is outside the " + std::to_string(n)
-                           + "-series input.");
+  // A result comes from an algorithm run on this input.
+  assert(index < streamed_count.value_or(prob.size()));
   return streamed_count ? "series_" + std::to_string(index) : std::string(prob.series_name(index));
 }
 
@@ -321,10 +319,7 @@ void close_output(std::ofstream &out, const fs::path &path)
 void write_labels_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
                       std::optional<std::size_t> streamed_count)
 {
-  const std::size_t expected = streamed_count.value_or(prob.size());
-  if (result.labels.size() != expected) // programming error, as in output_series_name
-    throw std::logic_error("Clustering result has " + std::to_string(result.labels.size()) + " labels for a "
-                           + std::to_string(expected) + "-series input.");
+  assert(result.labels.size() == streamed_count.value_or(prob.size()));
   std::ofstream out = open_output(path);
   out << "name,cluster\n";
   for (std::size_t i = 0; i < result.labels.size(); ++i)
@@ -335,10 +330,6 @@ void write_labels_csv(const fs::path &path, const Problem &prob, const core::Clu
 void write_medoids_csv(const fs::path &path, const Problem &prob, const core::ClusteringResult &result,
                        std::optional<std::size_t> streamed_count)
 {
-  for (const int index : result.medoid_indices) { // every name before the file is truncated
-    if (index < 0) throw std::logic_error("Result medoid index " + std::to_string(index) + " is negative.");
-    (void)output_series_name(prob, static_cast<std::size_t>(index), streamed_count);
-  }
   std::ofstream out = open_output(path);
   out << "cluster,medoid_index,medoid_name\n";
   for (int c = 0; c < result.n_clusters(); ++c) {

@@ -45,6 +45,7 @@
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
+#include <cassert>
 #include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -825,9 +826,7 @@ void Problem::use_mmap_distance_matrix(
                   + "': " + ec.message());
   auto mapped = cached ? core::MmapDistanceMatrix::open(cache_path, identity.full)
                        : core::MmapDistanceMatrix(cache_path, N, identity.full);
-  if (mapped.size() != N) // the fingerprint that open() checked covers N
-    throw std::logic_error("Problem::use_mmap_distance_matrix: a cache whose fingerprint matched holds N="
-                           + std::to_string(mapped.size()) + ", not " + std::to_string(N));
+  assert(mapped.size() == N); // the fingerprint that open() checked covers N
   if (metric_ != metric) { // new semantics, as in set_metric
     metric_ = metric;
     fill_request_validated_ = false;
