@@ -86,7 +86,7 @@ so the two share one method x device resolution: on `gpu` the matrix methods
 covers every series) run with the GPU filling the matrix, while `onebatch`,
 `tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
 raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
-a folder, Parquet, Arrow IPC, `.dtws`).
+a folder, Parquet, Arrow IPC).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as

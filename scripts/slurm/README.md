@@ -15,7 +15,7 @@ General-purpose scripts for building and testing DTWC++ on SLURM-managed HPC clu
 | `jobs/cpu_test.slurm` | CPU-only test: Coffee k=2, Beef k=5 |
 | `jobs/gpu_test.slurm` | GPU test: Coffee with fp32 and fp64 precision |
 | `jobs/checkpoint_test.slurm` | Distance-checkpoint save verification |
-| `jobs/parquet_test.slurm` | Parquet and .dtws format I/O test |
+| `jobs/parquet_test.slurm` | Parquet format I/O test |
 
 ## Quick Start
 

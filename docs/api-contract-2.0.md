@@ -172,7 +172,7 @@ so the two share one method x device resolution: on `gpu` the matrix methods
 covers every series) run with the GPU filling the matrix, while `onebatch`,
 `tadpole` and a smaller `clara` sample, which compute on the CPU as they go,
 raise `DeviceError`. A path dataset reads every format `dtwc_cl` reads (CSV/TSV,
-a folder, Parquet, Arrow IPC, `.dtws`).
+a folder, Parquet, Arrow IPC).
 
 **Deterministic Tier-1 seed (2.0 addendum).** The cross-language
 invocation-local default is 42, exposed as
@@ -301,7 +301,6 @@ out-of-line and warning-silent.
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
-| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
@@ -364,11 +363,11 @@ write lost after a successful open (a full disk, a file-size quota) raises
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
 `series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
-The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
-`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `storage_policy()`,
-`verbose()`, `output_folder()`, `name()`, and `data()`.
+The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `verbose()`,
+`output_folder()`, `name()`, and `data()`.
 `last_iterations()` is intentionally read-only, and
-`data()` returns `const Data&`; the other eight configuration values have
+`data()` returns `const Data&`; the other seven configuration values have
 `set_*` mutators, while data replacement uses
 `set_data()` or `set_view_data()`.
 
@@ -386,7 +385,7 @@ The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
-covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
+covers the binding use case; the multi-format (Parquet/Arrow) loading in
 `dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
 other path. Chained setters return `DataLoader&`.
 
@@ -711,10 +710,10 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
 throws `std::logic_error` (Python `RuntimeError`, MATLAB `dtwc:internal`). Every other throw raises a type above. A file that
-cannot be parsed (a bad field or row, a bad `.dtws` or cache header, a Parquet / Arrow type or offset) is `IOError`; a
+cannot be parsed (a bad field or row, a bad cache header, a Parquet / Arrow type or offset) is `IOError`; a
 well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
 other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
-Arrow, `.dtws` or a memory-mapped store without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
+Arrow, a memory-mapped matrix without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
 backend it lacks (`gpu`, PDLP `use_gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
@@ -824,6 +823,12 @@ block are constant text.
 
 ### 6.3 Lazy load & big-data policy (fixed decision, contract-level)
 
+**Superseded 2026-09-28.** Series always load into RAM (`DataLoader::load()`, as
+in v1.0.0): the metadata-only load, `StoragePolicy` and its `.dtws` series store
+are gone. `hpc` forwards a path (`_hpc.py`); data beyond RAM is list-per-row
+Parquet streamed by CLARA / OneBatchPAM under `--ram-limit`. The first two
+bullets below are kept for history.
+
 - `device="hpc"`: **metadata-only** local load — shapes/counts/names read
   locally; bulk series streamed to the cluster at submit (`load()` never reads
   the payload; `cluster_on_hpc` forwards a path, `_hpc.py:527-601`).
@@ -893,7 +898,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 
 1. **File formats read.** CSV/TSV (start_row/start_col/delimiter/Ndata,
    folder-of-files), Parquet file+dir with optional `--column`, Arrow IPC
-   (`.arrow/.ipc/.feather`), `.dtws` mmap + `.names` sidecar
+   (`.arrow/.ipc/.feather`)
    (`cli/run.cpp`, `dtwc::run`), Python Polars `large_list<float>` ragged ingest.
 2. **Output contract (bit-identical).** Two distinct sets, and the equal-bytes
    guarantee applies to the **first set only**:

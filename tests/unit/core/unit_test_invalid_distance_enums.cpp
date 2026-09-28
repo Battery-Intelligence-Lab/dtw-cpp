@@ -45,8 +45,6 @@ constexpr std::string_view matrix_strategy_error =
   "Invalid DistanceMatrixStrategy value.";
 constexpr std::string_view lower_bound_error =
   "Invalid LowerBoundStrategy value.";
-constexpr std::string_view storage_policy_error =
-  "Invalid StoragePolicy value.";
 constexpr std::string_view precision_error = "Invalid Precision value.";
 constexpr std::string_view cuda_settings_precision_error =
   "Invalid CUDA precision value.";
@@ -911,27 +909,6 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
 TEST_CASE("M47 rejects every invalid storage policy and active precision",
           "[m47][enum][storage][precision]")
 {
-  SECTION("StoragePolicy")
-  {
-    for_each_invalid_enum<core::StoragePolicy, core::StoragePolicy::Mmap>(
-      [&](core::StoragePolicy invalid) {
-        DataLoader loader;
-        check_invalid_input("DataLoader::storage_policy", storage_policy_error, [&] {
-          (void)loader.storage_policy(invalid);
-        });
-
-        Problem setter{"m47_storage_policy_setter"};
-        seed_dense_sentinel(setter);
-        setter.set_storage_policy(core::StoragePolicy::Heap);
-        check_invalid_input("Problem::set_storage_policy",
-                            storage_policy_error, [&] {
-          setter.set_storage_policy(invalid);
-        });
-        CHECK(setter.storage_policy() == core::StoragePolicy::Heap);
-        check_dense_sentinel(setter);
-      });
-  }
-
   SECTION("Precision")
   {
     for_each_invalid_enum<core::Precision, core::Precision::Float64>(
@@ -1096,17 +1073,6 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
     Problem problem{"m47_valid_matrix_strategy"};
     CHECK_NOTHROW(problem.set_distance_strategy(strategy));
   }
-  for (const auto policy : {
-         core::StoragePolicy::Auto,
-         core::StoragePolicy::Heap,
-         core::StoragePolicy::Mmap}) {
-    DataLoader loader;
-    CHECK_NOTHROW((void)loader.storage_policy(policy));
-    Problem problem{"m47_valid_problem_storage_policy"};
-    CHECK_NOTHROW(problem.set_storage_policy(policy));
-    CHECK(problem.storage_policy() == policy);
-  }
-
   for (const auto lower_bound : {
          LowerBoundStrategy::Auto,
          LowerBoundStrategy::None,

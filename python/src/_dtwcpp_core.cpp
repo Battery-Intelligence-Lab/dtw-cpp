@@ -255,7 +255,7 @@ NB_MODULE(_dtwcpp_core, m) {
     if (!delimiter.empty()) loader.delimiter(delimiter[0]);
     // A read failure names the file, as C++ dtwc::load does (api.cpp).
     try {
-      return loader.load_local();
+      return loader.load();
     } catch (const dtwc::IOError &e) {
       throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
     } catch (const dtwc::Error &) {
@@ -323,10 +323,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
     .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
 
-  nb::enum_<dtwc::core::StoragePolicy>(m, "StoragePolicy")
-    .value("Auto", dtwc::core::StoragePolicy::Auto)
-    .value("Heap", dtwc::core::StoragePolicy::Heap)
-    .value("Mmap", dtwc::core::StoragePolicy::Mmap);
 
   nb::enum_<dtwc::LowerBoundStrategy>(m, "LowerBoundStrategy")
     .value("Auto", dtwc::LowerBoundStrategy::Auto)
@@ -984,10 +980,6 @@ NB_MODULE(_dtwcpp_core, m) {
                  &dtwc::Problem::set_lb_strategy,
                  "Lower-bound selection for the Pruned CPU path "
                  "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
-    .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
-                 &dtwc::Problem::set_storage_policy,
-                 "How the next owning set_data call stores series "
-                 "(Auto/Heap/Mmap); existing data is unchanged.")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;

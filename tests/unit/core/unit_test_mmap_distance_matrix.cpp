@@ -14,7 +14,6 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #ifdef DTWC_HAS_MMAP
-#include <core/mmap_data_store.hpp>
 #endif
 #ifndef _WIN32
 #include <csignal>
@@ -1223,14 +1222,6 @@ TEST_CASE("Creating a cache over a file-size quota is IOError naming the path",
                          MessageMatches(ContainsSubstring(tmp.path.string())));
   }
 
-  SECTION("MmapDataStore, 64 series of 256 values (about 130 KB)")
-  {
-    const dtwc::Data data(std::vector<std::vector<double>>(64, std::vector<double>(256, 1.0)),
-                          std::vector<std::string>(64, "s"));
-    const FileSizeLimit limit(limit_bytes);
-    CHECK_THROWS_MATCHES(MmapDataStore::create(tmp.path, data), dtwc::IOError,
-                         MessageMatches(ContainsSubstring(tmp.path.string())));
-  }
 }
 #endif // _WIN32
 

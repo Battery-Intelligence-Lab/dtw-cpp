@@ -16,7 +16,6 @@ target_sources(dtwc++
   base/env.cpp
   initialisation.cpp
   scores.cpp
-  base/system_memory.cpp
   cli/config.cpp
   cli/run.cpp
   core/dtw.cpp
@@ -63,7 +62,6 @@ target_sources(dtwc++
   core/crc32.hpp
   core/distance_matrix.hpp
   core/distance_metric.hpp
-  core/mmap_data_store.hpp
   core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp

@@ -300,9 +300,5 @@ TEST_CASE("Data rejects a precision-mismatched accessor and ndim == 0",
       Data(std::vector<std::vector<data_t>>{ { 1.0, 2.0 } },
            std::vector<std::string>{ "a" }, 0),
       std::runtime_error);
-    REQUIRE_THROWS_AS(
-      Data::metadata_only(std::vector<std::string>{ "a" },
-                          std::vector<size_t>{ 4 }, 0),
-      std::runtime_error);
   }
 }

@@ -239,7 +239,7 @@ void bind(CLI::App &app, Config &config)
   app.allow_config_extras(CLI::config_extras_mode::error);
 
   // Input and output
-  key(app, "-i,--input", config.input, "Input file (CSV, Parquet, Arrow IPC, .dtws) or folder");
+  key(app, "-i,--input", config.input, "Input file (CSV, Parquet, Arrow IPC) or folder");
   key(app, "-o,--output", config.output, "Output directory");
   key(app, "--name", config.name, "Problem name (used in output filenames)");
   key(app, "--column", config.column, "Column name to use as time series (Parquet only)");

@@ -164,24 +164,6 @@ with ipc.open_file("data.arrow") as f:
 
 ---
 
-## .dtws (Internal Cache)
-
-`.dtws` is a binary cache that stores the serialised `Data` object (series + names) for fast restart. It avoids re-parsing Parquet/CSV on repeated runs.
-
-Created automatically when `--checkpoint` is specified, or explicitly via `dtwc-convert`:
-
-```bash
-dtwc-convert input.parquet -o cache.dtws --column Voltage
-```
-
-Load at runtime:
-
-```bash
-dtwc_cl -i cache.dtws -k 5
-```
-
----
-
 ## Reading data directly
 
 If you are using DTW-C++ directly (e.g., as a library within your software), you might prefer to read data independently or use pre-generated data. DTW-C++ employs the `Data` class to encapsulate a `std::vector<std::vector<data_type>>` data object and `std::vector<std::string>` for their corresponding names. The following example code snippet demonstrates how to input data into a Problem object.

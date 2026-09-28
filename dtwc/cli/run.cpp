@@ -24,9 +24,6 @@
 #include "../checkpoint.hpp"
 #include "../fileOperations.hpp"
 #include "../scores.hpp"
-#ifdef DTWC_HAS_MMAP
-#include "../core/mmap_data_store.hpp"
-#endif
 #ifdef DTWC_HAS_ARROW
 #include "../io/arrow_ipc_reader.hpp"
 #endif
@@ -89,7 +86,7 @@ std::pair<Method, const char *> problem_route(ClusterMethod method)
 }
 
 /// Where the series come from.
-enum class Source { Text, ParquetFile, ParquetDirectory, ArrowIPC, Dtws, Memory };
+enum class Source { Text, ParquetFile, ParquetDirectory, ArrowIPC, Memory };
 
 struct Input
 {
@@ -126,13 +123,12 @@ Input classify(const std::string &input_text)
   const auto ext = lower_extension(input.path);
   if (ext == ".parquet" || ext == ".pq") input.source = Source::ParquetFile;
   else if (ext == ".arrow" || ext == ".ipc" || ext == ".feather") input.source = Source::ArrowIPC;
-  else if (ext == ".dtws") input.source = Source::Dtws;
   else input.source = Source::Text; // anything a typed reader does not claim goes to the CSV/TSV DataLoader
   return input;
 }
 
-/// Reject an input format whose reader this binary does not contain: IOError,
-/// as for `.dtws` without llfio (api-contract-2.0.md §5). The rejection must
+/// Reject an input format whose reader this binary does not contain: IOError
+/// (api-contract-2.0.md §5). The rejection must
 /// exist in the build that LACKS the capability, so it sits under `#ifndef`:
 /// inside `#ifdef DTWC_HAS_PARQUET` it would be absent from the
 /// `DTWC_ENABLE_ARROW=OFF` build, and a Parquet file would reach the CSV
@@ -152,12 +148,6 @@ void require_input_format_is_built([[maybe_unused]] Source source)
       "Arrow IPC input (.arrow/.ipc/.feather) requires a build with Arrow "
       "(-DDTWC_ENABLE_ARROW=ON). This binary was built without Arrow support; "
       "convert the input to CSV/TSV or use an Arrow-enabled build.");
-#endif
-#ifndef DTWC_HAS_MMAP
-  if (source == Source::Dtws)
-    throw IOError(
-      ".dtws memory-mapped input requires a build with llfio "
-      "(-DDTWC_ENABLE_LLFIO=ON). This binary was built without mmap support.");
 #endif
 }
 
@@ -197,29 +187,8 @@ Data read_series(const Config &config, const Input &input, std::string &from)
       from = " from Parquet";
       return io::load_parquet_file(input.path, config.column);
 #endif
-#ifdef DTWC_HAS_MMAP
-    case Source::Dtws: { // copied out of the map (a mapped series store is a later step)
-      from = " from .dtws cache";
-      auto store = core::MmapDataStore::open(input.path);
-      std::vector<std::vector<data_t>> series(store.size());
-      for (std::size_t i = 0; i < series.size(); ++i) {
-        const auto values = store.series(i);
-        series[i].assign(values.begin(), values.end());
-      }
-      std::vector<std::string> names(series.size());
-      const fs::path names_path = input.path.string() + ".names"; // the sidecar, when present
-      std::error_code ec;
-      if (fs::exists(names_path, ec)) {
-        std::ifstream name_file(names_path);
-        for (std::size_t i = 0; i < names.size() && std::getline(name_file, names[i]); ++i) {}
-      } else {
-        for (std::size_t i = 0; i < names.size(); ++i) names[i] = "series_" + std::to_string(i);
-      }
-      return Data(std::move(series), std::move(names), store.ndim());
-    }
-#endif
 #ifdef DTWC_HAS_ARROW
-    case Source::ArrowIPC: { // copied out of the map, as .dtws
+    case Source::ArrowIPC: { // copied out of the map
       from = " from Arrow IPC";
       auto source = io::ArrowIPCDataSource::open(input.path);
       std::vector<std::vector<data_t>> series(source.size());
@@ -235,7 +204,7 @@ Data read_series(const Config &config, const Input &input, std::string &from)
       DataLoader loader{ input.path };
       loader.start_column(config.skip_cols).start_row(config.skip_rows).verbosity(config.verbose ? 1 : 0);
       if (config.delimiter != '\0') loader.delimiter(config.delimiter);
-      return loader.load_local();
+      return loader.load();
     }
     }
   } catch (const IOError &e) {
@@ -543,8 +512,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 #endif
 
-  // ---- 3. Load: series storage follows the device (the GPU uploads heap series) ----
-  prob.set_storage_policy(config.device == Device::GPU ? core::StoragePolicy::Heap : core::StoragePolicy::Auto);
+  // ---- 3. Load the series into RAM ----
   if (!stream_payload) {
     std::string from = " in memory";
     Data series = data ? std::move(*data) : read_series(config, input, from);

@@ -66,19 +66,6 @@ CPU even when a `Problem`'s device is a GPU; `dtwc_cl` and Tier-1 `cluster(...)`
 which share `dtwc::run`, reject that combination instead (a `clara` sample that
 covers every series is PAM on the whole set, whose matrix the GPU fills).
 
-### GPU and mmap-backed series
-
-GPU distance kernels cannot read mmap-backed series. `StoragePolicy::Auto`
-spills a dataset above half the free physical RAM into the mapped store, so a
-large GPU run through the Tier-2 `Problem` API must select
-`StoragePolicy::Heap` (or raise `ram_limit`) before `set_data`; otherwise
-`fill_distance_matrix` raises a device error naming `mmap-backed series data`
-rather than falling back to the CPU. `dtwc_cl` and the Tier-1 `cluster(...)`
-entry point pin `Heap` when the selected device is a GPU and keep `Auto` on the
-CPU. See
-[Data formats and conversion](../data-formats/) for the free-RAM
-quantities each platform reports.
-
 ## HPC setup (beta)
 
 Copy `scripts/slurm/env.example` to `.env` at the repository root:

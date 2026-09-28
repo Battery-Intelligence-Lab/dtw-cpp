@@ -611,57 +611,6 @@ TEST_CASE("Standalone single series", "[pruned_distance_matrix][standalone][edge
   REQUIRE_THAT(output[0], WithinAbs(0.0, 1e-15));
 }
 
-TEST_CASE("Pruned worker exceptions return to the caller with typed identity",
-          "[pruned_distance_matrix][parallel][exception][m43]")
-{
-  constexpr auto expected =
-    "Data::series: bulk time-series data is not resident locally (device='hpc'). "
-    "Only shapes/counts/names are loaded on the client; the payload is streamed to "
-    "the SLURM cluster at submit. Select device 'cpu' or 'gpu' for local data access.";
-
-  auto run_metadata_failure = [] {
-    std::vector<std::string> names;
-    std::vector<size_t> sizes;
-    for (size_t i = 0; i < 64; ++i) {
-      names.push_back("series-" + std::to_string(i));
-      sizes.push_back(8);
-    }
-
-    Problem prob("m43_metadata_failure");
-    prob.set_data(Data::metadata_only(std::move(names), std::move(sizes), 1));
-    try {
-      (void)dtwc::core::fill_distance_matrix_pruned(prob, 2);
-    } catch (const std::runtime_error &error) {
-      REQUIRE_FALSE(prob.is_distance_matrix_filled());
-      return std::string(error.what());
-    } catch (...) {
-      return std::string("<wrong exception type>");
-    }
-    return std::string("<no exception>");
-  };
-
-#ifdef _OPENMP
-  const int previous_threads = omp_get_max_threads();
-  const int previous_dynamic = omp_get_dynamic();
-  struct RestoreOpenMP {
-    int threads;
-    int dynamic;
-    ~RestoreOpenMP() { omp_set_dynamic(dynamic); omp_set_num_threads(threads); }
-  } restore{previous_threads, previous_dynamic};
-
-  omp_set_dynamic(0);
-  omp_set_num_threads(1);
-  const std::string serial_message = run_metadata_failure();
-  omp_set_num_threads(2);
-  const std::string parallel_message = run_metadata_failure();
-
-  REQUIRE(serial_message == expected);
-  REQUIRE(parallel_message == serial_message);
-#else
-  REQUIRE(run_metadata_failure() == expected);
-#endif
-}
-
 TEST_CASE("Pruned pair blocks cover a non-divisible triangular range exactly",
           "[pruned_distance_matrix][parallel][partition][m43]")
 {

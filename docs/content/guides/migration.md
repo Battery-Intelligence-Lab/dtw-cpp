@@ -133,9 +133,9 @@ closure of that finding.
 
 - Series storage and CLI `--dtype` default to float64; float32 is explicit.
 - C++ algorithms write labels, medoids, and `k` back into `Problem`.
-- Ten C++ `Problem` fields are now private. Read `method`, `random_seed`,
-  `last_iterations`, `tadpole_dc`, `lb_strategy`, `storage_policy`, `verbose`,
-  `output_folder`, `name`, and `data` through same-name accessors; mutate them
+- Nine C++ `Problem` fields are now private. Read `method`, `random_seed`,
+  `last_iterations`, `tadpole_dc`, `lb_strategy`, `verbose`, `output_folder`,
+  `name`, and `data` through same-name accessors; mutate them
   through `set_*` methods (`last_iterations` is read-only and data replacement
   uses `set_data`/`set_view_data`).
 - Unsupported devices, methods, metrics, and solver backends fail loudly.

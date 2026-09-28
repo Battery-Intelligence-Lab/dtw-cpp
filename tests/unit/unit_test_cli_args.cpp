@@ -114,7 +114,7 @@ TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
 }
 
 // A cap on an input no reader can apply it to must fail: the CLI once accepted
-// --ram-limit for CSV / Arrow / .dtws, printed the cap and loaded everything.
+// --ram-limit for CSV / Arrow, printed the cap and loaded everything.
 TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
 {
   auto config = quiet_config(2, ClusterMethod::PAM);

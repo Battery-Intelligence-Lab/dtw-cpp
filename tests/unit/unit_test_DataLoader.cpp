@@ -145,36 +145,6 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
     REQUIRE(loader.verbosity() == 1);
   }
 
-  SECTION("Count directory mode")
-  {
-    DataLoader loader(dummy_data_path());
-    REQUIRE(loader.count() == 25);
-  }
-
-  SECTION("Count directory mode with Ndata limit")
-  {
-    DataLoader loader(dummy_data_path(), 5);
-    REQUIRE(loader.count() == 5);
-  }
-
-  SECTION("Count matches load for directory")
-  {
-    // data/dummy holds pandas `index,value` files: skip the `,0` header row
-    // and the index column.
-    DataLoader loader(dummy_data_path());
-    loader.start_column(1).start_row(1).verbosity(0);
-    REQUIRE(loader.count() == 25);
-    REQUIRE(loader.count() == loader.load().size());
-  }
-
-  SECTION("Count matches load with Ndata limit")
-  {
-    DataLoader loader(dummy_data_path(), 10);
-    loader.start_column(1).start_row(1).verbosity(0);
-    REQUIRE(loader.count() == 10);
-    REQUIRE(loader.count() == loader.load().size());
-  }
-
   SECTION("The index column of a two-column folder is not a series")
   {
     // Read with the defaults, every data/dummy series used to be its index
@@ -196,10 +166,10 @@ TEST_CASE("DataLoader class functionality", "[DataLoader]")
     REQUIRE(loaded.p_vec[0][5245] == 0.04294559);
   }
 
-  SECTION("Count throws on non-existent file")
+  SECTION("Load throws on a non-existent file")
   {
     DataLoader loader("nonexistent_file.csv");
-    REQUIRE_THROWS_AS(loader.count(), std::runtime_error);
+    REQUIRE_THROWS_AS(loader.load(), std::runtime_error);
   }
 }
 
@@ -246,44 +216,6 @@ TEST_CASE("F21 canonical C++ loader names preserve legacy state",
   REQUIRE(canonical.startRow() == legacy.startRow());
 }
 
-#ifdef DTWC_HAS_MMAP
-TEST_CASE("default_series_cache_path is collision-free across concurrent loads",
-          "[DataLoader][mmap][concurrency]")
-{
-  // Audit 2026-09-02 (B): the temp-path generator used a plain
-  // `static std::size_t counter` incremented with `counter++`, so two
-  // concurrent load_stored() calls could observe the same value and route two
-  // different data sets to the same mapped .dtws file. One relaxed atomic
-  // fetch_add per load call restores uniqueness at no per-series cost.
-  constexpr int n_threads = 8;
-  constexpr int per_thread = 256;
-  std::vector<std::vector<std::string>> produced(n_threads);
-  std::vector<std::thread> workers;
-  workers.reserve(n_threads);
-  for (int t = 0; t < n_threads; ++t)
-    workers.emplace_back([&produced, t] {
-      produced[static_cast<std::size_t>(t)].reserve(per_thread);
-      for (int i = 0; i < per_thread; ++i)
-        produced[static_cast<std::size_t>(t)].push_back(
-          dtwc::detail::default_series_cache_path().string());
-    });
-  for (auto &worker : workers) worker.join();
-
-  std::set<std::string> unique;
-  for (const auto &batch : produced) unique.insert(batch.begin(), batch.end());
-  CHECK(unique.size()
-        == static_cast<std::size_t>(n_threads) * per_thread);
-
-  // Cross-process evidence. The former "unique" component was
-  // `reinterpret_cast<uintptr_t>(&counter)` — one static address, identical in
-  // every process of the same image, so two processes generated the same first
-  // temp path. This line is printed so two runs of this binary can be compared
-  // directly; nothing in-process can observe another process's counter.
-  std::cout << "DTWC_SERIES_CACHE_FIRST="
-            << dtwc::detail::default_series_cache_path().filename().string()
-            << '\n';
-}
-#endif // DTWC_HAS_MMAP
 
 namespace {
 
@@ -323,9 +255,8 @@ struct CoutCapture
 TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
           "[DataLoader][fileOperations][Ndata]")
 {
-  // Audit 2026-09-02 A11: for Ndata == 0 the three loaders disagreed --
-  // count() returned 1, the folder load returned ALL series, and the batch
-  // load returned 0. Ndata < -1 was never rejected anywhere. One predicate:
+  // Audit 2026-09-02 A11: for Ndata == 0 the loaders disagreed -- the
+  // folder load returned ALL series, and the batch load returned 0. Ndata < -1 was never rejected anywhere. One predicate:
   // a negative Ndata means "all", otherwise stop at exactly Ndata series.
   SeriesFolder folder{ "dtwc_ndata_contract", 4 };
 
@@ -336,7 +267,6 @@ TEST_CASE("Loaders agree on one Ndata contract and reject Ndata < -1",
 
     DataLoader loader;
     loader.path(folder.root).n_data(requested).verbosity(0);
-    CHECK(loader.count() == expect);
     CHECK(loader.load().size() == expect);
   }
 

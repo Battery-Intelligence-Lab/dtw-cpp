@@ -52,7 +52,7 @@ _ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
 # ---------------------------------------------------------------------------
 _ENUMS = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy", "StoragePolicy",
+    "MissingStrategy", "DistanceMatrixStrategy",
     "LowerBoundStrategy", "Linkage",
 ]
 _STRUCTS = [
@@ -100,7 +100,7 @@ _PROBLEM_CANON = [
     "set_data", "set_view_data",
     # config attributes (§2.1)
     "method", "max_iter", "n_repetitions", "band", "variant_params",
-    "missing_strategy", "distance_strategy", "lb_strategy", "storage_policy",
+    "missing_strategy", "distance_strategy", "lb_strategy",
     "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
     "clusters_ind", "centroids_ind",
     # read accessors (§2.2)

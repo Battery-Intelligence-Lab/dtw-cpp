@@ -20,10 +20,10 @@
 // without including it, so removal cannot be build-proven from here.
 #include <string>
 #include <filesystem>
-// <iostream> removed (C-21a). The five translation units that were relying on it
+// <iostream> removed (C-21a). The translation units that were relying on it
 // transitively -- benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp,
-// dtwc/mip/mip_Gurobi.cpp, tests/unit/core/unit_test_pruned_distance_matrix.cpp
-// and tests/unit/test_storage_policy.cpp -- now include it themselves, and the
+// dtwc/mip/mip_Gurobi.cpp and tests/unit/core/unit_test_pruned_distance_matrix.cpp
+// -- now include it themselves, and the
 // removal was proven by a build with DTWC_BUILD_BENCHMARK=ON and
 // DTWC_BUILD_EXAMPLES=ON, since benchmarks and examples are off in the
 // canonical gate and a green build without them would prove nothing.

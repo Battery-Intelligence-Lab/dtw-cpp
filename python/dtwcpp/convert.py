@@ -2,13 +2,13 @@
 @file convert.py
 @brief CLI tool to convert time series data between formats.
 
-Converts Parquet/CSV/HDF5 to Arrow IPC (.arrow) or internal .dtws cache format.
+Converts Parquet/CSV/HDF5 to Arrow IPC (.arrow).
 Arrow IPC files can be memory-mapped for zero-copy access by the C++ CLI.
 
 Usage::
 
     dtwc-convert input.parquet -o output.arrow
-    dtwc-convert input.csv -o output.dtws
+    dtwc-convert input.csv -o output.arrow
     dtwc-convert input.h5 -o output.arrow --name-column name
 
 @author Volkan Kumtepeli
@@ -19,9 +19,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import struct
 import sys
-import zlib
 from pathlib import Path
 from typing import Sequence
 
@@ -133,70 +131,6 @@ def _load_hdf5(path: Path):
 # Writers
 # ---------------------------------------------------------------------------
 
-def _write_dtws(
-    series_list: list[np.ndarray],
-    names: list[str],
-    output: Path,
-    ndim: int = 1,
-) -> None:
-    """Write .dtws binary format matching MmapDataStore layout.
-
-    Binary layout (64-byte header + offset table + data):
-      bytes 0-3:    magic "DTWS"
-      bytes 4-5:    version uint16 = 1
-      bytes 6-9:    endian marker uint32 = 0x01020304
-      byte  10:     elem_size uint8 = 8
-      byte  11:     reserved = 0
-      bytes 12-19:  N (uint64)
-      bytes 20-27:  ndim (uint64)
-      bytes 28-31:  header CRC32 (of bytes 0-27)
-      bytes 32-63:  reserved (zero)
-
-    Offset table: (N+1) x uint64 (byte offsets into data section)
-    Data section: contiguous float64 arrays
-    """
-    n = len(series_list)
-
-    # Validate all series are 1D
-    for i, s in enumerate(series_list):
-        s = np.asarray(s, dtype=np.float64)
-        assert s.ndim == 1, f"Series {i} has shape {s.shape}, expected 1D"
-        series_list[i] = s
-
-    # Build header (64 bytes)
-    header = bytearray(64)
-    header[0:4] = b"DTWS"
-    struct.pack_into("<H", header, 4, 1)  # version
-    struct.pack_into("<I", header, 6, 0x01020304)  # endian marker
-    header[10] = 8  # elem_size (sizeof(double))
-    header[11] = 0  # reserved
-    struct.pack_into("<Q", header, 12, n)  # N
-    struct.pack_into("<Q", header, 20, ndim)  # ndim
-    crc = zlib.crc32(bytes(header[0:28])) & 0xFFFFFFFF
-    struct.pack_into("<I", header, 28, crc)
-
-    # Build offset table using uint64 (matches C++ layout)
-    offsets = np.zeros(n + 1, dtype=np.uint64)
-    for i, s in enumerate(series_list):
-        offsets[i + 1] = offsets[i] + len(s) * 8  # byte offsets
-
-    # Write sequentially
-    with open(output, "wb") as f:
-        f.write(header)
-        offsets.tofile(f)
-        for s in series_list:
-            s.tofile(f)
-
-    # Write names sidecar
-    names_path = Path(str(output) + ".names")
-    with open(names_path, "w", encoding="utf-8") as f:
-        for name in names:
-            f.write(name + "\n")
-
-    print(f"Wrote {n} series to {output} ({output.stat().st_size / 1e6:.1f} MB)")
-    print(f"Wrote names to {names_path}")
-
-
 def _write_arrow_ipc(
     series_list: list[np.ndarray],
     names: list[str],
@@ -265,7 +199,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("input", type=Path, help="Input file (parquet, csv, h5)")
     parser.add_argument("-o", "--output", type=Path, required=True,
-                        help="Output file (.arrow, .ipc, .feather, or .dtws)")
+                        help="Output file (.arrow, .ipc, or .feather)")
     parser.add_argument("--ndim", type=int, default=1,
                         help="Number of feature dimensions per timestep (default: 1)")
     parser.add_argument("--columns", nargs="+", default=None,
@@ -300,8 +234,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     out_suffix = out.suffix.lower()
     if out_suffix in (".arrow", ".ipc", ".feather"):
         _write_arrow_ipc(series_list, names, out, ndim=args.ndim)
-    elif out_suffix == ".dtws":
-        _write_dtws(series_list, names, out, ndim=args.ndim)
     else:
         print(f"Error: unsupported output format: {out_suffix}", file=sys.stderr)
         return 1

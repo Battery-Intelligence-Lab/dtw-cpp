@@ -65,7 +65,7 @@ inline constexpr Name<int> gpu_precision_names[]{
 struct Config
 {
   // Input and storage
-  std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, .dtws, or a folder.
+  std::string input;                     ///< `--input`: CSV, Parquet, Arrow IPC, or a folder.
   std::string column;                    ///< `--column`: Parquet column holding the series.
   int skip_rows = 0;                     ///< `--skip-rows`
   int skip_cols = 0;                     ///< `--skip-cols`

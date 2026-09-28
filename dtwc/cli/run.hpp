@@ -5,8 +5,8 @@
  *
  * @details run() checks the whole configuration before it reads a series,
  * resolves the method and the device together, loads the input (CSV / TSV,
- * a folder, Parquet, Arrow IPC or .dtws) into storage chosen for the device,
- * computes, and writes the outputs into `output` (nothing when it is empty).
+ * a folder, Parquet or Arrow IPC) into RAM, computes, and writes the outputs
+ * into `output` (nothing when it is empty).
  *
  * | method        | cpu                           | gpu                               |
  * |---------------|-------------------------------|-----------------------------------|

@@ -47,7 +47,7 @@ two agree on every default, check and method choice.
 |------|-------------|---------|
 | `-h, --help` | Print the live command reference | — |
 | `--version` | Print the version from the repository `VERSION` source of truth | — |
-| `-i, --input <path>` | Input file or folder. CSV/TSV and `.dtws` are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
+| `-i, --input <path>` | Input file or folder. CSV/TSV are core; Parquet/Arrow IPC/Feather require an Arrow-enabled build | — |
 | `-o, --output <path>` | Output directory (`""` writes no file) | `./results` |
 | `--name <string>` | Problem name (used in output filenames) | `dtwc` |
 | `-k, --n-clusters <int>` | Number of clusters | 3 |
@@ -144,7 +144,7 @@ unlimited; malformed, negative, fractional-byte, or overflowing values are
 errors rather than silently disabling the limit.
 
 The cap governs Parquet series materialisation and nothing else. No other reader
-can honour it, so a nonzero `--ram-limit` on CSV/TSV, HDF5, Arrow IPC, `.dtws`,
+can honour it, so a nonzero `--ram-limit` on CSV/TSV, HDF5, Arrow IPC,
 or a CSV directory is a hard error, not a warning: those formats materialise
 their series unconditionally, and accepting the flag would report a budget that
 is never applied. Drop the flag, or convert the series to a list-per-row Parquet
@@ -187,8 +187,8 @@ file to stream them under the cap.
 | `--skip-cols <int>` | Number of leading columns to skip | 0 |
 | `--delimiter <char>` | Field delimiter, one character | inferred: tab for `.tsv`/`.txt`, else `,` |
 
-These three apply to CSV/TSV input only; any of them on Parquet, Arrow IPC or
-`.dtws` input is an error rather than an option silently ignored.
+These three apply to CSV/TSV input only; any of them on Parquet or Arrow IPC
+input is an error rather than an option silently ignored.
 
 ### Distance Matrix and Checkpointing
 

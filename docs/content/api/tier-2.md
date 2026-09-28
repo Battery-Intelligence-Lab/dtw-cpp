@@ -40,7 +40,6 @@ out-of-line and warning-silent.
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
-| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
@@ -103,11 +102,11 @@ write lost after a successful open (a full disk, a file-size quota) raises
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
 `series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
-The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
-`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `storage_policy()`,
-`verbose()`, `output_folder()`, `name()`, and `data()`.
+The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `verbose()`,
+`output_folder()`, `name()`, and `data()`.
 `last_iterations()` is intentionally read-only, and
-`data()` returns `const Data&`; the other eight configuration values have
+`data()` returns `const Data&`; the other seven configuration values have
 `set_*` mutators, while data replacement uses
 `set_data()` or `set_view_data()`.
 
@@ -125,7 +124,7 @@ The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
-covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
+covers the binding use case; the multi-format (Parquet/Arrow) loading in
 `dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
 other path. Chained setters return `DataLoader&`.
 

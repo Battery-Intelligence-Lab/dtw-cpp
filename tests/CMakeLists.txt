@@ -108,16 +108,6 @@ dtwc_add_test(NAME unit_test_distance_matrix_csv SOURCE ${_dtwc_test_source_unit
 dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_unit_test_problem_encapsulation}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
 
-# F20: live Problem series-storage gate, per build flavour.
-if(_dtwc_has_mmap)
-    set(_f20_marker "F20_PROBLEM_STORAGE_POLICY build=llfio-on footprint=288 heap=owning mmap=view values=72/72 names=12/12 ndim_routes=2/2 ordered_pairs=72/72 artifact=pass lifetime=pass loader_auto=mmap view_override=pass subject_skips=0 verdict=PASS")
-else()
-    set(_f20_marker "F20_PROBLEM_STORAGE_POLICY build=llfio-off footprint=288 heap=owning mmap=rejected values=36/36 names=6/6 ndim_routes=1/1 ordered_pairs=36/36 transaction=pass loader_auto=heap-warning view_override=pass subject_skips=0 verdict=PASS")
-endif()
-dtwc_add_test(NAME unit_test_problem_storage_policy SOURCE ${_dtwc_test_source_unit_test_problem_storage_policy}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f20-problem-storage" FIXTURE_DEFINE DTWC_F20_TEST_ROOT
-    MARKER "${_f20_marker}" SERIAL)
-
 # F15: the three portable deterministic generator schedules.
 dtwc_add_test(NAME unit_test_deterministic_series SOURCE ${_dtwc_test_source_unit_test_deterministic_series}
     COMPILE_DEFINITIONS DTWC_F15_SOURCE_ROOT="${CMAKE_SOURCE_DIR}")
@@ -139,9 +129,9 @@ dtwc_add_test(NAME unit_test_mpi SOURCE ${_dtwc_test_source_unit_test_mpi}
 # Capability-dependent tests: skip tolerance only in the build that lacks the
 # capability; strict everywhere else.
 foreach(_dtwc_mmap_test IN ITEMS
-        unit_test_mmap_data_store unit_test_mmap_distance_matrix
+        unit_test_mmap_distance_matrix
         unit_test_problem_semantic_transactions unit_test_pruned_distance_matrix
-        test_storage_policy unit_test_cli_args unit_test_dtw_function_semantics
+        unit_test_cli_args unit_test_dtw_function_semantics
         unit_test_variant_precision unit_test_variant_distmat)
     dtwc_add_test(NAME ${_dtwc_mmap_test} SOURCE ${_dtwc_test_source_${_dtwc_mmap_test}} ${_dtwc_mmap_skip})
 endforeach()

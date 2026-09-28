@@ -17,7 +17,6 @@ ENUM_DOMAINS = (
     ("MetricType", core.MetricType, 3),
     ("MVMode", core.MVMode, 2),
     ("DistanceMatrixStrategy", core.DistanceMatrixStrategy, 5),
-    ("StoragePolicy", core.StoragePolicy, 3),
     ("LowerBoundStrategy", core.LowerBoundStrategy, 7),
 )
 
@@ -39,7 +38,6 @@ PROPERTY_ROUTES = (
     ("missing_strategy", "missing_strategy", 4),
     ("distance_strategy", "distance_strategy", 5),
     ("lb_strategy", "lb_strategy", 7),
-    ("storage_policy", "storage_policy", 3),
 )
 
 
