@@ -690,7 +690,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
       options.batch_size = config.batch_size;
       options.max_iter = config.max_iter;
       options.random_seed = config.seed;
-      options.weighting = config.batch_weighting;
       algorithms::OneBatchPAMStats stats;
       result = algorithms::one_batch_pam(prob, options, &stats);
       if (config.verbose)

@@ -83,7 +83,6 @@ struct Config
   int sample_size = -1;                  ///< `--sample-size` (CLARA; -1 = auto)
   int n_samples = 5;                     ///< `--n-samples` (CLARA)
   int batch_size = -1;                   ///< `--batch-size` (OneBatchPAM; -1 = auto)
-  algorithms::OneBatchWeighting batch_weighting = algorithms::OneBatchWeighting::NearestNeighbor; ///< `--batch-weighting`
   algorithms::Linkage linkage = algorithms::Linkage::Average; ///< `--linkage`
   double tadpole_dc = -1.0;              ///< `--dc` (TADPole; -1 = auto)
   // Distance
@@ -96,7 +95,7 @@ struct Config
   CUDASettings gpu;                      ///< device_id from `--device gpu:N`; `--gpu-precision`
   // Solver
   Solver solver = Solver::HiGHS;         ///< `--solver`
-  MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--benders`, ...
+  MIPSettings mip;                       ///< `--mip-gap`, `--time-limit`, `--lr-max-nodes`, ...
   // Checkpoint
   std::string checkpoint;                ///< `--checkpoint` directory
   int checkpoint_interval = 0;           ///< `--checkpoint-interval` (0 = at the end only)

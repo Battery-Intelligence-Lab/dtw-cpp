@@ -36,10 +36,10 @@ $$O(N^2)$$ per iteration rather than the direct-sum $$O(N^2k)$$ reference path.
 
 OneBatchPAM forms a fixed objective batch and keeps all $$N$$ points eligible
 as medoids, reducing the distance table to $$O(Nm)$$ for batch size $$m$$. The
-CLI exposes explicit or logarithmic-auto batch sizes and uniform, debiased, and
-nearest-neighbour importance weighting.
+CLI exposes explicit or logarithmic-auto batch sizes; the batch objective uses
+nearest-neighbour importance weights.
 
-**CLI:** `dtwc_cl -k 5 --method onebatch --batch-size 200 --batch-weighting nniw`
+**CLI:** `dtwc_cl -k 5 --method onebatch --batch-size 200`
 
 ## FastCLARA (Scalable k-Medoids)
 
@@ -151,7 +151,7 @@ By default, FastPAM is run first and its solution is fed to the MIP solver as a 
 
 ### Benders Decomposition
 
-For large datasets ($$N > 200$$), Benders decomposition splits the problem into a master problem (medoid selection, $$N$$ binary variables) and an assignment subproblem. This is enabled automatically or can be controlled with `--benders auto|on|off`. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
+For large datasets ($$N > 200$$), Benders decomposition splits the problem into a master problem (medoid selection, $$N$$ binary variables) and an assignment subproblem. This is enabled automatically. A Problem with no data, or with $$k$$ outside $$[1, N]$$, raises `InvalidInput`.
 
 ### MIP Solver Settings
 
@@ -161,7 +161,6 @@ For large datasets ($$N > 200$$), Benders decomposition splits the problem into 
 | MIP gap | `--mip-gap` | 1e-5 | Optimality gap tolerance |
 | Time limit | `--time-limit` | -1 (unlimited) | Seconds |
 | Warm start | `--no-warm-start` | enabled | Disable FastPAM warm start |
-| Benders | `--benders` | auto | Benders decomposition: auto, on, off |
 
 **CLI:** `dtwc_cl -k 5 --method mip --solver gurobi --mip-gap 1e-4`
 

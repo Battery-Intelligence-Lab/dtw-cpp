@@ -155,7 +155,6 @@ file to stream them under the cap.
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--batch-size <int>` | OneBatchPAM objective batch size (-1 = logarithmic auto) | -1 |
-| `--batch-weighting <string>` | `uniform`, `debiased`, or nearest-neighbour weighting `nniw` | `nniw` |
 | `--dc <float>` | TADPole density cutoff (omitted/negative = deterministic auto-selection) | auto |
 
 ### Hierarchical Clustering Options
@@ -175,8 +174,6 @@ file to stream them under the cap.
 | `--numeric-focus <int>` | Gurobi NumericFocus (0-3) | 1 |
 | `--mip-focus <int>` | Gurobi MIPFocus (0-3) | 2 |
 | `--verbose-solver` | Show MIP solver log output | off |
-| `--benders <string>` | Benders decomposition: `auto`, `on`, `off` | `auto` |
-| `--max-benders-iter <int>` | Benders iteration cap; a MIP that reaches it fails with `SolverError` | 200 |
 | `--lr-max-nodes <int>` | Branch-and-bound node cap of `--method lrcore` | 2000000 |
 
 ### CSV Parsing
