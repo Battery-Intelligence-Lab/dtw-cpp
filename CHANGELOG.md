@@ -8,6 +8,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed:** a medoid at distance 0 from another medoid (a duplicate series) is labelled with its own cluster by
+  k-medoids (Lloyd), FastPAM, FastCLARA and LR-core. v1.0.0's Lloyd gave it to the first tied medoid and published the
+  other cluster empty; LR-core refused the valid optimum with `SolverError`.
 - **Fixed (C++):** `scores::silhouette()` on a Problem that has not been clustered raises `InvalidInput`; v1.0.0 printed a
   line and returned one `-1` per series, a vector that reads as a (poor) score.
 - **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new

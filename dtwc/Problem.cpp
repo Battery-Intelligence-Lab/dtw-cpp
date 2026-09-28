@@ -1383,7 +1383,9 @@ void Problem::assign_clusters()
       const double distance = core::detail::require_finite_medoid_distance(
         dist_by_ind(ip, medoid), "kmedoids_lloyd", i_p,
         static_cast<int>(slot), medoid);
-      if (!has_best || distance < best_distance) {
+      // A medoid tied with another medoid (a duplicate series) serves itself,
+      // or its own cluster would be published empty.
+      if (!has_best || distance < best_distance || (distance == best_distance && medoid == ip)) {
         best_distance = distance;
         best_slot = static_cast<int>(slot);
         has_best = true;

@@ -87,7 +87,9 @@ void compute_nearest_and_second(
       for (int m = 0; m < k; ++m) {
         const double d = core::detail::require_finite_medoid_distance(
           prob.dist_by_ind(p, medoids[m]), "fast_pam", p, m, medoids[m]);
-        if (!has_best || d < best) {
+        // A medoid tied with another medoid (a duplicate series) serves itself,
+        // or its own cluster would be published empty.
+        if (!has_best || d < best || (d == best && medoids[m] == p)) {
           if (has_best) {
             second_best = best;
             has_second = true;

@@ -358,7 +358,9 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
 {
   const std::vector<double> values{0.0, 0x1p53, 1.0, 1.0, 0.0};
   const std::vector<int> medoids{0, 4};
-  const std::vector<int> labels(5, 0);
+  // Series 4 duplicates series 0: every other point ties and takes the first
+  // slot, but medoid 4 serves itself so its cluster is not published empty.
+  const std::vector<int> labels{0, 0, 0, 0, 1};
   constexpr double expected = 0x1p53;
 
   const auto oracle = independent_assignment_oracle({
@@ -368,7 +370,7 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
     {1.0, 1.0},
     {0.0, 0.0},
   });
-  REQUIRE(oracle.labels == labels);
+  REQUIRE(oracle.labels == std::vector<int>(5, 0)); // the table alone knows no medoid identity
   REQUIRE(bits(oracle.objective) == UINT64_C(0x4340000000000000));
 
   auto clara_f64 = scalar_problem<double>(values);

@@ -170,7 +170,9 @@ namespace {
           const double d = core::detail::require_finite_medoid_distance(
             p == medoid ? 0.0 : distance(point, series_at(medoid)),
             "fast_clara", p, m, medoid);
-          if (!has_best || d < best_dist) {
+          // A medoid tied with another medoid (a duplicate series) serves
+          // itself, or its own cluster would be published empty.
+          if (!has_best || d < best_dist || (d == best_dist && medoid == p)) {
             best_dist = d;
             best_label = m;
             has_best = true;
@@ -296,7 +298,8 @@ namespace {
                 ? 0.0 : dtw_fn(series_p, series_at(medoid_data, m)),
               "fast_clara", static_cast<std::size_t>(global_index),
               m, medoid_indices[m]);
-            if (!has_best || d < best_dist) {
+            if (!has_best || d < best_dist
+                || (d == best_dist && global_index == medoid_indices[m])) {
               best_dist = d;
               best_label = m;
               has_best = true;

@@ -801,6 +801,14 @@ void LR_core_clustering(Problem &prob)
         return D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
                  * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
       }).position;
+  // A medoid tied with another medoid (a duplicate series) serves itself: the
+  // first-slot tie-break would publish its own cluster empty.
+  for (int c = 0; c < n_medoids; ++c) {
+    const auto m = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)]);
+    const auto served_by = static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(result.labels[m])]);
+    if (D[m * static_cast<std::size_t>(N) + m] <= D[served_by * static_cast<std::size_t>(N) + m])
+      result.labels[m] = c;
+  }
   prob.set_result(result);
 }
 
