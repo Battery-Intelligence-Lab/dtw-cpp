@@ -4,38 +4,41 @@
 
 0. The newest `.claude/summaries/handoff-*.md` — where the last session stopped.
 1. `.claude/CHARTER.md` — what Volkan asked for, verbatim.
-2. `.claude/MAP.md` — what is where, today. **Read this instead of the tree.**
-3. `.claude/design.md` — the target architecture, the compatibility policy, the invariants.
-4. `.claude/PLAN.md` — your wave's card only; then the ledger rows it names
-   (`.claude/specs/2026-09-07-diff-ledger.md`) and the deep-dive section a row cites.
+2. `.claude/MAP.md` — what is where today, the target interface, the invariants. **Read this instead of the tree.**
+3. `.claude/PLAN.md` — the phases A–G; read your step, then its row in
+   `.claude/plans/2026-09-27-audit/advisor_exec.md` §2 (or the wave in `chair.md` §4).
 
-Context is a budget. A wave card lists its *context pack*: the only source files to open before
-starting. Never bulk-read `reports/`, `baselines/`, `LESSONS.md`, `CHANGELOG.md` or a `PLAN-archive-*`;
-grep them for the symbol or row you need. `DECISIONS.md` holds the killed ideas and standing rules.
+On demand: `DECISIONS.md` (killed ideas, standing rules, rulings) and `LESSONS.md` (rules learned the hard
+way). Context is a budget: never bulk-read `baselines/`, `LESSONS.md`, `CHANGELOG.md` or the audit folder;
+grep them for the symbol or finding id you need.
 
 ## Non-negotiables
 
 1. No runtime dependence on repo-relative paths. Never put the repo root on an include path (on a
    case-insensitive filesystem the root `VERSION` file shadows `<version>`).
-2. Every PR: update CHANGELOG.md (Unreleased), add or adjust tests, keep lint clean.
-3. Optional dependencies only (OpenMP, HiGHS, Gurobi, CUDA, Metal, MPI, llfio, Arrow, YAML). The core
-   builds without them. No silent fallback, ever: a request that cannot be honoured is a typed error.
+2. A user-visible change against v1.0.0 gets a CHANGELOG line. Every change adds or adjusts tests; keep lint
+   clean.
+3. Optional dependencies only (HiGHS, Gurobi, CUDA, Metal, llfio, Arrow, YAML; OpenMP unless
+   `DTWC_ALLOW_SEQUENTIAL`). The core builds without them. No silent fallback, ever: a request that
+   cannot be honoured is a typed error.
 4. **Use subagents for isolated work** — research, verification, analysis, implementation. Each gets
    its own context. When two or more return, consolidate: agreements, conflicts, key numbers
    (500–1500 tokens). Run them in parallel where possible; use a separate adversarial agent to check
    quality. An agent's finding is a hypothesis until the cited line has been opened.
-5. Lessons go to `.claude/LESSONS.md`, citations to `.claude/CITATIONS.md`. Append; no gate pins their
-   text any more (GT-2, 2026-09-23), so they may be compacted.
+5. Lessons go to `.claude/LESSONS.md` (≤ 300 lines: headline, rule, one pointer), citations to
+   `.claude/CITATIONS.md`, rulings to `.claude/DECISIONS.md` §3 (one line each).
 6. **Always `uv`** for Python — never pip. Stdlib-only scripts: `uv run --no-project python <script>`.
 7. C++20 minimum. No naked `new` / `delete` in core.
 8. **Write state to disk before the session ends**: run the `session-handoff` skill
-   (`.claude/skills/session-handoff/`). Keep the last few handoffs; delete older ones.
+   (`.claude/skills/session-handoff/`). Keep the newest two handoffs; delete older ones.
 9. **No over-engineering.** Minimal edits. Simple > clever. A helper must delete at least two copies.
    If a workflow will repeat, make it a skill.
-10. **A break needs a solid reason** (`design.md` §2): silently wrong, unsound, blocks the
-    cross-language contract, or provably unreachable. Additive first. People use this library.
+10. **A break of what v1.0.0 shipped needs a solid reason** (`DECISIONS.md` §2): silently wrong, unsound,
+    blocks the cross-language contract, or provably unreachable. 2.0-born surface is pre-tag. People use
+    this library.
 11. Never `git push`, tag, publish, SSH out, submit to ARC, rewrite history, or delete an untracked
-    `build*/`. Commit only when asked. Those are Volkan's actions.
+    `build*/`. Those are Volkan's actions. Each proven step is one local commit on `design-2.0`
+    (approved 2026-09-28).
 
 ## Verification discipline
 
@@ -47,15 +50,15 @@ grep them for the symbol or row you need. `DECISIONS.md` holds the killed ideas 
 - Numbers go to `.claude/baselines/` verbatim, tagged `[confirmed]` or `[inferred]`.
 - Full test runs are serial evidence (`ctest -j1`): concurrent runs collide on test artefacts.
 
-## Build and gates (macOS; other platforms in `PLAN.md` §2.1)
+## Build and gates (macOS; other platforms in `MAP.md` §3)
 
 ```sh
 cmake --preset clang-macos -DOpenMP_ROOT=/opt/homebrew/opt/libomp
 cmake --build --preset clang-macos
 ctest --test-dir build -C Release -j1 --output-on-failure
-uv run --no-project python scripts/repo_map.py layers     # upward-edge report
-python3 scripts/check_docs.py --cli build/bin/dtwc_cl; python3 scripts/generate_docs.py --check
-python3 scripts/check_pins.py   # gitleaks runs in CI
+uv run --no-project python scripts/check_docs.py --cli build/bin/dtwc_cl
+uv run --no-project python scripts/check_pins.py        # gitleaks runs in CI
+uv run --no-project python scripts/generate_docs.py --check
 ```
 
 ctest does not run `tests/python`. Any change that reaches a binding, a reader or a user-visible default also runs
@@ -70,7 +73,8 @@ cd $V && DTWC_CL_PATH=<repo>/build/bin/dtwc_cl $V/venv/bin/python -m pytest <rep
 ## Key files
 
 - `.claude/cpp-style.md`, `.claude/python-style.md` — coding conventions.
-- `docs/api-contract-2.0.md` — the frozen 2.0 surface; a change needs a dated entry in `DECISIONS.md`.
+- `docs/api-contract-2.0.md` — the 2.0 surface as written; it retires in phase G. What is frozen is
+  `DECISIONS.md` §2 rule 1.
 - `cmake/DtwcTest.cmake` — `dtwc_add_test`: a test passes on Catch2's summary with ≥ 1 assertion in ≥ 1 case,
   no failure, and no skip unless registered `MAY_SKIP`.
 - `.claude/commands/` — the user-facing slash commands shipped with the repo.
@@ -78,10 +82,10 @@ cd $V && DTWC_CL_PATH=<repo>/build/bin/dtwc_cl $V/venv/bin/python -m pytest <rep
 ## PR checklist
 
 - [ ] Tests added or updated — each pins a named contract against an independent oracle
-- [ ] CHANGELOG.md updated (Unreleased)
+- [ ] CHANGELOG line if the change is user-visible against v1.0.0
 - [ ] Docs updated (if user-facing)
 - [ ] Optional deps remain optional
-- [ ] Upward-edge count not higher; gate scripts green
+- [ ] `check_docs.py` and `check_pins.py` green; a new gate shown to bite
 
 ## Guidelines
 

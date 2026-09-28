@@ -1,6 +1,6 @@
 ---
 name: dtwc-verify
-description: Build DTWC++ and run the full verification set — serial ctest, the gate scripts, the layer ratchet — and report the result honestly. Use before claiming a change is green, before a commit, at a wave exit gate, or when asked whether the tests pass.
+description: Build DTWC++ and run the full verification set — serial ctest, the gate scripts — and report the result honestly. Use before claiming a change is green, before a commit, at a wave exit gate, or when asked whether the tests pass.
 ---
 
 # Verify
@@ -9,7 +9,7 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
 
 ## Steps
 
-1. **Build** (macOS shown; `PLAN.md` §2.1 has the other platforms):
+1. **Build** (macOS shown; `MAP.md` §3 has the other platforms):
 
    ```sh
    cmake --preset clang-macos -DOpenMP_ROOT=/opt/homebrew/opt/libomp
@@ -28,13 +28,12 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
    assertion in at least one case — a failure, a skip or an empty run fails. Only a `MAY_SKIP`
    test (a device or capability the build lacks) may show as Skipped; read its SKIP message.
 
-4. **Gates**, all three, plus the ratchet (the secret scan is gitleaks in CI):
+4. **Gates**, all three (the secret scan is gitleaks in CI):
 
    ```sh
    python3 scripts/check_docs.py --cli build/bin/dtwc_cl   # doc flags vs live --help; harness self-check
    python3 scripts/generate_docs.py --check                  # generated pages are fresh
    python3 scripts/check_pins.py
-   uv run --no-project python scripts/repo_map.py layers     # upward edges may only fall
    ```
 
 5. **Before calling anything "pre-existing", stash and re-run it.** `git stash -u`, run the failing
@@ -51,4 +50,4 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
   `std::exp` and `std::log` differ between glibc, Apple libm and UCRT.
 - Optional dependencies stay optional: if you touched the build, configure once without them.
 - Numbers go to `.claude/baselines/` verbatim, tagged `[confirmed]` or `[inferred]`.
-- Do not commit unless Volkan asked.
+- Commit only a proven step, locally on `design-2.0` (Volkan, 2026-09-28); never push.

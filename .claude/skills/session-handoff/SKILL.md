@@ -22,11 +22,11 @@ facts with their evidence and never inflates them.
    - `Verified by me` — claims you confirmed by opening the line or running the command.
    - `Reported by agents, unverified` — keep these apart; an agent finding is a hypothesis.
    - `Decisions` — taken by Volkan this session (quote him) versus proposed and awaiting him.
-   - `Next steps` — ordered, each naming its `PLAN.md` wave and row.
+   - `Next steps` — ordered, each naming its `PLAN.md` phase and step.
    - `Open questions`.
    - `Status honesty` — what was built, run and tested, and what was not.
-3. **Update `PLAN.md`**: the wave status marks in §1 and §3, and nothing else. New decisions go to
-   the log at the end of `DECISIONS.md`; measurements go to `.claude/baselines/`.
+3. **Update `PLAN.md`**: the step marks (☐ ◐ ☑) and commit hashes, and nothing else. New rulings go to
+   `DECISIONS.md` §3 as one line; measurements go to `.claude/baselines/`.
 4. **Prune**: keep the newest two handoffs and delete the rest with `git rm`; history keeps them.
    Code, tests and docs never cite a handoff: a comment states its reason itself.
 5. **Lessons**: if the session taught something durable, append one entry to `.claude/LESSONS.md`

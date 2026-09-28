@@ -1,7 +1,7 @@
 # DTWC++ 2.0 — Charter
 
 Volkan's instructions, verbatim. Agents do not edit the quoted text; new instructions are appended
-with a date. How they are turned into a design is in `design.md` §1; how they are scheduled is in
+with a date. The target they lead to is in `MAP.md` and `DECISIONS.md`; how it is scheduled is in
 `PLAN.md`.
 
 ## 2026-09-27 — bloat pass
@@ -161,8 +161,8 @@ portable library over an in-tree rewrite.
 ## Standing rules that follow from the charter
 
 - The orchestrating session designs, maps and reviews; implementation is delegated to subagents.
-- Context is a budget. Read `MAP.md`, not the tree; read your wave's card in `PLAN.md`, not the
-  whole plan; open a deep-dive report only for the section a task cites.
-- A break needs a solid, written reason (`design.md` §2). Additive first.
+- Context is a budget. Read `MAP.md`, not the tree; read your step in `PLAN.md` and the audit row it
+  names, not the whole plan.
+- A break needs a solid, written reason (`DECISIONS.md` §2). Additive first.
 - Tag, PyPI upload, ARC submission, `git push` and history rewrites are Volkan's actions, never an
   agent's.

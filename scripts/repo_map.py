@@ -5,7 +5,7 @@
   uv run --no-project python scripts/repo_map.py symbols <doxygen-xml-dir>
 
 `layers` assigns every file under dtwc/ to a layer of the TARGET model
-(.claude/design.md section 3) and reports the include graph against it: totals,
+(the layer table below) and reports the include graph against it: totals,
 layer x layer edge matrix, upward edges, include cycles, fan-in/fan-out and the
 transitive weight of the main headers. `--max-upward N` exits 1 when more than N
 upward edges exist (a ratchet: the number may only go down).
