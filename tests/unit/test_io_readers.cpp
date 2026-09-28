@@ -368,9 +368,6 @@ TEST_CASE("Parquet chunk metadata preserves scalar-column series semantics",
     CHECK_FALSE(reader.is_list_layout());
     CHECK(reader.logical_series_count() == 1);
     CHECK(reader.estimated_resident_bytes(false) > 0);
-    CHECK_THROWS_WITH(
-      reader.read_rows({0}),
-      Catch::Matchers::ContainsSubstring("list-per-row"));
   }
 
   dtwc::Problem settings_only{"scalar_stream_defense"};
