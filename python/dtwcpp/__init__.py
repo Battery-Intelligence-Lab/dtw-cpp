@@ -36,7 +36,6 @@ from dtwcpp._dtwcpp_core import (
     BarycenterClusteringResult,
     # Classes
     Problem,
-    Env,
     # Arrow C Data / stream ingest (Task 5.7 — zero-copy, no pyarrow)
     data_from_arrow_c_array,
     # Error taxonomy (api-contract-2.0.md §5)
@@ -135,6 +134,8 @@ def _resolve_device(device):
     """
     if not isinstance(device, str):
         raise InvalidInput(f"device must be a string, got {type(device).__name__}")
+    if device.strip().lower() in _HPC_NAMES:
+        return ("hpc", 0)
     backend, device_id = _parse_device(device)
     if backend == "gpu":
         if CUDA_AVAILABLE and cuda_available():
@@ -151,26 +152,33 @@ def _resolve_device(device):
     return (backend, device_id)
 
 
-# ``hpc`` is the one selection Python owns: ``dtwc::Env::set_device("hpc")``
-# validates the ``.env`` file and the SSH login eagerly, which the contract
-# (§1.1) defers to submit time so declaring the device never blocks on the
-# network. Every local selection lives in ``dtwc::Env``, so there is no Python
-# copy of the device to drift from it.
-_HPC_SELECTED = False
+# ``hpc`` / ``hpc:gpu`` submit a whole run to a SLURM cluster, which only
+# Python and slurm_remote.sh do (C++ refuses the name), so Python records the
+# selection itself; the ``.env`` file and the SSH login are checked at submit
+# time, so declaring the device never blocks on the network. Every local
+# selection lives in C++ (``dtwc::device``), so there is no Python copy of it
+# to drift from.
+_HPC_NAMES = ("hpc", "hpc:gpu")
+_HPC_SELECTED = ""
 
 
 def _current_device():
     """Canonical name of the active default device."""
-    return "hpc" if _HPC_SELECTED else _core_device()
+    return _HPC_SELECTED or _core_device()
+
+
+def _hpc_remote_device(name):
+    """The device the cluster job computes on: ``cuda`` for ``hpc:gpu``."""
+    return "cuda" if name.strip().lower() == "hpc:gpu" else "cpu"
 
 
 def device(device=None):
     """Get or set the global default device, PyTorch-style.
 
     Call with no argument to read the current default; pass a name to set it.
-    Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``, or
-    ``"hpc"``. A local selection is stored in the shared ``dtwc::Env`` registry
-    (§6) and the CANONICAL name that ``dtwc::device()`` reports is returned, so
+    Accepts ``"cpu"``, ``"gpu"``, ``"gpu:N"``, ``"cuda"``, ``"cuda:N"``,
+    ``"hpc"`` or ``"hpc:gpu"``. A local selection is stored in C++ (§6) and the
+    CANONICAL name that ``dtwc::device()`` reports is returned, so
     ``"cuda:0"`` comes back as ``"gpu"`` exactly as it does in C++ and MATLAB.
     An explicit ``device=`` argument always overrides this global default.
 
@@ -186,10 +194,10 @@ def device(device=None):
         return _current_device()
     backend, _ = _resolve_device(device)   # the C++ grammar, then the GPU; no fallback
     if backend == "hpc":
-        _HPC_SELECTED = True               # credentials checked at submit time
-        return "hpc"
-    canonical = _core_device(device)       # dtwc::device(): sets Env, canonicalises
-    _HPC_SELECTED = False                  # update only after successful validation
+        _HPC_SELECTED = device.strip().lower()   # credentials checked at submit time
+        return _HPC_SELECTED
+    canonical = _core_device(device)       # dtwc::device(): sets it, canonicalises
+    _HPC_SELECTED = ""                     # update only after successful validation
     return canonical
 
 
@@ -371,7 +379,7 @@ __all__ = [
     "OneBatchPAMOptions", "OneBatchPAMStats",
     "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",
     "BarycenterClusteringResult",
-    "Problem", "Env", "env", "device_to_string", "data_from_arrow_c_array",
+    "Problem", "device_to_string", "data_from_arrow_c_array",
     "DtwcError", "InvalidInput", "UndefinedScore", "SolverError", "DeviceError",
     "IOError",
     "DEFAULT_RANDOM_SEED",

@@ -11,7 +11,7 @@
  *   LowerBoundStrategy, core::Precision, KernelOverride,
  *   CUDASettings::precision, cuda::CUDAPrecision, and metal::MetalPrecision.
  *
- * Derived/internal enum inventory (not caller selectors): detail::SeqCause,
+ * Derived/internal enum inventory (not caller selectors):
  * cuda::detail::KernelPath, and cuda::FP64Rate.
  * Their values are produced by validated policy/hardware paths rather than
  * accepted at a public operation boundary.
@@ -378,7 +378,7 @@ TEST_CASE("F1 invalid BarycenterMethod rejects before reading series",
 TEST_CASE("F1 invalid Device never aliases CPU in public reporting",
           "[f1][enum][invalid][device]")
 {
-  for_each_invalid_enum<Device, Device::HPC>([](Device invalid) {
+  for_each_invalid_enum<Device, Device::GPU>([](Device invalid) {
     expect_invalid_input(device_error, [&] { (void)to_string(invalid); });
   });
 }
@@ -517,7 +517,6 @@ TEST_CASE("F1 all declared Device values report their exact names",
 {
   CHECK(to_string(Device::CPU) == "cpu");
   CHECK(to_string(Device::GPU) == "gpu");
-  CHECK(to_string(Device::HPC) == "hpc");
 }
 
 TEST_CASE("F1 both AssignmentMatrixLayout values decode exact assignments",

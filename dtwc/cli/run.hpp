@@ -17,9 +17,9 @@
  * |               |                               | series, else DeviceError          |
  * | pam, kmedoids, mip, lrcore, hierarchical | run | run; the GPU fills the matrix     |
  *
- * `hpc` raises DeviceError: a run computes where it starts, and SLURM
- * submission belongs to Python's dtwcpp.cluster(..., device="hpc") and
- * `slurm_remote.sh submit-cluster`. `gpu` on a build without a GPU backend
+ * `--device hpc` is refused while the configuration is parsed (DeviceError): a
+ * run computes where it starts, and SLURM submission belongs to Python's
+ * dtwcpp.device("hpc") and `slurm_remote.sh`. `gpu` on a build without a GPU backend
  * raises the api-contract-2.0.md §6.1 DeviceError; on a GPU a variant,
  * missing-data strategy, Float32 dtype, index or precision the backend does not
  * implement raises validate_gpu_request()'s DeviceError, all before any I/O.

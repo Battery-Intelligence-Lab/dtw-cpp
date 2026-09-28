@@ -1,11 +1,9 @@
 /**
  * @file env.cpp
- * @brief Implementation of dtwc::Env — device registry + `.env` HPC credentials.
+ * @brief The device grammar and the single-thread warning (see env.hpp).
  *
- * @details See env.hpp. The DeviceError messages emitted here are authored
- * verbatim in docs/api-contract-2.0.md §6.1/§6.2 (FROZEN) and asserted
- * byte-for-byte in tests/unit/test_env_device.cpp — do not reword them without a
- * PLAN.md decision entry updating the contract.
+ * @details The DeviceError messages here are authored in
+ * docs/api-contract-2.0.md §6.1 and asserted in tests/unit/test_env_device.cpp.
  *
  * @author Volkan Kumtepeli
  * @author Becky Perriment
@@ -15,36 +13,21 @@
 #include "env.hpp"
 #include "error.hpp"
 
-#include <array>
 #include <cctype>
-#include <cstdlib>
-#include <fstream>
-#include <iostream> // std::cerr for the sequential loudness warning (Task 3.2)
-#include <map>
-#include <mutex>    // std::once_flag / std::call_once — ONE warning per process
+#include <iostream>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <system_error>
-#include <thread>   // std::thread::hardware_concurrency()
+#include <thread>
 
 #ifdef DTWC_HAS_OPENMP
 #include <omp.h>
 #endif
 
-#ifndef _WIN32
-#include <sys/wait.h> // WIFEXITED / WEXITSTATUS for std::system() return decoding
-#endif
-
-namespace fs = std::filesystem;
-
 namespace dtwc {
 
 namespace {
-
-// ---------------------------------------------------------------------------
-// Small string helpers.
-// ---------------------------------------------------------------------------
 
 std::string to_lower_copy(std::string_view s)
 {
@@ -62,106 +45,7 @@ std::string trim(std::string_view s)
   return std::string(s.substr(b, e - b + 1));
 }
 
-// ---------------------------------------------------------------------------
-// DeviceError message builders — VERBATIM from api-contract-2.0.md §6.1/§6.2.
-// Kept as functions (single source of truth) so the strings can only change in
-// one place; the test hard-codes the same contract strings and asserts equality.
-// ---------------------------------------------------------------------------
-
-std::string msg_unknown_device(const std::string &name)
-{
-  return "[dtwc] unknown device '" + name
-       + "'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc.";
-}
-
-std::string msg_no_env_file()
-{
-  return "[dtwc] device='hpc' requires a .env file at the repository root, but none was found.\n"
-         "Copy scripts/slurm/env.example to .env and set SLURM_HOST, SLURM_USER, and SLURM_REMOTE_BASE.\n"
-         "Example .env:\n"
-         "  SLURM_HOST=arc-login.arc.ox.ac.uk\n"
-         "  SLURM_USER=abcd1234\n"
-         "  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs";
-}
-
-std::string msg_missing_key(const std::string &key)
-{
-  return "[dtwc] device='hpc': the .env file is missing required key '" + key + "'.\n"
-         "Set it in .env at the repository root. Example .env:\n"
-         "  SLURM_HOST=arc-login.arc.ox.ac.uk\n"
-         "  SLURM_USER=abcd1234\n"
-         "  SLURM_REMOTE_BASE=/data/coml-battery/dtwc-runs";
-}
-
-std::string msg_auth_failure(const std::string &host, const std::string &user)
-{
-  return "[dtwc] device='hpc': could not authenticate to SLURM host '" + host
-       + "' as user '" + user + "'.\n"
-         "Check that your SSH key is authorized on that host (ssh " + user + "@" + host
-       + " must succeed without a password prompt) and that SLURM_HOST and SLURM_USER in .env are correct.";
-}
-
-// ---------------------------------------------------------------------------
-// `.env` parsing.
-// ---------------------------------------------------------------------------
-
-/// Parse a `.env` file into KEY→VALUE. Blank lines and `#` comment lines are
-/// ignored; each remaining line is split on the first '='. Values are taken
-/// verbatim (trimmed) — dotenv semantics, no inline-comment stripping.
-std::map<std::string, std::string> parse_env_file(const fs::path &path)
-{
-  std::map<std::string, std::string> kv;
-  std::ifstream f(path);
-  std::string line;
-  while (std::getline(f, line)) {
-    const std::string t = trim(line);
-    if (t.empty() || t.front() == '#') continue;
-    const auto eq = t.find('=');
-    if (eq == std::string::npos) continue;
-    std::string key = trim(std::string_view(t).substr(0, eq));
-    std::string val = trim(std::string_view(t).substr(eq + 1));
-    if (!key.empty()) kv.emplace(std::move(key), std::move(val));
-  }
-  return kv;
-}
-
-// ---------------------------------------------------------------------------
-// Default HPC authentication probe (unverified on a real cluster — HPC is beta
-// per PLAN.md Phase 6). Attempts a non-interactive ssh; a password prompt or a
-// non-zero exit is treated as failure. Injectable via Env::set_hpc_auth_probe so
-// tests never touch the network.
-// ---------------------------------------------------------------------------
-
-bool is_shell_safe(const std::string &s)
-{
-  // Conservative allowlist for host/user tokens embedded in the ssh command line.
-  static constexpr std::string_view allowed =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-_@";
-  return !s.empty() && s.find_first_not_of(allowed) == std::string::npos;
-}
-
-bool default_ssh_auth_probe(const std::string &host, const std::string &user)
-{
-  // Refuse to interpolate anything shell-unsafe into system() — a token we
-  // cannot safely attempt counts as an auth failure (no silent success).
-  if (!is_shell_safe(host) || !is_shell_safe(user)) return false;
-
-  const std::string cmd = "ssh -o BatchMode=yes -o ConnectTimeout=10 "
-                          "-o StrictHostKeyChecking=accept-new "
-                        + user + "@" + host + " true";
-  const int rc = std::system(cmd.c_str());
-#ifdef _WIN32
-  return rc == 0;
-#else
-  return rc != -1 && WIFEXITED(rc) && WEXITSTATUS(rc) == 0;
-#endif
-}
-
 } // namespace
-
-// ---------------------------------------------------------------------------
-// Free helpers.
-// ---------------------------------------------------------------------------
 
 std::string to_string(Device d)
 {
@@ -169,47 +53,11 @@ std::string to_string(Device d)
   switch (d) {
   case Device::CPU: return "cpu";
   case Device::GPU: return "gpu";
-  case Device::HPC: return "hpc";
   }
   throw std::logic_error("to_string: unreachable Device");
 }
 
-// ---------------------------------------------------------------------------
-// Sequential-execution loudness (Task 3.2). PURE predicate + message SSOT.
-// The two strings below are the EXACT stderr warnings emitted by the Env
-// constructor; they are transcribed and asserted byte-for-byte in
-// tests/unit/test_runtime_loudness.cpp. Do not reword without updating that test.
-// ---------------------------------------------------------------------------
-
 namespace detail {
-
-SeqCause sequential_cause(int effective_max_threads, unsigned hw_concurrency,
-                          bool sequential_build) noexcept
-{
-  if (sequential_build) return SeqCause::SequentialBuild;
-  // Only warn about a runtime single-thread cap on a host that actually has more
-  // than one hardware thread — a genuine single-core machine (or hw_concurrency==0,
-  // meaning "unknown") is legitimately serial and must not be nagged.
-  if (effective_max_threads <= 1 && hw_concurrency > 1) return SeqCause::RuntimeSingleThread;
-  return SeqCause::None;
-}
-
-std::string sequential_warning_text(SeqCause cause)
-{
-  switch (cause) {
-  case SeqCause::RuntimeSingleThread:
-    return "[DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.\n"
-           "  Distance-matrix computation will be extremely slow for large datasets.\n"
-           "  Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.\n";
-  case SeqCause::SequentialBuild:
-    return "[DTWC++ WARNING] This build was compiled WITHOUT OpenMP (-DDTWC_ALLOW_SEQUENTIAL=ON) — DTWC++ is running SINGLE-THREADED.\n"
-           "  Distance-matrix computation will be extremely slow for large datasets.\n"
-           "  Rebuild without -DDTWC_ALLOW_SEQUENTIAL=ON (with OpenMP available) for parallel execution.\n";
-  case SeqCause::None:
-    break;
-  }
-  return {};
-}
 
 std::pair<Device, int> parse_device(std::string_view name)
 {
@@ -217,7 +65,6 @@ std::pair<Device, int> parse_device(std::string_view name)
   const std::string lname = to_lower_copy(raw);
 
   if (lname == "cpu") return { Device::CPU, 0 };
-  if (lname == "hpc") return { Device::HPC, 0 };
   if (lname == "gpu" || lname == "cuda") return { Device::GPU, 0 };
   if (lname.rfind("gpu:", 0) == 0 || lname.rfind("cuda:", 0) == 0) {
     const std::string id = lname.substr(lname.find(':') + 1);
@@ -229,7 +76,13 @@ std::pair<Device, int> parse_device(std::string_view name)
       }
     }
   }
-  throw DeviceError(msg_unknown_device(raw));
+  if (lname == "hpc" || lname.rfind("hpc:", 0) == 0)
+    throw DeviceError(
+      "[dtwc] device '" + raw + "' submits a whole run to a SLURM cluster, which "
+      "Python's dtwcpp.device(\"hpc\") and scripts/slurm/slurm_remote.sh do. C++, "
+      "MATLAB and dtwc_cl compute where they start: use cpu or gpu.");
+  throw DeviceError("[dtwc] unknown device '" + raw
+                    + "'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).");
 }
 
 std::string gpu_not_built_message()
@@ -241,133 +94,22 @@ std::string gpu_not_built_message()
 
 } // namespace detail
 
-// ---------------------------------------------------------------------------
-// Env.
-// ---------------------------------------------------------------------------
-
-Env::Env()
-{
-  if (const char *root = std::getenv("DTWC_REPO_ROOT"); root != nullptr && *root != '\0') {
-    env_file_dir_ = fs::path(root);
-  } else {
-    std::error_code ec;
-    env_file_dir_ = fs::current_path(ec);
-  }
-  auth_probe_ = &default_ssh_auth_probe;
-  warn_if_sequential(); // Task 3.2: loud stderr warning when running single-threaded.
-}
-
-namespace {
-
-/// ONE single-thread warning per process, SHARED between the dtwc::Env
-/// constructor (Task 3.2) and dtwc::warn_if_single_threaded() reached from the
-/// compute entry points (Task 3.6). A single flag is what keeps the CLI — which
-/// both constructs env() and computes — from warning twice. std::once_flag has a
-/// constexpr constructor, so it is constant-initialised (no static-init-order
-/// hazard).
-std::once_flag g_seq_warned_flag;
-
-/// omp_get_max_threads() (or 1 without OpenMP): reflects OMP_NUM_THREADS /
-/// omp_set_num_threads() at the moment of the call. Mirrors Env::threads().
-int effective_max_threads() noexcept
-{
-#ifdef DTWC_HAS_OPENMP
-  return omp_get_max_threads();
-#else
-  return 1;
-#endif
-}
-
-} // namespace
-
 void warn_if_single_threaded()
 {
-  std::call_once(g_seq_warned_flag, [] {
-    constexpr bool sequential_build =
-#ifdef DTWC_SEQUENTIAL_BUILD
-      true; // Task 3.1 defines this when configured with -DDTWC_ALLOW_SEQUENTIAL=ON.
-#else
-      false;
+  static std::once_flag warned;
+  std::call_once(warned, [] {
+#ifdef DTWC_SEQUENTIAL_BUILD // defined when configured with -DDTWC_ALLOW_SEQUENTIAL=ON
+    std::cerr << "[DTWC++ WARNING] This build was compiled WITHOUT OpenMP (-DDTWC_ALLOW_SEQUENTIAL=ON) — DTWC++ is running SINGLE-THREADED.\n"
+                 "  Distance-matrix computation will be extremely slow for large datasets.\n"
+                 "  Rebuild without -DDTWC_ALLOW_SEQUENTIAL=ON (with OpenMP available) for parallel execution.\n";
+#elif defined(DTWC_HAS_OPENMP)
+    // A single-core host (or an unknown core count, 0) is serial by nature: no warning.
+    if (omp_get_max_threads() <= 1 && std::thread::hardware_concurrency() > 1)
+      std::cerr << "[DTWC++ WARNING] OpenMP is available but only 1 thread is usable — DTWC++ is running SINGLE-THREADED.\n"
+                   "  Distance-matrix computation will be extremely slow for large datasets.\n"
+                   "  Raise the thread count (unset OMP_NUM_THREADS, or set OMP_NUM_THREADS>1) to use all CPU cores.\n";
 #endif
-    const auto cause = detail::sequential_cause(
-      effective_max_threads(), std::thread::hardware_concurrency(), sequential_build);
-    if (cause != detail::SeqCause::None)
-      std::cerr << detail::sequential_warning_text(cause);
   });
-}
-
-void Env::warn_if_sequential() const
-{
-  // Delegate to the shared, process-once emitter so the Env-constructor path and
-  // the compute-path calls consume the SAME guard (never a double warning).
-  warn_if_single_threaded();
-}
-
-void Env::set_device(std::string_view name)
-{
-  const auto [selected, index] = detail::parse_device(name);
-  switch (selected) {
-  case Device::CPU:
-    device_ = Device::CPU;
-    device_index_ = 0;
-    return;
-  case Device::HPC:
-    select_hpc(); // sets device_ = HPC only on full success
-    return;
-  case Device::GPU:
-#if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-    device_ = Device::GPU;
-    device_index_ = index;
-    return;
-#else
-    throw DeviceError(detail::gpu_not_built_message());
-#endif
-  }
-}
-
-void Env::select_hpc()
-{
-  const fs::path env_path = env_file_dir_ / ".env";
-
-  std::error_code ec;
-  if (!fs::exists(env_path, ec) || ec) throw DeviceError(msg_no_env_file());
-
-  const auto kv = parse_env_file(env_path);
-
-  // Order fixed by the contract so the "first missing key" is deterministic.
-  static constexpr std::array<std::string_view, 3> required{
-    "SLURM_HOST", "SLURM_USER", "SLURM_REMOTE_BASE"
-  };
-  for (const std::string_view key : required) {
-    const auto it = kv.find(std::string(key));
-    if (it == kv.end() || it->second.empty())
-      throw DeviceError(msg_missing_key(std::string(key)));
-  }
-
-  const std::string &host = kv.at("SLURM_HOST");
-  const std::string &user = kv.at("SLURM_USER");
-
-  const bool authenticated = auth_probe_ ? auth_probe_(host, user)
-                                         : default_ssh_auth_probe(host, user);
-  if (!authenticated) throw DeviceError(msg_auth_failure(host, user));
-
-  device_ = Device::HPC;
-  device_index_ = 0;
-}
-
-int Env::threads() const
-{
-#ifdef DTWC_HAS_OPENMP
-  return omp_get_max_threads();
-#else
-  return 1;
-#endif
-}
-
-Env &env()
-{
-  static Env instance;
-  return instance;
 }
 
 } // namespace dtwc

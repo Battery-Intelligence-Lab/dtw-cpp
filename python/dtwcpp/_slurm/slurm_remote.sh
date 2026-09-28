@@ -31,8 +31,8 @@ set -euo pipefail
 
 # ── Locate project root and load .env ────────────────────────────────────
 # The project directory (.env, results/) is not this script's
-# directory: the same DTWC_REPO_ROOT-else-working-directory rule as dtwcpp and
-# dtwc::Env. cluster_generic.slurm ships beside this script.
+# directory: the same DTWC_REPO_ROOT-else-working-directory rule as dtwcpp.
+# cluster_generic.slurm ships beside this script.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(CDPATH='' cd -- "${DTWC_REPO_ROOT:-.}" && pwd)"
 # The checkout whose files upload and the fixed jobs send: the one this copy

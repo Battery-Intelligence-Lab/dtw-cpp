@@ -255,6 +255,23 @@ if(TARGET dtwc_cl)
         WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 180)
 endif()
 
+# The single-thread warning on the real binary: OMP_NUM_THREADS=1 warns once
+# and names the remedy; a default run stays quiet.
+if(TARGET dtwc_cl)
+    if("DTWC_SEQUENTIAL_BUILD" IN_LIST _dtwc_public_defs)
+        set(_dtwc_cl_sequential 1)
+    else()
+        set(_dtwc_cl_sequential 0)
+    endif()
+    dtwc_add_script_test(NAME test_cli_single_thread
+        SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_cli_single_thread.cmake"
+        ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>"
+             "-DINPUT=${CMAKE_CURRENT_SOURCE_DIR}/conformance/data/conformance_series.csv"
+             "-DSEQUENTIAL=${_dtwc_cl_sequential}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-single-thread"
+        MARKER "CLI_SINGLE_THREAD subject=real_dtwc_cl one_thread=[01] default=[01] skips=0"
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}" LABELS integration cli SERIAL TIMEOUT 120)
+endif()
+
 # IF-2 S3: dtwc::run's method x device table on the real binary, per build
 # flavour, and --print-config against the golden files (48 keys: every value
 # and every default). A GPU build on a machine without the device must refuse.

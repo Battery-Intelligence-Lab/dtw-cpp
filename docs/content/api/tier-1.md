@@ -22,15 +22,15 @@ res  = dtwc.cluster(data, k=3)# Result: labels, medoids, score(name), save(dir),
 |---|---|---|---|
 | Set | `std::string dtwc::device(std::string_view name)` | `dtwcpp.device(name: str) -> str` | `dtwc.device(name)` |
 | Get | `std::string dtwc::device()` | `dtwcpp.device() -> str` (`__init__.py`) | `name = dtwc.device()` |
-| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"`,`"hpc"` | same, parsed by the C++ grammar through its binding (`_dtwcpp_core.parse_device`) | same |
+| Accepts | `"cpu"`,`"gpu"`,`"gpu:N"`,`"cuda"`,`"cuda:N"` | same, plus `"hpc"` and `"hpc:gpu"`; local names are parsed by the C++ grammar through its binding (`_dtwcpp_core.parse_device`) | same as C++ |
 | Returns | canonical name from `to_string(Device)` (+`:N` for a non-zero GPU ordinal) | same: `device()` returns what `dtwc::device()` returns, so `"cuda:0"` comes back as `"gpu"` | same |
-| Errors | `DeviceError` on unknown name (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError` |
-| Delegates to | `dtwc::env().set_device(name)` | `dtwc::device(name)` after local validation, so `Env` is the only store; HPC credentials deferred to the wrapper (Python keeps only the deferred `hpc` selection) | MEX `set_device` → `Env` |
+| Errors | `DeviceError` on an unknown name, and on `"hpc"`, naming Python's `dtwcpp.device("hpc")` and `slurm_remote.sh` (§6) | `DeviceError` on unknown/unavailable local device; HPC transport gap F24 | `dtwc:deviceError`, as C++ |
+| Delegates to | one process-wide `{Device, index}` | `dtwc::device(name)` after local validation, so C++ holds the local selection; Python records `hpc` / `hpc:gpu` itself and checks credentials at submit | MEX `set_device` → `dtwc::device(name)` |
 
-C++ and MATLAB delegate local-device validation directly to `dtwc::Env`; Python
-parses with the same grammar (`dtwc::detail::parse_device`), checks that the GPU
-is live, and stores a CPU/GPU selection in Env through `dtwc::device(name)`; it
-keeps only a deferred `hpc` selection of its own. The friendly name `"gpu"`, and
+C++ and MATLAB validate through `dtwc::device(name)`; Python parses with the same
+grammar (`dtwc::detail::parse_device`), checks that the GPU is live, and stores a
+CPU/GPU selection in C++ through `dtwc::device(name)`; it records an `hpc` or
+`hpc:gpu` selection of its own, which C++ refuses. The friendly name `"gpu"`, and
 its alias `"cuda"`, resolves to CUDA (or Metal on macOS) at call time. C++
 Tier-1 HPC submission remains the approved 2.1 transport defer. Python owns the
 SLURM wrapper, but its current HPC errors violate the frozen taxonomy/messages
@@ -169,7 +169,7 @@ not prove execution:
 
 | Parameter | Python | MATLAB | Current status |
 |---|---|---|---|
-| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `Env` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
+| `device` / `Device` | `device=None` `[introduced-2.0]`, routed by `_clustering.py` | `Device=''` `[introduced-2.0]`, validated through `dtwc::device` and restored afterwards (a per-call override, never a global mutation), then applied to the estimator `Problem`'s distance strategy |
 | `metric` / `Metric` | `metric='l1'` `[introduced-2.0]`, consumed by fit | `Metric='l1'` or `'squared_euclidean'`, consumed by fit: a non-L1 metric builds the exact matrix through `dtwc_mex('DTWClustering_compute_distance_matrix', X, band, metric)` and sets it on the `Problem`, as `_clustering.py` does |
 
 Both estimators converge on the shared constructor set `{n_clusters, variant, band,

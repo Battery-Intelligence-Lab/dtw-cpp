@@ -44,7 +44,6 @@ constexpr ClusterMethod kMatrix[]{ ClusterMethod::Auto,     ClusterMethod::PAM, 
                                    ClusterMethod::Kmedoids, ClusterMethod::MIP, ClusterMethod::LRCore,
                                    ClusterMethod::Hierarchical };
 
-const std::string kHpc = "run: device 'hpc' submits a run to a SLURM cluster";
 const std::string kCpuAsItGoes = "computes its distances on the CPU as it goes, so device 'gpu' would sit idle";
 
 /// Two groups of three constant series; each group's middle series is its
@@ -201,16 +200,13 @@ TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes method
 #endif
 }
 
-TEST_CASE("run on hpc: every method raises DeviceError before any series is read", "[run][device][hpc]")
+TEST_CASE("--device hpc is a DeviceError naming the Python and SLURM routes", "[run][device][hpc]")
 {
-  for (const auto method : kAll) {
-    CAPTURE(name(method));
-    CHECK_THAT(device_error([&] { (void)dtwc::run(config_for(method, Device::HPC), levels()); }),
-               StartsWith(kHpc) && ContainsSubstring("No local fallback was attempted."));
+  for (const char *name : { "hpc", "hpc:gpu" }) {
+    CAPTURE(name);
+    CHECK_THAT(device_error([&] { (void)dtwc::parse_config({ { "device", name } }); }),
+               ContainsSubstring("dtwcpp.device(\"hpc\")") && ContainsSubstring("slurm_remote.sh"));
   }
-  auto config = config_for(ClusterMethod::Auto, Device::HPC);
-  config.input = (std::filesystem::temp_directory_path() / "dtwc_run_never_created.csv").string();
-  CHECK_THAT(device_error([&] { (void)dtwc::run(config); }), StartsWith(kHpc));
 }
 
 TEST_CASE("run on gpu: a request the GPU kernels cannot honour raises before any series is read",

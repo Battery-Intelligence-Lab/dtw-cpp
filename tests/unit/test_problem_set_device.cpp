@@ -1,7 +1,7 @@
 /**
  * @file test_problem_set_device.cpp
  * @brief IF-1: Problem::set_device and the one device-name grammar
- *        (detail::parse_device) that Env, dtwc::device() and the bindings share.
+ *        (detail::parse_device) that dtwc::device() and the bindings share.
  *
  * @details Every case runs in every build: GPU builds check the selected
  * backend, a build without one checks the verbatim §6.1 DeviceError. Oracle for
@@ -26,7 +26,7 @@ namespace {
 
 // docs/api-contract-2.0.md §6.1, verbatim.
 const std::string kMsgUnknownTpu =
-  "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N), hpc.";
+  "[dtwc] unknown device 'tpu'. Valid devices: cpu, gpu, gpu:N (aliases cuda, cuda:N).";
 [[maybe_unused]] const std::string kMsgGpuNotBuilt =
   "[dtwc] device='gpu' requested but this build has no GPU backend compiled in.\n"
   "Rebuild with -DDTWC_ENABLE_CUDA=ON (NVIDIA) or, on macOS, -DDTWC_ENABLE_METAL=ON.\n"
@@ -56,14 +56,14 @@ dtwc::Problem problem_with_data()
 
 } // namespace
 
-TEST_CASE("IF-1: parse_device is the Env grammar", "[if1][device]")
+TEST_CASE("IF-1: parse_device is the one device grammar", "[if1][device]")
 {
   using dtwc::detail::parse_device;
   CHECK(parse_device("cpu") == std::pair{ Device::CPU, 0 });
   CHECK(parse_device(" GpU:3 ") == std::pair{ Device::GPU, 3 });
   CHECK(parse_device("cuda") == std::pair{ Device::GPU, 0 });
   CHECK(parse_device("CUDA:0") == std::pair{ Device::GPU, 0 });
-  CHECK(parse_device("hpc") == std::pair{ Device::HPC, 0 });
+  CHECK_THROWS_AS(parse_device("hpc"), dtwc::DeviceError);
   CHECK(message_of<dtwc::DeviceError>([] { (void)parse_device("tpu"); })
         == kMsgUnknownTpu);
   for (const char *bad : { "gpu:", "gpu:-1", "gpu:x", "cuda:99999999999", "" })
@@ -114,11 +114,9 @@ TEST_CASE("IF-1: set_device(gpu) selects this build's backend and records the in
 #endif
 }
 
-TEST_CASE("IF-1: set_device rejects hpc and a negative index", "[if1][device]")
+TEST_CASE("IF-1: set_device rejects a negative index", "[if1][device]")
 {
   auto prob = problem_with_data();
-  CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.set_device(Device::HPC); }),
-             ContainsSubstring("hpc is not a Problem device"));
   CHECK_THAT(message_of<dtwc::InvalidInput>([&] { prob.set_device(Device::GPU, -1); }),
              ContainsSubstring("got -1"));
   CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
@@ -128,12 +126,11 @@ TEST_CASE("IF-1: set_device rejects hpc and a negative index", "[if1][device]")
 TEST_CASE("IF-1: a Problem does not read the process-wide device", "[if1][device]")
 {
 #if defined(DTWC_HAS_CUDA) || defined(DTWC_HAS_METAL)
-  dtwc::env().set_device("gpu");
+  (void)dtwc::device("gpu");
 #endif
   const dtwc::Problem prob("fresh");
   CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
-  dtwc::env().set_device("cpu");
-  CHECK(dtwc::env().device() == Device::CPU);
+  CHECK(dtwc::device("cpu") == "cpu");
 }
 
 TEST_CASE("IF-1: Tier-1 cluster(device=gpu) runs through Problem::set_device",

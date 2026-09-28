@@ -153,7 +153,7 @@ endif()
 
 # ---- hpc, and a name no grammar reads ----
 foreach(method IN ITEMS auto pam)
-    expect_refused(hpc_${method} "device 'hpc' submits a run to a SLURM cluster" -i "${INPUT}"
+    expect_refused(hpc_${method} "device 'hpc' submits a whole run to a SLURM cluster" -i "${INPUT}"
                    --device hpc --method ${method})
 endforeach()
 expect_refused(device_tpu "unknown device 'tpu'" -i "${INPUT}" --device tpu)

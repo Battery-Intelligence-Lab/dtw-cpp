@@ -483,12 +483,6 @@ void Problem::set_device(Device device, int index)
     throw DeviceError(detail::gpu_not_built_message());
 #endif
   }
-  case Device::HPC:
-    throw InvalidInput(
-      "Problem::set_device: hpc is not a Problem device. It submits a whole run "
-      "to a SLURM cluster, which Python's dtwcpp.cluster(..., device='hpc') does "
-      "by running dtwc_cl there; a Problem computes locally. Use device cpu or "
-      "gpu.");
   }
 }
 

@@ -523,7 +523,7 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
     method = _normalize_method(method)
 
     import dtwcpp
-    from dtwcpp import _resolve_device
+    from dtwcpp import _resolve_device, _hpc_remote_device
     eff = device if device is not None else dtwcpp.device()
     backend, _ = _resolve_device(eff)
     data = load(data)
@@ -550,6 +550,7 @@ def cluster(data, k, *, method="pam", band=-1, device=None, max_iter=100):
         source = data.source if data.is_path else data.as_series()
         # as_series() has already dropped an in-memory source's skip_cols.
         labels = _hpc.cluster_on_hpc(source, k, method=method, band=band,
+                                     device=_hpc_remote_device(eff),
                                      skip_cols=skip_cols if data.is_path else 0,
                                      name=f"dtwc_{data.name}",
                                      max_iter=max_iter)

@@ -126,7 +126,7 @@ void bind(CLI::App &app, Config &config);
 std::string to_config_text(const Config &config);
 
 /// `device` as to_config_text() writes it and detail::parse_device() reads it
-/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0), hpc.
+/// back: cpu, gpu, gpu:N (N the GPU index when it is not 0).
 std::string device_text(const Config &config);
 
 /// A Config from (key, value) pairs, as Python keywords and MATLAB name-value

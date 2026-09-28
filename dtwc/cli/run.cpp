@@ -380,11 +380,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
     throw InvalidInput("--max-iter must be a positive integer, got " + std::to_string(config.max_iter));
   if (config.checkpoint_interval != 0 && config.checkpoint.empty())
     throw InvalidInput("--checkpoint-interval requires --checkpoint <dir>.");
-  if (config.device == Device::HPC)
-    throw DeviceError(
-      "run: device 'hpc' submits a run to a SLURM cluster, which Python's dtwcpp.cluster(..., "
-      "device='hpc') and slurm_remote.sh submit-cluster do; dtwc_cl and dtwc::run compute where they "
-      "start. No local fallback was attempted.");
 
   auto problem = std::make_shared<Problem>(config.name);
   Problem &prob = *problem;

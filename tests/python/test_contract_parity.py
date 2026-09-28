@@ -8,7 +8,7 @@ introspectable, its documented default values).
 
 Contract pinned: docs/api-contract-2.0.md — STATUS: FROZEN 2026-07-07.
 Sections consumed: §1 (Tier-1), §2.1/§2.2 (Problem), §2.4 (scores), §2.5
-(algorithms), §2.6 (distance), §5 (error taxonomy), §6 (device/Env).
+(algorithms), §2.6 (distance), §5 (error taxonomy), §6 (device).
 
 Why the contract's Python column is HARD-CODED here (not parsed at test time):
 the column lives inside prose markdown tables carrying provenance tags
@@ -38,9 +38,9 @@ _TIER1 = [
 ]
 
 # ---------------------------------------------------------------------------
-# §6 device / Env registry
+# §6 device
 # ---------------------------------------------------------------------------
-_ENV = ["Env", "env", "device_to_string", "Device"]
+_ENV = ["device_to_string", "Device"]
 
 # ---------------------------------------------------------------------------
 # §5 error taxonomy

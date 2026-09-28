@@ -505,8 +505,7 @@ public:
   /// ordinal. A Problem never reads the process-wide default (dtwc::device());
   /// until told otherwise it computes on the CPU.
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
-  ///         InvalidInput for `hpc`, a Tier-1 / CLI run option (D-10), or a
-  ///         negative index.
+  ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
   void set_lb_strategy(LowerBoundStrategy strategy)
   {
