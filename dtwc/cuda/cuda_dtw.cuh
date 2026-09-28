@@ -48,17 +48,8 @@ struct CUDADistMatOptions : public dtwc::gpu::DistMatOptionsBase {
   int device_id = 0;                             ///< CUDA device to use
   CUDAPrecision precision = CUDAPrecision::Auto; ///< Compute precision
 
-  /// When positive (and band >= 0), pairs with LB > threshold are not
-  /// computed and read NaN. A pair without a warping path reads the finite public
-  /// double-max no-result sentinel, not IEEE infinity. The bound squares each
-  /// excess under use_squared_l2.
-  /// CUDA default is -1.0 (threshold-off sentinel); Metal uses 0.0 with
-  /// different semantics. Kept per-backend for backward compatibility.
-  double lb_threshold = -1.0;
-
   // Inherited from DistMatOptionsBase:
-  //   band, use_squared_l2, verbose, use_lb_keogh, max_length_hint,
-  //   kernel_override
+  //   band, use_squared_l2, verbose, max_length_hint, kernel_override
 };
 
 struct CUDADistMatResult : public dtwc::gpu::DistMatResultBase {
@@ -77,64 +68,6 @@ std::string cuda_device_info(int device_id = 0);
 /// results transferred back.
 CUDADistMatResult compute_distance_matrix_cuda(
     const std::vector<std::vector<double>> &series,
-    const CUDADistMatOptions &opts = {});
-
-/// Result type for standalone LB_Keogh computation.
-struct CUDALBResult {
-  std::vector<double> lb_values; ///< N*(N-1)/2 lower bounds (upper triangle, row-major)
-  size_t n = 0;                  ///< Number of series
-  double gpu_time_sec = 0;       ///< GPU kernel execution time
-};
-
-/// Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.
-/// Returns symmetric LB_Keogh: max(LB(i->j), LB(j->i)) for each pair.
-/// Requires band >= 0 (Sakoe-Chiba constraint); returns empty result if band < 0.
-CUDALBResult compute_lb_keogh_cuda(
-    const std::vector<std::vector<double>> &series,
-    int band, int device_id = 0);
-
-// =========================================================================
-// 1-vs-N and K-vs-N DTW computation
-// =========================================================================
-
-/// Result of a 1-vs-N DTW computation.
-struct CUDAOneVsNResult {
-  std::vector<double> distances; ///< N distances from query to each series
-  double gpu_time_sec = 0;       ///< GPU kernel execution time
-  size_t n = 0;                  ///< Number of target series
-  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
-  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
-};
-
-/// Compute DTW distances from one query series (by index) to all N series.
-/// Result: distances[query_index] == 0, others are DTW distances.
-CUDAOneVsNResult compute_dtw_one_vs_all(
-    const std::vector<std::vector<double>> &series,
-    size_t query_index,
-    const CUDADistMatOptions &opts = {});
-
-/// Compute DTW distances from an external query to all N series.
-CUDAOneVsNResult compute_dtw_one_vs_all(
-    const std::vector<double> &query,
-    const std::vector<std::vector<double>> &series,
-    const CUDADistMatOptions &opts = {});
-
-/// Result of a K-vs-N DTW computation.
-struct CUDAKVsNResult {
-  std::vector<double> distances; ///< K*N distances (row-major: result[k*N + j])
-  double gpu_time_sec = 0;       ///< GPU kernel execution time
-  size_t k = 0;                  ///< Number of query series
-  size_t n = 0;                  ///< Number of target series
-  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
-  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
-};
-
-/// Compute multiple rows of the distance matrix at once.
-/// query_indices[K] specifies which series are queries.
-/// Returns K*N distances (row-major: result[k*N + j] = DTW(query_k, series_j)).
-CUDAKVsNResult compute_dtw_k_vs_all(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<size_t> &query_indices,
     const CUDADistMatOptions &opts = {});
 
 }  // namespace dtwc::cuda

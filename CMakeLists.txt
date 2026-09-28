@@ -47,7 +47,6 @@ option(DTWC_ENABLE_HIGHS "Enable HiGHS MIP solver" ON)
 # with the identical bound. Enable alongside DTWC_ENABLE_CUDA so the root scope
 # sets CMAKE_CUDA_ARCHITECTURES before HiGHS enable_language(CUDA).
 option(DTWC_HIGHS_GPU "Build HiGHS PDLP with the CUDA GPU backend (CUPDLP_GPU)" OFF)
-option(DTWC_ENABLE_MPI "Enable MPI distributed computing" OFF)
 option(DTWC_ENABLE_CUDA "Enable CUDA GPU acceleration" OFF)
 # Metal defaults ON on Apple (zero extra toolchain — ships with Xcode CLT).
 # Silently ignored on non-Apple platforms.
@@ -441,13 +440,6 @@ if(PROJECT_IS_TOP_LEVEL)
     set(_cuda_status "REQUESTED BUT NOT FOUND")
   endif()
 
-  set(_mpi_status "OFF")
-  if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
-    set(_mpi_status "ON")
-  elseif(DTWC_ENABLE_MPI)
-    set(_mpi_status "REQUESTED BUT NOT FOUND")
-  endif()
-
   set(_metal_status "OFF")
   if(DTWC_ENABLE_METAL AND DTWC_HAS_METAL_DETECTED)
     set(_metal_status "ON (Apple GPU)")
@@ -461,7 +453,6 @@ if(PROJECT_IS_TOP_LEVEL)
   message(STATUS "║  OpenMP:    ${_omp_status}")
   message(STATUS "║  CUDA:      ${_cuda_status}")
   message(STATUS "║  Metal:     ${_metal_status}")
-  message(STATUS "║  MPI:       ${_mpi_status}")
   message(STATUS "║  Gurobi:    ${_gurobi_status}")
   message(STATUS "║  HiGHS:     ${_highs_status}")
   message(STATUS "║  Testing:   ${DTWC_BUILD_TESTING}")

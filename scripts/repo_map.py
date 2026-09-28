@@ -42,7 +42,7 @@ ORDER = ["base", "core", "io", "backends", "algorithms", "mip", "session", "surf
 
 DIR_LAYER = {
     "base": "base", "types": "base", "enums": "base", "core": "core", "detail": "core", "io": "io",
-    "cuda": "backends", "metal": "backends", "mpi": "backends",
+    "cuda": "backends", "metal": "backends",
     "algorithms": "algorithms", "mip": "mip", "cli": "surface", "extern": "vendored",
 }
 ROOT_FILE_LAYER = {
@@ -72,7 +72,7 @@ FILE_OVERRIDE = {
     "core/portable_random.hpp": "base", "core/crc32.hpp": "base",
     "core/sha256.hpp": "base", "core/llfio_include.hpp": "base",
 }
-PROBES = ["core/dtw_kernel.hpp", "core/dtw_dispatch.hpp", "core/pruned_distance_matrix.hpp",
+PROBES = ["core/dtw_kernel.hpp", "core/dtw_dispatch.hpp",
           "warping.hpp", "distance.hpp", "settings.hpp", "Data.hpp", "Problem.hpp",
           "algorithms/fast_pam.hpp", "DataLoader.hpp", "api.hpp", "test_api.hpp", "dtwc.hpp"]
 

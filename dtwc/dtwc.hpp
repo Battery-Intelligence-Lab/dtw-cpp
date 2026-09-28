@@ -45,20 +45,14 @@
 #include "core/clustering_result.hpp"
 #include "core/distance_matrix.hpp"
 #include "core/matrix_io.hpp"
-#include "core/distance_metric.hpp"
 #include "core/dtw.hpp"
 #include "core/dtw_options.hpp"
-#include "core/lower_bounds.hpp"
 #include "core/lower_bound_impl.hpp"
 #include "core/scratch_matrix.hpp"
 #include "core/time_series.hpp"
 #include "core/z_normalize.hpp"
 
 #include "core/mmap_distance_matrix.hpp"
-
-#ifdef DTWC_HAS_MPI
-#include "mpi/mpi_distance_matrix.hpp"
-#endif
 
 #ifdef DTWC_HAS_CUDA
 #include "cuda/cuda_dtw.cuh"

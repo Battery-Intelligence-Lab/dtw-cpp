@@ -11,7 +11,6 @@
 
 #include <algorithms/tadpole.hpp>
 #include <core/lower_bound_impl.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -20,16 +19,11 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <iostream>
 #include <limits>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
-
-#ifdef _OPENMP
-  #include <omp.h>
-#endif
 
 namespace {
 
@@ -38,7 +32,6 @@ using Series = std::vector<double>;
 struct PathCosts
 {
   double l1 = std::numeric_limits<double>::max();
-  double squared = std::numeric_limits<double>::max();
   std::size_t count = 0;
 };
 
@@ -47,9 +40,6 @@ struct BoundValues
   double forward_l1 = 0;
   double reverse_l1 = 0;
   double symmetric_l1 = 0;
-  double forward_squared = 0;
-  double reverse_squared = 0;
-  double symmetric_squared = 0;
 };
 
 struct Audit
@@ -64,29 +54,6 @@ struct Audit
     if (first_violation.empty()) first_violation = message;
   }
 };
-
-#ifdef _OPENMP
-struct SerialOpenMpScope
-{
-  int previous_threads = omp_get_max_threads();
-  int previous_dynamic = omp_get_dynamic();
-
-  SerialOpenMpScope()
-  {
-    omp_set_dynamic(0);
-    omp_set_num_threads(1);
-  }
-
-  ~SerialOpenMpScope()
-  {
-    omp_set_dynamic(previous_dynamic);
-    omp_set_num_threads(previous_threads);
-  }
-};
-#else
-struct SerialOpenMpScope
-{};
-#endif
 
 std::string show(const Series &series)
 {
@@ -154,33 +121,29 @@ void enumerate_paths(
   std::size_t i,
   std::size_t j,
   double prefix_l1,
-  double prefix_squared,
   PathCosts &best)
 {
   if (!inside_band(i, j, radius)) return;
 
-  const double delta = x[i] - y[j];
-  const double next_l1 = prefix_l1 + std::abs(delta);
-  const double next_squared = prefix_squared + delta * delta;
+  const double next_l1 = prefix_l1 + std::abs(x[i] - y[j]);
   if (i + 1 == x.size() && j + 1 == y.size()) {
     best.l1 = std::min(best.l1, next_l1);
-    best.squared = std::min(best.squared, next_squared);
     ++best.count;
     return;
   }
 
   if (i + 1 < x.size())
-    enumerate_paths(x, y, radius, i + 1, j, next_l1, next_squared, best);
+    enumerate_paths(x, y, radius, i + 1, j, next_l1, best);
   if (j + 1 < y.size())
-    enumerate_paths(x, y, radius, i, j + 1, next_l1, next_squared, best);
+    enumerate_paths(x, y, radius, i, j + 1, next_l1, best);
   if (i + 1 < x.size() && j + 1 < y.size())
-    enumerate_paths(x, y, radius, i + 1, j + 1, next_l1, next_squared, best);
+    enumerate_paths(x, y, radius, i + 1, j + 1, next_l1, best);
 }
 
 PathCosts exact_path_costs(const Series &x, const Series &y, int radius)
 {
   PathCosts result;
-  enumerate_paths(x, y, radius, 0, 0, 0.0, 0.0, result);
+  enumerate_paths(x, y, radius, 0, 0, 0.0, result);
   return result;
 }
 
@@ -203,12 +166,6 @@ BoundValues production_bounds(
   result.reverse_l1 = dtwc::core::lb_keogh(
     y.data(), prefix_length, upper_x.data(), lower_x.data());
   result.symmetric_l1 = std::max(result.forward_l1, result.reverse_l1);
-  result.forward_squared = dtwc::core::lb_keogh_squared(
-    x.data(), prefix_length, upper_y.data(), lower_y.data());
-  result.reverse_squared = dtwc::core::lb_keogh_squared(
-    y.data(), prefix_length, upper_x.data(), lower_x.data());
-  result.symmetric_squared =
-    std::max(result.forward_squared, result.reverse_squared);
   return result;
 }
 
@@ -235,15 +192,6 @@ void audit_admissibility(
   audit.require(bound.forward_l1 <= exact.l1, "forward L1" + context);
   audit.require(bound.reverse_l1 <= exact.l1, "reverse L1" + context);
   audit.require(bound.symmetric_l1 <= exact.l1, "symmetric L1" + context);
-  audit.require(
-    bound.forward_squared <= exact.squared,
-    "forward squared" + context);
-  audit.require(
-    bound.reverse_squared <= exact.squared,
-    "reverse squared" + context);
-  audit.require(
-    bound.symmetric_squared <= exact.squared,
-    "symmetric squared" + context);
 }
 
 dtwc::Problem make_problem(
@@ -268,8 +216,6 @@ TEST_CASE(
   "D2 exhaustive envelopes and LB_Keogh derivation oracle",
   "[D2][envelope][lb_keogh][derivation]")
 {
-  SerialOpenMpScope serial_openmp;
-
   // Direct-window envelope arbiter: 2,004 registered cases.
   constexpr std::array<double, 3> envelope_alphabet = { -2.0, 0.0, 3.0 };
   std::size_t envelope_cases = 0;
@@ -345,67 +291,17 @@ TEST_CASE(
   REQUIRE(unequal_cases == 17712);
   REQUIRE(unequal_audit.violations == 0);
 
-  // Registered non-degenerate direction, symmetry, and metric discriminator.
+  // Registered non-degenerate direction and symmetry discriminator.
   const Series q = { 5.0, -4.0, 1.0, 7.0, -2.0 };
   const Series c = { 0.0, 3.0, -6.0, 1.0, 4.0 };
   const BoundValues discriminator = production_bounds(q, c, 1, q.size());
   REQUIRE(discriminator.forward_l1 == 8.0);
   REQUIRE(discriminator.reverse_l1 == 2.0);
   REQUIRE(discriminator.symmetric_l1 == 8.0);
-  REQUIRE(discriminator.forward_squared == 22.0);
-  REQUIRE(discriminator.reverse_squared == 4.0);
-  REQUIRE(discriminator.symmetric_squared == 22.0);
 
   const BoundValues singleton =
     production_bounds(Series{ 0.5 }, Series{ 0.0 }, 0, 1);
   REQUIRE(singleton.symmetric_l1 == 0.5);
-  REQUIRE(singleton.symmetric_squared == 0.25);
-
-  // Repository-derived multivariate extension. The two channels prefer
-  // opposite warp directions, so independent DTW is the sum of two separate
-  // scalar path minima rather than one shared-path dependent objective.
-  const Series mv_query_0 = { 0.0, 3.0, 3.0 };
-  const Series mv_candidate_0 = { 0.0, 0.0, 2.0 };
-  const Series mv_query_1 = { 0.0, 0.0, 2.0 };
-  const Series mv_candidate_1 = { 0.0, 3.0, 3.0 };
-  const PathCosts independent_0 =
-    exact_path_costs(mv_query_0, mv_candidate_0, 1);
-  const PathCosts independent_1 =
-    exact_path_costs(mv_query_1, mv_candidate_1, 1);
-  REQUIRE(independent_0.l1 == 2.0);
-  REQUIRE(independent_1.l1 == 2.0);
-  REQUIRE(independent_0.squared == 2.0);
-  REQUIRE(independent_1.squared == 2.0);
-  const double independent_l1 = independent_0.l1 + independent_1.l1;
-  const double independent_squared =
-    independent_0.squared + independent_1.squared;
-  REQUIRE(independent_l1 == 4.0);
-  REQUIRE(independent_squared == 4.0);
-
-  const std::array<double, 6> mv_query = { 0, 0, 3, 0, 3, 2 };
-  const std::array<double, 6> mv_candidate = { 0, 0, 0, 3, 2, 3 };
-  std::array<double, 6> mv_upper{};
-  std::array<double, 6> mv_lower{};
-  dtwc::core::compute_envelopes_mv(
-    mv_candidate.data(), 3, 2, 1, mv_upper.data(), mv_lower.data());
-  const double mv_l1 = dtwc::core::lb_keogh_mv(
-    mv_query.data(), 3, 2, mv_upper.data(), mv_lower.data());
-  const double mv_squared = dtwc::core::lb_keogh_mv_squared(
-    mv_query.data(), 3, 2, mv_upper.data(), mv_lower.data());
-  REQUIRE(mv_l1 == 3.0);
-  REQUIRE(mv_squared == 3.0);
-  REQUIRE(mv_l1 <= independent_l1);
-  REQUIRE(mv_squared <= independent_squared);
-
-  const double dependent_l1 = dtwc::dtwBanded_mv(
-    mv_query.data(), 3, mv_candidate.data(), 3, 2, 1);
-  const double dependent_squared = dtwc::dtwBanded_mv(
-    mv_query.data(), 3, mv_candidate.data(), 3, 2, 1, -1.0,
-    dtwc::core::MetricType::SquaredL2);
-  REQUIRE(dependent_l1 == 8.0);
-  REQUIRE(dependent_squared == 20.0);
-  REQUIRE(independent_l1 < dependent_l1);
-  REQUIRE(independent_squared < dependent_squared);
 
   // Full DTW: a negative radius builds the global envelope (FX-13). It was
   // coerced to radius zero, whose bound 2 exceeded the true distance 0.
@@ -441,25 +337,6 @@ TEST_CASE(
       y.data(), y.size(), upper_x_negative.data(), lower_x_negative.data()));
   REQUIRE(negative_bound == 0.0);
   REQUIRE(negative_bound <= dtwc::dtwFull_L<double>(x, y));
-
-  std::size_t call_sites = 0;
-
-  // Exact-matrix full-DTW route must disable envelope bounds. The leading
-  // series establishes threshold 0.5 for x and y; a radius-zero Keogh bound
-  // would then fire on their true-zero pair.
-  Series z = x;
-  z.back() = 1.5;
-  auto matrix_problem = make_problem({ z, x, y }, -1, "d2_full_matrix");
-  const dtwc::core::PruningStats matrix_stats =
-    dtwc::core::fill_distance_matrix_pruned(
-      matrix_problem, -1, dtwc::LowerBoundStrategy::Keogh);
-  REQUIRE(matrix_stats.total_pairs == 3);
-  REQUIRE(matrix_stats.pruned_by_lb_kim == 0);
-  REQUIRE(matrix_stats.pruned_by_lb_keogh == 0);
-  REQUIRE(matrix_stats.early_abandoned == 0);
-  REQUIRE(matrix_stats.computed_full_dtw == 3);
-  REQUIRE(matrix_problem.dist_by_ind(1, 2) == 0.0);
-  ++call_sites;
 
   // TADPole deliberately replaces a negative full-DTW request with global
   // envelopes. Its pruning ledger is the reachability proof.
@@ -513,13 +390,4 @@ TEST_CASE(
   REQUIRE(separated_pruned_stats.pruned_by_ub == 0);
   REQUIRE(separated_brute_stats.pruned_by_lb == 0);
   REQUIRE(separated_brute_stats.pruned_by_ub == 0);
-  ++call_sites;
-
-  REQUIRE(call_sites == 2);
-  std::cout
-    << "D2_LB_KEOGH_GATE envelope_cases=" << envelope_cases
-    << " equal_cases=" << equal_cases
-    << " unequal_cases=" << unequal_cases
-    << " call_sites=" << call_sites << "/2"
-    << " skips=0 verdict=PASS\n";
 }

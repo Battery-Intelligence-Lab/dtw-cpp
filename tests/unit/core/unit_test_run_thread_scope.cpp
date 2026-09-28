@@ -4,9 +4,8 @@
  *
  * @details run() used to call omp_set_num_threads(), which mutates PROCESS-WIDE
  * OpenMP state that is never restored: one k-means++ init at 2 workers pinned
- * every later distance fill to 2 threads, and pruned_distance_matrix.cpp derives
- * its block count from get_max_threads(), so PruningStats became call-order
- * dependent. The limit belongs in a num_threads(...) clause on the pragma.
+ * every later distance fill to 2 threads. The limit belongs in a
+ * num_threads(...) clause on the pragma.
  */
 
 #include <base/parallelisation.hpp>

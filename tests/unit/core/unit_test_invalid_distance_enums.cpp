@@ -13,7 +13,6 @@
 
 #include <core/distance_semantics.hpp>
 #include <core/dtw_dispatch.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <enums/KernelOverride.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -43,8 +42,6 @@ constexpr std::string_view mv_mode_error = "Invalid MVMode value.";
 constexpr std::string_view constraint_error = "Invalid ConstraintType value.";
 constexpr std::string_view matrix_strategy_error =
   "Invalid DistanceMatrixStrategy value.";
-constexpr std::string_view lower_bound_error =
-  "Invalid LowerBoundStrategy value.";
 constexpr std::string_view precision_error = "Invalid Precision value.";
 constexpr std::string_view cuda_settings_precision_error =
   "Invalid CUDA precision value.";
@@ -451,15 +448,6 @@ TEST_CASE("M47 rejects every invalid MetricType at public distance boundaries",
         });
       }
 
-      std::array<double, 4> pruned_output{11.0, 12.0, 13.0, 14.0};
-      const std::vector<std::vector<double>> pruned_series{x, y};
-      check_invalid_input("compute_distance_matrix_pruned", metric_error, [&] {
-        (void)core::compute_distance_matrix_pruned(
-          pruned_series, pruned_output.data(), 0, invalid);
-      });
-      const std::array<double, 4> expected_pruned_output{11.0, 12.0, 13.0, 14.0};
-      CHECK(pruned_output == expected_pruned_output);
-
       core::DTWOptions options;
       options.metric = invalid;
       check_invalid_input("dtw_runtime", metric_error, [&] {
@@ -840,29 +828,6 @@ TEST_CASE("M47 rejects every invalid distance-matrix and lower-bound strategy",
       });
   }
 
-  SECTION("LowerBoundStrategy")
-  {
-    for_each_invalid_enum<LowerBoundStrategy, LowerBoundStrategy::Webb>(
-      [&](LowerBoundStrategy invalid) {
-        Problem setter{"m47_lower_bound_setter"};
-        seed_dense_sentinel(setter);
-        setter.set_lb_strategy(LowerBoundStrategy::Webb);
-        check_invalid_input("Problem::set_lb_strategy", lower_bound_error, [&] {
-          setter.set_lb_strategy(invalid);
-        });
-        CHECK(setter.lb_strategy() == LowerBoundStrategy::Webb);
-        check_dense_sentinel(setter);
-
-        Problem direct{"m47_lower_bound_direct"};
-        direct.set_data(basic_f64_data());
-        check_invalid_input("fill_distance_matrix_pruned", lower_bound_error, [&] {
-          (void)core::fill_distance_matrix_pruned(direct, 0, invalid);
-        });
-        check_dense_unallocated(direct);
-
-      });
-  }
-
   SECTION("CUDASettings precision selector")
   {
     for (const int invalid : {-1, 3, INT_MIN, INT_MAX}) {
@@ -1067,29 +1032,10 @@ TEST_CASE("M47 legitimate selectors and aliases retain registered fingerprints",
   for (const auto strategy : {
          DistanceMatrixStrategy::Auto,
          DistanceMatrixStrategy::BruteForce,
-         DistanceMatrixStrategy::Pruned,
          DistanceMatrixStrategy::CUDA,
          DistanceMatrixStrategy::Metal}) {
     Problem problem{"m47_valid_matrix_strategy"};
     CHECK_NOTHROW(problem.set_distance_strategy(strategy));
-  }
-  for (const auto lower_bound : {
-         LowerBoundStrategy::Auto,
-         LowerBoundStrategy::None,
-         LowerBoundStrategy::Kim,
-         LowerBoundStrategy::Keogh,
-         LowerBoundStrategy::KimKeogh,
-         LowerBoundStrategy::Enhanced,
-         LowerBoundStrategy::Webb}) {
-    Problem problem{"m47_valid_lower_bound"};
-    problem.set_data(Data(
-      std::vector<std::vector<double>>{
-        {0.0, 0.0, 0.0}, {0.0, 1.0, 2.0}},
-      std::vector<std::string>{"x", "y"}));
-    CHECK_NOTHROW((void)core::fill_distance_matrix_pruned(
-      problem, 1, lower_bound));
-    CHECK_NOTHROW(problem.set_lb_strategy(lower_bound));
-    CHECK(problem.lb_strategy() == lower_bound);
   }
 
   Problem f32_problem{"m47_valid_f32_precision"};

@@ -187,7 +187,6 @@ classdef Problem < handle
         %SET_DISTANCE_STRATEGY Set distance matrix computation strategy.
         %   prob.set_distance_strategy('auto')
         %   prob.set_distance_strategy('brute_force')
-        %   prob.set_distance_strategy('pruned')
         %   prob.set_distance_strategy('cuda')  % NVIDIA CUDA
         %   prob.set_distance_strategy('metal') % Apple GPU (macOS)
             dtwc_mex('Problem_set_distance_strategy', obj.Handle, strategy);
@@ -282,12 +281,6 @@ classdef Problem < handle
         %SET_SOLVER Set the MIP solver ('highs' or 'gurobi').
         %   ok = prob.set_solver('highs')  % ok=false if solver not compiled in
             ok = dtwc_mex('Problem_set_solver', obj.Handle, char(s));
-        end
-
-        function set_lb_strategy(obj, s)
-        %SET_LB_STRATEGY Set the lower-bound strategy for the pruned CPU path.
-        %   'auto' | 'none' | 'kim' | 'keogh' | 'kim_keogh' | 'enhanced' | 'webb'
-            dtwc_mex('Problem_set_lb_strategy', obj.Handle, char(s));
         end
 
         function set_storage_policy(obj, s)

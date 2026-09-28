@@ -43,7 +43,6 @@
 #include <initialisation.hpp>
 #include <io/arrow_ipc_reader.hpp>
 #include <io/parquet_reader.hpp>
-#include <metal/metal_dtw.hpp>
 #include <scores.hpp>
 #include <soft_dtw.hpp>
 
@@ -281,13 +280,6 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
         fs::create_directories(dir.path / "real");
         fs::create_directory_symlink(dir.path / "real", dir.path / "link");
         dtwc::save_checkpoint(three_series(), (dir.path / "link").string());
-      } },
-#endif
-#ifdef DTWC_HAS_METAL
-    { "metal_dtw.mm: a query index past the last series", "InvalidInput",
-      [] {
-        (void)dtwc::metal::compute_dtw_one_vs_all_metal(
-          std::vector<std::vector<double>>{ { 1.0, 2.0 } }, 5);
       } },
 #endif
 #ifdef DTWC_HAS_ARROW

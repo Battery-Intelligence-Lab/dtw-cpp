@@ -28,7 +28,6 @@ target_sources(dtwc++
   algorithms/clarans.cpp
   algorithms/tadpole.cpp
   algorithms/detail/fast_clara_plan.hpp
-  core/pruned_distance_matrix.cpp
   io/arrow_c_data.cpp
   io/parse_number.cpp
   extern/nanoarrow/nanoarrow.c
@@ -61,13 +60,10 @@ target_sources(dtwc++
   core/clustering_result.hpp
   core/crc32.hpp
   core/distance_matrix.hpp
-  core/distance_metric.hpp
   core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp
-  core/lower_bounds.hpp
   core/lower_bound_impl.hpp
-  core/pruned_distance_matrix.hpp
   core/sha256.hpp
   core/scratch_matrix.hpp
   core/time_series.hpp
@@ -212,16 +208,6 @@ endif()
 # This is target-scoped so it applies even when consumed as a subproject.
 if(CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
   target_compile_options(dtwc++ PRIVATE -fno-finite-math-only)
-endif()
-
-# MPI (optional) — check for the imported target rather than the variable,
-# because find_package(MPI) runs inside dtwc_setup_dependencies() (a function)
-# and MPI_CXX_FOUND doesn't propagate to this scope.
-if(DTWC_ENABLE_MPI AND TARGET MPI::MPI_CXX)
-  target_sources(dtwc++ PRIVATE mpi/mpi_distance_matrix.cpp)
-  target_link_libraries(dtwc++ PUBLIC MPI::MPI_CXX)
-  target_compile_definitions(dtwc++ PUBLIC DTWC_HAS_MPI)
-  message(STATUS "MPI enabled for distributed distance matrix computation")
 endif()
 
 # llfio (required) — memory-mapped distance matrices

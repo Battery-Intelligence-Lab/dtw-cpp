@@ -12,7 +12,6 @@
 
 #include <core/dtw.hpp>
 #include <core/dtw_cost.hpp>
-#include <core/lower_bounds.hpp>
 #include <soft_dtw.hpp>
 #include <warping.hpp>
 
@@ -24,19 +23,6 @@
 
 using Catch::Matchers::WithinAbs;
 using namespace dtwc::core;
-
-// ----- Compile-time lower-bound compatibility checks --------------------
-
-static_assert(lb_keogh_valid<L1Metric>,
-              "LB_Keogh must be valid for L1Metric");
-static_assert(lb_keogh_valid<L2Metric>,
-              "LB_Keogh must be valid for L2Metric (identical to L1 for scalars)");
-static_assert(lb_keogh_valid<SquaredL2Metric>,
-              "LB_Keogh must be valid for SquaredL2Metric");
-static_assert(lb_kim_valid<L1Metric>,
-              "LB_Kim must be valid for L1Metric");
-static_assert(lb_kim_valid<L2Metric>,
-              "LB_Kim must be valid for L2Metric");
 
 // ----- dtw_distance (vector overload) -----------------------------------
 

@@ -46,7 +46,6 @@
 #include <core/dtw_options.hpp>
 #include <core/distance_semantics.hpp>
 #include <core/variant_validation.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
@@ -299,19 +298,8 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::enum_<dtwc::DistanceMatrixStrategy>(m, "DistanceMatrixStrategy")
     .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
     .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
-    .value("Pruned", dtwc::DistanceMatrixStrategy::Pruned)
     .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
     .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
-
-
-  nb::enum_<dtwc::LowerBoundStrategy>(m, "LowerBoundStrategy")
-    .value("Auto", dtwc::LowerBoundStrategy::Auto)
-    .value("None", dtwc::LowerBoundStrategy::None)
-    .value("Kim", dtwc::LowerBoundStrategy::Kim)
-    .value("Keogh", dtwc::LowerBoundStrategy::Keogh)
-    .value("KimKeogh", dtwc::LowerBoundStrategy::KimKeogh)
-    .value("Enhanced", dtwc::LowerBoundStrategy::Enhanced)
-    .value("Webb", dtwc::LowerBoundStrategy::Webb);
 
   // =========================================================================
   // CUDASettings
@@ -955,11 +943,7 @@ NB_MODULE(_dtwcpp_core, m) {
                  [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
                    p.set_distance_strategy(value);
                  },
-                 "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
-    .def_prop_rw("lb_strategy", &dtwc::Problem::lb_strategy,
-                 &dtwc::Problem::set_lb_strategy,
-                 "Lower-bound selection for the Pruned CPU path "
-                 "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
+                 "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;
@@ -1134,8 +1118,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
-                                        int band, const std::string &metric,
-                                        bool use_pruning) {
+                                        int band, const std::string &metric) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     require_finite_series(series, "compute_distance_matrix");
 
@@ -1164,44 +1147,36 @@ NB_MODULE(_dtwcpp_core, m) {
     {
       nb::gil_scoped_release release;
 
-      if (use_pruning && (mt == dtwc::core::MetricType::L1 || mt == dtwc::core::MetricType::L2)) {
-        // Legacy LB-guided exact-matrix route. LB_Kim, and LB_Keogh only for
-        // band >= 0, can select a cutoff attempt. A cutoff result is recomputed
-        // without early abandon because every matrix entry is required.
-        dtwc::core::compute_distance_matrix_pruned(series, ptr, band, mt);
-      } else {
-        // Standard unpruned version (for non-L1 metrics or when pruning disabled).
-        // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
-        // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
-        // no two threads share the same i value.
-        // num_threads pins the team to the number of slots sized above, so
-        // omp_get_thread_num() can never index past `errors`.
-        #ifdef _OPENMP
-        #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
-        #endif
-        for (int i = 0; i < static_cast<int>(n); ++i) {
+      // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
+      // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
+      // no two threads share the same i value.
+      // num_threads pins the team to the number of slots sized above, so
+      // omp_get_thread_num() can never index past `errors`.
+      #ifdef _OPENMP
+      #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
+      #endif
+      for (int i = 0; i < static_cast<int>(n); ++i) {
 #ifdef _OPENMP
-            const size_t slot = static_cast<size_t>(omp_get_thread_num());
+          const size_t slot = static_cast<size_t>(omp_get_thread_num());
 #else
-            const size_t slot = 0;
+          const size_t slot = 0;
 #endif
-            // The input was checked above and the kernels do not check it, but
-            // an exception escaping an OpenMP region is undefined behaviour and
-            // terminates the process — a hard interpreter crash instead of a
-            // Python exception — so any that does throw is carried out per thread.
-            if (errors[slot]) continue;
-            try {
-              for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-                  double d = (band >= 0)
-                      ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
-                      : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-                  ptr[i * n + j] = d;
-                  ptr[j * n + i] = d;
-              }
-            } catch (...) {
-              errors[slot] = std::current_exception();
+          // The input was checked above and the kernels do not check it, but
+          // an exception escaping an OpenMP region is undefined behaviour and
+          // terminates the process — a hard interpreter crash instead of a
+          // Python exception — so any that does throw is carried out per thread.
+          if (errors[slot]) continue;
+          try {
+            for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+                double d = (band >= 0)
+                    ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
+                    : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+                ptr[i * n + j] = d;
+                ptr[j * n + i] = d;
             }
-        }
+          } catch (...) {
+            errors[slot] = std::current_exception();
+          }
       }
     }  // GIL re-acquired here
 
@@ -1209,14 +1184,9 @@ NB_MODULE(_dtwcpp_core, m) {
       if (error) std::rethrow_exception(error);
 
     return adopt_as_ndarray(std::move(values), {n, n});
-  }, "series"_a, "band"_a = -1, "metric"_a = "l1", "use_pruning"_a = true,
+  }, "series"_a, "band"_a = -1, "metric"_a = "l1",
      "Compute pairwise DTW distance matrix entirely in C++.\n\n"
      "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
-     "For L1 (and the core's equivalent scalar L2), use_pruning=True\n"
-     "selects the legacy LB-guided exact-matrix path.\n"
-     "band=-1 disables LB_Keogh. Every early-abandoned pair is\n"
-     "recomputed without a cutoff; this option is not a speed guarantee.\n"
-     "Squared Euclidean uses the direct exact path.\n"
      "This avoids a Python-level pair loop.\n"
      "NaN or +-inf in a series raises InvalidInput.");
 
@@ -1357,8 +1327,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
             "Enable automatic mid-fill checkpointing. Requires dense distance\n"
             "storage (mmap storage raises InvalidInput) and a non-empty\n"
-            "directory; both are checked before any distance is computed.\n"
-            "DistanceMatrixStrategy.Pruned is downgraded to BruteForce.")
+            "directory; both are checked before any distance is computed.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)
@@ -1576,15 +1545,12 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_cuda",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, int device_id, bool verbose,
-           bool use_lb_keogh, double lb_threshold) {
+           int band, bool use_squared_l2, int device_id, bool verbose) {
           dtwc::cuda::CUDADistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.device_id = device_id;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
           require_finite_series(series, "compute_distance_matrix_cuda");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1598,33 +1564,10 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU.\n\n"
-        "Returns NxN numpy array of DTW distances.\n"
-        "When `use_lb_keogh=True`, `band >= 0`, and `lb_threshold > 0`, pairs\n"
-        "whose LB_Keogh lower bound exceeds `lb_threshold` are pruned and read\n"
-        "NaN (not computed); the bound squares each excess under\n"
-        "`use_squared_l2`. A pair with no warping path under `band` reads the\n"
-        "finite double-max sentinel, not IEEE infinity.\n"
-        "NaN or +-inf in a series raises InvalidInput.");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &series,
-           int band, int device_id) {
-          require_finite_series(series, "compute_lb_keogh_cuda");
-          std::vector<double> lb_values;
-          {
-            nb::gil_scoped_release release;
-            auto result = dtwc::cuda::compute_lb_keogh_cuda(series, band, device_id);
-            lb_values = std::move(result.lb_values);
-          }
-          const size_t np = lb_values.size();
-          return adopt_as_ndarray(std::move(lb_values), {np});
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds for all N*(N-1)/2 pairs on GPU.\n\n"
-        "Returns flat array of symmetric LB_Keogh values (upper triangle).\n"
-        "Requires band >= 0 (Sakoe-Chiba constraint).\n"
+        "Returns NxN numpy array of DTW distances. A pair with no warping\n"
+        "path under `band` reads the finite double-max sentinel, not IEEE\n"
+        "infinity.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("CUDA_AVAILABLE") = true;
@@ -1637,21 +1580,12 @@ NB_MODULE(_dtwcpp_core, m) {
         "Get CUDA device info string.");
 
   m.def("compute_distance_matrix_cuda",
-        [](const std::vector<std::vector<double>> &, int, bool, int, bool,
-           bool, double) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, int, bool) -> nb::object {
           throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "device_id"_a = 0, "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = -1.0,
         "Compute NxN DTW distance matrix on CUDA GPU (requires CUDA build).");
-
-  m.def("compute_lb_keogh_cuda",
-        [](const std::vector<std::vector<double>> &, int, int) -> nb::object {
-          throw std::runtime_error("CUDA support not compiled. Rebuild with -DDTWC_ENABLE_CUDA=ON");
-        },
-        "series"_a, "band"_a, "device_id"_a = 0,
-        "Compute LB_Keogh lower bounds on GPU (requires CUDA build).");
 
   m.attr("CUDA_AVAILABLE") = false;
 #endif
@@ -1669,15 +1603,11 @@ NB_MODULE(_dtwcpp_core, m) {
 
   m.def("compute_distance_matrix_metal",
         [](const std::vector<std::vector<double>> &series,
-           int band, bool use_squared_l2, bool verbose,
-           bool use_lb_keogh, double lb_threshold, int lb_envelope_band) {
+           int band, bool use_squared_l2, bool verbose) {
           dtwc::metal::MetalDistMatOptions opts;
           opts.band = band;
           opts.use_squared_l2 = use_squared_l2;
           opts.verbose = verbose;
-          opts.use_lb_keogh = use_lb_keogh;
-          opts.lb_threshold = lb_threshold;
-          opts.lb_envelope_band = lb_envelope_band;
           require_finite_series(series, "compute_distance_matrix_metal");
           std::vector<double> matrix;
           size_t n = 0;
@@ -1691,15 +1621,8 @@ NB_MODULE(_dtwcpp_core, m) {
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU via Metal.\n\n"
-        "Returns NxN numpy array of DTW distances. When `use_lb_keogh=True`\n"
-        "on a wavefront dispatch path, pairs whose LB_Keogh lower bound exceeds\n"
-        "`lb_threshold` are pruned and read NaN (not computed). The bound\n"
-        "squares each excess under `use_squared_l2`; its envelope is the DTW\n"
-        "window (`band`, or the whole series for `band=-1`), and an\n"
-        "`lb_envelope_band` narrower than that window raises InvalidInput.\n"
+        "Returns NxN numpy array of DTW distances.\n"
         "NaN or +-inf in a series raises InvalidInput.");
 
   m.attr("METAL_AVAILABLE") = true;
@@ -1709,20 +1632,17 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("metal_device_info", []() { return std::string("Metal not available (not compiled)"); },
         "Get Metal device info string.");
   m.def("compute_distance_matrix_metal",
-        [](const std::vector<std::vector<double>> &, int, bool, bool,
-           bool, double, int) -> nb::object {
+        [](const std::vector<std::vector<double>> &, int, bool, bool) -> nb::object {
           throw std::runtime_error("Metal support not compiled. Rebuild on macOS with -DDTWC_ENABLE_METAL=ON");
         },
         "series"_a, "band"_a = -1, "use_squared_l2"_a = false,
         "verbose"_a = false,
-        "use_lb_keogh"_a = false, "lb_threshold"_a = 0.0,
-        "lb_envelope_band"_a = -1,
         "Compute NxN DTW distance matrix on Apple GPU (requires Metal build).");
   m.attr("METAL_AVAILABLE") = false;
 #endif
 
   // =========================================================================
-  // Capability detection: OpenMP, MPI
+  // Capability detection: OpenMP
   // =========================================================================
 
 #ifdef _OPENMP
@@ -1734,12 +1654,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("OPENMP_AVAILABLE") = false;
   m.def("openmp_max_threads", []() { return 1; },
         "Return 1 (OpenMP not compiled in).");
-#endif
-
-#ifdef DTWC_HAS_MPI
-  m.attr("MPI_AVAILABLE") = true;
-#else
-  m.attr("MPI_AVAILABLE") = false;
 #endif
 
   m.def("system_info", []() {
@@ -1765,11 +1679,6 @@ NB_MODULE(_dtwcpp_core, m) {
       info += "  Metal:  compiled but no GPU detected\n";
 #else
     info += "  Metal:  not compiled (macOS only)\n";
-#endif
-#ifdef DTWC_HAS_MPI
-    info += "  MPI:    available\n";
-#else
-    info += "  MPI:    not compiled (rebuild with -DDTWC_ENABLE_MPI=ON)\n";
 #endif
     return info;
   }, "Return a string summarizing available backends and capabilities.");

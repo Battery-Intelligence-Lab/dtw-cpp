@@ -51,7 +51,8 @@ inline void require_pair_count_fits(std::size_t num_pairs, const char *entry)
       std::string(entry) + ": too many DTW pairs (" + std::to_string(num_pairs)
       + ") for a single CUDA kernel launch. Maximum: "
       + std::to_string(kMaxPairsPerLaunch)
-      + ". Reduce N or use the MPI backend for distributed computation.");
+      + ". Reduce N, or cluster on device cpu with method onebatch or clara,"
+        " which never build the N*N matrix.");
 }
 
 /// @brief Reject a CUDA call on a host with no usable device.
@@ -66,15 +67,13 @@ inline void require_cuda_device(bool available, const char *entry)
 }
 
 /// @brief Fill @p lengths with each series' length and return the maximum.
-/// @param initial_max Seed for the maximum (an external query's length, or 0).
 inline std::size_t scan_series_lengths(
   const std::vector<std::vector<double>> &series,
-  std::vector<int> &lengths,
-  std::size_t initial_max = 0)
+  std::vector<int> &lengths)
 {
   const std::size_t n = series.size();
   lengths.resize(n);
-  std::size_t max_L = initial_max;
+  std::size_t max_L = 0;
   for (std::size_t i = 0; i < n; ++i) {
     lengths[i] = static_cast<int>(series[i].size());
     if (series[i].size() > max_L) max_L = series[i].size();

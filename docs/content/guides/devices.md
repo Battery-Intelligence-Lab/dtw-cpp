@@ -39,7 +39,7 @@ prob.set_device(dtwc::Device::GPU);        // index: prob.set_device(dtwc::Devic
 prob = dtwc.Problem('run', 'Device', 'gpu');   % or prob.set_device('gpu')
 ```
 
-`cpu` keeps a CPU `distance_strategy` you chose (`BruteForce`, `Pruned`) and
+`cpu` keeps a CPU `distance_strategy` you chose (`BruteForce`) and
 moves a GPU one back to `Auto`; `gpu` selects this build's GPU backend (CUDA,
 else Metal) and records the index. `gpu` on a build without a GPU backend
 raises a device error at the call; `hpc` raises an invalid-argument error,

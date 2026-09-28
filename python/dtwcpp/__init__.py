@@ -13,7 +13,6 @@ from dtwcpp._dtwcpp_core import (
     DTWVariant,
     MissingStrategy,
     DistanceMatrixStrategy,
-    LowerBoundStrategy,
     Linkage,
     Device,
     # Structs
@@ -109,14 +108,12 @@ from dtwcpp._dtwcpp_core import (
     cuda_available,
     cuda_device_info,
     compute_distance_matrix_cuda as _compute_distance_matrix_cuda,
-    compute_lb_keogh_cuda,
     METAL_AVAILABLE,
     metal_available,
     metal_device_info,
     compute_distance_matrix_metal as _compute_distance_matrix_metal,
     OPENMP_AVAILABLE,
     openmp_max_threads,
-    MPI_AVAILABLE,
     HIGHS_AVAILABLE,
     system_info as _system_info_raw,
     __version__,
@@ -208,7 +205,7 @@ def get_device():
     return _current_device()
 
 
-def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, device=None):
+def compute_distance_matrix(series, band=-1, metric="l1", *, device=None):
     """Compute pairwise DTW distance matrix.
 
     Parameters
@@ -219,13 +216,6 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
         Sakoe-Chiba band width (-1 = full DTW).
     metric : str, default='l1'
         Distance metric: 'l1' or 'squared_euclidean'.
-    use_pruning : bool, default=True
-        Select the legacy CPU LB-guided exact-matrix path for L1. LB_Kim and,
-        when ``band >= 0``, LB_Keogh can select an early-abandon cutoff, but an
-        abandoned pair is recomputed without a cutoff because every matrix
-        entry is required. Thus this is not a speed guarantee. ``band=-1``
-        disables LB_Keogh; squared Euclidean uses the direct exact path. GPU
-        backends have separate lower-bound options.
     device : str or None, default=None
         Computation device: 'cpu', 'gpu', 'gpu:N', 'cuda', or 'cuda:N'. ``None`` uses
         the global default set via :func:`device` (itself 'cpu' unless changed).
@@ -262,7 +252,7 @@ def compute_distance_matrix(series, band=-1, metric="l1", use_pruning=True, *, d
         return _compute_distance_matrix_metal(
             series, band=band, use_squared_l2=use_squared_l2, verbose=False,
         )
-    return _compute_distance_matrix_cpu(series, band, metric, use_pruning)
+    return _compute_distance_matrix_cpu(series, band, metric)
 
 
 # Pure-Python sklearn-compatible layer
@@ -356,21 +346,13 @@ def check_system():
     else:
         print(f"  {_no} Metal:  not compiled (macOS only)")
 
-    # MPI
-    if MPI_AVAILABLE:
-        print(f"  {_ok} MPI:    available")
-    else:
-        print(f"  {_no} MPI:    not compiled")
-        print("     Rebuild with: cmake -DDTWC_ENABLE_MPI=ON ...")
-        print("     Windows: install MS-MPI SDK from microsoft.com/mpi")
-
     print("=" * 40)
 
 
 __all__ = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
     "MissingStrategy", "DistanceMatrixStrategy",
-    "LowerBoundStrategy", "Linkage", "Device",
+    "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "DenseDistanceMatrix", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
     "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
@@ -397,10 +379,9 @@ __all__ = [
     "device", "get_device",
     "Dataset", "load", "cluster", "Result", "ClusterResult", "plot",
     "distance",
-    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info", "compute_lb_keogh_cuda",
+    "CUDA_AVAILABLE", "cuda_available", "cuda_device_info",
     "METAL_AVAILABLE", "metal_available", "metal_device_info",
     "OPENMP_AVAILABLE", "openmp_max_threads", "HIGHS_AVAILABLE",
-    "MPI_AVAILABLE",
     "check_system",
     "save_checkpoint", "load_checkpoint",
     "CheckpointOptions",

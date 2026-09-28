@@ -32,7 +32,6 @@
 #include "core/dtw_dispatch.hpp"           // for resolve_dtw_fn
 #include "core/distance_semantics.hpp"      // validate_problem_distance_semantics
 #include "core/variant_validation.hpp"     // validate_variant_params
-#include "core/pruned_distance_matrix.hpp" // for fill_distance_matrix_pruned
 #include "core/sha256.hpp"                 // for persistent cache fingerprints
 #include "base/missing_utils.hpp"               // for all_missing
 #include "algorithms/tadpole.hpp"          // for Method::TADPole dispatch
@@ -464,7 +463,7 @@ void Problem::set_device(Device device, int index)
                        + std::to_string(index) + ".");
   switch (device) {
   case Device::CPU:
-    // Auto is a CPU schedule (brute force or admissible pruning), never a GPU.
+    // Auto is the CPU brute-force fill, never a GPU.
     if (distance_strategy == DistanceMatrixStrategy::CUDA
         || distance_strategy == DistanceMatrixStrategy::Metal)
       set_distance_strategy(DistanceMatrixStrategy::Auto);
@@ -915,33 +914,6 @@ double Problem::dist_by_ind(int i, int j)
   return d;
 }
 
-/**
- * @brief Determines whether the pruned distance matrix strategy is applicable.
- * @details The pruned strategy requires Standard/ADTW with MissingStrategy::Error
- *          (raw lower-bound kernels cannot implement a missing-data dispatcher)
- *          and Float64 storage: the lower-bound summaries, envelopes and
- *          kernels are all f64-only and reach the data through
- *          Problem::series(), which rejects a Float32 store. They are also
- *          univariate L1: multivariate series would be read as one interleaved
- *          stream, and another metric would be computed as L1.
- * @return true if pruned strategy can be used.
- */
-static bool pruned_strategy_applicable(const Problem &prob, bool has_dense_storage)
-{
-  // LB_Keogh is a valid lower bound for Standard DTW and ADTW: ADTW penalties
-  // only increase cost, so LB_Keogh(x,y) <= DTW(x,y) <= ADTW(x,y,penalty).
-  const bool supported_variant = prob.variant_params.variant == core::DTWVariant::Standard
-                               || prob.variant_params.variant == core::DTWVariant::ADTW;
-  return supported_variant
-      && prob.missing_strategy == core::MissingStrategy::Error
-      && prob.metric() == core::MetricType::L1
-      && prob.data().ndim == 1
-      && has_dense_storage
-      && !prob.data().is_f32()
-      && prob.band >= 0
-      && prob.size() >= 64;
-}
-
 /// Reject automatic-checkpoint settings that fill_distance_matrix cannot honour,
 /// before any distance is computed.
 void Problem::validate_checkpoint_settings() const
@@ -1065,7 +1037,7 @@ void Problem::fillDistanceMatrix_BruteForce()
   // Resize (Dense only — mmap is pre-allocated at creation). resize() re-fills
   // every packed slot with NaN, so it must NOT run when the matrix is already
   // the right size: an unconditional resize discarded a restored checkpoint and
-  // recomputed every pair. Matches core::fill_distance_matrix_pruned.
+  // recomputed every pair.
   visit_distmat([&](auto &m) {
     if constexpr (std::is_same_v<std::decay_t<decltype(m)>, core::DenseDistanceMatrix>) {
       if (m.size() != N) m.resize(N);
@@ -1122,18 +1094,13 @@ void Problem::fillDistanceMatrix_BruteForce()
 
 /**
  * @brief Fills the distance matrix by computing distances between all pairs of points.
- * @details Uses a strategy-based approach:
- *   - Auto: selects Pruned for Standard DTW variant, BruteForce otherwise.
- *   - BruteForce: parallel brute-force (all variants).
- *   - Pruned: parallel with LB_Kim + LB_Keogh early-abandon (Standard DTW only).
- * - CUDA: selected externally for NVIDIA GPU dispatch (e.g., via CLI).
- * - Metal: selected externally for Apple GPU dispatch.
+ * @details Auto and BruteForce run the parallel exact CPU fill (all variants);
+ *          CUDA and Metal are selected by set_device(gpu) or explicitly.
  */
 void Problem::fill_distance_matrix()
 {
   validate_checkpoint_settings();
   preflight_current_distance_semantics();
-  validate_lower_bound_strategy(lb_strategy_);
   validate_mmap_cache_identity();
   ensure_dense_cache_configuration_current();
   if (is_distance_matrix_filled()) return;
@@ -1159,78 +1126,9 @@ void Problem::fill_distance_matrix()
   // The serial missing-data pre-scan is part of validate_fill_request (FX-15),
   // above: it runs before any pair, here and on every other entry point.
 
-  // Resolve Auto strategy
-  const bool has_mmap_storage =
-    std::holds_alternative<core::MmapDistanceMatrix>(distMat);
   DistanceMatrixStrategy effective = distance_strategy;
-  if (effective == DistanceMatrixStrategy::Auto) {
-    if (pruned_strategy_applicable(*this, !has_mmap_storage))
-      effective = DistanceMatrixStrategy::Pruned;
-    else
-      effective = DistanceMatrixStrategy::BruteForce;
-  }
-
-  // The pruned builder calls raw Standard/ADTW kernels; it cannot implement a
-  // configured missing-data dispatcher. DistanceMatrixStrategy::Pruned is an
-  // exact optimization hint (like lb_strategy=None below), so preserve the
-  // requested distance semantics by routing the ordinary bound dispatcher.
-  if (effective == DistanceMatrixStrategy::Pruned
-      && missing_strategy != core::MissingStrategy::Error) {
-    if (verbose_) {
-      std::cout << "Pruned lower bounds support missing_strategy=Error only; "
-                   "using exact BruteForce to preserve the configured missing-data policy.\n";
-    }
+  if (effective == DistanceMatrixStrategy::Auto)
     effective = DistanceMatrixStrategy::BruteForce;
-  }
-
-  // Lower-bound pruning currently writes DenseDistanceMatrix directly. Mapped
-  // storage is still fully supported through the exact generic row fill.
-  if (effective == DistanceMatrixStrategy::Pruned && has_mmap_storage) {
-    if (verbose_) {
-      std::cout << "Pruned strategy requires dense distance storage; using exact "
-                   "BruteForce to fill the configured mmap distance matrix.\n";
-    }
-    effective = DistanceMatrixStrategy::BruteForce;
-  }
-
-  // Mid-fill checkpoint saves exist only on the BruteForce row path (the pruned
-  // builder owns its own schedule). Pruned is an exact optimisation hint, so
-  // downgrade rather than refuse.
-  if (effective == DistanceMatrixStrategy::Pruned && checkpoint.enabled) {
-    if (verbose_) {
-      std::cout << "Automatic checkpointing saves on the exact BruteForce row "
-                   "schedule; using BruteForce instead of Pruned.\n";
-    }
-    effective = DistanceMatrixStrategy::BruteForce;
-  }
-
-  // The lower-bound summaries, envelopes and kernels are f64-only and reach the
-  // data through series(), which rejects a Float32 store. Auto never selects
-  // Pruned for f32 (pruned_strategy_applicable), so reaching here means the
-  // caller asked for it explicitly: name it as a caller error before any worker
-  // starts rather than downgrade silently.
-  //
-  // Must stay BELOW the mmap downgrade above: Pruned + mmap storage is already
-  // routed to the generic row fill, which handles f32 correctly.
-  if (effective == DistanceMatrixStrategy::Pruned && data_.is_f32()) {
-    throw InvalidInput(
-      "Problem::fill_distance_matrix: DistanceMatrixStrategy::Pruned requires "
-      "Float64 series storage; this Problem holds Float32 data. Use "
-      "DistanceMatrixStrategy::Auto or BruteForce, or load the data as "
-      "Float64.");
-  }
-
-  // The pruned builder and its bounds are univariate L1 (see
-  // pruned_strategy_applicable); the exact row fill computes this metric on
-  // these series. Below the Float32 check, which keeps its error.
-  if (effective == DistanceMatrixStrategy::Pruned
-      && (metric_ != core::MetricType::L1 || data_.ndim > 1)) {
-    if (verbose_) {
-      std::cout << "Pruned lower bounds are univariate L1; using exact "
-                   "BruteForce for this metric and ndim.\n";
-    }
-    effective = DistanceMatrixStrategy::BruteForce;
-  }
 
   // Shared post-GPU handler. Templated on the backend's result type (both
   // CUDADistMatResult and MetalDistMatResult derive from gpu::DistMatResultBase,
@@ -1253,34 +1151,13 @@ void Problem::fill_distance_matrix()
     if (verbose_) {
       std::cout << backend << " distance matrix: " << result.pairs_computed
                 << " pairs in " << std::setprecision(3)
-                << result.gpu_time_sec * 1000 << " ms";
-      if (result.lb_time_sec > 0) {
-        std::cout << " (LB_Keogh: " << result.lb_time_sec * 1000 << " ms"
-                  << ", pruned " << result.pairs_pruned << ")";
-      }
-      std::cout << "\n";
+                << result.gpu_time_sec * 1000 << " ms\n";
     }
     return true;
   };
 #endif
 
   switch (effective) {
-  case DistanceMatrixStrategy::Pruned: {
-    // LowerBoundStrategy::None inside Pruned path would compute all DTWs
-    // without any pruning — that's exactly BruteForce, so short-circuit.
-    if (lb_strategy_ == LowerBoundStrategy::None) {
-      if (verbose_) std::cout << "lb_strategy=None; using BruteForce.\n";
-      fillDistanceMatrix_BruteForce();
-      break;
-    }
-    auto stats = core::fill_distance_matrix_pruned(*this, band, lb_strategy_);
-    if (verbose_) {
-      std::cout << "Pruned strategy: " << stats.total_pairs << " pairs, "
-                << stats.early_abandoned << " early-abandoned, "
-                << "pruning ratio: " << stats.pruning_ratio() << '\n';
-    }
-    break;
-  }
   case DistanceMatrixStrategy::CUDA:
 #ifdef DTWC_HAS_CUDA
   {

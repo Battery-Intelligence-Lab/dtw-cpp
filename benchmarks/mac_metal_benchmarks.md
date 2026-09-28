@@ -151,6 +151,4 @@ Low FLOP fraction is expected: DTW is a DP recurrence (each cell depends on thre
 
 ## 8. What's not yet benchmarked / known gaps
 
-- **LB_Keogh pruning on Metal**: the CUDA path computes envelopes + LB_Keogh on-GPU and skips pairs above a threshold. Metal equivalent not yet implemented. Benefit is workload-specific — only helps when user provides a meaningful threshold.
 - **Register-tile kernel**: short series (max_L ≤ 128) would see the biggest win. Current wavefront uses ~32 threads per pair and under-utilizes the SIMD group; the new `dtw_banded_row` kernel is memory-bound at ≈ 7 % GPU occupancy. A `simd_shuffle`-based register-tile kernel is the next step. Implementation is non-trivial MSL + warp-shuffle work.
-- **1-vs-all / k-vs-all Metal variants**: parallel to CUDA's `compute_dtw_one_vs_all` / `compute_dtw_k_vs_all`. Needed to accelerate the k-medoids cluster-assignment loop on GPU.

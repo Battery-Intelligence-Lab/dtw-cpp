@@ -115,7 +115,6 @@ struct ProblemConfigurationSnapshot {
   dtwc::core::DTWVariantParams variant_params;
   dtwc::core::MissingStrategy missing_strategy;
   dtwc::DistanceMatrixStrategy distance_strategy;
-  dtwc::LowerBoundStrategy lb_strategy;
   dtwc::CUDASettings cuda_settings;
   dtwc::MIPSettings mip_settings;
   bool verbose;
@@ -157,7 +156,6 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
     prob.variant_params,
     prob.missing_strategy,
     prob.distance_strategy,
-    prob.lb_strategy(),
     prob.cuda_settings,
     prob.mip_settings,
     prob.verbose(),
@@ -200,7 +198,6 @@ static void check_configuration_unchanged(
   CHECK(prob.variant_params.mv_mode == before.variant_params.mv_mode);
   CHECK(prob.missing_strategy == before.missing_strategy);
   CHECK(prob.distance_strategy == before.distance_strategy);
-  CHECK(prob.lb_strategy() == before.lb_strategy);
   CHECK(prob.cuda_settings.device_id == before.cuda_settings.device_id);
   CHECK(prob.cuda_settings.precision == before.cuda_settings.precision);
   CHECK(prob.mip_settings.mip_gap == before.mip_settings.mip_gap);

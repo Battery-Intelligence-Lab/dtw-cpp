@@ -93,9 +93,8 @@ inline void validate_mip_settings(const MIPSettings &s)
 
 /// Strategy for computing the pairwise distance matrix.
 enum class DistanceMatrixStrategy {
-  Auto,       ///< Choose best strategy automatically
-  BruteForce, ///< Parallel brute-force (no lower-bound pruning)
-  Pruned,     ///< Parallel with lower-bound pruning (LB_Kim / LB_Keogh / cascade)
+  Auto,       ///< BruteForce; set_device(gpu) selects CUDA or Metal instead
+  BruteForce, ///< Parallel exact fill on the CPU
   CUDA,       ///< NVIDIA CUDA GPU (requires DTWC_HAS_CUDA)
   Metal       ///< Apple Metal GPU (requires DTWC_HAS_METAL)
 };
@@ -105,7 +104,6 @@ inline void validate_distance_matrix_strategy(DistanceMatrixStrategy value)
   switch (value) {
   case DistanceMatrixStrategy::Auto:
   case DistanceMatrixStrategy::BruteForce:
-  case DistanceMatrixStrategy::Pruned:
   case DistanceMatrixStrategy::CUDA:
   case DistanceMatrixStrategy::Metal:
     return;
@@ -204,7 +202,6 @@ private:
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
   double tadpole_dc_{ -1.0 };
-  LowerBoundStrategy lb_strategy_{ LowerBoundStrategy::Auto };
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
@@ -440,7 +437,6 @@ public:
   std::uint64_t random_seed() const { return random_seed_; }
   int last_iterations() const { return last_iterations_; }
   double tadpole_dc() const { return tadpole_dc_; }
-  LowerBoundStrategy lb_strategy() const { return lb_strategy_; }
   bool verbose() const { return verbose_; }
   const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
@@ -500,20 +496,13 @@ public:
     refresh_distance_matrix();
   }
   /// Where this Problem computes distances. `cpu` keeps a CPU strategy you
-  /// chose (BruteForce / Pruned) and moves a GPU one to Auto; `gpu` selects
+  /// chose (BruteForce) and moves a GPU one to Auto; `gpu` selects
   /// this build's GPU backend (CUDA, else Metal) and records `index`, the GPU
   /// ordinal. A Problem never reads the process-wide default (dtwc::device());
   /// until told otherwise it computes on the CPU.
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
   ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
-  void set_lb_strategy(LowerBoundStrategy strategy)
-  {
-    validate_lower_bound_strategy(strategy);
-    if (lb_strategy_ == strategy) return;
-    // Lower bounds are exact optimization hints and do not change distances.
-    lb_strategy_ = strategy;
-  }
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(

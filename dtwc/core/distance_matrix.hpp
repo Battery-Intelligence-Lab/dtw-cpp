@@ -36,7 +36,7 @@ inline size_t tri_index(size_t i, size_t j)
 inline size_t packed_size(size_t n) { return n * (n + 1) / 2; }
 
 /// Thread-safety contract: no locking, no atomics.
-/// Parallel fills (brute-force, pruned, CUDA) partition the pair space so each
+/// Parallel fills (brute-force, CUDA) partition the pair space so each
 /// (i,j) is written by exactly one thread. count_computed()/all_computed() are
 /// cold-path queries called only after the parallel region joins.
 class DenseDistanceMatrix {

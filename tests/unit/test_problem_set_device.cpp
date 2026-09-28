@@ -77,12 +77,9 @@ TEST_CASE("IF-1: set_device(cpu) leaves a CPU strategy alone and moves a GPU one
   prob.set_device(Device::CPU);
   CHECK(prob.distance_strategy == DistanceMatrixStrategy::Auto);
 
-  for (const auto chosen : { DistanceMatrixStrategy::BruteForce,
-                             DistanceMatrixStrategy::Pruned }) {
-    prob.set_distance_strategy(chosen);
-    prob.set_device(Device::CPU);
-    CHECK(prob.distance_strategy == chosen);
-  }
+  prob.set_distance_strategy(DistanceMatrixStrategy::BruteForce);
+  prob.set_device(Device::CPU);
+  CHECK(prob.distance_strategy == DistanceMatrixStrategy::BruteForce);
   for (const auto gpu : { DistanceMatrixStrategy::CUDA,
                           DistanceMatrixStrategy::Metal }) {
     prob.set_distance_strategy(gpu);

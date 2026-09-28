@@ -28,7 +28,7 @@ Y = np.array([0.0, 1.0], dtype=np.float64)
         lambda: core.dtw_distance_missing(X, Y, -1, "bogus"),
         lambda: core.dtw_arow_distance(X, Y, -1, "bogus"),
         lambda: core.compute_distance_matrix([X.tolist(), Y.tolist()], -1,
-                                             "bogus", False),
+                                             "bogus"),
     ],
 )
 def test_raw_metric_tokens_reject_unknown_instead_of_running_l1(call):

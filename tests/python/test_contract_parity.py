@@ -52,8 +52,7 @@ _ERRORS = ["DtwcError", "InvalidInput", "SolverError", "DeviceError", "IOError"]
 # ---------------------------------------------------------------------------
 _ENUMS = [
     "Method", "Solver", "ConstraintType", "MetricType", "DTWVariant",
-    "MissingStrategy", "DistanceMatrixStrategy",
-    "LowerBoundStrategy", "Linkage",
+    "MissingStrategy", "DistanceMatrixStrategy", "Linkage",
 ]
 _STRUCTS = [
     "DTWVariantParams", "MIPSettings", "CUDASettings", "DenseDistanceMatrix",
@@ -100,7 +99,7 @@ _PROBLEM_CANON = [
     "set_data", "set_view_data",
     # config attributes (§2.1)
     "method", "max_iter", "n_repetitions", "band", "variant_params",
-    "missing_strategy", "distance_strategy", "lb_strategy",
+    "missing_strategy", "distance_strategy",
     "cuda_settings", "mip_settings", "verbose", "name", "output_folder",
     "clusters_ind", "centroids_ind",
     # read accessors (§2.2)
@@ -176,15 +175,6 @@ def test_problem_deprecated_alias_still_resolves(name):
     """§4: deprecated names survive one cycle; nothing silently disappears."""
     member = inspect.getattr_static(dtwcpp.Problem, name)
     assert member is not None, f"Problem.{name} should still resolve one cycle (§4)"
-
-
-@pytest.mark.parametrize("name", ["Enhanced", "Webb"])
-def test_lower_bound_strategy_new_members_roundtrip(name):
-    """Every core lower-bound strategy is selectable through the Python enum."""
-    strategy = getattr(dtwcpp.LowerBoundStrategy, name)
-    p = dtwcpp.Problem("lb_strategy_parity")
-    p.lb_strategy = strategy
-    assert p.lb_strategy == strategy
 
 
 # ===========================================================================

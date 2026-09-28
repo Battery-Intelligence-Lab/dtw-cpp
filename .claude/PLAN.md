@@ -37,7 +37,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (recipe in `plans/2026-09-27-audit/phaseA_measurements.md`); 4 / 4 CUDA tests pass; `--device gpu` byte-identical to
   CPU on the fixture. MSVC findings: 9 squared-L2 cross-path `==` checks differ in the last bit
   (`test_problem_metric:109,322`, `test_run_resolution:148`) → compare with a tight relative tolerance;
-  `bench_openmp_schedule` needs the OpenMP 3.0 API that `/openmp:experimental` lacks → delete it (W4)
+  `bench_openmp_schedule` needs the OpenMP 3.0 API that `/openmp:experimental` lacks → delete it (W4); both done (Z1 `a238336`)
 - ☑ Q2 not mio (DECISIONS §3, 2026-09-28): llfio stays, header-only without the superbuild if the spike proves it
   builds in wheels, else Boost.Interprocess; files created non-sparse (1.8× random reads on Windows)
 - ☑ Q3 OneBatchPAM and CLARA both stay: a measured trade-off (DECISIONS §3, 2026-09-28)
@@ -47,10 +47,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 ## B — deletions (W2, W3, W5, W6)
 
-- ☐ W2a A/B `lb_webb_symmetric` vs Keogh in TADPole at N = 200; Webb stays only if it prunes ≥ 83 %
-- ☐ W2b delete the Pruned fill, `LowerBoundStrategy`, the bindings' pruning options; Auto = brute force
-- ☐ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged
-- ☐ W2d derivation 03 and the GPU LB docs follow
+- ☑ W2a A/B `lb_webb_symmetric` vs Keogh in TADPole at N = 200; Webb stays only if it prunes ≥ 83 %
+  (X1 `ba5546f`: FALSIFIED, both prune 78.0 %; Webb deleted)
+- ☑ W2b delete the Pruned fill, `LowerBoundStrategy`, the bindings' pruning options; Auto = brute force
+  (X1 `872349d`, `fe06efd`)
+- ☑ W2c bounds → `compute_envelopes`, `lb_keogh`, `lb_keogh_symmetric`; the LB tests merged (X1 `b1d6514`)
+- ☑ W2d derivation 03 and the GPU LB docs follow (X1 `afdfc50`, `5aff090`; merged `227c956`)
 - ☐ W3a config keys `benders`, `max-benders-iter`, `batch-weighting` go (goldens 49 → 46)
 - ☐ W3b delete Benders, PDLP, `DTWC_HIGHS_GPU`
 - ☐ W3c delete CLARANS, `PAMVariant`, FastPAM1, public `fast_pam_swap`, `medoid_utils`; FasterPAM only;
@@ -76,8 +78,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 ## C — GPU to one fill (W4 + W13's GPU half)
 
 - ☐ W4a kernel A/B through `KernelOverride` (warp vs regtile, 2- vs 3-buffer), ±5 % band registered first
-- ☐ W4b delete MPI
-- ☐ W4c delete the 1-vs-N / K-vs-N kernels and GPU LB_Keogh
+- ☑ W4b delete MPI (Z1 `b3041d5`)
+- ☑ W4c delete the 1-vs-N / K-vs-N kernels and GPU LB_Keogh (Z1 `f2b1cfe`, `8fbb7c9`; merged `741ca3b`)
 - ☐ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes (sm_120 FP64 fixed)
 - ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
 - ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
