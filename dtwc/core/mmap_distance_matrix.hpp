@@ -620,12 +620,15 @@ public:
     const Layout layout = checked_layout(n);
     const size_t total = layout.total_bytes;
 
+    // llfio makes every file it creates on NTFS sparse unless told otherwise, and
+    // random reads from a filled sparse cache measured 1.9x slower (probe,
+    // 2026-09-28). The flag has no effect off Windows.
     auto result = llfio::mapped_file_handle::mapped_file(
       total, {}, cache_path,
       llfio::file_handle::mode::write,
       llfio::file_handle::creation::only_if_not_exist,
       llfio::file_handle::caching::all,
-      llfio::file_handle::flag::none);
+      llfio::file_handle::flag::win_disable_sparse_file_creation);
 
     if (!result)
       throw IOError(

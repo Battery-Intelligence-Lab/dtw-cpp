@@ -8,6 +8,16 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
+  `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
+  (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they
+  were at configure time; both are now pinned, with wg14_signals, span-lite, byte-lite and (Windows) ntkernel-error-category
+  at the commits llfio and quickcpplib record. The preprocessed `<llfio/v2.0/llfio.hpp>` is identical to the superbuild's.
+  A fresh Windows configure took 44 s instead of 198 s (warm download cache). `DTWC_ENABLE_LLFIO` is unchanged and
+  released artefacts still set it `OFF`.
+- **Changed (mmap, Windows):** a new mmap distance-matrix cache is no longer a sparse file (llfio's default on NTFS);
+  random reads from a filled sparse cache measured 1.9x slower.
+
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live

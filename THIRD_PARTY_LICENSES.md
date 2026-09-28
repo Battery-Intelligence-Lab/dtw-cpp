@@ -23,7 +23,9 @@ A machine-generated inventory of the CPM-resolved packages for one specific buil
 | fkYAML | 0.4.4 | MIT | yes, when `DTWC_ENABLE_YAML=ON` (default) | no |
 | nanobind | ≥ 2.4.0 | BSD-3-Clause | no | yes — runtime compiled in |
 | LLVM OpenMP runtime (`libomp`) | 23.1.1 | Apache-2.0 WITH LLVM-exception | macOS only — see note below | macOS wheels — bundled by `delocate` |
-| llfio, quickcpplib | pinned commits | Apache-2.0 **OR** BSL-1.0 | only if built with `DTWC_ENABLE_LLFIO=ON`; **OFF** in released artefacts | no |
+| llfio, quickcpplib, outcome, ntkernel-error-category (Windows) | pinned commits | Apache-2.0 **OR** BSL-1.0 | only if built with `DTWC_ENABLE_LLFIO=ON`; **OFF** in released artefacts | no |
+| wg14_signals (llfio's signal guard) | pinned commit | Apache-2.0 | as llfio | no |
+| span-lite, byte-lite (via quickcpplib) | pinned commits | BSL-1.0 | as llfio | no |
 
 **Not redistributed**, and therefore not covered here: Catch2 (BSL-1.0) and google/benchmark
 (Apache-2.0), which are test- and benchmark-only; libpfm4 (MIT), which google/benchmark links only
@@ -208,12 +210,14 @@ the License, but only in their entirety and only with respect to the Combined
 Software.
 ```
 
-## llfio and quickcpplib — Apache-2.0 OR BSL-1.0
+## llfio and its header-only dependencies — Apache-2.0 OR BSL-1.0, Apache-2.0, BSL-1.0
 
 Optional, and **off** in every released artefact (`DTWC_ENABLE_LLFIO=OFF` in both the CLI release
-workflow and the wheel build). If you build with it enabled and redistribute the result, both
-projects are offered under your choice of two licences; DTWC++ elects the **Boost Software License
-1.0**, reproduced in full:
+workflow and the wheel build). If you build with it enabled and redistribute the result: llfio,
+quickcpplib, outcome and ntkernel-error-category are offered under your choice of two licences, and
+DTWC++ elects the **Boost Software License 1.0**; span-lite and byte-lite are BSL-1.0 only;
+wg14_signals is Apache-2.0 only, so its terms (the Apache License 2.0 text shipped for nanoarrow)
+apply as well. The Boost Software License 1.0, reproduced in full:
 
 ```
 Boost Software License - Version 1.0 - August 17th, 2003

@@ -15,7 +15,15 @@
 
 #ifdef DTWC_HAS_MMAP
 #endif
-#ifndef _WIN32
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h> // GetFileAttributesW: the sparse-file oracle
+#else
 #include <csignal>
 #include <sys/resource.h>
 #endif
@@ -1337,6 +1345,24 @@ TEST_CASE("MmapDistanceMatrix allows exactly one concurrent creator per cache pa
   REQUIRE(reopened.size() == 128);
   REQUIRE(reopened.count_computed() == 0);
 }
+
+#ifdef _WIN32
+TEST_CASE("MmapDistanceMatrix creates its cache as a non-sparse file on Windows",
+          "[MmapDistanceMatrix][mmap]")
+{
+  // llfio's default would set FILE_ATTRIBUTE_SPARSE_FILE on the new file.
+  TempFile tmp;
+  {
+    MmapDistanceMatrix dm(tmp.path, 50);
+    dm.set(3, 7, 42.0);
+    dm.sync();
+  }
+  const DWORD attributes = GetFileAttributesW(tmp.path.c_str());
+  REQUIRE(attributes != INVALID_FILE_ATTRIBUTES);
+  REQUIRE((attributes & FILE_ATTRIBUTE_SPARSE_FILE) == 0);
+  REQUIRE(MmapDistanceMatrix::open(tmp.path).get(7, 3) == 42.0);
+}
+#endif
 
 // ============================================================================
 // Free functions: tri_index and packed_size
