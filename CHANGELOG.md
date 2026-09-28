@@ -8,6 +8,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
+  `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
+  is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live
+  `dtwc_cl --help` lacks (`scripts/check_docs.py`).
 - **Changed (CLI):** `dtwc_cl` is `cli::bind` + `dtwc::run(Config)` (1,996 → 133 lines), with byte-identical outputs on every
   configuration compared. `--device` reads the one device grammar (`gpu`, `gpu:N`, Metal on macOS; `cuda` is `gpu`); `hpc` raises
   `DeviceError` (submission is `slurm_remote.sh submit-cluster` / Python's `device="hpc"`). On `gpu`, `auto` runs pam at any N;

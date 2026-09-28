@@ -25,8 +25,8 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Verify generated documentation and live API contract
-        run: python scripts/check_docs_contract.py
+      - name: Verify the generated documentation pages are fresh
+        run: python scripts/generate_docs.py --check
 
       - name: Verify immutable supply-chain pins
         run: python scripts/check_pins.py
@@ -92,7 +92,7 @@ jobs:
         run: ./build_dir/bin/example_quickstart tests/conformance/data/conformance_series.csv
 
       - name: Diff documented CLI flags against live --help
-        run: python scripts/check_docs_contract.py --cli build_dir/bin/dtwc_cl
+        run: python scripts/check_docs.py --cli build_dir/bin/dtwc_cl
 
       # Generate the lcov trace file (also consumed by genhtml below).
       - name: Generate coverage info

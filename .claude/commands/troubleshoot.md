@@ -74,7 +74,7 @@ which dtwc_cl && dtwc_cl --version
 - Try different `k`; if silhouette < 0.25 on all k, the variant may be wrong for the data
 - Try different variant (DDTW if shapes matter; WDTW if time offsets matter)
 - z-normalize input: `dtwcpp.z_normalize(data)`
-- Different seed: `--seed 42`, `--repetitions 5`
+- Different seed or more restarts: `--seed 7`, `--n-init 5`
 
 ### Performance issues
 
@@ -86,7 +86,6 @@ which dtwc_cl && dtwc_cl --version
 **Slow distance matrix on large N**
 - Use GPU: `--device cuda` (if available)
 - Use bands: `--band 10` (reduces O(nm) to O(min(n,m)*band))
-- Use LB_Keogh pruning: `--prune lb_keogh`
 - Parquet + mmap for fast load
 
 ## Step 3: Dynamic investigation

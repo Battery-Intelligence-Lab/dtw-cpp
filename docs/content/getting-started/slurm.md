@@ -131,7 +131,7 @@ DTWC++ was developed and tested on Oxford's [Advanced Research Computing (ARC)](
 
 ### GPU Resources (HTC cluster only)
 
-GPUs are requested via the `--gres` SLURM directive:
+GPUs are requested with an `#SBATCH --gres` directive:
 
 ```bash
 #SBATCH --gres=gpu:1              # Any available GPU
@@ -175,5 +175,5 @@ SLURM jobs should use `$SCRATCH` (or `$TMPDIR`) for I/O and copy results back to
 | Build fails on login node | Use `srun -p interactive --pty /bin/bash` first |
 | SSH connection refused | Check VPN connection; ARC login nodes require university network |
 | `$SCRATCH` not set | Your cluster may not set this; the job scripts fall back to `$TMPDIR` or `/tmp` |
-| GPU not detected in job | Verify `--gres=gpu:1` is in your SBATCH directives |
+| GPU not detected in job | Verify the job script has `#SBATCH --gres=gpu:1` |
 | `dos2unix: command not found` | Use `sed -i 's/\r$//' script.sh` as alternative |

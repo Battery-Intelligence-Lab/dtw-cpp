@@ -154,10 +154,10 @@ If Python fails or user requests:
 dtwc_cl \
   --input INPUT_PATH \
   --method auto \
-  --k K \
+  -k K \
   --variant VARIANT \
   --band BAND \
-  --output-dir OUTPUT_DIR \
+  --output OUTPUT_DIR \
   --verbose
 ```
 

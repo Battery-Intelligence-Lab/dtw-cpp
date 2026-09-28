@@ -100,9 +100,9 @@ d = dc.dtw_distance(x, y, band=10)
 ## CLI quick reference
 
 ```bash
-dtwc_cl --input data.parquet --method clara --k 5 \
+dtwc_cl --input data.parquet --method clara -k 5 \
         --variant wdtw --wdtw-g 0.05 --band 10 \
-        --output-dir results/
+        --output results/
 ```
 
 Run `dtwc_cl --help` for full flag reference.
