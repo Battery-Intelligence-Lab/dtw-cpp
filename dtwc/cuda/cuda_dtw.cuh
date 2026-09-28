@@ -93,50 +93,6 @@ CUDALBResult compute_lb_keogh_cuda(
     const std::vector<std::vector<double>> &series,
     int band, int device_id = 0);
 
-// =========================================================================
-// 1-vs-N and K-vs-N DTW computation
-// =========================================================================
-
-/// Result of a 1-vs-N DTW computation.
-struct CUDAOneVsNResult {
-  std::vector<double> distances; ///< N distances from query to each series
-  double gpu_time_sec = 0;       ///< GPU kernel execution time
-  size_t n = 0;                  ///< Number of target series
-  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
-  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
-};
-
-/// Compute DTW distances from one query series (by index) to all N series.
-/// Result: distances[query_index] == 0, others are DTW distances.
-CUDAOneVsNResult compute_dtw_one_vs_all(
-    const std::vector<std::vector<double>> &series,
-    size_t query_index,
-    const CUDADistMatOptions &opts = {});
-
-/// Compute DTW distances from an external query to all N series.
-CUDAOneVsNResult compute_dtw_one_vs_all(
-    const std::vector<double> &query,
-    const std::vector<std::vector<double>> &series,
-    const CUDADistMatOptions &opts = {});
-
-/// Result of a K-vs-N DTW computation.
-struct CUDAKVsNResult {
-  std::vector<double> distances; ///< K*N distances (row-major: result[k*N + j])
-  double gpu_time_sec = 0;       ///< GPU kernel execution time
-  size_t k = 0;                  ///< Number of query series
-  size_t n = 0;                  ///< Number of target series
-  std::string kernel_used = "none"; ///< Actual CUDA kernel family, or none.
-  bool kernel_override_fell_back = false; ///< Valid override fell back to Auto.
-};
-
-/// Compute multiple rows of the distance matrix at once.
-/// query_indices[K] specifies which series are queries.
-/// Returns K*N distances (row-major: result[k*N + j] = DTW(query_k, series_j)).
-CUDAKVsNResult compute_dtw_k_vs_all(
-    const std::vector<std::vector<double>> &series,
-    const std::vector<size_t> &query_indices,
-    const CUDADistMatOptions &opts = {});
-
 }  // namespace dtwc::cuda
 
 #endif  // DTWC_HAS_CUDA

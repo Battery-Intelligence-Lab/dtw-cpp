@@ -67,15 +67,13 @@ inline void require_cuda_device(bool available, const char *entry)
 }
 
 /// @brief Fill @p lengths with each series' length and return the maximum.
-/// @param initial_max Seed for the maximum (an external query's length, or 0).
 inline std::size_t scan_series_lengths(
   const std::vector<std::vector<double>> &series,
-  std::vector<int> &lengths,
-  std::size_t initial_max = 0)
+  std::vector<int> &lengths)
 {
   const std::size_t n = series.size();
   lengths.resize(n);
-  std::size_t max_L = initial_max;
+  std::size_t max_L = 0;
   for (std::size_t i = 0; i < n; ++i) {
     lengths[i] = static_cast<int>(series[i].size());
     if (series[i].size() > max_L) max_L = series[i].size();

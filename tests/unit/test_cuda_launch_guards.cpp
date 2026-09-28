@@ -132,17 +132,10 @@ TEST_CASE("A16 CUDA entry points refuse to answer without a device",
 
   const std::vector<std::vector<double>> series{ { 1.0, 2.0, 3.0 },
                                                  { 2.0, 3.0, 4.0 } };
-  const std::vector<double> query{ 1.0, 2.0, 3.0 };
 
   REQUIRE_THROWS_AS(dtwc::cuda::compute_distance_matrix_cuda(series, {}),
                     dtwc::DeviceError);
   REQUIRE_THROWS_AS(dtwc::cuda::compute_lb_keogh_cuda(series, 1),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_one_vs_all(series, 0, {}),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_one_vs_all(query, series, {}),
-                    dtwc::DeviceError);
-  REQUIRE_THROWS_AS(dtwc::cuda::compute_dtw_k_vs_all(series, { 0 }, {}),
                     dtwc::DeviceError);
 }
 

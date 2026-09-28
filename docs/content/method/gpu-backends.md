@@ -80,7 +80,7 @@ actual maximum length. Metal uses the scanned length, band, a larger
 | `3·heuristic_L·sizeof(float)` exceeds the device cap | `dtw_wavefront_global` | Anti-diagonals in device memory |
 | otherwise | `dtw_wavefront` | Anti-diagonals in threadgroup memory |
 
-### CUDA — three kernels (plus 1-vs-N / K-vs-N variants)
+### CUDA — three kernels
 
 | Condition | Kernel | Notes |
 |---|---|---|
@@ -353,7 +353,7 @@ See [`.claude/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp
 |---|---|---|
 | CUDA kernels | [dtwc/cuda/cuda_dtw.cu](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cu) | Warp, regtile, wavefront + envelope/LB/compact |
 | CUDA API | [dtwc/cuda/cuda_dtw.cuh](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cuh) | `CUDADistMatOptions`, `CUDADistMatResult` |
-| Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2, K-vs-N × 2, envelope/LB/compact |
+| Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2, envelope/LB/compact |
 | Metal API | [dtwc/metal/metal_dtw.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.hpp) | `MetalDistMatOptions`, `MetalDistMatResult` |
 | CPU pruned path | [dtwc/core/pruned_distance_matrix.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/pruned_distance_matrix.cpp) | CPU lower-bound/EAP implementation; exact-matrix abandoned pairs are recomputed |
 | CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric` |
