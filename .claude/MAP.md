@@ -38,7 +38,8 @@ Bindings: `python/` (6.7k; `src/_dtwcpp_core.cpp`, `dtwcpp/_api.py`, `_clusterin
   `dtwc_cl` (installed CLI), `dtwc_main` (demo), examples, benchmarks, `_dtwcpp_core` (Python), `dtwc_mex`.
 - Presets: `clang-win`, `clang-win-debug`, `msvc`, `gcc-linux`, `clang-macos`. `build/` on the Windows box is
   clang + Ninja Release with HiGHS, Gurobi, llfio and benchmarks; Arrow is ON but not found there, so
-  `test_io_readers` is not registered (`build/arrow-pyarrow-23` has it). `build/cuda-verify` is the CUDA dir.
+  `test_io_readers` is not registered (`build/arrow-pyarrow-23` has it, through the shim in its `pyarrow-config/`).
+  `build/cuda-verify-0928` is the CUDA dir.
 - Options: `DTWC_BUILD_{TESTING,EXAMPLES,BENCHMARK,PYTHON,MATLAB}`, `DTWC_ENABLE_{HIGHS,GUROBI,LLFIO,YAML,METAL}`
   (ON), `DTWC_ENABLE_{ARROW,CUDA,MPI}` (OFF), `DTWC_ALLOW_SEQUENTIAL` (OFF: no OpenMP is a configure error),
   `DTWC_FP_MODEL` (`fast` | `strict`), `DTWC_ENABLE_NATIVE_ARCH`, `DTWC_DEV_MODE`.

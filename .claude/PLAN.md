@@ -13,7 +13,7 @@ four agents; each proven step is one local commit.
 
 Serial `ctest -j1`; `cpp_conformance` digit-identical to the phase base unless the step pre-registers a change;
 pytest from a fresh `uv` venv when bindings, readers or defaults change; `matlab_suite` when the MEX changes; the
-CUDA build (`build/cuda-verify`, RTX 4000 Ada) for GPU steps, macOS CI for Metal; `git grep` proof for every
+CUDA build (`build/cuda-verify-0928`, RTX 4000 Ada) for GPU steps, macOS CI for Metal; `git grep` proof for every
 deleted name (and `git grep <name> v1.0.0` = 0). Gates: `scripts/check_docs.py --cli <dtwc_cl>`,
 `scripts/check_pins.py`, gitleaks in CI. A new gate is shown to bite by a reverted mutation.
 
@@ -41,9 +41,12 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☑ Q2 not mio (DECISIONS §3, 2026-09-28): llfio stays, header-only without the superbuild if the spike proves it
   builds in wheels, else Boost.Interprocess; files created non-sparse (1.8× random reads on Windows)
 - ☑ Q3 OneBatchPAM and CLARA both stay: a measured trade-off (DECISIONS §3, 2026-09-28)
-- ◐ llfio header-only spike (worktree): pinned header downloads, no quickcpplib bootstrap; wheel build with llfio ON
+- ☑ llfio header-only spike: pinned header downloads, no quickcpplib bootstrap; wheel build with llfio ON — `78af336`
+  (lands with W5d; DECISIONS §3)
 - ☐ `build/` reports Arrow ON but builds without it (Arrow not found with clang on Windows): Parquet tests run only in
-  `build/arrow-pyarrow-23` until W14b makes an unhonoured `ON` a configure error
+  `build/arrow-pyarrow-23` until W14b makes an unhonoured `ON` a configure error. That tree finds Arrow through the
+  shim `build/arrow-pyarrow-23/pyarrow-config` over `.venv`'s pyarrow 23.0.1; an Arrow gate counts only if
+  `ctest -N` lists `test_io_readers`
 
 ## B — deletions (W2, W3, W5, W6)
 
@@ -65,22 +68,29 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W5b delete `StoragePolicy`, `.dtws`, `MmapDataStore`, CRC32, the auto-spill; `load()` = heap
 - ☐ W5c `Env` → two free functions over a static `{Device, int}`
 - ☐ W5d one `.dtwm` file (magic, version, N, SHA-256, packed doubles); the mapped cache is the checkpoint;
-  identity mismatch → `InvalidInput`, malformed → `IOError`, absent → fresh; mio if Q2 says so
+  identity mismatch → `InvalidInput`, malformed → `IOError`, absent → fresh; llfio header-only (`78af336`) confined to
+  one `.cpp`; Python `distance_matrix()` on a mapped `Problem` fixed; `DTWC_ENABLE_LLFIO=ON` in the wheel and release
+  builds (the MEX waits for F43, W6e/f)
 - ☐ W5e Parquet saturating helpers and leaf guards → asserts
 - ☐ W6a `index_t` alias in `base/settings.hpp`; every count guard deleted; `mip/index_guard.hpp` → two inline throws
 - ☐ W6b enum validator tails → `-Werror=switch`
-- ☐ W6c `run_openmp` keeps the first failure; `parse_ram_limit` shrinks; `GpuPrecision{Auto, FP32, FP64}`
+- ☐ W6c `run_openmp` captures failures in per-thread slots (no critical, no atomic); `parse_ram_limit` shrinks;
+  `GpuPrecision{Auto, FP32, FP64}`
 - ☐ W6d `cluster_by_kMedoidsPAM` shim restored; non-v1 root forwarders, D2/D3/F57 markers, tracker ids in
   comments go
 - ☐ W6e never-released Python and MATLAB aliases and the bindings of deleted surface go
 - ☐ W6f C++ tests of deleted surface trimmed
+- ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
+  `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
+  OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
 - ☐ W4a kernel A/B through `KernelOverride` (warp vs regtile, 2- vs 3-buffer), ±5 % band registered first
 - ☑ W4b delete MPI (Z1 `b3041d5`)
 - ☑ W4c delete the 1-vs-N / K-vs-N kernels and GPU LB_Keogh (Z1 `f2b1cfe`, `8fbb7c9`; merged `741ca3b`)
-- ☐ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes (sm_120 FP64 fixed)
+- ☐ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
+  fixed; its mutex and atomics go)
 - ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
 - ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
   (the N ≤ 65,536 refusal goes)
@@ -96,7 +106,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 
 - ☐ W7a `DistanceConfig`; `set_distance / set_band / set_metric / set_variant / set_missing_strategy`
   invalidate the matrix; `bool filled_`
-- ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes
+- ☐ W7b `resolve_dtw_fn(const DistanceConfig&)`; O(1) `dist_by_ind`; the preflight machinery goes. Acceptance:
+  `dist_by_ind`'s parallel read path has no critical, atomic, validation flag or lazy allocation; a method that
+  needs the matrix prepares it serially at entry
 - ☐ W7c one `validate(DistanceConfig)`; `core/dtw.*`, `DTWOptions`, selector validation go
 - ☐ W7d one orientation helper replaces the copied preambles
 - ☐ W7e WDTW weights at bind; Soft-DTW on the linear kernel; Interpolate thread_local buffers
@@ -122,6 +134,10 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ W12b `tests/unit/adversarial/` dissolved per subject
 - ☐ W12c repeated DTW property tests → one table-driven `core/test_dtw.cpp` against a new `tests/support/dtw_oracle.hpp`
 - ☐ W12d `test_contract_parity.py` existence lists → one table
+- ☐ every test writes to its own temp dir (a fixed `%TEMP%/dtwc_test` collides under concurrent runs:
+  `unit_test_variant_distmat`)
+- ☐ `test_hpc` and `test_api` honour `DTWC_CL_PATH`; today `find_dtwc_binary` takes the newest `dtwc_cl` under
+  `build*/`, e.g. an Arrow build that cannot load its DLLs
 
 ## G — docs and release prep (W14)
 
@@ -137,7 +153,7 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
 - ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5×
 
-## Blocked on another machine
+## Blocked on another machine or on Volkan
 
 - Metal: every Metal step runs on macOS CI (a push is Volkan's).
 - Release archives: `cpack` + `scripts/smoke_release_archive.py` on Linux and Windows (Windows needs a
@@ -146,6 +162,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - Linux wheel: whether `libgomp` ships, and the notice says so.
 - Two crashes recorded on Windows and never re-run: CUDA `Auto` precision through `Problem` (F42); an
   llfio-ON MEX under R2024b in `std::mutex` (F43).
+- X2 (W3a–g) is gated but not merged: Sophos quarantines every Release `dtwc_cl.exe` built from it as
+  'Generic ML PUA' (a Debug build runs). It needs an exclusion for the build trees or a false-positive
+  submission (Volkan's). A released `dtwc_cl.exe` may meet the same on users' machines.
 
 ## Records
 
