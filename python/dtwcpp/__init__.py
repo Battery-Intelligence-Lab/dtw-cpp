@@ -47,8 +47,6 @@ from dtwcpp._dtwcpp_core import (
     IOError,
     DEFAULT_RANDOM_SEED,
     _F22_DEPRECATION_POLICY,
-    # Device registry (api-contract-2.0.md §6)
-    env,
     device_to_string,
     # DTW functions (raw C++ bindings — require numpy arrays)
     dtw_distance as _dtw_distance_raw,
