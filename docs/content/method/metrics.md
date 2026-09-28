@@ -23,9 +23,7 @@ lookups, mmap cache and checkpoint identities, and FastCLARA's samples. A metric
 other than L1 is implemented for Standard DTW with `MissingStrategy::Error`
 (univariate or multivariate); with another variant or a missing-data strategy
 it raises `InvalidInput`, because the `Problem` passes the metric to the
-Standard kernels only. The
-lower-bound-pruned fill is univariate L1, so another metric (or multivariate
-data) takes the exact row fill. The CLI's `--metric` is the same `Problem`
+Standard kernels only. The CLI's `--metric` is the same `Problem`
 setting: `l1` or `squared_euclidean` on `--device cpu` and `--device gpu` alike.
 A combination the kernels do not implement fails before computation rather than
 silently using another metric.
@@ -35,13 +33,8 @@ silently using another metric.
 Lower bounds can avoid exact distance work only when the consumer needs a
 threshold or nearest-neighbour decision rather than every exact pair value.
 TADPole uses this property: a bound relative to its cutoff can classify some
-pairs without computing DTW.
-
-The legacy `DistanceMatrixStrategy::Pruned` route still produces an exact full
-matrix. Its early-abandon kernel returns a sentinel, so an abandoned pair is
-then recomputed to recover the exact value. That route is correct but is not
-documented as an acceleration; the registered LB-cascade experiment found the
-extra partial-plus-full work to be a pessimization on its fixture.
+pairs without computing DTW. An exact full matrix needs every pair, so its
+fill uses no lower bound.
 
 ### LB_Keogh
 

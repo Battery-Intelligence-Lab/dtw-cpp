@@ -67,7 +67,7 @@ def _configured_problem_distance(estimator, x, y):
 
 def test_cpu_squared_metric_controls_training_objective():
     squared = dtwcpp.compute_distance_matrix(
-        SQUARED_FIXTURE.tolist(), metric="squared_euclidean", use_pruning=False
+        SQUARED_FIXTURE.tolist(), metric="squared_euclidean"
     )
     oracle_problem = dtwcpp.Problem("squared_oracle")
     oracle_problem.set_data(
@@ -107,7 +107,7 @@ def test_gpu_precompute_receives_requested_metric(monkeypatch, backend):
     real_compute = dtwcpp.compute_distance_matrix
     cpu_squared = real_compute(
         SQUARED_FIXTURE.tolist(), metric="squared_euclidean",
-        device="cpu", use_pruning=False,
+        device="cpu",
     )
     captured = {}
 

@@ -46,7 +46,6 @@
 #include <core/dtw_options.hpp>
 #include <core/distance_semantics.hpp>
 #include <core/variant_validation.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <core/matrix_io.hpp>
 #include <test_api.hpp> // dtwc::test::parallelisation()/gpu() introspection (Task 3.3)
 #include <mip/mip.hpp>
@@ -325,7 +324,6 @@ NB_MODULE(_dtwcpp_core, m) {
   nb::enum_<dtwc::DistanceMatrixStrategy>(m, "DistanceMatrixStrategy")
     .value("Auto", dtwc::DistanceMatrixStrategy::Auto)
     .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
-    .value("Pruned", dtwc::DistanceMatrixStrategy::Pruned)
     .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
     .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
 
@@ -333,15 +331,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("Auto", dtwc::core::StoragePolicy::Auto)
     .value("Heap", dtwc::core::StoragePolicy::Heap)
     .value("Mmap", dtwc::core::StoragePolicy::Mmap);
-
-  nb::enum_<dtwc::LowerBoundStrategy>(m, "LowerBoundStrategy")
-    .value("Auto", dtwc::LowerBoundStrategy::Auto)
-    .value("None", dtwc::LowerBoundStrategy::None)
-    .value("Kim", dtwc::LowerBoundStrategy::Kim)
-    .value("Keogh", dtwc::LowerBoundStrategy::Keogh)
-    .value("KimKeogh", dtwc::LowerBoundStrategy::KimKeogh)
-    .value("Enhanced", dtwc::LowerBoundStrategy::Enhanced)
-    .value("Webb", dtwc::LowerBoundStrategy::Webb);
 
   // =========================================================================
   // CUDASettings
@@ -985,11 +974,7 @@ NB_MODULE(_dtwcpp_core, m) {
                  [](dtwc::Problem &p, dtwc::DistanceMatrixStrategy value) {
                    p.set_distance_strategy(value);
                  },
-                 "Distance matrix computation strategy (Auto, BruteForce, Pruned, CUDA, Metal).")
-    .def_prop_rw("lb_strategy", &dtwc::Problem::lb_strategy,
-                 &dtwc::Problem::set_lb_strategy,
-                 "Lower-bound selection for the Pruned CPU path "
-                 "(Auto/None/Kim/Keogh/KimKeogh/Enhanced/Webb).")
+                 "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
     .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
                  &dtwc::Problem::set_storage_policy,
                  "How the next owning set_data call stores series "
@@ -1168,15 +1153,13 @@ NB_MODULE(_dtwcpp_core, m) {
   // =========================================================================
 
   m.def("compute_distance_matrix", [](const std::vector<std::vector<double>> &series,
-                                        int band, const std::string &metric,
-                                        bool use_pruning) {
+                                        int band, const std::string &metric) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     require_finite_series(series, "compute_distance_matrix");
 
     // Task 3.6 (review H1): this high-level Python compute path never constructs
     // dtwc::env(), so its OpenMP warning would otherwise be silent under
-    // OMP_NUM_THREADS=1. Warn once, deterministically, before either branch (the
-    // pruned branch also warns via get_max_threads; this covers the unpruned one).
+    // OMP_NUM_THREADS=1. Warn once, deterministically, before the fill.
     dtwc::warn_if_single_threaded();
 
     const size_t n = series.size();
@@ -1199,44 +1182,36 @@ NB_MODULE(_dtwcpp_core, m) {
     {
       nb::gil_scoped_release release;
 
-      if (use_pruning && (mt == dtwc::core::MetricType::L1 || mt == dtwc::core::MetricType::L2)) {
-        // Legacy LB-guided exact-matrix route. LB_Kim, and LB_Keogh only for
-        // band >= 0, can select a cutoff attempt. A cutoff result is recomputed
-        // without early abandon because every matrix entry is required.
-        dtwc::core::compute_distance_matrix_pruned(series, ptr, band, mt);
-      } else {
-        // Standard unpruned version (for non-L1 metrics or when pruning disabled).
-        // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
-        // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
-        // no two threads share the same i value.
-        // num_threads pins the team to the number of slots sized above, so
-        // omp_get_thread_num() can never index past `errors`.
-        #ifdef _OPENMP
-        #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
-        #endif
-        for (int i = 0; i < static_cast<int>(n); ++i) {
+      // Lock-free by design: each thread owns a disjoint set of rows (outer loop i).
+      // Writes to ptr[i*n+j] and ptr[j*n+i] never collide across threads because
+      // no two threads share the same i value.
+      // num_threads pins the team to the number of slots sized above, so
+      // omp_get_thread_num() can never index past `errors`.
+      #ifdef _OPENMP
+      #pragma omp parallel for schedule(dynamic, 16) num_threads(n_error_slots)
+      #endif
+      for (int i = 0; i < static_cast<int>(n); ++i) {
 #ifdef _OPENMP
-            const size_t slot = static_cast<size_t>(omp_get_thread_num());
+          const size_t slot = static_cast<size_t>(omp_get_thread_num());
 #else
-            const size_t slot = 0;
+          const size_t slot = 0;
 #endif
-            // The input was checked above and the kernels do not check it, but
-            // an exception escaping an OpenMP region is undefined behaviour and
-            // terminates the process — a hard interpreter crash instead of a
-            // Python exception — so any that does throw is carried out per thread.
-            if (errors[slot]) continue;
-            try {
-              for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
-                  double d = (band >= 0)
-                      ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
-                      : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
-                  ptr[i * n + j] = d;
-                  ptr[j * n + i] = d;
-              }
-            } catch (...) {
-              errors[slot] = std::current_exception();
+          // The input was checked above and the kernels do not check it, but
+          // an exception escaping an OpenMP region is undefined behaviour and
+          // terminates the process — a hard interpreter crash instead of a
+          // Python exception — so any that does throw is carried out per thread.
+          if (errors[slot]) continue;
+          try {
+            for (size_t j = static_cast<size_t>(i) + 1; j < n; ++j) {
+                double d = (band >= 0)
+                    ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, mt)
+                    : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, mt);
+                ptr[i * n + j] = d;
+                ptr[j * n + i] = d;
             }
-        }
+          } catch (...) {
+            errors[slot] = std::current_exception();
+          }
       }
     }  // GIL re-acquired here
 
@@ -1244,14 +1219,9 @@ NB_MODULE(_dtwcpp_core, m) {
       if (error) std::rethrow_exception(error);
 
     return adopt_as_ndarray(std::move(values), {n, n});
-  }, "series"_a, "band"_a = -1, "metric"_a = "l1", "use_pruning"_a = true,
+  }, "series"_a, "band"_a = -1, "metric"_a = "l1",
      "Compute pairwise DTW distance matrix entirely in C++.\n\n"
      "Returns NxN numpy array. Uses OpenMP parallelism when available.\n"
-     "For L1 (and the core's equivalent scalar L2), use_pruning=True\n"
-     "selects the legacy LB-guided exact-matrix path.\n"
-     "band=-1 disables LB_Keogh. Every early-abandoned pair is\n"
-     "recomputed without a cutoff; this option is not a speed guarantee.\n"
-     "Squared Euclidean uses the direct exact path.\n"
      "This avoids a Python-level pair loop.\n"
      "NaN or +-inf in a series raises InvalidInput.");
 
@@ -1392,8 +1362,7 @@ NB_MODULE(_dtwcpp_core, m) {
     .def_rw("enabled", &dtwc::CheckpointOptions::enabled,
             "Enable automatic mid-fill checkpointing. Requires dense distance\n"
             "storage (mmap storage raises InvalidInput) and a non-empty\n"
-            "directory; both are checked before any distance is computed.\n"
-            "DistanceMatrixStrategy.Pruned is downgraded to BruteForce.")
+            "directory; both are checked before any distance is computed.")
     .def("__repr__", [](const dtwc::CheckpointOptions &o) {
       return "CheckpointOptions(dir='" + o.directory
              + "', interval=" + std::to_string(o.save_interval)

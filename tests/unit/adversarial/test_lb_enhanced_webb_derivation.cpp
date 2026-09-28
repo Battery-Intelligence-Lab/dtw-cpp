@@ -10,7 +10,6 @@
  */
 
 #include <core/lower_bound_impl.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -558,21 +557,6 @@ double full_matrix_dtw(
   return at(a.size() - 1, b.size() - 1);
 }
 
-dtwc::Problem make_problem(
-  std::vector<Series> series,
-  int band,
-  const std::string &name)
-{
-  std::vector<std::string> names;
-  names.reserve(series.size());
-  for (std::size_t i = 0; i < series.size(); ++i)
-    names.push_back("s" + std::to_string(i));
-  dtwc::Problem problem(name);
-  problem.set_data(dtwc::Data(std::move(series), std::move(names)));
-  problem.set_band(band);
-  return problem;
-}
-
 } // namespace
 
 TEST_CASE(
@@ -1047,67 +1031,10 @@ TEST_CASE(
   REQUIRE(cascade_enhanced == 0.0);
   REQUIRE(cascade_keogh == 10.0);
 
-  constexpr std::array<std::array<double, 3>, 3> expected_matrix = { { { { 0.0, 0.0, 0.0 } },
-                                                                       { { 0.0, 0.0, 20.0 } },
-                                                                       { { 0.0, 20.0, 0.0 } } } };
-  std::size_t cascade_routes = 0;
-  auto direct_problem = make_problem(
-    { cascade_c, cascade_a, cascade_b }, 1, "d3_direct");
-  const dtwc::core::PruningStats stats =
-    dtwc::core::fill_distance_matrix_pruned(
-      direct_problem, 1, dtwc::LowerBoundStrategy::Enhanced);
-  REQUIRE(stats.total_pairs == 3);
-  REQUIRE(stats.pruned_by_lb_kim == 0);
-  REQUIRE(stats.pruned_by_lb_keogh == 1);
-  REQUIRE(stats.early_abandoned == 1);
-  REQUIRE(stats.computed_full_dtw == 2);
-  REQUIRE(
-    stats.computed_full_dtw + stats.pruned_by_lb_kim
-      + stats.pruned_by_lb_keogh
-    == stats.total_pairs);
-  REQUIRE(stats.early_abandoned <= stats.pruned_by_lb_keogh);
-  REQUIRE(direct_problem.is_distance_matrix_filled());
-  for (std::size_t i = 0; i < expected_matrix.size(); ++i)
-    for (std::size_t j = 0; j < expected_matrix.size(); ++j)
-      REQUIRE(
-        direct_problem.dense_distance_matrix().get(i, j)
-        == expected_matrix[i][j]);
-  ++cascade_routes;
-
-  auto public_problem = make_problem(
-    { cascade_c, cascade_a, cascade_b }, 1, "d3_public");
-  public_problem.set_distance_strategy(dtwc::DistanceMatrixStrategy::Pruned);
-  public_problem.set_lb_strategy(dtwc::LowerBoundStrategy::Enhanced);
-  public_problem.set_verbose(true);
-  std::ostringstream public_output;
-  {
-    struct RestoreCout
-    {
-      std::streambuf *previous;
-      ~RestoreCout() { std::cout.rdbuf(previous); }
-    } restore{ std::cout.rdbuf(public_output.rdbuf()) };
-    public_problem.fill_distance_matrix();
-  }
-  REQUIRE(public_problem.is_distance_matrix_filled());
-  for (std::size_t i = 0; i < expected_matrix.size(); ++i)
-    for (std::size_t j = 0; j < expected_matrix.size(); ++j)
-      REQUIRE(
-        public_problem.dense_distance_matrix().get(i, j)
-        == expected_matrix[i][j]);
-  REQUIRE(
-    public_output.str()
-    ==
-    "Distance matrix is being filled!\n"
-    "Pruned strategy: 3 pairs, 1 early-abandoned, pruning ratio: "
-    "0.333333\n"
-    "Distance matrix has been filled!\n");
-  ++cascade_routes;
-  REQUIRE(cascade_routes == 2);
-
   std::cout
     << "D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 "
        "full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 "
        "webb_cases=35982 webb_branches=4/4 webb_strict=2/2 "
        "tail_cases=35982 tail_strict=2/2 metric_cases=140 "
-       "order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS\n";
+       "order_witnesses=2/2 skips=0 verdict=PASS\n";
 }

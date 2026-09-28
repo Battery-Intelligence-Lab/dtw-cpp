@@ -39,7 +39,6 @@ out-of-line and warning-silent.
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
-| lower-bound strategy | `lb_strategy()` / `set_lb_strategy(LowerBoundStrategy)` | `lb_strategy` prop `[introduced-2.0]` | `set_lb_strategy(str)` `[introduced-2.0]` | live in all three routes |
 | storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
@@ -103,11 +102,11 @@ write lost after a successful open (a full disk, a file-size quota) raises
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
 `series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
-The ten same-name reads for encapsulated state are `method()`, `random_seed()`,
-`last_iterations()`, `tadpole_dc()`, `lb_strategy()`, `storage_policy()`,
+The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `storage_policy()`,
 `verbose()`, `output_folder()`, `name()`, and `data()`.
 `last_iterations()` is intentionally read-only, and
-`data()` returns `const Data&`; the other eight configuration values have
+`data()` returns `const Data&`; the other seven configuration values have
 `set_*` mutators, while data replacement uses
 `set_data()` or `set_view_data()`.
 
@@ -262,8 +261,7 @@ the calling thread after its block has joined; a save that throws propagates out
 of `fill_distance_matrix()`, leaving the computed cells resident and the
 previously published generation valid. `enabled` requires dense distance storage
 and `save_interval >= 1`; either violation raises `InvalidInput` before any
-distance is computed, and `DistanceMatrixStrategy::Pruned` is downgraded to
-`BruteForce` because only the row schedule has save points. `enabled` defaults
+distance is computed. `enabled` defaults
 to `false`, in which case the fill is unchanged. Each save writes the whole
 `N`x`N` CSV, so it costs `O(N^2)` bytes and time and an automatic fill costs
 `O(N^3 / save_interval)` in total; choose `save_interval` so a save is a small

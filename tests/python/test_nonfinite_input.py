@@ -55,12 +55,9 @@ ENTRY_POINTS = {
         True),
     "distance.dtw arow": (
         lambda x, y, b: dtwcpp.distance.dtw(x, y, band=b, missing_strategy="arow"), True),
-    "compute_distance_matrix pruned": (
+    "compute_distance_matrix": (
         lambda x, y, b: core.compute_distance_matrix(
-            [x.tolist(), y.tolist()], b, "l1", True), False),
-    "compute_distance_matrix direct": (
-        lambda x, y, b: core.compute_distance_matrix(
-            [x.tolist(), y.tolist()], b, "l1", False), False),
+            [x.tolist(), y.tolist()], b, "l1"), False),
 }
 if core.METAL_AVAILABLE and core.metal_available():
     # Before FX-15 Metal returned finite numbers for some non-finite input.
@@ -171,7 +168,6 @@ def test_finite_input_matches_the_recurrence_bit_for_bit(name):
 def test_finite_matrix_matches_the_recurrence_bit_for_bit():
     for _, x, y, band in _pairs(18):
         want = _dtw_oracle(x, y, band)
-        for pruning in (True, False):
-            got = core.compute_distance_matrix([x, y], band, "l1", pruning)
-            assert got[0, 1].hex() == want.hex(), (x, y, band, pruning)
-            assert got[1, 0].hex() == want.hex(), (x, y, band, pruning)
+        got = core.compute_distance_matrix([x, y], band, "l1")
+        assert got[0, 1].hex() == want.hex(), (x, y, band)
+        assert got[1, 0].hex() == want.hex(), (x, y, band)

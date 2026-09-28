@@ -40,7 +40,7 @@ def test_default_seed_matches_tier1_seed_contract():
 
 def test_precomputed_fit_and_rectangular_query_both_work():
     X = separated_series()
-    D = dtwcpp.compute_distance_matrix(X.tolist(), use_pruning=False)
+    D = dtwcpp.compute_distance_matrix(X.tolist())
     estimator = DTWCKMedoids(n_clusters=2, metric="precomputed").fit(D)
 
     transformed = estimator.transform(D)

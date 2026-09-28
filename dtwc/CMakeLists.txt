@@ -29,7 +29,6 @@ target_sources(dtwc++
   algorithms/clarans.cpp
   algorithms/tadpole.cpp
   algorithms/detail/fast_clara_plan.hpp
-  core/pruned_distance_matrix.cpp
   io/arrow_c_data.cpp
   io/parse_number.cpp
   extern/nanoarrow/nanoarrow.c
@@ -69,7 +68,6 @@ target_sources(dtwc++
   core/dtw_options.hpp
   core/lower_bounds.hpp
   core/lower_bound_impl.hpp
-  core/pruned_distance_matrix.hpp
   core/sha256.hpp
   core/scratch_matrix.hpp
   core/time_series.hpp

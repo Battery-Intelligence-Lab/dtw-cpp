@@ -11,7 +11,6 @@
 
 #include <algorithms/tadpole.hpp>
 #include <core/lower_bound_impl.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <dtwc.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -444,23 +443,6 @@ TEST_CASE(
 
   std::size_t call_sites = 0;
 
-  // Exact-matrix full-DTW route must disable envelope bounds. The leading
-  // series establishes threshold 0.5 for x and y; a radius-zero Keogh bound
-  // would then fire on their true-zero pair.
-  Series z = x;
-  z.back() = 1.5;
-  auto matrix_problem = make_problem({ z, x, y }, -1, "d2_full_matrix");
-  const dtwc::core::PruningStats matrix_stats =
-    dtwc::core::fill_distance_matrix_pruned(
-      matrix_problem, -1, dtwc::LowerBoundStrategy::Keogh);
-  REQUIRE(matrix_stats.total_pairs == 3);
-  REQUIRE(matrix_stats.pruned_by_lb_kim == 0);
-  REQUIRE(matrix_stats.pruned_by_lb_keogh == 0);
-  REQUIRE(matrix_stats.early_abandoned == 0);
-  REQUIRE(matrix_stats.computed_full_dtw == 3);
-  REQUIRE(matrix_problem.dist_by_ind(1, 2) == 0.0);
-  ++call_sites;
-
   // TADPole deliberately replaces a negative full-DTW request with global
   // envelopes. Its pruning ledger is the reachability proof.
   auto tadpole_pruned_problem =
@@ -515,11 +497,11 @@ TEST_CASE(
   REQUIRE(separated_brute_stats.pruned_by_ub == 0);
   ++call_sites;
 
-  REQUIRE(call_sites == 2);
+  REQUIRE(call_sites == 1);
   std::cout
     << "D2_LB_KEOGH_GATE envelope_cases=" << envelope_cases
     << " equal_cases=" << equal_cases
     << " unequal_cases=" << unequal_cases
-    << " call_sites=" << call_sites << "/2"
+    << " call_sites=" << call_sites << "/1"
     << " skips=0 verdict=PASS\n";
 }
