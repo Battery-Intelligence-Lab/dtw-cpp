@@ -8,6 +8,8 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Fixed (C++):** `scores::silhouette()` on a Problem that has not been clustered raises `InvalidInput`; v1.0.0 printed a
+  line and returned one `-1` per series, a vector that reads as a (poor) score.
 - **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
   `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
   `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before

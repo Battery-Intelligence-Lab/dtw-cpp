@@ -149,23 +149,20 @@ Canonical scheme drops the redundant `Index`/`Information` noun (the fixed
 decision `daviesBouldinIndex → davies_bouldin` sets the pattern; applied
 uniformly). Same name in all three languages.
 
-| Concept | C++ retained 1.x alias (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
-|---|---|---|---|---|
-| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
-| Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
-| Dunn | `dunnIndex(prob)` | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
-| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
-| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
-| Adjusted Rand | `adjustedRandIndex(l1,l2)` | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
-| Normalized MI | `normalizedMutualInformation(l1,l2)` | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
+| Concept | C++ | Python | MATLAB |
+|---|---|---|---|
+| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` |
+| Davies–Bouldin | `davies_bouldin(prob)` | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
+| Dunn | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
+| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` |
+| Calinski–Harabasz | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
+| Adjusted Rand | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
+| Normalized MI | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
 
-Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
-`dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same five
-public spellings in their dedicated `+dtwc/*.m` compatibility wrappers. Every
-old Python/MATLAB call emits one deprecation warning before forwarding; the
-shared MEX score commands remain warning-silent. The canonical Adjusted-Rand
-and Normalized-MI spellings are adjudicated in §10 item 1.
+Only `silhouette` shipped in v1.0.0; the camelCase and `*_index` spellings were
+never released and are gone. `silhouette` on an unclustered Problem raises
+`InvalidInput`. The canonical Adjusted-Rand and Normalized-MI spellings are
+adjudicated in §10 item 1.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 

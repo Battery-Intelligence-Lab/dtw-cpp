@@ -75,15 +75,11 @@ _CHECKPOINT = [
 _UTILS = ["derivative_transform", "z_normalize", "soft_dtw_gradient"]
 
 # ---------------------------------------------------------------------------
-# §2.4 scores — canonical names + retained deprecated aliases (§4)
+# §2.4 scores
 # ---------------------------------------------------------------------------
 _SCORES_CANON = [
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
-]
-_SCORES_DEPRECATED = [
-    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
-    "adjusted_rand_index", "normalized_mutual_information",
 ]
 
 # ---------------------------------------------------------------------------
@@ -130,7 +126,7 @@ _PROBLEM_DEPRECATED = [
 @pytest.mark.parametrize(
     "name",
     _TIER1 + _ENV + _ERRORS + _ENUMS + _STRUCTS + _ALGOS + _CHECKPOINT
-    + _UTILS + _SCORES_CANON + _SCORES_DEPRECATED,
+    + _UTILS + _SCORES_CANON,
 )
 def test_module_symbol_exists(name):
     """Every contract Python-column module symbol is present with its exact name."""

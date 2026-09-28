@@ -29,8 +29,8 @@ where $$a(i)$$ is the mean dissimilarity to the other members of its cluster
 and $$b(i)$$ is the smallest mean dissimilarity to another non-empty cluster.
 Ordinary finite results lie in $$[-1,1]$$.
 
-The function returns one value per series. An unclustered problem returns a
-vector filled with `-1` after printing a diagnostic. A singleton cluster
+The function returns one value per series. An unclustered problem raises
+`InvalidInput`. A singleton cluster
 member receives `0`. If a non-singleton point has both means equal to zero,
 the implemented `0/0` expression can return NaN; callers that aggregate the
 vector must decide how to handle non-finite values.

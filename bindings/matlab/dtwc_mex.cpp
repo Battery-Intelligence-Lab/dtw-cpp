@@ -1321,14 +1321,14 @@ static void cmd_silhouette(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = result;
 }
 
-static void cmd_davies_bouldin_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("davies_bouldin_index requires a handle.");
+static void cmd_davies_bouldin(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("davies_bouldin requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::davies_bouldin(prob));
 }
 
-static void cmd_dunn_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("dunn_index requires a handle.");
+static void cmd_dunn(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("dunn requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::dunn(prob));
 }
@@ -1339,14 +1339,14 @@ static void cmd_inertia(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::inertia(prob));
 }
 
-static void cmd_calinski_harabasz_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz_index requires a handle.");
+static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::calinski_harabasz(prob));
 }
 
-static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("adjusted_rand_index requires two label vectors.");
+static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
@@ -1355,8 +1355,8 @@ static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const m
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::adjusted_rand(labels1, labels2));
 }
 
-static void cmd_normalized_mutual_information(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_information requires two label vectors.");
+static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
@@ -1623,12 +1623,12 @@ void mexFunction(int nlhs, mxArray *plhs[],
     else if (cmd == "cut_dendrogram") cmd_cut_dendrogram(nlhs, plhs, nrhs, prhs);
     // Scoring
     else if (cmd == "silhouette") cmd_silhouette(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "davies_bouldin_index") cmd_davies_bouldin_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "dunn_index") cmd_dunn_index(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "davies_bouldin") cmd_davies_bouldin(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "dunn") cmd_dunn(nlhs, plhs, nrhs, prhs);
     else if (cmd == "inertia") cmd_inertia(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "calinski_harabasz_index") cmd_calinski_harabasz_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "adjusted_rand_index") cmd_adjusted_rand_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "normalized_mutual_information") cmd_normalized_mutual_information(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
     // Tier-1 route (contract 1.3 / 1.4): dtwc::cluster owns every decision
     else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);

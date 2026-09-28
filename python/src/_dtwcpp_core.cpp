@@ -1395,9 +1395,7 @@ NB_MODULE(_dtwcpp_core, m) {
   // Scores
   // =========================================================================
 
-  // Canonical 2.0 score names (api-contract-2.0.md §2.4): the `Index`/`Information`
-  // noun is dropped. The old *_index / *_information spellings stay one cycle as
-  // deprecated aliases (§4) — both forward to the same canonical C++ function.
+  // Score names drop the `Index`/`Information` noun (api-contract-2.0.md §2.4).
   m.def("silhouette", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::silhouette(prob);
@@ -1407,23 +1405,12 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::davies_bouldin(prob);
   }, "prob"_a, "Compute Davies-Bouldin index (lower is better).");
-  m.def("davies_bouldin_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.davies_bouldin_index",
-                          "dtwcpp.davies_bouldin");
-    nb::gil_scoped_release release;
-    return dtwc::scores::davies_bouldin(prob);
-  }, "prob"_a, "Deprecated alias for davies_bouldin() (kept one cycle, §4).");
 
   m.def("dunn", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
     return dtwc::scores::dunn(prob);
   }, "prob"_a,
      "Compute Dunn index (min inter-cluster distance / max intra-cluster diameter).");
-  m.def("dunn_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.dunn_index", "dtwcpp.dunn");
-    nb::gil_scoped_release release;
-    return dtwc::scores::dunn(prob);
-  }, "prob"_a, "Deprecated alias for dunn() (kept one cycle, §4).");
 
   m.def("inertia", [](dtwc::Problem &prob) {
     nb::gil_scoped_release release;
@@ -1435,38 +1422,18 @@ NB_MODULE(_dtwcpp_core, m) {
     nb::gil_scoped_release release;
     return dtwc::scores::calinski_harabasz(prob);
   }, "prob"_a, "Compute Calinski-Harabasz index (medoid-adapted; higher is better).");
-  m.def("calinski_harabasz_index", [](dtwc::Problem &prob) {
-    warn_deprecated_alias("dtwcpp.calinski_harabasz_index",
-                          "dtwcpp.calinski_harabasz");
-    nb::gil_scoped_release release;
-    return dtwc::scores::calinski_harabasz(prob);
-  }, "prob"_a, "Deprecated alias for calinski_harabasz() (kept one cycle, §4).");
 
   m.def("adjusted_rand", [](const std::vector<int> &labels_true,
                             const std::vector<int> &labels_pred) {
     return dtwc::scores::adjusted_rand(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Adjusted Rand index between two label assignments (1.0 = perfect agreement).");
-  m.def("adjusted_rand_index", [](const std::vector<int> &labels_true,
-                                    const std::vector<int> &labels_pred) {
-    warn_deprecated_alias("dtwcpp.adjusted_rand_index",
-                          "dtwcpp.adjusted_rand");
-    return dtwc::scores::adjusted_rand(labels_true, labels_pred);
-  }, "labels_true"_a, "labels_pred"_a,
-     "Deprecated alias for adjusted_rand() (kept one cycle, §4).");
 
   m.def("normalized_mutual_info", [](const std::vector<int> &labels_true,
                                       const std::vector<int> &labels_pred) {
     return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
   }, "labels_true"_a, "labels_pred"_a,
      "Normalized Mutual Information between two label assignments ([0,1]).");
-  m.def("normalized_mutual_information", [](const std::vector<int> &labels_true,
-                                              const std::vector<int> &labels_pred) {
-    warn_deprecated_alias("dtwcpp.normalized_mutual_information",
-                          "dtwcpp.normalized_mutual_info");
-    return dtwc::scores::normalized_mutual_info(labels_true, labels_pred);
-  }, "labels_true"_a, "labels_pred"_a,
-     "Deprecated alias for normalized_mutual_info() (kept one cycle, §4).");
 
   // =========================================================================
   // Hierarchical clustering

@@ -77,12 +77,6 @@ from dtwcpp._dtwcpp_core import (
     calinski_harabasz,
     adjusted_rand,
     normalized_mutual_info,
-    # Scores (deprecated aliases, kept one cycle — api-contract §4)
-    davies_bouldin_index,
-    dunn_index,
-    calinski_harabasz_index,
-    adjusted_rand_index,
-    normalized_mutual_information,
     # Utils
     derivative_transform,
     z_normalize,
@@ -375,9 +369,6 @@ __all__ = [
     # Scores (canonical 2.0 names)
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
-    # Scores (deprecated aliases, §4)
-    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
-    "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "device", "get_device",

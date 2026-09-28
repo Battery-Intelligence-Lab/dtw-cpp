@@ -56,11 +56,6 @@ falsified; that does not change the implemented public policy.
 | 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:38; getter :377) | `name()` | alias (loud warn) |
 | 29f | medoids read (MATLAB) | `Problem.CentroidsInd` (dependent prop, Problem.m:39; getter :384) | `medoids()` | alias (loud warn) |
 | 29g | labels read (MATLAB) | `Problem.ClustersInd` (dependent prop, Problem.m:40; getter :391) | `labels()` | alias (loud warn) |
-| 30 | Davies–Bouldin | `scores::daviesBouldinIndex` (scores.hpp:38-39) | `scores::davies_bouldin` **(fixed)** | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 31 | Dunn | `scores::dunnIndex` (scores.hpp:41-42) | `scores::dunn` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 32 | Calinski–Harabasz | `scores::calinskiHarabaszIndex` (scores.hpp:44-45) | `scores::calinski_harabasz` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 33 | Adjusted Rand | `scores::adjustedRandIndex` (scores.hpp:47-52) | `scores::adjusted_rand` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
