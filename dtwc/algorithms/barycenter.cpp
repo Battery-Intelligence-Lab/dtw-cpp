@@ -37,8 +37,6 @@ struct AlignmentWorkspace {
   {
     if (nx == 0 || ny == 0)
       throw InvalidInput("dtw_barycenter: series must not be empty.");
-    if (nx > std::numeric_limits<std::size_t>::max() / ny)
-      throw InvalidInput("dtw_barycenter: alignment matrix size overflows size_t.");
     return nx * ny;
   }
 
@@ -46,8 +44,6 @@ struct AlignmentWorkspace {
   {
     if (nx == 0 || ny == 0)
       throw InvalidInput("dtw_barycenter: series must not be empty.");
-    if (nx > std::numeric_limits<std::size_t>::max() - (ny - 1))
-      throw InvalidInput("dtw_barycenter: alignment path size overflows size_t.");
     return nx + ny - 1;
   }
 
@@ -554,9 +550,6 @@ double assign(const std::vector<Series>& data, const std::vector<Series>& center
 {
   labels.resize(data.size());
   std::vector<double> local_costs(data.size(), 0.0);
-  if (data.size() > static_cast<std::size_t>(
-                      std::numeric_limits<std::int64_t>::max()))
-    throw InvalidInput("barycenter_kmeans: series count exceeds int64 loop range.");
   const std::int64_t end = static_cast<std::int64_t>(data.size());
   const bool parallel_assignment = worker_count > 1 && !openmp_region_active();
 #ifdef _OPENMP

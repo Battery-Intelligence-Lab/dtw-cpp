@@ -8,7 +8,6 @@
 
 #include "mip.hpp"
 #include "highs_support.hpp"
-#include "index_guard.hpp"
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
 #include "../Data.hpp"        // for Data
@@ -58,15 +57,11 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   const auto Nvar = Nb * Nb;
 
-  // The binding index limit is the NARROWER of HighsInt and int: HighsInt is
-  // int32 in a default HiGHS build, and the matrix below is assembled through
-  // plain-`int` triplet fields, so on a HIGHSINT64 build a HighsInt-only bound
-  // would still let an N^2 dimension truncate in the triplets.
-  const auto index_max = std::min<std::size_t>(
-    static_cast<std::size_t>(std::numeric_limits<HighsInt>::max()),
-    static_cast<std::size_t>(std::numeric_limits<int>::max()));
-  mip::require_index_range(Nvar, index_max, "column count N*N", "HiGHS");
-  mip::require_index_range(Nconstraints, index_max, "row count", "HiGHS");
+  // HiGHS and the triplets below index with `int`; the ~3N² nonzeros are the
+  // largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
+  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
+  if (numel > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   HighsModel model;
   model.lp_.num_col_ = Nvar;
@@ -104,8 +99,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
 
-  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
-  mip::require_index_range(numel, index_max, "nonzero count", "HiGHS");
 
   model.lp_.a_matrix_.start_.clear();
   model.lp_.a_matrix_.index_.clear();

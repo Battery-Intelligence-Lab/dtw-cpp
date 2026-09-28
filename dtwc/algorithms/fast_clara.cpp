@@ -124,15 +124,9 @@ namespace {
     const size_t object_bytes = data.is_f32()
       ? sizeof(std::vector<float>) + sizeof(std::string)
       : sizeof(std::vector<data_t>) + sizeof(std::string);
-    if (data.size() > std::numeric_limits<size_t>::max() / object_bytes)
-      return std::numeric_limits<size_t>::max();
     size_t total = data.size() * object_bytes;
-    for (size_t i = 0; i < data.size(); ++i) {
-      const size_t count = data.series_flat_size(i);
-      if (count > (std::numeric_limits<size_t>::max() - total) / element_bytes)
-        return std::numeric_limits<size_t>::max();
-      total += count * element_bytes;
-    }
+    for (size_t i = 0; i < data.size(); ++i)
+      total += data.series_flat_size(i) * element_bytes;
     return total;
   }
 #endif

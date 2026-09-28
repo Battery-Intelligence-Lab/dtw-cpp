@@ -7,7 +7,6 @@
  */
 
 #include "mip.hpp"
-#include "index_guard.hpp"
 #include "decode_assignment.hpp"
 #include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
@@ -45,9 +44,8 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // GRBModel::addVars takes an `int` count: an N*N above INT_MAX would narrow
     // into a wrong-sized (or negative) model.
-    mip::require_index_range(Nb * Nb,
-                             static_cast<std::size_t>(std::numeric_limits<int>::max()),
-                             "column count N*N", "Gurobi");
+    if (Nb * Nb > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+      throw SolverError("Gurobi: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX variables; use Method::LRCore.");
 
     // Create variables
     std::unique_ptr<GRBVar[]> w{ model.addVars(static_cast<int>(Nb * Nb), GRB_BINARY) };

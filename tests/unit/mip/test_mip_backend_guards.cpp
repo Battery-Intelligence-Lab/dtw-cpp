@@ -123,6 +123,26 @@ TEST_CASE("Method::MIP above N = 200 runs the selected solver", "[mip][guards]")
 }
 
 // ---------------------------------------------------------------------------
+// The compact model's sizes pass through `int` in HiGHS (~3N² nonzeros) and in
+// Gurobi's addVars (N² variables). Past INT_MAX a cast would build a wrong
+// model, so the backend refuses before it fills the matrix or allocates.
+// ---------------------------------------------------------------------------
+TEST_CASE("The compact MIP refuses a model whose size does not fit int", "[mip][guards]")
+{
+  require_highs();
+  const auto check = [](int N, Solver solver, const char *what) {
+    auto prob = make_problem(std::vector<double>(static_cast<std::size_t>(N), 1.0), 2);
+    if (!prob.set_solver(solver)) return; // Gurobi is not built here
+    prob.mip_settings.warm_start = false;
+    REQUIRE_THROWS_MATCHES(prob.cluster(), SolverError,
+                           Catch::Matchers::MessageMatches(Catch::Matchers::ContainsSubstring(what)));
+    REQUIRE_FALSE(prob.is_distance_matrix_filled());
+  };
+  check(26800, Solver::HiGHS, "more than INT_MAX nonzeros");   // 3N² − N = 2,154,694,400
+  check(46341, Solver::Gurobi, "more than INT_MAX variables"); // N² = 2,147,488,281
+}
+
+// ---------------------------------------------------------------------------
 // A4' — Method::LRCore's "raise the node cap" error is only actionable because
 //       MIPSettings::lr_max_nodes exists and is forwarded. Cap the tree at one
 //       node on an instance whose root does NOT certify: the uncertified
