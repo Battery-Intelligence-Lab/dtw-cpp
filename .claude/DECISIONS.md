@@ -296,3 +296,9 @@ III.10 record them as adopted. Two of them — **O-09** (drop the 1.x artefact f
   matrix made for other data and a too-wide `skip_cols` are `InvalidInput`; unwritable paths and quotas `IOError`; a GPU backend
   a build lacks, PDLP's included, `DeviceError`). 29 `[[deprecated]]` C++ shims (33 before S2).
 
+- **2026-09-28 — design review approved (Volkan).** `plans/2026-09-27-design-review.md` replaces the plan's §3–§6 with
+  phases A–G; implementer agents may commit each proven step locally on `design-2.0` (never push, tag or rewrite). GPU
+  assignment for CLARA is in 2.0, the last performance item after phase C. OneBatchPAM vs CLARA: "Are they equivalent
+  methods? If they have trade-offs they both can stay, but first measure if they are equal." llfio → mio: open until
+  a measured answer to "how is mio performance?". This overturns D-16 (Pruned kept as a diagnostic) and D-22 (no
+  widening: counts become `index_t = std::int64_t`).

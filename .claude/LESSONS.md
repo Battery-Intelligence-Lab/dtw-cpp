@@ -1611,3 +1611,7 @@ Critical knowledge to avoid repeating mistakes.
   `~/matlab_crash_dump.*` per run); the same command with the default `TMPDIR`
   passed. macOS limits a Unix-socket path to 104 bytes [inferred cause]. Run the
   MATLAB suite without the per-run `TMPDIR` the other suites use.
+- **A child's stdout captured on Windows ends lines in `\r\n`.** `test_config_spellings`
+  ran `dtwc_cl` through `std::system(... > file)`, read the file in binary and split on
+  `\n`, so every value kept a `\r` and 16 CHECKs failed as `"cpu" == "cpu"` (Windows only,
+  2026-09-27). Strip a trailing `\r` wherever a test splits captured output into lines.

@@ -4,6 +4,25 @@ Volkan's instructions, verbatim. Agents do not edit the quoted text; new instruc
 with a date. How they are turned into a design is in `design.md` §1; how they are scheduled is in
 `PLAN.md`.
 
+## 2026-09-27 — bloat pass
+
+> I was working on this on another computer, but my limit there finishes do I don't know where we are.
+> But can you see the current situation and continue. Use Fable max for discussion. Do not create
+> unnecessary things, extra defensive design, unnecessary abstractions etc. For example previously
+> there was a integer checker was checking integers all the time, But we already know that you won't
+> have more time series than the upper limit of the largest integer on the system. So you don't have
+> to panick if you had a 32 bit integer and trillions of time series. Just take largest integer at
+> compile time, default to 64 bit, and go on. I don't need lots of unnecessary garbage. I want a
+> decent, maintainable, and correctly working library that can use CPU, GPU, HPC. So go through the
+> library, re-evaluate the decisions, remove the bloat, have a nice interface for users, discuss with
+> Fable max.
+
+Later the same day:
+
+> Okay use parallel agents and workflows to continue design
+
+> use Fable max as advisor
+
 ## 2026-09-23 — YAGNI pass
 
 > Recently I have found out that the plan was adding unnecessary complications to our library for

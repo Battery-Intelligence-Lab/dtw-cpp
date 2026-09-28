@@ -24,8 +24,10 @@ never two on the same files: a test that pins the item's contract against an ind
 the §2 gates → one commit. An item's record is its status and commit hash on its line here; `baselines/` gets
 a file only for a performance claim.
 
-## 1. Where we are (2026-09-23; updated 2026-09-24)
+## 1. Where we are (2026-09-23; updated 2026-09-24, 2026-09-27)
 
+- **2026-09-27: this plan is under review.** `plans/2026-09-27-design-review.md` (awaiting Volkan) replaces §3–§6
+  with seven phases A–G once approved; until then nothing below starts. HEAD `cd5d449` holds IF-2 S3.
 - 2026-09-24: Volkan committed `899bb65` ("test improvement", 302 files) — the GT, FX, IF-1 and IF-2 S1 / S2 work of 09-23 and 09-24.
   On top, uncommitted: IF-2 S3. Tests on this Mac: ctest 142 / 142 (2 CUDA skips), pytest 1,245 / 0, `matlab_suite` green.
 
