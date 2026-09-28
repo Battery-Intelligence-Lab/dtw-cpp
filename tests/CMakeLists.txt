@@ -292,7 +292,6 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
         SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/integration/test_fast_clara_parquet_parity.cmake"
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/fast_clara_streaming_8x4.parquet"
              "-DBINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/f8-fast-clara-parity"
-             "-DBYTE_ORDER=${CMAKE_CXX_BYTE_ORDER}"
         MARKER "F8_PARITY subject=real_dtwc_cl runs=6 route_markers=12/12 parity=9/9 configs=3/3_distinct"
         LABELS integration arrow f8 SERIAL TIMEOUT 120)
 
@@ -301,8 +300,7 @@ if(TARGET dtwc_cl AND "DTWC_HAS_PARQUET" IN_LIST _dtwc_public_defs)
         ARGS "-DCLI=$<TARGET_FILE:dtwc_cl>" "-DFIXTURE_WRITER=$<TARGET_FILE:f13_poison_parquet_writer>"
              "-DFIXTURE=${CMAKE_CURRENT_SOURCE_DIR}/fixtures/fast_clara_streaming_8x4.parquet"
              "-DBINARY_ROOT=${CMAKE_CURRENT_BINARY_DIR}" "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/f13-fast-clara-assignment"
-             "-DBYTE_ORDER=${CMAKE_CXX_BYTE_ORDER}"
-        MARKER "F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=4/4 route_markers=8/8 artifact_pairs=6/6 payloads=4/4 objective_bytes=4/4 stream_rejections=2/2 skips=0"
+        MARKER "F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=4/4 route_markers=8/8 artifact_pairs=4/4 payloads=4/4 objectives=4/4 stream_rejections=2/2 skips=0"
         LABELS integration arrow f13 SERIAL TIMEOUT 120)
 
     # Imported Arrow runtimes are not installed beside the test executable.

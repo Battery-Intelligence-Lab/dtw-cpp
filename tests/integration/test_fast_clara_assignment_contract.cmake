@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.26)
 
 foreach(required_var IN ITEMS
-        CLI FIXTURE_WRITER FIXTURE BINARY_ROOT WORK_ROOT BYTE_ORDER)
+        CLI FIXTURE_WRITER FIXTURE BINARY_ROOT WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "F13 missing required -D${required_var}=...")
     endif()
@@ -91,7 +91,6 @@ set(expected_medoids [=[cluster,medoid_index,medoid_name
 1,3,series_3
 ]=])
 set(expected_files
-    assignment_checkpoint.bin
     assignment_labels.csv
     assignment_medoids.csv)
 
@@ -102,8 +101,7 @@ set_property(GLOBAL PROPERTY f13_payloads)
 set_property(GLOBAL PROPERTY f13_objectives)
 set_property(GLOBAL PROPERTY f13_stream_rejections)
 
-function(run_f13_cli precision mode output_dir dtype expected_cost_hex_le
-    expected_cost_hex_be)
+function(run_f13_cli precision mode output_dir dtype expected_cost)
     file(MAKE_DIRECTORY "${output_dir}")
     set(args
         --input "${fixture_path}"
@@ -196,29 +194,16 @@ function(run_f13_cli precision mode output_dir dtype expected_cost_hex_le
     endif()
     set_property(GLOBAL APPEND PROPERTY f13_payloads "${precision}/${mode}")
 
-    file(SIZE "${output_dir}/assignment_checkpoint.bin" checkpoint_size)
-    if(NOT checkpoint_size EQUAL 72)
+    # dtwc_cl prints the total cost in shortest round-trip form, so this text
+    # is the exact double.
+    if(NOT stdout MATCHES "Total cost: ([^\r\n]+)")
         message(FATAL_ERROR
-            "F13 ${precision}/${mode} checkpoint size=${checkpoint_size}, expected=72")
+            "F13 ${precision}/${mode} missing 'Total cost:'\n${stdout}")
     endif()
-    if(BYTE_ORDER STREQUAL "LITTLE_ENDIAN")
-        set(expected_cost_hex "${expected_cost_hex_le}")
-    elseif(BYTE_ORDER STREQUAL "BIG_ENDIAN")
-        set(expected_cost_hex "${expected_cost_hex_be}")
-    else()
-        message(FATAL_ERROR "F13 unknown C++ byte order '${BYTE_ORDER}'")
-    endif()
-    file(READ
-        "${output_dir}/assignment_checkpoint.bin"
-        cost_hex
-        OFFSET 24
-        LIMIT 8
-        HEX)
-    string(TOUPPER "${cost_hex}" cost_hex)
-    if(NOT cost_hex STREQUAL expected_cost_hex)
+    if(NOT CMAKE_MATCH_1 STREQUAL expected_cost)
         message(FATAL_ERROR
-            "F13 ${precision}/${mode} total_cost bytes=${cost_hex}, "
-            "expected=${expected_cost_hex}")
+            "F13 ${precision}/${mode} total cost=${CMAKE_MATCH_1}, "
+            "expected=${expected_cost}")
     endif()
     set_property(GLOBAL APPEND PROPERTY f13_objectives "${precision}/${mode}")
     set_property(GLOBAL APPEND PROPERTY f13_runs "${precision}/${mode}")
@@ -296,17 +281,14 @@ function(require_f13_stream_rejection precision dtype)
         GLOBAL APPEND PROPERTY f13_stream_rejections "${precision}")
 endfunction()
 
-function(check_f13_precision precision dtype expected_cost_hex_le
-    expected_cost_hex_be)
+function(check_f13_precision precision dtype expected_cost)
     set(resident_dir "${work_root}/${precision}-resident")
     set(stream_dir "${work_root}/${precision}-stream")
 
     run_f13_cli(
-        "${precision}" resident "${resident_dir}" "${dtype}"
-        "${expected_cost_hex_le}" "${expected_cost_hex_be}")
+        "${precision}" resident "${resident_dir}" "${dtype}" "${expected_cost}")
     run_f13_cli(
-        "${precision}" stream "${stream_dir}" "${dtype}"
-        "${expected_cost_hex_le}" "${expected_cost_hex_be}")
+        "${precision}" stream "${stream_dir}" "${dtype}" "${expected_cost}")
 
     foreach(artifact IN LISTS expected_files)
         execute_process(
@@ -332,12 +314,11 @@ function(check_f13_precision precision dtype expected_cost_hex_le
     endforeach()
 endfunction()
 
-check_f13_precision(
-    f64 float64
-    9A99999999896340 406389999999999A)
-check_f13_precision(
-    f32 float32
-    0000809E99896340 406389999E800000)
+# The shortest round-trip text of the IEEE-754 values the binary result
+# checkpoint pinned at offset 24 (big-endian hex 406389999999999A and
+# 406389999E800000).
+check_f13_precision(f64 float64 "156.3")
+check_f13_precision(f32 float32 "156.30000233650208")
 require_f13_stream_rejection(f64 float64)
 require_f13_stream_rejection(f32 float32)
 
@@ -356,7 +337,7 @@ list(LENGTH f13_objectives objective_count)
 list(LENGTH f13_stream_rejections stream_rejection_count)
 if(NOT run_count EQUAL 4
     OR NOT route_check_count EQUAL 8
-    OR NOT pair_count EQUAL 6
+    OR NOT pair_count EQUAL 4
     OR NOT payload_count EQUAL 4
     OR NOT objective_count EQUAL 4
     OR NOT stream_rejection_count EQUAL 2)
@@ -369,7 +350,7 @@ endif()
 
 message(STATUS
     "F13_ASSIGNMENT_CONTRACT subject=real_dtwc_cl runs=${run_count}/4 "
-    "route_markers=${route_check_count}/8 artifact_pairs=${pair_count}/6 "
-    "payloads=${payload_count}/4 objective_bytes=${objective_count}/4 "
+    "route_markers=${route_check_count}/8 artifact_pairs=${pair_count}/4 "
+    "payloads=${payload_count}/4 objectives=${objective_count}/4 "
     "stream_rejections=${stream_rejection_count}/2 "
     "skips=0 fixture_sha256=${fixture_sha}")

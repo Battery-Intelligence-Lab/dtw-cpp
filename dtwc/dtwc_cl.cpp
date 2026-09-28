@@ -24,11 +24,13 @@
 #include <omp.h>
 #endif
 
+#include <array>
+#include <charconv>
 #include <cstdlib>
 #include <fstream>
-#include <iomanip>
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -111,11 +113,15 @@ int main(int argc, char *argv[])
     const dtwc::Clock clock;
     if (config.verbose) print_settings(config);
     const dtwc::Result result = dtwc::run(config);
+    // Shortest round-trip form: the printed cost is the exact double, so two runs
+    // can be compared bit for bit from their output.
+    std::array<char, 32> cost{};
+    const char *cost_end = std::to_chars(cost.data(), cost.data() + cost.size(), result.cost()).ptr;
 
     std::cout << "\n=== Results ===\n"
               << "  Method:     " << dtwc::name_of(dtwc::cluster_method_names, result.method()) << "\n";
     std::cout << "  Clusters:   " << config.k << "\n"
-              << "  Total cost: " << std::setprecision(6) << result.cost() << "\n"
+              << "  Total cost: " << std::string_view(cost.data(), cost_end - cost.data()) << "\n"
               << "  Converged:  " << (result.converged() ? "yes" : "no") << "\n"
               << "  Iterations: " << result.iterations() << "\n"
               << "  Output:     " << config.output << "/\n"
