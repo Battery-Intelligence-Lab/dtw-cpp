@@ -267,8 +267,8 @@ expect_loud_failure(silhouettes_blocked
 # B-05: a write that fails after the file was opened (full disk, quota). Under
 # `ulimit -f 1` a write past one block (512 bytes under dash, 1024 under macOS
 # /bin/sh) fails with EFBIG; SIGXFSZ is ignored so the write returns an error
-# instead of killing the process. Every artefact written before the labels must
-# fit in 512 bytes and the labels must exceed 1024, checked on a control run.
+# instead of killing the process. The labels are the first artefact written and
+# must exceed 1024 bytes, checked on a control run.
 # The shell script uses newlines, not semicolons: a CMake list would split it.
 set(efbig "unavailable")
 if(NOT WIN32)
@@ -287,12 +287,10 @@ if(NOT WIN32)
             "long-name control run failed (exit=${long_result})\n"
             "stdout:\n${long_stdout}\nstderr:\n${long_stderr}")
     endif()
-    file(SIZE "${WORK_ROOT}/out_long_control/loud_checkpoint.bin" before_labels)
     file(SIZE "${WORK_ROOT}/out_long_control/loud_labels.csv" labels_size)
-    if(before_labels GREATER 512 OR NOT labels_size GREATER 1024)
+    if(NOT labels_size GREATER 1024)
         message(FATAL_ERROR
-            "EFBIG fixture drifted: checkpoint.bin=${before_labels} bytes (must be "
-            "<= 512), labels.csv=${labels_size} bytes (must be > 1024)")
+            "EFBIG fixture drifted: labels.csv=${labels_size} bytes (must be > 1024)")
     endif()
     file(MAKE_DIRECTORY "${WORK_ROOT}/out_efbig")
     expect_loud_failure(labels_efbig
