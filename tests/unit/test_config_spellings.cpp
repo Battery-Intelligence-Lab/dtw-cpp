@@ -75,7 +75,10 @@ std::vector<std::string> lines_of(const std::string &text)
 {
   std::vector<std::string> lines;
   std::istringstream stream(text);
-  for (std::string line; std::getline(stream, line);) lines.push_back(line);
+  for (std::string line; std::getline(stream, line);) {
+    if (!line.empty() && line.back() == '\r') line.pop_back(); // Windows text-mode stdout writes CRLF
+    lines.push_back(line);
+  }
   return lines;
 }
 
