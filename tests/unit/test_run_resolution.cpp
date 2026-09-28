@@ -21,6 +21,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
@@ -144,8 +145,13 @@ TEST_CASE("run on cpu: squared Euclidean distances are computed, not refused", "
   const auto matrix = dtwc::run(config, levels()).distance_matrix();
   for (std::size_t i = 0; i < 6; ++i)
     for (std::size_t j = 0; j < 6; ++j)
-      CHECK(matrix[i * 6 + j]
-            == dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1, dtwc::core::MetricType::SquaredL2));
+      // A different call path to the same recurrence: under MSVC /fp:contract
+      // the last bit may differ (observed: 1 ulp), so 1e-14 relative.
+      CHECK_THAT(matrix[i * 6 + j],
+                 Catch::Matchers::WithinRel(
+                   dtwc::distance::dtw<double>(data.p_vec[i], data.p_vec[j], -1,
+                                               dtwc::core::MetricType::SquaredL2),
+                   1e-14));
 }
 
 TEST_CASE("run on gpu: the matrix methods fill on the GPU; the as-it-goes methods raise", "[run][device][gpu]")
