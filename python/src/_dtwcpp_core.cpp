@@ -1478,7 +1478,7 @@ NB_MODULE(_dtwcpp_core, m) {
     return dtwc::algorithms::build_dendrogram(prob, opts);
   }, "prob"_a, "opts"_a = dtwc::algorithms::HierarchicalOptions{},
      "Build a hierarchical dendrogram from a Problem.\n\n"
-     "Requires distance matrix to be filled (call fill_distance_matrix() first).\n"
+     "Fills the distance matrix first if it is not filled.\n"
      "Returns a Dendrogram containing N-1 merge steps in merge order.\n"
      "Raises InvalidInput (a ValueError) if N > opts.max_points (default 2000).");
 

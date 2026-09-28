@@ -21,6 +21,7 @@
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
 #include "core/storage.hpp"     // for StoragePolicy
+#include "core/clustering_result.hpp" // for set_result
 
 #include "core/mmap_distance_matrix.hpp"
 #include <variant>
@@ -70,7 +71,7 @@ struct MIPSettings {
   int numeric_focus = 1;           ///< Gurobi NumericFocus (0-3).
   int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
   bool verbose_solver = false;     ///< Show solver log output.
-  std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap (mip::LagrangianParams::max_nodes). Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
+  std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap. Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
 };
 
 /// Reject MIP settings a solver would otherwise turn into a solver-worded error.
@@ -459,6 +460,10 @@ public:
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   void set_clusters(std::vector<int> &candidate_centroids);
+  /// Publish a clustering: k = the number of medoids, which are distinct
+  /// indices in [0, N), and one label in [0, k) per series. Anything else is
+  /// InvalidInput and leaves the Problem unchanged.
+  void set_result(const core::ClusteringResult &result);
   /// @return false when Gurobi is requested on a build without it: the solver
   /// is then HiGHS, which a caller that asked for Gurobi must not ignore.
   [[nodiscard]] bool set_solver(dtwc::Solver solver_);

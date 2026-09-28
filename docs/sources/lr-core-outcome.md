@@ -20,7 +20,7 @@ Source: `docs/sources/lr-core-derivation.md` (tracked canonical derivation; prom
 
 ### Task 4.2: Reduced-cost fixing [DONE 2026-07-07]
 
-**Files:** Created: `dtwc/mip/reduced_cost_fixing.{hpp,cpp}` (Beasley-style, driven by 4.1 dual state), `tests/unit/mip/test_reduced_cost_fixing.cpp`. `LagrangianResult` gains `core` (survivor list, `n_core = core.size()`); `lagrangian_root::finalize` now computes it via the module (inline count removed — one path).
+**Files:** Created: `dtwc/mip/reduced_cost_fixing.{hpp,cpp}` (Beasley-style, driven by 4.1 dual state; since folded into `lagrangian_root.cpp`), `tests/unit/mip/test_reduced_cost_fixing.cpp`. `LagrangianResult` gains `core` (survivor list, `n_core = core.size()`); `lagrangian_root::finalize` now computes it via the module (inline count removed — one path).
 
 - [x] Two exact conditional tests: force-open `LB+(ρ_i−ρ_(k))>UB ⇒ close i`; force-close `LB+(ρ_(k+1)−ρ_i)>UB ⇒ open i`. Sort-based S_k for deterministic tie handling. Returns `{core, fixed_closed, fixed_open}`. **Numerical guard:** fix only when the bound clears UB by `tol=1e-9·(1+max(|LB|,|UB|))` — without it a certified instance (gap≈0) whose ρ ties ρ_(k) (a legit alternative optimum) is wrongly fixed by a few-ULP `>`. That bug was caught by the correctness test (N=14,k=2) and fixed before merge.
 - [x] Test (correctness, HARD gate): every `fixed_closed` verified ABSENT and every `fixed_open` verified PRESENT in the brute-force optimum on 80 non-degenerate N≤14 instances (clustered + uniform). ctest 88/88.

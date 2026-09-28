@@ -321,12 +321,7 @@ core::ClusteringResult swap_phase(Problem& prob, std::vector<int> medoids, int m
   result.iterations = iter;
   result.converged = converged;
 
-  // 2.0 result write-back (Task 1.6): store labels/medoids/k back into `prob` so
-  // pure-C++ users get the same state the Python/MATLAB wrappers wired by hand —
-  // scores::silhouette(prob) etc. then work with NO manual wiring.
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind  = result.labels;
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
   return result;
 }
 

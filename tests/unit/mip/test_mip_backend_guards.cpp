@@ -4,10 +4,8 @@
  *
  * Each case pins one guard that did not exist before:
  *
- *   A4  LR-core publishes through mip::ExactClusteringTransaction, so its
- *       result satisfies the same invariants as the HiGHS/Gurobi backends.
- *   B1  mip::lagrangian_root(Problem&) is BOUND-ONLY: it must not clobber the
- *       caller's centroids_ind / clusters_ind with its heuristic seed.
+ *   A4  LR-core publishes through Problem::set_result, so its result satisfies
+ *       the same invariants as the HiGHS/Gurobi backends.
  *   Method::MIP runs the selected solver at every N (a removed large-N route
  *       used to hand a Gurobi request to HiGHS).
  *
@@ -16,7 +14,6 @@
  */
 
 #include <dtwc.hpp>
-#include <mip/lagrangian_root.hpp>
 #include <mip/mip.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -74,7 +71,7 @@ TEST_CASE("LR-core publishes a transaction-validated clustering", "[lrcore][mip]
   prob.set_method(Method::LRCore);
   prob.cluster();
 
-  // The invariants ExactClusteringTransaction enforces for HiGHS/Gurobi.
+  // The invariants of an exact p-median clustering.
   REQUIRE(prob.centroids_ind.size() == static_cast<std::size_t>(k));
   auto sorted = prob.centroids_ind;
   std::sort(sorted.begin(), sorted.end());
@@ -84,23 +81,6 @@ TEST_CASE("LR-core publishes a transaction-validated clustering", "[lrcore][mip]
     const auto medoid = static_cast<std::size_t>(prob.centroids_ind[static_cast<std::size_t>(cluster)]);
     REQUIRE(prob.clusters_ind[medoid] == cluster); // medoid in its own cluster.
   }
-}
-
-// ---------------------------------------------------------------------------
-// B1 — the bound-only entry point has no side effect on the caller.
-// ---------------------------------------------------------------------------
-TEST_CASE("lagrangian_root(Problem&) does not publish its heuristic seed", "[lagrangian][mip][guards]")
-{
-  auto prob = make_problem(kTwoGroups, 2);
-  prob.fill_distance_matrix();
-  prob.centroids_ind = { 5, 0 };            // a caller-chosen, deliberately odd state
-  prob.clusters_ind = { 1, 1, 1, 0, 0, 0 };
-
-  const auto bound = mip::lagrangian_root(prob);
-  REQUIRE(bound.lower_bound <= bound.upper_bound + 1e-9);
-
-  REQUIRE(prob.centroids_ind == std::vector<int>{ 5, 0 });
-  REQUIRE(prob.clusters_ind == std::vector<int>{ 1, 1, 1, 0, 0, 0 });
 }
 
 // ---------------------------------------------------------------------------

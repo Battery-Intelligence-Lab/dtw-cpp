@@ -743,9 +743,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
 
   // ---- 7. Checkpoints first, then the outputs ----
   if (!replay && !config.output.empty()) save_binary_checkpoint(result, binary_checkpoint);
-  prob.set_n_clusters(k); // the kept result, in every route and in a replay
-  prob.clusters_ind = result.labels;
-  prob.centroids_ind = result.medoid_indices;
+  prob.set_result(result); // the kept result, in every route and in a replay
 
   // Before the results, in fresh and replay runs alike, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised

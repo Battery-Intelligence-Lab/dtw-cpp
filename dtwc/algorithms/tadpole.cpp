@@ -329,11 +329,7 @@ core::ClusteringResult tadpole(Problem &prob, int n_clusters, double dc, bool pr
   result.iterations = 1; // single non-iterative pass
   result.converged = true;
 
-  // Write-back (Task 1.6 contract): pure-C++ callers get the same state the
-  // bindings wire by hand, so scores::silhouette(prob) etc. work with no wiring.
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind = result.labels;
+  prob.set_result(result); // scores::silhouette(prob) etc. read it back
   return result;
 }
 

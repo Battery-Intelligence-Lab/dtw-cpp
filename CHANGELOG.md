@@ -8,6 +8,11 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 <br/><br/>
 # Unreleased
 
+- **Changed (exact solvers):** `Method::MIP` and `Method::LRCore` publish through the new
+  `Problem::set_result(ClusteringResult)`, which refuses a malformed clustering with `InvalidInput`. A solve that fails with
+  `SolverError` leaves the Problem holding a valid clustering (the FastPAM warm start), not necessarily the one it held before
+  (basic exception guarantee). LR-core seeds its upper bound with FastPAM instead of Lloyd k-medoids: the optimal cost is
+  unchanged, the medoids may differ where optima tie.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live

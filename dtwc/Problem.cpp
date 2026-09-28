@@ -308,6 +308,34 @@ void Problem::set_clusters(std::vector<int> &candidate_centroids)
   centroids_ind = candidate_centroids;
 }
 
+void Problem::set_result(const core::ClusteringResult &result)
+{
+  const auto &medoids = result.medoid_indices;
+  const auto &labels = result.labels;
+  // A settings-only Problem (Parquet-streamed CLARA) holds no series; the
+  // result's own point count is the reference there.
+  const std::size_t n = size() == 0 ? labels.size() : size();
+  if (medoids.empty() || medoids.size() > n || labels.size() != n)
+    throw InvalidInput("Problem::set_result: expected 1..N medoids and N = " + std::to_string(n)
+                       + " labels; got " + std::to_string(medoids.size()) + " medoids and "
+                       + std::to_string(labels.size()) + " labels.");
+  std::vector<bool> is_medoid(n, false);
+  for (const int medoid : medoids) {
+    if (medoid < 0 || static_cast<std::size_t>(medoid) >= n || is_medoid[static_cast<std::size_t>(medoid)])
+      throw InvalidInput("Problem::set_result: medoid " + std::to_string(medoid)
+                         + " is outside [0, N) or repeated.");
+    is_medoid[static_cast<std::size_t>(medoid)] = true;
+  }
+  const int k = static_cast<int>(medoids.size());
+  for (const int label : labels)
+    if (label < 0 || label >= k)
+      throw InvalidInput("Problem::set_result: label " + std::to_string(label) + " is outside [0, k).");
+
+  set_n_clusters(k);
+  centroids_ind = medoids;
+  clusters_ind = labels;
+}
+
 /**
  * @brief Sets the solver to be used for clustering.
  *

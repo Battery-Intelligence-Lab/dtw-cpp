@@ -12,8 +12,7 @@
 
 #include <dtwc.hpp>
 #include <mip/mip.hpp>
-#include <mip/solution_transaction.hpp>
-#include <mip/warm_start.hpp>
+#include <mip/decode_assignment.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -65,15 +64,13 @@ static dtwc::Problem make_seed_sensitive_problem()
   return prob;
 }
 
-static std::vector<double> exact_assignment_fixture(
-  dtwc::mip::AssignmentMatrixLayout layout)
+/// Facilities 1 and 3 open; points 0, 1 -> 1 and 2, 3 -> 3.
+static std::vector<double> exact_assignment_fixture(bool point_major)
 {
   constexpr std::size_t n_points = 4;
   std::vector<double> values(n_points * n_points, 0.0);
-  auto index = [layout](std::size_t facility, std::size_t point) {
-    if (layout == dtwc::mip::AssignmentMatrixLayout::FacilityMajor)
-      return facility * n_points + point;
-    return facility + point * n_points;
+  auto index = [point_major](std::size_t facility, std::size_t point) {
+    return point_major ? facility + point * n_points : facility * n_points + point;
   };
   values[index(1, 0)] = 1.0;
   values[index(1, 1)] = 1.0;
@@ -124,7 +121,7 @@ TEST_CASE("MIPSettings: Problem member accessible", "[mip]")
   REQUIRE(prob.mip_settings.time_limit_sec == 60);
 }
 
-TEST_CASE("MIP FastPAM warm-start medoids are invocation-local",
+TEST_CASE("The MIP warm start (seeded FastPAM) ignores the legacy RNG",
           "[mip][seed][warm-start]")
 {
   const auto legacy_rng_original = dtwc::randGenerator;
@@ -132,21 +129,15 @@ TEST_CASE("MIP FastPAM warm-start medoids are invocation-local",
   dtwc::randGenerator.seed(17);
   const auto legacy_rng_before_first = dtwc::randGenerator;
   auto first_problem = make_seed_sensitive_problem();
-  first_problem.centroids_ind = {0, 3, 7};
-  first_problem.clusters_ind = {0, 0, 0, 1, 1, 1, 2, 2};
-  const auto first_medoids_before = first_problem.centroids_ind;
-  const auto first_labels_before = first_problem.clusters_ind;
-  const auto first = dtwc::mip::make_warm_start(
-    first_problem, dtwc::settings::DEFAULT_RANDOM_SEED);
+  const auto first = dtwc::fast_pam_seeded(
+    first_problem, 3, dtwc::settings::DEFAULT_RANDOM_SEED, dtwc::settings::DEFAULT_MAX_ITER);
   CHECK(dtwc::randGenerator == legacy_rng_before_first);
-  CHECK(first_problem.centroids_ind == first_medoids_before);
-  CHECK(first_problem.clusters_ind == first_labels_before);
 
   dtwc::randGenerator.seed(8675309);
   const auto legacy_rng_before_second = dtwc::randGenerator;
   auto second_problem = make_seed_sensitive_problem();
-  const auto second = dtwc::mip::make_warm_start(
-    second_problem, dtwc::settings::DEFAULT_RANDOM_SEED);
+  const auto second = dtwc::fast_pam_seeded(
+    second_problem, 3, dtwc::settings::DEFAULT_RANDOM_SEED, dtwc::settings::DEFAULT_MAX_ITER);
   CHECK(dtwc::randGenerator == legacy_rng_before_second);
 
   CHECK(first.medoid_indices == second.medoid_indices);
@@ -156,46 +147,49 @@ TEST_CASE("MIP FastPAM warm-start medoids are invocation-local",
   CHECK(first.total_cost == 24.0);
 
   auto override_problem = make_seed_sensitive_problem();
-  const auto override_result = dtwc::mip::make_warm_start(override_problem, 43);
+  const auto override_result = dtwc::fast_pam_seeded(
+    override_problem, 3, 43, dtwc::settings::DEFAULT_MAX_ITER);
   CHECK(override_result.medoid_indices == std::vector<int>{6, 4, 1});
   CHECK(override_result.total_cost == 20.0);
 
   dtwc::randGenerator = legacy_rng_original;
 }
 
-TEST_CASE("Direct MIP exact publication replaces state for both matrix layouts",
-          "[mip][state][m33]")
+TEST_CASE("decode_assignment reads both solver matrix layouts", "[mip][decode]")
 {
-  auto publish_fixture = [](dtwc::mip::AssignmentMatrixLayout layout) {
+  for (const bool point_major : { false, true }) {
+    INFO("point_major=" << point_major);
+    const auto decoded = dtwc::mip::decode_assignment(
+      exact_assignment_fixture(point_major), 4, 2, point_major, "test backend");
+    CHECK(decoded.medoid_indices == std::vector<int>{1, 3});
+    CHECK(decoded.labels == std::vector<int>{0, 0, 1, 1});
+
     auto problem = make_small_problem(4, 8);
-    problem.set_n_clusters(2);
-    problem.centroids_ind = {0, 2};
-    problem.clusters_ind = {0, 0, 1, 1};
-
-    {
-      dtwc::mip::ExactClusteringTransaction transaction(problem);
-      auto exact = dtwc::mip::extract_exact_clustering(
-        exact_assignment_fixture(layout), 4, 2, layout, "test backend");
-      transaction.publish(std::move(exact), "test backend");
-    }
-
-    CHECK(problem.centroids_ind == std::vector<int>{1, 3});
-    CHECK(problem.clusters_ind == std::vector<int>{0, 0, 1, 1});
+    problem.set_result(decoded);
     require_valid_exact_clustering(problem, 2);
-  };
-
-  SECTION("HiGHS facility-major layout")
-  {
-    publish_fixture(dtwc::mip::AssignmentMatrixLayout::FacilityMajor);
-  }
-  SECTION("Gurobi point-major layout")
-  {
-    publish_fixture(dtwc::mip::AssignmentMatrixLayout::PointMajor);
   }
 }
 
-TEST_CASE("Direct MIP transaction restores state on forced backend failures",
-          "[mip][state][m33]")
+TEST_CASE("decode_assignment refuses what is not a p-median solution", "[mip][decode]")
+{
+  auto twice = exact_assignment_fixture(false);
+  twice[1 * 4 + 2] = 1.0; // point 2 served by facilities 1 and 3
+  CHECK_THROWS_AS(dtwc::mip::decode_assignment(twice, 4, 2, false, "test"), dtwc::SolverError);
+
+  auto closed = exact_assignment_fixture(false);
+  closed[3 * 4 + 3] = 0.0; // facility 3 closed but still serving point 2
+  closed[1 * 4 + 3] = 1.0;
+  CHECK_THROWS_AS(dtwc::mip::decode_assignment(closed, 4, 1, false, "test"), dtwc::SolverError);
+
+  CHECK_THROWS_AS(dtwc::mip::decode_assignment(exact_assignment_fixture(false), 4, 3, false, "test"),
+                  dtwc::SolverError); // two medoids for k = 3
+
+  auto nan = exact_assignment_fixture(true);
+  nan[1 + 0 * 4] = std::nan("");
+  CHECK_THROWS_AS(dtwc::mip::decode_assignment(nan, 4, 2, true, "test"), dtwc::SolverError);
+}
+
+TEST_CASE("Problem::set_result publishes only a well-formed clustering", "[mip][state]")
 {
   auto problem = make_small_problem(4, 8);
   problem.set_n_clusters(2);
@@ -204,54 +198,31 @@ TEST_CASE("Direct MIP transaction restores state on forced backend failures",
   const auto medoids_before = problem.centroids_ind;
   const auto labels_before = problem.clusters_ind;
 
-  auto expose_incumbent = [&problem] {
-    problem.centroids_ind = {1, 3};
-    problem.clusters_ind = {0, 0, 1, 1};
-  };
+  dtwc::core::ClusteringResult duplicate;
+  duplicate.medoid_indices = {1, 1};
+  duplicate.labels = {0, 0, 1, 1};
+  CHECK_THROWS_AS(problem.set_result(duplicate), dtwc::InvalidInput);
 
-  SECTION("solve failure after warm-start state")
-  {
-    auto force_failure = [&] {
-      dtwc::mip::ExactClusteringTransaction transaction(problem);
-      expose_incumbent();
-      throw dtwc::SolverError("forced backend solve failure");
-    };
-    REQUIRE_THROWS_AS(force_failure(), dtwc::SolverError);
-  }
+  dtwc::core::ClusteringResult label_out_of_range;
+  label_out_of_range.medoid_indices = {1, 3};
+  label_out_of_range.labels = {0, 0, 2, 1};
+  CHECK_THROWS_AS(problem.set_result(label_out_of_range), dtwc::InvalidInput);
 
-  SECTION("extraction failure after warm-start state")
-  {
-    auto force_failure = [&] {
-      dtwc::mip::ExactClusteringTransaction transaction(problem);
-      expose_incumbent();
-      auto invalid = exact_assignment_fixture(
-        dtwc::mip::AssignmentMatrixLayout::FacilityMajor);
-      invalid[1 * 4 + 2] = 1.0;
-      (void)dtwc::mip::extract_exact_clustering(
-        invalid,
-        4,
-        2,
-        dtwc::mip::AssignmentMatrixLayout::FacilityMajor,
-        "forced extraction");
-    };
-    REQUIRE_THROWS_AS(force_failure(), dtwc::SolverError);
-  }
-
-  SECTION("publication rejects duplicate medoids")
-  {
-    auto force_failure = [&] {
-      dtwc::mip::ExactClusteringTransaction transaction(problem);
-      expose_incumbent();
-      dtwc::core::ClusteringResult invalid;
-      invalid.medoid_indices = {1, 1};
-      invalid.labels = {0, 0, 1, 1};
-      transaction.publish(std::move(invalid), "forced publication");
-    };
-    REQUIRE_THROWS_AS(force_failure(), dtwc::SolverError);
-  }
+  dtwc::core::ClusteringResult short_labels;
+  short_labels.medoid_indices = {1, 3};
+  short_labels.labels = {0, 1};
+  CHECK_THROWS_AS(problem.set_result(short_labels), dtwc::InvalidInput);
 
   CHECK(problem.centroids_ind == medoids_before);
   CHECK(problem.clusters_ind == labels_before);
+
+  dtwc::core::ClusteringResult valid;
+  valid.medoid_indices = {3, 1, 0};
+  valid.labels = {2, 1, 0, 0};
+  problem.set_result(valid);
+  CHECK(problem.n_clusters() == 3);
+  CHECK(problem.centroids_ind == valid.medoid_indices);
+  CHECK(problem.clusters_ind == valid.labels);
 }
 
 TEST_CASE("Unavailable direct HiGHS leaves caller clustering state unchanged",

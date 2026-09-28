@@ -482,26 +482,6 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
 }
 
 // ===========================================================================
-// Problem overload end-to-end smoke.
-// ===========================================================================
-TEST_CASE("Lagrangian root Problem overload runs end-to-end", "[lagrangian][problem]")
-{
-  const int k = 3, N = 12;
-  const auto pos = clustered_positions(N, k, 77);
-  Problem prob = make_problem_1d(pos, k);
-
-  const LagrangianResult r = lagrangian_root(prob);
-  const auto D = D_from_positions(pos);
-  const auto orc = brute_force_pmedian(D, N, k);
-
-  REQUIRE(static_cast<int>(r.medoids.size()) == k);
-  REQUIRE(static_cast<int>(r.labels.size()) == N);
-  REQUIRE(r.lower_bound <= orc.cost + 1e-6);
-  REQUIRE(r.upper_bound >= orc.cost - 1e-6);
-  REQUIRE(r.n_core >= k); // survivors include the k open medoids
-}
-
-// ===========================================================================
 // API (Task 4.4) — Method::LRCore drives Problem::cluster() to the exact optimum.
 // ===========================================================================
 TEST_CASE("Method::LRCore clusters a Problem to the proven optimum", "[lagrangian][lrcore][api]")

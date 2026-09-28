@@ -216,9 +216,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
     std::iota(result.labels.begin(), result.labels.end(), 0);
     std::iota(result.medoid_indices.begin(), result.medoid_indices.end(), 0);
     result.converged = true;
-    prob.set_n_clusters(k);
-    prob.clusters_ind = result.labels;
-    prob.centroids_ind = result.medoid_indices;
+    prob.set_result(result);
     if (stats) *stats = OneBatchPAMStats{};
     return result;
   }
@@ -356,9 +354,7 @@ core::ClusteringResult one_batch_pam(Problem& prob,
   result.iterations = sweeps;
   result.converged = converged;
 
-  prob.set_n_clusters(k);
-  prob.centroids_ind = result.medoid_indices;
-  prob.clusters_ind = result.labels;
+  prob.set_result(result);
 
   if (stats) {
     stats->batch_size = m;

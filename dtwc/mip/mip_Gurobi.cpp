@@ -8,8 +8,8 @@
 
 #include "mip.hpp"
 #include "index_guard.hpp"
-#include "solution_transaction.hpp"
-#include "warm_start.hpp"
+#include "decode_assignment.hpp"
+#include "../algorithms/fast_pam.hpp"
 #include "../Problem.hpp"
 #include "../base/error.hpp" // for SolverError
 #include "../base/settings.hpp"
@@ -38,7 +38,6 @@ void MIP_clustering_byGurobi(Problem &prob)
 
   const auto Nb = prob.size();
   const auto Nc = prob.n_clusters();
-  mip::ExactClusteringTransaction result_transaction(prob);
 
   try {
     GRBEnv env = GRBEnv();
@@ -100,7 +99,7 @@ void MIP_clustering_byGurobi(Problem &prob)
 
     // Warm start: run FastPAM and feed solution as MIP start
     if (prob.mip_settings.warm_start) {
-      auto pam_result = mip::make_warm_start(prob, prob.random_seed());
+      const auto pam_result = fast_pam_seeded(prob, Nc, prob.random_seed(), settings::DEFAULT_MAX_ITER);
 
       for (size_t idx = 0; idx < Nb * Nb; ++idx)
         w[idx].set(GRB_DoubleAttr_Start, 0.0);
@@ -135,13 +134,7 @@ void MIP_clustering_byGurobi(Problem &prob)
     for (std::size_t index = 0; index < solution.size(); ++index)
       solution[index] = w[index].get(GRB_DoubleAttr_X);
 
-    auto exact_result = mip::extract_exact_clustering(
-      solution,
-      Nb,
-      Nc,
-      mip::AssignmentMatrixLayout::PointMajor,
-      "Gurobi");
-    result_transaction.publish(std::move(exact_result), "Gurobi");
+    prob.set_result(mip::decode_assignment(solution, Nb, Nc, true, "Gurobi"));
 
   } catch (GRBException &e) {
     // Wrap solver-native failures as SolverError. GRBException derives from

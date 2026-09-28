@@ -19,13 +19,12 @@
 #include "lagrangian_root.hpp"
 
 #include "nearest_medoid.hpp"
-#include "reduced_cost_fixing.hpp"
-#include "solution_transaction.hpp"
 
 #include "../core/clustering_result.hpp"
 #include "../base/error.hpp"
 #include "../base/parallelisation.hpp"
 #include "../Problem.hpp"
+#include "../algorithms/fast_pam.hpp"
 
 #ifdef DTWC_ENABLE_HIGHS
 #include <Highs.h>
@@ -45,6 +44,103 @@ namespace dtwc::mip {
 
 namespace {
 constexpr double kEps = 1e-12; // relative-gap denominator floor.
+
+/// Subgradient and Kelley tuning (safe defaults).
+struct LagrangianParams
+{
+  int max_iters = 4000;        ///< Subgradient iteration cap.
+  double rel_gap_tol = 1e-6;   ///< Certify optimal when (UB − LB)/max(|UB|,ε) ≤ this.
+  double lambda0 = 1.0;        ///< Initial Polyak step scale λ ∈ (0, 2] (1.0 = damped, well inside the convergent range).
+  int stall_halve = 20;        ///< Halve λ after this many iters with no LB improvement.
+  double lambda_min = 1e-4;    ///< Floor for λ — CLAMPED here (never frozen), so diminishing steps keep converging.
+  double deflect = 1.5;        ///< CFM subgradient deflection γ ∈ [0,2) — steers the step off the previous direction to kill zig-zag (0 = plain subgradient).
+  int polish_period = 16;      ///< Run the O(N²) medoid polish every this many iters (a cheap O(Nk) assignment repair still runs EVERY iter).
+  int kelley_max_major = 500;  ///< Kelley only: cap on major iterations (each adds one cut + re-solves the small master LP).
+};
+constexpr LagrangianParams params{};
+
+/// Partition of the candidate facilities {0..N-1} after reduced-cost fixing:
+/// `core ∪ fixed_closed = {0..N-1}`, `fixed_open ⊆ core`, each ascending.
+struct FixingResult
+{
+  std::vector<int> core;         ///< survivors (facilities NOT proven closed).
+  std::vector<int> fixed_closed; ///< facilities proven closed in every optimum.
+  std::vector<int> fixed_open;   ///< facilities proven open in every optimum.
+};
+
+/**
+ * Beasley (1993) reduced-cost fixing from the Lagrangian dual state: facility
+ * scores ρ_i(μ*) = Σ_j min(0, D_ij − μ_j), a valid lower bound LB = L(μ*) and a
+ * valid primal upper bound UB. Let S_k be the k smallest scores (the facilities
+ * the dual opens) and ρ_(k), ρ_(k+1) the k-th and (k+1)-th smallest.
+ *
+ *   Force i OPEN  (i ∉ S_k): the dual drops to LB + (ρ_i − ρ_(k)).
+ *     If that exceeds UB, no optimum opens i ⇒ fix i CLOSED.
+ *   Force i CLOSED (i ∈ S_k): the dual drops to LB + (ρ_(k+1) − ρ_i).
+ *     If that exceeds UB, every optimum opens i ⇒ fix i OPEN.
+ *
+ * Both are exact conditional bounds, so a fix is never a heuristic prune. A
+ * facility is fixed only when its bound clears UB by a magnitude-scaled margin,
+ * never on rounding: on a certified instance a ρ that ties ρ_(k) is a genuine
+ * alternative optimum and must survive. Non-finite bounds fix nothing.
+ */
+FixingResult reduced_cost_fixing(const std::vector<double> &rho, int k,
+                                 double lower_bound, double upper_bound)
+{
+  const int N = static_cast<int>(rho.size());
+  FixingResult out;
+
+  // No valid finite gap ⇒ nothing can be fixed; the whole set survives.
+  if (!std::isfinite(lower_bound) || !std::isfinite(upper_bound)) {
+    out.core.resize(static_cast<std::size_t>(N));
+    std::iota(out.core.begin(), out.core.end(), 0);
+    return out;
+  }
+
+  // Order facilities by ascending score, index tie-break ⇒ deterministic S_k.
+  std::vector<int> order(static_cast<std::size_t>(N));
+  std::iota(order.begin(), order.end(), 0);
+  std::sort(order.begin(), order.end(), [&](int a, int b) {
+    const double ra = rho[static_cast<std::size_t>(a)], rb = rho[static_cast<std::size_t>(b)];
+    return ra < rb || (ra == rb && a < b);
+  });
+
+  const double rho_k = rho[static_cast<std::size_t>(order[static_cast<std::size_t>(k - 1)])];
+  const double rho_kp1 = (k < N)
+    ? rho[static_cast<std::size_t>(order[static_cast<std::size_t>(k)])]
+    : std::numeric_limits<double>::infinity();
+
+  // Conservative fixing margin. On a CERTIFIED instance (gap ≈ 0, LB ≈ UB) a
+  // facility whose ρ merely TIES ρ_(k) — a genuine alternative optimal medoid —
+  // has a conditional bound == UB in exact arithmetic, but rounding of the
+  // independently-summed LB/UB/ρ can push it a few ULP above. An exact `>` then
+  // fixes an OPTIMAL facility out. We only fix when the bound clears UB by `tol`,
+  // scaled to the magnitude: safe (never removes an optimum) and lossless for real
+  // eliminations, whose margin is O(problem scale) ≫ tol.
+  const double tol = 1e-9 * (1.0 + std::max(std::abs(lower_bound), std::abs(upper_bound)));
+  const double fix_rhs = upper_bound + tol;
+
+  // Mark S_k = the k smallest (the facilities the dual opens).
+  std::vector<char> in_Sk(static_cast<std::size_t>(N), 0);
+  for (int t = 0; t < k; ++t) in_Sk[static_cast<std::size_t>(order[static_cast<std::size_t>(t)])] = 1;
+
+  // Single ascending pass ⇒ every output vector is already sorted.
+  for (int i = 0; i < N; ++i) {
+    const double ri = rho[static_cast<std::size_t>(i)];
+    if (in_Sk[static_cast<std::size_t>(i)]) {
+      // Force i CLOSED: dual falls to LB + (ρ_(k+1) − ρ_i). > UB ⇒ i must be open.
+      if (lower_bound + (rho_kp1 - ri) > fix_rhs) out.fixed_open.push_back(i);
+      out.core.push_back(i); // an opened facility always survives.
+    } else {
+      // Force i OPEN: dual falls to LB + (ρ_i − ρ_(k)). > UB ⇒ i cannot be open.
+      if (lower_bound + (ri - rho_k) > fix_rhs)
+        out.fixed_closed.push_back(i);
+      else
+        out.core.push_back(i);
+    }
+  }
+  return out;
+}
 
 /// k-medoids (Lloyd) local search from a seed medoid set — the LR primal repair.
 /// Assignment alone identifies the right clusters on separated data but not the
@@ -231,8 +327,7 @@ LagrangianResult finalize(const double *D, int N, int k, double best_lb,
 }
 } // namespace
 
-LagrangianResult lagrangian_root(const double *D, int N, int k,
-                                 double initial_ub, const LagrangianParams &params)
+LagrangianResult lagrangian_root(const double *D, int N, int k, double initial_ub)
 {
   if (N <= 0) throw InvalidInput("lagrangian_root: N must be positive");
   if (k < 1 || k > N)
@@ -347,11 +442,10 @@ LagrangianResult lagrangian_root(const double *D, int N, int k,
                   iter, params.rel_gap_tol);
 }
 
-LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
-                                        double initial_ub, const LagrangianParams &params)
+LagrangianResult lagrangian_root_kelley(const double *D, int N, int k, double initial_ub)
 {
 #ifndef DTWC_ENABLE_HIGHS
-  (void)D; (void)N; (void)k; (void)initial_ub; (void)params;
+  (void)D; (void)N; (void)k; (void)initial_ub;
   throw SolverError(
     "lagrangian_root_kelley: the cutting-plane master requires HiGHS. Rebuild with "
     "-DDTWC_ENABLE_HIGHS=ON, or use lagrangian_root (the solver-free subgradient variant).");
@@ -486,7 +580,7 @@ LagrangianResult lagrangian_root_kelley(const double *D, int N, int k,
 }
 
 LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
-                                       double initial_ub, const LagrangianParams &params)
+                                       double initial_ub, std::int64_t max_nodes)
 {
   // 1. Root Lagrangian dual + primal. Prefer the Kelley cutting-plane root when
   //    HiGHS is present: it certifies to machine precision where the subgradient
@@ -494,9 +588,9 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   //    HiGHS the solver-free subgradient root is used and the B&B closes the gap.
   //    If it already certifies, the tree is a single node — return immediately.
 #ifdef DTWC_ENABLE_HIGHS
-  LagrangianResult root = lagrangian_root_kelley(D, N, k, initial_ub, params);
+  LagrangianResult root = lagrangian_root_kelley(D, N, k, initial_ub);
 #else
-  LagrangianResult root = lagrangian_root(D, N, k, initial_ub, params);
+  LagrangianResult root = lagrangian_root(D, N, k, initial_ub);
 #endif
   if (root.certified_optimal) { root.nodes = 0; return root; }
 
@@ -589,7 +683,7 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
   bool capped = false;
 
   while (!stack.empty()) {
-    if (nodes >= params.max_nodes) { capped = true; break; }
+    if (nodes >= max_nodes) { capped = true; break; }
     Frame fr = std::move(stack.back());
     stack.pop_back();
     ++nodes;
@@ -648,59 +742,14 @@ LagrangianResult lagrangian_root_exact(const double *D, int N, int k,
     std::fprintf(stderr,
                  "lagrangian_root_exact: node cap %lld reached at N=%d k=%d before the tree "
                  "closed; returning best incumbent (cost %.10g, gap %.3e) UNCERTIFIED. "
-                 "Raise params.max_nodes or use an exact MIP solver for a certificate.\n",
-                 static_cast<long long>(params.max_nodes), N, k, best_cost, r.gap);
+                 "Raise the node cap or use an exact MIP solver for a certificate.\n",
+                 static_cast<long long>(max_nodes), N, k, best_cost, r.gap);
   } else {
     r.lower_bound = best_cost; // tree fully explored ⇒ incumbent is optimal.
     r.gap = 0.0;
     r.certified_optimal = true;
   }
   return r;
-}
-
-namespace {
-/// Shared Problem→dense-D preparation for the Problem-facing entry points: fills
-/// the distance matrix if needed, seeds an upper bound from the in-repo k-medoids
-/// heuristic (FastPAM/Lloyd), and materializes a row-major copy of D. Sets @p N,
-/// @p k, @p D; returns the seed UB (or -1 if unavailable).
-double prepare_dense_D(Problem &prob, int &N, int &k, std::vector<double> &D)
-{
-  N = static_cast<int>(prob.size());
-  k = static_cast<int>(prob.n_clusters());
-  if (N <= 0) throw InvalidInput("LR-core (Problem): no data set");
-
-  if (!prob.is_distance_matrix_filled()) prob.fill_distance_matrix();
-
-  double ub = -1.0;
-  {
-    // The heuristic seed is invocation-local: an unpublished transaction restores
-    // centroids_ind / clusters_ind, so the bound-only entry point
-    // lagrangian_root(Problem&) has no visible side effect on the caller.
-    ExactClusteringTransaction seed_transaction(prob);
-    prob.cluster_by_kmedoids_lloyd();
-    if (static_cast<int>(prob.centroids_ind.size()) == k
-        && static_cast<int>(prob.clusters_ind.size()) == N) {
-      double c = 0.0;
-      for (int j = 0; j < N; ++j) c += static_cast<double>(prob.dist_by_ind(j, prob.centroid_of(j)));
-      ub = c;
-    }
-  }
-
-  D.assign(static_cast<std::size_t>(N) * static_cast<std::size_t>(N), 0.0);
-  for (int i = 0; i < N; ++i)
-    for (int j = 0; j < N; ++j)
-      D[static_cast<std::size_t>(i) * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)]
-        = static_cast<double>(prob.dist_by_ind(i, j));
-  return ub;
-}
-} // namespace
-
-LagrangianResult lagrangian_root(Problem &prob, const LagrangianParams &params)
-{
-  int N = 0, k = 0;
-  std::vector<double> D;
-  const double ub = prepare_dense_D(prob, N, k, D);
-  return lagrangian_root(D.data(), N, k, ub, params);
 }
 
 } // namespace dtwc::mip
@@ -710,16 +759,22 @@ namespace dtwc {
 void LR_core_clustering(Problem &prob)
 {
   validate_mip_settings(prob.mip_settings); // lr_max_nodes is consumed below.
-  int N = 0, k = 0;
-  std::vector<double> D;
-  mip::ExactClusteringTransaction result_transaction(prob);
-  const double ub = mip::prepare_dense_D(prob, N, k, D);
+  const int N = static_cast<int>(prob.size());
+  const int k = prob.n_clusters();
+  if (N <= 0) throw InvalidInput("LR-core: the Problem has no data.");
+
+  // The FastPAM cost seeds the upper bound; fast_pam_seeded fills the matrix.
+  const double ub = fast_pam_seeded(prob, k, prob.random_seed(), settings::DEFAULT_MAX_ITER).total_cost;
+  std::vector<double> D(static_cast<std::size_t>(N) * static_cast<std::size_t>(N));
+  for (int i = 0; i < N; ++i)
+    for (int j = 0; j < N; ++j)
+      D[static_cast<std::size_t>(i) * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)]
+        = prob.dist_by_ind(i, j);
 
   // Trivial k handled by the exact solver directly (k==N ⇒ all medoids; k==1 ⇒
   // the 1-medoid) — no special-casing needed, the B&B certifies them at the root.
-  mip::LagrangianParams params;
-  params.max_nodes = prob.mip_settings.lr_max_nodes;
-  const mip::LagrangianResult r = mip::lagrangian_root_exact(D.data(), N, k, ub, params);
+  const mip::LagrangianResult r
+    = mip::lagrangian_root_exact(D.data(), N, k, ub, prob.mip_settings.lr_max_nodes);
 
   // Method::LRCore is an EXACT entry point. lagrangian_root_exact clears
   // certified_optimal when the node cap stopped the tree, and publishing that
@@ -740,17 +795,13 @@ void LR_core_clustering(Problem &prob)
   core::ClusteringResult result;
   result.medoid_indices = r.medoids;
   result.labels.assign(static_cast<std::size_t>(N), 0);
-  if (n_medoids > 0)
-    for (int j = 0; j < N; ++j)
-      result.labels[static_cast<std::size_t>(j)] =
-        mip::nearest_medoid(n_medoids, [&](int c) {
-          return D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
-                   * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
-        }).position;
-
-  // Same validation the HiGHS/Gurobi backends run: exactly k unique medoids,
-  // one in-range label per point, and every medoid in its own cluster.
-  result_transaction.publish(std::move(result), "LR-core");
+  for (int j = 0; j < N; ++j)
+    result.labels[static_cast<std::size_t>(j)] =
+      mip::nearest_medoid(n_medoids, [&](int c) {
+        return D[static_cast<std::size_t>(r.medoids[static_cast<std::size_t>(c)])
+                 * static_cast<std::size_t>(N) + static_cast<std::size_t>(j)];
+      }).position;
+  prob.set_result(result);
 }
 
 } // namespace dtwc

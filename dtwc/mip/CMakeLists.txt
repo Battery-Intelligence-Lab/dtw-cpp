@@ -6,20 +6,15 @@ target_sources(mip-solvers
   PRIVATE
     mip_Gurobi.cpp
     mip_Highs.cpp
-    solution_transaction.cpp
-    warm_start.cpp
     lagrangian_root.cpp
-    reduced_cost_fixing.cpp
   PUBLIC
     mip.hpp
     highs_support.hpp
     index_guard.hpp
     nearest_medoid.hpp
     solver_types.hpp
-    solution_transaction.hpp
-    warm_start.hpp
+    decode_assignment.hpp
     lagrangian_root.hpp
-    reduced_cost_fixing.hpp
   )
 
 target_include_directories(mip-solvers PUBLIC .)
