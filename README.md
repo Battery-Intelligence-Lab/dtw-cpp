@@ -34,7 +34,7 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **8 CLI-selectable clustering methods**: PAM/FastPAM, OneBatchPAM, FastCLARA, k-medoids, MIP, LR-core, hierarchical, TADPole
 - **Lower bounds**: Keogh/Webb bounds and admissible TADPole pair pruning
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
-- **Parallelism**: OpenMP threads, MPI distributed, CUDA and Metal GPUs (optional)
+- **Parallelism**: OpenMP threads, CUDA and Metal GPUs (optional)
 - **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic
 - **RAM-aware streaming**: `--ram-limit` bounds Parquet series materialisation and streams supported one-list-row-per-series non-full FastCLARA workloads
 - **Checkpointing**: Save/resume long-running distance matrix computations
@@ -102,25 +102,6 @@ pytest tests/python/ -v
 `pip install .` works too if you prefer — both use the same `pyproject.toml` (scikit-build-core + nanobind).
 
 ### Optional dependencies
-
-**MPI** (distributed distance matrix across multiple nodes):
-
-```bash
-# Linux
-sudo apt install libopenmpi-dev openmpi-bin
-
-# macOS
-brew install open-mpi
-
-# Windows: download MS-MPI from
-# https://learn.microsoft.com/en-us/message-passing-interface/microsoft-mpi
-# Install BOTH msmpisetup.exe (runtime) AND msmpisdk.msi (SDK)
-
-# Build with MPI
-cmake -S . -B build -DDTWC_ENABLE_MPI=ON -DDTWC_BUILD_TESTING=ON
-cmake --build build --config Release -j
-mpiexec -n 4 ./build/bin/unit_test_mpi
-```
 
 **CUDA** (GPU-accelerated batch DTW):
 
@@ -199,7 +180,6 @@ export OMP_PLACES=cores
 | `DTWC_BUILD_MATLAB` | OFF | Build MATLAB MEX bindings |
 | `DTWC_DEV_MODE` | OFF | Enable developer-only warnings, analyzers, and expose sanitizer options |
 | `DTWC_ALLOW_SEQUENTIAL` | OFF | Explicitly permit a build without OpenMP; otherwise missing OpenMP is an error |
-| `DTWC_ENABLE_MPI` | OFF | Enable MPI distributed computing |
 | `DTWC_ENABLE_CUDA` | OFF | Enable CUDA GPU acceleration |
 | `DTWC_ENABLE_METAL` | ON | Enable the Metal backend on Apple platforms |
 | `DTWC_ENABLE_ARROW` | OFF | Enable Apache Arrow IPC + Parquet I/O (system packages or CPM) |

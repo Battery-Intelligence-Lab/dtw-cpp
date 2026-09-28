@@ -1757,8 +1757,8 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // System capability check
     else if (cmd == "system_check") {
       const char *fields[] = {"openmp", "openmp_threads", "cuda", "cuda_info",
-                              "metal", "metal_info", "mpi"};
-      mxArray *info = mxCreateStructMatrix(1, 1, 7, fields);
+                              "metal", "metal_info"};
+      mxArray *info = mxCreateStructMatrix(1, 1, 6, fields);
 #ifdef _OPENMP
       mxSetField(info, 0, "openmp", mxCreateLogicalScalar(true));
       mxSetField(info, 0, "openmp_threads", mxCreateDoubleScalar(omp_get_max_threads()));
@@ -1781,11 +1781,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
 #else
       mxSetField(info, 0, "metal", mxCreateLogicalScalar(false));
       mxSetField(info, 0, "metal_info", mxCreateString("not compiled (macOS only)"));
-#endif
-#ifdef DTWC_HAS_MPI
-      mxSetField(info, 0, "mpi", mxCreateLogicalScalar(true));
-#else
-      mxSetField(info, 0, "mpi", mxCreateLogicalScalar(false));
 #endif
       plhs[0] = info;
     }

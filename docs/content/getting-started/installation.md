@@ -185,11 +185,11 @@ To build from source with GPU support:
 pip install . --config-settings=cmake.define.DTWC_ENABLE_CUDA=ON
 ```
 
-See [MPI & CUDA Setup](mpi-cuda-setup.md) for detailed GPU configuration.
+See [CUDA Setup](cuda-setup.md) for detailed GPU configuration.
 
-## GPU and MPI Acceleration
+## GPU Acceleration
 
-CUDA GPU acceleration and MPI distributed computing are optional. See the dedicated [MPI & CUDA Setup Guide](mpi-cuda-setup.md) for installation instructions.
+CUDA GPU acceleration is optional. See the dedicated [CUDA Setup Guide](cuda-setup.md) for installation instructions.
 
 > **Note:** CUDA is not available on macOS. Use Linux or Windows with an NVIDIA GPU.
 

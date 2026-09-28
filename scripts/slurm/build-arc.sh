@@ -39,7 +39,6 @@ case "${PROFILE}" in
             "${CMAKE_COMMON[@]}"
             -DDTWC_ARCH_LEVEL=v4           # AVX-512 — safe on all arc nodes
             -DDTWC_ENABLE_CUDA=OFF
-            -DDTWC_ENABLE_MPI=ON           # HDR100/NDR400 interconnect available
         )
         ;;
 

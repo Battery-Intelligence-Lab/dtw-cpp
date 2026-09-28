@@ -6,8 +6,8 @@ function check_system()
 %
 %   dtwc.check_system()
 %
-%   Reports availability of OpenMP (parallel), CUDA (GPU), and MPI
-%   (distributed) backends with installation instructions if missing.
+%   Reports availability of OpenMP (parallel), CUDA and Metal (GPU)
+%   backends with installation instructions if missing.
 %
 %   Example
 %   -------
@@ -16,7 +16,6 @@ function check_system()
 %       %  ========================================
 %       %    ✅ OpenMP: 20 threads
 %       %    ❌ CUDA:   not compiled
-%       %    ❌ MPI:    not compiled
 %       %  ========================================
 %
 %   See also dtwc.Problem, dtwc.distance.dtw
@@ -60,15 +59,6 @@ function check_system()
                 fprintf('  %s Metal:  compiled but no GPU detected\n', char(10060));
             end
         end
-    end
-
-    % MPI
-    if info.mpi
-        fprintf('  %s MPI:    available\n', char(9989));
-    else
-        fprintf('  %s MPI:    not compiled\n', char(10060));
-        fprintf('     Rebuild: cmake -DDTWC_ENABLE_MPI=ON ...\n');
-        fprintf('     Windows: install MS-MPI SDK from microsoft.com/mpi\n');
     end
 
     fprintf('========================================\n');

@@ -57,9 +57,8 @@ namespace dtwc::cuda {
 // =========================================================================
 //
 // The decode is the SSOT dtwc::detail::decode_pair (dtwc/detail/decode_pair.hpp),
-// shared with the CPU/MPI path and marked __host__ __device__. It uses an FP64
-// seed + int64 correction, fixing the int32 overflow of the retired local copy
-// (Task 0.7) and matching the audited-correct MPI enumeration.
+// shared with the host and marked __host__ __device__. It uses an FP64 seed +
+// int64 correction, fixing the int32 overflow of the retired local copy.
 using dtwc::detail::decode_pair;
 
 namespace {

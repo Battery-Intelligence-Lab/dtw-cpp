@@ -302,7 +302,6 @@ TEST_CASE("F15 all registered consumers reach shared support",
     Consumer{"benchmarks/bench_dtw_baseline.cpp", 1},
     Consumer{"benchmarks/bench_metal_dtw.cpp", 1},
     Consumer{"benchmarks/bench_mmap_access.cpp", 1},
-    Consumer{"benchmarks/bench_mpi_dtw.cpp", 1},
   };
   for (const auto &consumer : benchmark_consumers) {
     INFO(consumer.path);
@@ -314,11 +313,6 @@ TEST_CASE("F15 all registered consumers reach shared support",
     CHECK_FALSE(contains(
       source, "static std::vector<double> random_series"));
   }
-
-  const std::string mpi = read_source("tests/unit/unit_test_mpi.cpp");
-  CHECK(contains(mpi, "dtwc::test_support::benchmark_series"));
-  CHECK_FALSE(contains(
-    mpi, "static std::vector<double> make_series"));
 
   const std::string metal_lb =
     read_source("tests/unit/test_metal_lb_keogh.cpp");

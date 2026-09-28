@@ -42,7 +42,7 @@ ORDER = ["base", "core", "io", "backends", "algorithms", "mip", "session", "surf
 
 DIR_LAYER = {
     "base": "base", "types": "base", "enums": "base", "core": "core", "detail": "core", "io": "io",
-    "cuda": "backends", "metal": "backends", "mpi": "backends",
+    "cuda": "backends", "metal": "backends",
     "algorithms": "algorithms", "mip": "mip", "cli": "surface", "extern": "vendored",
 }
 ROOT_FILE_LAYER = {

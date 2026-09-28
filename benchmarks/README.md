@@ -40,15 +40,6 @@ Peak: **75 Gcells/sec** at L=250. Sustained >60 Gcells/sec across all lengths.
 | 256 < L <= 1024 | `dtw_wavefront_kernel` | Block (128-256) | Shared-mem 3-buffer, persistent |
 | L > 1024 | `dtw_wavefront_kernel` | Block (256) | Double-buffer for occupancy |
 
-## MPI Distance Matrix (4 ranks, each with OpenMP)
-
-| N | L | Band | MPI time (ms) | Serial time (ms) | Speedup |
-|---|---|---|---|---|---|
-| 50 | 500 | full | 90 | 1357 | 15x |
-| 100 | 500 | full | 310 | 5678 | 18x |
-| 200 | 500 | full | 1235 | 19618 | 16x |
-| 50 | 500 | 50 | 19 | 984 | 52x |
-
 ## Running Benchmarks
 
 ```bash
@@ -64,11 +55,6 @@ cmake --build build --config Release -j
 
 # CPU DTW microbenchmarks
 ./build/bin/bench_dtw_baseline
-
-# MPI benchmarks
-cmake -S . -B build -DDTWC_BUILD_BENCHMARK=ON -DDTWC_ENABLE_MPI=ON
-cmake --build build --config Release -j
-mpiexec -n 4 ./build/bin/bench_mpi_dtw
 
 # Python GPU benchmark
 uv run python benchmarks/bench_cuda_python.py

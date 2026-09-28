@@ -51,7 +51,8 @@ inline void require_pair_count_fits(std::size_t num_pairs, const char *entry)
       std::string(entry) + ": too many DTW pairs (" + std::to_string(num_pairs)
       + ") for a single CUDA kernel launch. Maximum: "
       + std::to_string(kMaxPairsPerLaunch)
-      + ". Reduce N or use the MPI backend for distributed computation.");
+      + ". Reduce N, or cluster on device cpu with method onebatch or clara,"
+        " which never build the N*N matrix.");
 }
 
 /// @brief Reject a CUDA call on a host with no usable device.

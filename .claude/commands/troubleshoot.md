@@ -15,7 +15,7 @@ Diagnose DTWC++ problems. `$ARGUMENTS` contains the user's error message or symp
 
 Run if Python package is available:
 ```bash
-python3 -c "import dtwcpp; print(f'Version: {dtwcpp.__version__}'); print(f'OpenMP: {dtwcpp.OPENMP_AVAILABLE} (threads={dtwcpp.openmp_max_threads()})'); print(f'CUDA:   {dtwcpp.CUDA_AVAILABLE}'); print(f'MPI:    {dtwcpp.MPI_AVAILABLE}')"
+python3 -c "import dtwcpp; print(f'Version: {dtwcpp.__version__}'); print(f'OpenMP: {dtwcpp.OPENMP_AVAILABLE} (threads={dtwcpp.openmp_max_threads()})'); print(f'CUDA:   {dtwcpp.CUDA_AVAILABLE}')"
 ```
 
 Check binary if CLI is used:

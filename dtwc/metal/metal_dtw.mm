@@ -54,7 +54,7 @@ namespace dtwc::metal {
 // This MSL source holds only the kernels. The metal_stdlib include, the
 // `using namespace metal;`, and the SSOT decode_pair() are prepended at
 // library-compile time from dtwc::detail::kDecodePairMSL (see context()), so
-// the decode lives in exactly one place across CUDA / Metal / MPI. The retired
+// the decode lives in exactly one place across the host, CUDA and Metal. The retired
 // inline copy used an FP32 sqrt + int32 arithmetic (wrong / OOB for N > ~4096;
 // overflow at N >= 46341).
 static NSString *const kDTWMetalKernelSource = @R"METAL(

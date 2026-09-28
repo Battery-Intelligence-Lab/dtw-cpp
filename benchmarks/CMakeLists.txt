@@ -37,10 +37,6 @@ target_link_libraries(bench_metal_dtw
     benchmark::benchmark
 )
 
-# MPI benchmarks (standalone, requires MPI)
-add_executable(bench_mpi_dtw bench_mpi_dtw.cpp)
-target_link_libraries(bench_mpi_dtw PRIVATE dtwc++ project_options)
-
 # float32 vs float64 DTW speed benchmark
 add_executable(bench_f32_vs_f64 bench_f32_vs_f64.cpp)
 target_link_libraries(bench_f32_vs_f64

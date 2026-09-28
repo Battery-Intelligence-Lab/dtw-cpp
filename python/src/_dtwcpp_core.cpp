@@ -1789,7 +1789,7 @@ NB_MODULE(_dtwcpp_core, m) {
 #endif
 
   // =========================================================================
-  // Capability detection: OpenMP, MPI
+  // Capability detection: OpenMP
   // =========================================================================
 
 #ifdef _OPENMP
@@ -1801,12 +1801,6 @@ NB_MODULE(_dtwcpp_core, m) {
   m.attr("OPENMP_AVAILABLE") = false;
   m.def("openmp_max_threads", []() { return 1; },
         "Return 1 (OpenMP not compiled in).");
-#endif
-
-#ifdef DTWC_HAS_MPI
-  m.attr("MPI_AVAILABLE") = true;
-#else
-  m.attr("MPI_AVAILABLE") = false;
 #endif
 
   m.def("system_info", []() {
@@ -1832,11 +1826,6 @@ NB_MODULE(_dtwcpp_core, m) {
       info += "  Metal:  compiled but no GPU detected\n";
 #else
     info += "  Metal:  not compiled (macOS only)\n";
-#endif
-#ifdef DTWC_HAS_MPI
-    info += "  MPI:    available\n";
-#else
-    info += "  MPI:    not compiled (rebuild with -DDTWC_ENABLE_MPI=ON)\n";
 #endif
     return info;
   }, "Return a string summarizing available backends and capabilities.");
