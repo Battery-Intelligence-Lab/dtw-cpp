@@ -625,6 +625,15 @@ TEST_CASE("Parquet: a null list cell or null list element is rejected",
   }
 }
 
+#else
+
+// An Arrow build without Parquet must not pass on the Arrow cases alone: this
+// test is not MAY_SKIP, so the harness scores the skip as a failure.
+TEST_CASE("Parquet readers are built with Arrow", "[io][parquet]")
+{
+  SKIP("DTWC_HAS_ARROW is defined without DTWC_HAS_PARQUET");
+}
+
 #endif // DTWC_HAS_PARQUET
 
 #endif // DTWC_HAS_ARROW

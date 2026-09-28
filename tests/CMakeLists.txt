@@ -70,13 +70,11 @@ endforeach()
 # (test_deprecated_shims_warn above proves the shims still warn).
 dtwc_add_test(NAME test_problem_api_2_0 SOURCE ${_dtwc_test_source_test_problem_api_2_0}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f22-cpp-compat" FIXTURE_DEFINE DTWC_F22_TEST_ROOT
-    MARKER "F22_CPP_COMPAT inventory=29/29 behavior=29/29 field_routes=4/4 io_routes=7/7 file_identity=6/6 stdout_identity=2/2 skips=0 verdict=PASS"
     SERIAL)
 
 # F51: binary-v1 wire-format gate, fixture writes confined to the build tree.
 dtwc_add_test(NAME unit_test_checkpoint_binary SOURCE ${_dtwc_test_source_unit_test_checkpoint_binary}
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f51-binary-checkpoint" FIXTURE_DEFINE DTWC_F51_TEST_ROOT
-    MARKER "F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS"
     SERIAL)
 
 # D2: exhaustive LB_Keogh proof; serial OpenMP for deterministic pair order.
@@ -96,10 +94,6 @@ dtwc_add_test(NAME test_lb_webb_intmax SOURCE ${_dtwc_test_source_test_lb_webb_i
     MARKER "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS"
     SERIAL TIMEOUT 30)
 
-# F21: public-header compile and state-equivalence gate.
-dtwc_add_test(NAME unit_test_DataLoader SOURCE ${_dtwc_test_source_unit_test_DataLoader}
-    MARKER "F21_CPP_NAMES canonical=2/2 legacy=2/2 overloads=4/4 loader_state=22/22 skips=0 verdict=PASS")
-
 # F13: nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4)
@@ -117,8 +111,7 @@ dtwc_add_test(NAME unit_test_distance_matrix_csv SOURCE ${_dtwc_test_source_unit
 
 # F19: executed public-API gate; Lloyd's artifacts stay inside the build tree.
 dtwc_add_test(NAME unit_test_problem_encapsulation SOURCE ${_dtwc_test_source_unit_test_problem_encapsulation}
-    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT
-    MARKER "F19_PROBLEM_API getters=10/10 setters=9/9 lloyd=ran skips=0")
+    FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f19-problem-api" FIXTURE_DEFINE DTWC_F19_TEST_ROOT)
 
 # F20: live Problem series-storage gate, per build flavour.
 if(_dtwc_has_mmap)

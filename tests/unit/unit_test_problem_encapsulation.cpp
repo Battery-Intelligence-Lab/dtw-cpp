@@ -4,7 +4,6 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <filesystem>
-#include <iostream>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -150,7 +149,4 @@ TEST_CASE("F19 capped Lloyd behavior survives Problem encapsulation",
   CHECK_THAT(problem.find_total_cost(), WithinAbs(96.0, 1e-12));
   CHECK(problem.name() == "f19_capped_lloyd");
   CHECK(problem.output_folder() == output.path);
-
-  std::cout
-    << "F19_PROBLEM_API getters=10/10 setters=9/9 lloyd=ran skips=0\n";
 }

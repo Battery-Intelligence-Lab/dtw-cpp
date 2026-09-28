@@ -1,0 +1,5 @@
+# gitleaks false positives, by fingerprint (path:rule:line). Each names a key, not a secret.
+# A manifest key string in a checkpoint test.
+tests/unit/unit_test_checkpoint.cpp:generic-api-key:87
+# An audit record quoting that line.
+.claude/plans/2026-09-27-audit/digest.md:generic-api-key:1077

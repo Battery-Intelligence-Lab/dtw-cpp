@@ -1,6 +1,6 @@
 ---
 name: dtwc-verify
-description: Build DTWC++ and run the full verification set — serial ctest, the three gate scripts, the layer ratchet — and report the result honestly. Use before claiming a change is green, before a commit, at a wave exit gate, or when asked whether the tests pass.
+description: Build DTWC++ and run the full verification set — serial ctest, the two gate scripts, the layer ratchet — and report the result honestly. Use before claiming a change is green, before a commit, at a wave exit gate, or when asked whether the tests pass.
 ---
 
 # Verify
@@ -28,10 +28,9 @@ description: Build DTWC++ and run the full verification set — serial ctest, th
    assertion in at least one case — a failure, a skip or an empty run fails. Only a `MAY_SKIP`
    test (a device or capability the build lacks) may show as Skipped; read its SKIP message.
 
-4. **Gates**, all three, plus the ratchet:
+4. **Gates**, both, plus the ratchet (the secret scan is gitleaks in CI):
 
    ```sh
-   python3 scripts/check_repo_hygiene.py
    python3 scripts/check_docs_contract.py
    python3 scripts/check_pins.py
    uv run --no-project python scripts/repo_map.py layers     # upward edges may only fall

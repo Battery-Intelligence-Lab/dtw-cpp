@@ -54,7 +54,7 @@ cmake --preset clang-macos -DOpenMP_ROOT=/opt/homebrew/opt/libomp
 cmake --build --preset clang-macos
 ctest --test-dir build -C Release -j1 --output-on-failure
 uv run --no-project python scripts/repo_map.py layers     # upward-edge report
-python3 scripts/check_repo_hygiene.py; python3 scripts/check_docs_contract.py; python3 scripts/check_pins.py
+python3 scripts/check_docs_contract.py; python3 scripts/check_pins.py   # gitleaks runs in CI
 ```
 
 ctest does not run `tests/python`. Any change that reaches a binding, a reader or a user-visible default also runs

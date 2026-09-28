@@ -8,11 +8,23 @@ on:
 
 jobs:
   supply-chain:
-    name: Immutable workflow and archive pins
+    name: Dependency pins and secret scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - run: python scripts/check_pins.py
+      # The gitleaks CLI (MIT), not gitleaks-action, which needs a licence for an
+      # organisation repository. To bump: new version, SHA-256 from its checksums.txt.
+      - name: gitleaks over the working tree
+        run: |
+          set -euo pipefail
+          archive=gitleaks_8.30.1_linux_x64.tar.gz
+          curl -sSfL -o "$RUNNER_TEMP/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/$archive"
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $RUNNER_TEMP/$archive" \
+            | sha256sum --check -
+          tar -xzf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP" gitleaks
+          "$RUNNER_TEMP/gitleaks" dir --redact --no-banner --exit-code 1 .
 
   test:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}

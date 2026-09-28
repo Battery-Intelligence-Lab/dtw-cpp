@@ -1476,16 +1476,6 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
     && file_identity == 6
     && stdout_identity == 2
     && artifact_cleanup;
-  const char *verdict = all_pass ? "PASS" : "FAIL";
-
-  std::cout
-    << "F22_CPP_COMPAT inventory=" << inventory << "/29"
-    << " behavior=" << behavior << "/29"
-    << " field_routes=" << field_routes << "/4"
-    << " io_routes=" << io_routes << "/7"
-    << " file_identity=" << file_identity << "/6"
-    << " stdout_identity=" << stdout_identity << "/2"
-    << " skips=0 verdict=" << verdict << '\n';
   CHECK(inventory == 29);
   CHECK(behavior == 29);
   CHECK(field_routes == 4);

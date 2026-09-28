@@ -244,10 +244,6 @@ TEST_CASE("F21 canonical C++ loader names preserve legacy state",
   REQUIRE(legacy.startRow() == 13);
   REQUIRE(canonical.startColumn() == legacy.startColumn());
   REQUIRE(canonical.startRow() == legacy.startRow());
-
-  std::cout
-    << "F21_CPP_NAMES canonical=2/2 legacy=2/2 overloads=4/4 "
-       "loader_state=22/22 skips=0 verdict=PASS\n";
 }
 
 #ifdef DTWC_HAS_MMAP

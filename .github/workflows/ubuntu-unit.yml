@@ -143,23 +143,13 @@ jobs:
         run: ctest -j2 -C Debug --output-on-failure
         working-directory: build_dir
 
-      # THE F9 GATE. `cmake test` above cannot close F9 on its own: a CTest skip is not
-      # a failure (SKIP_RETURN_CODE 4, cmake/DtwcTest.cmake), so a build where Arrow
-      # failed to link goes green with test_io_readers never executing — the F9 failure
-      # mode reproducing itself inside its own fix.
-      #
-      # The configure log is NOT admissible evidence here: dtwc/CMakeLists.txt:211 emits
-      # "Arrow + Parquet linked" from the OUTER `if(DTWC_ENABLE_ARROW AND Arrow_FOUND)`,
-      # so it prints even when the inner `elseif(TARGET Arrow::arrow_shared)` branch
-      # (line 202) never matched and DTWC_HAS_ARROW was consequently never defined.
-      # Only the test binary's own output proves the subject ran. Every check below
-      # fails closed: a missing/unparsed summary line is a failure, not a pass.
-      - name: assert Arrow suite ran (F9)
-        run: |
-          set -euo pipefail
-          ctest --test-dir build_dir -C Debug -V --no-tests=error \
-            -R '^test_io_readers$' 2>&1 | tee build_dir/io_readers.log
-          bash .github/scripts/assert-arrow-suite.sh build_dir/io_readers.log
+      # THE F9 GATE. `cmake test` above fails any test that SKIPs unless it is MAY_SKIP
+      # (cmake/DtwcTest.cmake), which covers an Arrow build without Parquet: test_io_readers
+      # then runs only its 'Parquet readers are built' SKIP case. It cannot fail a test that
+      # was never registered, and test_io_readers is registered only when dtwc++ publishes
+      # DTWC_HAS_ARROW (the configure log's "Arrow + Parquet linked" is not evidence).
+      - name: assert Arrow suite is registered and ran (F9)
+        run: ctest --test-dir build_dir -C Debug --no-tests=error -R '^test_io_readers$'
 
       # THE F8 GATE. The CMake script drives six real CLI processes and derives
       # its counters only after route markers and nine byte comparisons pass.

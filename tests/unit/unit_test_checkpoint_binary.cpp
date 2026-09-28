@@ -562,25 +562,4 @@ TEST_CASE("binary-v1 checkpoint rejects the registered malformed wire corpus",
     << " unchanged="
     << static_cast<std::size_t>(preflight_unchanged) << "/1"
     << " allocations_1028=" << exact_allocations << '\n';
-
-  const bool corpus_green =
-    returned_false == 85
-    && accepted == 0
-    && threw == 0
-    && unchanged == 85;
-  const bool preflight_green =
-    preflight_returned
-    && !preflight_accepted
-    && !preflight_threw
-    && preflight_unchanged
-    && exact_allocations == 0;
-  // The sibling valid-wire case independently asserts every count named by
-  // this marker. Catch2 randomizes case order, so marker publication cannot
-  // depend on mutable cross-case state.
-  if (corpus_green && preflight_green) {
-    std::cout
-      << "F51_BINARY_CHECKPOINT corpus=85 rejected=85 throws=0 "
-         "unchanged=85/85 size_preflight=1/1 valid_bytes=72/72 fields=5/5 "
-         "resave=72/72 semantic_compat=7/7 skips=0 verdict=PASS\n";
-  }
 }

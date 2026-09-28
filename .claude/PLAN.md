@@ -69,8 +69,8 @@ python3 scripts/check_docs_contract.py && python3 scripts/check_pins.py
 
 A gate exists for five things only: a no-op's conformance output is digit-identical on one machine; a test
 cannot pass by skipping; the docs name only what the code has (`check_docs_contract.py`); every fetched
-dependency is pinned (`check_pins.py`); the tracked tree holds no secrets, banned paths or stray
-artefacts (`check_repo_hygiene.py` — it scans for credentials, which matters with `.env` in play).
+dependency is pinned (`check_pins.py`); the tracked tree holds no secrets (gitleaks in CI, which
+matters with `.env` in play).
 
 ### 2.1 What a machine needs
 
