@@ -11,7 +11,6 @@
 
 #include <dtwc.hpp>
 #include <core/lower_bound_impl.hpp>
-#include <core/lower_bounds.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -364,25 +363,6 @@ TEST_CASE("LB_Keogh <= DTW for random series (L1)", "[accuracy][lower_bounds]")
   }
 }
 
-TEST_CASE("LB_Kim <= DTW for random series", "[accuracy][lower_bounds]")
-{
-  using namespace dtwc::core;
-
-  for (int trial = 0; trial < 10; ++trial) {
-    auto a = make_random(20, 300 + trial);
-    auto b = make_random(20, 400 + trial);
-
-    auto sa = compute_summary(a);
-    auto sb = compute_summary(b);
-
-    double lb = lb_kim(sa, sb);
-    double dtw_dist = dtwFull<double>(a, b);
-
-    REQUIRE(lb >= 0.0);
-    REQUIRE(lb <= dtw_dist + 1e-10);
-  }
-}
-
 TEST_CASE("LB_Keogh for identical series is zero", "[accuracy][lower_bounds]")
 {
   using namespace dtwc::core;
@@ -392,14 +372,6 @@ TEST_CASE("LB_Keogh for identical series is zero", "[accuracy][lower_bounds]")
   auto env = compute_envelope(x, band);
   double lb = lb_keogh(x, env);
   REQUIRE_THAT(lb, WithinAbs(0.0, 1e-15));
-}
-
-TEST_CASE("LB_Kim for identical series is zero", "[accuracy][lower_bounds]")
-{
-  using namespace dtwc::core;
-  std::vector<double> x{1, 3, 5, 2, 4};
-  auto s = compute_summary(x);
-  REQUIRE_THAT(lb_kim(s, s), WithinAbs(0.0, 1e-15));
 }
 
 TEST_CASE("LB_Keogh with band=0 equals L1 pointwise sum", "[accuracy][lower_bounds]")

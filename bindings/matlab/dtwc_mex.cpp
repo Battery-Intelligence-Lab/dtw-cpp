@@ -47,7 +47,6 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
 #include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
 #include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
-#include "../../dtwc/core/pruned_distance_matrix.hpp" // exact metric-aware matrix builder
 
 #include <string>
 #include <vector>
@@ -488,11 +487,10 @@ static dtwc::core::MissingStrategy parse_missing_strategy(const std::string &s) 
 static dtwc::DistanceMatrixStrategy parse_distance_strategy(const std::string &s) {
   if (s == "auto") return dtwc::DistanceMatrixStrategy::Auto;
   if (s == "brute_force") return dtwc::DistanceMatrixStrategy::BruteForce;
-  if (s == "pruned") return dtwc::DistanceMatrixStrategy::Pruned;
   if (s == "cuda") return dtwc::DistanceMatrixStrategy::CUDA;
   if (s == "metal") return dtwc::DistanceMatrixStrategy::Metal;
   throw std::invalid_argument("Unknown distance strategy: '" + s + "'. "
-    "Valid: 'auto', 'brute_force', 'pruned', 'cuda', 'metal'.");
+    "Valid: 'auto', 'brute_force', 'cuda', 'metal'.");
 }
 
 /// Parse linkage string -> enum
@@ -521,19 +519,6 @@ static dtwc::Solver parse_solver(const std::string &s) {
   if (s == "highs") return dtwc::Solver::HiGHS;
   if (s == "gurobi") return dtwc::Solver::Gurobi;
   throw std::invalid_argument("Unknown solver: '" + s + "'. Valid: 'highs', 'gurobi'.");
-}
-
-/// Parse lower-bound strategy string -> enum (contract §2.1 set_lb_strategy).
-static dtwc::LowerBoundStrategy parse_lb_strategy(const std::string &s) {
-  if (s == "auto") return dtwc::LowerBoundStrategy::Auto;
-  if (s == "none") return dtwc::LowerBoundStrategy::None;
-  if (s == "kim") return dtwc::LowerBoundStrategy::Kim;
-  if (s == "keogh") return dtwc::LowerBoundStrategy::Keogh;
-  if (s == "kim_keogh" || s == "kimkeogh") return dtwc::LowerBoundStrategy::KimKeogh;
-  if (s == "enhanced") return dtwc::LowerBoundStrategy::Enhanced;
-  if (s == "webb") return dtwc::LowerBoundStrategy::Webb;
-  throw std::invalid_argument("Unknown lb_strategy: '" + s + "'. "
-    "Valid: 'auto', 'none', 'kim', 'keogh', 'kim_keogh', 'enhanced', 'webb'.");
 }
 
 /// Parse storage policy string -> enum (contract §2.1 set_storage_policy).
@@ -902,14 +887,6 @@ static void cmd_Problem_set_solver(int nlhs, mxArray *plhs[], int nrhs, const mx
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   const bool ok = prob.set_solver(parse_solver(get_string(prhs[2])));
   plhs[0] = mxCreateLogicalScalar(ok);  // false => requested solver not compiled in
-}
-
-static void cmd_Problem_set_lb_strategy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("Problem_set_lb_strategy requires handle and strategy string.");
-  require_char(prhs[2], "lb_strategy");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-  const auto candidate = parse_lb_strategy(get_string(prhs[2]));
-  prob.set_lb_strategy(candidate);
 }
 
 static void cmd_Problem_set_storage_policy(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
@@ -1568,15 +1545,21 @@ static void cmd_DTWClustering_compute_distance_matrix(
   const int band = optional_int(nrhs, prhs, 2, "band", dtwc::settings::DEFAULT_BAND);
   const dtwc::core::MetricType metric = optional_metric(nrhs, prhs, 3);
 
+  // Every pair exactly, into the column-major output (created zero, so the
+  // diagonal is already 0); rows are disjoint, so the fill needs no locks.
   const size_t N = series.size();
-  std::vector<double> row_major(N * N, 0.0);
-  dtwc::core::compute_distance_matrix_pruned(series, row_major.data(), band, metric);
-
   mxArray *out = mxCreateDoubleMatrix(N, N, mxREAL);
   double *dst = mxGetDoubles(out);
-  for (size_t i = 0; i < N; ++i)
-    for (size_t j = 0; j < N; ++j)
-      dst[i + j * N] = row_major[i * N + j];
+  auto fill_row = [&](size_t i) {
+    for (size_t j = i + 1; j < N; ++j) {
+      const double d = (band >= 0)
+        ? dtwc::dtwBanded<double>(series[i], series[j], band, -1.0, metric)
+        : dtwc::dtwFull_L<double>(series[i], series[j], -1.0, metric);
+      dst[i + j * N] = d;
+      dst[j + i * N] = d;
+    }
+  };
+  dtwc::run_openmp(fill_row, N, true, 8);
   plhs[0] = out;
 }
 
@@ -1691,7 +1674,6 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Problem: 2.0 config setters (method / solver / strategies / output / MIP / CUDA)
     else if (cmd == "Problem_set_method") cmd_Problem_set_method(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_solver") cmd_Problem_set_solver(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "Problem_set_lb_strategy") cmd_Problem_set_lb_strategy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_storage_policy") cmd_Problem_set_storage_policy(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_output_folder") cmd_Problem_set_output_folder(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Problem_set_mip_settings") cmd_Problem_set_mip_settings(nlhs, plhs, nrhs, prhs);

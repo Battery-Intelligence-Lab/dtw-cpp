@@ -77,23 +77,6 @@ dtwc_add_test(NAME unit_test_checkpoint_binary SOURCE ${_dtwc_test_source_unit_t
     FIXTURE_ROOT "${CMAKE_CURRENT_BINARY_DIR}/f51-binary-checkpoint" FIXTURE_DEFINE DTWC_F51_TEST_ROOT
     SERIAL)
 
-# D2: exhaustive LB_Keogh proof; serial OpenMP for deterministic pair order.
-dtwc_add_test(NAME test_lb_keogh_derivation SOURCE ${_dtwc_test_source_test_lb_keogh_derivation}
-    ENVIRONMENT "OMP_NUM_THREADS=1"
-    MARKER "D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS"
-    SERIAL)
-
-# D3: LB_Enhanced / LB_Webb proof plus two live pruning routes.
-dtwc_add_test(NAME test_lb_enhanced_webb_derivation SOURCE ${_dtwc_test_source_test_lb_enhanced_webb_derivation}
-    ENVIRONMENT "OMP_NUM_THREADS=1"
-    MARKER "D3_LB_ENHANCED_WEBB_GATE envelope_cases=2004 path_cases=35982 full_cover_cases=7380 enhanced_cases=68787 enhanced_v5=4/4 webb_cases=35982 webb_branches=4/4 webb_strict=2/2 tail_cases=35982 tail_strict=2/2 metric_cases=140 order_witnesses=2/2 cascade_routes=2/2 skips=0 verdict=PASS"
-    SERIAL TIMEOUT 60)
-
-# F57: the valid INT_MAX CPU-window defect, isolated from D3.
-dtwc_add_test(NAME test_lb_webb_intmax SOURCE ${_dtwc_test_source_test_lb_webb_intmax}
-    MARKER "F57_LB_WEBB_INTMAX l1=4/4 squared=8/8 global_parity=2/2 admissible=2/2 skips=0 verdict=PASS"
-    SERIAL TIMEOUT 30)
-
 # F13: nearest-medoid assignment through a multi-worker OpenMP region.
 dtwc_add_test(NAME unit_test_nearest_medoid_assignment SOURCE ${_dtwc_test_source_unit_test_nearest_medoid_assignment}
     ENVIRONMENT "OMP_NUM_THREADS=4" PROCESSORS 4)
@@ -145,7 +128,7 @@ dtwc_add_test(NAME unit_test_mpi SOURCE ${_dtwc_test_source_unit_test_mpi}
 # capability; strict everywhere else.
 foreach(_dtwc_mmap_test IN ITEMS
         unit_test_mmap_data_store unit_test_mmap_distance_matrix
-        unit_test_problem_semantic_transactions unit_test_pruned_distance_matrix
+        unit_test_problem_semantic_transactions
         test_storage_policy unit_test_cli_args unit_test_dtw_function_semantics
         unit_test_variant_precision unit_test_variant_distmat)
     dtwc_add_test(NAME ${_dtwc_mmap_test} SOURCE ${_dtwc_test_source_${_dtwc_mmap_test}} ${_dtwc_mmap_skip})

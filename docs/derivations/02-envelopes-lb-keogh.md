@@ -1,10 +1,11 @@
 # D2 — envelopes and LB_Keogh admissibility
 
-**Verdict:** scalar CPU envelope construction and fixed-window LB_Keogh are
-**CONFIRMED** for L1 and unrooted squared-L2 costs. The proof also confirms
+**Verdict:** scalar envelope construction and fixed-window LB_Keogh are
+**CONFIRMED** for L1 (the CPU bound TADPole uses) and unrooted squared-L2
+costs (the GPU kernels' squared bound). The proof also confirms
 the `min(n,m)` prefix construction for feasible unequal-length paths under the
 current fixed window. The public envelope representation is
-**DISCREPANCY** F46, squared LB_Kim is **DISCREPANCY** F47, TADPole's empty
+**DISCREPANCY** F46, TADPole's empty
 domain is **DISCREPANCY** F48, direct-call band/cache provenance is
 **DISCREPANCY** F49, and GPU execution still has the F27–F30/F50
 qualifications mapped below.
@@ -67,8 +68,6 @@ The proof uses the following assumptions exactly where needed:
 4. the envelope radius $r$ covers the DTW radius: `r >= w`;
 5. local costs are unweighted, additive, and nonnegative;
 6. arithmetic is exact and accumulated values are representable.
-7. for the multivariate extension, channels share a commensurate unit $U$
-   after any required scaling or nondimensionalization.
 
 Missing-value policies, normalized/path-averaged objectives, derivative
 series, ADTW penalties, Soft-DTW soft minima, GPU threshold casting, and
@@ -294,62 +293,6 @@ not a valid counterexample. At the minimally feasible band one, the path
 $(0,0),(0,1),(1,2)$ has zero cost and both prefixes have zero bound. F29 now
 owns executable CUDA/Metal confirmation rather than a mathematical repair.
 
-## Multivariate dependent and independent extensions
-
-For a $d$-channel dependent DTW, construct (3) independently per channel.
-Here the common-unit assumption above is load-bearing: unweighted addition is
-the live objective only after channels are expressed in a shared commensurate
-unit or nondimensionalized scale. Raw heterogeneous physical units require an
-explicit scaling/weighting model; without one, the sum has no single physical
-unit and the $U$/$U^2$ ledger below is not defined.
-
-At row $i$, these intervals form an axis-aligned box. For the additive
-multivariate L1 and squared-L2 point costs,
-
-$$
-c_{p,\mathrm{MV}}(a,b)
-=
-\sum_{\ell=0}^{d-1}\lvert a_\ell-b_\ell\rvert^p.
-\tag{16}
-$$
-
-Every aligned candidate vector lies inside the box coordinate by coordinate.
-Applying (8) to each coordinate and summing proves that the box-projection
-cost is no larger than the local multivariate path-cell cost. Equation (11)
-then applies unchanged.
-
-This proves the low-level `lb_keogh_mv` and `lb_keogh_mv_squared` formulas for
-dependent multivariate DTW with additive L1 or squared-L2 point costs.
-
-Independent DTW allows each channel $\ell$ to choose its own path
-$P_\ell$. Apply the scalar proof (12) separately to every channel, then sum:
-
-$$
-\sum_{\ell=0}^{d-1}\operatorname{LB}^{(p)}_\ell
-\le
-\sum_{\ell=0}^{d-1}\min_{P_\ell}C_{p,\ell}(P_\ell)
-=
-\operatorname{DTW}^{(p)}_{\mathrm I}.
-\tag{17}
-$$
-
-Different paths do not invalidate (17); they are precisely why the minimum is
-taken before the channel sum. Thus the same production formula is also a
-lower bound for independent DTW when its objective is the additive sum of
-per-channel L1 or squared-L2 DTWs and each envelope covers that channel's
-fixed window.
-
-The opposite-warp discriminator uses query channels `[0,3,3]` and `[0,0,2]`
-against candidate channels `[0,0,2]` and `[0,3,3]` at radius one. Recursive
-scalar path enumeration gives independent L1 and squared objectives of
-`4 U` and `4 U^2`; the production multivariate bounds are `3 U` and `3 U^2`.
-The shared-path dependent objectives are instead `8 U` and `20 U^2`, so they
-cannot masquerade as the independent arbiter.
-
-Neither proof establishes a sum-of-coordinate excess bound for multivariate
-Euclidean `MVL2Dist`, whose square root couples channels. The low-level
-primitives are not wired into `Problem`'s automatic matrix route.
-
 ## Linear-time envelope construction
 
 A direct implementation of (3) scans up to $2r+1$ values per output. Including
@@ -386,19 +329,13 @@ cross-precision threshold band belongs to D17.
 
 ## Full-DTW call sites
 
-Two CPU call-site classes currently handle a negative DTW band differently:
-
-1. `fill_distance_matrix_pruned` disables envelope-based bounds when
-   `band < 0`. It may still use L1 LB_Kim under the default cascade. Since an
-   exact matrix needs every final value, an early-abandoned pair is retried;
-   this route does not skip exact pair computation. D2 does not prove LB_Kim,
-   and F47 records its squared-cost trait mismatch.
-2. TADPole can skip a pair because its density stage needs only a threshold
-   decision. For supported finite, nonempty, equal-length, univariate
-   Standard-L1 data whose series length is representable by the integer band
-   API, it replaces a negative band by the series length and therefore builds
-   the global envelope in (5). F46's radius-contract audit includes the
-   unchecked `size_t`-to-`int` narrowing at this call site.
+TADPole is the one CPU call site. It can skip a pair because its density
+stage needs only a threshold decision. For supported finite, nonempty,
+equal-length, univariate Standard-L1 data whose series length is representable
+by the integer band API, it replaces a negative band by the series length and
+therefore builds the global envelope in (5). F46's radius-contract audit
+includes the unchecked `size_t`-to-`int` narrowing at this call site. An exact
+distance matrix needs every pair and uses no bound.
 
 The permanent test distinguishes a disabled TADPole LB, the unsafe radius-zero
 envelope, and the intended global envelope with two orthogonal fixtures. Their
@@ -453,47 +390,35 @@ Its exact inventories are:
 | Envelope equality | `{-2,0,3}`, lengths 1–5, radii 0–n | 2,004 | zero mismatches |
 | Equal-length admissibility | `{-1,0,2}`, lengths 1–4, all ordered pairs and radii | 28,602 | zero violations |
 | Feasible unequal prefixes | `{-1,0,2}`, lengths 1–4, all unequal ordered pairs and feasible radii | 17,712 | zero violations |
-| Independent-MV discriminator | two channels with opposite preferred warp directions | 1 | bound `3/3`, independent DTW `4/4`, dependent DTW `8/20` |
-| Full-DTW caller classes | exact matrix and TADPole | 2/2 | both reached |
+| TADPole full-DTW call site | a zero-DTW warped pair and a separated pair | 2 | `pruned_by_lb` `(0,1)` |
 
-Every admissibility case checks forward, reverse, and symmetric bounds for
-both $p=1$ and $p=2$ against the explicit minimum path cost.
+Every admissibility case checks forward, reverse, and symmetric L1 bounds
+against the explicit minimum path cost; the test REQUIREs each case count, so
+a run that skipped the enumeration fails. The squared-L2 bound is proved above
+and exercised by the GPU LB tests.
 
-The non-degenerate direction/metric ledger is:
+The non-degenerate direction ledger is:
 
 | Bound | Forward | Reverse | Symmetric max |
 |---|---:|---:|---:|
 | L1 (`U`) | 8 | 2 | 8 |
-| squared (`U^2`) | 22 | 4 | 22 |
 
-The singleton metric discriminator is L1 `0.5 U` versus squared `0.25 U^2`.
-The strengthened focused executable prints:
-
-```text
-D2_LB_KEOGH_GATE envelope_cases=2004 equal_cases=28602 unequal_cases=17712 call_sites=2/2 skips=0 verdict=PASS
-All tests passed (65 assertions in 1 test case)
-```
-
-The full verbatim run, preregistered bands, and both execution seeds are in
+The preregistered bands and the first verbatim run (which also covered the
+since-deleted CPU squared, multivariate and pruned-matrix routes) are in
 `.claude/baselines/2026-07-30-d2-lb-keogh.md`.
 
 ## Code-conformance table
 
 | Claim | Live code | Verdict |
 |---|---|---|
-| Scalar L1 and squared point costs, equation (1) | `dtwc/core/distance_metric.hpp:20-43` | **CONFIRMED** |
 | Fixed CPU cell geometry and feasibility | `dtwc/core/dtw_kernel.hpp:190-205,420-436` | **CONFIRMED** by D1 |
-| Centered scalar envelope, equations (2)–(5) | `dtwc/core/lower_bound_impl.hpp:58-126` | **CONFIRMED**; a negative band builds the global envelope (5) since FX-13 |
-| L1 projection sum, equations (6)–(12) | `dtwc/core/lower_bound_impl.hpp:181-203` | **CONFIRMED** |
-| Squared projection sum | `dtwc/core/lower_bound_impl.hpp:551-570` | **CONFIRMED** |
-| Symmetric maximum, equation (14) | `dtwc/core/lower_bound_impl.hpp:371-388` | **CONFIRMED** for its L1 wrapper; no public squared symmetric wrapper |
-| Prefix truncation, equation (15) | `dtwc/core/lower_bound_impl.hpp:356-368`; CUDA `dtwc/cuda/cuda_dtw.cu:782-813`; Metal `dtwc/metal/metal_dtw.mm:932-954` | Math **CONFIRMED** for feasible fixed windows; real backends remain F29 |
-| Per-channel dependent/independent MV extensions, equations (16)–(17) | `dtwc/core/lower_bound_impl.hpp:419-527,593-611`; `tests/unit/adversarial/test_lb_keogh_derivation.cpp:364-408` | **CONFIRMED** for additive L1/squared costs; low-level only |
-| Exact-matrix full-window guard | `dtwc/core/pruned_distance_matrix.cpp:128-150,216-238,339-378` | **CONFIRMED**; Keogh disabled for negative bands and unequal lengths |
+| Centered scalar envelope, equations (2)–(5) | `compute_envelopes` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED**; a negative band builds the global envelope (5) since FX-13 |
+| L1 projection sum, equations (6)–(12) | pointer `lb_keogh` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** |
+| Symmetric maximum, equation (14) | `lb_keogh_symmetric` in `dtwc/core/lower_bound_impl.hpp` | **CONFIRMED** (L1) |
+| Prefix truncation, equation (15) | `Envelope` `lb_keogh` in `dtwc/core/lower_bound_impl.hpp`; CUDA `dtwc/cuda/cuda_dtw.cu:782-813`; Metal `dtwc/metal/metal_dtw.mm:932-954` | Math **CONFIRMED** for feasible fixed windows; real backends remain F29 |
 | TADPole global-envelope conversion | `dtwc/algorithms/tadpole.cpp:149-160,178-190,219-224` | **CONFIRMED** for finite, nonempty, equal-length Standard-L1 with integer-representable lengths; empty case is F48 and radius narrowing is F46 |
-| Exhaustive independent oracle | `tests/unit/adversarial/test_lb_keogh_derivation.cpp:127-526`; `tests/CMakeLists.txt:128-144` | **CONFIRMED**, non-skippable |
-| Public envelope shape/window contract | `dtwc/core/lower_bound_impl.hpp:214-223,326-388` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
-| Squared LB_Kim compatibility | `dtwc/core/lower_bounds.hpp:42-52`; `dtwc/core/lower_bound_impl.hpp:225-324` | **DISCREPANCY** F47: L1-unit result advertised for squared DTW |
+| Exhaustive independent oracle | `tests/unit/adversarial/test_lb_keogh_derivation.cpp` | **CONFIRMED**, non-skippable |
+| Public envelope shape/window contract | `Envelope`, `envelope_covers` and the `lb_keogh` overloads in `dtwc/core/lower_bound_impl.hpp` | **DISCREPANCY** F46: unchecked read/truncation and no provenance |
 | CUDA/Metal squared pruning | CUDA `compute_lb_keogh_kernel`; Metal `compute_lb_keogh` | **CONFIRMED** since FX-13: both square each excess under squared L2; executed on Metal, CUDA `[BLOCKED-ENV]` |
 | Metal full-DTW envelope choice | `dtwc/metal/metal_dtw.mm`, `compute_distance_matrix_metal` | **CONFIRMED** since FX-13: the default is the DTW window; a narrower explicit radius is `InvalidInput` |
 | Explicit GPU LB requests | CUDA `dtwc/cuda/cuda_dtw.cu:1476-1480`; Metal `dtwc/metal/metal_dtw.mm:1493-1503,1536-1550` | **DISCREPANCY** F30: requests can silently disable or fall back |
@@ -504,15 +429,12 @@ The full verbatim run, preregistered bands, and both execution seeds are in
 - **CONFIRMED:** the scalar algebra, direct production formulas, envelope
   monotonicity, full/global construction, symmetric maximum, and feasible
   unequal fixed-window prefix theorem.
-- **CONFIRMED:** the two nonempty CPU full-DTW call-site policies execute with
-  the registered safety/reachability fingerprints.
-- **CONFIRMED:** dependent multivariate additive L1/squared formulas follow by
-  coordinatewise projection; independent additive DTW follows by summing the
-  separately minimized scalar bounds. Both remain low-level primitives.
+- **CONFIRMED:** the nonempty TADPole full-DTW call site executes with the
+  registered safety/reachability fingerprint.
 - **FALSIFIED:** the old F29 claim that prefix truncation itself is
   inadmissible under the current fixed window. Real device conformance is
   still an open F29 gate.
-- **DISCREPANCY:** F46–F49, F29, and F30 subjects named in the table. None is
+- **DISCREPANCY:** F46, F48, F49, F29, and F30 subjects named in the table. None is
   hidden by the green scalar oracle. FX-13 closed F27, F28, F50, and F46's
   negative-band coercion.
 - **OPEN:** floating-point threshold safety, GPU FP32 reduction/casting,

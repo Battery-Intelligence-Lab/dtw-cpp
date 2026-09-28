@@ -436,7 +436,6 @@ function test_problem_setters_all_callable(testCase)
     prob.set_variant('standard');
     prob.set_missing_strategy('error');
     prob.set_distance_strategy('auto');
-    prob.set_lb_strategy('keogh');
     prob.set_storage_policy('heap');
     ok = prob.set_solver('highs');
     verifyTrue(testCase, islogical(ok));
@@ -463,13 +462,6 @@ function test_problem_set_method_refuses_pam_and_auto(testCase)
     end
     prob.set_method('kmedoids');
     prob.set_method('mip');
-end
-
-function test_problem_enhanced_webb_lb_strategies(testCase)
-%   Every core lower-bound strategy is selectable through the MATLAB parser.
-    prob = dtwc.Problem('lb_strategy_parity');
-    prob.set_lb_strategy('enhanced');
-    prob.set_lb_strategy('webb');
 end
 
 function test_problem_set_mip_settings_roundtrip(testCase)

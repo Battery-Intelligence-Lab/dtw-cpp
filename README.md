@@ -32,7 +32,7 @@ DTW-C++ is a high-performance C++ library for Dynamic Time Warping (DTW) distanc
 - **7 elastic distances**: Standard DTW, DDTW, WDTW, ADTW, Soft-DTW, MSM, TWE
 - **Missing data support**: NaN-aware DTW (DTW-AROW)
 - **8 CLI-selectable clustering methods**: PAM/FastPAM, OneBatchPAM, FastCLARA, k-medoids, MIP, LR-core, hierarchical, TADPole
-- **Lower bounds**: Keogh/Webb bounds and admissible TADPole pair pruning
+- **Lower bounds**: LB_Keogh and admissible TADPole pair pruning
 - **Multi-language**: C++ core, Python (sklearn-compatible), MATLAB MEX bindings
 - **Parallelism**: OpenMP threads, MPI distributed, CUDA and Metal GPUs (optional)
 - **Runtime precision**: Float64 by default; explicit Float32 halves series-storage bytes and uses Float32 recurrence arithmetic

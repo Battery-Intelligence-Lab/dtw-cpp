@@ -175,3 +175,31 @@ TEST_CASE("z_normalize handles large-range values", "[Phase1][z_normalize]")
   REQUIRE_THAT(m, WithinAbs(0.0, 1e-6));
   REQUIRE_THAT(s, WithinAbs(1.0, 1e-6));
 }
+
+// ---------------------------------------------------------------------------
+// 10. A spread far below the 1e-10 stddev floor is treated as constant
+// ---------------------------------------------------------------------------
+TEST_CASE("z_normalize treats near-zero variance as constant", "[z_normalize]")
+{
+  std::vector<data_t> v(64);
+  for (std::size_t i = 0; i < v.size(); ++i)
+    v[i] = 1.0 + static_cast<double>(i) * 1e-16;
+  dtwc::core::z_normalize(v.data(), v.size());
+
+  for (const auto x : v)
+    REQUIRE_THAT(x, WithinAbs(0.0, 1e-10));
+}
+
+// ---------------------------------------------------------------------------
+// 11. Negative values: mean 0, population stddev sqrt(50)
+// ---------------------------------------------------------------------------
+TEST_CASE("z_normalize of negative and positive values", "[z_normalize]")
+{
+  std::vector<data_t> v{ -10, -5, 0, 5, 10 };
+  dtwc::core::z_normalize(v.data(), v.size());
+
+  const double s = std::sqrt(50.0);
+  const std::vector<double> expected{ -10 / s, -5 / s, 0.0, 5 / s, 10 / s };
+  for (std::size_t i = 0; i < v.size(); ++i)
+    REQUIRE_THAT(v[i], WithinAbs(expected[i], 1e-12));
+}

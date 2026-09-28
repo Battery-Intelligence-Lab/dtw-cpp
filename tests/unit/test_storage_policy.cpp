@@ -21,7 +21,6 @@
  */
 
 #include <dtwc.hpp>
-#include <core/pruned_distance_matrix.hpp>
 #include <base/error.hpp>
 
 #include <catch2/catch_test_macros.hpp>
@@ -186,16 +185,14 @@ TEST_CASE("mmap vs heap load yields digit-identical DTW distances", "[storage][m
 }
 
 // ===========================================================================
-// (d) Pruned is a dense-only implementation. Auto/explicit strategy routing
-//     must never enter it after a Problem has selected mapped matrix storage.
+// (d) The Auto fill writes mapped matrix storage exactly.
 // ===========================================================================
-TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
-          "[storage][mmap][pruned][m42]")
+TEST_CASE("Auto fill writes mmap storage exactly",
+          "[storage][mmap][m42]")
 {
-  const auto scratch = make_scratch_dir("m42_pruned_route");
+  const auto scratch = make_scratch_dir("m42_auto_route");
 
-  auto make_problem = [](size_t n, core::DTWVariant variant,
-                         DistanceMatrixStrategy strategy) {
+  auto make_problem = [](size_t n, core::DTWVariant variant) {
     std::vector<std::vector<double>> series;
     std::vector<std::string> names;
     for (size_t i = 0; i < n; ++i) {
@@ -211,13 +208,11 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
     params.variant = variant;
     params.adtw_penalty = 0.75;
     prob.set_variant(params);
-    prob.set_distance_strategy(strategy);
     return prob;
   };
 
 #ifndef DTWC_HAS_MMAP
-  auto prob = make_problem(64, core::DTWVariant::Standard,
-                           DistanceMatrixStrategy::Auto);
+  auto prob = make_problem(64, core::DTWVariant::Standard);
   try {
     prob.use_mmap_distance_matrix(scratch / "unsupported.dtwm");
     FAIL("LLFIO-off build accepted mmap distance storage");
@@ -227,28 +222,11 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
       "(rebuild with -DDTWC_ENABLE_LLFIO=ON / llfio available).");
   }
 #else
-  auto run = [&](size_t n, core::DTWVariant variant,
-                 DistanceMatrixStrategy strategy, const std::string &tag) {
-    auto prob = make_problem(n, variant, strategy);
+  auto run = [&](size_t n, core::DTWVariant variant, const std::string &tag) {
+    auto prob = make_problem(n, variant);
     const auto cache = scratch / (tag + ".dtwm");
     prob.use_mmap_distance_matrix(cache);
-    if (strategy == DistanceMatrixStrategy::Pruned) {
-      prob.set_verbose(true);
-      std::ostringstream route_output;
-      {
-        auto *previous_buffer = std::cout.rdbuf(route_output.rdbuf());
-        struct RestoreCout {
-          std::streambuf *buffer;
-          ~RestoreCout() { std::cout.rdbuf(buffer); }
-        } restore_cout{previous_buffer};
-        prob.fill_distance_matrix();
-      }
-      REQUIRE(route_output.str().find(
-        "Pruned strategy requires dense distance storage; using exact BruteForce "
-        "to fill the configured mmap distance matrix.") != std::string::npos);
-    } else {
-      prob.fill_distance_matrix();
-    }
+    prob.fill_distance_matrix();
     REQUIRE(prob.is_distance_matrix_filled());
     const auto &matrix = std::get<core::MmapDistanceMatrix>(prob.distance_matrix());
     REQUIRE(matrix.size() == n);
@@ -263,28 +241,8 @@ TEST_CASE("Pruned strategy routing fills mmap storage without dense access",
     }
   };
 
-  {
-    auto direct = make_problem(64, core::DTWVariant::Standard,
-                               DistanceMatrixStrategy::Pruned);
-    direct.use_mmap_distance_matrix(scratch / "direct-pruned.dtwm");
-    try {
-      (void)dtwc::core::fill_distance_matrix_pruned(direct, 0);
-      FAIL("direct pruned fill accepted mapped storage");
-    } catch (const dtwc::InvalidInput &error) {
-      REQUIRE(std::string(error.what()) ==
-        "fill_distance_matrix_pruned: mapped distance storage is unsupported; "
-        "call Problem::fill_distance_matrix() to route an exact mapped BruteForce fill.");
-    }
-  }
-
-  run(63, core::DTWVariant::Standard, DistanceMatrixStrategy::Auto,
-      "standard-auto-63");
-  run(64, core::DTWVariant::Standard, DistanceMatrixStrategy::Auto,
-      "standard-auto-64");
-  run(64, core::DTWVariant::ADTW, DistanceMatrixStrategy::Auto,
-      "adtw-auto-64");
-  run(64, core::DTWVariant::Standard, DistanceMatrixStrategy::Pruned,
-      "standard-explicit-64");
+  run(64, core::DTWVariant::Standard, "standard-auto-64");
+  run(64, core::DTWVariant::ADTW, "adtw-auto-64");
 #endif
 
   fs::remove_all(scratch);

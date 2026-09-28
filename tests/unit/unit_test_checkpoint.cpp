@@ -509,33 +509,6 @@ TEST_CASE("Automatic checkpointing rejects mmap distance storage",
 
 
 // ---------------------------------------------------------------------------
-// 14. Pruned + automatic checkpointing downgrades to the exact row schedule
-// ---------------------------------------------------------------------------
-TEST_CASE("Automatic checkpointing downgrades Pruned to BruteForce",
-          "[checkpoint][fill]")
-{
-  constexpr int N = 8;
-  auto reference = make_problem(N);
-  reference.distance_strategy = DistanceMatrixStrategy::BruteForce;
-  reference.fill_distance_matrix();
-
-  auto ckpt_dir = make_temp_dir("auto_pruned");
-  auto prob = make_problem(N);
-  prob.distance_strategy = DistanceMatrixStrategy::Pruned;
-  prob.checkpoint.enabled = true;
-  prob.checkpoint.save_interval = 3;
-  prob.checkpoint.directory = ckpt_dir;
-  REQUIRE_NOTHROW(prob.fill_distance_matrix());
-
-  REQUIRE(prob.is_distance_matrix_filled());
-  REQUIRE(count_generations(ckpt_dir) == 1);
-  require_identical_matrices(prob, reference);
-
-  cleanup_dir(ckpt_dir);
-}
-
-
-// ---------------------------------------------------------------------------
 // 15. Automatic checkpointing rejects an empty directory before any work
 // ---------------------------------------------------------------------------
 TEST_CASE("Automatic checkpointing rejects an empty directory",

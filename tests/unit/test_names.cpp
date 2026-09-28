@@ -23,7 +23,6 @@
 #include "cli/config.hpp"
 #include "core/dtw_options.hpp"
 #include "core/storage.hpp"
-#include "enums/LowerBoundStrategy.hpp"
 #include "enums/Method.hpp"
 #include "enums/Solver.hpp"
 
@@ -88,9 +87,8 @@ void check_table(const dtwc::Name<E> (&table)[N], const std::vector<std::pair<st
 
 } // namespace
 
-TEST_CASE("Method, Solver and LowerBoundStrategy tables", "[names]")
+TEST_CASE("Method and Solver tables", "[names]")
 {
-  using dtwc::LowerBoundStrategy;
   using dtwc::Method;
   // MATLAB's parse_method also read 'pam' and 'auto' as Kmedoids, i.e. Lloyd: not names of it.
   check_table(dtwc::method_names,
@@ -98,12 +96,6 @@ TEST_CASE("Method, Solver and LowerBoundStrategy tables", "[names]")
                 { "tadpole", Method::TADPole } },
               {});
   check_table(dtwc::solver_names, { { "highs", dtwc::Solver::HiGHS }, { "gurobi", dtwc::Solver::Gurobi } }, {});
-  check_table(dtwc::lower_bound_strategy_names,
-              { { "auto", LowerBoundStrategy::Auto }, { "none", LowerBoundStrategy::None },
-                { "kim", LowerBoundStrategy::Kim }, { "keogh", LowerBoundStrategy::Keogh },
-                { "kim_keogh", LowerBoundStrategy::KimKeogh }, { "enhanced", LowerBoundStrategy::Enhanced },
-                { "webb", LowerBoundStrategy::Webb } },
-              { { "kimkeogh", "kim_keogh" } });
 }
 
 TEST_CASE("distance tables: metric, variant, mv-mode, missing strategy", "[names]")
@@ -172,6 +164,6 @@ TEST_CASE("parse_name matches ASCII case only", "[names]")
   CHECK_THROWS_AS(dtwc::parse_name(dtwc::cluster_method_names, "one_batch", "method"), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_name(dtwc::core::missing_strategy_names, "zero cost", "missing strategy"),
                   dtwc::InvalidInput);
-  CHECK_THROWS_AS(dtwc::parse_name(dtwc::lower_bound_strategy_names, "kim-keogh", "lb strategy"),
+  CHECK_THROWS_AS(dtwc::parse_name(dtwc::core::metric_names, "squared-euclidean", "metric"),
                   dtwc::InvalidInput);
 }

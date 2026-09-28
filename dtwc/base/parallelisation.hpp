@@ -188,8 +188,7 @@ void run(Tfun &task_indv, size_t i_end, size_t numMaxParallelWorkers = 32)
   const bool useParallel = (numMaxParallelWorkers != 1);
 
   // Region-local limit only, so a later unconstrained fill still sees the
-  // machine's full thread count (and pruned_distance_matrix's block_count
-  // stays call-order independent).
+  // machine's full thread count.
   int requestedThreads = 0;
   if (useParallel && numMaxParallelWorkers > 0) {
     const int maxThreads = get_max_threads();

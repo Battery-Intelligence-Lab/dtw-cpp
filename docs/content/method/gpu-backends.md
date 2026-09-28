@@ -286,11 +286,6 @@ opts.lb_envelope_band = 50;    // must cover opts.band (else InvalidInput)
 opts.kernel_override = dtwc::KernelOverride::Wavefront;
 ```
 
-`Problem::lb_strategy()` is CPU-only today. Configure it through
-`Problem::set_lb_strategy(LowerBoundStrategy)`. It controls the CPU pruned path
-and includes Kim, Keogh, Enhanced, Webb, and cascade selections; `Problem` does
-not copy it into CUDA/Metal options or automatically enable GPU LB pruning.
-
 ## Historical measurements (Apple M2 Max, 38-core GPU)
 
 These 2026-04-12 results are historical, advisory measurements from a different
@@ -314,12 +309,10 @@ with `set_device(Device::GPU)`. Apple unified memory reduces
 transfer overhead, but the implementation still converts input into padded
 Metal buffers and copies the result back to host storage.
 
-`DistanceMatrixStrategy::Auto` is CPU-only: it resolves to CPU BruteForce or
-Pruned from the CPU policy. Tier-1 `device="gpu"` chooses a compiled GPU backend
+`DistanceMatrixStrategy::Auto` is CPU-only: it resolves to the CPU brute-force
+fill. Tier-1 `device="gpu"` chooses a compiled GPU backend
 explicitly and raises if that request cannot be delivered; it does not use Auto
-as a CUDA→Metal→CPU fallback chain. For an exact CPU matrix, the LB
-early-abandon/recompute `Pruned` route is a known pessimisation; use the ordinary
-CPU path unless a thresholded consumer such as TADPole can actually skip pairs.
+as a CUDA→Metal→CPU fallback chain.
 
 ### When LB_Keogh helps
 
@@ -355,6 +348,5 @@ See [`.claude/CITATIONS.md`](https://github.com/Battery-Intelligence-Lab/dtw-cpp
 | CUDA API | [dtwc/cuda/cuda_dtw.cuh](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/cuda/cuda_dtw.cuh) | `CUDADistMatOptions`, `CUDADistMatResult` |
 | Metal kernels | [dtwc/metal/metal_dtw.mm](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.mm) | Wavefront × 2, banded-row, regtile × 2, K-vs-N × 2, envelope/LB/compact |
 | Metal API | [dtwc/metal/metal_dtw.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/metal/metal_dtw.hpp) | `MetalDistMatOptions`, `MetalDistMatResult` |
-| CPU pruned path | [dtwc/core/pruned_distance_matrix.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/pruned_distance_matrix.cpp) | CPU lower-bound/EAP implementation; exact-matrix abandoned pairs are recomputed |
 | CPU lower bounds | [dtwc/core/lower_bound_impl.hpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/core/lower_bound_impl.hpp) | `compute_envelope`, `lb_keogh_symmetric` |
 | Dispatcher | [dtwc/Problem.cpp](https://github.com/Battery-Intelligence-Lab/dtw-cpp/blob/main/dtwc/Problem.cpp) | `fill_distance_matrix` routes through the strategy enum |

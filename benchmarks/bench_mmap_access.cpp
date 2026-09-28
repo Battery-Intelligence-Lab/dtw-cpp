@@ -64,7 +64,6 @@ static void BM_fill_dense(benchmark::State &state)
     dtwc::Problem prob("bench_fill_dense");
     prob.set_data(make_random_data(N, L));
     prob.band = band;
-    // Force BruteForce for fair comparison with mmap (Pruned is dense-only)
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
     state.ResumeTiming();
 
@@ -88,8 +87,6 @@ static void BM_fill_mmap(benchmark::State &state)
     dtwc::Problem prob("bench_fill_mmap");
     prob.set_data(data);
     prob.band = band;
-    // Pruned strategy calls dense_distance_matrix() which is incompatible with mmap;
-    // force BruteForce which dispatches correctly via visit_distmat.
     prob.distance_strategy = dtwc::DistanceMatrixStrategy::BruteForce;
     prob.use_mmap_distance_matrix(path);
     cleanup_paths.push_back(path);

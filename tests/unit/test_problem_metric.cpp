@@ -14,7 +14,6 @@
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/tadpole.hpp>
 #include <base/error.hpp>
-#include <core/pruned_distance_matrix.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_exception.hpp>
@@ -113,67 +112,41 @@ TEST_CASE("set_metric: the CPU fill computes squared L2 exactly",
   }
 }
 
-TEST_CASE("set_metric: Auto and Pruned fill a squared-L2 matrix exactly",
-          "[problem][metric][pruned][if2]")
+TEST_CASE("set_metric: Auto fills a squared-L2 matrix exactly",
+          "[problem][metric][if2]")
 {
-  // N >= 64 and band >= 0 are where Auto picks the pruned builder for L1; its
-  // bounds and kernels are L1, so another metric takes the exact row fill.
   const auto series = random_series(64, 12, 1, 23);
-  for (const auto strategy : { dtwc::DistanceMatrixStrategy::Auto,
-                               dtwc::DistanceMatrixStrategy::Pruned }) {
-    auto prob = make_problem(series);
-    prob.set_band(4);
-    prob.set_distance_strategy(strategy);
-    prob.set_metric(MetricType::SquaredL2);
-    prob.fill_distance_matrix();
-    int mismatches = 0;
-    for (std::size_t i = 0; i < series.size(); ++i)
-      for (std::size_t j = i + 1; j < series.size(); ++j)
-        if (prob.dist_by_ind(int(i), int(j))
-            != dtwc::distance::dtw<double>(series[i], series[j], 4,
-                                          MetricType::SquaredL2))
-          ++mismatches;
-    CHECK(mismatches == 0);
-  }
-
-  // The direct pruned builder refuses rather than compute L1.
-  auto direct = make_problem(series);
-  direct.set_metric(MetricType::SquaredL2);
-  REQUIRE_THROWS_MATCHES(dtwc::core::fill_distance_matrix_pruned(direct, 4),
-                         dtwc::InvalidInput,
-                         Catch::Matchers::MessageMatches(
-                           ContainsSubstring("univariate L1")));
+  auto prob = make_problem(series);
+  prob.set_band(4);
+  prob.set_metric(MetricType::SquaredL2);
+  prob.fill_distance_matrix();
+  int mismatches = 0;
+  for (std::size_t i = 0; i < series.size(); ++i)
+    for (std::size_t j = i + 1; j < series.size(); ++j)
+      if (prob.dist_by_ind(int(i), int(j))
+          != dtwc::distance::dtw<double>(series[i], series[j], 4,
+                                        MetricType::SquaredL2))
+        ++mismatches;
+  CHECK(mismatches == 0);
 }
 
-TEST_CASE("Auto and Pruned fills of multivariate series equal the multivariate kernel",
-          "[problem][metric][pruned][multivariate][if2]")
+TEST_CASE("Auto fill of multivariate series equals the multivariate kernel",
+          "[problem][metric][multivariate][if2]")
 {
-  // The pruned builder read interleaved series as one univariate stream: on the
-  // synced base, 2016 of these 2016 pairs were wrong (FX, found in IF-2 S2).
   constexpr std::size_t N = 64, ndim = 2;
   const auto series = random_series(N, 12, ndim, 11);
-  for (const auto strategy : { dtwc::DistanceMatrixStrategy::Auto,
-                               dtwc::DistanceMatrixStrategy::Pruned }) {
-    auto prob = make_problem(series, ndim);
-    prob.set_band(2);
-    prob.set_distance_strategy(strategy);
-    prob.fill_distance_matrix();
-    int mismatches = 0;
-    for (std::size_t i = 0; i < N; ++i)
-      for (std::size_t j = i + 1; j < N; ++j)
-        if (prob.dist_by_ind(int(i), int(j))
-            != dtwc::dtwBanded_mv<double>(series[i].data(), series[i].size() / ndim,
-                                          series[j].data(), series[j].size() / ndim,
-                                          ndim, 2))
-          ++mismatches;
-    CHECK(mismatches == 0);
-  }
-
-  auto direct = make_problem(series, ndim);
-  REQUIRE_THROWS_MATCHES(dtwc::core::fill_distance_matrix_pruned(direct, 2),
-                         dtwc::InvalidInput,
-                         Catch::Matchers::MessageMatches(
-                           ContainsSubstring("ndim = 2")));
+  auto prob = make_problem(series, ndim);
+  prob.set_band(2);
+  prob.fill_distance_matrix();
+  int mismatches = 0;
+  for (std::size_t i = 0; i < N; ++i)
+    for (std::size_t j = i + 1; j < N; ++j)
+      if (prob.dist_by_ind(int(i), int(j))
+          != dtwc::dtwBanded_mv<double>(series[i].data(), series[i].size() / ndim,
+                                        series[j].data(), series[j].size() / ndim,
+                                        ndim, 2))
+        ++mismatches;
+  CHECK(mismatches == 0);
 }
 
 TEST_CASE("set_metric: multivariate Standard DTW takes the metric, dependent and independent",

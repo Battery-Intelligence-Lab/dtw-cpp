@@ -8,7 +8,7 @@
  *   mip::AssignmentMatrixLayout (a public parameter despite backend-oriented use).
  * - Already exhaustively pinned by M47: core::ConstraintType, MetricType,
  *   DTWVariant, MVMode, MissingStrategy, DistanceMatrixStrategy,
- *   LowerBoundStrategy, core::StoragePolicy, core::Precision, KernelOverride,
+ *   core::StoragePolicy, core::Precision, KernelOverride,
  *   CUDASettings::precision, cuda::CUDAPrecision, and metal::MetalPrecision.
  *
  * Derived/internal enum inventory (not caller selectors): detail::SeqCause,
