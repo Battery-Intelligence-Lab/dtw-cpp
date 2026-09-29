@@ -76,7 +76,7 @@ int lane_mismatches(std::size_t n, int band, MetricType metric, bool ties)
 template <typename T>
 void check_every_configuration()
 {
-  for (const std::size_t n : { 1, 2, 7, 100, 1000 })
+  for (const std::size_t n : { 1u, 2u, 7u, 100u, 1000u })
     for (const int band : { -1, 0, 1, int(n / 10) })
       for (const auto metric : { MetricType::L1, MetricType::SquaredL2 })
         for (const bool ties : { false, true }) {
