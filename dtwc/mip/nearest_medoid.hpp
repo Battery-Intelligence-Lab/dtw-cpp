@@ -2,7 +2,7 @@
  * @file nearest_medoid.hpp
  * @brief Shared nearest-open-medoid scan for the MIP backends.
  *
- * @details The Benders assignment subproblem and every Lagrangian primal repair
+ * @details Every Lagrangian primal repair and the LR-core publication
  * answer the same question: which of the k open medoids serves point j, and at
  * what cost? This is the single definition, and it fixes the tie-break: the
  * FIRST minimum wins, so ties resolve to the lowest position in the open-medoid

@@ -8,9 +8,8 @@
 
 #include "mip.hpp"
 #include "highs_support.hpp"
-#include "index_guard.hpp"
-#include "solution_transaction.hpp"
-#include "warm_start.hpp"
+#include "decode_assignment.hpp"
+#include "../algorithms/fast_pam.hpp"
 #include "../Data.hpp"        // for Data
 #include "../base/error.hpp"       // for SolverError
 #include "solver_types.hpp" // for Triplet, RowMajor
@@ -51,7 +50,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
 #ifdef DTWC_ENABLE_HIGHS
   const auto Nb = prob.data().size();
   const auto Nc = prob.n_clusters();
-  mip::ExactClusteringTransaction result_transaction(prob);
 
   const auto Neq = Nb + 1;
   const auto Nineq = Nb * (Nb - 1);
@@ -59,15 +57,11 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   const auto Nvar = Nb * Nb;
 
-  // The binding index limit is the NARROWER of HighsInt and int: HighsInt is
-  // int32 in a default HiGHS build, and the matrix below is assembled through
-  // plain-`int` triplet fields, so on a HIGHSINT64 build a HighsInt-only bound
-  // would still let an N^2 dimension truncate in the triplets.
-  const auto index_max = std::min<std::size_t>(
-    static_cast<std::size_t>(std::numeric_limits<HighsInt>::max()),
-    static_cast<std::size_t>(std::numeric_limits<int>::max()));
-  mip::require_index_range(Nvar, index_max, "column count N*N", "HiGHS");
-  mip::require_index_range(Nconstraints, index_max, "row count", "HiGHS");
+  // HiGHS and the triplets below index with `int`; the ~3N² nonzeros are the
+  // largest count (N ≈ 26,750), and a cast past INT_MAX builds a wrong model.
+  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
+  if (numel > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+    throw SolverError("HiGHS: the compact p-median model for N = " + std::to_string(Nb) + " has more than INT_MAX nonzeros; use Method::LRCore.");
 
   HighsModel model;
   model.lp_.num_col_ = Nvar;
@@ -105,8 +99,6 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   model.lp_.a_matrix_.format_ = MatrixFormat::kColwise; // Here the orientation of the matrix is column-wise
 
-  const auto numel = Nb + Nb * Nb + Nb * 2 * (Nb - 1);
-  mip::require_index_range(numel, index_max, "nonzero count", "HiGHS");
 
   model.lp_.a_matrix_.start_.clear();
   model.lp_.a_matrix_.index_.clear();
@@ -180,7 +172,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
 
   // Warm start: run FastPAM and feed solution as MIP start
   if (prob.mip_settings.warm_start) {
-    auto pam_result = mip::make_warm_start(prob, prob.random_seed());
+    const auto pam_result = fast_pam_seeded(prob, Nc, prob.random_seed(), settings::DEFAULT_MAX_ITER);
 
     HighsSolution sol;
     sol.col_value.resize(Nvar, 0.0);
@@ -224,14 +216,7 @@ void MIP_clustering_byHiGHS(Problem &prob)
               << "Basis: " << highs.basisValidityToString(info.basis_validity) << '\n';
   }
 
-  // Decode and validate into private vectors before atomically publishing.
-  auto exact_result = mip::extract_exact_clustering(
-    highs.getSolution().col_value,
-    Nb,
-    Nc,
-    mip::AssignmentMatrixLayout::FacilityMajor,
-    "HiGHS");
-  result_transaction.publish(std::move(exact_result), "HiGHS");
+  prob.set_result(mip::decode_assignment(highs.getSolution().col_value, Nb, Nc, false, "HiGHS"));
 #else
   throw SolverError(
       "HiGHS solver is unavailable; rebuild with -DDTWC_ENABLE_HIGHS=ON");

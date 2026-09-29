@@ -10,7 +10,7 @@ cmake_minimum_required(VERSION 3.26)
 #          does not exist; `cuda` is `gpu`. A build without a GPU refuses every
 #          gpu cell with the api-contract-2.0.md §6.1 message.
 #   hpc    refused for every method (D-10); an unknown device is refused
-#   --print-config  the golden file reads back to itself (48 keys, each at a
+#   --print-config  the golden file reads back to itself (45 keys, each at a
 #          value that is not its default) and a bare --print-config prints
 #          config_defaults.toml: every default and spelling, pinned on the binary
 foreach(required_var IN ITEMS CLI INPUT GOLDEN DEFAULTS GPU HAS_HIGHS WORK_ROOT)

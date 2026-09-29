@@ -262,26 +262,6 @@ catch e
     failed = failed + 1;
 end
 
-%% Test 15: CLARANS
-% @author Volkan Kumtepeli
-try
-    prob = dtwc.Problem('clarans_test');
-    rng(42);
-    data = randn(15, 30);
-    prob.set_data(data);
-
-    result = dtwc.clarans(prob, 3, 'NumLocal', 2, 'Seed', 42);
-    assert(numel(result.labels) == 15, 'Should have 15 labels');
-    assert(numel(result.medoid_indices) == 3, 'Should have 3 medoids');
-    assert(result.total_cost > 0, 'Cost should be positive');
-
-    fprintf('Test 15 - CLARANS: cost=%.2f  [PASS]\n', result.total_cost);
-    passed = passed + 1;
-catch e
-    fprintf('Test 15 - CLARANS  [FAIL] %s\n', e.message);
-    failed = failed + 1;
-end
-
 %% Test 16: Hierarchical clustering (build + cut)
 try
     prob = dtwc.Problem('hier_test');

@@ -22,7 +22,6 @@
 #include <cmath>          // for std::log
 #include <cstddef>
 #include <cstdint>        // for int64_t
-#include <iostream>
 #include <limits>         // for std::numeric_limits
 #include <stdexcept>
 #include <string>         // for std::to_string
@@ -99,7 +98,7 @@ int require_two_realised(const std::vector<int> &counts, const char *who, const 
  * @param prob The clustering problem instance, which contains the data points, cluster indices, and centroids.
  * @return std::vector<double> A vector of silhouette scores for each data point.
  *
- * @note Requires that the data has already been clustered; if not, it will prompt the user to cluster the data first.
+ * @throws InvalidInput if the Problem has not been clustered.
  * @see https://en.wikipedia.org/wiki/Silhouette_(clustering) for more information on silhouette scoring.
  */
 std::vector<double> silhouette(Problem &prob)
@@ -107,12 +106,11 @@ std::vector<double> silhouette(Problem &prob)
   const auto Nb = prob.size();         //!< Number of profiles
   const auto Nc = prob.n_clusters(); //!< Number of clusters
 
-  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
+  // v1.0.0 printed a line and returned N copies of -1, a valid-looking score.
+  if (prob.centroids_ind.empty())
+    throw InvalidInput("Cluster before calculating silhouette");
 
-  if (prob.centroids_ind.empty()) {
-    std::cout << "Please cluster the data before calculating silhouette!" << '\n';
-    return silhouettes;
-  }
+  std::vector<double> silhouettes(Nb, -1); //!< Silhouette scores for each profile initialised to -1
 
   // s(i) is only defined when a SECOND non-empty cluster supplies b(i);
   // otherwise `min` stays at DBL_MAX and (min - a)/min evaluates to ~ +1.0 — a

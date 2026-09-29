@@ -57,14 +57,14 @@ _ENUMS = [
 _STRUCTS = [
     "DTWVariantParams", "MIPSettings", "CUDASettings", "Data",
     "DendrogramStep", "Dendrogram", "HierarchicalOptions",
-    "CLARANSOptions", "CLARAOptions", "ClusteringResult", "Problem",
+    "CLARAOptions", "ClusteringResult", "Problem",
     "CheckpointOptions",
 ]
 
 # ---------------------------------------------------------------------------
 # §2.5 algorithm free functions + checkpoint + utils
 # ---------------------------------------------------------------------------
-_ALGOS = ["fast_pam", "fast_clara", "clarans", "build_dendrogram", "cut_dendrogram"]
+_ALGOS = ["fast_pam", "fast_clara", "build_dendrogram", "cut_dendrogram"]
 _CHECKPOINT = [
     "save_checkpoint",
     "load_checkpoint",
@@ -73,15 +73,11 @@ _CHECKPOINT = [
 _UTILS = ["derivative_transform", "z_normalize", "soft_dtw_gradient"]
 
 # ---------------------------------------------------------------------------
-# §2.4 scores — canonical names + retained deprecated aliases (§4)
+# §2.4 scores
 # ---------------------------------------------------------------------------
 _SCORES_CANON = [
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
-]
-_SCORES_DEPRECATED = [
-    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
-    "adjusted_rand_index", "normalized_mutual_information",
 ]
 
 # ---------------------------------------------------------------------------
@@ -128,7 +124,7 @@ _PROBLEM_DEPRECATED = [
 @pytest.mark.parametrize(
     "name",
     _TIER1 + _ENV + _ERRORS + _ENUMS + _STRUCTS + _ALGOS + _CHECKPOINT
-    + _UTILS + _SCORES_CANON + _SCORES_DEPRECATED,
+    + _UTILS + _SCORES_CANON,
 )
 def test_module_symbol_exists(name):
     """Every contract Python-column module symbol is present with its exact name."""
@@ -234,12 +230,12 @@ def test_result_is_clusterresult_alias():
 
 
 # ===========================================================================
-# MIPSettings — §2.1 benders / max_benders_iter [new bind]
+# MIPSettings — §2.1 fields
 # ===========================================================================
 @pytest.mark.parametrize(
     "name",
     ["mip_gap", "time_limit_sec", "warm_start", "numeric_focus", "mip_focus",
-     "verbose_solver", "benders", "max_benders_iter", "lr_max_nodes"],
+     "verbose_solver", "lr_max_nodes"],
 )
 def test_mip_settings_field_exists(name):
     assert hasattr(dtwcpp.MIPSettings(), name), f"MIPSettings.{name} missing (§2.1)"

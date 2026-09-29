@@ -4,15 +4,14 @@ include("${CMAKE_SOURCE_DIR}/cmake/DtwcTest.cmake")
 
 # B-19: the 1.x [[deprecated]] shims that docs/api-contract-2.0.md §3 keeps until
 # 3.0 must still compile, and must warn (test_problem_api_2_0 proves they forward).
-# One use of each shim kind stands in for all 29. The probe is an EXCLUDE_FROM_ALL
+# One use of each shim kind stands in for all 22. The probe is an EXCLUDE_FROM_ALL
 # object built by the configured compiler with dtwc++'s usage requirements; the
 # script deletes the object, rebuilds it, and passes only on exit 0 plus one
 # deprecation diagnostic naming each entry of _dtwc_shims. Flags differ per
 # compiler family: GCC, Clang and clang-cl print "'<name>' is deprecated", cl
 # prints C4996; -Wno-error keeps a -Werror in CMAKE_CXX_FLAGS from turning the
 # warning under test into a failed compile. SERIAL: it builds in this tree.
-set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM daviesBouldinIndex
-    adjustedRandIndex startColumn fillDistanceMatrix)
+set(_dtwc_shims set_numberOfClusters distByInd cluster_by_kMedoidsPAM startColumn fillDistanceMatrix)
 add_library(deprecated_shims_probe OBJECT EXCLUDE_FROM_ALL integration/deprecated_shims_probe.cc)
 target_link_libraries(deprecated_shims_probe PRIVATE dtwc++ project_options)
 if(MSVC AND NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
@@ -121,8 +120,7 @@ foreach(_dtwc_mmap_test IN ITEMS
     dtwc_add_test(NAME ${_dtwc_mmap_test} SOURCE ${_dtwc_test_source_${_dtwc_mmap_test}} ${_dtwc_mmap_skip})
 endforeach()
 foreach(_dtwc_highs_test IN ITEMS
-        test_lagrangian_root test_mip_backend_guards test_pdlp_lp
-        unit_test_benders unit_test_mip)
+        test_lagrangian_root test_mip_backend_guards unit_test_mip)
     dtwc_add_test(NAME ${_dtwc_highs_test} SOURCE ${_dtwc_test_source_${_dtwc_highs_test}} ${_dtwc_highs_skip})
 endforeach()
 dtwc_add_test(NAME unit_test_parallelisation SOURCE ${_dtwc_test_source_unit_test_parallelisation} ${_dtwc_seq_skip})
@@ -281,7 +279,7 @@ if(TARGET dtwc_cl)
              "-DDEFAULTS=${CMAKE_CURRENT_SOURCE_DIR}/conformance/config_defaults.toml"
              "-DGPU=${_dtwc_cl_gpu}" "-DHAS_HIGHS=${_dtwc_cl_highs}"
              "-DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}/cli-device-matrix"
-        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=48 skips=0"
+        MARKER "CLI_DEVICE_MATRIX subject=real_dtwc_cl gpu=${_dtwc_cl_gpu} device=(present|absent|none) cells=[0-9]+/[0-9]+ print_config=2/2 keys=45 skips=0"
         LABELS integration cli SERIAL TIMEOUT 300)
 endif()
 

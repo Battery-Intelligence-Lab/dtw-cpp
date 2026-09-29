@@ -9,8 +9,6 @@
 #pragma once
 
 #include "../core/clustering_result.hpp"
-#include "../base/error.hpp"
-#include "../base/names.hpp"
 #include "../base/settings.hpp"
 
 #include <cstddef>
@@ -22,37 +20,11 @@ class Problem;
 
 namespace algorithms {
 
-/** Weighting applied to the fixed objective-estimation batch. */
-enum class OneBatchWeighting {
-  Uniform,          ///< Plain uniform sample (the theorem's baseline).
-  Debiased,         ///< Finite-max diagonal correction from the obpam experiments.
-  NearestNeighbor  ///< Count/mean NNIW plus the same finite-max correction.
-};
-
-inline constexpr Name<OneBatchWeighting> one_batch_weighting_names[]{
-  { "uniform", OneBatchWeighting::Uniform },
-  { "debiased", OneBatchWeighting::Debiased },
-  { "debias", OneBatchWeighting::Debiased },
-  { "nniw", OneBatchWeighting::NearestNeighbor },
-};
-
-inline void validate_one_batch_weighting(OneBatchWeighting value)
-{
-  switch (value) {
-  case OneBatchWeighting::Uniform:
-  case OneBatchWeighting::Debiased:
-  case OneBatchWeighting::NearestNeighbor:
-    return;
-  }
-  throw InvalidInput("Invalid OneBatchWeighting value.");
-}
-
 struct OneBatchPAMOptions {
   int n_clusters = 3;
-  int batch_size = -1;       ///< -1: min(N, max(64, 20*ceil(log2(N+1)))).
+  int batch_size = -1;       ///< -1: max(k, min(N, max(64, 20*ceil(log2(N+1))))); an explicit value must be >= k.
   int max_iter = 100;        ///< Maximum eager-swap sweeps.
   std::uint64_t random_seed = settings::DEFAULT_RANDOM_SEED;
-  OneBatchWeighting weighting = OneBatchWeighting::NearestNeighbor;
   double relative_tolerance = 1e-9; ///< Accept gain > tolerance * current estimate.
 };
 

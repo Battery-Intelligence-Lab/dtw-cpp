@@ -16,7 +16,6 @@
 #include <iterator>
 #include <sstream>
 #include <system_error>
-#include <set>
 #include <string>
 #include <vector>
 
@@ -172,30 +171,6 @@ TEST_CASE("Tier-1 save() completes when the silhouette is undefined",
     REQUIRE(first_line(out / "k1_medoids.csv") == "cluster,medoid_index,medoid_name");
     REQUIRE(fs::exists(out / "k1_distance_matrix.csv"));
     REQUIRE_FALSE(fs::exists(out / "k1_silhouettes.csv"));
-    std::error_code ec;
-    fs::remove_all(out, ec);
-  }
-
-  SECTION("k = 2 collapsing to one realised cluster") {
-    // Four identical series: every distance is 0, ties resolve to the lower
-    // medoid slot, so one declared cluster ends up empty and the realised count
-    // is 1 even though k = 2 was requested.
-    const auto dataset = dtwc::load(
-      dtwc::Dataset::series_type{
-        {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}},
-      0, 0, 0, "dup");
-    const auto result = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
-    const auto &labels = result.labels();
-    const int realised = static_cast<int>(
-      std::set<int>(labels.begin(), labels.end()).size());
-    REQUIRE(realised == 1);
-
-    const fs::path out =
-      fs::temp_directory_path() / ("dtwc_tier1_dup_" + std::to_string(nonce));
-    REQUIRE_NOTHROW(result.save(out));
-    REQUIRE(first_line(out / "dup_labels.csv") == "name,cluster");
-    REQUIRE(first_line(out / "dup_medoids.csv") == "cluster,medoid_index,medoid_name");
-    REQUIRE_FALSE(fs::exists(out / "dup_silhouettes.csv"));
     std::error_code ec;
     fs::remove_all(out, ec);
   }

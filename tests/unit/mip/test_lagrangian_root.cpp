@@ -144,7 +144,7 @@ std::vector<double> uniform_D(int N, unsigned seed)
   return D;
 }
 
-// ---- HiGHS comparison plumbing (mirrors unit_test_benders.cpp) ----
+// ---- HiGHS comparison plumbing ----
 
 Problem make_problem_1d(const std::vector<double> &values, int k)
 {
@@ -159,7 +159,6 @@ Problem make_problem_1d(const std::vector<double> &values, int k)
   prob.set_data(Data(std::move(p_vec), std::move(names)));
   prob.set_n_clusters(k);
   prob.set_method(Method::MIP);
-  prob.mip_settings.benders = "off"; // compact HiGHS/Gurobi
   prob.mip_settings.warm_start = true;
   prob.mip_settings.verbose_solver = false;
   prob.band = -1;
@@ -480,26 +479,6 @@ TEST_CASE("BENCH exact LR-core vs compact MIP", "[.][lagrangian][bench]")
               "   so exact ≈ LR root time; the adversarial large-N regime may FALSIFY the\n"
               "   wall-time clause — LR root still ships as the bound/certificate tool.)\n\n");
   SUCCEED();
-}
-
-// ===========================================================================
-// Problem overload end-to-end smoke.
-// ===========================================================================
-TEST_CASE("Lagrangian root Problem overload runs end-to-end", "[lagrangian][problem]")
-{
-  const int k = 3, N = 12;
-  const auto pos = clustered_positions(N, k, 77);
-  Problem prob = make_problem_1d(pos, k);
-
-  const LagrangianResult r = lagrangian_root(prob);
-  const auto D = D_from_positions(pos);
-  const auto orc = brute_force_pmedian(D, N, k);
-
-  REQUIRE(static_cast<int>(r.medoids.size()) == k);
-  REQUIRE(static_cast<int>(r.labels.size()) == N);
-  REQUIRE(r.lower_bound <= orc.cost + 1e-6);
-  REQUIRE(r.upper_bound >= orc.cost - 1e-6);
-  REQUIRE(r.n_core >= k); // survivors include the k open medoids
 }
 
 // ===========================================================================

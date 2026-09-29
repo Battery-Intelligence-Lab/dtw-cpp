@@ -16,6 +16,7 @@
 #include <algorithms/one_batch_pam.hpp>
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
 
 #include <algorithm>
 #include <chrono>
@@ -328,7 +329,6 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
     options.n_clusters = 1;
     options.batch_size = 2;
     options.random_seed = counterexample_seed;
-    options.weighting = algorithms::OneBatchWeighting::NearestNeighbor;
 
     const auto result = algorithms::one_batch_pam(problem, options);
 
@@ -348,7 +348,6 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
     options.n_clusters = 1;
     options.batch_size = 2;
     options.random_seed = 0;
-    options.weighting = algorithms::OneBatchWeighting::NearestNeighbor;
     algorithms::OneBatchPAMStats stats;
 
     const auto result = algorithms::one_batch_pam(problem, options, &stats);
@@ -359,10 +358,10 @@ TEST_CASE("OneBatchPAM finite-maximum debiasing uses actual Dmax below one",
   }
 }
 
-TEST_CASE("OneBatchPAM relative tolerance scales below unit cost",
+TEST_CASE("OneBatchPAM relative tolerance scales with the estimated cost",
           "[one_batch_pam][tolerance][regression]")
 {
-  Problem problem("one_batch_subunit_tolerance");
+  Problem problem("one_batch_relative_tolerance");
   problem.set_data(Data(std::vector<std::vector<data_t>>{
                           {0.0}, {0.01}, {0.02}, {1.0}},
                         std::vector<std::string>{"zero", "one", "two", "far"}));
@@ -372,11 +371,8 @@ TEST_CASE("OneBatchPAM relative tolerance scales below unit cost",
   options.batch_size = 4;
   options.max_iter = 1;
   options.random_seed = 9;
-  options.weighting = algorithms::OneBatchWeighting::Uniform;
 
-  // First pin the portable seeded initial state by rejecting every improving
-  // swap.  Reusing this exact seed below isolates the tolerance comparison
-  // from the implementation-defined mappings formerly used by std::shuffle.
+  // Pin the portable seeded initial state by rejecting every improving swap.
   options.relative_tolerance = 1.0;
   algorithms::OneBatchPAMStats initial_stats;
   const auto initial = algorithms::one_batch_pam(
@@ -384,20 +380,26 @@ TEST_CASE("OneBatchPAM relative tolerance scales below unit cost",
   REQUIRE(initial.medoid_indices == std::vector<int>{3, 2});
   REQUIRE(std::abs(initial.total_cost - 0.03) <= 1e-12);
   REQUIRE(initial_stats.accepted_swaps == 0);
-  REQUIRE(std::abs(initial_stats.estimated_objective - 0.03) <= 1e-12);
 
-  // The initial {3,2} medoids cost 0.03. Replacing 2 by 1 lowers that to
-  // 0.02: an absolute gain of 0.01 and a 33.3% relative improvement. A 20%
-  // threshold must therefore accept the swap even though the objective is <1.
+  // Derived by hand. The batch is all four points, the table maximum is 1, and
+  // every point is its own nearest batch point, so each NNIW weight is 1 and a
+  // medoid's own column costs 1 (the finite-max diagonal correction). Columns
+  // 0..3 then cost 0.02, 0.01, 0.98, 0.98: the estimate is 1.99. Candidate 0
+  // replacing medoid 3 gains 0.96 (columns 0..3 fall to 0.02, 0.01, 0.02, 0.98,
+  // estimate 1.03); no later candidate gains more than 0.02.
+  REQUIRE(std::abs(initial_stats.estimated_objective - 1.99) <= 1e-12);
+
+  // 0.2 * 1.99 = 0.398 < 0.96: accepted.
   options.relative_tolerance = 0.2;
   algorithms::OneBatchPAMStats stats;
   const auto result = algorithms::one_batch_pam(problem, options, &stats);
-  REQUIRE(result.medoid_indices == std::vector<int>{3, 1});
-  REQUIRE(std::abs(result.total_cost - 0.02) <= 1e-12);
+  REQUIRE(result.medoid_indices == std::vector<int>{0, 2});
+  REQUIRE(std::abs(result.total_cost - 0.99) <= 1e-12);
   REQUIRE(stats.accepted_swaps == 1);
-  REQUIRE(std::abs(stats.estimated_objective - 0.02) <= 1e-12);
+  REQUIRE(std::abs(stats.estimated_objective - 1.03) <= 1e-12);
 
-  options.relative_tolerance = 0.34;
+  // 0.5 * 1.99 = 0.995 > 0.96: rejected, although the absolute gain exceeds 0.5.
+  options.relative_tolerance = 0.5;
   algorithms::OneBatchPAMStats rejected_stats;
   const auto rejected = algorithms::one_batch_pam(
     problem, options, &rejected_stats);
@@ -437,32 +439,20 @@ TEST_CASE("OneBatchPAM handles k=1, k=N, and invalid options",
   }
 }
 
-TEST_CASE("OneBatchPAM reports explicit batch sizes raised to the cluster count",
+TEST_CASE("OneBatchPAM refuses an explicit batch smaller than the cluster count",
           "[one_batch_pam][loudness][options]")
 {
-  constexpr auto expected =
-    "[dtwc] warning: one_batch_pam requested batch_size=2, but n_clusters=4 "
-    "requires batch_size >= 4; using effective batch_size=4. Set batch_size "
-    "to at least n_clusters to avoid this adjustment.\n";
-
-  SECTION("an explicit undersized batch reports every corrected invocation") {
-    auto first_problem = make_problem(12, 4);
-    auto second_problem = make_problem(12, 4);
+  SECTION("an explicit undersized batch is InvalidInput") {
+    auto problem = make_problem(12, 4);
     algorithms::OneBatchPAMOptions options;
     options.n_clusters = 4;
     options.batch_size = 2;
     options.max_iter = 1;
-    algorithms::OneBatchPAMStats first_stats;
-    algorithms::OneBatchPAMStats second_stats;
-
-    const std::string stderr_output = capture_stderr([&] {
-      algorithms::one_batch_pam(first_problem, options, &first_stats);
-      algorithms::one_batch_pam(second_problem, options, &second_stats);
-    });
-
-    REQUIRE(stderr_output == std::string(expected) + expected);
-    REQUIRE(first_stats.batch_size == 4);
-    REQUIRE(second_stats.batch_size == 4);
+    REQUIRE_THROWS_MATCHES(
+      algorithms::one_batch_pam(problem, options), InvalidInput,
+      Catch::Matchers::Message("one_batch_pam: batch_size must be at least n_clusters. "
+                               "Got batch_size=2, n_clusters=4."));
+    REQUIRE(problem.clusters_ind.empty()); // refused before any write-back
   }
 
   SECTION("automatic batch selection remains silent") {
@@ -633,7 +623,7 @@ TEST_CASE("OneBatchPAM's final assignment is loud about a non-finite distance",
   // constructor's finiteness check cannot cover. A non-finite d there makes
   // `d < best` false for every slot, so the point keeps label 0 and the run
   // publishes a silently wrong partition with a non-finite total_cost, where
-  // fast_pam / clarans / fast_clara all throw.
+  // fast_pam and fast_clara throw.
   //
   // Poison pair: series {+DBL_MAX} and {-DBL_MAX}. Their length-1 L1 DTW is
   // 2*DBL_MAX = +inf, while every other pair stays finite (<= DBL_MAX). If

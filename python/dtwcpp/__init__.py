@@ -25,8 +25,6 @@ from dtwcpp._dtwcpp_core import (
     DendrogramStep,
     Dendrogram,
     HierarchicalOptions,
-    CLARANSOptions,
-    OneBatchWeighting,
     OneBatchPAMOptions,
     OneBatchPAMStats,
     BarycenterMethod,
@@ -65,7 +63,6 @@ from dtwcpp._dtwcpp_core import (
     dtw_barycenter,
     barycenter_kmeans,
     CLARAOptions,
-    clarans,
     build_dendrogram,
     cut_dendrogram,
     # Scores (canonical 2.0 names)
@@ -76,12 +73,6 @@ from dtwcpp._dtwcpp_core import (
     calinski_harabasz,
     adjusted_rand,
     normalized_mutual_info,
-    # Scores (deprecated aliases, kept one cycle — api-contract §4)
-    davies_bouldin_index,
-    dunn_index,
-    calinski_harabasz_index,
-    adjusted_rand_index,
-    normalized_mutual_information,
     # Utils
     derivative_transform,
     z_normalize,
@@ -355,7 +346,7 @@ __all__ = [
     "Linkage", "Device",
     "DTWVariantParams", "ClusteringResult", "Data",
     "MIPSettings", "CUDASettings", "DendrogramStep", "Dendrogram",
-    "HierarchicalOptions", "CLARANSOptions", "OneBatchWeighting",
+    "HierarchicalOptions",
     "OneBatchPAMOptions", "OneBatchPAMStats",
     "BarycenterMethod", "BarycenterOptions", "BarycenterClusteringOptions",
     "BarycenterClusteringResult",
@@ -367,13 +358,10 @@ __all__ = [
     "fast_pam", "fast_pam_seeded", "fast_clara", "CLARAOptions", "one_batch_pam",
     "one_batch_pam_with_stats",
     "dtw_barycenter", "barycenter_kmeans",
-    "clarans", "build_dendrogram", "cut_dendrogram",
+    "build_dendrogram", "cut_dendrogram",
     # Scores (canonical 2.0 names)
     "silhouette", "davies_bouldin", "dunn", "inertia", "calinski_harabasz",
     "adjusted_rand", "normalized_mutual_info",
-    # Scores (deprecated aliases, §4)
-    "davies_bouldin_index", "dunn_index", "calinski_harabasz_index",
-    "adjusted_rand_index", "normalized_mutual_information",
     "derivative_transform", "z_normalize",
     "compute_distance_matrix",
     "device", "get_device",

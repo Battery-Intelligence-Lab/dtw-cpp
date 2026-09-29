@@ -6,9 +6,8 @@ function nmi = normalized_mutual_info(labels_true, labels_pred)
 %
 %   nmi = dtwc.normalized_mutual_info(labels_true, labels_pred)
 %
-%   Canonical 2.0 name (was dtwc.normalized_mutual_information, kept as a
-%   deprecated alias). Both label vectors accept int32 or double, same length.
+%   Both label vectors accept int32 or double, same length.
 %
 %   See also dtwc.adjusted_rand
-    nmi = dtwc_mex('normalized_mutual_information', labels_true, labels_pred);
+    nmi = dtwc_mex('normalized_mutual_info', labels_true, labels_pred);
 end

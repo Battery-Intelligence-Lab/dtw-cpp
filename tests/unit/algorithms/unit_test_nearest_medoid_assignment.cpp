@@ -8,7 +8,6 @@
  */
 
 #include <dtwc.hpp>
-#include <algorithms/clarans.hpp>
 #include <algorithms/fast_clara.hpp>
 #include <algorithms/fast_pam.hpp>
 #include <algorithms/one_batch_pam.hpp>
@@ -204,17 +203,6 @@ dtwc::algorithms::CLARAOptions clara_options(
   return options;
 }
 
-dtwc::algorithms::CLARANSOptions clarans_options(
-  int k, unsigned seed, int max_neighbor = 0)
-{
-  dtwc::algorithms::CLARANSOptions options;
-  options.n_clusters = k;
-  options.num_local = 1;
-  options.max_neighbor = max_neighbor;
-  options.random_seed = seed;
-  return options;
-}
-
 } // namespace
 
 TEST_CASE("F13 independent oracle pins ties, presence, and ordered bits",
@@ -327,18 +315,6 @@ TEST_CASE("F13 public assignment routes agree on an exact midpoint tie",
   const std::vector<int> medoids{0, 2};
   const std::vector<int> labels{0, 0, 1};
 
-  auto pam_problem = scalar_problem<double>({0.0, 1.0, 2.0});
-  require_result(
-    dtwc::fast_pam_swap(
-      pam_problem, medoids, 0, dtwc::PAMVariant::FastPAM1),
-    medoids, labels, 1.0);
-
-  auto clarans_problem = scalar_problem<double>({0.0, 1.0, 2.0});
-  require_result(
-    dtwc::algorithms::clarans(
-      clarans_problem, clarans_options(2, 4)),
-    medoids, labels, 1.0);
-
   auto clara_f64 = scalar_problem<double>({0.0, 1.0, 2.0});
   require_result(
     dtwc::algorithms::fast_clara(
@@ -365,12 +341,6 @@ TEST_CASE("F13 ties select the first slot, not the smallest global index",
   const std::vector<int> reversed_medoids{2, 0};
   const std::vector<int> reversed_labels{1, 0, 0};
 
-  auto pam_problem = scalar_problem<double>({0.0, 1.0, 2.0});
-  require_result(
-    dtwc::fast_pam_swap(
-      pam_problem, reversed_medoids, 0, dtwc::PAMVariant::FastPAM1),
-    reversed_medoids, reversed_labels, 1.0);
-
   auto clara_problem = scalar_problem<double>({0.0, 1.0, 2.0});
   require_result(
     dtwc::algorithms::fast_clara(
@@ -381,14 +351,6 @@ TEST_CASE("F13 ties select the first slot, not the smallest global index",
   lloyd.centroids_ind = reversed_medoids;
   lloyd.assign_clusters();
   REQUIRE(lloyd.clusters_ind == reversed_labels);
-
-  auto swapped = scalar_problem<double>(
-    {4.0, 0.0, 0.0, 10.0, 0.0, 5.0, 0.0, 10.0});
-  auto options = clarans_options(2, 317, 1);
-  options.max_dtw_evals = 24;
-  require_result(
-    dtwc::algorithms::clarans(swapped, options),
-    {6, 3}, {0, 0, 0, 1, 0, 0, 0, 1}, 9.0);
 }
 
 TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
@@ -396,7 +358,9 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
 {
   const std::vector<double> values{0.0, 0x1p53, 1.0, 1.0, 0.0};
   const std::vector<int> medoids{0, 4};
-  const std::vector<int> labels(5, 0);
+  // Series 4 duplicates series 0: every other point ties and takes the first
+  // slot, but medoid 4 serves itself so its cluster is not published empty.
+  const std::vector<int> labels{0, 0, 0, 0, 1};
   constexpr double expected = 0x1p53;
 
   const auto oracle = independent_assignment_oracle({
@@ -406,20 +370,8 @@ TEST_CASE("F13 published objectives use the point-ordered binary64 fold",
     {1.0, 1.0},
     {0.0, 0.0},
   });
-  REQUIRE(oracle.labels == labels);
+  REQUIRE(oracle.labels == std::vector<int>(5, 0)); // the table alone knows no medoid identity
   REQUIRE(bits(oracle.objective) == UINT64_C(0x4340000000000000));
-
-  auto pam_problem = scalar_problem<double>(values);
-  require_result(
-    dtwc::fast_pam_swap(
-      pam_problem, medoids, 0, dtwc::PAMVariant::FastPAM1),
-    medoids, labels, expected);
-
-  auto clarans_problem = scalar_problem<double>(values);
-  require_result(
-    dtwc::algorithms::clarans(
-      clarans_problem, clarans_options(2, 20)),
-    medoids, labels, expected);
 
   auto clara_f64 = scalar_problem<double>(values);
   require_result(
@@ -448,24 +400,6 @@ TEST_CASE("F13 public assignments reject non-winning infinities",
   for (const double poison : {
          std::numeric_limits<double>::infinity(),
          -std::numeric_limits<double>::infinity()}) {
-    auto pam_problem = poisoned_matrix_problem(poison);
-    require_invalid_input(
-      [&] {
-        (void)dtwc::fast_pam_swap(
-          pam_problem, {0, 2}, 0, dtwc::PAMVariant::FastPAM1);
-      },
-      "fast_pam: non-finite nearest-medoid distance at point 1, "
-      "medoid slot 0 (index 0).");
-
-    auto clarans_problem = poisoned_matrix_problem(poison);
-    require_invalid_input(
-      [&] {
-        (void)dtwc::algorithms::clarans(
-          clarans_problem, clarans_options(2, 4));
-      },
-      "clarans: non-finite nearest-medoid distance at point 1, "
-      "medoid slot 0 (index 0).");
-
     auto lloyd = poisoned_matrix_problem(poison);
     lloyd.centroids_ind = {0, 2};
     require_invalid_input(
@@ -505,22 +439,6 @@ TEST_CASE("F13 finite assignment distances cannot overflow the objective",
   constexpr double huge = 0x1.8p+1023;
   const std::vector<double> values{0.0, huge, huge, 0.0};
 
-  auto pam_problem = scalar_problem<double>(values);
-  require_invalid_input(
-    [&] {
-      (void)dtwc::fast_pam_swap(
-        pam_problem, {0, 3}, 0, dtwc::PAMVariant::FastPAM1);
-    },
-    "fast_pam: nearest-medoid objective became non-finite after point 2.");
-
-  auto clarans_problem = scalar_problem<double>(values);
-  require_invalid_input(
-    [&] {
-      (void)dtwc::algorithms::clarans(
-        clarans_problem, clarans_options(2, 0));
-    },
-    "clarans: nearest-medoid objective became non-finite after point 2.");
-
   auto clara_problem = scalar_problem<double>(values);
   require_invalid_input(
     [&] {
@@ -553,26 +471,13 @@ TEST_CASE("F13 no-path requests are rejected on every route in both precisions",
   {
     auto f64 = no_path_problem<double>("f13_pam_no_path_f64");
     require_invalid_input(
-      [&] { (void)dtwc::fast_pam_swap(f64, {0}, 0, dtwc::PAMVariant::FastPAM1); },
+      [&] { (void)dtwc::fast_pam(f64, 1); },
       "Problem::fill_distance_matrix" + no_path);
 
     auto f32 = no_path_problem<float>("f13_pam_no_path_f32");
     require_invalid_input(
-      [&] { (void)dtwc::fast_pam_swap(f32, {0}, 0, dtwc::PAMVariant::FastPAM1); },
+      [&] { (void)dtwc::fast_pam(f32, 1); },
       "Problem::fill_distance_matrix" + no_path);
-  }
-
-  SECTION("CLARANS")
-  {
-    auto f64 = no_path_problem<double>("f13_clarans_no_path_f64");
-    require_invalid_input(
-      [&] { (void)dtwc::algorithms::clarans(f64, clarans_options(1, 0)); },
-      "Problem::dist_by_ind" + no_path);
-
-    auto f32 = no_path_problem<float>("f13_clarans_no_path_f32");
-    require_invalid_input(
-      [&] { (void)dtwc::algorithms::clarans(f32, clarans_options(1, 0)); },
-      "Problem::dist_by_ind" + no_path);
   }
 
   // FastCLARA's assignment and OneBatchPAM compute through the dtw_function

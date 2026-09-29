@@ -7,7 +7,7 @@ function save_binary_checkpoint(result, path)
 %   dtwc.save_binary_checkpoint(result, filepath)
 %
 %   RESULT is a struct with fields labels, medoid_indices, total_cost,
-%   iterations, converged (as returned by dtwc.fast_pam / dtwc.clarans / ...).
+%   iterations, converged (as returned by dtwc.fast_pam / dtwc.fast_clara / ...).
 %   1-based indices are converted to 0-based at the MEX boundary.
 %
 %   See also dtwc.load_binary_checkpoint

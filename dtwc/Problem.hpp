@@ -23,6 +23,7 @@
 #include "core/dtw_options.hpp" // for DTWVariant
 #include "core/storage.hpp"     // for Precision
 #include "core/distance_matrix.hpp" // for DistanceMatrix
+#include "core/clustering_result.hpp" // for set_result
 
 #include <cstddef>     // for size_t
 #include <cstdint>     // for uint64_t, int64_t
@@ -72,9 +73,7 @@ struct MIPSettings {
   int numeric_focus = 1;           ///< Gurobi NumericFocus (0-3).
   int mip_focus = 2;               ///< Gurobi MIPFocus (0=balanced, 1=feasible, 2=optimal, 3=bound).
   bool verbose_solver = false;     ///< Show solver log output.
-  int max_benders_iter = 200;      ///< Maximum Benders iterations (cap exhausted ⇒ SolverError).
-  std::string benders = "auto";    ///< Benders mode: "auto" (N>200), "on", "off".
-  std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap (mip::LagrangianParams::max_nodes). Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
+  std::int64_t lr_max_nodes = 2000000; ///< Method::LRCore branch-and-bound node cap. Fixed width: `long` is 32-bit on Windows and 64-bit on Linux, so the public range would be platform-dependent.
 };
 
 /// Reject MIP settings a solver would otherwise turn into a solver-worded error.
@@ -87,10 +86,7 @@ inline void validate_mip_settings(const MIPSettings &s)
                        + "; got " + got + ".");
   };
   if (!(s.mip_gap >= 0.0)) reject("mip_gap", ">= 0", std::to_string(s.mip_gap));
-  if (s.max_benders_iter <= 0) reject("max_benders_iter", ">= 1", std::to_string(s.max_benders_iter));
   if (s.lr_max_nodes < 1) reject("lr_max_nodes", ">= 1", std::to_string(s.lr_max_nodes));
-  if (s.benders != "auto" && s.benders != "on" && s.benders != "off")
-    reject("benders", "'auto', 'on' or 'off'", "'" + s.benders + "'");
 }
 
 /// Strategy for computing the pairwise distance matrix.
@@ -270,10 +266,6 @@ private:
   // Private functions:
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
-  friend void MIP_clustering_byBenders(Problem &prob);
-  // Benders disables the nested heuristic's artifact files unconditionally; the
-  // public Lloyd forwards persist_run_artifacts_.
-  void cluster_by_kmedoids_lloyd_impl(bool persist_artifacts);
   std::tuple<int, double, int> cluster_by_kMedoidsLloyd_single(
     int rep, bool persist_artifacts);
   void init_with_seed(std::uint64_t seed);
@@ -395,6 +387,10 @@ public:
   [[deprecated("use set_n_clusters")]] void set_numberOfClusters(int Nc_) { set_n_clusters(Nc_); }
 
   void set_clusters(std::vector<int> &candidate_centroids);
+  /// Publish a clustering: k = the number of medoids, which are distinct
+  /// indices in [0, N), and one label in [0, k) per series. Anything else is
+  /// InvalidInput and leaves the Problem unchanged.
+  void set_result(const core::ClusteringResult &result);
   /// @return false when Gurobi is requested on a build without it: the solver
   /// is then HiGHS, which a caller that asked for Gurobi must not ignore.
   [[nodiscard]] bool set_solver(dtwc::Solver solver_);

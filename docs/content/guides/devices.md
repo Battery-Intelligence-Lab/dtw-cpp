@@ -61,7 +61,7 @@ be the finite `1.8e308` sentinel.
 
 Not yet covered by that check: OneBatchPAM and FastCLARA's assignment step,
 which compute through `Problem::dtw_function()`. On-demand distances and the
-matrix-free schedules (`onebatch`, `clara`, `tadpole`, `clarans`) compute on the
+matrix-free schedules (`onebatch`, `clara`, `tadpole`) compute on the
 CPU even when a `Problem`'s device is a GPU; `dtwc_cl` and Tier-1 `cluster(...)`,
 which share `dtwc::run`, reject that combination instead (a `clara` sample that
 covers every series is PAM on the whole set, whose matrix the GPU fills).

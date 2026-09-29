@@ -239,7 +239,7 @@ std::vector<HelpOption> help_options(const std::string &help)
 TEST_CASE("every spelling of every Config key renders to the golden text", "[config][spellings]")
 {
   const std::string golden = golden_text();
-  REQUIRE(values_of(golden).size() == 48);
+  REQUIRE(values_of(golden).size() == 45);
 
   SECTION("the golden file itself, through --config")
   {
@@ -268,13 +268,13 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       "--wdtw-g", "0.125", "--adtw-penalty", "2.5", "--sdtw-gamma", "0.5", "--msm-c", "3",
       "--twe-nu", "0.01", "--twe-lambda", "0.75", "--mv-mode", "Independent", "--missing-strategy", "AROW",
       "--sample-size", "40", "--n-samples", "3", "--seed", "7", "--batch-size", "64",
-      "--batch-weighting", "debias", "--linkage", "Complete",
+      "--linkage", "Complete",
       "--skip-rows", "1", "--skip-cols", "2", "--delimiter", ";",
       "--dist-matrix", "dist.csv", "--checkpoint", "ckpt", "--checkpoint-interval", "10",
       "--mmap-threshold", "1000",
       "--solver", "GUROBI", "--mip-gap", "1e-3", "--time-limit", "60", "--no-warm-start",
-      "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver", "--benders", "yes",
-      "--max-benders-iter", "50", "--lr-max-nodes", "5000",
+      "--numeric-focus", "3", "--mip-focus", "1", "--verbose-solver",
+      "--lr-max-nodes", "5000",
       "-d", "CUDA:2", "--gpu-dtype", "double", "-v" });
     CHECK(dtwc::to_config_text(config) == golden);
   }
@@ -289,13 +289,13 @@ TEST_CASE("every spelling of every Config key renders to the golden text", "[con
       { "wdtw_g", "0.125" }, { "adtw_penalty", "2.5" }, { "sdtw_gamma", "0.5" }, { "msm_c", "3" },
       { "twe_nu", "0.01" }, { "twe_lambda", "0.75" }, { "mv_mode", "independent" }, { "missing_strategy", "arow" },
       { "sample_size", "40" }, { "n_samples", "3" }, { "seed", "7" }, { "batch_size", "64" },
-      { "batch_weighting", "debiased" }, { "linkage", "complete" },
+      { "linkage", "complete" },
       { "skip_rows", "1" }, { "skip_cols", "2" }, { "delimiter", ";" },
       { "dist_matrix", "dist.csv" }, { "checkpoint", "ckpt" }, { "checkpoint_interval", "10" },
       { "mmap_threshold", "1000" },
       { "solver", "gurobi" }, { "mip_gap", "0.001" }, { "time_limit", "60" }, { "no_warm_start", "true" },
-      { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" }, { "benders", "on" },
-      { "max_benders_iter", "50" }, { "lr_max_nodes", "5000" },
+      { "numeric_focus", "3" }, { "mip_focus", "1" }, { "verbose_solver", "true" },
+      { "lr_max_nodes", "5000" },
       { "device", "gpu:2" }, { "gpu_precision", "fp64" }, { "verbose", "true" } });
     CHECK(dtwc::to_config_text(config) == golden);
   }
@@ -376,7 +376,9 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK_THROWS_AS(dtwc::parse_config({ { "k", "0" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "seed", "-1" } }), dtwc::InvalidInput); // unsigned: the type says no
   CHECK_THROWS_AS(dtwc::parse_config({ { "mmap_threshold", "-1" } }), dtwc::InvalidInput);
-  CHECK_THROWS_AS(dtwc::parse_config({ { "benders", "of" } }), dtwc::InvalidInput);
+  // Keys of deleted features are unknown keys, not silently ignored ones.
+  for (const char *gone : { "benders", "max_benders_iter", "batch_weighting" })
+    CHECK_THROWS_AS(dtwc::parse_config({ { gone, "1" } }), dtwc::InvalidInput);
   CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "-1G" } }),
                     Catch::Matchers::ContainsSubstring("Invalid --ram-limit '-1G'"));
   CHECK_THROWS_AS(dtwc::parse_config({ { "delimiter", ";;" } }), dtwc::InvalidInput);

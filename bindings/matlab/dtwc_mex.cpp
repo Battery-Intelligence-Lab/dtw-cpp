@@ -31,7 +31,6 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/dtwc.hpp"
 #include "../../dtwc/algorithms/fast_pam.hpp"
 #include "../../dtwc/algorithms/fast_clara.hpp"
-#include "../../dtwc/algorithms/clarans.hpp"
 #include "../../dtwc/algorithms/hierarchical.hpp"
 #include "../../dtwc/scores.hpp"
 #include "../../dtwc/core/z_normalize.hpp"
@@ -45,7 +44,6 @@ extern "C" void __kmpc_dispatch_deinit(void * /*loc*/, int /*gtid*/) {}
 #include "../../dtwc/base/error.hpp"   // dtwc::InvalidInput/SolverError/DeviceError/IOError (§5)
 #include "../../dtwc/checkpoint.hpp"   // save/load_checkpoint (contract §2.7)
 #include "../../dtwc/test_api.hpp"     // dtwc::test::parallelisation()/gpu() (Task 3.3)
-#include "../../dtwc/mip/pdlp_lp.hpp" // dtwc::mip::pdlp_lp_bound (cross-language parity)
 #include "../../dtwc/core/distance_semantics.hpp" // parse_metric_token (checkpoint + metric routes)
 
 #include <string>
@@ -911,8 +909,7 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   const mxArray *s = prhs[2];
   if (!mxIsStruct(s))
     throw std::invalid_argument("mip_settings must be a struct (fields: mip_gap, time_limit_sec, "
-      "warm_start, numeric_focus, mip_focus, verbose_solver, max_benders_iter, benders, "
-      "lr_max_nodes).");
+      "warm_start, numeric_focus, mip_focus, verbose_solver, lr_max_nodes).");
 
   dtwc::MIPSettings m = prob.mip_settings; // start from current, override present fields
   if (mxArray *f = mxGetField(s, 0, "mip_gap"))        m.mip_gap        = get_scalar(f, "mip_gap");
@@ -921,13 +918,8 @@ static void cmd_Problem_set_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   if (mxArray *f = mxGetField(s, 0, "numeric_focus"))  m.numeric_focus  = static_cast<int>(get_scalar(f, "numeric_focus"));
   if (mxArray *f = mxGetField(s, 0, "mip_focus"))      m.mip_focus      = static_cast<int>(get_scalar(f, "mip_focus"));
   if (mxArray *f = mxGetField(s, 0, "verbose_solver")) m.verbose_solver = (get_scalar(f, "verbose_solver") != 0.0);
-  if (mxArray *f = mxGetField(s, 0, "max_benders_iter")) m.max_benders_iter = static_cast<int>(get_scalar(f, "max_benders_iter"));
   if (mxArray *f = mxGetField(s, 0, "lr_max_nodes"))
     m.lr_max_nodes = exact_int_from_double(get_scalar(f, "lr_max_nodes"), "lr_max_nodes");
-  if (mxArray *f = mxGetField(s, 0, "benders")) {
-    if (!mxIsChar(f)) throw std::invalid_argument("mip_settings.benders must be a string ('auto'/'on'/'off').");
-    m.benders = get_string(f);
-  }
   prob.mip_settings = m;
 }
 
@@ -937,17 +929,14 @@ static void cmd_Problem_get_mip_settings(int nlhs, mxArray *plhs[], int nrhs, co
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   const auto &m = prob.mip_settings;
   const char *fields[] = { "mip_gap", "time_limit_sec", "warm_start", "numeric_focus",
-                           "mip_focus", "verbose_solver", "max_benders_iter", "benders",
-                           "lr_max_nodes" };
-  mxArray *s = mxCreateStructMatrix(1, 1, 9, fields);
+                           "mip_focus", "verbose_solver", "lr_max_nodes" };
+  mxArray *s = mxCreateStructMatrix(1, 1, 7, fields);
   mxSetField(s, 0, "mip_gap", mxCreateDoubleScalar(m.mip_gap));
   mxSetField(s, 0, "time_limit_sec", mxCreateDoubleScalar(m.time_limit_sec));
   mxSetField(s, 0, "warm_start", mxCreateLogicalScalar(m.warm_start));
   mxSetField(s, 0, "numeric_focus", mxCreateDoubleScalar(m.numeric_focus));
   mxSetField(s, 0, "mip_focus", mxCreateDoubleScalar(m.mip_focus));
   mxSetField(s, 0, "verbose_solver", mxCreateLogicalScalar(m.verbose_solver));
-  mxSetField(s, 0, "max_benders_iter", mxCreateDoubleScalar(m.max_benders_iter));
-  mxSetField(s, 0, "benders", mxCreateString(m.benders.c_str()));
   mxSetField(s, 0, "lr_max_nodes", mxCreateDoubleScalar(static_cast<double>(m.lr_max_nodes)));
   plhs[0] = s;
 }
@@ -1294,23 +1283,6 @@ static void cmd_fast_clara(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = clustering_result_to_mx(result);
 }
 
-static void cmd_clarans(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("clarans requires handle and k.");
-  auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
-
-  dtwc::algorithms::CLARANSOptions opts;
-  opts.n_clusters = static_cast<int>(get_scalar(prhs[2]));
-  if (nrhs > 3) opts.num_local = static_cast<int>(get_scalar(prhs[3]));
-  if (nrhs > 4) opts.max_neighbor = static_cast<int>(get_scalar(prhs[4]));
-  if (nrhs > 5) opts.max_dtw_evals = static_cast<int64_t>(get_scalar(prhs[5]));
-  if (nrhs > 6)
-    opts.random_seed = static_cast<unsigned>(
-      get_random_seed(prhs[6], std::numeric_limits<unsigned>::max()));
-
-  auto result = dtwc::algorithms::clarans(prob, opts);
-  plhs[0] = clustering_result_to_mx(result);
-}
-
 static void cmd_build_dendrogram(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
   if (nrhs < 2) throw std::invalid_argument("build_dendrogram requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
@@ -1349,14 +1321,14 @@ static void cmd_silhouette(int nlhs, mxArray *plhs[], int nrhs, const mxArray *p
   plhs[0] = result;
 }
 
-static void cmd_davies_bouldin_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("davies_bouldin_index requires a handle.");
+static void cmd_davies_bouldin(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("davies_bouldin requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::davies_bouldin(prob));
 }
 
-static void cmd_dunn_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("dunn_index requires a handle.");
+static void cmd_dunn(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("dunn requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::dunn(prob));
 }
@@ -1367,14 +1339,14 @@ static void cmd_inertia(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::inertia(prob));
 }
 
-static void cmd_calinski_harabasz_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz_index requires a handle.");
+static void cmd_calinski_harabasz(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 2) throw std::invalid_argument("calinski_harabasz requires a handle.");
   auto &prob = *HandleManager<dtwc::Problem>::get(get_handle(prhs[1]));
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::calinski_harabasz(prob));
 }
 
-static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("adjusted_rand_index requires two label vectors.");
+static void cmd_adjusted_rand(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("adjusted_rand requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
@@ -1383,80 +1355,14 @@ static void cmd_adjusted_rand_index(int nlhs, mxArray *plhs[], int nrhs, const m
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::adjusted_rand(labels1, labels2));
 }
 
-static void cmd_normalized_mutual_information(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_information requires two label vectors.");
+static void cmd_normalized_mutual_info(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
+  if (nrhs < 3) throw std::invalid_argument("normalized_mutual_info requires two label vectors.");
   const std::vector<int> labels1 = label_vector_to_0based(prhs[1], "labels_1");
   const std::vector<int> labels2 = label_vector_to_0based(prhs[2], "labels_2");
   if (labels1.size() != labels2.size())
     throw std::invalid_argument("Label vectors must have the same length.");
 
   plhs[0] = mxCreateDoubleScalar(dtwc::scores::normalized_mutual_info(labels1, labels2));
-}
-
-// =========================================================================
-//  LP-relaxation bound (PDLP) — cross-language parity with the Python binding
-// =========================================================================
-
-static void cmd_pdlp_gpu_available(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  (void)nlhs; (void)nrhs; (void)prhs;
-  plhs[0] = mxCreateLogicalScalar(dtwc::mip::pdlp_gpu_available());
-}
-
-static void cmd_pdlp_lp_bound(int nlhs, mxArray *plhs[], int nrhs, const mxArray *prhs[]) {
-  (void)nlhs;
-  if (nrhs < 3)
-    throw std::invalid_argument("pdlp_lp_bound requires a square distance matrix and k.");
-  require_real_double(prhs[1], "D");
-  const size_t rows = mxGetM(prhs[1]);
-  const size_t cols = mxGetN(prhs[1]);
-  if (rows != cols)
-    throw std::invalid_argument("pdlp_lp_bound: D must be square (got "
-      + std::to_string(rows) + "x" + std::to_string(cols) + ").");
-  if (rows > static_cast<size_t>(std::numeric_limits<int>::max()))
-    throw std::invalid_argument("pdlp_lp_bound: D is larger than the int index range.");
-  const int N = static_cast<int>(rows);
-  const int k = get_exact_int(prhs[2], "k");
-
-  // MATLAB stores column-major; the C++ routine indexes D[i*N + j] row-major.
-  const double *src = mxGetDoubles(prhs[1]);
-  std::vector<double> D(rows * cols);
-  for (size_t i = 0; i < rows; ++i)
-    for (size_t j = 0; j < cols; ++j)
-      D[i * cols + j] = src[i + j * rows];
-
-  // Name/value options carry the C++ PdlpParams field names verbatim.
-  dtwc::mip::PdlpParams params;
-  if (((nrhs - 3) % 2) != 0)
-    throw std::invalid_argument("pdlp_lp_bound: options must be name/value pairs.");
-  for (int a = 3; a + 1 < nrhs; a += 2) {
-    require_char(prhs[a], "option name");
-    const std::string name = get_string(prhs[a]);
-    if (name == "variant") {
-      require_char(prhs[a + 1], "variant");
-      params.variant = get_string(prhs[a + 1]);
-    } else if (name == "tol") {
-      params.tol = get_scalar(prhs[a + 1], "tol");
-    } else if (name == "iteration_limit") {
-      params.iteration_limit = static_cast<long>(get_exact_int(prhs[a + 1], "iteration_limit"));
-    } else if (name == "use_gpu") {
-      params.use_gpu = (get_scalar(prhs[a + 1], "use_gpu") != 0.0);
-    } else if (name == "verbose") {
-      params.verbose = (get_scalar(prhs[a + 1], "verbose") != 0.0);
-    } else {
-      throw std::invalid_argument("pdlp_lp_bound: unknown option '" + name
-        + "'. Valid: variant, tol, iteration_limit, use_gpu, verbose.");
-    }
-  }
-
-  const dtwc::mip::PdlpResult result = dtwc::mip::pdlp_lp_bound(D.data(), N, k, params);
-
-  const char *fields[] = { "lp_bound", "solved", "iterations", "gpu_used" };
-  mxArray *out = mxCreateStructMatrix(1, 1, 4, fields);
-  mxSetField(out, 0, "lp_bound", mxCreateDoubleScalar(result.lp_bound));
-  mxSetField(out, 0, "solved", mxCreateLogicalScalar(result.solved));
-  mxSetField(out, 0, "iterations", mxCreateDoubleScalar(static_cast<double>(result.iterations)));
-  mxSetField(out, 0, "gpu_used", mxCreateLogicalScalar(result.gpu_used));
-  plhs[0] = out;
 }
 
 // =========================================================================
@@ -1713,20 +1619,16 @@ void mexFunction(int nlhs, mxArray *plhs[],
     // Algorithms
     else if (cmd == "fast_pam") cmd_fast_pam(nlhs, plhs, nrhs, prhs);
     else if (cmd == "fast_clara") cmd_fast_clara(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "clarans") cmd_clarans(nlhs, plhs, nrhs, prhs);
     else if (cmd == "build_dendrogram") cmd_build_dendrogram(nlhs, plhs, nrhs, prhs);
     else if (cmd == "cut_dendrogram") cmd_cut_dendrogram(nlhs, plhs, nrhs, prhs);
     // Scoring
     else if (cmd == "silhouette") cmd_silhouette(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "davies_bouldin_index") cmd_davies_bouldin_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "dunn_index") cmd_dunn_index(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "davies_bouldin") cmd_davies_bouldin(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "dunn") cmd_dunn(nlhs, plhs, nrhs, prhs);
     else if (cmd == "inertia") cmd_inertia(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "calinski_harabasz_index") cmd_calinski_harabasz_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "adjusted_rand_index") cmd_adjusted_rand_index(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "normalized_mutual_information") cmd_normalized_mutual_information(nlhs, plhs, nrhs, prhs);
-    // LP-relaxation bound (PDLP)
-    else if (cmd == "pdlp_lp_bound") cmd_pdlp_lp_bound(nlhs, plhs, nrhs, prhs);
-    else if (cmd == "pdlp_gpu_available") cmd_pdlp_gpu_available(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "calinski_harabasz") cmd_calinski_harabasz(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "adjusted_rand") cmd_adjusted_rand(nlhs, plhs, nrhs, prhs);
+    else if (cmd == "normalized_mutual_info") cmd_normalized_mutual_info(nlhs, plhs, nrhs, prhs);
     // Tier-1 route (contract 1.3 / 1.4): dtwc::cluster owns every decision
     else if (cmd == "tier1_cluster") cmd_tier1_cluster(nlhs, plhs, nrhs, prhs);
     else if (cmd == "Result_score") cmd_Result_score(nlhs, plhs, nrhs, prhs);

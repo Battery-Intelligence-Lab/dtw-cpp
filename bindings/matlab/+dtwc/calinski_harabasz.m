@@ -6,9 +6,8 @@ function ch = calinski_harabasz(prob)
 %
 %   ch = dtwc.calinski_harabasz(prob)
 %
-%   Canonical 2.0 name (was dtwc.calinski_harabasz_index, kept as a deprecated
-%   alias). Requires prior clustering stored in prob.
+%   Requires prior clustering stored in prob.
 %
 %   See also dtwc.silhouette, dtwc.davies_bouldin, dtwc.dunn
-    ch = dtwc_mex('calinski_harabasz_index', prob.get_handle());
+    ch = dtwc_mex('calinski_harabasz', prob.get_handle());
 end

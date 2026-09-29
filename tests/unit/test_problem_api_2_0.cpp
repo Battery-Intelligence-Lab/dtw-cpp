@@ -381,11 +381,6 @@ enum class f22_entity : std::size_t {
   cluster_by_mip,
   cluster_by_kmedoids_lloyd,
   cluster_size,
-  davies_bouldin,
-  dunn,
-  calinski_harabasz,
-  adjusted_rand,
-  normalized_mutual_info,
   loader_start_column,
   loader_start_row,
   max_iter_field,
@@ -395,7 +390,7 @@ enum class f22_entity : std::size_t {
 
 constexpr std::size_t f22_entity_count =
   static_cast<std::size_t>(f22_entity::count);
-static_assert(f22_entity_count == 29);
+static_assert(f22_entity_count == 24);
 
 enum class f22_field_route : std::size_t {
   max_iter_canonical_write,
@@ -522,7 +517,6 @@ private:
 // ===========================================================================
 // Test 1: Deprecated 1.x shims forward to the canonical 2.0 names.
 // exercises: Problem::{set_numberOfClusters,cluster_size,distByInd,maxDistance}
-//            and scores::{daviesBouldinIndex,dunnIndex,adjustedRandIndex}
 //            deprecated shims -> their snake_case canonical implementations.
 // ===========================================================================
 TEST_CASE("Task 1.6: deprecated shims forward to canonical names", "[api_2_0][deprecated]")
@@ -556,26 +550,6 @@ TEST_CASE("Task 1.6: deprecated shims forward to canonical names", "[api_2_0][de
 
     REQUIRE_THAT(d_old, WithinAbs(prob.dist_by_ind(0, 3), 1e-12));
     REQUIRE_THAT(md_old, WithinAbs(prob.max_distance(), 1e-12));
-  }
-
-  SECTION("scores deprecated aliases forward to canonical")
-  {
-    Problem prob = make_two_group_problem();
-    (void)fast_pam(prob, 2); // write-back populates centroids_ind/clusters_ind
-
-    DTWC_PUSH_NO_DEPRECATED
-    const double dbi_old = scores::daviesBouldinIndex(prob); // -> davies_bouldin
-    const double dunn_old = scores::dunnIndex(prob);         // -> dunn
-    DTWC_POP_NO_DEPRECATED
-    REQUIRE_THAT(dbi_old, WithinAbs(scores::davies_bouldin(prob), 1e-12));
-    REQUIRE_THAT(dunn_old, WithinAbs(scores::dunn(prob), 1e-12));
-
-    const std::vector<int> a = { 0, 0, 1, 1 };
-    const std::vector<int> b = { 1, 1, 0, 0 };
-    DTWC_PUSH_NO_DEPRECATED
-    const double ari_old = scores::adjustedRandIndex(a, b); // -> adjusted_rand
-    DTWC_POP_NO_DEPRECATED
-    REQUIRE_THAT(ari_old, WithinAbs(scores::adjusted_rand(a, b), 1e-12));
   }
 }
 
@@ -1254,100 +1228,6 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
       legacy_value == 2 && legacy_value == canonical_value);
   }
 
-  // 21. scores::daviesBouldinIndex(Problem&)
-  {
-    const double expected = 23.0 / 53.0;
-    Problem legacy = make_f22_problem();
-    Problem canonical = make_f22_problem();
-    double legacy_value = 0.0;
-    DTWC_PUSH_NO_DEPRECATED
-    legacy_value = scores::daviesBouldinIndex(legacy);
-    DTWC_POP_NO_DEPRECATED
-    const double canonical_value = scores::davies_bouldin(canonical);
-    ledger.behavior(
-      f22_entity::davies_bouldin,
-      std::isfinite(legacy_value)
-        && legacy_value > 0.0
-        && f22_same_bits(legacy_value, expected)
-        && f22_same_bits(legacy_value, canonical_value));
-  }
-
-  // 22. scores::dunnIndex(Problem&)
-  {
-    const double expected = 31.0 / 60.0;
-    Problem legacy = make_f22_problem();
-    Problem canonical = make_f22_problem();
-    double legacy_value = 0.0;
-    DTWC_PUSH_NO_DEPRECATED
-    legacy_value = scores::dunnIndex(legacy);
-    DTWC_POP_NO_DEPRECATED
-    const double canonical_value = scores::dunn(canonical);
-    ledger.behavior(
-      f22_entity::dunn,
-      std::isfinite(legacy_value)
-        && legacy_value > 0.0
-        && f22_same_bits(legacy_value, expected)
-        && f22_same_bits(legacy_value, canonical_value));
-  }
-
-  // 23. scores::calinskiHarabaszIndex(Problem&)
-  {
-    const double expected = 25980.0 / 2303.0;
-    Problem legacy = make_f22_problem();
-    Problem canonical = make_f22_problem();
-    double legacy_value = 0.0;
-    DTWC_PUSH_NO_DEPRECATED
-    legacy_value = scores::calinskiHarabaszIndex(legacy);
-    DTWC_POP_NO_DEPRECATED
-    const double canonical_value = scores::calinski_harabasz(canonical);
-    ledger.behavior(
-      f22_entity::calinski_harabasz,
-      std::isfinite(legacy_value)
-        && legacy_value > 0.0
-        && f22_same_bits(legacy_value, expected)
-        && f22_same_bits(legacy_value, canonical_value));
-  }
-
-  const std::vector<int> labels_true{ 1, 1, 1, 2, 2, 2, 3, 3 };
-  const std::vector<int> labels_pred{ 1, 1, 2, 2, 2, 3, 3, 3 };
-
-  // 24. scores::adjustedRandIndex(labels,labels)
-  {
-    const double expected = 5.0 / 21.0;
-    double legacy_value = 0.0;
-    DTWC_PUSH_NO_DEPRECATED
-    legacy_value = scores::adjustedRandIndex(labels_true, labels_pred);
-    DTWC_POP_NO_DEPRECATED
-    const double canonical_value =
-      scores::adjusted_rand(labels_true, labels_pred);
-    ledger.behavior(
-      f22_entity::adjusted_rand,
-      std::isfinite(legacy_value)
-        && legacy_value > 0.0
-        && legacy_value < 1.0
-        && f22_same_bits(legacy_value, expected)
-        && f22_same_bits(legacy_value, canonical_value));
-  }
-
-  // 25. scores::normalizedMutualInformation(labels,labels)
-  {
-    constexpr double expected = 0.55887303821703238;
-    double legacy_value = 0.0;
-    DTWC_PUSH_NO_DEPRECATED
-    legacy_value =
-      scores::normalizedMutualInformation(labels_true, labels_pred);
-    DTWC_POP_NO_DEPRECATED
-    const double canonical_value =
-      scores::normalized_mutual_info(labels_true, labels_pred);
-    ledger.behavior(
-      f22_entity::normalized_mutual_info,
-      std::isfinite(legacy_value)
-        && legacy_value > 0.0
-        && legacy_value < 1.0
-        && std::abs(legacy_value - expected) <= 1e-15
-        && f22_same_bits(legacy_value, canonical_value));
-  }
-
   // 26. DataLoader::startColumn(int)
   {
     DataLoader legacy;
@@ -1469,15 +1349,15 @@ TEST_CASE("F22 all retained C++ aliases preserve canonical behavior",
   const int stdout_identity = ledger.stdout_identity_count();
   const bool all_pass =
     ledger.all()
-    && inventory == 29
-    && behavior == 29
+    && inventory == 24
+    && behavior == 24
     && field_routes == 4
     && io_routes == 7
     && file_identity == 6
     && stdout_identity == 2
     && artifact_cleanup;
-  CHECK(inventory == 29);
-  CHECK(behavior == 29);
+  CHECK(inventory == 24);
+  CHECK(behavior == 24);
   CHECK(field_routes == 4);
   CHECK(io_routes == 7);
   CHECK(file_identity == 6);

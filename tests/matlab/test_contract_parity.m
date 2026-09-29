@@ -465,15 +465,14 @@ function test_problem_set_method_refuses_pam_and_auto(testCase)
 end
 
 function test_problem_set_mip_settings_roundtrip(testCase)
-%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings + benders).
+%   §2.1 set_mip_settings(struct) + get_mip_settings (MIPSettings).
     prob = dtwc.Problem('mip');
-    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', true, ...
-               'max_benders_iter', 150, 'benders', 'on');
+    s = struct('mip_gap', 1e-4, 'time_limit_sec', 30, 'warm_start', false);
     prob.set_mip_settings(s);
     got = prob.get_mip_settings();
     verifyEqual(testCase, got.mip_gap, 1e-4, 'AbsTol', 1e-12);
-    verifyEqual(testCase, got.max_benders_iter, 150);
-    verifyEqual(testCase, char(got.benders), 'on');
+    verifyEqual(testCase, got.time_limit_sec, 30);
+    verifyEqual(testCase, got.warm_start, false);
 end
 
 function test_problem_set_mip_settings_lr_max_nodes(testCase)
@@ -599,7 +598,7 @@ end
 % =========================================================================
 
 function test_algorithms_all_callable(testCase)
-%   §2.5 fast_pam / fast_clara / clarans / build_dendrogram / cut_dendrogram.
+%   §2.5 fast_pam / fast_clara / build_dendrogram / cut_dendrogram.
     prob = dtwc.Problem('algos');
     prob.set_data(testCase.TestData.X);
     prob.fill_distance_matrix();
@@ -608,8 +607,6 @@ function test_algorithms_all_callable(testCase)
     verifyNumElements(testCase, r1.labels, 6);
     r2 = dtwc.fast_clara(prob, 2, 'NSamples', 2, 'Seed', 42);
     verifyNumElements(testCase, r2.labels, 6);
-    r3 = dtwc.clarans(prob, 2, 'NumLocal', 2, 'Seed', 42);
-    verifyNumElements(testCase, r3.labels, 6);
 
     dend = dtwc.build_dendrogram(prob, 'Linkage', 'average');
     verifyTrue(testCase, isstruct(dend) && isfield(dend, 'merges'));
@@ -692,8 +689,6 @@ function test_f22_matlab_deprecation_policy(testCase)
          9 8 3 0  2  6; ...
         14 13 7 2 0  3; ...
         20 19 12 6 3 0];
-    labelsTrue = int32([1 1 1 2 2 2 3 3]);
-    labelsPred = int32([1 1 2 2 2 3 3 3]);
 
     rows = {
         'dtwc.Problem.Band', ...
@@ -735,34 +730,10 @@ function test_f22_matlab_deprecation_policy(testCase)
         'dtwc.Problem.ClustersInd', ...
             'dtwc.Problem.labels', ...
             @() f22_read_property_operation(X, 'ClustersInd', false), ...
-            @() f22_read_property_operation(X, 'ClustersInd', true);
-        'dtwc.davies_bouldin_index', ...
-            'dtwc.davies_bouldin', ...
-            @() f22_problem_score_operation(X, 'davies_bouldin_index'), ...
-            @() f22_problem_score_operation(X, 'davies_bouldin');
-        'dtwc.dunn_index', ...
-            'dtwc.dunn', ...
-            @() f22_problem_score_operation(X, 'dunn_index'), ...
-            @() f22_problem_score_operation(X, 'dunn');
-        'dtwc.calinski_harabasz_index', ...
-            'dtwc.calinski_harabasz', ...
-            @() f22_problem_score_operation(X, 'calinski_harabasz_index'), ...
-            @() f22_problem_score_operation(X, 'calinski_harabasz');
-        'dtwc.adjusted_rand_index', ...
-            'dtwc.adjusted_rand', ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'adjusted_rand_index'), ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'adjusted_rand');
-        'dtwc.normalized_mutual_information', ...
-            'dtwc.normalized_mutual_info', ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'normalized_mutual_information'), ...
-            @() f22_label_score_operation( ...
-                labelsTrue, labelsPred, 'normalized_mutual_info')
+            @() f22_read_property_operation(X, 'ClustersInd', true)
     };
 
-    verifyEqual(testCase, size(rows, 1), 15, ...
+    verifyEqual(testCase, size(rows, 1), 10, ...
         'F22 frozen MATLAB alias inventory changed.');
 
     warningProfiles = 0;
@@ -950,17 +921,6 @@ function value = f22_read_property_operation(X, propertyName, canonical)
     end
 end
 
-function value = f22_problem_score_operation(X, scoreName)
-    prob = f22_clustered_problem(X, 'f22_problem_score');
-    scoreFunction = str2func(['dtwc.' scoreName]);
-    value = scoreFunction(prob);
-end
-
-function value = f22_label_score_operation(labelsTrue, labelsPred, scoreName)
-    scoreFunction = str2func(['dtwc.' scoreName]);
-    value = scoreFunction(labelsTrue, labelsPred);
-end
-
 function prob = f22_clustered_problem(X, name)
     prob = dtwc.Problem(name);
     prob.set_data(X);
@@ -1008,16 +968,6 @@ function f22_verify_nondegenerate_value(testCase, oldName, value, D)
         case 'dtwc.Problem.ClustersInd'
             assertNumElements(testCase, value, 6);
             assertTrue(testCase, all(value >= 1 & value <= 2));
-        case {'dtwc.davies_bouldin_index', ...
-              'dtwc.dunn_index', ...
-              'dtwc.calinski_harabasz_index'}
-            assertTrue(testCase, isscalar(value) && isfinite(value));
-            assertGreaterThan(testCase, value, 0);
-        case {'dtwc.adjusted_rand_index', ...
-              'dtwc.normalized_mutual_information'}
-            assertTrue(testCase, isscalar(value) && isfinite(value));
-            assertGreaterThan(testCase, value, 0);
-            assertLessThan(testCase, value, 1);
         otherwise
             error('dtwc:f22TestOracle', ...
                 'Unknown F22 non-degenerate observation: %s.', oldName);

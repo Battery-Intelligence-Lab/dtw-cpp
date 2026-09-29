@@ -35,8 +35,6 @@ _DISTANCE_MATRIX = np.abs(
         np.asarray(_SERIES, dtype=np.float64)[:, 0],
     )
 )
-_LABELS_TRUE = [0, 0, 0, 1, 1, 1, 2, 2]
-_LABELS_PRED = [0, 0, 1, 1, 1, 2, 2, 2]
 
 _PRIMARY_PASSED: set[str] = set()
 _CANONICAL_SILENT: set[str] = set()
@@ -97,27 +95,9 @@ def _matrix_pair() -> tuple[Any, Any]:
     return _problem_pair()
 
 
-def _scoring_problem(name: str) -> Any:
-    problem = _problem(name)
-    problem.set_distance_matrix(_DISTANCE_MATRIX)
-    problem.set_n_clusters(2)
-    problem.clusters_ind = [0, 0, 0, 1, 1, 1]
-    problem.centroids_ind = [1, 4]
-    return problem
-
-
-def _scoring_pair() -> tuple[Any, Any]:
-    return _scoring_problem("f22-canonical"), _scoring_problem("f22-legacy")
-
-
 def _device_pair() -> tuple[Any, Any]:
     dtwcpp.device("cpu")
     return None, None
-
-
-def _label_pair() -> tuple[Any, Any]:
-    labels = (_LABELS_TRUE, _LABELS_PRED)
-    return labels, labels
 
 
 def _result_pair() -> tuple[Any, Any]:
@@ -326,51 +306,6 @@ _CASES = [
         _matrix_snapshot,
     ),
     AliasCase(
-        "davies_bouldin_index",
-        "dtwcpp.davies_bouldin_index",
-        "dtwcpp.davies_bouldin",
-        _scoring_pair,
-        dtwcpp.davies_bouldin,
-        dtwcpp.davies_bouldin_index,
-        _equal,
-    ),
-    AliasCase(
-        "dunn_index",
-        "dtwcpp.dunn_index",
-        "dtwcpp.dunn",
-        _scoring_pair,
-        dtwcpp.dunn,
-        dtwcpp.dunn_index,
-        _equal,
-    ),
-    AliasCase(
-        "calinski_harabasz_index",
-        "dtwcpp.calinski_harabasz_index",
-        "dtwcpp.calinski_harabasz",
-        _scoring_pair,
-        dtwcpp.calinski_harabasz,
-        dtwcpp.calinski_harabasz_index,
-        _equal,
-    ),
-    AliasCase(
-        "adjusted_rand_index",
-        "dtwcpp.adjusted_rand_index",
-        "dtwcpp.adjusted_rand",
-        _label_pair,
-        lambda labels: dtwcpp.adjusted_rand(*labels),
-        lambda labels: dtwcpp.adjusted_rand_index(*labels),
-        _equal,
-    ),
-    AliasCase(
-        "normalized_mutual_information",
-        "dtwcpp.normalized_mutual_information",
-        "dtwcpp.normalized_mutual_info",
-        _label_pair,
-        lambda labels: dtwcpp.normalized_mutual_info(*labels),
-        lambda labels: dtwcpp.normalized_mutual_information(*labels),
-        _equal,
-    ),
-    AliasCase(
         "get_device",
         "dtwcpp.get_device",
         "dtwcpp.device",
@@ -527,11 +462,6 @@ _LEGACY_CALL_NAMES = {
     "set_number_of_clusters",
     "distance_matrix_numpy",
     "set_distance_matrix_from_numpy",
-    "davies_bouldin_index",
-    "dunn_index",
-    "calinski_harabasz_index",
-    "adjusted_rand_index",
-    "normalized_mutual_information",
     "ClusterResult",
     "get_device",
 }

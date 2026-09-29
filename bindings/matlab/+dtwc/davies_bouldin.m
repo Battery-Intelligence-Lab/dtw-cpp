@@ -6,9 +6,8 @@ function db = davies_bouldin(prob)
 %
 %   db = dtwc.davies_bouldin(prob)
 %
-%   Canonical 2.0 name (was dtwc.davies_bouldin_index, kept as a deprecated alias).
 %   Requires prior clustering stored in prob.
 %
 %   See also dtwc.silhouette, dtwc.dunn, dtwc.calinski_harabasz
-    db = dtwc_mex('davies_bouldin_index', prob.get_handle());
+    db = dtwc_mex('davies_bouldin', prob.get_handle());
 end

@@ -568,7 +568,6 @@ Outcome execute(const Config &config, std::optional<Data> data)
     options.batch_size = config.batch_size;
     options.max_iter = config.max_iter;
     options.random_seed = config.seed;
-    options.weighting = config.batch_weighting;
     algorithms::OneBatchPAMStats stats;
     result = algorithms::one_batch_pam(prob, options, &stats);
     if (config.verbose)
@@ -620,9 +619,7 @@ Outcome execute(const Config &config, std::optional<Data> data)
   }
 
   // ---- 6. Checkpoints first, then the outputs ----
-  prob.set_n_clusters(k); // the kept result, in every route
-  prob.clusters_ind = result.labels;
-  prob.centroids_ind = result.medoid_indices;
+  prob.set_result(result); // the kept result, in every route
 
   // Before the results, so a result write that
   // fails cannot lose the distance matrix. A save that fails is kept and raised

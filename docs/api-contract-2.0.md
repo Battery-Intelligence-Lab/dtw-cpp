@@ -301,7 +301,7 @@ a field does not.
 | device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
-| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
+| MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
 | output folder | `output_folder()` / `set_output_folder(path)` | `output_folder` prop `[introduced-2.0]` | `set_output_folder(dir)` `[introduced-2.0]` | live in all three routes; default `./results/`, relative to the working directory (the process-global `settings::paths` it replaced is removed, §3 rows 37-38) |
 | verbose | `verbose()` / `set_verbose(bool)` | `verbose` prop | `set_verbose(tf)` | live in all three routes |
@@ -410,23 +410,20 @@ Canonical scheme drops the redundant `Index`/`Information` noun (the fixed
 decision `daviesBouldinIndex → davies_bouldin` sets the pattern; applied
 uniformly). Same name in all three languages.
 
-| Concept | C++ retained 1.x alias (scores.hpp) | C++ 2.0 canonical | Python 2.0 | MATLAB 2.0 |
-|---|---|---|---|---|
-| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` (live) | `silhouette(prob)` (live) |
-| Davies–Bouldin | `daviesBouldinIndex(prob)` | **`davies_bouldin(prob)`** *(fixed)* | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
-| Dunn | `dunnIndex(prob)` | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
-| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` (live) | `inertia(prob)` (live) |
-| Calinski–Harabasz | `calinskiHarabaszIndex(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
-| Adjusted Rand | `adjustedRandIndex(l1,l2)` | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
-| Normalized MI | `normalizedMutualInformation(l1,l2)` | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
+| Concept | C++ | Python | MATLAB |
+|---|---|---|---|
+| silhouette | `silhouette(prob)` | `silhouette(prob)` | `silhouette(prob)` |
+| Davies–Bouldin | `davies_bouldin(prob)` | `davies_bouldin(prob)` | `davies_bouldin(prob)` |
+| Dunn | `dunn(prob)` | `dunn(prob)` | `dunn(prob)` |
+| inertia | `inertia(prob)` | `inertia(prob)` | `inertia(prob)` |
+| Calinski–Harabasz | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` | `calinski_harabasz(prob)` |
+| Adjusted Rand | `adjusted_rand(l1,l2)` ‡ | `adjusted_rand(l1,l2)` | `adjusted_rand(l1,l2)` |
+| Normalized MI | `normalized_mutual_info(l1,l2)` ‡ | `normalized_mutual_info(l1,l2)` | `normalized_mutual_info(l1,l2)` |
 
-Deprecated aliases retained one cycle (§4): Python `davies_bouldin_index`,
-`dunn_index`, `calinski_harabasz_index`, `adjusted_rand_index`,
-`normalized_mutual_information` (`_dtwcpp_core.cpp`); MATLAB the same five
-public spellings in their dedicated `+dtwc/*.m` compatibility wrappers. Every
-old Python/MATLAB call emits one deprecation warning before forwarding; the
-shared MEX score commands remain warning-silent. The canonical Adjusted-Rand
-and Normalized-MI spellings are adjudicated in §10 item 1.
+Only `silhouette` shipped in v1.0.0; the camelCase and `*_index` spellings were
+never released and are gone. `silhouette` on an unclustered Problem raises
+`InvalidInput`. The canonical Adjusted-Rand and Normalized-MI spellings are
+adjudicated in §10 item 1.
 
 ### 2.5 Algorithm free functions (Tier-2, all languages)
 
@@ -434,11 +431,10 @@ and Normalized-MI spellings are adjudicated in §10 item 1.
 |---|---|---|---|
 | FastPAM | `fast_pam(Problem&, int k, int max_iter=100)` | `fast_pam(prob, n_clusters, max_iter=100)` | `fast_pam(prob, k, 'max_iter',100)` |
 | FastCLARA | `algorithms::fast_clara(Problem&, CLARAOptions)` | `fast_clara(prob, n_clusters, sample_size=-1, n_samples=5, max_iter=100, seed=42)` | `fast_clara(prob, k, ...)` |
-| CLARANS | `algorithms::clarans(Problem&, CLARANSOptions)` | `clarans(prob, opts)` | `clarans(prob, k, ...)` |
 | dendrogram build | `algorithms::build_dendrogram(Problem&, HierarchicalOptions)` | `build_dendrogram(prob, opts=HierarchicalOptions())` | `build_dendrogram(prob, ...)` |
 | dendrogram cut | `algorithms::cut_dendrogram(Dendrogram, Problem&, int k)` | `cut_dendrogram(dend, prob, k)` | `cut_dendrogram(dend, prob, k)` |
 
-**Result write-back (implemented).** `fast_pam`/`fast_clara`/`clarans` and
+**Result write-back (implemented).** `fast_pam`/`fast_clara` and
 `cut_dendrogram` write `labels`/`medoids`/`k` back into `Problem` in C++.
 Python and MATLAB both rely on that core-owned writeback; neither binding
 repeats the assignment.
@@ -610,11 +606,6 @@ policy.
 | 29e | name read (MATLAB) | `Problem.Name` (dependent prop, Problem.m:38; getter :377) | `name()` | alias (loud warn) |
 | 29f | medoids read (MATLAB) | `Problem.CentroidsInd` (dependent prop, Problem.m:39; getter :384) | `medoids()` | alias (loud warn) |
 | 29g | labels read (MATLAB) | `Problem.ClustersInd` (dependent prop, Problem.m:40; getter :391) | `labels()` | alias (loud warn) |
-| 30 | Davies–Bouldin | `scores::daviesBouldinIndex` (scores.hpp:38-39) | `scores::davies_bouldin` **(fixed)** | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 31 | Dunn | `scores::dunnIndex` (scores.hpp:41-42) | `scores::dunn` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 32 | Calinski–Harabasz | `scores::calinskiHarabaszIndex` (scores.hpp:44-45) | `scores::calinski_harabasz` | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 33 | Adjusted Rand | `scores::adjustedRandIndex` (scores.hpp:47-52) | `scores::adjusted_rand` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
-| 34 | Normalized MI | `scores::normalizedMutualInformation` (scores.hpp:54-59) | `scores::normalized_mutual_info` ‡ | C++ `[[deprecated]]`; Python/MATLAB warning aliases |
 | 35 | start column (loader) | `DataLoader::startColumn` (DataLoader.hpp) | `start_column` | C++ `[[deprecated]]` |
 | 36 | start row (loader) | `DataLoader::startRow` | `start_row` | C++ `[[deprecated]]` |
 | 37 | set data path | `settings::paths::setDataPath` (2.0-born) | — | removed pre-tag with `set_data_path` (D-3): pass input paths explicitly (`load(path)`, `--input`) |
@@ -672,7 +663,7 @@ bindings").
   behaviour.
 
 This section is normative and implemented for the complete retained inventory:
-27 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
+22 C++ diagnostic entities, 13 Python alias operations, and 15 MATLAB alias
 operations. PLAN.md retains F22's separate evidence verdict; the exhausted
 C++ mutation campaign was falsified at 33/46 and is not described here as
 closure of that finding.
@@ -698,7 +689,7 @@ Bindings translate to native exceptions / `mexErrMsgIdAndTxt`.
 | `dtwc::InvalidInput` | bad argument: wrong shape/dtype/range, unknown method/metric/variant name, empty data, `ndim` mismatch, unknown `score()` name, a NaN or ±inf value a distance does not take (§2.6), `skip_cols` wider than a row, a matrix stored for other data (a CSV of another size, a `.dtwm` checkpoint or mmap cache of other data or configuration) | `dtwcpp.InvalidInput(DtwcError, ValueError)` | **`dtwc:invalidArgument`** |
 | `dtwc::UndefinedScore` | (an `InvalidInput`) a quality score is mathematically undefined for the labelling supplied — fewer than two non-empty clusters. `save` catches it to skip the silhouette file; `score("silhouette")` propagates it | `dtwcpp.UndefinedScore(InvalidInput)` | `dtwc:invalidArgument` (inherited: the MEX ladder catches it as `InvalidInput`) |
 | `dtwc::SolverError` | MIP/LP solver failure: infeasible, iteration/time limit hit without optimum, solver returned non-optimal status | `dtwcpp.SolverError(DtwcError, RuntimeError)` | `dtwc:solverError` |
-| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build, or PDLP `use_gpu` without CUPDLP_GPU; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
+| `dtwc::DeviceError` | device/backend problem: unknown device name; `gpu` on a non-GPU build; a request the device cannot honour (§6.4) and `hpc` asked of a local run (§1.3); `.env`/HPC credential failures (§6) | `dtwcpp.DeviceError(DtwcError, RuntimeError)` | `dtwc:deviceError` |
 | `dtwc::IOError` | file/format failure: file not found, unreadable or unwritable (a directory that cannot be created, a quota), bad Parquet/Arrow type, OOB offsets | `dtwcpp.IOError(DtwcError, OSError)` | `dtwc:ioError` |
 
 A failure no public entry point can cause — an unreachable branch, a broken invariant, a precondition every caller validates —
@@ -707,7 +698,7 @@ cannot be parsed (a bad field or row, a bad cache header, a Parquet / Arrow type
 well-formed file the request cannot use (a non-square matrix, Parquet nulls, an unknown column, a matrix or cache made for
 other data, `skip_cols` wider than a row) is `InvalidInput`. A format this build cannot read (Parquet or Arrow IPC without
 Arrow, a memory-mapped matrix without llfio, a YAML `--config` file without fkYAML) is `IOError` too, and a GPU
-backend it lacks (`gpu`, PDLP `use_gpu`) is `DeviceError`.
+backend it lacks (`gpu`) is `DeviceError`.
 
 **Binding-translation rules.**
 
@@ -942,8 +933,7 @@ determinism/index rules, restated as a checklist for the adversarial reviewer:
 7. **Determinism.** Seed-aware Tier-1 PAM/OneBatchPAM/CLARA entry points use the
    invocation-local cross-language default 42 (§1.3); estimator restart `i` uses
    `42+i`. The unseeded Tier-2 FastPAM overload retains the legacy mutable
-   `std::mt19937 randGenerator(29)`, and CLARANS retains its explicit option
-   default 42. Scores read state from `Problem`, so result write-back (now in
+   `std::mt19937 randGenerator(29)`. Scores read state from `Problem`, so result write-back (now in
    C++, §2.5) must run before any `score()`.
 8. **MATLAB 1-based conversion at the MEX boundary only**; rectangular N×L
    matrix input still accepted. Optional deps (OpenMP/HiGHS/CUDA/Metal/Arrow)
