@@ -90,6 +90,9 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`)
 - ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
   compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
+- ☐ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
+  line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
+  squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2.5× on the 24-thread fill
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
@@ -158,7 +161,8 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ one `kmedoids_pp` (W13c) · ☐ HiGHS model built row-wise (W13d) · ☐ barycenter workspace (W13e)
 - ☐ OneBatchPAM's final exact assignment (N·k DTW calls) runs in parallel; it is serial today
 - ☐ `check_docs.py` also checks the reverse direction (every live, non-hidden flag documented) — with W9's flag changes
-- ☐ PF-5 SIMD lanes across pairs, plain C++, kill criterion 1.5× — ◐ feasibility probe pulled forward (2026-09-29, research only)
+- ☑ PF-5 probe: SIMD lanes across pairs PASS, 3.7–7.9× single-thread f64, bit-identical (2026-09-29; P1 in phase B
+  integrates it)
 
 ## Blocked on another machine or on Volkan
 

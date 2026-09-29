@@ -24,7 +24,7 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
   (`baselines/2026-09-22-x27-drop-eigen-band.md`, `baselines/2026-09-23-x27-eigen-gap.md`).
 - **Highway / xsimd; SIMD within one pair** — tried March–April 2026, not worth it (Volkan, 2026-09-23); the
   row recurrence does not vectorise (`baselines/2026-09-22-x04-codegen-report.md`). SIMD lanes across pairs in
-  plain C++ stay open (PF-5, after phase G, kill criterion 1.5×).
+  plain C++ passed their probe (2026-09-29, §3) and enter the CPU fill.
 - **A runtime check on a count** (series, clusters, labels) — counts are `index_t`; see §2 rule 2.
 - **Extending the hand-written CMake URL-pin deny-list** — replaced by `scripts/check_pins.py`.
 - **Not planned** (reopen with clustering evidence): ERP, LCSS, EDR, ShapeDTW, Itakura parallelogram.
@@ -147,3 +147,8 @@ CHANGELOG rule.
   it will be resolved when we add more and more features". X2 re-merges once the binary has changed; if still
   quarantined, that merge's CLI tests run on a Debug build of the same tree; every other gate stays Release; CI runs
   the Release CLI tests.
+- 2026-09-29 — PF-5 probe PASS: W equal-length pairs in SIMD lanes, plain C++, run 3.7–4.2× (W = 4) and 5.2–7.9×
+  (W = 8) the fixed scalar kernel for f64, full and banded, every lane bitwise equal; a 24-thread fill 3.6× / 4.8×
+  (`baselines/2026-09-29-pf5-simd-lanes-probe.md`). The kill criterion (1.5×) is not met, so lanes enter the CPU fill
+  now (unit P1, after K1 and Y2), not after phase G: Volkan asked on 2026-09-29 that the code "generates decent
+  assembly like SIMD where needed".
