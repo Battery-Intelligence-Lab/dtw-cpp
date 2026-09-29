@@ -428,6 +428,22 @@ TEST_CASE("Tier-1 C++ load honours skip_rows", "[api][tier1][skip_rows]")
   fs::remove(csv, ec);
 }
 
+TEST_CASE("Tier-1 C++ cluster() moves an rvalue in-memory dataset and copies an lvalue",
+          "[api][tier1]")
+{
+  auto dataset = dtwc::load(
+    dtwc::Dataset::series_type{ { 0.0, 0.0 }, { 0.0, 1.0 }, { 9.0, 9.0 }, { 9.0, 8.0 } });
+  const auto copied = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10);
+  const auto again = dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10); // the lvalue kept its series
+  const auto moved = dtwc::cluster(std::move(dataset), 2, "pam", -1, "cpu", 10);
+  CHECK(again.labels() == copied.labels());
+  CHECK(moved.labels() == copied.labels());
+  CHECK(moved.medoids() == copied.medoids());
+  // The rvalue gave its series to the run instead of a copy: nothing is left.
+  CHECK_THROWS_AS(dtwc::cluster(dataset, 2, "pam", -1, "cpu", 10), // NOLINT(bugprone-use-after-move)
+                  dtwc::InvalidInput);
+}
+
 namespace {
 
 /// Switch the process working directory for the duration of a scope. Tier-1

@@ -41,16 +41,16 @@ public:
 private:
   friend Dataset load(const std::filesystem::path &, int, int, char, std::string_view);
   friend Dataset load(series_type, int, int, char, std::string_view);
-  friend Result cluster(const Dataset &, int, std::string_view, int,
-                        std::string_view, int);
+  friend Result cluster(Dataset &&, int, std::string_view, int, std::string_view, int);
 
   explicit Dataset(std::filesystem::path source, int skip_cols, int skip_rows,
                    char delimiter, std::string name);
   explicit Dataset(series_type source, int skip_cols, int skip_rows,
                    char delimiter, std::string name);
 
-  /// The in-memory series with skip_rows / skip_cols applied (a path is run()'s to read).
-  Data materialize_local() const;
+  /// The in-memory series, moved out, with skip_rows / skip_cols applied (a path
+  /// is run()'s to read).
+  Data materialize_local() &&;
 
   std::variant<std::filesystem::path, series_type> source_;
   int skip_cols_ = 0;
@@ -121,8 +121,12 @@ private:
  *
  * Methods: auto, pam, onebatch, clara, kmedoids, mip, lrcore, tadpole,
  * hierarchical, with dtwc_cl's aliases (hclust, obp, lr).  Unknown names fail loudly.
+ * An in-memory Dataset passed as an rvalue hands its series to the run; an lvalue
+ * one is copied.
  */
 Result cluster(const Dataset &data, int k, std::string_view method = "pam",
+               int band = -1, std::string_view device = "", int max_iter = 100);
+Result cluster(Dataset &&data, int k, std::string_view method = "pam",
                int band = -1, std::string_view device = "", int max_iter = 100);
 
 } // namespace dtwc
