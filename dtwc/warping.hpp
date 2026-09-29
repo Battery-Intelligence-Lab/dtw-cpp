@@ -632,9 +632,8 @@ data_t dtwBanded_mv(const data_t* x, size_t nx_steps, const data_t* y, size_t ny
  *          channel is free to pick its own optimal path).
  *
  *          Input layout is interleaved: x[t * ndim + d] is feature d at timestep t
- *          (same as dtwFull_L_mv). Unbanded (band < 0) uses the exact EAPruned
- *          kernel per channel (matches the scalar Standard default); banded uses
- *          dtwBanded per channel. A non-negative band narrower than
+ *          (same as dtwFull_L_mv). Each channel runs dtwBanded (the linear-space
+ *          kernel when band < 0). A non-negative band narrower than
  *          `|nx_steps-ny_steps|` returns the single finite no-path sentinel
  *          before channel summation. L1 / SquaredL2 metrics only (per-channel
  *          scalar).
@@ -658,10 +657,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
                           core::MetricType metric = core::MetricType::L1)
 {
   core::validate_metric_type(metric);
-  if (ndim == 1) {
-    return band < 0 ? dtwFull_eap<data_t>(x, nx_steps, y, ny_steps, metric)
-                    : dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
-  }
+  if (ndim == 1) return dtwBanded<data_t>(x, nx_steps, y, ny_steps, band, -1, metric);
   if (nx_steps == 0 || ny_steps == 0) return std::numeric_limits<data_t>::max();
   if (band >= 0) {
     const auto min_steps = std::min(nx_steps, ny_steps);
@@ -681,8 +677,7 @@ data_t dtw_independent_mv(const data_t* x, size_t nx_steps, const data_t* y, siz
   for (size_t c = 0; c < ndim; ++c) {
     for (size_t t = 0; t < nx_steps; ++t) cx[t] = x[t * ndim + c];
     for (size_t t = 0; t < ny_steps; ++t) cy[t] = y[t * ndim + c];
-    total += band < 0 ? dtwFull_eap<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, metric)
-                      : dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
+    total += dtwBanded<data_t>(cx.data(), nx_steps, cy.data(), ny_steps, band, -1, metric);
   }
   return total;
 }
