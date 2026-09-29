@@ -20,7 +20,8 @@ Prints
 then one line per loop: file:line:col and whether it was vectorised. A manual
 tool, not a gate: the answer depends on the compiler and the host. Exit 0 when a
 report was produced, 2 when it could not be (no clang, no compile_commands.json,
-no matching TU) -- never silently green.
+no matching TU) -- never silently green. --no-calls (test_codegen_no_calls) fails
+instead, exit 1, when an innermost loop of a dtwc function makes a call.
 """
 
 from __future__ import annotations
@@ -40,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 #   path/file.cpp:123:45: remark: vectorized loop (vectorization width: 2, ...) [-Rpass=loop-vectorize]
 #   path/file.cpp:123:45: remark: loop not vectorized: ... [-Rpass-missed=loop-vectorize]
 REMARK = re.compile(
-    r"^(?P<file>[^:]+):(?P<line>\d+):(?P<col>\d+):\s+remark:\s+(?P<msg>.*?)"
+    r"^(?P<file>(?:[A-Za-z]:)?[^:]+):(?P<line>\d+):(?P<col>\d+):\s+remark:\s+(?P<msg>.*?)"
     r"\s*\[-R(?P<kind>pass|pass-missed|pass-analysis)=(?P<pass>[\w-]+)\]\s*$"
 )
 REMARK_FLAGS = [
@@ -54,13 +55,18 @@ REMARK_FLAGS = [
 ]
 # Flags that would stop the compile emitting the remarks we came for, or that
 # write somewhere in the build tree we are not entitled to disturb.
-DROP_PREFIXES = ("-o", "-MF", "-MT", "-MD", "-MMD", "-MQ")
+DROP_PREFIXES = ("-o", "-MF", "-MT", "-MD", "-MMD", "-MQ", "-c")
 # ThinLTO defers optimisation to link time: with -flto the -c step emits bitcode
 # and the loop vectoriser has simply not run yet, so -Rpass reports nothing at
 # all. The probe therefore compiles with LTO off. What the report then describes
 # is per-TU codegen of these kernels under the project's real flags -- which is
 # the question X-04 asks -- and not the final post-link code of an LTO build.
 LTO_PREFIX = "-flto"
+# --no-calls reads clang's loop comments: the header block of a loop without
+# sub-loops says "This Inner Loop Header"; other blocks name their innermost loop.
+BLOCK = re.compile(r"^(?:\.?LBB(\w+):|\s*(?:#|;|//) %bb\.\d+:)")
+FUNCTION = re.compile(r'^(?![.Ll])("[^"]+"|\S+):')
+CALL = re.compile(r"^\s+(?:call|callq|bl|blr)\s")
 
 
 def compile_commands(build_dir: Path) -> list[dict]:
@@ -70,7 +76,8 @@ def compile_commands(build_dir: Path) -> list[dict]:
     return json.loads(db.read_text(encoding="utf-8"))
 
 
-def rebuild_argv(entry: dict, out_obj: Path, source: Path) -> list[str]:
+def rebuild_argv(entry: dict, out_obj: Path, source: Path,
+                 mode: tuple[str, ...] = (*REMARK_FLAGS, "-c")) -> list[str]:
     """The entry's own command, compiling `source` instead, with remarks on.
 
     The flags are borrowed wholesale from a real library translation unit so the
@@ -78,7 +85,9 @@ def rebuild_argv(entry: dict, out_obj: Path, source: Path) -> list[str]:
     DTWC_FP_MODEL flags, architecture tuning and all. Only the source file and
     the output path are replaced.
     """
-    argv = shlex.split(entry["command"]) if "command" in entry else list(entry["arguments"])
+    nt = sys.platform == "win32"  # keeps backslash paths, which a POSIX split eats; quotes are \"
+    argv = ([a.replace('\\"', '"') if nt else a for a in shlex.split(entry["command"], posix=not nt)]
+            if "command" in entry else list(entry["arguments"]))
     own_source = entry["file"]
     cleaned: list[str] = []
     skip_next = False
@@ -98,7 +107,7 @@ def rebuild_argv(entry: dict, out_obj: Path, source: Path) -> list[str]:
         if arg == own_source or Path(arg).name == Path(own_source).name:
             continue
         cleaned.append(arg)
-    return [*cleaned, *REMARK_FLAGS, "-c", str(source), "-o", str(out_obj)]
+    return [*cleaned, *mode, str(source), "-o", str(out_obj)]
 
 
 def collect(entry: dict, out_obj: Path, source: Path) -> tuple[list[dict], str]:
@@ -136,6 +145,26 @@ def key(rec: dict) -> str:
     return f"{rec['file']}:{rec['line']}:{rec['col']}"
 
 
+def inner_loop_calls(asm: str) -> tuple[int, list[str]]:
+    """Innermost loops of the dtwc functions in `asm`, and the calls inside them."""
+    fn = block = ""
+    inner, owner, calls = set(), {}, []
+    for n, line in enumerate(asm.splitlines()):
+        if m := FUNCTION.match(line):
+            fn = m.group(1)
+        if m := BLOCK.match(line):
+            block = m.group(1) or f"line{n}"
+        if "dtwc" not in fn:
+            continue
+        if "This Inner Loop Header" in line:
+            inner.add(block)
+        if m := re.search(r"in Loop: Header=BB(\w+)", line):
+            owner[block] = m.group(1)
+        if CALL.match(line):
+            calls.append((block, f"{fn}: {line.strip()}"))
+    return len(inner), [c for b, c in calls if b in inner or owner.get(b) in inner]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--build-dir", type=Path, default=ROOT / "build")
@@ -150,6 +179,8 @@ def main() -> int:
         default=ROOT / "scripts" / "codegen_probe.cpp",
         help="the probe TU that instantiates the kernels (see its header comment)",
     )
+    ap.add_argument("--no-calls", action="store_true",
+                    help="fail if an innermost loop of a probe kernel makes a call")
     args = ap.parse_args()
 
     try:
@@ -165,6 +196,18 @@ def main() -> int:
         print("CODEGEN_REPORT tool=none tus=0 vectorized=0 missed=0 verdict=FAIL")
         print(f"  no translation unit matched {args.match!r}", file=sys.stderr)
         return 2
+    if args.no_calls:
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "probe.s"
+            argv = rebuild_argv(entries[0], out, args.probe, ("-S", "-fno-color-diagnostics"))
+            proc = subprocess.run(argv, cwd=entries[0].get("directory", str(ROOT)),
+                                  capture_output=True, text=True, errors="replace")
+            loops, bad = inner_loop_calls(out.read_text(errors="replace") if out.is_file() else "")
+        ok = proc.returncode == 0 and loops > 0 and not bad
+        print(f"CODEGEN_NO_CALLS tool={Path(argv[0]).name} inner_loops={loops} calls={len(bad)} "
+              f"verdict={'PASS' if ok else 'FAIL'}", *bad, sep="\n  ")
+        print(proc.stderr[-2000:] if proc.returncode else "", file=sys.stderr, end="")
+        return 0 if ok else 1
 
     records: list[dict] = []
     tool = "none"
