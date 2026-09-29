@@ -8,8 +8,7 @@
  *    prefix vanished. The type stays `IOError`; the prefix is back.
  *  - `ignoreBOM`: a partial byte-order mark that cannot be handed back named no file.
  *  - `dtwc_cl`: Parquet / Arrow IPC input on a build without Arrow was
- *    `InvalidInput`, while `.dtws` without llfio is `IOError`. A format this build
- *    cannot read is `IOError`.
+ *    `InvalidInput`. A format this build cannot read is `IOError`.
  *
  * dtwc_cl's pipeline is dtwc::run (IF-2 S3), which the third case drives.
  *

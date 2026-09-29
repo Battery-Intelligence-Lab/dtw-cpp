@@ -33,12 +33,10 @@
 
 #pragma once
 
-#include "core/clustering_result.hpp"
 #include "core/dtw_options.hpp"
 #include "base/error.hpp"
 
 #include <string>
-#include <filesystem>
 
 namespace dtwc {
 
@@ -114,44 +112,5 @@ void save_checkpoint(const Problem &prob, const std::string &path,
 /// prefer the two-argument form.
 [[nodiscard]] bool load_checkpoint(Problem &prob, const std::string &path,
                                    core::MetricType metric);
-
-// ---- Binary checkpoint for ClusteringResult --------------------------------
-
-/// Save clustering result to a compact binary file.
-///
-/// Binary format (strict little-endian):
-///   bytes 0-3:   magic "DCKP"
-///   bytes 4-5:   version uint16 = 1
-///   bytes 6-7:   reserved (0)
-///   bytes 8-11:  k (int32) -- number of medoids
-///   bytes 12-15: N (int32) -- number of data points
-///   bytes 16-19: iterations (int32)
-///   byte  20:    converged (uint8, 0 or 1)
-///   bytes 21-23: padding (0)
-///   bytes 24-31: total_cost (double)
-///   bytes 32+:   medoid_indices (k * int32)
-///   then:        labels (N * int32)
-///
-/// @param result  The clustering result to save.
-/// @param path    File path for the binary checkpoint.
-/// @throws InvalidInput if a count or integer field is not representable by
-///         the version-1 int32 wire format.
-/// @throws IOError if the file or its parent directories cannot be written.
-void save_binary_checkpoint(const core::ClusteringResult &result,
-                            const std::filesystem::path &path);
-
-/// Load clustering result from a binary checkpoint file.
-///
-/// Validates the complete header, canonical structural bytes, exact file
-/// length, and payload before publishing a local candidate. Structural
-/// validation deliberately does not impose clustering-semantic or provenance
-/// policy. Returns false without changing @p result if the file is missing,
-/// inaccessible, malformed, or cannot be decoded.
-///
-/// @param result  The ClusteringResult to populate.
-/// @param path    File path of the binary checkpoint.
-/// @return true if loaded successfully, false otherwise.
-bool load_binary_checkpoint(core::ClusteringResult &result,
-                            const std::filesystem::path &path);
 
 } // namespace dtwc

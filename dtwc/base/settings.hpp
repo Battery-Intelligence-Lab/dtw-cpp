@@ -21,8 +21,8 @@
 #include <string>
 #include <filesystem>
 // <iostream> removed (C-21a). The translation units that were relying on it
-// transitively -- benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp,
-// dtwc/mip/mip_Gurobi.cpp and tests/unit/test_storage_policy.cpp -- now include it themselves, and the
+// transitively -- benchmarks/UCR_dtwc.cpp, examples/cpp/example_project/main.cpp
+// and dtwc/mip/mip_Gurobi.cpp -- now include it themselves, and the
 // removal was proven by a build with DTWC_BUILD_BENCHMARK=ON and
 // DTWC_BUILD_EXAMPLES=ON, since benchmarks and examples are off in the
 // canonical gate and a green build without them would prove nothing.

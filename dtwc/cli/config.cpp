@@ -239,7 +239,7 @@ void bind(CLI::App &app, Config &config)
   app.allow_config_extras(CLI::config_extras_mode::error);
 
   // Input and output
-  key(app, "-i,--input", config.input, "Input file (CSV, Parquet, Arrow IPC, .dtws) or folder");
+  key(app, "-i,--input", config.input, "Input file (CSV, Parquet, Arrow IPC) or folder");
   key(app, "-o,--output", config.output, "Output directory");
   key(app, "--name", config.name, "Problem name (used in output filenames)");
   key(app, "--column", config.column, "Column name to use as time series (Parquet only)");
@@ -314,15 +314,6 @@ void bind(CLI::App &app, Config &config)
   key(app, "--checkpoint", config.checkpoint, "Checkpoint directory for save/resume");
   key(app, "--checkpoint-interval", config.checkpoint_interval,
       "Save a checkpoint generation every N filled distance-matrix rows (requires --checkpoint)");
-  key(app, "--resume", config.resume, "Replay the completed binary result at <output>/<name>_checkpoint.bin");
-  app.add_flag_function(
-       "--restart",
-       [&config](std::int64_t count) {
-         warn_deprecated("--restart", "--resume");
-         if (count > 0) config.resume = true;
-       },
-       "DEPRECATED alias of --resume")
-    ->group("");
   key(app, "--mmap-threshold", config.mmap_threshold, "N above which to use memory-mapped distance matrix (0=always)");
 
   // MIP solver

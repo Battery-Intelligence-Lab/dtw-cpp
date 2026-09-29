@@ -20,7 +20,7 @@
 #include "enums/enums.hpp"    // for using Enum types.
 #include "initialisation.hpp" // for init functions
 #include "core/dtw_options.hpp" // for DTWVariant
-#include "core/storage.hpp"     // for StoragePolicy
+#include "core/storage.hpp"     // for Precision
 
 #include "core/mmap_distance_matrix.hpp"
 #include <variant>
@@ -202,15 +202,12 @@ private:
   std::uint64_t random_seed_{ settings::DEFAULT_RANDOM_SEED };
   int last_iterations_{ 0 };
   double tadpole_dc_{ -1.0 };
-  core::StoragePolicy storage_policy_{ core::StoragePolicy::Auto };
-  std::size_t ram_limit_bytes_{ 0 }; //!< set_data() footprint threshold override (bytes); 0 = default (50% free RAM).
   bool verbose_{ false };
   /// Run-artifact files (per-repetition medoids, best-repetition record) belong
   /// to cluster_and_process(); cluster() itself is side-effect free.
   bool persist_run_artifacts_{ false };
   path_t output_folder_{ "./results/" }; //!< Relative to the working directory; set_output_folder.
   std::string name_{};
-  std::unique_ptr<LoadedData> series_storage_owner_;
   Data data_;
 
   /// Dispatch through variant via std::visit.
@@ -270,16 +267,14 @@ private:
   /// out the kernel itself, so no filled matrix can serve their pairs.
   void validate_fill_request_once(std::string_view where) const;
   /// get_name / p_vec return references into owned heap storage. A view
-  /// (set_view_data, an mmap series store) has none, nor has a Float32 or
-  /// metadata-only store Float64 values: indexing would read past an empty
-  /// vector in a Release build (F25).
+  /// (set_view_data) has none, nor has a Float32 store Float64 values:
+  /// indexing would read past an empty vector in a Release build (F25).
   void require_owned_storage(std::string_view accessor, bool float64_values) const;
   void clear_mmap_cache_identity();
   void fillDistanceMatrix_BruteForce(); ///< Brute-force parallel distance matrix fill.
   void resize();                        ///< Resize cluster/centroid buffers to size()/Nc. Private invariant maintenance.
 
   // Private functions:
-  friend struct ProblemStoragePolicyTestAccess;
   friend bool load_checkpoint(Problem &prob, const std::string &path,
                               core::MetricType metric);
   friend void MIP_clustering_byBenders(Problem &prob);
@@ -304,40 +299,6 @@ private:
           std::string(operation) + ": series " + std::to_string(i) + " ('"
           + std::string(data.name(i)) + "') is empty; every series needs at "
             "least one value.");
-  }
-
-  void adopt_loaded_data(LoadedData loaded)
-  {
-    if (loaded.is_mmap()) {
-      auto owner =
-        std::make_unique<LoadedData>(std::move(loaded));
-      Data view = owner->data;
-#ifdef DTWC_HAS_MMAP
-      if (!view.is_view()
-          || owner->names.size() != view.size()) {
-        throw std::logic_error(
-          "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
-      }
-      for (std::size_t i = 0; i < view.size(); ++i) {
-        if (view.name(i).data() != owner->names[i].data()
-            || view.name(i).size() != owner->names[i].size()) {
-          throw std::logic_error(
-            "Problem::adopt_loaded_data: mmap name ownership invariant failed.");
-        }
-      }
-#endif
-      data_ = std::move(view);
-      series_storage_owner_ = std::move(owner);
-      return;
-    }
-    data_ = std::move(loaded.data);
-    series_storage_owner_.reset();
-  }
-
-  bool has_mmap_series_storage() const
-  {
-    return series_storage_owner_
-        && series_storage_owner_->is_mmap();
   }
 
 public:
@@ -383,12 +344,9 @@ public:
     rebind_dtw_fn();
   }
   Problem(std::string_view problem_name, DataLoader &loader)
-    : storage_policy_{ loader.storage_policy() },
-      ram_limit_bytes_{ loader.ram_limit() }, name_{ problem_name }
+    : name_{ problem_name }, data_{ loader.load() }
   {
-    auto loaded = loader.load_stored();
-    reject_empty_series(loaded.data, "Problem(name, DataLoader)");
-    adopt_loaded_data(std::move(loaded));
+    reject_empty_series(data_, "Problem(name, DataLoader)");
     refresh_distance_matrix(); // also calls rebind_dtw_fn()
   }
 #if defined(__clang__)
@@ -479,8 +437,6 @@ public:
   std::uint64_t random_seed() const { return random_seed_; }
   int last_iterations() const { return last_iterations_; }
   double tadpole_dc() const { return tadpole_dc_; }
-  core::StoragePolicy storage_policy() const { return storage_policy_; }
-  std::size_t ram_limit() const { return ram_limit_bytes_; }
   bool verbose() const { return verbose_; }
   const path_t &output_folder() const { return output_folder_; }
   const std::string &name() const { return name_; }
@@ -545,18 +501,8 @@ public:
   /// ordinal. A Problem never reads the process-wide default (dtwc::device());
   /// until told otherwise it computes on the CPU.
   /// @throws DeviceError for `gpu` on a build with no GPU backend;
-  ///         InvalidInput for `hpc`, a Tier-1 / CLI run option (D-10), or a
-  ///         negative index.
+  ///         InvalidInput for a negative index.
   void set_device(Device device, int index = 0);
-  void set_storage_policy(core::StoragePolicy policy)
-  {
-    core::validate_storage_policy(policy);
-    if (storage_policy_ == policy) return;
-    // Governs future owning set_data calls; installed data is not moved.
-    storage_policy_ = policy;
-  }
-  /// Footprint threshold override for the next owning set_data (bytes; 0 = default).
-  void set_ram_limit(std::size_t bytes) { ram_limit_bytes_ = bytes; }
   void set_cuda_settings(CUDASettings settings)
   {
     preflight_distance_semantics(
@@ -585,13 +531,7 @@ public:
     reject_empty_series(candidate, "Problem::set_data");
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
-    auto loaded = detail::route_series_storage(
-      std::move(candidate),
-      storage_policy_,
-      ram_limit_bytes_,
-      {},
-      "Problem::set_data");
-    adopt_loaded_data(std::move(loaded));
+    data_ = std::move(candidate);
     refresh_distance_matrix();
   }
 
@@ -604,7 +544,6 @@ public:
     preflight_distance_semantics(
       variant_params, missing_strategy, metric_, candidate, distance_strategy, cuda_settings);
     data_ = std::move(candidate);
-    series_storage_owner_.reset();
     refresh_distance_matrix();
     resize(); // sizes distance matrix for new N
   }

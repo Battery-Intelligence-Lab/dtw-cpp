@@ -118,12 +118,6 @@ void require_finite_series(const std::vector<std::vector<double>> &series,
       series[i], "series[" + std::to_string(i) + "]", where);
 }
 
-std::string utf8_path_text(const std::filesystem::path &path) {
-  const std::u8string encoded = path.u8string();
-  return std::string(
-    reinterpret_cast<const char *>(encoded.data()), encoded.size());
-}
-
 } // namespace
 
 NB_MODULE(_dtwcpp_core, m) {
@@ -194,32 +188,15 @@ NB_MODULE(_dtwcpp_core, m) {
     });
 
   // =========================================================================
-  // Env / Device registry (api-contract-2.0.md §6)
+  // Device (api-contract-2.0.md §6)
   // =========================================================================
 
   nb::enum_<dtwc::Device>(m, "Device")
     .value("CPU", dtwc::Device::CPU)
-    .value("GPU", dtwc::Device::GPU)
-    .value("HPC", dtwc::Device::HPC);
-
-  nb::class_<dtwc::Env>(m, "Env")
-    .def("set_device", [](dtwc::Env &e, const std::string &name) { e.set_device(name); }, "name"_a,
-         "Select the compute device (cpu/gpu/gpu:N/cuda/cuda:N/hpc). Raises\n"
-         "DeviceError on an unknown name, gpu without a GPU backend, or any of the\n"
-         "three device='hpc' .env failures — never a silent CPU fallback.")
-    .def("device", &dtwc::Env::device, "Currently selected Device.")
-    .def("device_index", &dtwc::Env::device_index, "GPU ordinal from the last gpu:N/cuda:N selection.")
-    .def("threads", &dtwc::Env::threads, "Resolved thread count for parallel regions.")
-    .def("set_env_file_dir",
-         [](dtwc::Env &e, const std::filesystem::path &d) { e.set_env_file_dir(d); }, "dir"_a,
-         "Directory searched for the device='hpc' .env file.")
-    .def("env_file_dir", [](const dtwc::Env &e) { return e.env_file_dir(); });
-
-  m.def("env", &dtwc::env, nb::rv_policy::reference,
-        "Return the process-wide Env singleton (the shared device registry, §6).");
+    .value("GPU", dtwc::Device::GPU);
 
   m.def("device_to_string", [](dtwc::Device d) { return dtwc::to_string(d); }, "device"_a,
-        "Canonical lower-case name of a Device ('cpu'/'gpu'/'hpc').");
+        "Canonical lower-case name of a Device ('cpu'/'gpu').");
 
   m.def("parse_device", [](const std::string &name) {
         const auto [device, index] = dtwc::detail::parse_device(name);
@@ -230,13 +207,10 @@ NB_MODULE(_dtwcpp_core, m) {
         "only, the build is not checked; an unknown name raises DeviceError.");
 
   m.def("device", [](const std::string &name) {
-        // Env::set_device probes GPU/HPC availability (device query, .env read,
-        // sinfo) without touching Python; hold no GIL across it.
-        nb::gil_scoped_release release;
         return dtwc::device(name);
       }, "name"_a,
         "Set the process-wide device and return its CANONICAL name\n"
-        "('cpu'/'gpu'/'gpu:N'/'hpc'), exactly as dtwc::device(name) does.");
+        "('cpu'/'gpu'/'gpu:N'), exactly as dtwc::device(name) does.");
 
   m.def("device", []() { return dtwc::device(); },
         "Canonical name of the process-wide device (dtwc::device()).");
@@ -260,7 +234,7 @@ NB_MODULE(_dtwcpp_core, m) {
     if (!delimiter.empty()) loader.delimiter(delimiter[0]);
     // A read failure names the file, as C++ dtwc::load does (api.cpp).
     try {
-      return loader.load_local();
+      return loader.load();
     } catch (const dtwc::IOError &e) {
       throw dtwc::IOError("load: failed to read '" + source.string() + "': " + e.what());
     } catch (const dtwc::Error &) {
@@ -326,11 +300,6 @@ NB_MODULE(_dtwcpp_core, m) {
     .value("BruteForce", dtwc::DistanceMatrixStrategy::BruteForce)
     .value("CUDA", dtwc::DistanceMatrixStrategy::CUDA)
     .value("Metal", dtwc::DistanceMatrixStrategy::Metal);
-
-  nb::enum_<dtwc::core::StoragePolicy>(m, "StoragePolicy")
-    .value("Auto", dtwc::core::StoragePolicy::Auto)
-    .value("Heap", dtwc::core::StoragePolicy::Heap)
-    .value("Mmap", dtwc::core::StoragePolicy::Mmap);
 
   // =========================================================================
   // CUDASettings
@@ -975,10 +944,6 @@ NB_MODULE(_dtwcpp_core, m) {
                    p.set_distance_strategy(value);
                  },
                  "Distance matrix computation strategy (Auto, BruteForce, CUDA, Metal).")
-    .def_prop_rw("storage_policy", &dtwc::Problem::storage_policy,
-                 &dtwc::Problem::set_storage_policy,
-                 "How the next owning set_data call stores series "
-                 "(Auto/Heap/Mmap); existing data is unchanged.")
     .def_prop_rw("cuda_settings",
                  [](const dtwc::Problem &p) -> const dtwc::CUDASettings & {
                    return p.cuda_settings;
@@ -1157,9 +1122,9 @@ NB_MODULE(_dtwcpp_core, m) {
     const auto mt = dtwc::core::parse_metric_token(metric);
     require_finite_series(series, "compute_distance_matrix");
 
-    // Task 3.6 (review H1): this high-level Python compute path never constructs
-    // dtwc::env(), so its OpenMP warning would otherwise be silent under
-    // OMP_NUM_THREADS=1. Warn once, deterministically, before the fill.
+    // Warn once under OMP_NUM_THREADS=1, deterministically, before either branch
+    // (the pruned branch also warns via get_max_threads; this covers the
+    // unpruned one).
     dtwc::warn_if_single_threaded();
 
     const size_t n = series.size();
@@ -1372,8 +1337,7 @@ NB_MODULE(_dtwcpp_core, m) {
   m.def("save_checkpoint", [](const dtwc::Problem &prob,
                               const std::string &path,
                               dtwc::core::MetricType metric) {
-        // N^2 CSV write; released for consistency with save_binary_checkpoint.
-        // `prob` is const here and the writer only reads it.
+        // N^2 CSV write; `prob` is const here and the writer only reads it.
         nb::gil_scoped_release release;
         dtwc::save_checkpoint(prob, path, metric);
       }, "prob"_a, "path"_a, "metric"_a = dtwc::core::MetricType::L1,
@@ -1401,37 +1365,6 @@ NB_MODULE(_dtwcpp_core, m) {
         "L1 for backward compatibility.\n\n"
         "MUTATES `prob`: do not run it concurrently with any other method on\n"
         "the same Problem (see the Problem class docstring).");
-
-  m.def("save_binary_checkpoint",
-        [](const dtwc::core::ClusteringResult &result,
-           const std::filesystem::path &path) {
-    // A Python thread may mutate the bound result after the GIL is released.
-    // Snapshot it first so the native writer always observes one coherent value.
-    const dtwc::core::ClusteringResult snapshot = result;
-    nb::gil_scoped_release release;
-    dtwc::save_binary_checkpoint(snapshot, path);
-  }, "result"_a, "path"_a,
-     "Save a ClusteringResult to a binary version-1 checkpoint.");
-
-  m.def("load_binary_checkpoint", [](const std::filesystem::path &path) {
-    // Prepare all Python-facing text while the GIL is held. The release scope
-    // contains only native state and filesystem work.
-    const std::string path_text = utf8_path_text(path);
-    dtwc::core::ClusteringResult result;
-    bool loaded = false;
-    {
-      nb::gil_scoped_release release;
-      loaded = dtwc::load_binary_checkpoint(result, path);
-    }
-    if (!loaded) {
-      throw dtwc::IOError(
-        "load_binary_checkpoint: cannot read a valid binary result "
-        "checkpoint from '" + path_text + "'.");
-    }
-    return result;
-  }, "path"_a,
-     "Load a ClusteringResult from a binary version-1 checkpoint.\n\n"
-     "Raises IOError if the checkpoint is absent, inaccessible, or invalid.");
 
   // =========================================================================
   // Scores

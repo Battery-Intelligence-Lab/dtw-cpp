@@ -34,13 +34,13 @@ std::string lower(std::string_view value)
   return out;
 }
 
-std::string canonical_device_name(const Env &e)
+/// The process-wide default device: what dtwc::device(name) set, CPU until then.
+struct DeviceSelection
 {
-  std::string out = to_string(e.device());
-  if (e.device() == Device::GPU && e.device_index() != 0)
-    out += ":" + std::to_string(e.device_index());
-  return out;
-}
+  Device device = Device::CPU;
+  int index = 0;
+};
+DeviceSelection g_device;
 
 std::string derive_name(const std::filesystem::path &path)
 {
@@ -143,11 +143,20 @@ Dataset load(Dataset::series_type source, int skip_cols, int skip_rows,
 
 std::string device(std::string_view name)
 {
-  env().set_device(name);
-  return canonical_device_name(env());
+  const auto [selected, index] = detail::parse_device(name);
+#if !defined(DTWC_HAS_CUDA) && !defined(DTWC_HAS_METAL)
+  if (selected == Device::GPU) throw DeviceError(detail::gpu_not_built_message());
+#endif
+  g_device = { selected, index };
+  return device();
 }
 
-std::string device() { return canonical_device_name(env()); }
+std::string device()
+{
+  std::string out = to_string(g_device.device);
+  if (g_device.device == Device::GPU && g_device.index != 0) out += ":" + std::to_string(g_device.index);
+  return out;
+}
 
 Result::Result(std::shared_ptr<Problem> problem, double cost, std::string device_name,
                ClusterMethod method, int iterations, bool converged)
@@ -271,10 +280,8 @@ Result cluster(const Dataset &dataset, int k, std::string_view method, int band,
   config.max_iter = max_iter;
   config.output.clear(); // Result::save writes; cluster() does not
   config.name = dataset.name();
-  // The grammar only: an `hpc` .env is Python's to read, so run() refuses hpc
-  // without opening one.
   std::tie(config.device, config.gpu.device_id) =
-    device.empty() ? std::pair{ env().device(), env().device_index() } : detail::parse_device(device);
+    device.empty() ? std::pair{ g_device.device, g_device.index } : detail::parse_device(device);
   if (!dataset.is_path()) return run(config, dataset.materialize_local());
   config.input = path_to_utf8(dataset.path());
   config.skip_cols = dataset.skip_cols();

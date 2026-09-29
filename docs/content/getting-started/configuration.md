@@ -48,8 +48,8 @@ dtwc_cl --config examples/cpp/config.toml
 
 For ordinary options, the TOML key is the canonical long flag without the
 leading `--`; for example, `--n-clusters 5` becomes `n-clusters = 5`.
-Deprecated keys `clusters` and `restart` remain accepted with warnings, but new
-files should use `n-clusters` and `resume`.
+The deprecated key `clusters` remains accepted with a warning, but new files
+should use `n-clusters`.
 
 ## YAML
 
@@ -81,7 +81,7 @@ Canonical keys and aliases represented by the live CLI are:
 | FastCLARA/OneBatch/TADPole | `--sample-size`, `--n-samples`, `--batch-size`, `--batch-weighting`, `--dc` |
 | Hierarchical | `--linkage` |
 | Exact solvers | `--solver`, `--mip-gap`, `--time-limit`, `--no-warm-start`, `--numeric-focus`, `--mip-focus`, `--verbose-solver`, `--benders`, `--max-benders-iter`, `--lr-max-nodes` |
-| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--checkpoint-interval`, `--resume`, `--mmap-threshold` |
+| Device/storage | `--device`, `--gpu-precision`, `--gpu-dtype`, `--dist-matrix`, `--checkpoint`, `--checkpoint-interval`, `--mmap-threshold` |
 | Diagnostics | `--verbose` |
 
 Use canonical keys (`dtype`, `gpu-precision`) rather than their aliases in new
@@ -92,12 +92,6 @@ files. The repository's complete example is
 and saves on completion. A non-zero `checkpoint-interval` additionally publishes
 a generation every N completed distance-matrix rows and requires `checkpoint`;
 `0`, the default, saves once at the end.
-The separate `resume` key maps the live `--resume`
-flag: it validates and replays the completed binary result selected by the same
-`output` and `name`, restores all result fields, skips clustering, and preserves
-the binary file. It is not algorithm-state continuation, does not add
-`max-iter`, and assumes the same input order/configuration because binary v1 has
-no semantic fingerprint. Missing or incompatible state is a hard error.
 
 These four flags control the command invocation rather than the clustering
 payload and are passed on the command line: `--help`, `--version`, `--config`

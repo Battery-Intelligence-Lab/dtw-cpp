@@ -115,7 +115,6 @@ struct ProblemConfigurationSnapshot {
   dtwc::core::DTWVariantParams variant_params;
   dtwc::core::MissingStrategy missing_strategy;
   dtwc::DistanceMatrixStrategy distance_strategy;
-  dtwc::core::StoragePolicy storage_policy;
   dtwc::CUDASettings cuda_settings;
   dtwc::MIPSettings mip_settings;
   bool verbose;
@@ -129,7 +128,6 @@ struct ProblemConfigurationSnapshot {
   std::size_t data_ndim;
   dtwc::core::Precision data_precision;
   bool data_is_view;
-  bool data_is_metadata_only;
   std::vector<std::vector<double>> series;
   std::vector<std::vector<float>> series_f32;
   std::vector<std::string> series_names;
@@ -158,7 +156,6 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
     prob.variant_params,
     prob.missing_strategy,
     prob.distance_strategy,
-    prob.storage_policy(),
     prob.cuda_settings,
     prob.mip_settings,
     prob.verbose(),
@@ -172,7 +169,6 @@ static ProblemConfigurationSnapshot snapshot_configuration(dtwc::Problem &prob)
     prob.data().ndim,
     prob.data().precision,
     prob.data().is_view(),
-    prob.data().is_metadata_only(),
     prob.data().p_vec,
     prob.data().p_vec_f32,
     prob.data().p_names,
@@ -202,7 +198,6 @@ static void check_configuration_unchanged(
   CHECK(prob.variant_params.mv_mode == before.variant_params.mv_mode);
   CHECK(prob.missing_strategy == before.missing_strategy);
   CHECK(prob.distance_strategy == before.distance_strategy);
-  CHECK(prob.storage_policy() == before.storage_policy);
   CHECK(prob.cuda_settings.device_id == before.cuda_settings.device_id);
   CHECK(prob.cuda_settings.precision == before.cuda_settings.precision);
   CHECK(prob.mip_settings.mip_gap == before.mip_settings.mip_gap);
@@ -222,8 +217,7 @@ static void check_configuration_unchanged(
   CHECK(prob.name() == before.name);
   CHECK(prob.n_clusters() == before.n_clusters);
   CHECK((prob.size() == before.data_size
-         && prob.data().is_view() == before.data_is_view
-         && prob.data().is_metadata_only() == before.data_is_metadata_only));
+         && prob.data().is_view() == before.data_is_view));
   CHECK(prob.data().ndim == before.data_ndim);
   CHECK(prob.data().precision == before.data_precision);
   CHECK((prob.data().p_vec == before.series

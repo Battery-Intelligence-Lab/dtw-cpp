@@ -44,6 +44,7 @@
 #include <iomanip>   // for operator<<, setprecision
 #include <iostream>  // for cout
 #include <limits>    // for numeric_limits
+#include <cassert>
 #include <stdexcept> // for logic_error
 #include <string>    // for allocator, char_traits, operator+
 #include <type_traits> // for underlying_type_t
@@ -226,16 +227,13 @@ void Problem::require_owned_storage(std::string_view accessor, bool float64_valu
   const std::string at(accessor);
   if (data_.is_view())
     throw InvalidInput(
-      at + ": this Problem's series are a non-owning view (set_view_data, or a "
-           "memory-mapped series store), so there is no owned "
+      at + ": this Problem's series are a non-owning view (set_view_data), so "
+           "there is no owned "
       + (float64_values ? "series to return. Use series(i) (data().series_f32(i) "
                           "for Float32), which reads every storage mode."
                         : "name to return. Use series_name(i), which reads every "
                           "storage mode."));
   if (!float64_values) return;
-  if (data_.is_metadata_only())
-    throw InvalidInput(at + ": this Problem's series are not resident (a "
-                            "metadata-only load); there are no values to return.");
   if (data_.is_f32())
     throw InvalidInput(at + ": this Problem holds Float32 series, and p_vec "
                             "returns the Float64 store. Use data().series_f32(i).");
@@ -485,12 +483,6 @@ void Problem::set_device(Device device, int index)
     throw DeviceError(detail::gpu_not_built_message());
 #endif
   }
-  case Device::HPC:
-    throw InvalidInput(
-      "Problem::set_device: hpc is not a Problem device. It submits a whole run "
-      "to a SLURM cluster, which Python's dtwcpp.cluster(..., device='hpc') does "
-      "by running dtwc_cl there; a Problem computes locally. Use device cpu or "
-      "gpu.");
   }
 }
 
@@ -699,11 +691,6 @@ Problem::DistanceCacheIdentity
 Problem::distance_cache_identity(core::MetricType metric) const
 {
   core::validate_metric_type(metric);
-  if (data_.is_metadata_only()) {
-    throw InvalidInput(
-      "use_mmap_distance_matrix: cannot fingerprint metadata-only data; "
-      "time-series values must be resident before a distance cache can be bound");
-  }
   if (distance_strategy == DistanceMatrixStrategy::CUDA
       && cuda_settings.precision == 0) {
     throw InvalidInput(
@@ -838,9 +825,7 @@ void Problem::use_mmap_distance_matrix(
                   + "': " + ec.message());
   auto mapped = cached ? core::MmapDistanceMatrix::open(cache_path, identity.full)
                        : core::MmapDistanceMatrix(cache_path, N, identity.full);
-  if (mapped.size() != N) // the fingerprint that open() checked covers N
-    throw std::logic_error("Problem::use_mmap_distance_matrix: a cache whose fingerprint matched holds N="
-                           + std::to_string(mapped.size()) + ", not " + std::to_string(N));
+  assert(mapped.size() == N); // the fingerprint that open() checked covers N
   if (metric_ != metric) { // new semantics, as in set_metric
     metric_ = metric;
     fill_request_validated_ = false;
@@ -989,21 +974,18 @@ void Problem::validate_fill_request(std::string_view where) const
   // missing-data strategy, and otherwise poisons the recurrence (NaN also marks
   // an uncomputed matrix entry). One check through the raw entry points' own
   // boundary test, serial so the message names the series and its (flat)
-  // position. A metadata-only store holds no values here to scan.
-  if (!data_.is_metadata_only()) {
-    const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
-    std::string name;
-    for (std::size_t i = 0; i < data_.size(); ++i) {
-      name.assign("series '").append(series_name(i)).append("' (index ")
-        .append(std::to_string(i)).append(")");
-      if (data_.is_f32())
-        detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
-      else
-        detail::require_finite(series(i), name, at, nan_is_missing);
-    }
+  // position.
+  const bool nan_is_missing = missing_strategy != core::MissingStrategy::Error;
+  std::string name;
+  for (std::size_t i = 0; i < data_.size(); ++i) {
+    name.assign("series '").append(series_name(i)).append("' (index ")
+      .append(std::to_string(i)).append(")");
+    if (data_.is_f32())
+      detail::require_finite(data_.series_f32(i), name, at, nan_is_missing);
+    else
+      detail::require_finite(series(i), name, at, nan_is_missing);
   }
-  if (!data_.is_metadata_only()
-      && missing_strategy == core::MissingStrategy::Interpolate) {
+  if (missing_strategy == core::MissingStrategy::Interpolate) {
     // interpolate_linear() has no observed value to interpolate from when a
     // series is entirely NaN, and used to throw from inside the per-pair lambda.
     for (std::size_t i = 0; i < data_.size(); ++i) {
@@ -1021,15 +1003,10 @@ void Problem::validate_fill_request(std::string_view where) const
   // The GPU routes also need owned, resident, univariate series.
   const bool cuda = distance_strategy == DistanceMatrixStrategy::CUDA;
   if (!cuda && distance_strategy != DistanceMatrixStrategy::Metal) return;
-  if (has_mmap_series_storage())
-    reject_gpu_request(at, cuda, "does not support mmap-backed series data",
-                       "Select StoragePolicy::Heap before set_data.");
-  if (data_.is_view() || data_.is_metadata_only())
+  if (data_.is_view())
     reject_gpu_request(at, cuda,
-                       std::string("needs owned series in RAM, but this Problem's series are ")
-                         + (data_.is_view() ? "a non-owning view (set_view_data, as "
-                                              "FastCLARA's in-memory subsamples are)"
-                                            : "not resident (metadata-only)"),
+                       "needs owned series in RAM, but this Problem's series are a non-owning "
+                       "view (set_view_data, as FastCLARA's in-memory subsamples are)",
                        "Install owning series with set_data, or use device cpu.");
   validate_gpu_request(at, distance_strategy, variant_params, missing_strategy, data_.precision,
                        cuda_settings);

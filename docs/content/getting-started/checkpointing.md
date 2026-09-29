@@ -8,16 +8,15 @@ weight: 8
 Checkpointing allows you to save and resume distance-matrix computation. For
 large datasets, computing the full pairwise DTW matrix can take hours. A
 directory checkpoint or a validated mmap cache lets a *later* run skip pairs a
-*previous* run already finished. The separate binary mechanism replays a
-completed clustering result; it does not resume a method in mid-iteration.
+*previous* run already finished. Nothing resumes a clustering method in
+mid-iteration.
 
 Saving is explicit and happens between phases. Nothing checkpoints from inside
 `fill_distance_matrix()`, so a crash during one uninterrupted fill loses that
 fill; call `save_checkpoint` yourself if you want a partial matrix on disk.
 
-DTWC++ has three persistence mechanisms: the directory checkpoint documented
-below, a binary clustering-result checkpoint used by `--resume`, and the packed
-memory-mapped distance cache selected by `--mmap-threshold`. The mmap cache
+DTWC++ has two persistence mechanisms: the directory checkpoint documented
+below, and the packed memory-mapped distance cache selected by `--mmap-threshold`. The mmap cache
 resumes automatically when its identity matches; it is not the same format as
 the dense CSV directory checkpoint.
 
@@ -208,79 +207,6 @@ When `--mmap-threshold` selects mmap storage, `--checkpoint` and
 `--dist-matrix` are rejected because both require a legacy dense CSV matrix.
 Omit those options to use the fingerprinted cache's automatic resume, or raise
 the threshold only if the dense matrix and CSV checkpoint fit in RAM.
-
-## Completed binary-result replay
-
-Every successful fresh CLI clustering run writes
-`<output>/<name>_checkpoint.bin`. `--resume` selects that exact path, validates
-the result against the current N and k, restores labels, medoids, total cost,
-iterations, and convergence, and skips clustering:
-
-```bash
-dtwc_cl --input data.csv -k 5 --output ./results --name run1
-dtwc_cl --input data.csv -k 5 --output ./results --name run1 --resume
-```
-
-The source binary remains unchanged. `converged=false` is replayed as a
-completed iteration-capped result; `--max-iter` is not an extra continuation
-budget. Missing or incompatible requested state fails instead of silently
-starting a fresh clustering run.
-
-Binary format v1 does not store data/configuration identity, input order, or
-the method that produced the result. Use the same input order and clustering
-configuration, and treat the unconditional `checkpoint replay` summary as the
-result source rather than method provenance. Result replay is independent of
-the directory checkpoint and mmap cache. An explicitly imported or already
-available distance matrix may still be used for scoring, but replay does not
-create or compute unused matrix state.
-
-Version 1 is a strict little-endian wire format: a 32-byte canonical header is
-followed by int32 medoid indices and labels. Reserved and padding bytes must be
-zero, convergence must be encoded as 0 or 1, and the file must end exactly
-after the declared payload. The reader verifies those properties and the exact
-payload length before allocating from either count; a rejected read leaves the
-destination result unchanged. This structural validation deliberately does
-not establish that labels, medoids, N, k, or the producing configuration are
-semantically compatible. The CLI performs those contextual replay checks.
-
-### Python binary-result API
-
-Tier-2 clustering functions such as `fast_pam` return a
-`dtwcpp.ClusteringResult` that can be saved directly. Both binary functions
-accept valid-Unicode `str` or `os.PathLike[str]` values (including
-`pathlib.Path`) and release the GIL during native filesystem work:
-
-```python
-from pathlib import Path
-
-import dtwcpp
-
-binary_path = Path("./results/run1_checkpoint.bin")
-result = dtwcpp.fast_pam(prob, 5)
-assert dtwcpp.save_binary_checkpoint(result, binary_path) is None
-
-try:
-    replayed = dtwcpp.load_binary_checkpoint(binary_path)
-except dtwcpp.IOError as error:
-    print(f"Checkpoint unavailable: {error}")
-    raise
-
-assert isinstance(replayed, dtwcpp.ClusteringResult)
-```
-
-`load_binary_checkpoint(path) -> ClusteringResult` returns a new result object;
-it does not mutate a `Problem`. Missing, inaccessible, or structurally invalid
-files raise `dtwcpp.IOError` (also a `DtwcError` and `OSError`) with the exact
-message:
-
-```text
-load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
-```
-
-Here `<path>` is replaced by the supplied path. Native write failures from
-`save_binary_checkpoint(result, path) -> None` also raise `dtwcpp.IOError`.
-Surrogateescaped non-UTF-8 filenames and lone-surrogate path values remain
-outside this valid-Unicode path guarantee.
 
 ## Example workflow
 

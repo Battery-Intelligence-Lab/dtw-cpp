@@ -14,7 +14,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <limits>
 #include <stdexcept>
 #include <string>
 
@@ -32,12 +31,7 @@ inline int parquet_leaf_count(const std::shared_ptr<arrow::DataType> &type)
   const auto &fields = type->fields();
   if (fields.empty()) return 1;
   int count = 0;
-  for (const auto &field : fields) {
-    const int child_count = parquet_leaf_count(field->type());
-    if (child_count > std::numeric_limits<int>::max() - count)
-      throw dtwc::IOError("Parquet schema has too many physical leaf columns");
-    count += child_count;
-  }
+  for (const auto &field : fields) count += parquet_leaf_count(field->type());
   return count;
 }
 
@@ -75,22 +69,15 @@ inline ParquetSeriesColumn find_parquet_series_column(
         "Parquet column '" + column_name +
         "' must be Float32, Float64, List<Float32/Float64>, or "
         "LargeList<Float32/Float64>");
-    for (int preceding = 0; preceding < index; ++preceding) {
-      const int leaves = parquet_leaf_count(schema->field(preceding)->type());
-      if (leaves > std::numeric_limits<int>::max() - leaf_index)
-        throw dtwc::IOError("Parquet schema has too many physical leaf columns");
-      leaf_index += leaves;
-    }
+    for (int preceding = 0; preceding < index; ++preceding)
+      leaf_index += parquet_leaf_count(schema->field(preceding)->type());
     return { index, leaf_index, schema->field(index)->type() };
   }
 
   for (int index = 0; index < schema->num_fields(); ++index) {
     if (is_parquet_series_column(schema->field(index)->type()))
       return { index, leaf_index, schema->field(index)->type() };
-    const int leaves = parquet_leaf_count(schema->field(index)->type());
-    if (leaves > std::numeric_limits<int>::max() - leaf_index)
-      throw dtwc::IOError("Parquet schema has too many physical leaf columns");
-    leaf_index += leaves;
+    leaf_index += parquet_leaf_count(schema->field(index)->type());
   }
   throw dtwc::IOError(
     "No scalar/list Float32 or Float64 column found in Parquet schema. "

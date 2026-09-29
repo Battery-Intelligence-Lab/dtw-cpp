@@ -52,16 +52,16 @@ def _series(n=5, length=20, seed=42):
 
 
 def _cpp_gpu_alias_result(name):
-    """Ask the live C++ Env whether *name* belongs to its GPU alias grammar.
+    """Ask the live C++ dtwc::device whether *name* belongs to its GPU alias grammar.
 
     A CPU-only build raises the GPU-not-built DeviceError even for a syntactically
     valid alias, so that error is an accepted parse result.  Unknown-name errors
     are rejected parse results.  This keeps C++ as the acceptance oracle instead
     of copying its valid-alias list into the Python test.
     """
-    registry = dtwcpp.env()
+    core = dtwcpp._dtwcpp_core
     try:
-        registry.set_device(name)
+        canonical = core.device(name)
     except dtwcpp.DeviceError as exc:
         message = str(exc)
         if message.startswith("[dtwc] unknown device '"):
@@ -70,16 +70,16 @@ def _cpp_gpu_alias_result(name):
             return True, message, None
         raise AssertionError(f"Unexpected C++ device error for {name!r}: {message}") from exc
     else:
-        assert registry.device() == dtwcpp.Device.GPU
-        return True, None, registry.device_index()
+        assert canonical.startswith("gpu")
+        return True, None, core.parse_device(name)[1]
     finally:
-        registry.set_device("cpu")
+        core.device("cpu")
 
 
 class TestGpuAlias:
     @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES)
     def test_python_gpu_alias_grammar_matches_live_cpp(self, name):
-        """Python accepts/rejects the same GPU spellings as Env::set_device and
+        """Python accepts/rejects the same GPU spellings as dtwc::device and
         names each accepted one ``gpu``: ``cuda`` is an alias of ``gpu`` (§6.1)."""
         cpp_accepts, cpp_error, cpp_ordinal = _cpp_gpu_alias_result(name)
 
@@ -209,11 +209,11 @@ class TestCanonicalDeviceName:
         assert dtwcpp.device(first) == first
 
     def test_no_python_side_copy_of_the_local_device(self):
-        """§6: dtwc::Env is the only registry for a local device selection.
+        """§6: C++ dtwc::device is the only registry for a local device selection.
 
         This is the one case in this class that FAILS on the pre-change code
         on a CPU-only box: that implementation answered device() from a module
-        global ``_DEFAULT_DEVICE`` which ``_sync_env`` only mirrored into Env,
+        global ``_DEFAULT_DEVICE`` which ``_sync_env`` only mirrored into C++,
         so the two could drift and 'cuda:0' came back verbatim. Every
         *behavioural* canonicalisation case (cuda/gpu:N -> 'gpu') needs a GPU
         and is skipped below, so without this assertion the class is green on
@@ -223,9 +223,8 @@ class TestCanonicalDeviceName:
         assert not hasattr(dtwcpp, "_DEFAULT_DEVICE")
         from dtwcpp import _dtwcpp_core
 
-        # The getter is a live read of dtwc::Env, not a stored string.
+        # The getter is a live read of dtwc::device(), not a stored string.
         assert dtwcpp.device() == _dtwcpp_core.device() == "cpu"
-        assert dtwcpp.env().device() == dtwcpp.Device.CPU
 
     @pytest.mark.skipif(
         not ((dtwcpp.CUDA_AVAILABLE and dtwcpp.cuda_available())
@@ -243,9 +242,9 @@ class TestCanonicalDeviceName:
             dtwcpp.device("cpu")
 
     def test_cpu_getter_reads_the_shared_env(self):
-        """No Python-side copy of the device: the getter reads dtwc::Env."""
+        """No Python-side copy of the device: the getter reads dtwc::device()."""
         dtwcpp.device("cpu")
-        assert dtwcpp.env().device() == dtwcpp.Device.CPU
+        assert dtwcpp._dtwcpp_core.device() == "cpu"
         assert dtwcpp.device() == "cpu"
 
 
@@ -253,6 +252,18 @@ class TestHpcDevice:
     def test_hpc_is_a_valid_global_device(self):
         dtwcpp.device("hpc")
         assert dtwcpp.device() == "hpc"
+
+    def test_hpc_gpu_is_recorded_in_python_and_refused_by_cpp(self):
+        """Python records hpc / hpc:gpu; the C++ grammar names Python instead."""
+        try:
+            assert dtwcpp.device("HPC:GPU") == "hpc:gpu"
+            assert dtwcpp.device() == "hpc:gpu"
+            assert dtwcpp._dtwcpp_core.device() == "cpu"  # C++ never saw it
+            with pytest.raises(dtwcpp.DeviceError, match=r"dtwcpp\.device\(\"hpc\"\)"):
+                dtwcpp._dtwcpp_core.device("hpc")
+        finally:
+            dtwcpp.device("cpu")
+        assert dtwcpp.device() == "cpu"
 
     def test_compute_distance_matrix_rejects_hpc(self):
         """'hpc' is an execution location, not a local compute backend."""
@@ -290,7 +301,7 @@ class TestProblemDevice:
 
     @pytest.mark.parametrize("name", _GPU_ALIAS_CANDIDATES + ("cpu", " CPU ", "tpu", ""))
     def test_set_device_accepts_exactly_the_env_grammar(self, name):
-        """Problem.set_device parses with the one C++ grammar Env uses."""
+        """Problem.set_device parses with the one C++ device grammar."""
         if name.strip(" \t\r\n").lower() == "cpu":
             cpp_accepts, cpp_error, cpp_ordinal = True, None, None
         else:
@@ -328,10 +339,10 @@ class TestProblemDevice:
         assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
 
     def test_hpc_is_a_run_option_not_a_problem_device(self):
-        with pytest.raises(dtwcpp.InvalidInput, match="hpc is not a Problem device"):
+        with pytest.raises(dtwcpp.DeviceError, match="slurm_remote.sh"):
             dtwcpp.Problem(device="hpc")
         prob = dtwcpp.Problem()
-        with pytest.raises(ValueError, match="hpc is not a Problem device"):
+        with pytest.raises(dtwcpp.DeviceError, match="slurm_remote.sh"):
             prob.set_device("hpc")
         assert prob.distance_strategy == dtwcpp.DistanceMatrixStrategy.Auto
 

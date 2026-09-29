@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.26)
 
-foreach(required_var IN ITEMS CLI FIXTURE BINARY_ROOT WORK_ROOT BYTE_ORDER)
+foreach(required_var IN ITEMS CLI FIXTURE BINARY_ROOT WORK_ROOT)
     if(NOT DEFINED ${required_var} OR "${${required_var}}" STREQUAL "")
         message(FATAL_ERROR "F8 missing required -D${required_var}=...")
     endif()
@@ -66,7 +66,7 @@ set_property(GLOBAL PROPERTY f8_route_checks)
 set_property(GLOBAL PROPERTY f8_pairs)
 set_property(GLOBAL PROPERTY f8_configs)
 
-function(run_f8_cli config_id mode output_dir dtype variant gamma expected_cost)
+function(run_f8_cli config_id mode output_dir dtype variant gamma accepted_costs)
     file(MAKE_DIRECTORY "${output_dir}")
     set(args
         --input "${fixture_path}"
@@ -132,31 +132,35 @@ function(run_f8_cli config_id mode output_dir dtype variant gamma expected_cost)
         endif()
     endforeach()
 
-    string(FIND "${stdout}" "Total cost: ${expected_cost}" cost_pos)
-    if(cost_pos EQUAL -1)
+    # dtwc_cl prints the total cost in shortest round-trip form, so this text
+    # is the exact double.
+    if(NOT stdout MATCHES "Total cost: ([^\r\n]+)")
         message(FATAL_ERROR
-            "F8 ${config_id}/${mode} missing cost ${expected_cost}\n${stdout}")
+            "F8 ${config_id}/${mode} missing 'Total cost:'\n${stdout}")
+    endif()
+    set(cost "${CMAKE_MATCH_1}")
+    list(FIND accepted_costs "${cost}" accepted_index)
+    if(accepted_index EQUAL -1)
+        message(FATAL_ERROR
+            "F8 ${config_id}/${mode} total cost=${cost}, accepted=${accepted_costs}")
     endif()
 
     set_property(GLOBAL APPEND PROPERTY f8_runs "${config_id}/${mode}")
-    set("${config_id}_${mode}_stdout" "${stdout}" PARENT_SCOPE)
+    set("${config_id}_${mode}_cost" "${cost}" PARENT_SCOPE)
 endfunction()
 
-function(check_f8_config
-    config_id dtype variant gamma expected_cost
-    expected_cost_hex_le expected_cost_hex_be expected_checkpoint_sha)
+function(check_f8_config config_id dtype variant gamma accepted_costs)
     set(resident_dir "${work_root}/${config_id}-resident")
     set(stream_dir "${work_root}/${config_id}-stream")
 
     run_f8_cli(
         "${config_id}" resident "${resident_dir}"
-        "${dtype}" "${variant}" "${gamma}" "${expected_cost}")
+        "${dtype}" "${variant}" "${gamma}" "${accepted_costs}")
     run_f8_cli(
         "${config_id}" stream "${stream_dir}"
-        "${dtype}" "${variant}" "${gamma}" "${expected_cost}")
+        "${dtype}" "${variant}" "${gamma}" "${accepted_costs}")
 
     set(expected_files
-        parity_checkpoint.bin
         parity_labels.csv
         parity_medoids.csv)
     foreach(mode IN ITEMS resident stream)
@@ -203,52 +207,14 @@ function(check_f8_config
         message(FATAL_ERROR "F8 ${config_id} medoids payload mismatch:\n${medoids}")
     endif()
 
-    file(SIZE "${resident_dir}/parity_checkpoint.bin" checkpoint_size)
-    if(NOT checkpoint_size EQUAL 72)
+    # Resident and stream must agree on the exact total cost, not only on the
+    # accepted set.
+    if(NOT "${${config_id}_resident_cost}" STREQUAL "${${config_id}_stream_cost}")
         message(FATAL_ERROR
-            "F8 ${config_id} checkpoint size=${checkpoint_size}, expected=72")
+            "F8 ${config_id} resident/stream total cost split: "
+            "${${config_id}_resident_cost} vs ${${config_id}_stream_cost}")
     endif()
-    file(SHA256 "${resident_dir}/parity_checkpoint.bin" checkpoint_sha)
-    string(TOUPPER "${checkpoint_sha}" checkpoint_sha)
-
-    # expected_cost_hex_le / _be may be a semicolon-separated list of accepted
-    # IEEE-754 encodings. Resident and stream must still match each other
-    # (compare_files above) and both land in that set. Standard DTW stays a
-    # single encoding; Soft-DTW registers a 2-ULP GCC profile (see the
-    # f64_softdtw call site).
-    if(BYTE_ORDER STREQUAL "LITTLE_ENDIAN")
-        set(accepted_cost_hexes "${expected_cost_hex_le}")
-    elseif(BYTE_ORDER STREQUAL "BIG_ENDIAN")
-        set(accepted_cost_hexes "${expected_cost_hex_be}")
-    else()
-        message(FATAL_ERROR "F8 unknown C++ byte order '${BYTE_ORDER}'")
-    endif()
-    set(observed_cost_hex "")
-    foreach(mode IN ITEMS resident stream)
-        file(READ
-            "${${mode}_dir}/parity_checkpoint.bin"
-            cost_hex
-            OFFSET 24
-            LIMIT 8
-            HEX)
-        string(TOUPPER "${cost_hex}" cost_hex)
-        if(observed_cost_hex STREQUAL "")
-            set(observed_cost_hex "${cost_hex}")
-        elseif(NOT cost_hex STREQUAL observed_cost_hex)
-            message(FATAL_ERROR
-                "F8 ${config_id} resident/stream total_cost split: "
-                "${observed_cost_hex} vs ${cost_hex}")
-        endif()
-        list(FIND accepted_cost_hexes "${cost_hex}" accepted_index)
-        if(accepted_index EQUAL -1)
-            message(FATAL_ERROR
-                "F8 ${config_id}/${mode} total_cost bytes=${cost_hex}, "
-                "accepted=${accepted_cost_hexes}")
-        endif()
-    endforeach()
-    if(config_id STREQUAL "f64_softdtw")
-        set(f64_softdtw_cost_hex "${observed_cost_hex}" PARENT_SCOPE)
-    endif()
+    set_property(GLOBAL APPEND PROPERTY f8_pairs "${config_id}/total_cost")
 
     if(WIN32)
         file(SHA256 "${resident_dir}/parity_labels.csv" labels_sha)
@@ -263,43 +229,31 @@ function(check_f8_config
             message(FATAL_ERROR
                 "F8 ${config_id} medoids SHA=${medoids_sha}, expected=${expected_medoids_sha}")
         endif()
-        if(NOT checkpoint_sha STREQUAL expected_checkpoint_sha)
-            message(FATAL_ERROR
-                "F8 ${config_id} checkpoint SHA=${checkpoint_sha}, expected=${expected_checkpoint_sha}")
-        endif()
     endif()
 
     set_property(GLOBAL APPEND PROPERTY f8_configs "${config_id}")
-    set("${config_id}_checkpoint_sha" "${checkpoint_sha}" PARENT_SCOPE)
+    set("${config_id}_cost" "${${config_id}_resident_cost}" PARENT_SCOPE)
 endfunction()
 
-check_f8_config(
-    f64_standard float64 standard none 4.4
-    9899999999991140 4011999999999998
-    B666C1108C42A6B0705741B357F2527E319FEEBE3380BE6623E1494DAFD1A02C)
-check_f8_config(
-    f32_standard float32 standard none 4.4
-    000000EC99991140 40119999EC000000
-    EEA65070341F900BA212909242AD54FE7A48F1E4A94704864CBF77C89FC28FC1)
-# Soft-DTW total_cost encodings registered before the HPC re-run:
-#   CC31540B20B024C0 / C024B0200B5431CC = -10.343994478252078
-#     (MSVC / Apple Clang baseline, F8 2026-07-23)
-#   CE31540B20B024C0 / C024B0200B5431CE = -10.343994478252082
-#     (GCC 14 + -fassociative-math, 2 ULP; Arrhenius LastTest.log 2026-09-01)
-# Labels/medoids stay exact. Resident≡stream stays byte-identical.
-check_f8_config(
-    f64_softdtw float64 softdtw 0.7 -10.344
-    "CC31540B20B024C0;CE31540B20B024C0"
-    "C024B0200B5431CC;C024B0200B5431CE"
-    67D818D58370CB6E17E4E8922175A343ADE2D53C7873A62522FE9D3C14734B79)
+# Accepted total costs are the shortest round-trip text of the IEEE-754 values
+# the binary result checkpoint pinned at offset 24 (big-endian hex):
+# 4011999999999998, 40119999EC000000, and for Soft-DTW C024B0200B5431CC
+# (MSVC / Apple Clang baseline, F8 2026-07-23) or C024B0200B5431CE (GCC 14 +
+# -fassociative-math, 2 ULP; Arrhenius LastTest.log 2026-09-01).
+# Labels/medoids stay exact. Resident and stream stay byte-identical.
+check_f8_config(f64_standard float64 standard none "4.399999999999999")
+check_f8_config(f32_standard float32 standard none "4.400001227855682")
+check_f8_config(f64_softdtw float64 softdtw 0.7
+    "-10.343994478252078;-10.343994478252082")
 
-if(f64_standard_checkpoint_sha STREQUAL f32_standard_checkpoint_sha
-    OR f64_standard_checkpoint_sha STREQUAL f64_softdtw_checkpoint_sha
-    OR f32_standard_checkpoint_sha STREQUAL f64_softdtw_checkpoint_sha)
+# The labels and medoids are the same in all three configurations; the exact
+# cost is what tells them apart.
+if(f64_standard_cost STREQUAL f32_standard_cost
+    OR f64_standard_cost STREQUAL f64_softdtw_cost
+    OR f32_standard_cost STREQUAL f64_softdtw_cost)
     message(FATAL_ERROR
-        "F8 configuration checkpoints are not 3/3 distinct: "
-        "${f64_standard_checkpoint_sha};${f32_standard_checkpoint_sha};"
-        "${f64_softdtw_checkpoint_sha}")
+        "F8 configuration costs are not 3/3 distinct: "
+        "${f64_standard_cost};${f32_standard_cost};${f64_softdtw_cost}")
 endif()
 
 get_property(f8_runs GLOBAL PROPERTY f8_runs)
@@ -319,11 +273,8 @@ if(NOT run_count EQUAL 6
         "pairs=${pair_count} configs=${config_count}")
 endif()
 
-if(NOT DEFINED f64_softdtw_cost_hex OR f64_softdtw_cost_hex STREQUAL "")
-    message(FATAL_ERROR "F8 missing observed Soft-DTW total_cost hex")
-endif()
 message(STATUS
     "F8_PARITY subject=real_dtwc_cl runs=${run_count} "
     "route_markers=${route_check_count}/12 parity=${pair_count}/9 "
     "configs=${config_count}/3_distinct fixture_sha256=${fixture_sha} "
-    "softdtw_cost=${f64_softdtw_cost_hex}")
+    "softdtw_cost=${f64_softdtw_cost}")

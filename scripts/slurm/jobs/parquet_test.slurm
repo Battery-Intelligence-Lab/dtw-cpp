@@ -7,7 +7,7 @@
 #SBATCH --output=logs/parquet_test_%j.out
 #SBATCH --error=logs/parquet_test_%j.err
 #
-# DTWC++ Parquet/dtws format test — verify Arrow-based I/O
+# DTWC++ Parquet format test — verify Arrow-based I/O
 #
 # Usage: sbatch scripts/slurm/jobs/parquet_test.slurm
 #        Expects build-htc-cpu/ to exist (see scripts/slurm/build-arc.sh htc-cpu)
@@ -24,7 +24,7 @@ module load Arrow/15.0.0 2>/dev/null || module load arrow 2>/dev/null || true
 
 # ── Diagnostics header ────────────────────────────────────────────────────
 echo "================================================================"
-echo "  DTWC++ Parquet/DTWS Format Test"
+echo "  DTWC++ Parquet Format Test"
 echo "  Job ID   : ${SLURM_JOB_ID}"
 echo "  Node     : ${SLURMD_NODENAME}"
 echo "  CPUs     : ${SLURM_CPUS_PER_TASK}"
@@ -106,41 +106,10 @@ else
     TESTS_SKIP=$((TESTS_SKIP + 1))
 fi
 
-# ── Test 2: DTWS format ─────────────────────────────────────────────────
-DTWS_FILE="${WORKDIR}/Coffee/Coffee_TRAIN.dtws"
-echo ""
-if [[ -f "${DATA_DIR}/Coffee/Coffee_TRAIN.dtws" ]]; then
-    cp "${DATA_DIR}/Coffee/Coffee_TRAIN.dtws" "${DTWS_FILE}"
-    echo "── Test 2: Coffee.dtws k=2 ────────────────────────────────────"
-    TESTS_RUN=$((TESTS_RUN + 1))
-    T_START=$(date +%s.%N)
-    if "${DTWC_BIN}" \
-        --input "${DTWS_FILE}" \
-        -k2 \
-        --dtype float64 \
-        --method pam \
-        --verbose \
-        --output "${RESULTS_DIR}/dtws_coffee_k2"; then
-        TESTS_PASS=$((TESTS_PASS + 1))
-        echo "Test 2: PASS"
-    else
-        TESTS_FAIL=$((TESTS_FAIL + 1))
-        echo "Test 2: FAIL (exit $?)"
-    fi
-    T_END=$(date +%s.%N)
-    ELAPSED=$(echo "${T_END} - ${T_START}" | bc)
-    write_timing "dtws_coffee_k2" "${ELAPSED}" "0"
-    echo "DTWS test completed in ${ELAPSED}s"
-else
-    echo "── Test 2: SKIP (Coffee_TRAIN.dtws not found) ──────────────────"
-    TESTS_SKIP=$((TESTS_SKIP + 1))
-fi
-
-# ── Test 3: Compare with TSV baseline (if both Parquet and TSV ran) ──────
+# ── Test 2: Compare with TSV baseline (if both Parquet and TSV ran) ──────
 echo ""
 TSV_LABELS="${RESULTS_DIR}/tsv_coffee_k2"
 PARQUET_LABELS="${RESULTS_DIR}/parquet_coffee_k2"
-DTWS_LABELS="${RESULTS_DIR}/dtws_coffee_k2"
 
 # Run TSV baseline for comparison
 echo "── Baseline: Coffee TSV k=2 ────────────────────────────────────"
@@ -170,24 +139,6 @@ if [[ -d "${PARQUET_LABELS}" && -d "${TSV_LABELS}" ]]; then
         else
             echo "WARN: Parquet and TSV labels differ (may be acceptable if non-deterministic)."
             diff "${PAR_LABEL}" "${TSV_LABEL}" || true
-        fi
-    else
-        echo "SKIP: Could not find labels files for comparison."
-    fi
-fi
-
-# Compare DTWS vs TSV
-if [[ -d "${DTWS_LABELS}" && -d "${TSV_LABELS}" ]]; then
-    echo ""
-    echo "── Comparing DTWS vs TSV results ──────────────────────────────"
-    DTWS_LABEL=$(find "${DTWS_LABELS}" -name "*labels*" -o -name "*assignment*" 2>/dev/null | head -1)
-    TSV_LABEL=$(find "${TSV_LABELS}" -name "*labels*" -o -name "*assignment*" 2>/dev/null | head -1)
-    if [[ -n "${DTWS_LABEL}" && -n "${TSV_LABEL}" ]]; then
-        if diff -q "${DTWS_LABEL}" "${TSV_LABEL}" > /dev/null 2>&1; then
-            echo "PASS: DTWS and TSV produce identical labels."
-        else
-            echo "WARN: DTWS and TSV labels differ (may be acceptable if non-deterministic)."
-            diff "${DTWS_LABEL}" "${TSV_LABEL}" || true
         fi
     else
         echo "SKIP: Could not find labels files for comparison."

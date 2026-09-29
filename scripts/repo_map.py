@@ -51,7 +51,7 @@ ROOT_FILE_LAYER = {
     # includes the real one; it is still foundation, so it still ranks base.
     "error.hpp": "base", "settings.hpp": "base", "missing_utils.hpp": "base",
     "parallelisation.hpp": "base", "timing.hpp": "base",
-    "system_memory.hpp": "base", "env.hpp": "base", "random_engine.hpp": "base",
+    "env.hpp": "base", "random_engine.hpp": "base",
     # the DTW wrapper family and the series container are core value/kernels code
     "warping.hpp": "core", "warping_adtw.hpp": "core", "warping_ddtw.hpp": "core",
     "warping_missing.hpp": "core", "warping_missing_arow.hpp": "core",

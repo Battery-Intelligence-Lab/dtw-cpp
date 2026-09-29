@@ -39,7 +39,6 @@
 #include <checkpoint.hpp>
 #include <core/distance_sampling_weights.hpp>
 #include <core/matrix_io.hpp>
-#include <core/mmap_data_store.hpp>
 #include <core/mmap_distance_matrix.hpp>
 #include <initialisation.hpp>
 #include <io/arrow_ipc_reader.hpp>
@@ -268,8 +267,6 @@ TEST_CASE("GT-4: each converted file raises its contract type from a live site",
     { "mmap_distance_matrix.hpp: a file that is not a cache", "IOError",
       [&garbage] { (void)dtwc::core::MmapDistanceMatrix::open(garbage); } },
 #ifdef DTWC_HAS_MMAP
-    { "mmap_data_store.hpp: a file that is not a .dtws cache", "IOError",
-      [&garbage] { (void)dtwc::core::MmapDataStore::open(garbage); } },
     { "Problem_IO.cpp: a CSV read into a mapped cache", "InvalidInput",
       [&dir] {
         auto prob = three_series();

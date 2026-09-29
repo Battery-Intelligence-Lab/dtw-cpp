@@ -15,7 +15,7 @@ flowchart TB
     PY[Python nanobind + Python orchestration]
     MAT[MATLAB classes + MEX gateway]
     CLI[dtwc_cl CLI]
-    ENV[Env: device, OpenMP policy, loud errors]
+    ENV[device: cpu / gpu, loud errors]
     LOAD[Lazy Dataset / DataLoader / Arrow ingest]
     PROB[Problem: data, DTW policy, distance storage, result state]
     MATRIX[Distance schedules: CPU OpenMP / CUDA / Metal / mmap]

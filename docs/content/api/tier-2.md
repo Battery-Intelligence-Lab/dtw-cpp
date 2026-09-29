@@ -10,7 +10,7 @@ description: "Advanced Problem, algorithms, scores, distance, and checkpoint API
 
 Retained for power users. `Problem` stays a first-class object. Canonical
 snake_case methods, core-owned algorithm result writeback, and the frozen
-encapsulation/accessor split are live. Ten C++ `Problem` fields are private;
+encapsulation/accessor split are live. Eight C++ `Problem` fields are private;
 eleven deliberately retained expert/result fields remain public. A live symbol
 in the tables below does not imply that every other promised invariant or
 deprecation diagnostic is complete.
@@ -37,9 +37,8 @@ out-of-line and warning-silent.
 | missing strategy | `set_missing_strategy(core::MissingStrategy)` | `missing_strategy` prop | `set_missing_strategy(str)` | retained field (`Problem.hpp`) |
 | metric | `metric()` / `set_metric(core::MetricType)` `[introduced-2.0]` | — (IF-2 S4) | — (IF-2 S4) | private state, default `L1`: the pointwise cost of every distance the `Problem` computes (CPU fill and lazy lookups, GPU routes, mmap cache and checkpoint identities); a metric other than `L1` takes Standard DTW with `MissingStrategy::Error`, else `InvalidInput` |
 | distance strategy | `set_distance_strategy(DistanceMatrixStrategy)` | `distance_strategy` prop | `set_distance_strategy(str)` | retained field (`Problem.hpp`) |
-| device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one `Env` grammar (§6.4) |
+| device | `set_device(Device, int index = 0)` `[introduced-2.0]` | `Problem(name, *, device="cpu")` / `set_device(name)` `[introduced-2.0]` | `dtwc.Problem(name, 'Device', d)` / `set_device(name)` `[introduced-2.0]` | `Problem.hpp`; names parsed by the one device grammar (§6.4) |
 | TADPole cutoff | `tadpole_dc()` / `set_tadpole_dc(double)` | — | — | private C++ state; CLI exposes `--dc` |
-| storage policy | `storage_policy()` / `set_storage_policy(core::StoragePolicy)` | `storage_policy` prop `[introduced-2.0]` | `set_storage_policy(str)` `[introduced-2.0]` | live in all three routes; governs the next owning `set_data` |
 | solver | `[[nodiscard]] set_solver(Solver) -> bool` | `set_solver(Solver) -> bool` `[introduced-2.0]` | `ok = set_solver(str)` `[introduced-2.0]` | live in all three routes; `false` when `Gurobi` is requested on a build without it, and the solver is then HiGHS |
 | MIP settings | `mip_settings` field | `mip_settings` prop | `set_mip_settings(struct)` `[introduced-2.0]` | live in all three routes; fields `mip_gap`, `time_limit_sec`, `warm_start`, `numeric_focus`, `mip_focus`, `verbose_solver`, `max_benders_iter`, `benders`, `lr_max_nodes` |
 | CUDA settings | `cuda_settings` field | `cuda_settings` prop `[introduced-2.0]` | `set_cuda_settings(device_id, precision)` `[introduced-2.0]` | live in all three routes |
@@ -102,11 +101,11 @@ write lost after a successful open (a full disk, a file-size quota) raises
 Read accessors required by the frozen contract are live: `size()`,
 `n_clusters()` (was `cluster_size()`), `name()`, `series(i)`,
 `series_name(i)`, `labels()`, `medoids()`, and `centroid_of(i)`.
-The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
-`last_iterations()`, `tadpole_dc()`, `storage_policy()`,
-`verbose()`, `output_folder()`, `name()`, and `data()`.
+The eight same-name reads for encapsulated state are `method()`, `random_seed()`,
+`last_iterations()`, `tadpole_dc()`, `verbose()`, `output_folder()`,
+`name()`, and `data()`.
 `last_iterations()` is intentionally read-only, and
-`data()` returns `const Data&`; the other seven configuration values have
+`data()` returns `const Data&`; the other six configuration values have
 `set_*` mutators, while data replacement uses
 `set_data()` or `set_view_data()`.
 
@@ -124,7 +123,7 @@ The nine same-name reads for encapsulated state are `method()`, `random_seed()`,
 ### 2.3 `DataLoader` (C++ Tier-2 only) `[rename: camelCase → snake_case]`
 
 CSV/TSV builder. Bindings do **not** expose `DataLoader` — Tier-1 `load()`
-covers the binding use case; the multi-format (Parquet/Arrow/.dtws) loading in
+covers the binding use case; the multi-format (Parquet/Arrow) loading in
 `dtwc::run` (`cli/run.cpp`), which `dtwc_cl` and Tier-1 `cluster()` share, is the
 other path. Chained setters return `DataLoader&`.
 
@@ -249,8 +248,6 @@ are snake_case; current availability and gaps are explicit below.
 | options struct | `CheckpointOptions` {`directory`,`save_interval`,`enabled`}, consumed through `Problem::checkpoint` | live: `dtwcpp.CheckpointOptions` and `Problem.checkpoint` (a view, so `prob.checkpoint.enabled = True` mutates the Problem) | live `[introduced-2.0]`; `dtwc.CheckpointOptions` round-trips through `Problem.set_checkpoint(opts)` / `Problem.get_checkpoint()` |
 | save dir checkpoint | `save_checkpoint(const Problem&, path)`, tagged with the `Problem`'s `metric()`; `save_checkpoint(prob, path, core::MetricType metric)` tags a matrix a producer outside the `Problem` filled | `save_checkpoint(prob, path, metric=MetricType.L1)` | `dtwc.save_checkpoint(prob, path, metric)`, `metric` a token (`'l1'` default, `'squared_euclidean'`) |
 | load dir checkpoint | `[[nodiscard]] load_checkpoint(Problem&, path) -> bool`, expecting the `Problem`'s `metric()`; `load_checkpoint(prob, path, core::MetricType metric)` expects `metric`; `false` (absent, incompatible or malformed) leaves the `Problem` unchanged | `load_checkpoint(prob, path, metric=MetricType.L1) -> bool` | `dtwc.load_checkpoint(prob, path, metric) -> logical` |
-| save binary result | `save_binary_checkpoint(const core::ClusteringResult&, ...)` | `save_binary_checkpoint(result, path) -> None` `[introduced-2.0]` | live `[introduced-2.0]` |
-| load binary result | `load_binary_checkpoint(core::ClusteringResult&, ...) -> bool` | `load_binary_checkpoint(path) -> ClusteringResult` `[introduced-2.0]` | live `[introduced-2.0]` |
 
 `CheckpointOptions` is consumed by `Problem::fill_distance_matrix()` through
 the public `Problem::checkpoint` member. With `enabled`, the fill runs the exact
@@ -275,34 +272,8 @@ remains the only way to save outside a fill. The CLI opts in with a non-zero
 Directory checkpoint format v2 publishes a root `CURRENT` pointer and immutable
 `generations/<id>/{distances.csv,metadata.txt}` payload. A directory holds
 exactly one generation after a successful save: the old generation is removed
-only after `CURRENT` points at the new one. A binary result
-checkpoint is `<name>_checkpoint.bin`; the mmap distance cache is
-`<name>_distmat.cache`. CLI `--resume` validates and exactly replays all five
-fields of the completed binary result, restores them into `Problem`, skips
-clustering, and does not rewrite the source checkpoint. A `converged=false`
-snapshot is a completed iteration-capped result; `--max-iter` is not an
-additional continuation budget. Missing, unreadable-header/payload, wrong-N/k,
-out-of-domain, duplicate-medoid, negative-iteration, and non-finite-cost state
-fails loudly.
-Binary v1 has no data, input-order, configuration, or producing-method identity,
-so the caller must select the same `<output>/<name>`, input order, and
-configuration. It is result replay, not mid-algorithm continuation.
-
-Python accepts valid-Unicode `str | os.PathLike[str]` values for both binary
-paths and releases the GIL while the native filesystem operation runs. A
-successful save returns `None`; a successful load returns a new
-`ClusteringResult`. Native write failures raise `dtwcpp.IOError`. A missing,
-inaccessible, or structurally invalid binary read raises `dtwcpp.IOError` with
-the exact message below, where `<path>` is the supplied path:
-
-```text
-load_binary_checkpoint: cannot read a valid binary result checkpoint from '<path>'.
-```
-
-As specified in §5, `dtwcpp.IOError` subclasses both `DtwcError` and `OSError`.
-F56 tracks the remaining error-formatting boundary for surrogateescaped
-non-UTF-8 filenames and lone-surrogate path values; the live guarantee above
-does not claim those representations.
+only after `CURRENT` points at the new one. The mmap distance cache is
+`<name>_distmat.cache`.
 
 **Persistent mmap identity (2.0 safety addendum).** The mmap cache uses a
 64-byte version-3 header. Its SHA-256 identity covers the raw IEEE series values,

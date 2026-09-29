@@ -7,9 +7,8 @@
  * reach its file-local helpers. Those helpers are gone: the device grammar is
  * detail::parse_device, the selectors are types, and the pipeline is run(). The
  * contracts they carried are asserted here through the production entry points;
- * the device matrix is test_run_resolution.cpp's, the resume rejections
- * test_cli_resume_state's (real binary), and the streamed Parquet names F8 /
- * F13's (real binary, Arrow builds).
+ * the device matrix is test_run_resolution.cpp's, and the streamed Parquet
+ * names F8 / F13's (real binary, Arrow builds).
  *
  * @author Volkan Kumtepeli
  * @date 07 Jul 2026
@@ -115,7 +114,7 @@ TEST_CASE("--ram-limit is exact and fail-closed", "[cli][parquet][ram]")
 }
 
 // A cap on an input no reader can apply it to must fail: the CLI once accepted
-// --ram-limit for CSV / Arrow / .dtws, printed the cap and loaded everything.
+// --ram-limit for CSV / Arrow, printed the cap and loaded everything.
 TEST_CASE("--ram-limit is rejected where no reader can honour it", "[cli][parquet][ram]")
 {
   auto config = quiet_config(2, ClusterMethod::PAM);

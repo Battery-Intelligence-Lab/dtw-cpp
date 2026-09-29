@@ -16,7 +16,6 @@ target_sources(dtwc++
   base/env.cpp
   initialisation.cpp
   scores.cpp
-  base/system_memory.cpp
   cli/config.cpp
   cli/run.cpp
   core/dtw.cpp
@@ -61,7 +60,6 @@ target_sources(dtwc++
   core/clustering_result.hpp
   core/crc32.hpp
   core/distance_matrix.hpp
-  core/mmap_data_store.hpp
   core/mmap_distance_matrix.hpp
   core/dtw.hpp
   core/dtw_options.hpp
@@ -188,7 +186,7 @@ elseif(DTWC_ALLOW_SEQUENTIAL)
   # Explicit opt-out of the parallelism requirement (keeps the "core builds
   # without optional deps" contract as a DELIBERATE choice). Loud warning + the
   # DTWC_SEQUENTIAL_BUILD compile definition consumed by the runtime thread
-  # warning (parallelisation/Env layer, Task 3.2) — DO NOT rename this macro.
+  # warning (base/env.cpp, warn_if_single_threaded) — DO NOT rename this macro.
   message(WARNING
     "OpenMP NOT found and -DDTWC_ALLOW_SEQUENTIAL=ON given — building SEQUENTIAL.\n"
     "  DTWC++ will run SINGLE-THREADED; this is EXTREMELY slow for large datasets.\n"

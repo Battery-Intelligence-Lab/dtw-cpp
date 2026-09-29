@@ -2,8 +2,7 @@
 @file test_single_thread_warning.py
 @brief No-silent-fallback on the Python compute path (Task 3.6, review H1).
 
-The high-level Python compute entry points never construct dtwc::env(), so before
-this fix a build with OpenMP present but only 1 usable thread (OMP_NUM_THREADS=1,
+Before the compute paths warned themselves, a build with OpenMP present but only 1 usable thread (OMP_NUM_THREADS=1,
 common on SLURM/containers) ran SILENTLY single-threaded. This test reproduces
 exactly that scenario in a fresh subprocess — OMP_NUM_THREADS=1, and NO
 dtwcpp.device() call — and asserts the loud RuntimeSingleThread warning reaches
@@ -37,8 +36,8 @@ def test_compute_warns_single_threaded_without_device_call():
     code = textwrap.dedent(
         """
         import dtwcpp
-        # High-level compute WITHOUT any dtwcpp.device() call. This path never
-        # constructs dtwc::env(); it must still warn loudly when serialised.
+        # High-level compute WITHOUT any dtwcpp.device() call: it must still
+        # warn loudly when serialised.
         series = [[0.0, 1.0, 2.0, 3.0], [1.0, 1.0, 1.0, 1.0], [3.0, 2.0, 1.0, 0.0]]
         dm = dtwcpp.compute_distance_matrix(series, band=2, metric="l1")
         assert dm.shape == (3, 3)

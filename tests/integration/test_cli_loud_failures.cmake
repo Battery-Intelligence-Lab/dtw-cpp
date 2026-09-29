@@ -10,11 +10,9 @@ cmake_minimum_required(VERSION 3.26)
 #   checkpoint_late      --checkpoint is a directory whose generations/ is a
 #                        file, so only the save itself fails: the results must
 #                        already be on disk
-#   checkpoint_late_replay  the same, replaying the result with --resume
 #   results_blocked_checkpoint_kept  a result write fails (a directory occupies
 #                        <name>_labels.csv): the checkpoint, saved before the
 #                        results, must be on disk
-#   results_blocked_checkpoint_kept_replay  the same in a --resume replay
 #   dist_matrix_bad      --dist-matrix names a non-square CSV
 #   dist_matrix_missing  --dist-matrix names a file that does not exist
 #   dist_matrix_n_mismatch  --dist-matrix is 4 x 4 for six series: it used to be
@@ -125,7 +123,7 @@ if(early_outputs OR "${loud_stdout}" MATCHES "time-series data are read|=== Resu
 endif()
 
 # A save that fails only at the end (here generations/ is a file) must leave
-# every result artefact on disk, in a fresh run and in a --resume replay.
+# every result artefact on disk.
 set(result_files loud_labels.csv loud_medoids.csv loud_distance_matrix.csv
     loud_silhouettes.csv)
 file(MAKE_DIRECTORY "${WORK_ROOT}/checkpoint_late")
@@ -141,19 +139,6 @@ foreach(result_file IN LISTS result_files)
             "checkpoint save")
     endif()
 endforeach()
-file(REMOVE "${WORK_ROOT}/out_late/loud_labels.csv"
-    "${WORK_ROOT}/out_late/loud_medoids.csv")
-expect_loud_failure(checkpoint_late_replay
-    NAMES "--checkpoint" "checkpoint_late"
-    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_late" --resume
-            --checkpoint "${WORK_ROOT}/checkpoint_late")
-if(NOT "${loud_stdout}" MATCHES "Replaying completed result checkpoint"
-        OR NOT EXISTS "${WORK_ROOT}/out_late/loud_labels.csv"
-        OR NOT EXISTS "${WORK_ROOT}/out_late/loud_medoids.csv")
-    message(FATAL_ERROR
-        "checkpoint_late_replay: the replayed labels/medoids were not written "
-        "before the failing checkpoint save\nstdout:\n${loud_stdout}")
-endif()
 
 # The converse: a result write that fails (a directory occupies the labels
 # file) must not lose the distance checkpoint, which is saved before the results.
@@ -167,29 +152,6 @@ if(NOT EXISTS "${WORK_ROOT}/checkpoint_kept/CURRENT" OR NOT kept_generation)
     message(FATAL_ERROR
         "results_blocked_checkpoint_kept: the failing result write lost the "
         "distance checkpoint\nstderr:\n${loud_stderr}")
-endif()
-# The same in a --resume replay of a completed run.
-execute_process(
-    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_blocked_replay"
-    RESULT_VARIABLE replay_seed_result
-    OUTPUT_QUIET ERROR_VARIABLE replay_seed_stderr ENCODING UTF-8)
-if(NOT "${replay_seed_result}" STREQUAL "0")
-    message(FATAL_ERROR "replay seed run failed:\n${replay_seed_stderr}")
-endif()
-file(REMOVE "${WORK_ROOT}/out_blocked_replay/loud_labels.csv")
-file(MAKE_DIRECTORY "${WORK_ROOT}/out_blocked_replay/loud_labels.csv")
-expect_loud_failure(results_blocked_checkpoint_kept_replay
-    NAMES "loud_labels.csv"
-    COMMAND "${cli}" ${common} -o "${WORK_ROOT}/out_blocked_replay" --resume
-            --checkpoint "${WORK_ROOT}/checkpoint_kept_replay")
-file(GLOB kept_replay_generation
-    "${WORK_ROOT}/checkpoint_kept_replay/generations/*/distances.csv")
-if(NOT "${loud_stdout}" MATCHES "Replaying completed result checkpoint"
-        OR NOT EXISTS "${WORK_ROOT}/checkpoint_kept_replay/CURRENT"
-        OR NOT kept_replay_generation)
-    message(FATAL_ERROR
-        "results_blocked_checkpoint_kept_replay: the replay's failing result "
-        "write lost the distance checkpoint\nstdout:\n${loud_stdout}")
 endif()
 
 # S-04: a precomputed matrix that cannot be loaded.
@@ -305,8 +267,8 @@ expect_loud_failure(silhouettes_blocked
 # B-05: a write that fails after the file was opened (full disk, quota). Under
 # `ulimit -f 1` a write past one block (512 bytes under dash, 1024 under macOS
 # /bin/sh) fails with EFBIG; SIGXFSZ is ignored so the write returns an error
-# instead of killing the process. Every artefact written before the labels must
-# fit in 512 bytes and the labels must exceed 1024, checked on a control run.
+# instead of killing the process. The labels are the first artefact written and
+# must exceed 1024 bytes, checked on a control run.
 # The shell script uses newlines, not semicolons: a CMake list would split it.
 set(efbig "unavailable")
 if(NOT WIN32)
@@ -325,12 +287,10 @@ if(NOT WIN32)
             "long-name control run failed (exit=${long_result})\n"
             "stdout:\n${long_stdout}\nstderr:\n${long_stderr}")
     endif()
-    file(SIZE "${WORK_ROOT}/out_long_control/loud_checkpoint.bin" before_labels)
     file(SIZE "${WORK_ROOT}/out_long_control/loud_labels.csv" labels_size)
-    if(before_labels GREATER 512 OR NOT labels_size GREATER 1024)
+    if(NOT labels_size GREATER 1024)
         message(FATAL_ERROR
-            "EFBIG fixture drifted: checkpoint.bin=${before_labels} bytes (must be "
-            "<= 512), labels.csv=${labels_size} bytes (must be > 1024)")
+            "EFBIG fixture drifted: labels.csv=${labels_size} bytes (must be > 1024)")
     endif()
     file(MAKE_DIRECTORY "${WORK_ROOT}/out_efbig")
     expect_loud_failure(labels_efbig
@@ -361,9 +321,9 @@ if(skip_match)
     message(FATAL_ERROR "dtwc_cl emitted skip text:\n${all_output}")
 endif()
 
-set(expected 14)
+set(expected 12)
 if(efbig STREQUAL "ran")
-    set(expected 15)
+    set(expected 13)
 endif()
 message(STATUS
     "CLI_LOUD_FAILURES subject=real_dtwc_cl cases=${cases}/${expected} "
