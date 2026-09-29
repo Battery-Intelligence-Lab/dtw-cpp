@@ -147,6 +147,11 @@ private:
   Solver mipSolver{ settings::DEFAULT_MIP_SOLVER }; /*!< Solver for MIP. */
   mutable dtw_fn_t dtw_fn_;                         /*!< Derived DTW dispatcher for float64. */
   mutable dtw_fn_f32_t dtw_fn_f32_;                 /*!< Derived DTW dispatcher for float32. */
+  /// The fill's lane functions (core::resolve_dtw_block_fn); empty where none applies.
+  mutable std::function<void(std::span<const data_t>, std::span<const std::span<const data_t>>,
+                             std::span<double>)> dtw_block_fn_;
+  mutable std::function<void(std::span<const float>, std::span<const std::span<const float>>,
+                             std::span<double>)> dtw_block_fn_f32_;
   mutable const Problem *dtw_binding_owner_{ nullptr }; /*!< Address captured by the dispatchers. */
   mutable std::unordered_map<size_t, std::vector<data_t>> wdtw_weights_cache_; /*!< Derived WDTW weights keyed by max_dev. */
 

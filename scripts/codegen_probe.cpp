@@ -87,4 +87,24 @@ double dtwc_probe_kernels_f64(const double *x, std::size_t nx, const double *y, 
          + core::msm_distance<double>(x, nx, y, ny) + core::twe_distance<double>(x, nx, y, ny);
 }
 
+// The fill's lane kernel: W pairs per call, f64 under L1 and f32 under squared L2.
+double dtwc_probe_lanes_f64(const double *x, const double *const *ys, std::size_t n, int band)
+{
+  double sum = 0;
+  for (const double d : dtwc::core::dtw_kernel_lanes<double>(x, ys, n, band, dtwc::detail::L1Dist{},
+                                                             dtwc::core::StandardCell{}))
+    sum += d;
+  return sum;
+}
+
+float dtwc_probe_lanes_f32(const float *x, const float *const *ys, std::size_t n, int band)
+{
+  float sum = 0;
+  for (const float d : dtwc::core::dtw_kernel_lanes<float>(x, ys, n, band,
+                                                           dtwc::detail::SquaredL2Dist{},
+                                                           dtwc::core::StandardCell{}))
+    sum += d;
+  return sum;
+}
+
 } // extern "C"

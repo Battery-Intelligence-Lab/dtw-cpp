@@ -13,6 +13,10 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
   the DBA alignment called once per cell; they now nest two-argument `std::min` and keep the value a cell stores in a register.
   On an Intel Core Ultra 9 285, pinned DTW of two 1000-sample series drops from 7.2 ms to 1.4 ms (band 100: 1.4 to 0.26 ms);
   results are unchanged digit for digit.
+- **Changed (performance):** the CPU distance-matrix fill computes standard DTW (L1 or squared-L2 cost, univariate, no
+  missing-data strategy) between a series and 8 others of its length at once (16 in `float32`), one pair per SIMD lane; every
+  distance is bit for bit what the one-pair kernel returns. On an Intel Core Ultra 9 285 (24 threads) the unbanded fill of
+  ECG5000's 4,500 series drops from 66 s to 3.9 s, and a band-50 fill of 50 series of length 1,000 runs 5.1× faster.
 - **Changed (build):** llfio is header-only, from SHA-256-pinned GitHub archives, behind one `llfio_hl` target:
   `cmake/Dependencies.cmake` loses the quickcpplib bootstrap, its patched nested superbuild and `add_subdirectory(llfio)`
   (196 lines out, 69 in). The superbuild compiled quickcpplib from `master` and outcome from `develop`, whatever they

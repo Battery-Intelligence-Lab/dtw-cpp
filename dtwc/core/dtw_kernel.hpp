@@ -31,6 +31,10 @@
  *               needed and rebuild their Cost functor with the post-swap
  *               orientation (all current Cost functors are symmetric).
  *
+ *          dtw_kernel_lanes computes W equal-length pairs at once and packs
+ *          the values itself, so it takes a pointwise distance instead of a
+ *          Cost:  T operator()(T a, T b) const.
+ *
  * @date 2026-04-12
  */
 
@@ -39,6 +43,7 @@
 #include "scratch_matrix.hpp"
 
 #include <algorithm>    // std::min, std::max
+#include <array>        // std::array
 #include <cmath>        // std::ceil, std::floor, std::round
 #include <cstddef>      // size_t
 #include <limits>       // std::numeric_limits
@@ -518,6 +523,97 @@ T dtw_kernel_banded(std::size_t n_short, std::size_t n_long, int band,
   }
 
   return col[n_long - 1];
+}
+
+// ===========================================================================
+// Kernel 4: W equal-length pairs in SIMD lanes (outer = y, inner = x).
+// The pairs (x, ys[w]) share x. Every lane evaluates dtw_kernel_linear's cells
+// with its arithmetic in its order; with a band, dtw_kernel_banded's cells,
+// transposed (outer y, not outer x), each from the same three neighbours. So
+// each lane is bitwise the per-pair result for a Cell that treats `up` and
+// `left` alike, as StandardCell does. The loop over the lanes is the one that
+// vectorises: one cache line of T per DP row, W dependency chains side by side
+// where the per-pair kernel runs one.
+// ===========================================================================
+
+/// Pairs per dtw_kernel_lanes call: one 64-byte cache line of T.
+template <typename T>
+inline constexpr std::size_t dtw_lanes = 64 / sizeof(T);
+
+/// DTW between x and each of ys[0 .. dtw_lanes<T>), all n samples long, with the
+/// pointwise distance dist(x[i], y[j]); band < 0 is unconstrained, else the
+/// Sakoe-Chiba band of dtw_band_bounds.
+template <typename T, typename Dist, typename Cell>
+std::array<T, dtw_lanes<T>> dtw_kernel_lanes(const T *x, const T *const *ys,
+                                             std::size_t n, int band, Dist dist, Cell cell)
+{
+  constexpr std::size_t W = dtw_lanes<T>;
+  constexpr T maxValue = std::numeric_limits<T>::max();
+  std::array<T, W> out;
+  if (n == 0) {
+    out.fill(maxValue);
+    return out;
+  }
+
+  // [n][W], one cache line per row: the W series interleaved, and the rolling
+  // DP column (s[i].v[w] = dp[i, j] of pair w).
+  struct alignas(64) Row { T v[W]; };
+  thread_local std::vector<Row> y_buf, s_buf;
+  if (y_buf.size() < n) {
+    y_buf.resize(n);
+    s_buf.resize(n);
+  }
+  Row *Y = y_buf.data();
+  Row *s = s_buf.data();
+  for (std::size_t w = 0; w < W; ++w) {
+    const T *yw = ys[w];
+    for (std::size_t t = 0; t < n; ++t) Y[t].v[w] = yw[t];
+  }
+
+  // Column 0 (y[0]). The rows above its band hold maxValue: the band only moves
+  // up, so a later column first meets such a row as an unreachable `up`.
+  const std::size_t hi0 = dtw_band_bounds(band, 0, n).second;
+  for (std::size_t w = 0; w < W; ++w) s[0].v[w] = cell.seed(dist(x[0], Y[0].v[w]), 0, 0);
+  for (std::size_t i = 1; i < hi0; ++i)
+    for (std::size_t w = 0; w < W; ++w)
+      s[i].v[w] = cell.combine(maxValue, s[i - 1].v[w], maxValue, dist(x[i], Y[0].v[w]), i, 0);
+  for (std::size_t i = hi0; i < n; ++i)
+    for (std::size_t w = 0; w < W; ++w) s[i].v[w] = maxValue;
+
+  for (std::size_t j = 1; j < n; ++j) {
+    const auto [lo, hi] = dtw_band_bounds(band, j, n);
+    // Locals, so the compiler keeps them in registers: without type-based
+    // alias analysis (clang's Windows driver) a store to s may alias memory.
+    T y[W], diag[W], left[W];
+    for (std::size_t w = 0; w < W; ++w) y[w] = Y[j].v[w];
+    std::size_t i = lo;
+    if (lo == 0) {
+      for (std::size_t w = 0; w < W; ++w) {
+        diag[w] = s[0].v[w];
+        left[w] = cell.combine(maxValue, maxValue, s[0].v[w], dist(x[0], y[w]), 0, j);
+        s[0].v[w] = left[w];
+      }
+      i = 1;
+    } else {
+      for (std::size_t w = 0; w < W; ++w) {
+        diag[w] = s[lo - 1].v[w]; // dp[lo-1, j-1], inside the previous column's band
+        left[w] = maxValue;       // dp[lo-1, j], outside this column's band
+      }
+    }
+    for (; i < hi; ++i) {
+      const T xi = x[i];
+      T *si = s[i].v;
+      for (std::size_t w = 0; w < W; ++w) {
+        const T up = si[w]; // dp[i, j-1]
+        left[w] = cell.combine(diag[w], up, left[w], dist(xi, y[w]), i, j);
+        diag[w] = up;
+        si[w] = left[w];
+      }
+    }
+  }
+
+  for (std::size_t w = 0; w < W; ++w) out[w] = s[n - 1].v[w];
+  return out;
 }
 
 } // namespace dtwc::core

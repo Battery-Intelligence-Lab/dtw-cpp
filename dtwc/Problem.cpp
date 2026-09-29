@@ -26,6 +26,7 @@
 #include "metal/metal_dtw.hpp" // Apple Metal GPU distance matrix computation
 #endif
 #include "warping.hpp"         // for detail::require_finite
+#include "core/dtw_kernel.hpp" // for dtw_lanes
 #include "warping_wdtw.hpp"    // for wdtw_weights (cache population)
 #include "types/Range.hpp"     // for Range
 #include "initialisation.hpp"  // For initialisation functions
@@ -402,10 +403,14 @@ void Problem::rebind_dtw_fn() const
   preflight_current_distance_semantics();
   refresh_variant_caches();
   dtw_fn_ = core::resolve_dtw_fn<data_t>(*this);
-  if (core::active_variant_params_representable_f32(variant_params))
+  dtw_block_fn_ = core::resolve_dtw_block_fn<data_t>(*this);
+  if (core::active_variant_params_representable_f32(variant_params)) {
     dtw_fn_f32_ = core::resolve_dtw_fn<float>(*this);
-  else
+    dtw_block_fn_f32_ = core::resolve_dtw_block_fn<float>(*this);
+  } else {
     dtw_fn_f32_ = {};
+    dtw_block_fn_f32_ = {};
+  }
   dense_cache_configuration_ = distance_cache_configuration(metric_);
   dense_cache_configuration_bound_ = true;
   dtw_binding_owner_ = this;
@@ -996,13 +1001,43 @@ void Problem::fillDistanceMatrix_BruteForce()
   // Lock-free by design: each worker owns a disjoint row. run_openmp catches
   // inside the structured block and deterministically rethrows the lowest-row
   // failure after the join; a failed pair remains uncomputed.
+  //
+  // Row i first takes its columns W at a time through the lane function, where
+  // the block's series are as long as series i and not all its pairs are known;
+  // each of those distances is bitwise the per-pair one. The block at the row's
+  // end repeats its last column in the lanes past it, whose results are dropped.
+  // The per-pair loop then fills the rest: mixed-length blocks, every pair
+  // without a lane function.
+  auto fill_lanes = [&](size_t i, auto x, auto column, const auto &block) {
+    using T = typename decltype(x)::value_type;
+    constexpr size_t W = core::dtw_lanes<T>;
+    if (!block) return;
+    std::array<std::span<const T>, W> ys;
+    std::array<double, W> d;
+    for (size_t j = i + 1; j < N; j += W) {
+      const size_t count = std::min(W, N - j);
+      bool equal = true, known = true;
+      for (size_t w = 0; w < W; ++w) {
+        const size_t c = j + std::min(w, count - 1);
+        ys[w] = column(c);
+        equal = equal && ys[w].size() == x.size();
+        known = known && distMat.is_computed(i, c);
+      }
+      if (!equal || known) continue;
+      block(x, ys, d);
+      for (size_t w = 0; w < count; ++w)
+        if (!distMat.is_computed(i, j + w)) distMat.set(i, j + w, d[w]);
+    }
+  };
   auto fill_row = [&](size_t i) {
     if (data_.is_f32()) {
       const auto si = data_.series_f32(i);
+      fill_lanes(i, si, [&](size_t j) { return data_.series_f32(j); }, dtw_block_fn_f32_);
       for (size_t j = i + 1; j < N; ++j)
         if (!distMat.is_computed(i, j)) distMat.set(i, j, (*f32_function)(si, data_.series_f32(j)));
     } else {
       const auto si = series(i);
+      fill_lanes(i, si, [&](size_t j) { return series(j); }, dtw_block_fn_);
       for (size_t j = i + 1; j < N; ++j)
         if (!distMat.is_computed(i, j)) distMat.set(i, j, dtw_fn_(si, series(j)));
     }
