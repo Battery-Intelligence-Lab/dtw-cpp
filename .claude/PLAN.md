@@ -85,9 +85,11 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
 - ☐ Race-free sweep (DECISIONS §2 rule 6), after X2: failure capture in `fast_pam`, `fast_clara` and
   `one_batch_pam` through `run_openmp`; the FasterPAM and TADPole reductions → per-thread slots combined serially;
   OneBatchPAM's warning mutex → a serial warning. Proof: TSan in WSL (LLVM libomp + Archer)
-- ◐ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
+- ☑ K1 (2026-09-29) the DP cell makes no library call: `std::min({…})` is `__std_min_d` on the MSVC STL, 7.2 ns/cell
   vs 1.06 on the Mac; nested two-argument min, `dp[i-1, j]` carried in a register; digit-identical
-  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`)
+  (`baselines/2026-09-29-windows-kernel-msvc-stl-min.md`) (K1 `8bd6881`, `123146b`, `d114677`, `f705329`; merged
+  `4441969`); the fill band is FALSIFIED — the unbanded fill runs the EAPruned kernel, which made no call; P1 measures
+  lanes against it
 - ☐ Y4 `bindings/matlab` and `tests/matlab` follow Y1, Y2, Y3 and X2 in one unit, then `matlab_suite`; `dtwc_mex` does not
   compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
 - ☐ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
