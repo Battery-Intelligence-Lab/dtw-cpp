@@ -1,0 +1,61 @@
+| dataset | L | pairs | EAP µs/pair | linear µs/pair | ratio wall | ratio cycles | computed fraction median [p10–p90] | EAP wins | bitwise |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| ECG5000 | 140 | within 200 | 83.3 | 27.5 | 3.04 | 3.09 | 0.799 [0.587–0.959] | 0/200 | 200/200 |
+| ECG5000 | 140 | across 200 | 100.2 | 27.9 | 3.61 | 3.71 | 0.971 [0.909–0.998] | 0/200 | 200/200 |
+| ECG5000 | 140 | pooled 400 | 96.2 | 27.7 | 3.48 | 3.57 | 0.934 [0.648–0.995] | 0/400 | 400/400 |
+| StarLightCurves | 1024 | within 200 | 4478.1 | 1843.0 | 2.19 | 2.18 | 0.677 [0.439–0.984] | 2/200 | 200/200 |
+| StarLightCurves | 1024 | across 200 | 5807.2 | 1842.0 | 2.99 | 2.98 | 0.939 [0.617–0.999] | 0/200 | 200/200 |
+| StarLightCurves | 1024 | pooled 400 | 5370.8 | 1842.4 | 2.70 | 2.66 | 0.842 [0.470–0.994] | 2/400 | 400/400 |
+| Mallat | 1024 | within 200 | 1807.8 | 1643.3 | 1.08 | 1.09 | 0.364 [0.250–0.507] | 80/200 | 200/200 |
+| Mallat | 1024 | across 200 | 3118.8 | 1647.6 | 1.85 | 1.85 | 0.592 [0.470–0.653] | 2/200 | 200/200 |
+| Mallat | 1024 | pooled 400 | 2481.7 | 1645.0 | 1.46 | 1.48 | 0.481 [0.290–0.639] | 82/400 | 400/400 |
+| InlineSkate | 1882 | within 200 | 15854.8 | 5751.8 | 2.59 | 2.51 | 0.805 [0.543–1.000] | 0/200 | 200/200 |
+| InlineSkate | 1882 | across 200 | 17510.5 | 5830.1 | 2.83 | 2.73 | 0.864 [0.561–1.000] | 0/200 | 200/200 |
+| InlineSkate | 1882 | pooled 400 | 16696.8 | 5770.9 | 2.67 | 2.60 | 0.834 [0.548–1.000] | 0/400 | 400/400 |
+| HandOutlines | 2709 | within 200 | 19461.0 | 12009.2 | 1.60 | 1.59 | 0.513 [0.336–0.684] | 18/200 | 200/200 |
+| HandOutlines | 2709 | across 200 | 24499.0 | 12067.5 | 1.98 | 1.92 | 0.615 [0.412–0.770] | 2/200 | 200/200 |
+| HandOutlines | 2709 | pooled 400 | 22213.2 | 12037.6 | 1.80 | 1.77 | 0.568 [0.363–0.745] | 20/400 | 400/400 |
+| CinCECGTorso | 1639 | within 200 | 12949.7 | 4066.3 | 3.19 | 3.18 | 1.000 [0.833–1.000] | 0/200 | 200/200 |
+| CinCECGTorso | 1639 | across 200 | 13002.8 | 4065.3 | 3.20 | 3.18 | 1.000 [0.999–1.000] | 0/200 | 200/200 |
+| CinCECGTorso | 1639 | pooled 400 | 12977.0 | 4065.3 | 3.20 | 3.18 | 1.000 [0.993–1.000] | 0/400 | 400/400 |
+| Rock:z | 2844 | within 200 | 34826.6 | 12277.6 | 2.81 | 2.81 | 0.892 [0.606–1.000] | 1/200 | 200/200 |
+| Rock:z | 2844 | across 200 | 35744.8 | 12267.2 | 2.93 | 2.90 | 0.923 [0.787–0.998] | 0/200 | 200/200 |
+| Rock:z | 2844 | pooled 400 | 35476.9 | 12271.8 | 2.89 | 2.86 | 0.908 [0.697–0.999] | 1/400 | 400/400 |
+
+Verdict count (pooled median ratio > 1: linear faster):
+  cycles: linear faster on 7 of 7: ['ECG5000', 'StarLightCurves', 'Mallat', 'InlineSkate', 'HandOutlines', 'CinCECGTorso', 'Rock:z']
+  wall:   linear faster on 7 of 7: ['ECG5000', 'StarLightCurves', 'Mallat', 'InlineSkate', 'HandOutlines', 'CinCECGTorso', 'Rock:z']
+
+Per-cell costs (thread cycles, one clock read removed), median over pairs:
+| dataset | L | EAP cycles / visited cell | linear cycles / cell | break-even computed fraction f* |
+| --- | --- | --- | --- | --- |
+| ECG5000 | 140 | 12.83 | 3.27 | 0.255 |
+| StarLightCurves | 1024 | 13.06 | 4.07 | 0.312 |
+| Mallat | 1024 | 11.91 | 3.89 | 0.327 |
+| InlineSkate | 1882 | 12.43 | 3.94 | 0.317 |
+| HandOutlines | 2709 | 12.13 | 3.87 | 0.320 |
+| CinCECGTorso | 1639 | 11.97 | 3.76 | 0.314 |
+| Rock:z | 2844 | 11.71 | 3.72 | 0.318 |
+
+Median cycle ratio by computed fraction (all pairs given):
+  [0.00, 0.05):    1 pairs, median ratio 0.004, EAP wins 1
+  [0.10, 0.15):    1 pairs, median ratio 0.389, EAP wins 1
+  [0.15, 0.20):    4 pairs, median ratio 0.536, EAP wins 4
+  [0.20, 0.25):   22 pairs, median ratio 0.686, EAP wins 22
+  [0.25, 0.30):   34 pairs, median ratio 0.833, EAP wins 34
+  [0.30, 0.35):   62 pairs, median ratio 0.970, EAP wins 43
+  [0.35, 0.40):  111 pairs, median ratio 1.147, EAP wins 0
+  [0.40, 0.50):  201 pairs, median ratio 1.410, EAP wins 0
+  [0.50, 0.60):  331 pairs, median ratio 1.760, EAP wins 0
+  [0.60, 0.80):  605 pairs, median ratio 2.211, EAP wins 0
+  [0.80, 1.00): 1428 pairs, median ratio 3.178, EAP wins 0
+
+Fit over 327 pairs with fraction 0.20-0.45: ratio = -0.111 + 3.395 f, ratio 1 at f = 0.327; highest fraction EAP wins 0.348, lowest fraction linear wins 0.314
+All 2800 pairs: sum of median cycles EAP / linear = 2.375; EAP wins 105
+
+Five best pairs for EAP (cycle ratio):
+  Rock:z within (28,24) L=2844 computed 0.001 ratio 0.004
+  Mallat within (1985,1055) L=1024 computed 0.120 ratio 0.389
+  Mallat within (1127,988) L=1024 computed 0.162 ratio 0.501
+  Mallat within (1733,1044) L=1024 computed 0.161 ratio 0.519
+  Mallat within (1374,1283) L=1024 computed 0.176 ratio 0.553

@@ -99,21 +99,27 @@ one-argument `init::Kmeanspp` sequence; `Method::MIP` above N = 200 uses the sel
   compile since Y1 (`7eb928b`: deleted checkpoint and storage-policy functions)
 - ☑ P1 lanes in the CPU fill, after K1 and Y2: `dtw_kernel_lanes<T, W, Cell>` beside `_linear` / `_banded`, W one cache
   line of T; the fill steps a row by W columns of equal length, per-pair kernel otherwise; Standard DTW, L1 and
-  squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2.5× on the 24-thread fill
+  squared L2, full and banded first; bitwise equal to the per-pair fill; band ≥ 2× on the 24-thread fill
   (P1 `94ef14b`, `e34c37f`, `940cd8a`, `3c95dc7`, `b930ff8`; merged `d61c499`; fill 14.5× unbanded, 5.1× band 50,
   15.3× ECG5000; cl builds get unpacked lanes — the Windows wheel is built by cl)
+- ◐ P3 unbanded per-pair Standard DTW runs the linear kernel and EAPruned goes: after K1 the linear kernel is
+  1.5–3.6× faster on 7 of 7 UCR datasets, bitwise equal (`baselines/2026-09-29-p2-eap-vs-linear.md`)
 
 ## C — GPU to one fill (W4 + W13's GPU half)
 
-- ☐ W4a kernel A/B through `KernelOverride` (warp vs regtile, 2- vs 3-buffer), ±5 % band registered first
+- ☑ W4a kernel A/B through `KernelOverride` (warp vs regtile, 2- vs 3-buffer), ±5 % band registered first: no variant
+  within 5 % of its replacement, every kernel stays (`035e70d`, `baselines/2026-09-29-w4a-cuda-kernel-ab.md`)
 - ☑ W4b delete MPI (Z1 `b3041d5`)
 - ☑ W4c delete the 1-vs-N / K-vs-N kernels and GPU LB_Keogh (Z1 `f2b1cfe`, `8fbb7c9`; merged `741ca3b`)
 - ☐ W4d CUDA: `KernelOverride` and fallback flags go; `gpu_config.cuh` reads attributes once at bind (sm_120 FP64
-  fixed; its mutex and atomics go)
+  fixed; its mutex and atomics go); FP32 L = 4095–4096 "invalid argument" fixed (the 48 KiB check ignores static
+  shared memory; W4a)
 - ☐ W4e Metal: one pipeline, one wavefront template, scratch failure → `DeviceError` (macOS CI)
 - ☐ W13a one `fill()` TU; the GPU writes the packed matrix; CUDA launches chunk on an int64 pair offset
   (the N ≤ 65,536 refusal goes)
 - ☐ GPU assignment for CLARA (rectangular medoids × series on the pairwise kernels) — Q4: in 2.0, after C
+- ☐ CUDA tuning, each behind its own band (W4a): a separately compiled preload wavefront for L 257–1024 (−15–17 %
+  FP32 measured); a 64 KB carveout above L = 2048 (−18 % at L = 2049)
 
 ## D — `index_t` in public counts (W11)
 

@@ -25,6 +25,8 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
 - **Highway / xsimd; SIMD within one pair** — tried March–April 2026, not worth it (Volkan, 2026-09-23); the
   row recurrence does not vectorise (`baselines/2026-09-22-x04-codegen-report.md`). SIMD lanes across pairs in
   plain C++ passed their probe (2026-09-29, §3) and enter the CPU fill.
+- **EAPruned as the per-pair exact kernel** — after K1 the call-free linear kernel is 1.5–3.6× faster on 7 of 7 UCR
+  datasets; EAP wins only when it visits under about a third of the cells (`baselines/2026-09-29-p2-eap-vs-linear.md`).
 - **A runtime check on a count** (series, clusters, labels) — counts are `index_t`; see §2 rule 2.
 - **Extending the hand-written CMake URL-pin deny-list** — replaced by `scripts/check_pins.py`.
 - **Not planned** (reopen with clustering evidence): ERP, LCSS, EDR, ShapeDTW, Itakura parallelogram.
@@ -165,3 +167,9 @@ CHANGELOG rule.
 - 2026-09-29 — Y3 merged (`b260415`): the CMake named-critical scanner goes with `run_openmp`'s critical (no header has
   one); `dtwc_main` goes, overriding the ledger's keep-as-tutorial (B-07/O-19) per the 09-27 instruction; `--ram-limit`
   rounds a fractional byte up; `gpu_precision_names` keeps its spellings (docs and SLURM scripts use f32 / f64).
+- 2026-09-29 — P1 merged (`d61c499`): the CPU fill runs W = 64 / sizeof(T) equal-length pairs per call in SIMD lanes,
+  bitwise equal to the per-pair kernels. lld-link's LTO backend runs no SLP vectoriser, so `core/dtw_lanes.cpp` compiles
+  `-fno-lto` when clang targets the MSVC ABI. cl packs nothing (/Qvec-report 1200), so MSVC builds — the Windows wheel,
+  the MEX — get unpacked lanes. A value-returning min let cl pack the float lanes but, under `/fp:contract`, fused
+  squared L2 in the lanes only (a bitwise mismatch), so it was reverted; whether MSVC keeps `/fp:contract` is Volkan's.
+- 2026-09-29 — W4a: no CUDA kernel variant is within 5 % of its replacement; W4d deletes the forcing machinery only.
