@@ -1,6 +1,6 @@
 /**
  * @file test_error_taxonomy.cpp
- * @brief Unit tests for the dtwc::Error exception taxonomy (dtwc/error.hpp).
+ * @brief Unit tests for the dtwc::Error exception taxonomy (dtwc/base/error.hpp).
  *
  * @details Covers, for Error and every derived type (InvalidInput, SolverError,
  * DeviceError, IOError):

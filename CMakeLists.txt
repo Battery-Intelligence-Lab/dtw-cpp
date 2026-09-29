@@ -251,17 +251,6 @@ add_subdirectory(dtwc bin)
 target_compile_definitions(dtwc++ PUBLIC DTWC_VERSION_STRING="${DTWC_VERSION_STRING}")
 
 if(PROJECT_IS_TOP_LEVEL AND NOT SKBUILD)
-  add_executable(dtwc_main
-    dtwc/main.cpp
-  )
-
-  target_link_libraries(dtwc_main
-    PRIVATE
-    dtwc++
-    project_warnings
-    project_options
-  )
-
   add_executable(dtwc_cl
     dtwc/dtwc_cl.cpp
   )

@@ -41,7 +41,6 @@ target_sources(dtwc++
   checkpoint.hpp
   dtwc.hpp
   distance.hpp
-  env.hpp
   fileOperations.hpp
   initialisation.hpp
   parallelisation.hpp

@@ -11,6 +11,9 @@ This changelog contains a non-exhaustive list of new features and notable bug-fi
 - **Fixed (C++ compatibility):** `Problem::cluster_by_kMedoidsPAM()`, v1.0.0's name for the Lloyd k-medoids run, compiles
   again as a deprecated forwarder to `cluster_by_kmedoids_lloyd()` (the 2.0 spelling `cluster_by_kMedoidsLloyd()` is gone), and
   `Problem::maxIter` and `N_repetition` are plain public fields again, as in v1.0.0, with no deprecation warning.
+- **Removed (build):** the `dtwc_main` demo executable (`dtwc/main.cpp`), which ran a MIP on `data/dummy` relative to the
+  working directory; `examples/cpp/MIP_single.cpp` (`-DDTWC_BUILD_EXAMPLES=ON`) runs the same MIP and takes the data folder
+  as an argument.
 - **Fixed (docs):** the `/cluster` and `/help` commands showed `--k` and `--output-dir`, and `/troubleshoot` showed
   `--repetitions` and `--prune`, none of which `dtwc_cl` has; they now show `-k`, `--output` and `--n-init`, and the pruning tip
   is gone. CI now fails when a page in `docs/content`, `README.md` or `.claude/commands` shows a `dtwc_cl` flag that the live

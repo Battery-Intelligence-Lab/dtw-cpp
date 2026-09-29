@@ -694,20 +694,6 @@ TEST_CASE("has_missing: vector of only infinities returns false", "[adversarial]
   REQUIRE_FALSE(has_missing(v));
 }
 
-TEST_CASE("missing_rate: vector of subnormals gives 0.0", "[adversarial][missing_rate]")
-{
-  double dn = std::numeric_limits<double>::denorm_min();
-  std::vector<double> v = { dn, dn, dn, dn };
-  REQUIRE_THAT(missing_rate(v), WithinAbs(0.0, 1e-15));
-}
-
-TEST_CASE("missing_rate: single NaN in large vector", "[adversarial][missing_rate]")
-{
-  std::vector<double> v(999, 1.0);
-  v.push_back(qNaN); // 1 NaN out of 1000
-  REQUIRE_THAT(missing_rate(v), WithinAbs(0.001, 1e-12));
-}
-
 // ===========================================================================
 // 9. Symmetry invariant holds for all adversarial NaN patterns
 // ===========================================================================

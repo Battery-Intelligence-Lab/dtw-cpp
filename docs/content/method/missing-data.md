@@ -136,11 +136,10 @@ bool m = dtwc::is_missing(val);  // true (safe under -ffast-math)
 bool s = std::isnan(val);         // may be false under -ffast-math!
 ```
 
-Additional utilities:
+Additional utility:
 
 ```cpp
 bool any_nan = dtwc::has_missing(series);      // true if any NaN present
-double rate  = dtwc::missing_rate(series);      // fraction of NaN values
 ```
 
 ---
