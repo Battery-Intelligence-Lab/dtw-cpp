@@ -31,8 +31,8 @@ needs a dated line in §3. Anything older or longer is in git history (`git log 
 - **Libraries not adopted** (2026-09-22; each duplicates in-tree code chosen on purpose): xxHash (SHA-256 is
   identity), PCG / xoshiro (`portable_random.hpp`), magic_enum (the name tables are the cross-language
   contract), toml++ / nlohmann-json (CLI11 + fkYAML read the config), {fmt}, kokkos-mdspan, rapidcheck
-  (Catch2 `GENERATE`), Taskflow / TBB (OpenMP). Adopted: fast_float (FX-6), libpfm4 (benchmarks only).
-  Open: llfio → mio (Q2).
+  (Catch2 `GENERATE`), Taskflow / TBB (OpenMP). Adopted: fast_float (FX-6), libpfm4 (benchmarks only), llfio
+  header-only for the mapped matrix (Q2 closed 2026-09-28: not mio).
 
 ## 2. Standing rules
 
@@ -157,3 +157,11 @@ CHANGELOG rule.
   EAPruned kernel, which made no call; P1 measures lanes against it. `test_codegen_no_calls` (clang builds) fails a
   build whose DP inner loop calls; registered with `add_test` because it runs a Python script, its PASS regex requires
   `inner_loops` ≥ 1.
+- 2026-09-29 — Y2 merged (`959dc5b`): heap and mapped matrices are one `core::DistanceMatrix`; get/set index a raw
+  `double *`. The mapped file's fingerprint is checked once, when it is mapped; a matrix assigned through the mutable
+  accessor is the caller's (review point 4: a per-lookup compare to catch deliberate C++ misuse is the defensive design
+  the charter rules out). A checkpoint is `<dir>/<name>.dtwm` (`distances.dtwm` unnamed), flushed to the device before
+  the rename; writing values into a mapped Problem is `InvalidInput`.
+- 2026-09-29 — Y3 merged (`b260415`): the CMake named-critical scanner goes with `run_openmp`'s critical (no header has
+  one); `dtwc_main` goes, overriding the ledger's keep-as-tutorial (B-07/O-19) per the 09-27 instruction; `--ram-limit`
+  rounds a fractional byte up; `gpu_precision_names` keeps its spellings (docs and SLURM scripts use f32 / f64).

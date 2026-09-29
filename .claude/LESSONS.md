@@ -263,3 +263,11 @@ Append new entries at the end of their section; keep each to a few lines.
 - **Agent tooling:** in the Bash tool a `\\` inside a quoted heredoc reaches the program as `\` (write scripts with
   the Write tool); the Workflow tool rejects a `scriptPath` file holding non-ASCII text as "control characters"
   (escape it to `\uXXXX`).
+- **On Windows a plain stream cannot open a file llfio holds mapped** (llfio takes delete access): loading a checkpoint
+  that another live Problem maps is `IOError`.
+- **Do not export `CPM_SOURCE_CACHE` for a build dir configured without it**: its cached `CPM_DIRECTORY` differs and the
+  reconfigure fails with "Unknown CMake command CPMAddPackage".
+- **uv reuses a wheel it built from a local directory unless `pyproject.toml` changed**: after a C++ change, install with
+  `--reinstall` (implies `--refresh`) and check the `.pyd` time, or pytest tests stale code.
+- **MSVC STL: `exception_ptr::operator bool` is an out-of-line call**; under Windows EH a local written in a `catch`
+  and read after costs spills per iteration. Keep such a flag in memory behind a reference.
