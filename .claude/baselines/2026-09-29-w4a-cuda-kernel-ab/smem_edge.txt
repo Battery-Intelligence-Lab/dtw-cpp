@@ -1,0 +1,5 @@
+[CUDA] max_L=4094 > 2048: using the 3-buffer wavefront path (the double-buffer register cache would drop cells).
+L=4094 ok kernel=wavefront d01=1258.29
+L=4095 THROWS CUDA error at C:\D\git\wt\W4a\dtwc\cuda\cuda_dtw.cu:1053: invalid argument
+L=4096 THROWS CUDA error at C:\D\git\wt\W4a\dtwc\cuda\cuda_dtw.cu:1053: invalid argument
+L=4097 ok kernel=wavefront d01=1260.03

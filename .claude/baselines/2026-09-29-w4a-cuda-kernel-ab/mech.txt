@@ -1,0 +1,279 @@
+# W4A_CARVEOUT=none (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 3.0 s
+lib,f32,200,1024,Auto,wavefront,0,170.4556,0
+lib,f32,200,1024,RegTile,wavefront,1,170.6608,0
+lib,f32,200,1024,Wavefront,wavefront,0,170.7937,0
+run,f32,200,1024,wavefront,0,164.4831
+run,f32,200,1024,wavefront_3buf,0,208.5622
+run,f32,200,1024,wavefront_3buf,1,210.5866
+run,f32,200,1024,wavefront,1,167.4025
+run,f32,200,1024,wavefront,2,164.1718
+run,f32,200,1024,wavefront_3buf,2,210.9563
+run,f32,200,1024,wavefront_3buf,3,212.1257
+run,f32,200,1024,wavefront,3,164.2588
+run,f32,200,1024,wavefront,4,164.7688
+run,f32,200,1024,wavefront_3buf,4,210.8682
+run,f32,200,1024,wavefront_3buf,5,210.4084
+run,f32,200,1024,wavefront,5,165.7815
+run,f32,200,1024,wavefront,6,165.2715
+run,f32,200,1024,wavefront_3buf,6,211.2338
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,164.7688,164.1718,167.4025,126.6,1.0000,0,0,144,12288,3,1,3,68,24
+path,f32,200,1024,wavefront_3buf,0,210.8682,208.5622,212.1257,99.0,1.2798,0,0,240,12288,3,1,5,44,24
+# W4A_CARVEOUT=m1 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 3.2 s
+lib,f32,200,1024,Auto,wavefront,0,174.2336,0
+lib,f32,200,1024,RegTile,wavefront,1,178.1648,0
+lib,f32,200,1024,Wavefront,wavefront,0,169.9515,0
+run,f32,200,1024,wavefront,0,168.2115
+run,f32,200,1024,wavefront_3buf,0,208.4997
+run,f32,200,1024,wavefront_3buf,1,211.3925
+run,f32,200,1024,wavefront,1,166.3365
+run,f32,200,1024,wavefront,2,163.0372
+run,f32,200,1024,wavefront_3buf,2,210.5620
+run,f32,200,1024,wavefront_3buf,3,212.1820
+run,f32,200,1024,wavefront,3,164.2588
+run,f32,200,1024,wavefront,4,163.2533
+run,f32,200,1024,wavefront_3buf,4,212.3950
+run,f32,200,1024,wavefront_3buf,5,212.2762
+run,f32,200,1024,wavefront,5,167.0390
+run,f32,200,1024,wavefront,6,164.8578
+run,f32,200,1024,wavefront_3buf,6,209.9261
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,164.8578,163.0372,168.2115,126.6,1.0000,0,0,144,12288,3,1,3,68,24
+path,f32,200,1024,wavefront_3buf,0,211.3925,208.4997,212.3950,98.7,1.2823,0,0,240,12288,3,1,5,44,24
+# W4A_CARVEOUT=16 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 3.1 s
+lib,f32,200,1024,Auto,wavefront,0,173.5461,0
+lib,f32,200,1024,RegTile,wavefront,1,166.6964,0
+lib,f32,200,1024,Wavefront,wavefront,0,163.8464,0
+run,f32,200,1024,wavefront,0,327.3646
+run,f32,200,1024,wavefront_3buf,0,320.9216
+run,f32,200,1024,wavefront_3buf,1,320.1034
+run,f32,200,1024,wavefront,1,342.3058
+run,f32,200,1024,wavefront,2,327.5970
+run,f32,200,1024,wavefront_3buf,2,322.5354
+run,f32,200,1024,wavefront_3buf,3,321.4930
+run,f32,200,1024,wavefront,3,327.5141
+run,f32,200,1024,wavefront,4,328.0210
+run,f32,200,1024,wavefront_3buf,4,320.5673
+run,f32,200,1024,wavefront_3buf,5,320.4557
+run,f32,200,1024,wavefront,5,327.7548
+run,f32,200,1024,wavefront,6,327.6206
+run,f32,200,1024,wavefront_3buf,6,323.0341
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,327.6206,327.3646,342.3058,63.7,1.0000,0,0,48,12288,3,1,1,68,24
+path,f32,200,1024,wavefront_3buf,0,320.9216,320.1034,323.0341,65.0,0.9796,0,0,48,12288,3,1,1,44,24
+# W4A_CARVEOUT=32 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 3.9 s
+lib,f32,200,1024,Auto,wavefront,0,171.5418,0
+lib,f32,200,1024,RegTile,wavefront,1,163.5910,0
+lib,f32,200,1024,Wavefront,wavefront,0,163.8653,0
+run,f32,200,1024,wavefront,0,198.0355
+run,f32,200,1024,wavefront_3buf,0,202.8442
+run,f32,200,1024,wavefront_3buf,1,200.8146
+run,f32,200,1024,wavefront,1,197.7682
+run,f32,200,1024,wavefront,2,197.2111
+run,f32,200,1024,wavefront_3buf,2,197.7354
+run,f32,200,1024,wavefront_3buf,3,197.1661
+run,f32,200,1024,wavefront,3,197.5173
+run,f32,200,1024,wavefront,4,198.1082
+run,f32,200,1024,wavefront_3buf,4,197.4395
+run,f32,200,1024,wavefront_3buf,5,202.1642
+run,f32,200,1024,wavefront,5,202.4499
+run,f32,200,1024,wavefront,6,197.8829
+run,f32,200,1024,wavefront_3buf,6,197.2163
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,197.8829,197.2111,202.4499,105.4,1.0000,0,0,96,12288,3,1,2,68,24
+path,f32,200,1024,wavefront_3buf,0,197.7354,197.1661,202.8442,105.5,0.9993,0,0,96,12288,3,1,2,44,24
+# W4A_CARVEOUT=64 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 3.1 s
+lib,f32,200,1024,Auto,wavefront,0,173.6596,0
+lib,f32,200,1024,RegTile,wavefront,1,168.2636,0
+lib,f32,200,1024,Wavefront,wavefront,0,163.5274,0
+run,f32,200,1024,wavefront,0,222.0052
+run,f32,200,1024,wavefront_3buf,0,208.8858
+run,f32,200,1024,wavefront_3buf,1,213.7846
+run,f32,200,1024,wavefront,1,220.9096
+run,f32,200,1024,wavefront,2,221.6448
+run,f32,200,1024,wavefront_3buf,2,210.6982
+run,f32,200,1024,wavefront_3buf,3,210.7269
+run,f32,200,1024,wavefront,3,220.2563
+run,f32,200,1024,wavefront,4,219.8170
+run,f32,200,1024,wavefront_3buf,4,213.0493
+run,f32,200,1024,wavefront_3buf,5,210.8324
+run,f32,200,1024,wavefront,5,219.3162
+run,f32,200,1024,wavefront,6,220.0627
+run,f32,200,1024,wavefront_3buf,6,209.7408
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,220.2563,219.3162,222.0052,94.7,1.0000,0,0,144,12288,3,1,3,68,24
+path,f32,200,1024,wavefront_3buf,0,210.7269,208.8858,213.7846,99.0,0.9567,0,0,192,12288,3,1,4,44,24
+# W4A_CARVEOUT=100 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 2.9 s
+lib,f32,200,1024,Auto,wavefront,0,171.7725,0
+lib,f32,200,1024,RegTile,wavefront,1,165.3432,0
+lib,f32,200,1024,Wavefront,wavefront,0,164.8418,0
+run,f32,200,1024,wavefront,0,220.8573
+run,f32,200,1024,wavefront_3buf,0,214.5925
+run,f32,200,1024,wavefront_3buf,1,219.8682
+run,f32,200,1024,wavefront,1,224.2570
+run,f32,200,1024,wavefront,2,221.4513
+run,f32,200,1024,wavefront_3buf,2,212.4237
+run,f32,200,1024,wavefront_3buf,3,215.8899
+run,f32,200,1024,wavefront,3,223.6836
+run,f32,200,1024,wavefront,4,222.0995
+run,f32,200,1024,wavefront_3buf,4,214.8905
+run,f32,200,1024,wavefront_3buf,5,212.5670
+run,f32,200,1024,wavefront,5,225.3179
+run,f32,200,1024,wavefront,6,221.4431
+run,f32,200,1024,wavefront_3buf,6,215.0564
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,1024,wavefront,1,222.0995,220.8573,225.3179,94.0,1.0000,0,0,144,12288,3,1,3,68,24
+path,f32,200,1024,wavefront_3buf,0,214.8905,212.4237,219.8682,97.1,0.9675,0,0,240,12288,3,1,5,44,24
+# W4A_CARVEOUT=none (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 11.7 s
+lib,f32,200,2048,Auto,wavefront,0,760.5430,0
+lib,f32,200,2048,RegTile,wavefront,1,548.7302,0
+lib,f32,200,2048,Wavefront,wavefront,0,550.9980,0
+run,f32,200,2048,wavefront,0,555.3141
+run,f32,200,2048,wavefront_3buf,0,775.9319
+run,f32,200,2048,wavefront_3buf,1,802.0439
+run,f32,200,2048,wavefront,1,559.5259
+run,f32,200,2048,wavefront,2,548.5025
+run,f32,200,2048,wavefront_3buf,2,778.8728
+run,f32,200,2048,wavefront_3buf,3,783.2217
+run,f32,200,2048,wavefront,3,553.1177
+run,f32,200,2048,wavefront,4,548.9838
+run,f32,200,2048,wavefront_3buf,4,785.1080
+run,f32,200,2048,wavefront_3buf,5,794.2717
+run,f32,200,2048,wavefront,5,552.3405
+run,f32,200,2048,wavefront,6,548.1298
+run,f32,200,2048,wavefront_3buf,6,782.4609
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2048,wavefront,1,552.3405,548.1298,559.5259,151.1,1.0000,0,0,144,16384,2,1,3,68,24
+path,f32,200,2048,wavefront_3buf,0,783.2217,775.9319,802.0439,106.6,1.4180,0,0,144,24576,3,1,3,44,24
+# W4A_CARVEOUT=64 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 11.7 s
+lib,f32,200,2048,Auto,wavefront,0,788.5067,0
+lib,f32,200,2048,RegTile,wavefront,1,548.5613,0
+lib,f32,200,2048,Wavefront,wavefront,0,548.6011,0
+run,f32,200,2048,wavefront,0,547.9209
+run,f32,200,2048,wavefront_3buf,0,654.2438
+run,f32,200,2048,wavefront_3buf,1,653.0878
+run,f32,200,2048,wavefront,1,551.1199
+run,f32,200,2048,wavefront,2,545.9128
+run,f32,200,2048,wavefront_3buf,2,652.7447
+run,f32,200,2048,wavefront_3buf,3,653.8926
+run,f32,200,2048,wavefront,3,546.5211
+run,f32,200,2048,wavefront,4,546.0613
+run,f32,200,2048,wavefront_3buf,4,652.2562
+run,f32,200,2048,wavefront_3buf,5,655.0139
+run,f32,200,2048,wavefront,5,546.0388
+run,f32,200,2048,wavefront,6,547.8431
+run,f32,200,2048,wavefront_3buf,6,654.0831
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2048,wavefront,1,546.5211,545.9128,551.1199,152.7,1.0000,0,0,144,16384,2,1,3,68,24
+path,f32,200,2048,wavefront_3buf,0,653.8926,652.2562,655.0139,127.6,1.1965,0,0,96,24576,3,1,2,44,24
+# W4A_CARVEOUT=100 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 16.1 s
+lib,f32,200,2048,Auto,wavefront,0,758.8260,0
+lib,f32,200,2048,RegTile,wavefront,1,557.1953,0
+lib,f32,200,2048,Wavefront,wavefront,0,552.1699,0
+run,f32,200,2048,wavefront,0,749.1420
+run,f32,200,2048,wavefront_3buf,0,787.9926
+run,f32,200,2048,wavefront_3buf,1,781.8168
+run,f32,200,2048,wavefront,1,748.4171
+run,f32,200,2048,wavefront,2,746.3455
+run,f32,200,2048,wavefront_3buf,2,783.2709
+run,f32,200,2048,wavefront_3buf,3,787.5645
+run,f32,200,2048,wavefront,3,757.9658
+run,f32,200,2048,wavefront,4,751.0508
+run,f32,200,2048,wavefront_3buf,4,801.1500
+run,f32,200,2048,wavefront_3buf,5,795.0428
+run,f32,200,2048,wavefront,5,751.0282
+run,f32,200,2048,wavefront,6,764.1661
+run,f32,200,2048,wavefront_3buf,6,795.7924
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2048,wavefront,1,751.0282,746.3455,764.1661,111.1,1.0000,0,0,144,16384,2,1,3,68,24
+path,f32,200,2048,wavefront_3buf,0,787.9926,781.8168,801.1500,105.9,1.0492,0,0,144,24576,3,1,3,44,24
+# W4A_CARVEOUT=none (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 13.3 s
+[CUDA] max_L=2049 > 2048: using the 3-buffer wavefront path (the double-buffer register cache would drop cells).
+lib,f32,200,2049,Auto,wavefront,0,1076.4340,0
+lib,f32,200,2049,RegTile,wavefront,1,791.0952,0
+lib,f32,200,2049,Wavefront,wavefront,0,797.1785,0
+run,f32,200,2049,wavefront,0,793.7792
+run,f32,200,2049,wavefront_3buf,0,798.9525
+run,f32,200,2049,wavefront_3buf,1,796.4682
+run,f32,200,2049,wavefront,1,795.7269
+run,f32,200,2049,wavefront,2,803.9865
+run,f32,200,2049,wavefront_3buf,2,806.8782
+run,f32,200,2049,wavefront_3buf,3,797.4329
+run,f32,200,2049,wavefront,3,797.5762
+run,f32,200,2049,wavefront,4,798.2950
+run,f32,200,2049,wavefront_3buf,4,812.1508
+run,f32,200,2049,wavefront_3buf,5,803.7294
+run,f32,200,2049,wavefront,5,805.1251
+run,f32,200,2049,wavefront,6,799.2197
+run,f32,200,2049,wavefront_3buf,6,812.6310
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2049,wavefront,1,798.2950,793.7792,805.1251,104.7,1.0000,0,0,144,24588,3,1,3,68,24
+path,f32,200,2049,wavefront_3buf,0,803.7294,796.4682,812.6310,104.0,1.0068,0,0,144,24588,3,1,3,44,24
+# W4A_CARVEOUT=64 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 11.9 s
+[CUDA] max_L=2049 > 2048: using the 3-buffer wavefront path (the double-buffer register cache would drop cells).
+lib,f32,200,2049,Auto,wavefront,0,1088.8396,0
+lib,f32,200,2049,RegTile,wavefront,1,794.9617,0
+lib,f32,200,2049,Wavefront,wavefront,0,799.5476,0
+run,f32,200,2049,wavefront,0,668.3054
+run,f32,200,2049,wavefront_3buf,0,671.9293
+run,f32,200,2049,wavefront_3buf,1,654.0196
+run,f32,200,2049,wavefront,1,656.7578
+run,f32,200,2049,wavefront,2,660.3254
+run,f32,200,2049,wavefront_3buf,2,657.5790
+run,f32,200,2049,wavefront_3buf,3,654.0636
+run,f32,200,2049,wavefront,3,657.6169
+run,f32,200,2049,wavefront,4,669.1431
+run,f32,200,2049,wavefront_3buf,4,654.8511
+run,f32,200,2049,wavefront_3buf,5,657.3845
+run,f32,200,2049,wavefront,5,656.7834
+run,f32,200,2049,wavefront,6,656.6420
+run,f32,200,2049,wavefront_3buf,6,654.6801
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2049,wavefront,1,657.6169,656.6420,669.1431,127.0,1.0000,0,0,96,24588,3,1,2,68,24
+path,f32,200,2049,wavefront_3buf,0,654.8511,654.0196,671.9293,127.6,0.9958,0,0,96,24588,3,1,2,44,24
+# W4A_CARVEOUT=100 (none = unset; m1 = -1)
+# device NVIDIA RTX 4000 Ada Generation cc 8.9 sm 48 fp64_rate Slow
+# oracle dtwFull_L<f32> 19900 pairs in 11.7 s
+[CUDA] max_L=2049 > 2048: using the 3-buffer wavefront path (the double-buffer register cache would drop cells).
+lib,f32,200,2049,Auto,wavefront,0,1115.6075,0
+lib,f32,200,2049,RegTile,wavefront,1,789.0853,0
+lib,f32,200,2049,Wavefront,wavefront,0,792.6851,0
+run,f32,200,2049,wavefront,0,792.8135
+run,f32,200,2049,wavefront_3buf,0,796.3494
+run,f32,200,2049,wavefront_3buf,1,797.4052
+run,f32,200,2049,wavefront,1,797.9786
+run,f32,200,2049,wavefront,2,798.3923
+run,f32,200,2049,wavefront_3buf,2,799.1255
+run,f32,200,2049,wavefront_3buf,3,800.3379
+run,f32,200,2049,wavefront,3,798.1384
+run,f32,200,2049,wavefront,4,795.4954
+run,f32,200,2049,wavefront_3buf,4,805.1118
+run,f32,200,2049,wavefront_3buf,5,799.3313
+run,f32,200,2049,wavefront,5,802.2159
+run,f32,200,2049,wavefront,6,798.3135
+run,f32,200,2049,wavefront_3buf,6,796.9741
+# path,prec,N,L,path,auto,median_ms,min_ms,max_ms,gcell_s,ratio_to_auto,mismatches,max_abs_err,grid,shmem,n_bufs,persistent,blocks_per_sm,regs,local_bytes
+path,f32,200,2049,wavefront,1,798.1384,792.8135,802.2159,104.7,1.0000,0,0,144,24588,3,1,3,68,24
+path,f32,200,2049,wavefront_3buf,0,799.1255,796.3494,805.1118,104.5,1.0012,0,0,144,24588,3,1,3,44,24
