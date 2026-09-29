@@ -13,6 +13,7 @@
 #include "config.hpp"
 
 #include "config_file.hpp"
+#include "../io/parse_number.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -20,123 +21,53 @@
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
-#include <numeric>
 #include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <utility>
 
 namespace dtwc {
 namespace {
 
-/// Parse a human-readable binary size such as 2G, 500M, or 1.5GiB.
-/// Empty/zero means no limit; every malformed, fractional-byte, negative, or
-/// unrepresentable value fails closed rather than silently disabling the cap.
-/// (CLI11's AsSizeValue would truncate the documented `1.5G`.)
+/// A byte count such as 2G, 500M, 1.5GiB or 1073741824; "" and 0 mean no limit.
+/// Units are binary and case-insensitive. A fraction of a byte rounds up, so a
+/// nonzero value never turns the cap off. (CLI11's AsSizeValue would truncate the
+/// documented `1.5G`.)
 size_t parse_ram_limit(const std::string &s)
 {
   if (s.empty()) return 0;
+  const char *const first = s.data();
+  const char *const last = first + s.size();
+  // A plain byte count reads as an integer, so every count to_config_text()
+  // writes reads back exactly.
+  size_t bytes = 0;
+  if (const auto [end, ec] = std::from_chars(first, last, bytes); ec == std::errc{} && end == last) return bytes;
 
-  size_t integer_end = 0;
-  while (integer_end < s.size()
-         && std::isdigit(static_cast<unsigned char>(s[integer_end])))
-    ++integer_end;
-  const bool has_integer_digits = integer_end != 0;
-  size_t fraction_begin = integer_end;
-  size_t fraction_end = integer_end;
-  if (fraction_begin < s.size() && s[fraction_begin] == '.') {
-    ++fraction_begin;
-    fraction_end = fraction_begin;
-    while (fraction_end < s.size()
-           && std::isdigit(static_cast<unsigned char>(s[fraction_end])))
-      ++fraction_end;
-    if (fraction_end == fraction_begin)
-      throw dtwc::InvalidInput(
-        "Invalid --ram-limit '" + s +
-        "': expected digits after the decimal point.");
-  }
-  if (!has_integer_digits && fraction_end == fraction_begin)
-    throw dtwc::InvalidInput(
-      "Invalid --ram-limit '" + s +
-      "': expected a non-negative size such as 2G, 500M, or 1.5GiB.");
-
-  const size_t suffix_begin = fraction_end == integer_end
-    ? integer_end : fraction_end;
-  std::string suffix = s.substr(suffix_begin);
-  for (auto &c : suffix)
-    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-
-  std::uint64_t multiplier = 1;
-  if (suffix.empty() || suffix == "B") multiplier = 1;
-  else if (suffix == "K" || suffix == "KB" || suffix == "KIB") multiplier = 1ULL << 10;
-  else if (suffix == "M" || suffix == "MB" || suffix == "MIB") multiplier = 1ULL << 20;
-  else if (suffix == "G" || suffix == "GB" || suffix == "GIB") multiplier = 1ULL << 30;
-  else if (suffix == "T" || suffix == "TB" || suffix == "TIB") multiplier = 1ULL << 40;
-  else {
-    throw dtwc::InvalidInput(
-      "Invalid --ram-limit '" + s +
-      "': unit must be B, K/KiB, M/MiB, G/GiB, or T/TiB.");
-  }
-
-  const auto platform_max = std::numeric_limits<size_t>::max();
-  const auto integer_limit = static_cast<std::uint64_t>(platform_max) / multiplier;
-  std::uint64_t integer_part = 0;
-  for (size_t i = 0; i < integer_end; ++i) {
-    const auto digit = static_cast<unsigned>(s[i] - '0');
-    if (integer_part > integer_limit / 10
-        || (integer_part == integer_limit / 10
-            && digit > integer_limit % 10))
-      throw dtwc::InvalidInput(
-        "Invalid --ram-limit '" + s +
-        "': value exceeds this platform's size limit.");
-    integer_part = integer_part * 10 + digit;
-  }
-  size_t result = static_cast<size_t>(integer_part * multiplier);
-
-  if (fraction_end != fraction_begin) {
-    while (fraction_end > fraction_begin && s[fraction_end - 1] == '0')
-      --fraction_end;
-    if (fraction_end > fraction_begin) {
-      std::uint64_t numerator = 0;
-      std::uint64_t denominator = 1;
-      for (size_t i = fraction_begin; i < fraction_end; ++i) {
-        const auto digit = static_cast<unsigned>(s[i] - '0');
-        if (numerator > (std::numeric_limits<std::uint64_t>::max() - digit) / 10
-            || denominator > std::numeric_limits<std::uint64_t>::max() / 10)
-          throw dtwc::InvalidInput(
-            "Invalid --ram-limit '" + s +
-            "': decimal precision is too large to resolve exactly.");
-        numerator = numerator * 10 + digit;
-        denominator *= 10;
-      }
-
-      std::uint64_t reduced_multiplier = multiplier;
-      auto divisor = std::gcd(reduced_multiplier, denominator);
-      reduced_multiplier /= divisor;
-      denominator /= divisor;
-      divisor = std::gcd(numerator, denominator);
-      numerator /= divisor;
-      denominator /= divisor;
-      if (denominator != 1)
-        throw dtwc::InvalidInput(
-          "Invalid --ram-limit '" + s +
-          "': value must resolve to a whole positive byte count.");
-      if (numerator != 0
-          && reduced_multiplier >
-               (static_cast<std::uint64_t>(platform_max) - result) / numerator)
-        throw dtwc::InvalidInput(
-          "Invalid --ram-limit '" + s +
-          "': value exceeds this platform's size limit.");
-      result += static_cast<size_t>(numerator * reduced_multiplier);
-    }
-  }
-  return result;
+  constexpr std::pair<std::string_view, int> units[]{ // spelling, power of two
+    { "", 0 },     { "B", 0 },   { "K", 10 },  { "KB", 10 },  { "KIB", 10 }, { "M", 20 },  { "MB", 20 },
+    { "MIB", 20 }, { "G", 30 },  { "GB", 30 }, { "GIB", 30 }, { "T", 40 },   { "TB", 40 }, { "TIB", 40 },
+  };
+  double value = -1.0;
+  const auto [end, ec] = io::parse_number(first, last, value); // not std::from_chars: macOS 26+ only
+  std::string unit(end, last);
+  for (char &c : unit) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  const auto match = std::find_if(std::begin(units), std::end(units), [&](const auto &u) { return u.first == unit; });
+  const double scaled = match == std::end(units) ? -1.0 : std::ldexp(value, match->second);
+  // The one range check: a negative, NaN or infinite value and an unknown unit
+  // fail it, and so does a count size_t cannot hold, whose cast would be undefined.
+  if (ec != std::errc{} || !(scaled >= 0.0 && scaled < std::ldexp(1.0, std::numeric_limits<size_t>::digits)))
+    throw InvalidInput("Invalid --ram-limit '" + s
+                       + "': expected a size such as 2G, 500M or 1.5GiB, in B, K, M, G or T (KB and KiB alike), "
+                         "below 2^64 bytes.");
+  return static_cast<size_t>(std::ceil(scaled));
 }
 
 /// A bound field as config text: the default `--help` shows and the value

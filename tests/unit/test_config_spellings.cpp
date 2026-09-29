@@ -377,8 +377,8 @@ TEST_CASE("flags beat the file; unknown keys and unreadable values are errors", 
   CHECK_THROWS_AS(dtwc::parse_config({ { "seed", "-1" } }), dtwc::InvalidInput); // unsigned: the type says no
   CHECK_THROWS_AS(dtwc::parse_config({ { "mmap_threshold", "-1" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "benders", "of" } }), dtwc::InvalidInput);
-  CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "1.5" } }),
-                    Catch::Matchers::ContainsSubstring("whole positive byte count"));
+  CHECK_THROWS_WITH(dtwc::parse_config({ { "ram_limit", "-1G" } }),
+                    Catch::Matchers::ContainsSubstring("Invalid --ram-limit '-1G'"));
   CHECK_THROWS_AS(dtwc::parse_config({ { "delimiter", ";;" } }), dtwc::InvalidInput);
   CHECK_THROWS_AS(dtwc::parse_config({ { "device", "tpu" } }), dtwc::DeviceError);
   CHECK(values_of(dtwc::to_config_text(dtwc::parse_config({ { "ram_limit", "1.5G" } }))).at("ram-limit")
